@@ -50,6 +50,8 @@ const (
 var (
 	skillsIndexFetchTimeout = 10 * time.Second
 	officialSkillsIndexURL  = "https://open.feishu.cn/.well-known/skills/index.json"
+	isolatedSkillsSourceURL = "https://open.feishu.cn/lark-cli/isolated-skills"
+	isolatedSkillsFallback  = "larksuite/cli/isolated-skills"
 )
 
 // DetectResult holds installation detection results.
@@ -324,6 +326,14 @@ func (u *Updater) InstallAllSkills() *NpmResult {
 	r := u.runSkillsAdd("https://open.feishu.cn")
 	if r.Err != nil {
 		r = u.runSkillsAdd("larksuite/cli")
+	}
+	return r
+}
+
+func (u *Updater) InstallSuiteSkill() *NpmResult {
+	r := u.runSkillsInstall(isolatedSkillsSourceURL, []string{"lark-suite"})
+	if r.Err != nil {
+		r = u.runSkillsInstall(isolatedSkillsFallback, []string{"lark-suite"})
 	}
 	return r
 }

@@ -204,6 +204,9 @@ func TestUpdatePnpm_Unavailable_ManualFallback(t *testing.T) {
 	if !strings.Contains(out, "pnpm add -g") {
 		t.Errorf("expected pnpm add -g hint, got: %s", out)
 	}
+	if strings.Contains(out, "pnpm dlx skills add larksuite/cli") {
+		t.Errorf("should not suggest standalone pnpm skills sync command, got: %s", out)
+	}
 }
 
 func TestNormalizeVersion(t *testing.T) {
@@ -728,8 +731,8 @@ func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.
 	if !strings.Contains(out, "skills will not be synced") {
 		t.Errorf("expected skills-not-synced warning in rollback hint, got: %s", out)
 	}
-	if !strings.Contains(out, "npx skills add larksuite/cli -y -g") {
-		t.Errorf("expected npx skills add hint for skills sync, got: %s", out)
+	if strings.Contains(out, "npx skills add larksuite/cli -y -g") {
+		t.Errorf("should not suggest standalone skills sync command, got: %s", out)
 	}
 }
 
@@ -1133,7 +1136,7 @@ func newTestIO() *cmdutil.IOStreams {
 
 func TestRunSkillsAndState_DedupHit(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.21"}); err != nil {
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.21", Layout: skillscheck.LayoutSeparate}); err != nil {
 		t.Fatal(err)
 	}
 	called := false
@@ -1143,12 +1146,33 @@ func TestRunSkillsAndState_DedupHit(t *testing.T) {
 			return &selfupdate.NpmResult{}
 		},
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "", "", false)
 	if got != nil {
 		t.Errorf("runSkillsAndState() = %+v, want nil for dedup hit", got)
 	}
 	if called {
 		t.Error("SkillsCommandOverride called, want skipped due to dedup")
+	}
+}
+
+func TestRunSkillsAndState_MissingLayoutDoesNotDedup(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.21"}); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	updater := &selfupdate.Updater{
+		SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+			called = true
+			return successfulSkillsCommand()(args...)
+		},
+	}
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "", "", false)
+	if got == nil || got.Err != nil {
+		t.Fatalf("runSkillsAndState() = %+v, want successful sync when state lacks layout", got)
+	}
+	if !called {
+		t.Error("SkillsCommandOverride not called, want resync when state lacks layout")
 	}
 }
 
@@ -1164,7 +1188,7 @@ func TestRunSkillsAndState_DedupForceBypass(t *testing.T) {
 			return successfulSkillsCommand()(args...)
 		},
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", true)
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", true, "", "", false)
 	if got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndState(force=true) = %+v, want successful result", got)
 	}
@@ -1176,7 +1200,7 @@ func TestRunSkillsAndState_DedupForceBypass(t *testing.T) {
 func TestRunSkillsAndState_SuccessWritesState(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	updater := &selfupdate.Updater{SkillsCommandOverride: successfulSkillsCommand()}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "", "", false)
 	if got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with nil Err", got)
 	}
@@ -1186,6 +1210,12 @@ func TestRunSkillsAndState_SuccessWritesState(t *testing.T) {
 	}
 	if state.Version != "1.0.21" {
 		t.Errorf("state.Version = %q, want \"1.0.21\"", state.Version)
+	}
+	if state.Layout != skillscheck.LayoutSeparate {
+		t.Errorf("state.Layout = %q, want %q", state.Layout, skillscheck.LayoutSeparate)
+	}
+	if len(state.FlatSkills) != 0 {
+		t.Errorf("state.FlatSkills = %#v, want empty", state.FlatSkills)
 	}
 }
 
@@ -1201,7 +1231,7 @@ func TestRunSkillsAndState_FailureKeepsOldState(t *testing.T) {
 			return r
 		},
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "", "", false)
 	if got == nil || got.Err == nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with non-nil Err", got)
 	}
@@ -1211,6 +1241,50 @@ func TestRunSkillsAndState_FailureKeepsOldState(t *testing.T) {
 	}
 	if state.Version != "1.0.20" {
 		t.Errorf("state.Version = %q, want \"1.0.20\" (failure must not overwrite)", state.Version)
+	}
+}
+
+func TestResolveSkillsSyncOptions_UsesStateAsFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{
+		Version:    "1.0.21",
+		Layout:     skillscheck.LayoutHybrid,
+		FlatSkills: []string{"lark-doc"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	layout, flat := resolveSkillsSyncOptions("", "", false)
+	if layout != skillscheck.LayoutHybrid {
+		t.Fatalf("layout = %q, want %q", layout, skillscheck.LayoutHybrid)
+	}
+	if len(flat) != 1 || flat[0] != "lark-doc" {
+		t.Fatalf("flat = %#v, want [lark-doc]", flat)
+	}
+}
+
+func TestValidateSkillsLayoutOptionsRejectsSuiteMode(t *testing.T) {
+	err := validateSkillsLayoutOptions(&UpdateOptions{SkillsLayout: "suite"})
+	if err == nil {
+		t.Fatal("validateSkillsLayoutOptions() err = nil, want validation error")
+	}
+	var validation *errs.ValidationError
+	if !errors.As(err, &validation) {
+		t.Fatalf("errors.As(err, *ValidationError) = false for %T", err)
+	}
+	if validation.Param != "--skills-layout" {
+		t.Fatalf("validation.Param = %q, want --skills-layout", validation.Param)
+	}
+}
+
+func TestValidateSkillsLayoutOptionsAllowsFlatSkillsFilteringAfterOfficialDiscovery(t *testing.T) {
+	err := validateSkillsLayoutOptions(&UpdateOptions{
+		SkillsLayout: skillscheck.LayoutHybrid,
+		FlatSkills:   "lark-shared,lark-unknown",
+		FlatSet:      true,
+	})
+	if err != nil {
+		t.Fatalf("validateSkillsLayoutOptions() err = %v, want nil", err)
 	}
 }
 
@@ -1494,7 +1568,7 @@ func TestRunSkillsAndState_StateWriteFailureWarns(t *testing.T) {
 	t.Cleanup(func() { syncSkills = origSync })
 
 	f, _, stderr := newTestFactory(t)
-	got := runSkillsAndState(&selfupdate.Updater{}, f.IOStreams, "1.0.21", false)
+	got := runSkillsAndState(&selfupdate.Updater{}, f.IOStreams, "1.0.21", false, "", "", false)
 	if got == nil || got.Err == nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with write error", got)
 	}

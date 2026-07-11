@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +41,14 @@ func TestParseOfficialSkillsListAcceptsNonLarkOfficialNames(t *testing.T) {
 	want := []string{"lark-calendar", "official-shared"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ParseSkillsList() (Available Skills) = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseFlatSkillsTrimsDeduplicatesAndSorts(t *testing.T) {
+	got := ParseFlatSkills(" lark-doc, lark-im,,lark-doc, lark-base ")
+	want := []string{"lark-base", "lark-doc", "lark-im"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseFlatSkills() = %#v, want %#v", got, want)
 	}
 }
 
@@ -216,8 +225,10 @@ type fakeSkillsRunner struct {
 	globalErr        error
 	installErr       error
 	installAllErr    error
+	installSuiteErr  error
 	installed        [][]string
 	installedAll     int
+	installedSuite   int
 	listedIndex      int
 	listedOfficial   int
 	listedGlobalJSON int
@@ -316,6 +327,13 @@ func (f *fakeSkillsRunner) InstallAllSkills() *selfupdate.NpmResult {
 	f.installedAll++
 	r := &selfupdate.NpmResult{}
 	r.Err = f.installAllErr
+	return r
+}
+
+func (f *fakeSkillsRunner) InstallSuiteSkill() *selfupdate.NpmResult {
+	f.installedSuite++
+	r := &selfupdate.NpmResult{}
+	r.Err = f.installSuiteErr
 	return r
 }
 
@@ -472,6 +490,34 @@ func TestSyncSkills_OfficialDiscoveryEmptyFallsBackToFullInstallWithReasons(t *t
 	}
 }
 
+func TestSyncSkills_HybridOfficialDiscoveryFailureDoesNotFallback(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	runner := &fakeSkillsRunner{
+		officialIndexErr: fmt.Errorf("index unavailable"),
+		officialErr:      fmt.Errorf("list unavailable"),
+	}
+
+	result := SyncSkills(SyncOptions{
+		Version: "1.0.33",
+		Layout:  LayoutHybrid,
+		Runner:  runner,
+		Now:     time.Now,
+	})
+	if result.Action != "failed" {
+		t.Fatalf("SyncSkills() action = %q, want failed", result.Action)
+	}
+	if result.Layout != LayoutHybrid {
+		t.Fatalf("SyncSkills() layout = %q, want %q", result.Layout, LayoutHybrid)
+	}
+	if result.Err == nil || !strings.Contains(result.Err.Error(), "failed to discover official skills for hybrid layout") {
+		t.Fatalf("SyncSkills() err = %v, want hybrid discovery failure", result.Err)
+	}
+	if runner.installedAll != 0 {
+		t.Fatalf("installedAll = %d, want 0", runner.installedAll)
+	}
+}
+
 func TestSyncSkills_ListOfficialFailureFallsBackToFullInstall(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
@@ -574,7 +620,7 @@ func TestSyncSkills_LocalListsFailureFallsBackToFullInstall(t *testing.T) {
 	}
 }
 
-func TestSyncSkills_ParseEmptyLocalListsFallBackToFullInstall(t *testing.T) {
+func TestSyncSkills_EmptyGlobalJSONInstallsAllOfficialIncrementally(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
 	runner := &fakeSkillsRunner{
@@ -585,14 +631,15 @@ func TestSyncSkills_ParseEmptyLocalListsFallBackToFullInstall(t *testing.T) {
 	}
 
 	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
+	if result.Action != "synced" {
+		t.Fatalf("SyncSkills() action = %q, want synced", result.Action)
 	}
-	if len(runner.installed) != 0 {
-		t.Fatalf("installed = %#v, want no incremental installs", runner.installed)
+	if len(runner.installed) != 1 {
+		t.Fatalf("installed = %#v, want one incremental install", runner.installed)
 	}
-	if runner.installedAll != 1 {
-		t.Fatalf("installedAll = %d, want 1", runner.installedAll)
+	assertStrings(t, runner.installed[0], []string{"lark-calendar", "lark-mail"})
+	if runner.installedAll != 0 {
+		t.Fatalf("installedAll = %d, want 0", runner.installedAll)
 	}
 }
 
@@ -697,6 +744,200 @@ func TestSyncSkills_NilRunnerFails(t *testing.T) {
 	}
 }
 
+func TestSyncSkills_HybridAssemblesSuiteAndMovesCollectedSkills(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	paths := map[string]string{}
+	for _, name := range []string{"lark-calendar", "lark-doc", "lark-shared", "lark-suite"} {
+		paths[name] = filepath.Join(dir, name)
+		writeTestSkill(t, paths[name], name)
+	}
+
+	runner := &fakeSkillsRunner{
+		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-doc", "lark-shared"),
+		globalJSONOut:    globalSkillsJSONFromPaths(paths),
+	}
+
+	result := SyncSkills(SyncOptions{
+		Version:    "1.0.33",
+		Layout:     LayoutHybrid,
+		FlatSkills: []string{"lark-calendar"},
+		Runner:     runner,
+		Now:        time.Now,
+	})
+
+	if result.Err != nil {
+		t.Fatalf("SyncSkills() err = %v, want nil", result.Err)
+	}
+	if runner.installedSuite != 1 {
+		t.Fatalf("installedSuite = %d, want 1", runner.installedSuite)
+	}
+	assertStrings(t, result.Flat, []string{"lark-calendar"})
+	assertStrings(t, result.Collected, []string{"lark-shared", "lark-doc"})
+	if _, err := os.Stat(filepath.Join(paths["lark-suite"], "references", "subskills", "lark-doc", "SKILL.md")); err != nil {
+		t.Fatalf("suite lark-doc missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(paths["lark-suite"], "references", "subskills", "lark-shared", "SKILL.md")); err != nil {
+		t.Fatalf("suite lark-shared missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(paths["lark-calendar"], "SKILL.md")); err != nil {
+		t.Fatalf("flat lark-calendar missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(paths["lark-doc"], "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("collected lark-doc still exists at top level or unexpected err: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(paths["lark-shared"], "SKILL.md")); err != nil {
+		t.Fatalf("lark-shared should stay top-level when flat set is non-empty: %v", err)
+	}
+
+	state, readable, err := ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Layout != LayoutHybrid {
+		t.Fatalf("state.Layout = %q, want %q", state.Layout, LayoutHybrid)
+	}
+	assertStrings(t, state.FlatSkills, []string{"lark-calendar"})
+}
+
+func TestSyncSkills_HybridCollectsNewOfficialSkillOnNextUpdate(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	paths := map[string]string{}
+	for _, name := range []string{"lark-calendar", "lark-doc", "lark-shared", "lark-suite"} {
+		paths[name] = filepath.Join(dir, name)
+		writeTestSkill(t, paths[name], name)
+	}
+
+	runner := &fakeSkillsRunner{
+		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-doc", "lark-shared"),
+		globalJSONOut:    globalSkillsJSONFromPaths(paths),
+	}
+	first := SyncSkills(SyncOptions{
+		Version:    "1.0.33",
+		Layout:     LayoutHybrid,
+		FlatSkills: []string{"lark-calendar"},
+		Runner:     runner,
+		Now:        time.Now,
+	})
+	if first.Err != nil {
+		t.Fatalf("first SyncSkills() err = %v, want nil", first.Err)
+	}
+
+	paths["lark-new"] = filepath.Join(dir, "lark-new")
+	for _, name := range []string{"lark-doc", "lark-new", "lark-shared", "lark-suite"} {
+		writeTestSkill(t, paths[name], name)
+	}
+	runner.officialIndexOut = officialSkillsIndexOutput("lark-calendar", "lark-doc", "lark-new", "lark-shared")
+	runner.globalJSONOut = globalSkillsJSONFromPaths(paths)
+
+	second := SyncSkills(SyncOptions{
+		Version:    "1.0.34",
+		Layout:     LayoutHybrid,
+		FlatSkills: []string{"lark-calendar"},
+		Runner:     runner,
+		Now:        time.Now,
+	})
+	if second.Err != nil {
+		t.Fatalf("second SyncSkills() err = %v, want nil", second.Err)
+	}
+	assertStrings(t, second.Added, []string{"lark-new"})
+	assertStrings(t, second.Flat, []string{"lark-calendar"})
+	assertStrings(t, second.Collected, []string{"lark-shared", "lark-doc", "lark-new"})
+
+	if _, err := os.Stat(filepath.Join(paths["lark-suite"], "references", "subskills", "lark-new", "SKILL.md")); err != nil {
+		t.Fatalf("suite lark-new missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(paths["lark-new"], "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("new official skill should be collected, top-level path err: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(paths["lark-suite"], "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read suite SKILL.md: %v", err)
+	}
+	if !strings.Contains(string(data), "- lark-new: lark-new description") {
+		t.Fatalf("suite SKILL.md missing lark-new route:\n%s", data)
+	}
+
+	state, readable, err := ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	assertStrings(t, state.OfficialSkills, []string{"lark-calendar", "lark-doc", "lark-new", "lark-shared"})
+	assertStrings(t, state.AddedOfficialSkills, []string{"lark-new"})
+	assertStrings(t, state.FlatSkills, []string{"lark-calendar"})
+}
+
+func TestSyncSkills_HybridWithNoFlatSkillsDoesNotKeepSharedTopLevel(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	paths := map[string]string{}
+	for _, name := range []string{"lark-shared", "lark-suite"} {
+		paths[name] = filepath.Join(dir, name)
+		writeTestSkill(t, paths[name], name)
+	}
+
+	runner := &fakeSkillsRunner{
+		officialIndexOut: officialSkillsIndexOutput("lark-shared"),
+		globalJSONOut:    globalSkillsJSONFromPaths(paths),
+	}
+
+	result := SyncSkills(SyncOptions{
+		Version: "1.0.33",
+		Layout:  LayoutHybrid,
+		Runner:  runner,
+		Now:     time.Now,
+	})
+
+	if result.Err != nil {
+		t.Fatalf("SyncSkills() err = %v, want nil", result.Err)
+	}
+	if _, err := os.Stat(filepath.Join(paths["lark-shared"], "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("lark-shared should not stay top-level when flat set is empty; err: %v", err)
+	}
+	if result.Flat == nil || len(result.Flat) != 0 {
+		t.Fatalf("result.Flat = %#v, want empty slice", result.Flat)
+	}
+}
+
+func TestSyncSkills_HybridFiltersNonFlatOfficialSkills(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	paths := map[string]string{}
+	for _, name := range []string{"lark-calendar", "lark-shared", "lark-suite"} {
+		paths[name] = filepath.Join(dir, name)
+		writeTestSkill(t, paths[name], name)
+	}
+
+	runner := &fakeSkillsRunner{
+		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-shared"),
+		globalJSONOut:    globalSkillsJSONFromPaths(paths),
+	}
+
+	result := SyncSkills(SyncOptions{
+		Version:    "1.0.33",
+		Layout:     LayoutHybrid,
+		FlatSkills: []string{"lark-calendar", "lark-missing", "lark-shared"},
+		Runner:     runner,
+		Now:        time.Now,
+	})
+
+	if result.Err != nil {
+		t.Fatalf("SyncSkills() err = %v, want nil", result.Err)
+	}
+	assertStrings(t, result.Flat, []string{"lark-calendar"})
+
+	state, readable, err := ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	assertStrings(t, state.FlatSkills, []string{"lark-calendar"})
+}
+
 func TestSyncSkills_ParseEmptyWithNonEmptyStdoutFallsBack(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
@@ -733,11 +974,118 @@ func TestSyncSkills_ParseEmptyWithNonEmptyStdoutAndFullInstallFails(t *testing.T
 	}
 }
 
+func TestNormalizeSuiteTemplateTextRewritesLegacyFlatSkillWording(t *testing.T) {
+	input := "`lark-shared` 是共享基础能力，不作为 `--collected-skills` 的可选项。为了保证 suite 内子能力可用，hybrid 布局会同时保留顶层 `lark-shared`，并在 `lark-suite/references/subskills/lark-shared/SKILL.md` 中维护一份副本。"
+	got := normalizeSuiteTemplateText(input)
+	if strings.Contains(got, "--collected-skills") {
+		t.Fatalf("normalized text still contains legacy flag: %s", got)
+	}
+	if !strings.Contains(got, "--flat-skills") {
+		t.Fatalf("normalized text missing --flat-skills: %s", got)
+	}
+	if !strings.Contains(got, "只有 hybrid 布局存在平铺 skill 时，顶层才会额外保留一份") {
+		t.Fatalf("normalized text missing current lark-shared rule: %s", got)
+	}
+}
+
+func TestSkillDescriptionSupportsFoldedYAMLScalar(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "SKILL.md")
+	content := `---
+name: lark-whiteboard
+description: >
+  飞书画板：查询和编辑飞书云文档中的画板。
+  当用户需要查看画板内容、导出画板图片、编辑画板时使用此 skill。
+metadata:
+  requires:
+    bins: ["lark-cli"]
+---
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := skillDescription(path)
+	want := "飞书画板：查询和编辑飞书云文档中的画板。 当用户需要查看画板内容、导出画板图片、编辑画板时使用此 skill。"
+	if got != want {
+		t.Fatalf("skillDescription() = %q, want %q", got, want)
+	}
+}
+
+func TestAssembleSuiteLayoutSeparateIsNoop(t *testing.T) {
+	if err := assembleSuiteLayout(LayoutSeparate, []string{"lark-doc"}, false, nil); err != nil {
+		t.Fatalf("assembleSuiteLayout(separate) err = %v, want nil", err)
+	}
+}
+
+func TestAssembleSuiteLayoutMissingSuiteReturnsError(t *testing.T) {
+	err := assembleSuiteLayout(LayoutHybrid, []string{"lark-doc"}, false, []GlobalSkillInfo{
+		{Name: "lark-doc", Path: filepath.Join(t.TempDir(), "lark-doc")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "lark-suite") {
+		t.Fatalf("assembleSuiteLayout() err = %v, want missing lark-suite error", err)
+	}
+}
+
+func TestCopyDirCopiesNestedFiles(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src")
+	dst := filepath.Join(root, "dst")
+	if err := os.MkdirAll(filepath.Join(src, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "nested", "file.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyDir(src, dst); err != nil {
+		t.Fatalf("copyDir() err = %v, want nil", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dst, "nested", "file.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("copied file = %q, want hello", string(got))
+	}
+}
+
 func assertStrings(t *testing.T, got, want []string) {
 	t.Helper()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v, want %#v", got, want)
 	}
+}
+
+func writeTestSkill(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := fmt.Sprintf("---\nname: %s\ndescription: %s description\n---\n", name, name)
+	if name == suiteSkillName {
+		content = "---\nname: lark-suite\ndescription: Lark suite\n---\n<!-- LARK_SUITE_ROUTES -->\n"
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func globalSkillsJSONFromPaths(paths map[string]string) string {
+	names := make([]string, 0, len(paths))
+	for name := range paths {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	b.WriteString("[")
+	for i, name := range names {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `{"name":%q,"path":%q,"scope":"global","agents":["Codex"]}`, name, paths[name])
+	}
+	b.WriteString("]")
+	return b.String()
 }
 
 func TestSyncSkills_FallbackWithUnknownOfficialWritesMinimalState(t *testing.T) {

@@ -21,6 +21,7 @@ var (
 
 type SyncInput struct {
 	Version        string
+	Layout         string
 	OfficialSkills []string
 	LocalSkills    []string
 	PreviousState  *SkillsState
@@ -195,7 +196,18 @@ func parseOfficialSkillsList(lines []string) []string {
 }
 
 func PlanSync(input SyncInput) SyncPlan {
-	official := uniqueSorted(input.OfficialSkills)
+	official := normalOfficialSkills(input.OfficialSkills)
+	layout, _ := NormalizeLayout(input.Layout)
+	skippedDeleted := deletedOfficialSkills(official, input.LocalSkills, input.PreviousState, input.StateReadable, input.Force, layout)
+	if layout != LayoutSeparate {
+		return SyncPlan{
+			Version:        input.Version,
+			OfficialSkills: official,
+			ToUpdate:       suiteEffectiveSkills(official, toSet(skippedDeleted)),
+			Added:          newlyOfficialSkills(official, input.PreviousState, input.StateReadable),
+			SkippedDeleted: skippedDeleted,
+		}
+	}
 	if input.Force {
 		return SyncPlan{
 			Version:        input.Version,
@@ -208,19 +220,7 @@ func PlanSync(input SyncInput) SyncPlan {
 
 	officialSet := toSet(official)
 	installedOfficial := intersection(input.LocalSkills, officialSet)
-
-	previousOfficial := []string{}
-	if input.StateReadable && input.PreviousState != nil {
-		previousOfficial = input.PreviousState.OfficialSkills
-	}
-	previousSet := toSet(previousOfficial)
-
-	newAddedOfficial := []string{}
-	for _, skill := range official {
-		if !previousSet[skill] {
-			newAddedOfficial = append(newAddedOfficial, skill)
-		}
-	}
+	newAddedOfficial := newlyOfficialSkills(official, input.PreviousState, input.StateReadable)
 
 	updateSet := toSet(installedOfficial)
 	for _, skill := range newAddedOfficial {
@@ -229,19 +229,12 @@ func PlanSync(input SyncInput) SyncPlan {
 	toUpdate := sortedKeys(updateSet)
 	updateSet = toSet(toUpdate)
 
-	skipped := []string{}
-	for _, skill := range official {
-		if !updateSet[skill] {
-			skipped = append(skipped, skill)
-		}
-	}
-
 	return SyncPlan{
 		Version:        input.Version,
 		OfficialSkills: official,
 		ToUpdate:       toUpdate,
-		Added:          uniqueSorted(newAddedOfficial),
-		SkippedDeleted: skipped,
+		Added:          newAddedOfficial,
+		SkippedDeleted: skippedDeleted,
 	}
 }
 
@@ -252,13 +245,16 @@ type SkillsRunner interface {
 	ListGlobalSkills() *selfupdate.NpmResult
 	InstallSkill(nameList []string) *selfupdate.NpmResult
 	InstallAllSkills() *selfupdate.NpmResult
+	InstallSuiteSkill() *selfupdate.NpmResult
 }
 
 type SyncOptions struct {
-	Version string
-	Force   bool
-	Runner  SkillsRunner
-	Now     func() time.Time
+	Version    string
+	Layout     string
+	FlatSkills []string
+	Force      bool
+	Runner     SkillsRunner
+	Now        func() time.Time
 }
 
 type SyncResult struct {
@@ -271,6 +267,9 @@ type SyncResult struct {
 	Err            error
 	Detail         string
 	Force          bool
+	Layout         string
+	Flat           []string
+	Collected      []string
 }
 
 func SyncSkills(opts SyncOptions) *SyncResult {
@@ -280,16 +279,26 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 	if opts.Runner == nil {
 		return &SyncResult{Action: "failed", Err: fmt.Errorf("skills runner is nil")}
 	}
+	layout, ok := NormalizeLayout(opts.Layout)
+	if !ok {
+		return &SyncResult{Action: "failed", Err: fmt.Errorf("unsupported skills layout %q", opts.Layout)}
+	}
 
 	// --- Step 1: List official skills ---
 	official, reason, ok := listOfficialSkills(opts.Runner)
 	if !ok {
+		if layout != LayoutSeparate {
+			return failedSync(layout, opts.Force, fmt.Errorf("failed to discover official skills for %s layout: %s", layout, reason), reason)
+		}
 		return fallbackFullInstall(opts, reason, nil)
 	}
 
 	// --- Step 2: List local (installed) skills ---
 	local, ok := listLocalSkills(opts.Runner)
 	if !ok {
+		if layout != LayoutSeparate {
+			return failedSync(layout, opts.Force, fmt.Errorf("failed to list local skills for %s layout", layout), "local skills list failed or parsed as empty")
+		}
 		return fallbackFullInstall(opts, "local skills list failed or parsed as empty", official)
 	}
 
@@ -302,12 +311,17 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 
 	plan := PlanSync(SyncInput{
 		Version:        opts.Version,
+		Layout:         layout,
 		OfficialSkills: official,
 		LocalSkills:    local,
 		PreviousState:  previous,
 		StateReadable:  readable,
 		Force:          opts.Force,
 	})
+	flat, collected, err := resolveHybridSkillSets(layout, opts.FlatSkills, plan.OfficialSkills, plan.SkippedDeleted)
+	if err != nil {
+		return &SyncResult{Action: "failed", Err: err, Official: plan.OfficialSkills, Force: opts.Force, Layout: layout}
+	}
 
 	result := &SyncResult{
 		Action:         "synced",
@@ -316,25 +330,59 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 		Added:          plan.Added,
 		SkippedDeleted: plan.SkippedDeleted,
 		Force:          opts.Force,
+		Layout:         layout,
+		Flat:           flat,
+		Collected:      collected,
 	}
 
 	if len(plan.ToUpdate) == 0 {
+		if layout != LayoutSeparate {
+			return failedSync(layout, opts.Force, fmt.Errorf("no target skills to assemble %s layout", layout), "toUpdate skills empty")
+		}
 		return fallbackFullInstall(opts, "toUpdate skills empty fallback", official)
 	}
 
 	if len(plan.ToUpdate) > 0 {
 		installResult := opts.Runner.InstallSkill(plan.ToUpdate)
 		if installResult == nil || installResult.Err != nil {
+			if layout != LayoutSeparate {
+				return failedSync(layout, opts.Force, fmt.Errorf("failed to install skills for %s layout: %s", layout, resultDetail(installResult)), resultDetail(installResult))
+			}
 			return fallbackFullInstall(opts, resultDetail(installResult), official)
+		}
+	}
+	if layout != LayoutSeparate {
+		installSuiteResult := opts.Runner.InstallSuiteSkill()
+		if installSuiteResult == nil || installSuiteResult.Err != nil {
+			result.Action = "failed"
+			result.Err = fmt.Errorf("failed to install %s from isolated skills source: %s", suiteSkillName, resultDetail(installSuiteResult))
+			result.Detail = resultDetail(installSuiteResult)
+			return result
+		}
+		infosResult := opts.Runner.ListGlobalSkillsJSON()
+		if infosResult == nil || infosResult.Err != nil {
+			result.Action = "failed"
+			result.Err = fmt.Errorf("failed to list installed skills for %s assembly: %s", suiteSkillName, resultDetail(infosResult))
+			result.Detail = resultDetail(infosResult)
+			return result
+		}
+		infos := ParseGlobalSkillInfosJSON(infosResult.Stdout.String())
+		keepSharedTopLevel := layout == LayoutHybrid && len(flat) > 0
+		if err := assembleSuiteLayout(layout, collected, keepSharedTopLevel, infos); err != nil {
+			result.Action = "failed"
+			result.Err = fmt.Errorf("failed to assemble %s layout: %w", layout, err)
+			return result
 		}
 	}
 
 	state := SkillsState{
 		Version:              opts.Version,
+		Layout:               layout,
 		OfficialSkills:       plan.OfficialSkills,
 		UpdatedSkills:        plan.ToUpdate,
 		AddedOfficialSkills:  plan.Added,
 		SkippedDeletedSkills: plan.SkippedDeleted,
+		FlatSkills:           stateFlatSkills(layout, flat),
 		UpdatedAt:            opts.Now().UTC().Format(time.RFC3339),
 	}
 	if err := WriteState(state); err != nil {
@@ -344,6 +392,16 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 	}
 
 	return result
+}
+
+func failedSync(layout string, force bool, err error, detail string) *SyncResult {
+	return &SyncResult{
+		Action: "failed",
+		Err:    err,
+		Detail: detail,
+		Force:  force,
+		Layout: layout,
+	}
 }
 
 func listOfficialSkills(runner SkillsRunner) ([]string, string, bool) {
@@ -383,8 +441,9 @@ func listOfficialSkills(runner SkillsRunner) ([]string, string, bool) {
 func listLocalSkills(runner SkillsRunner) ([]string, bool) {
 	jsonResult := runner.ListGlobalSkillsJSON()
 	if jsonResult != nil && jsonResult.Err == nil {
-		if local := ParseGlobalSkillsJSON(jsonResult.Stdout.String()); len(local) > 0 {
-			return local, true
+		infos, valid := parseGlobalSkillInfosJSON(jsonResult.Stdout.String())
+		if valid {
+			return installedSkillNamesFromInfos(infos), true
 		}
 	}
 
@@ -411,6 +470,7 @@ func fallbackFullInstall(opts SyncOptions, reason string, official []string) *Sy
 			Err:    fmt.Errorf("full skills install failed: empty result (reason: %s)", reason),
 			Detail: reason,
 			Force:  opts.Force,
+			Layout: LayoutSeparate,
 		}
 	}
 	if installResult.Err != nil {
@@ -419,11 +479,13 @@ func fallbackFullInstall(opts SyncOptions, reason string, official []string) *Sy
 			Err:    fmt.Errorf("full skills install failed: %w (reason: %s)", installResult.Err, reason),
 			Detail: reason + "\n" + resultDetail(installResult),
 			Force:  opts.Force,
+			Layout: LayoutSeparate,
 		}
 	}
 
 	state := SkillsState{
 		Version:              opts.Version,
+		Layout:               LayoutSeparate,
 		OfficialSkills:       official,
 		UpdatedSkills:        official,
 		AddedOfficialSkills:  official,
@@ -439,6 +501,7 @@ func fallbackFullInstall(opts SyncOptions, reason string, official []string) *Sy
 			SkippedDeleted: []string{},
 			Detail:         reason + "\nstate write failed: " + writeErr.Error(),
 			Force:          opts.Force,
+			Layout:         LayoutSeparate,
 		}
 	}
 
@@ -450,7 +513,36 @@ func fallbackFullInstall(opts SyncOptions, reason string, official []string) *Sy
 		SkippedDeleted: []string{},
 		Detail:         reason,
 		Force:          opts.Force,
+		Layout:         LayoutSeparate,
 	}
+}
+
+func stateFlatSkills(layout string, requested []string) []string {
+	if layout != LayoutHybrid {
+		return []string{}
+	}
+	out := []string{}
+	for _, skill := range uniqueSorted(requested) {
+		if skill != sharedSkillName {
+			out = append(out, skill)
+		}
+	}
+	return out
+}
+
+func newlyOfficialSkills(official []string, previous *SkillsState, stateReadable bool) []string {
+	previousOfficial := []string{}
+	if stateReadable && previous != nil {
+		previousOfficial = previous.OfficialSkills
+	}
+	previousSet := toSet(previousOfficial)
+	added := []string{}
+	for _, skill := range official {
+		if !previousSet[skill] {
+			added = append(added, skill)
+		}
+	}
+	return uniqueSorted(added)
 }
 
 func resultDetail(result *selfupdate.NpmResult) string {

@@ -32,10 +32,12 @@ func TestReadState_Valid(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
 	want := SkillsState{
 		Version:              "1.2.3",
+		Layout:               LayoutHybrid,
 		OfficialSkills:       []string{"lark-doc", "lark-im"},
 		UpdatedSkills:        []string{"lark-doc"},
 		AddedOfficialSkills:  []string{"lark-task"},
 		SkippedDeletedSkills: []string{"custom-skill"},
+		FlatSkills:           []string{"lark-doc"},
 		UpdatedAt:            "2026-05-18T10:00:00Z",
 	}
 	data, err := json.Marshal(want)
@@ -115,6 +117,9 @@ func TestWriteState_CreatesDirAndWritesState(t *testing.T) {
 	if got.SkippedDeletedSkills == nil {
 		t.Fatal("skipped_deleted_skills decoded as nil, want empty slice")
 	}
+	if got.FlatSkills == nil {
+		t.Fatal("flat_skills decoded as nil, want empty slice")
+	}
 }
 
 func TestReadSyncedVersionFromState(t *testing.T) {
@@ -135,5 +140,26 @@ func TestReadSyncedVersionFromState(t *testing.T) {
 	}
 	if got, ok := ReadSyncedVersion(); ok || got != "" {
 		t.Fatalf("ReadSyncedVersion() = (%q, %v), want (\"\", false) for empty version", got, ok)
+	}
+}
+
+func TestReadSyncedVersionAndLayoutFromState(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+
+	if version, layout, ok := ReadSyncedVersionAndLayout(); ok || version != "" || layout != "" {
+		t.Fatalf("ReadSyncedVersionAndLayout() = (%q, %q, %v), want empty result for missing state", version, layout, ok)
+	}
+	if err := WriteState(SkillsState{Version: "1.2.3", Layout: LayoutHybrid}); err != nil {
+		t.Fatal(err)
+	}
+	if version, layout, ok := ReadSyncedVersionAndLayout(); !ok || version != "1.2.3" || layout != LayoutHybrid {
+		t.Fatalf("ReadSyncedVersionAndLayout() = (%q, %q, %v), want (\"1.2.3\", %q, true)", version, layout, ok, LayoutHybrid)
+	}
+	if err := WriteState(SkillsState{Layout: LayoutHybrid}); err != nil {
+		t.Fatal(err)
+	}
+	if version, layout, ok := ReadSyncedVersionAndLayout(); ok || version != "" || layout != "" {
+		t.Fatalf("ReadSyncedVersionAndLayout() = (%q, %q, %v), want empty result for empty version", version, layout, ok)
 	}
 }

@@ -23,10 +23,12 @@ var ErrUnreadableState = errors.New("skills state is unreadable")
 
 type SkillsState struct {
 	Version              string   `json:"version"`
+	Layout               string   `json:"layout,omitempty"`
 	OfficialSkills       []string `json:"official_skills"`
 	UpdatedSkills        []string `json:"updated_skills"`
 	AddedOfficialSkills  []string `json:"added_official_skills"`
 	SkippedDeletedSkills []string `json:"skipped_deleted_skills"`
+	FlatSkills           []string `json:"flat_skills"`
 	UpdatedAt            string   `json:"updated_at"`
 }
 
@@ -76,6 +78,14 @@ func ReadSyncedVersion() (string, bool) {
 	return state.Version, true
 }
 
+func ReadSyncedVersionAndLayout() (version string, layout string, ok bool) {
+	state, readable, err := ReadState()
+	if err != nil || !readable || state.Version == "" {
+		return "", "", false
+	}
+	return state.Version, state.Layout, true
+}
+
 func (s *SkillsState) ensureNonNilSlices() {
 	if s.OfficialSkills == nil {
 		s.OfficialSkills = []string{}
@@ -88,5 +98,8 @@ func (s *SkillsState) ensureNonNilSlices() {
 	}
 	if s.SkippedDeletedSkills == nil {
 		s.SkippedDeletedSkills = []string{}
+	}
+	if s.FlatSkills == nil {
+		s.FlatSkills = []string{}
 	}
 }
