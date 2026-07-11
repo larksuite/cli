@@ -5,6 +5,8 @@
 
 需要的 scopes: ["approval:task:read"]
 
+> 如果 `--as user` 提示缺少这个旧 scope，不要重复 `auth login`。请先阅读主 skill 的“用户身份的旧 scope 限制”：该 scope 可能已不能作为 user scope 授予，需要由应用管理员核对当前审批权限模型。
+
 ## 命令
 
 ```bash
