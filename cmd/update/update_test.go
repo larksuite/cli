@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1730,4 +1732,65 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestResolveSkillsBrand_LayeredFallback(t *testing.T) {
+	// Layer 1: resolved config wins.
+	var errBuf bytes.Buffer
+	f := &cmdutil.Factory{Config: func() (*core.CliConfig, error) {
+		return &core.CliConfig{Brand: core.LarkBrand(" LARK ")}, nil
+	}}
+	if got := resolveSkillsBrand(f, &errBuf); got != core.BrandLark {
+		t.Errorf("resolved-config brand = %q, want lark", got)
+	}
+
+	// Layer 2: credential resolution fails, raw config file still supplies the
+	// brand (a locked keychain must not flip a Lark profile to Feishu).
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	raw := `{"apps":[{"appId":"cli_x","appSecret":"test-secret","brand":"lark","users":[]}]}`
+	if err := os.WriteFile(filepath.Join(tmp, "config.json"), []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f = &cmdutil.Factory{Config: func() (*core.CliConfig, error) { return nil, errors.New("keychain locked") }}
+	errBuf.Reset()
+	if got := resolveSkillsBrand(f, &errBuf); got != core.BrandLark {
+		t.Errorf("raw-config brand = %q, want lark", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("unexpected notice when raw config supplied the brand: %q", errBuf.String())
+	}
+
+	// Layer 3: nothing readable → default brand with a notice.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	errBuf.Reset()
+	if got := resolveSkillsBrand(f, &errBuf); got != core.BrandFeishu {
+		t.Errorf("fallback brand = %q, want feishu", got)
+	}
+	if !strings.Contains(errBuf.String(), "could not resolve the configured brand") {
+		t.Errorf("expected fallback notice, got %q", errBuf.String())
+	}
+}
+
+// The raw-config fallback must read the active profile, not the default one.
+func TestResolveSkillsBrand_RespectsActiveProfile(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	raw := `{"currentApp":"feishu-app","apps":[` +
+		`{"name":"feishu-app","appId":"cli_f","appSecret":"test-secret","brand":"feishu","users":[]},` +
+		`{"name":"lark-prof","appId":"cli_l","appSecret":"test-secret","brand":"lark","users":[]}]}`
+	if err := os.WriteFile(filepath.Join(tmp, "config.json"), []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f := &cmdutil.Factory{
+		Invocation: cmdutil.InvocationContext{Profile: "lark-prof"},
+		Config:     func() (*core.CliConfig, error) { return nil, errors.New("keychain locked") },
+	}
+	var errBuf bytes.Buffer
+	if got := resolveSkillsBrand(f, &errBuf); got != core.BrandLark {
+		t.Errorf("brand = %q, want lark (the active profile's brand)", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("unexpected notice: %q", errBuf.String())
+	}
 }

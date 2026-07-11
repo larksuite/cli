@@ -72,7 +72,8 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 	}
 }
 
-// ToCliConfig copies the credential-layer account into the downstream config shape.
+// ToCliConfig copies the credential-layer account into the downstream config
+// shape, normalizing the brand so runtime consumers never see raw casing.
 func (a *Account) ToCliConfig() *core.CliConfig {
 	if a == nil {
 		return nil
@@ -81,7 +82,7 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		ProfileName:         a.ProfileName,
 		AppID:               a.AppID,
 		AppSecret:           normalizeAccountAppSecret(a.AppSecret),
-		Brand:               a.Brand,
+		Brand:               core.ParseBrand(string(a.Brand)),
 		DefaultAs:           a.DefaultAs,
 		UserOpenId:          a.UserOpenId,
 		UserName:            a.UserName,

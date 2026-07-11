@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -49,7 +50,9 @@ const (
 
 var (
 	skillsIndexFetchTimeout = 10 * time.Second
-	officialSkillsIndexURL  = "https://open.feishu.cn/.well-known/skills/index.json"
+	// officialSkillsIndexURL overrides the brand-derived skills index URL in
+	// tests; empty in production.
+	officialSkillsIndexURL = ""
 )
 
 // DetectResult holds installation detection results.
@@ -101,6 +104,9 @@ func (r *NpmResult) CombinedOutput() string {
 // Override DetectOverride / NpmInstallOverride / SkillsCommandOverride / VerifyOverride
 // / RestoreAvailableOverride for testing.
 type Updater struct {
+	// Brand selects the skills index/source endpoints (zero value = feishu).
+	Brand core.LarkBrand
+
 	DetectOverride           func() DetectResult
 	NpmInstallOverride       func(version string) *NpmResult
 	PnpmInstallOverride      func(version string) *NpmResult
@@ -128,6 +134,19 @@ type Updater struct {
 
 // New creates an Updater with default (real) behavior.
 func New() *Updater { return &Updater{} }
+
+// skillsIndexURL returns the brand's well-known skills index URL.
+func (u *Updater) skillsIndexURL() string {
+	if officialSkillsIndexURL != "" {
+		return officialSkillsIndexURL
+	}
+	return core.ResolveEndpoints(u.Brand).Open + "/.well-known/skills/index.json"
+}
+
+// skillsSource returns the brand's skills source host for `npx skills add`.
+func (u *Updater) skillsSource() string {
+	return core.ResolveEndpoints(u.Brand).Open
+}
 
 // DetectInstallMethod determines how the CLI was installed and whether the
 // owning package manager is available for auto-update.
@@ -258,7 +277,7 @@ func (u *Updater) ListOfficialSkillsIndex() *NpmResult {
 	ctx, cancel := context.WithTimeout(context.Background(), skillsIndexFetchTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, officialSkillsIndexURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.skillsIndexURL(), nil)
 	if err != nil {
 		r.Err = err
 		return r
@@ -297,7 +316,7 @@ func (u *Updater) ListOfficialSkillsIndex() *NpmResult {
 }
 
 func (u *Updater) ListOfficialSkills() *NpmResult {
-	r := u.runSkillsListOfficial("https://open.feishu.cn")
+	r := u.runSkillsListOfficial(u.skillsSource())
 	if r.Err != nil {
 		r = u.runSkillsListOfficial("larksuite/cli")
 	}
@@ -313,7 +332,7 @@ func (u *Updater) ListGlobalSkillsJSON() *NpmResult {
 }
 
 func (u *Updater) InstallSkill(nameList []string) *NpmResult {
-	r := u.runSkillsInstall("https://open.feishu.cn", nameList)
+	r := u.runSkillsInstall(u.skillsSource(), nameList)
 	if r.Err != nil {
 		r = u.runSkillsInstall("larksuite/cli", nameList)
 	}
@@ -321,7 +340,7 @@ func (u *Updater) InstallSkill(nameList []string) *NpmResult {
 }
 
 func (u *Updater) InstallAllSkills() *NpmResult {
-	r := u.runSkillsAdd("https://open.feishu.cn")
+	r := u.runSkillsAdd(u.skillsSource())
 	if r.Err != nil {
 		r = u.runSkillsAdd("larksuite/cli")
 	}

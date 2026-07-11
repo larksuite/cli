@@ -69,6 +69,12 @@ func Init() {
 	InitWithBrand(core.BrandFeishu)
 }
 
+// ConfiguredBrand reports the brand the registry was initialized with
+// (empty before initialization). Diagnostics and startup-order tests use it.
+func ConfiguredBrand() core.LarkBrand {
+	return configuredBrand
+}
+
 // InitWithBrand initializes the registry by loading embedded data and optionally
 // overlaying cached remote data. The brand determines which remote API host to use.
 // It is safe to call multiple times (sync.Once).

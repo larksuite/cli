@@ -1,10 +1,9 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Command lintcheck runs the source-level errs/ contract guards (all four checks).
-// The fifth contract rule (business path must use typed errors) lives in
-// .golangci.yml as a forbidigo entry; the four checks here are AST-level
-// guards that golangci-lint cannot express.
+// Command lintcheck runs repository source-contract guards that golangci-lint
+// cannot express directly. It currently covers typed-error contracts and the
+// resolver-owned endpoint contract.
 //
 // lintcheck lives in its own Go module under lint/ so its build-time
 // dependency on golang.org/x/tools/go/packages does not leak into the
@@ -30,6 +29,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/larksuite/cli/lint/domaincontract"
 	"github.com/larksuite/cli/lint/errscontract"
 	"github.com/larksuite/cli/lint/lintapi"
 )
@@ -43,6 +43,9 @@ type scanner struct {
 
 var scanners = []scanner{
 	{name: "errscontract", fn: errscontract.ScanRepoWithOptions},
+	{name: "domaincontract", fn: func(root string, _ errscontract.ScanOptions) ([]lintapi.Violation, error) {
+		return domaincontract.ScanRepo(root)
+	}},
 }
 
 func main() {

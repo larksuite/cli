@@ -86,8 +86,10 @@ jobs:
         run: echo "QUALITY_GATE_CHANGED_FROM=$(bash scripts/resolve-changed-from.sh)" >> "$GITHUB_ENV"
       - name: Run golangci-lint
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev="$QUALITY_GATE_CHANGED_FROM"
-      - name: Run errs/ lint guards (lintcheck)
+      - name: Run source-contract lint guards (lintcheck)
         run: go run -C lint . --changed-from "$QUALITY_GATE_CHANGED_FROM" ..
+      - name: Run lint module tests
+        run: go test -C lint ./... -count=1
 
   script-test:
     needs: fast-gate
