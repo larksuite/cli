@@ -219,6 +219,27 @@ func TestTeeSignerCheck_InvalidKeylessHelperEnvFailsPKJWT(t *testing.T) {
 	}
 }
 
+func TestTeeSignerCheck_InvalidKeylessHelperConfigHasActionableHint(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv(envvars.CliKeylessSignerCmd, "")
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		KeylessSignerCmd: `[""]`,
+		Apps: []core.AppConfig{{
+			AppId: "cli_test", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	got := teeSignerCheck(context.Background(), &core.CliConfig{AuthMethod: core.AuthMethodPrivateKeyJWT})
+	if got.Status != "fail" {
+		t.Fatalf("status = %q, want fail (msg=%q, hint=%q)", got.Status, got.Message, got.Hint)
+	}
+	if !strings.Contains(got.Hint, "config init") || !strings.Contains(got.Hint, "keylessSignerCmd") {
+		t.Fatalf("hint = %q, want config init repair guidance", got.Hint)
+	}
+}
+
 // TestDoctorRun_TeeSignerWired proves the tee_signer check is part of doctorRun.
 // It asserts the build-independent invariant (a client_secret app must never
 // FAIL on TEE) so the test passes whether or not a signer is compiled in.

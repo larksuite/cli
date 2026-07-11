@@ -75,11 +75,12 @@ func (a *AppConfig) ProfileName() string {
 
 // MultiAppConfig is the multi-app config file format.
 type MultiAppConfig struct {
-	StrictMode  StrictMode  `json:"strictMode,omitempty"`
-	RiskControl *bool       `json:"riskControl,omitempty"`
-	CurrentApp  string      `json:"currentApp,omitempty"`
-	PreviousApp string      `json:"previousApp,omitempty"`
-	Apps        []AppConfig `json:"apps"`
+	StrictMode       StrictMode  `json:"strictMode,omitempty"`
+	RiskControl      *bool       `json:"riskControl,omitempty"`
+	CurrentApp       string      `json:"currentApp,omitempty"`
+	PreviousApp      string      `json:"previousApp,omitempty"`
+	KeylessSignerCmd string      `json:"keylessSignerCmd,omitempty"`
+	Apps             []AppConfig `json:"apps"`
 }
 
 // RiskControlEnabled resolves the workspace policy. An omitted preference

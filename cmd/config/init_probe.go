@@ -100,7 +100,11 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 // the canonical envelope; untyped errors (transport / HTTP / parse / timeout)
 // are swallowed (return nil). The mint itself is the probe — no second call.
 func runProbePKJWT(parent context.Context, factory *cmdutil.Factory, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) error {
-	if factory == nil || (signer == nil && !keylesshelper.Configured()) {
+	if factory == nil {
+		return nil
+	}
+	helper, err := keylesshelper.Resolve()
+	if err != nil || (signer == nil && helper == nil) {
 		return nil
 	}
 	httpClient, err := factory.HttpClient()
@@ -111,7 +115,7 @@ func runProbePKJWT(parent context.Context, factory *cmdutil.Factory, brand core.
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 
-	if _, err := credential.FetchTATWithAssertion(ctx, httpClient, brand, clientID, signer, keyLabel); err != nil {
+	if _, err := credential.FetchTATWithAssertionWithHelper(ctx, httpClient, brand, clientID, signer, helper, keyLabel); err != nil {
 		// Typed = deterministic credential rejection → propagate. Untyped
 		// (transport / HTTP / parse / timeout) is ambiguous → stay silent.
 		if errs.IsTyped(err) {
