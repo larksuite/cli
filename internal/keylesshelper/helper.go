@@ -92,19 +92,6 @@ func Resolve() (*Command, error) {
 	return &Command{argv: argv}, nil
 }
 
-// Probe asks the helper for its public key to verify that the command is callable
-// and speaks the expected JSON protocol.
-func Probe(ctx context.Context, keyRef string) error {
-	helper, err := Resolve()
-	if err != nil {
-		return err
-	}
-	if helper == nil {
-		return fmt.Errorf("%s is not set", envvars.CliKeylessSignerCmd)
-	}
-	return helper.Probe(ctx, keyRef)
-}
-
 // Probe asks this resolved helper for its public key.
 func (c *Command) Probe(ctx context.Context, keyRef string) error {
 	resp, err := run(ctx, c.argv, request{
@@ -146,18 +133,6 @@ func (c *Command) SignAttestation(ctx context.Context, keyRef, nonce string) (st
 		return "", fmt.Errorf("keyless helper returned empty attestation")
 	}
 	return resp.Attestation, nil
-}
-
-// SignClientAssertion asks the helper to mint a token-endpoint client_assertion.
-func SignClientAssertion(ctx context.Context, keyRef, clientID, audience string) (string, string, error) {
-	helper, err := Resolve()
-	if err != nil {
-		return "", "", err
-	}
-	if helper == nil {
-		return "", "", fmt.Errorf("%s is not set", envvars.CliKeylessSignerCmd)
-	}
-	return helper.SignClientAssertion(ctx, keyRef, clientID, audience)
 }
 
 // SignClientAssertion asks this resolved helper to mint a token-endpoint client_assertion.
