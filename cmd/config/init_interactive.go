@@ -21,7 +21,6 @@ import (
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
@@ -188,12 +187,9 @@ func resolveRegisterAuthMethod(ctx context.Context, _ *cmdutil.Factory, requeste
 
 	switch requested {
 	case core.AuthMethodPrivateKeyJWT:
-		if keylesshelper.Configured() {
-			if err := keylesshelper.ValidateConfigured(); err != nil {
-				return "", errs.NewConfigError(errs.SubtypeInvalidClient,
-					"invalid keyless signer command: %v", err).
-					WithCause(err).
-					WithHint("fix %s or omit --private_key_jwt to register with an app secret", envvars.CliKeylessSignerCmd)
+		if keylesshelper.ConfiguredFromEnvironment() {
+			if err := validateKeylessSignerEnvironment(); err != nil {
+				return "", err
 			}
 			return core.AuthMethodPrivateKeyJWT, nil
 		}
@@ -291,7 +287,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		keyLabel = keysigner.DefaultKeyLabel
 		var attestation string
 		var signErr error
-		if keylesshelper.Configured() {
+		if keylesshelper.ConfiguredFromEnvironment() {
 			attestation, signErr = keylesshelper.SignAttestation(ctx, keyLabel, initResp.Nonce)
 		} else {
 			signer := keysigner.Active() // non-nil, guaranteed by resolveRegisterAuthMethod
