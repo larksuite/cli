@@ -73,7 +73,7 @@
 
 > 以下是用 `+cells-set`（及 `+cells-set-style`）做富写入时的常用模式与准则；选哪个 shortcut 见上方「使用场景」。
 
-`+cells-set` 为一块区域设置值 / 公式 / 批注 / 样式，也支持 `rich_text` 的 `type: "embed-image"` 嵌入单元格图片。**关键：`cells` 二维数组的行列维度必须与 `range`（闭区间）严格一致，否则触发 `InvalidCellRangeError`**——维度计算示例见文末 `## Schemas` 的 `--cells`。
+`+cells-set` 为一块区域设置值 / 公式 / 批注 / 样式，也支持 `rich_text` 的 `type: "embed-image"` 嵌入单元格图片。**关键：`--cells` 恒为二维数组（行 × 格），单格也是 `[[{"value":…}]]`；且行列维度必须与 `range`（闭区间）严格一致，否则触发 `InvalidCellRangeError`**——维度计算示例见文末 `## Schemas` 的 `--cells`。
 
 > **单元格图片 vs 浮动图片（最易选错）**：图若**属于某条记录、要随那行排序 / 筛选 / 增删**（凭证 / 证件照 / 每行配图，话里带「对应 / 每行 / 这列」等绑定词）→ **单元格图片**（本工具）：用 `+cells-set-image`（最短）或 `+cells-set` 的 `rich_text` + `type: "embed-image"`。只是自由摆放的装饰（logo / 水印 / 封面）→ 浮动图片，见 lark-sheets-float-image。别因「浮动图更好控制 / 更熟」默认选浮动图——它承载"对应某记录"的图会随增删行 / 排序错位。
 
@@ -511,6 +511,8 @@ lark-cli sheets +csv-put --spreadsheet-token shtXXX --sheet-id "$SID" \
 python export.py | lark-cli sheets +table-put --url "<表URL>" --sheets -
 # 某 sheet 带 "mode":"append" 追加到已有数据末尾、默认不重复表头
 lark-cli sheets +table-put --spreadsheet-token "<token>" --sheets @payload.json
+# --sheets 与 --styles 都是大 JSON 时：stdin 每次调用只能给一个 flag，一个走 -、另一个走 @cwd 相对路径
+lark-cli sheets +table-put --url "<表URL>" --sheets - --styles @styles.json < sheets.json
 ```
 
 每个 sheet 还可带 `"allow_overwrite": false`（遇非空拒写、保护原数据）、`"header": false`（只写数据不写表头）。完整字段跑 `+table-put --print-schema --flag-name sheets`。
