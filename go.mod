@@ -53,15 +53,13 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/certificate-transparency-go v1.1.8 // indirect
-	github.com/google/certtostore v1.0.3-0.20230404221207-8d01647071cc // indirect
+	github.com/google/certtostore v1.0.6 // indirect
 	github.com/google/deck v0.0.0-20230104221208-105ad94aa8ae // indirect
 	github.com/google/go-attestation v0.5.1 // indirect
 	github.com/google/go-tpm v0.9.0 // indirect
 	github.com/google/go-tspi v0.3.0 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
-	github.com/hashicorp/errwrap v1.0.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jgoguen/go-utils v0.0.0-20200211015258-b42ad41486fd // indirect
