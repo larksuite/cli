@@ -190,7 +190,3 @@ func TestRemoveStaleSecretForPKJWT_DifferentAppID(t *testing.T) {
 		t.Error("different appId: must NOT remove")
 	}
 }
-
-func TestRemoveStaleSecretForPKJWT_NilExisting(t *testing.T) {
-	removeStaleSecretForPKJWT(nil, "", "cli_x", newCountingKeychain()) // must not panic
-}

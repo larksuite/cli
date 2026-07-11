@@ -423,35 +423,56 @@ func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileNa
 	return saveMultiAppConfigForInit(existing)
 }
 
-// persistAndProbeResult saves a registration/restore result into profileName and
-// runs the post-registration probe. profileName == "" replaces the single app
-// (legacy); a named profile is updated in place. Shared by --new and --restore.
-func persistAndProbeResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName string, result *configInitResult) error {
+func persistInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName string, result *configInitResult) error {
 	existing, _ := core.LoadMultiAppConfig()
 
-	// private_key_jwt apps have no secret: persist auth method + TEE key ref.
-	// Registration success already validated the key (server bound the public
-	// key), so the app_secret probe is skipped.
-	if result.AuthMethod == core.AuthMethodPrivateKeyJWT {
+	switch {
+	case result.AuthMethod == core.AuthMethodPrivateKeyJWT:
 		if err := saveInitConfig(profileName, existing, f, result.AppID, core.SecretInput{}, result.Brand, opts.Lang, result.AuthMethod, keyRefFromResult(result)); err != nil {
 			return wrapSaveConfigError(err)
 		}
 		removeStaleSecretForPKJWT(existing, profileName, result.AppID, f.Keychain)
-		printLangPreferenceConfirmation(opts)
-		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "authMethod": result.AuthMethod, "brand": result.Brand})
+		return nil
+	case result.AppSecret != "":
+		secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
+		if err != nil {
+			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
+		}
+		if err := saveInitConfig(profileName, existing, f, result.AppID, secret, result.Brand, opts.Lang, "", nil); err != nil {
+			return wrapSaveConfigError(err)
+		}
+		return nil
+	case result.Mode == "existing" && result.AppID != "":
+		return wrapUpdateExistingProfileErr(updateExistingProfileWithoutSecret(existing, profileName, result.AppID, result.Brand, opts.Lang))
+	default:
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID and App Secret cannot be empty").WithParam("--app-id")
+	}
+}
+
+func probeInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, result *configInitResult) error {
+	if result.AuthMethod == core.AuthMethodPrivateKeyJWT {
 		return runProbePKJWT(opts.Ctx, f, result.Brand, result.AppID, keysigner.Active(), result.KeyLabel)
 	}
-
-	secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
-	if err != nil {
-		return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
+	if result.AppSecret != "" {
+		return runProbe(opts.Ctx, f, result.AppID, result.AppSecret, result.Brand)
 	}
-	if err := saveInitConfig(profileName, existing, f, result.AppID, secret, result.Brand, opts.Lang, "", nil); err != nil {
-		return wrapSaveConfigError(err)
+	return nil
+}
+
+// persistAndProbeResult saves a registration/restore result into profileName and
+// runs the post-registration probe. profileName == "" replaces the single app
+// (legacy); a named profile is updated in place. Shared by --new and --restore.
+func persistAndProbeResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName string, result *configInitResult) error {
+	if err := persistInitResult(opts, f, profileName, result); err != nil {
+		return err
 	}
 	printLangPreferenceConfirmation(opts)
-	output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "appSecret": "****", "brand": result.Brand})
-	return runProbe(opts.Ctx, f, result.AppID, result.AppSecret, result.Brand)
+	if result.AuthMethod == core.AuthMethodPrivateKeyJWT {
+		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "authMethod": result.AuthMethod, "brand": result.Brand})
+	} else {
+		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "appSecret": "****", "brand": result.Brand})
+	}
+	return probeInitResult(opts, f, result)
 }
 
 // runRestoreFlow re-registers the app already in config to recover a lost
@@ -641,44 +662,21 @@ func configInitRun(opts *ConfigInitOptions) error {
 				WithParam("--app-id")
 		}
 
-		existing, _ := core.LoadMultiAppConfig()
-
+		if err := persistInitResult(opts, f, opts.ProfileName, result); err != nil {
+			return err
+		}
 		if result.AuthMethod == core.AuthMethodPrivateKeyJWT {
-			// Secretless create: persist auth method + TEE key ref, no secret.
-			if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, core.SecretInput{}, result.Brand, opts.Lang, result.AuthMethod, keyRefFromResult(result)); err != nil {
-				return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
-			}
-			removeStaleSecretForPKJWT(existing, opts.ProfileName, result.AppID, f.Keychain)
-			if err := runProbePKJWT(opts.Ctx, f, result.Brand, result.AppID, keysigner.Active(), result.KeyLabel); err != nil {
+			if err := probeInitResult(opts, f, result); err != nil {
 				return err
 			}
-		} else if result.AppSecret != "" {
-			// New secret provided (either from "create" or "existing" with input)
-			secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
-			if err != nil {
-				return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
-			}
-			if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang, "", nil); err != nil {
-				return wrapSaveConfigError(err)
-			}
-		} else if result.Mode == "existing" && result.AppID != "" {
-			// Existing app with unchanged secret — update app ID and brand only
-			if err := wrapUpdateExistingProfileErr(updateExistingProfileWithoutSecret(existing, opts.ProfileName, result.AppID, result.Brand, opts.Lang)); err != nil {
-				return err
-			}
-		} else {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID and App Secret cannot be empty").
-				WithParam("--app-id")
 		}
 
 		if result.Mode == "existing" {
 			output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.ConfigSaved, result.AppID))
 		}
 		printLangPreferenceConfirmation(opts)
-		if result.AppSecret != "" {
-			if err := runProbe(opts.Ctx, f, result.AppID, result.AppSecret, result.Brand); err != nil {
-				return err
-			}
+		if result.AuthMethod != core.AuthMethodPrivateKeyJWT {
+			return probeInitResult(opts, f, result)
 		}
 		return nil
 	}
