@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -55,6 +56,11 @@ type BindOptions struct {
 	// configBindRun; downstream branches read this instead of rechecking
 	// IOStreams.IsTerminal. Do not set from outside — it is overwritten.
 	IsTUI bool
+
+	// All binds every account exposed by the agent source as a multi-app
+	// config. Hidden flag, currently openclaw source only, mutually
+	// exclusive with --app-id.
+	All bool
 }
 
 // NewCmdConfigBind creates the config bind subcommand.
@@ -107,6 +113,8 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 	cmd.Flags().StringVar(&opts.Identity, "identity", "", "identity preset (bot-only|user-default); defaults to bot-only in flag mode (safer: no impersonation)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "confirm a risky transition (currently: bot-only → user-default identity change in flag mode)")
 	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference (e.g. zh or zh_cn)")
+	cmd.Flags().BoolVar(&opts.All, "all", false, "bind every account from the agent source as a multi-app config (currently openclaw source only)")
+	_ = cmd.Flags().MarkHidden("all")
 	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
@@ -123,6 +131,10 @@ func configBindRun(opts *BindOptions) error {
 	// Decide TUI-vs-flag mode exactly once; every downstream branch reads
 	// opts.IsTUI instead of re-checking IOStreams.IsTerminal.
 	opts.IsTUI = opts.Source == "" && opts.Factory.IOStreams.IsTerminal
+
+	if opts.All {
+		return configBindAllRun(opts)
+	}
 
 	source, err := finalizeSource(opts)
 	if err != nil {
@@ -629,6 +641,15 @@ func validateBindFlags(opts *BindOptions) error {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --identity %q; valid values: bot-only, user-default", opts.Identity).WithParam("--identity")
 		}
 	}
+	if opts.All {
+		if opts.AppID != "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--all is mutually exclusive with --app-id").WithParam("--all")
+		}
+		src := strings.TrimSpace(strings.ToLower(opts.Source))
+		if src != "" && src != "openclaw" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--all only supports --source openclaw").WithParam("--all")
+		}
+	}
 	lang, err := cmdutil.ParseLangFlag(opts.Lang)
 	if err != nil {
 		return err
@@ -673,4 +694,174 @@ func tuiSelectIdentity(opts *BindOptions) (string, error) {
 		return "", err
 	}
 	return value, nil
+}
+
+// configBindAllRun binds every account exposed by the agent source as a
+// multi-app config. Flag-mode only; bot-only identity by default;
+// silently overwrites prior bindings.
+func configBindAllRun(opts *BindOptions) error {
+	// --all is flag-mode only: resolve the source through the same flag/env
+	// reconciliation as a single bind (including the explicit-vs-detected
+	// mismatch guard), but never prompt.
+	opts.IsTUI = false
+	source, err := finalizeSource(opts)
+	if err != nil {
+		return err
+	}
+	if source != "openclaw" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--all only supports --source openclaw").WithParam("--all")
+	}
+	core.SetCurrentWorkspace(core.Workspace(source))
+	targetConfigPath := core.GetConfigPath()
+	previousConfigBytes, _ := vfs.ReadFile(targetConfigPath)
+
+	binder, err := newBinder(source, opts)
+	if err != nil {
+		return err
+	}
+	candidates, err := binder.ListCandidates()
+	if err != nil {
+		return err
+	}
+	if len(candidates) == 0 {
+		return errs.NewConfigError(errs.SubtypeNotConfigured,
+			"no Feishu accounts found in openclaw.json").
+			WithHint("configure channels.feishu.accounts first")
+	}
+
+	if opts.Identity == "" {
+		opts.Identity = "bot-only"
+	}
+	if err := warnIdentityEscalation(opts, previousConfigBytes); err != nil {
+		return err
+	}
+	noticeUserDefaultRisk(opts)
+	prior := priorLang(previousConfigBytes)
+
+	oc, ok := binder.(*openclawBinder)
+	if !ok {
+		return errs.NewInternalError(errs.SubtypeSDKError, "internal: --all requires openclawBinder, got %T", binder)
+	}
+	apps, err := oc.BuildAll()
+	if err != nil {
+		return err
+	}
+	for i := range apps {
+		applyPreferences(&apps[i], opts, prior)
+	}
+	sortAppsDefaultFirst(apps)
+	apps = dedupAndOrderApps(apps)
+
+	return commitMultiAppBinding(opts, apps, previousConfigBytes, source, targetConfigPath)
+}
+
+// sortAppsDefaultFirst orders the bound apps deterministically: the "default"
+// alias first, then named accounts alphabetically. Account enumeration
+// upstream follows Go map order, and CurrentApp is taken from the first
+// entry — without a stable order the selected default app would vary
+// between runs of the same bind.
+func sortAppsDefaultFirst(apps []core.AppConfig) {
+	sort.SliceStable(apps, func(i, j int) bool {
+		di, dj := strings.EqualFold(apps[i].Name, "default"), strings.EqualFold(apps[j].Name, "default")
+		if di != dj {
+			return di
+		}
+		return apps[i].Name < apps[j].Name
+	})
+}
+
+// dedupAndOrderApps collapses entries that share an AppId. Per OpenClaw
+// semantics, "default" is an implicit fallback alias that inherits the
+// top-level appId; when an explicit named account exposes the same appId,
+// "default" is redundant and discarded. Insertion order is preserved.
+func dedupAndOrderApps(apps []core.AppConfig) []core.AppConfig {
+	byID := make(map[string]int, len(apps))
+	out := make([]core.AppConfig, 0, len(apps))
+	for _, a := range apps {
+		if idx, seen := byID[a.AppId]; seen {
+			if strings.EqualFold(out[idx].Name, "default") && !strings.EqualFold(a.Name, "default") {
+				out[idx] = a
+			}
+			continue
+		}
+		byID[a.AppId] = len(out)
+		out = append(out, a)
+	}
+	return out
+}
+
+// commitMultiAppBinding writes a MultiAppConfig containing every bound
+// account. CurrentApp defaults to the first entry so existing single-app
+// callers keep their behaviour; callers select another profile with
+// --profile or LARKSUITE_CLI_RUNTIME_APP_ID.
+func commitMultiAppBinding(opts *BindOptions, apps []core.AppConfig, previousConfigBytes []byte, source, configPath string) error {
+	multi := &core.MultiAppConfig{
+		CurrentApp: apps[0].ProfileName(),
+		Apps:       apps,
+	}
+
+	if err := vfs.MkdirAll(core.GetConfigDir(), 0700); err != nil {
+		return errs.NewInternalError(errs.SubtypeFileIO, "failed to create workspace directory: %v", err).WithCause(err)
+	}
+	data, err := json.MarshalIndent(multi, "", "  ")
+	if err != nil {
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to marshal config: %v", err).WithCause(err)
+	}
+	if err := validate.AtomicWrite(configPath, append(data, '\n'), 0600); err != nil {
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to write config %s: %v", configPath, err).WithCause(err)
+	}
+
+	replaced := previousConfigBytes != nil
+	if replaced {
+		cleanupKeychainFromDataMulti(opts.Factory.Keychain, previousConfigBytes, apps)
+	}
+
+	appIDs := make([]string, len(apps))
+	for i := range apps {
+		appIDs[i] = apps[i].AppId
+	}
+
+	uiMsg := getBindMsg(opts.UILang)
+	display := sourceDisplayName(source)
+	fmt.Fprintln(opts.Factory.IOStreams.ErrOut,
+		fmt.Sprintf(uiMsg.BindSuccessHeader, display)+"\n"+
+			fmt.Sprintf("bound %d Feishu apps: %s", len(appIDs), strings.Join(appIDs, ", ")))
+
+	envelope := map[string]interface{}{
+		"ok":          true,
+		"workspace":   source,
+		"app_ids":     appIDs,
+		"config_path": configPath,
+		"replaced":    replaced,
+		"identity":    opts.Identity,
+		"all":         true,
+	}
+	resultJSON, _ := json.Marshal(envelope)
+	fmt.Fprintln(opts.Factory.IOStreams.Out, string(resultJSON))
+	return nil
+}
+
+// cleanupKeychainFromDataMulti is cleanupKeychainFromData with a keep set,
+// used when re-binding multiple apps in one pass.
+func cleanupKeychainFromDataMulti(kc keychain.KeychainAccess, data []byte, keep []core.AppConfig) {
+	var multi core.MultiAppConfig
+	if err := json.Unmarshal(data, &multi); err != nil {
+		return
+	}
+	keepIDs := make(map[string]struct{}, len(keep))
+	for i := range keep {
+		ref := keep[i].AppSecret.Ref
+		if ref != nil && ref.Source == "keychain" {
+			keepIDs[ref.ID] = struct{}{}
+		}
+	}
+	for _, app := range multi.Apps {
+		if app.AppSecret.Ref != nil && app.AppSecret.Ref.Source == "keychain" {
+			if _, ok := keepIDs[app.AppSecret.Ref.ID]; ok {
+				continue
+			}
+		}
+		core.RemoveSecretStore(app.AppSecret, kc)
+	}
 }

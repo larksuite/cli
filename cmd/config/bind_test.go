@@ -1909,3 +1909,270 @@ func TestConfigBindRun_LangExplicit_PrintsConfirmation(t *testing.T) {
 		t.Errorf("stderr = %q, want it to contain confirmation %q", got, want)
 	}
 }
+
+// ── --all flag tests (hidden multi-account bind) ──
+
+func TestConfigBindCmd_AllFlagParsing(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	var gotOpts *BindOptions
+	cmd := NewCmdConfigBind(f, func(opts *BindOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--source", "openclaw", "--all"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !gotOpts.All {
+		t.Error("expected All=true")
+	}
+
+	// --all is hidden but still parseable.
+	flag := cmd.Flags().Lookup("all")
+	if flag == nil {
+		t.Fatal("--all flag must be registered")
+	}
+	if !flag.Hidden {
+		t.Error("--all must be hidden")
+	}
+}
+
+// requireAllValidationParam asserts err is a typed validation error of
+// subtype invalid_argument carrying the named param, locking the contract
+// beyond the prose message.
+func requireAllValidationParam(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+	}
+	if ve.Category != errs.CategoryValidation || ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected validation/invalid_argument, got %s/%s", ve.Category, ve.Subtype)
+	}
+	if ve.Param != wantParam {
+		t.Fatalf("param = %q, want %q", ve.Param, wantParam)
+	}
+}
+
+func TestConfigBindRun_AllRejectsAppID(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{
+		Factory: f,
+		Source:  "openclaw",
+		AppID:   "cli_x",
+		All:     true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "--all is mutually exclusive with --app-id") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	requireAllValidationParam(t, err, "--all")
+}
+
+func TestDedupAndOrderApps_NamedWinsOverDefault(t *testing.T) {
+	// OpenClaw semantics: "default" is an implicit fallback alias; when a
+	// named account exposes the same appId, default is dropped.
+	apps := []core.AppConfig{
+		{Name: "acct-a", AppId: "cli_main"},
+		{Name: "acct-b", AppId: "cli_product"},
+		{Name: "default", AppId: "cli_main"},
+	}
+	got := dedupAndOrderApps(apps)
+	if len(got) != 2 {
+		t.Fatalf("len=%d, want 2", len(got))
+	}
+	if got[0].Name != "acct-a" || got[0].AppId != "cli_main" {
+		t.Errorf("apps[0]=%+v, want acct-a cli_main", got[0])
+	}
+	if got[1].Name != "acct-b" {
+		t.Errorf("apps[1]=%+v, want acct-b", got[1])
+	}
+}
+
+func TestDedupAndOrderApps_DefaultFirstThenNamedOverwrites(t *testing.T) {
+	// default arrives before its named alias — named still wins.
+	apps := []core.AppConfig{
+		{Name: "default", AppId: "cli_main"},
+		{Name: "acct-a", AppId: "cli_main"},
+	}
+	got := dedupAndOrderApps(apps)
+	if len(got) != 1 {
+		t.Fatalf("len=%d, want 1", len(got))
+	}
+	if got[0].Name != "acct-a" {
+		t.Errorf("apps[0]=%+v, want acct-a", got[0])
+	}
+}
+
+func TestDedupAndOrderApps_NoDuplicatesPreservesOrder(t *testing.T) {
+	apps := []core.AppConfig{
+		{Name: "acct-a", AppId: "cli_main"},
+		{Name: "acct-b", AppId: "cli_product"},
+		{Name: "acct-c", AppId: "cli_extra"},
+	}
+	got := dedupAndOrderApps(apps)
+	if len(got) != 3 {
+		t.Fatalf("len=%d, want 3", len(got))
+	}
+	want := []string{"acct-a", "acct-b", "acct-c"}
+	for i := range got {
+		if got[i].Name != want[i] {
+			t.Errorf("apps[%d]=%q, want %q", i, got[i].Name, want[i])
+		}
+	}
+}
+
+func TestDedupAndOrderApps_DefaultAlreadyFirst(t *testing.T) {
+	apps := []core.AppConfig{
+		{Name: "default", AppId: "cli_main"},
+		{Name: "acct-b", AppId: "cli_product"},
+	}
+	got := dedupAndOrderApps(apps)
+	if len(got) != 2 || got[0].Name != "default" {
+		t.Fatalf("got %+v, want default first", got)
+	}
+}
+
+func TestConfigBindRun_AllRejectsNonOpenClawSource(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{
+		Factory: f,
+		Source:  "hermes",
+		All:     true,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "--all only supports --source openclaw") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	requireAllValidationParam(t, err, "--all")
+}
+
+func TestConfigBindRun_AllRejectsSourceEnvMismatch(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+	t.Setenv("HERMES_HOME", t.TempDir()) // env says hermes, flag says openclaw
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw", All: true})
+	if err == nil {
+		t.Fatal("expected source/env mismatch error")
+	}
+	if !strings.Contains(err.Error(), "does not match detected Agent environment") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	requireAllValidationParam(t, err, "--source")
+}
+
+func TestConfigBindRun_AllBindsEveryAccount(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+	clearAgentEnv(t)
+
+	openclawHome := t.TempDir()
+	t.Setenv("OPENCLAW_HOME", openclawHome)
+	openclawDir := filepath.Join(openclawHome, ".openclaw")
+	if err := os.MkdirAll(openclawDir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// Top-level credentials surface as a "default" candidate aliasing the
+	// "work" account; dedup must collapse them and keep the named entry.
+	cfg := `{"channels":{"feishu":{"appId":"cli_main","appSecret":"sec_main","domain":"feishu","accounts":{"work":{"appId":"cli_main","appSecret":"sec_main"},"personal":{"appId":"cli_personal","appSecret":"sec_personal"}}}}}`
+	if err := os.WriteFile(filepath.Join(openclawDir, "openclaw.json"), []byte(cfg), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, All: true})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+
+	configPath := filepath.Join(configDir, "openclaw", "config.json")
+	assertEnvelope(t, stdout.Bytes(), map[string]any{
+		"ok":          true,
+		"workspace":   "openclaw",
+		"app_ids":     []any{"cli_main", "cli_personal"},
+		"config_path": configPath,
+		"replaced":    false,
+		"identity":    "bot-only",
+		"all":         true,
+	})
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read written config: %v", err)
+	}
+	var multi core.MultiAppConfig
+	if err := json.Unmarshal(data, &multi); err != nil {
+		t.Fatalf("written config is not a MultiAppConfig: %v", err)
+	}
+	if len(multi.Apps) != 2 {
+		t.Fatalf("apps = %d, want 2", len(multi.Apps))
+	}
+	// The account aliased by top-level "default" stays first and becomes
+	// the initial CurrentApp.
+	if multi.CurrentApp != "work" {
+		t.Errorf("currentApp = %q, want %q", multi.CurrentApp, "work")
+	}
+	if multi.Apps[0].Name != "work" || multi.Apps[1].Name != "personal" {
+		t.Errorf("app order = [%q, %q], want [work, personal]", multi.Apps[0].Name, multi.Apps[1].Name)
+	}
+}
+
+func TestConfigBindRun_AllEscalationRequiresForce(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+	clearAgentEnv(t)
+
+	openclawHome := t.TempDir()
+	t.Setenv("OPENCLAW_HOME", openclawHome)
+	openclawDir := filepath.Join(openclawHome, ".openclaw")
+	if err := os.MkdirAll(openclawDir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	cfg := `{"channels":{"feishu":{"appId":"cli_main","appSecret":"sec_main","domain":"feishu"}}}`
+	if err := os.WriteFile(filepath.Join(openclawDir, "openclaw.json"), []byte(cfg), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Pre-existing binding locked to bot-only.
+	ocDir := filepath.Join(configDir, "openclaw")
+	if err := os.MkdirAll(ocDir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	locked := `{"apps":[{"appId":"cli_old","strictMode":"bot"}]}`
+	if err := os.WriteFile(filepath.Join(ocDir, "config.json"), []byte(locked), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{Factory: f, All: true, Identity: "user-default"})
+	if err == nil {
+		t.Fatal("expected confirmation-required error without --force")
+	}
+	var ce *errs.ConfirmationRequiredError
+	if !errors.As(err, &ce) {
+		t.Fatalf("expected *errs.ConfirmationRequiredError, got %T (%v)", err, err)
+	}
+
+	// Same escalation with --force proceeds.
+	f2, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f2, All: true, Identity: "user-default", Force: true}); err != nil {
+		t.Fatalf("expected --force to allow escalation, got %v", err)
+	}
+	envelope := map[string]any{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	if envelope["replaced"] != true || envelope["identity"] != "user-default" {
+		t.Errorf("envelope = %v, want replaced=true identity=user-default", envelope)
+	}
+}

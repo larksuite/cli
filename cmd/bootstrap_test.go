@@ -3,7 +3,11 @@
 
 package cmd
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/larksuite/cli/internal/envvars"
+)
 
 func TestBootstrapInvocationContext_ProfileFlag(t *testing.T) {
 	inv, err := BootstrapInvocationContext([]string{"--profile", "target", "auth", "status"})
@@ -68,5 +72,27 @@ func TestBootstrapInvocationContext_HelpWithProfile(t *testing.T) {
 	}
 	if inv.Profile != "target" {
 		t.Fatalf("profile = %q, want %q", inv.Profile, "target")
+	}
+}
+
+func TestBootstrapInvocationContext_RuntimeAppIDEnv(t *testing.T) {
+	t.Setenv(envvars.CliRuntimeAppID, " env-app ")
+	inv, err := BootstrapInvocationContext([]string{"auth", "status"})
+	if err != nil {
+		t.Fatalf("BootstrapInvocationContext() error = %v", err)
+	}
+	if inv.Profile != "env-app" {
+		t.Fatalf("profile = %q, want %q (env value, trimmed)", inv.Profile, "env-app")
+	}
+}
+
+func TestBootstrapInvocationContext_ProfileFlagBeatsRuntimeAppIDEnv(t *testing.T) {
+	t.Setenv(envvars.CliRuntimeAppID, "env-app")
+	inv, err := BootstrapInvocationContext([]string{"--profile", "flag-app", "auth", "status"})
+	if err != nil {
+		t.Fatalf("BootstrapInvocationContext() error = %v", err)
+	}
+	if inv.Profile != "flag-app" {
+		t.Fatalf("profile = %q, want %q (--profile wins over env)", inv.Profile, "flag-app")
 	}
 }

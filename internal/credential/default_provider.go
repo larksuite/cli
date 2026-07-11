@@ -79,6 +79,8 @@ func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, 
 		return nil, core.NotConfiguredError()
 	}
 
+	// p.profile already incorporates --profile / CliRuntimeAppID precedence
+	// (resolved in cmd/bootstrap.go before Factory construction).
 	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile)
 	if err != nil {
 		return nil, err

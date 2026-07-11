@@ -4,8 +4,11 @@
 package envvars
 
 const (
-	CliAppID             = "LARKSUITE_CLI_APP_ID"
-	CliAppSecret         = "LARKSUITE_CLI_APP_SECRET"
+	CliAppID     = "LARKSUITE_CLI_APP_ID"
+	CliAppSecret = "LARKSUITE_CLI_APP_SECRET"
+	// CliRuntimeAppID pins a profile by appId when --profile is unset.
+	// Selector only; credentials still come from config.json / keychain.
+	CliRuntimeAppID      = "LARKSUITE_CLI_RUNTIME_APP_ID"
 	CliBrand             = "LARKSUITE_CLI_BRAND"
 	CliUserAccessToken   = "LARKSUITE_CLI_USER_ACCESS_TOKEN"
 	CliTenantAccessToken = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN"

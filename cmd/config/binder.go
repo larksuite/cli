@@ -172,40 +172,54 @@ func (b *openclawBinder) Build(appID string) (*core.AppConfig, error) {
 	if b.cfg == nil {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: Build called before ListCandidates")
 	}
-
-	var selected *binding.CandidateApp
 	for i := range b.rawApps {
 		if b.rawApps[i].AppID == appID {
-			selected = &b.rawApps[i]
-			break
+			return b.buildFromCandidate(&b.rawApps[i])
 		}
 	}
-	if selected == nil {
-		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: appID %q not in candidates", appID)
-	}
+	return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: appID %q not in candidates", appID)
+}
 
-	if selected.AppSecret.IsZero() {
-		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "appSecret is empty for app %s in %s", selected.AppID, b.path).
+// BuildAll builds every candidate without appID lookup so duplicate-appID
+// entries (e.g. OpenClaw's "default" alias of a named account) keep their own
+// Label. --all callers must use this; Build(appID) collapses duplicates.
+func (b *openclawBinder) BuildAll() ([]core.AppConfig, error) {
+	if b.cfg == nil {
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: BuildAll called before ListCandidates")
+	}
+	out := make([]core.AppConfig, 0, len(b.rawApps))
+	for i := range b.rawApps {
+		cfg, err := b.buildFromCandidate(&b.rawApps[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *cfg)
+	}
+	return out, nil
+}
+
+func (b *openclawBinder) buildFromCandidate(c *binding.CandidateApp) (*core.AppConfig, error) {
+	if c.AppSecret.IsZero() {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "appSecret is empty for app %s in %s", c.AppID, b.path).
 			WithHint("configure channels.feishu.appSecret in openclaw.json")
 	}
-	secret, err := binding.ResolveSecretInput(selected.AppSecret, b.cfg.Secrets, os.Getenv)
+	secret, err := binding.ResolveSecretInput(c.AppSecret, b.cfg.Secrets, os.Getenv)
 	if err != nil {
-		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "failed to resolve appSecret for %s: %v", selected.AppID, err).
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "failed to resolve appSecret for %s: %v", c.AppID, err).
 			WithHint("check appSecret configuration in %s", b.path).
 			WithCause(err)
 	}
-
-	stored, err := core.ForStorage(selected.AppID, core.PlainSecret(secret), b.opts.Factory.Keychain)
+	stored, err := core.ForStorage(c.AppID, core.PlainSecret(secret), b.opts.Factory.Keychain)
 	if err != nil {
 		return nil, errs.NewInternalError(errs.SubtypeStorage, "keychain unavailable: %v", err).
 			WithHint("use file: reference in config to bypass keychain").
 			WithCause(err)
 	}
-
 	return &core.AppConfig{
-		AppId:     selected.AppID,
+		Name:      c.Label,
+		AppId:     c.AppID,
 		AppSecret: stored,
-		Brand:     core.LarkBrand(normalizeBrand(selected.Brand)),
+		Brand:     core.LarkBrand(normalizeBrand(c.Brand)),
 	}, nil
 }
 
