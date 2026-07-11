@@ -51,8 +51,8 @@ require (
 	github.com/go-ole/go-ole v1.2.5 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/google/btree v1.0.1 // indirect
-	github.com/google/certificate-transparency-go v1.1.2 // indirect
+	github.com/google/btree v1.1.2 // indirect
+	github.com/google/certificate-transparency-go v1.1.8 // indirect
 	github.com/google/certtostore v1.0.3-0.20230404221207-8d01647071cc // indirect
 	github.com/google/deck v0.0.0-20230104221208-105ad94aa8ae // indirect
 	github.com/google/go-attestation v0.5.1 // indirect
