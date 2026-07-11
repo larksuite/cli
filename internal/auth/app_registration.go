@@ -6,6 +6,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,7 +14,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+)
+
+// Sentinel errors returned by PollAppRegistration so callers can classify a
+// failure (e.g. to decide whether a cached device code should be discarded)
+// via errors.Is without parsing message strings.
+var (
+	// ErrAppRegDenied means the user rejected the app registration.
+	ErrAppRegDenied = errors.New("app registration denied by user")
+	// ErrAppRegExpired means the device code is no longer valid.
+	ErrAppRegExpired = errors.New("device code expired")
+	// ErrAppRegCancelled means polling was cancelled via the context.
+	ErrAppRegCancelled = errors.New("polling was cancelled")
+	// ErrAppRegTimeout means the local polling deadline elapsed.
+	ErrAppRegTimeout = errors.New("app registration timed out")
 )
 
 // AppRegistrationResponse is the response from the app registration begin endpoint.
@@ -63,7 +79,7 @@ func RequestAppRegistration(httpClient *http.Client, brand core.LarkBrand, errOu
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "app registration request failed: %v", err).WithCause(err)
 	}
 	defer resp.Body.Close()
 	logHTTPResponse(resp)
@@ -138,13 +154,13 @@ func PollAppRegistration(ctx context.Context, httpClient *http.Client, brand cor
 	for time.Now().Before(deadline) && attempts < maxPollAttempts {
 		attempts++
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("polling was cancelled")
+			return nil, ErrAppRegCancelled
 		}
 
 		select {
 		case <-time.After(time.Duration(currentInterval) * time.Second):
 		case <-ctx.Done():
-			return nil, fmt.Errorf("polling was cancelled")
+			return nil, ErrAppRegCancelled
 		}
 
 		form := url.Values{}
@@ -205,9 +221,9 @@ func PollAppRegistration(ctx context.Context, httpClient *http.Client, brand cor
 			fmt.Fprintf(errOut, "[lark-cli] app-registration: slow_down, interval increased to %ds\n", currentInterval)
 			continue
 		case "access_denied":
-			return nil, fmt.Errorf("app registration denied by user")
+			return nil, ErrAppRegDenied
 		case "expired_token", "invalid_grant":
-			return nil, fmt.Errorf("device code expired, please try again")
+			return nil, fmt.Errorf("%w, please try again", ErrAppRegExpired)
 		}
 
 		desc := getStr(data, "error_description")
@@ -223,5 +239,5 @@ func PollAppRegistration(ctx context.Context, httpClient *http.Client, brand cor
 	if attempts >= maxPollAttempts {
 		fmt.Fprintf(errOut, "[lark-cli] [WARN] app-registration: max poll attempts (%d) reached\n", maxPollAttempts)
 	}
-	return nil, fmt.Errorf("app registration timed out, please try again")
+	return nil, fmt.Errorf("%w, please try again", ErrAppRegTimeout)
 }

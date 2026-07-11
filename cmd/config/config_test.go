@@ -285,12 +285,18 @@ func TestConfigInitRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-terminal without flags")
 	}
-	msg := err.Error()
-	if !strings.Contains(msg, "--new") {
-		t.Errorf("expected error to mention --new, got: %s", msg)
+	if !strings.Contains(err.Error(), "terminal") {
+		t.Errorf("expected error to mention terminal, got: %s", err.Error())
 	}
-	if !strings.Contains(msg, "terminal") {
-		t.Errorf("expected error to mention terminal, got: %s", msg)
+	// Missing-terminal is a failed precondition (valid request, wrong runtime
+	// state), and the actionable guidance lives in the hint.
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("expected subtype=%q, got problem=%+v", errs.SubtypeFailedPrecondition, p)
+	}
+	// Lock the two-step guidance contract: the hint must point at both flags.
+	if !strings.Contains(p.Hint, "--no-wait") || !strings.Contains(p.Hint, "--device-code") {
+		t.Errorf("hint should describe the two-step flow (--no-wait / --device-code), got: %s", p.Hint)
 	}
 }
 

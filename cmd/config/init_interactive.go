@@ -182,6 +182,11 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	httpClient := transport.NewHTTPClient(0)
 	authResp, err := larkauth.RequestAppRegistration(httpClient, larkBrand, f.IOStreams.ErrOut)
 	if err != nil {
+		// Pass a lower-layer typed error (e.g. a network/transport error) through
+		// unchanged; only wrap genuinely-untyped failures as invalid_client.
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
 		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration failed: %v", err).WithCause(err)
 	}
 

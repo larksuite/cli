@@ -32,6 +32,13 @@ type ConfigInitOptions struct {
 	Brand          string
 	New            bool
 
+	// NoWait initiates a new-app creation and returns immediately with a
+	// device code (non-blocking step 1); DeviceCode completes a creation
+	// previously started with --no-wait (non-blocking step 2). They mirror
+	// `auth login`'s --no-wait / --device-code split.
+	NoWait     bool
+	DeviceCode string
+
 	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateInitLang
 	langExplicit bool   // true when --lang was explicitly passed
 
@@ -56,9 +63,11 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 		Short: "Initialize configuration (app-id / app-secret-stdin / brand)",
 		Long: `Initialize configuration (app-id / app-secret-stdin / brand).
 
-For AI agents: use --new to create a new app. The command blocks until the user
-completes setup in the browser. Run it in the background and retrieve the
-verification URL from its output.
+For AI agents: prefer the non-blocking two-step flow. Run '--new --no-wait' to
+get a device code and verification URL immediately (printed as JSON), send the
+URL/QR to the user, then run '--device-code <code>' after they confirm to finish.
+The plain '--new' still blocks until the user completes setup in the browser if
+you need the old behavior.
 
 Inside an Agent context (OPENCLAW_HOME / HERMES_HOME set) this command
 refuses by default — use 'lark-cli config bind' to bind to the Agent's
@@ -81,6 +90,8 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 	}
 
 	cmd.Flags().BoolVar(&opts.New, "new", false, "create a new app directly (skip mode selection)")
+	cmd.Flags().BoolVar(&opts.NoWait, "no-wait", false, "create a new app but return immediately with a device code; complete later with --device-code (non-blocking, for AI agents)")
+	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "complete a new-app creation started with --no-wait, using its device code")
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
@@ -132,7 +143,7 @@ func guardAgentWorkspace(opts *ConfigInitOptions) error {
 
 // hasAnyNonInteractiveFlag returns true if any non-interactive flag is set.
 func (o *ConfigInitOptions) hasAnyNonInteractiveFlag() bool {
-	return o.New || o.AppID != "" || o.AppSecretStdin
+	return o.New || o.AppID != "" || o.AppSecretStdin || o.NoWait || o.DeviceCode != ""
 }
 
 // cleanupOldConfig clears keychain entries (AppSecret + UAT) for all apps in existing config except the app whose AppId equals skipAppID.
@@ -308,6 +319,22 @@ func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileNa
 func configInitRun(opts *ConfigInitOptions) error {
 	f := opts.Factory
 
+	// Validate the non-blocking flags before touching stdin so a contradictory
+	// combination (e.g. --no-wait --app-secret-stdin) fails fast instead of
+	// blocking on a stdin read.
+	if opts.NoWait && opts.DeviceCode != "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--no-wait and --device-code cannot be used together").WithParam("--device-code")
+	}
+	if (opts.NoWait || opts.DeviceCode != "") && (opts.AppID != "" || opts.AppSecretStdin) {
+		// Point remediation at whichever non-blocking flag the caller actually
+		// passed (mutual exclusion above guarantees at most one is set here).
+		conflictParam := "--no-wait"
+		if opts.DeviceCode != "" {
+			conflictParam = "--device-code"
+		}
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--no-wait/--device-code create a new app and cannot be combined with --app-id/--app-secret-stdin").WithParam(conflictParam)
+	}
+
 	// Read secret from stdin if --app-secret-stdin is set
 	if opts.AppSecretStdin {
 		scanner := bufio.NewScanner(f.IOStreams.In)
@@ -333,6 +360,15 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if err := core.ValidateProfileName(opts.ProfileName); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithCause(err)
 		}
+	}
+
+	// Non-blocking step 2: complete a creation started with --no-wait.
+	if opts.DeviceCode != "" {
+		return resumeAppRegistration(opts)
+	}
+	// Non-blocking step 1: initiate a new-app creation and return immediately.
+	if opts.NoWait {
+		return initiateNoWaitAppRegistration(opts, existing)
 	}
 
 	// Mode 1: Non-interactive
@@ -437,9 +473,12 @@ func configInitRun(opts *ConfigInitOptions) error {
 		return nil
 	}
 
-	// Non-terminal: cannot run interactive mode, guide user to --new
+	// Non-terminal: the request is valid but the runtime state is wrong (no
+	// terminal for interactive mode) — a failed precondition, not a bad
+	// argument. Point the caller at the non-blocking two-step flow.
 	if !f.IOStreams.IsTerminal {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "config init requires a terminal for interactive mode. Run with --new to create a new app:\n  lark-cli config init --new\nThis command blocks until setup is complete and outputs a verification URL. Run it in the background, then retrieve the URL from its output.")
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "config init interactive mode requires a terminal").
+			WithHint("Create a new app non-interactively with the two-step flow: `lark-cli config init --new --no-wait` (prints device_code + verification_url, returns immediately), then `lark-cli config init --device-code <code>` after the user finishes in the browser. Or run `lark-cli config init --new` in a terminal.")
 	}
 
 	// Mode 5: Legacy interactive (readline fallback)
