@@ -189,6 +189,9 @@ func TestBuildAPIError_OpenIDCrossAppIncludesProfileRecoveryHint(t *testing.T) {
 	if !strings.Contains(p.Hint, "lark-cli config show") {
 		t.Errorf("Hint = %q, want profile recovery guidance", p.Hint)
 	}
+	if !strings.Contains(p.Hint, "lark-cli auth status --verify") {
+		t.Errorf("Hint = %q, want auth verification guidance", p.Hint)
+	}
 }
 
 // TestBuildAPIError_TroubleshooterLiftedOnAPIArm pins that BuildAPIError lifts
