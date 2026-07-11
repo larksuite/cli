@@ -431,11 +431,6 @@ func (ctx *RuntimeContext) buildRequest(method, url string, params map[string]in
 	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
 		req.ExtraOpts = append(req.ExtraOpts, optFn)
 	}
-	// TODO: remove PPE headers once testing is complete and promoted to production.
-	ppeHeaders := http.Header{}
-	ppeHeaders.Set("x-use-ppe", "1")
-	ppeHeaders.Set("x-tt-env", "ppe_miaoda_lark_cli")
-	req.ExtraOpts = append(req.ExtraOpts, larkcore.WithHeaders(ppeHeaders))
 	return req
 }
 
