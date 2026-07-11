@@ -43,6 +43,7 @@ func (s authMethodTestSigner) ProbeHardware(context.Context) (keysigner.Hardware
 // on the binary lacking a signer — it forces a known no-signer state for the
 // rejection cases, then registers a stub for the success case.
 func TestResolveRegisterAuthMethod(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f := &cmdutil.Factory{}
 	ctx := context.Background()
 	prevSigner := keysigner.Active()
@@ -92,6 +93,57 @@ func TestResolveRegisterAuthMethod_PrivateKeyJWTAllowsKeylessHelper(t *testing.T
 	}
 }
 
+func TestResolveRegisterAuthMethod_PrivateKeyJWTConfigOnlyHelperFallsBackToPlatformSigner(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv(envvars.CliKeylessSignerCmd, "")
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		KeylessSignerCmd: "/config/helper",
+		Apps: []core.AppConfig{{
+			AppId: "cli_test", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	prevSigner := keysigner.Active()
+	t.Cleanup(func() { keysigner.Register(prevSigner) })
+	keysigner.Register(authMethodTestSigner{info: keysigner.HardwareInfo{Backend: "tpm2", Available: true}})
+
+	m, err := resolveRegisterAuthMethod(context.Background(), &cmdutil.Factory{}, core.AuthMethodPrivateKeyJWT)
+	if err != nil {
+		t.Fatalf("private_key_jwt with platform signer: %v", err)
+	}
+	if m != core.AuthMethodPrivateKeyJWT {
+		t.Fatalf("method = %q, want %q", m, core.AuthMethodPrivateKeyJWT)
+	}
+}
+
+func TestResolveRegisterAuthMethod_PrivateKeyJWTConfigOnlyHelperWithoutPlatformSignerRejects(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv(envvars.CliKeylessSignerCmd, "")
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		KeylessSignerCmd: "/config/helper",
+		Apps: []core.AppConfig{{
+			AppId: "cli_test", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	prevSigner := keysigner.Active()
+	t.Cleanup(func() { keysigner.Register(prevSigner) })
+	keysigner.Register(nil)
+
+	_, err := resolveRegisterAuthMethod(context.Background(), &cmdutil.Factory{}, core.AuthMethodPrivateKeyJWT)
+	if err == nil {
+		t.Fatal("expected private_key_jwt without a persistent signer to be rejected")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Subtype != errs.SubtypeInvalidClient {
+		t.Fatalf("error = %T %v, want typed invalid_client", err, err)
+	}
+}
+
 func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsInvalidKeylessHelper(t *testing.T) {
 	t.Setenv(envvars.CliKeylessSignerCmd, `[""]`)
 	prevSigner := keysigner.Active()
@@ -111,7 +163,96 @@ func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsInvalidKeylessHelper(t *t
 	}
 }
 
+func TestConfigInitRunRejectsPrivateKeyJWTIncompatibleModes(t *testing.T) {
+	tests := []struct {
+		name       string
+		configure  func(*ConfigInitOptions, *cmdutil.Factory)
+		wantTarget string
+	}{
+		{
+			name: "app id import",
+			configure: func(opts *ConfigInitOptions, _ *cmdutil.Factory) {
+				opts.AppID = "cli_test"
+			},
+			wantTarget: "--app-id",
+		},
+		{
+			name: "app secret stdin import",
+			configure: func(opts *ConfigInitOptions, f *cmdutil.Factory) {
+				opts.AppSecretStdin = true
+				f.IOStreams.In = strings.NewReader("secret\n")
+			},
+			wantTarget: "--app-secret-stdin",
+		},
+		{
+			name: "restore",
+			configure: func(opts *ConfigInitOptions, _ *cmdutil.Factory) {
+				opts.Restore = true
+			},
+			wantTarget: "--restore",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			t.Setenv(envvars.CliKeylessSignerCmd, "/helper")
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			opts := &ConfigInitOptions{
+				Factory:       f,
+				Ctx:           context.Background(),
+				PrivateKeyJWT: true,
+			}
+			tc.configure(opts, f)
+
+			err := configInitRun(opts)
+			if err == nil {
+				t.Fatal("expected incompatible mode error")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("error is not typed: %T %[1]v", err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %s/%s, want validation/invalid_argument", problem.Category, problem.Subtype)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--private_key_jwt" {
+				t.Fatalf("param = %q, want --private_key_jwt", validationErr.Param)
+			}
+			if !strings.Contains(problem.Message, tc.wantTarget) {
+				t.Fatalf("message = %q, want %s", problem.Message, tc.wantTarget)
+			}
+		})
+	}
+}
+
+func TestConfigInitRunRejectsInvalidKeylessSignerEnvironment(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv(envvars.CliKeylessSignerCmd, `[""]`)
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	err := configInitRun(&ConfigInitOptions{Factory: f, Ctx: context.Background()})
+	if err == nil {
+		t.Fatal("expected invalid keyless signer environment error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error is not typed: %T %[1]v", err)
+	}
+	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeInvalidClient {
+		t.Fatalf("problem = %s/%s, want config/invalid_client", problem.Category, problem.Subtype)
+	}
+	if !strings.Contains(problem.Message, "invalid keyless signer command") {
+		t.Fatalf("message = %q, want invalid signer command", problem.Message)
+	}
+}
+
 func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsUnavailableHardware(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	prevSigner := keysigner.Active()
 	t.Cleanup(func() { keysigner.Register(prevSigner) })
 	keysigner.Register(authMethodTestSigner{info: keysigner.HardwareInfo{
@@ -146,6 +287,7 @@ func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsUnavailableHardware(t *te
 }
 
 func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsProbeError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	probeErr := errors.New("probe exploded")
 	prevSigner := keysigner.Active()
 	t.Cleanup(func() { keysigner.Register(prevSigner) })
