@@ -256,10 +256,12 @@ func TestRunProbe_TATSuccess_ProbeFails_Silent(t *testing.T) {
 	assertSilent(t, err, errBuf)
 }
 
-func TestRunProbe_TATSuccess_ProbeOK_Silent(t *testing.T) {
+func TestProbeInitResult_ClientSecret(t *testing.T) {
 	rt := &fakeRT{}
 	f, errBuf := fakeFactory(t, rt)
-	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
+	opts := &ConfigInitOptions{Ctx: context.Background()}
+	result := &configInitResult{AppID: "cli_x", AppSecret: "secret_y", Brand: core.BrandFeishu}
+	err := probeInitResult(opts, f, result)
 	if rt.tatCalls != 1 || rt.probeCalls != 1 {
 		t.Errorf("expected 1/1 calls, got tat=%d probe=%d", rt.tatCalls, rt.probeCalls)
 	}
@@ -359,11 +361,16 @@ func TestRunProbePKJWT_Ambiguous_Silent(t *testing.T) {
 	assertSilent(t, runProbePKJWT(context.Background(), f, core.BrandFeishu, "cli_x", newProbeTestSigner(t), "agent-key"), errBuf)
 }
 
-// runProbePKJWT: a successful mint returns nil.
-func TestRunProbePKJWT_Success_Silent(t *testing.T) {
+// probeInitResult dispatches private_key_jwt to the assertion-backed probe.
+func TestProbeInitResult_PrivateKeyJWT(t *testing.T) {
 	rt := &fakeRT{} // default oauth handler returns 200 + access_token
 	f, errBuf := fakeFactory(t, rt)
-	assertSilent(t, runProbePKJWT(context.Background(), f, core.BrandFeishu, "cli_x", newProbeTestSigner(t), "agent-key"), errBuf)
+	previous := keysigner.Active()
+	keysigner.Register(newProbeTestSigner(t))
+	t.Cleanup(func() { keysigner.Register(previous) })
+	opts := &ConfigInitOptions{Ctx: context.Background()}
+	result := &configInitResult{AppID: "cli_x", AuthMethod: core.AuthMethodPrivateKeyJWT, KeyLabel: "agent-key", Brand: core.BrandFeishu}
+	assertSilent(t, probeInitResult(opts, f, result), errBuf)
 }
 
 // runProbePKJWT: a nil signer is a defensive no-op (should not be reached, must

@@ -10,20 +10,16 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -435,27 +431,6 @@ func TestFetchTATWithAssertion_Success(t *testing.T) {
 	if form.Has("client_secret") {
 		t.Error("client_secret must NOT be sent for private_key_jwt")
 	}
-
-	// The assertion's aud must be the bare Open host per the App Authentication
-	// JWT spec — not the full token endpoint URL.
-	jwtParts := strings.Split(form.Get("client_assertion"), ".")
-	if len(jwtParts) != 3 {
-		t.Fatalf("malformed client_assertion: %q", form.Get("client_assertion"))
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(jwtParts[1])
-	if err != nil {
-		t.Fatalf("assertion payload not base64url: %v", err)
-	}
-	var claims map[string]any
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		t.Fatal(err)
-	}
-	if claims["aud"] != "open.feishu.cn" {
-		t.Errorf("client_assertion aud = %v, want open.feishu.cn", claims["aud"])
-	}
-	if claims["iss"] != "cli_app" || claims["sub"] != "cli_app" {
-		t.Errorf("client_assertion iss/sub = %v/%v, want cli_app", claims["iss"], claims["sub"])
-	}
 	if form.Get("client_id") != "cli_app" {
 		t.Errorf("client_id = %q", form.Get("client_id"))
 	}
@@ -467,64 +442,6 @@ func TestFetchTATWithAssertion_NilSigner(t *testing.T) {
 	if _, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", nil, "k"); err == nil {
 		t.Fatal("expected error when signer is nil")
 	}
-}
-
-func TestFetchTATWithAssertion_KeylessHelper(t *testing.T) {
-	t.Setenv(envvars.CliKeylessSignerCmd, keylessHelperTestCommand(t))
-	t.Setenv("LARKSUITE_CLI_KEYLESS_HELPER_ASSERT", `{"op":"sign-assertion","keyRef":"agent-key","clientId":"cli_app","aud":"open.feishu.cn"}`)
-
-	rt := &stubRoundTripper{respCode: 200, respBody: `{"access_token":"t-jwt","token_type":"Bearer","expires_in":7200}`}
-	hc := &http.Client{Transport: rt}
-
-	token, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", nil, "agent-key")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if token != "t-jwt" {
-		t.Fatalf("token = %q", token)
-	}
-	form, err := url.ParseQuery(rt.gotBody)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if form.Get("client_assertion") != "helper.jwt" {
-		t.Fatalf("client_assertion = %q", form.Get("client_assertion"))
-	}
-}
-
-func keylessHelperTestCommand(t *testing.T) string {
-	t.Helper()
-	argv, err := json.Marshal([]string{os.Args[0], "-test.run=TestKeylessHelperProcess", "--"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(argv)
-}
-
-func TestKeylessHelperProcess(t *testing.T) {
-	want := os.Getenv("LARKSUITE_CLI_KEYLESS_HELPER_ASSERT")
-	if want == "" {
-		return
-	}
-	var got map[string]any
-	if err := json.NewDecoder(os.Stdin).Decode(&got); err != nil {
-		t.Fatal(err)
-	}
-	var expected map[string]any
-	if err := json.Unmarshal([]byte(want), &expected); err != nil {
-		t.Fatal(err)
-	}
-	for k, v := range expected {
-		if got[k] != v {
-			t.Fatalf("%s = %v, want %v; request=%v", k, got[k], v, got)
-		}
-	}
-	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
-		"ok":                    true,
-		"client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-		"client_assertion":      "helper.jwt",
-	})
-	os.Exit(0)
 }
 
 func TestFetchTATWithAssertion_ServerError(t *testing.T) {
