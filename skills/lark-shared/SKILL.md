@@ -90,7 +90,7 @@ lark-cli auth login --scope "<missing_scope>"   # 按具体 scope 授权（推�
 
 当用户已经执行最小化的 `auth login --scope "<scope>"`，但开发者后台授权页面仍显示此前申请过的全部常用权限时，不要反复更换 `--scope` 或重复发起登录。先让应用管理员在开发者后台的权限申请/授权管理页面检查并取消、驳回或处理遗留的待审批申请；历史申请没有清理时，后台可能继续合并展示旧请求。
 
-CLI 无法代替管理员取消开发者后台的待审批 scope 申请。清理后重新执行最小 scope 登录，并用 `lark-cli auth status --verify --format json` 核对实际已授予的 scope。
+CLI 无法代替管理员取消开发者后台的待审批 scope 申请。清理后重新执行最小 scope 登录，并用 `lark-cli auth status --verify --json` 核对实际已授予的 scope。
 
 #### Agent 代理发起认证（推荐）
 
