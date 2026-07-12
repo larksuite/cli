@@ -223,6 +223,175 @@ func TestBatchResolveByBasicContactRespectsAPILimit(t *testing.T) {
 	}
 }
 
+func TestBatchResolveByBasicContactContinuesOnFailure(t *testing.T) {
+	callCount := 0
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/basic_batch") {
+			return nil, fmt.Errorf("unexpected path: %s", req.URL.Path)
+		}
+		callCount++
+		if callCount == 1 {
+			return nil, fmt.Errorf("transient contact api failure")
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, err
+		}
+		userIDs, _ := payload["user_ids"].([]interface{})
+		users := make([]interface{}, 0, len(userIDs))
+		for _, raw := range userIDs {
+			id, _ := raw.(string)
+			users = append(users, map[string]interface{}{
+				"user_id": id,
+				"name":    "name-" + id,
+			})
+		}
+		return convertlibJSONResponse(200, map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"users": users},
+		}), nil
+	}))
+
+	missingIDs := make([]string, 15)
+	for i := range missingIDs {
+		missingIDs[i] = fmt.Sprintf("ou_%02d", i)
+	}
+	nameMap := map[string]string{}
+	batchResolveByBasicContact(runtime, missingIDs, nameMap)
+
+	if callCount != 2 {
+		t.Fatalf("API call count = %d, want 2 (should continue after first failure)", callCount)
+	}
+	if len(nameMap) != 5 {
+		t.Fatalf("resolved name count = %d, want 5 (second batch should succeed)", len(nameMap))
+	}
+	if nameMap["ou_10"] != "name-ou_10" {
+		t.Fatalf("ou_10 name = %q, want %q", nameMap["ou_10"], "name-ou_10")
+	}
+}
+
+func TestBatchResolveUsersContinuesOnFailure(t *testing.T) {
+	callCount := 0
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/batch") {
+			return nil, fmt.Errorf("unexpected path: %s", req.URL.Path)
+		}
+		callCount++
+		if callCount == 1 {
+			return nil, fmt.Errorf("transient contact api failure")
+		}
+		return convertlibJSONResponse(200, map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"open_id": "ou_batch2", "name": "Batch2 User"},
+				},
+			},
+		}), nil
+	}))
+
+	missingIDs := make([]string, 51)
+	for i := range missingIDs {
+		missingIDs[i] = fmt.Sprintf("ou_%02d", i)
+	}
+	missingIDs[50] = "ou_batch2"
+	nameMap := map[string]string{}
+	batchResolveUsers(runtime, missingIDs, nameMap)
+
+	if callCount != 2 {
+		t.Fatalf("API call count = %d, want 2", callCount)
+	}
+	if nameMap["ou_batch2"] != "Batch2 User" {
+		t.Fatalf("ou_batch2 name = %q, want %q", nameMap["ou_batch2"], "Batch2 User")
+	}
+}
+
+func TestBatchResolveByBasicContactStopsAfterConsecutiveFailures(t *testing.T) {
+	// A systemic failure (e.g. expired token) makes every batch fail. The
+	// circuit breaker should stop after maxConsecutiveBatchFailures requests
+	// instead of firing one doomed request per batch.
+	callCount := 0
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/basic_batch") {
+			return nil, fmt.Errorf("unexpected path: %s", req.URL.Path)
+		}
+		callCount++
+		return nil, fmt.Errorf("systemic contact api failure")
+	}))
+
+	// 100 IDs would be 10 batches; the breaker must cap requests well below that.
+	missingIDs := make([]string, 100)
+	for i := range missingIDs {
+		missingIDs[i] = fmt.Sprintf("ou_%03d", i)
+	}
+	nameMap := map[string]string{}
+	batchResolveByBasicContact(runtime, missingIDs, nameMap)
+
+	if callCount != maxConsecutiveBatchFailures {
+		t.Fatalf("API call count = %d, want %d (circuit breaker should stop early)", callCount, maxConsecutiveBatchFailures)
+	}
+	if len(nameMap) != 0 {
+		t.Fatalf("resolved name count = %d, want 0", len(nameMap))
+	}
+}
+
+func TestBatchResolveByBasicContactResetsFailureCountOnSuccess(t *testing.T) {
+	// Failures interleaved with successes must not trip the breaker: the
+	// counter resets on each successful batch, so resolution runs to the end.
+	callCount := 0
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/open-apis/contact/v3/users/basic_batch") {
+			return nil, fmt.Errorf("unexpected path: %s", req.URL.Path)
+		}
+		callCount++
+		// Fail every other batch; never 3 in a row.
+		if callCount%2 == 1 {
+			return nil, fmt.Errorf("transient contact api failure")
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, err
+		}
+		userIDs, _ := payload["user_ids"].([]interface{})
+		users := make([]interface{}, 0, len(userIDs))
+		for _, raw := range userIDs {
+			id, _ := raw.(string)
+			users = append(users, map[string]interface{}{
+				"user_id": id,
+				"name":    "name-" + id,
+			})
+		}
+		return convertlibJSONResponse(200, map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"users": users},
+		}), nil
+	}))
+
+	// 60 IDs => 6 batches of 10; failures alternate but never reach the threshold.
+	missingIDs := make([]string, 60)
+	for i := range missingIDs {
+		missingIDs[i] = fmt.Sprintf("ou_%03d", i)
+	}
+	nameMap := map[string]string{}
+	batchResolveByBasicContact(runtime, missingIDs, nameMap)
+
+	if callCount != 6 {
+		t.Fatalf("API call count = %d, want 6 (breaker must not trip on interleaved failures)", callCount)
+	}
+	// Batches 2, 4, 6 succeed -> 30 resolved names.
+	if len(nameMap) != 30 {
+		t.Fatalf("resolved name count = %d, want 30", len(nameMap))
+	}
+}
+
 func TestResolveSenderNamesAPIFailure(t *testing.T) {
 	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
