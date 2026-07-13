@@ -158,7 +158,7 @@ func dryRunFirstCallURL(t *testing.T, sc common.Shortcut, args []string) string 
 		t.Fatalf("dry-run failed: %v\noutput=%s", err, out)
 	}
 	dryRun := decodeDryRunRaw(t, out)
-	calls, ok := dryRun["api"].([]interface{})
+	calls, ok := dryRunAPIEntries(dryRun)
 	if !ok || len(calls) == 0 {
 		t.Fatalf("dry-run api array empty or wrong shape: %#v", dryRun)
 	}

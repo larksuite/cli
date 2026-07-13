@@ -100,16 +100,19 @@ func TestSlashCommandUpdate_ByNameDryRunDescriptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	var got struct {
-		Description string `json:"description"`
-		API         []struct {
-			Desc   string `json:"desc"`
-			Method string `json:"method"`
-		} `json:"api"`
+	var envlp struct {
+		Data struct {
+			Description string `json:"description"`
+			API         []struct {
+				Desc   string `json:"desc"`
+				Method string `json:"method"`
+			} `json:"api"`
+		} `json:"data"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+	if err := json.Unmarshal(stdout.Bytes(), &envlp); err != nil {
 		t.Fatalf("json: %v", err)
 	}
+	got := envlp.Data
 	if strings.Contains(got.Description, "resolve command_id") {
 		t.Fatalf("resolve description must be attached to GET, not top-level: %q", got.Description)
 	}
@@ -128,15 +131,18 @@ func TestSlashCommandUpdate_ByIDDryRunEncodesTrimmedPathSegment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	var got struct {
-		API []struct {
-			Desc string `json:"desc"`
-			URL  string `json:"url"`
-		} `json:"api"`
+	var envlp struct {
+		Data struct {
+			API []struct {
+				Desc string `json:"desc"`
+				URL  string `json:"url"`
+			} `json:"api"`
+		} `json:"data"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+	if err := json.Unmarshal(stdout.Bytes(), &envlp); err != nil {
 		t.Fatalf("json: %v", err)
 	}
+	got := envlp.Data
 	wantURL := slashCommandBasePath + "/id%2Fwith%20space%3Fx"
 	if len(got.API) != 1 || got.API[0].URL != wantURL || got.API[0].Desc == "" {
 		t.Fatalf("dry-run call = %#v, want encoded URL %q with description", got.API, wantURL)

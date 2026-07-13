@@ -81,16 +81,19 @@ func TestSlashCommandDelete_ByNameDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	var got struct {
-		Description string `json:"description"`
-		API         []struct {
-			Desc   string `json:"desc"`
-			Method string `json:"method"`
-		} `json:"api"`
+	var envlp struct {
+		Data struct {
+			Description string `json:"description"`
+			API         []struct {
+				Desc   string `json:"desc"`
+				Method string `json:"method"`
+			} `json:"api"`
+		} `json:"data"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+	if err := json.Unmarshal(stdout.Bytes(), &envlp); err != nil {
 		t.Fatalf("json: %v", err)
 	}
+	got := envlp.Data
 	if !strings.Contains(got.Description, "HIGH-RISK") || strings.Contains(got.Description, "resolve command_id") {
 		t.Fatalf("top-level description must contain only the risk context: %q", got.Description)
 	}

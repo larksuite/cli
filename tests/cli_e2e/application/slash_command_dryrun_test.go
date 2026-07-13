@@ -47,8 +47,8 @@ func TestSlashCommandList_DryRunShowsGetPath(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	assert.Equal(t, "GET", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-	assert.Equal(t, slashCommandBasePath, gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
+	assert.Equal(t, "GET", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+	assert.Equal(t, slashCommandBasePath, clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
 }
 
 // TestSlashCommandCreate_DryRunShowsPostBody pins the POST body shape for
@@ -77,14 +77,14 @@ func TestSlashCommandCreate_DryRunShowsPostBody(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	assert.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-	assert.Equal(t, slashCommandBasePath, gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
-	assert.Equal(t, "greet", gjson.Get(out, "api.0.body.command").String(), "stdout:\n%s", out)
-	assert.Equal(t, "say hi", gjson.Get(out, "api.0.body.description.default_value").String(), "stdout:\n%s", out)
-	assert.Equal(t, "你好", gjson.Get(out, "api.0.body.description.i18n.zh_cn").String(), "stdout:\n%s", out)
+	assert.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+	assert.Equal(t, slashCommandBasePath, clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+	assert.Equal(t, "greet", clie2e.DryRunGet(out, "api.0.body.command").String(), "stdout:\n%s", out)
+	assert.Equal(t, "say hi", clie2e.DryRunGet(out, "api.0.body.description.default_value").String(), "stdout:\n%s", out)
+	assert.Equal(t, "你好", clie2e.DryRunGet(out, "api.0.body.description.i18n.zh_cn").String(), "stdout:\n%s", out)
 	// icon is a top-level key, sibling of description.
-	assert.Equal(t, "skill_outlined", gjson.Get(out, "api.0.body.icon.icon_key").String(), "stdout:\n%s", out)
-	assert.False(t, gjson.Get(out, "api.0.body.description.icon").Exists(), "icon must not be nested inside description:\n%s", out)
+	assert.Equal(t, "skill_outlined", clie2e.DryRunGet(out, "api.0.body.icon.icon_key").String(), "stdout:\n%s", out)
+	assert.False(t, clie2e.DryRunGet(out, "api.0.body.description.icon").Exists(), "icon must not be nested inside description:\n%s", out)
 }
 
 // TestSlashCommandUpdate_DryRunShowsPatchPath pins the PATCH shape for
@@ -108,9 +108,9 @@ func TestSlashCommandUpdate_DryRunShowsPatchPath(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	assert.Equal(t, "PATCH", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-	assert.Equal(t, slashCommandBasePath+"/id%2Fwith%20space%3Fx", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
-	assert.Equal(t, "updated description", gjson.Get(out, "api.0.body.description.default_value").String(), "stdout:\n%s", out)
+	assert.Equal(t, "PATCH", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+	assert.Equal(t, slashCommandBasePath+"/id%2Fwith%20space%3Fx", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+	assert.Equal(t, "updated description", clie2e.DryRunGet(out, "api.0.body.description.default_value").String(), "stdout:\n%s", out)
 }
 
 // TestSlashCommandDelete_DryRunShowsDeletePath pins the DELETE shape for
@@ -137,8 +137,8 @@ func TestSlashCommandDelete_DryRunShowsDeletePath(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	assert.Equal(t, "DELETE", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-	assert.Equal(t, slashCommandBasePath+"/id%2Fwith%20space%3Fx", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
+	assert.Equal(t, "DELETE", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+	assert.Equal(t, slashCommandBasePath+"/id%2Fwith%20space%3Fx", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
 }
 
 // TestSlashCommandDelete_WithoutYesRequiresConfirmation asserts the
