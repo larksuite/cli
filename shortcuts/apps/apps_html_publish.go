@@ -70,9 +70,12 @@ var AppsHTMLPublish = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
+		appID := strings.TrimSpace(rctx.Str("app-id"))
 		path := strings.TrimSpace(rctx.Str("path"))
 		dry := common.NewDryRunAPI()
 		dry.Desc("Pack tar.gz and publish HTML app (actual API path determined at runtime by app type; returns url or release_id)")
+		dry.POST(fmt.Sprintf("%s/apps/%s/upload_and_release_html_code", apiBasePath, validate.EncodePathSegment(appID))).
+			Set("content_type", "multipart/form-data")
 
 		candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), path)
 		if err != nil {
