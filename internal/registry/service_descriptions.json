@@ -4,8 +4,8 @@
     "zh": { "title": "审批", "description": "审批实例、审批任务管理" }
   },
   "application": {
-    "en": { "title": "Application", "description": "Open Platform app self-management: slash commands of the current bound app (NOT Miaoda low-code apps)" },
-    "zh": { "title": "应用管理", "description": "开放平台应用自管理：当前绑定应用的斜杠指令管理（非妙搭低代码应用）" }
+    "en": { "title": "Application", "description": "Open Platform app self-management: slash commands for the currently bound app" },
+    "zh": { "title": "应用管理", "description": "开放平台应用自管理：当前绑定应用的斜杠指令管理" }
   },
   "apps": {
     "en": { "title": "Apps", "description": "Develop, deploy HTML, web pages and applications" },

@@ -4,7 +4,7 @@
 package application
 
 import (
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -40,7 +40,7 @@ func TestParseDescriptionI18n_BadFormat(t *testing.T) {
 			continue
 		}
 		p, ok := errs.ProblemOf(err)
-		if !ok || p.Category != errs.CategoryValidation {
+		if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
 			t.Errorf("%q: expected validation problem, got %v", bad, err)
 		}
 	}
@@ -48,8 +48,16 @@ func TestParseDescriptionI18n_BadFormat(t *testing.T) {
 
 func TestParseDescriptionI18n_DuplicateLang(t *testing.T) {
 	_, err := parseDescriptionI18n([]string{"zh_cn=a", "zh_cn=b"})
-	if err == nil || !strings.Contains(err.Error(), "duplicate language") {
-		t.Fatalf("expected duplicate language error, got %v", err)
+	if err == nil {
+		t.Fatal("expected duplicate language error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected validation/invalid_argument, got %v", err)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Param != "--description-i18n" {
+		t.Fatalf("expected param --description-i18n, got %#v", validationErr)
 	}
 }
 
@@ -87,6 +95,40 @@ func TestBuildSlashCommandBody(t *testing.T) {
 	}
 	if _, has := partial["description"]; has {
 		t.Error("empty description must be omitted")
+	}
+}
+
+func TestIsCommandExists(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "matching code and message",
+			err: errs.NewAPIError(errs.SubtypeUnknown,
+				"Invalid Param 'command'. command already exists.").WithCode(40000000),
+			want: true,
+		},
+		{
+			name: "same message with different code",
+			err: errs.NewAPIError(errs.SubtypeUnknown,
+				"Invalid Param 'command'. command already exists.").WithCode(40000031),
+		},
+		{
+			name: "same code with different message",
+			err: errs.NewAPIError(errs.SubtypeUnknown,
+				"Invalid Param 'icon_key'. icon_key is invalid.").WithCode(40000000),
+		},
+		{name: "nil error"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isCommandExists(tt.err); got != tt.want {
+				t.Fatalf("isCommandExists() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

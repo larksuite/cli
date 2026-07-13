@@ -65,7 +65,7 @@ func TestSlashCommandCreate_DryRunShowsPostBody(t *testing.T) {
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"application", "+slash-command-create",
-			"--command", "greet",
+			"--command", " greet ",
 			"--description", "say hi",
 			"--description-i18n", "zh_cn=你好",
 			"--icon-key", "skill_outlined",
@@ -98,7 +98,7 @@ func TestSlashCommandUpdate_DryRunShowsPatchPath(t *testing.T) {
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"application", "+slash-command-update",
-			"--command-id", "id_dry",
+			"--command-id", " id/with space?x ",
 			"--description", "updated description",
 			"--dry-run",
 		},
@@ -109,7 +109,7 @@ func TestSlashCommandUpdate_DryRunShowsPatchPath(t *testing.T) {
 
 	out := result.Stdout
 	assert.Equal(t, "PATCH", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-	assert.Equal(t, slashCommandBasePath+"/id_dry", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
+	assert.Equal(t, slashCommandBasePath+"/id%2Fwith%20space%3Fx", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
 	assert.Equal(t, "updated description", gjson.Get(out, "api.0.body.description.default_value").String(), "stdout:\n%s", out)
 }
 
@@ -127,7 +127,7 @@ func TestSlashCommandDelete_DryRunShowsDeletePath(t *testing.T) {
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"application", "+slash-command-delete",
-			"--command-id", "id_dry",
+			"--command-id", " id/with space?x ",
 			"--dry-run",
 		},
 		Yes:       true,
@@ -138,7 +138,7 @@ func TestSlashCommandDelete_DryRunShowsDeletePath(t *testing.T) {
 
 	out := result.Stdout
 	assert.Equal(t, "DELETE", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-	assert.Equal(t, slashCommandBasePath+"/id_dry", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
+	assert.Equal(t, slashCommandBasePath+"/id%2Fwith%20space%3Fx", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
 }
 
 // TestSlashCommandDelete_WithoutYesRequiresConfirmation asserts the

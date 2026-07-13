@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -30,7 +29,7 @@ var SlashCommandCreate = common.Shortcut{
 		{Name: "description", Desc: "default description shown in the client command panel (description.default_value)", Required: true},
 		{Name: "description-i18n", Type: "string_array", Desc: "localized description, repeatable, format <lang>=<text> (e.g. zh_cn=发送问候); language codes are passed through to the server"},
 		{Name: "icon-key", Desc: "icon key (server default: skill_outlined; invalid keys are rejected server-side with code 40000031)"},
-		{Name: "force", Type: "bool", Desc: "on name collision, resolve the existing command by name and PATCH it instead (like `gh label create --force`)"},
+		{Name: "force", Type: "bool", Desc: "on name collision, resolve the existing command by name and update it in place"},
 	},
 	Tips: []string{
 		`lark-cli application +slash-command-create --command greet --description "say hi" --description-i18n zh_cn=问候 --as bot`,
@@ -53,9 +52,11 @@ var SlashCommandCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		i18n, err := parseDescriptionI18n(runtime.StrArray("description-i18n"))
 		if err != nil {
+			// The CLI validates first; keep this guard for direct DryRun callers.
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		body := buildSlashCommandBody(runtime.Str("command"), runtime.Str("description"), i18n, runtime.Str("icon-key"))
+		name := strings.TrimSpace(runtime.Str("command"))
+		body := buildSlashCommandBody(name, runtime.Str("description"), i18n, runtime.Str("icon-key"))
 		d := common.NewDryRunAPI().
 			Desc("Create a slash command on the current bound app").
 			POST(slashCommandBasePath).
@@ -66,7 +67,7 @@ var SlashCommandCreate = common.Shortcut{
 		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		name := runtime.Str("command")
+		name := strings.TrimSpace(runtime.Str("command"))
 		i18n, err := parseDescriptionI18n(runtime.StrArray("description-i18n"))
 		if err != nil {
 			return err
@@ -81,7 +82,7 @@ var SlashCommandCreate = common.Shortcut{
 			}
 			if !runtime.Bool("force") {
 				p, _ := errs.ProblemOf(err)
-				rewrapped := errs.NewAPIError(p.Subtype, "slash command %q already exists", name).
+				rewrapped := errs.NewAPIError(errs.SubtypeAlreadyExists, "slash command %q already exists", name).
 					WithHint("rerun with --force to update it, or use `lark-cli application +slash-command-update --command %q`", name).
 					WithCause(err)
 				if p.Code != 0 {
@@ -93,12 +94,12 @@ var SlashCommandCreate = common.Shortcut{
 				return rewrapped
 			}
 			// --force: name collision -> resolve id -> PATCH (idempotent re-run).
-			id, _, rerr := resolveCommandID(runtime, name)
+			id, rerr := resolveCommandID(runtime, name)
 			if rerr != nil {
 				return rerr
 			}
 			patchBody := buildSlashCommandBody("", runtime.Str("description"), i18n, runtime.Str("icon-key"))
-			data, err = runtime.CallAPITyped("PATCH", slashCommandBasePath+"/"+validate.EncodePathSegment(id), nil, patchBody)
+			data, err = runtime.CallAPITyped("PATCH", slashCommandBasePath+"/"+encodeCommandIDPathSegment(id), nil, patchBody)
 			if err != nil {
 				return err
 			}

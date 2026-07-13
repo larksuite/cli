@@ -64,7 +64,9 @@ func TestSlashCommandDelete_ByNameWithYes(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	var got map[string]interface{}
-	_ = json.Unmarshal(stdout.Bytes(), &got)
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v", err)
+	}
 	data := got["data"].(map[string]interface{})
 	if data["command"] != "greet" || data["command_id"] != "id7" {
 		t.Fatalf("data = %v", data)
@@ -79,14 +81,24 @@ func TestSlashCommandDelete_ByNameDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	out := stdout.String()
-	// 两条 Desc 都必须保留：top-level HIGH-RISK 说明和 GET 调用的 resolve 说明
-	// 不能被覆盖（DryRunAPI.Desc 在没有 call 时设置 top-level，append 后设置 per-call）。
-	if !strings.Contains(out, "HIGH-RISK") {
-		t.Fatalf("dry-run must keep top-level HIGH-RISK desc: %s", out)
+	var got struct {
+		Description string `json:"description"`
+		API         []struct {
+			Desc   string `json:"desc"`
+			Method string `json:"method"`
+		} `json:"api"`
 	}
-	if !strings.Contains(out, "resolve command_id") {
-		t.Fatalf("dry-run must keep per-call resolve desc: %s", out)
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if !strings.Contains(got.Description, "HIGH-RISK") || strings.Contains(got.Description, "resolve command_id") {
+		t.Fatalf("top-level description must contain only the risk context: %q", got.Description)
+	}
+	if len(got.API) != 2 || got.API[0].Method != "GET" || !strings.Contains(got.API[0].Desc, "resolve command_id") {
+		t.Fatalf("first call must describe name resolution: %#v", got.API)
+	}
+	if got.API[1].Method != "DELETE" || strings.Contains(got.API[1].Desc, "resolve command_id") {
+		t.Fatalf("second call must be the delete without the resolve description: %#v", got.API)
 	}
 }
 
@@ -102,8 +114,19 @@ func TestSlashCommandDelete_Validate(t *testing.T) {
 			continue
 		}
 		p, ok := errs.ProblemOf(err)
-		if !ok || p.Category != errs.CategoryValidation {
+		if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
 			t.Errorf("%v: expected validation problem, got %v", args, err)
 		}
+	}
+}
+
+func TestSlashCommandDelete_ByIDEncodesTrimmedPathSegment(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, appTestConfig())
+	reg.Register(deleteOKStub("id%2Fwith%20space%3Fx"))
+
+	err := mountAndRun(t, SlashCommandDelete, []string{"+slash-command-delete",
+		"--command-id", " id/with space?x ", "--yes", "--as", "bot"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
 	}
 }

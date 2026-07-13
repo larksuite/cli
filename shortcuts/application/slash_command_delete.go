@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -48,11 +47,14 @@ var SlashCommandDelete = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		d := common.NewDryRunAPI().Desc("HIGH-RISK: delete a slash command (irreversible; same-name recreate gets a NEW command_id)")
-		target := runtime.Str("command-id")
+		target := strings.TrimSpace(runtime.Str("command-id"))
 		if target == "" {
+			name := strings.TrimSpace(runtime.Str("command"))
 			d.GET(slashCommandBasePath).
-				Desc(fmt.Sprintf("resolve command_id by name %q via GET list first", runtime.Str("command")))
+				Desc(fmt.Sprintf("resolve command_id by name %q via GET list first", name))
 			target = "<resolved_command_id>"
+		} else {
+			target = encodeCommandIDPathSegment(target)
 		}
 		return d.DELETE(slashCommandBasePath + "/" + target)
 	},
@@ -60,13 +62,13 @@ var SlashCommandDelete = common.Shortcut{
 		id := strings.TrimSpace(runtime.Str("command-id"))
 		name := strings.TrimSpace(runtime.Str("command"))
 		if id == "" {
-			resolved, _, err := resolveCommandID(runtime, name)
+			resolved, err := resolveCommandID(runtime, name)
 			if err != nil {
 				return err
 			}
 			id = resolved
 		}
-		if _, err := runtime.CallAPITyped("DELETE", slashCommandBasePath+"/"+validate.EncodePathSegment(id), nil, nil); err != nil {
+		if _, err := runtime.CallAPITyped("DELETE", slashCommandBasePath+"/"+encodeCommandIDPathSegment(id), nil, nil); err != nil {
 			return err
 		}
 		out := map[string]interface{}{"action": "deleted", "command_id": id}

@@ -10,14 +10,13 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // validateUpdateTarget enforces: exactly one of --command-id/--command, and at
 // least one editable field; --description-i18n requires --description (PATCH
 // replaces the whole description object - sending i18n alone would drop
-// default_value; conservative rule, see spec amendment #3).
+// default_value, so both values must be provided together).
 func validateUpdateTarget(runtime *common.RuntimeContext) error {
 	id := strings.TrimSpace(runtime.Str("command-id"))
 	name := strings.TrimSpace(runtime.Str("command"))
@@ -76,22 +75,28 @@ var SlashCommandUpdate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		i18n, err := parseDescriptionI18n(runtime.StrArray("description-i18n"))
 		if err != nil {
+			// The CLI validates first; keep this guard for direct DryRun callers.
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
 		body := buildSlashCommandBody("", runtime.Str("description"), i18n, runtime.Str("icon-key"))
 		d := common.NewDryRunAPI()
-		target := runtime.Str("command-id")
+		target := strings.TrimSpace(runtime.Str("command-id"))
 		if target == "" {
-			d.Desc(fmt.Sprintf("resolve command_id by name %q via GET list first", runtime.Str("command"))).
-				GET(slashCommandBasePath)
+			name := strings.TrimSpace(runtime.Str("command"))
+			d.GET(slashCommandBasePath).
+				Desc(fmt.Sprintf("resolve command_id by name %q via GET list first", name))
 			target = "<resolved_command_id>"
+		} else {
+			target = encodeCommandIDPathSegment(target)
 		}
-		return d.PATCH(slashCommandBasePath + "/" + target).Body(body)
+		return d.PATCH(slashCommandBasePath + "/" + target).
+			Desc("Update a slash command by command_id").
+			Body(body)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		id := strings.TrimSpace(runtime.Str("command-id"))
 		if id == "" {
-			resolved, _, err := resolveCommandID(runtime, strings.TrimSpace(runtime.Str("command")))
+			resolved, err := resolveCommandID(runtime, strings.TrimSpace(runtime.Str("command")))
 			if err != nil {
 				return err
 			}
@@ -102,7 +107,7 @@ var SlashCommandUpdate = common.Shortcut{
 			return err
 		}
 		body := buildSlashCommandBody("", runtime.Str("description"), i18n, runtime.Str("icon-key"))
-		data, err := runtime.CallAPITyped("PATCH", slashCommandBasePath+"/"+validate.EncodePathSegment(id), nil, body)
+		data, err := runtime.CallAPITyped("PATCH", slashCommandBasePath+"/"+encodeCommandIDPathSegment(id), nil, body)
 		if err != nil {
 			return err
 		}

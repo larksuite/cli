@@ -12,6 +12,8 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func createOKStub() *httpmock.Stub {
@@ -101,6 +103,9 @@ func TestSlashCommandCreate_ConflictNoForce(t *testing.T) {
 		t.Fatal("expected conflict error")
 	}
 	p, _ := errs.ProblemOf(err)
+	if p == nil || p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeAlreadyExists || p.Code != 40000000 {
+		t.Fatalf("expected api/already_exists code 40000000, got %#v", p)
+	}
 	if !strings.Contains(p.Hint, "--force") || !strings.Contains(p.Hint, "+slash-command-update") {
 		t.Fatalf("hint must offer --force and update, got %q", p.Hint)
 	}
@@ -134,6 +139,27 @@ func TestSlashCommandCreate_ForceConvertsToUpdate(t *testing.T) {
 	}
 }
 
+func TestSlashCommandCreate_TrimsCommandBeforeCreateAndForceResolution(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, appTestConfig())
+	conflict := createConflictStub()
+	reg.Register(conflict)
+	reg.Register(listStub([]interface{}{sampleItem("greet", "id-exist")}))
+	reg.Register(patchOKStub("id-exist"))
+
+	err := mountAndRun(t, SlashCommandCreate, []string{"+slash-command-create",
+		"--command", " greet ", "--description", "hi", "--force", "--as", "bot"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(conflict.CapturedBody, &body); err != nil {
+		t.Fatalf("decode captured create body: %v", err)
+	}
+	if body["command"] != "greet" {
+		t.Fatalf("command = %q, want trimmed value %q", body["command"], "greet")
+	}
+}
+
 func createIconInvalidStub() *httpmock.Stub {
 	return &httpmock.Stub{
 		Method: "POST",
@@ -160,8 +186,9 @@ func TestSlashCommandCreate_ForceDoesNotConvertNonConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected the original icon_key error, got nil")
 	}
-	if !strings.Contains(err.Error(), "icon_key") {
-		t.Fatalf("expected original icon_key failure to surface unchanged, got %v", err)
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryAPI || p.Subtype == errs.SubtypeAlreadyExists || p.Code != 40000031 {
+		t.Fatalf("expected original API error code 40000031 without collision reclassification, got %#v", p)
 	}
 }
 
@@ -178,5 +205,25 @@ func TestSlashCommandCreate_DryRun(t *testing.T) {
 	// icon 顶层：dry-run body 里 icon 不嵌套在 description 内
 	if !strings.Contains(out, "icon_key") {
 		t.Fatalf("dry-run must include body: %s", out)
+	}
+}
+
+func TestSlashCommandCreate_ForceHelpHasNoMetavar(t *testing.T) {
+	parent := &cobra.Command{Use: "application"}
+	SlashCommandCreate.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+	forceFlag := cmd.Flags().Lookup("force")
+	if forceFlag == nil {
+		t.Fatal("missing --force flag")
+	}
+	placeholder, usage := pflag.UnquoteUsage(forceFlag)
+	if placeholder != "" {
+		t.Fatalf("boolean --force must not render a value placeholder, got %q", placeholder)
+	}
+	if !strings.Contains(usage, "update it in place") || strings.Contains(usage, "gh ") {
+		t.Fatalf("unexpected --force help: %q", usage)
+	}
+	if help := cmd.Flags().FlagUsages(); !strings.Contains(help, "--force") || !strings.Contains(help, "update it in place") {
+		t.Fatalf("rendered help missing --force description:\n%s", help)
 	}
 }

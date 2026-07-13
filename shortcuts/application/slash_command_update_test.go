@@ -49,8 +49,12 @@ func TestSlashCommandUpdate_ByNameNotFound(t *testing.T) {
 
 	err := mountAndRun(t, SlashCommandUpdate, []string{"+slash-command-update",
 		"--command", "nope", "--description", "x", "--as", "bot"}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("expected not found, got %v", err)
+	if err == nil {
+		t.Fatal("expected not-found error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeNotFound {
+		t.Fatalf("expected api/not_found, got %#v", p)
 	}
 }
 
@@ -72,8 +76,69 @@ func TestSlashCommandUpdate_Validate(t *testing.T) {
 			continue
 		}
 		p, ok := errs.ProblemOf(err)
-		if !ok || p.Category != errs.CategoryValidation {
+		if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
 			t.Errorf("%s: expected validation problem, got %v", c.name, err)
 		}
+	}
+}
+
+func TestSlashCommandUpdate_ByIDEncodesTrimmedPathSegment(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, appTestConfig())
+	reg.Register(patchOKStub("id%2Fwith%20space%3Fx"))
+
+	err := mountAndRun(t, SlashCommandUpdate, []string{"+slash-command-update",
+		"--command-id", " id/with space?x ", "--description", "new", "--as", "bot"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+}
+
+func TestSlashCommandUpdate_ByNameDryRunDescriptions(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, appTestConfig())
+	err := mountAndRun(t, SlashCommandUpdate, []string{"+slash-command-update",
+		"--command", " greet ", "--description", "new", "--dry-run", "--as", "bot"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	var got struct {
+		Description string `json:"description"`
+		API         []struct {
+			Desc   string `json:"desc"`
+			Method string `json:"method"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if strings.Contains(got.Description, "resolve command_id") {
+		t.Fatalf("resolve description must be attached to GET, not top-level: %q", got.Description)
+	}
+	if len(got.API) != 2 || got.API[0].Method != "GET" || !strings.Contains(got.API[0].Desc, "resolve command_id") {
+		t.Fatalf("first call must describe name resolution: %#v", got.API)
+	}
+	if got.API[1].Method != "PATCH" || !strings.Contains(got.API[1].Desc, "Update a slash command") {
+		t.Fatalf("second call must describe update: %#v", got.API)
+	}
+}
+
+func TestSlashCommandUpdate_ByIDDryRunEncodesTrimmedPathSegment(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, appTestConfig())
+	err := mountAndRun(t, SlashCommandUpdate, []string{"+slash-command-update",
+		"--command-id", " id/with space?x ", "--description", "new", "--dry-run", "--as", "bot"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	var got struct {
+		API []struct {
+			Desc string `json:"desc"`
+			URL  string `json:"url"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	wantURL := slashCommandBasePath + "/id%2Fwith%20space%3Fx"
+	if len(got.API) != 1 || got.API[0].URL != wantURL || got.API[0].Desc == "" {
+		t.Fatalf("dry-run call = %#v, want encoded URL %q with description", got.API, wantURL)
 	}
 }

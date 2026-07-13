@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/validate"
 )
 
 // slashCommandBasePath is the raw v7 endpoint (not in meta_data.json / SDK).
@@ -61,6 +62,12 @@ func validateCommandName(name, flagName string) error {
 	return nil
 }
 
+// encodeCommandIDPathSegment applies the same normalization and escaping to
+// command IDs in dry-run output and real requests.
+func encodeCommandIDPathSegment(id string) string {
+	return validate.EncodePathSegment(strings.TrimSpace(id))
+}
+
 // buildSlashCommandBody assembles a create/update request body. Only provided
 // fields are included: PATCH is field-level partial (absent top-level fields
 // are preserved server-side; a provided i18n map REPLACES the whole map).
@@ -94,5 +101,5 @@ func isCommandExists(err error) bool {
 	if !ok {
 		return false
 	}
-	return strings.Contains(p.Message, "command already exists")
+	return p.Code == 40000000 && strings.Contains(p.Message, "command already exists")
 }
