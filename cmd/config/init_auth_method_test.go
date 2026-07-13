@@ -220,8 +220,8 @@ func TestConfigInitRunRejectsPrivateKeyJWTIncompatibleModes(t *testing.T) {
 			if !errors.As(err, &validationErr) {
 				t.Fatalf("error = %T, want *errs.ValidationError", err)
 			}
-			if validationErr.Param != "--private_key_jwt" {
-				t.Fatalf("param = %q, want --private_key_jwt", validationErr.Param)
+			if validationErr.Param != "--private-key-jwt" {
+				t.Fatalf("param = %q, want --private-key-jwt", validationErr.Param)
 			}
 			if !strings.Contains(problem.Message, tc.wantTarget) {
 				t.Fatalf("message = %q, want %s", problem.Message, tc.wantTarget)
@@ -271,15 +271,15 @@ func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsUnavailableHardware(t *te
 	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeInvalidClient {
 		t.Fatalf("problem = %s/%s, want config/invalid_client", problem.Category, problem.Subtype)
 	}
-	wantMessage := "this machine does not support --private_key_jwt"
+	wantMessage := "this machine does not support --private-key-jwt"
 	if problem.Message != wantMessage {
 		t.Fatalf("message = %q, want %q", problem.Message, wantMessage)
 	}
 	if strings.Contains(problem.Message, "sks") || strings.Contains(problem.Message, "/dev/tpm") || strings.Contains(problem.Message, "tpm") || strings.Contains(problem.Message, "TEE") || strings.Contains(problem.Message, "Keychain") {
 		t.Fatalf("message exposes backend detail: %q", problem.Message)
 	}
-	if !strings.Contains(problem.Hint, "omit --private_key_jwt") {
-		t.Fatalf("hint = %q, want guidance to omit --private_key_jwt", problem.Hint)
+	if !strings.Contains(problem.Hint, "omit --private-key-jwt") {
+		t.Fatalf("hint = %q, want guidance to omit --private-key-jwt", problem.Hint)
 	}
 	if strings.Contains(problem.Hint, "fix the local signer") {
 		t.Fatalf("hint exposes unnecessary signer recovery: %q", problem.Hint)
@@ -310,15 +310,15 @@ func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsProbeError(t *testing.T) 
 	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeInvalidClient {
 		t.Fatalf("problem = %s/%s, want config/invalid_client", problem.Category, problem.Subtype)
 	}
-	wantMessage := "this machine does not support --private_key_jwt"
+	wantMessage := "this machine does not support --private-key-jwt"
 	if problem.Message != wantMessage {
 		t.Fatalf("message = %q, want %q", problem.Message, wantMessage)
 	}
 	if strings.Contains(problem.Message, "probe") || strings.Contains(problem.Message, "keychain signer") {
 		t.Fatalf("message exposes probe detail: %q", problem.Message)
 	}
-	if !strings.Contains(problem.Hint, "omit --private_key_jwt") {
-		t.Fatalf("hint = %q, want guidance to omit --private_key_jwt", problem.Hint)
+	if !strings.Contains(problem.Hint, "omit --private-key-jwt") {
+		t.Fatalf("hint = %q, want guidance to omit --private-key-jwt", problem.Hint)
 	}
 	if strings.Contains(problem.Hint, "fix the local signer") {
 		t.Fatalf("hint exposes unnecessary signer recovery: %q", problem.Hint)
@@ -346,7 +346,7 @@ func TestConfigInitRun_PrivateKeyJWTRejectsBeforeInteractiveMode(t *testing.T) {
 
 	err := configInitRun(opts)
 	if err == nil {
-		t.Fatal("config init --private_key_jwt on unsupported machine: expected error before interactive mode")
+		t.Fatal("config init --private-key-jwt on unsupported machine: expected error before interactive mode")
 	}
 	problem, ok := errs.ProblemOf(err)
 	if !ok {
@@ -355,7 +355,7 @@ func TestConfigInitRun_PrivateKeyJWTRejectsBeforeInteractiveMode(t *testing.T) {
 	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeInvalidClient {
 		t.Fatalf("problem = %s/%s, want config/invalid_client", problem.Category, problem.Subtype)
 	}
-	if problem.Message != "this machine does not support --private_key_jwt" {
+	if problem.Message != "this machine does not support --private-key-jwt" {
 		t.Fatalf("message = %q", problem.Message)
 	}
 }

@@ -401,15 +401,15 @@ func (f *fakeTATSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) (
 }
 
 func TestFetchTATWithAssertion_Success(t *testing.T) {
-	rt := &stubRoundTripper{respCode: 200, respBody: `{"access_token":"t-jwt","token_type":"Bearer","expires_in":7200}`}
+	rt := &stubRoundTripper{respCode: 200, respBody: `{"access_token":"test-token","token_type":"Bearer","expires_in":7200}`}
 	hc := &http.Client{Transport: rt}
 
 	token, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "agent-key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if token != "t-jwt" {
-		t.Errorf("token = %q, want t-jwt", token)
+	if token != "test-token" {
+		t.Errorf("token = %q, want test-token", token)
 	}
 	if rt.gotReq.URL.String() != "https://open.feishu.cn/open-apis/authen/v2/oauth/token" {
 		t.Errorf("url = %s", rt.gotReq.URL.String())

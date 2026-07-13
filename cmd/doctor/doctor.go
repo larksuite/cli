@@ -229,7 +229,7 @@ func teeCheckResult(info keysigner.HardwareInfo, ok bool, probeErr error, usesPK
 		if usesPKJWT {
 			return fail(name,
 				"app uses private_key_jwt but this build has no TEE key signer",
-				"the platform key signer ships by default on macOS, Linux, and Windows/amd64; this platform (e.g. Windows/arm64) has none — use a supported platform or re-register without --private_key_jwt")
+				"the platform key signer ships by default on macOS, Linux, and Windows/amd64; this platform (e.g. Windows/arm64) has none — use a supported platform or re-register without --private-key-jwt")
 		}
 		return skip(name, "no TEE signer in this build (only private_key_jwt is affected; client_secret is unaffected)")
 	}

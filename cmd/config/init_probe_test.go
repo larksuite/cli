@@ -59,7 +59,7 @@ func (f *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	case strings.HasSuffix(req.URL.Path, "/authen/v2/oauth/token"):
 		f.oauthCalls++
 		if f.oauthHandler == nil {
-			return jsonResp(200, `{"access_token":"t-jwt"}`), nil
+			return jsonResp(200, `{"access_token":"test-token"}`), nil
 		}
 		return f.oauthHandler(req)
 	}
@@ -260,7 +260,7 @@ func TestProbeInitResult_ClientSecret(t *testing.T) {
 	rt := &fakeRT{}
 	f, errBuf := fakeFactory(t, rt)
 	opts := &ConfigInitOptions{Ctx: context.Background()}
-	result := &configInitResult{AppID: "cli_x", AppSecret: "secret_y", Brand: core.BrandFeishu}
+	result := &configInitResult{AppID: "cli_x", AppSecret: "test-secret", Brand: core.BrandFeishu}
 	err := probeInitResult(opts, f, result)
 	if rt.tatCalls != 1 || rt.probeCalls != 1 {
 		t.Errorf("expected 1/1 calls, got tat=%d probe=%d", rt.tatCalls, rt.probeCalls)
