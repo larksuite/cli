@@ -19,6 +19,7 @@ XS_NS = "{http://www.w3.org/2001/XMLSchema}"
 XML_NS = "{http://www.w3.org/XML/1998/namespace}"
 SVG_NS = "{http://www.w3.org/2000/svg}"
 SXSD_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "references" / "slides_xml_schema_definition.xml"
+ICONPARK_INDEX_PATH = Path(__file__).resolve().parents[1] / "references" / "iconpark-index.json"
 SXSD_TAG_ALIASES = {
     "textbox": "<shape type=\"text\">",
     "textBox": "<shape type=\"text\">",
@@ -34,7 +35,9 @@ SXSD_ATTR_ALIASES = {
     "h": "height",
     "fontColor": "color",
 }
+SERVER_FILLED_SXSD_ATTRS = {"id"}
 _SXSD_TAG_ATTRIBUTES_CACHE: dict[str, set[str]] | None = None
+_ICONPARK_ICON_TYPES_CACHE: set[str] | None = None
 
 
 class XmlTextOverlapLintError(Exception):
@@ -132,16 +135,17 @@ def load_sxsd_tag_attributes() -> dict[str, set[str]]:
             for attribute in iter_direct_xsd_children(complex_type, "attribute")
             if attribute.attrib.get("name")
         }
-        for complex_content in iter_direct_xsd_children(complex_type, "complexContent"):
-            for extension in iter_direct_xsd_children(complex_content, "extension"):
-                base_type = strip_xsd_prefix(extension.attrib.get("base"))
-                if base_type:
-                    attrs.update(attributes_for_type(base_type))
-                attrs.update(
-                    attribute.attrib["name"]
-                    for attribute in iter_direct_xsd_children(extension, "attribute")
-                    if attribute.attrib.get("name")
-                )
+        for content_name in ("simpleContent", "complexContent"):
+            for complex_content in iter_direct_xsd_children(complex_type, content_name):
+                for extension in iter_direct_xsd_children(complex_content, "extension"):
+                    base_type = strip_xsd_prefix(extension.attrib.get("base"))
+                    if base_type:
+                        attrs.update(attributes_for_type(base_type))
+                    attrs.update(
+                        attribute.attrib["name"]
+                        for attribute in iter_direct_xsd_children(extension, "attribute")
+                        if attribute.attrib.get("name")
+                    )
         return attrs
 
     def attributes_for_type(type_name: str) -> set[str]:
@@ -175,6 +179,28 @@ def load_sxsd_tag_attributes() -> dict[str, set[str]]:
     return tag_attributes
 
 
+def load_iconpark_icon_types() -> set[str]:
+    global _ICONPARK_ICON_TYPES_CACHE
+    if _ICONPARK_ICON_TYPES_CACHE is not None:
+        return _ICONPARK_ICON_TYPES_CACHE
+
+    try:
+        index_data = json.loads(ICONPARK_INDEX_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"invalid iconpark index JSON: {error}")
+    icons = index_data.get("icons")
+    if not isinstance(icons, list):
+        fail("iconpark index must contain an icons array")
+
+    icon_types = {
+        icon["iconType"]
+        for icon in icons
+        if isinstance(icon, dict) and isinstance(icon.get("iconType"), str) and icon["iconType"]
+    }
+    _ICONPARK_ICON_TYPES_CACHE = icon_types
+    return icon_types
+
+
 def build_sxsd_tag_hint(tag_name: str, supported_tags: set[str]) -> str:
     alias = SXSD_TAG_ALIASES.get(tag_name)
     if alias:
@@ -202,6 +228,10 @@ def build_sxsd_attr_hint(tag_name: str, attr_name: str, allowed_attrs: set[str])
 
 def should_skip_sxsd_subtree(element: ET.Element, ancestors: list[str]) -> bool:
     return "whiteboard" in ancestors and xml_namespace(element.tag) == SVG_NS
+
+
+def should_skip_sxsd_attribute(attr_name: str) -> bool:
+    return attr_name in SERVER_FILLED_SXSD_ATTRS
 
 
 def validate_sxsd_tag_attributes(root: ET.Element) -> list[dict[str, Any]]:
@@ -233,6 +263,8 @@ def validate_sxsd_tag_attributes(root: ET.Element) -> list[dict[str, Any]]:
                 if raw_attr_name.startswith(XML_NS):
                     continue
                 attr_name = xml_local_name(raw_attr_name)
+                if should_skip_sxsd_attribute(attr_name):
+                    continue
                 if attr_name in allowed_attrs:
                     continue
                 issues.append(
@@ -251,6 +283,95 @@ def validate_sxsd_tag_attributes(root: ET.Element) -> list[dict[str, Any]]:
             visit(child, [*ancestors, tag_name], current_path)
 
     visit(root, [], "")
+    return issues
+
+
+def build_iconpark_icon_type_hint(icon_type: str, supported_icon_types: set[str]) -> str:
+    close_matches = get_close_matches(icon_type, sorted(supported_icon_types), n=3, cutoff=0.58)
+    if close_matches:
+        return (
+            "iconType must exist in iconpark-index.json. Did you mean "
+            + ", ".join(f'"{match}"' for match in close_matches)
+            + "?"
+        )
+    return "iconType must exist in iconpark-index.json. Use scripts/iconpark_tool.py to search supported icons."
+
+
+def validate_iconpark_icon_types(root: ET.Element) -> list[dict[str, Any]]:
+    supported_icon_types: set[str] | None = None
+    issues: list[dict[str, Any]] = []
+
+    def direct_child(element: ET.Element, local_name: str) -> ET.Element | None:
+        return next((child for child in element if xml_local_name(child.tag) == local_name), None)
+
+    def is_transparent_color(color: str) -> bool:
+        normalized = re.sub(r"\s+", "", color).lower()
+        if normalized == "transparent":
+            return True
+        rgba_match = re.fullmatch(r"rgba\([^,]+,[^,]+,[^,]+,([0-9.]+)\)", normalized)
+        if not rgba_match:
+            return False
+        try:
+            return float(rgba_match.group(1)) <= 0
+        except ValueError:
+            return False
+
+    def append_missing_fill_color_issue(current_path: str) -> None:
+        issues.append(
+            {
+                "level": "error",
+                "code": "icon_missing_fill_color",
+                "tag": "icon",
+                "path": current_path,
+                "message": f"<icon> must set explicit non-transparent fillColor for visual visibility at {current_path}",
+                "hint": 'Add <fill><fillColor color="rgba(R, G, B, 1)"/></fill> inside <icon>. This is a visual lint rule, not an SXSD required field.',
+            }
+        )
+
+    def visit(element: ET.Element, path: str) -> None:
+        nonlocal supported_icon_types
+        tag_name = xml_local_name(element.tag)
+        current_path = f"{path}/{tag_name}" if path else tag_name
+        if tag_name == "icon":
+            icon_type = element.attrib.get("iconType")
+            if icon_type is not None:
+                if supported_icon_types is None:
+                    supported_icon_types = load_iconpark_icon_types()
+                if icon_type not in supported_icon_types:
+                    issues.append(
+                        {
+                            "level": "error",
+                            "code": "iconpark_unsupported_icon_type",
+                            "tag": "icon",
+                            "attr": "iconType",
+                            "iconType": icon_type,
+                            "path": current_path,
+                            "message": f'unsupported iconpark iconType "{icon_type}" at {current_path}',
+                            "hint": build_iconpark_icon_type_hint(icon_type, supported_icon_types),
+                        }
+                    )
+            fill = direct_child(element, "fill")
+            fill_color = direct_child(fill, "fillColor") if fill is not None else None
+            color = fill_color.attrib.get("color") if fill_color is not None else None
+            if not color:
+                append_missing_fill_color_issue(current_path)
+            elif is_transparent_color(color):
+                issues.append(
+                    {
+                        "level": "error",
+                        "code": "icon_transparent_fill_color",
+                        "tag": "icon",
+                        "attr": "fillColor",
+                        "path": current_path,
+                        "color": color,
+                        "message": f'<icon> fillColor must not be transparent for visual visibility at {current_path}: "{color}"',
+                        "hint": 'Use an opaque visible color, for example <fillColor color="rgba(37, 99, 235, 1)"/>.',
+                    }
+                )
+        for child in element:
+            visit(child, current_path)
+
+    visit(root, "")
     return issues
 
 
@@ -700,14 +821,16 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         }
 
     sxsd_issues = validate_sxsd_tag_attributes(root) if root is not None else []
+    iconpark_issues = validate_iconpark_icon_types(root) if root is not None else []
+    top_level_issues = [*sxsd_issues, *iconpark_issues]
     presentation = parse_presentation(xml)
     slides = [
         lint_slide(slide_xml, index + 1, presentation["width"], presentation["height"])
         for index, slide_xml in enumerate(presentation["slides"])
     ]
-    error_count = sum(1 for issue in sxsd_issues if issue["level"] == "error")
+    error_count = sum(1 for issue in top_level_issues if issue["level"] == "error")
     error_count += sum(1 for slide in slides for issue in slide["issues"] if issue["level"] == "error")
-    warning_count = sum(1 for issue in sxsd_issues if issue["level"] == "warning")
+    warning_count = sum(1 for issue in top_level_issues if issue["level"] == "warning")
     warning_count += sum(1 for slide in slides for issue in slide["issues"] if issue["level"] == "warning")
     result = {
         "file": source_path,
@@ -715,8 +838,8 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         "summary": {"slide_count": len(slides), "error_count": error_count, "warning_count": warning_count},
         "slides": slides,
     }
-    if sxsd_issues:
-        result["issues"] = sxsd_issues
+    if top_level_issues:
+        result["issues"] = top_level_issues
     return result
 
 
