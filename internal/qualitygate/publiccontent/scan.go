@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -78,12 +79,15 @@ func scanText(file, source, text string, detectorFile bool) []Finding {
 			out = append(out, newFinding("public_content_bearer_header", file, lineNo, source, "Authorization: Bearer <redacted>"))
 		}
 		for _, match := range credentialURLRE.FindAllString(line, -1) {
-			if isPlaceholderCredentialURL(match) {
+			if isPlaceholderCredentialURL(file, match) {
 				continue
 			}
 			out = append(out, newFinding("public_content_credential_url", file, lineNo, source, redactCredentialURL(match)))
 		}
 		for _, match := range privateIPv4RE.FindAllString(line, -1) {
+			if !warnForPrivateIPv4(file) {
+				continue
+			}
 			out = append(out, newFinding("public_content_private_ipv4", file, lineNo, source, match))
 		}
 		if source == "branch" && automationBranchRE.MatchString(line) {
@@ -128,6 +132,9 @@ func isCredentialAssignmentMatch(match string) bool {
 		return true
 	}
 	if isBenignTokenField(name) && !credentialShapedValue(value) {
+		return false
+	}
+	if isWeakTokenCredentialKey(name) && !weakTokenValueLooksCredentialLike(value) {
 		return false
 	}
 	return isExplicitCredentialKey(name)
@@ -284,6 +291,9 @@ func tokenLikePlaceholderValue(key, value string) bool {
 	if normalized == "" || credentialShapedIdentifier(normalized) {
 		return false
 	}
+	if authCredentialTokenKey(key) {
+		return false
+	}
 	return resourceTokenPlaceholderValue(value) ||
 		maskedTokenFixturePlaceholderValue(key, normalized) ||
 		isPlaceholderValue(value) ||
@@ -313,11 +323,109 @@ func maskedTokenFixturePlaceholderValue(key, value string) bool {
 	return stars >= 6 && alnum > 0
 }
 
+func isWeakTokenCredentialKey(key string) bool {
+	if authCredentialTokenKey(key) || isStrongTokenCredentialKey(key) {
+		return false
+	}
+	return key == "token" ||
+		strings.HasSuffix(key, "_token") ||
+		strings.HasSuffix(key, "-token")
+}
+
+func isStrongTokenCredentialKey(key string) bool {
+	parts := credentialKeyParts(strings.ReplaceAll(strings.ToLower(key), "-", "_"))
+	for _, phrase := range [][2]string{
+		{"access", "token"},
+		{"refresh", "token"},
+		{"auth", "token"},
+		{"bearer", "token"},
+		{"session", "token"},
+		{"service", "token"},
+		{"bot", "token"},
+		{"api", "token"},
+		{"secret", "token"},
+	} {
+		if hasAdjacentCredentialParts(parts, phrase[0], phrase[1]) {
+			return true
+		}
+	}
+	return false
+}
+
+func weakTokenValueLooksCredentialLike(value string) bool {
+	normalized := strings.ToLower(strings.Trim(value, `"'<>`))
+	if normalized == "" ||
+		isNonSecretLiteralValue(value) ||
+		isPlaceholderValue(value) {
+		return false
+	}
+	candidate := unwrapCredentialValue(normalized)
+	return credentialShapedIdentifier(candidate) ||
+		highEntropyCredentialValue(candidate) ||
+		commandSubstitutionLooksCredentialLike(normalized) ||
+		(strings.Contains(normalized, "://") &&
+			urlRemainderLooksCredentialLike(removeAnglePlaceholders(normalized)))
+}
+
+func unwrapCredentialValue(value string) string {
+	value = strings.TrimSpace(strings.Trim(value, `"'<>`))
+	if strings.HasPrefix(value, "${{") && strings.HasSuffix(value, "}}") {
+		value = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(value, "${{"), "}}"))
+	}
+	value = strings.TrimPrefix(value, "$")
+	value = strings.Trim(value, "%")
+	return strings.TrimSpace(value)
+}
+
+func highEntropyCredentialValue(value string) bool {
+	if len(value) < 32 {
+		return false
+	}
+	var hasLetter, hasDigit bool
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			hasLetter = true
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		case r == '_' || r == '-' || r == '.' || r == '=':
+		default:
+			return false
+		}
+	}
+	return hasLetter && hasDigit && shannonEntropy(value) >= 3.5
+}
+
+func shannonEntropy(value string) float64 {
+	if value == "" {
+		return 0
+	}
+	counts := map[rune]int{}
+	for _, r := range value {
+		counts[r]++
+	}
+	var entropy float64
+	length := float64(len([]rune(value)))
+	for _, count := range counts {
+		p := float64(count) / length
+		entropy -= p * log2(p)
+	}
+	return entropy
+}
+
+func log2(value float64) float64 {
+	return math.Log(value) / math.Ln2
+}
+
 func authCredentialTokenKey(key string) bool {
 	switch strings.ReplaceAll(strings.ToLower(key), "-", "_") {
 	case "access_token",
+		"api_token",
+		"bot_token",
 		"refresh_token",
+		"secret_token",
 		"session_token",
+		"service_token",
 		"bearer_token",
 		"auth_token",
 		"authorization_token",
@@ -844,7 +952,7 @@ func looksLikeEqualityComparison(value string) bool {
 	return strings.HasPrefix(strings.TrimSpace(value), "=")
 }
 
-func isPlaceholderCredentialURL(raw string) bool {
+func isPlaceholderCredentialURL(file, raw string) bool {
 	userInfo, ok := credentialURLUserInfo(raw)
 	if !ok {
 		return false
@@ -853,7 +961,8 @@ func isPlaceholderCredentialURL(raw string) bool {
 	if !ok {
 		return false
 	}
-	return credentialURLPasswordPlaceholder(password)
+	return credentialURLPasswordPlaceholder(password) ||
+		(sourceOrTestFixtureFile(file) && credentialURLPasswordFixture(password))
 }
 
 func credentialURLPasswordPlaceholder(password string) bool {
@@ -865,6 +974,46 @@ func credentialURLPasswordPlaceholder(password string) bool {
 		return true
 	}
 	return angleWrappedPlaceholder(decoded) || percentWrappedPlaceholder(decoded)
+}
+
+func credentialURLPasswordFixture(password string) bool {
+	normalized := strings.ToLower(strings.Trim(password, `"'`))
+	switch normalized {
+	case "p",
+		"pass",
+		"password",
+		"pat_abc",
+		"pw",
+		"s3cret",
+		"secret",
+		"t":
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceOrTestFixtureFile(file string) bool {
+	normalized := filepath.ToSlash(file)
+	return sourceCodeFile(normalized) ||
+		strings.HasPrefix(normalized, "testdata/") ||
+		strings.HasPrefix(normalized, "fixtures/") ||
+		strings.Contains(normalized, "/testdata/") ||
+		strings.Contains(normalized, "/fixtures/")
+}
+
+func warnForPrivateIPv4(file string) bool {
+	normalized := filepath.ToSlash(file)
+	if sourceOrTestFixtureFile(normalized) {
+		return false
+	}
+	switch filepath.Ext(normalized) {
+	case ".md", ".mdx", ".txt", ".json", ".yaml", ".yml", ".toml", ".env":
+		return true
+	default:
+		return strings.HasPrefix(normalized, "docs/") ||
+			strings.HasPrefix(normalized, "skills/")
+	}
 }
 
 func credentialURLUserInfo(raw string) (string, bool) {

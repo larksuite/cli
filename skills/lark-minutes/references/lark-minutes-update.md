@@ -1,6 +1,5 @@
 # minutes +update
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 修改飞书妙记的标题（topic）。
 
@@ -38,4 +37,3 @@ lark-cli minutes +update --minute-token xxx --topic "周会纪要 2026-05-18"
 ## 参考
 
 - [lark-minutes](../SKILL.md) -- 妙记相关功能说明
-- [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

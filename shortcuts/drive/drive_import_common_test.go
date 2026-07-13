@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -208,6 +209,82 @@ func TestDriveImportStatusPendingWithoutToken(t *testing.T) {
 	}
 	if got := status.StatusLabel(); got != "pending" {
 		t.Fatalf("StatusLabel() = %q, want %q", got, "pending")
+	}
+}
+
+func TestDriveImportFailureErrorAddsConcurrentOperationGuidance(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range driveImportConcurrentOperationCodes {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			t.Parallel()
+
+			err := driveImportFailureError(driveImportStatus{
+				JobStatus:   3,
+				JobErrorMsg: "call CreateObjNode return error code, code: " + strconv.Itoa(code) + ", message:",
+			})
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T", err)
+			}
+			if problem.Category != errs.CategoryAPI {
+				t.Fatalf("category = %q, want %q", problem.Category, errs.CategoryAPI)
+			}
+			if problem.Subtype != errs.SubtypeServerError {
+				t.Fatalf("subtype = %q, want %q", problem.Subtype, errs.SubtypeServerError)
+			}
+			if problem.Code != code {
+				t.Fatalf("code = %d, want %d", problem.Code, code)
+			}
+			if !problem.Retryable {
+				t.Fatal("expected retryable error")
+			}
+			if problem.Hint != driveImportConcurrentOperationHint {
+				t.Fatalf("hint = %q, want %q", problem.Hint, driveImportConcurrentOperationHint)
+			}
+		})
+	}
+}
+
+func TestDriveImportFailureErrorLeavesOtherFailuresUnchanged(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		msg  string
+	}{
+		{
+			name: "ordinary failure",
+			msg:  "unsupported conversion",
+		},
+		{
+			name: "longer numeric code containing known code",
+			msg:  "call CreateObjNode return error code, code: 12321401012, message:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := driveImportFailureError(driveImportStatus{
+				JobStatus:   3,
+				JobErrorMsg: tt.msg,
+			})
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T", err)
+			}
+			if problem.Code != 0 {
+				t.Fatalf("code = %d, want 0", problem.Code)
+			}
+			if problem.Retryable {
+				t.Fatal("expected non-concurrency failure to remain non-retryable")
+			}
+			if problem.Hint != "" {
+				t.Fatalf("hint = %q, want empty", problem.Hint)
+			}
+		})
 	}
 }
 

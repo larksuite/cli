@@ -32,12 +32,15 @@ var AppsDBRecoveryDiff = common.Shortcut{
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "target", Desc: "point in time to restore to; relative (2h/3d) | date | datetime | ISO 8601 w/ TZ", Required: true},
-	},
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		if err := rejectLegacyEnvFlag(rctx); err != nil {
 			return err
 		}
 		return normalizeTimeFlags(rctx, "target")
@@ -45,6 +48,7 @@ var AppsDBRecoveryDiff = common.Shortcut{
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().POST(appRecoveryPath(appID)).Desc("Preview PITR recovery").
+			Params(dbEnvParams(rctx, map[string]interface{}{})).
 			Body(map[string]interface{}{"target": rctx.Str("target"), "dry_run": true})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -81,12 +85,15 @@ var AppsDBRecoveryApply = common.Shortcut{
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "target", Desc: "point in time to restore to; relative (2h/3d) | date | datetime | ISO 8601 w/ TZ", Required: true},
-	},
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		if err := rejectLegacyEnvFlag(rctx); err != nil {
 			return err
 		}
 		return normalizeTimeFlags(rctx, "target")
@@ -94,6 +101,7 @@ var AppsDBRecoveryApply = common.Shortcut{
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().POST(appRecoveryPath(appID)).Desc("Apply PITR recovery").
+			Params(dbEnvParams(rctx, map[string]interface{}{})).
 			Body(map[string]interface{}{"target": rctx.Str("target"), "dry_run": false})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -104,7 +112,7 @@ var AppsDBRecoveryApply = common.Shortcut{
 		target := rctx.Str("target")
 		stop := rctx.StartSpinner("Restoring database (target: " + target + ")")
 		defer stop()
-		submit, err := rctx.CallAPITyped("POST", appRecoveryPath(appID), nil, map[string]interface{}{"target": target, "dry_run": false})
+		submit, err := rctx.CallAPITyped("POST", appRecoveryPath(appID), dbEnvParams(rctx, map[string]interface{}{}), map[string]interface{}{"target": target, "dry_run": false})
 		if err != nil {
 			return withAppsHint(err, dbRecoveryHint)
 		}
@@ -119,7 +127,7 @@ var AppsDBRecoveryApply = common.Shortcut{
 		}
 		final, perr := pollUntil(rctx.Ctx(), 2*time.Second, 2*time.Minute,
 			func() (map[string]interface{}, error) {
-				return rctx.CallAPITyped("GET", appRecoveryApplyStatusPath(appID), nil, nil)
+				return rctx.CallAPITyped("GET", appRecoveryApplyStatusPath(appID), dbEnvParams(rctx, map[string]interface{}{}), nil)
 			},
 			func(d map[string]interface{}) (bool, error) {
 				switch strings.ToLower(common.GetString(d, "status")) {
@@ -157,7 +165,7 @@ var AppsDBRecoveryApply = common.Shortcut{
 func runRecoveryPreview(rctx *common.RuntimeContext, appID, target string) (map[string]interface{}, error) {
 	stop := rctx.StartSpinner("Previewing recovery impact (target: " + target + ")")
 	defer stop()
-	submit, err := rctx.CallAPITyped("POST", appRecoveryPath(appID), nil, map[string]interface{}{"target": target, "dry_run": true})
+	submit, err := rctx.CallAPITyped("POST", appRecoveryPath(appID), dbEnvParams(rctx, map[string]interface{}{}), map[string]interface{}{"target": target, "dry_run": true})
 	if err != nil {
 		return nil, withAppsHint(err, dbRecoveryHint)
 	}
@@ -167,7 +175,7 @@ func runRecoveryPreview(rctx *common.RuntimeContext, appID, target string) (map[
 	}
 	return pollUntil(rctx.Ctx(), 1*time.Second, 2*time.Minute,
 		func() (map[string]interface{}, error) {
-			return rctx.CallAPITyped("GET", appRecoveryDiffStatusPath(appID), map[string]interface{}{"preview_request_id": prid}, nil)
+			return rctx.CallAPITyped("GET", appRecoveryDiffStatusPath(appID), dbEnvParams(rctx, map[string]interface{}{"preview_request_id": prid}), nil)
 		},
 		func(d map[string]interface{}) (bool, error) {
 			switch strings.ToLower(common.GetString(d, "preview_status")) {
@@ -195,13 +203,13 @@ type recoveryChange struct {
 // recoveryDiffOutput 组装 diff 输出：target / tables_affected / changes[] / estimated_seconds。
 func recoveryDiffOutput(target string, preview map[string]interface{}) map[string]interface{} {
 	arr, _ := preview["changes"].([]interface{})
-	changes := make([]recoveryChange, 0, len(arr))
+	raw := make([]recoveryChange, 0, len(arr))
 	for _, it := range arr {
 		m, ok := it.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		changes = append(changes, recoveryChange{
+		raw = append(raw, recoveryChange{
 			Table:     common.GetString(m, "table"),
 			Inserted:  m["inserted"],
 			Deleted:   m["deleted"],
@@ -209,16 +217,33 @@ func recoveryDiffOutput(target string, preview map[string]interface{}) map[strin
 			DroppedAt: common.GetString(m, "dropped_at"),
 		})
 	}
-	tablesAffected := intFromAny(preview["tables_affected"])
-	if tablesAffected == 0 {
-		tablesAffected = len(changes)
+	// 服务端可能对同一张表既下发 schema 动作(drop/restore/alter)、又下发纯数据行变更。
+	// schema 动作已涵盖数据结果(如 drop 隐含删光行)，丢弃该表的冗余数据行那条，避免同表
+	// 两行 + tables_affected 翻倍。
+	hasSchema := map[string]bool{}
+	for _, c := range raw {
+		if c.Action != "" {
+			hasSchema[c.Table] = true
+		}
+	}
+	changes := make([]recoveryChange, 0, len(raw))
+	for _, c := range raw {
+		if c.Action == "" && hasSchema[c.Table] {
+			continue
+		}
+		changes = append(changes, c)
+	}
+	// tables_affected 按去重后的不同表数计(而非变更条数)。
+	seen := map[string]bool{}
+	for _, c := range changes {
+		seen[c.Table] = true
 	}
 	est := intFromAny(preview["estimated_seconds"])
 	if est == 0 {
 		est = 30 // PRD 兜底
 	}
 	return map[string]interface{}{
-		"target": target, "tables_affected": tablesAffected,
+		"target": target, "tables_affected": len(seen),
 		"changes": changes, "estimated_seconds": est,
 	}
 }

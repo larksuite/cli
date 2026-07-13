@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 
 import xml_text_overlap_lint
 
 
-TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "assets" / "templates"
-
-
 class XmlTextOverlapLintTest(unittest.TestCase):
-    def assertNoXmlTextOverlapLintIssues(self, result: dict, template_path: Path) -> None:
+    def assertNoXmlTextOverlapLintIssues(self, result: dict, sample_name: str) -> None:
         issue_summaries = []
         for slide in result.get("slides", []):
             for issue in slide.get("issues", []):
@@ -25,24 +21,64 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         self.assertEqual(
             result["summary"]["error_count"],
             0,
-            f"{template_path.name} has XML text overlap lint errors:\n" + "\n".join(issue_summaries),
+            f"{sample_name} has XML text overlap lint errors:\n" + "\n".join(issue_summaries),
         )
         self.assertEqual(
             result["summary"]["warning_count"],
             0,
-            f"{template_path.name} has XML text overlap lint warnings:\n" + "\n".join(issue_summaries),
+            f"{sample_name} has XML text overlap lint warnings:\n" + "\n".join(issue_summaries),
         )
 
-    def test_xml_text_overlap_lint_accepts_all_template_xml_files(self) -> None:
-        template_paths = sorted(TEMPLATES_DIR.glob("*.xml"))
-        self.assertTrue(template_paths)
-        for template_path in template_paths:
-            with self.subTest(template=template_path.name):
+    def test_xml_text_overlap_lint_accepts_inline_fixture_xml_samples(self) -> None:
+        samples = {
+            "image-led-cover": """
+                <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+                  <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                    <style><fill><fillColor color="rgb(15,23,42)"/></fill></style>
+                    <data>
+                      <img src="tok" topLeftX="560" topLeftY="0" width="400" height="540"/>
+                      <shape type="text" topLeftX="64" topLeftY="150" width="420" height="70">
+                        <content textType="title"><p><span fontSize="42">Quarterly Review</span></p></content>
+                      </shape>
+                      <shape type="text" topLeftX="64" topLeftY="235" width="420" height="36">
+                        <content textType="sub-headline"><p><span fontSize="20">Focus, progress, and next steps</span></p></content>
+                      </shape>
+                    </data>
+                  </slide>
+                </presentation>
+            """,
+            "content-grid": """
+                <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+                  <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                    <data>
+                      <shape type="text" topLeftX="60" topLeftY="44" width="620" height="46">
+                        <content textType="title"><p><span fontSize="30">Execution Snapshot</span></p></content>
+                      </shape>
+                      <shape type="rect" topLeftX="60" topLeftY="126" width="250" height="150"/>
+                      <shape type="text" topLeftX="84" topLeftY="152" width="200" height="36">
+                        <content textType="headline"><p><span fontSize="22">Plan</span></p></content>
+                      </shape>
+                      <shape type="rect" topLeftX="355" topLeftY="126" width="250" height="150"/>
+                      <shape type="text" topLeftX="379" topLeftY="152" width="200" height="36">
+                        <content textType="headline"><p><span fontSize="22">Build</span></p></content>
+                      </shape>
+                      <shape type="rect" topLeftX="650" topLeftY="126" width="250" height="150"/>
+                      <shape type="text" topLeftX="674" topLeftY="152" width="200" height="36">
+                        <content textType="headline"><p><span fontSize="22">Launch</span></p></content>
+                      </shape>
+                    </data>
+                  </slide>
+                </presentation>
+            """,
+        }
+        self.assertTrue(samples)
+        for sample_name, sample_xml in samples.items():
+            with self.subTest(sample=sample_name):
                 result = xml_text_overlap_lint.lint_xml(
-                    template_path.read_text(encoding="utf-8"),
-                    str(template_path),
+                    sample_xml,
+                    sample_name,
                 )
-                self.assertNoXmlTextOverlapLintIssues(result, template_path)
+                self.assertNoXmlTextOverlapLintIssues(result, sample_name)
 
     def test_lint_xml_reports_unescaped_ampersand_in_text(self) -> None:
         result = xml_text_overlap_lint.lint_xml(

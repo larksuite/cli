@@ -57,3 +57,37 @@ func TestResolveOpenBaseURL(t *testing.T) {
 		t.Errorf("ResolveOpenBaseURL(lark) = %q", got)
 	}
 }
+
+func TestParseBrand(t *testing.T) {
+	cases := []struct {
+		in   string
+		want LarkBrand
+	}{
+		{"", BrandFeishu},
+		{"feishu", BrandFeishu},
+		{"lark", BrandLark},
+		{"LARK", BrandLark},
+		{" lark ", BrandLark},
+		{"Lark", BrandLark},
+		{"xyz", BrandFeishu},
+	}
+	for _, c := range cases {
+		if got := ParseBrand(c.in); got != c.want {
+			t.Errorf("ParseBrand(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestResolveEndpoints_NormalizesBrand locks the boundary invariant: the
+// resolver normalizes its brand input, so historical config values with
+// unusual casing or whitespace still resolve to their intended endpoints.
+func TestResolveEndpoints_NormalizesBrand(t *testing.T) {
+	for _, raw := range []string{"LARK", " lark ", "Lark"} {
+		if got := ResolveEndpoints(LarkBrand(raw)).Open; got != "https://open.larksuite.com" {
+			t.Errorf("ResolveEndpoints(%q).Open = %q, want the lark endpoint", raw, got)
+		}
+	}
+	if got := ResolveEndpoints(LarkBrand("unexpected")).Open; got != "https://open.feishu.cn" {
+		t.Errorf("ResolveEndpoints(unexpected).Open = %q, want the feishu default", got)
+	}
+}

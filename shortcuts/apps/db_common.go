@@ -34,6 +34,16 @@ func dbEnv(rctx *common.RuntimeContext) string {
 	return rctx.Str("environment")
 }
 
+// dbEnvParams 把 env 并入 params：仅当显式指定了环境（非空）才带 env 键；未指定（空）时
+// 省略该键，由服务端按应用多环境状态自动选分支（多环境→dev，单环境→online）。与家族对
+// 空可选参数的 omit-empty 约定一致——不发空串，wire 上真正不带 env。原样返回同一个 map 便于链式。
+func dbEnvParams(rctx *common.RuntimeContext, params map[string]interface{}) map[string]interface{} {
+	if env := dbEnv(rctx); env != "" {
+		params["env"] = env
+	}
+	return params
+}
+
 // rejectLegacyEnvFlag 在 Validate 阶段拦截已移除的 --env：显式传了就报清晰的 validation 错，指向 --environment。
 func rejectLegacyEnvFlag(rctx *common.RuntimeContext) error {
 	if rctx.Changed("env") {

@@ -26,7 +26,10 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 	tests := []struct {
 		name           string
 		args           []string
+		wantContains   []string
 		wantURL        string
+		wantParams     map[string]any
+		wantBody       map[string]any
 		wantExtraParam string
 		wantRefLabel   string
 	}{
@@ -37,7 +40,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--content", "<title>Dry Run</title><p>hello</p>",
 				"--dry-run",
 			},
-			wantURL: "/open-apis/docs_ai/v1/documents",
+			wantContains: []string{"/open-apis/docs_ai/v1/documents"},
 		},
 		{
 			name: "create api-version v1 compatibility",
@@ -47,7 +50,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--content", "<title>Dry Run</title><p>hello</p>",
 				"--dry-run",
 			},
-			wantURL: "/open-apis/docs_ai/v1/documents",
+			wantContains: []string{"/open-apis/docs_ai/v1/documents"},
 		},
 		{
 			name: "fetch",
@@ -56,7 +59,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--doc", "doxcnDryRunE2E",
 				"--dry-run",
 			},
-			wantURL:        "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/fetch",
+			wantContains:   []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/fetch"},
 			wantExtraParam: `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`,
 		},
 		{
@@ -68,7 +71,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--content", "<p>hello</p>",
 				"--dry-run",
 			},
-			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E",
+			wantContains: []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E"},
 		},
 		{
 			name: "update reference-map",
@@ -80,7 +83,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--reference-map", `{"widget":{"r1":{"label":"widget-ref-value"}}}`,
 				"--dry-run",
 			},
-			wantURL:      "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E",
+			wantContains: []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E"},
 			wantRefLabel: "widget-ref-value",
 		},
 		{
@@ -92,7 +95,50 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--block-id", "blkA,blkB,blkC",
 				"--dry-run",
 			},
-			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E",
+			wantContains: []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E"},
+		},
+		{
+			name: "history list",
+			args: []string{
+				"docs", "+history-list",
+				"--doc", "doxcnDryRunE2E",
+				"--page-size", "5",
+				"--page-token", "page_token_1",
+				"--dry-run",
+			},
+			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/histories",
+			wantParams: map[string]any{
+				"page_size":  5,
+				"page_token": "page_token_1",
+			},
+		},
+		{
+			name: "history revert",
+			args: []string{
+				"docs", "+history-revert",
+				"--doc", "doxcnDryRunE2E",
+				"--history-version-id", "42",
+				"--wait-timeout-ms", "0",
+				"--dry-run",
+			},
+			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/history/revert",
+			wantBody: map[string]any{
+				"history_version_id": "42",
+				"wait_timeout_ms":    0,
+			},
+		},
+		{
+			name: "history revert status",
+			args: []string{
+				"docs", "+history-revert-status",
+				"--doc", "doxcnDryRunE2E",
+				"--task-id", "task_1",
+				"--dry-run",
+			},
+			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/history/revert_status",
+			wantParams: map[string]any{
+				"task_id": "task_1",
+			},
 		},
 	}
 
@@ -106,10 +152,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			combined := result.Stdout + "\n" + result.Stderr
-			for _, want := range []string{
-				tt.wantURL,
-				"docs_ai/v1",
-			} {
+			for _, want := range append(tt.wantContains, "docs_ai/v1") {
 				if !strings.Contains(combined, want) {
 					t.Fatalf("dry-run output missing %q\nstdout:\n%s\nstderr:\n%s", want, result.Stdout, result.Stderr)
 				}
@@ -120,6 +163,15 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 			if strings.Contains(combined, "--api-version") {
 				t.Fatalf("dry-run output should not ask for --api-version\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
 			}
+			if tt.wantURL != "" {
+				require.Equal(t, tt.wantURL, gjson.Get(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
+			}
+			for key, want := range tt.wantParams {
+				assertDryRunField(t, result.Stdout, "api.0.params."+key, want)
+			}
+			for key, want := range tt.wantBody {
+				assertDryRunField(t, result.Stdout, "api.0.body."+key, want)
+			}
 			if tt.wantExtraParam != "" {
 				extraParam := gjson.Get(result.Stdout, "api.0.body.extra_param").String()
 				require.JSONEq(t, tt.wantExtraParam, extraParam, "stdout:\n%s", result.Stdout)
@@ -129,6 +181,21 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				require.Equal(t, tt.wantRefLabel, got, "stdout:\n%s", result.Stdout)
 			}
 		})
+	}
+}
+
+func assertDryRunField(t *testing.T, stdout, path string, want any) {
+	t.Helper()
+
+	got := gjson.Get(stdout, path)
+	require.True(t, got.Exists(), "%s missing in stdout:\n%s", path, stdout)
+	switch want := want.(type) {
+	case int:
+		require.Equal(t, int64(want), got.Int(), "%s in stdout:\n%s", path, stdout)
+	case string:
+		require.Equal(t, want, got.String(), "%s in stdout:\n%s", path, stdout)
+	default:
+		t.Fatalf("unsupported dry-run assertion type %T for %s", want, path)
 	}
 }
 

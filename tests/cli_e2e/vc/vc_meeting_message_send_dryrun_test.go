@@ -15,7 +15,7 @@ import (
 )
 
 func TestVCMeetingMessageSendDryRun(t *testing.T) {
-	setVCMeetingMessageSendDryRunEnv(t)
+	setVCDryRunEnv(t)
 
 	tests := []struct {
 		name        string
@@ -81,7 +81,7 @@ func TestVCMeetingMessageSendDryRun(t *testing.T) {
 }
 
 func TestVCMeetingMessageSendDryRunRejectsLongUUID(t *testing.T) {
-	setVCMeetingMessageSendDryRunEnv(t)
+	setVCDryRunEnv(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
@@ -104,10 +104,10 @@ func TestVCMeetingMessageSendDryRunRejectsLongUUID(t *testing.T) {
 	require.Empty(t, result.Stdout)
 }
 
-func setVCMeetingMessageSendDryRunEnv(t *testing.T) {
+func setVCDryRunEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	t.Setenv("LARKSUITE_CLI_APP_ID", "vc_meeting_message_send_dryrun_test")
-	t.Setenv("LARKSUITE_CLI_APP_SECRET", "vc_meeting_message_send_dryrun_secret")
+	t.Setenv("LARKSUITE_CLI_APP_ID", "vc_dryrun_test")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "vc_dryrun_secret")
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
 }

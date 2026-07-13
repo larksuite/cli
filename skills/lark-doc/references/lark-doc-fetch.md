@@ -17,8 +17,10 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --detail with-ids
 lark-cli docs +fetch --doc Z1Fj...tnAc --scope outline --max-depth 3
 
 # 按 block id 区间精读
-lark-cli docs +fetch --doc Z1Fj...tnAc \
-  --scope range --start-block-id blkA --end-block-id blkB --detail with-ids
+lark-cli docs +fetch --doc Z1Fj...tnAc --scope range --start-block-id blkA --end-block-id blkB --detail with-ids
+
+# URL 带 #share 选区锚点时自动局部读取
+lark-cli docs +fetch --doc 'docURL#share-anchor'
 
 # 读整个章节（以标题 id 为锚点，自动展开到下一个同级/更高级标题前）
 lark-cli docs +fetch --doc Z1Fj...tnAc \

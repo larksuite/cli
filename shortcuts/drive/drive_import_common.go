@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +29,8 @@ const (
 	driveImport500MBFileSizeLimit int64 = 500 * 1024 * 1024
 	driveImport600MBFileSizeLimit int64 = 600 * 1024 * 1024
 	driveImport800MBFileSizeLimit int64 = 800 * 1024 * 1024
+
+	driveImportConcurrentOperationHint = "This import conflict means another operation is running in the same Drive location. Run batch imports to the same folder/root or target bitable serially. Wait a few seconds before retrying each failed import; retry each failed item at most 3 times, then stop and report the conflict."
 )
 
 // driveImportExtToDocTypes defines which source file extensions can be imported
@@ -46,6 +49,8 @@ var driveImportExtToDocTypes = map[string][]string{
 	"base":     {"bitable"},
 	"pptx":     {"slides"},
 }
+
+var driveImportConcurrentOperationCodes = []int{232140101, 232140100, 233523001}
 
 // driveImportSpec contains the user-facing import inputs after normalization.
 type driveImportSpec struct {
@@ -427,11 +432,7 @@ func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveIm
 			return status, true, nil
 		}
 		if status.Failed() {
-			msg := strings.TrimSpace(status.JobErrorMsg)
-			if msg == "" {
-				msg = status.StatusLabel()
-			}
-			return status, false, errs.NewAPIError(errs.SubtypeServerError, "import failed with status %d: %s", status.JobStatus, msg)
+			return status, false, driveImportFailureError(status)
 		}
 	}
 	if !hadSuccessfulPoll && lastErr != nil {
@@ -439,4 +440,41 @@ func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveIm
 	}
 
 	return lastStatus, false, nil
+}
+
+func driveImportFailureError(status driveImportStatus) *errs.APIError {
+	msg := strings.TrimSpace(status.JobErrorMsg)
+	if msg == "" {
+		msg = status.StatusLabel()
+	}
+
+	apiErr := errs.NewAPIError(errs.SubtypeServerError, "import failed with status %d: %s", status.JobStatus, msg)
+	if code, ok := driveImportConcurrentOperationCode(msg); ok {
+		apiErr = apiErr.WithCode(code).WithRetryable().WithHint(driveImportConcurrentOperationHint)
+	}
+	return apiErr
+}
+
+func driveImportConcurrentOperationCode(msg string) (int, bool) {
+	for _, code := range driveImportConcurrentOperationCodes {
+		codeText := strconv.Itoa(code)
+		for idx := strings.Index(msg, codeText); idx >= 0; {
+			end := idx + len(codeText)
+			if (idx == 0 || !isASCIIDigit(msg[idx-1])) && (end == len(msg) || !isASCIIDigit(msg[end])) {
+				return code, true
+			}
+
+			nextStart := idx + 1
+			next := strings.Index(msg[nextStart:], codeText)
+			if next < 0 {
+				break
+			}
+			idx = nextStart + next
+		}
+	}
+	return 0, false
+}
+
+func isASCIIDigit(ch byte) bool {
+	return ch >= '0' && ch <= '9'
 }

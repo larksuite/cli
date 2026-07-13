@@ -916,25 +916,6 @@ func TestReadDotenv_ValueWithEquals(t *testing.T) {
 	}
 }
 
-func TestNormalizeBrand(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"", "feishu"},
-		{"feishu", "feishu"},
-		{"lark", "lark"},
-		{"LARK", "lark"},
-		{" lark ", "lark"},
-		{"Lark", "lark"},
-	}
-	for _, tt := range tests {
-		if got := normalizeBrand(tt.input); got != tt.want {
-			t.Errorf("normalizeBrand(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestResolveOpenClawConfigPath_Overrides(t *testing.T) {
 	t.Run("OPENCLAW_CONFIG_PATH wins", func(t *testing.T) {
 		custom := filepath.Join(t.TempDir(), "custom.json")

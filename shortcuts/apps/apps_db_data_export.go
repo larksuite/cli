@@ -47,7 +47,7 @@ var AppsDBDataExport = common.Shortcut{
 		{Name: "table", Desc: "source table", Required: true},
 		{Name: "output", Desc: "local output path; extension picks format .csv/.json/.sql (default: <table>.csv)"},
 		{Name: "limit", Type: "int", Default: "5000", Desc: "max rows to export (1..5000)"},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "source db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "source db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -75,10 +75,10 @@ var AppsDBDataExport = common.Shortcut{
 		return common.NewDryRunAPI().
 			GET(appDataExportPath(appID)).
 			Desc("Export Miaoda app table data (raw bytes)").
-			Params(map[string]interface{}{
-				"env": dbEnv(rctx), "table": strings.TrimSpace(rctx.Str("table")),
+			Params(dbEnvParams(rctx, map[string]interface{}{
+				"table":  strings.TrimSpace(rctx.Str("table")),
 				"format": format, "limit": rctx.Int("limit"),
-			})
+			}))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, err := requireAppID(rctx.Str("app-id"))
@@ -95,15 +95,18 @@ var AppsDBDataExport = common.Shortcut{
 		// total 查询失败不阻断导出——回退到按导出文件内容数行。
 		total, totalErr := queryExportTotal(rctx, appID, dbEnv(rctx), table)
 
+		exportQuery := larkcore.QueryParams{
+			"table":  []string{table},
+			"format": []string{format},
+			"limit":  []string{strconv.Itoa(rctx.Int("limit"))},
+		}
+		if env := dbEnv(rctx); env != "" {
+			exportQuery["env"] = []string{env}
+		}
 		resp, err := rctx.DoAPI(&larkcore.ApiReq{
-			HttpMethod: http.MethodGet,
-			ApiPath:    appDataExportPath(appID),
-			QueryParams: larkcore.QueryParams{
-				"env":    []string{dbEnv(rctx)},
-				"table":  []string{table},
-				"format": []string{format},
-				"limit":  []string{strconv.Itoa(rctx.Int("limit"))},
-			},
+			HttpMethod:  http.MethodGet,
+			ApiPath:     appDataExportPath(appID),
+			QueryParams: exportQuery,
 		})
 		if err != nil {
 			return withAppsHint(errs.NewNetworkError(errs.SubtypeNetworkTransport, "export request failed").WithCause(err).WithRetryable(), dbDataExportHint)
@@ -157,8 +160,11 @@ var AppsDBDataExport = common.Shortcut{
 // queryExportTotal 调 GetAppTableRecordList（page_size=1）取 total（符合条件的记录总数）。
 // 该接口与 +db-data-export 同为 spark:app:read scope，避免导出命令被迫升级到写权限。
 func queryExportTotal(rctx *common.RuntimeContext, appID, env, table string) (int, error) {
-	raw, err := rctx.CallAPITyped("GET", appTableRecordsPath(appID, table),
-		map[string]interface{}{"env": env, "page_size": 1}, nil)
+	params := map[string]interface{}{"page_size": 1}
+	if env != "" {
+		params["env"] = env
+	}
+	raw, err := rctx.CallAPITyped("GET", appTableRecordsPath(appID, table), params, nil)
 	if err != nil {
 		return 0, err
 	}

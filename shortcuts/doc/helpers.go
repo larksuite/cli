@@ -17,8 +17,9 @@ import (
 const docsSceneContextKey = "lark_cli_docs_scene"
 
 type documentRef struct {
-	Kind  string
-	Token string
+	Kind     string
+	Token    string
+	Fragment string
 }
 
 func parseDocumentRef(input string) (documentRef, error) {
@@ -28,13 +29,13 @@ func parseDocumentRef(input string) (documentRef, error) {
 	}
 
 	if token, ok := extractDocumentToken(raw, "/wiki/"); ok {
-		return documentRef{Kind: "wiki", Token: token}, nil
+		return documentRef{Kind: "wiki", Token: token, Fragment: extractDocumentFragment(raw)}, nil
 	}
 	if token, ok := extractDocumentToken(raw, "/docx/"); ok {
-		return documentRef{Kind: "docx", Token: token}, nil
+		return documentRef{Kind: "docx", Token: token, Fragment: extractDocumentFragment(raw)}, nil
 	}
 	if token, ok := extractDocumentToken(raw, "/doc/"); ok {
-		return documentRef{Kind: "doc", Token: token}, nil
+		return documentRef{Kind: "doc", Token: token, Fragment: extractDocumentFragment(raw)}, nil
 	}
 	if strings.Contains(raw, "://") {
 		return documentRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a docx URL/token or a wiki URL that resolves to docx", raw).WithParam("--doc")
@@ -60,6 +61,14 @@ func extractDocumentToken(raw, marker string) (string, bool) {
 		return "", false
 	}
 	return token, true
+}
+
+func extractDocumentFragment(raw string) string {
+	idx := strings.Index(raw, "#")
+	if idx < 0 {
+		return ""
+	}
+	return strings.TrimSpace(raw[idx+1:])
 }
 
 // doDocAPI executes an OpenAPI request against the docs_ai endpoints and returns

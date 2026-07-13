@@ -5,7 +5,7 @@
 ## 核心方法论 — Code-Act Loop
 通过自适应的 **Code-Act Loop** 驱动文档改写，而非固定模板式的工作流。每次任务都循环执行：
 1. **Plan（规划）** — 根据用户目标和文档当前状态，评估下一步该做什么
-2. **Execute（执行）** — 运行相应的 `lark-cli docs` 命令，或 **spawn** Agent 子任务并行推进
+2. **Execute（执行）** — 由主 Agent 自己运行 `lark-cli docs` 命令推进改写；仅画板渲染按需隔离到 SubAgent（见步骤二）
 3. **Observe（观察）** — 检查命令输出，验证正确性，确认内容是否满足用户目标
 4. **Iterate（迭代）** — 如需调整，回到 Plan 继续循环
 
@@ -23,33 +23,26 @@
    - 需要精确跨节区间 → `docs +fetch --scope range --start-block-id xxx --end-block-id yyy`（或 `--end-block-id -1` 读到末尾）
    - 用户只给了模糊关键词 → `docs +fetch --scope keyword --keyword xxx --context-before 1 --context-after 1 --detail with-ids`
    - 用户明确要改整篇 → `docs +fetch --detail with-ids`
-   - 详见 [`lark-doc-fetch.md`](../lark-doc-fetch.md) "意图引导：选择正确的 --scope"
+   - 详见 [`lark-doc-fetch.md`](../lark-doc-fetch.md) 中「选 `--scope`（读取范围）」小节
 2. 系统性评估：用户想改什么、现有文档风格是什么、哪些内容需要保留、哪些问题影响理解
-3. **画板意图识别**：逐章节扫描，按 `lark-doc-style.md`「画板意图识别」表判断哪些段落的信息适合用图表达。重要信息优先画板化，记录需要插图的章节（block ID）、推荐画板类型、mermaid/SVG路径和源内容片段
+3. **画板识别**：逐章节扫描，判断是否有段落用图明显比文字更易懂（流程 / 架构 / 时间线 / 对比 / 占比等，见 `lark-doc-style.md` 的画板原则）。默认用文字，只有确需图示才记录需要插图的章节（block ID）、推荐画板类型、mermaid/SVG路径和源内容片段
 4. 向用户简要说明改进计划（包含识别出的画板机会）
 
-### 步骤二：定向改写（并行 Agent）
+### 步骤二：定向改写（单 Agent 串行）
 
-5. **优先处理步骤一识别出的画板候选段落**：
-   参考 [lark-doc-whiteboard.md](../lark-doc-whiteboard.md)中的方式，插入图表画板。
-6. Spawn 内容改写 Agent 在不重叠的章节上并行改进，各 Agent 收到文档 token 和特定 block ID：
+5. **优先处理步骤一识别出的画板候选段落**：读取并按 [lark-doc-whiteboard.md](../lark-doc-whiteboard.md) 选型和插入；正文本身不交给 SubAgent
+6. 由主 Agent **顺序逐节**改写，**不按章节拆给并行 Agent**，避免上下文割裂、重复矛盾和全文级约束失效：
    - 沿用或轻微调整已有文档风格，除非用户要求彻底重排版
-   - 优先通过重写段落、调整标题、拆分列表或补充小标题提升可读性
-   - 富 block 是可选表达手段，不因固定比例而添加；画板类需求只走第 5 步
+   - 优先通过重写段落、调整标题、补充小标题提升可读性；叙述内容保持成段，**不要默认改成列表**，只有确属并列要点 / 步骤才用列表（见 `lark-doc-style.md`）
+   - 富 block 是可选表达手段，不因固定比例而添加，取舍遵循 `lark-doc-style.md` 的写作原则；画板类需求只走第 5 步
 
 ### 步骤三：验证（串行）
 
 7. 获取更新后文档局部内容，检查是否符合用户目标和已有风格
-8. 检查是否满足用户目标并保留原有关键内容；如仍有明显问题则定向修正，向用户呈现结果
+8. 检查是否满足用户目标并保留原有关键内容。再按 `lark-doc-style.md` 的「写完自检」快速核对，发现问题则定向修正
 
-## Agent 子任务要求
+### 步骤四：专项校验（按需执行）
 
-内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark-doc-xml.md` 和 `lark-doc-style.md` 路径、用户目标/风格要求、具体的 `docs +update` command 和 `--block-id`。
+9. 仅当用户预期需要校验字数时，才读取并执行 [`lark-doc-word-stat.md`](../lark-doc-word-stat.md) 的「字数遵循校验」；否则跳过本项，不读取该 workflow。若执行了专项校验，向用户呈现结果
 
-Mermaid 图由主 Agent 直接插入 `<whiteboard type="mermaid">...</whiteboard>`，无需 SubAgent。
-
-SVG SubAgent 必须收到：文档 token、插入位置（标题/block ID）、图表目标、源内容片段、`lark-doc-xml.md` 路径，以及[lark-doc-whiteboard.md](../lark-doc-whiteboard.md) 中的 "SVG 设计 Workflow" 指南。它只负责插入一个 `<whiteboard type="svg">...</whiteboard>`，不改其他正文，也不读取 `lark-whiteboard`。
-
-已有画板更新 SubAgent 必须收到：board_token、图表目标、推荐画板类型、源内容片段、[`../../../lark-whiteboard/SKILL.md`](../../../lark-whiteboard/SKILL.md) 路径。它只负责写入画板，不改文档正文。
-
-**上下文节省提示**：Agent 如需在自己负责的章节内重新读取内容，优先用 `docs +fetch --scope section --start-block-id <章节标题id>`（自动覆盖整节），或 `--scope range --start-block-id xxx --end-block-id yyy` 精确区间，只拉自己的章节，不要重复拉全文。
+**上下文节省提示**：主 Agent 改某节时如需重新读取，优先用 `docs +fetch --scope section --start-block-id <章节标题id>`（自动覆盖整节），或 `--scope range --start-block-id xxx --end-block-id yyy` 精确区间，只拉当前章节，不要重复拉全文。

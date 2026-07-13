@@ -12,6 +12,16 @@ metadata:
 
 妙搭应用属于用户资产。默认用 `--as user`；认证、scope、exit-10、高风险确认、`_notice` 等通用处理只读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不要在本 skill 里复制。妙搭应用有三条开发路径：**本地全栈**（拉源码本地写）/ **HTML 托管**（发布静态产物）/ **云端会话**（妙搭 AI 生成）。
 
+## 身份与一次性授权
+
+妙搭应用是用户的个人资产，统一 `--as user`（见开头）。**首次操作前先一次性把本域 scope 全拿到**，避免每条命令首次跑都触发新一轮授权，或未授权直接打到 openapi 导致服务端报错：
+
+```bash
+lark-cli auth login --domain apps
+```
+
+因缺权限失败（`error.subtype == "missing_scope"`）时的通用处理见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，同样按 `--domain apps` 授权。
+
 ## 意图路由
 
 按具体操作查命令（开发路径先用下方「选择开发路径」判定表定好再进来取命令）：
@@ -20,6 +30,7 @@ metadata:
 |---|---|---|
 | 创建**新**应用资产、拿 app_id | `+create` | [`lark-apps-create.md`](references/lark-apps-create.md) |
 | 找已有 app_id、按名字过滤应用 | `+list --keyword <name>` | [`lark-apps-list.md`](references/lark-apps-list.md) |
+| 查单个应用详情（类型、名称、发布状态等） | `+get --app-id <app_id>` | [`lark-apps-get.md`](references/lark-apps-get.md) |
 | 改应用名或描述 | `+update` | [`lark-apps-update.md`](references/lark-apps-update.md) |
 | 发布本地 `index.html` 或静态目录为可访问 URL | `+html-publish` | [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) |
 | 开发已有应用 / 初始化本地仓库（开发方式已定为本地后；先解析 app_id，勿 `+create` 新建） | `+init`（或手动 `+git-credential-init` + 原生 git）。**执行前必读** [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)，含端到端流程和领域规则 | [`lark-apps-init.md`](references/lark-apps-init.md), [`lark-apps-git-credential.md`](references/lark-apps-git-credential.md) |

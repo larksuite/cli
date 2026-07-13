@@ -75,13 +75,7 @@ func remoteMetaURL(version string) string {
 	if testMetaURL != "" {
 		return testMetaURL
 	}
-	var base string
-	switch configuredBrand {
-	case core.BrandLark:
-		base = "https://open.larksuite.com/api/tools/open/api_definition"
-	default:
-		base = "https://open.feishu.cn/api/tools/open/api_definition"
-	}
+	base := core.ResolveEndpoints(configuredBrand).Open + "/api/tools/open/api_definition"
 	q := "protocol=meta&client_version=" + url.QueryEscape(build.Version)
 	if version != "" {
 		q += "&data_version=" + url.QueryEscape(version)

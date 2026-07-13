@@ -1,9 +1,9 @@
 # Mail CLI E2E Coverage
 
 ## Metrics
-- Denominator: 63 leaf commands
-- Covered: 14
-- Coverage: 22.2%
+- Denominator: 65 leaf commands
+- Covered: 16
+- Coverage: 24.6%
 
 ## Summary
 - TestMail_DraftLifecycleWorkflowAsUser: proves a self-contained user draft workflow across `mail user_mailboxes profile`, `mail +draft-create`, `mail user_mailbox.drafts list`, `mail user_mailbox.drafts get`, `mail +draft-edit`, and `mail user_mailbox.drafts delete`; key `t.Run(...)` proof points are `get mailbox profile as user`, `create draft with shortcut as user`, `list draft as user`, `get created draft as user`, `inspect created draft as user`, `update draft subject with shortcut as user`, `inspect updated draft as user`, `delete draft as user`, and `verify draft removed from list as user`.
@@ -20,6 +20,8 @@
 | ✓ | mail +draft-send | shortcut | mail_draft_send_workflow_test.go::TestMail_DraftSendWorkflowAsUser/send draft with shortcut as user; mail_draft_send_dryrun_test.go::TestMail_DraftSendDryRun | `--draft-id`; `--mailbox me`; `--yes`; dry-run repeated/comma-separated `--draft-id` | sends a self-addressed draft through the batch shortcut and locks dry-run request shape |
 | ✓ | mail +forward | shortcut | mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/forward received message with shortcut as user; mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/inspect forward draft as user | `--message-id`; `--to`; `--body`; `--plain-text` | uses self-generated inbox message as source and inspects forwarded draft projection |
 | ✓ | mail +message | shortcut | mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/get sent message as user; mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/get received message as user | `--mailbox me`; `--message-id` | verifies both SENT and INBOX copies after self-send |
+| ✓ | mail +message-modify | shortcut | shortcuts/mail/mail_message_manage_test.go::TestMessageModify_DryRunShowsPlanWithoutValidationGET; shortcuts/mail/mail_message_manage_test.go::TestMessageModify_BatchesAndAggregatesPartialFailure | `--message-ids`; `--add-label-ids`; `--remove-label-ids`; `--add-folder`; `--dry-run` | unit/dry-run coverage locks validation, batching, request shape, and partial failure aggregation; live E2E needs controlled disposable messages/labels/folders |
+| ✓ | mail +message-trash | shortcut | shortcuts/mail/mail_message_manage_test.go::TestMessageTrash_RequiresYesAndBatches | `--message-ids`; `--yes`; `--dry-run` | unit coverage locks high-risk confirmation and batch_trash request shape; live E2E needs controlled disposable messages |
 | ✓ | mail +messages | shortcut | mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/get both self sent messages as user | `--mailbox me`; `--message-ids` | batch reads both sent and received message copies |
 | ✓ | mail +reply | shortcut | mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/reply to received message with shortcut as user; mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/inspect reply draft as user | `--message-id`; `--body`; `--plain-text` | creates reply draft from self-generated inbox message and inspects quoted content |
 | ✕ | mail +reply-all | shortcut |  | none | self-send traffic leaves no stable non-self recipient set for deterministic reply-all assertions |

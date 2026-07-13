@@ -4,29 +4,32 @@
 package apps
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsHTMLPublish packs --path as tar.gz and uploads + publishes via one multipart POST.
+// AppsHTMLPublish packs --path as tar.gz and publishes an HTML app.
 var AppsHTMLPublish = common.Shortcut{
 	Service:     appsService,
 	Command:     "+html-publish",
-	Description: "Publish HTML to an app (single multipart POST returns the access URL)",
+	Description: "Publish HTML to an app (returns url or release_id depending on app type)",
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./dist",
 		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./site --dry-run",
 	},
-	Scopes:    []string{"spark:app:write"},
+	Scopes:    []string{"spark:app:write", "spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
@@ -70,7 +73,7 @@ var AppsHTMLPublish = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		path := strings.TrimSpace(rctx.Str("path"))
 		dry := common.NewDryRunAPI()
-		dry.Desc("Upload tar.gz + publish HTML (multipart, returns url)")
+		dry.Desc("Pack tar.gz and publish HTML app (actual API path determined at runtime by app type; returns url or release_id)")
 		dry.POST(fmt.Sprintf("%s/apps/%s/upload_and_release_html_code", apiBasePath, validate.EncodePathSegment(appID))).
 			Set("content_type", "multipart/form-data")
 
@@ -119,14 +122,26 @@ var AppsHTMLPublish = common.Shortcut{
 			AppID: strings.TrimSpace(rctx.Str("app-id")),
 			Path:  strings.TrimSpace(rctx.Str("path")),
 		}
-		client := appsHTMLPublishAPI{runtime: rctx}
-		out, err := runHTMLPublish(ctx, rctx.FileIO(), client, spec)
+
+		appType := queryAppType(ctx, rctx, spec.AppID)
+
+		var out map[string]interface{}
+		var err error
+		if appType == "modern_html" {
+			out, err = runHTMLPublishTOS(ctx, rctx, spec)
+		} else {
+			client := appsHTMLPublishAPI{runtime: rctx}
+			out, err = runHTMLPublish(ctx, rctx.FileIO(), client, spec)
+		}
 		if err != nil {
 			return err
 		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			if url, ok := out["url"].(string); ok && url != "" {
 				fmt.Fprintf(w, "url: %s\n", url)
+			}
+			if rid, ok := out["release_id"].(string); ok && rid != "" {
+				fmt.Fprintf(w, "release_id: %s\n", rid)
 			}
 		})
 		return nil
@@ -214,8 +229,11 @@ func ensureIndexHTML(candidates []htmlPublishCandidate) error {
 		WithHint("index.html is the app entrypoint; for a directory put index.html at the root, or pass a single file named index.html")
 }
 
-func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
-	candidates, err := walkHTMLPublishCandidates(fio, spec.Path)
+// prepareHTMLPublishTarball validates candidates under path and builds a
+// tar.gz payload ready for upload. Shared by runHTMLPublish and
+// runHTMLPublishTOS.
+func prepareHTMLPublishTarball(fio fileio.FileIO, path string) (*htmlPublishTarball, error) {
+	candidates, err := walkHTMLPublishCandidates(fio, path)
 	if err != nil {
 		return nil, err
 	}
@@ -238,11 +256,18 @@ func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPu
 	if err != nil {
 		return nil, err
 	}
-
 	if tarball.Size > maxHTMLPublishTarballBytes {
 		return nil, appsValidationParamError("--path",
 			"packed tar.gz size %d bytes exceeds %d bytes limit", tarball.Size, maxHTMLPublishTarballBytes).
 			WithHint("reduce --path contents, remove unrelated large files, then retry")
+	}
+	return tarball, nil
+}
+
+func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
+	tarball, err := prepareHTMLPublishTarball(fio, spec.Path)
+	if err != nil {
+		return nil, err
 	}
 
 	resp, err := publisher.HTMLPublish(ctx, spec.AppID, tarball)
@@ -255,4 +280,75 @@ func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPu
 		out["url"] = resp.URL
 	}
 	return out, nil
+}
+
+// runHTMLPublishTOS handles the modern_html publish path: validate → tar.gz →
+// call pre_release to get TOS upload URL → upload tar.gz to TOS → return
+// tos_path for +release-create --tos-path.
+func runHTMLPublishTOS(ctx context.Context, rctx *common.RuntimeContext, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
+	tarball, err := prepareHTMLPublishTarball(rctx.FileIO(), spec.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 1: call pre_release to get TOS upload URL and tos_path.
+	preReleasePath := fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, validate.EncodePathSegment(spec.AppID))
+	preData, err := rctx.CallAPITyped("GET", preReleasePath, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	kvs, _ := preData["kvs"].([]interface{})
+	if len(kvs) == 0 {
+		return nil, appsSubprocessEnvelopeError("pre_release returned no kvs")
+	}
+	kvm := make(map[string]string, len(kvs))
+	for _, item := range kvs {
+		kv, _ := item.(map[string]interface{})
+		if kv == nil {
+			continue
+		}
+		k, _ := kv["key"].(string)
+		v, _ := kv["value"].(string)
+		if k != "" {
+			kvm[k] = v
+		}
+	}
+	uploadURL := kvm["upload_url"]
+	tosPath := kvm["tos_path"]
+	if uploadURL == "" || tosPath == "" {
+		return nil, appsSubprocessEnvelopeError("pre_release kvs missing upload_url or tos_path")
+	}
+
+	// Step 2: upload tar.gz to TOS via presigned URL (bypasses Lark gateway).
+	//nolint:forbidigo // presigned TOS upload bypasses the Lark gateway — raw http is required; not a Lark API call, so RuntimeContext.DoAPI does not apply.
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, uploadURL, bytes.NewReader(tarball.Body))
+	if err != nil {
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "build TOS upload request").WithCause(err)
+	}
+	req.ContentLength = tarball.Size
+	req.Header.Set("Content-Type", "application/gzip")
+	resp, err := newFileTransferClient().Do(req) //nolint:forbidigo // presigned TOS upload, see above.
+	if err != nil {
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "TOS upload failed").WithCause(err).WithRetryable()
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		if resp.StatusCode >= 500 {
+			return nil, errs.NewNetworkError(errs.SubtypeNetworkServer, "TOS upload failed: HTTP %d", resp.StatusCode).WithRetryable()
+		}
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "TOS upload failed: HTTP %d", resp.StatusCode)
+	}
+
+	// Step 3: call release-create with tos_path to trigger deployment.
+	releasePath := fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(spec.AppID))
+	releaseData, err := rctx.CallAPITyped("POST", releasePath, nil, map[string]interface{}{
+		"tos_path": tosPath,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"release_id": common.GetString(releaseData, "release_id"),
+	}, nil
 }

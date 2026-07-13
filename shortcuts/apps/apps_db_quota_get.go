@@ -29,7 +29,7 @@ var AppsDBQuotaGet = common.Shortcut{
 	HasFormat: true,
 	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -41,14 +41,14 @@ var AppsDBQuotaGet = common.Shortcut{
 		return common.NewDryRunAPI().
 			GET(appDbQuotaPath(appID)).
 			Desc("Get Miaoda app database storage usage").
-			Params(map[string]interface{}{"env": dbEnv(rctx)})
+			Params(dbEnvParams(rctx, map[string]interface{}{}))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, err := requireAppID(rctx.Str("app-id"))
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPITyped("GET", appDbQuotaPath(appID), map[string]interface{}{"env": dbEnv(rctx)}, nil)
+		data, err := rctx.CallAPITyped("GET", appDbQuotaPath(appID), dbEnvParams(rctx, map[string]interface{}{}), nil)
 		if err != nil {
 			return withAppsHint(err, appIDListHint)
 		}

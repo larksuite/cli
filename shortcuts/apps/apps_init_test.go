@@ -20,44 +20,18 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // testRuntimeWithDir builds a *common.RuntimeContext whose backing cobra command
-// has string flags "dir" (=dirFlag) and "template" (=defaultTemplate) registered,
-// mirroring how +init reads them at runtime via rctx.Str.
+// has a string flag "dir" (=dirFlag) registered, mirroring how +init reads it
+// at runtime via rctx.Str.
 func testRuntimeWithDir(t *testing.T, dirFlag string) *common.RuntimeContext {
 	t.Helper()
 	cmd := &cobra.Command{Use: "init"}
 	cmd.Flags().String("dir", dirFlag, "")
-	cmd.Flags().String("template", defaultTemplate, "")
 	return common.TestNewRuntimeContext(cmd, nil)
-}
-
-// testRuntimeWithTemplate builds a *common.RuntimeContext with "dir" and
-// "template" string flags registered, mirroring +init's runtime flag set. The
-// template flag is registered with an empty default (matching the real flag,
-// which no longer carries Default: defaultTemplate); pass tpl="" to model an
-// omitted --template and a non-empty tpl to model an explicit one.
-func testRuntimeWithTemplate(t *testing.T, dirFlag, tpl string) *common.RuntimeContext {
-	t.Helper()
-	cmd := &cobra.Command{Use: "init"}
-	cmd.Flags().String("dir", dirFlag, "")
-	cmd.Flags().String("template", tpl, "")
-	return common.TestNewRuntimeContext(cmd, nil)
-}
-
-func TestResolveTemplate(t *testing.T) {
-	if got := resolveTemplate(testRuntimeWithTemplate(t, "", "foo"), "app_x"); got != "foo" {
-		t.Errorf("explicit --template = %q, want foo", got)
-	}
-	if got := resolveTemplate(testRuntimeWithTemplate(t, "", ""), "app_x"); got != defaultTemplate {
-		t.Errorf("omitted --template = %q, want fallback %q", got, defaultTemplate)
-	}
-	// Whitespace-only --template is treated as omitted -> fallback.
-	if got := resolveTemplate(testRuntimeWithTemplate(t, "", "   "), "app_x"); got != defaultTemplate {
-		t.Errorf("whitespace --template = %q, want fallback %q", got, defaultTemplate)
-	}
 }
 
 func TestResolveTargetPath(t *testing.T) {
@@ -261,12 +235,12 @@ func TestRunScaffold_EmptyRepo(t *testing.T) {
 		t.Run("ls="+ls, func(t *testing.T) {
 			f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: ls}}}
 			withFakeRunner(t, f)
-			kind, err := runScaffold(context.Background(), t.TempDir(), "app_x", "nestjs-react-fullstack")
+			kind, err := runScaffold(context.Background(), t.TempDir(), "app_x", "", "")
 			if err != nil || kind != "init" {
 				t.Fatalf("ls=%q kind=%q err=%v, want init", ls, kind, err)
 			}
 			c := findCall(f.calls, "npx", "-y")
-			if c == nil || !containsAll(c, "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--template", "nestjs-react-fullstack", "--app-id", "app_x") {
+			if c == nil || !containsAll(c, "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--app-type", "full_stack", "--app-id", "app_x") {
 				t.Errorf("app init not invoked with expected args: %v", f.calls)
 			}
 			if c != nil && containsAll(c, "--local") {
@@ -280,7 +254,7 @@ func TestRunScaffold_NonEmpty_SyncsWhenNoSteering(t *testing.T) {
 	dir := t.TempDir() // no steering dir, no meta.json
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: "src/x.ts\n"}}}
 	withFakeRunner(t, f)
-	kind, err := runScaffold(context.Background(), dir, "app_x", "nestjs-react-fullstack")
+	kind, err := runScaffold(context.Background(), dir, "app_x", "", "")
 	if err != nil || kind != "upgrade" {
 		t.Fatalf("kind=%q err=%v, want upgrade", kind, err)
 	}
@@ -294,12 +268,24 @@ func TestRunScaffold_NonEmpty_SyncsWhenNoSteering(t *testing.T) {
 	}
 }
 
+func TestRunScaffold_NonEmpty_ModernHTML_SkipsSyncEvenWithoutSteering(t *testing.T) {
+	dir := t.TempDir() // no steering dir → sync would run for non-modern_html
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: "src/x.ts\n"}}}
+	withFakeRunner(t, f)
+	if _, err := runScaffold(context.Background(), dir, "app_x", "modern_html", ""); err != nil {
+		t.Fatal(err)
+	}
+	if findCallArg(f.calls, "npx", "skills", "sync") != nil {
+		t.Error("skills sync must be skipped for modern_html regardless of steering dir")
+	}
+}
+
 func TestRunScaffold_NonEmpty_SkipsSyncWhenSteeringExists(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, steeringRelPath), 0o755)
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: "src/x.ts\n"}}}
 	withFakeRunner(t, f)
-	if _, err := runScaffold(context.Background(), dir, "app_x", "nestjs-react-fullstack"); err != nil {
+	if _, err := runScaffold(context.Background(), dir, "app_x", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if findCallArg(f.calls, "npx", "skills", "sync") != nil {
@@ -313,7 +299,7 @@ func TestRunScaffold_AppInitFailure(t *testing.T) {
 		"npx -y":       {stderr: "boom", err: errors.New("exit 1")},
 	}}
 	withFakeRunner(t, f)
-	if _, err := runScaffold(context.Background(), t.TempDir(), "app_x", "nestjs-react-fullstack"); err == nil {
+	if _, err := runScaffold(context.Background(), t.TempDir(), "app_x", "", ""); err == nil {
 		t.Error("app init failure must propagate")
 	}
 }
@@ -342,13 +328,13 @@ func TestAppsInit_EmptyRepo_EndToEnd(t *testing.T) {
 	if _, ok := data["npx_skipped"]; ok {
 		t.Error("npx_skipped must be removed")
 	}
-	// --template is omitted here, so resolveTemplate falls back to
-	// defaultTemplate and `app init` must still receive --template nestjs-react-fullstack.
+	// appType is empty, so scaffoldInitArgs falls back to "full_stack"
+	// and `app init` must still receive --app-type full_stack.
 	c := findCall(f.calls, "npx", "-y")
 	if c == nil {
 		t.Error("npx scaffold not invoked")
-	} else if !containsAll(c, "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--template", defaultTemplate, "--app-id", "app_x") {
-		t.Errorf("app init missing expected --template fallback args: %v", c)
+	} else if !containsAll(c, "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--app-type", "full_stack", "--app-id", "app_x") {
+		t.Errorf("app init missing expected --app-type fallback args: %v", c)
 	} else if containsAll(c, "--local") {
 		t.Errorf("app init must NOT carry --local: %v", c)
 	}
@@ -751,22 +737,6 @@ func newAppsExecuteFactoryWithStderr(t *testing.T) (*cmdutil.Factory, *bytes.Buf
 }
 
 func TestAppsInit_Req1_Wording(t *testing.T) {
-	var tmpl *common.Flag
-	for i := range AppsInit.Flags {
-		if AppsInit.Flags[i].Name == "template" {
-			tmpl = &AppsInit.Flags[i]
-		}
-	}
-	if tmpl == nil {
-		t.Fatal("--template flag missing")
-	}
-	if strings.Contains(strings.ToLower(tmpl.Desc), "scaffold") {
-		t.Errorf("--template Desc still mentions scaffold: %q", tmpl.Desc)
-	}
-	if !strings.Contains(strings.ToLower(tmpl.Desc), "code-init") {
-		t.Errorf("--template Desc should use code-init wording: %q", tmpl.Desc)
-	}
-
 	// The --dry-run output is a flat object (DryRunAPI marshals to top-level keys
 	// description/scaffold/api/...), NOT wrapped in {"data":...}, so parse stdout
 	// directly rather than via parseEnvelopeData.
@@ -787,9 +757,8 @@ func TestAppsInit_Req1_Wording(t *testing.T) {
 		t.Error("dry-run must keep machine-contract key `scaffold`")
 	} else if !strings.Contains(scaffold, "skills sync --local") {
 		t.Errorf("dry-run scaffold string must show --local on skills sync: %q", scaffold)
-	} else if strings.Contains(scaffold, "app init --template nestjs-react-fullstack --app-id app_x --local") ||
-		strings.Contains(scaffold, "app sync --local") {
-		t.Errorf("dry-run scaffold string must NOT show --local on app init / app sync: %q", scaffold)
+	} else if strings.Contains(scaffold, "app sync --local") {
+		t.Errorf("dry-run scaffold string must NOT show --local on app sync: %q", scaffold)
 	}
 
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{
@@ -1250,7 +1219,7 @@ func TestRunScaffold_NonEmpty_SyncFailure(t *testing.T) {
 		"git ls-files": {stdout: "src/x.ts\n"},
 		"npx -y":       {err: errors.New("sync boom")},
 	}})
-	if _, err := runScaffold(context.Background(), t.TempDir(), "app_x", "tpl"); err == nil {
+	if _, err := runScaffold(context.Background(), t.TempDir(), "app_x", "", ""); err == nil {
 		t.Error("npx app sync failure must surface as an error")
 	}
 }
@@ -1630,7 +1599,7 @@ func TestRunScaffold_SubprocessFailureIsExternalTool(t *testing.T) {
 		"git ls-files": {stderr: "fatal: not a git repository", err: cause},
 	}}
 	withFakeRunner(t, f)
-	_, err := runScaffold(context.Background(), t.TempDir(), "app_x", "nestjs-react-fullstack")
+	_, err := runScaffold(context.Background(), t.TempDir(), "app_x", "", "")
 	if err == nil {
 		t.Fatalf("expected error from failing git subprocess")
 	}
@@ -1643,5 +1612,370 @@ func TestRunScaffold_SubprocessFailureIsExternalTool(t *testing.T) {
 	}
 	if !errors.Is(err, cause) {
 		t.Fatalf("cause chain not preserved: %v", err)
+	}
+}
+
+func TestRunScaffold_HtmlPassesTemplate(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: ""}}}
+	withFakeRunner(t, f)
+	kind, err := runScaffold(context.Background(), t.TempDir(), "app_x", "html", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if kind != scaffoldKindInit {
+		t.Errorf("kind = %q, want %q", kind, scaffoldKindInit)
+	}
+	c := findCall(f.calls, "npx", "-y")
+	if c == nil {
+		t.Fatal("npx not called")
+	}
+	if !containsAll(c, "--app-type", "html") {
+		t.Errorf("expected --app-type html in args: %v", c)
+	}
+}
+
+func TestRunScaffold_ModernHtmlPassesTemplate(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: ""}}}
+	withFakeRunner(t, f)
+	kind, err := runScaffold(context.Background(), t.TempDir(), "app_x", "modern_html", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if kind != scaffoldKindInit {
+		t.Errorf("kind = %q, want %q", kind, scaffoldKindInit)
+	}
+	c := findCall(f.calls, "npx", "-y")
+	if c == nil {
+		t.Fatal("npx not called")
+	}
+	if !containsAll(c, "--app-type", "modern_html") {
+		t.Errorf("expected --app-type modern_html in args: %v", c)
+	}
+}
+
+func TestRunScaffold_EmptyAppTypeFallback(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: ""}}}
+	withFakeRunner(t, f)
+	kind, err := runScaffold(context.Background(), t.TempDir(), "app_x", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if kind != scaffoldKindInit {
+		t.Errorf("kind = %q, want %q", kind, scaffoldKindInit)
+	}
+	c := findCall(f.calls, "npx", "-y")
+	if c == nil {
+		t.Fatal("npx not called")
+	}
+	if !containsAll(c, "--app-type", "full_stack") {
+		t.Errorf("expected --app-type full_stack in args: %v", c)
+	}
+}
+
+func TestRunScaffold_FullStackPassesTemplate(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: ""}}}
+	withFakeRunner(t, f)
+	kind, err := runScaffold(context.Background(), t.TempDir(), "app_x", "full_stack", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if kind != scaffoldKindInit {
+		t.Errorf("kind = %q, want %q", kind, scaffoldKindInit)
+	}
+	c := findCall(f.calls, "npx", "-y")
+	if c == nil {
+		t.Fatal("npx not called")
+	}
+	if !containsAll(c, "--app-type", "full_stack") {
+		t.Errorf("expected --app-type full_stack in args: %v", c)
+	}
+}
+
+func TestScaffoldInitArgs_WithAppType(t *testing.T) {
+	args := scaffoldInitArgs("modern_html", "app_x", "")
+	if !containsAll(args, "--app-type", "modern_html", "--app-id", "app_x") {
+		t.Errorf("expected --app-type modern_html --app-id app_x, got %v", args)
+	}
+	// modern_html skips dependency install.
+	if !containsAll(args, "--skip-install") {
+		t.Errorf("expected --skip-install for modern_html, got %v", args)
+	}
+	for _, a := range args {
+		if a == "--source-path" {
+			t.Errorf("--source-path must not appear when sourcePath is empty: %v", args)
+		}
+	}
+}
+
+func TestPolicyForAppType(t *testing.T) {
+	// modern_html decouples all control points: skip install, env-pull, skills sync.
+	if p := policyForAppType("modern_html"); !p.skipInstall || !p.skipEnvPull || !p.skipSkillsSync {
+		t.Errorf("modern_html policy = %+v, want all skip flags set", p)
+	}
+	// Unlisted types (including "") get the zero-value policy: everything runs.
+	for _, at := range []string{"full_stack", "", "backend"} {
+		if p := policyForAppType(at); p.skipInstall || p.skipEnvPull || p.skipSkillsSync {
+			t.Errorf("policy for %q = %+v, want zero value", at, p)
+		}
+	}
+}
+
+func TestScaffoldInitArgs_SkipInstallOnlyForModernHTML(t *testing.T) {
+	// Non-modern_html types run the install step (no --skip-install).
+	for _, at := range []string{"full_stack", "", "backend"} {
+		args := scaffoldInitArgs(at, "app_x", "")
+		for _, a := range args {
+			if a == "--skip-install" {
+				t.Errorf("--skip-install must not appear for app-type %q: %v", at, args)
+			}
+		}
+	}
+}
+
+func TestScaffoldInitArgs_EmptyFallback(t *testing.T) {
+	args := scaffoldInitArgs("", "app_x", "")
+	if !containsAll(args, "--app-type", "full_stack", "--app-id", "app_x") {
+		t.Errorf("expected --app-type full_stack fallback, got %v", args)
+	}
+}
+
+func TestScaffoldInitArgs_WithSourcePath(t *testing.T) {
+	args := scaffoldInitArgs("modern_html", "app_x", "/path/to/src")
+	if !containsAll(args, "--app-type", "modern_html", "--app-id", "app_x", "--source-path", "/path/to/src") {
+		t.Errorf("expected --source-path /path/to/src, got %v", args)
+	}
+}
+
+// configSetValue finds a `git config <key> <value>` SET call (not a `--get`)
+// in the recorded fake calls and returns its value.
+func configSetValue(calls [][]string, key string) (string, bool) {
+	for _, c := range calls {
+		if len(c) >= 5 && c[1] == "git" && c[2] == "config" && c[3] == key {
+			return c[4], true
+		}
+	}
+	return "", false
+}
+
+func TestEnsureGitIdentity_SetsDefaultsWhenUnset(t *testing.T) {
+	f := &fakeCommandRunner{} // no "git config" result → `--get` returns empty stdout
+	withFakeRunner(t, f)
+	if err := ensureGitIdentity(context.Background(), "/repo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v, ok := configSetValue(f.calls, "user.name"); !ok || v != defaultGitUserName {
+		t.Errorf("user.name set = (%q,%v), want %q", v, ok, defaultGitUserName)
+	}
+	if v, ok := configSetValue(f.calls, "user.email"); !ok || v != defaultGitUserEmail {
+		t.Errorf("user.email set = (%q,%v), want %q", v, ok, defaultGitUserEmail)
+	}
+}
+
+func TestEnsureGitIdentity_RespectsExisting(t *testing.T) {
+	// `git config --get` returns a value → identity resolvable, nothing is set.
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"git config": {stdout: "Existing Dev\n"},
+	}}
+	withFakeRunner(t, f)
+	if err := ensureGitIdentity(context.Background(), "/repo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := configSetValue(f.calls, "user.name"); ok {
+		t.Error("user.name must not be overwritten when already configured")
+	}
+	if _, ok := configSetValue(f.calls, "user.email"); ok {
+		t.Error("user.email must not be overwritten when already configured")
+	}
+}
+
+func TestEnsureGitIdentity_SetFailurePropagates(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"git config": {stderr: "boom", err: errors.New("exit 1")},
+	}}
+	withFakeRunner(t, f)
+	if err := ensureGitIdentity(context.Background(), "/repo"); err == nil {
+		t.Error("expected error when git config set fails")
+	}
+}
+
+func TestAppsInit_WithAppType_FreshClone(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"credential-init": credInitOK("http://u:t@h/app_typed.git"),
+		"git clone":       {},
+		"git checkout":    {},
+		"git ls-files":    {stdout: ""},
+		"git status":      {stdout: " A src/app.ts\n"},
+	}}
+	withFakeRunner(t, f)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+
+	// Register a meta mock so queryAppType returns "modern_html"
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_typed",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":   "app_typed",
+					"app_type": "MODERN_HTML",
+				},
+			},
+		},
+	})
+
+	dir := relCloneDir(t)
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_typed", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := parseEnvelopeData(t, stdout)
+	if data["app_type"] != "modern_html" {
+		t.Errorf("app_type = %v, want modern_html", data["app_type"])
+	}
+	// Verify the scaffold used --app-type modern_html
+	c := findCall(f.calls, "npx", "-y")
+	if c == nil {
+		t.Fatal("npx not called")
+	}
+	if !containsAll(c, "--app-type", "modern_html") {
+		t.Errorf("expected --app-type modern_html, got %v", c)
+	}
+}
+
+func TestAppsInit_ModernHtml_SkipsEnvPull(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"credential-init": credInitOK("https://git.test/app_mh.git"),
+		"git clone":       {},
+		"git checkout":    {},
+		"git ls-files":    {stdout: ""},
+		"npx -y":          {},
+		"git status":      {stdout: ""},
+	}}
+	withFakeRunner(t, f)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_mh",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":   "app_mh",
+					"app_type": "MODERN_HTML",
+				},
+			},
+		},
+	})
+
+	dir := relCloneDir(t)
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_mh", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := parseEnvelopeData(t, stdout)
+	if data["env_pull_skipped"] != true {
+		t.Errorf("env_pull_skipped = %v, want true", data["env_pull_skipped"])
+	}
+	if data["env_pulled"] != false {
+		t.Errorf("env_pulled = %v, want false", data["env_pulled"])
+	}
+	// Verify env-pull was NOT called
+	for _, c := range f.calls {
+		if len(c) >= 3 && c[2] == "apps" && len(c) >= 4 && c[3] == "+env-pull" {
+			t.Fatal("env-pull should not be called for modern_html")
+		}
+	}
+}
+
+func TestAppsInit_AlreadyInitialized_ModernHtml_SkipsEnvPull(t *testing.T) {
+	dir := relCloneDir(t)
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(abs, ".spark"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(abs, metaRelPath), []byte(`{"app_id":"app_mh2"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeCommandRunner{}
+	withFakeRunner(t, f)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_mh2",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":   "app_mh2",
+					"app_type": "MODERN_HTML",
+				},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_mh2", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := parseEnvelopeData(t, stdout)
+	if data["scaffold"] != "already_initialized" {
+		t.Errorf("scaffold = %v, want already_initialized", data["scaffold"])
+	}
+	if data["env_pull_skipped"] != true {
+		t.Errorf("env_pull_skipped = %v, want true", data["env_pull_skipped"])
+	}
+	if len(f.calls) != 0 {
+		t.Errorf("no commands should be called for already-initialized modern_html, got %v", f.calls)
+	}
+}
+
+func TestAppsInit_WithAppType_AlreadyInitialized(t *testing.T) {
+	dir := relCloneDir(t)
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(abs, ".spark"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(abs, metaRelPath), []byte(`{"app_id":"app_typed2"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	envFile := filepath.Join(abs, ".env.local")
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{"env-pull": envPullOK(envFile)}}
+	withFakeRunner(t, f)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+
+	// Register meta mock so queryAppType returns "html"
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_typed2",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":   "app_typed2",
+					"app_type": "HTML",
+				},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_typed2", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := parseEnvelopeData(t, stdout)
+	if data["scaffold"] != "already_initialized" {
+		t.Errorf("scaffold = %v, want already_initialized", data["scaffold"])
+	}
+	if data["app_type"] != "html" {
+		t.Errorf("app_type = %v, want html", data["app_type"])
 	}
 }

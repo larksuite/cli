@@ -7,8 +7,11 @@
 ## 推荐命令
 
 ```bash
-# 列出指定周期的目标和关键结果
+# 列出指定周期的目标和关键结果（默认 simple 风格，半纯文本格式，推荐使用，更简洁）
 lark-cli okr +cycle-detail --cycle-id 1234567890123456789
+
+# 列出指定周期的目标和关键结果（richtext 风格，原始 ContentBlock JSON）
+lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --style richtext
 
 # 预览 API 调用而不实际执行
 lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
@@ -16,11 +19,12 @@ lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
 
 ## 参数
 
-| 参数           | 必填 | 默认值    | 说明                                      |
-|--------------|----|--------|-----------------------------------------|
-| `--cycle-id` | 是  | —      | OKR 周期 ID（int64 类型）。从 `+cycle-list` 获取。 |
-| `--dry-run`  | 否  | —      | 预览 API 调用而不实际执行。                        |
-| `--format`   | 否  | `json` | 输出格式。                                   |
+| 参数           | 必填 | 默认值      | 说明                                                                                                                          |
+|--------------|----|----------|-----------------------------------------------------------------------------------------------------------------------------|
+| `--cycle-id` | 是  | —        | OKR 周期 ID（int64 类型）。从 `+cycle-list` 获取。                                                                                     |
+| `--style`    | 否  | `simple` | 输出风格：`simple`（半纯文本格式，不涉及字体/颜色等信息时推荐使用） \| `richtext`（原始 ContentBlock JSON）。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。 |
+| `--dry-run`  | 否  | —        | 预览 API 调用而不实际执行。                                                                                                            |
+| `--format`   | 否  | `json`   | 输出格式。                                                                                                                       |
 
 ## 工作流程
 
@@ -75,8 +79,11 @@ lark-cli okr +cycle-detail --cycle-id 1234567890123456789 --dry-run
 }
 ```
 
-其中，content 和 notes 字段是 JSON 字符串，为 OKR ContentBlock
-富文本格式。请参考 [lark-okr-contentblock.md](lark-okr-contentblock.md) 了解详细信息。
+其中，content 和 notes 字段格式由 `--style` 控制：
+- `--style simple`（默认）：`SemiPlainContent` 对象，包含 `text`、`mention`、`docs` 字段
+- `--style richtext`：JSON 字符串，为 OKR ContentBlock 富文本格式
+
+请参考 [lark-okr-contentblock.md](lark-okr-contentblock.md) 了解两种格式的详细信息。
 
 ## 参考
 

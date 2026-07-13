@@ -1,0 +1,71 @@
+{
+  "pathMappings": [
+    { "prefix": "shortcuts/im/", "labelDomains": ["im"], "e2eDomains": ["im"] },
+    { "prefix": "shortcuts/vc/", "labelDomains": ["vc"], "e2eDomains": ["vc"] },
+    { "prefix": "shortcuts/calendar/", "labelDomains": ["calendar"], "e2eDomains": ["calendar"] },
+    { "prefix": "shortcuts/doc/", "labelDomains": ["ccm"], "e2eDomains": ["docs"] },
+    { "prefix": "shortcuts/sheets/", "labelDomains": ["ccm"], "e2eDomains": ["sheets"] },
+    { "prefix": "shortcuts/drive/", "labelDomains": ["ccm"], "e2eDomains": ["drive"] },
+    { "prefix": "shortcuts/wiki/", "labelDomains": ["ccm"], "e2eDomains": ["wiki"] },
+    { "prefix": "shortcuts/base/", "labelDomains": ["base"], "e2eDomains": ["base"] },
+    { "prefix": "shortcuts/mail/", "labelDomains": ["mail"], "e2eDomains": ["mail"] },
+    { "prefix": "shortcuts/task/", "labelDomains": ["task"], "e2eDomains": ["task"] },
+    { "prefix": "shortcuts/contact/", "labelDomains": ["contact"], "e2eDomains": ["contact"] },
+    { "prefix": "shortcuts/apps/", "labelDomains": [], "e2eDomains": ["apps"] },
+    { "prefix": "shortcuts/markdown/", "labelDomains": [], "e2eDomains": ["markdown"] },
+    { "prefix": "shortcuts/minutes/", "labelDomains": [], "e2eDomains": ["minutes"] },
+    { "prefix": "shortcuts/okr/", "labelDomains": [], "e2eDomains": ["okr"] },
+    { "prefix": "shortcuts/slides/", "labelDomains": [], "e2eDomains": ["slides"] },
+    { "prefix": "shortcuts/note/", "labelDomains": [], "e2eDomains": ["note"] },
+    { "prefix": "shortcuts/event/", "labelDomains": [], "e2eDomains": ["event"] },
+
+    { "prefix": "skills/lark-im/", "labelDomains": ["im"], "e2eDomains": ["im"] },
+    { "prefix": "skills/lark-vc/", "labelDomains": ["vc"], "e2eDomains": ["vc"] },
+    { "prefix": "skills/lark-doc/", "labelDomains": ["ccm"], "e2eDomains": ["docs"] },
+    { "prefix": "skills/lark-wiki/", "labelDomains": ["ccm"], "e2eDomains": ["wiki"] },
+    { "prefix": "skills/lark-drive/", "labelDomains": ["ccm"], "e2eDomains": ["drive"] },
+    { "prefix": "skills/lark-sheets/", "labelDomains": ["ccm"], "e2eDomains": ["sheets"] },
+    { "prefix": "skills/lark-base/", "labelDomains": ["base"], "e2eDomains": ["base"] },
+    { "prefix": "skills/lark-mail/", "labelDomains": ["mail"], "e2eDomains": ["mail"] },
+    { "prefix": "skills/lark-calendar/", "labelDomains": ["calendar"], "e2eDomains": ["calendar"] },
+    { "prefix": "skills/lark-task/", "labelDomains": ["task"], "e2eDomains": ["task"] },
+    { "prefix": "skills/lark-contact/", "labelDomains": ["contact"], "e2eDomains": ["contact"] },
+    { "prefix": "skills/lark-apps/", "labelDomains": [], "e2eDomains": ["apps"] },
+    { "prefix": "skills/lark-markdown/", "labelDomains": [], "e2eDomains": ["markdown"] },
+    { "prefix": "skills/lark-minutes/", "labelDomains": [], "e2eDomains": ["minutes"] },
+    { "prefix": "skills/lark-okr/", "labelDomains": [], "e2eDomains": ["okr"] },
+    { "prefix": "skills/lark-slides/", "labelDomains": [], "e2eDomains": ["slides"] },
+    { "prefix": "skills/lark-note/", "labelDomains": [], "e2eDomains": ["note"] },
+    { "prefix": "skills/lark-event/", "labelDomains": [], "e2eDomains": ["event"] }
+  ],
+  "fullFallbackPrefixes": [
+    "shortcuts/common/",
+    "cmd/",
+    "internal/",
+    "pkg/",
+    "extension/",
+    "registry/",
+    "go.mod",
+    "go.sum",
+    "Makefile",
+    ".github/workflows/",
+    "scripts/"
+  ],
+  "skipPrefixes": [
+    "docs/",
+    ".changeset/"
+  ],
+  "skipSuffixes": [
+    ".md",
+    ".mdx",
+    ".txt",
+    ".rst"
+  ],
+  "skipFilenames": [
+    "readme.md",
+    "readme.zh.md",
+    "changelog.md",
+    "license",
+    "cla.md"
+  ]
+}

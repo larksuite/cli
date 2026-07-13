@@ -28,7 +28,7 @@
 
 ## 约定（先读）
 
-- **环境 `--environment dev|online`（所有 db 命令统一默认 `dev`）**：看表、看结构、数据导入导出、变更追溯、审计、配额都按环境区分，写操作建议先在 `dev` 验。**注意：只有开启了多环境（`+db-env-create`）的应用才有 `dev` 分支；未开启多环境的应用其数据库在 `online`——对这类应用必须显式 `--environment online`，否则默认的 `dev` 分支不存在、会报错**。旧名 `--env` 已**移除**：传入会报 validation 错（提示改用 `--environment`），一律用 `--environment`。`+db-env-diff`/`+db-env-migrate` 是「dev→online 发布」语义、`+db-recovery-*` 作用于当前库，二者**没有** `--environment`。
+- **环境 `--environment dev|online`（可省略）**：看表、看结构、数据导入导出、变更追溯、审计、配额都按环境区分。省略 `--environment` 时 CLI 不带该参数、由服务端按应用形态自动选分支——多环境应用走 `dev`、未开多环境的走 `online`；要固定环境就显式传。唯一会报错的组合：对未开多环境的应用显式传 `--environment dev`（无 `dev` 分支）。写操作建议先在 `dev` 验（仅多环境应用有 `dev`）。旧名 `--env` 已**移除**：传入会报 validation 错（提示改用 `--environment`），一律用 `--environment`。`+db-env-diff`/`+db-env-migrate` 是「dev→online 发布」语义，**没有** `--environment`。
 - **本地文件 / `--output` 用工作目录内相对路径**：导入 `--file ./orders.csv`、导出 `--output ./out.csv`；绝对路径、或经 `..`/符号链接越出工作目录的 `--output` 会被拒（validation / exit 2）。路径在别处先 `cd` 过去或改成相对路径。
 - **高危操作必须带 `--yes`**：`+db-env-create`、`+db-data-import`、`+db-env-migrate`、`+db-recovery-apply` 缺省会被确认关卡拦下；动手前先用对应的预览命令或 `--dry-run` 看清影响。
 - **时间参数按口语自然传**（`--since`/`--until`/`--target`），格式见末尾。
@@ -154,7 +154,7 @@ lark-cli apps +db-quota-get --app-id app_xxx --environment dev
 
 ## Agent 规则
 
-- 用户说「本地 / 开发库 / 调试库」优先 `--environment dev`，线上排查用 `--environment online`；数据面写操作（导入 / 审计开关）默认先在 `dev` 验再动 `online`。
+- 用户说「本地 / 开发库 / 调试库」优先 `--environment dev`，线上排查用 `--environment online`；数据面写操作（导入 / 审计开关）建议先在 `dev` 验再动 `online`。**注意省略 `--environment` 时写操作会落到服务端选中的分支——单环境应用即 `online`（生产）**：不确定应用是否多环境时，写操作显式传 `--environment`；显式 `dev` 在单环境应用上会安全报错（无 dev 分支），正好当「是否多环境」的探针用。
 - 看表用 `+db-table-list`，看结构用 `+db-table-get`（要建表语句加 `--format pretty`）；`+db-env-create` 仅用于存量单库拆多环境，新建的 full_stack 应用一般不需要。
 - 四个高危命令（`+db-env-create`、`+db-data-import`、`+db-env-migrate`、`+db-recovery-apply`）动手前先看清影响再带 `--yes`：发布 / 恢复先跑对应预览 `+db-env-diff` / `+db-recovery-diff`，导入无预览命令、可先 `--dry-run` 看请求或先在 `--environment dev` 验；不要静默追加 `--yes`，遇 confirmation_required（exit 10）按 lark-shared 协议向用户确认不可逆风险后再补 `--yes` 重试。
 - 导入 / 导出的本地路径用工作目录内相对路径；超大表导出会被行数 / 体积上限拒，改用 `+db-execute` 分批。

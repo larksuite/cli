@@ -233,6 +233,24 @@ lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_i
 --format csv       # Comma-separated values
 ```
 
+### JSON Output Contract
+
+With `--format json` (the default), success and error envelopes are distinct.
+
+Success goes to **stdout**, exit code `0`:
+
+```json
+{ "ok": true, "identity": "user", "data": { "guid": "..." }, "meta": { "count": 1 } }
+```
+
+Errors go to **stderr**, non-zero exit code:
+
+```json
+{ "ok": false, "identity": "user", "error": { "type": "api", "subtype": "...", "code": 99991679, "message": "...", "hint": "..." } }
+```
+
+To check whether a command succeeded, test `ok == true` (or the exit code) — **not** `code == 0`. Unlike raw OpenAPI responses (`{"code": 0, "msg": "ok", ...}`), the success envelope carries no `code` or `msg` field; `code` appears only inside `error` as the upstream OpenAPI code. See [errs/ERROR_CONTRACT.md](errs/ERROR_CONTRACT.md) for the full error taxonomy.
+
 ### Pagination
 
 ```bash
