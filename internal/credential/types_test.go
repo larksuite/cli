@@ -130,3 +130,11 @@ func TestRuntimeAppSecret_TokenOnlyUsesPlaceholder(t *testing.T) {
 		t.Fatalf("RuntimeAppSecret(real) = %q, want %q", got, "secret-1")
 	}
 }
+
+// The credential-layer ingress normalizes brand casing for all runtime consumers.
+func TestToCliConfig_NormalizesBrand(t *testing.T) {
+	acct := &Account{AppID: "cli_x", Brand: " LARK "}
+	if got := acct.ToCliConfig().Brand; got != core.BrandLark {
+		t.Errorf("Brand = %q, want %q", got, core.BrandLark)
+	}
+}

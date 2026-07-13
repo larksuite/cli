@@ -17,5 +17,6 @@ func Shortcuts() []common.Shortcut {
 		CalendarSuggestion,
 		CalendarMeeting,
 		CalendarSearchEvent,
+		CalendarGet,
 	}
 }

@@ -19,7 +19,7 @@ import (
 func TestAppsDBTableListDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 
-	t.Run("DefaultsToDevAndPageSize20", func(t *testing.T) {
+	t.Run("DefaultsToNoEnvAndPageSize20", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
 
@@ -32,7 +32,8 @@ func TestAppsDBTableListDryRun(t *testing.T) {
 
 		assert.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String())
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/tables", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "dev", gjson.Get(result.Stdout, "api.0.params.env").String())
+		assert.False(t, gjson.Get(result.Stdout, "api.0.params.env").Exists(),
+			"default: no --environment → env key must be omitted (server picks workspace default branch)")
 		assert.Equal(t, "20", gjson.Get(result.Stdout, "api.0.params.page_size").String())
 		assert.False(t, gjson.Get(result.Stdout, "api.0.params.page_token").Exists(),
 			"empty page_token must be omitted")

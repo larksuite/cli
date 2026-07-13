@@ -1,6 +1,12 @@
 # 知识整理工作流
 
-This file is the single entry point for the knowledge organization workflow. It defines the global contract, state machine, and progressive loading map. Stage-specific rules live in phase files and MUST be loaded only when the workflow reaches the corresponding state.
+Workflow id: `knowledge_organize`
+
+Risk / Structure: `R2-R3` / `S3`
+
+This file implements the registered knowledge organization workflow. Before execution, the agent MUST read [`lark-drive-workflow.md`](lark-drive-workflow.md) and [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md), and follow the shared execution protocol, Artifact Contract, Workflow Loading rules, authentication rules, and write confirmation rules.
+
+It defines the workflow-specific state machine and progressive loading map. Stage-specific rules live in phase files and MUST be loaded only when the workflow reaches the corresponding state.
 
 Phase files are references for this workflow, not independent skills. Do not route user requests directly to a phase file.
 
@@ -80,7 +86,7 @@ When this workflow is triggered, the agent MUST:
 
 ## Runtime State
 
-Agent MUST maintain these internal fields during one workflow run:
+This workflow extends the shared Artifact Contract. Agent MUST maintain these internal fields during one workflow run:
 
 | Field | Meaning |
 |-------|---------|
@@ -114,24 +120,24 @@ Agent MUST maintain these internal fields during one workflow run:
 
 ## Execution State Machine
 
-| State | Entry Condition | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
-|-------|-----------------|---------------|--------------------|---------------|------------|
-| `PARSE_SCOPE` | Workflow triggered | Load discovery phase; parse target, environment, identity, and target type | Scope confirmation or clarification question | `true` | `INVENTORY` |
-| `INVENTORY` | Scope confirmed | Load discovery phase; recursively list resources and build `resource_items` | Inventory progress / summary; continue automatically unless blocked | `false` unless blocked | `CONTENT_READ` |
-| `CONTENT_READ` | Inventory complete | Load analysis phase; identify low-confidence items and perform mandatory partial read when needed | Low-confidence read summary | `false` unless auth / permission blocks | `ISSUE_ANALYSIS` |
-| `ISSUE_ANALYSIS` | Resource list and partial reads ready | Load analysis phase; detect structure problems, evidence, and organization approach | Inventory result, problems, organization approach, and decision options | `true` | `RULE_GENERATION` |
-| `RULE_GENERATION` | User confirms organization approach | Load analysis phase; generate classification rules and `target_tree` | No separate stop; target tree is shown with plan generation | `false` | `PLAN_GENERATION` |
-| `PLAN_GENERATION` | Target tree ready | Load planning phase; generate complete internal `plan_items`; show target tree plus plan overview or page | Target tree and plan overview / paginated plan page | `true` | `EXEC_CONFIRM` |
-| `EXEC_CONFIRM` | User wants execution | Load planning phase; ask user to choose execution scope | Execution options and write-operation summary | `true` | `EXECUTE` or `DONE` |
-| `EXECUTE` | User explicitly confirmed execution scope | Load execution phase; execute only whitelisted write operations for confirmed scope while maintaining internal recovery state | Progress reports for large or long-running execution; if blocked after successful moves, ask whether to try restoring to `整理前的位置` | `false` unless blocked / recovery offered | `VERIFY`, `ROLLBACK_CONFIRM`, or `DONE` |
-| `VERIFY` | Execution finished | Load execution phase; rescan target scope and compare actual path/token against plan | Verification table and final summary; if serious mismatches exist, ask whether to try restoring to `整理前的位置` | `false` unless recovery offered | `DONE` or `ROLLBACK_CONFIRM` |
-| `ROLLBACK_CONFIRM` | User asks to restore after execution failure / verification mismatch / explicit rollback request | Load rollback phase; generate internal `rollback_plan`; ask whether to execute recovery | Recoverable scope and restore confirmation | `true` | `ROLLBACK` or `DONE` |
-| `ROLLBACK` | User explicitly confirms restore execution | Load rollback phase; execute confirmed reverse moves only | Recovery progress / result | `false` | `ROLLBACK_VERIFY` |
-| `ROLLBACK_VERIFY` | Recovery execution finished | Load rollback phase; verify restored locations and decide whether cleanup candidates exist | Recovery verification result | `false` | `ROLLBACK_CLEANUP_CONFIRM` or `DONE` |
-| `ROLLBACK_CLEANUP_CONFIRM` | Cleanup candidates exist after recovery, or user asks to clean workflow-created empty folders / nodes | Load rollback phase; generate cleanup plan and ask for delete confirmation | Cleanup candidates and delete confirmation | `true` | `ROLLBACK_CLEANUP` or `DONE` |
-| `ROLLBACK_CLEANUP` | User explicitly confirms cleanup deletion | Load rollback phase; delete only confirmed workflow-created safe-empty folders / nodes | Cleanup progress / result | `false` | `ROLLBACK_CLEANUP_VERIFY` |
-| `ROLLBACK_CLEANUP_VERIFY` | Cleanup deletion finished | Load rollback phase; verify deleted cleanup targets | Cleanup verification result | `false` | `DONE` |
-| `DONE` | No more action | Stop | Final answer | `false` | End |
+| State | Protocol Step | Entry Condition | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
+|-------|---------------|-----------------|---------------|--------------------|---------------|------------|
+| `PARSE_SCOPE` | `route` / `scope` | Workflow triggered | Load discovery phase; parse target, environment, identity, and target type | Scope confirmation or clarification question | `true` | `INVENTORY` |
+| `INVENTORY` | `read` | Scope confirmed | Load discovery phase; recursively list resources and build `resource_items` | Inventory progress / summary; continue automatically unless blocked | `false` unless blocked | `CONTENT_READ` |
+| `CONTENT_READ` | `read` | Inventory complete | Load analysis phase; identify low-confidence items and perform mandatory partial read when needed | Low-confidence read summary | `false` unless auth / permission blocks | `ISSUE_ANALYSIS` |
+| `ISSUE_ANALYSIS` | `assess` / `plan` | Resource list and partial reads ready | Load analysis phase; detect structure problems, evidence, and organization approach | Inventory result, problems, organization approach, and decision options | `true` | `RULE_GENERATION` |
+| `RULE_GENERATION` | `assess` / `plan` | User confirms organization approach | Load analysis phase; generate classification rules and `target_tree` | No separate stop; target tree is shown with plan generation | `false` | `PLAN_GENERATION` |
+| `PLAN_GENERATION` | `assess` / `plan` | Target tree ready | Load planning phase; generate complete internal `plan_items`; show target tree plus plan overview or page | Target tree and plan overview / paginated plan page | `true` | `EXEC_CONFIRM` |
+| `EXEC_CONFIRM` | `confirm` | User wants execution | Load planning phase; ask user to choose execution scope | Execution options and write-operation summary | `true` | `EXECUTE` or `DONE` |
+| `EXECUTE` | `execute` | User explicitly confirmed execution scope | Load execution phase; execute only whitelisted write operations for confirmed scope while maintaining internal recovery state | Progress reports for large or long-running execution; if blocked after successful moves, ask whether to try restoring to `整理前的位置` | `false` unless blocked / recovery offered | `VERIFY`, `ROLLBACK_CONFIRM`, or `DONE` |
+| `VERIFY` | `verify` | Execution finished | Load execution phase; rescan target scope and compare actual path/token against plan | Verification table and final summary; if serious mismatches exist, ask whether to try restoring to `整理前的位置` | `false` unless recovery offered | `DONE` or `ROLLBACK_CONFIRM` |
+| `ROLLBACK_CONFIRM` | `recovery confirm` | User asks to restore after execution failure / verification mismatch / explicit rollback request | Load rollback phase; generate internal `rollback_plan`; ask whether to execute recovery | Recoverable scope and restore confirmation | `true` | `ROLLBACK` or `DONE` |
+| `ROLLBACK` | `recovery execute` | User explicitly confirms restore execution | Load rollback phase; execute confirmed reverse moves only | Recovery progress / result | `false` | `ROLLBACK_VERIFY` |
+| `ROLLBACK_VERIFY` | `recovery verify` | Recovery execution finished | Load rollback phase; verify restored locations and decide whether cleanup candidates exist | Recovery verification result | `false` | `ROLLBACK_CLEANUP_CONFIRM` or `DONE` |
+| `ROLLBACK_CLEANUP_CONFIRM` | `cleanup confirm` | Cleanup candidates exist after recovery, or user asks to clean workflow-created empty folders / nodes | Load rollback phase; generate cleanup plan and ask for delete confirmation | Cleanup candidates and delete confirmation | `true` | `ROLLBACK_CLEANUP` or `DONE` |
+| `ROLLBACK_CLEANUP` | `cleanup execute` | User explicitly confirms cleanup deletion | Load rollback phase; delete only confirmed workflow-created safe-empty folders / nodes | Cleanup progress / result | `false` | `ROLLBACK_CLEANUP_VERIFY` |
+| `ROLLBACK_CLEANUP_VERIFY` | `cleanup verify` | Cleanup deletion finished | Load rollback phase; verify deleted cleanup targets | Cleanup verification result | `false` | `DONE` |
+| `DONE` | `done` | No more action | Stop | Final answer | `false` | End |
 
 ## Progressive Load Map
 

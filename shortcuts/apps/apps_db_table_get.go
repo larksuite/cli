@@ -37,7 +37,7 @@ var AppsDBTableGet = common.Shortcut{
 	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "app id", Required: true},
 		{Name: "table", Desc: "table name", Required: true},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -80,7 +80,7 @@ var AppsDBTableGet = common.Shortcut{
 // CLI 检测 rctx.Format == "pretty" 时给 server 带 format=ddl，要求返 CREATE 语句文本；
 // 其他 format（含默认 json）不传该参数，让 server 返默认结构化字段。
 func buildDBTableGetParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{"env": dbEnv(rctx)}
+	params := dbEnvParams(rctx, map[string]interface{}{})
 	if rctx.Format == "pretty" {
 		params["format"] = "ddl"
 	}

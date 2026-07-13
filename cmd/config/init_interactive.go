@@ -5,7 +5,9 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 
 	"github.com/charmbracelet/huh"
 	"github.com/larksuite/cli/internal/build"
@@ -180,9 +182,9 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	// Use the shared proxy-plugin-aware transport so registration traffic is not
 	// a bypass of proxy plugin mode.
 	httpClient := transport.NewHTTPClient(0)
-	authResp, err := larkauth.RequestAppRegistration(httpClient, larkBrand, f.IOStreams.ErrOut)
+	authResp, err := larkauth.RequestAppRegistration(ctx, httpClient, larkBrand, f.IOStreams.ErrOut)
 	if err != nil {
-		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration failed: %v", err).WithCause(err)
+		return nil, classifyRegistrationBeginError(err)
 	}
 
 	// Step 2: Build and display verification URL + QR code
@@ -208,31 +210,15 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", verificationURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.WaitingForScanNonTTY)
 	}
-	result, err := larkauth.PollAppRegistration(ctx, httpClient, core.BrandFeishu, authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
+	// Step 4: Poll for credentials (brand discovery lives in internal/auth);
+	// this layer only classifies the terminal error and saves the result.
+	result, finalBrand, err := larkauth.RegisterAppWithDiscovery(ctx, httpClient, authResp, f.IOStreams.ErrOut)
 	if err != nil {
-		return nil, errs.NewAuthenticationError(errs.SubtypeUnknown, "%v", err).WithCause(err)
-	}
-
-	// Step 4: Handle Lark brand special case
-	// If tenant_brand=lark and no client_secret, retry with lark brand endpoint
-	if result.ClientSecret == "" && result.UserInfo != nil && result.UserInfo.TenantBrand == "lark" {
-		// fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.DetectedLarkTenant)
-		result, err = larkauth.PollAppRegistration(ctx, httpClient, core.BrandLark, authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
-		if err != nil {
-			return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "lark endpoint retry failed: %v", err).WithCause(err)
-		}
+		return nil, classifyRegistrationError(err)
 	}
 
 	if result.ClientID == "" || result.ClientSecret == "" {
 		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing client_id or client_secret")
-	}
-
-	// Determine final brand from response
-	finalBrand := larkBrand
-	if result.UserInfo != nil && result.UserInfo.TenantBrand == "lark" {
-		finalBrand = core.BrandLark
-	} else if result.UserInfo != nil && result.UserInfo.TenantBrand == "feishu" {
-		finalBrand = core.BrandFeishu
 	}
 
 	fmt.Fprintln(f.IOStreams.ErrOut)
@@ -244,4 +230,41 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		AppID:     result.ClientID,
 		AppSecret: result.ClientSecret,
 	}, nil
+}
+
+// classifyRegistrationBeginError keeps transport/cancellation failures out of
+// the invalid-client category: the begin request sends no app credentials.
+func classifyRegistrationBeginError(err error) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "app registration cancelled").WithCause(err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return errs.NewNetworkError(errs.SubtypeNetworkTimeout, "app registration begin timed out: %v", err).WithCause(err)
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		subtype := errs.SubtypeNetworkTransport
+		if netErr.Timeout() {
+			subtype = errs.SubtypeNetworkTimeout
+		}
+		return errs.NewNetworkError(subtype, "app registration begin failed: %v", err).WithCause(err)
+	}
+	return errs.NewAPIError(errs.SubtypeUnknown, "app registration begin failed: %v", err).WithCause(err)
+}
+
+// classifyRegistrationError maps registration terminal outcomes to typed
+// errors, preserving causes.
+func classifyRegistrationError(err error) error {
+	switch {
+	case errors.Is(err, larkauth.ErrRegistrationDenied):
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "%v", err).
+			WithHint("re-run `lark-cli config init --new` and approve the authorization request").
+			WithCause(err)
+	case errors.Is(err, larkauth.ErrRegistrationExpired), errors.Is(err, larkauth.ErrRegistrationTimedOut):
+		return errs.NewAuthenticationError(errs.SubtypeTokenExpired, "%v", err).
+			WithHint("re-run `lark-cli config init --new` and complete the scan before the code expires").
+			WithCause(err)
+	default:
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "app registration failed: %v", err).WithCause(err)
+	}
 }

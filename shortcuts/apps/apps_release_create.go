@@ -56,9 +56,10 @@ var AppsReleaseCreate = common.Shortcut{
 		out := map[string]interface{}{
 			"release_id": common.GetString(data, "release_id"),
 			"status":     common.GetString(data, "status"),
+			"sync":       common.GetBool(data, "sync"),
 		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "release_id: %s\nstatus: %s\n", out["release_id"], out["status"])
+			fmt.Fprintf(w, "release_id: %s\nstatus: %s\nsync: %v\n", out["release_id"], out["status"], out["sync"])
 		})
 		return nil
 	},

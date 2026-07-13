@@ -3,9 +3,11 @@
 
 package core
 
+import "strings"
+
 // LarkBrand represents the Lark platform brand.
 // "feishu" targets China-mainland, "lark" targets international.
-// Any other string is treated as a custom base URL.
+// ParseBrand and ResolveEndpoints map unrecognized values to BrandFeishu.
 type LarkBrand string
 
 const (
@@ -13,10 +15,10 @@ const (
 	BrandLark   LarkBrand = "lark"
 )
 
-// ParseBrand normalizes a brand string to a LarkBrand constant.
-// Unrecognized values default to BrandFeishu.
+// ParseBrand normalizes a brand string (case-insensitive, whitespace-tolerant);
+// anything other than "lark" normalizes to BrandFeishu.
 func ParseBrand(value string) LarkBrand {
-	if value == "lark" {
+	if strings.ToLower(strings.TrimSpace(value)) == "lark" {
 		return BrandLark
 	}
 	return BrandFeishu
@@ -36,9 +38,10 @@ type Endpoints struct {
 	AppLink  string // e.g. "https://applink.feishu.cn"
 }
 
-// ResolveEndpoints resolves endpoint URLs based on brand.
+// ResolveEndpoints resolves endpoint URLs for the brand, normalizing its
+// input so stored values with unusual casing still resolve correctly.
 func ResolveEndpoints(brand LarkBrand) Endpoints {
-	switch brand {
+	switch ParseBrand(string(brand)) {
 	case BrandLark:
 		return Endpoints{
 			Open:     "https://open.larksuite.com",

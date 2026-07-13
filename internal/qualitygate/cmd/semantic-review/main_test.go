@@ -9,12 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/qualitygate/facts"
 	"github.com/larksuite/cli/internal/qualitygate/semantic"
 )
 
 func TestRunLoadsPolicyAndWaivers(t *testing.T) {
+	freezeNow(t, time.Date(2026, 6, 12, 0, 0, 0, 0, time.UTC))
+
 	repo := t.TempDir()
 	writeSemanticConfig(t, repo, `{
 	  "schema_version": 1,
@@ -65,6 +68,8 @@ func TestRunLoadsPolicyAndWaivers(t *testing.T) {
 }
 
 func TestRunLoadsWaiversFromOverrideFile(t *testing.T) {
+	freezeNow(t, time.Date(2026, 6, 12, 0, 0, 0, 0, time.UTC))
+
 	repo := t.TempDir()
 	writeSemanticConfig(t, repo, `{
 	  "schema_version": 1,
@@ -368,6 +373,13 @@ func writeSemanticConfig(t *testing.T, repo, policy, models, waivers string) {
 			t.Fatalf("write waivers: %v", err)
 		}
 	}
+}
+
+func freezeNow(t *testing.T, fixed time.Time) {
+	t.Helper()
+	original := now
+	now = func() time.Time { return fixed }
+	t.Cleanup(func() { now = original })
 }
 
 func readDecision(t *testing.T, path string) semantic.Decision {

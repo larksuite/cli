@@ -85,6 +85,7 @@ func recordReadFormatFlag() common.Flag {
 	return common.Flag{
 		Name:    "format",
 		Default: "markdown",
+		Enum:    []string{"markdown", "json"},
 		Desc:    "output format: markdown (default) | json",
 	}
 }

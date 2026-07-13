@@ -44,8 +44,9 @@ func appsExternalToolError(err error, format string, args ...any) *errs.Internal
 	return errs.NewInternalError(errs.SubtypeExternalTool, format, args...).WithCause(err)
 }
 
-// appsSubprocessEnvelopeError classifies a malformed or failed envelope from a
-// lark-cli subprocess (+git-credential-init / +env-pull) as internal/invalid_response.
+// appsSubprocessEnvelopeError classifies a malformed or unexpected response
+// structure as internal/invalid_response. Used for subprocess envelopes
+// (+git-credential-init / +env-pull) and server responses (e.g. pre_release).
 func appsSubprocessEnvelopeError(format string, args ...any) *errs.InternalError {
 	return errs.NewInternalError(errs.SubtypeInvalidResponse, format, args...)
 }

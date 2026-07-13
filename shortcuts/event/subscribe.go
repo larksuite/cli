@@ -21,7 +21,6 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 
-	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
@@ -247,10 +246,7 @@ var EventSubscribe = common.Shortcut{
 		}
 
 		// --- WebSocket ---
-		domain := lark.FeishuBaseUrl
-		if runtime.Config.Brand == core.BrandLark {
-			domain = lark.LarkBaseUrl
-		}
+		domain := core.ResolveEndpoints(runtime.Config.Brand).Open
 
 		info(fmt.Sprintf("%sConnecting to Lark event WebSocket...%s", output.Cyan, output.Reset))
 		if eventTypeFilter != nil {

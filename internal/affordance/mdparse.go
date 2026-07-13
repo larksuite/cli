@@ -19,6 +19,7 @@ import (
 //	### Prerequisites   -> prerequisites   (a "…来自 [[x]]" link is a sequence edge)
 //	### Tips            -> tips
 //	### Examples        -> examples: **description** + a ```fenced``` command
+//	### Skills          -> skills: bullet skill names, added to the domain default
 //	### <other>         -> extensions[] (custom section, flows through verbatim)
 //	[[cmd]]             -> a command reference, rendered as `cmd`
 //
@@ -34,16 +35,56 @@ var standardSection = map[string]string{
 	"Prerequisites": "prerequisites",
 	"Tips":          "tips",
 	"Examples":      "examples",
+	"Skills":        "skills",
+}
+
+// mergeSkills returns the domain-default skill followed by a command's own skill
+// entries, de-duplicated in author order and empties dropped. Backticks (left by
+// the shared bullet parse) are stripped so each entry is a bare skill name.
+func mergeSkills(domain string, extra []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		s = strings.Trim(strings.TrimSpace(s), "`")
+		if s == "" || seen[s] {
+			return
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	add(domain)
+	for _, s := range extra {
+		add(s)
+	}
+	return out
 }
 
 func linkToBacktick(s string) string { return mdLink.ReplaceAllString(s, "`$1`") }
+
+// SkillStatPath maps a `### Skills` entry to the path (relative to the skill
+// tree) whose existence gates it: a bare skill name resolves to its SKILL.md,
+// while an entry containing a slash is a name/relative-path reference (e.g.
+// "lark-contact/references/lark-contact-search-user.md") and resolves to that
+// path directly. Both render as `lark-cli skills read <entry>` — the slash form
+// skills read already accepts — so a per-command entry can point at that
+// command's own reference file, not just re-point the domain skill.
+func SkillStatPath(entry string) string {
+	if strings.Contains(entry, "/") {
+		return entry
+	}
+	return entry + "/SKILL.md"
+}
 
 // headingToKey maps a command heading ("instances get") to its affordance key
 // ("instances.get"). The space→dot rule holds where the command form matches
 // the method id; domains whose resource names differ (e.g. plural "messages"
 // vs id segment "message") need the registry's authoritative resource↔id table.
 func headingToKey(h string) string {
-	return strings.ReplaceAll(strings.TrimSpace(h), " ", ".")
+	h = strings.TrimSpace(h)
+	if strings.HasPrefix(h, "+") { // shortcut command: key is the command verbatim
+		return h
+	}
+	return strings.ReplaceAll(h, " ", ".")
 }
 
 type mdSection struct {
@@ -82,6 +123,7 @@ func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affo
 		if len(useWhen) > 0 {
 			a.UseWhen = useWhen
 		}
+		var perCmdSkills []string
 		for _, s := range secs {
 			switch standardSection[s.label] {
 			case "avoid_when":
@@ -92,12 +134,14 @@ func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affo
 				a.Tips = s.items
 			case "examples":
 				a.Examples = s.cases
+			case "skills":
+				perCmdSkills = s.items
 			default:
 				a.Extensions = append(a.Extensions, meta.AffordanceSection{Label: s.label, Items: s.items})
 			}
 		}
-		if skill != "" {
-			a.Skills = []string{skill}
+		if s := mergeSkills(skill, perCmdSkills); len(s) > 0 {
+			a.Skills = s
 		}
 		out[curKey] = a
 	}
@@ -157,7 +201,7 @@ func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affo
 				inFence, fence = true, nil
 			} else {
 				inFence = false
-				sec.cases = append(sec.cases, meta.AffordanceCase{Description: pending, Command: strings.Join(fence, "\n")})
+				sec.cases = append(sec.cases, meta.AffordanceCase{Description: linkToBacktick(pending), Command: strings.Join(fence, "\n")})
 				pending = ""
 			}
 			continue

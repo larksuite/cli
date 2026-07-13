@@ -105,8 +105,10 @@ func TestAppsDBEnvMigrate_DryRunBody(t *testing.T) {
 // 异步：submit 返 task_id，status 立刻 applied → CLI 对外统一 migrated。
 func TestAppsDBEnvMigrate_AsyncPollSuccess(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
+	// Reusable：Execute 现在会先打一次 dry_run 预览拿待发布数、再打 apply（对齐 miaoda-cli 的
+	// diff-then-apply，兜底服务端 apply 少报 changes_applied 的情况），故同一 POST 端点被调用两次。
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: dbEnvMigrateURL,
+		Method: "POST", URL: dbEnvMigrateURL, Reusable: true,
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"from": "dev", "to": "online", "task_id": "t1"}},
 	})
 	reg.Register(&httpmock.Stub{
@@ -126,8 +128,10 @@ func TestAppsDBEnvMigrate_AsyncPollSuccess(t *testing.T) {
 // TestAppsDBEnvMigrate_PollFailedSurfacesError 验证轮询到 failed 时返回 API/server_error 类型错误，携带服务端 message 与恢复 hint。
 func TestAppsDBEnvMigrate_PollFailedSurfacesError(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
+	// Reusable：Execute 现在会先打一次 dry_run 预览拿待发布数、再打 apply（对齐 miaoda-cli 的
+	// diff-then-apply，兜底服务端 apply 少报 changes_applied 的情况），故同一 POST 端点被调用两次。
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: dbEnvMigrateURL,
+		Method: "POST", URL: dbEnvMigrateURL, Reusable: true,
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"from": "dev", "to": "online", "task_id": "t1"}},
 	})
 	reg.Register(&httpmock.Stub{
@@ -319,6 +323,31 @@ func TestAppsDBQuotaGet_WithQuotaPretty(t *testing.T) {
 }
 
 // 配额未对接（storage_quota_bytes=0）→ json 删 quota/usage_percent，仅留已用量与 tables/views。
+// TestAppsDBQuotaGet_DryRunOmitsEnvWhenUnset 验证不传 --environment 时 quota-get 的 dry-run
+// query 不带 env 键（交服务端按应用形态自动选分支）。
+func TestAppsDBQuotaGet_DryRunOmitsEnvWhenUnset(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBQuotaGet,
+		[]string{"+db-quota-get", "--app-id", "app_x", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var env struct {
+		API []struct {
+			Method string                 `json:"method"`
+			URL    string                 `json:"url"`
+			Params map[string]interface{} `json:"params"`
+		} `json:"api"`
+	}
+	_ = json.Unmarshal([]byte(stdout.String()), &env)
+	a := env.API[0]
+	if a.Method != "GET" || a.URL != dbQuotaURL {
+		t.Fatalf("dry-run = %s %s", a.Method, a.URL)
+	}
+	if _, ok := a.Params["env"]; ok {
+		t.Fatalf("no --environment → env key must be omitted, got params=%v", a.Params)
+	}
+}
+
 func TestAppsDBQuotaGet_NoQuotaOmitsFields(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

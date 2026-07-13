@@ -27,12 +27,17 @@ const (
 	html5BlockDataAttr        = "data"
 	html5BlockReferenceRoot   = "doc-fetch-resources"
 	html5BlockReferenceMaxRaw = 1024
+
+	whiteboardTag      = "whiteboard"
+	whiteboardTypeAttr = "type"
+	whiteboardPathAttr = "path"
 )
 
 var (
 	html5BlockStartTagPattern = regexp.MustCompile(`(?is)<html5-block\b[^>]*>`)
 	html5BlockElementPattern  = regexp.MustCompile(`(?is)<html5-block\b[^>]*>(.*?)</html5-block>`)
 	html5BlockSafeNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	whiteboardElementPattern  = regexp.MustCompile(`(?is)<whiteboard\b[^>]*(?:/>|>.*?</whiteboard>)`)
 )
 
 type html5BlockReferenceEntry struct {
@@ -54,6 +59,11 @@ type html5BlockAttr struct {
 }
 
 type html5BlockStartTag struct {
+	Attrs       []html5BlockAttr
+	SelfClosing bool
+}
+
+type whiteboardStartTag struct {
 	Attrs       []html5BlockAttr
 	SelfClosing bool
 }
@@ -115,7 +125,11 @@ func prepareDocsV2WriteInput(runtime *common.RuntimeContext, input docsV2WriteIn
 		return docsV2WriteInput{}, err
 	}
 
-	content, html5RefMap, err := prepareHTML5BlockWriteContent(runtime, runtime.Str("doc-format"), input.Content, html5RefMap)
+	content, err := prepareWhiteboardWriteContent(runtime, runtime.Str("doc-format"), input.Content)
+	if err != nil {
+		return docsV2WriteInput{}, err
+	}
+	content, html5RefMap, err = prepareHTML5BlockWriteContent(runtime, runtime.Str("doc-format"), content, html5RefMap)
 	if err != nil {
 		return docsV2WriteInput{}, err
 	}
@@ -230,6 +244,248 @@ func prepareHTML5BlockWriteContent(runtime *common.RuntimeContext, format string
 		return "", nil, err
 	}
 	return out, compactReferenceMap(refMap), nil
+}
+
+func prepareWhiteboardWriteContent(runtime *common.RuntimeContext, format string, content string) (string, error) {
+	if !strings.Contains(content, "<whiteboard") {
+		return content, nil
+	}
+
+	rewrite := func(segment string) (string, error) {
+		return rewriteWhiteboardFileRefs(runtime, segment)
+	}
+
+	if strings.TrimSpace(format) != "markdown" {
+		return rewrite(content)
+	}
+
+	var rewriteErrs []error
+	out := applyOutsideCodeFences(content, func(segment string) string {
+		outSegment, rewriteErr := rewrite(segment)
+		if rewriteErr != nil {
+			rewriteErrs = append(rewriteErrs, rewriteErr)
+			return segment
+		}
+		return outSegment
+	})
+	if len(rewriteErrs) > 0 {
+		return "", aggregateWhiteboardRewriteErrors(rewriteErrs)
+	}
+	return out, nil
+}
+
+func rewriteWhiteboardFileRefs(runtime *common.RuntimeContext, content string) (string, error) {
+	var rewriteErrs []error
+	out := whiteboardElementPattern.ReplaceAllStringFunc(content, func(raw string) string {
+		rewritten, err := rewriteWhiteboardFileRef(runtime, raw)
+		if err != nil {
+			rewriteErrs = append(rewriteErrs, err)
+			return raw
+		}
+		return rewritten
+	})
+	if len(rewriteErrs) > 0 {
+		return "", aggregateWhiteboardRewriteErrors(rewriteErrs)
+	}
+	return out, nil
+}
+
+func rewriteWhiteboardFileRef(runtime *common.RuntimeContext, raw string) (string, error) {
+	startRaw, body, _, ok := splitWhiteboardElement(raw)
+	if !ok {
+		return raw, nil
+	}
+	tag, err := parseWhiteboardStartTag(startRaw)
+	if err != nil {
+		return "", common.ValidationErrorf("invalid whiteboard tag: %v", err).WithParam("whiteboard")
+	}
+
+	pathValue, hasPath := tag.attr(whiteboardPathAttr)
+	bodyPath, hasBodyPath := whiteboardBodyPathRef(body)
+	if !hasPath && !hasBodyPath {
+		return raw, nil
+	}
+	if hasPath && strings.TrimSpace(body) != "" {
+		return "", common.ValidationErrorf("whiteboard cannot contain both path and inline content").WithParam("whiteboard")
+	}
+	if hasPath && hasBodyPath {
+		return "", common.ValidationErrorf("whiteboard cannot contain both path and @file body").WithParam("whiteboard")
+	}
+
+	typRaw, ok := tag.attr(whiteboardTypeAttr)
+	if !ok || strings.TrimSpace(typRaw) == "" {
+		return "", common.ValidationErrorf("whiteboard file input requires type=\"svg\", type=\"mermaid\", or type=\"plantuml\"").WithParam("type")
+	}
+	typ, ok := canonicalWhiteboardFileType(typRaw)
+	if !ok {
+		return "", common.ValidationErrorf("whiteboard file input only supports type=\"svg\", type=\"mermaid\", or type=\"plantuml\", got %q", typRaw).WithParam("type")
+	}
+
+	if hasBodyPath {
+		pathValue = bodyPath
+	}
+	data, err := readWhiteboardPath(runtime, pathValue, typ)
+	if err != nil {
+		return "", err
+	}
+
+	tag.setAttr(whiteboardTypeAttr, typ)
+	tag.removeAttrs(whiteboardPathAttr)
+	return tag.render(false) + whiteboardContentForType(typ, data) + "</" + whiteboardTag + ">", nil
+}
+
+func splitWhiteboardElement(raw string) (startTag string, body string, selfClosing bool, ok bool) {
+	trimmed := strings.TrimSpace(raw)
+	selfClosing = strings.HasSuffix(trimmed, "/>")
+	if selfClosing {
+		return raw, "", true, true
+	}
+	startEnd := strings.Index(raw, ">")
+	if startEnd < 0 {
+		return "", "", false, false
+	}
+	endStart := strings.LastIndex(strings.ToLower(raw), "</whiteboard>")
+	if endStart < 0 || endStart < startEnd {
+		return "", "", false, false
+	}
+	return raw[:startEnd+1], raw[startEnd+1 : endStart], false, true
+}
+
+func whiteboardBodyPathRef(body string) (string, bool) {
+	trimmed := strings.TrimSpace(body)
+	if !strings.HasPrefix(trimmed, "@") || strings.HasPrefix(trimmed, "@@") {
+		return "", false
+	}
+	if strings.ContainsAny(trimmed, "\r\n") {
+		return "", false
+	}
+	return trimmed, true
+}
+
+func canonicalWhiteboardFileType(raw string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "svg":
+		return "svg", true
+	case "mermaid":
+		return "mermaid", true
+	case "plantuml":
+		return "plantuml", true
+	default:
+		return "", false
+	}
+}
+
+func readWhiteboardPath(runtime *common.RuntimeContext, pathValue string, typ string) (string, error) {
+	pathRaw := strings.TrimSpace(pathValue)
+	if !strings.HasPrefix(pathRaw, "@") {
+		return "", common.ValidationErrorf("whiteboard %s path %q must start with @, for example @diagram.%s", typ, pathValue, exampleWhiteboardExt(typ)).WithParam("path")
+	}
+	relPath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
+	if relPath == "" {
+		return "", common.ValidationErrorf("whiteboard %s path cannot be empty after @", typ).WithParam("path")
+	}
+	clean := filepath.Clean(relPath)
+	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", common.ValidationErrorf("whiteboard %s path %q must be a relative path within the current working directory", typ, pathValue).WithParam("path")
+	}
+	if !whiteboardExtAllowed(typ, strings.ToLower(filepath.Ext(clean))) {
+		return "", common.ValidationErrorf("whiteboard %s path %q must point to a %s file", typ, pathValue, whiteboardExtList(typ)).WithParam("path")
+	}
+	data, err := cmdutil.ReadInputFile(runtime.FileIO(), clean)
+	if err != nil {
+		return "", common.ValidationErrorf("whiteboard %s path %q cannot be read from the current working directory; check that the file exists relative to where lark-cli is running: %v", typ, clean, err).
+			WithParam("path").
+			WithParams(errs.InvalidParam{Name: clean, Reason: fmt.Sprintf("whiteboard %s path cannot be read", typ)}).
+			WithCause(err)
+	}
+	return string(data), nil
+}
+
+func whiteboardExtAllowed(typ string, ext string) bool {
+	for _, allowed := range whiteboardAllowedExts(typ) {
+		if ext == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func whiteboardAllowedExts(typ string) []string {
+	switch typ {
+	case "svg":
+		return []string{".svg"}
+	case "mermaid":
+		return []string{".mermaid", ".mmd"}
+	case "plantuml":
+		return []string{".plantuml", ".puml", ".pu", ".uml"}
+	default:
+		return nil
+	}
+}
+
+func whiteboardExtList(typ string) string {
+	return strings.Join(whiteboardAllowedExts(typ), ", ")
+}
+
+func exampleWhiteboardExt(typ string) string {
+	exts := whiteboardAllowedExts(typ)
+	if len(exts) == 0 {
+		return "txt"
+	}
+	return strings.TrimPrefix(exts[0], ".")
+}
+
+func whiteboardContentForType(typ string, data string) string {
+	if typ == "svg" {
+		return data
+	}
+	return escapeXMLText(data)
+}
+
+func aggregateWhiteboardRewriteErrors(rewriteErrs []error) error {
+	flatErrs := flattenWhiteboardRewriteErrors(rewriteErrs)
+	messages := make([]string, 0, len(flatErrs))
+	params := make([]errs.InvalidParam, 0, len(flatErrs))
+	for _, err := range flatErrs {
+		messages = append(messages, err.Error())
+		params = append(params, whiteboardInvalidParamsFromError(err)...)
+	}
+	validationErr := common.ValidationErrorf("whiteboard file input failed: %s", strings.Join(messages, "; ")).
+		WithParam("whiteboard").
+		WithCause(errors.Join(flatErrs...))
+	if len(params) > 0 {
+		validationErr.WithParams(params...)
+	}
+	return validationErr
+}
+
+func flattenWhiteboardRewriteErrors(rewriteErrs []error) []error {
+	flatErrs := make([]error, 0, len(rewriteErrs))
+	for _, err := range rewriteErrs {
+		var validationErr *errs.ValidationError
+		if errors.As(err, &validationErr) && validationErr.Param == "whiteboard" && validationErr.Cause != nil {
+			if joined, ok := validationErr.Cause.(interface{ Unwrap() []error }); ok {
+				flatErrs = append(flatErrs, flattenWhiteboardRewriteErrors(joined.Unwrap())...)
+				continue
+			}
+		}
+		flatErrs = append(flatErrs, err)
+	}
+	return flatErrs
+}
+
+func whiteboardInvalidParamsFromError(err error) []errs.InvalidParam {
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		return nil
+	}
+	if len(validationErr.Params) > 0 {
+		return validationErr.Params
+	}
+	if validationErr.Param != "" {
+		return []errs.InvalidParam{{Name: validationErr.Param, Reason: validationErr.Message}}
+	}
+	return nil
 }
 
 func validateHTML5BlockWriteElementBodies(format string, content string) error {
@@ -621,7 +877,44 @@ func parseHTML5BlockStartTag(raw string) (html5BlockStartTag, error) {
 	return html5BlockStartTag{}, fmt.Errorf("missing start element") //nolint:forbidigo // intermediate parse helper; callers wrap with typed validation errors.
 }
 
+func parseWhiteboardStartTag(raw string) (whiteboardStartTag, error) {
+	trimmed := strings.TrimSpace(raw)
+	selfClosing := strings.HasSuffix(trimmed, "/>")
+	decoder := xml.NewDecoder(strings.NewReader(raw))
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return whiteboardStartTag{}, err
+		}
+		start, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		if start.Name.Local != whiteboardTag {
+			return whiteboardStartTag{}, fmt.Errorf("expected <%s>, got <%s>", whiteboardTag, start.Name.Local) //nolint:forbidigo // intermediate parse helper; callers wrap with typed validation errors.
+		}
+		attrs := make([]html5BlockAttr, 0, len(start.Attr))
+		for _, attr := range start.Attr {
+			attrs = append(attrs, html5BlockAttr{Name: attr.Name.Local, Value: attr.Value})
+		}
+		return whiteboardStartTag{Attrs: attrs, SelfClosing: selfClosing}, nil
+	}
+	return whiteboardStartTag{}, fmt.Errorf("missing start element") //nolint:forbidigo // intermediate parse helper; callers wrap with typed validation errors.
+}
+
 func (t html5BlockStartTag) attr(name string) (string, bool) {
+	for _, attr := range t.Attrs {
+		if attr.Name == name {
+			return attr.Value, true
+		}
+	}
+	return "", false
+}
+
+func (t whiteboardStartTag) attr(name string) (string, bool) {
 	for _, attr := range t.Attrs {
 		if attr.Name == name {
 			return attr.Value, true
@@ -650,6 +943,31 @@ func (t *html5BlockStartTag) removeAttrs(names ...string) {
 	t.Attrs = attrs
 }
 
+func (t *whiteboardStartTag) removeAttrs(names ...string) {
+	remove := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		remove[name] = struct{}{}
+	}
+	attrs := t.Attrs[:0]
+	for _, attr := range t.Attrs {
+		if _, ok := remove[attr.Name]; ok {
+			continue
+		}
+		attrs = append(attrs, attr)
+	}
+	t.Attrs = attrs
+}
+
+func (t *whiteboardStartTag) setAttr(name string, value string) {
+	for i, attr := range t.Attrs {
+		if attr.Name == name {
+			t.Attrs[i].Value = value
+			return
+		}
+	}
+	t.Attrs = append(t.Attrs, html5BlockAttr{Name: name, Value: value})
+}
+
 func (t html5BlockStartTag) render(selfClosing bool) string {
 	var b strings.Builder
 	b.WriteByte('<')
@@ -674,6 +992,25 @@ func (t html5BlockStartTag) render(selfClosing bool) string {
 	return b.String()
 }
 
+func (t whiteboardStartTag) render(selfClosing bool) string {
+	var b strings.Builder
+	b.WriteByte('<')
+	b.WriteString(whiteboardTag)
+	for _, attr := range t.Attrs {
+		b.WriteByte(' ')
+		b.WriteString(attr.Name)
+		b.WriteString(`="`)
+		b.WriteString(escapeXMLAttr(attr.Value))
+		b.WriteByte('"')
+	}
+	if selfClosing {
+		b.WriteString("/>")
+	} else {
+		b.WriteByte('>')
+	}
+	return b.String()
+}
+
 func escapeXMLAttr(value string) string {
 	var b strings.Builder
 	for _, r := range value {
@@ -688,6 +1025,21 @@ func escapeXMLAttr(value string) string {
 			b.WriteString("&quot;")
 		case '\'':
 			b.WriteString("&apos;")
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func escapeXMLText(value string) string {
+	var b strings.Builder
+	for _, r := range value {
+		switch r {
+		case '&':
+			b.WriteString("&amp;")
+		case '<':
+			b.WriteString("&lt;")
 		default:
 			b.WriteRune(r)
 		}

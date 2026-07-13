@@ -72,6 +72,28 @@ other category. `error.type` is `"policy"`, `error.subtype` is one of
 `challenge_required` / `access_denied`, and process exit is `6` via
 `CategoryPolicy`.
 
+### Success envelope (stdout)
+
+For contrast: success responses render to **stdout** as an
+`output.Envelope` (`internal/output/envelope.go`), exit code `0`:
+
+```json
+{
+  "ok": true,
+  "identity": "user",
+  "data": { "guid": "e297d3d0-..." },
+  "meta": { "count": 1 }
+}
+```
+
+Consumers must branch on `ok` (or the process exit code). The success
+envelope has **no top-level `code` or `msg` field** — `code` exists only
+inside `error`, where it is the upstream numeric code (invariant 4).
+Wrappers that follow the raw OpenAPI convention and test `code == 0`
+will misclassify every successful call as a failure, which is
+especially dangerous around write commands (e.g. retrying a create that
+already succeeded).
+
 ## Categories
 
 | Category | When | Exit | Typed struct |

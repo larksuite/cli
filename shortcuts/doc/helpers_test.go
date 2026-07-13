@@ -13,11 +13,12 @@ func TestParseDocumentRef(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		input     string
-		wantKind  string
-		wantToken string
-		wantErr   string
+		name         string
+		input        string
+		wantKind     string
+		wantToken    string
+		wantFragment string
+		wantErr      string
 	}{
 		{
 			name:      "docx url",
@@ -30,6 +31,13 @@ func TestParseDocumentRef(t *testing.T) {
 			input:     "https://example.larksuite.com/wiki/xxxxxx?from=wiki",
 			wantKind:  "wiki",
 			wantToken: "xxxxxx",
+		},
+		{
+			name:         "wiki url with selection anchor",
+			input:        "https://example.larksuite.com/wiki/xxxxxx#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+			wantKind:     "wiki",
+			wantToken:    "xxxxxx",
+			wantFragment: "share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
 		},
 		{
 			name:      "doc url",
@@ -72,6 +80,9 @@ func TestParseDocumentRef(t *testing.T) {
 			}
 			if got.Token != tt.wantToken {
 				t.Fatalf("parseDocumentRef(%q) token = %q, want %q", tt.input, got.Token, tt.wantToken)
+			}
+			if got.Fragment != tt.wantFragment {
+				t.Fatalf("parseDocumentRef(%q) fragment = %q, want %q", tt.input, got.Fragment, tt.wantFragment)
 			}
 		})
 	}

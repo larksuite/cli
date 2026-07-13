@@ -66,7 +66,7 @@ var AppsDBExecute = common.Shortcut{
 		{Name: "sql", Desc: "SQL text; use - to read stdin. Mutually exclusive with --file",
 			Input: []string{common.Stdin}},
 		{Name: "file", Desc: "path to a .sql file (relative to cwd). Mutually exclusive with --sql"},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -291,10 +291,9 @@ func parseErrorSentinel(data string) (int, string) {
 //
 // CLI 永远走 DBA 模式，原子性由用户在 SQL 内显式 BEGIN/COMMIT 控制；不暴露 transactional flag 给用户。
 func buildDBSQLParams(rctx *common.RuntimeContext) map[string]interface{} {
-	return map[string]interface{}{
-		"env":           dbEnv(rctx),
+	return dbEnvParams(rctx, map[string]interface{}{
 		"transactional": false,
-	}
+	})
 }
 
 // resolveExecuteSQL 返回要执行的 SQL，在用时（DryRun/Execute）现读，使 --file 的内容

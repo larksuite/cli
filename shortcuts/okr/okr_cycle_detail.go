@@ -26,6 +26,7 @@ var OKRCycleDetail = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "cycle-id", Desc: "OKR cycle id (int64)", Required: true},
+		{Name: "style", Default: "simple", Desc: "output style: simple (semi-plain text JSON) | richtext (ContentBlock JSON)", Enum: []string{"simple", "richtext"}},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		cycleID := runtime.Str("cycle-id")
@@ -34,6 +35,10 @@ var OKRCycleDetail = common.Shortcut{
 		}
 		if id, err := strconv.ParseInt(cycleID, 10, 64); err != nil || id <= 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--cycle-id must be a positive int64").WithParam("--cycle-id")
+		}
+		style := runtime.Str("style")
+		if style != "simple" && style != "richtext" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--style must be one of: simple | richtext").WithParam("--style")
 		}
 		return nil
 	},
@@ -50,6 +55,7 @@ var OKRCycleDetail = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		cycleID := runtime.Str("cycle-id")
+		style := runtime.Str("style")
 
 		// Paginate objectives under the cycle.
 		queryParams := map[string]interface{}{"page_size": "100"}
@@ -96,85 +102,106 @@ var OKRCycleDetail = common.Shortcut{
 		}
 
 		// For each objective, paginate key results and convert to response format.
-		respObjectives := make([]*RespObjective, 0, len(objectives))
-		for i := range objectives {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			obj := &objectives[i]
-
-			krQuery := map[string]interface{}{"page_size": "100"}
-
-			var keyResults []KeyResult
-			krPage := 0
-			for {
+		if style == "simple" {
+			respObjectives := make([]*RespObjectiveSimple, 0, len(objectives))
+			for i := range objectives {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if krPage > 0 {
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case <-time.After(500 * time.Millisecond):
-					}
-				}
-				krPage++
+				obj := &objectives[i]
 
-				path := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results", obj.ID)
-				data, err := runtime.CallAPITyped("GET", path, krQuery, nil)
+				keyResults, err := fetchKeyResults(ctx, runtime, obj.ID)
 				if err != nil {
 					return err
 				}
 
-				itemsRaw, _ := data["items"].([]interface{})
-				for _, item := range itemsRaw {
-					raw, err := json.Marshal(item)
-					if err != nil {
-						continue
+				respObj := obj.ToSimple()
+				if respObj == nil {
+					continue
+				}
+				respKRs := make([]RespKeyResultSimple, 0, len(keyResults))
+				for j := range keyResults {
+					if r := keyResults[j].ToSimple(); r != nil {
+						respKRs = append(respKRs, *r)
 					}
-					var kr KeyResult
-					if err := json.Unmarshal(raw, &kr); err != nil {
-						continue
+				}
+				respObj.KeyResults = respKRs
+				respObjectives = append(respObjectives, respObj)
+			}
+
+			result := map[string]interface{}{
+				"cycle_id":   cycleID,
+				"objectives": respObjectives,
+				"total":      len(respObjectives),
+				"style":      style,
+			}
+
+			runtime.OutFormat(result, nil, func(w io.Writer) {
+				fmt.Fprintf(w, "Cycle %s: %d objective(s) (style: %s)\n", cycleID, len(respObjectives), style)
+				for _, o := range respObjectives {
+					contentText := ""
+					if o.Content != nil {
+						contentText = o.Content.Text
 					}
-					keyResults = append(keyResults, kr)
+					notesText := ""
+					if o.Notes != nil {
+						notesText = o.Notes.Text
+					}
+					fmt.Fprintf(w, "Objective [%s]: %s \n Notes: %s \n score=%.2f weight=%.2f\n", o.ID, contentText, notesText, ptrFloat64(o.Score), ptrFloat64(o.Weight))
+					for _, kr := range o.KeyResults {
+						krText := ""
+						if kr.Content != nil {
+							krText = kr.Content.Text
+						}
+						fmt.Fprintf(w, "  - KR [%s]: %s \n score=%.2f weight=%.2f\n", kr.ID, krText, ptrFloat64(kr.Score), ptrFloat64(kr.Weight))
+					}
+				}
+			})
+		} else {
+			// richtext mode
+			respObjectives := make([]*RespObjective, 0, len(objectives))
+			for i := range objectives {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				obj := &objectives[i]
+
+				keyResults, err := fetchKeyResults(ctx, runtime, obj.ID)
+				if err != nil {
+					return err
 				}
 
-				hasMore, pageToken := common.PaginationMeta(data)
-				if !hasMore || pageToken == "" {
-					break
+				respObj := obj.ToResp()
+				if respObj == nil {
+					continue
 				}
-				krQuery["page_token"] = pageToken
+				respKRs := make([]RespKeyResult, 0, len(keyResults))
+				for j := range keyResults {
+					if r := keyResults[j].ToResp(); r != nil {
+						respKRs = append(respKRs, *r)
+					}
+				}
+				respObj.KeyResults = respKRs
+				respObjectives = append(respObjectives, respObj)
 			}
 
-			respObj := obj.ToResp()
-			if respObj == nil {
-				continue
+			result := map[string]interface{}{
+				"cycle_id":   cycleID,
+				"objectives": respObjectives,
+				"total":      len(respObjectives),
+				"style":      style,
 			}
-			respKRs := make([]RespKeyResult, 0, len(keyResults))
-			for j := range keyResults {
-				if r := keyResults[j].ToResp(); r != nil {
-					respKRs = append(respKRs, *r)
+
+			runtime.OutFormat(result, nil, func(w io.Writer) {
+				fmt.Fprintf(w, "Cycle %s: %d objective(s) (style: %s)\n", cycleID, len(respObjectives), style)
+				for _, o := range respObjectives {
+					fmt.Fprintf(w, "Objective [%s]: %s \n Notes: %s \n score=%.2f weight=%.2f\n", o.ID, ptrStr(o.Content), ptrStr(o.Notes), ptrFloat64(o.Score), ptrFloat64(o.Weight))
+					for _, kr := range o.KeyResults {
+						fmt.Fprintf(w, "  - KR [%s]: %s \n score=%.2f weight=%.2f\n", kr.ID, ptrStr(kr.Content), ptrFloat64(kr.Score), ptrFloat64(kr.Weight))
+					}
 				}
-			}
-			respObj.KeyResults = respKRs
-			respObjectives = append(respObjectives, respObj)
+			})
 		}
-
-		result := map[string]interface{}{
-			"cycle_id":   cycleID,
-			"objectives": respObjectives,
-			"total":      len(respObjectives),
-		}
-
-		runtime.OutFormat(result, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "Cycle %s: %d objective(s)\n", cycleID, len(respObjectives))
-			for _, o := range respObjectives {
-				fmt.Fprintf(w, "Objective [%s]: %s \n Notes: %s \n score=%.2f weight=%.2f\n", o.ID, ptrStr(o.Content), ptrStr(o.Notes), ptrFloat64(o.Score), ptrFloat64(o.Weight))
-				for _, kr := range o.KeyResults {
-					fmt.Fprintf(w, "  - KR [%s]: %s \n score=%.2f weight=%.2f\n", kr.ID, ptrStr(kr.Content), ptrFloat64(kr.Score), ptrFloat64(kr.Weight))
-				}
-			}
-		})
 		return nil
 	},
 }

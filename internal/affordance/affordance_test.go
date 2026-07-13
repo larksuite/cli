@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"testing"
 	"testing/fstest"
+
+	"github.com/larksuite/cli/internal/meta"
 )
 
 // fixtureMD is a minimal affordance source: two methods, each with a lead
@@ -83,4 +85,39 @@ func TestParseDomainMD_ParagraphNotDropped(t *testing.T) {
 	if len(a.Extensions) != 1 || len(a.Extensions[0].Items) != 1 || a.Extensions[0].Items[0] != "run `other cmd` first." {
 		t.Errorf("custom-section paragraph not flowed through: %+v", a.Extensions)
 	}
+}
+
+// The ### Skills section merges with the domain `> skill:` default: domain
+// first, then per-command entries, de-duplicated. A command with no ### Skills
+// still inherits the domain default.
+func TestParseDomainMD_SkillsMerge(t *testing.T) {
+	md := "# d\n> skill: lark-d\n\n" +
+		"## foo\ndoes foo.\n\n### Skills\n- lark-workflow\n- lark-d\n\n" + // lark-d duplicates the domain default
+		"## bar\ndoes bar.\n"
+	got := parseDomainMD([]byte(md), nil)
+
+	if a := got["foo"]; len(a.Skills) != 2 || a.Skills[0] != "lark-d" || a.Skills[1] != "lark-workflow" {
+		t.Errorf("foo skills = %v, want [lark-d lark-workflow] (domain first, deduped)", a.Skills)
+	}
+	if a := got["bar"]; len(a.Skills) != 1 || a.Skills[0] != "lark-d" {
+		t.Errorf("bar skills = %v, want [lark-d] (domain default inherited)", a.Skills)
+	}
+}
+
+// A +-prefixed shortcut heading keys verbatim (no space->dot folding), so it
+// matches the shortcut command as mounted.
+func TestParseDomainMD_ShortcutHeadingVerbatim(t *testing.T) {
+	md := "# d\n\n## +create\ncreate via shortcut.\n"
+	got := parseDomainMD([]byte(md), nil)
+	if _, ok := got["+create"]; !ok {
+		t.Errorf("shortcut heading should key as %q; got keys %v", "+create", keysOf(got))
+	}
+}
+
+func keysOf(m map[string]meta.Affordance) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

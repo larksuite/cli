@@ -15,11 +15,11 @@ import (
 )
 
 // TestAppsDBExecuteDryRun pins +db-execute 复用存量 URL，CLI 永远走 DBA 模式
-// （?transactional=false），sql body 由 --sql 透传，默认 env=dev。
+// （?transactional=false），sql body 由 --sql 透传，默认不传 env（空值，由服务端按 workspace 定分支）。
 func TestAppsDBExecuteDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 
-	t.Run("DefaultEnvIsDevAndTransactionalFalse", func(t *testing.T) {
+	t.Run("DefaultEnvUnsetAndTransactionalFalse", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
 
@@ -37,8 +37,8 @@ func TestAppsDBExecuteDryRun(t *testing.T) {
 			"CLI is DBA mode → must send transactional=false in query")
 		assert.False(t, gjson.Get(result.Stdout, "api.0.body.transactional").Exists(),
 			"transactional should be in query, not body")
-		assert.Equal(t, "dev", gjson.Get(result.Stdout, "api.0.params.env").String(),
-			"default env must be dev (not production)")
+		assert.False(t, gjson.Get(result.Stdout, "api.0.params.env").Exists(),
+			"default: no --environment → env key must be omitted (server picks workspace default branch)")
 	})
 
 	t.Run("OnlineEnvSwitch", func(t *testing.T) {

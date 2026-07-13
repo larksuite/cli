@@ -3018,7 +3018,7 @@
 
           子元素(mermaid 与 svg 二选一):
           - mermaid: Mermaid 源码文本, 可使用 CDATA 包裹
-            适用场景: 流程图、时序图、思维导图、类图、甘特图、饼图等结构化图表
+            适用场景: 流程图、时序图、思维导图、类图、甘特图、ER 图、用户旅程等结构图
             特点: 用简短的文本声明描述图表逻辑, 由渲染引擎自动布局, 无需手动计算坐标
             示例: &lt;mermaid&gt;&lt;![CDATA[flowchart TD\n  A[开始] --&gt; B[结束]]]&gt;&lt;/mermaid&gt;
           - svg: SVG 内容

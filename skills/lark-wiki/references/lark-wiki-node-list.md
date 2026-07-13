@@ -11,6 +11,9 @@ lark-cli wiki +node-list --space-id <SPACE_ID>
 # Drill into a sub-directory (still single page by default)
 lark-cli wiki +node-list --space-id <SPACE_ID> --parent-node-token <NODE_TOKEN>
 
+# Drill with a wiki URL (CLI normalizes /wiki/<token> to node_token)
+lark-cli wiki +node-list --space-id <SPACE_ID> --parent-node-token "https://feishu.cn/wiki/wikcn_xxx"
+
 # Personal document library (user identity only)
 lark-cli wiki +node-list --space-id my_library --as user
 
@@ -31,8 +34,8 @@ lark-cli wiki +node-list --space-id <SPACE_ID> --format pretty
 
 | Flag | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `--space-id` | string | **Yes** | — | Wiki space ID. Use `my_library` for personal document library (user only) |
-| `--parent-node-token` | string | No | — | Parent node token; omit to list the space root |
+| `--space-id` | string | **Yes** | — | Numeric wiki space ID. Use `my_library` for personal document library (user only) |
+| `--parent-node-token` | string | No | — | Parent wiki node token, or a `/wiki/<token>` URL; omit to list the space root |
 | `--page-size` | int | No | 50 | Page size, 1-50 |
 | `--page-token` | string | No | — | Page cursor; implies single-page fetch (no auto-pagination) |
 | `--page-all` | bool | No | `false` | Automatically paginate through all pages (capped by `--page-limit`) |
@@ -82,6 +85,10 @@ lark-cli wiki +node-list --space-id 6946843325487912356 --parent-node-token wikc
 ## Notes
 
 - `--space-id my_library` is a per-user alias and only valid with `--as user`. The shortcut will refuse `--as bot` with `my_library` upfront.
+- `--space-id` is a numeric wiki `space_id`. Do not pass a wiki URL, wiki node token, document token, or title. Use `lark-cli wiki +space-list --as user` to discover it.
+- `--parent-node-token` must resolve to a wiki node token. If you have a docx/sheet/base/file URL, first run `lark-cli wiki +node-get --node-token <url>` and use the returned `node_token`.
+- Treat `invalid_parameters` (`space_id is not int`, `invalid page_token`), `not_found` (`node not found by parent node token`), and `permission_denied` as terminal for the current arguments. Fix the argument or permission before retrying.
+- For `rate_limit`, stop immediate retries and retry later with exponential backoff or a smaller `--page-limit`.
 
 ## Required Scope
 

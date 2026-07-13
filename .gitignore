@@ -27,6 +27,9 @@ Thumbs.db
 # Go
 docs/ref
 docs/
+!tests/cli_e2e/docs/
+!tests/cli_e2e/docs/*.go
+!tests/cli_e2e/docs/*.md
 vendor/
 
 
