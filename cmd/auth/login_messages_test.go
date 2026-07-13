@@ -101,12 +101,12 @@ func TestLoginMsg_FormatStrings(t *testing.T) {
 // TestAgentTimeoutHint_CarriesKeyInfo guards the contract that the synchronous
 // auth-login output tells AI agents three things: (a) this command blocks for
 // minutes — set a long runner timeout, (b) the alternative is the --no-wait +
-// --device-code split-flow, and (c) non-streaming harnesses must end the turn
+// --resume split-flow, and (c) non-streaming harnesses must end the turn
 // after presenting the URL instead of blocking in the same turn.
 func TestAgentTimeoutHint_CarriesKeyInfo(t *testing.T) {
 	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS} {
 		hint := getLoginMsg(lang).AgentTimeoutHint
-		for _, want := range []string{"--no-wait", "--device-code", "turn"} {
+		for _, want := range []string{"--no-wait", "--resume", "turn"} {
 			if lang == i18n.LangZhCN && want == "turn" {
 				want = "本轮"
 			}

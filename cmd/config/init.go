@@ -112,14 +112,20 @@ func validateInitLang(opts *ConfigInitOptions) error {
 }
 
 // guardAgentWorkspace refuses 'config init' when run inside an OpenClaw or
-// Hermes Agent context, because the Agent has already provisioned an app
-// and 'config bind' is the right tool for hooking lark-cli into it.
+// Hermes Agent context, or when a host explicitly marks the profile as
+// managed. In each case the host already owns the app binding; creating a new
+// app would shadow it rather than repair it.
 // Running init here would create a parallel app under the agent's workspace
 // dir, breaking the binding the user actually wants. --force-init lets a
 // human user override when they really do want a separate app.
 func guardAgentWorkspace(opts *ConfigInitOptions) error {
 	if opts.ForceInit {
 		return nil
+	}
+	if os.Getenv("LARKSUITE_CLI_MANAGED_CONFIG") == "1" {
+		return errs.NewConfigError(errs.SubtypeNotConfigured,
+			"config init is refused because this lark-cli profile is managed by the Agent host (creating another app would shadow the managed binding)").
+			WithHint("do not create a new app or run config init in this Agent task. Retry the original command; if it remains not_configured, report that the host-managed lark-cli profile failed to provision. Pass --force-init only if the user explicitly wants a separate app.")
 	}
 	ws := core.DetectWorkspaceFromEnv(os.Getenv)
 	if ws.IsLocal() {

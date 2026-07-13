@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
@@ -22,6 +23,13 @@ type loginScopeCacheRecord struct {
 	RequestedScope string `json:"requested_scope"`
 }
 
+type pendingLoginRecord struct {
+	DeviceCode     string `json:"device_code"`
+	AppID          string `json:"app_id"`
+	RequestedScope string `json:"requested_scope"`
+	ExpiresAt      int64  `json:"expires_at"`
+}
+
 // loginScopeCacheDir returns the directory used to persist auth login --no-wait
 // requested scopes keyed by device_code.
 func loginScopeCacheDir() string {
@@ -31,6 +39,10 @@ func loginScopeCacheDir() string {
 // loginScopeCachePath returns the cache file path for a given device_code.
 func loginScopeCachePath(deviceCode string) string {
 	return filepath.Join(loginScopeCacheDir(), sanitizeLoginScopeCacheKey(deviceCode)+".json")
+}
+
+func pendingLoginPath(appID string) string {
+	return filepath.Join(loginScopeCacheDir(), "latest-"+sanitizeLoginScopeCacheKey(appID)+".json")
 }
 
 // sanitizeLoginScopeCacheKey converts a device_code into a safe filename token.
@@ -52,6 +64,45 @@ func saveLoginRequestedScope(deviceCode, requestedScope string) error {
 		return err
 	}
 	return validate.AtomicWrite(loginScopeCachePath(deviceCode), data, 0600)
+}
+
+// savePendingLogin persists the latest split-flow authorization so a later
+// agent turn can resume it without copying a device code through the model's
+// conversation context. The per-device scope record remains for backwards
+// compatibility with the explicit --device-code flow.
+func savePendingLogin(deviceCode, appID, requestedScope string, expiresIn int) error {
+	if err := saveLoginRequestedScope(deviceCode, requestedScope); err != nil {
+		return err
+	}
+	record := pendingLoginRecord{
+		DeviceCode:     deviceCode,
+		AppID:          appID,
+		RequestedScope: requestedScope,
+		ExpiresAt:      time.Now().Add(time.Duration(expiresIn) * time.Second).Unix(),
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	return validate.AtomicWrite(pendingLoginPath(appID), data, 0600)
+}
+
+func loadPendingLogin(appID string) (*pendingLoginRecord, error) {
+	path := pendingLoginPath(appID)
+	data, err := vfs.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var record pendingLoginRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		_ = vfs.Remove(path)
+		return nil, err
+	}
+	if record.DeviceCode == "" || record.AppID != appID || record.ExpiresAt <= time.Now().Unix() {
+		_ = vfs.Remove(path)
+		return nil, os.ErrNotExist
+	}
+	return &record, nil
 }
 
 // loadLoginRequestedScope loads the cached requested scope string for a device_code.
@@ -79,6 +130,20 @@ func removeLoginRequestedScope(deviceCode string) error {
 		return nil
 	}
 	return err
+}
+
+func removePendingLogin(deviceCode, appID string) error {
+	firstErr := removeLoginRequestedScope(deviceCode)
+	path := pendingLoginPath(appID)
+	if data, err := vfs.ReadFile(path); err == nil {
+		var record pendingLoginRecord
+		if json.Unmarshal(data, &record) == nil && record.DeviceCode == deviceCode {
+			if err := vfs.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) && firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
 }
 
 // shouldRemoveLoginRequestedScope indicates whether the requested-scope cache

@@ -63,7 +63,7 @@ func TestAuthLoginCmd_HelpGuidesNonStreamingAgentsToSplitFlow(t *testing.T) {
 		"only delivers final turn messages",
 		"--no-wait --json",
 		"send the verification URL (or QR code) to the user as your final message",
-		"run --device-code in a later step",
+		"run --resume in a later step",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("help missing %q, got:\n%s", want, got)

@@ -324,7 +324,7 @@ func TestAuthLoginRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 	}
 	// Stderr should explain the split-flow path for non-streaming agents.
 	stderrStr := stderr.String()
-	for _, want := range []string{"--no-wait --json", "final message of the turn", "--device-code"} {
+	for _, want := range []string{"--no-wait --json", "final message of the turn", "--resume"} {
 		if !strings.Contains(stderrStr, want) {
 			t.Errorf("expected stderr to mention %q, got: %s", want, stderrStr)
 		}
@@ -786,12 +786,12 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	stderr.Reset()
 
 	err = authLoginRun(&LoginOptions{
-		Factory:    f,
-		Ctx:        context.Background(),
-		DeviceCode: "device-code",
+		Factory: f,
+		Ctx:     context.Background(),
+		Resume:  true,
 	})
 	if err != nil {
-		t.Fatalf("device-code authLoginRun() error = %v", err)
+		t.Fatalf("resume authLoginRun() error = %v", err)
 	}
 	got := stderr.String()
 	for _, want := range []string{
@@ -1045,11 +1045,11 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 		"cannot be modified",
 		"final message of the turn",
 		"return control to the user",
-		"do not block on --device-code in the same turn",
+		"do not run --resume in the same turn",
 		"come back and notify",
 		"YOU must execute",
-		"lark-cli auth login --device-code <device_code>",
-		"Do NOT cache",
+		"lark-cli auth login --resume",
+		"keeps the pending device code locally",
 		"lark-cli auth login --no-wait --json",
 	} {
 		if !strings.Contains(hint, want) {
@@ -1148,7 +1148,7 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 		"本轮最终消息",
 		"结束本轮",
 		"用户回复已完成授权",
-		"不要在同一轮里展示 URL 后立刻阻塞执行 --device-code",
+		"不要在同一轮里展示 URL 后立刻阻塞执行 --resume",
 		"必须生成二维码并展示",
 		"lark-cli auth qrcode",
 		"优先生成 PNG 二维码（--output）",

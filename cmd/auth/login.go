@@ -6,7 +6,9 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -36,6 +38,7 @@ type LoginOptions struct {
 	Exclude    []string
 	NoWait     bool
 	DeviceCode string
+	Resume     bool
 }
 
 var pollDeviceToken = larkauth.PollDeviceToken
@@ -52,7 +55,7 @@ func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.
 For AI agents: this command blocks until the user completes authorization in the
 browser. If your harness or agent tool only delivers final turn messages, use --no-wait --json,
 send the verification URL (or QR code) to the user as your final message, end the turn, then
-run --device-code in a later step after the user confirms authorization. Use 'lark-cli auth qrcode'
+run --resume in a later step after the user confirms authorization. Use 'lark-cli auth qrcode'
 to generate QR codes (supports ASCII and PNG formats).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if mode := f.ResolveStrictMode(cmd.Context()); mode == core.StrictModeBot {
@@ -84,8 +87,9 @@ to generate QR codes (supports ASCII and PNG formats).`,
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
 		"scopes to exclude from the request (repeatable or comma-separated, e.g. --exclude drive:file:download)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
-	cmd.Flags().BoolVar(&opts.NoWait, "no-wait", false, "initiate device authorization and return immediately; use --device-code to complete")
+	cmd.Flags().BoolVar(&opts.NoWait, "no-wait", false, "initiate device authorization and return immediately; use --resume to complete later")
 	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "poll and complete authorization with a device code from a previous --no-wait call")
+	cmd.Flags().BoolVar(&opts.Resume, "resume", false, "resume the latest pending authorization created by --no-wait")
 
 	cmdutil.RegisterFlagCompletion(cmd, "domain", func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeDomain(toComplete), cobra.ShellCompDirectiveNoFileComp
@@ -131,6 +135,21 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 	}
 	msg := getLoginMsg(lang)
+
+	if opts.Resume {
+		if opts.DeviceCode != "" || opts.NoWait || opts.Scope != "" || opts.Recommend || len(opts.Domains) > 0 || len(opts.Exclude) > 0 {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--resume cannot be combined with authorization request options or --device-code").WithParam("--resume")
+		}
+		pending, err := loadPendingLogin(config.AppID)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return errs.NewAuthenticationError(errs.SubtypeUnknown, "no unexpired pending authorization to resume").
+					WithHint("start a fresh split flow with `lark-cli auth login --scope <scope> --no-wait --json`, send its verification URL to the user, then run `lark-cli auth login --resume` only after the user confirms authorization")
+			}
+			return errs.NewInternalError(errs.SubtypeStorage, "failed to load pending authorization: %v", err).WithCause(err)
+		}
+		opts.DeviceCode = pending.DeviceCode
+	}
 
 	log := func(format string, a ...interface{}) {
 		if !opts.JSON {
@@ -200,7 +219,7 @@ func authLoginRun(opts *LoginOptions) error {
 			log("View all options:")
 			log(msg.HintFooter)
 			log("")
-			log("Note: this command blocks until authorization is complete. For non-streaming agent harnesses, use --no-wait --json, send the verification URL as the final message of the turn, then run --device-code in a later step after the user confirms authorization.")
+			log("Note: this command blocks until authorization is complete. For non-streaming agent harnesses, use --no-wait --json, send the verification URL as the final message of the turn, then run --resume in a later step after the user confirms authorization.")
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "please specify the scopes to authorize").WithParam("--scope")
 		}
 	}
@@ -272,7 +291,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// --no-wait: return immediately with device code and URL
 	if opts.NoWait {
-		if err := saveLoginRequestedScope(authResp.DeviceCode, finalScope); err != nil {
+		if err := savePendingLogin(authResp.DeviceCode, config.AppID, finalScope, authResp.ExpiresIn); err != nil {
 			fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to cache requested scopes: %v\n", err)
 		}
 		data := map[string]interface{}{
@@ -283,9 +302,9 @@ func authLoginRun(opts *LoginOptions) error {
 				"**CRITICAL: You MUST include the QR image in your response.** Generating the file alone is NOT enough—use image tags, inline images, or file attachments to display it." +
 				"**Display order:** Output the URL first, then place the QR code image below the URL." +
 				"**URL Output Rules:** Treat verification_url as an opaque string that cannot be modified. Do NOT URL-encode/decode or add spaces/punctuation." +
-				"For agent harnesses that only deliver final turn messages, make the QR code image (or URL) the final message of the turn and return control to the user; do not block on --device-code in the same turn. **Before ending the turn, tell the user to come back and notify you after completing authorization.**" +
-				"**After the user confirms authorization:** YOU must execute `lark-cli auth login --device-code <device_code>` yourself." +
-				"**Do NOT cache verification_url or device_code for future use.** Always run `lark-cli auth login --no-wait --json` fresh when authorization is needed.",
+				"For agent harnesses that only deliver final turn messages, make the QR code image (or URL) the final message of the turn and return control to the user; do not run --resume in the same turn. **Before ending the turn, tell the user to come back and notify you after completing authorization.**" +
+				"**After the user confirms authorization:** YOU must execute `lark-cli auth login --resume` yourself. The CLI keeps the pending device code locally; do not copy it into a task comment or ask the user to run a command." +
+				"If --resume reports that the pending authorization expired, start a fresh flow with `lark-cli auth login --no-wait --json` and show the new URL.",
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
@@ -403,7 +422,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to load cached requested scopes: %v\n", err)
 	}
 	cleanupRequestedScope := func() {
-		if err := removeLoginRequestedScope(opts.DeviceCode); err != nil {
+		if err := removePendingLogin(opts.DeviceCode, config.AppID); err != nil {
 			fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to remove cached requested scopes: %v\n", err)
 		}
 	}

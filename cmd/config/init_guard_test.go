@@ -13,9 +13,33 @@ import (
 
 func TestGuardAgentWorkspace_LocalAllows(t *testing.T) {
 	clearAgentEnv(t)
+	t.Setenv("LARKSUITE_CLI_MANAGED_CONFIG", "")
 
 	if err := guardAgentWorkspace(&ConfigInitOptions{}); err != nil {
 		t.Errorf("local workspace should allow init, got: %v", err)
+	}
+}
+
+func TestGuardAgentWorkspace_ManagedProfileRefuses(t *testing.T) {
+	clearAgentEnv(t)
+	t.Setenv("LARKSUITE_CLI_MANAGED_CONFIG", "1")
+
+	err := guardAgentWorkspace(&ConfigInitOptions{})
+	if err == nil {
+		t.Fatal("expected refusal for a host-managed profile, got nil")
+	}
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	if !strings.Contains(cfgErr.Message, "managed by the Agent host") {
+		t.Errorf("message must identify host-managed config; got %q", cfgErr.Message)
+	}
+	if strings.Contains(cfgErr.Hint, "config bind") {
+		t.Errorf("managed profiles must not be redirected to config bind; got %q", cfgErr.Hint)
+	}
+	if !strings.Contains(cfgErr.Hint, "failed to provision") {
+		t.Errorf("hint must identify the host provisioning failure; got %q", cfgErr.Hint)
 	}
 }
 
@@ -69,5 +93,13 @@ func TestGuardAgentWorkspace_ForceInitOverride(t *testing.T) {
 	// --force-init must let the user proceed even inside an Agent context.
 	if err := guardAgentWorkspace(&ConfigInitOptions{ForceInit: true}); err != nil {
 		t.Errorf("--force-init should bypass the guard, got: %v", err)
+	}
+}
+
+func TestGuardAgentWorkspace_ForceInitOverridesManagedProfile(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_MANAGED_CONFIG", "1")
+
+	if err := guardAgentWorkspace(&ConfigInitOptions{ForceInit: true}); err != nil {
+		t.Errorf("--force-init should bypass the managed-profile guard, got: %v", err)
 	}
 }
