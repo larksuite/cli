@@ -27,8 +27,7 @@ func TestIdentityTokenBijection(t *testing.T) {
 }
 
 func TestMethod_RestrictsIdentity(t *testing.T) {
-	// nil and empty both mean "unrestricted" unless a description-only identity
-	// marker is present.
+	// nil and empty both mean "unrestricted"; only a populated list restricts.
 	if (Method{}).RestrictsIdentity() {
 		t.Error("nil accessTokens must be unrestricted")
 	}
@@ -37,12 +36,6 @@ func TestMethod_RestrictsIdentity(t *testing.T) {
 	}
 	if !(Method{AccessTokens: []Token{"tenant"}}).RestrictsIdentity() {
 		t.Error("populated accessTokens must restrict identity")
-	}
-	if !(Method{Description: "Identity: `bot` only (`tenant_access_token`)."}).RestrictsIdentity() {
-		t.Error("description-only bot marker must restrict identity")
-	}
-	if !(Method{Description: "Identity: `user` only."}).RestrictsIdentity() {
-		t.Error("description-only user marker must restrict identity")
 	}
 }
 
@@ -62,33 +55,6 @@ func TestMethod_SupportsToken(t *testing.T) {
 	if m.SupportsToken("user") {
 		t.Error("tenant-only method must NOT support user")
 	}
-
-	m = Method{
-		Description:  "Uploads an image. Identity: `bot` only (`tenant_access_token`).",
-		AccessTokens: []Token{"tenant", "user"},
-	}
-	if !m.SupportsToken("tenant") {
-		t.Error("description bot-only method should support tenant")
-	}
-	if m.SupportsToken("user") {
-		t.Error("description bot-only method must NOT support user")
-	}
-
-	m = Method{Description: "Creates a resource. Identity: `user` only."}
-	if !m.SupportsToken("user") {
-		t.Error("description-only user method should support user")
-	}
-	if m.SupportsToken("tenant") {
-		t.Error("description-only user method must NOT support tenant")
-	}
-
-	m = Method{Description: "Uploads an image. Identity: `bot` only (`tenant_access_token`)."}
-	if !m.SupportsToken("tenant") {
-		t.Error("description-only bot method should support tenant")
-	}
-	if m.SupportsToken("user") {
-		t.Error("description-only bot method must NOT support user")
-	}
 }
 
 func TestMethod_Identities(t *testing.T) {
@@ -96,28 +62,22 @@ func TestMethod_Identities(t *testing.T) {
 	// unrecognized dropped; absent tokens -> empty but NON-nil so the envelope
 	// renders [] not null.
 	tests := []struct {
-		name        string
-		description string
-		tokens      []Token
-		want        []string
+		name   string
+		tokens []Token
+		want   []string
 	}{
-		{"tenant only", "", []Token{"tenant"}, []string{"bot"}},
-		{"user only", "", []Token{"user"}, []string{"user"}},
-		{"tenant then user", "", []Token{"tenant", "user"}, []string{"bot", "user"}},
-		{"user then tenant", "", []Token{"user", "tenant"}, []string{"bot", "user"}},
-		{"deduped", "", []Token{"tenant", "tenant", "user"}, []string{"bot", "user"}},
-		{"empty", "", []Token{}, []string{}},
-		{"nil", "", nil, []string{}},
-		{"unknown skipped", "", []Token{"user", "admin"}, []string{"user"}},
-		{"description bot only overrides mixed tokens", "Uploads an image. Identity: `bot` only (`tenant_access_token`).", []Token{"tenant", "user"}, []string{"bot"}},
-		{"description user only overrides mixed tokens", "Creates a resource. Identity: `user` only.", []Token{"tenant", "user"}, []string{"user"}},
-		{"description bot only with nil tokens", "Uploads an image. Identity: `bot` only (`tenant_access_token`).", nil, []string{"bot"}},
-		{"description user only with empty tokens", "Creates a resource. Identity: `user` only.", []Token{}, []string{"user"}},
+		{"tenant only", []Token{"tenant"}, []string{"bot"}},
+		{"user only", []Token{"user"}, []string{"user"}},
+		{"tenant then user", []Token{"tenant", "user"}, []string{"bot", "user"}},
+		{"user then tenant", []Token{"user", "tenant"}, []string{"bot", "user"}},
+		{"deduped", []Token{"tenant", "tenant", "user"}, []string{"bot", "user"}},
+		{"empty", []Token{}, []string{}},
+		{"nil", nil, []string{}},
+		{"unknown skipped", []Token{"user", "admin"}, []string{"user"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			method := Method{Description: tt.description, AccessTokens: tt.tokens}
-			if got := method.Identities(); !reflect.DeepEqual(got, tt.want) {
+			if got := (Method{AccessTokens: tt.tokens}).Identities(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Identities(%v) = %#v, want %#v", tt.tokens, got, tt.want)
 			}
 		})

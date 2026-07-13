@@ -1154,6 +1154,10 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 			WithParam("--dry-run")
 	}
 	dryResult := s.DryRun(rctx.ctx, rctx)
+	if dryResult != nil {
+		// Same data.context contract as the service/api dry-run paths.
+		dryResult.Context(rctx.Config.AppID, rctx.UserOpenId())
+	}
 	return cmdutil.WriteDryRun(dryResult, cmdutil.DryRunOutputOptions{
 		Format:      rctx.Format,
 		JqExpr:      rctx.JqExpr,

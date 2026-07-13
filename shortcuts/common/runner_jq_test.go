@@ -265,6 +265,10 @@ func TestRunShortcut_DryRunJSONUsesEnvelope(t *testing.T) {
 	if call["url"] != "/open-apis/test" {
 		t.Fatalf("api[0] = %#v", call)
 	}
+	dctx, ok := data["context"].(map[string]interface{})
+	if !ok || dctx["app_id"] != "test" {
+		t.Fatalf("runner must inject data.context like the service/api paths, got: %#v", data["context"])
+	}
 }
 
 func TestRunShortcut_DryRunWithJq(t *testing.T) {

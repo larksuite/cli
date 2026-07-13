@@ -130,6 +130,13 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 	stdin := opts.Factory.IOStreams.In
 	fileIO := opts.Factory.ResolveFileIO(opts.Ctx)
 
+	if opts.Method == "" {
+		return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"HTTP method must not be empty").
+			WithHint("pass the verb as the first argument, e.g. lark-cli api GET /open-apis/...").
+			WithParam("<method>")
+	}
+
 	// Validate --file mutual exclusions first.
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, opts.Method); err != nil {
 		return client.RawApiRequest{}, nil, err
@@ -243,7 +250,7 @@ func apiRun(opts *APIOptions) error {
 
 	if opts.DryRun {
 		if fileMeta != nil {
-			return cmdutil.PrintDryRunWithFile(request, config, dryRunOutputOptions(f, opts), fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+			return cmdutil.PrintDryRunWithFile(request, config, dryRunOutputOptions(f, opts), *fileMeta)
 		}
 		return apiDryRun(f, request, config, opts)
 	}

@@ -3,7 +3,10 @@
 
 package apps
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type dryRunAPICall struct {
 	Method string                 `json:"method"`
@@ -30,12 +33,14 @@ func (e *dryRunAPIEnvelope) UnmarshalJSON(data []byte) error {
 }
 
 func decodeDryRunDataMap(data []byte) (map[string]interface{}, error) {
-	var raw map[string]interface{}
+	var raw struct {
+		Data map[string]interface{} `json:"data"`
+	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	if nested, ok := raw["data"].(map[string]interface{}); ok {
-		return nested, nil
+	if raw.Data == nil {
+		return nil, fmt.Errorf("dry-run stdout is not a success envelope: %s", data)
 	}
-	return raw, nil
+	return raw.Data, nil
 }

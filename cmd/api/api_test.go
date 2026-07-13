@@ -182,6 +182,22 @@ func TestApiCmd_MissingArgs(t *testing.T) {
 	}
 }
 
+func TestApiCmd_EmptyMethodRejected(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{"", "/open-apis/test", "--as", "bot", "--dry-run"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected validation error for empty HTTP method")
+	}
+	if !strings.Contains(err.Error(), "method") {
+		t.Fatalf("error should name the method argument, got: %v", err)
+	}
+}
+
 func TestApiCmd_InvalidParamsJSON(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,

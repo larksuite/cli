@@ -6,10 +6,12 @@ package cmdutil
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 )
@@ -70,11 +72,11 @@ func TestDryRunAPI_ResolveURL(t *testing.T) {
 func TestDryRunAPI_ResolveURLMatchesFullPlaceholderOnly(t *testing.T) {
 	dr := NewDryRunAPI().
 		GET("/open-apis/task/v2/tasks/:assignee_id").
-		Set("as", "bot")
+		Set("assignee", "ou_bot")
 
 	text := dr.Format()
-	if strings.Contains(text, "botsignee_id") {
-		t.Fatalf("short placeholder key corrupted longer token: %s", text)
+	if strings.Contains(text, "ou_bot_id") {
+		t.Fatalf("prefix placeholder key corrupted longer token: %s", text)
 	}
 	if !strings.Contains(text, ":assignee_id") {
 		t.Fatalf("missing unresolved placeholder, got: %s", text)
@@ -91,7 +93,7 @@ func TestDryRunAPI_MarshalJSON(t *testing.T) {
 	dr := NewDryRunAPI().
 		Desc("test api").
 		GET("/open-apis/test").
-		Set("as", "user")
+		Set("note", "audit")
 
 	data, err := json.Marshal(dr)
 	if err != nil {
@@ -104,8 +106,8 @@ func TestDryRunAPI_MarshalJSON(t *testing.T) {
 	if m["description"] != "test api" {
 		t.Errorf("expected description, got: %v", m["description"])
 	}
-	if m["as"] != "user" {
-		t.Errorf("expected as=user, got: %v", m["as"])
+	if m["note"] != "audit" {
+		t.Errorf("expected note=audit, got: %v", m["note"])
 	}
 	api, ok := m["api"].([]interface{})
 	if !ok || len(api) != 1 {
@@ -171,8 +173,15 @@ func TestPrintDryRun_JSON(t *testing.T) {
 		t.Fatalf("unexpected envelope: %#v", env)
 	}
 	data, ok := env["data"].(map[string]interface{})
-	if !ok || data["appId"] != "app123" {
+	if !ok {
 		t.Fatalf("unexpected data: %#v", env["data"])
+	}
+	dctx, ok := data["context"].(map[string]interface{})
+	if !ok || dctx["app_id"] != "app123" {
+		t.Fatalf("unexpected data.context: %#v", data["context"])
+	}
+	if _, exists := data["as"]; exists {
+		t.Fatalf("data.as must not appear; identity lives at the envelope top level: %#v", data)
 	}
 	api, ok := data["api"].([]interface{})
 	if !ok || len(api) != 1 {
@@ -204,6 +213,9 @@ func TestPrintDryRun_Pretty(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "POST /open-apis/test") {
 		t.Errorf("expected POST line in pretty output, got: %s", out)
+	}
+	if !strings.HasPrefix(out, "# dry-run: request not sent\n") {
+		t.Fatalf("pretty stdout should start with the dry-run marker, got: %s", out)
 	}
 	if strings.Contains(out, "=== Dry Run ===") {
 		t.Fatalf("pretty stdout must not contain banner, got: %s", out)
@@ -240,12 +252,12 @@ func TestPrintDryRunWithFile_JSONEnvelope(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/files/upload_all",
 		As:     "bot",
-	}, &core.CliConfig{AppID: "app123"}, DryRunOutputOptions{
+	}, &core.CliConfig{AppID: "app123", UserOpenId: "ou_tester"}, DryRunOutputOptions{
 		Format:   "json",
 		Identity: core.AsBot,
 		Out:      &buf,
 		ErrOut:   io.Discard,
-	}, "file", "report.txt", map[string]any{"parent": "fld"})
+	}, FileUploadMeta{FieldName: "file", FilePath: "report.txt", FormFields: map[string]any{"parent": "fld"}})
 	if err != nil {
 		t.Fatalf("PrintDryRunWithFile failed: %v", err)
 	}
@@ -263,6 +275,74 @@ func TestPrintDryRunWithFile_JSONEnvelope(t *testing.T) {
 	file := body["file"].(map[string]interface{})
 	if file["path"] != "report.txt" {
 		t.Fatalf("file body = %#v", body)
+	}
+	dctx, ok := data["context"].(map[string]interface{})
+	if !ok || dctx["app_id"] != "app123" || dctx["user_open_id"] != "ou_tester" {
+		t.Fatalf("unexpected data.context: %#v", data["context"])
+	}
+	for _, legacy := range []string{"as", "appId", "userOpenId"} {
+		if _, exists := data[legacy]; exists {
+			t.Fatalf("legacy key %q must not appear in data: %#v", legacy, data)
+		}
+	}
+}
+
+func TestPrintDryRun_MethodTranscribedVerbatim(t *testing.T) {
+	var buf bytes.Buffer
+	err := PrintDryRun(client.RawApiRequest{
+		Method: "OPTIONS",
+		URL:    "/open-apis/test",
+		As:     "bot",
+	}, &core.CliConfig{AppID: "app123"}, DryRunOutputOptions{
+		Format:   "json",
+		Identity: core.AsBot,
+		Out:      &buf,
+		ErrOut:   io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("PrintDryRun failed: %v", err)
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, buf.String())
+	}
+	call := env["data"].(map[string]interface{})["api"].([]interface{})[0].(map[string]interface{})
+	if call["method"] != "OPTIONS" {
+		t.Fatalf("method = %#v, want OPTIONS transcribed verbatim (not coerced to GET)", call["method"])
+	}
+}
+
+func TestPrintDryRun_EmptyConfigOmitsContext(t *testing.T) {
+	var buf bytes.Buffer
+	err := PrintDryRun(client.RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/test",
+	}, &core.CliConfig{}, DryRunOutputOptions{
+		Format: "json",
+		Out:    &buf,
+		ErrOut: io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("PrintDryRun failed: %v", err)
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, buf.String())
+	}
+	data := env["data"].(map[string]interface{})
+	if _, exists := data["context"]; exists {
+		t.Fatalf("empty app/user context must be omitted entirely, got: %#v", data["context"])
+	}
+}
+
+func TestWriteDryRun_NilPreviewIsInternalError(t *testing.T) {
+	err := WriteDryRun(nil, DryRunOutputOptions{Format: "json", Out: io.Discard})
+	if err == nil {
+		t.Fatal("WriteDryRun(nil) should fail instead of emitting an empty preview")
+	}
+	var internal *errs.InternalError
+	if !errors.As(err, &internal) {
+		t.Fatalf("expected *errs.InternalError, got %T: %v", err, err)
 	}
 }
 

@@ -3,10 +3,7 @@
 
 package meta
 
-import (
-	"sort"
-	"strings"
-)
+import "sort"
 
 // Token is the metadata accessTokens vocabulary: which token kind a method
 // accepts. It is a distinct type so the two directions of the token<->identity
@@ -47,15 +44,11 @@ func TokenForIdentity(identity string) Token {
 }
 
 // RestrictsIdentity reports whether the method limits which identities may call
-// it: either via accessTokens or a description-only identity marker. Without
-// either signal, nil OR an empty accessTokens slice means unrestricted (any
-// identity). This is the single rule that both the strict-mode predicate
-// (SupportsToken) and command identity gates use, so nil and [] never diverge
-// across schema/scope and execution.
+// it: true exactly when it declares one or more accessTokens. nil OR an empty
+// slice means unrestricted (any identity). This is the single rule that both
+// the strict-mode predicate (SupportsToken) and command identity gates use, so
+// nil and [] never diverge across schema/scope and execution.
 func (m Method) RestrictsIdentity() bool {
-	if _, ok := m.descriptionOnlyIdentity(); ok {
-		return true
-	}
 	return len(m.AccessTokens) > 0
 }
 
@@ -65,9 +58,6 @@ func (m Method) RestrictsIdentity() bool {
 // the single source of truth for the predicate; registry scope policy and
 // command identity checks build on it.
 func (m Method) SupportsToken(token Token) bool {
-	if identity, ok := m.descriptionOnlyIdentity(); ok {
-		return TokenForIdentity(identity) == token
-	}
 	if !m.RestrictsIdentity() {
 		return true
 	}
@@ -89,10 +79,6 @@ func (m Method) SupportsToken(token Token) bool {
 // that. Identities() lists only CLI-known identities, so a method restricted
 // solely to unrecognized tokens returns empty yet RestrictsIdentity() is true.
 func (m Method) Identities() []string {
-	if identity, ok := m.descriptionOnlyIdentity(); ok {
-		return []string{identity}
-	}
-
 	seen := make(map[string]bool, len(m.AccessTokens))
 	for _, t := range m.AccessTokens {
 		if id, ok := IdentityForToken(t); ok {
@@ -105,16 +91,4 @@ func (m Method) Identities() []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func (m Method) descriptionOnlyIdentity() (string, bool) {
-	description := strings.ToLower(m.Description)
-	switch {
-	case strings.Contains(description, "identity: `bot` only"):
-		return "bot", true
-	case strings.Contains(description, "identity: `user` only"):
-		return "user", true
-	default:
-		return "", false
-	}
 }

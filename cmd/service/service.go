@@ -403,7 +403,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 	if opts.DryRun {
 		if fileMeta != nil {
-			return cmdutil.PrintDryRunWithFile(request, config, serviceDryRunOutputOptions(f, opts), fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+			return cmdutil.PrintDryRunWithFile(request, config, serviceDryRunOutputOptions(f, opts), *fileMeta)
 		}
 		return serviceDryRun(f, request, config, opts)
 	}
