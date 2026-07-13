@@ -40,7 +40,8 @@ type AppUser struct {
 // default, client_secret.
 const (
 	AuthMethodClientSecret  = "client_secret"   // app_id + app_secret
-	AuthMethodPrivateKeyJWT = "private_key_jwt" // TEE-signed client_assertion; no app secret
+	authMethodPKJWTValue    = "private_key_jwt" // TEE-signed client_assertion; no app secret
+	AuthMethodPrivateKeyJWT = authMethodPKJWTValue
 )
 
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
@@ -314,7 +315,7 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		if app.KeyRef == nil || app.KeyRef.Source != "tee" || app.KeyRef.ID == "" {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 				"private_key_jwt requires a valid tee key handle (keyRef)").
-				WithHint("re-run: lark-cli config init --new --private_key_jwt")
+				WithHint("re-run: lark-cli config init --new --private-key-jwt")
 		}
 	} else {
 		if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {

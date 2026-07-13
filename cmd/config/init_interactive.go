@@ -183,7 +183,7 @@ func runExistingAppForm(ctx context.Context, f *cmdutil.Factory, requestedAuthMe
 // An explicit private_key_jwt request wins; otherwise the default is
 // client_secret with no extra prompt.
 func resolveRegisterAuthMethod(ctx context.Context, _ *cmdutil.Factory, requested string) (string, error) {
-	const pkjwtUnsupportedMessage = "this machine does not support --private_key_jwt"
+	const pkjwtUnsupportedMessage = "this machine does not support --private-key-jwt"
 
 	switch requested {
 	case core.AuthMethodPrivateKeyJWT:
@@ -197,18 +197,18 @@ func resolveRegisterAuthMethod(ctx context.Context, _ *cmdutil.Factory, requeste
 		if !ok {
 			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
 				pkjwtUnsupportedMessage).
-				WithHint("omit --private_key_jwt to register with an app secret")
+				WithHint("omit --private-key-jwt to register with an app secret")
 		}
 		if err != nil {
 			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
 				pkjwtUnsupportedMessage).
 				WithCause(err).
-				WithHint("omit --private_key_jwt to register with an app secret")
+				WithHint("omit --private-key-jwt to register with an app secret")
 		}
 		if !info.Available {
 			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
 				pkjwtUnsupportedMessage).
-				WithHint("omit --private_key_jwt to register with an app secret")
+				WithHint("omit --private-key-jwt to register with an app secret")
 		}
 		return core.AuthMethodPrivateKeyJWT, nil
 	case core.AuthMethodClientSecret:
@@ -282,7 +282,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		if len(initResp.SupportedAuthMethods) > 0 && !slices.Contains(initResp.SupportedAuthMethods, core.AuthMethodPrivateKeyJWT) {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient,
 				"server does not support private_key_jwt for this app type (supported: %s)", strings.Join(initResp.SupportedAuthMethods, ", ")).
-				WithHint("omit --private_key_jwt to register with an app secret instead")
+				WithHint("omit --private-key-jwt to register with an app secret instead")
 		}
 		keyLabel = keysigner.DefaultKeyLabel
 		var attestation string
@@ -426,7 +426,7 @@ func validatePKJWTKeyBinding(finalMethod, keyLabel string) error {
 	if finalMethod == core.AuthMethodPrivateKeyJWT && keyLabel == "" {
 		return errs.NewConfigError(errs.SubtypeInvalidClient,
 			"registration resolved to private_key_jwt but no signing key was bound to this app (an existing secret-based app may have been selected)").
-			WithHint("re-register with: lark-cli config init --new --private_key_jwt")
+			WithHint("re-register with: lark-cli config init --new --private-key-jwt")
 	}
 	return nil
 }
