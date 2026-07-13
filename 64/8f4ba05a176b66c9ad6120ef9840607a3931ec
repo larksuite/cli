@@ -1,0 +1,59 @@
+cmd/config/bind.go
+  s_64bcc2f29a4ce4::t_3a952ae83bc1a1 409-414
+cmd/config/bind_test.go
+  s_48aa8b8676e5c1::t_811f43b57d7798 277-318
+cmd/config/config_test.go
+  s_64bcc2f29a4ce4::t_f19845307ec7f9 8,21,25,245-332
+cmd/config/init.go
+  s_64bcc2f29a4ce4::t_1e87b5428cef81 20,23,110-122,222-226,305,377,470-488
+cmd/config/init_auth_method_test.go
+  s_64bcc2f29a4ce4::t_9c6f39ac26fcc4 46,97-147,167-254,256,291
+cmd/config/init_interactive.go
+  s_64bcc2f29a4ce4::t_14069e35ba013a 188-190,288
+cmd/config/init_probe.go
+  s_48aa8b8676e5c1::t_0197017037aeaf 103-107,118
+cmd/doctor/doctor.go
+  s_48aa8b8676e5c1::t_2b180dd61cb834 163-171,176-177
+cmd/doctor/doctor_test.go
+  s_64bcc2f29a4ce4::t_3a7b921b308a4f 192-212
+internal/auth/client_auth.go
+  s_48aa8b8676e5c1::t_83f1520d789979 54-59
+internal/auth/client_auth_test.go
+  s_64bcc2f29a4ce4::t_947d82422d6d7d 16,23,31,99,106-126
+internal/core/config.go
+  s_64bcc2f29a4ce4::t_71b9315a903cff 78-82
+internal/credential/tat_fetch.go
+  s_48aa8b8676e5c1::t_619ff0fb4af39b 118-131,139-140
+internal/credential/tat_fetch_test.go
+  s_64bcc2f29a4ce4::t_66c29258f77ad1 327,411
+internal/keylesshelper/helper.go
+  s_64bcc2f29a4ce4::t_cdee41056e4b56 5,12,18,50-60,66-92,98,102-110,122,126-134,153,157-165,203-217,223-226,229,234,236,238,241,243,247
+internal/keylesshelper/helper_test.go
+  s_64bcc2f29a4ce4::t_db9803055b957c 14,16,53-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "648f4ba05a176b66c9ad6120ef9840607a3931ec",
+  "prompts": {},
+  "sessions": {
+    "s_48aa8b8676e5c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4f4a-1c46-7481-87e9-7c7c02b52f64",
+        "model": "unknown"
+      },
+      "human_author": "AlbertSun <sunxingjian@bytedance.com>"
+    },
+    "s_64bcc2f29a4ce4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5016-707d-7ce2-ae99-7e59224fb3a6",
+        "model": "unknown"
+      },
+      "human_author": "AlbertSun <sunxingjian@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
