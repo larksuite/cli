@@ -1,0 +1,1471 @@
+.github/workflows/ci.yml
+  s_48aa8b8676e5c1::t_a43c7d6f39cdf4 8,74,92-108,131-150,152,262,266-267,274-276,278,286-307,310,322-323,330-332,334,337,347-349,351-355,357,360-362,364,417,429,446
+.github/workflows/comment-audit.yml
+  s_48aa8b8676e5c1::t_e70bb129ce2fd2 1-28
+.github/workflows/semantic-review.yml
+  s_48aa8b8676e5c1::t_da27c5f82bbb0f 50,52,54-56,79-81,94-96,98-103,110,116-126,137-141,147,279,281,283-285,308-310,323-325,327-332,339,345-355,366-375,381,433-436
+.gitignore
+  s_48aa8b8676e5c1::t_fcadd714cdcdfd 10-14,30-32,57
+.goreleaser.yml
+  s_64bcc2f29a4ce4::t_088bece957a646 27
+CHANGELOG.md
+  s_48aa8b8676e5c1::t_f086f5069708e5 5-230,1441-1451
+Makefile
+  s_48aa8b8676e5c1::t_a2de53449160c6 15,58,77-78,98
+README.md
+  s_48aa8b8676e5c1::t_f0277cedebceaf 201,236-253
+README.zh.md
+  s_48aa8b8676e5c1::t_9b5bc42a56cbf1 202,237-254
+affordance/README.md
+  s_48aa8b8676e5c1::t_d7a13035275ab2 1-66
+affordance/contact.md
+  s_48aa8b8676e5c1::t_e5b1bb3994aa3f 1-55
+cmd/api/api.go
+  s_48aa8b8676e5c1::t_e78e4236e5c62e 70-84
+cmd/api/api_test.go
+  s_48aa8b8676e5c1::t_976e1611df3fb7 7,11-12,14,27-41,48,76,99,120,147,160,173,239,258,277,294,319,350,390,431,470,505,571-572,622-623,678-679,743,763,782,813,834,852,881,902,921,939,956,973,996,1037,1063,1076-1229
+cmd/build.go
+  s_48aa8b8676e5c1::t_15e3ec9affd567 22,174-177,198,214-215,217-219
+cmd/doctor/doctor.go
+  s_64bcc2f29a4ce4::t_79b260580e967b 135-138,319,321
+cmd/doctor/doctor_test.go
+  s_64bcc2f29a4ce4::t_de9a4b5e069fdb 11,17,20,285-291,295,299-364
+cmd/event/list_test.go
+  s_48aa8b8676e5c1::t_c57b185a0a8d2c 13,18-28,41-43,73-99
+cmd/event/schema_test.go
+  s_48aa8b8676e5c1::t_15576919889adf 99-165
+cmd/root.go
+  s_48aa8b8676e5c1::t_e9d12ce2f4d2af 14,18,33-39,41-45,47-57,59-60,62-63,65-66,68-69,71-72,74-75,77-78,80-86,551-593,675-689
+cmd/root_integration_test.go
+  s_48aa8b8676e5c1::t_97477e13674e34 17,23,108-112,123-127,135-157,392-393,396
+cmd/root_test.go
+  s_48aa8b8676e5c1::t_c147a430975c7b 79-82,84-85
+cmd/root_upgrade.go
+  s_48aa8b8676e5c1::t_3c7ca4e78426cf 1-90
+cmd/root_upgrade_test.go
+  s_48aa8b8676e5c1::t_cd2548a302909f 1-191
+cmd/schema/schema.go
+  s_48aa8b8676e5c1::t_b63686283c81d8 68-70,74,89,95-101
+cmd/service/affordance.go
+  s_48aa8b8676e5c1::t_e6736cd66ffb27 7,9,12-14,16,19-57,59-61,63-105,110-278,284-285,287-291,302-303,305,307,311,313,327,330-332,335
+cmd/service/affordance_test.go
+  s_48aa8b8676e5c1::t_7956a8c31afca0 10,12,15,21,23,36,56-59,61,70-71,73-163,165-306
+cmd/service/flaggroups_test.go
+  s_48aa8b8676e5c1::t_171dab1e24e22b 63-67
+cmd/service/paramhelp.go
+  s_48aa8b8676e5c1::t_8d769048a0b6bf 33-37,50-56,58,106-122
+cmd/service/service.go
+  s_48aa8b8676e5c1::t_f9961f90ff896c 10,68-78,80,82-83,89-99,204-216,225,233,294-301,319-323,341-343,345
+cmd/service/service_test.go
+  s_48aa8b8676e5c1::t_8b389f5ce60ba5 7,11-12,14,1139-1195
+cmd/update/update.go
+  s_48aa8b8676e5c1::t_bbf7974afa0b7d 105-106,168,230-234,239-246,254,257,264,266,278,289,319-323,329-334,336,339,343-345
+cmd/update/update_test.go
+  s_48aa8b8676e5c1::t_ab809613d579d1 60-80,105-208,394-396,870,872,880-888,891,898
+cmd/whoami/whoami.go
+  s_48aa8b8676e5c1::t_1895e576ab8b1c 1-163
+cmd/whoami/whoami_test.go
+  s_48aa8b8676e5c1::t_58bad54ca0f2f5 1-320
+content_embed.go
+  s_48aa8b8676e5c1::t_0f822fea010416 13,16-21,23-24,26-29,31,33-39
+errs/ERROR_CONTRACT.md
+  s_48aa8b8676e5c1::t_4cb0734b071328 75-96
+errs/types_test.go
+  s_48aa8b8676e5c1::t_f6f3028d51642d 322,422,442
+events/im/card_action.go
+  s_48aa8b8676e5c1::t_6b33c3c66e9537 1-132
+events/im/card_action_test.go
+  s_48aa8b8676e5c1::t_629fe0022f8669 1-432
+events/im/register.go
+  s_48aa8b8676e5c1::t_a777e0cc72b714 30-44
+events/register.go
+  s_48aa8b8676e5c1::t_68cb4a9928d351 10,21
+events/task/native.go
+  s_48aa8b8676e5c1::t_3bf32a711e2af7 1-23
+events/task/preconsume.go
+  s_48aa8b8676e5c1::t_83638a9405309a 1-32
+events/task/preconsume_test.go
+  s_48aa8b8676e5c1::t_fc0da063c623fd 1-119
+events/task/register.go
+  s_48aa8b8676e5c1::t_aeafa5bf0c51e0 1-33
+events/task/register_test.go
+  s_48aa8b8676e5c1::t_01b7bd770becd5 1-95
+events/vc/participant_meeting_joined.go
+  s_48aa8b8676e5c1::t_b105480c4e4d81 1-62
+events/vc/participant_meeting_lifecycle_test.go
+  s_48aa8b8676e5c1::t_a3b99623733942 1-281
+events/vc/participant_meeting_started.go
+  s_48aa8b8676e5c1::t_f8d3babf832650 1-61
+events/vc/register.go
+  s_48aa8b8676e5c1::t_df7a835cbb77fc 14-15,35-66
+go.mod
+  s_48aa8b8676e5c1::t_72930015ffcfa5 15
+internal/affordance/affordance.go
+  s_48aa8b8676e5c1::t_1a6a847b9e8802 1-91
+internal/affordance/affordance_test.go
+  s_48aa8b8676e5c1::t_06e18d25772eca 1-123
+internal/affordance/mdparse.go
+  s_48aa8b8676e5c1::t_d3aa59b4189bba 1-224
+internal/binding/audit_unix.go
+  s_48aa8b8676e5c1::t_d4252ee3522855 32-59
+internal/binding/audit_windows.go
+  s_48aa8b8676e5c1::t_75489e8f69d670 8-13,18-26
+internal/binding/audit_windows_test.go
+  s_48aa8b8676e5c1::t_249e6973e2b750 1-33
+internal/cmdmeta/meta.go
+  s_48aa8b8676e5c1::t_7042e7d37d4a92 5-9,56-61,136-164
+internal/cmdutil/fileupload.go
+  s_48aa8b8676e5c1::t_9f4b62272771a0 10,132
+internal/cmdutil/iostreams.go
+  s_64bcc2f29a4ce4::t_848b48d7054091 21-23,33-35,37-41,43-49
+internal/cmdutil/iostreams_test.go
+  s_64bcc2f29a4ce4::t_b5d15688c36977 12-16,18-20,27-29
+internal/cmdutil/secheader.go
+  s_48aa8b8676e5c1::t_1b10b06cd9c4cf 55
+internal/cmdutil/secheader_test.go
+  s_48aa8b8676e5c1::t_d279c9eac42129 266
+internal/envvars/envvars.go
+  s_48aa8b8676e5c1::t_b7605953d5125b 22
+internal/envvars/read.go
+  s_48aa8b8676e5c1::t_e8b2c3c5a18eee 1-36
+internal/envvars/read_test.go
+  s_48aa8b8676e5c1::t_bff5adb23e728b 1-131
+internal/errclass/classify.go
+  s_48aa8b8676e5c1::t_67000db9785465 13,18-20,449-453,460-465,467,469
+internal/errclass/classify_test.go
+  s_48aa8b8676e5c1::t_f183d6614298a8 116,426-427,438-439,489-490,496-497,503-504,510-511,514,517,557-558,762
+internal/errclass/codemeta_drive.go
+  s_48aa8b8676e5c1::t_97aea8571d8f8e 13-29
+internal/errclass/codemeta_drive_test.go
+  s_48aa8b8676e5c1::t_9ea0c0bb9287ba 30-36
+internal/errclass/codemeta_test.go
+  s_48aa8b8676e5c1::t_df8aa7b4eb78a2 105-160
+internal/errclass/codemeta_wiki.go
+  s_48aa8b8676e5c1::t_07c696418e9ea7 1-17
+internal/identitydiag/diagnostics.go
+  s_48aa8b8676e5c1::t_dfe523fa27a70b 16,65-69,76-189
+internal/identitydiag/diagnostics_test.go
+  s_48aa8b8676e5c1::t_ca82a65c48adae 13,17,353-485
+internal/meta/affordance.go
+  s_48aa8b8676e5c1::t_ee15805b452c64 8-15,17-24,27,29,33-43,52
+internal/meta/affordance_test.go
+  s_48aa8b8676e5c1::t_c162c06be7600b 22,38,40,51-53,60-68
+internal/meta/normalize.go
+  s_48aa8b8676e5c1::t_4e8e0d2a2c7c04 116-117,126-130,133
+internal/meta/normalize_test.go
+  s_48aa8b8676e5c1::t_3b132cc9131bc9 83-115
+internal/output/spinner.go
+  s_48aa8b8676e5c1::t_054e15780a15fb 1-80
+internal/output/spinner_test.go
+  s_48aa8b8676e5c1::t_00880160e11247 1-54
+internal/qualitygate/cmd/comment-audit/main.go
+  s_48aa8b8676e5c1::t_837f186edcbfd0 1-92
+internal/qualitygate/cmd/comment-audit/main_test.go
+  s_48aa8b8676e5c1::t_6985fe577c1800 1-70
+internal/qualitygate/cmd/quality-gate/main.go
+  s_48aa8b8676e5c1::t_288d654ce196fb 16,45,53-61
+internal/qualitygate/cmd/quality-gate/main_test.go
+  s_48aa8b8676e5c1::t_63fb8c2e91d0ca 40-70
+internal/qualitygate/cmd/semantic-review/main.go
+  s_48aa8b8676e5c1::t_8a9d638e8c9920 59-66,83-91,101-104,106,109,111-115
+internal/qualitygate/cmd/semantic-review/main_test.go
+  s_48aa8b8676e5c1::t_5d17445dcbcf34 10,215-227,244-308,324-336
+internal/qualitygate/config/semantic/policy.json
+  s_48aa8b8676e5c1::t_3148ce855a57ef 8-9,20-21
+internal/qualitygate/facts/schema.go
+  s_48aa8b8676e5c1::t_226cf20b0c4bbb 16-24,113-123,221-225
+internal/qualitygate/facts/schema_test.go
+  s_48aa8b8676e5c1::t_141fe902f17f4a 37,47-50
+internal/qualitygate/publiccontent/collect.go
+  s_48aa8b8676e5c1::t_6b5eda42774549 1-343
+internal/qualitygate/publiccontent/collect_test.go
+  s_48aa8b8676e5c1::t_25df1f6c17e485 1-885
+internal/qualitygate/publiccontent/comment_audit.go
+  s_48aa8b8676e5c1::t_9994c57466fffd 1-11
+internal/qualitygate/publiccontent/comment_audit_test.go
+  s_48aa8b8676e5c1::t_5b902217f2ad88 1-19
+internal/qualitygate/publiccontent/metadata.go
+  s_48aa8b8676e5c1::t_2a9b946949258f 1-45
+internal/qualitygate/publiccontent/metadata_test.go
+  s_48aa8b8676e5c1::t_4dfda0aba06c5f 1-22
+internal/qualitygate/publiccontent/rules.go
+  s_48aa8b8676e5c1::t_1c006ffd239250 1-509
+internal/qualitygate/publiccontent/scan.go
+  s_48aa8b8676e5c1::t_e2a3a559fb461a 1-1233
+internal/qualitygate/publiccontent/scan_test.go
+  s_48aa8b8676e5c1::t_21d3faeb900b12 1-1429
+internal/qualitygate/publiccontent/types.go
+  s_48aa8b8676e5c1::t_e2052d038a4087 1-30
+internal/qualitygate/rules/dryrun.go
+  s_48aa8b8676e5c1::t_64751dcf4e39fb 177-179,251,314-319,324,347-348,353-358,365-366,398-405,412-486,489,533-536,729,749-765
+internal/qualitygate/rules/dryrun_test.go
+  s_48aa8b8676e5c1::t_735d16f067d67e 308-462,758-802
+internal/qualitygate/rules/run.go
+  s_48aa8b8676e5c1::t_ab7948343a0612 18,25-31,103-111,114-156,223-225
+internal/qualitygate/rules/run_test.go
+  s_48aa8b8676e5c1::t_285565c9fd2172 192-284,602
+internal/qualitygate/semantic/client.go
+  s_48aa8b8676e5c1::t_698ce431f96a16 342
+internal/qualitygate/semantic/gatekeeper.go
+  s_48aa8b8676e5c1::t_972c7748032557 13,16,176-185,215,261-266,297-298
+internal/qualitygate/semantic/gatekeeper_test.go
+  s_48aa8b8676e5c1::t_df1b451d3e3999 245,255,273-325
+internal/qualitygate/semantic/prompt.go
+  s_48aa8b8676e5c1::t_36e665d93f84ee 27,41-43
+internal/qualitygate/semantic/prompt_contract_test.go
+  s_48aa8b8676e5c1::t_c729fc43e68d41 26-29
+internal/qualitygate/semantic/schema.go
+  s_48aa8b8676e5c1::t_cf4e2fd2d0c1a9 81,85
+internal/qualitygate/semantic/scope.go
+  s_48aa8b8676e5c1::t_65d08963a50a5f 85-93,207
+internal/qualitygate/semantic/scope_test.go
+  s_48aa8b8676e5c1::t_4eba139909c338 84-107
+internal/qualitygate/semantic/view.go
+  s_48aa8b8676e5c1::t_3fd94b347a50a6 16-26,30-38,91-106,125-135,160-164,184-187,189-196,201-208,227-228,291-299,314,323-324,397-406,458-461,494-495
+internal/qualitygate/semantic/view_test.go
+  s_48aa8b8676e5c1::t_f340d77f460eaa 80-195
+internal/qualitygate/semantic/waiver.go
+  s_48aa8b8676e5c1::t_b2ee585aff895e 141-144
+internal/qualitygate/semantic/waiver_test.go
+  s_48aa8b8676e5c1::t_9b9f45ceefe437 24-25,30,35-44
+internal/registry/catalog.go
+  s_48aa8b8676e5c1::t_a9234ed6642593 9,20-30
+internal/registry/catalog_test.go
+  s_48aa8b8676e5c1::t_fb375722f0e41e 1-67
+internal/registry/loader.go
+  s_48aa8b8676e5c1::t_7fc862dfe9282a 18,89-91
+internal/registry/loader_test.go
+  s_48aa8b8676e5c1::t_d8d0d2fca84aac 1-102
+internal/registry/remote_test.go
+  s_48aa8b8676e5c1::t_797dabceb0631c 75-76,79,165,202,376-377
+internal/registry/scope_hint.go
+  s_48aa8b8676e5c1::t_e40cb5a332a76d 63-64
+internal/registry/scope_priorities.json
+  s_48aa8b8676e5c1::t_1cfda9f1697761 5612-5626
+internal/schema/assembler.go
+  s_48aa8b8676e5c1::t_894c98fff75f3d 7,9,11,28,58-75,110-121,144-146,152,154,162-165,169-172,177,179,220-226,252
+internal/schema/assembler_test.go
+  s_48aa8b8676e5c1::t_0122df95b1fc09 12,14,477-488,509-533
+internal/schema/types.go
+  s_48aa8b8676e5c1::t_d1788130f7f180 16-19,51-59
+internal/selfupdate/updater.go
+  s_48aa8b8676e5c1::t_4c2604ac9062ff 35,57-60,65-71,76-77,79-80,82,106,116-126,132-133,138-147,156-159,161-165,168-171,174-182,184-201,203,229-251,350-368,374-376,378,383
+internal/selfupdate/updater_test.go
+  s_48aa8b8676e5c1::t_18ab953b0e2acb 374-517
+internal/transport/warn.go
+  s_48aa8b8676e5c1::t_e7030539d6ae6c 19-26,84-88,104-105
+internal/transport/warn_test.go
+  s_48aa8b8676e5c1::t_93f3fa85c00361 96-136
+internal/update/update.go
+  s_48aa8b8676e5c1::t_418e3adead2307 28
+package.json
+  s_48aa8b8676e5c1::t_491567656d957b 3
+release_config_test.go
+  s_64bcc2f29a4ce4::t_7f506ca4cea567 1-49
+scripts/ci-quality-summary-publish.js
+  s_48aa8b8676e5c1::t_cb17276357a725 48-51
+scripts/ci-quality-summary-publish.test.js
+  s_48aa8b8676e5c1::t_99cc47c593c561 155-173,360
+scripts/ci-workflow.test.sh
+  s_48aa8b8676e5c1::t_82010233baa6dc 8-15,21-22,26,28,34-36,42-43,117-192,198-204,218-284,307-316,322-323,387-391
+scripts/domain-map.js
+  s_48aa8b8676e5c1::t_5324b1f9f808cb 1-54
+scripts/domain-map.json
+  s_48aa8b8676e5c1::t_8621c67b052292 1-71
+scripts/e2e_domains.js
+  s_48aa8b8676e5c1::t_54dbf1aa7f7fd2 1-224
+scripts/e2e_domains.test.js
+  s_48aa8b8676e5c1::t_4ab4d73a4b3a2b 1-94
+scripts/install-wizard.js
+  s_48aa8b8676e5c1::t_96e2ce73626036 8-13,382-388
+scripts/pr-labels/index.js
+  s_48aa8b8676e5c1::t_5e1a3e22ea2418 7,262
+scripts/resolve-changed-from.test.sh
+  s_48aa8b8676e5c1::t_94586e362b0fca 11-21
+scripts/semantic-review-publish.js
+  s_48aa8b8676e5c1::t_091ba0a4782cd5 178,233-246,862-865
+scripts/semantic-review-publish.test.js
+  s_48aa8b8676e5c1::t_8b31851a54ce41 205-298,712-740,2349-2350,2358-2360
+scripts/semantic-review-verify-artifact.js
+  s_48aa8b8676e5c1::t_6aebabc8ddde20 232-261,454-467
+scripts/semantic-review-verify-artifact.test.js
+  s_48aa8b8676e5c1::t_5d770694a8d6d5 70-106,142-154
+scripts/semantic-review-workflow.test.sh
+  s_48aa8b8676e5c1::t_fd540e71e21d8c 182-183,185,187-190,208-210,219-224,226-227,272
+shortcuts/apps/apps_analytics.go
+  s_48aa8b8676e5c1::t_e41d14522c9b9b 1-207
+shortcuts/apps/apps_analytics_test.go
+  s_48aa8b8676e5c1::t_bc1b98e1c45316 1-459
+shortcuts/apps/apps_db_audit_list.go
+  s_48aa8b8676e5c1::t_f90b482f66426f 1-308
+shortcuts/apps/apps_db_audit_set.go
+  s_48aa8b8676e5c1::t_7e07402caec983 1-144
+shortcuts/apps/apps_db_audit_status.go
+  s_48aa8b8676e5c1::t_6b2548e6349572 1-140
+shortcuts/apps/apps_db_audit_test.go
+  s_48aa8b8676e5c1::t_d22f45f678375e 1-316
+shortcuts/apps/apps_db_changelog_list.go
+  s_48aa8b8676e5c1::t_c9a9701642aca0 1-151
+shortcuts/apps/apps_db_changelog_list_test.go
+  s_48aa8b8676e5c1::t_7985d672767b18 1-143
+shortcuts/apps/apps_db_data_export.go
+  s_48aa8b8676e5c1::t_37d0ef3c4c1dc7 1-200
+shortcuts/apps/apps_db_data_export_test.go
+  s_48aa8b8676e5c1::t_5182960368f496 1-193
+shortcuts/apps/apps_db_data_import.go
+  s_48aa8b8676e5c1::t_18aa3451b758f8 1-148
+shortcuts/apps/apps_db_data_import_test.go
+  s_48aa8b8676e5c1::t_a9f500ef222cb5 1-186
+shortcuts/apps/apps_db_env_create.go
+  s_48aa8b8676e5c1::t_273d4baa4d1586 15,19,27,32,35,37-40,66
+shortcuts/apps/apps_db_env_create_test.go
+  s_48aa8b8676e5c1::t_2872e3274e4f86 30,57,85,106,119
+shortcuts/apps/apps_db_env_migrate.go
+  s_48aa8b8676e5c1::t_2b45f413acfbc8 1-211
+shortcuts/apps/apps_db_env_recovery_quota_test.go
+  s_48aa8b8676e5c1::t_6c8d8d7fd2f842 1-398
+shortcuts/apps/apps_db_execute.go
+  s_48aa8b8676e5c1::t_e34ab5de539071 15,20,34-37,39-45,54,58-59,64-65,69,74-76,80,85,87-88,92,100,113,116,119-127,130-131,136,146-209,221,223-230,233-242,244-260,262,294,296-312,314,317,319,321,462-463,465,569,584
+shortcuts/apps/apps_db_execute_test.go
+  s_48aa8b8676e5c1::t_d27ccf3b0c2a21 13,18-19,37-70,73-74,78-107,109-110,112-113,117-160,164,196,206-222,253,276,308-310,328,333-334,336-337,341,371,398,457,480,517,587,619-622,629-632,652,658-660,662-663,665-666,668-669,671-673,675-676,680-698,700-702,704-705,707-712,716-719,727-733,741-748,750-751,753-755,757-772,774-779,783,807,829,845,858,877,899,912,943,952,976
+shortcuts/apps/apps_db_quota_get.go
+  s_48aa8b8676e5c1::t_951fa0f552b7eb 1-101
+shortcuts/apps/apps_db_recovery.go
+  s_48aa8b8676e5c1::t_0f7911872d8fd2 1-292
+shortcuts/apps/apps_db_table_get.go
+  s_48aa8b8676e5c1::t_bf4c6bf63574b9 14,37,40,45-47,83
+shortcuts/apps/apps_db_table_list.go
+  s_48aa8b8676e5c1::t_e1c0345b5f56d8 11,17,42,46,48-51,114,116,289-299
+shortcuts/apps/apps_db_table_list_test.go
+  s_48aa8b8676e5c1::t_8ebd71f7d5296e 34,162,215,239-243
+shortcuts/apps/apps_env.go
+  s_48aa8b8676e5c1::t_fa52a41fbb5b14 1-412
+shortcuts/apps/apps_env_pull.go
+  s_48aa8b8676e5c1::t_3bfc9807a65a49 65,67,84,86,119-149,184-186,190-192,196,243
+shortcuts/apps/apps_env_pull_test.go
+  s_48aa8b8676e5c1::t_004fa4f2a9a7c3 10,35-39,264,281-283,295-297,565-626
+shortcuts/apps/apps_env_test.go
+  s_48aa8b8676e5c1::t_e3c656d23c238c 1-409
+shortcuts/apps/apps_examples_test.go
+  s_48aa8b8676e5c1::t_07359f8daff231 17-19,56-114
+shortcuts/apps/apps_file_delete.go
+  s_48aa8b8676e5c1::t_3737a4eee544ee 1-148
+shortcuts/apps/apps_file_delete_test.go
+  s_48aa8b8676e5c1::t_2026d1dad61806 1-132
+shortcuts/apps/apps_file_download.go
+  s_48aa8b8676e5c1::t_566f198d000e8f 1-125
+shortcuts/apps/apps_file_download_test.go
+  s_48aa8b8676e5c1::t_76dd0ce26af089 1-122
+shortcuts/apps/apps_file_get.go
+  s_48aa8b8676e5c1::t_8eca46901b8e41 1-87
+shortcuts/apps/apps_file_get_test.go
+  s_48aa8b8676e5c1::t_f91ab76748ccae 1-89
+shortcuts/apps/apps_file_list.go
+  s_48aa8b8676e5c1::t_717e77bd0220cf 1-145
+shortcuts/apps/apps_file_list_test.go
+  s_48aa8b8676e5c1::t_d8ced816821356 1-252
+shortcuts/apps/apps_file_quota_get.go
+  s_48aa8b8676e5c1::t_0d3b3a699f4331 1-93
+shortcuts/apps/apps_file_quota_get_test.go
+  s_48aa8b8676e5c1::t_dd3c88b89e83fd 1-96
+shortcuts/apps/apps_file_sign.go
+  s_48aa8b8676e5c1::t_292f34c1466577 1-82
+shortcuts/apps/apps_file_sign_test.go
+  s_48aa8b8676e5c1::t_5dc029cde7acec 1-74
+shortcuts/apps/apps_file_upload.go
+  s_48aa8b8676e5c1::t_477583840e27ae 1-218
+shortcuts/apps/apps_file_upload_test.go
+  s_48aa8b8676e5c1::t_9358e996296ca2 1-182
+shortcuts/apps/apps_hints_more_test.go
+  s_48aa8b8676e5c1::t_0a6d536ba7e6b0 83,99
+shortcuts/apps/apps_hints_test.go
+  s_48aa8b8676e5c1::t_19aeea4337fc9d 24-26
+shortcuts/apps/apps_html_publish.go
+  s_48aa8b8676e5c1::t_81334a306246aa 10,88-90,147-156,161-162,179-202,225-227
+shortcuts/apps/apps_html_publish_test.go
+  s_48aa8b8676e5c1::t_052609e02c34a4 506-584
+shortcuts/apps/apps_init.go
+  s_48aa8b8676e5c1::t_e0749a6c217ef5 102-109,209-263,443-447
+shortcuts/apps/apps_init_test.go
+  s_48aa8b8676e5c1::t_1ba4c0824136b1 366,397-430,1505-1623
+shortcuts/apps/apps_logs.go
+  s_48aa8b8676e5c1::t_e813f425d51f8d 1-877
+shortcuts/apps/apps_logs_test.go
+  s_48aa8b8676e5c1::t_1d3b80cbbeea14 1-664
+shortcuts/apps/apps_metrics.go
+  s_48aa8b8676e5c1::t_e01bf94945f612 1-587
+shortcuts/apps/apps_metrics_test.go
+  s_48aa8b8676e5c1::t_9a94737729044b 1-298
+shortcuts/apps/apps_observability_common.go
+  s_48aa8b8676e5c1::t_460fa65da1c2af 1-202
+shortcuts/apps/apps_observability_common_test.go
+  s_48aa8b8676e5c1::t_9ca23372c8f627 1-138
+shortcuts/apps/apps_openapi_key_common.go
+  s_48aa8b8676e5c1::t_034f6366ca739e 1-233
+shortcuts/apps/apps_openapi_key_common_test.go
+  s_48aa8b8676e5c1::t_b2472b2a16716f 1-356
+shortcuts/apps/apps_openapi_key_create.go
+  s_48aa8b8676e5c1::t_b0d19873667f29 1-110
+shortcuts/apps/apps_openapi_key_create_test.go
+  s_48aa8b8676e5c1::t_fa8e1de7ca0148 1-86
+shortcuts/apps/apps_openapi_key_delete.go
+  s_48aa8b8676e5c1::t_f89b01a554c776 1-47
+shortcuts/apps/apps_openapi_key_delete_test.go
+  s_48aa8b8676e5c1::t_8c380447136609 1-35
+shortcuts/apps/apps_openapi_key_disable.go
+  s_48aa8b8676e5c1::t_f753c91f1bbbf8 4,12-16,18-20,22-24,26-31
+shortcuts/apps/apps_openapi_key_enable.go
+  s_48aa8b8676e5c1::t_1aace700dc2ecd 1-53
+shortcuts/apps/apps_openapi_key_get.go
+  s_48aa8b8676e5c1::t_9eda9229013de3 1-72
+shortcuts/apps/apps_openapi_key_get_test.go
+  s_48aa8b8676e5c1::t_8469f888b280f4 1-49
+shortcuts/apps/apps_openapi_key_list.go
+  s_48aa8b8676e5c1::t_1ed31ad2c08882 1-104
+shortcuts/apps/apps_openapi_key_list_test.go
+  s_48aa8b8676e5c1::t_2cb68c6a53009d 4,7-9,13-14,17,20-28,30-43,45-49,52-59,61-64,66-78,80-81,83-85,87-88,90
+shortcuts/apps/apps_openapi_key_reset.go
+  s_48aa8b8676e5c1::t_add4e16ad26e03 1-50
+shortcuts/apps/apps_openapi_key_reset_test.go
+  s_48aa8b8676e5c1::t_e608125cf262c9 1-48
+shortcuts/apps/apps_openapi_key_status_test.go
+  s_48aa8b8676e5c1::t_a9410dd4203aa4 1-43
+shortcuts/apps/apps_openapi_key_update.go
+  s_48aa8b8676e5c1::t_0a8457a84a8d84 1-82
+shortcuts/apps/apps_openapi_key_update_test.go
+  s_48aa8b8676e5c1::t_9172baf8da3567 1-63
+shortcuts/apps/apps_output_schema.go
+  s_48aa8b8676e5c1::t_4335f58c21d85a 1-351
+shortcuts/apps/apps_output_schema_test.go
+  s_48aa8b8676e5c1::t_894a941be8eeb9 1-56
+shortcuts/apps/apps_plugin_install.go
+  s_48aa8b8676e5c1::t_d4690feaf65709 1-420
+shortcuts/apps/apps_plugin_install_test.go
+  s_48aa8b8676e5c1::t_24240911b2febe 1-181
+shortcuts/apps/apps_plugin_list.go
+  s_48aa8b8676e5c1::t_650e349a1ca649 1-82
+shortcuts/apps/apps_plugin_list_test.go
+  s_48aa8b8676e5c1::t_26a9b70d459e54 1-121
+shortcuts/apps/apps_plugin_uninstall.go
+  s_48aa8b8676e5c1::t_da56cdc5926ec3 1-90
+shortcuts/apps/apps_plugin_uninstall_test.go
+  s_48aa8b8676e5c1::t_f544d7cc35678f 1-187
+shortcuts/apps/apps_security_fixes_test.go
+  s_48aa8b8676e5c1::t_bf252b2d63e0bd 1-50
+shortcuts/apps/apps_traces.go
+  s_48aa8b8676e5c1::t_27c06878861a47 1-664
+shortcuts/apps/apps_traces_test.go
+  s_48aa8b8676e5c1::t_ab4f0eefa60ad6 1-453
+shortcuts/apps/common.go
+  s_48aa8b8676e5c1::t_04e10ec333c3e9 7,43-67
+shortcuts/apps/db_common.go
+  s_48aa8b8676e5c1::t_2e4670e7dfe72a 7-8,11,13,15,18-89,112-267,272
+shortcuts/apps/file_common.go
+  s_48aa8b8676e5c1::t_874e638b3bd5b5 1-228
+shortcuts/apps/git_credential.go
+  s_48aa8b8676e5c1::t_6e91b6a559818c 20,36,307-312,324-330,491,504,539,549-559
+shortcuts/apps/git_credential_test.go
+  s_48aa8b8676e5c1::t_4b5ccadf8004b1 827,838-839,847-852,889-902,1029-1038,1042-1046,1055-1057,1066-1068,1080-1085,1091-1103,1110-1158
+shortcuts/apps/gitcred/gitcred_test.go
+  s_48aa8b8676e5c1::t_5e8f33db4154fe 545-553,563-578,1438-1455,1458-1467,1549-1598,1874-1882,2275-2457
+shortcuts/apps/gitcred/helper.go
+  s_48aa8b8676e5c1::t_d22d0f50d64ae4 11,31-49,195,200,210-213,216-222,226-227,231,246-247,252,256,266,281,286,292-338
+shortcuts/apps/gitcred/keychain.go
+  s_48aa8b8676e5c1::t_aafc88048ca8fb 45-53,75
+shortcuts/apps/gitcred/lock.go
+  s_48aa8b8676e5c1::t_a96354d0bac572 4-21,41-45,53-58
+shortcuts/apps/plugin_common.go
+  s_48aa8b8676e5c1::t_351fc10813e49c 1-420
+shortcuts/apps/plugin_common_test.go
+  s_48aa8b8676e5c1::t_715930908f7160 1-253
+shortcuts/apps/shortcuts.go
+  s_48aa8b8676e5c1::t_bd1225262fd3dc 10-12,25-33,38-56,66-77,80-84
+shortcuts/apps/shortcuts_test.go
+  s_48aa8b8676e5c1::t_0929204f51ebdc 13-24,26-66,91,100,107,114
+shortcuts/base/base_dryrun_ops_test.go
+  s_48aa8b8676e5c1::t_07b2da7230e85e 92-103
+shortcuts/base/base_execute_test.go
+  s_48aa8b8676e5c1::t_964624fcb83913 1100-1147
+shortcuts/base/base_resolve.go
+  s_48aa8b8676e5c1::t_06ab93856cc916 1-545
+shortcuts/base/base_resolve_test.go
+  s_48aa8b8676e5c1::t_0f766c7076e586 1-454
+shortcuts/base/base_shortcuts_test.go
+  s_48aa8b8676e5c1::t_249aeb47fe1dfc 158,1063-1071
+shortcuts/base/field_ops.go
+  s_48aa8b8676e5c1::t_9f849032669904 9,14-15,39-40,43-46,103,107-112,153,157-170,172,176-186
+shortcuts/base/record_json_shorthand_test.go
+  s_48aa8b8676e5c1::t_f029cc27966284 1-73
+shortcuts/base/record_list.go
+  s_48aa8b8676e5c1::t_b886fd113eb6c7 88
+shortcuts/base/shortcuts.go
+  s_48aa8b8676e5c1::t_109af1377e094a 11-12
+shortcuts/calendar/calendar_create.go
+  s_48aa8b8676e5c1::t_3ac9c80eea4c26 70-89,248,309-311
+shortcuts/calendar/calendar_get.go
+  s_48aa8b8676e5c1::t_5206802376585f 1-279
+shortcuts/calendar/calendar_meeting.go
+  s_48aa8b8676e5c1::t_95cbefc13a95f9 1-215
+shortcuts/calendar/calendar_meeting_test.go
+  s_48aa8b8676e5c1::t_cfc0bf89e00bc8 1-484
+shortcuts/calendar/calendar_room_find.go
+  s_48aa8b8676e5c1::t_f590d8adb18601 69-70,107-110,114-118,385-388,399
+shortcuts/calendar/calendar_room_find_test.go
+  s_48aa8b8676e5c1::t_2fed27641e8136 7-8,87-143
+shortcuts/calendar/calendar_search_event.go
+  s_48aa8b8676e5c1::t_a29d32c25c17ff 1-331
+shortcuts/calendar/calendar_test.go
+  s_48aa8b8676e5c1::t_03e29db9d04fcc 676-745,2307,2309-2310,2317,3181-3370
+shortcuts/calendar/errors.go
+  s_48aa8b8676e5c1::t_2baa71bb94f982 45-71
+shortcuts/calendar/errors_attribution_test.go
+  s_48aa8b8676e5c1::t_054e2f8f02353c 243-301
+shortcuts/calendar/shortcuts.go
+  s_48aa8b8676e5c1::t_6f5f97ed16b3cf 18-20
+shortcuts/common/artifact_path.go
+  s_48aa8b8676e5c1::t_b93ff3ccb9363b 5
+shortcuts/common/drive_media_upload_typed_test.go
+  s_48aa8b8676e5c1::t_ff4827213f0f24 202
+shortcuts/common/mcp_client_test.go
+  s_48aa8b8676e5c1::t_8515d4f7bb3dc1 145
+shortcuts/common/runner.go
+  s_48aa8b8676e5c1::t_75bcf367593e80 52,537-550,892,1030,1068-1070,1072-1073,1075,1176-1244,1257-1263,1309
+shortcuts/common/runner_args_test.go
+  s_48aa8b8676e5c1::t_72bc9c18147038 25,43
+shortcuts/common/runner_botinfo_test.go
+  s_48aa8b8676e5c1::t_b3eb33f79ff56d 174,201,223,244,285,298
+shortcuts/common/runner_input_test.go
+  s_48aa8b8676e5c1::t_3a5b0bc4b7ace8 132-134,146-148,163-165,177-179,219-226
+shortcuts/common/runner_jq_test.go
+  s_48aa8b8676e5c1::t_d41ffb9329e9f4 189,209
+shortcuts/common/runner_json_shorthand_test.go
+  s_48aa8b8676e5c1::t_0282ea6365a9ff 1-200
+shortcuts/common/typed_error_assertions_test.go
+  s_48aa8b8676e5c1::t_225c19ddfcfdb2 1-50
+shortcuts/contact/contact_search_user.go
+  s_48aa8b8676e5c1::t_91110b9ceaa5fc 88,130,156,192,200,227
+shortcuts/contact/contact_search_user_fanout.go
+  s_48aa8b8676e5c1::t_fff7c015bfacaf 48,53,58,92,95,112,118,121,140,151-153
+shortcuts/contact/contact_search_user_test.go
+  s_48aa8b8676e5c1::t_2ac044c5372699 565,573,595,620,638-640,1368,1410,1418,1445-1447,1452-1455
+shortcuts/doc/doc_errors_test.go
+  s_48aa8b8676e5c1::t_85c916c75192ec 206-212
+shortcuts/doc/doc_media_upload.go
+  s_48aa8b8676e5c1::t_6659fbf0ffcacc 26-27
+shortcuts/doc/doc_resource_cover.go
+  s_48aa8b8676e5c1::t_80e7f9ac0023c7 58,157,259
+shortcuts/doc/doc_resource_cover_test.go
+  s_48aa8b8676e5c1::t_d42d88e723ff23 51,98,119,149,198,244,261,276,620
+shortcuts/doc/docs_create_test.go
+  s_48aa8b8676e5c1::t_5aad316fe444c7 246,260,289
+shortcuts/doc/docs_create_v2.go
+  s_48aa8b8676e5c1::t_fd4058b6414b3a 7,9,19,21,32-37,45-51,56-59,71-74,90,102-124
+shortcuts/doc/docs_fetch_im_markdown.go
+  s_48aa8b8676e5c1::t_c18370ba55ab8e 1-861
+shortcuts/doc/docs_fetch_im_markdown_test.go
+  s_48aa8b8676e5c1::t_62e390e9d5bda5 1-1305
+shortcuts/doc/docs_fetch_v2.go
+  s_48aa8b8676e5c1::t_194e250d4b6dca 17-18,22,74-76,80-82,96-97,134-141,154,159,180-245,277,296
+shortcuts/doc/docs_fetch_v2_test.go
+  s_48aa8b8676e5c1::t_23bb10fc4adde4 9-11,15,47-63,128-592,613,616,630-685,689-692,694-700,702-717,808-908,939,951-962,966-1001,1008-1018,1037,1050
+shortcuts/doc/docs_history.go
+  s_48aa8b8676e5c1::t_d56a17f543d430 1-261
+shortcuts/doc/docs_history_test.go
+  s_48aa8b8676e5c1::t_a683ac46fefbb8 1-340
+shortcuts/doc/docs_search.go
+  s_48aa8b8676e5c1::t_c5e018a2a8a7b2 77-79
+shortcuts/doc/docs_search_test.go
+  s_48aa8b8676e5c1::t_7aa9176f9ac3fd 10-12,15-51
+shortcuts/doc/docs_update_test.go
+  s_48aa8b8676e5c1::t_3515cf469af0ee 7-8,12,40-41,67-209,252-260,271
+shortcuts/doc/docs_update_v2.go
+  s_48aa8b8676e5c1::t_0eb64a2df2728a 8,10,27-30,37,64-66,120-123,130-133,146-149,161-178,210-246
+shortcuts/doc/helpers.go
+  s_48aa8b8676e5c1::t_e4c484b4bdf3fa 20-22,32,35,38,66-73
+shortcuts/doc/helpers_test.go
+  s_48aa8b8676e5c1::t_310b3348dd87aa 16-21,35-41,84-86
+shortcuts/doc/html5_block_resources.go
+  s_48aa8b8676e5c1::t_b7cf44fe8cf130 1-1048
+shortcuts/doc/html5_block_resources_test.go
+  s_48aa8b8676e5c1::t_7d6805edb6e4e0 1-733
+shortcuts/doc/shortcuts.go
+  s_48aa8b8676e5c1::t_919b93a0c6ed78 34-35,49-54,67-69
+shortcuts/doc/v2_only.go
+  s_48aa8b8676e5c1::t_516c05fb5820bd 20-22,57
+shortcuts/doc/v2_only_test.go
+  s_48aa8b8676e5c1::t_fa54992795103b 14-15
+shortcuts/drive/drive_add_comment.go
+  s_48aa8b8676e5c1::t_871312ba9778c5 124,134-135,139,151-161,202,229-245,383-390,414-416,524-529,543,552-555,566,570,608-623,659,662,854-859,886-897,905-924,1135-1181
+shortcuts/drive/drive_add_comment_test.go
+  s_48aa8b8676e5c1::t_967610f2bbac31 136-149,173-184,755-783,1043-1114,1325-1405,1644-1677,1881-1935,1937-1966,2047
+shortcuts/drive/drive_export.go
+  s_48aa8b8676e5c1::t_64defeafcc3878 8,19-36,62,65-70,72-96,98-134,136-142,146,148-158,160-169,171-178,180-205,208-220,225-234,236-252,254-271,273-287,291-293,295-311,314-319,322-362
+shortcuts/drive/drive_export_test.go
+  s_48aa8b8676e5c1::t_8f2fc49d171539 8,165-167,219-221,292-294,345-347,513-578,1116-1149
+shortcuts/drive/drive_import.go
+  s_48aa8b8676e5c1::t_f9e54138f4af3c 38,41-46,48-57,59-67,69-78,80-83,85-95,97-98,100-101,103-105,107-112,114-115,117-171,173-188,190,192-193
+shortcuts/drive/drive_import_common.go
+  s_48aa8b8676e5c1::t_d142218ba041bc 11,32-33,53-54,435,444-480
+shortcuts/drive/drive_import_common_test.go
+  s_48aa8b8676e5c1::t_aee9099e407359 10,215-290
+shortcuts/drive/drive_member_add.go
+  s_48aa8b8676e5c1::t_0d5aae8141f58f 1-686
+shortcuts/drive/drive_member_add_test.go
+  s_48aa8b8676e5c1::t_cb92c4ffa4658b 1-1507
+shortcuts/drive/drive_pull.go
+  s_48aa8b8676e5c1::t_99ad87806ecffb 40-49,187,198-200,216-218,231-232,235-239,265-266,286-288,303,335-351
+shortcuts/drive/drive_pull_test.go
+  s_48aa8b8676e5c1::t_020214d5e7d2b4 1035-1094
+shortcuts/drive/drive_push.go
+  s_48aa8b8676e5c1::t_ee3e0f7b24ac87 32-52,245,267-268,271-275,291-293,303-304,307-311,335-336,339-343,354-355,358-362,367-368,371-375,402,404-406,418-423,425-430,445,575-655,749-754,767-804
+shortcuts/drive/drive_push_test.go
+  s_48aa8b8676e5c1::t_452c95a188e145 8,11,19,26,659-793,1028-1033,1035-1036,1042-1043,1109-1111,1113-1118,1122-1173,1175-1552,1686-1711
+shortcuts/drive/drive_search.go
+  s_48aa8b8676e5c1::t_5bbae624b724f9 75,78,152-154
+shortcuts/drive/drive_search_test.go
+  s_48aa8b8676e5c1::t_1a8d559191a77b 17,19,23-59
+shortcuts/drive/drive_secure_label.go
+  s_48aa8b8676e5c1::t_5d12548f0254fd 9,21-27,39-41,67,82-86,93-96,104-107,112,120-124,131,152-218
+shortcuts/drive/drive_secure_label_test.go
+  s_48aa8b8676e5c1::t_5f28508aa8b740 8,12,95-135,142,178,194-219,240-312
+shortcuts/drive/drive_sync.go
+  s_48aa8b8676e5c1::t_b76fe8c33482b3 28-31,33-42,78,123-124,271,290-292,297-298,300-304,313-315,323-324,326-330,339-341,351-352,354-358,363-364,366-370,379-381,409-410,412-416,432-433,435-439,453-454,456-460,481-482,490-492,505-507,513,519-523,525-529,555,584-600
+shortcuts/drive/drive_sync_test.go
+  s_48aa8b8676e5c1::t_4a1a456b35de7d 314-378,1620,1624,1643-1644,1646-1666,3118-3133
+shortcuts/drive/shortcuts.go
+  s_48aa8b8676e5c1::t_67867029982b14 33
+shortcuts/drive/shortcuts_test.go
+  s_48aa8b8676e5c1::t_17c277d8f2a62c 6-9,39,64-72
+shortcuts/im/builders_test.go
+  s_48aa8b8676e5c1::t_00ab433f059dbe 29,60-91,261,328,338-341,344,472-494,518-528,673,717,740,746,752
+shortcuts/im/helpers.go
+  s_48aa8b8676e5c1::t_a0249ac0068a00 1051-1086
+shortcuts/im/helpers_test.go
+  s_48aa8b8676e5c1::t_fc588db1115def 16,54-103,654
+shortcuts/im/im_chat_members_list.go
+  s_48aa8b8676e5c1::t_b4dff0b180efc3 1-420
+shortcuts/im/im_chat_members_list_test.go
+  s_48aa8b8676e5c1::t_bc06767f624fd5 1-325
+shortcuts/im/im_chat_search.go
+  s_48aa8b8676e5c1::t_7bad4ac0df4c6f 32,53,151-153
+shortcuts/im/im_messages_reply.go
+  s_48aa8b8676e5c1::t_7fd2d8a3ce1419 36,103-105
+shortcuts/im/im_messages_search.go
+  s_48aa8b8676e5c1::t_1f9ed84e082a6f 94,106-108,137-139,215-217,389,405-406,424,438,441-443,459,462,476,486
+shortcuts/im/im_messages_send.go
+  s_48aa8b8676e5c1::t_e7d81e2969d277 40,115-117
+shortcuts/im/im_search_notice_test.go
+  s_48aa8b8676e5c1::t_660844fc532926 1-129
+shortcuts/im/shortcuts.go
+  s_48aa8b8676e5c1::t_5d384133dbc5f9 13
+shortcuts/mail/helpers.go
+  s_48aa8b8676e5c1::t_fa00c771c207bb 54-55
+shortcuts/mail/helpers_test.go
+  s_48aa8b8676e5c1::t_5e926841fff8e1 468,473-480
+shortcuts/mail/mail_json_shorthand_test.go
+  s_48aa8b8676e5c1::t_3504041454ffc9 1-112
+shortcuts/mail/mail_message_manage_test.go
+  s_48aa8b8676e5c1::t_d6be35ebe797bd 1-482
+shortcuts/mail/mail_message_modify.go
+  s_48aa8b8676e5c1::t_6a8bc1a26e0479 1-141
+shortcuts/mail/mail_message_trash.go
+  s_48aa8b8676e5c1::t_211750be5cd748 1-75
+shortcuts/mail/mail_shortcut_test.go
+  s_48aa8b8676e5c1::t_38befe2e711d79 47
+shortcuts/mail/mail_triage.go
+  s_48aa8b8676e5c1::t_9b9f86dbe76326 58,162,193-195,289-291,294-296,773,783,802,812
+shortcuts/mail/mail_triage_test.go
+  s_48aa8b8676e5c1::t_6dc7bf34f9d735 15,978-982,991-1006,1010-1014,1023-1041,1525,1528-1534,1571,1573-1574,1609-1611,1625,1658,1709-1735,1745,1798-1799,1807-1809,1838-1971
+shortcuts/mail/mail_watch.go
+  s_48aa8b8676e5c1::t_433f9150ecc593 102
+shortcuts/mail/message_manage_helpers.go
+  s_48aa8b8676e5c1::t_b5c66691b84ab9 1-283
+shortcuts/mail/shortcuts.go
+  s_48aa8b8676e5c1::t_78e68acd4b315b 13-14
+shortcuts/markdown/helpers.go
+  s_48aa8b8676e5c1::t_b0230cdbfc31e3 718,721-726
+shortcuts/markdown/markdown_create.go
+  s_48aa8b8676e5c1::t_7e7afd71682724 12,34,37-41,44-46,67-69,106-241
+shortcuts/markdown/markdown_test.go
+  s_48aa8b8676e5c1::t_1639a6a8e2cf47 449-615
+shortcuts/minutes/minutes_detail.go
+  s_48aa8b8676e5c1::t_16b2276f1b740b 1-425
+shortcuts/minutes/minutes_detail_test.go
+  s_48aa8b8676e5c1::t_a81457b28705f9 1-594
+shortcuts/minutes/minutes_search.go
+  s_48aa8b8676e5c1::t_28ffc02f75ac03 205-220,310,320-322
+shortcuts/minutes/minutes_search_test.go
+  s_48aa8b8676e5c1::t_b5af3b219427fb 529,612-613,622,647-649,660-662,734-760
+shortcuts/minutes/minutes_speaker_replace.go
+  s_48aa8b8676e5c1::t_0e95f2c62e65ea 28,33-34,45,47-48,57-63,71,75,81,83,86,91-130,141-142
+shortcuts/minutes/minutes_speaker_replace_test.go
+  s_48aa8b8676e5c1::t_cf47f368f864fc 37,156-235,321-322
+shortcuts/minutes/minutes_summary.go
+  s_48aa8b8676e5c1::t_53763313ab90f2 34
+shortcuts/minutes/minutes_todo.go
+  s_48aa8b8676e5c1::t_3e5d961cc5058e 62
+shortcuts/minutes/minutes_upload.go
+  s_48aa8b8676e5c1::t_9a1e3f1c971897 8-9,70-72,78-91
+shortcuts/minutes/minutes_upload_test.go
+  s_48aa8b8676e5c1::t_a88d533e347c45 146-169
+shortcuts/minutes/minutes_word_replace.go
+  s_48aa8b8676e5c1::t_7b5a7d224c96d2 151
+shortcuts/minutes/shortcuts.go
+  s_48aa8b8676e5c1::t_8b23c3bd0d8369 19
+shortcuts/note/note_transcript.go
+  s_48aa8b8676e5c1::t_04990b0f7b2227 156
+shortcuts/note/note_transcript_test.go
+  s_48aa8b8676e5c1::t_d080286b1f597c 42
+shortcuts/okr/okr_batch_create.go
+  s_48aa8b8676e5c1::t_20ce4bbfe4593a 63,87,191,208
+shortcuts/okr/okr_batch_create_test.go
+  s_48aa8b8676e5c1::t_2c413e18c3b389 560
+shortcuts/okr/okr_cli_resp.go
+  s_48aa8b8676e5c1::t_735b8f5c14eb6e 32-35,150-291
+shortcuts/okr/okr_cycle_detail.go
+  s_48aa8b8676e5c1::t_a55ce374a5c9b0 29,39-42,58,105-107,111,113,118-148,150-156,159-167,169-171,174-176,178-185,188-193,195-201,203-204
+shortcuts/okr/okr_cycle_list.go
+  s_48aa8b8676e5c1::t_c8714720591645 49-50,55-80,204-212,214-216,222-227
+shortcuts/okr/okr_cycle_list_test.go
+  s_48aa8b8676e5c1::t_1d81782ddf2158 8,11,265-399,405-414,424-427,433-436,461-500
+shortcuts/okr/okr_openapi.go
+  s_48aa8b8676e5c1::t_749030f4801c52 8,10,266-268,733-857
+shortcuts/okr/okr_openapi_test.go
+  s_48aa8b8676e5c1::t_e6577c74a3e954 60-62,523-966
+shortcuts/okr/okr_patch.go
+  s_48aa8b8676e5c1::t_b9f2d436e6506f 1-311
+shortcuts/okr/okr_patch_test.go
+  s_48aa8b8676e5c1::t_ce7a3ca6d20f2d 1-1354
+shortcuts/okr/okr_progress_create.go
+  s_48aa8b8676e5c1::t_4876fd3f125a8b 13,39,41-68,121,129,139-168,269-275,277-292,294-305
+shortcuts/okr/okr_progress_create_test.go
+  s_48aa8b8676e5c1::t_bd7210162a593c 8,14,43,66,84,98,116,134,149,165,184,203,234,251,281,317,349,357-553
+shortcuts/okr/okr_progress_get.go
+  s_48aa8b8676e5c1::t_e5d815f85c2dd9 29,43-46,63,78-83,85-103,105-116
+shortcuts/okr/okr_progress_update.go
+  s_48aa8b8676e5c1::t_88ddb8cda755fa 13,29,31-56,94,98,116-144,212-218,220-235,237-248
+shortcuts/okr/okr_progress_update_test.go
+  s_48aa8b8676e5c1::t_892a4d577691c4 8,14,50,64,93,110,125,143,173,189,214,249,280,286-478
+shortcuts/okr/shortcuts.go
+  s_48aa8b8676e5c1::t_37df0d93f841cc 25
+shortcuts/register_test.go
+  s_48aa8b8676e5c1::t_31ea9634ab89e8 173-193,270,272,282,290-291,299,310
+shortcuts/sheets/backward/lark_sheets_float_images.go
+  s_48aa8b8676e5c1::t_9c20527885f581 10,18-36,71,93,163,170,178
+shortcuts/sheets/backward/lark_sheets_sheet_media_upload_test.go
+  s_48aa8b8676e5c1::t_b4ed8669126dac 94-126,241-281
+shortcuts/sheets/batch_op_contract_test.go
+  s_48aa8b8676e5c1::t_5e3c12559d9351 180-191,447,461,465-466,522,580,711,772
+shortcuts/sheets/batch_op_dispatch.go
+  s_48aa8b8676e5c1::t_fba73cd4289e35 153-158
+shortcuts/sheets/csv_put_guard_test.go
+  s_48aa8b8676e5c1::t_508ece444feabb 38-40
+shortcuts/sheets/csv_put_range_alias_test.go
+  s_48aa8b8676e5c1::t_11ea88b245ff9d 46,58
+shortcuts/sheets/data/flag-defs.json
+  s_48aa8b8676e5c1::t_12a6cc4bb6b659 57,416-495,514,518,525-536,540,596,607-632,1202-1203,1311-1312,1330-1377,1381,1388,2013,2044-2091
+shortcuts/sheets/data/flag-schemas.json
+  s_48aa8b8676e5c1::t_2b4f385b524e91 2,47-48,459,467-481,1748,1753,1806,2784,2789,2842,6261-6998
+shortcuts/sheets/execute_paths_test.go
+  s_48aa8b8676e5c1::t_a1d5f5eaa9b719 14,51,58-136,138-165,167-176,482-486,488,492,502-503,513-515,540-541,550,552-557,571,575,577-579,581-605
+shortcuts/sheets/flag_defs.go
+  s_48aa8b8676e5c1::t_f58b5f66d6ce6d 83-107
+shortcuts/sheets/flag_defs_gen.go
+  s_48aa8b8676e5c1::t_48bfe3e4a53000 78,308,322,768,795-804,851-860,917-938,944-946,957,961-968
+shortcuts/sheets/flag_defs_test.go
+  s_48aa8b8676e5c1::t_8d1d8a03be4248 68,70,143-163
+shortcuts/sheets/flag_schema.go
+  s_48aa8b8676e5c1::t_793c2cf5faabef 12-13,96,117-119
+shortcuts/sheets/flag_schema_test.go
+  s_48aa8b8676e5c1::t_f481a23520b71e 87-89,91-92
+shortcuts/sheets/flag_schema_validate.go
+  s_48aa8b8676e5c1::t_12b9059603635c 66,97-107
+shortcuts/sheets/flag_schema_validate_test.go
+  s_48aa8b8676e5c1::t_bb4164a5e4b333 481-483,500-502,519-521,551-553,582-602
+shortcuts/sheets/flag_schemas_gen.go
+  s_48aa8b8676e5c1::t_b0e3fe4ffb0cc7 35-36
+shortcuts/sheets/helpers.go
+  s_48aa8b8676e5c1::t_4d1f2a2b3a46a1 13-14,53-115,117,121,123,126-129,132,134,137-155,158-233,387-396,481-546
+shortcuts/sheets/helpers_test.go
+  s_48aa8b8676e5c1::t_9ad3ff7ceda05d 84-130,318-366
+shortcuts/sheets/lark_sheet_batch_update.go
+  s_48aa8b8676e5c1::t_f279382c983bc6 70,92-94,184,274,354,400
+shortcuts/sheets/lark_sheet_batch_update_test.go
+  s_48aa8b8676e5c1::t_1157bbcc0236f1 168,174,177,268,274,277,283,287,293,316,322,411,417
+shortcuts/sheets/lark_sheet_object_crud.go
+  s_48aa8b8676e5c1::t_c00d0e04bfa997 10,53-66,158,208-212,247,331,411-414,416-427,429,523-528,530-634,864,867,879,921,1023,1098,1166
+shortcuts/sheets/lark_sheet_object_crud_test.go
+  s_48aa8b8676e5c1::t_841c77bf57e784 7-8,12,143,153-155,159-160,207,219,476,483,486-487,506-548,560,566-568,574,580,614-615,626,630-632,634-737,739-803,818,824,847-848
+shortcuts/sheets/lark_sheet_object_list.go
+  s_48aa8b8676e5c1::t_9d4b0baeec8457 60
+shortcuts/sheets/lark_sheet_range_operations.go
+  s_48aa8b8676e5c1::t_4126df106b4f3d 48,166,242,282,454,493,543
+shortcuts/sheets/lark_sheet_range_operations_test.go
+  s_48aa8b8676e5c1::t_41d84b08f31598 290,294,347-348
+shortcuts/sheets/lark_sheet_read_data.go
+  s_48aa8b8676e5c1::t_472bcbc90098e5 60,153,165,272
+shortcuts/sheets/lark_sheet_read_data_test.go
+  s_48aa8b8676e5c1::t_cc1737510adbca 84,87-89,109,112
+shortcuts/sheets/lark_sheet_search_replace.go
+  s_48aa8b8676e5c1::t_c53a45155d5af4 49,125
+shortcuts/sheets/lark_sheet_search_replace_test.go
+  s_48aa8b8676e5c1::t_1a3aad8e04d958 92-95,100,102-103
+shortcuts/sheets/lark_sheet_sheet_structure.go
+  s_48aa8b8676e5c1::t_80a39b9ccf7205 54,139,214,303,398,442,596
+shortcuts/sheets/lark_sheet_sheet_structure_test.go
+  s_48aa8b8676e5c1::t_ec918afe3cc58d 201-202,267,271
+shortcuts/sheets/lark_sheet_style_alias_test.go
+  s_48aa8b8676e5c1::t_a0280eb02e8fd7 1-189
+shortcuts/sheets/lark_sheet_table_io.go
+  s_48aa8b8676e5c1::t_60684f2b8218d4 1-1570
+shortcuts/sheets/lark_sheet_table_io_test.go
+  s_48aa8b8676e5c1::t_ae57ea7a495a41 1-1609
+shortcuts/sheets/lark_sheet_workbook.go
+  s_48aa8b8676e5c1::t_795e08aa0f0b53 8,17,57,102,117-119,124,127,130,169,194,224,266,313,316,319,336,408,481,521,542-553,567,575-587,589,593-605,618-644,646,648,672-676,678,680,683-687,689-697,699-702,709-710,714-742,745-760,762-774,776-788,791-804,811-827,831,834-845,848-880,882-964,966-967,969-971,973-996,998-1009,1011-1015,1017-1021,1023-1025,1027,1029-1049,1051-1052,1054-1059,1061,1063,1065-1066,1068-1071,1073-1089,1091-1110,1112-1131,1133-1159,1161,1163-1170,1172-1175,1177-1196,1198-1200,1202-1238,1240-1244,1247-1255,1258-1293,1296-1299,1301-1306,1308-1329,1332-1342,1344-1349,1351-1357,1360-1379,1381,1384-1386,1388-1391,1393-1402,1404-1407,1409-1431,1433-1434,1436-1437,1439,1442-1539,1541-1636,1728-1769
+shortcuts/sheets/lark_sheet_workbook_export_test.go
+  s_48aa8b8676e5c1::t_031e41b24922da 1-72
+shortcuts/sheets/lark_sheet_workbook_import_test.go
+  s_48aa8b8676e5c1::t_d3815d2d338b49 1-133
+shortcuts/sheets/lark_sheet_workbook_test.go
+  s_48aa8b8676e5c1::t_fa86999c7dac1b 7,145-166,231-232,246-250,259-263,272-276,288-293,295,311,323,327,339-470,484-495,500-501,506-508,512,515-516,520,528,534-535,538-539,545,548
+shortcuts/sheets/lark_sheet_write_cells.go
+  s_48aa8b8676e5c1::t_a4b5da060370ba 59,91-93,135,203-204,208,243,420,794,797,807,835
+shortcuts/sheets/lark_sheet_write_cells_test.go
+  s_48aa8b8676e5c1::t_5709d8fc43a647 7,245,252-254,320,328-330,338,345,352,357,390,394,399,406-443,499-523,526,530-532,541,545-547
+shortcuts/sheets/sheet_media_parent_type_test.go
+  s_48aa8b8676e5c1::t_940a5e09ffb8d1 1-192
+shortcuts/sheets/shortcuts.go
+  s_48aa8b8676e5c1::t_4b9ce3a3031de9 6-10,29-37,42-68,81-82,85,102,114
+shortcuts/sheets/shortcuts_alias_test.go
+  s_48aa8b8676e5c1::t_a045d669dce59d 1-53
+shortcuts/slides/shortcuts.go
+  s_48aa8b8676e5c1::t_fd21a9f0681537 14,16
+shortcuts/slides/slides_create.go
+  s_48aa8b8676e5c1::t_724981ac8c4752 207-211
+shortcuts/slides/slides_create_test.go
+  s_48aa8b8676e5c1::t_a0ef2e5a81b7b4 37,58-59,649-654,667
+shortcuts/slides/slides_replace_pages.go
+  s_48aa8b8676e5c1::t_4c82dd5983d840 1-426
+shortcuts/slides/slides_replace_pages_test.go
+  s_48aa8b8676e5c1::t_2421dd28a97386 1-341
+shortcuts/slides/slides_replace_slide.go
+  s_48aa8b8676e5c1::t_4b154a6aa601db 46-49,58-59,62-66
+shortcuts/slides/slides_replace_slide_test.go
+  s_48aa8b8676e5c1::t_c5b9b24b34ddb1 10,19-33
+shortcuts/slides/slides_screenshot.go
+  s_48aa8b8676e5c1::t_817898ac24290a 37-39
+shortcuts/slides/slides_screenshot_test.go
+  s_48aa8b8676e5c1::t_eadfe2c585701d 20-26,28-29,32-36
+shortcuts/slides/slides_xml_get.go
+  s_48aa8b8676e5c1::t_cfedae7bdce71b 1-144
+shortcuts/slides/slides_xml_get_test.go
+  s_48aa8b8676e5c1::t_c164b3f624e4df 1-165
+shortcuts/task/task_get_my_tasks.go
+  s_48aa8b8676e5c1::t_718f56d8fd03d5 203,205-208,215-217,245,268-271,291-302
+shortcuts/task/task_get_my_tasks_test.go
+  s_48aa8b8676e5c1::t_aa6e52919db265 113-224
+shortcuts/task/task_search.go
+  s_48aa8b8676e5c1::t_ae730343511923 76,83-85,122-124
+shortcuts/task/task_search_test.go
+  s_48aa8b8676e5c1::t_7d41147a33cc4a 156,175,196
+shortcuts/task/task_tasklist_search.go
+  s_48aa8b8676e5c1::t_005d9d1bbbf498 73,80-82,125-127
+shortcuts/task/task_tasklist_search_test.go
+  s_48aa8b8676e5c1::t_e551f10f9e99b3 129,148,167
+shortcuts/task/task_util_test.go
+  s_48aa8b8676e5c1::t_6db46e05ef1c6d 162
+shortcuts/vc/shortcuts.go
+  s_48aa8b8676e5c1::t_337d9dd744594e 14,19
+shortcuts/vc/vc_detail.go
+  s_48aa8b8676e5c1::t_cd60f61efb3296 1-216
+shortcuts/vc/vc_detail_test.go
+  s_48aa8b8676e5c1::t_4da72b2dda7277 1-282
+shortcuts/vc/vc_meeting_events.go
+  s_48aa8b8676e5c1::t_0959556dad8724 8,19,30-32,49,53,107-114,116-119,122-128,139-532,753,757,778-795,817,826,828,830,832,834,836,838,842,845,858,863,866,879,884,887,905,910,913,933,938,941,964,969,972,985,990,1138,1140
+shortcuts/vc/vc_meeting_events_test.go
+  s_48aa8b8676e5c1::t_770ea671277756 8,58-84,104-105,123-152,175,203,212-249,515,543,558,565,572-588,599,605,615-616,618-619,628-874,880,886,905,910-942,946,952,961,965-966,986,992,1011,1017,1244,1256-1258,1290-1353,1403-1418
+shortcuts/vc/vc_meeting_message_send.go
+  s_48aa8b8676e5c1::t_cbecbb87908022 1-161
+shortcuts/vc/vc_meeting_message_send_test.go
+  s_48aa8b8676e5c1::t_fd6a90e7922922 1-312
+shortcuts/vc/vc_notes.go
+  s_48aa8b8676e5c1::t_d42f69db58ca73 266-269,272-273,276,278,280,283,288,292,294,317,336-342,540
+shortcuts/vc/vc_notes_test.go
+  s_48aa8b8676e5c1::t_9f764f1858809a 795,799-803,829,833-837,853,857-861,878,882-886,900,904-908,1001,1086
+shortcuts/vc/vc_search.go
+  s_48aa8b8676e5c1::t_7267cf7791f855 233-240,246-248
+shortcuts/vc/vc_search_test.go
+  s_48aa8b8676e5c1::t_eea6905902fa07 8,18,258,270-306
+shortcuts/whiteboard/whiteboard_query.go
+  s_48aa8b8676e5c1::t_986917ebfa627e 8,25,27-32,35,39,41-42,45,51,57,62,67,72,82-83,104-105,125-129,131,142-143,149,155-240,478-479
+shortcuts/whiteboard/whiteboard_query_test.go
+  s_48aa8b8676e5c1::t_9ca4e741a102bf 9-10,18,26,82,207-209,243,267,320-377,396,548,564-576,611,640,671,694,719,749,789,823,857,886,909,939,999-1474
+shortcuts/whiteboard/whiteboard_update.go
+  s_48aa8b8676e5c1::t_b26071aa34236e 20-22,24-27,34,44,62-63,100,129,136,139
+shortcuts/whiteboard/whiteboard_update_test.go
+  s_48aa8b8676e5c1::t_ad94a3ad5cef8c 9,22,58-66,131,137,140,145,149-150,165-180,183,212-216,230,251,276,325,358-365,411,435,461,483,508-545,585,610,634,671,702,727
+shortcuts/wiki/wiki_helpers.go
+  s_48aa8b8676e5c1::t_3159e7e11aa1e3 9,30-43
+shortcuts/wiki/wiki_list_copy_test.go
+  s_48aa8b8676e5c1::t_47d31699d0e4f6 8,15,135-283,291,298,308,324,362,366,373,377,390,412-413,441,451,458,489-490,913,920,927,957,964,977
+shortcuts/wiki/wiki_node_get.go
+  s_48aa8b8676e5c1::t_2ec03c81eb84ba 72-73,238
+shortcuts/wiki/wiki_node_get_test.go
+  s_48aa8b8676e5c1::t_8372cadfa9ea2e 34-49,62,65-70,74,77-85
+shortcuts/wiki/wiki_node_list.go
+  s_48aa8b8676e5c1::t_078b25dad01942 51,57-60,62-63,75,86,88,92-96,109,126-216,241,265-294
+skill-template/domains/approval.md
+  s_48aa8b8676e5c1::t_1935ed332d14cf 1-86
+skill-template/domains/doc.md
+  s_48aa8b8676e5c1::t_6c0bbcdd525072 89-90
+skill-template/domains/drive.md
+  s_48aa8b8676e5c1::t_7e43b7b2ad303c 9,65,115-117,125-128,130-133,197-198
+skill-template/domains/mail.md
+  s_48aa8b8676e5c1::t_99399426162b21 68,85-91,421
+skills/lark-approval/SKILL.md
+  s_48aa8b8676e5c1::t_57586ad4ea3b62 3-4,11,14-28,32-85,87,90-92,99
+skills/lark-approval/references/lark-approval-approvals-get.md
+  s_48aa8b8676e5c1::t_5fde9acc2723e8 1-128
+skills/lark-approval/references/lark-approval-approvals-search.md
+  s_48aa8b8676e5c1::t_5414f1d00df8f0 1-103
+skills/lark-approval/references/lark-approval-initiate.md
+  s_48aa8b8676e5c1::t_1bb7ead975e9f8 1-224
+skills/lark-approval/references/lark-approval-instance-form-control-parameters.md
+  s_48aa8b8676e5c1::t_e5384d463b8054 1-606
+skills/lark-approval/references/lark-approval-instance-value-sourcing.md
+  s_48aa8b8676e5c1::t_f26a09fc4a1c5b 1-108
+skills/lark-approval/references/lark-approval-instances-cancel.md
+  s_48aa8b8676e5c1::t_d7593fbb10124b 2,4,6-7,9,14-30,37-41,44,46,49,52,55,58,60-64,66,68-70,72,74-78
+skills/lark-approval/references/lark-approval-instances-cc.md
+  s_48aa8b8676e5c1::t_864c9b5a1fd4a6 1-105
+skills/lark-approval/references/lark-approval-instances-get.md
+  s_48aa8b8676e5c1::t_c99c2869a272e4 2,4,6,11-12,14-15,17-18,25-30,33,35,37-39,41,43-45,47-49,51,53,55-97,99-107,109,111,115-121,123,125-130,132,134,136-138,140-141,143-145
+skills/lark-approval/references/lark-approval-instances-initiated.md
+  s_48aa8b8676e5c1::t_b301ad1a76461c 1-122
+skills/lark-approval/references/lark-approval-tasks-add-sign.md
+  s_48aa8b8676e5c1::t_e1ef59b66d6e42 1-120
+skills/lark-approval/references/lark-approval-tasks-approve.md
+  s_48aa8b8676e5c1::t_1f1ec3f4d12a24 1-81
+skills/lark-approval/references/lark-approval-tasks-query.md
+  s_48aa8b8676e5c1::t_65425e31f8df75 1-76
+skills/lark-approval/references/lark-approval-tasks-reject.md
+  s_48aa8b8676e5c1::t_fbc8681aa7ab1a 2,4,6-7,9,14-30,37-43,46,48,50-51,54,56-59,61,63-65,67,69-73
+skills/lark-approval/references/lark-approval-tasks-remind.md
+  s_48aa8b8676e5c1::t_a61ac7b1d5a7ff 1-82
+skills/lark-approval/references/lark-approval-tasks-rollback.md
+  s_48aa8b8676e5c1::t_21019df79dc48d 1-83
+skills/lark-approval/references/lark-approval-tasks-transfer.md
+  s_48aa8b8676e5c1::t_a5d977a6d302eb 1-91
+skills/lark-apps/SKILL.md
+  s_48aa8b8676e5c1::t_d302c6cd40445e 4,15-24,35,37-41,45,47-55,75,77-82,102
+skills/lark-apps/references/lark-apps-db-execute.md
+  s_48aa8b8676e5c1::t_b3fb8b06b007cd 14,16,21-22,24,29-33,35,42
+skills/lark-apps/references/lark-apps-db.md
+  s_48aa8b8676e5c1::t_ba0ff8927952b6 1-162
+skills/lark-apps/references/lark-apps-env-pull.md
+  s_48aa8b8676e5c1::t_a61e3e5eebc7f4 5-7,11,26
+skills/lark-apps/references/lark-apps-env.md
+  s_48aa8b8676e5c1::t_d609cd0803a462 1-48
+skills/lark-apps/references/lark-apps-file.md
+  s_48aa8b8676e5c1::t_e759b29756b099 1-96
+skills/lark-apps/references/lark-apps-html-publish.md
+  s_48aa8b8676e5c1::t_46e69f2301ee1b 14,36-42,48
+skills/lark-apps/references/lark-apps-init.md
+  s_48aa8b8676e5c1::t_f68ca8971d81c6 34,37
+skills/lark-apps/references/lark-apps-local-dev.md
+  s_48aa8b8676e5c1::t_1a33576d42a1aa 14,39-40
+skills/lark-apps/references/lark-apps-observability.md
+  s_48aa8b8676e5c1::t_faa74b0235a375 1-48
+skills/lark-apps/references/lark-apps-openapi-key.md
+  s_48aa8b8676e5c1::t_2e973fe4b62515 1-79
+skills/lark-apps/references/lark-apps-plugin-install.md
+  s_48aa8b8676e5c1::t_da38cd9b4972c5 1,3-5,9-11,15-18,23-24,26-27,29-31,33,35-36
+skills/lark-apps/references/lark-apps-plugin-list.md
+  s_48aa8b8676e5c1::t_dd1f89265551db 1,3-5,9,13,18,23
+skills/lark-apps/references/lark-apps-plugin-uninstall.md
+  s_48aa8b8676e5c1::t_c6fd7eeb21009a 1,3-5,9,13-15,20,25
+skills/lark-apps/references/lark-apps-release-create.md
+  s_48aa8b8676e5c1::t_7026bb476902dc 25
+skills/lark-base/SKILL.md
+  s_48aa8b8676e5c1::t_24f2a43a37f626 36-44,133
+skills/lark-base/references/lark-base-field-json.md
+  s_48aa8b8676e5c1::t_d6f8184f8ad7e2 246
+skills/lark-calendar/SKILL.md
+  s_48aa8b8676e5c1::t_48800255190cfc 15,33-34,37,42-92,97-100,103-106,109-110,114,126-131,148,156,159-160,162-167,169,171,173-175,177,179,181-187,193-194
+skills/lark-calendar/references/lark-calendar-create.md
+  s_48aa8b8676e5c1::t_57506d3e46f98a 38,41,47,56,58,60,62-65,81
+skills/lark-calendar/references/lark-calendar-meeting.md
+  s_48aa8b8676e5c1::t_367a56a391db43 1-40
+skills/lark-calendar/references/lark-calendar-recurring.md
+  s_48aa8b8676e5c1::t_dea436d27376a4 1-90
+skills/lark-calendar/references/lark-calendar-room-find.md
+  s_48aa8b8676e5c1::t_7229a96a56becc 50,67,90,101,109
+skills/lark-calendar/references/lark-calendar-rsvp.md
+  s_48aa8b8676e5c1::t_c561c1f6e53207 38
+skills/lark-calendar/references/lark-calendar-schedule-clear-time.md
+  s_48aa8b8676e5c1::t_d32edf6cfb9463 1-59
+skills/lark-calendar/references/lark-calendar-schedule-fuzzy-time.md
+  s_48aa8b8676e5c1::t_03478f57d9dbf5 1-88
+skills/lark-calendar/references/lark-calendar-schedule-meeting.md
+  s_48aa8b8676e5c1::t_3baaf217363009 3,5-12,16-20,24-29,33-35,41-42,44-46,48,51-53,55,57-62,64,66-69,71,73,76-79,81,83-86,88,91-92,108-112,116-117,121-122
+skills/lark-calendar/references/lark-calendar-suggestion.md
+  s_48aa8b8676e5c1::t_379a236de562e3 121
+skills/lark-calendar/references/lark-calendar-update.md
+  s_48aa8b8676e5c1::t_917b3932b1d93d 43,65,67,98
+skills/lark-contact/references/lark-contact-search-user.md
+  s_48aa8b8676e5c1::t_6aef93fe84c16c 3
+skills/lark-doc/SKILL.md
+  s_48aa8b8676e5c1::t_19c974129f88a3 4,8,11,17-19,26-27,32,36-39,42,45-46,49,51,62,71,73,77
+skills/lark-doc/references/lark-doc-create.md
+  s_48aa8b8676e5c1::t_281ecc907e4062 5-6,12,18,20-21,32,34,61-63,70,75-76
+skills/lark-doc/references/lark-doc-fetch.md
+  s_48aa8b8676e5c1::t_e317c27b7c7fd2 8,11,14,17,20-23,26,30,96,103,128,132
+skills/lark-doc/references/lark-doc-history.md
+  s_48aa8b8676e5c1::t_6344ae8d136233 1-107
+skills/lark-doc/references/lark-doc-md.md
+  s_48aa8b8676e5c1::t_2de600a3b2c215 3,37,44
+skills/lark-doc/references/lark-doc-media-download.md
+  s_48aa8b8676e5c1::t_b7fbede59a06cb 37-39
+skills/lark-doc/references/lark-doc-media-insert.md
+  s_48aa8b8676e5c1::t_89d3f35eee2c2a 51
+skills/lark-doc/references/lark-doc-media-preview.md
+  s_48aa8b8676e5c1::t_08f80aa9fc3792 33-35
+skills/lark-doc/references/lark-doc-mindnote.md
+  s_48aa8b8676e5c1::t_654471e94936d4 1-128
+skills/lark-doc/references/lark-doc-resource-cover.md
+  s_48aa8b8676e5c1::t_d1eb6b3a463941 1,5,9-11,18,21,24,27,30,33,52-54,58
+skills/lark-doc/references/lark-doc-update.md
+  s_48aa8b8676e5c1::t_351936639e7329 6-7,17,27,46-54,67,71,75,80,93,105,112,120,129,136,145,157,168,206,214,218,227,233,235,255-256
+skills/lark-doc/references/lark-doc-whiteboard.md
+  s_48aa8b8676e5c1::t_b21f06772ec5ef 12,14,16,26,47-48,51,61-62
+skills/lark-doc/references/lark-doc-word-stat.md
+  s_48aa8b8676e5c1::t_09bf4897fda823 1-93
+skills/lark-doc/references/lark-doc-xml-extended-blocks.md
+  s_48aa8b8676e5c1::t_cd2530a788ceb9 1-34
+skills/lark-doc/references/lark-doc-xml.md
+  s_48aa8b8676e5c1::t_131252e6bf01cb 44,49-50
+skills/lark-doc/references/style/lark-doc-create-workflow.md
+  s_48aa8b8676e5c1::t_62301f0c7c194c 10,19-21,25-31,33,35-37,39,41-42,44,46-47
+skills/lark-doc/references/style/lark-doc-style.md
+  s_48aa8b8676e5c1::t_1a01aab83f4787 1,3-4,6,8,10,12,14-22,24-28,30,32-34,36,38-53,55-68
+skills/lark-doc/references/style/lark-doc-update-workflow.md
+  s_48aa8b8676e5c1::t_607160679baef2 8,22-26,28,31,33-34,36-37,42,44,46,48
+skills/lark-doc/scripts/doc_word_stat.py
+  s_48aa8b8676e5c1::t_c0add905032bc3 4,8,12-13,15-54,57-61,63-68,70-116,119-130,133-134,137-138,141-147,150-217,219-226,228-237,239-244,246-253,255-266,268-270,272-274,276-280,282-289,291-300,302-310,312-319,321-342,344-346,348-408,411-470,472-483,485-490,492-497,499-510,512-523,525-526,528-529,532-537,540-541,544-691,694-697,700-707,709-713,715-716,719-749,752-754,756-765,768-771,773-781,783-788,790-792,794-797,800-802,805-810,813-814,817-821,824-826,828-869,871-928,931-941,943-944,947-954,956-957,960-966,968-969,972-1078,1081-1084,1087-1093,1095-1238,1242-1243
+skills/lark-drive/SKILL.md
+  s_48aa8b8676e5c1::t_7734a911354ca9 4,19-20,23-25,27,34,78-79,91-99,107-108,141,154,167,171,209,214
+skills/lark-drive/references/lark-drive-add-comment.md
+  s_48aa8b8676e5c1::t_3db952d283c3ca 6,38,130-141,154-155,157-158,162,167-168,170-171,181,184-185
+skills/lark-drive/references/lark-drive-comment-location.md
+  s_48aa8b8676e5c1::t_2a80a58d47faaa 30,130
+skills/lark-drive/references/lark-drive-delete.md
+  s_48aa8b8676e5c1::t_12a98075661673 10-21
+skills/lark-drive/references/lark-drive-files-list.md
+  s_48aa8b8676e5c1::t_c070a5c4a4993f 13,44-65,70-74
+skills/lark-drive/references/lark-drive-import.md
+  s_48aa8b8676e5c1::t_916678ad0b21b8 17-23,153
+skills/lark-drive/references/lark-drive-inspect.md
+  s_48aa8b8676e5c1::t_f4aaab85346c5e 50-51
+skills/lark-drive/references/lark-drive-member-add.md
+  s_48aa8b8676e5c1::t_22f441c123bf49 1-66
+skills/lark-drive/references/lark-drive-permission-guide.md
+  s_48aa8b8676e5c1::t_15422e280f2d53 13-24
+skills/lark-drive/references/lark-drive-push.md
+  s_48aa8b8676e5c1::t_d5ede8a923cfd8 18-19,21,99,115-116,123,125-126,133-155
+skills/lark-drive/references/lark-drive-search.md
+  s_48aa8b8676e5c1::t_bfaf43c5571b9c 6,17-18,26-27,106
+skills/lark-drive/references/lark-drive-workflow-knowledge-organize.md
+  s_48aa8b8676e5c1::t_11a82fa91cb5c0 3-9,89,123-140
+skills/lark-drive/references/lark-drive-workflow.md
+  s_48aa8b8676e5c1::t_4e206f636c7cc6 100,114
+skills/lark-event/SKILL.md
+  s_48aa8b8676e5c1::t_d50ee0556ccd1d 4,150-152
+skills/lark-event/references/lark-event-im.md
+  s_48aa8b8676e5c1::t_9917b3ac008c7b 7,22,24
+skills/lark-event/references/lark-event-task.md
+  s_48aa8b8676e5c1::t_99c4e02069665a 1,3,5,7-9,11-28,31,34-47,61,64-65,67-69,71-74,76-77
+skills/lark-event/references/lark-event-vc.md
+  s_48aa8b8676e5c1::t_4962ec3bbfd124 5,9-10,14,20-21,27-33,39,47,51,57-58
+skills/lark-im/SKILL.md
+  s_48aa8b8676e5c1::t_b425a42992ea0f 4,62-63,66-75,107,153-158,220
+skills/lark-im/references/card/card-2.0-schema.md
+  s_48aa8b8676e5c1::t_e8b90f15c630c4 1-107
+skills/lark-im/references/card/components/button.md
+  s_48aa8b8676e5c1::t_c1c033044bee5e 1-63
+skills/lark-im/references/card/components/chart.md
+  s_48aa8b8676e5c1::t_c59d98acdeae01 1-57
+skills/lark-im/references/card/components/checker.md
+  s_48aa8b8676e5c1::t_57e15f521d9f4e 1-38
+skills/lark-im/references/card/components/collapsible_panel.md
+  s_48aa8b8676e5c1::t_4f388dfcdc05b9 1-46
+skills/lark-im/references/card/components/column_set.md
+  s_48aa8b8676e5c1::t_c380e04f265163 1-53
+skills/lark-im/references/card/components/date_picker.md
+  s_48aa8b8676e5c1::t_b8d6aa0af0bc81 1-34
+skills/lark-im/references/card/components/div.md
+  s_48aa8b8676e5c1::t_b3df2a54b2d8e5 1-36
+skills/lark-im/references/card/components/form.md
+  s_48aa8b8676e5c1::t_af1e72eca64bd7 1-51
+skills/lark-im/references/card/components/header.md
+  s_48aa8b8676e5c1::t_d43ddd12bd8ff1 1-34
+skills/lark-im/references/card/components/hr.md
+  s_48aa8b8676e5c1::t_0f5b14264dd44a 1-17
+skills/lark-im/references/card/components/img.md
+  s_48aa8b8676e5c1::t_d4845110feaf3a 1-34
+skills/lark-im/references/card/components/img_combination.md
+  s_48aa8b8676e5c1::t_9d29d11b14389c 1-30
+skills/lark-im/references/card/components/input.md
+  s_48aa8b8676e5c1::t_c069d5e29e2482 1-43
+skills/lark-im/references/card/components/interactive_container.md
+  s_48aa8b8676e5c1::t_a44ac553647c09 1-46
+skills/lark-im/references/card/components/markdown.md
+  s_48aa8b8676e5c1::t_c9ef39397642e7 1-56
+skills/lark-im/references/card/components/multi_select_person.md
+  s_48aa8b8676e5c1::t_797cda3b83e596 1-40
+skills/lark-im/references/card/components/multi_select_static.md
+  s_48aa8b8676e5c1::t_d8933e48d6b3bd 1-40
+skills/lark-im/references/card/components/overflow.md
+  s_48aa8b8676e5c1::t_c64442956a4e6e 1-36
+skills/lark-im/references/card/components/person.md
+  s_48aa8b8676e5c1::t_dd48fd2601c2a0 1-30
+skills/lark-im/references/card/components/person_list.md
+  s_48aa8b8676e5c1::t_539c031347308c 1-31
+skills/lark-im/references/card/components/picker_datetime.md
+  s_48aa8b8676e5c1::t_17e8c0541e9bb5 1-34
+skills/lark-im/references/card/components/picker_time.md
+  s_48aa8b8676e5c1::t_71a463cc36f766 1-34
+skills/lark-im/references/card/components/recycling_container.md
+  s_48aa8b8676e5c1::t_41ae822e2e4e65 1-35
+skills/lark-im/references/card/components/select_img.md
+  s_48aa8b8676e5c1::t_357a29f88b8149 1-42
+skills/lark-im/references/card/components/select_person.md
+  s_48aa8b8676e5c1::t_3645cd34f89b6d 1-39
+skills/lark-im/references/card/components/select_static.md
+  s_48aa8b8676e5c1::t_e3179b326671f9 1-43
+skills/lark-im/references/card/components/table.md
+  s_48aa8b8676e5c1::t_27070573c858dd 1-53
+skills/lark-im/references/card/lark-im-card-create.md
+  s_48aa8b8676e5c1::t_21993789b1814a 1-180
+skills/lark-im/references/card/lark-im-card-style.md
+  s_48aa8b8676e5c1::t_9cbe05f4c358c4 1-281
+skills/lark-im/references/card/resource/colors.md
+  s_48aa8b8676e5c1::t_87025580f6927c 1-34
+skills/lark-im/references/card/resource/icons.md
+  s_48aa8b8676e5c1::t_aa813f26af32eb 1-38
+skills/lark-im/references/lark-im-card-action-reply.md
+  s_48aa8b8676e5c1::t_ee997286461f61 1-175
+skills/lark-im/references/lark-im-chat-members-list.md
+  s_48aa8b8676e5c1::t_d2841a5f0df9d0 1-83
+skills/lark-im/references/lark-im-messages-reply.md
+  s_48aa8b8676e5c1::t_a6ae55ed9e149d 150-152,158-166,174,189,277
+skills/lark-im/references/lark-im-messages-send.md
+  s_48aa8b8676e5c1::t_da44f8021764f5 153,161-169,177,192,225-229,279
+skills/lark-mail/SKILL.md
+  s_48aa8b8676e5c1::t_975bb8e5e60d25 4,13,23,82,99-106,116-132,134,145,156,158-160,162,164,167-168,198
+skills/lark-mail/references/lark-mail-calendar-invite.md
+  s_48aa8b8676e5c1::t_ab7cd6a4f6d347 1-36
+skills/lark-mail/references/lark-mail-forward.md
+  s_48aa8b8676e5c1::t_416253efc105dc 116,121,191,218
+skills/lark-mail/references/lark-mail-message-modify.md
+  s_48aa8b8676e5c1::t_46fc6cfedc0be9 1-48
+skills/lark-mail/references/lark-mail-message-trash.md
+  s_48aa8b8676e5c1::t_9a0971b48c5700 1-41
+skills/lark-mail/references/lark-mail-recall.md
+  s_48aa8b8676e5c1::t_5ce5f2a674bc16 1-66
+skills/lark-mail/references/lark-mail-recipient-search.md
+  s_48aa8b8676e5c1::t_b9c812401892d2 1-59
+skills/lark-mail/references/lark-mail-reply-all.md
+  s_48aa8b8676e5c1::t_194c080412c82b 118,123,179,206
+skills/lark-mail/references/lark-mail-reply.md
+  s_48aa8b8676e5c1::t_57d2c229485872 121,126,194,221
+skills/lark-mail/references/lark-mail-rules.md
+  s_48aa8b8676e5c1::t_20c8531e74ae7a 1-31
+skills/lark-mail/references/lark-mail-send-as.md
+  s_48aa8b8676e5c1::t_b28f262cdc3a4c 1-44
+skills/lark-mail/references/lark-mail-send-status.md
+  s_48aa8b8676e5c1::t_a49ce31eed0e53 1-46
+skills/lark-mail/references/lark-mail-send.md
+  s_48aa8b8676e5c1::t_f41b7a3787db1d 133,138
+skills/lark-mail/references/lark-mail-template.md
+  s_48aa8b8676e5c1::t_4cc824323fca61 1-54
+skills/lark-mail/references/lark-mail-watch.md
+  s_48aa8b8676e5c1::t_6ac02eca3581ff 50
+skills/lark-markdown/SKILL.md
+  s_48aa8b8676e5c1::t_720200476cf469 3,28-29
+skills/lark-markdown/references/lark-markdown-create.md
+  s_48aa8b8676e5c1::t_56dd7b42584ae6 35-39,45-49,61-62,71-72,103-110
+skills/lark-minutes/SKILL.md
+  s_48aa8b8676e5c1::t_063a60252874b4 4,30,34-37,43-57,68-69,75-76,79,81-82,85,89,91,121,125,131-145,147-153,156-172,188-192
+skills/lark-minutes/references/lark-minutes-detail.md
+  s_48aa8b8676e5c1::t_65f51d0dea8a27 1-62
+skills/lark-minutes/references/lark-minutes-download.md
+  s_48aa8b8676e5c1::t_15494001cd7f2d 45,87,127,130,135
+skills/lark-minutes/references/lark-minutes-search.md
+  s_48aa8b8676e5c1::t_a4df49451c9b56 145,152,173-174,192,200
+skills/lark-minutes/references/lark-minutes-speaker-replace.md
+  s_48aa8b8676e5c1::t_64dbb7dd3c8615 4,12,14-54,59-62,65,74,77-91,95,102
+skills/lark-minutes/references/lark-minutes-summary.md
+  s_48aa8b8676e5c1::t_48e709ad86fe27 42,106,120
+skills/lark-minutes/references/lark-minutes-todo.md
+  s_48aa8b8676e5c1::t_f69f3cbfa53145 96,136
+skills/lark-minutes/references/lark-minutes-upload.md
+  s_48aa8b8676e5c1::t_613bbf8609fbc1 33-34,36,38-39,49-50,83,85,91-92,99
+skills/lark-note/SKILL.md
+  s_48aa8b8676e5c1::t_1fedc17814a22a 15-20,27-31,39,55-57,68-94
+skills/lark-note/references/lark-note-detail.md
+  s_48aa8b8676e5c1::t_ef97b41d2e2d74 3-5,8,21-22
+skills/lark-note/references/lark-note-transcript.md
+  s_48aa8b8676e5c1::t_5f2c9ec8b077cc 3,20-22
+skills/lark-okr/SKILL.md
+  s_48aa8b8676e5c1::t_808a9e35f17f23 34-35,40,50-51,77-78,89-90
+skills/lark-okr/references/lark-okr-alignments.md
+  s_48aa8b8676e5c1::t_b2e055a162303a 1-180
+skills/lark-okr/references/lark-okr-contentblock.md
+  s_48aa8b8676e5c1::t_c3b235164b6b05 5-15,229-271,274-288
+skills/lark-okr/references/lark-okr-cycle-detail.md
+  s_48aa8b8676e5c1::t_270d128873afb9 10,13-15,22-27,82-86
+skills/lark-okr/references/lark-okr-cycle-list.md
+  s_48aa8b8676e5c1::t_f019dcdf9e8b05 51,54-62,70-73,75-77
+skills/lark-okr/references/lark-okr-indicators.md
+  s_48aa8b8676e5c1::t_4c1958461685df 1-223
+skills/lark-okr/references/lark-okr-patch.md
+  s_48aa8b8676e5c1::t_269d8b89d1bbf6 1-104
+skills/lark-okr/references/lark-okr-progress-create.md
+  s_48aa8b8676e5c1::t_421195a22264a4 10,12,16,19,36-37,51-53
+skills/lark-okr/references/lark-okr-progress-get.md
+  s_48aa8b8676e5c1::t_3c168e30010109 10,13-15,25-31,41-65,72,77-78,84-87
+skills/lark-okr/references/lark-okr-progress-update.md
+  s_48aa8b8676e5c1::t_a310229a64c1cf 10,13,15,19,31,40-41,51-53
+skills/lark-shared/SKILL.md
+  s_48aa8b8676e5c1::t_02fb12ab6dcebc 4,26-47,133-141,143-145,149-165
+skills/lark-sheets/SKILL.md
+  s_48aa8b8676e5c1::t_74f6562fbc7f44 3-4,41-45,47-48,52,54,60-61,73-75,81-94,110-112,116,121,163-164
+skills/lark-sheets/references/lark-sheets-batch-update.md
+  s_48aa8b8676e5c1::t_4c64206fab467e 25,106
+skills/lark-sheets/references/lark-sheets-chart.md
+  s_48aa8b8676e5c1::t_3f4cbd5b5a3083 39-40,70,88,93-94,98,153,155,170-171,176-189,191,200-201,219-220,228-229,246-247
+skills/lark-sheets/references/lark-sheets-conditional-format.md
+  s_48aa8b8676e5c1::t_4bb871863aaab3 37
+skills/lark-sheets/references/lark-sheets-core-operations.md
+  s_48aa8b8676e5c1::t_98a889cd6730b2 5,15,17-20,24,29,40,70
+skills/lark-sheets/references/lark-sheets-filter-view.md
+  s_48aa8b8676e5c1::t_0ace21c8bdacb9 112-122
+skills/lark-sheets/references/lark-sheets-filter.md
+  s_48aa8b8676e5c1::t_16b432c1c0112a 105-115
+skills/lark-sheets/references/lark-sheets-float-image.md
+  s_48aa8b8676e5c1::t_50b90877b3cb5a 3-6,10,24,34,133
+skills/lark-sheets/references/lark-sheets-formula-translation.md
+  s_48aa8b8676e5c1::t_59fab30978ab46 212
+skills/lark-sheets/references/lark-sheets-range-operations.md
+  s_48aa8b8676e5c1::t_5a9c6b25304197 43-46,199
+skills/lark-sheets/references/lark-sheets-read-data.md
+  s_48aa8b8676e5c1::t_737058aa884110 16-17,20,24-25,31,35,41,46,49,52,56-61,65,68-75,91,103,121,124-134,156-158,160,174-230
+skills/lark-sheets/references/lark-sheets-sparkline.md
+  s_48aa8b8676e5c1::t_85ca0bdc190088 20
+skills/lark-sheets/references/lark-sheets-visual-standards.md
+  s_48aa8b8676e5c1::t_00fa9f3ab7ae7d 27-28
+skills/lark-sheets/references/lark-sheets-workbook.md
+  s_48aa8b8676e5c1::t_22bb7fcedc2ac2 13,44-45,48,65,121-132,141-143,153-190,200-334,344-345,383-390,393
+skills/lark-sheets/references/lark-sheets-write-cells.md
+  s_48aa8b8676e5c1::t_d24f438a2b38f7 8,17,21,48,50-63,65-75,118,121,123,130,136,243,308,312-320,356-380,387,393-394,456,458,464-484,493-560,563
+skills/lark-sheets/scripts/sheets_df.py
+  s_48aa8b8676e5c1::t_28e14c85b41167 1-32
+skills/lark-slides/SKILL.md
+  s_48aa8b8676e5c1::t_65b922cd4bcde8 18,32-33,44,79,127,145,149,151,252,265,271
+skills/lark-slides/references/asset-planning.md
+  s_48aa8b8676e5c1::t_1cc771d44efbe4 10,46,67-77,82-83,133
+skills/lark-slides/references/lark-slides-edit-workflows.md
+  s_48aa8b8676e5c1::t_8304dd66247c98 3,14,140
+skills/lark-slides/references/lark-slides-replace-pages.md
+  s_48aa8b8676e5c1::t_d6f5845c31bbc4 1-95
+skills/lark-slides/references/lark-slides-screenshot.md
+  s_48aa8b8676e5c1::t_be5625c85ff26f 7
+skills/lark-slides/references/lark-slides-whiteboard.md
+  s_48aa8b8676e5c1::t_589d9e082810c1 5-6,17-18,23,44-46,48-50,64,71,81,84,87,114,117-118,131,135,142-147,166-168,311
+skills/lark-slides/references/planning-layer.md
+  s_48aa8b8676e5c1::t_3d25a65552cfeb 10-15,122-149,214,222,233
+skills/lark-slides/references/slides_chart_demo.xml
+  s_48aa8b8676e5c1::t_44fd53beabb5ce 1
+skills/lark-slides/references/slides_xml_schema_definition.xml
+  s_48aa8b8676e5c1::t_2ec827fe57971b 3021
+skills/lark-slides/references/visual-planning.md
+  s_48aa8b8676e5c1::t_65caeb7dc25883 5
+skills/lark-slides/references/xml-format-guide.md
+  s_48aa8b8676e5c1::t_032e6e2fd45007 266-315
+skills/lark-slides/references/xml-schema-quick-ref.md
+  s_48aa8b8676e5c1::t_afb5b088f2cc0c 150
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_48aa8b8676e5c1::t_cc363a9b060b1c 11,24,29,32-76,78-79,81
+skills/lark-task/references/lark-task-create.md
+  s_48aa8b8676e5c1::t_4e448bd17e430f 49-62
+skills/lark-vc-agent/SKILL.md
+  s_48aa8b8676e5c1::t_2896bdfc8e7aca 4,29,38,53,72-73,76-96,98-104,111,120,124-125,129,131,133-134,143,162,168,191
+skills/lark-vc-agent/references/lark-vc-agent-meeting-events.md
+  s_48aa8b8676e5c1::t_a8313317ba707f 17-18,21,24,54-57,68,75,78,82,105,107,111,113-115,117,134-135,137,161-164,179-204,228,232-233,235-236,243,250,258,272,289-291,300,312
+skills/lark-vc-agent/references/lark-vc-agent-meeting-join.md
+  s_48aa8b8676e5c1::t_a5048d5f29f84e 109,138
+skills/lark-vc-agent/references/lark-vc-agent-meeting-leave.md
+  s_48aa8b8676e5c1::t_294be6bf2a034f 78,102
+skills/lark-vc-agent/references/lark-vc-agent-meeting-list-active.md
+  s_48aa8b8676e5c1::t_c089e65f0c8446 32,41,45,47,49,56,83
+skills/lark-vc-agent/references/lark-vc-agent-meeting-message-send.md
+  s_48aa8b8676e5c1::t_efa73e89d26a65 1-134
+skills/lark-vc/SKILL.md
+  s_48aa8b8676e5c1::t_2eeea96eee8c5a 27,30,37-38,52-53,61,68,74,96,102,105-108,110,122,125,141,155,163,165-169,172,194,201-202
+skills/lark-vc/references/lark-vc-detail.md
+  s_48aa8b8676e5c1::t_073d15a788a501 1-44
+skills/lark-vc/references/lark-vc-recording.md
+  s_48aa8b8676e5c1::t_1d6039698acfb0 7,104-105,146,152
+skills/lark-vc/references/lark-vc-search.md
+  s_48aa8b8676e5c1::t_a48f153b0e68a2 4,10,35-37,40-41,43-44,116,123-124,140,162
+skills/lark-vc/references/vc-domain-boundaries.md
+  s_48aa8b8676e5c1::t_9ee0d49d63f4b2 33,54,84,96-107,109,118-120,122,125-127,130,134,138,141,156,158-160,166-167
+skills/lark-whiteboard/SKILL.md
+  s_48aa8b8676e5c1::t_515b2407866930 15,27,30-31,39-40
+skills/lark-whiteboard/elements/layout.md
+  s_48aa8b8676e5c1::t_1681c0f162393a 339
+skills/lark-whiteboard/elements/schema.md
+  s_48aa8b8676e5c1::t_d463c64817ad03 275,282
+skills/lark-whiteboard/references/lark-whiteboard-query.md
+  s_48aa8b8676e5c1::t_cff795e07e535f 5,12-13,19,42-52
+skills/lark-whiteboard/references/lark-whiteboard-update.md
+  s_48aa8b8676e5c1::t_4ee225c70cc1de 5,10,22,78,92,102-122
+skills/lark-whiteboard/references/lark-whiteboard-workflow.md
+  s_48aa8b8676e5c1::t_5def4dbc23caf8 13-14,32-36,50-51,55-57,87
+skills/lark-whiteboard/routes/dsl.md
+  s_48aa8b8676e5c1::t_30570ba763f5af 16,28,33
+skills/lark-whiteboard/routes/mermaid.md
+  s_48aa8b8676e5c1::t_087a43a20376d2 19,22
+skills/lark-whiteboard/routes/svg-edit.md
+  s_48aa8b8676e5c1::t_f1f4d03d9edc6e 1-85
+skills/lark-whiteboard/routes/svg.md
+  s_48aa8b8676e5c1::t_afc845fcd6e462 33-35,38
+skills/lark-whiteboard/scenes/bar-chart.md
+  s_48aa8b8676e5c1::t_8e0cc0f42b3859 11
+skills/lark-whiteboard/scenes/fishbone.md
+  s_48aa8b8676e5c1::t_8ef130e747615a 13
+skills/lark-whiteboard/scenes/flywheel.md
+  s_48aa8b8676e5c1::t_2fb312a4fa419c 12
+skills/lark-whiteboard/scenes/line-chart.md
+  s_48aa8b8676e5c1::t_e62dde917db756 11
+skills/lark-whiteboard/scenes/treemap.md
+  s_48aa8b8676e5c1::t_a93de8902d7e05 11
+skills/lark-wiki/SKILL.md
+  s_48aa8b8676e5c1::t_7834bccf775800 3,27,37-38
+skills/lark-wiki/references/lark-wiki-node-get.md
+  s_48aa8b8676e5c1::t_e4992fbd69e815 22
+skills/lark-wiki/references/lark-wiki-node-list.md
+  s_48aa8b8676e5c1::t_80f2108658a3ca 14-16,37-38,88-91
+skills/lark-workflow-meeting-summary/SKILL.md
+  s_48aa8b8676e5c1::t_407aeb1e4177a4 40-43,75-79,81-84,112,114,120
+tests/cli_e2e/apps/apps_db_env_create_dryrun_test.go
+  s_48aa8b8676e5c1::t_222a2a2e6a3b30 27,43
+tests/cli_e2e/apps/apps_db_execute_dryrun_test.go
+  s_48aa8b8676e5c1::t_20300551e06af9 18,22,40-41,49
+tests/cli_e2e/apps/apps_db_table_list_dryrun_test.go
+  s_48aa8b8676e5c1::t_7df9fcf89fbf94 22,35-36,50
+tests/cli_e2e/apps/apps_env_pull_dryrun_test.go
+  s_48aa8b8676e5c1::t_89b3ea479473e0 38-40
+tests/cli_e2e/base/base_field_dryrun_test.go
+  s_48aa8b8676e5c1::t_7a7577316af413 1-45
+tests/cli_e2e/base/coverage.md
+  s_48aa8b8676e5c1::t_4b6a26e2a6666c 5-6,11,42
+tests/cli_e2e/core.go
+  s_48aa8b8676e5c1::t_4d1b61ebf38507 27-37,115-142,152-159,161-163,165-170,244,247,250,253,264,292-348,366-369,390-392,394,398-418,426,431,433
+tests/cli_e2e/core_test.go
+  s_48aa8b8676e5c1::t_e253a14c5fd7db 8,13,228-309,347-375
+tests/cli_e2e/docs/coverage.md
+  s_48aa8b8676e5c1::t_c47bf7766ac4a2 4-6,12-15,23-27,32
+tests/cli_e2e/docs/docs_fetch_dryrun_test.go
+  s_48aa8b8676e5c1::t_dd87b485e10019 1-104
+tests/cli_e2e/docs/docs_history_workflow_test.go
+  s_48aa8b8676e5c1::t_80b71b28190044 1-137
+tests/cli_e2e/docs/docs_update_dryrun_test.go
+  s_48aa8b8676e5c1::t_2ca7af97bcffd1 14,27-34,43,53,62-63,74-87,98-141,155,166-182,186-228
+tests/cli_e2e/drive/coverage.md
+  s_48aa8b8676e5c1::t_137bb0e25a2d75 14,17,28,32
+tests/cli_e2e/drive/drive_add_comment_dryrun_test.go
+  s_48aa8b8676e5c1::t_1fef41b29b8f86 54-90
+tests/cli_e2e/drive/drive_export_dryrun_test.go
+  s_48aa8b8676e5c1::t_bc37ef2da5405e 95-97
+tests/cli_e2e/drive/drive_member_add_dryrun_test.go
+  s_48aa8b8676e5c1::t_ce1ec73d21f3e7 1-499
+tests/cli_e2e/drive/drive_search_dryrun_test.go
+  s_48aa8b8676e5c1::t_366741f48e5eda 167-205
+tests/cli_e2e/drive/helpers.go
+  s_48aa8b8676e5c1::t_48ad59dd3d17ff 17-28,75-78,83,86,101-104,109-111,113-115
+tests/cli_e2e/drive/helpers_test.go
+  s_48aa8b8676e5c1::t_60df47a71497c3 8-9,11,13-14,24-79
+tests/cli_e2e/im/coverage.md
+  s_48aa8b8676e5c1::t_ba01d13f29027e 15,31
+tests/cli_e2e/im/message_audio_dryrun_test.go
+  s_48aa8b8676e5c1::t_81061be4ad7412 1-62
+tests/cli_e2e/mail/coverage.md
+  s_48aa8b8676e5c1::t_15556d5c7db806 4-6,23-24
+tests/cli_e2e/minutes/minutes_speaker_replace_test.go
+  s_48aa8b8676e5c1::t_b91c701d53118b 41-67
+tests/cli_e2e/okr/okr_cycle_detail_test.go
+  s_48aa8b8676e5c1::t_a3fa5a474f891b 38-79
+tests/cli_e2e/okr/okr_progress_test.go
+  s_48aa8b8676e5c1::t_749e91594d78d3 77,90-93,106,165-206,220,243
+tests/cli_e2e/okr/okr_shortcuts_test.go
+  s_48aa8b8676e5c1::t_fb38b2375c224e 162-268
+tests/cli_e2e/sheets/sheets_crud_workflow_test.go
+  s_48aa8b8676e5c1::t_5a56d4d38b34ff 146,153
+tests/cli_e2e/sheets/sheets_gridline_dryrun_test.go
+  s_48aa8b8676e5c1::t_d60d3f81f193e6 1-62
+tests/cli_e2e/sheets/sheets_gridline_workflow_test.go
+  s_48aa8b8676e5c1::t_9b911792d664a3 1-55
+tests/cli_e2e/sheets/sheets_image_upload_dryrun_test.go
+  s_48aa8b8676e5c1::t_238b94062bb607 1-112
+tests/cli_e2e/sheets/sheets_table_get_dryrun_test.go
+  s_48aa8b8676e5c1::t_7d3fa57f31f792 1-76
+tests/cli_e2e/sheets/sheets_table_get_workflow_test.go
+  s_48aa8b8676e5c1::t_416631cd709929 1-118
+tests/cli_e2e/sheets/sheets_table_put_dryrun_test.go
+  s_48aa8b8676e5c1::t_1df7d6820543ee 1-85
+tests/cli_e2e/sheets/sheets_table_put_typed_workflow_test.go
+  s_48aa8b8676e5c1::t_e1b61f813688d5 1-159
+tests/cli_e2e/sheets/sheets_workbook_export_dryrun_test.go
+  s_48aa8b8676e5c1::t_eabb79914313d9 1-105
+tests/cli_e2e/sheets/sheets_workbook_import_dryrun_test.go
+  s_48aa8b8676e5c1::t_da88bb759ab920 1-73
+tests/cli_e2e/sheets/sheets_workbook_import_workflow_test.go
+  s_48aa8b8676e5c1::t_840d2087d4ea46 1-82
+tests/cli_e2e/task/coverage.md
+  s_48aa8b8676e5c1::t_6b9c4566489743 5-6,16,19,32
+tests/cli_e2e/task/task_get_my_tasks_dryrun_test.go
+  s_48aa8b8676e5c1::t_9e436366aed582 1-65
+tests/cli_e2e/vc/vc_meeting_events_dryrun_test.go
+  s_48aa8b8676e5c1::t_f1477704d9ef86 1-46
+tests/cli_e2e/vc/vc_meeting_message_send_dryrun_test.go
+  s_48aa8b8676e5c1::t_7f30f78e9b34f9 1-113
+tests/cli_e2e/wiki/helpers_test.go
+  s_48aa8b8676e5c1::t_8838eda9376b22 8,207-211,342-353,355,358-363,366,368-369,390-394,398-414,441-489
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2609bc7965d86dd5cedd84ce48aea14e3f85b462",
+  "prompts": {},
+  "sessions": {
+    "s_48aa8b8676e5c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4f4a-1c46-7481-87e9-7c7c02b52f64",
+        "model": "unknown"
+      },
+      "human_author": "AlbertSun <sunxingjian@bytedance.com>"
+    },
+    "s_64bcc2f29a4ce4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5016-707d-7ce2-ae99-7e59224fb3a6",
+        "model": "unknown"
+      },
+      "human_author": "AlbertSun <sunxingjian@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,46 @@
+internal/auth/client_auth.go
+  s_48aa8b8676e5c1::t_83f1520d789979 68
+  s_64bcc2f29a4ce4::t_5ad6ddf381072a 46-55,71,75
+docs/superpowers/specs/2026-07-11-keyless-refactor-design.md
+  s_64bcc2f29a4ce4::t_f70748b012896a 1-70
+internal/keylesshelper/helper_test.go
+  s_64bcc2f29a4ce4::t_db9803055b957c 89,108-112
+  s_64bcc2f29a4ce4::t_410f9ce6218a02 86-88
+  s_48aa8b8676e5c1::t_9a889e373f6239 85,271-275
+cmd/config/config_test.go
+  s_64bcc2f29a4ce4::t_c11cdd6b01a4b3 356-375,377-391
+cmd/config/init.go
+  s_64bcc2f29a4ce4::t_c2d4c6e8d3d339 380,383-384,389-402,404,406-408,410-421,424-429,619-621,623,632-633
+cmd/config/init_probe_test.go
+  s_64bcc2f29a4ce4::t_dfdd71061cd50f 259,262-264,364-365,368-373
+internal/auth/client_auth_test.go
+  s_64bcc2f29a4ce4::t_0b346c3e841811 22,128,132,136-138,140-141
+internal/credential/tat_fetch.go
+  s_64bcc2f29a4ce4::t_16937007713e4b 134-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "71be742d339717d00cf0675a8201772b44c417ea",
+  "prompts": {},
+  "sessions": {
+    "s_48aa8b8676e5c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4f4a-1c46-7481-87e9-7c7c02b52f64",
+        "model": "unknown"
+      },
+      "human_author": "AlbertSun <sunxingjian@bytedance.com>"
+    },
+    "s_64bcc2f29a4ce4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5016-707d-7ce2-ae99-7e59224fb3a6",
+        "model": "unknown"
+      },
+      "human_author": "AlbertSun <sunxingjian@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,16 @@
+skills/lark-whiteboard/references/lark-whiteboard-workflow.md
+  h_4d07886566f797 50-51,56-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3d80e06b550015bb38c4374320b6efca41a30fe4",
+  "prompts": {},
+  "humans": {
+    "h_4d07886566f797": {
+      "author": "cl900811 <chenliang.0811@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
