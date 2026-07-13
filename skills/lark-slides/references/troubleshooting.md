@@ -19,7 +19,7 @@
 2. 用 `slides +xml-get` 回读，确认是否已有部分页面写入。
 3. 检查失败页是否含未转义字符：`Q&A -> Q&amp;A`，文本 `<` / `>` 写成 `&lt;` / `&gt;`，属性 URL `a=1&b=2 -> a=1&amp;b=2`。
 4. 检查标签闭合、属性引号、`<content>` 结构，以及 `<slide>` 直接子元素。
-5. 页面空白、溢出、重叠或越界时，按 [validation-checklist.md](validation-checklist.md) 运行 XML 文本重叠检查，并人工核对越界、截断、图文压盖等视觉风险；工具当前只会报告 `xml_not_well_formed` / `bbox_overlap`。
+5. 页面空白、溢出、重叠或越界时，按 [validation-checklist.md](validation-checklist.md) 运行 XML 文本重叠检查，并人工核对越界、截断、图文压盖等视觉风险；工具会报告 `xml_not_well_formed`、`sxsd_unsupported_tag`、`sxsd_unsupported_attr`、`bbox_overlap` 和 `whiteboard_external_overlap` 等静态信号。
 6. 如果使用 `--slides '[...]'`，怀疑 shell 截断时直接切到两步创建：先 `slides +create`，再用 `xml_presentation.slide.create` 逐页添加。
 7. 局部问题用 `+replace-slide` 块级修正；整页结构要改时再用 `slide.delete` 旧页 + `slide.create` 新页。
 

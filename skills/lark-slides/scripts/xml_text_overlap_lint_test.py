@@ -117,6 +117,26 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         self.assertIn("attribute", issue["hint"])
         self.assertIn("a=1&amp;b=2", issue["hint"])
 
+    def test_lint_xml_reports_mismatched_xml_tag(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                  <content textType="body"><p>Broken XML</content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issue = result["issues"][0]
+        self.assertEqual(result["summary"]["slide_count"], 0)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(issue["code"], "xml_not_well_formed")
+        self.assertIsInstance(issue["line"], int)
+        self.assertIsInstance(issue["column"], int)
+        self.assertIn("Broken XML", issue["context"])
+
     def test_lint_xml_accepts_escaped_entities_without_suspicious_entity_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -161,6 +181,142 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         self.assertEqual(result["slide_size"], {"width": 960, "height": 540})
         self.assertEqual(result["summary"]["slide_count"], 1)
         self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_preserves_presentation_canvas_and_slide_order(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="1280" height="720">
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <shape id="first" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                    <content textType="body"><p>First slide</p></content>
+                  </shape>
+                </data>
+              </slide>
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <img id="second" src="tok" topLeftX="100" topLeftY="120" width="240" height="160"/>
+                  <shape id="skipped" type="text" topLeftX="80" topLeftY="80" width="300">
+                    <content textType="body"><p>Missing height</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        self.assertEqual(result["slide_size"], {"width": 1280, "height": 720})
+        self.assertEqual(result["summary"]["slide_count"], 2)
+        self.assertEqual([slide["slide_number"] for slide in result["slides"]], [1, 2])
+        self.assertEqual([slide["element_count"] for slide in result["slides"]], [1, 1])
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["summary"]["warning_count"], 0)
+
+    def test_lint_xml_reports_sxsd_unsupported_tag_with_alias_hint(self) -> None:
+        cases = [
+            ("textbox", '<textbox topLeftX="80" topLeftY="80" width="300" height="60">Text</textbox>', '<shape type="text">'),
+            ("image", '<image src="tok" topLeftX="80" topLeftY="80" width="300" height="180"/>', "<img>"),
+        ]
+        for tag_name, element_xml, expected_hint in cases:
+            with self.subTest(tag=tag_name):
+                result = xml_text_overlap_lint.lint_xml(
+                    f"""
+                    <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                      <data>{element_xml}</data>
+                    </slide>
+                    """
+                )
+                issue = result["issues"][0]
+                self.assertEqual(result["summary"]["error_count"], 1)
+                self.assertEqual(issue["code"], "sxsd_unsupported_tag")
+                self.assertEqual(issue["tag"], tag_name)
+                self.assertIn(expected_hint, issue["hint"])
+
+    def test_lint_xml_reports_sxsd_unsupported_attr_with_alias_hint(self) -> None:
+        cases = [
+            ("shape", "x", "topLeftX", '<shape type="text" x="80" topLeftY="80" width="300" height="60"><content><p>Text</p></content></shape>'),
+            ("content", "fontColor", "color", '<shape type="text" topLeftX="80" topLeftY="80" width="300" height="60"><content fontColor="rgba(0, 0, 0, 1)"><p>Text</p></content></shape>'),
+        ]
+        for tag_name, attr_name, expected_attr, element_xml in cases:
+            with self.subTest(attr=attr_name):
+                result = xml_text_overlap_lint.lint_xml(
+                    f"""
+                    <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                      <data>{element_xml}</data>
+                    </slide>
+                    """
+                )
+                issue = result["issues"][0]
+                self.assertEqual(result["summary"]["error_count"], 1)
+                self.assertEqual(issue["code"], "sxsd_unsupported_attr")
+                self.assertEqual(issue["tag"], tag_name)
+                self.assertEqual(issue["attr"], attr_name)
+                self.assertIn(expected_attr, issue["hint"])
+
+    def test_lint_xml_reports_gradient_shorthand_attrs_on_fill_color(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="rect" topLeftX="80" topLeftY="80" width="300" height="160">
+                  <fill>
+                    <fillColor
+                      type="gradient"
+                      color1="rgba(255, 0, 0, 1)"
+                      color2="rgba(0, 0, 255, 1)"
+                      angle="45"
+                      stop1="0%"
+                      stop2="100%"/>
+                  </fill>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        unsupported_attrs = {issue["attr"] for issue in result["issues"]}
+        self.assertEqual(result["summary"]["error_count"], 6)
+        self.assertEqual(
+            unsupported_attrs,
+            {"type", "color1", "color2", "angle", "stop1", "stop2"},
+        )
+        self.assertTrue(all(issue["code"] == "sxsd_unsupported_attr" for issue in result["issues"]))
+        self.assertTrue(all(issue["tag"] == "fillColor" for issue in result["issues"]))
+
+    def test_lint_xml_allows_namespaced_svg_inside_whiteboard(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <whiteboard id="wb" topLeftX="80" topLeftY="80" width="300" height="180">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 180">
+                    <rect x="10" y="10" width="120" height="60"/>
+                  </svg>
+                </whiteboard>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertNotIn("issues", result)
+
+    def test_lint_xml_reports_unqualified_svg_inside_whiteboard_with_namespace_hint(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <whiteboard id="wb" topLeftX="80" topLeftY="80" width="300" height="180">
+                  <svg viewBox="0 0 300 180">
+                    <rect x="10" y="10" width="120" height="60"/>
+                  </svg>
+                </whiteboard>
+              </data>
+            </slide>
+            """
+        )
+        issue = result["issues"][0]
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(issue["code"], "sxsd_unsupported_tag")
+        self.assertEqual(issue["tag"], "svg")
+        self.assertIn('xmlns="http://www.w3.org/2000/svg"', issue["hint"])
 
     def test_lint_xml_detects_overlapping_text_boxes(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -281,6 +437,37 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         self.assertEqual(result["summary"]["error_count"], 0)
         self.assertEqual(result["summary"]["warning_count"], 0)
 
+    def test_extract_elements_preserves_supported_element_geometry_order_and_text_metadata(self) -> None:
+        elements = xml_text_overlap_lint.extract_elements(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <img id="photo" src="tok" topLeftX="10" topLeftY="20" width="100" height="80"/>
+                <shape id="headline" type="text" topLeftX="40" topLeftY="60" width="320" height="90">
+                  <content textType="headline" textAlign="center" autoFit="normal-auto-fit" fontSize="28">
+                    <p><![CDATA[Growth & scale]]></p>
+                  </content>
+                </shape>
+                <table id="table" topLeftX="400" topLeftY="60" width="220" height="120"></table>
+                <chart id="chart" topLeftX="640" topLeftY="60" width="220" height="120"/>
+                <whiteboard id="wb" topLeftX="80" topLeftY="220" width="760" height="240"/>
+                <shape id="missing-height" type="text" topLeftX="80" topLeftY="480" width="320">
+                  <content><p>Skipped</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual([element["id"] for element in elements], ["photo", "headline", "table", "chart", "wb"])
+        self.assertEqual([element["kind"] for element in elements], ["img", "shape", "table", "chart", "whiteboard"])
+        self.assertEqual([element["order"] for element in elements], [0, 1, 2, 3, 4])
+        self.assertEqual(elements[1]["type"], "text")
+        self.assertEqual(elements[1]["textType"], "headline")
+        self.assertEqual(elements[1]["textAlign"], "center")
+        self.assertEqual(elements[1]["autoFit"], "normal-auto-fit")
+        self.assertEqual(elements[1]["fontSize"], 28)
+        self.assertEqual(elements[1]["text"], "Growth & scale")
+
     def test_lint_xml_does_not_check_small_out_of_bounds_elements(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -323,6 +510,89 @@ class XmlTextOverlapLintTest(unittest.TestCase):
             """
         )
         self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_warns_for_whiteboard_external_boundary_overlap(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <whiteboard id="wb" topLeftX="50" topLeftY="140" width="860" height="360"/>
+                  <shape id="card" type="rect" topLeftX="50" topLeftY="450" width="200" height="60">
+                    <fill><fillColor color="rgba(232, 186, 176, 0.2)"/></fill>
+                    <content/>
+                  </shape>
+                  <shape id="label" type="text" topLeftX="65" topLeftY="460" width="170" height="20">
+                    <content fontSize="12"><p>基础保障</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        issues = result["slides"][0]["issues"]
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["summary"]["warning_count"], 1)
+        self.assertEqual(issues[0]["code"], "whiteboard_external_overlap")
+        self.assertIn("static whiteboard container-bbox risk", issues[0]["hint"])
+        self.assertIn("screenshot QA", issues[0]["hint"])
+        self.assertEqual(issues[0]["elements"], ["wb", "card"])
+        self.assertEqual(issues[0]["overlaps"][0]["overlap_height"], 50)
+
+    def test_lint_xml_allows_whiteboard_internal_labels(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <whiteboard id="wb" topLeftX="100" topLeftY="120" width="420" height="260"/>
+                  <shape id="label" type="text" topLeftX="150" topLeftY="180" width="180" height="40">
+                    <content fontSize="14"><p>内部标注</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["summary"]["warning_count"], 0)
+
+    def test_lint_xml_allows_bottom_layer_full_slide_whiteboard_background(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <whiteboard id="background" topLeftX="0" topLeftY="0" width="960" height="540"/>
+                  <shape id="title" type="text" topLeftX="80" topLeftY="80" width="420" height="80">
+                    <content textType="title" fontSize="36"><p>Title</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["summary"]["warning_count"], 0)
+
+    def test_lint_xml_allows_whiteboard_inside_background_panel(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <shape id="panel" type="rect" topLeftX="40" topLeftY="100" width="880" height="340">
+                    <fill><fillColor color="rgba(232, 186, 176, 0.2)"/></fill>
+                    <content/>
+                  </shape>
+                  <whiteboard id="wb" topLeftX="60" topLeftY="120" width="840" height="300"/>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["summary"]["warning_count"], 0)
 
     def test_lint_xml_detects_invalid_template_text_stack_overlap(self) -> None:
         cases = [
