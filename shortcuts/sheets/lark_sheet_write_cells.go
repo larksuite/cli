@@ -11,7 +11,6 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -204,19 +203,6 @@ func cellsSetStyleInput(runtime flagView, token, sheetID, sheetName string) (map
 	return input, nil
 }
 
-// csvPutStdinIsPipe reports whether process stdin is a non-interactive pipe or
-// redirect (rather than an interactive terminal), so an omitted --csv can be
-// satisfied from it without risking a hang on a real terminal. Overridable in
-// tests. A char device is a terminal; anything else (pipe, redirect, /dev/null)
-// counts as piped input.
-var csvPutStdinIsPipe = func() bool {
-	fi, err := os.Stdin.Stat() //nolint:forbidigo // pipe detection needs the real process fd; IOStreams.In is a plain io.Reader without Stat
-	if err != nil {
-		return false
-	}
-	return fi.Mode()&os.ModeCharDevice == 0
-}
-
 // CsvPut wraps set_range_from_csv: dump a CSV blob into a sheet. A cell whose
 // text starts with = is evaluated as a formula; use +cells-set for styles / notes / images.
 var CsvPut = common.Shortcut{
@@ -239,33 +225,6 @@ var CsvPut = common.Shortcut{
 		}
 		cmd.MarkFlagsOneRequired("start-cell", "range")
 		cmd.MarkFlagsMutuallyExclusive("start-cell", "range")
-
-		// Let a piped CSV satisfy --csv when the flag is omitted: agents
-		// routinely redirect a file into stdin but forget the `--csv -`, so
-		// `+csv-put ... < data.csv` would otherwise fail its first try on a
-		// missing --csv. Relax the required-gate (flag-defs marks --csv
-		// required) so an absent value surfaces csvPutInput's own typed error
-		// instead of cobra's bare "required flag(s) ... not set"; then, in
-		// PreRunE (which cobra runs before it validates required flags), default
-		// an omitted --csv to "-" when stdin is a non-interactive pipe so the
-		// standard stdin-resolution path reads it. The pipe guard means an
-		// interactive terminal never blocks waiting on stdin — a real miss still
-		// errors.
-		if fl := cmd.Flags().Lookup("csv"); fl != nil {
-			delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
-		}
-		prev := cmd.PreRunE
-		cmd.PreRunE = func(c *cobra.Command, args []string) error {
-			if prev != nil {
-				if err := prev(c, args); err != nil {
-					return err
-				}
-			}
-			if v, _ := c.Flags().GetString("csv"); strings.TrimSpace(v) == "" && csvPutStdinIsPipe() {
-				_ = c.Flags().Set("csv", "-")
-			}
-			return nil
-		}
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := guardCSVValueIsNotFilePath(runtime); err != nil {
