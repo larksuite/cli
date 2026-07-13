@@ -329,7 +329,7 @@ func TestAppsInit_EmptyRepo_EndToEnd(t *testing.T) {
 		t.Error("npx_skipped must be removed")
 	}
 	// appType is empty, so scaffoldInitArgs falls back to "full_stack"
-	// and `app init` must still receive --template full_stack.
+	// and `app init` must still receive --app-type full_stack.
 	c := findCall(f.calls, "npx", "-y")
 	if c == nil {
 		t.Error("npx scaffold not invoked")
@@ -1833,7 +1833,7 @@ func TestAppsInit_WithAppType_FreshClone(t *testing.T) {
 	if data["app_type"] != "modern_html" {
 		t.Errorf("app_type = %v, want modern_html", data["app_type"])
 	}
-	// Verify the scaffold used --template modern_html
+	// Verify the scaffold used --app-type modern_html
 	c := findCall(f.calls, "npx", "-y")
 	if c == nil {
 		t.Fatal("npx not called")
