@@ -125,6 +125,11 @@ var AppsInit = common.Shortcut{
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
 			return appsValidationParamError("--app-id", "--app-id is required")
 		}
+		if sp := strings.TrimSpace(rctx.Str("source-path")); sp != "" {
+			if err := charcheck.RejectControlChars(sp, "--source-path"); err != nil {
+				return appsValidationParamError("--source-path", "%v", err).WithCause(err)
+			}
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
@@ -616,10 +621,7 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 	initLogf(rctx, "Initializing app code (running miaoda-cli)...")
 	sourcePath := strings.TrimSpace(rctx.Str("source-path"))
 	if sourcePath != "" {
-		if err := charcheck.RejectControlChars(sourcePath, "--source-path"); err != nil {
-			return appsValidationParamError("--source-path", "%v", err).WithCause(err)
-		}
-		sourcePath, err = filepath.Abs(sourcePath) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); sourcePath is control-char-validated above.
+		sourcePath, err = filepath.Abs(sourcePath) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); sourcePath is control-char-validated in Validate.
 		if err != nil {
 			return appsValidationParamError("--source-path", "--source-path cannot be resolved: %v", err)
 		}
