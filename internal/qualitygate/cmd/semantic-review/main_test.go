@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/qualitygate/facts"
 	"github.com/larksuite/cli/internal/qualitygate/semantic"
@@ -31,7 +32,7 @@ func TestRunLoadsPolicyAndWaivers(t *testing.T) {
 	}`, `{
 	  "allowed": ["semantic-review-v1"],
 	  "allowed_base_urls": ["https://ark.ap-southeast.bytepluses.com/api/v3"]
-	}`, "wiki-move\tskill_quality\tskill\tskills/lark-wiki/SKILL.md\t30\t\twiki-owner\tmigration\t2026-06-08\t2026-07-15\n")
+	}`, "wiki-move\tskill_quality\tskill\tskills/lark-wiki/SKILL.md\t30\t\twiki-owner\tmigration\t2026-06-08\t"+futureExpiry(t)+"\n")
 
 	factsPath := filepath.Join(t.TempDir(), "facts.json")
 	f := facts.Facts{
@@ -105,7 +106,7 @@ func TestRunLoadsWaiversFromOverrideFile(t *testing.T) {
 		t.Fatalf("write review: %v", err)
 	}
 	waiversPath := filepath.Join(t.TempDir(), "waivers.txt")
-	if err := os.WriteFile(waiversPath, []byte("semantic-error-hint-confirm\terror_hint\terror\tshortcuts/contact/contact_search_user.go\t199\t\tcli-owner\tsandbox confirm case\t2026-06-11\t2026-07-11\n"), 0o644); err != nil {
+	if err := os.WriteFile(waiversPath, []byte("semantic-error-hint-confirm\terror_hint\terror\tshortcuts/contact/contact_search_user.go\t199\t\tcli-owner\tsandbox confirm case\t2026-06-11\t"+futureExpiry(t)+"\n"), 0o644); err != nil {
 		t.Fatalf("write override waivers: %v", err)
 	}
 	decisionPath := filepath.Join(t.TempDir(), "decision.json")
@@ -381,4 +382,12 @@ func readDecision(t *testing.T, path string) semantic.Decision {
 		t.Fatalf("decode decision: %v", err)
 	}
 	return decision
+}
+
+// futureExpiry returns a waiver expiry date safely in the future, so fixture
+// waivers never expire as wall-clock time advances (a hardcoded date here
+// broke the suite repo-wide once it passed).
+func futureExpiry(t *testing.T) string {
+	t.Helper()
+	return time.Now().UTC().AddDate(0, 0, 30).Format("2006-01-02")
 }
