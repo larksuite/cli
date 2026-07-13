@@ -15,12 +15,20 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const (
+	// These are fixed backend wire values for the Wiki-to-Drive task. Keep
+	// them unchanged even though the CLI scenario uses wiki_move_to_drive.
+	wikiMoveToDriveTaskType  = "move_wiki_to_docs"
+	wikiMoveToDriveResultKey = "move_wiki_to_docs_result"
+)
+
 // DriveTaskResult exposes a unified read path for the async task types produced
-// by Drive import, export, folder move/delete, wiki move, and wiki delete-space flows.
+// by Drive import, export, folder move/delete, wiki move, wiki move-to-drive,
+// and wiki delete flows.
 var DriveTaskResult = common.Shortcut{
 	Service:     "drive",
 	Command:     "+task_result",
-	Description: "Poll async task result for import, export, drive move/delete, wiki move, wiki delete-space, or wiki delete-node operations",
+	Description: "Poll async task result for import, export, drive move/delete, wiki move, wiki move-to-drive, or wiki delete operations",
 	Risk:        "read",
 	// This shortcut multiplexes multiple backend APIs with different scope
 	// requirements, so scenario-specific prechecks are handled in Validate.
@@ -28,22 +36,23 @@ var DriveTaskResult = common.Shortcut{
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "ticket", Desc: "async task ticket (for import/export tasks)", Required: false},
-		{Name: "task-id", Desc: "async task ID (for drive task_check, wiki_move, wiki_delete_space, or wiki_delete_node tasks)", Required: false},
-		{Name: "scenario", Desc: "task scenario: import, export, task_check, wiki_move, wiki_delete_space, or wiki_delete_node", Required: true},
+		{Name: "task-id", Desc: "async task ID (for drive task_check and all wiki task scenarios)", Required: false},
+		{Name: "scenario", Desc: "task scenario: import, export, task_check, wiki_move, wiki_move_to_drive, wiki_delete_space, or wiki_delete_node", Required: true},
 		{Name: "file-token", Desc: "source document token used for export task status lookup", Required: false},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		scenario := strings.ToLower(runtime.Str("scenario"))
 		validScenarios := map[string]bool{
-			"import":            true,
-			"export":            true,
-			"task_check":        true,
-			"wiki_move":         true,
-			"wiki_delete_space": true,
-			"wiki_delete_node":  true,
+			"import":             true,
+			"export":             true,
+			"task_check":         true,
+			"wiki_move":          true,
+			"wiki_move_to_drive": true,
+			"wiki_delete_space":  true,
+			"wiki_delete_node":   true,
 		}
 		if !validScenarios[scenario] {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported scenario: %s. Supported scenarios: import, export, task_check, wiki_move, wiki_delete_space, wiki_delete_node", scenario).WithParam("--scenario")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported scenario: %s. Supported scenarios: import, export, task_check, wiki_move, wiki_move_to_drive, wiki_delete_space, wiki_delete_node", scenario).WithParam("--scenario")
 		}
 
 		// Validate required params based on scenario
@@ -55,7 +64,7 @@ var DriveTaskResult = common.Shortcut{
 			if err := validate.ResourceName(runtime.Str("ticket"), "--ticket"); err != nil {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--ticket")
 			}
-		case "task_check", "wiki_move", "wiki_delete_space", "wiki_delete_node":
+		case "task_check", "wiki_move", "wiki_move_to_drive", "wiki_delete_space", "wiki_delete_node":
 			if runtime.Str("task-id") == "" {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--task-id is required for %s scenario", scenario).WithParam("--task-id")
 			}
@@ -104,6 +113,11 @@ var DriveTaskResult = common.Shortcut{
 				Desc("[1] Query wiki move task result").
 				Set("task_id", taskID).
 				Params(map[string]interface{}{"task_type": "move"})
+		case "wiki_move_to_drive":
+			dry.GET("/open-apis/wiki/v2/tasks/:task_id").
+				Desc("[1] Query wiki move-to-drive task result").
+				Set("task_id", taskID).
+				Params(map[string]interface{}{"task_type": wikiMoveToDriveTaskType})
 		case "wiki_delete_space":
 			dry.GET("/open-apis/wiki/v2/tasks/:task_id").
 				Desc("[1] Query wiki delete-space task result").
@@ -140,6 +154,8 @@ var DriveTaskResult = common.Shortcut{
 			result, err = queryTaskCheck(runtime, taskID)
 		case "wiki_move":
 			result, err = queryWikiMoveTask(runtime, taskID)
+		case "wiki_move_to_drive":
+			result, err = queryWikiMoveToDriveTask(runtime, taskID)
 		case "wiki_delete_space":
 			result, err = queryWikiDeleteSpaceTask(runtime, taskID)
 		case "wiki_delete_node":
@@ -244,7 +260,7 @@ func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeC
 	switch scenario {
 	case "import", "export", "task_check":
 		required = []string{"drive:drive.metadata:readonly"}
-	case "wiki_move", "wiki_delete_space", "wiki_delete_node":
+	case "wiki_move", "wiki_move_to_drive", "wiki_delete_space", "wiki_delete_node":
 		required = []string{"wiki:space:read"}
 	}
 
@@ -484,6 +500,75 @@ func appendWikiMoveNodeFields(out, node map[string]interface{}) {
 	out["origin_node_token"] = common.GetString(node, "origin_node_token")
 	out["title"] = common.GetString(node, "title")
 	out["has_child"] = common.GetBool(node, "has_child")
+}
+
+// queryWikiMoveToDriveTask returns the normalized status and final Drive
+// resource fields for wiki +move-to-drive. The task endpoint uses a dedicated
+// result object with numeric status codes: 0 success, 1 processing, -1 failure.
+func queryWikiMoveToDriveTask(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
+	if err := validate.ResourceName(taskID, "--task-id"); err != nil {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--task-id").WithCause(err)
+	}
+
+	data, err := runtime.CallAPITyped(
+		"GET",
+		fmt.Sprintf("/open-apis/wiki/v2/tasks/%s", validate.EncodePathSegment(taskID)),
+		map[string]interface{}{"task_type": wikiMoveToDriveTaskType},
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	task := common.GetMap(data, "task")
+	if task == nil {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki task response missing task")
+	}
+	result := common.GetMap(task, wikiMoveToDriveResultKey)
+	if result == nil {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki task response missing %s", wikiMoveToDriveResultKey)
+	}
+	statusCode, ok := common.GetFloatOK(result, "status")
+	if !ok {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki task response has missing or non-numeric %s.status", wikiMoveToDriveResultKey)
+	}
+	if statusCode != -1 && statusCode != 0 && statusCode != 1 {
+		return nil, errs.NewInternalError(
+			errs.SubtypeInvalidResponse,
+			"wiki task response has unsupported %s.status: %v",
+			wikiMoveToDriveResultKey,
+			statusCode,
+		)
+	}
+
+	resolvedTaskID := common.GetString(task, "task_id")
+	if resolvedTaskID == "" {
+		resolvedTaskID = taskID
+	}
+	status := int(statusCode)
+	statusMsg := strings.TrimSpace(common.GetString(result, "status_msg"))
+	if statusMsg == "" {
+		switch {
+		case status == 0:
+			statusMsg = "success"
+		case status < 0:
+			statusMsg = "failure"
+		default:
+			statusMsg = "processing"
+		}
+	}
+
+	return map[string]interface{}{
+		"scenario":   "wiki_move_to_drive",
+		"task_id":    resolvedTaskID,
+		"ready":      status == 0,
+		"failed":     status < 0,
+		"status":     status,
+		"status_msg": statusMsg,
+		"obj_token":  common.GetString(result, "obj_token"),
+		"obj_type":   common.GetString(result, "obj_type"),
+		"url":        common.GetString(result, "url"),
+	}, nil
 }
 
 // queryWikiDeleteSpaceTask returns the normalized status of an async wiki
