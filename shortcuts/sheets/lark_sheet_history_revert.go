@@ -89,7 +89,7 @@ var HistoryRevert = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+history-revert",
 	Description: "Revert a spreadsheet to a given history version (asynchronous; poll with +history-revert-status).",
-	Risk:        "write",
+	Risk:        "high-risk-write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
@@ -123,6 +123,7 @@ var HistoryRevert = common.Shortcut{
 		return nil
 	},
 	Tips: []string{
+		"Revert overwrites the current spreadsheet content. Always run with --dry-run first to verify the target spreadsheet and history_version_id.",
 		"Revert is asynchronous — pass the returned id to +history-revert-status to track in-progress / success / failure.",
 	},
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -137,6 +138,15 @@ func TestHistoryRevert_MissingRequiredFlag(t *testing.T) {
 			t.Fatalf("%s: cobra error = %q, want substrings 'required flag(s)' and 'transaction-id'", HistoryRevertStatus.Command, msg)
 		}
 	})
+}
+
+func TestHistoryRevert_HighRiskWriteRequiresYes(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, HistoryRevert, []string{
+		"--url", testURL,
+		"--history-version-id", "histVER123",
+	})
+	requireProblem(t, err, errs.CategoryConfirmation, errs.SubtypeConfirmationRequired, "")
 }
 
 // dryRunFirstCallURL runs the shortcut in --dry-run and returns the first

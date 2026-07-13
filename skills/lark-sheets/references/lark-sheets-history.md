@@ -32,7 +32,7 @@
 | Shortcut | Risk | 分组 |
 | --- | --- | --- |
 | `+history-list` | read | 历史版本 |
-| `+history-revert` | write | 历史版本 |
+| `+history-revert` | high-risk-write | 历史版本 |
 | `+history-revert-status` | read | 历史版本 |
 
 ## Flags

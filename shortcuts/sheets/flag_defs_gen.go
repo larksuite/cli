@@ -666,7 +666,7 @@ var flagDefs = map[string]commandDef{
 		},
 	},
 	"+history-revert": {
-		Risk: "write",
+		Risk: "high-risk-write",
 		Flags: []flagDef{
 			{Name: "url", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator"},
 			{Name: "spreadsheet-token", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator"},
