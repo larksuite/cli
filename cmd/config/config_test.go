@@ -79,7 +79,7 @@ func TestConfigInitCmd_PrivateKeyJWTFlag(t *testing.T) {
 		gotOpts = opts
 		return nil
 	})
-	cmd.SetArgs([]string{"--new", "--private_key_jwt"})
+	cmd.SetArgs([]string{"--new", "--private-key-jwt"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -400,7 +400,7 @@ func TestPersistInitResult_PrivateKeyJWT(t *testing.T) {
 				t.Fatalf("KeyRef = %#v, want tee/lark-cli-default", app.KeyRef)
 			}
 			if !app.AppSecret.IsZero() {
-				t.Fatalf("private_key_jwt config must stay secretless, AppSecret=%#v", app.AppSecret)
+				t.Fatalf("private_key_jwt config must stay secretless, AppSecret value %#v", app.AppSecret)
 			}
 		})
 	}
@@ -660,7 +660,7 @@ func TestSaveAsProfile_UpdatePersistsPrivateKeyJWT(t *testing.T) {
 		t.Fatalf("KeyRef = %#v, want tee/lark-cli-default", app.KeyRef)
 	}
 	if app.AppSecret.Ref != nil || app.AppSecret.Plain != "" {
-		t.Fatalf("private_key_jwt update must stay secretless, AppSecret=%#v", app.AppSecret)
+		t.Fatalf("private_key_jwt update must stay secretless, AppSecret value %#v", app.AppSecret)
 	}
 	if len(app.Users) != 1 || app.Users[0].UserOpenId != "ou_1" {
 		t.Fatalf("same-app update should preserve users, Users=%#v", app.Users)

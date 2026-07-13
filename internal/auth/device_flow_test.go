@@ -94,7 +94,7 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	_, err := RequestDeviceAuthorization(context.Background(), httpmock.NewClient(reg), ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "", nil)
+	_, err := RequestDeviceAuthorization(context.Background(), httpmock.NewClient(reg), ClientAuth{AppID: "cli_a", AppSecret: "test-secret"}, core.BrandFeishu, "", nil)
 	if err != nil {
 		t.Fatalf("RequestDeviceAuthorization() error: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestRequestDeviceAuthorization_ClientSecret_UsesBasic(t *testing.T) {
 	var body string
 	client := captureDeviceAuthClient(&req, &body, deviceAuthRespJSON)
 
-	ca := ClientAuth{AppID: "cli_a", AppSecret: "sec"} // client_secret
+	ca := ClientAuth{AppID: "cli_a", AppSecret: "test-secret"} // client_secret
 	if _, err := RequestDeviceAuthorization(context.Background(), client, ca, core.BrandFeishu, "", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func TestPollDeviceToken_DefaultsZeroIntervalToFiveSeconds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	t.Cleanup(cancel)
 
-	result, err := PollDeviceToken(ctx, client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 0, 10, nil)
+	result, err := PollDeviceToken(ctx, client, ClientAuth{AppID: "cli_a", AppSecret: "test-secret"}, core.BrandFeishu, "device-code", 0, 10, nil)
 	if err != nil {
 		t.Fatalf("PollDeviceToken() error = %v", err)
 	}

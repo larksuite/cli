@@ -56,7 +56,7 @@ func (f *fakeAuthSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) 
 }
 
 func TestClientAuth_applyClientAssertion_ClientSecret(t *testing.T) {
-	ca := ClientAuth{AppID: "cli_a", AppSecret: "sec"} // AuthMethod "" => client_secret
+	ca := ClientAuth{AppID: "cli_a", AppSecret: "test-secret"} // AuthMethod "" => client_secret
 	form := url.Values{}
 	used, err := ca.applyClientAssertion(context.Background(), form, "https://aud/token")
 	if err != nil {
@@ -180,11 +180,11 @@ func TestKeylessHelperProcess(t *testing.T) {
 func TestClientAuthFromConfig(t *testing.T) {
 	ca := ClientAuthFromConfig(&core.CliConfig{
 		AppID:      "cli_x",
-		AppSecret:  "s",
+		AppSecret:  "test-secret",
 		AuthMethod: core.AuthMethodPrivateKeyJWT,
 		KeyLabel:   "label-1",
 	})
-	if ca.AppID != "cli_x" || ca.AppSecret != "s" || ca.AuthMethod != core.AuthMethodPrivateKeyJWT || ca.KeyLabel != "label-1" {
+	if ca.AppID != "cli_x" || ca.AppSecret != "test-secret" || ca.AuthMethod != core.AuthMethodPrivateKeyJWT || ca.KeyLabel != "label-1" {
 		t.Errorf("ClientAuth = %+v", ca)
 	}
 }
