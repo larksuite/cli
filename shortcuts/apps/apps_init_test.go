@@ -334,7 +334,7 @@ func TestAppsInit_EmptyRepo_EndToEnd(t *testing.T) {
 	if c == nil {
 		t.Error("npx scaffold not invoked")
 	} else if !containsAll(c, "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--app-type", "full_stack", "--app-id", "app_x") {
-		t.Errorf("app init missing expected --template fallback args: %v", c)
+		t.Errorf("app init missing expected --app-type fallback args: %v", c)
 	} else if containsAll(c, "--local") {
 		t.Errorf("app init must NOT carry --local: %v", c)
 	}
@@ -1630,7 +1630,7 @@ func TestRunScaffold_HtmlPassesTemplate(t *testing.T) {
 		t.Fatal("npx not called")
 	}
 	if !containsAll(c, "--app-type", "html") {
-		t.Errorf("expected --template html in args: %v", c)
+		t.Errorf("expected --app-type html in args: %v", c)
 	}
 }
 
@@ -1649,7 +1649,7 @@ func TestRunScaffold_ModernHtmlPassesTemplate(t *testing.T) {
 		t.Fatal("npx not called")
 	}
 	if !containsAll(c, "--app-type", "modern_html") {
-		t.Errorf("expected --template modern_html in args: %v", c)
+		t.Errorf("expected --app-type modern_html in args: %v", c)
 	}
 }
 
@@ -1668,7 +1668,7 @@ func TestRunScaffold_EmptyAppTypeFallback(t *testing.T) {
 		t.Fatal("npx not called")
 	}
 	if !containsAll(c, "--app-type", "full_stack") {
-		t.Errorf("expected --template full_stack in args: %v", c)
+		t.Errorf("expected --app-type full_stack in args: %v", c)
 	}
 }
 
@@ -1687,14 +1687,14 @@ func TestRunScaffold_FullStackPassesTemplate(t *testing.T) {
 		t.Fatal("npx not called")
 	}
 	if !containsAll(c, "--app-type", "full_stack") {
-		t.Errorf("expected --template full_stack in args: %v", c)
+		t.Errorf("expected --app-type full_stack in args: %v", c)
 	}
 }
 
 func TestScaffoldInitArgs_WithAppType(t *testing.T) {
 	args := scaffoldInitArgs("modern_html", "app_x", "")
 	if !containsAll(args, "--app-type", "modern_html", "--app-id", "app_x") {
-		t.Errorf("expected --template modern_html --app-id app_x, got %v", args)
+		t.Errorf("expected --app-type modern_html --app-id app_x, got %v", args)
 	}
 	// modern_html skips dependency install.
 	if !containsAll(args, "--skip-install") {
@@ -1735,7 +1735,7 @@ func TestScaffoldInitArgs_SkipInstallOnlyForModernHTML(t *testing.T) {
 func TestScaffoldInitArgs_EmptyFallback(t *testing.T) {
 	args := scaffoldInitArgs("", "app_x", "")
 	if !containsAll(args, "--app-type", "full_stack", "--app-id", "app_x") {
-		t.Errorf("expected --template full_stack fallback, got %v", args)
+		t.Errorf("expected --app-type full_stack fallback, got %v", args)
 	}
 }
 
@@ -1839,7 +1839,7 @@ func TestAppsInit_WithAppType_FreshClone(t *testing.T) {
 		t.Fatal("npx not called")
 	}
 	if !containsAll(c, "--app-type", "modern_html") {
-		t.Errorf("expected --template modern_html, got %v", c)
+		t.Errorf("expected --app-type modern_html, got %v", c)
 	}
 }
 

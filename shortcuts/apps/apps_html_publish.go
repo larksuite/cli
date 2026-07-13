@@ -29,7 +29,7 @@ var AppsHTMLPublish = common.Shortcut{
 		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./dist",
 		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./site --dry-run",
 	},
-	Scopes:    []string{"spark:app:write"},
+	Scopes:    []string{"spark:app:write", "spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
@@ -229,8 +229,11 @@ func ensureIndexHTML(candidates []htmlPublishCandidate) error {
 		WithHint("index.html is the app entrypoint; for a directory put index.html at the root, or pass a single file named index.html")
 }
 
-func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
-	candidates, err := walkHTMLPublishCandidates(fio, spec.Path)
+// prepareHTMLPublishTarball validates candidates under path and builds a
+// tar.gz payload ready for upload. Shared by runHTMLPublish and
+// runHTMLPublishTOS.
+func prepareHTMLPublishTarball(fio fileio.FileIO, path string) (*htmlPublishTarball, error) {
+	candidates, err := walkHTMLPublishCandidates(fio, path)
 	if err != nil {
 		return nil, err
 	}
@@ -253,11 +256,18 @@ func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPu
 	if err != nil {
 		return nil, err
 	}
-
 	if tarball.Size > maxHTMLPublishTarballBytes {
 		return nil, appsValidationParamError("--path",
 			"packed tar.gz size %d bytes exceeds %d bytes limit", tarball.Size, maxHTMLPublishTarballBytes).
 			WithHint("reduce --path contents, remove unrelated large files, then retry")
+	}
+	return tarball, nil
+}
+
+func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
+	tarball, err := prepareHTMLPublishTarball(fio, spec.Path)
+	if err != nil {
+		return nil, err
 	}
 
 	resp, err := publisher.HTMLPublish(ctx, spec.AppID, tarball)
@@ -276,34 +286,9 @@ func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPu
 // call pre_release to get TOS upload URL → upload tar.gz to TOS → return
 // tos_path for +release-create --tos-path.
 func runHTMLPublishTOS(ctx context.Context, rctx *common.RuntimeContext, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
-	candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), spec.Path)
+	tarball, err := prepareHTMLPublishTarball(rctx.FileIO(), spec.Path)
 	if err != nil {
 		return nil, err
-	}
-	if err := ensureIndexHTML(candidates); err != nil {
-		return nil, err
-	}
-	if hits := oversizeHTMLFiles(candidates); len(hits) > 0 {
-		return nil, oversizeHTMLFilesError(hits)
-	}
-	var rawTotal int64
-	for _, c := range candidates {
-		rawTotal += c.Size
-	}
-	if rawTotal > maxHTMLPublishRawBytes {
-		return nil, appsValidationParamError("--path",
-			"--path total raw bytes %d exceeds %d bytes limit (uncompressed pre-pack cap)", rawTotal, maxHTMLPublishRawBytes).
-			WithHint("reduce --path contents or choose a smaller subdirectory before packaging")
-	}
-
-	tarball, err := buildHTMLPublishTarball(rctx.FileIO(), candidates)
-	if err != nil {
-		return nil, err
-	}
-	if tarball.Size > maxHTMLPublishTarballBytes {
-		return nil, appsValidationParamError("--path",
-			"packed tar.gz size %d bytes exceeds %d bytes limit", tarball.Size, maxHTMLPublishTarballBytes).
-			WithHint("reduce --path contents, remove unrelated large files, then retry")
 	}
 
 	// Step 1: call pre_release to get TOS upload URL and tos_path.

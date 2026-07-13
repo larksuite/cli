@@ -64,7 +64,7 @@ func TestRunHTMLPublish_HappyPath(t *testing.T) {
 }
 
 func TestRunHTMLPublish_OnlyURLInEnvelope(t *testing.T) {
-	// Pin 概要设计 §5.3 不变量 4 "同步语义不会变成异步":
+	// Pin 概要设计 §5.3 不变量 4 "同步语义不会变成异步" (legacy html path only):
 	// envelope 只含 url，未来若有人加 status / release_id 字段会被这个测试拦截。
 	site := writeAppsSampleSite(t)
 	fake := &fakeAppsHTMLPublishClient{

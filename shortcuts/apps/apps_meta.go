@@ -5,8 +5,8 @@ package apps
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/larksuite/cli/internal/validate"
@@ -34,19 +34,14 @@ func queryAppType(ctx context.Context, rctx *common.RuntimeContext, appID string
 	path := fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))
 	data, err := rctx.CallAPITyped("GET", path, nil, nil)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "→ Could not query app type: %v\n", err)
 		return ""
 	}
 	appRaw, _ := data["app"].(map[string]interface{})
 	if appRaw == nil {
+		fmt.Fprintf(os.Stderr, "→ Could not query app type: response missing app object\n")
 		return ""
 	}
-	b, err := json.Marshal(appRaw)
-	if err != nil {
-		return ""
-	}
-	var info appInfo
-	if err := json.Unmarshal(b, &info); err != nil {
-		return ""
-	}
-	return strings.ToLower(info.AppType)
+	appType, _ := appRaw["app_type"].(string)
+	return strings.ToLower(appType)
 }

@@ -101,13 +101,15 @@ var AppsInit = common.Shortcut{
 		"Example: lark-cli apps +init --app-id <app_id> --dir <dir>",
 		"Example: lark-cli apps +init --app-id <app_id> --dir <dir> --dry-run",
 	},
-	// +init makes no direct lark API calls (it shells out to the
-	// +git-credential-init subprocess, which enforces its own scopes), so it
-	// declares no scopes of its own. Explicit []string{} (not nil) per the
-	// convention enforced by TestAllShortcutsScopesNotNil.
-	Scopes:    []string{},
-	AuthTypes: []string{"user"},
-	HasFormat: true,
+	// +init calls queryAppType (GET /apps/{id}) which requires spark:app:read;
+	// the scope is declared as conditional since the call is non-fatal.
+	// The git credential subprocess enforces its own scopes independently.
+	// Explicit []string{} (not nil) per the convention enforced by
+	// TestAllShortcutsScopesNotNil.
+	Scopes:            []string{},
+	ConditionalScopes: []string{"spark:app:read"},
+	AuthTypes:         []string{"user"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		// NOTE: --app-id is intentionally NOT Required:true. The framework maps
 		// Required:true to cobra's MarkFlagRequired, whose error is plain-text
@@ -613,6 +615,15 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 
 	initLogf(rctx, "Initializing app code (running miaoda-cli)...")
 	sourcePath := strings.TrimSpace(rctx.Str("source-path"))
+	if sourcePath != "" {
+		if err := charcheck.RejectControlChars(sourcePath, "--source-path"); err != nil {
+			return appsValidationParamError("--source-path", "%v", err).WithCause(err)
+		}
+		sourcePath, err = filepath.Abs(sourcePath) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); sourcePath is control-char-validated above.
+		if err != nil {
+			return appsValidationParamError("--source-path", "--source-path cannot be resolved: %v", err)
+		}
+	}
 	scaffold, err := runScaffold(ctx, dir, appID, appType, sourcePath)
 	if err != nil {
 		return err
