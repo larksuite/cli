@@ -1,0 +1,25 @@
+skills/lark-slides/references/funnel_chart_demo.xml
+  s_ed2d50a28a60c8::t_3b5aeccb0c984d 1-82
+skills/lark-slides/references/lark-slides-whiteboard.md
+  s_ed2d50a28a60c8::t_cb8089ef861788 3,5,18,48,66,84,131
+skills/lark-slides/references/xml-schema-quick-ref.md
+  s_ed2d50a28a60c8::t_6a77d2e28e3a9a 238,439
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cce0568590612c84189ce7ffa56b5154f04e015e",
+  "prompts": {},
+  "sessions": {
+    "s_ed2d50a28a60c8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5b43-fe3c-7053-b9ba-10dff8bd4a92",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
