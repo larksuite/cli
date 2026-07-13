@@ -280,7 +280,7 @@ func TestConfigBindRun_PreservesKeylessSignerCommand(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
 	hermesHome := t.TempDir()
 	t.Setenv("HERMES_HOME", hermesHome)
-	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=test-secret"), 0600); err != nil {
 		t.Fatalf("write .env: %v", err)
 	}
 

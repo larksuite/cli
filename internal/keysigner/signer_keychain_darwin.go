@@ -34,6 +34,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"os/exec"
@@ -150,12 +151,17 @@ func loadFFI() error {
 		}
 		for _, d := range derefs {
 			sym, e := purego.Dlsym(d.handle, d.name)
-			if e != nil || sym == 0 {
-				ffiErr = fmt.Errorf("keysigner: dlsym %s: %v", d.name, e)
+			if e != nil {
+				ffiErr = fmt.Errorf("keysigner: dlsym %s: %w", d.name, e)
 				return
 			}
-			// deref of a stable dylib data-symbol address (not Go-managed memory), so safe.
-			*d.dst = *(*uintptr)(unsafe.Pointer(sym)) //nolint:govet // unsafeptr: see comment above
+			if sym == 0 {
+				ffiErr = fmt.Errorf("keysigner: dlsym %s returned zero address", d.name)
+				return
+			}
+			// Reinterpret the Dlsym result bits as a pointer, then dereference the
+			// stable dylib data symbol. This is foreign memory, not Go-managed memory.
+			*d.dst = **(**uintptr)(unsafe.Pointer(&sym))
 		}
 
 		// Callback structs are passed by address (no deref).
@@ -170,8 +176,12 @@ func loadFFI() error {
 		}
 		for _, a := range addrs {
 			sym, e := purego.Dlsym(a.handle, a.name)
-			if e != nil || sym == 0 {
-				ffiErr = fmt.Errorf("keysigner: dlsym %s: %v", a.name, e)
+			if e != nil {
+				ffiErr = fmt.Errorf("keysigner: dlsym %s: %w", a.name, e)
+				return
+			}
+			if sym == 0 {
+				ffiErr = fmt.Errorf("keysigner: dlsym %s returned zero address", a.name)
 				return
 			}
 			*a.dst = sym
@@ -375,8 +385,7 @@ func createKeychainKey(label string) (crypto.PublicKey, error) {
 		return nil, err
 	}
 	der := x509.MarshalPKCS1PrivateKey(privateKey)
-	if _, err := pemFile.WriteString("-----BEGIN RSA PRIVATE KEY-----\n" +
-		base64Wrap(der) + "-----END RSA PRIVATE KEY-----\n"); err != nil {
+	if err := pem.Encode(pemFile, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: der}); err != nil {
 		pemFile.Close()
 		return nil, err
 	}
@@ -459,21 +468,6 @@ func decodePublicKey(encoded string) (crypto.PublicKey, error) {
 		return nil, fmt.Errorf("keysigner: decode public key: %w", err)
 	}
 	return x509.ParsePKIXPublicKey(der)
-}
-
-// base64Wrap PEM-wraps DER bytes at 64 columns.
-func base64Wrap(der []byte) string {
-	enc := base64.StdEncoding.EncodeToString(der)
-	var b strings.Builder
-	for i := 0; i < len(enc); i += 64 {
-		end := i + 64
-		if end > len(enc) {
-			end = len(enc)
-		}
-		b.WriteString(enc[i:end])
-		b.WriteByte('\n')
-	}
-	return b.String()
 }
 
 func readKeyMetadata(label string) (*keyMetadata, error) {
