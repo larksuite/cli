@@ -335,6 +335,7 @@ func TestAppsCreate_WithoutAgentEnvVar(t *testing.T) {
 }
 
 func TestAppsCreate_AgentEnvVarNotSet(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_AGENT_NAME", "")
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stub := &httpmock.Stub{
 		Method: "POST",
