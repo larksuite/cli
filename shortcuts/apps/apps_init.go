@@ -74,20 +74,16 @@ type appTypePolicy struct {
 	// skipSkillsSync skips the conditional `npx ... skills sync --local` step on
 	// the non-empty (`app sync`) scaffold path.
 	skipSkillsSync bool
-	// useTOSPublish routes +html-publish through the TOS upload path instead of
-	// the legacy multipart POST.
-	useTOSPublish bool
 }
 
 // appTypePolicies maps an app_type to its +init control strategy. Types absent
 // from the map get the zero-value policy (install runs, env is pulled, skills
 // are synced).
 var appTypePolicies = map[string]appTypePolicy{
-	// modern_html / design_html are static HTML sites: no dependencies to
-	// install, no startup env vars to pull, no steering skills to sync,
-	// and publish through the TOS upload path.
-	"modern_html": {skipInstall: true, skipEnvPull: true, skipSkillsSync: true, useTOSPublish: true},
-	"design_html": {skipInstall: true, skipEnvPull: true, skipSkillsSync: true, useTOSPublish: true},
+	// modern_html / html are static HTML sites: no dependencies to install,
+	// no startup env vars to pull, and no steering skills to sync.
+	"modern_html": {skipInstall: true, skipEnvPull: true, skipSkillsSync: true},
+	"html":        {skipInstall: true, skipEnvPull: true, skipSkillsSync: true},
 }
 
 // policyForAppType returns the +init control strategy for appType. Unlisted

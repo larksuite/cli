@@ -87,6 +87,7 @@ func TestAppsGitCredentialInitDryRunRequestShape(t *testing.T) {
 		"save the issued PAT in the local system credential store",
 		"write app-scoped git credential metadata",
 		"configure a URL-scoped Git credential helper in global git config when possible",
+		"return commit_author_name and commit_author_email for repo-local git identity",
 	})
 }
 

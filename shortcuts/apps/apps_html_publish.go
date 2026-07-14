@@ -123,16 +123,7 @@ var AppsHTMLPublish = common.Shortcut{
 			Path:  strings.TrimSpace(rctx.Str("path")),
 		}
 
-		appType := queryAppType(ctx, rctx, spec.AppID)
-
-		var out map[string]interface{}
-		var err error
-		if policyForAppType(appType).useTOSPublish {
-			out, err = runHTMLPublishTOS(ctx, rctx, spec)
-		} else {
-			client := appsHTMLPublishAPI{runtime: rctx}
-			out, err = runHTMLPublish(ctx, rctx.FileIO(), client, spec)
-		}
+		out, err := runHTMLPublishTOS(ctx, rctx, spec)
 		if err != nil {
 			return err
 		}
