@@ -28,6 +28,14 @@ func TestNormalizeMeetingQueryPermissionError_NilRuntimeReturnsOriginalError(t *
 	}
 }
 
+func TestNormalizeMeetingQueryPermissionError_TypedNilReturnsOriginalError(t *testing.T) {
+	var permissionErr *errs.PermissionError
+	var original error = permissionErr
+	if got := normalizeMeetingQueryPermissionError(bareMeetingQueryRuntime(core.AsUser), original); got != original {
+		t.Fatalf("got %v, want original error %v", got, original)
+	}
+}
+
 func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Identity, code int) {
 	t.Helper()
 
