@@ -1,0 +1,21 @@
+skills/lark-minutes/SKILL.md
+  s_59282305a8da30::t_bcd1705889e662 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f18916349fcd027ad7b8a1017b1f85e0e01decd5",
+  "prompts": {},
+  "sessions": {
+    "s_59282305a8da30": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a55a0013bee4a9816a109f8",
+        "model": "openrouter-3o__max"
+      },
+      "human_author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
