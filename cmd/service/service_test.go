@@ -4,7 +4,9 @@
 package service
 
 import (
+	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -118,6 +120,202 @@ func TestRegisterService_MergesExistingCommand(t *testing.T) {
 	_, _, err := parent.Find([]string{"base", "tables", "list"})
 	if err != nil {
 		t.Fatalf("expected 'list' under existing 'base' command, got err=%v", err)
+	}
+}
+
+func TestMailSenderAllowBlockCommandsDryRun(t *testing.T) {
+	spec := map[string]interface{}{
+		"name":        "mail",
+		"servicePath": "/open-apis/mail/v1",
+	}
+	resources := map[string]interface{}{
+		"user_mailbox.allow_senders": map[string]interface{}{
+			"methods": map[string]interface{}{
+				"list": map[string]interface{}{
+					"path":       "user_mailboxes/{user_mailbox_id}/allow_senders",
+					"httpMethod": "GET",
+					"parameters": map[string]interface{}{
+						"user_mailbox_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
+						"keyword":         map[string]interface{}{"type": "string", "location": "query"},
+						"page_size":       map[string]interface{}{"type": "integer", "location": "query"},
+						"page_token":      map[string]interface{}{"type": "string", "location": "query"},
+					},
+				},
+				"batch_create": map[string]interface{}{
+					"path":       "user_mailboxes/{user_mailbox_id}/allow_senders/batch_create",
+					"httpMethod": "POST",
+					"parameters": map[string]interface{}{
+						"user_mailbox_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
+					},
+					"requestBody": map[string]interface{}{
+						"items": map[string]interface{}{"type": "array", "required": true},
+					},
+				},
+				"batch_remove": map[string]interface{}{
+					"path":       "user_mailboxes/{user_mailbox_id}/allow_senders/batch_remove",
+					"httpMethod": "POST",
+					"parameters": map[string]interface{}{
+						"user_mailbox_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
+					},
+					"requestBody": map[string]interface{}{
+						"senders": map[string]interface{}{"type": "array", "required": true},
+					},
+				},
+			},
+		},
+		"user_mailbox.blocked_senders": map[string]interface{}{
+			"methods": map[string]interface{}{
+				"list": map[string]interface{}{
+					"path":       "user_mailboxes/{user_mailbox_id}/blocked_senders",
+					"httpMethod": "GET",
+					"parameters": map[string]interface{}{
+						"user_mailbox_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
+						"keyword":         map[string]interface{}{"type": "string", "location": "query"},
+						"page_size":       map[string]interface{}{"type": "integer", "location": "query"},
+						"page_token":      map[string]interface{}{"type": "string", "location": "query"},
+					},
+				},
+				"batch_create": map[string]interface{}{
+					"path":       "user_mailboxes/{user_mailbox_id}/blocked_senders/batch_create",
+					"httpMethod": "POST",
+					"parameters": map[string]interface{}{
+						"user_mailbox_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
+					},
+					"requestBody": map[string]interface{}{
+						"items": map[string]interface{}{"type": "array", "required": true},
+					},
+				},
+				"batch_remove": map[string]interface{}{
+					"path":       "user_mailboxes/{user_mailbox_id}/blocked_senders/batch_remove",
+					"httpMethod": "POST",
+					"parameters": map[string]interface{}{
+						"user_mailbox_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
+					},
+					"requestBody": map[string]interface{}{
+						"senders": map[string]interface{}{"type": "array", "required": true},
+					},
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		args       []string
+		wantURL    string
+		wantMethod string
+		wantParams map[string]interface{}
+		wantBody   map[string]interface{}
+	}{
+		{
+			args: []string{
+				"mail", "user_mailbox.allow_senders", "list",
+				"--params", `{"user_mailbox_id":"me","keyword":"example.com","page_size":20}`,
+				"--dry-run",
+			},
+			wantMethod: "GET",
+			wantURL:    "/open-apis/mail/v1/user_mailboxes/me/allow_senders",
+			wantParams: map[string]interface{}{"keyword": "example.com", "page_size": float64(20)},
+		},
+		{
+			args: []string{
+				"mail", "user_mailbox.allow_senders", "batch_create",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", `{"items":[{"sender":"ok@example.com"}]}`,
+				"--dry-run",
+			},
+			wantMethod: "POST",
+			wantURL:    "/open-apis/mail/v1/user_mailboxes/me/allow_senders/batch_create",
+			wantBody: map[string]interface{}{
+				"items": []interface{}{map[string]interface{}{"sender": "ok@example.com"}},
+			},
+		},
+		{
+			args: []string{
+				"mail", "user_mailbox.allow_senders", "batch_remove",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", `{"senders":["ok@example.com"]}`,
+				"--dry-run",
+			},
+			wantMethod: "POST",
+			wantURL:    "/open-apis/mail/v1/user_mailboxes/me/allow_senders/batch_remove",
+			wantBody: map[string]interface{}{
+				"senders": []interface{}{"ok@example.com"},
+			},
+		},
+		{
+			args: []string{
+				"mail", "user_mailbox.blocked_senders", "list",
+				"--params", `{"user_mailbox_id":"me","keyword":"bad.example","page_size":20}`,
+				"--dry-run",
+			},
+			wantMethod: "GET",
+			wantURL:    "/open-apis/mail/v1/user_mailboxes/me/blocked_senders",
+			wantParams: map[string]interface{}{"keyword": "bad.example", "page_size": float64(20)},
+		},
+		{
+			args: []string{
+				"mail", "user_mailbox.blocked_senders", "batch_create",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", `{"items":[{"sender":"bad@example.com"}]}`,
+				"--dry-run",
+			},
+			wantMethod: "POST",
+			wantURL:    "/open-apis/mail/v1/user_mailboxes/me/blocked_senders/batch_create",
+			wantBody: map[string]interface{}{
+				"items": []interface{}{map[string]interface{}{"sender": "bad@example.com"}},
+			},
+		},
+		{
+			args: []string{
+				"mail", "user_mailbox.blocked_senders", "batch_remove",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", `{"senders":["bad@example.com"]}`,
+				"--dry-run",
+			},
+			wantMethod: "POST",
+			wantURL:    "/open-apis/mail/v1/user_mailboxes/me/blocked_senders/batch_remove",
+			wantBody: map[string]interface{}{
+				"senders": []interface{}{"bad@example.com"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args[:3], " "), func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+			root := &cobra.Command{Use: "lark-cli"}
+			registerService(root, spec, resources, f)
+			root.SetArgs(tt.args)
+
+			if err := root.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			var got map[string]interface{}
+			out := stdout.String()
+			jsonStart := strings.Index(out, "{")
+			if jsonStart < 0 {
+				t.Fatalf("dry-run stdout does not contain JSON: %s", out)
+			}
+			if err := json.Unmarshal([]byte(out[jsonStart:]), &got); err != nil {
+				t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			api := got["api"].([]interface{})
+			call := api[0].(map[string]interface{})
+			if call["method"] != tt.wantMethod {
+				t.Errorf("method = %q, want %q", call["method"], tt.wantMethod)
+			}
+			if call["url"] != tt.wantURL {
+				t.Errorf("url = %q, want %q\nstdout:\n%s", call["url"], tt.wantURL, stdout.String())
+			}
+			if tt.wantParams != nil && !reflect.DeepEqual(call["params"], tt.wantParams) {
+				t.Errorf("params = %#v, want %#v", call["params"], tt.wantParams)
+			}
+			if tt.wantBody != nil {
+				if !reflect.DeepEqual(call["body"], tt.wantBody) {
+					t.Errorf("body = %#v, want %#v", call["body"], tt.wantBody)
+				}
+			}
+		})
 	}
 }
 

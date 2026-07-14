@@ -5,6 +5,7 @@ package schema
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -44,6 +45,36 @@ func TestSchemaCmd_NoArgs(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Available services") {
 		t.Error("expected service list output")
+	}
+}
+
+func TestSchemaCmd_MailSenderAllowBlockList(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"mail.user_mailbox.allow_senders.list"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not valid JSON: %v\n%s", err, stdout.String())
+	}
+	if env["id"] != "user_mailbox.allow_sender.list" {
+		t.Fatalf("id = %v, want user_mailbox.allow_sender.list", env["id"])
+	}
+	if env["path"] != "user_mailboxes/{user_mailbox_id}/allow_senders" {
+		t.Fatalf("path = %v, want user_mailboxes/{user_mailbox_id}/allow_senders", env["path"])
+	}
+	params, _ := env["parameters"].(map[string]interface{})
+	for _, key := range []string{"user_mailbox_id", "keyword", "page_size", "page_token"} {
+		if _, ok := params[key]; !ok {
+			t.Fatalf("parameters.%s missing in %s", key, stdout.String())
+		}
+	}
+	requiredScopes, _ := env["requiredScopes"].([]interface{})
+	if len(requiredScopes) != 1 || requiredScopes[0] != "mail:user_mailbox.message:readonly" {
+		t.Fatalf("requiredScopes = %v, want [mail:user_mailbox.message:readonly]", env["requiredScopes"])
 	}
 }
 

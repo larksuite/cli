@@ -115,6 +115,8 @@ metadata:
 
 无论是 Shortcut（`+triage`、`+send` 等）还是原生 API，**首次调用前必须先运行 `-h` 查看可用参数**，不要猜测参数名称：
 
+用户级发件人白/黑名单使用原生 API `user_mailbox.allow_senders` / `user_mailbox.blocked_senders`。`list` 支持 `keyword` 搜索；批量添加用 `batch_create` + `--data '{"items":[{"sender":"a@example.com"}]}'`；批量删除用 `batch_remove` + `--data '{"senders":["a@example.com"]}'`。
+
 ```bash
 # Shortcut
 lark-cli mail +triage -h
@@ -444,6 +446,24 @@ lark-cli mail user_mailbox.folders create \
   --data '{"name":"newsletter","parent_folder_id":"0"}'
 ```
 
+**用户级发件人白/黑名单**：
+
+```bash
+# 列出白名单；加入 keyword 即搜索
+lark-cli mail user_mailbox.allow_senders list \
+  --params '{"user_mailbox_id":"me","keyword":"example.com"}'
+
+# 批量加入黑名单
+lark-cli mail user_mailbox.blocked_senders batch_create \
+  --params '{"user_mailbox_id":"me"}' \
+  --data '{"items":[{"sender":"bad@example.com"}]}'
+
+# 批量移除黑名单
+lark-cli mail user_mailbox.blocked_senders batch_remove \
+  --params '{"user_mailbox_id":"me"}' \
+  --data '{"senders":["bad@example.com"]}'
+```
+
 ### 常用约定
 
 - `user_mailbox_id` 几乎所有邮箱 API 都需要，一般传 `"me"` 代表当前用户
@@ -645,4 +665,3 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
-
