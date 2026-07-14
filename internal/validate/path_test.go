@@ -189,6 +189,8 @@ func TestSafeLocalFlagPath(t *testing.T) {
 		{"empty value passes through", "--image", "", "", ""},
 		{"http URL passes through", "--image", "http://example.com/a.jpg", "http://example.com/a.jpg", ""},
 		{"https URL passes through", "--image", "https://example.com/a.jpg", "https://example.com/a.jpg", ""},
+		{"uppercase HTTP URL passes through", "--image", "HTTP://example.com/a.jpg", "HTTP://example.com/a.jpg", ""},
+		{"mixed-case HTTPS URL passes through", "--image", "HtTpS://example.com/a.jpg", "HtTpS://example.com/a.jpg", ""},
 		{"relative path accepted, returned unchanged", "--file", "photo.jpg", "photo.jpg", ""},
 		{"path traversal rejected", "--file", "../escape.txt", "", "--file"},
 		{"absolute path rejected", "--image", "/etc/passwd", "", "--image"},
