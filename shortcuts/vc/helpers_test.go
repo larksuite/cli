@@ -5,8 +5,6 @@ package vc
 
 import (
 	"errors"
-	"fmt"
-	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,6 +19,30 @@ import (
 
 func bareMeetingQueryRuntime(as core.Identity) *common.RuntimeContext {
 	return common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "test"}, defaultConfig(), as)
+}
+
+func TestNormalizeMeetingQueryPermissionError_ReturnsInputWhenContextUnavailable(t *testing.T) {
+	sentinel := errors.New("sentinel")
+	runtimeWithoutConfig := bareMeetingQueryRuntime(core.AsUser)
+	runtimeWithoutConfig.Config = nil
+
+	cases := []struct {
+		name    string
+		runtime *common.RuntimeContext
+		err     error
+	}{
+		{name: "nil_error", runtime: bareMeetingQueryRuntime(core.AsUser)},
+		{name: "nil_runtime", err: sentinel},
+		{name: "nil_config", runtime: runtimeWithoutConfig, err: sentinel},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeMeetingQueryPermissionError(tc.runtime, tc.err); got != tc.err {
+				t.Fatalf("normalizeMeetingQueryPermissionError() = %v, want original %v", got, tc.err)
+			}
+		})
+	}
 }
 
 func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Identity, code int) {
@@ -52,41 +74,25 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 	if !strings.Contains(pe.Hint, wantScope) {
 		t.Fatalf("Hint = %q, want recommended scope %q", pe.Hint, wantScope)
 	}
-	if !strings.Contains(pe.Hint, "either") {
-		t.Fatalf("Hint = %q, want compatible OR-scope explanation", pe.Hint)
+	if strings.Contains(pe.Hint, "either compatible scope") {
+		t.Fatalf("Hint = %q, must not repeat the OR-scope explanation from message", pe.Hint)
 	}
 	switch code {
 	case output.LarkErrAppScopeNotEnabled:
 		if strings.Contains(pe.Hint, "auth login") {
 			t.Fatalf("Hint = %q, app-scope error must not recommend user login", pe.Hint)
 		}
-		if strings.Contains(pe.Hint, "must apply") {
-			t.Fatalf("Hint = %q, must not present the identity-based recommendation as the only required scope", pe.Hint)
-		}
-		if !strings.Contains(pe.Hint, "apply only one") {
-			t.Fatalf("Hint = %q, want explicit single-scope guidance", pe.Hint)
-		}
 		if !strings.Contains(strings.ToLower(pe.Hint), "for "+string(identity)+" identity") {
 			t.Fatalf("Hint = %q, want current identity context", pe.Hint)
 		}
-		if !strings.Contains(pe.Hint, "developer console") {
-			t.Fatalf("Hint = %q, want developer console guidance", pe.Hint)
+		if !strings.Contains(pe.Hint, "app developer") {
+			t.Fatalf("Hint = %q, want app developer guidance", pe.Hint)
 		}
-		if !strings.Contains(pe.ConsoleURL, url.QueryEscape(wantScope)) {
-			t.Fatalf("ConsoleURL = %q, want scope %q", pe.ConsoleURL, wantScope)
-		}
-		if identity.IsBot() && strings.Contains(pe.ConsoleURL, url.QueryEscape(meetingQueryUserScope)) {
-			t.Fatalf("ConsoleURL = %q, must recommend only bot scope", pe.ConsoleURL)
+		if pe.ConsoleURL != "" {
+			t.Fatalf("ConsoleURL = %q, want empty because the scope hint is sufficient", pe.ConsoleURL)
 		}
 	case output.LarkErrUserScopeInsufficient:
-		if identity.IsBot() {
-			if strings.Contains(pe.Hint, "auth login") {
-				t.Fatalf("Hint = %q, bot identity must never recommend user login", pe.Hint)
-			}
-			if !strings.Contains(pe.Hint, "verify") {
-				t.Fatalf("Hint = %q, want identity mismatch guidance", pe.Hint)
-			}
-		} else if !strings.Contains(pe.Hint, "auth login --scope") {
+		if !strings.Contains(pe.Hint, "auth login --scope") {
 			t.Fatalf("Hint = %q, want auth login guidance", pe.Hint)
 		}
 		if pe.ConsoleURL != "" {
@@ -103,57 +109,75 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 }
 
 func TestNormalizeMeetingQueryPermissionError_RecommendsOneCompatibleScope(t *testing.T) {
-	for _, code := range []int{output.LarkErrAppScopeNotEnabled, output.LarkErrUserScopeInsufficient} {
-		for _, identity := range []core.Identity{core.AsUser, core.AsBot} {
-			name := string(identity) + "_code_" + fmt.Sprint(code)
-			t.Run(name, func(t *testing.T) {
-				subtype := errs.SubtypeMissingScope
-				if code == output.LarkErrAppScopeNotEnabled {
-					subtype = errs.SubtypeAppScopeNotApplied
-				}
-				original := errs.NewPermissionError(subtype, "upstream permission failure").
-					WithCode(code).
-					WithLogID("log-id").
-					WithRetryable().
-					WithMissingScopes(meetingQueryAnyScopes...).
-					WithRequestedScopes("requested:scope").
-					WithGrantedScopes("granted:scope")
-				original.Troubleshooter = "https://example.com/troubleshoot"
+	cases := []struct {
+		name     string
+		identity core.Identity
+		code     int
+		subtype  errs.Subtype
+	}{
+		{name: "user_with_user_scope_error", identity: core.AsUser, code: output.LarkErrUserScopeInsufficient, subtype: errs.SubtypeMissingScope},
+		{name: "bot_with_app_scope_error", identity: core.AsBot, code: output.LarkErrAppScopeNotEnabled, subtype: errs.SubtypeAppScopeNotApplied},
+	}
 
-				got := normalizeMeetingQueryPermissionError(bareMeetingQueryRuntime(identity), original)
-				var pe *errs.PermissionError
-				if !errors.As(got, &pe) {
-					t.Fatalf("got %T, want *errs.PermissionError", got)
-				}
-				if pe == original {
-					t.Fatal("normalizer mutated the upstream error instead of copying it")
-				}
-				if !errors.Is(got, original) {
-					t.Fatal("normalized error does not preserve the upstream error as cause")
-				}
-				if pe.Code != code || pe.Subtype != subtype || pe.LogID != "log-id" || !pe.Retryable {
-					t.Fatalf("diagnostics changed: %+v", pe.Problem)
-				}
-				if pe.Troubleshooter != original.Troubleshooter {
-					t.Fatalf("Troubleshooter = %q, want %q", pe.Troubleshooter, original.Troubleshooter)
-				}
-				if !reflect.DeepEqual(pe.MissingScopes, meetingQueryAnyScopes) {
-					t.Fatalf("MissingScopes = %v, want %v", pe.MissingScopes, meetingQueryAnyScopes)
-				}
-				if !reflect.DeepEqual(pe.RequestedScopes, original.RequestedScopes) || !reflect.DeepEqual(pe.GrantedScopes, original.GrantedScopes) {
-					t.Fatalf("scope diagnostics changed: requested=%v granted=%v", pe.RequestedScopes, pe.GrantedScopes)
-				}
-				assertMeetingQueryPermissionError(t, got, identity, code)
-			})
-		}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			original := errs.NewPermissionError(tc.subtype, "upstream permission failure").
+				WithCode(tc.code).
+				WithLogID("log-id").
+				WithRetryable().
+				WithMissingScopes(meetingQueryAnyScopes...).
+				WithRequestedScopes("requested:scope").
+				WithGrantedScopes("granted:scope")
+			original.Troubleshooter = "https://example.com/troubleshoot"
+
+			got := normalizeMeetingQueryPermissionError(bareMeetingQueryRuntime(tc.identity), original)
+			var pe *errs.PermissionError
+			if !errors.As(got, &pe) {
+				t.Fatalf("got %T, want *errs.PermissionError", got)
+			}
+			if pe == original {
+				t.Fatal("normalizer mutated the upstream error instead of copying it")
+			}
+			if !errors.Is(got, original) {
+				t.Fatal("normalized error does not preserve the upstream error as cause")
+			}
+			if pe.Code != tc.code || pe.Subtype != tc.subtype || pe.LogID != "log-id" || !pe.Retryable {
+				t.Fatalf("diagnostics changed: %+v", pe.Problem)
+			}
+			if pe.Troubleshooter != original.Troubleshooter {
+				t.Fatalf("Troubleshooter = %q, want %q", pe.Troubleshooter, original.Troubleshooter)
+			}
+			if !reflect.DeepEqual(pe.MissingScopes, meetingQueryAnyScopes) {
+				t.Fatalf("MissingScopes = %v, want %v", pe.MissingScopes, meetingQueryAnyScopes)
+			}
+			if !reflect.DeepEqual(pe.RequestedScopes, original.RequestedScopes) || !reflect.DeepEqual(pe.GrantedScopes, original.GrantedScopes) {
+				t.Fatalf("scope diagnostics changed: requested=%v granted=%v", pe.RequestedScopes, pe.GrantedScopes)
+			}
+			assertMeetingQueryPermissionError(t, got, tc.identity, tc.code)
+		})
 	}
 }
 
 func TestNormalizeMeetingQueryPermissionError_PassesThroughNonMatchingErrors(t *testing.T) {
 	cases := []struct {
-		name string
-		err  error
+		name     string
+		identity core.Identity
+		err      error
 	}{
+		{
+			name:     "user_with_app_scope_error",
+			identity: core.AsUser,
+			err: errs.NewPermissionError(errs.SubtypeAppScopeNotApplied, "app scope error").
+				WithCode(output.LarkErrAppScopeNotEnabled).
+				WithMissingScopes(meetingQueryAnyScopes...),
+		},
+		{
+			name:     "bot_with_user_scope_error",
+			identity: core.AsBot,
+			err: errs.NewPermissionError(errs.SubtypeMissingScope, "user scope error").
+				WithCode(output.LarkErrUserScopeInsufficient).
+				WithMissingScopes(meetingQueryAnyScopes...),
+		},
 		{
 			name: "single_scope",
 			err: errs.NewPermissionError(errs.SubtypeMissingScope, "single").
@@ -175,7 +199,11 @@ func TestNormalizeMeetingQueryPermissionError_PassesThroughNonMatchingErrors(t *
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := normalizeMeetingQueryPermissionError(bareMeetingQueryRuntime(core.AsBot), tc.err); got != tc.err {
+			identity := tc.identity
+			if identity == "" {
+				identity = core.AsBot
+			}
+			if got := normalizeMeetingQueryPermissionError(bareMeetingQueryRuntime(identity), tc.err); got != tc.err {
 				t.Fatalf("got %T %v, want original error %T %v", got, got, tc.err, tc.err)
 			}
 		})

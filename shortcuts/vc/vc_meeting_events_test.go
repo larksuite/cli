@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -649,6 +650,53 @@ func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 		if strings.Contains(out, unwanted) {
 			t.Fatalf("json output should not contain %q: %s", unwanted, stdout.String())
 		}
+	}
+}
+
+func TestMeetingEvents_Execute_NormalizesMeetingScopeError(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    vcMeetingEventsAPIPath,
+		Status: 400,
+		Body: map[string]interface{}{
+			"code": output.LarkErrAppScopeNotEnabled,
+			"msg":  "access denied",
+			"error": map[string]interface{}{
+				"permission_violations": []interface{}{
+					map[string]interface{}{"subject": meetingQueryUserScope},
+					map[string]interface{}{"subject": meetingQueryBotScope},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected permission error")
+	}
+	reg.Verify(t)
+
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) {
+		t.Fatalf("error = %T %v, want *errs.PermissionError", err, err)
+	}
+	if permissionErr.Code != output.LarkErrAppScopeNotEnabled {
+		t.Fatalf("Code = %d, want %d", permissionErr.Code, output.LarkErrAppScopeNotEnabled)
+	}
+	if permissionErr.Identity != "bot" {
+		t.Fatalf("Identity = %q, want bot", permissionErr.Identity)
+	}
+	if !strings.Contains(permissionErr.Hint, meetingQueryBotScope) {
+		t.Fatalf("Hint = %q, want bot scope %q", permissionErr.Hint, meetingQueryBotScope)
+	}
+	if permissionErr.ConsoleURL != "" {
+		t.Fatalf("ConsoleURL = %q, want empty", permissionErr.ConsoleURL)
 	}
 }
 

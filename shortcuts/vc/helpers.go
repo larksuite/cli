@@ -8,7 +8,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -33,7 +32,10 @@ func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err er
 	if !errors.As(err, &permissionErr) || permissionErr == nil {
 		return err
 	}
-	if permissionErr.Code != output.LarkErrAppScopeNotEnabled && permissionErr.Code != output.LarkErrUserScopeInsufficient {
+	isBot := runtime.As().IsBot()
+	isUserScopeError := !isBot && permissionErr.Code == output.LarkErrUserScopeInsufficient
+	isBotScopeError := isBot && permissionErr.Code == output.LarkErrAppScopeNotEnabled
+	if !isUserScopeError && !isBotScopeError {
 		return err
 	}
 	if !containsAllScopes(permissionErr.MissingScopes, meetingQueryAnyScopes) {
@@ -42,9 +44,6 @@ func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err er
 
 	mapped := *permissionErr
 	mapped.Problem.Message = meetingQueryMissingScopeMessage()
-	mapped.MissingScopes = append([]string(nil), permissionErr.MissingScopes...)
-	mapped.RequestedScopes = append([]string(nil), permissionErr.RequestedScopes...)
-	mapped.GrantedScopes = append([]string(nil), permissionErr.GrantedScopes...)
 	mapped.Cause = err
 	return addMeetingQueryRecovery(runtime, &mapped)
 }
@@ -62,15 +61,10 @@ func addMeetingQueryRecovery(runtime *common.RuntimeContext, permissionErr *errs
 	permissionErr.Identity = string(runtime.As())
 	permissionErr.ConsoleURL = ""
 	switch {
-	case permissionErr.Code == output.LarkErrAppScopeNotEnabled:
-		consoleURL := registry.BuildConsoleScopeURL(runtime.Config.Brand, runtime.Config.AppID, recommended)
-		return permissionErr.
-			WithConsoleURL(consoleURL).
-			WithHint("either compatible scope is sufficient; apply only one. For %s identity, the recommended scope is %s. The app developer can enable it at the developer console: %s", runtime.As(), recommended, consoleURL)
+	case isBot && permissionErr.Code == output.LarkErrAppScopeNotEnabled:
+		return permissionErr.WithHint("for %s identity, ask the app developer to enable scope %s", runtime.As(), recommended)
 	case permissionErr.Code == output.LarkErrUserScopeInsufficient && !isBot:
-		return permissionErr.WithHint("either compatible scope is sufficient; for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
-	case permissionErr.Code == output.LarkErrUserScopeInsufficient && isBot:
-		return permissionErr.WithHint("either compatible scope is sufficient; received a user-authorization scope error while using bot identity. User re-authorization does not apply to this identity; verify the resolved identity and server response. The bot-side recommended compatible scope is %s", recommended)
+		return permissionErr.WithHint("for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
 	default:
 		return permissionErr
 	}
