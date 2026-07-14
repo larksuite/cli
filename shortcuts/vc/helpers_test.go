@@ -20,6 +20,14 @@ func bareMeetingQueryRuntime(as core.Identity) *common.RuntimeContext {
 	return common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "test"}, defaultConfig(), as)
 }
 
+func TestNormalizeMeetingQueryPermissionError_NilRuntimeReturnsOriginalError(t *testing.T) {
+	original := errs.NewPermissionError(errs.SubtypeMissingScope, "permission failure").
+		WithCode(output.LarkErrUserScopeInsufficient)
+	if got := normalizeMeetingQueryPermissionError(nil, original); got != original {
+		t.Fatalf("got %v, want original error %v", got, original)
+	}
+}
+
 func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Identity, code int) {
 	t.Helper()
 
