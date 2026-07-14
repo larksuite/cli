@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // automationBasePath 是触发器公网 OpenAPI 前缀。后端把触发器公网端点统一
@@ -60,6 +61,18 @@ func mapTriggerType(cliType string) (string, error) {
 // validateCronExpr 校验五段式 cron 表达式，并兜底最小间隔 30 分钟。
 // 这是给 Agent 的即时提示；后端 OpenAPI 层也会校验（ErrInvalidCronTab /
 // ErrCronIntervalTooSmall），CLI 本地拦截只为更快反馈。
+//
+// Minute field accepted forms:
+//   - "N" (single value 0-59)
+//   - "N,M,..." (comma list of single values; min pairwise gap incl. wrap >= 30)
+//   - "*/N" (step from 0; N must be >= 30)
+//
+// Anything else (ranges like "N-M", stepped ranges like "N-M/S",
+// range shorthands like "0/10", question marks) is rejected up-front with a
+// typed --cron error. A previous version accepted "1-59/10" through the
+// fallthrough because none of the three matchers claimed it, and the caller
+// only found out the interval was 10 minutes when the backend rejected it
+// (or worse, silently accepted a schedule the operator did not intend).
 func validateCronExpr(expr string) error {
 	fields := strings.Fields(strings.TrimSpace(expr))
 	if len(fields) != 5 {
@@ -73,19 +86,27 @@ func validateCronExpr(expr string) error {
 	}
 	if strings.HasPrefix(minute, "*/") {
 		n, err := strconv.Atoi(strings.TrimPrefix(minute, "*/"))
-		if err == nil && n < 30 {
+		if err != nil || n < 1 || n > 59 {
+			return appsValidationParamError("--cron",
+				"cron minute step %q must be an integer 1..59", minute)
+		}
+		if n < 30 {
 			return appsValidationParamError("--cron",
 				"cron interval */%d minutes is below the 30-minute minimum", n)
 		}
+		return nil
 	}
 	if strings.Contains(minute, ",") {
 		parts := strings.Split(minute, ",")
 		vals := make([]int, 0, len(parts))
 		for _, p := range parts {
 			p = strings.TrimSpace(p)
-			if n, err := strconv.Atoi(p); err == nil {
-				vals = append(vals, n)
+			n, err := strconv.Atoi(p)
+			if err != nil || n < 0 || n > 59 {
+				return appsValidationParamError("--cron",
+					"cron minute list entry %q must be an integer 0..59", p)
 			}
+			vals = append(vals, n)
 		}
 		if len(vals) >= 2 {
 			sort.Ints(vals)
@@ -103,8 +124,18 @@ func validateCronExpr(expr string) error {
 					"cron minute list %q has %d-min interval; minimum interval is 30 minutes", minute, minGap)
 			}
 		}
+		return nil
 	}
-	return nil
+	// Bare single value fallthrough. Reject range/step-range/anything else so
+	// forms like "1-59/10" (10-min interval) and "0/10" (10-min interval)
+	// cannot bypass the 30-minute floor. The backend enforces its own cron
+	// rules, but the CLI stays strict about which forms it accepts so callers
+	// get an early, unambiguous error.
+	if n, err := strconv.Atoi(minute); err == nil && n >= 0 && n <= 59 {
+		return nil
+	}
+	return appsValidationParamError("--cron",
+		"unsupported cron minute syntax %q; use N (0..59), N,M,... (min gap >=30), or */N (N>=30)", minute)
 }
 
 const defaultCronTimezone = "Asia/Shanghai"
@@ -140,6 +171,89 @@ func validateAutomationDescriptionLen(desc string) error {
 	if n := utf8.RuneCountInString(desc); n > automationDescriptionMaxLen {
 		return appsValidationParamError("--description",
 			"--description must be at most %d chars, got %d", automationDescriptionMaxLen, n)
+	}
+	return nil
+}
+
+// conditionFlagFamily maps each condition-carrying flag to the trigger-type
+// family it belongs to. Used by create/update to reject cross-type flag
+// combinations up-front (e.g. --trigger-type webhook --cron '0 9 * * *'
+// silently dropped --cron before this guard).
+//
+// --timezone is a modifier on --cron, so it lives in the cron family.
+// --description is trigger-type-agnostic and NOT in this map — it can pair
+// with any type on create and can appear alone on update.
+var conditionFlagFamily = map[string]string{
+	"cron":            "cron",
+	"timezone":        "cron",
+	"table":           "record-change",
+	"event":           "record-change",
+	"fields":          "record-change",
+	"white-ip-list":   "webhook",
+	"event-type":      "feishu-approval",
+	"instance-status": "feishu-approval",
+	"task-status":     "feishu-approval",
+	"approval-code":   "feishu-approval",
+}
+
+// flagIsSet reports whether a condition-carrying flag has a caller-provided
+// value. string and string-array types both need to be probed; a nil / empty
+// value counts as unset.
+func flagIsSet(rctx *common.RuntimeContext, name string) bool {
+	if v := strings.TrimSpace(rctx.Str(name)); v != "" {
+		return true
+	}
+	if arr := rctx.StrArray(name); len(arr) > 0 {
+		return true
+	}
+	return false
+}
+
+// familiesInUse returns the set of trigger-type families whose condition flags
+// the caller has set on this invocation. A trigger has exactly one type, so
+// legitimate condition writes involve at most one family; anything else is a
+// user mistake that must not slip through to the backend.
+func familiesInUse(rctx *common.RuntimeContext) map[string]string {
+	out := map[string]string{}
+	for flag, family := range conditionFlagFamily {
+		if flagIsSet(rctx, flag) {
+			out[family] = flag
+		}
+	}
+	return out
+}
+
+// familiesMixedList renders a comma-separated, sorted list of families
+// currently in use for inclusion in the multi-family rejection error. Stable
+// order keeps the error message deterministic across Go's random map
+// iteration.
+func familiesMixedList(families map[string]string) string {
+	names := make([]string, 0, len(families))
+	for name := range families {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
+// rejectCrossFamilyCondFlags rejects any condition flag that does not belong
+// to `wantFamily`. Returns a typed --<flag> error naming the first offending
+// flag encountered. Deterministic ordering (iterated over a stable slice)
+// keeps the error message reproducible for tests.
+func rejectCrossFamilyCondFlags(rctx *common.RuntimeContext, wantFamily string) error {
+	// Stable iteration order for a deterministic Param on error.
+	order := []string{
+		"cron", "timezone",
+		"table", "event", "fields",
+		"white-ip-list",
+		"event-type", "instance-status", "task-status", "approval-code",
+	}
+	for _, flag := range order {
+		if conditionFlagFamily[flag] != wantFamily && flagIsSet(rctx, flag) {
+			return appsValidationParamError("--"+flag,
+				"--%s belongs to trigger-type %q, not %q; drop it or change --trigger-type",
+				flag, conditionFlagFamily[flag], wantFamily)
+		}
 	}
 	return nil
 }

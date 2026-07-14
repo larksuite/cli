@@ -71,6 +71,42 @@ func TestValidateCronExpr(t *testing.T) {
 	}
 }
 
+// TestValidateCronExpr_RejectsRangeStepBypass pins the F4 fix: range-step
+// syntax like "1-59/10" or shorthand "0/10" is a 10-minute interval, but the
+// old *,*/N,list-only matcher fell through and accepted these. The new
+// whitelist rejects any minute form outside {"N", "N,M,...", "*/N"}.
+func TestValidateCronExpr_RejectsRangeStepBypass(t *testing.T) {
+	rejected := []string{
+		"1-59/10 * * * *",
+		"0/10 * * * *",
+		"*/29 * * * *",    // step of 29 is below the 30-min floor
+		"?  * * * *",      // range/? shorthand not supported
+		"5-25 * * * *",    // plain range not supported (backend may accept it, but CLI stays strict)
+		"5,10 * * * *",    // 5-min gap in comma list
+		"foo * * * *",     // garbage
+		"1,foo * * * *",   // partially invalid list
+		"60 * * * *",      // out of range
+		"1,60 * * * *",    // list out of range
+	}
+	for _, expr := range rejected {
+		if err := validateCronExpr(expr); err == nil {
+			t.Errorf("expected %q to be rejected, got nil", expr)
+		}
+	}
+	accepted := []string{
+		"0 9 * * *",
+		"30 9 * * *",
+		"0,30 * * * *",
+		"*/30 * * * *",
+		"*/59 * * * *",
+	}
+	for _, expr := range accepted {
+		if err := validateCronExpr(expr); err != nil {
+			t.Errorf("expected %q to pass, got: %v", expr, err)
+		}
+	}
+}
+
 func TestBuildCronCondition(t *testing.T) {
 	c, err := buildCronCondition("0 9 * * *", "")
 	if err != nil {

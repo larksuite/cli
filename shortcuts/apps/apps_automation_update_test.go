@@ -337,6 +337,53 @@ func TestAutomationUpdate_MismatchedStatusArrayWithEventType(t *testing.T) {
 
 // TestAutomationUpdate_DescriptionTooLong: --description > 50 chars is
 // rejected in Validate with a typed --description error.
+// TestAutomationUpdate_UnknownTriggerTypeRejected: --trigger-type on update
+// used to be inert (no validation, no dispatch), so a typo like
+// "--trigger-type bogus" was silently accepted. Validate now runs mapTriggerType
+// on any non-empty --trigger-type.
+func TestAutomationUpdate_UnknownTriggerTypeRejected(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "t1", "trigger-type": "bogus",
+			"cron": "0 9 * * *",
+		})
+	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--trigger-type")
+}
+
+// TestAutomationUpdate_CrossFamilyConditionFlagsRejected pins the F2 guard:
+// when --trigger-type is set, only that family's condition flags may be
+// passed. Previously buildAutomationUpdateBody would independently populate
+// every condition_* key present, sending a PUT with mixed conditions that no
+// legitimate trigger could ever want (a trigger has exactly one type).
+func TestAutomationUpdate_CrossFamilyConditionFlagsRejected(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "t1", "trigger-type": "cron",
+			"cron": "0 9 * * *", "white-ip-list": `["1.1.1.1"]`,
+		})
+	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--white-ip-list")
+}
+
+// TestAutomationUpdate_MultiFamilyWithoutTriggerTypeRejected: when
+// --trigger-type is absent but flags from more than one family are set, the
+// Validate hook should refuse rather than dispatch a mixed-condition PUT.
+// Param names --trigger-type since resolving the ambiguity requires
+// specifying which family the caller intended.
+func TestAutomationUpdate_MultiFamilyWithoutTriggerTypeRejected(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "t1",
+			"cron": "0 9 * * *", "white-ip-list": `["1.1.1.1"]`,
+		})
+	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--trigger-type")
+	if !strings.Contains(err.Error(), "multiple trigger types") {
+		t.Errorf("expected multi-family error message, got %q", err.Error())
+	}
+}
+
 func TestAutomationUpdate_DescriptionTooLong(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{

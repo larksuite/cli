@@ -54,6 +54,59 @@ func TestAutomationCreate_MissingType(t *testing.T) {
 	assertValidationParamError(t, err, "--trigger-type")
 }
 
+// TestAutomationCreate_CrossFamilyFlagsRejected pins the F1 guard: a condition
+// flag from a family other than --trigger-type used to be silently dropped by
+// buildAutomationCreateBody's single-branch switch, so
+// `--trigger-type webhook --cron '0 9 * * *'` created a webhook with no cron
+// but returned success. Validate now rejects the cross-family flag up-front.
+func TestAutomationCreate_CrossFamilyFlagsRejected(t *testing.T) {
+	cases := []struct {
+		name      string
+		flags     map[string]string
+		wantParam string
+	}{
+		{"webhook_with_cron",
+			map[string]string{
+				"app-id": "app_x", "name": "n", "trigger-type": "webhook",
+				"cron": "0 9 * * *",
+			}, "--cron"},
+		{"cron_with_white_ip_list",
+			map[string]string{
+				"app-id": "app_x", "name": "n", "trigger-type": "cron",
+				"cron": "0 9 * * *", "white-ip-list": `["1.1.1.1"]`,
+			}, "--white-ip-list"},
+		{"record_change_with_event_type",
+			map[string]string{
+				"app-id": "app_x", "name": "n", "trigger-type": "record-change",
+				"table": "tbl", "event": "UPDATE", "event-type": "approval_instance",
+			}, "--event-type"},
+		{"feishu_approval_with_table",
+			map[string]string{
+				"app-id": "app_x", "name": "n", "trigger-type": "feishu-approval",
+				"event-type": "approval_instance", "instance-status": "APPROVED",
+				"table": "tbl",
+			}, "--table"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(), tc.flags)
+			err := AppsAutomationCreate.Validate(context.Background(), rctx)
+			assertValidationParamError(t, err, tc.wantParam)
+		})
+	}
+}
+
+// TestAutomationCreate_UnknownTriggerTypeRejected: --trigger-type must be one
+// of the four supported kebab-case values. A typo used to sneak past Validate
+// (buildAutomationCreateBody caught it, but only after the cross-family guard
+// would otherwise fire with a misleading "belongs to type" message).
+func TestAutomationCreate_UnknownTriggerTypeRejected(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "bogus"})
+	err := AppsAutomationCreate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--trigger-type")
+}
+
 func TestAutomationCreateCron_Sub30MinRejected(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "cron", "cron": "*/5 * * * *"})

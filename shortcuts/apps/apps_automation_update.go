@@ -107,6 +107,33 @@ var AppsAutomationUpdate = common.Shortcut{
 			return err
 		}
 
+		// --trigger-type on update was previously informational only — set
+		// by callers, silently ignored. Two hazards followed:
+		//   1. --trigger-type bogus passed local validation
+		//   2. --cron '0 9 * * *' --white-ip-list '["1.1.1.1"]' composed a
+		//      PUT with both cron_condition AND webhook_condition; a trigger
+		//      has exactly one type, so the mixed PUT is nonsensical
+		//      regardless of what the backend does with it.
+		// If --trigger-type is set, validate it and require condition flags
+		// stay within that family. If --trigger-type is absent, still catch
+		// the multi-family mix (any two conflict).
+		families := familiesInUse(rctx)
+		if cliType := strings.TrimSpace(rctx.Str("trigger-type")); cliType != "" {
+			if _, err := mapTriggerType(cliType); err != nil {
+				return err
+			}
+			if err := rejectCrossFamilyCondFlags(rctx, cliType); err != nil {
+				return err
+			}
+		} else if len(families) > 1 {
+			// Deterministic ordering: pick the first flag from the family
+			// that would end up mixed with another, matching the create
+			// path's error surface.
+			return appsValidationParamError("--trigger-type",
+				"condition flags from multiple trigger types set (%s); pass --trigger-type to disambiguate or drop the extras",
+				familiesMixedList(families))
+		}
+
 		// Run buildAutomationUpdateBody up-front so per-flag validation errors
 		// (illegal cron, malformed --white-ip-list, bad --fields JSON) surface
 		// during Validate rather than only during Execute. Without this, the

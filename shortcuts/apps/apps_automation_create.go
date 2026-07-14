@@ -53,8 +53,24 @@ var AppsAutomationCreate = common.Shortcut{
 		if strings.TrimSpace(rctx.Str("name")) == "" {
 			return appsValidationParamError("--name", "--name is required")
 		}
-		if strings.TrimSpace(rctx.Str("trigger-type")) == "" {
+		cliType := strings.TrimSpace(rctx.Str("trigger-type"))
+		if cliType == "" {
 			return appsValidationParamError("--trigger-type", "--trigger-type is required (cron/record-change/webhook/feishu-approval)")
+		}
+		// mapTriggerType also runs inside buildAutomationCreateBody, but
+		// re-running it up-front keeps the cross-family guard's error
+		// reachable — otherwise an unknown --trigger-type would bail out
+		// with the same guard's "belongs to trigger-type" wording, which
+		// misleads callers who typoed the type itself.
+		if _, err := mapTriggerType(cliType); err != nil {
+			return err
+		}
+		// Reject condition flags that do not belong to the selected type.
+		// buildAutomationCreateBody's switch used to silently drop them
+		// (e.g. --trigger-type webhook --cron '0 9 * * *' created a webhook
+		// with no cron, though the caller believed --cron was set).
+		if err := rejectCrossFamilyCondFlags(rctx, cliType); err != nil {
+			return err
 		}
 		_, err := buildAutomationCreateBody(rctx)
 		return err
