@@ -14,25 +14,77 @@ metadata:
 
 **身份**：OKR 操作默认使用 `--as user`（查看当前用户/上下级的 OKR 时）。也支持 `--as bot` 查看他人 OKR（需相应权限）。
 
+## 快速决策
+
+| 用户需求 | 操作路径                                                                                          | 参考文档 |
+|---|-----------------------------------------------------------------------------------------------|---|
+| 查看自己/他人的 OKR | 获取用户 ID -> `+cycle-list` -> `+cycle-detail` -> 按需查指标/进展记录                                     | [`cycle-list`](references/lark-okr-cycle-list.md), [`cycle-detail`](references/lark-okr-cycle-detail.md), [`indicators`](references/lark-okr-indicators.md), [`progress-list`](references/lark-okr-progress-list.md) |
+| 为自己写一组 OKR | 优先用 `+batch-create` 创建 Objective/KR 骨架                                                        | [`batch-create`](references/lark-okr-batch-create.md), [`contentblock`](references/lark-okr-contentblock.md) |
+| 只新增一条 O 或单条 KR | 用 `+create`                                                                                   | [`create`](references/lark-okr-create.md) |
+| 编辑内容/备注/截止时间 | 用 `+patch` | [`patch`](references/lark-okr-patch.md) |
+| 修改 OKR 分数 | 只有用户明确说“分数”“评分”“打分”“score”时才用 `+patch --score`；分数不是进度/完成度 | [`patch`](references/lark-okr-patch.md) |
+| 调整顺序或权重 | 用 `+reorder` / `+weight`                                                                      | [`reorder`](references/lark-okr-reorder.md), [`weight`](references/lark-okr-weight.md) |
+| 更新数字进度/完成度 | 百分比或不带单位数字用 `+indicator-update`；需要改单位/目标值时查指标后用 `indicators patch`                            | [`indicator-update`](references/lark-okr-indicator-update.md), [`indicators`](references/lark-okr-indicators.md) |
+| 写文字进展 | 用 `+progress-create`；如果文本和数字都有，文本记录不要带 `--progress-percent` 和 `--progress-status`，数字进度单独改量化指标 | [`progress-create`](references/lark-okr-progress-create.md), [`progress-list`](references/lark-okr-progress-list.md), [`progress-update`](references/lark-okr-progress-update.md) |
+| 对齐目标 | 直接按对齐关系工作流处理                                                                                  | [`alignments`](references/lark-okr-alignments.md) |
+
+获取当前用户用 `contact +get-user`；按姓名/邮箱查他人用 `contact +search-user`，拿到 `open_id` 后再查 OKR。
+
+```bash
+lark-cli contact +search-user --query "张三" --has-chatted --as user
+```
+
+最常用 OKR 命令示例：
+
+```bash
+# 查用户周期，再用周期 ID 查详情
+lark-cli okr +cycle-list --user-id "ou_xxx" --as user
+lark-cli okr +cycle-detail --cycle-id 7000000000000000001 --as user
+
+# 批量创建 Objective/KR
+lark-cli okr +batch-create \
+  --cycle-id 7000000000000000001 \
+  --input '[{"text":"提升产品用户体验","krs":[{"text":"核心流程满意度达到 4.8 分"}]}]' \
+  --as user
+
+# 更新数字进度/完成度
+lark-cli okr +indicator-update \
+  --level key-result \
+  --id 7000000000000000003 \
+  --value 75 \
+  --as user
+```
+
+分数和进度不要混用：用户说“进度”“完成度”“当前做到 75%”时，通常是在改量化指标或写进展记录，不是在改 `score`。只有明确要求修改 OKR 分数/评分/打分时，才使用 [`+patch --score`](references/lark-okr-patch.md)；`score` 取值是 0-1，最多一位小数。
+
+进度判断规则：用户说“进度”“完成度”时，先判断是否是量化数字。数字进度通常对应量化指标；不可量化文本对应进展记录。需要修改指标单位时看 [`lark-okr-indicators.md`](references/lark-okr-indicators.md)
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli okr +<verb> [flags]`）。有 Shortcut 的操作优先使用。
 
-| Shortcut                                                       | 说明                       |
-|----------------------------------------------------------------|--------------------------|
-| [`+cycle-list`](references/lark-okr-cycle-list.md)             | 获取特定用户的 OKR 周期列表，可以按时间筛选 |
-| [`+cycle-detail`](references/lark-okr-cycle-detail.md)         | 获取特定 OKR 中所有目标和关键结果的内容   |
-| [`+progress-list`](references/lark-okr-progress-list.md)       | 获取目标或关键结果的所有进展记录列表       |
-| [`+progress-get`](references/lark-okr-progress-get.md)         | 根据 ID 获取单条 OKR 进展记录      |
-| [`+progress-create`](references/lark-okr-progress-create.md)   | 为目标或关键结果创建进展记录           |
-| [`+progress-update`](references/lark-okr-progress-update.md)   | 更新指定 ID 的进展记录内容          |
-| [`+progress-delete`](references/lark-okr-progress-delete.md)   | 删除指定 ID 的进展记录（不可恢复）      |
-| [`+upload-image`](references/lark-okr-image-upload.md)         | 上传图片用于 OKR 进展记录的富文本内容    |
-| [`+batch-create`](references/lark-okr-batch-create.md)         | 批量创建 Objective 和 KR      |
-| [`+reorder`](references/lark-okr-reorder.md)                   | 调整 Objective 或 KR 的顺位    |
-| [`+weight`](references/lark-okr-weight.md)                     | 调整 Objective 或 KR 的权重    |
-| [`+indicator-update`](references/lark-okr-indicator-update.md) | 更新 Objective 或 KR 的指标当前值（简单场景推荐）。更复杂的指标操作见 [量化指标管理](references/lark-okr-indicators.md) |
-| [`+patch`](references/lark-okr-patch.md)                       | 部分更新 Objective 或 KR（content、notes、score、deadline） |
+| Shortcut                                                       | 说明                                                                                |
+|----------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| [`+cycle-list`](references/lark-okr-cycle-list.md)             | 获取特定用户的 OKR 周期列表，可以按时间筛选                                                          |
+| [`+cycle-detail`](references/lark-okr-cycle-detail.md)         | 获取特定 OKR 中所有目标和关键结果的内容                                                            |
+| [`+create`](references/lark-okr-create.md)                     | 创建单个 Objective，或向已有 Objective 新增 KR                                               |
+| [`+progress-list`](references/lark-okr-progress-list.md)       | 获取目标或关键结果的所有进展记录列表                                                                |
+| [`+progress-get`](references/lark-okr-progress-get.md)         | 根据 ID 获取单条 OKR 进展记录                                                               |
+| [`+progress-create`](references/lark-okr-progress-create.md)   | 为目标或关键结果创建进展记录                                                                    |
+| [`+progress-update`](references/lark-okr-progress-update.md)   | 更新指定 ID 的进展记录内容                                                                   |
+| [`+progress-delete`](references/lark-okr-progress-delete.md)   | 删除指定 ID 的进展记录（不可恢复）                                                               |
+| [`+upload-image`](references/lark-okr-image-upload.md)         | 上传图片用于 OKR 进展记录的富文本内容                                                             |
+| [`+batch-create`](references/lark-okr-batch-create.md)         | 批量创建 Objective 和 KR                                                               |
+| [`+reorder`](references/lark-okr-reorder.md)                   | 调整 Objective 或 KR 的顺位                                                             |
+| [`+weight`](references/lark-okr-weight.md)                     | 调整 Objective 或 KR 的权重                                                             |
+| [`+indicator-update`](references/lark-okr-indicator-update.md) | 更新 Objective 或 KR 的当前进度指标。更复杂的量化指标操作见 [量化指标管理](references/lark-okr-indicators.md) |
+| [`+patch`](references/lark-okr-patch.md)                       | 部分更新 Objective 或 KR（content、notes、score、deadline）                                 |
+
+### 创建场景选择
+
+- **单条创建优先用 [`+create`](references/lark-okr-create.md)**：适合创建一个 Objective，或给已有 Objective 增加一个 KR。
+- **批量创建用 [`+batch-create`](references/lark-okr-batch-create.md)**：适合一次创建多个 Objective，并可同时附带多个 KR。
+- 如果你只需要修改已有 Objective / KR 的内容、备注、分数或截止时间，使用 [`+patch`](references/lark-okr-patch.md)。
 
 ## 格式说明
 
@@ -56,18 +108,9 @@ Shortcut 是对常用操作的高级封装（`lark-cli okr +<verb> [flags]`）�
 ### cycles
 
 - `list` — 批量获取用户周期
-- `objectives_position` — 更新用户周期下全部目标的位置
-    - 请求中必须携带对应周期下全部目标的 ID，否则会参数校验失败。以传入的目标ID顺序重新排列目标。
-- `objectives_weight` — 更新用户周期下全部目标的权重
-    - 请求中必须同时修改对应周期下全部目标的权重，且所有权重值的和必须等于 1 ，否则会参数校验失败。例如周期下有 2 个目标时：
-    - 正确指令示例如下：
-      ``` bash
-      lark-cli okr cycles objectives_weight --params '{"cycle_id": "7000000000000000001"}' --data '{"objective_weights": [{"objective_id": "7000000000000000002", "weight": 0.7}, {"objective_id": "7000000000000000003", "weight": 0.3}]}' --as user
-      ```
 
 ### cycle.objectives
 
-- `create` — 创建目标
 - `list` — 批量获取用户周期下的目标
 
 ### indicators
@@ -110,7 +153,6 @@ Shortcut 是对常用操作的高级封装（`lark-cli okr +<verb> [flags]`）�
 
 ### objective.key_results
 
-- `create` — 创建关键结果
 - `list` — 批量获取目标下的关键结果
 
 ## 不在本 skill 范围

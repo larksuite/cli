@@ -64,6 +64,10 @@ func isCurrentActiveCycle(cycle *Cycle, now time.Time) bool {
 	cycleStart := time.UnixMilli(startMs).UTC()
 	cycleEnd := time.UnixMilli(endMs).UTC()
 	nowUTC := now.UTC()
+	// Month cycles only
+	if cycleStart.AddDate(1, 0, -1) == cycleEnd {
+		return false
+	}
 
 	// Check time range: now must be >= start and <= end
 	if nowUTC.Before(cycleStart) || nowUTC.After(cycleEnd) {

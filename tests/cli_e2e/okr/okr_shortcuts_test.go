@@ -18,7 +18,59 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// --- Dry-run E2E tests for +batch-create, +reorder, +weight ---
+// --- Dry-run E2E tests for +create, +batch-create, +reorder, +weight ---
+
+// TestOKR_CreateDryRun_Objective validates +create dry-run for objective creation.
+func TestOKR_CreateDryRun_Objective(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+create",
+			"--level", "objective",
+			"--cycle-id", "123456",
+			"--content", `{"text":"Objective 1","mention":["ou_123"]}`,
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.True(t, strings.Contains(output, "POST"), "dry-run should contain POST method, got: %s", output)
+	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/cycles/123456/objectives"), "dry-run should contain objective API path, got: %s", output)
+	assert.Equal(t, "123456", gjson.Get(output, "data.api.0.params.cycle_id").String(), "dry-run should contain cycle-id query param")
+	assert.Equal(t, "open_id", gjson.Get(output, "data.api.0.params.user_id_type").String(), "dry-run should contain default user-id-type")
+}
+
+// TestOKR_CreateDryRun_KeyResult validates +create dry-run for key-result creation.
+func TestOKR_CreateDryRun_KeyResult(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+create",
+			"--level", "key-result",
+			"--objective-id", "789",
+			"--style", "richtext",
+			"--content", `{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"KR 1"}}]}}]}`,
+			"--user-id-type", "user_id",
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.True(t, strings.Contains(output, "POST"), "dry-run should contain POST method, got: %s", output)
+	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/objectives/789/key_results"), "dry-run should contain key-result API path, got: %s", output)
+	assert.Equal(t, "789", gjson.Get(output, "data.api.0.params.objective_id").String(), "dry-run should contain objective-id query param")
+	assert.Equal(t, "user_id", gjson.Get(output, "data.api.0.params.user_id_type").String(), "dry-run should contain explicit user-id-type")
+}
 
 // TestOKR_BatchCreateDryRun validates +batch-create dry-run output contains expected API paths.
 func TestOKR_BatchCreateDryRun(t *testing.T) {
@@ -383,6 +435,44 @@ func cleanupLiveTest(t *testing.T, created []liveTestCreated) {
 	}
 }
 
+func createLiveObjective(t *testing.T, ctx context.Context, cycleID string, suffix string) liveTestCreated {
+	t.Helper()
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+create",
+			"--level", "objective",
+			"--cycle-id", cycleID,
+			"--content", fmt.Sprintf(`{"text":"E2E Single Objective %s","mention":["ou_test"]}`, suffix),
+		},
+	})
+	require.NoError(t, err, "failed to create live objective")
+	result.AssertExitCode(t, 0)
+
+	objectiveID := gjson.Get(result.Stdout, "data.objective_id").String()
+	require.NotEmpty(t, objectiveID, "objective_id should not be empty")
+
+	return liveTestCreated{ObjectiveID: objectiveID}
+}
+
+func createLiveKeyResult(t *testing.T, ctx context.Context, objectiveID string, suffix string) string {
+	t.Helper()
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+create",
+			"--level", "key-result",
+			"--objective-id", objectiveID,
+			"--content", fmt.Sprintf(`{"text":"E2E Single KR %s","mention":["ou_test"]}`, suffix),
+		},
+	})
+	require.NoError(t, err, "failed to create live key result")
+	result.AssertExitCode(t, 0)
+
+	keyResultID := gjson.Get(result.Stdout, "data.key_result_id").String()
+	require.NotEmpty(t, keyResultID, "key_result_id should not be empty")
+
+	return keyResultID
+}
+
 // TestOKR_BatchCreateLive validates +batch-create with real API calls: create, verify, cleanup.
 func TestOKR_BatchCreateLive(t *testing.T) {
 	clie2e.SkipWithoutUserToken(t)
@@ -430,6 +520,87 @@ func TestOKR_BatchCreateLive(t *testing.T) {
 		}
 	}
 	assert.Equal(t, len(created), foundCount, "all created objectives should be found in cycle detail")
+}
+
+// TestOKR_CreateLive_Objective validates +create objective with real API calls: create, verify, cleanup.
+func TestOKR_CreateLive_Objective(t *testing.T) {
+	clie2e.SkipWithoutUserToken(t)
+	cycleID := getTestCycleID(t)
+	suffix := clie2e.GenerateSuffix()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+
+	created := createLiveObjective(t, ctx, cycleID, suffix)
+	t.Cleanup(func() {
+		cleanupLiveTest(t, []liveTestCreated{created})
+	})
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+cycle-detail",
+			"--cycle-id", cycleID,
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	objectives := gjson.Get(result.Stdout, "data.objectives").Array()
+	found := false
+	for _, obj := range objectives {
+		if obj.Get("id").String() == created.ObjectiveID {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "created objective should be visible in cycle detail")
+}
+
+// TestOKR_CreateLive_KeyResultUnderExistingObjective validates +create key-result under an existing objective.
+func TestOKR_CreateLive_KeyResultUnderExistingObjective(t *testing.T) {
+	clie2e.SkipWithoutUserToken(t)
+	cycleID := getTestCycleID(t)
+	suffix := clie2e.GenerateSuffix()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+
+	created := createLiveObjective(t, ctx, cycleID, suffix)
+	t.Cleanup(func() {
+		cleanupLiveTest(t, []liveTestCreated{created})
+	})
+
+	keyResultID := createLiveKeyResult(t, ctx, created.ObjectiveID, suffix)
+	created.KRIDs = append(created.KRIDs, keyResultID)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+cycle-detail",
+			"--cycle-id", cycleID,
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	objectives := gjson.Get(result.Stdout, "data.objectives").Array()
+	foundObjective := false
+	foundKR := false
+	for _, obj := range objectives {
+		if obj.Get("id").String() != created.ObjectiveID {
+			continue
+		}
+		foundObjective = true
+		for _, kr := range obj.Get("key_results").Array() {
+			if kr.Get("id").String() == keyResultID {
+				foundKR = true
+				break
+			}
+		}
+		break
+	}
+
+	assert.True(t, foundObjective, "created objective should be visible in cycle detail")
+	assert.True(t, foundKR, "created key result should be visible under the created objective")
 }
 
 // TestOKR_ReorderLive validates +reorder with real API calls: create, reorder, verify, cleanup.
