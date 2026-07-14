@@ -18,6 +18,11 @@ workflow_permissions="$(awk '
   in_permissions && /^[^[:space:]]/ { exit }
   in_permissions { print }
 ' "$workflow")"
+workflow_concurrency="$(awk '
+  /^concurrency:/ { in_concurrency = 1; print; next }
+  in_concurrency && /^[^[:space:]]/ { exit }
+  in_concurrency { print }
+' "$workflow")"
 fast_gate_section="$(job_section fast-gate)"
 unit_test_section="$(job_section unit-test)"
 lint_section="$(awk '
@@ -46,6 +51,16 @@ results_section="$(awk '
   in_job { print }
 ' "$workflow")"
 fork_safe_guard="github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork"
+
+if ! grep -Fq 'group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}' <<<"$workflow_concurrency"; then
+  echo "CI should deduplicate runs for the same pull request without grouping push or manual runs" >&2
+  exit 1
+fi
+
+if ! grep -Fq "cancel-in-progress: \${{ github.event_name == 'pull_request' }}" <<<"$workflow_concurrency"; then
+  echo "CI should cancel superseded pull request runs but preserve push and manual runs" >&2
+  exit 1
+fi
 
 for denied_permission in "checks: write" "pull-requests: write" "issues: write"; do
   if grep -Eq "^[[:space:]]*${denied_permission}$" <<<"$workflow_permissions"; then
@@ -212,6 +227,21 @@ fi
 
 if ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$section"; then
   echo "e2e-live should run on push and same-repository pull_request, but skip fork pull_request"
+  exit 1
+fi
+
+if ! grep -Fq "group: lark-cli-e2e-live-shared-bot" <<<"$section"; then
+  echo "e2e-live should serialize access to the shared bot credential and resource pool" >&2
+  exit 1
+fi
+
+if ! grep -Fq "cancel-in-progress: false" <<<"$section"; then
+  echo "e2e-live should queue shared-resource runs instead of cancelling an active live test" >&2
+  exit 1
+fi
+
+if ! grep -Fq "queue: max" <<<"$section"; then
+  echo "e2e-live should preserve queued runs instead of replacing an existing pending run" >&2
   exit 1
 fi
 

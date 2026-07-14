@@ -8,6 +8,12 @@ on:
     types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
+# PR metadata edits can retrigger full CI for the same head. Keep only the
+# newest run for a pull request; push and manual runs use a unique run ID.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
   actions: read
@@ -344,6 +350,11 @@ jobs:
     needs: [unit-test, lint, script-test, deterministic-gate]
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
+    # All live runs share one bot credential and remote resource pool.
+    concurrency:
+      group: lark-cli-e2e-live-shared-bot
+      cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       checks: write
