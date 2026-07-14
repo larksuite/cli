@@ -1,0 +1,41 @@
+skills/lark-slides/references/lark-slides-xml-presentations-get.md
+  s_48954ea86ef5b4::t_af2f84d44e90fa 98
+skills/lark-slides/references/lark-slides-xml-presentation-slide-delete.md
+  s_48954ea86ef5b4::t_046301cf50ff2b 124
+skills/lark-slides/references/validation-checklist.md
+  s_48954ea86ef5b4::t_28eb4851beeed5 47
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_48954ea86ef5b4::t_ebb6282b6dd9a9 140-171
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_48954ea86ef5b4::t_1a4769fb4c6ae3 12,22,408-465,883,886
+skills/lark-slides/references/lark-slides-create.md
+  s_48954ea86ef5b4::t_7d27a319b87a4e 8-14
+  s_48954ea86ef5b4::t_45f0d8402649fd 15
+  s_d3645403e5b3d4::t_7effbc44ca08b6 35-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7d67a41280157390aecb9c9d358451088eedc89a",
+  "prompts": {},
+  "sessions": {
+    "s_48954ea86ef5b4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6048-fc52-7942-85be-f8effdf5b813",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_d3645403e5b3d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6065-aa39-7f42-b86c-c2fa6ba029da",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

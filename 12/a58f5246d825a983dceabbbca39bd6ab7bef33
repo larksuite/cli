@@ -1,0 +1,45 @@
+skills/lark-slides/references/troubleshooting.md
+  s_16034cbdb3886c::t_cad16c92cfaab2 23
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_16034cbdb3886c::t_0b333d69912b14 22,38,40,181-202,232-235,265-266,288-376,823-824,830,832,840-841
+skills/lark-slides/references/validation-checklist.md
+  s_16034cbdb3886c::t_5c65c92242a7b8 40
+  s_16034cbdb3886c::t_aed8ba02a55fe8 50
+  s_16034cbdb3886c::t_358e9b266619ec 51-52
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_16034cbdb3886c::t_6bbab81593d630 224-228
+  s_5550181f467ac4::t_281b69772cc616 239
+  s_16034cbdb3886c::t_98bb04bd46df26 220-221,223,229-232,234-235,269-371
+  s_16034cbdb3886c::t_0ce0958716930a 233
+  s_16034cbdb3886c::t_e1e56b756ac54d 236-238
+  s_16034cbdb3886c::t_986a94fe7bbc8a 222
+  s_16034cbdb3886c::t_52c738ccc74cc8 219
+skills/lark-slides/references/xml-schema-quick-ref.md
+  s_5550181f467ac4::t_dfbbd3d2534af9 209-213,216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "12a58f5246d825a983dceabbbca39bd6ab7bef33",
+  "prompts": {},
+  "sessions": {
+    "s_16034cbdb3886c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f59b5-4d28-7080-adca-c167b0630b9a",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_5550181f467ac4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5bb8-33f4-7af1-80c4-766f976a526c",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

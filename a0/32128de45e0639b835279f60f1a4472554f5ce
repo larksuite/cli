@@ -1,0 +1,29 @@
+skills/lark-slides/SKILL.md
+  s_a5cd30704b7909::t_dcf9e9592ecc8e 30
+skills/lark-slides/references/iconpark.md
+  s_a5cd30704b7909::t_07243b27057997 28
+skills/lark-slides/references/validation-checklist.md
+  s_a5cd30704b7909::t_10dc6a119c34ac 39,49-51
+skills/lark-slides/references/xml-schema-quick-ref.md
+  s_a5cd30704b7909::t_f400fe65ea2105 142-146,149
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_a5cd30704b7909::t_4bd7b8d63deb22 22,38,40,138-148,182-203,233-236,266-267,289-377,824-825,831,833,841-842
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a032128de45e0639b835279f60f1a4472554f5ce",
+  "prompts": {},
+  "sessions": {
+    "s_a5cd30704b7909": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5f97-6265-7e42-9481-0da014522d0d",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

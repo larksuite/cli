@@ -1,0 +1,23 @@
+skills/lark-slides/references/lark-slides-xml-presentation-slide-delete.md
+  s_e9fe95939dafb6::t_44f09134ca68d0 124
+skills/lark-slides/references/lark-slides-xml-presentations-get.md
+  s_e9fe95939dafb6::t_60ac5e5f1906d9 98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3e12990f2b7594fb9bddbe35ea33bd66b261a24e",
+  "prompts": {},
+  "sessions": {
+    "s_e9fe95939dafb6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f600a-320c-75c1-bf2b-ecd3f065c32a",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

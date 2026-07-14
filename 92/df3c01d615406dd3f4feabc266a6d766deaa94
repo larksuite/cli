@@ -1,0 +1,43 @@
+cmd/config/bind_test.go
+  s_5d82dda82e0776::t_1bf72eeecc2b2a 283
+cmd/config/config_test.go
+  s_5d82dda82e0776::t_375257e4be1fe5 80,389,649
+cmd/config/init.go
+  s_5d82dda82e0776::t_57b822346c56c1 37,90,495-496,499-500,503-504
+cmd/config/init_auth_method_test.go
+  s_5d82dda82e0776::t_b051c574beb2a0 224-225,275,282-283,314,321-322,350,359
+cmd/config/init_interactive.go
+  s_5d82dda82e0776::t_9d9f6bfff1189f 184,198,204,209,283,408
+cmd/config/init_probe_test.go
+  s_5d82dda82e0776::t_efbdd7c3715daa 62,263
+cmd/doctor/doctor.go
+  s_5d82dda82e0776::t_06ea7795e986af 202
+internal/auth/client_auth_test.go
+  s_5d82dda82e0776::t_43e403c85400a7 59,183,187
+internal/auth/device_flow_test.go
+  s_5d82dda82e0776::t_96b04707265397 88,158,270
+internal/core/config.go
+  s_5d82dda82e0776::t_48382080f98774 43-44,288
+internal/credential/tat_fetch_test.go
+  s_5d82dda82e0776::t_50a85bd9c091b0 350,357-358
+internal/keysigner/signer_keychain_darwin.go
+  s_5d82dda82e0776::t_20de470e23b2c6 37,387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "92df3c01d615406dd3f4feabc266a6d766deaa94",
+  "prompts": {},
+  "sessions": {
+    "s_5d82dda82e0776": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f50cf-b822-79a3-b209-2b7a52788a72",
+        "model": "unknown"
+      },
+      "human_author": "AlbertSun <sunxingjian@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
