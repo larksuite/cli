@@ -71,8 +71,8 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 		if !strings.Contains(pe.Hint, "app developer") {
 			t.Fatalf("Hint = %q, want app developer guidance", pe.Hint)
 		}
-		if pe.ConsoleURL != "" {
-			t.Fatalf("ConsoleURL = %q, want empty because the scope hint is sufficient", pe.ConsoleURL)
+		if pe.ConsoleURL == "" {
+			t.Fatal("ConsoleURL is empty, want upstream developer-console URL preserved")
 		}
 	case output.LarkErrUserScopeInsufficient:
 		if !strings.Contains(pe.Hint, "auth login --scope") {
@@ -130,6 +130,9 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 			}
 			if pe.Message != original.Message {
 				t.Fatalf("Message = %q, want original %q", pe.Message, original.Message)
+			}
+			if pe.ConsoleURL != original.ConsoleURL {
+				t.Fatalf("ConsoleURL = %q, want original %q", pe.ConsoleURL, original.ConsoleURL)
 			}
 			assertMeetingQueryPermissionError(t, got, tc.identity, tc.code)
 		})

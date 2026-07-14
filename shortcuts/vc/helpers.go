@@ -34,7 +34,6 @@ func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err er
 	case runtime.As() == core.AsBot && permissionErr.Code == output.LarkErrAppScopeNotEnabled:
 		mapped := *permissionErr
 		mapped.Cause = err
-		mapped.ConsoleURL = ""
 		return mapped.WithHint("ask the app developer to enable scope %s", meetingQueryBotScope)
 	default:
 		return err

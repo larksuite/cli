@@ -695,8 +695,8 @@ func TestMeetingEvents_Execute_NormalizesMeetingScopeError(t *testing.T) {
 	if !strings.Contains(permissionErr.Hint, meetingQueryBotScope) {
 		t.Fatalf("Hint = %q, want bot scope %q", permissionErr.Hint, meetingQueryBotScope)
 	}
-	if permissionErr.ConsoleURL != "" {
-		t.Fatalf("ConsoleURL = %q, want empty", permissionErr.ConsoleURL)
+	if permissionErr.ConsoleURL == "" {
+		t.Fatal("ConsoleURL is empty, want developer-console URL preserved")
 	}
 }
 
