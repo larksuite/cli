@@ -62,8 +62,8 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 		t.Fatalf("Identity = %q, want %q", pe.Identity, identity)
 	}
 
-	// missing_scopes is server/system ground truth: neither compatible scope is
-	// present. The human hint separately recommends one recovery action.
+	// missing_scopes preserves the upstream values; the hint recommends one
+	// identity-appropriate recovery action.
 	wantScope := meetingQueryUserScope
 	if identity.IsBot() {
 		wantScope = meetingQueryBotScope
@@ -81,9 +81,6 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 	case output.LarkErrAppScopeNotEnabled:
 		if strings.Contains(pe.Hint, "auth login") {
 			t.Fatalf("Hint = %q, app-scope error must not recommend user login", pe.Hint)
-		}
-		if !strings.Contains(strings.ToLower(pe.Hint), "for "+string(identity)+" identity") {
-			t.Fatalf("Hint = %q, want current identity context", pe.Hint)
 		}
 		if !strings.Contains(pe.Hint, "app developer") {
 			t.Fatalf("Hint = %q, want app developer guidance", pe.Hint)
@@ -103,7 +100,7 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 	}
 }
 
-func TestNormalizeMeetingQueryPermissionError_RecommendsOneCompatibleScope(t *testing.T) {
+func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity(t *testing.T) {
 	cases := []struct {
 		name     string
 		identity core.Identity
@@ -173,6 +170,13 @@ func TestNormalizeMeetingQueryPermissionError_PassesThroughNonMatchingErrors(t *
 			name:     "bot_with_user_scope_error",
 			identity: core.AsBot,
 			err: errs.NewPermissionError(errs.SubtypeMissingScope, "user scope error").
+				WithCode(output.LarkErrUserScopeInsufficient).
+				WithMissingScopes(meetingQueryAnyScopes...),
+		},
+		{
+			name:     "auto_with_user_scope_error",
+			identity: core.AsAuto,
+			err: errs.NewPermissionError(errs.SubtypeMissingScope, "auto identity").
 				WithCode(output.LarkErrUserScopeInsufficient).
 				WithMissingScopes(meetingQueryAnyScopes...),
 		},

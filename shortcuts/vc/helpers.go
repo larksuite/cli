@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -32,9 +33,9 @@ func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err er
 	if !errors.As(err, &permissionErr) || permissionErr == nil {
 		return err
 	}
-	isBot := runtime.As().IsBot()
-	isUserScopeError := !isBot && permissionErr.Code == output.LarkErrUserScopeInsufficient
-	isBotScopeError := isBot && permissionErr.Code == output.LarkErrAppScopeNotEnabled
+	identity := runtime.As()
+	isUserScopeError := identity == core.AsUser && permissionErr.Code == output.LarkErrUserScopeInsufficient
+	isBotScopeError := identity == core.AsBot && permissionErr.Code == output.LarkErrAppScopeNotEnabled
 	if !isUserScopeError && !isBotScopeError {
 		return err
 	}
@@ -44,21 +45,12 @@ func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err er
 
 	mapped := *permissionErr
 	mapped.Cause = err
-	return addMeetingQueryRecovery(runtime, &mapped)
-}
-
-func addMeetingQueryRecovery(runtime *common.RuntimeContext, permissionErr *errs.PermissionError) error {
-	isBot := runtime.As().IsBot()
-	recommended := meetingQueryUserScope
-	if isBot {
-		recommended = meetingQueryBotScope
+	mapped.Identity = string(identity)
+	mapped.ConsoleURL = ""
+	if isUserScopeError {
+		return mapped.WithHint("for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", meetingQueryUserScope)
 	}
-	permissionErr.Identity = string(runtime.As())
-	permissionErr.ConsoleURL = ""
-	if isBot {
-		return permissionErr.WithHint("for %s identity, ask the app developer to enable scope %s", runtime.As(), recommended)
-	}
-	return permissionErr.WithHint("for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
+	return mapped.WithHint("ask the app developer to enable scope %s", meetingQueryBotScope)
 }
 
 func containsAllScopes(granted []string, required []string) bool {

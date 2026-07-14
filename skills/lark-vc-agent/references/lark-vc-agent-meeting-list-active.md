@@ -83,7 +83,7 @@ lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
 | 用户身份无权限 / 不可见 | 当前登录用户没有可见的进行中会议，或当前身份无法读取该会议 | 不要反复执行 `auth login`。确认用户是否在会中、是否切错 profile；用户明确要查询应用机器人可见的会议时，再拿目标用户 open_id 执行 `+meeting-list-active --as bot --user-id <user_open_id>` |
 | 应用身份返回空列表 | 没有满足“目标用户在会中且应用机器人也在会中”的当前会 | 先让应用机器人入会，或确认 `user_id` 和会议状态 |
 | `--user-id` 格式错误 | 传入了 internal user_id 或其他非 `ou_...` 值 | 改传目标用户 open_id |
-| 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | 不要执行 `auth login`。若错误同时列出两个兼容 scope，只通过错误中的 `console_url` 或开发者后台申请 `vc:meeting.bot.join:write`；再检查应用发布/安装和权限可访问的数据范围，均正确仍失败时用灰度流程兜底 |
+| 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | 不要执行 `auth login`。请应用开发者开通 `vc:meeting.bot.join:write`；再检查应用发布/安装和权限可访问的数据范围，均正确仍失败时用灰度流程兜底 |
 
 ## 参考
 
