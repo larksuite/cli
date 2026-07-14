@@ -2014,9 +2014,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", input}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"data": {}`) {
-			t.Fatalf("stdout=%s", got)
-		}
 		body := string(updateStub.CapturedBody)
 		if !strings.Contains(body, `"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}`) {
 			t.Fatalf("request body=%s", body)

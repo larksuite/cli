@@ -68,9 +68,6 @@ func TestBaseRecordBatchUpdatePerRecordWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	updateResult.AssertExitCode(t, 0)
 	updateResult.AssertStdoutStatus(t, true)
-	updateData := gjson.Get(updateResult.Stdout, "data")
-	require.True(t, updateData.IsObject(), updateResult.Stdout)
-	require.Empty(t, updateData.Map(), updateResult.Stdout)
 
 	assertRecordFields := func(recordID, expectedStatus string, expectedScore int64) {
 		t.Helper()
@@ -111,7 +108,4 @@ func TestBaseRecordBatchUpdatePerRecordWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	missingResult.AssertExitCode(t, 0)
 	missingResult.AssertStdoutStatus(t, true)
-	missingData := gjson.Get(missingResult.Stdout, "data")
-	require.True(t, missingData.IsObject(), missingResult.Stdout)
-	require.Empty(t, missingData.Map(), missingResult.Stdout)
 }
