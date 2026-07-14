@@ -784,6 +784,20 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			},
 		},
 		{
+			name:     "form question create visible_rule",
+			shortcut: BaseFormQuestionsCreate,
+			wantHelp: []string{
+				`"visible_rule"(display condition; same shape as view filter`,
+			},
+		},
+		{
+			name:     "form question update visible_rule",
+			shortcut: BaseFormQuestionsUpdate,
+			wantHelp: []string{
+				`"visible_rule"(display condition; same shape as view filter`,
+			},
+		},
+		{
 			name:     "record search json",
 			shortcut: BaseRecordSearch,
 			wantHelp: []string{
@@ -1025,6 +1039,39 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 	}
 	if strings.Contains(tips, "--reformat-existing-records") {
 		t.Fatalf("+field-update tips must not ask agents to pass --reformat-existing-records:\n%s", tips)
+	}
+}
+
+func TestBaseFormQuestionsUpdateHelpGuidesFullOverwrite(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseFormQuestionsUpdate.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	help := cmd.Flags().FlagUsages()
+	wantHelp := []string{
+		"Update uses full question overwrite semantics",
+		"run +form-questions-list first",
+		"include existing values you want to keep",
+		"pass null or omit to clear",
+	}
+	for _, want := range wantHelp {
+		if !strings.Contains(help, want) {
+			t.Fatalf("flag help missing %q:\n%s", want, help)
+		}
+	}
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	wantTips := []string{
+		"full question overwrite semantics, not a patch",
+		"Run +form-questions-list first",
+		"title/description/required/option_display_mode/visible_rule",
+		"Omitted fields reset to defaults",
+		"empty strings, null, and empty arrays are written as empty/clear",
+	}
+	for _, want := range wantTips {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
 	}
 }
 

@@ -4,142 +4,13 @@
 
 更新视图筛选配置。
 
-## 1. 顶层规则
+## 1. filter 结构
 
-- `--json` 必须是 JSON 对象。
-- 顶层结构是 `{logic?, conditions?}`。
-- `logic` 默认 `and`；推荐只用 canonical 值 `and` / `or`。
-- `conditions` 默认空数组。
-- 每条条件写成 tuple：`[field, operator, value?]`。
-- `empty` / `non_empty` 可写成 2 项：`[field, "empty"]`、`[field, "non_empty"]`。
+`--json` 就是一个 filter 条件对象，结构见公共协议 SSOT [lark-base-filter-condition.md](lark-base-filter-condition.md)，即 `{logic?, conditions?}`。此处 `conditions` 中的 `field` 引用**数据表字段名或字段 id**。
+
 - 支持 `filter` 的视图类型：`grid`、`kanban`、`gallery`、`calendar`、`gantt`。
 
-## 2. operator
-
-可用 operator：
-- `==`
-- `!=`
-- `>`
-- `>=`
-- `<`
-- `<=`
-- `intersects`
-- `disjoint`
-- `empty`
-- `non_empty`
-
-## 3. value 写法
-
-### `text`
-
-用字符串：
-
-```json
-["标题", "intersects", "发布"]
-```
-
-### `location`
-
-location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度筛选；优先使用 `intersects` 做包含匹配，例如查深圳：
-
-```json
-["位置", "intersects", "深圳"]
-```
-
-不推荐写 `["位置", "==", "深圳"]` 这类精确匹配，除非确保筛选值与完整 `full_address` 完全一致。
-
-### `number` / `auto_number`
-
-用数字：
-
-```json
-["工时", ">=", 3.5]
-```
-
-### `select`
-
-用选项名数组：
-
-```json
-["状态", "intersects", ["Doing", "Blocked"]]
-```
-
-### `user` / `created_by` / `updated_by`
-
-用对象数组：
-
-> **人员筛选：不要猜 ID。** 不知道 `open_id` 时，先用 `lark-contact` 查 id：`lark-cli contact +search-user --query "<姓名/邮箱/手机号>" --as user`。
-
-```json
-["负责人", "intersects", [{ "id": "ou_xxx" }]]
-```
-
-### `group_chat`
-
-用对象数组：
-
-> **群组筛选：不要猜 ID。** 不知道 `chat_id` 时，先用 `lark-im` 搜群：`lark-cli im +chat-search --query "<群名关键词>" --as user`；取结果里的 `oc_xxx`。
-
-```json
-["负责群", "intersects", [{ "id": "oc_xxx" }]]
-```
-
-### `link`
-
-用记录 id 对象数组：
-
-```json
-["关联任务", "intersects", [{ "id": "rec_xxx" }]]
-```
-
-### `checkbox`
-
-用布尔值：
-
-```json
-["完成", "==", true]
-```
-
-### `datetime` / `created_at` / `updated_at`
-
-用相对时间关键字或 `ExactDate(...)`：
-
-```json
-["截止时间", "==", "ExactDate(2026-01-01)"]
-```
-
-```json
-["截止时间", "==", "ExactDate(2026-01-01 11:30)"]
-```
-
-```json
-["截止时间", "==", "Today"]
-```
-
-可用关键字：
-- `Today`
-- `Yesterday`
-- `Tomorrow`
-
-### `formula` / `lookup`
-
-- 筛选值类型由字段计算结果类型动态决定。
-- 拿不准时，先把 `value` 当作单个字符串填入做一次尝试。
-- 如果报错，再按错误提示把 `value` 改成对应类型。
-
-字符串示例：
-
-```json
-["风险说明", "intersects", "高风险"]
-```
-
-数字示例：
-
-```json
-["汇总分", ">=", 80]
-```
-
-## 4. 推荐命令
+## 2. 推荐命令
 
 ```bash
 lark-cli base +view-set-filter \
@@ -149,7 +20,7 @@ lark-cli base +view-set-filter \
   --json '{"logic":"and","conditions":[["状态","intersects",["Doing"]],["负责人","intersects",[{"id":"ou_xxx"}]],["截止时间","empty"]]}'
 ```
 
-## 5. JSON 写法
+## 3. JSON 写法
 
 ```json
 {
@@ -170,14 +41,16 @@ lark-cli base +view-set-filter \
 }
 ```
 
-## 6. 使用建议
+完整的 operator 列表与各字段类型的 value 写法（`text` / `number` / `select` / `user` / `datetime` / `formula` / `lookup` 等），见 [lark-base-filter-condition.md](lark-base-filter-condition.md)。
+
+## 4. 使用建议
 
 - 先读取当前筛选配置，理解现有 `logic` 和 `conditions` 的组合关系；只替换用户要求变更的条件，未提到的条件默认保留。
 - 优先传字段 id，不要依赖字段名。
 - 拿不准字段 type 或真实取值时，先用 `+field-list` / `+record-list` 确认，再按对应字段类型的 value 写法构造条件；别按字段名猜 type、凭印象猜枚举取值。
 - 需要清空全部筛选时，直接传 `{"conditions":[]}`。
 
-## 7. 易错点
+## 5. 易错点
 
 - 本 tuple DSL 由 `+view-set-filter` 与 `+record-list` / `+record-search` 的 `--filter-json` 共用；不要写成 `+data-query` 的对象风格 `{"field_name":...,"operator":...}`（会报校验失败）。
 - 标量类字段（`text` / `number` / `datetime` 等）的 value 用标量、别包成数组（各类型详见 value 写法一节）。
@@ -186,6 +59,7 @@ lark-cli base +view-set-filter \
 - 日期条件稳定写法用 `ExactDate(...)` 或 `Today` / `Yesterday` / `Tomorrow`。
 - `formula` / `lookup` 的 value 形状不固定；拿不准时先读当前 filter 或字段定义，或根据错误提示修正类型。
 
-## 8. 参考
+## 6. 参考
 
+- [lark-base-filter-condition.md](lark-base-filter-condition.md)：filter/visible_rule 条件结构公共协议 SSOT
 - [lookup-field-guide.md](lookup-field-guide.md)

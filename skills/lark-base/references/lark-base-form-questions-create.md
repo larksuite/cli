@@ -19,10 +19,7 @@ lark-cli base +form-questions-create \
   --base-token <base_token> \
   --table-id <table_id> \
   --form-id <form_id> \
-  --questions '[
-    {"type":"text","title":"您的姓名是？","required":true},
-    {"type":"text","title":"您的联系方式是？","required":false}
-  ]'
+  --questions '[{"type":"text","title":"您的姓名是？","required":true},{"type":"text","title":"您的联系方式是？","required":false}]'
 
 # 添加单选题（带选项）
 lark-cli base +form-questions-create \
@@ -50,6 +47,13 @@ lark-cli base +form-questions-create \
   --table-id <table_id> \
   --form-id <form_id> \
   --questions '[{"type":"text","title":"反馈建议","description":"更多详情请查看[帮助文档](https://example.com/help)"}]'  
+
+# 添加带显隐条件（visible_rule）的问题：当「是否需要发票」选择「是」时才显示「发票抬头」
+lark-cli base +form-questions-create \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id> \
+  --questions '[{"type":"select","title":"是否需要发票","required":true,"options":[{"name":"是","hue":"Blue"},{"name":"否","hue":"Gray"}]},{"type":"text","title":"发票抬头","visible_rule":{"logic":"and","conditions":[["是否需要发票","==","是"]]}}]'
 ```
 
 ## 参数
@@ -78,6 +82,7 @@ lark-cli base +form-questions-create \
 | `multiple`            | 否 | 是否多选（`select`/`user` 类型有效，bool） |
 | `options`             | 否 | 选项列表（仅 `select` 有效）：`[{"name":"选项1","hue":"Blue"}]`，hue 可选：`Red`/`Orange`/`Yellow`/`Green`/`Blue`/`Purple`/`Gray` |
 | `style`               | 否 | 字段样式配置（见下方说明） |
+| `visible_rule`        | 否 | 题目显隐条件（见下方「`visible_rule` 显隐条件」） |
 
 ### `style` 字段说明
 
@@ -87,6 +92,30 @@ lark-cli base +form-questions-create \
 | `number` | `{"type":"plain","precision":2}` | precision 为小数位数 |
 | `number`（评分） | `{"type":"rating","icon":"star","min":1,"max":5}` | icon 可选：`star`/`heart`/`thumbsup`/`fire`/`smile`/`lightning`/`flower`/`number` |
 | `datetime` | `{"format":"yyyy/MM/dd"}` | format 可选：`yyyy/MM/dd`、`yyyy/MM/dd HH:mm`、`MM-dd`、`MM/dd/yyyy`、`dd/MM/yyyy` |
+
+### `visible_rule` 显隐条件
+
+> **仅当用户明确要求为题目设置显隐条件（显示/隐藏逻辑）时，才需要读下面的结构说明；否则忽略本节。**
+
+`visible_rule` 控制题目在表单中的显示/隐藏：当条件满足时题目显示，不满足时隐藏；不传或 `conditions` 为空数组则题目始终显示。
+
+- **结构与视图筛选 `filter` 完全一致**，即 `{logic?, conditions?}`，共用同一套公共协议。
+- 与视图 `filter` 唯一的区别：`conditions` 中的 `field` 引用的是**同一表单内其他题目的题目名称或题目 ID**（推荐用题目 ID 以避免重名歧义），而不是数据表字段。
+- **只能引用前序题目**：条件只能引用排在当前题目之前的题目——创建时按 `questions` 数组顺序判定（可引用同批次更靠前的新题目或表单中已有题目），不支持循环引用。
+- 引用的题目必须真实存在，否则会报错。
+- 列出题目（`+form-questions-list`）会在每个题目对象中**原样返回** `visible_rule`；未设置显隐条件的题目返回 `null` 或 `conditions` 为空数组。
+
+```json
+{
+  "logic": "and",
+  "conditions": [
+    ["是否需要发票", "==", "是"],
+    ["报销金额", ">=", 1000]
+  ]
+}
+```
+
+详细的 `visible_rule` 结构（顶层规则、operator 列表、各题目类型的 value 写法）请阅读 [lark-base-filter-condition.md](lark-base-filter-condition.md)。
 
 ## 输出格式
 
@@ -115,4 +144,5 @@ lark-cli base +form-questions-create \
 ## 参考
 
 - [lark-base](../SKILL.md) — 多维表格全部命令
+- [lark-base-filter-condition.md](lark-base-filter-condition.md) — `visible_rule` / `filter` 条件结构公共协议
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

@@ -12,6 +12,7 @@
 - TestBaseRecordBatchUpdatePerRecordDryRun: proves `+record-batch-update` preserves the per-record `update_records` request shape.
 - TestBaseRecordBatchUpdatePerRecordWorkflow: creates two records, updates different field types in one request, asserts the minimal response contract, reads both records back, verifies a missing record ID is not prevalidated, and cleans up the temporary Base.
 - TestBase_RoleWorkflow: proves `+advperm-enable`, `+role-create`, `+role-list`, `+role-get`, and `+role-update`; key `t.Run(...)` proof points are `list as bot`, `get as bot`, and `update as bot`.
+- TestBaseFormQuestionsCreateVisibleRuleDryRun / TestBaseFormQuestionsUpdateVisibleRuleDryRun: prove `+form-questions-create` / `+form-questions-update` dry-run request shape and that the optional `visible_rule` display condition is transcribed verbatim into the request body.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
 - Blocked area: dashboard, field, most record operations, form, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
 
@@ -51,10 +52,10 @@
 | ✕ | base +form-delete | shortcut |  | none | form workflows not covered |
 | ✕ | base +form-get | shortcut |  | none | form workflows not covered |
 | ✕ | base +form-list | shortcut |  | none | form workflows not covered |
-| ✕ | base +form-questions-create | shortcut |  | none | form workflows not covered |
+| ✓ | base +form-questions-create | shortcut | TestBaseFormQuestionsCreateVisibleRuleDryRun | questions[].visible_rule | dry-run: request shape + visible_rule body passthrough |
 | ✕ | base +form-questions-delete | shortcut |  | none | form workflows not covered |
 | ✕ | base +form-questions-list | shortcut |  | none | form workflows not covered |
-| ✕ | base +form-questions-update | shortcut |  | none | form workflows not covered |
+| ✓ | base +form-questions-update | shortcut | TestBaseFormQuestionsUpdateVisibleRuleDryRun | questions[].visible_rule | dry-run: request shape + visible_rule body passthrough |
 | ✕ | base +form-update | shortcut |  | none | form workflows not covered |
 | ✓ | base +record-batch-create | shortcut | base_record_batch_update_workflow_test.go::TestBaseRecordBatchUpdatePerRecordWorkflow | `--base-token`; `--table-id`; `--json.create_records` | seeds heterogeneous live workflow records |
 | ✓ | base +record-batch-update | shortcut | base_record_batch_update_dryrun_test.go::TestBaseRecordBatchUpdatePerRecordDryRun; base_record_batch_update_workflow_test.go::TestBaseRecordBatchUpdatePerRecordWorkflow | `--base-token`; `--table-id`; `--json.update_records`; dry-run + live | heterogeneous select/number update with write-back verification |

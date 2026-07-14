@@ -57,12 +57,12 @@ metadata:
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
 | 附件字段 | `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` | 附件不要伪造成普通 CellValue；上传走本地文件，下载/删除按 file token 或字段定位 |
 | 删除记录 / 分享记录链接 / 历史 | `+record-delete` / `+record-share-link-create` / `+record-history-list` | 删除前确认 record；分享链接最多 100 条；历史读 [lark-base-record-history-list.md](references/lark-base-record-history-list.md)，只查单条记录，不做整表审计 |
-| 管理视图 | `+view-*` | `+view-set-filter` 读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)；其余配置先 get 现状，再按返回结构更新 |
+| 管理视图 | `+view-*` | `+view-set-filter` 读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)（filter 条件结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md)）；其余配置先 get 现状，再按返回结构更新 |
 | 一次性聚合统计 | `+data-query` | 必读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) 和入口 [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md)；完整 DSL 再读 [lark-base-data-query.md](references/lark-base-data-query.md) |
 | 公式字段 | `+field-create/update --json '{"type":"formula",...}'` | 必读 [formula-field-guide.md](references/formula-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
 | Lookup 字段 | `+field-create/update --json '{"type":"lookup",...}'` | 必读 [lookup-field-guide.md](references/lookup-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
 | 表单提交 | `+form-submit` | 先读 [lark-base-form-detail.md](references/lark-base-form-detail.md) 获取题目、filter 和附件所需 `base_token`；提交 JSON 读 [lark-base-form-submit.md](references/lark-base-form-submit.md) |
-| 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | 读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md) |
+| 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | 读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)；题目显隐条件 `visible_rule` 结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md) |
 | 其他表单管理 | `+form-list/get/detail/create/update/delete` / `+form-questions-list/delete` | `+form-detail` 读 [lark-base-form-detail.md](references/lark-base-form-detail.md)；删除前确认目标表单 |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取图表计算结果用 `+dashboard-block-get-data` |
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
@@ -116,6 +116,7 @@ metadata:
 ## 表单与视图细节
 
 - `+form-submit` 是高风险写操作，必须带 `--yes` 确认；调用前必须先跑 `+form-detail`，读取 `questions[].type`、`required`、`filter` 和附件场景需要的 `base_token`；不要填写被 filter 隐藏的问题。
+- `+form-questions-update` 是题目配置全量覆盖，不是 patch；未传字段会回落默认值，传空字符串 / `null` / 空数组会直接写入空或清空。更新前先 `+form-questions-list` 读取当前题目，把要保留的 `title` / `description` / `required` / `option_display_mode` / `visible_rule` 等字段带回请求。
 - 表单附件不要写进 `fields`，放在 `--json.attachments`；提交附件时必须同时传表单所属 Base 的 `--base-token`。
 - `+view-set-filter` 是唯一保留的 view reference；sort/group/card/timebar/visible-fields 这类配置先用对应 get 命令读现状，保留未修改字段，只替换用户要求变更的配置。
 - 视图适合持久化、共享和 UI 复用；一次性筛选/排序可先用 `+record-list` / `+record-search` 的 filter/sort 验证结果，再按需要沉淀为持久视图。
@@ -146,13 +147,14 @@ metadata:
 ## 保留 Reference
 
 - [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md)：查询/统计/全局结论的选路 SOP
-- [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md) / [lark-base-data-query.md](references/lark-base-data-query.md)：聚合查询入口 fewshot 与 DSL SSOT
+- [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md) / [lark-base-data-query.md](references/lark-base-data-query.md)：聚合查询入口 fewshot 与 DSL SSOT；`+data-query` 的 `filters` 结构是独立对象 DSL，不使用公共 tuple filter 协议
 - [lark-base-cell-value.md](references/lark-base-cell-value.md)：记录 CellValue 构造
 - [lark-base-field-json.md](references/lark-base-field-json.md)：字段 JSON 构造
 - [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)：公式与 lookup 字段
 - [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md)：字段创建/更新命令级补充
 - [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) / [lark-base-record-history-list.md](references/lark-base-record-history-list.md)：记录写入 JSON 与历史返回解释
 - [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)：视图筛选 JSON
+- [lark-base-filter-condition.md](references/lark-base-filter-condition.md)：视图 filter、记录 `--filter-json`、表单 `visible_rule` 的 tuple 条件结构公共协议 SSOT；不适用于 `+data-query`
 - [lark-base-form-detail.md](references/lark-base-form-detail.md) / [lark-base-form-submit.md](references/lark-base-form-submit.md) / [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)：表单详情、提交和复杂 JSON
 - [lark-base-dashboard.md](references/lark-base-dashboard.md) / [dashboard-block-data-config.md](references/dashboard-block-data-config.md) / [lark-base-dashboard-block-get-data.md](references/lark-base-dashboard-block-get-data.md)：仪表盘、组件配置与图表结果协议
 - [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) / [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)：workflow 入口与 steps JSON SSOT
