@@ -1,0 +1,21 @@
+go.sum
+  s_64bcc2f29a4ce4::t_40ea543fe52c32 72-73,75-76,113,116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ee6d80aa6214493be2c8d64073a99e55ca007c02",
+  "prompts": {},
+  "sessions": {
+    "s_64bcc2f29a4ce4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5016-707d-7ce2-ae99-7e59224fb3a6",
+        "model": "unknown"
+      },
+      "human_author": "AlbertSun <sunxingjian@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
