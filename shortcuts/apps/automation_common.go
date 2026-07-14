@@ -13,9 +13,9 @@ import (
 )
 
 // automationBasePath 是触发器公网 OpenAPI 前缀。后端把触发器公网端点统一
-// 到 apps 域 (spark/v1) 下，见后端方案 §接口行为——8 个端点全部位于
+// 到 apps 域 (spark/v1) 下，8 个端点全部位于
 // /open-apis/spark/v1/apps/:app_id/triggers* 下。这里直接复用同包的
-// apiBasePath 而不是自定义前缀，避免误用旧 apaas 域。
+// apiBasePath 而不是自定义前缀，避免误用早期的备选前缀。
 const automationBasePath = apiBasePath
 
 func automationListPath(appID string) string {
@@ -135,7 +135,7 @@ func buildCronCondition(expr, tz string) (map[string]interface{}, error) {
 }
 
 // recordChangeEventSet 是 record-change 触发器合法 event 枚举。
-// 定义来自 PRD 和后端 IDL 一致规定的 4 个值。CLI 本地做白名单校验，
+// 4 个值来自需求定义。CLI 本地做白名单校验，
 // 避免后端 event 字段校验缺失导致的"接受任意字符串→触发器永不触发"问题。
 var recordChangeEventSet = setOf("INSERT", "UPDATE", "UPSERT", "DELETE")
 
@@ -159,7 +159,7 @@ func buildRecordChangeCondition(table, event string, fields []string) (map[strin
 	return cond, nil
 }
 
-// buildWebhookCondition 产出 webhook_condition body。white_ip_list 在后端 IDL
+// buildWebhookCondition 产出 webhook_condition body。white_ip_list 在后端契约
 // 里是 required，因此当 CLI 侧未传 --white-ip-list 时也发一个空数组，避免后端
 // 拒收；显式空数组 `[]` 与"不限来源 IP"语义一致（呼应无鉴权公网回调告警）。
 func buildWebhookCondition(ipList []string) map[string]interface{} {
@@ -230,15 +230,54 @@ func statusBodyFromAction(enable bool) map[string]interface{} {
 	return map[string]interface{}{"status": "disabled"}
 }
 
-// redactWebhookToken 返回触发器详情的副本，把 trigger_condition.token_value 抹成 nil。
-// 内部后端读结构可能解密返回明文 token，脱敏是 CLI/公网层职责，
-// 不修改入参。非 webhook 或无 token_value 时原样返回浅拷贝。
+// redactWebhookToken returns a shallow copy of a trigger view with any
+// trigger_condition.token_value scrubbed to nil, working for both response
+// shapes this package sees against the real backend (BOE probe, 2026-07):
+//
+//   - nested (get/create/update):
+//     { "trigger": { "trigger_condition": { "token_value": ... } } }
+//   - flat (list items):
+//     { "trigger_condition": { "token_value": ... } }
+//
+// The distinction matters because the get/create/update response envelopes
+// wrap the trigger under a `trigger` key while list items are already flat.
+// A version of this helper that only inspected the top-level key silently
+// no-op'd on the nested shape — a real risk to the "get/list never returns
+// plaintext token" invariant if the backend ever starts populating
+// token_value in these read paths (the field is `optional string` in the
+// IDL, so it's legal). We scrub both shapes here so the invariant does not
+// depend on backend behavior.
+//
+// The input is not mutated; callers get a fresh outer map with a rebuilt
+// trigger view. Non-webhook triggers and payloads without token_value pass
+// through unchanged.
 func redactWebhookToken(info map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(info))
 	for k, v := range info {
 		out[k] = v
 	}
-	tc, ok := info["trigger_condition"].(map[string]interface{})
+	// Nested shape: rebuild info["trigger"] with a scrubbed trigger_condition.
+	if wrapped, ok := info["trigger"].(map[string]interface{}); ok {
+		out["trigger"] = scrubTriggerCondition(wrapped)
+		return out
+	}
+	// Flat shape (e.g. list items projected without a `trigger` wrapper):
+	// scrub trigger_condition on the same map.
+	if _, hasFlat := info["trigger_condition"].(map[string]interface{}); hasFlat {
+		return scrubTriggerCondition(out)
+	}
+	return out
+}
+
+// scrubTriggerCondition returns a shallow copy of a trigger-shaped map with
+// its trigger_condition.token_value replaced by nil. Called by
+// redactWebhookToken for each shape it recognizes.
+func scrubTriggerCondition(trigger map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(trigger))
+	for k, v := range trigger {
+		out[k] = v
+	}
+	tc, ok := out["trigger_condition"].(map[string]interface{})
 	if !ok {
 		return out
 	}

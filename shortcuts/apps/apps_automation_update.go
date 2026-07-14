@@ -15,11 +15,11 @@ import (
 // AppsAutomationUpdate is the unified trigger-modify entry. Webhook URL/Token
 // actions dispatch to apps_automation_webhook.go via bool action flags on the
 // same command (--reset-url / --enable-token / --disable-token / --reset-token)
-// rather than as separate +automation-* commands, because the automation spec
-// (docx/INixwF5apisF4kkNvOrcwLtInig §范围) fixes the 6 shared verbs to
-// list/get/create/update/enable/disable — the webhook credential lifecycle is
-// intentionally packed into --update via action flags, not a family of new
-// commands. Otherwise Execute sends a PUT to update the trigger condition.
+// rather than as separate +automation-* commands: the automation feature
+// scoped itself to six shared verbs (list/get/create/update/enable/disable),
+// so the webhook credential lifecycle is intentionally packed into --update
+// via action flags, not a family of new commands. Otherwise Execute sends a
+// PUT to update the trigger condition.
 var AppsAutomationUpdate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+automation-update",
@@ -90,9 +90,36 @@ var AppsAutomationUpdate = common.Shortcut{
 						f, setFlags[0])
 				}
 			}
+			if rctx.Bool("reset-url") && strings.TrimSpace(rctx.Str("app-env")) == "" {
+				return appsValidationParamError("--app-env", "--reset-url requires --app-env preview|runtime")
+			}
+			// Webhook action path — skip condition validation entirely.
+			return nil
 		}
-		if rctx.Bool("reset-url") && strings.TrimSpace(rctx.Str("app-env")) == "" {
-			return appsValidationParamError("--app-env", "--reset-url requires --app-env preview|runtime")
+
+		// Condition path. Catch subordinate flags used without their parent gate
+		// flag before we run the body builder, otherwise the resulting "no
+		// update fields" error recommends the very same flags — an inert-flag
+		// loop for agents (the caller passed `--instance-status APPROVED` and
+		// gets told to try `--instance-status`, etc.). Point at the missing
+		// parent instead.
+		if err := checkUpdateSubordinateFlags(rctx); err != nil {
+			return err
+		}
+
+		// Run buildAutomationUpdateBody up-front so per-flag validation errors
+		// (illegal cron, malformed --white-ip-list, bad --fields JSON) surface
+		// during Validate rather than only during Execute. Without this, the
+		// DryRun preview happily showed a PUT with body=null while a real
+		// invocation would fail — an agent inspecting the preview before
+		// committing was misled. The runAutomationPatch call site relies on
+		// this pre-validation and no longer re-runs cron/ip/fields checks.
+		body, err := buildAutomationUpdateBody(rctx)
+		if err != nil {
+			return err
+		}
+		if len(body) == 0 {
+			return noUpdateFieldsError()
 		}
 		return nil
 	},
@@ -101,12 +128,28 @@ var AppsAutomationUpdate = common.Shortcut{
 		name := strings.TrimSpace(rctx.Str("name"))
 		switch {
 		case rctx.Bool("reset-url"):
-			return common.NewDryRunAPI().POST(automationWebhookURLResetPath(appID, name)).Desc("Reset webhook URL")
-		case rctx.Bool("enable-token"), rctx.Bool("disable-token"):
-			return common.NewDryRunAPI().PATCH(automationWebhookTokenStatusPath(appID, name)).Desc("Set webhook token status")
+			return common.NewDryRunAPI().
+				POST(automationWebhookURLResetPath(appID, name)).
+				Desc("Reset webhook URL").
+				Body(webhookURLResetBody(rctx.Str("app-env")))
+		case rctx.Bool("enable-token"):
+			return common.NewDryRunAPI().
+				PATCH(automationWebhookTokenStatusPath(appID, name)).
+				Desc("Set webhook token status").
+				Body(webhookTokenStatusBody(true))
+		case rctx.Bool("disable-token"):
+			return common.NewDryRunAPI().
+				PATCH(automationWebhookTokenStatusPath(appID, name)).
+				Desc("Set webhook token status").
+				Body(webhookTokenStatusBody(false))
 		case rctx.Bool("reset-token"):
-			return common.NewDryRunAPI().POST(automationWebhookTokenResetPath(appID, name)).Desc("Reset webhook token")
+			return common.NewDryRunAPI().
+				POST(automationWebhookTokenResetPath(appID, name)).
+				Desc("Reset webhook token").
+				Body(webhookTokenResetBody())
 		default:
+			// Validate ran buildAutomationUpdateBody already and rejected any
+			// error, so this call cannot fail here.
 			body, _ := buildAutomationUpdateBody(rctx)
 			return common.NewDryRunAPI().PUT(automationItemPath(appID, name)).Desc("Update trigger condition").Body(body)
 		}
@@ -133,56 +176,21 @@ func runAutomationUpdate(rctx *common.RuntimeContext) error {
 }
 
 // runAutomationPatch sends the trigger update PUT with only the changed fields.
+// Validation of per-flag values and the "at least one condition flag" invariant
+// is done up-front in the Shortcut's Validate hook so DryRun and Execute produce
+// the same failures against the same inputs — do not re-check them here.
 func runAutomationPatch(rctx *common.RuntimeContext) error {
 	appID, err := requireAppID(rctx.Str("app-id"))
 	if err != nil {
 		return err
 	}
 	name := strings.TrimSpace(rctx.Str("name"))
-	// Validate all condition-carrying flags up-front so illegal values surface a
-	// field-specific error instead of being silently dropped by
-	// buildAutomationUpdateBody (which would either report the generic
-	// no-fields error or PATCH without the intended field).
-	if c := strings.TrimSpace(rctx.Str("cron")); c != "" {
-		if err := validateCronExpr(c); err != nil {
-			return err
-		}
-	}
-	if raw := strings.TrimSpace(rctx.Str("white-ip-list")); raw != "" {
-		if _, err := parseIPListFlag(raw); err != nil {
-			return err
-		}
-	}
-	if raw := strings.TrimSpace(rctx.Str("fields")); raw != "" {
-		if _, err := parseFieldsFlag(raw); err != nil {
-			return err
-		}
-	}
 	body, err := buildAutomationUpdateBody(rctx)
 	if err != nil {
+		// Validate already accepted this input, so a build error here means
+		// the input changed between phases (should not happen in practice)
+		// or a helper regressed. Surface it verbatim rather than swallowing.
 		return err
-	}
-	if len(body) == 0 {
-		// No specific flag failed; every condition-carrying flag is a legitimate
-		// candidate. Emit a Param-less validation error and enumerate candidates
-		// in Params so `apps +update` precedent style is followed and agents get
-		// structured recovery guidance.
-		reason := "no update fields provided; pass at least one condition flag or a webhook action flag"
-		return appsValidationError("%s", reason).
-			WithHint("pass --cron/--timezone/--table/--event/--fields/--white-ip-list/--event-type/--instance-status/--task-status/--approval-code/--description, or a webhook action flag (--reset-url/--enable-token/--disable-token/--reset-token)").
-			WithParams(
-				appsInvalidParam("--cron", reason),
-				appsInvalidParam("--timezone", reason),
-				appsInvalidParam("--table", reason),
-				appsInvalidParam("--event", reason),
-				appsInvalidParam("--fields", reason),
-				appsInvalidParam("--white-ip-list", reason),
-				appsInvalidParam("--event-type", reason),
-				appsInvalidParam("--instance-status", reason),
-				appsInvalidParam("--task-status", reason),
-				appsInvalidParam("--approval-code", reason),
-				appsInvalidParam("--description", reason),
-			)
 	}
 	data, err := rctx.CallAPITyped("PUT", automationItemPath(appID, name), nil, body)
 	if err != nil {
@@ -191,17 +199,73 @@ func runAutomationPatch(rctx *common.RuntimeContext) error {
 	// Bearer-token redaction reverse invariant: the plaintext webhook bearer
 	// token is only ever surfaced by the dedicated one-shot flags
 	// --enable-token / --reset-token. Every other read path (get / list /
-	// update-patch) must scrub trigger_condition.token_value. UpdateTrigger
-	// backend behaviour "re-reads GetTriggerModel and returns TriggerInfo"
-	// shares the decrypting webhook-condition converter with the get path,
-	// so the PATCH response may carry a plaintext bearer token; the CLI
-	// redacts here to enforce the invariant, matching get / list.
+	// update-patch) must scrub trigger_condition.token_value. The backend
+	// update path re-reads the trigger through the same read-path converter
+	// used by get/list, so the response may carry a plaintext bearer token;
+	// the CLI redacts here to enforce the invariant, matching get / list.
 	redacted := redactWebhookToken(data)
 	trigger, _ := redacted["trigger"].(map[string]interface{})
 	rctx.OutFormat(redacted, nil, func(w io.Writer) {
 		fmt.Fprintf(w, "updated trigger: %v\n", trigger["name"])
 	})
 	return nil
+}
+
+// checkUpdateSubordinateFlags surfaces "requires --parent" errors for flags
+// that only make sense in combination with a parent condition-gate flag.
+// Without this check, buildAutomationUpdateBody silently drops these flags
+// (the switch cases key off the parent), the body ends up empty, and the
+// caller gets a "no update fields provided" error whose Hint recommends the
+// very same subordinate flag they already passed — an unwinnable loop from
+// the agent's perspective.
+func checkUpdateSubordinateFlags(rctx *common.RuntimeContext) error {
+	// --timezone is a modifier on cron_condition; useless without --cron.
+	if strings.TrimSpace(rctx.Str("timezone")) != "" && strings.TrimSpace(rctx.Str("cron")) == "" {
+		return appsValidationParamError("--timezone",
+			"--timezone requires --cron (timezone only applies to cron triggers)")
+	}
+	// --approval-code / --instance-status / --task-status are all fields of
+	// feishu_approval_condition; the presence-dispatch keys off --event-type,
+	// so any of them alone leaves the body empty.
+	eventType := strings.TrimSpace(rctx.Str("event-type"))
+	if eventType == "" {
+		if strings.TrimSpace(rctx.Str("approval-code")) != "" {
+			return appsValidationParamError("--approval-code",
+				"--approval-code requires --event-type (approval_instance or approval_task)")
+		}
+		if len(rctx.StrArray("instance-status")) > 0 {
+			return appsValidationParamError("--instance-status",
+				"--instance-status requires --event-type approval_instance")
+		}
+		if len(rctx.StrArray("task-status")) > 0 {
+			return appsValidationParamError("--task-status",
+				"--task-status requires --event-type approval_task")
+		}
+	}
+	return nil
+}
+
+// noUpdateFieldsError is the typed error used when +automation-update is
+// invoked without any condition or webhook-action flag set. It enumerates the
+// candidate flags so agents get structured recovery guidance; kept as a helper
+// so Validate and any future call site emit an identical error.
+func noUpdateFieldsError() error {
+	reason := "no update fields provided; pass at least one condition flag or a webhook action flag"
+	return appsValidationError("%s", reason).
+		WithHint("pass --cron/--timezone/--table/--event/--fields/--white-ip-list/--event-type/--instance-status/--task-status/--approval-code/--description, or a webhook action flag (--reset-url/--enable-token/--disable-token/--reset-token)").
+		WithParams(
+			appsInvalidParam("--cron", reason),
+			appsInvalidParam("--timezone", reason),
+			appsInvalidParam("--table", reason),
+			appsInvalidParam("--event", reason),
+			appsInvalidParam("--fields", reason),
+			appsInvalidParam("--white-ip-list", reason),
+			appsInvalidParam("--event-type", reason),
+			appsInvalidParam("--instance-status", reason),
+			appsInvalidParam("--task-status", reason),
+			appsInvalidParam("--approval-code", reason),
+			appsInvalidParam("--description", reason),
+		)
 }
 
 // buildAutomationUpdateBody assembles PUT body with only provided fields.

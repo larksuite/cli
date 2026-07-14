@@ -65,16 +65,19 @@ func TestAutomationUpdate_InvalidWhiteIPListRejected(t *testing.T) {
 	assertValidationParamError(t, err, "--white-ip-list")
 }
 
-// TestAutomationUpdate_NoFieldsRejected covers the empty-PATCH guard: at least
-// one condition-carrying flag or a webhook action flag must be present. The
-// error is intentionally Param-less (no single user flag failed); recovery
-// candidates are structured in Params + Hint, matching the +update precedent.
+// TestAutomationUpdate_NoFieldsRejected covers the empty-update guard: at
+// least one condition-carrying flag or a webhook action flag must be present.
+// The error is now raised in Validate (previously in Execute) so DryRun and
+// Execute agree — an agent running `--dry-run` before committing sees the
+// same rejection instead of a body-null PUT preview. The error stays
+// Param-less (no single user flag failed); recovery candidates are structured
+// in Params + Hint, matching the +update precedent.
 func TestAutomationUpdate_NoFieldsRejected(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "t1"})
-	err := runAutomationUpdate(rctx)
+	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
 	if err == nil {
-		t.Fatal("empty PATCH must be rejected")
+		t.Fatal("empty update must be rejected")
 	}
 	var ve *errs.ValidationError
 	if !errors.As(err, &ve) {
@@ -201,10 +204,13 @@ func TestAutomationUpdate_PatchApproval_MissingStatuses(t *testing.T) {
 }
 
 // TestAutomationUpdate_PatchRedactsWebhookToken covers the bearer-token
-// redaction reverse invariant on the update-patch path: PATCH response is a
-// re-read of GetTriggerModel and may carry a decrypted bearer token; the CLI
-// must redact it before stdout, mirroring get/list behaviour. Without this
-// test a regression could leak plaintext.
+// redaction reverse invariant on the update-patch path against the real
+// response shape (a live test-env probe confirmed PUT wraps the trigger
+// under a `trigger` key, same as GET/create). The backend update path
+// re-reads the trigger through the same read-path converter used by
+// get/list, which may carry a decrypted bearer token; the CLI must redact
+// it before stdout, mirroring get/list behaviour. Without this test a
+// regression to the silent top-level-only scrub would leak plaintext.
 func TestAutomationUpdate_PatchRedactsWebhookToken(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{
@@ -214,10 +220,12 @@ func TestAutomationUpdate_PatchRedactsWebhookToken(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method: "PUT", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
-			"name": "wh1", "trigger_type": "webhook", "status": "enabled",
-			"trigger_condition": map[string]interface{}{
-				"preview_url": "https://p", "runtime_url": "https://r",
-				"token_enabled": true, "token_value": "PLAINTEXT_PATCH_TOKEN",
+			"trigger": map[string]interface{}{
+				"name": "wh1", "trigger_type": "webhook", "status": "enabled",
+				"trigger_condition": map[string]interface{}{
+					"preview_url": "https://p", "runtime_url": "https://r",
+					"token_enabled": true, "token_value": "PLAINTEXT_PATCH_TOKEN",
+				},
 			},
 		}},
 	})
@@ -246,6 +254,45 @@ func TestAutomationUpdate_WebhookActionRejectsConditionFlag(t *testing.T) {
 		})
 	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--cron")
+}
+
+// TestAutomationUpdate_SubordinateFlagsRequireParent pins the inert-flag
+// contract: a subordinate flag (--timezone / --instance-status /
+// --task-status / --approval-code) is rejected with a "requires --<parent>"
+// error, not the generic "no update fields" whose Hint used to loop the
+// agent back to the same subordinate flag. Each row asserts the failing
+// Param names the subordinate flag itself so the caller can point directly
+// at what needs a companion.
+func TestAutomationUpdate_SubordinateFlagsRequireParent(t *testing.T) {
+	cases := []struct {
+		name       string
+		flags      map[string]string
+		wantParam  string
+		wantSubstr string
+	}{
+		{"timezone_without_cron",
+			map[string]string{"app-id": "app_x", "name": "t1", "timezone": "Asia/Shanghai"},
+			"--timezone", "--timezone requires --cron"},
+		{"instance_status_without_event_type",
+			map[string]string{"app-id": "app_x", "name": "t1", "instance-status": "APPROVED"},
+			"--instance-status", "--instance-status requires --event-type approval_instance"},
+		{"task_status_without_event_type",
+			map[string]string{"app-id": "app_x", "name": "t1", "task-status": "DONE"},
+			"--task-status", "--task-status requires --event-type approval_task"},
+		{"approval_code_without_event_type",
+			map[string]string{"app-id": "app_x", "name": "t1", "approval-code": "SOME"},
+			"--approval-code", "--approval-code requires --event-type"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(), tc.flags)
+			err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+			assertValidationParamError(t, err, tc.wantParam)
+			if !strings.Contains(err.Error(), tc.wantSubstr) {
+				t.Errorf("expected message containing %q, got %q", tc.wantSubstr, err.Error())
+			}
+		})
+	}
 }
 
 func TestAutomationUpdateMeta_HighRisk(t *testing.T) {
