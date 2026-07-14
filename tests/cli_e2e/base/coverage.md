@@ -2,13 +2,14 @@
 
 ## Metrics
 - Denominator: 78 leaf commands
-- Covered: 19
-- Coverage: 24.4%
+- Covered: 20
+- Coverage: 25.6%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
 - TestBaseBlockDryRun: proves the five `+base-block-*` shortcuts request shapes without touching live data.
 - TestBaseFieldCreateDryRunArrayCompat: proves `+field-create` dry-run request shape for the internal JSON-array compatibility path.
+- TestBaseRecordBatchUpdatePerRecordDryRun: proves `+record-batch-update` preserves the per-record `update_records` request shape.
 - TestBase_RoleWorkflow: proves `+advperm-enable`, `+role-create`, `+role-list`, `+role-get`, and `+role-update`; key `t.Run(...)` proof points are `list as bot`, `get as bot`, and `update as bot`.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
 - Blocked area: dashboard, field, form, record, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
@@ -55,7 +56,7 @@
 | ✕ | base +form-questions-update | shortcut |  | none | form workflows not covered |
 | ✕ | base +form-update | shortcut |  | none | form workflows not covered |
 | ✕ | base +record-batch-create | shortcut |  | none | record workflows not covered |
-| ✕ | base +record-batch-update | shortcut |  | none | record workflows not covered |
+| ✓ | base +record-batch-update | shortcut | base_record_batch_update_dryrun_test.go::TestBaseRecordBatchUpdatePerRecordDryRun | `--base-token`; `--table-id`; `--json.update_records`; dry-run only | request shape only; BOE round-trip is verified in the feature delivery workflow |
 | ✕ | base +record-delete | shortcut |  | none | record workflows not covered |
 | ✕ | base +record-get | shortcut |  | none | record workflows not covered |
 | ✕ | base +record-history-list | shortcut |  | none | record workflows not covered |

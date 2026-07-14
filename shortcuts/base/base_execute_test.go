@@ -1999,6 +1999,37 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("batch update per-record passthrough", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		updateStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_update",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"has_more":       false,
+					"record_id_list": []interface{}{"recA", "recB"},
+					"update_records": map[string]interface{}{
+						"recA": map[string]interface{}{"Status": []interface{}{"Done"}},
+						"recB": map[string]interface{}{"Score": float64(20)},
+					},
+				},
+			},
+		}
+		reg.Register(updateStub)
+		input := `{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`
+		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", input}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"update_records"`) || !strings.Contains(got, `"recA"`) || !strings.Contains(got, `"Score"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		body := string(updateStub.CapturedBody)
+		if !strings.Contains(body, `"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}`) {
+			t.Fatalf("request body=%s", body)
+		}
+	})
+
 	t.Run("delete", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		batchStub := &httpmock.Stub{
