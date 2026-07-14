@@ -17,54 +17,26 @@ const (
 	meetingQueryBotScope  = "vc:meeting.bot.join:write"
 )
 
-// meetingQueryAnyScopes are the compatible alternatives reported by the VC
-// API. The local preflight only checks the user recommendation because UAT,
-// unlike TAT, exposes granted scope metadata.
-var meetingQueryAnyScopes = []string{
-	meetingQueryUserScope,
-	meetingQueryBotScope,
-}
-
 func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err error) error {
-	if err == nil || runtime == nil || runtime.Config == nil {
+	if runtime == nil {
 		return err
 	}
 	var permissionErr *errs.PermissionError
-	if !errors.As(err, &permissionErr) || permissionErr == nil {
-		return err
-	}
-	identity := runtime.As()
-	isUserScopeError := identity == core.AsUser && permissionErr.Code == output.LarkErrUserScopeInsufficient
-	isBotScopeError := identity == core.AsBot && permissionErr.Code == output.LarkErrAppScopeNotEnabled
-	if !isUserScopeError && !isBotScopeError {
-		return err
-	}
-	if !containsAllScopes(permissionErr.MissingScopes, meetingQueryAnyScopes) {
+	if !errors.As(err, &permissionErr) {
 		return err
 	}
 
-	mapped := *permissionErr
-	mapped.Cause = err
-	mapped.Identity = string(identity)
-	mapped.ConsoleURL = ""
-	if isUserScopeError {
+	switch {
+	case runtime.As() == core.AsUser && permissionErr.Code == output.LarkErrUserScopeInsufficient:
+		mapped := *permissionErr
+		mapped.Cause = err
 		return mapped.WithHint("for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", meetingQueryUserScope)
+	case runtime.As() == core.AsBot && permissionErr.Code == output.LarkErrAppScopeNotEnabled:
+		mapped := *permissionErr
+		mapped.Cause = err
+		mapped.ConsoleURL = ""
+		return mapped.WithHint("ask the app developer to enable scope %s", meetingQueryBotScope)
+	default:
+		return err
 	}
-	return mapped.WithHint("ask the app developer to enable scope %s", meetingQueryBotScope)
-}
-
-func containsAllScopes(granted []string, required []string) bool {
-	for _, requiredScope := range required {
-		found := false
-		for _, grantedScope := range granted {
-			if grantedScope == requiredScope {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
 }

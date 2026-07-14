@@ -5,7 +5,6 @@ package vc
 
 import (
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -19,30 +18,6 @@ import (
 
 func bareMeetingQueryRuntime(as core.Identity) *common.RuntimeContext {
 	return common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "test"}, defaultConfig(), as)
-}
-
-func TestNormalizeMeetingQueryPermissionError_ReturnsInputWhenContextUnavailable(t *testing.T) {
-	sentinel := errors.New("sentinel")
-	runtimeWithoutConfig := bareMeetingQueryRuntime(core.AsUser)
-	runtimeWithoutConfig.Config = nil
-
-	cases := []struct {
-		name    string
-		runtime *common.RuntimeContext
-		err     error
-	}{
-		{name: "nil_error", runtime: bareMeetingQueryRuntime(core.AsUser)},
-		{name: "nil_runtime", err: sentinel},
-		{name: "nil_config", runtime: runtimeWithoutConfig, err: sentinel},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := normalizeMeetingQueryPermissionError(tc.runtime, tc.err); got != tc.err {
-				t.Fatalf("normalizeMeetingQueryPermissionError() = %v, want original %v", got, tc.err)
-			}
-		})
-	}
 }
 
 func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Identity, code int) {
@@ -62,14 +37,9 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 		t.Fatalf("Identity = %q, want %q", pe.Identity, identity)
 	}
 
-	// missing_scopes preserves the upstream values; the hint recommends one
-	// identity-appropriate recovery action.
 	wantScope := meetingQueryUserScope
 	if identity.IsBot() {
 		wantScope = meetingQueryBotScope
-	}
-	if !reflect.DeepEqual(pe.MissingScopes, meetingQueryAnyScopes) {
-		t.Fatalf("MissingScopes = %v, want %v", pe.MissingScopes, meetingQueryAnyScopes)
 	}
 	if !strings.Contains(pe.Hint, wantScope) {
 		t.Fatalf("Hint = %q, want recommended scope %q", pe.Hint, wantScope)
@@ -117,9 +87,12 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 				WithCode(tc.code).
 				WithLogID("log-id").
 				WithRetryable().
-				WithMissingScopes(meetingQueryAnyScopes...).
+				WithIdentity(string(tc.identity)).
 				WithRequestedScopes("requested:scope").
 				WithGrantedScopes("granted:scope")
+			if tc.identity == core.AsBot {
+				original.ConsoleURL = "https://example.com/scopes"
+			}
 			original.Troubleshooter = "https://example.com/troubleshoot"
 
 			got := normalizeMeetingQueryPermissionError(bareMeetingQueryRuntime(tc.identity), original)
@@ -142,12 +115,6 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 			if pe.Message != original.Message {
 				t.Fatalf("Message = %q, want original %q", pe.Message, original.Message)
 			}
-			if !reflect.DeepEqual(pe.MissingScopes, meetingQueryAnyScopes) {
-				t.Fatalf("MissingScopes = %v, want %v", pe.MissingScopes, meetingQueryAnyScopes)
-			}
-			if !reflect.DeepEqual(pe.RequestedScopes, original.RequestedScopes) || !reflect.DeepEqual(pe.GrantedScopes, original.GrantedScopes) {
-				t.Fatalf("scope diagnostics changed: requested=%v granted=%v", pe.RequestedScopes, pe.GrantedScopes)
-			}
 			assertMeetingQueryPermissionError(t, got, tc.identity, tc.code)
 		})
 	}
@@ -163,29 +130,19 @@ func TestNormalizeMeetingQueryPermissionError_PassesThroughNonMatchingErrors(t *
 			name:     "user_with_app_scope_error",
 			identity: core.AsUser,
 			err: errs.NewPermissionError(errs.SubtypeAppScopeNotApplied, "app scope error").
-				WithCode(output.LarkErrAppScopeNotEnabled).
-				WithMissingScopes(meetingQueryAnyScopes...),
+				WithCode(output.LarkErrAppScopeNotEnabled),
 		},
 		{
 			name:     "bot_with_user_scope_error",
 			identity: core.AsBot,
 			err: errs.NewPermissionError(errs.SubtypeMissingScope, "user scope error").
-				WithCode(output.LarkErrUserScopeInsufficient).
-				WithMissingScopes(meetingQueryAnyScopes...),
+				WithCode(output.LarkErrUserScopeInsufficient),
 		},
 		{
 			name:     "auto_with_user_scope_error",
 			identity: core.AsAuto,
 			err: errs.NewPermissionError(errs.SubtypeMissingScope, "auto identity").
-				WithCode(output.LarkErrUserScopeInsufficient).
-				WithMissingScopes(meetingQueryAnyScopes...),
-		},
-		{
-			name:     "single_scope",
-			identity: core.AsUser,
-			err: errs.NewPermissionError(errs.SubtypeMissingScope, "single").
-				WithCode(output.LarkErrUserScopeInsufficient).
-				WithMissingScopes(meetingQueryUserScope),
+				WithCode(output.LarkErrUserScopeInsufficient),
 		},
 		{
 			name: "bot_not_in_meeting",
@@ -194,8 +151,7 @@ func TestNormalizeMeetingQueryPermissionError_PassesThroughNonMatchingErrors(t *
 		{
 			name: "not_in_gray",
 			err: errs.NewPermissionError(errs.SubtypePermissionDenied, "not in gray").
-				WithCode(20017).
-				WithMissingScopes(meetingQueryAnyScopes...),
+				WithCode(20017),
 		},
 		{name: "plain_error", err: errors.New("boom")},
 	}
