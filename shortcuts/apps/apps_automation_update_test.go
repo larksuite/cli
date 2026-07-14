@@ -110,6 +110,49 @@ func TestAutomationUpdate_ResetURLRequiresAppEnv(t *testing.T) {
 	assertValidationParamError(t, err, "--app-env")
 }
 
+// TestAutomationUpdate_AppEnvRequiresResetURL: --app-env is only consumed by
+// --reset-url. Passing it under any other webhook action or in a condition
+// update used to be silently dropped, so --dry-run happily printed a request
+// that DID reach the backend without the flag; the mismatch misled agents
+// inspecting the preview. Validate now rejects up-front.
+func TestAutomationUpdate_AppEnvRequiresResetURL(t *testing.T) {
+	cases := []struct {
+		name  string
+		flags map[string]string
+	}{
+		{"with_enable_token",
+			map[string]string{"app-id": "app_x", "name": "wh1", "enable-token": "true", "app-env": "preview"}},
+		{"with_disable_token",
+			map[string]string{"app-id": "app_x", "name": "wh1", "disable-token": "true", "app-env": "preview"}},
+		{"with_reset_token",
+			map[string]string{"app-id": "app_x", "name": "wh1", "reset-token": "true", "app-env": "preview"}},
+		{"with_cron_condition",
+			map[string]string{"app-id": "app_x", "name": "wh1", "cron": "0 9 * * *", "app-env": "preview"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(), tc.flags)
+			err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+			assertValidationParamError(t, err, "--app-env")
+		})
+	}
+}
+
+// TestAutomationUpdate_AppEnvInvalidValueRejected: --app-env must be
+// preview|runtime. Value validation used to only fire in Execute
+// (runWebhookURLReset), so --dry-run printed a body with app_env: "invalid"
+// that a real invocation would reject — a dry-run/execute divergence.
+// Validate now catches invalid values so dry-run and execute agree.
+func TestAutomationUpdate_AppEnvInvalidValueRejected(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "wh1", "reset-url": "true", "app-env": "invalid"})
+	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--app-env")
+	if !strings.Contains(err.Error(), "preview or runtime") {
+		t.Errorf("expected preview/runtime guidance, got %q", err.Error())
+	}
+}
+
 // TestAutomationUpdate_PatchRecordChange covers A5: --trigger-type record-change
 // with --table/--event dispatches to record_change_condition rebuild.
 func TestAutomationUpdate_PatchRecordChange(t *testing.T) {

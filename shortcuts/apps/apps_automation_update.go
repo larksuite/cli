@@ -61,6 +61,22 @@ var AppsAutomationUpdate = common.Shortcut{
 		if err := automationValidateName(ctx, rctx); err != nil {
 			return err
 		}
+		// --app-env is only consumed by --reset-url; on any other update path
+		// (other webhook action, condition update) it was silently dropped and
+		// dry-run happily previewed the request that DID reach the backend,
+		// misleading callers who inspected --dry-run before committing. Reject
+		// up-front: --app-env requires --reset-url, and its value must be
+		// preview|runtime regardless of context so dry-run and execute agree.
+		if appEnv := strings.TrimSpace(rctx.Str("app-env")); appEnv != "" {
+			if !rctx.Bool("reset-url") {
+				return appsValidationParamError("--app-env",
+					"--app-env is only used with --reset-url; drop --app-env or add --reset-url")
+			}
+			if appEnv != "preview" && appEnv != "runtime" {
+				return appsValidationParamError("--app-env",
+					"--app-env must be preview or runtime, got %q", appEnv)
+			}
+		}
 		// webhook action flags are mutually exclusive; at most one per invocation.
 		var setFlags []string
 		for _, f := range []string{"reset-url", "enable-token", "disable-token", "reset-token"} {

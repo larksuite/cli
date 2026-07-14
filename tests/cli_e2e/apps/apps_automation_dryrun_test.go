@@ -462,6 +462,55 @@ func TestAppsAutomationUpdateDryRun(t *testing.T) {
 		result.AssertExitCode(t, 2)
 		assert.Contains(t, validateErrorMessage(result), "--reset-url")
 	})
+
+	t.Run("RejectsInvalidAppEnvValue", func(t *testing.T) {
+		// --app-env value validation moved into Validate so --dry-run and
+		// Execute agree; the earlier behavior printed a body preview with
+		// app_env: "invalid" that a real invocation would reject.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"apps", "+automation-update",
+				"--app-id", automationDryRunAppID,
+				"--name", automationDryRunTrigger,
+				"--reset-url",
+				"--app-env", "invalid",
+				"--yes",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "preview or runtime")
+	})
+
+	t.Run("RejectsAppEnvWithoutResetURL", func(t *testing.T) {
+		// --app-env only pairs with --reset-url. Under any other webhook
+		// action or a condition update it was silently dropped; --dry-run
+		// happily printed the request that DID reach the backend, without
+		// the flag.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"apps", "+automation-update",
+				"--app-id", automationDryRunAppID,
+				"--name", automationDryRunTrigger,
+				"--enable-token",
+				"--app-env", "preview",
+				"--yes",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), "--reset-url")
+	})
 }
 
 // TestAppsAutomationEnableDisableDryRun pins the enable/disable dispatch to
