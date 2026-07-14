@@ -125,4 +125,3 @@ lark-cli slides +replace-slide --as user \
 
 - [+create](lark-slides-create.md) — 新建 PPT（支持 `@` 占位符自动上传图片）
 - [+replace-slide](lark-slides-replace-slide.md) — 给已有页加图 / 换图（`block_insert` / `block_replace`）
-- [xml_presentation.slide create](lark-slides-xml-presentation-slide-create.md) — 创建 slide 页面（拿到 file_token 后塞进 XML）

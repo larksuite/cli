@@ -44,6 +44,7 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 | code | 含义 | 处理方式 |
 |------|------|----------|
 | `xml_not_well_formed` | XML 语法错误或文本未转义 | 修复标签闭合、属性引号、`&` / `<` / `>` 转义 |
+| `sml_prefixed_tag` | SML 元素使用了命名空间前缀，如 `<ns0:slide>` 或 `<sml:shape>` | 使用 `<slide xmlns="http://www.larkoffice.com/sml/2.0">` 的默认命名空间，或使用无前缀标签 |
 | `sxsd_unsupported_tag` | 使用了 SXSD 不支持的标签 | 按 lint `hint` 替换为受支持标签；常见如 `textbox -> <shape type="text">`、`image -> <img>` |
 | `sxsd_unsupported_attr` | 支持的标签上使用了不支持的属性 | 按 lint `hint` 改为支持的属性；常见如 `x -> topLeftX`、`fontColor -> color` |
 | `iconpark_unsupported_icon_type` | `<icon>` 使用了 `iconpark-index.json` 中不存在的 `iconType` | 按 lint `hint` 改为名单内的 `iconType`，或先用 `scripts/iconpark_tool.py` 搜索 |

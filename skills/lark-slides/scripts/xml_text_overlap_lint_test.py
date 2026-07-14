@@ -137,6 +137,38 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         self.assertIsInstance(issue["column"], int)
         self.assertIn("Broken XML", issue["context"])
 
+    def test_lint_xml_rejects_prefixed_sml_tags(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <ns0:slide xmlns:ns0="http://www.larkoffice.com/sml/2.0">
+              <ns0:data>
+                <sml:shape xmlns:sml="http://www.larkoffice.com/sml/2.0" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                  <sml:content textType="body"><sml:p>Prefixed SML</sml:p></sml:content>
+                </sml:shape>
+              </ns0:data>
+            </ns0:slide>
+            """
+        )
+        issues = result["issues"]
+        self.assertEqual(result["summary"]["error_count"], 5)
+        self.assertEqual([issue["code"] for issue in issues], ["sml_prefixed_tag"] * 5)
+        self.assertEqual(issues[0]["tag"], "ns0:slide")
+        self.assertIn("default namespace", issues[0]["hint"])
+
+    def test_lint_xml_allows_unprefixed_tags_without_namespace(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide>
+              <data>
+                <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                  <content textType="body"><p>Unprefixed SML</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+
     def test_lint_xml_accepts_escaped_entities_without_suspicious_entity_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """

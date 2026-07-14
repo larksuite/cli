@@ -95,6 +95,5 @@ lark-cli slides xml_presentations get --as user \
 
 ## 相关命令
 
-- [slides +create](lark-slides-create.md) - 创建空白 PPT
-- [xml_presentation.slide create](lark-slides-xml-presentation-slide-create.md) - 添加幻灯片页面
+- [slides +create](lark-slides-create.md) - 创建 PPT / 添加幻灯片页面
 - [xml_presentation.slide delete](lark-slides-xml-presentation-slide-delete.md) - 删除幻灯片页面

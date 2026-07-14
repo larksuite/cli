@@ -9,6 +9,7 @@ import math
 import re
 import sys
 import unicodedata
+import xml.parsers.expat as expat
 import xml.etree.ElementTree as ET
 from difflib import SequenceMatcher, get_close_matches
 from pathlib import Path
@@ -18,6 +19,7 @@ from typing import Any
 XS_NS = "{http://www.w3.org/2001/XMLSchema}"
 XML_NS = "{http://www.w3.org/XML/1998/namespace}"
 SVG_NS = "{http://www.w3.org/2000/svg}"
+SML_NAMESPACE = "http://www.larkoffice.com/sml/2.0"
 SXSD_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "references" / "slides_xml_schema_definition.xml"
 ICONPARK_INDEX_PATH = Path(__file__).resolve().parents[1] / "references" / "iconpark-index.json"
 SXSD_TAG_ALIASES = {
@@ -401,6 +403,64 @@ def build_xml_error_issue(error: ET.ParseError, xml: str) -> dict[str, Any]:
             "written as &amp;. In text nodes, write < as &lt; and > as &gt;. For attribute URLs, use a=1&amp;b=2."
         ),
     }
+
+
+def validate_sml_tag_prefixes(xml: str) -> list[dict[str, Any]]:
+    namespace_map: dict[str, str] = {}
+    pending_declarations: list[tuple[str, str | None]] = []
+    declarations_by_element: list[list[tuple[str, str | None]]] = []
+    element_stack: list[str] = []
+    issues: list[dict[str, Any]] = []
+
+    parser = expat.ParserCreate()
+
+    def handle_namespace_decl(prefix: str | None, namespace: str) -> None:
+        normalized_prefix = prefix or ""
+        previous_namespace = namespace_map.get(normalized_prefix)
+        namespace_map[normalized_prefix] = namespace
+        pending_declarations.append((normalized_prefix, previous_namespace))
+
+    def handle_start_element(name: str, _attrs: dict[str, str]) -> None:
+        declarations_by_element.append(pending_declarations.copy())
+        pending_declarations.clear()
+        element_stack.append(name)
+        if ":" not in name:
+            return
+
+        prefix, local_name = name.split(":", 1)
+        if namespace_map.get(prefix) != SML_NAMESPACE:
+            return
+        path = "/".join(element_stack)
+        issues.append(
+            {
+                "level": "error",
+                "code": "sml_prefixed_tag",
+                "tag": name,
+                "namespace": SML_NAMESPACE,
+                "path": path,
+                "line": parser.CurrentLineNumber,
+                "column": parser.CurrentColumnNumber,
+                "message": f"SML tag <{name}> must not use a namespace prefix at {path}",
+                "hint": (
+                    f'Use <{local_name}> under the default namespace '
+                    f'<{local_name} xmlns="{SML_NAMESPACE}">, or use an unprefixed SML tag.'
+                ),
+            }
+        )
+
+    def handle_end_element(_name: str) -> None:
+        for prefix, previous_namespace in reversed(declarations_by_element.pop()):
+            if previous_namespace is None:
+                namespace_map.pop(prefix, None)
+            else:
+                namespace_map[prefix] = previous_namespace
+        element_stack.pop()
+
+    parser.StartNamespaceDeclHandler = handle_namespace_decl
+    parser.StartElementHandler = handle_start_element
+    parser.EndElementHandler = handle_end_element
+    parser.Parse(xml, True)
+    return issues
 
 
 def parse_xml_root(xml: str) -> tuple[ET.Element | None, dict[str, Any] | None]:
@@ -820,9 +880,10 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             "slides": [],
         }
 
+    namespace_issues = validate_sml_tag_prefixes(xml)
     sxsd_issues = validate_sxsd_tag_attributes(root) if root is not None else []
     iconpark_issues = validate_iconpark_icon_types(root) if root is not None else []
-    top_level_issues = [*sxsd_issues, *iconpark_issues]
+    top_level_issues = [*namespace_issues, *sxsd_issues, *iconpark_issues]
     presentation = parse_presentation(xml)
     slides = [
         lint_slide(slide_xml, index + 1, presentation["width"], presentation["height"])
