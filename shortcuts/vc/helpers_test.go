@@ -93,13 +93,14 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 	}
 }
 
-func TestCheckMeetingQueryScope_UserAllowsMeetingEventScope(t *testing.T) {
+func TestCheckMeetingQueryScope_UserAllowsCompatibleScopes(t *testing.T) {
 	cases := []struct {
 		name     string
 		identity core.Identity
 		scopes   string
 	}{
 		{name: "user_only_event", identity: core.AsUser, scopes: meetingQueryUserScope},
+		{name: "user_only_join", identity: core.AsUser, scopes: meetingQueryBotScope},
 		{name: "user_both", identity: core.AsUser, scopes: strings.Join(meetingQueryAnyScopes, " ")},
 	}
 
@@ -204,8 +205,8 @@ func TestCheckMeetingQueryScope_BotUsesPublishedTenantScopes(t *testing.T) {
 		wantErr  bool
 	}{
 		{name: "join_scope_granted", scopes: []string{meetingQueryBotScope}, known: true},
+		{name: "event_scope_granted", scopes: []string{meetingQueryUserScope}, known: true},
 		{name: "no_tenant_scopes", scopes: []string{}, known: true, wantErr: true},
-		{name: "user_scope_is_not_tenant_join", scopes: []string{meetingQueryUserScope}, known: true, wantErr: true},
 		{name: "app_metadata_unavailable", fetchErr: errors.New("metadata unavailable")},
 		{name: "app_not_published", known: false},
 	}

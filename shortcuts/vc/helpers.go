@@ -23,9 +23,10 @@ const (
 	meetingQueryBotScope  = "vc:meeting.bot.join:write"
 )
 
-// meetingQueryAnyScopes are the identity-specific scopes accepted by the VC
-// meeting query commands (+meeting-list-active, +meeting-events): UAT uses
-// vc:meeting.meetingevent:read, while TAT uses vc:meeting.bot.join:write.
+// meetingQueryAnyScopes are the scopes accepted by the VC meeting query
+// commands (+meeting-list-active, +meeting-events). UAT recommends
+// vc:meeting.meetingevent:read and TAT recommends vc:meeting.bot.join:write,
+// but both identities accept either scope for compatibility.
 //
 // The shortcut framework's Scopes/UserScopes/BotScopes preflight is AND, so
 // it cannot express "any of these". Those commands therefore leave the
@@ -99,7 +100,7 @@ func checkMeetingQueryScopeWithTenantScopes(ctx context.Context, runtime *common
 		if !known {
 			return nil
 		}
-		if hasAnyGrantedScope(strings.Join(scopes, " "), []string{meetingQueryBotScope}) {
+		if hasAnyGrantedScope(strings.Join(scopes, " "), meetingQueryAnyScopes) {
 			return nil
 		}
 		return newMeetingQueryPermissionError(runtime, meetingQueryBotScope)
@@ -117,7 +118,7 @@ func checkMeetingQueryScopeWithTenantScopes(ctx context.Context, runtime *common
 	if result == nil || result.Scopes == "" {
 		return nil
 	}
-	if hasAnyGrantedScope(result.Scopes, []string{meetingQueryUserScope}) {
+	if hasAnyGrantedScope(result.Scopes, meetingQueryAnyScopes) {
 		return nil
 	}
 	return newMeetingQueryPermissionError(runtime, meetingQueryUserScope)
