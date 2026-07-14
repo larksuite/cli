@@ -68,8 +68,17 @@ func TestBaseRecordBatchUpdatePerRecordWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	updateResult.AssertExitCode(t, 0)
 	updateResult.AssertStdoutStatus(t, true)
-	require.Equal(t, firstRecordID, gjson.Get(updateResult.Stdout, "data.record_id_list.0").String(), updateResult.Stdout)
-	require.Equal(t, secondRecordID, gjson.Get(updateResult.Stdout, "data.record_id_list.1").String(), updateResult.Stdout)
+	require.ElementsMatch(
+		t,
+		[]string{firstRecordID, secondRecordID},
+		[]string{
+			gjson.Get(updateResult.Stdout, "data.record_id_list.0").String(),
+			gjson.Get(updateResult.Stdout, "data.record_id_list.1").String(),
+		},
+		updateResult.Stdout,
+	)
+	require.Equal(t, "Done", gjson.Get(updateResult.Stdout, "data.update_records."+firstRecordID+".Status.0").String(), updateResult.Stdout)
+	require.Equal(t, int64(20), gjson.Get(updateResult.Stdout, "data.update_records."+secondRecordID+".Score").Int(), updateResult.Stdout)
 
 	assertRecordFields := func(recordID, expectedStatus string, expectedScore int64) {
 		t.Helper()
