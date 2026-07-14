@@ -111,18 +111,24 @@ func TestDefaultCloneDir(t *testing.T) {
 // --- pure-function tests ---
 
 func TestParseRepoURL(t *testing.T) {
-	url, err := parseRepoURLFromEnvelope(`{"ok":true,"data":{"repository_url":"http://u:t@h/app_x.git"}}`)
+	result, err := parseCredentialInitEnvelope(`{"ok":true,"data":{"repository_url":"http://u:t@h/app_x.git","commit_author_name":"Alice","commit_author_email":"alice@example.com"}}`)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if url != "http://u:t@h/app_x.git" {
-		t.Errorf("got %q", url)
+	if result.RepositoryURL != "http://u:t@h/app_x.git" {
+		t.Errorf("RepositoryURL got %q", result.RepositoryURL)
+	}
+	if result.CommitAuthorName != "Alice" {
+		t.Errorf("CommitAuthorName got %q", result.CommitAuthorName)
+	}
+	if result.CommitAuthorEmail != "alice@example.com" {
+		t.Errorf("CommitAuthorEmail got %q", result.CommitAuthorEmail)
 	}
 }
 
 func TestParseRepoURL_Errors(t *testing.T) {
 	for _, in := range []string{`not json`, `{"ok":false,"data":{}}`, `{"ok":true,"data":{}}`, `{"ok":true,"data":{"repository_url":""}}`} {
-		if _, err := parseRepoURLFromEnvelope(in); err == nil {
+		if _, err := parseCredentialInitEnvelope(in); err == nil {
 			t.Errorf("expected error for %q", in)
 		}
 	}
@@ -1759,7 +1765,7 @@ func configSetValue(calls [][]string, key string) (string, bool) {
 func TestEnsureGitIdentity_SetsDefaultsWhenUnset(t *testing.T) {
 	f := &fakeCommandRunner{} // no "git config" result → `--get` returns empty stdout
 	withFakeRunner(t, f)
-	if err := ensureGitIdentity(context.Background(), "/repo"); err != nil {
+	if err := ensureGitIdentity(context.Background(), "/repo", "", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if v, ok := configSetValue(f.calls, "user.name"); !ok || v != defaultGitUserName {
@@ -1776,7 +1782,7 @@ func TestEnsureGitIdentity_RespectsExisting(t *testing.T) {
 		"git config": {stdout: "Existing Dev\n"},
 	}}
 	withFakeRunner(t, f)
-	if err := ensureGitIdentity(context.Background(), "/repo"); err != nil {
+	if err := ensureGitIdentity(context.Background(), "/repo", "", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if _, ok := configSetValue(f.calls, "user.name"); ok {
@@ -1792,7 +1798,7 @@ func TestEnsureGitIdentity_SetFailurePropagates(t *testing.T) {
 		"git config": {stderr: "boom", err: errors.New("exit 1")},
 	}}
 	withFakeRunner(t, f)
-	if err := ensureGitIdentity(context.Background(), "/repo"); err == nil {
+	if err := ensureGitIdentity(context.Background(), "/repo", "", ""); err == nil {
 		t.Error("expected error when git config set fails")
 	}
 }

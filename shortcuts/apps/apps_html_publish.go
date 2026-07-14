@@ -127,7 +127,7 @@ var AppsHTMLPublish = common.Shortcut{
 
 		var out map[string]interface{}
 		var err error
-		if appType == "modern_html" {
+		if policyForAppType(appType).useTOSPublish {
 			out, err = runHTMLPublishTOS(ctx, rctx, spec)
 		} else {
 			client := appsHTMLPublishAPI{runtime: rctx}

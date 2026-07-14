@@ -13,12 +13,13 @@ import (
 )
 
 // queryAppType fetches the app's type string from the server via
-// GET /open-apis/spark/v1/apps/{appID}. The server returns uppercase
-// values ("HTML", "FULL_STACK", "MODERN_HTML"); this function normalizes
-// to lowercase. Returns "" when the API is unavailable or returns an
-// error — callers fall back to legacy behavior.
-func queryAppType(ctx context.Context, rctx *common.RuntimeContext, appID string) string {
-	path := fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))
+// GET /open-apis/spark/v1/apps/{identifier}. The identifier can be either
+// an app_id or a meta_token — the server resolves both. The server returns
+// uppercase app_type values ("HTML", "FULL_STACK", "MODERN_HTML",
+// "DESIGN_HTML"); this function normalizes to lowercase. Returns "" when
+// the API is unavailable or returns an error.
+func queryAppType(ctx context.Context, rctx *common.RuntimeContext, identifier string) string {
+	path := fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(identifier))
 	data, err := rctx.CallAPITyped("GET", path, nil, nil)
 	if err != nil {
 		fmt.Fprintf(rctx.IO().ErrOut, "→ Could not query app type: %v\n", err)

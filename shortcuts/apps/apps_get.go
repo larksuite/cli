@@ -17,10 +17,11 @@ import (
 var AppsGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+get",
-	Description: "Get a single app's detail by app ID (returns app_type, name, description, publish status, etc.)",
+	Description: "Get a single app's detail by app ID or meta token (returns app_type, name, description, publish status, etc.)",
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +get --app-id <app_id>",
+		"Example: lark-cli apps +get --app-id <meta_token>",
 		"Example: lark-cli apps +get --app-id <app_id> --dry-run",
 		"Tip: extract app type with --jq '.data.app.app_type'",
 	},
@@ -28,7 +29,7 @@ var AppsGet = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "app ID", Required: true},
+		{Name: "app-id", Desc: "app ID or meta token", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
