@@ -10,7 +10,7 @@
 2. 如果有 `xml_presentation_id`，再用 `slides +xml-get` 尝试回读，确认是否存在演示文稿、是否已有部分页面写入、或是否只是空 presentation。
 3. 检查失败页是否含未转义字符：`Q&A -> Q&amp;A`，文本 `<` / `>` 写成 `&lt;` / `&gt;`，属性 URL `a=1&b=2 -> a=1&amp;b=2`。
 4. 检查标签闭合、属性引号、`<content>` 结构，以及 `<slide>` 直接子元素。
-5. 如果使用 `--slides '[...]'`，怀疑 shell 截断时直接切到两步创建：先 `slides +create`，再用 `xml_presentation.slide.create` 逐页添加。
+5. 如果使用 `--slides '[...]'`，怀疑 shell 截断时直接切到两步创建：先 `slides +create`，再用 `xml_presentation.slide create` 逐页添加。
 
 ## Symptom Fixes
 
@@ -23,7 +23,7 @@
 | 表格列宽不合理 | 调整 `colgroup` 中 `col` 的 `width` 值 |
 | 图表没有显示 | 检查 `chartPlotArea` 和 `chartData` 是否都包含，`dim1` / `dim2` 数据数量是否匹配 |
 | 图片被裁掉一部分 | `<img>` 的 `width` / `height` 是裁剪后尺寸；要整图显示就让 `width:height` 对齐原图比例 |
-| 图片不显示 / `<img src>` 仍是 `@path` | `@` 占位符只在 `+create --slides` 中替换；直接调 `xml_presentation.slide.create` 必须先用 `+media-upload` 拿 `file_token` |
+| 图片不显示 / `<img src>` 仍是 `@path` | `@` 占位符只在 `+create --slides` 中替换；直接调 `xml_presentation.slide create` 必须先用 `+media-upload` 拿 `file_token` |
 | 新插入的 `<img>` 挡住原有元素 | `slide.get` 读原页，对照已有块坐标挑空白位置；空间不够就在同一批 `--parts` 里先移动/缩小现有块再插图 |
 | 渐变背景变成白色 | 渐变必须用 `rgba()` 格式 + 百分比停靠点，如 `linear-gradient(135deg,rgba(30,60,114,1) 0%,rgba(59,130,246,1) 100%)` |
 

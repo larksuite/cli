@@ -100,6 +100,13 @@ def strip_xml(value: str) -> str:
     return re.sub(r"\s+", " ", stripped).strip()
 
 
+def strip_xml_paragraphs(value: str) -> str:
+    paragraphs = re.findall(r"<p\b[^>]*>([\s\S]*?)</p\s*>", value)
+    if paragraphs:
+        return "\n".join(strip_xml(paragraph) for paragraph in paragraphs)
+    return strip_xml(value)
+
+
 def xml_local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if tag.startswith("{") else tag
 
@@ -412,7 +419,8 @@ def validate_sml_tag_prefixes(xml: str) -> list[dict[str, Any]]:
     element_stack: list[str] = []
     issues: list[dict[str, Any]] = []
 
-    parser = expat.ParserCreate()
+    parser = expat.ParserCreate(namespace_separator="|")
+    parser.namespace_prefixes = True
 
     def handle_namespace_decl(prefix: str | None, namespace: str) -> None:
         normalized_prefix = prefix or ""
@@ -423,11 +431,18 @@ def validate_sml_tag_prefixes(xml: str) -> list[dict[str, Any]]:
     def handle_start_element(name: str, _attrs: dict[str, str]) -> None:
         declarations_by_element.append(pending_declarations.copy())
         pending_declarations.clear()
-        element_stack.append(name)
-        if ":" not in name:
+        name_parts = name.rsplit("|", 2)
+        if len(name_parts) == 3:
+            _namespace, local_name, prefix = name_parts
+            element_name = f"{prefix}:{local_name}"
+        else:
+            prefix = ""
+            local_name = name_parts[-1]
+            element_name = local_name
+        element_stack.append(element_name)
+        if not prefix:
             return
 
-        prefix, local_name = name.split(":", 1)
         if namespace_map.get(prefix) != SML_NAMESPACE:
             return
         path = "/".join(element_stack)
@@ -435,12 +450,12 @@ def validate_sml_tag_prefixes(xml: str) -> list[dict[str, Any]]:
             {
                 "level": "error",
                 "code": "sml_prefixed_tag",
-                "tag": name,
+                "tag": element_name,
                 "namespace": SML_NAMESPACE,
                 "path": path,
                 "line": parser.CurrentLineNumber,
                 "column": parser.CurrentColumnNumber,
-                "message": f"SML tag <{name}> must not use a namespace prefix at {path}",
+                "message": f"SML tag <{element_name}> must not use a namespace prefix at {path}",
                 "hint": (
                     f'Use <{local_name}> under the default namespace '
                     f'<{local_name} xmlns="{SML_NAMESPACE}">, or use an unprefixed SML tag.'
@@ -497,7 +512,7 @@ def parse_presentation(xml: str) -> dict[str, Any]:
 def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
 
-    for match in re.finditer(r"<(shape|img|table|chart|whiteboard)\b([^>]*)", slide_xml):
+    for match in re.finditer(r"<(shape|img|table|chart|whiteboard)\b([^>]*)>", slide_xml):
         kind, attrs = match.group(1), match.group(2)
         content = ""
         if kind == "shape":
@@ -530,7 +545,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                         "fontSize": float(
                             extract_attribute(content, "fontSize") or extract_attribute(attrs, "fontSize") or 16
                         ),
-                        "text": strip_xml(content),
+                        "text": strip_xml_paragraphs(content),
                     }
                 )
             elements.append(element)
@@ -695,6 +710,13 @@ def is_template_text_stack(left: dict[str, Any], right: dict[str, Any]) -> bool:
 
 
 def should_flag_horizontal_text_overflow(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    if not (is_text_element(left) and is_text_element(right)):
+        return False
+    if not (has_text_content(left) and has_text_content(right)):
+        return False
+    if is_template_text_stack(left, right) or is_similar_text_overlay(left, right):
+        return False
+
     source, target = sorted([left, right], key=lambda element: element["x"])
     if source["x"] == target["x"]:
         return False
@@ -730,8 +752,6 @@ def should_flag_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
     if is_text_element(left) and is_text_element(right):
         if is_similar_text_overlay(left, right):
             return False
-        if should_flag_horizontal_text_overflow(left, right):
-            return True
         left_visual = estimate_text_visual_bbox(left)
         right_visual = estimate_text_visual_bbox(right)
         if left_visual is None or right_visual is None:
@@ -855,7 +875,8 @@ def lint_slide(
 
     for index, left in enumerate(elements):
         for right in elements[index + 1 :]:
-            if not intersects(left, right) or not should_flag_overlap(left, right):
+            horizontal_overflow = should_flag_horizontal_text_overflow(left, right)
+            if not horizontal_overflow and (not intersects(left, right) or not should_flag_overlap(left, right)):
                 continue
             issues.append(
                 {
@@ -884,6 +905,16 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
     sxsd_issues = validate_sxsd_tag_attributes(root) if root is not None else []
     iconpark_issues = validate_iconpark_icon_types(root) if root is not None else []
     top_level_issues = [*namespace_issues, *sxsd_issues, *iconpark_issues]
+    if namespace_issues:
+        error_count = sum(1 for issue in top_level_issues if issue["level"] == "error")
+        warning_count = sum(1 for issue in top_level_issues if issue["level"] == "warning")
+        return {
+            "file": source_path,
+            "slide_size": {"width": 960, "height": 540},
+            "summary": {"slide_count": 0, "error_count": error_count, "warning_count": warning_count},
+            "issues": top_level_issues,
+            "slides": [],
+        }
     presentation = parse_presentation(xml)
     slides = [
         lint_slide(slide_xml, index + 1, presentation["width"], presentation["height"])

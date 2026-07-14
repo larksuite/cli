@@ -293,8 +293,12 @@ func TestSlidesScreenshotListRejectsMoreThanTenSelectors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "request at most 10 pages at a time") {
-		t.Fatalf("error = %v, want max 10 pages guidance", err)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %v, want typed validation error", err)
+	}
+	if problem.Hint != "request at most 10 pages at a time" {
+		t.Fatalf("hint = %q, want max 10 pages guidance", problem.Hint)
 	}
 }
 

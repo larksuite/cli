@@ -577,6 +577,25 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         self.assertIn(("blY", "blV"), overlap_pairs)
         self.assertIn(("blQ", "blS"), overlap_pairs)
 
+    def test_lint_xml_detects_horizontal_text_overflow_across_declared_box_gap(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="source" type="text" topLeftX="80" topLeftY="100" width="160" height="40">
+                  <content fontSize="18"><p>这是一个足够长的中文文本用于检测跨越间隙的横向溢出</p></content>
+                </shape>
+                <shape id="target" type="text" topLeftX="260" topLeftY="100" width="160" height="40">
+                  <content fontSize="18"><p>目标</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["slides"][0]["issues"][0]["code"], "bbox_overlap")
+        self.assertEqual(result["slides"][0]["issues"][0]["elements"], ["source", "target"])
+
     def test_lint_xml_does_not_check_bounds_or_text_height(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -627,6 +646,7 @@ class XmlTextOverlapLintTest(unittest.TestCase):
                 <shape id="headline" type="text" topLeftX="40" topLeftY="60" width="320" height="90">
                   <content textType="headline" textAlign="center" autoFit="normal-auto-fit" fontSize="28">
                     <p><![CDATA[Growth & scale]]></p>
+                    <p>Focused execution</p>
                   </content>
                 </shape>
                 <table id="table" topLeftX="400" topLeftY="60" width="220" height="120"></table>
@@ -647,7 +667,7 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         self.assertEqual(elements[1]["textAlign"], "center")
         self.assertEqual(elements[1]["autoFit"], "normal-auto-fit")
         self.assertEqual(elements[1]["fontSize"], 28)
-        self.assertEqual(elements[1]["text"], "Growth & scale")
+        self.assertEqual(elements[1]["text"], "Growth & scale\nFocused execution")
 
     def test_lint_xml_does_not_check_small_out_of_bounds_elements(self) -> None:
         result = xml_text_overlap_lint.lint_xml(

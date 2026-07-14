@@ -54,7 +54,7 @@ test "$(jq -s 'map(.summary.error_count) | add' "$DECK_DIR"/slide-0{1,2,3,4,5,6}
 `--slides` 接收由 6 个完整 `<slide>` XML 字符串组成的 JSON 数组；使用 `jq --rawfile` 避免手动处理 XML 引号和换行。
 
 ```bash
-PRESENTATION_ID=$(lark-cli slides +create --as user \
+lark-cli slides +create --as user \
   --title "可靠创建 6 页 PPT" \
   --slides "$(jq -n \
     --rawfile s1 "$DECK_DIR/slide-01.xml" \
@@ -64,10 +64,17 @@ PRESENTATION_ID=$(lark-cli slides +create --as user \
     --rawfile s5 "$DECK_DIR/slide-05.xml" \
     --rawfile s6 "$DECK_DIR/slide-06.xml" \
     '[$s1, $s2, $s3, $s4, $s5, $s6]')" \
-  | tee "$DECK_DIR/create.json" \
-  | jq -r '.data.xml_presentation_id')
+  > "$DECK_DIR/create.json"
+create_status=$?
 
-test -n "$PRESENTATION_ID"
+if [ "$create_status" -ne 0 ]; then
+  exit "$create_status"
+fi
+
+if ! PRESENTATION_ID=$(jq -er '.data.xml_presentation_id | strings | select(length > 0)' "$DECK_DIR/create.json"); then
+  echo "missing non-empty data.xml_presentation_id in $DECK_DIR/create.json" >&2
+  exit 1
+fi
 echo "$PRESENTATION_ID" > "$DECK_DIR/xml_presentation_id"
 ```
 
@@ -81,5 +88,4 @@ lark-cli slides +xml-get --as user \
   --output "$DECK_DIR/readback.xml" \
   --json | tee "$DECK_DIR/readback.json"
 ```
-
 

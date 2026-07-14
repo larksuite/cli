@@ -283,7 +283,8 @@ func normalizeSlideNumbers(values []int) ([]int, error) {
 
 func validateSlidesScreenshotSelectorLimit(count int) error {
 	if count > maxSlidesPerScreenshot {
-		return slidesScreenshotFlagErrorf("too many slide selectors: got %d, maximum is %d; request at most 10 pages at a time", count, maxSlidesPerScreenshot)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "too many slide selectors: got %d, maximum is %d", count, maxSlidesPerScreenshot).
+			WithHint("request at most 10 pages at a time")
 	}
 	return nil
 }

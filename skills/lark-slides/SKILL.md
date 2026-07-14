@@ -39,7 +39,7 @@ metadata:
 
 **CRITICAL — 新建演示文稿或大幅改写页面时，生成 XML 前 MUST 读取 [visual-planning.md](references/visual-planning.md)，确保 `layout_type`、`visual_focus`、`text_density` 实际改变页面几何、主视觉和文本量。**
 
-**CRITICAL — 新建演示文稿或大幅改写页面时，规划 `asset_need` MUST 遵循 [asset-planning.md](references/asset-planning.md)：只做元数据规划，必须有 `fallback_if_missing`，不得要求真实搜索、下载或上传素材。**
+**CRITICAL — 新建演示文稿或大幅改写页面时，规划 `asset_need` MUST 遵循 [asset-planning.md](references/asset-planning.md)。**
 
 **CRITICAL — 将完整 `<slide>` XML 提交给 `slides +create --slides`、`xml_presentation.slide create` 或 `slides +replace-pages` 之前，MUST 先把待提交 XML 保存到本地文件并运行 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py)；`summary.error_count` 必须为 0 才能调用接口。**
 
@@ -183,7 +183,7 @@ lark-cli slides xml_presentation.slide create \
   --data "$(jq -n --arg content '<slide xmlns="http://www.larkoffice.com/sml/2.0">
   <style><fill><fillColor color="BACKGROUND_COLOR"/></fill></style>
   <data>
-    在这里放置 shape、line、table、chart 等元素
+    <!-- 在这里放置 shape、line、table、chart 等元素 -->
   </data>
 </slide>' '{slide:{content:$content}}')"
 

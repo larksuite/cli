@@ -5,6 +5,7 @@ package slides
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -384,6 +385,45 @@ func TestSlidesXMLGetRejectsUnsafeOutputPath(t *testing.T) {
 	}
 }
 
+func TestSlidesXMLGetRejectsRevisionIDBelowMinusOneBeforeAPICall(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dry-run=%t", dryRun), func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+
+			args := []string{
+				"+xml-get",
+				"--presentation", "pres_abc",
+				"--revision-id", "-2",
+				"--as", "user",
+			}
+			if dryRun {
+				args = append(args, "--dry-run")
+			}
+			err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, args)
+			if err == nil {
+				t.Fatal("expected invalid revision-id error, got nil")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T %v", err, err)
+			}
+			if problem.Category != errs.CategoryValidation {
+				t.Fatalf("category = %q, want %q", problem.Category, errs.CategoryValidation)
+			}
+			if problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("subtype = %q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected *errs.ValidationError, got %T %v", err, err)
+			}
+			if validationErr.Param != "--revision-id" {
+				t.Fatalf("param = %q, want --revision-id", validationErr.Param)
+			}
+		})
+	}
+}
+
 func TestSlidesXMLGetRejectsConflictingSlideSelectors(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
@@ -395,6 +435,16 @@ func TestSlidesXMLGetRejectsConflictingSlideSelectors(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected selector conflict error, got nil")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
 	}
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
@@ -416,6 +466,16 @@ func TestSlidesXMLGetRejectsEmptySlideID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected empty slide-id error, got nil")
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+	}
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected *errs.ValidationError, got %T %v", err, err)
@@ -436,6 +496,16 @@ func TestSlidesXMLGetRejectsRemoveAttrIDForSingleSlide(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected remove-attr-id validation error, got nil")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
 	}
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {

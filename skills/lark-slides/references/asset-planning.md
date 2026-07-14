@@ -6,7 +6,6 @@
 
 ## Core Rules
 
-- `asset_need` is metadata only. It can guide page design, but it must not require web search, local download, media upload, or external tools.
 - Every planned asset must include a fallback visual plan. The fallback can use native charts, tables, whiteboard diagrams, placeholder regions, or XML shapes, text, and arrows as appropriate.
 - Asset needs must serve the page's `key_message` and `visual_focus`. Do not add decorative assets that do not clarify the page.
 - Prefer a few high-value asset plans over one asset on every page. For a 6-page technical or business deck, plan assets on at least 3 pages when the content allows.

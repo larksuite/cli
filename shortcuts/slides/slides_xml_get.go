@@ -42,6 +42,9 @@ var SlidesXMLGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if revisionID := runtime.Int("revision-id"); revisionID < -1 {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--revision-id must be -1 or a non-negative integer").WithParam("--revision-id")
+		}
 		if ref.Kind == "wiki" {
 			if err := runtime.EnsureScopes([]string{"wiki:node:read"}); err != nil {
 				return err
