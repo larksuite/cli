@@ -106,7 +106,7 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 	}
 }
 
-func TestCheckMeetingQueryScope_UserAllowsCompatibleScopes(t *testing.T) {
+func TestCheckMeetingQueryAnyScope_AllowsCompatibleScopes(t *testing.T) {
 	cases := []struct {
 		name     string
 		identity core.Identity
@@ -115,6 +115,9 @@ func TestCheckMeetingQueryScope_UserAllowsCompatibleScopes(t *testing.T) {
 		{name: "user_only_event", identity: core.AsUser, scopes: meetingQueryUserScope},
 		{name: "user_only_join", identity: core.AsUser, scopes: meetingQueryBotScope},
 		{name: "user_both", identity: core.AsUser, scopes: strings.Join(meetingQueryAnyScopes, " ")},
+		{name: "bot_only_event", identity: core.AsBot, scopes: meetingQueryUserScope},
+		{name: "bot_only_join", identity: core.AsBot, scopes: meetingQueryBotScope},
+		{name: "bot_both", identity: core.AsBot, scopes: strings.Join(meetingQueryAnyScopes, " ")},
 	}
 
 	for _, tc := range cases {
@@ -138,6 +141,7 @@ func TestCheckMeetingQueryAnyScope_MissingScopesReturnsPermissionError(t *testin
 		identity core.Identity
 	}{
 		{name: "user", identity: core.AsUser},
+		{name: "bot", identity: core.AsBot},
 	}
 
 	for _, tc := range cases {
@@ -198,6 +202,22 @@ func TestCheckMeetingQueryAnyScope_IsLenientWhenLocalScopeStateIsUnavailable(t *
 				})
 			},
 		},
+		{
+			name: "bot_resolver_error",
+			makeRuntime: func() *common.RuntimeContext {
+				return newMeetingQueryRuntime(core.AsBot, &meetingQueryTokenResolver{
+					err: errors.New("boom"),
+				})
+			},
+		},
+		{
+			name: "bot_empty_scopes",
+			makeRuntime: func() *common.RuntimeContext {
+				return newMeetingQueryRuntime(core.AsBot, &meetingQueryTokenResolver{
+					result: &credential.TokenResult{Token: "test-token"},
+				})
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -205,45 +225,6 @@ func TestCheckMeetingQueryAnyScope_IsLenientWhenLocalScopeStateIsUnavailable(t *
 			if err := checkMeetingQueryAnyScope(context.Background(), tc.makeRuntime()); err != nil {
 				t.Fatalf("checkMeetingQueryAnyScope() error = %v, want nil", err)
 			}
-		})
-	}
-}
-
-func TestCheckMeetingQueryScope_BotUsesPublishedTenantScopes(t *testing.T) {
-	cases := []struct {
-		name     string
-		scopes   []string
-		known    bool
-		fetchErr error
-		wantErr  bool
-	}{
-		{name: "join_scope_granted", scopes: []string{meetingQueryBotScope}, known: true},
-		{name: "event_scope_granted", scopes: []string{meetingQueryUserScope}, known: true},
-		{name: "no_tenant_scopes", scopes: []string{}, known: true, wantErr: true},
-		{name: "app_metadata_unavailable", fetchErr: errors.New("metadata unavailable")},
-		{name: "app_not_published", known: false},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			runtime := bareMeetingQueryRuntime(core.AsBot)
-			err := checkMeetingQueryScopeWithTenantScopes(
-				context.Background(),
-				runtime,
-				func(context.Context, *common.RuntimeContext) ([]string, bool, error) {
-					return tc.scopes, tc.known, tc.fetchErr
-				},
-			)
-			if !tc.wantErr {
-				if err != nil {
-					t.Fatalf("checkMeetingQueryScopeWithTenantScopes() error = %v, want nil", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("checkMeetingQueryScopeWithTenantScopes() error = nil, want missing scope")
-			}
-			assertMeetingQueryPermissionError(t, err, core.AsBot)
 		})
 	}
 }
