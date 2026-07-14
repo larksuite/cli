@@ -13,6 +13,8 @@
 | 用户身份 `--as user` | `vc:meeting.meetingevent:read` |
 | 应用身份 `--as bot` | `vc:meeting.bot.join:write` |
 
+两个 scope 是兼容的 OR；表格仅表示缺失时的推荐项。申请和恢复流程统一见主 skill 的“会议查询 scope 恢复规则”。
+
 ## 命令
 
 ```bash
@@ -89,10 +91,9 @@ lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
 |---------|---------|---------|
 | `--user-id is required when --as bot` | 应用身份未传目标用户 | 传入目标用户 open_id |
 | 用户身份返回空列表 | 当前登录用户没有可见的进行中会议 | 确认用户是否在会中，或是否切错身份 |
-| 用户身份无权限 / 不可见 | 当前登录用户没有可见的进行中会议，或当前身份无法读取该会议 | 不要反复执行 `auth login`。先确认当前登录用户是否在会中、是否切错 profile；如果用户明确要查询应用机器人可见的会议，再拿目标用户 open_id 执行 `+meeting-list-active --as bot --user-id <user_open_id>`，并按应用身份权限配置检查应用权限、安装、数据范围和灰度 |
 | 应用身份返回空列表 | 没有满足“目标用户在会中且应用机器人也在会中”的当前会 | 先让应用机器人入会，或确认 `user_id` 和会议状态 |
 | `--user-id` 格式错误 | 传入了 internal user_id 或其他非 `ou_...` 值 | 改传目标用户 open_id |
-| 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | 不要执行 `auth login`。以 CLI 返回的 metadata / error envelope 为准确认缺失权限；检查应用发布/安装，以及开放平台“权限可访问的数据范围”：选择“按条件筛选”，条件为“会议的归属者 包含 与应用的可用范围一致”；仍失败再排查内测 privilege / 灰度 |
+| 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | 不要执行 `auth login`。若错误同时列出两个兼容 scope，只通过错误中的 `console_url` 或开发者后台申请 `vc:meeting.bot.join:write`；再检查应用发布/安装和权限可访问的数据范围。只有明确返回 `20017` / `ErrNotInGray` 时才排查内测 privilege / 灰度 |
 
 ## 参考
 

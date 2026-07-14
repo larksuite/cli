@@ -107,7 +107,7 @@ var VCMeetingEvents = common.Shortcut{
 		}
 		data, events, hasMore, pageToken, err := fetchMeetingEvents(ctx, runtime, startTime, endTime)
 		if err != nil {
-			return err
+			return normalizeMeetingQueryPermissionError(runtime, err)
 		}
 		events = compactMeetingEvents(events)
 		identity, identityWarning := meetingEventsCurrentIdentity(runtime)

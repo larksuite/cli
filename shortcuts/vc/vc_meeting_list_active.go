@@ -59,7 +59,7 @@ var VCMeetingListActive = common.Shortcut{
 		}
 		data, err := runtime.CallAPITyped(http.MethodGet, vcMeetingListActiveAPIPath, params, nil)
 		if err != nil {
-			return err
+			return normalizeMeetingQueryPermissionError(runtime, err)
 		}
 		if data == nil {
 			data = map[string]interface{}{}
