@@ -941,29 +941,49 @@ func TestListQuery(t *testing.T) {
 }
 
 func TestFlagListRejectsInvalidPageLimit(t *testing.T) {
-	cmd := &cobra.Command{Use: "test"}
-	cmd.Flags().Int("page-size", 50, "")
-	cmd.Flags().String("page-token", "", "")
-	cmd.Flags().Bool("page-all", false, "")
-	cmd.Flags().Int("page-limit", 20, "")
-	if err := cmd.ParseFlags(nil); err != nil {
-		t.Fatalf("ParseFlags() error = %v", err)
+	// page-limit 0 means "unlimited" and must pass validation; negatives and
+	// values above 1000 must still be rejected.
+	newRuntime := func(t *testing.T, pageLimit string) *common.RuntimeContext {
+		t.Helper()
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().Int("page-size", 50, "")
+		cmd.Flags().String("page-token", "", "")
+		cmd.Flags().Bool("page-all", false, "")
+		cmd.Flags().Int("page-limit", 20, "")
+		if err := cmd.ParseFlags(nil); err != nil {
+			t.Fatalf("ParseFlags() error = %v", err)
+		}
+		if err := cmd.Flags().Set("page-limit", pageLimit); err != nil {
+			t.Fatalf("Set page-limit error = %v", err)
+		}
+		return &common.RuntimeContext{Cmd: cmd}
 	}
-	if err := cmd.Flags().Set("page-limit", "0"); err != nil {
-		t.Fatalf("Set page-limit error = %v", err)
-	}
-	runtime := &common.RuntimeContext{Cmd: cmd}
 
-	if err := ImFlagList.Validate(context.Background(), runtime); err == nil {
-		t.Fatalf("Validate() expected page-limit error, got nil")
-	}
+	t.Run("zero is accepted (unlimited)", func(t *testing.T) {
+		runtime := newRuntime(t, "0")
+		if err := ImFlagList.Validate(context.Background(), runtime); err != nil {
+			t.Fatalf("Validate() page-limit=0 error = %v, want nil", err)
+		}
+		got := ImFlagList.DryRun(context.Background(), runtime).Format()
+		if !strings.Contains(got, "/open-apis/im/v1/flags") {
+			t.Fatalf("DryRun output = %q, want request for valid input", got)
+		}
+	})
 
-	got := ImFlagList.DryRun(context.Background(), runtime).Format()
-	if !strings.Contains(got, "--page-limit") {
-		t.Fatalf("DryRun output = %q, want page-limit validation error", got)
-	}
-	if strings.Contains(got, "/open-apis/im/v1/flags") {
-		t.Fatalf("DryRun output = %q, should not include request for invalid input", got)
+	for _, bad := range []string{"-1", "1001"} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			runtime := newRuntime(t, bad)
+			if err := ImFlagList.Validate(context.Background(), runtime); err == nil {
+				t.Fatalf("Validate() page-limit=%s expected error, got nil", bad)
+			}
+			got := ImFlagList.DryRun(context.Background(), runtime).Format()
+			if !strings.Contains(got, "--page-limit") {
+				t.Fatalf("DryRun output = %q, want page-limit validation error", got)
+			}
+			if strings.Contains(got, "/open-apis/im/v1/flags") {
+				t.Fatalf("DryRun output = %q, should not include request for invalid input", got)
+			}
+		})
 	}
 }
 
@@ -1624,6 +1644,66 @@ func TestExecuteListAllPages_PageLimit(t *testing.T) {
 	// Should stop at page-limit
 	if callCount != 3 {
 		t.Fatalf("expected 3 API calls (page limit), got %d", callCount)
+	}
+	// Stopping because of the page limit (while has_more is still true) must be
+	// surfaced on stderr, otherwise a truncated flag_items reads as "no flags".
+	errOut := rt.Factory.IOStreams.ErrOut.(*bytes.Buffer).String()
+	if !strings.Contains(errOut, "reached page limit (3)") {
+		t.Fatalf("stderr = %q, want truncation warning mentioning the page limit", errOut)
+	}
+}
+
+func TestExecuteListAllPages_Unlimited(t *testing.T) {
+	// page-limit 0 means unlimited: pagination must continue until the server
+	// reports has_more=false, even past the old default cap of 20 pages.
+	const totalPages = 25
+	callCount := 0
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.Contains(req.URL.Path, "/open-apis/im/v1/flags") {
+			callCount++
+			last := callCount >= totalPages
+			flagItems := []any{}
+			if last {
+				// The single active flag lives on the final page, mirroring the
+				// real-world ordering where active flags trail canceled ones.
+				flagItems = []any{map[string]any{"item_id": "flag_last"}}
+			}
+			return shortcutJSONResponse(200, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"flag_items":        flagItems,
+					"delete_flag_items": []any{},
+					"messages":          []any{},
+					"has_more":          !last,
+					"page_token":        fmt.Sprintf("token_%d", callCount),
+				},
+			}), nil
+		}
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.Path)
+	}))
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 50, "")
+	cmd.Flags().Int("page-limit", 0, "") // 0 = unlimited
+	cmd.Flags().Bool("enrich-feed-thread", false, "")
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	setRuntimeField(t, rt, "Cmd", cmd)
+
+	err := executeListAllPages(rt)
+	if err != nil {
+		t.Fatalf("executeListAllPages() error = %v", err)
+	}
+	// Must scan every page, not stop at the old default of 20.
+	if callCount != totalPages {
+		t.Fatalf("expected %d API calls (unlimited), got %d", totalPages, callCount)
+	}
+	// Naturally exhausting the server (has_more=false) must NOT print the
+	// page-limit truncation warning.
+	errOut := rt.Factory.IOStreams.ErrOut.(*bytes.Buffer).String()
+	if strings.Contains(errOut, "reached page limit") {
+		t.Fatalf("stderr = %q, unexpected truncation warning for unlimited scan", errOut)
 	}
 }
 

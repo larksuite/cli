@@ -28,7 +28,7 @@ var ImFlagList = common.Shortcut{
 		{Name: "page-size", Type: "int", Default: "50", Desc: "page size (1-50)"},
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
-		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
+		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000; 0 = unlimited)"},
 		{Name: "enrich-feed-thread", Type: "bool", Default: "true", Desc: "fetch message content for feed-type thread entries (default true; may call messages/mget and require im:message.group_msg:get_as_user/im:message.p2p_msg:get_as_user; use --enrich-feed-thread=false to avoid extra scopes)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -74,8 +74,8 @@ func validateListOptions(rt *common.RuntimeContext) error {
 	if n := rt.Int("page-size"); n < 1 || n > 50 {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
 	}
-	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")
+	if n := rt.Int("page-limit"); n < 0 || n > 1000 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 0 and 1000 (0 = unlimited)").WithParam("--page-limit")
 	}
 	return nil
 }
@@ -223,10 +223,9 @@ func asString(v any) string {
 // The flag list API returns items sorted by update_time ascending, so the last page
 // contains the newest items.
 func executeListAllPages(rt *common.RuntimeContext) error {
+	// page-limit 0 means unlimited (aligns with im +chat-members-list / +messages-search).
+	// Validation already guarantees 0 <= page-limit <= 1000, so we only clamp the upper bound.
 	maxPages := rt.Int("page-limit")
-	if maxPages < 1 {
-		maxPages = 20
-	}
 	if maxPages > 1000 {
 		maxPages = 1000
 	}
@@ -239,7 +238,7 @@ func executeListAllPages(rt *common.RuntimeContext) error {
 	var lastPageToken string
 	prevPageToken := "__START__" // Sentinel to detect unchanged token
 
-	for page := 0; page < maxPages; page++ {
+	for page := 0; ; page++ {
 		token := ""
 		if page > 0 {
 			token = lastPageToken
@@ -276,6 +275,14 @@ func executeListAllPages(rt *common.RuntimeContext) error {
 		// Detect server anomaly: same token returned twice means infinite loop
 		if lastPageToken == prevPageToken {
 			fmt.Fprintf(rt.IO().ErrOut, "warning: page_token did not change, stopping pagination to avoid infinite loop\n")
+			break
+		}
+		// Stop when the page limit is reached while the server still has more.
+		// Surface it so callers don't read a truncated flag_items as "no flags".
+		// maxPages == 0 means unlimited. (aligns with im +chat-members-list)
+		if maxPages > 0 && page+1 >= maxPages {
+			fmt.Fprintf(rt.IO().ErrOut,
+				"[pagination] reached page limit (%d), stopping. Use --page-all --page-limit 0 to fetch all pages.\n", maxPages)
 			break
 		}
 		prevPageToken = lastPageToken
