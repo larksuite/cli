@@ -116,11 +116,8 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 			if !errors.As(got, &pe) {
 				t.Fatalf("got %T, want *errs.PermissionError", got)
 			}
-			if pe == original {
-				t.Fatal("normalizer mutated the upstream error instead of copying it")
-			}
-			if !errors.Is(got, original) {
-				t.Fatal("normalized error does not preserve the upstream error as cause")
+			if got != original || pe != original {
+				t.Fatal("normalizer did not return the original permission error")
 			}
 			if pe.Code != tc.code || pe.Subtype != tc.subtype || pe.LogID != "log-id" || !pe.Retryable {
 				t.Fatalf("diagnostics changed: %+v", pe.Problem)
