@@ -1,0 +1,29 @@
+skills/lark-slides/references/lark-slides-whiteboard.md
+  s_a5c24cdee491bf::t_9c4e0dac8326f9 329-402
+skills/lark-slides/scripts/whiteboard_funnel.py
+  s_a5c24cdee491bf::t_57158669ce05b7 1-361
+skills/lark-slides/scripts/whiteboard_funnel_test.py
+  s_a5c24cdee491bf::t_047daf03f0adab 1-142
+skills/lark-slides/scripts/whiteboard_pyramid.py
+  s_a5c24cdee491bf::t_edfcce04764a95 1-309
+skills/lark-slides/scripts/whiteboard_pyramid_test.py
+  s_a5c24cdee491bf::t_cfbfe190dea133 1-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e6216b01452124d075b4f91d32ff82e59498e2d2",
+  "prompts": {},
+  "sessions": {
+    "s_a5c24cdee491bf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5b75-25be-76c3-b10e-098eb2fdc624",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
