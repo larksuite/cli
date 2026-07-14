@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/shortcuts/application"
 	"github.com/larksuite/cli/shortcuts/apps"
 	"github.com/larksuite/cli/shortcuts/base"
 	"github.com/larksuite/cli/shortcuts/calendar"
@@ -61,6 +62,7 @@ var allShortcuts []common.Shortcut
 
 func init() {
 	allShortcuts = append(allShortcuts, apps.Shortcuts()...)
+	allShortcuts = append(allShortcuts, application.Shortcuts()...)
 	allShortcuts = append(allShortcuts, calendar.Shortcuts()...)
 	allShortcuts = append(allShortcuts, doc.Shortcuts()...)
 	allShortcuts = append(allShortcuts, drive.Shortcuts()...)
@@ -205,16 +207,18 @@ func installBrandRestrictionGuard(svc *cobra.Command, service string, brand core
 	svc.Long = fmt.Sprintf("The %q feature is not yet supported on the %s brand.", service, brand)
 }
 
-// Sheets backward-compatibility help grouping.
+// Sheets backward-compatibility grouping.
 //
 // shortcuts/sheets/backward keeps the pre-refactor command names alive so that
 // users whose lark-sheets skill predates the refactor keep working even after
-// upgrading only the binary. In `sheets --help` those aliases would otherwise
-// sort alphabetically into the same flat list as the current commands,
-// indistinguishable from them. applySheetsCompatGroups splits them into a
-// dedicated cobra group whose heading tells the user to update their skill, and
-// appends a "(→ +new-command)" pointer to each alias so the migration target is
-// obvious. Pure presentation — the aliases stay fully executable.
+// upgrading only the binary. applySheetsCompatGroups tags each alias into a
+// dedicated deprecated cobra group. The refactored commands have been the
+// default for over a month, so `sheets --help` no longer lists these aliases:
+// sheetsUsageTemplate renders every group except the deprecated one. The
+// grouping is still applied for two reasons — the unknown-subcommand path
+// (cmd/root.go) keys off it to classify a mistyped legacy alias, and each
+// alias's own `sheets <alias> --help` still surfaces the "(→ +new-command)"
+// migration pointer appended below. The aliases stay fully executable.
 const (
 	sheetsCurrentGroupID = "sheets-current"
 	// sheetsDeprecatedGroupID aliases the shared deprecated-group id so both
@@ -224,9 +228,10 @@ const (
 )
 
 // sheetsAliasReplacement maps each pre-refactor sheets alias to the current
-// command(s) that replace it, shown as a "(→ ...)" suffix in --help. Aliases
-// absent from this map still land in the deprecated group, just without a
-// pointer, so a missing entry degrades gracefully rather than misgrouping.
+// command(s) that replace it, shown as a "(→ ...)" suffix in the alias's own
+// --help and reused by wrapSheetsBackwardDeprecation for the on-execution
+// _notice. Aliases absent from this map still land in the deprecated group,
+// just without a pointer, so a missing entry degrades gracefully.
 var sheetsAliasReplacement = map[string]string{
 	// spreadsheet / sheet management
 	"+create":       "+workbook-create",
@@ -279,6 +284,43 @@ var sheetsAliasReplacement = map[string]string{
 	"+delete-float-image": "+float-image-delete",
 }
 
+// sheetsUsageTemplate is cobra v1.10.2's stock usage template with a single
+// change: the group loop is guarded by {{if ne $group.ID "deprecated"}} so the
+// deprecated pre-refactor aliases are omitted from `sheets --help` altogether.
+// Everything else — current commands, ungrouped metaapi subcommands under
+// "Additional Commands", flags — renders exactly as cobra's default. Keep in
+// sync with cobra's defaultUsageTemplate on upgrade.
+var sheetsUsageTemplate = fmt.Sprintf(`Usage:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
+
+Aliases:
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
+
+Examples:
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
+
+Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}{{if ne $group.ID %q}}
+
+{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
+
+Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+
+Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
+`, sheetsDeprecatedGroupID)
+
 func applySheetsCompatGroups(svc *cobra.Command) {
 	svc.AddGroup(
 		&cobra.Group{ID: sheetsCurrentGroupID, Title: "Available Commands:"},
@@ -310,6 +352,11 @@ func applySheetsCompatGroups(svc *cobra.Command) {
 			c.GroupID = sheetsCurrentGroupID
 		}
 	}
+
+	// Refactored commands have been the default for over a month: drop the
+	// deprecated group from `sheets --help` (see sheetsUsageTemplate). The
+	// aliases remain grouped and executable, just no longer advertised here.
+	svc.SetUsageTemplate(sheetsUsageTemplate)
 }
 
 // wrapSheetsBackwardDeprecation decorates each backward-compatibility sheets

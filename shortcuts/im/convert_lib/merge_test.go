@@ -65,6 +65,12 @@ func TestFetchMergeForwardSubMessages(t *testing.T) {
 		runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
 			case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_root"):
+				// Sub-item senders that appear only inside the merge_forward
+				// have no name unless we opt into server-side sender names;
+				// there is no contact/mention fallback anymore.
+				if got := req.URL.Query().Get("with_sender_name"); got != "true" {
+					t.Fatalf("with_sender_name = %q, want %q", got, "true")
+				}
 				return convertlibJSONResponse(200, map[string]interface{}{
 					"code": 0,
 					"data": map[string]interface{}{

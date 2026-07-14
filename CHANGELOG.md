@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.69] - 2026-07-13
+
+### Features
+
+- support docs fetch selection anchors (#1815)
+- **apps**: support modern_html app type with TOS publish path and app type querying
+- **im**: show bot sender display names when reading messages (#1829)
+- add drive list comments shortcut (#1845)
+- support wiki sources in drive export (#1802)
+- add application domain with slash command management shortcuts (#1806)
+- validate IM idempotency key length (#1797)
+- surface reply context and mentions in im.message.receive_v1 (#1798)
+
+### Bug Fixes
+
+- route brand-sensitive endpoints through the resolver (#1836)
+
+### Documentation
+
+- document OKR block XML guidance (#1648)
+- refine doubao whiteboard workflow routing (#1841)
+- clarify Mindnote token handling (#1827)
+
+### Tests
+
+- isolate semantic waiver fixtures from wall clock
+
+### Misc
+
+- Merge lark sheets development branch (#1833)
+
 ## [v1.0.68] - 2026-07-09
 
 ### Features
@@ -1438,6 +1469,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.69]: https://github.com/larksuite/cli/releases/tag/v1.0.69
 [v1.0.68]: https://github.com/larksuite/cli/releases/tag/v1.0.68
 [v1.0.67]: https://github.com/larksuite/cli/releases/tag/v1.0.67
 [v1.0.66]: https://github.com/larksuite/cli/releases/tag/v1.0.66

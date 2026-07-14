@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // --- Happy path: all supported URL types ---
@@ -100,13 +99,13 @@ func TestDriveInspectDryRun_WikiURL(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	require.Equal(t, int64(2), gjson.Get(result.Stdout, "api.#").Int(),
+	require.Equal(t, int64(2), clie2e.DryRunGet(result.Stdout, "api.#").Int(),
 		"expected exactly 2 dry-run API steps for wiki URL, stdout:\n%s", result.Stdout)
 	require.Equal(t, "/open-apis/wiki/v2/spaces/get_node",
-		gjson.Get(result.Stdout, "api.0.url").String(),
+		clie2e.DryRunGet(result.Stdout, "api.0.url").String(),
 		"expected get_node as first step, stdout:\n%s", result.Stdout)
 	require.Equal(t, "/open-apis/drive/v1/metas/batch_query",
-		gjson.Get(result.Stdout, "api.1.url").String(),
+		clie2e.DryRunGet(result.Stdout, "api.1.url").String(),
 		"expected batch_query as second step, stdout:\n%s", result.Stdout)
 }
 
@@ -239,10 +238,10 @@ func runInspectDryRun(t *testing.T, url string) *clie2e.Result {
 func assertOneStepBatchQuery(t *testing.T, result *clie2e.Result) {
 	t.Helper()
 
-	require.Equal(t, int64(1), gjson.Get(result.Stdout, "api.#").Int(),
+	require.Equal(t, int64(1), clie2e.DryRunGet(result.Stdout, "api.#").Int(),
 		"expected exactly 1 dry-run API step, stdout:\n%s", result.Stdout)
 	require.Equal(t, "/open-apis/drive/v1/metas/batch_query",
-		gjson.Get(result.Stdout, "api.0.url").String(),
+		clie2e.DryRunGet(result.Stdout, "api.0.url").String(),
 		"expected batch_query URL, stdout:\n%s", result.Stdout)
 }
 

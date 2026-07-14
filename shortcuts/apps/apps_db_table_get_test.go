@@ -79,11 +79,7 @@ func TestAppsDBTableGet_NonPrettyFormatsOmitFormatQuery(t *testing.T) {
 			if err := runAppsShortcut(t, AppsDBTableGet, args, factory, stdout); err != nil {
 				t.Fatalf("dry-run err=%v", err)
 			}
-			var env struct {
-				API []struct {
-					Params map[string]interface{} `json:"params"`
-				} `json:"api"`
-			}
+			var env dryRunAPIEnvelope
 			if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
 				t.Fatalf("decode: %v", err)
 			}

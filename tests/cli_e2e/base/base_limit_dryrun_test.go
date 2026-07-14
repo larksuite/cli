@@ -56,9 +56,9 @@ func TestBaseListDryRunAcceptsPageSizeAliasForLimit(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	require.Equal(t, int64(0), gjson.Get(result.Stdout, "api.0.params.offset").Int(), result.Stdout)
-	require.Equal(t, int64(40), gjson.Get(result.Stdout, "api.0.params.limit").Int(), result.Stdout)
-	require.False(t, gjson.Get(result.Stdout, "api.0.params.page_size").Exists(), result.Stdout)
+	require.Equal(t, int64(0), clie2e.DryRunGet(result.Stdout, "api.0.params.offset").Int(), result.Stdout)
+	require.Equal(t, int64(40), clie2e.DryRunGet(result.Stdout, "api.0.params.limit").Int(), result.Stdout)
+	require.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").Exists(), result.Stdout)
 }
 
 func TestBaseListDryRunRejectsLimitPageSizeConflict(t *testing.T) {

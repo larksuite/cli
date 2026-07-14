@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestDocsFetchDryRunIgnoresAPIVersionCompatFlag(t *testing.T) {
@@ -32,13 +31,13 @@ func TestDocsFetchDryRunIgnoresAPIVersionCompatFlag(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.method").String(); got != "POST" {
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "POST" {
 		t.Fatalf("method=%q, want POST\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/docs_ai/v1/documents/doxcnDryRunCompat/fetch" {
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/docs_ai/v1/documents/doxcnDryRunCompat/fetch" {
 		t.Fatalf("url=%q, want docs fetch endpoint\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.format").String(); got != "xml" {
+	if got := clie2e.DryRunGet(out, "api.0.body.format").String(); got != "xml" {
 		t.Fatalf("format=%q, want xml\nstdout:\n%s", got, out)
 	}
 }
@@ -61,13 +60,13 @@ func TestDocsFetchDryRunSelectionAnchorFragmentBecomesRangeStart(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/docs_ai/v1/documents/wikcnDryRun/fetch" {
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/docs_ai/v1/documents/wikcnDryRun/fetch" {
 		t.Fatalf("url=%q, want docs fetch endpoint\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.read_option.read_mode").String(); got != "range" {
+	if got := clie2e.DryRunGet(out, "api.0.body.read_option.read_mode").String(); got != "range" {
 		t.Fatalf("read_mode=%q, want range\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.read_option.start_block_id").String(); got != "share-CUE3d6Ykno2fkexEvt8cGF8Wnse" {
+	if got := clie2e.DryRunGet(out, "api.0.body.read_option.start_block_id").String(); got != "share-CUE3d6Ykno2fkexEvt8cGF8Wnse" {
 		t.Fatalf("start_block_id=%q, want selection anchor\nstdout:\n%s", got, out)
 	}
 }
@@ -90,7 +89,7 @@ func TestDocsFetchDryRunUnsupportedSelectionAnchorFragmentStaysFull(t *testing.T
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.body.read_option").Raw; got != "" {
+	if got := clie2e.DryRunGet(out, "api.0.body.read_option").Raw; got != "" {
 		t.Fatalf("read_option=%s, want omitted for unsupported selection anchor\nstdout:\n%s", got, out)
 	}
 }

@@ -12,7 +12,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestMail_DraftSendDryRun(t *testing.T) {
@@ -39,12 +38,12 @@ func TestMail_DraftSendDryRun(t *testing.T) {
 		"/open-apis/mail/v1/user_mailboxes/alias@example.com/drafts/draft_002/send",
 		"/open-apis/mail/v1/user_mailboxes/alias@example.com/drafts/draft_003/send",
 	}
-	assert.Equal(t, int64(len(wantURLs)), gjson.Get(result.Stdout, "api.#").Int(), "stdout:\n%s", result.Stdout)
+	assert.Equal(t, int64(len(wantURLs)), clie2e.DryRunGet(result.Stdout, "api.#").Int(), "stdout:\n%s", result.Stdout)
 	for i, wantURL := range wantURLs {
 		idx := strconv.Itoa(i)
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api."+idx+".method").String(), "stdout:\n%s", result.Stdout)
-		assert.Equal(t, wantURL, gjson.Get(result.Stdout, "api."+idx+".url").String(), "stdout:\n%s", result.Stdout)
-		assert.False(t, gjson.Get(result.Stdout, "api."+idx+".body").Exists(), "stdout:\n%s", result.Stdout)
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api."+idx+".method").String(), "stdout:\n%s", result.Stdout)
+		assert.Equal(t, wantURL, clie2e.DryRunGet(result.Stdout, "api."+idx+".url").String(), "stdout:\n%s", result.Stdout)
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api."+idx+".body").Exists(), "stdout:\n%s", result.Stdout)
 	}
 }
 

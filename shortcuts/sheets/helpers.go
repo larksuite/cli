@@ -10,6 +10,7 @@ package sheets
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	neturl "net/url"
 	"strings"
@@ -44,7 +45,8 @@ func sheetsValidationCauseForFlag(name string, cause error) *errs.ValidationErro
 // classification and only adds the domain's flag param.
 func sheetsInputStatError(flag string, err error) error {
 	wrapped := common.WrapInputStatErrorTyped(err)
-	if v, ok := wrapped.(*errs.ValidationError); ok {
+	var v *errs.ValidationError
+	if errors.As(wrapped, &v) {
 		return v.WithParam(sheetsFlagParam(flag))
 	}
 	return wrapped
@@ -52,21 +54,30 @@ func sheetsInputStatError(flag string, err error) error {
 
 // Drive media parent_type values for uploading an image into a spreadsheet.
 // Native spreadsheets use "sheet_image"; imported "office" spreadsheets carry a
-// synthetic token prefixed with "fake_office_" and the backend requires
-// "office_sheet_file" instead.
+// synthetic token prefixed with "fake_office_" (being renamed to
+// "local_office_") and the backend requires "office_sheet_file" instead.
 const (
 	sheetImageParentType      = "sheet_image"
 	officeSheetFileParentType = "office_sheet_file"
-	fakeOfficeTokenPrefix     = "fake_office_"
+	fakeOfficePrefix          = "fake_office_"
+	localOfficePrefix         = "local_office_"
 )
+
+// officePrefixes are the synthetic token prefixes an imported "office"
+// spreadsheet may carry. The prefix is being renamed from "fake_office_" to
+// "local_office_"; accept either so image uploads keep working across the
+// rename.
+var officePrefixes = []string{fakeOfficePrefix, localOfficePrefix}
 
 // sheetMediaParentType returns the drive media parent_type to use when
 // uploading an image whose parent_node is spreadsheetToken. It is the single
 // place that maps a spreadsheet token to its parent_type so every image-upload
 // entry point (and its dry-run preview) stays consistent.
 func sheetMediaParentType(spreadsheetToken string) string {
-	if strings.HasPrefix(spreadsheetToken, fakeOfficeTokenPrefix) {
-		return officeSheetFileParentType
+	for _, prefix := range officePrefixes {
+		if strings.HasPrefix(spreadsheetToken, prefix) {
+			return officeSheetFileParentType
+		}
 	}
 	return sheetImageParentType
 }
@@ -440,7 +451,7 @@ func requireJSONArray(runtime flagView, name string) ([]interface{}, error) {
 
 // ─── style flags (shared by +cells-set-style and +cells-batch-set-style) ─
 
-// buildCellStyleFromFlags reads the 11 flat style flags and returns the
+// buildCellStyleFromFlags reads the 12 flat style flags and returns the
 // cell_styles map expected by set_cell_range. Skips any flag the user
 // didn't set so partial styles work.
 func buildCellStyleFromFlags(runtime flagView) map[string]interface{} {
@@ -450,6 +461,9 @@ func buildCellStyleFromFlags(runtime flagView) map[string]interface{} {
 	}
 	if v := runtime.Str("font-color"); v != "" {
 		style["font_color"] = v
+	}
+	if v := runtime.Str("font-family"); v != "" {
+		style["font_family"] = v
 	}
 	if runtime.Changed("font-size") && runtime.Float64("font-size") > 0 {
 		style["font_size"] = runtime.Float64("font-size")

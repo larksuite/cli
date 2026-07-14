@@ -54,15 +54,21 @@ type ImportParams struct {
 	FolderToken string
 	Name        string
 	TargetToken string
+	// FileExtension optionally overrides the extension inferred from File's
+	// name. Leave empty to infer from File (the default). Callers that have
+	// sniffed the file's real container use this to correct a mislabeled name
+	// so the backend receives the true format.
+	FileExtension string
 }
 
 func (p ImportParams) spec() driveImportSpec {
 	return driveImportSpec{
-		FilePath:    p.File,
-		DocType:     strings.ToLower(p.DocType),
-		FolderToken: p.FolderToken,
-		Name:        p.Name,
-		TargetToken: p.TargetToken,
+		FilePath:     p.File,
+		DocType:      strings.ToLower(p.DocType),
+		FolderToken:  p.FolderToken,
+		Name:         p.Name,
+		TargetToken:  p.TargetToken,
+		EffectiveExt: strings.TrimPrefix(strings.ToLower(p.FileExtension), "."),
 	}
 }
 
@@ -127,7 +133,7 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 	}
 
 	// Step 1: Upload file as media
-	fileToken, uploadErr := uploadMediaForImport(ctx, runtime, spec.FilePath, spec.SourceFileName(), spec.DocType)
+	fileToken, uploadErr := uploadMediaForImport(ctx, runtime, spec)
 	if uploadErr != nil {
 		return uploadErr
 	}
@@ -203,14 +209,14 @@ func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, 
 	if !info.Mode().IsRegular() {
 		return 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "file must be a regular file: %s", spec.FilePath).WithParam("--file")
 	}
-	if err = validateDriveImportFileSize(spec.FilePath, spec.DocType, info.Size()); err != nil {
+	if err = validateDriveImportFileSize(spec.FileExtension(), spec.DocType, info.Size()); err != nil {
 		return 0, err
 	}
 	return info.Size(), nil
 }
 
 func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, fileSize int64) {
-	extra, err := buildImportMediaExtra(spec.FilePath, spec.DocType)
+	extra, err := buildImportMediaExtra(spec.FileExtension(), spec.DocType)
 	if err != nil {
 		extra = fmt.Sprintf(`{"obj_type":"%s","file_extension":"%s"}`, spec.DocType, spec.FileExtension())
 	}

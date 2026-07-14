@@ -16,9 +16,13 @@ import (
 // ImMessageProcessor handles im.message.receive_v1 events.
 //
 // Compact output fields:
-//   - type, id, message_id, create_time, timestamp
-//   - chat_id, chat_type, message_type, sender_id
-//   - content: human-readable text converted via convertlib (supports text, post, image, file, card, etc.)
+//   - type, event_id, timestamp
+//   - id, message_id, create_time, update_time
+//   - chat_id, chat_type, message_type
+//   - sender_id, sender_type
+//   - root_id, thread_id, reply_to
+//   - content: human-readable text converted via convertlib
+//   - mentions: compact mentions array with key, id, name
 type ImMessageProcessor struct{}
 
 func (p *ImMessageProcessor) EventType() string { return "im.message.receive_v1" }
@@ -32,15 +36,20 @@ func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode Tr
 	var ev struct {
 		Message struct {
 			MessageID   string        `json:"message_id"`
+			RootID      string        `json:"root_id"`
+			ParentID    string        `json:"parent_id"`
+			ThreadID    string        `json:"thread_id"`
 			ChatID      string        `json:"chat_id"`
 			ChatType    string        `json:"chat_type"`
 			MessageType string        `json:"message_type"`
 			Content     string        `json:"content"`
 			CreateTime  string        `json:"create_time"`
+			UpdateTime  string        `json:"update_time"`
 			Mentions    []interface{} `json:"mentions"`
 		} `json:"message"`
 		Sender struct {
-			SenderID struct {
+			SenderType string `json:"sender_type"`
+			SenderID   struct {
 				OpenID string `json:"open_id"`
 			} `json:"sender_id"`
 		} `json:"sender"`
@@ -67,6 +76,9 @@ func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode Tr
 	out := map[string]interface{}{
 		"type": raw.Header.EventType,
 	}
+	if raw.Header.EventID != "" {
+		out["event_id"] = raw.Header.EventID
+	}
 	if ev.Message.MessageID != "" {
 		out["id"] = ev.Message.MessageID
 		out["message_id"] = ev.Message.MessageID
@@ -80,6 +92,9 @@ func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode Tr
 	} else if ev.Message.CreateTime != "" {
 		out["timestamp"] = ev.Message.CreateTime
 	}
+	if ev.Message.UpdateTime != "" && ev.Message.UpdateTime != ev.Message.CreateTime {
+		out["update_time"] = ev.Message.UpdateTime
+	}
 	if ev.Message.ChatID != "" {
 		out["chat_id"] = ev.Message.ChatID
 	}
@@ -92,8 +107,23 @@ func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode Tr
 	if ev.Sender.SenderID.OpenID != "" {
 		out["sender_id"] = ev.Sender.SenderID.OpenID
 	}
+	if ev.Sender.SenderType != "" {
+		out["sender_type"] = ev.Sender.SenderType
+	}
+	if ev.Message.RootID != "" {
+		out["root_id"] = ev.Message.RootID
+	}
+	if ev.Message.ThreadID != "" {
+		out["thread_id"] = ev.Message.ThreadID
+	}
+	if ev.Message.ParentID != "" {
+		out["reply_to"] = ev.Message.ParentID
+	}
 	if content != "" {
 		out["content"] = content
+	}
+	if mentions := compactMentions(ev.Message.Mentions); len(mentions) > 0 {
+		out["mentions"] = mentions
 	}
 	return out
 }

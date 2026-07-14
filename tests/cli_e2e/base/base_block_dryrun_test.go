@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestBaseBlockDryRun(t *testing.T) {
@@ -31,9 +30,9 @@ func TestBaseBlockDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/list", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), out)
-		require.False(t, gjson.Get(out, "api.0.body.parent_id").Exists(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/list", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+		require.False(t, clie2e.DryRunGet(out, "api.0.body.parent_id").Exists(), out)
 	})
 
 	t.Run("list folder", func(t *testing.T) {
@@ -50,9 +49,9 @@ func TestBaseBlockDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/list", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "blk_folder", gjson.Get(out, "api.0.body.parent_id").String(), out)
-		require.False(t, gjson.Get(out, "api.0.body.type").Exists(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/list", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "blk_folder", clie2e.DryRunGet(out, "api.0.body.parent_id").String(), out)
+		require.False(t, clie2e.DryRunGet(out, "api.0.body.type").Exists(), out)
 	})
 
 	t.Run("create", func(t *testing.T) {
@@ -70,11 +69,11 @@ func TestBaseBlockDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), out)
-		require.Equal(t, "docx", gjson.Get(out, "api.0.body.type").String(), out)
-		require.Equal(t, "Spec", gjson.Get(out, "api.0.body.name").String(), out)
-		require.Equal(t, "blk_folder", gjson.Get(out, "api.0.body.parent_id").String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+		require.Equal(t, "docx", clie2e.DryRunGet(out, "api.0.body.type").String(), out)
+		require.Equal(t, "Spec", clie2e.DryRunGet(out, "api.0.body.name").String(), out)
+		require.Equal(t, "blk_folder", clie2e.DryRunGet(out, "api.0.body.parent_id").String(), out)
 	})
 
 	t.Run("move root", func(t *testing.T) {
@@ -90,10 +89,10 @@ func TestBaseBlockDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/blk_a/move", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), out)
-		require.True(t, gjson.Get(out, "api.0.body.parent_id").Exists(), out)
-		require.Equal(t, "Null", gjson.Get(out, "api.0.body.parent_id").Type.String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/blk_a/move", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+		require.True(t, clie2e.DryRunGet(out, "api.0.body.parent_id").Exists(), out)
+		require.Equal(t, "Null", clie2e.DryRunGet(out, "api.0.body.parent_id").Type.String(), out)
 	})
 
 	t.Run("move after", func(t *testing.T) {
@@ -111,9 +110,9 @@ func TestBaseBlockDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/blk_a/move", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "blk_folder", gjson.Get(out, "api.0.body.parent_id").String(), out)
-		require.Equal(t, "blk_b", gjson.Get(out, "api.0.body.after_id").String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/blk_a/move", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "blk_folder", clie2e.DryRunGet(out, "api.0.body.parent_id").String(), out)
+		require.Equal(t, "blk_b", clie2e.DryRunGet(out, "api.0.body.after_id").String(), out)
 	})
 
 	t.Run("rename", func(t *testing.T) {
@@ -130,9 +129,9 @@ func TestBaseBlockDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/blk_a/rename", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), out)
-		require.Equal(t, "Renamed", gjson.Get(out, "api.0.body.name").String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/blk_a/rename", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+		require.Equal(t, "Renamed", clie2e.DryRunGet(out, "api.0.body.name").String(), out)
 	})
 
 	t.Run("delete", func(t *testing.T) {
@@ -148,7 +147,7 @@ func TestBaseBlockDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		out := result.Stdout
-		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/blk_a", gjson.Get(out, "api.0.url").String(), out)
-		require.Equal(t, "DELETE", gjson.Get(out, "api.0.method").String(), out)
+		require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/blk_a", clie2e.DryRunGet(out, "api.0.url").String(), out)
+		require.Equal(t, "DELETE", clie2e.DryRunGet(out, "api.0.method").String(), out)
 	})
 }

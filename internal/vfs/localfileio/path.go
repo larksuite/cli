@@ -65,7 +65,7 @@ func safePath(raw, flagName string) (string, error) {
 	}
 
 	if isAbsolutePath(raw) {
-		return "", fmt.Errorf("%s must be a relative path within the current directory, got %q (hint: cd to the target directory first, or use a relative path like ./filename)", flagName, raw)
+		return "", fmt.Errorf("%s must be a relative path within the current directory, got %q (hint: use a relative path like ./filename; flags that support stdin can read an out-of-tree file via '-' instead)", flagName, raw)
 	}
 
 	path := filepath.Clean(raw)

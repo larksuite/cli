@@ -96,6 +96,40 @@ func TestRunSchema_JSONOutput(t *testing.T) {
 	}
 }
 
+func TestRunSchema_ReceiveMessageAgentFieldsJSON(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+
+	if err := runSchema(f, "im.message.receive_v1", true); err != nil {
+		t.Fatalf("runSchema json: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, stdout.String())
+	}
+	resolved := payload["resolved_output_schema"].(map[string]interface{})
+	props := resolved["properties"].(map[string]interface{})
+	for _, field := range []string{
+		"root_id",
+		"thread_id",
+		"reply_to",
+		"sender_type",
+		"mentions",
+	} {
+		if _, ok := props[field]; !ok {
+			t.Errorf("receive schema missing field %q", field)
+		}
+	}
+	msgDesc := props["message_id"].(map[string]interface{})["description"].(string)
+	if !strings.Contains(msgDesc, "Recommended idempotency key") {
+		t.Errorf("message_id description should guide deduplication, got %q", msgDesc)
+	}
+	eventDesc := props["event_id"].(map[string]interface{})["description"].(string)
+	if strings.Contains(eventDesc, "safe for deduplication") {
+		t.Errorf("event_id description should not recommend deduplication, got %q", eventDesc)
+	}
+}
+
 func TestRunSchema_TaskUpdateUserAccessJSON(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 

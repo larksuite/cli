@@ -66,7 +66,7 @@ func TestDriveUploadDryRun_WithFileToken(t *testing.T) {
 	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
 	assert.Contains(t, output, `"with_url": true`)
 	assert.Contains(t, output, `"parent_node": "fldDryRunUploadTarget"`)
-	assert.Contains(t, output, `"file_token": "boxcnDryRunOverwriteTarget"`)
+	assert.Equal(t, "boxcnDryRunOverwriteTarget", clie2e.DryRunGet(output, "api.0.body.file_token").String())
 }
 
 func TestDriveUploadDryRunRejectsEmptyWikiToken(t *testing.T) {

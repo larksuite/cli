@@ -50,7 +50,7 @@ _公共四件套 · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--properties` | string + File + Stdin（复合 JSON） | required | 筛选视图规则 JSON，含 `rules?`（列级筛选规则数组）和 `filtered_columns?`。`range` 和 `view_name` 是独立 flag |
 | `--range` | string | required | 筛选视图作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `--properties` 中同名字段；create 必填，必须覆盖表头行 |
-| `--view-name` | string | optional | 筛选视图名称；create 不传时系统自动分配，update 不传时保留原名；优先级高于 `--properties` 中同名字段 |
+| `--view-name` | string | optional | 筛选视图名称；不传时系统自动分配；优先级高于 `--properties` 中同名字段 |
 
 ### `+filter-view-update`
 

@@ -11,7 +11,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
@@ -164,7 +163,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				t.Fatalf("dry-run output should not ask for --api-version\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
 			}
 			if tt.wantURL != "" {
-				require.Equal(t, tt.wantURL, gjson.Get(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
+				require.Equal(t, tt.wantURL, clie2e.DryRunGet(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
 			}
 			for key, want := range tt.wantParams {
 				assertDryRunField(t, result.Stdout, "api.0.params."+key, want)
@@ -173,11 +172,11 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				assertDryRunField(t, result.Stdout, "api.0.body."+key, want)
 			}
 			if tt.wantExtraParam != "" {
-				extraParam := gjson.Get(result.Stdout, "api.0.body.extra_param").String()
+				extraParam := clie2e.DryRunGet(result.Stdout, "api.0.body.extra_param").String()
 				require.JSONEq(t, tt.wantExtraParam, extraParam, "stdout:\n%s", result.Stdout)
 			}
 			if tt.wantRefLabel != "" {
-				got := gjson.Get(result.Stdout, "api.0.body.reference_map.widget.r1.label").String()
+				got := clie2e.DryRunGet(result.Stdout, "api.0.body.reference_map.widget.r1.label").String()
 				require.Equal(t, tt.wantRefLabel, got, "stdout:\n%s", result.Stdout)
 			}
 		})
@@ -187,7 +186,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 func assertDryRunField(t *testing.T, stdout, path string, want any) {
 	t.Helper()
 
-	got := gjson.Get(stdout, path)
+	got := clie2e.DryRunGet(stdout, path)
 	require.True(t, got.Exists(), "%s missing in stdout:\n%s", path, stdout)
 	switch want := want.(type) {
 	case int:
@@ -222,7 +221,7 @@ func TestDocs_CreateTitleDryRunPrependsContent(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	require.Equal(t, "/open-apis/docs_ai/v1/documents", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
-	require.Equal(t, "markdown", gjson.Get(out, "api.0.body.format").String(), "stdout:\n%s", out)
-	require.Equal(t, "<title>Dry Run &amp; Title</title>\n## Body", gjson.Get(out, "api.0.body.content").String(), "stdout:\n%s", out)
+	require.Equal(t, "/open-apis/docs_ai/v1/documents", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+	require.Equal(t, "markdown", clie2e.DryRunGet(out, "api.0.body.format").String(), "stdout:\n%s", out)
+	require.Equal(t, "<title>Dry Run &amp; Title</title>\n## Body", clie2e.DryRunGet(out, "api.0.body.content").String(), "stdout:\n%s", out)
 }

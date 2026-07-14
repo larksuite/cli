@@ -32,9 +32,10 @@
 **常见配置错误（必须注意）**：
 - **数据源范围必须精确**：透视表的数据源范围必须包含表头行，且精确覆盖全部数据行列。范围过大（包含空行/空列）或过小（遗漏数据列）都会导致透视表结果错误
 - **行列字段选择要匹配用户意图**：用户说"按商品统计金额"→ 行字段=商品，值字段=金额（`summarize_by: "sum"`）。不要把行列字段搞反
-- **聚合类型要匹配**：用户说"统计数量"→ `summarize_by: "count"`；"统计总额"→ `"sum"`；"统计平均"→ `"average"`。完整合法值：`sum` / `count` / `average` / `max` / `min` / `product` / `countNums` / `stdDev` / `stdDevp` / `var` / `varp` / `distinct` / `median`。默认不要用 `count` 替代 `sum`
+- **聚合类型要匹配**：用户说"统计数量"→ `summarize_by: "count"`；"统计总额"→ `"sum"`；"统计平均"→ `"average"`。完整合法值：`sum` / `count` / `average` / `max` / `min` / `product` / `countNums` / `stdDev` / `stdDevp` / `var` / `varp` / `distinct` / `median`。按用户意图选聚合方式，不要拿 `count` 顶替 `sum`
 - **参数长度限制**：如果透视表配置 JSON 过长（数据源范围跨越大量行列），可能导致工具调用失败。此时应先确认数据范围的精确边界，避免传入过大的 range
-- **创建后必须验证**：调用 `+pivot-list` 确认透视表结构正确
+- **落点不能覆盖任何已有数据（不只是 `--source` 范围）**：透视表创建后会向右下**展开**，展开区域哪怕只盖到一个已有单元格（即便已避开源数据），也会报「目标位置不能与数据源重叠」并产生 `#REF!`。创建前无法精确预知展开尺寸，故**强烈优先默认策略**（不传 `--target-sheet-id/-name` 与 `--target-position`/`--range`，后端自动新建空白子表），零覆盖风险；非要落到已有子表，必须挑一片足够大的纯空白区
+- **创建后必须校验（用 `info` 读取展开后的真实占用区域）**：创建后调用 `+pivot-list` 读 `info.error_state` 与 `info.content_range`/`page_range`——`error_state` 非 `None`（如 `Cover` 盖到其它内容 / `Shrink` 展不开）说明落点冲突，应删除后重建到空白区；`content_range`/`page_range` 是展开后**实际占用区域**，可用 `+csv-get` 抽查其边缘外有没有盖掉原有数据，确认结构正确
 
 ## Shortcuts
 
@@ -119,6 +120,10 @@ _创建/更新的透视表属性_
 ```bash
 lark-cli sheets +pivot-list --url "..." --sheet-id "$SID"
 ```
+
+> **返回值含 `info`（展开后的占用区域与状态）**：每个透视表对象除 `position` / `snapshot` 外，还返回 `info`，标明它在 sheet 上的平铺区域与状态——`info.page_range`（筛选/分页区 A1）、`info.content_range`（主体数据区 A1）、`info.span_range`（空表合并区 A1）、`info.error_state`（错误状态，如 `None`/`Cover`/`Shrink`/`Loading`）、`info.is_empty` / `info.is_hidden`、`info.row`/`info.col`（锚点）等。
+> **用途 1（判断改值还是改配置）**：当用户描述某个单元格要改动时，先 `+pivot-list` 拿到 `info`，判断该单元格是否落在 `page_range` / `content_range` 内——**落在区域内 = 属于透视表，应走 `+pivot-update` 改配置**（透视表单元格不能直接 `+cells-set` 改值）；**落在区域外 = 普通单元格，正常 `+cells-set` 改值**。
+> **用途 2（创建后校验覆盖）**：建完透视表用 `info.error_state` 判断有没有冲突（非 `None` 即落点/展开区与已有数据重叠或展不开），用 `info.content_range`/`page_range` 拿到展开后真实占用区域再核对是否盖到原有数据。
 
 ### `+pivot-create`
 

@@ -94,61 +94,61 @@ func TestValidateDriveImportFileSize(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		filePath string
+		ext      string
 		docType  string
 		fileSize int64
 		wantText string
 	}{
 		{
 			name:     "docx exceeds 600mb limit",
-			filePath: "./report.docx",
+			ext:      "docx",
 			docType:  "docx",
 			fileSize: driveImport600MBFileSizeLimit + 1,
 			wantText: "exceeds 600.0 MB import limit for .docx",
 		},
 		{
 			name:     "csv sheet exceeds 20mb limit",
-			filePath: "./data.csv",
+			ext:      "csv",
 			docType:  "sheet",
 			fileSize: driveImport20MBFileSizeLimit + 1,
 			wantText: "exceeds 20.0 MB import limit for .csv when importing as sheet",
 		},
 		{
 			name:     "csv bitable exceeds 100mb limit",
-			filePath: "./data.csv",
+			ext:      "csv",
 			docType:  "bitable",
 			fileSize: driveImport100MBFileSizeLimit + 1,
 			wantText: "exceeds 100.0 MB import limit for .csv when importing as bitable",
 		},
 		{
 			name:     "xlsx within 800mb limit",
-			filePath: "./data.xlsx",
+			ext:      "xlsx",
 			docType:  "sheet",
 			fileSize: driveImport800MBFileSizeLimit,
 		},
 		{
 			name:     "pptx exceeds 500mb limit",
-			filePath: "./deck.pptx",
+			ext:      "pptx",
 			docType:  "slides",
 			fileSize: driveImport500MBFileSizeLimit + 1,
 			wantText: "exceeds 500.0 MB import limit for .pptx",
 		},
 		{
 			name:     "pptx within 500mb limit",
-			filePath: "./deck.pptx",
+			ext:      "pptx",
 			docType:  "slides",
 			fileSize: driveImport500MBFileSizeLimit,
 		},
 		{
 			name:     "base exceeds 20mb limit",
-			filePath: "./snapshot.base",
+			ext:      "base",
 			docType:  "bitable",
 			fileSize: driveImport20MBFileSizeLimit + 1,
 			wantText: "exceeds 20.0 MB import limit for .base",
 		},
 		{
 			name:     "base within 20mb limit",
-			filePath: "./snapshot.base",
+			ext:      "base",
 			docType:  "bitable",
 			fileSize: driveImport20MBFileSizeLimit,
 		},
@@ -158,7 +158,7 @@ func TestValidateDriveImportFileSize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validateDriveImportFileSize(tt.filePath, tt.docType, tt.fileSize)
+			err := validateDriveImportFileSize(tt.ext, tt.docType, tt.fileSize)
 			if tt.wantText == "" {
 				if err != nil {
 					t.Fatalf("expected no error, got %v", err)

@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestDrive_SecureLabelDryRun(t *testing.T) {
@@ -38,13 +37,13 @@ func TestDrive_SecureLabelDryRun(t *testing.T) {
 			wantMethod: "GET",
 			wantURL:    "/open-apis/drive/v2/my_secure_labels",
 			assert: func(t *testing.T, out string) {
-				if got := gjson.Get(out, "api.0.params.page_size").Int(); got != 5 {
+				if got := clie2e.DryRunGet(out, "api.0.params.page_size").Int(); got != 5 {
 					t.Fatalf("page_size = %d, want 5\nstdout:\n%s", got, out)
 				}
-				if got := gjson.Get(out, "api.0.params.page_token").String(); got != "page_1" {
+				if got := clie2e.DryRunGet(out, "api.0.params.page_token").String(); got != "page_1" {
 					t.Fatalf("page_token = %q, want page_1\nstdout:\n%s", got, out)
 				}
-				if got := gjson.Get(out, "api.0.params.lang").String(); got != "zh" {
+				if got := clie2e.DryRunGet(out, "api.0.params.lang").String(); got != "zh" {
 					t.Fatalf("lang = %q, want zh\nstdout:\n%s", got, out)
 				}
 			},
@@ -60,13 +59,13 @@ func TestDrive_SecureLabelDryRun(t *testing.T) {
 			wantMethod: "PATCH",
 			wantURL:    "/open-apis/drive/v2/files/doxcnE2E001/secure_label",
 			assert: func(t *testing.T, out string) {
-				if got := gjson.Get(out, "api.0.params.type").String(); got != "docx" {
+				if got := clie2e.DryRunGet(out, "api.0.params.type").String(); got != "docx" {
 					t.Fatalf("type = %q, want docx\nstdout:\n%s", got, out)
 				}
-				if got := gjson.Get(out, "api.0.body.id").String(); got != "7217780879644737539" {
+				if got := clie2e.DryRunGet(out, "api.0.body.id").String(); got != "7217780879644737539" {
 					t.Fatalf("body.id = %q, want label id\nstdout:\n%s", got, out)
 				}
-				if got := gjson.Get(out, "file_token").String(); got != "doxcnE2E001" {
+				if got := clie2e.DryRunGet(out, "file_token").String(); got != "doxcnE2E001" {
 					t.Fatalf("file_token = %q, want doxcnE2E001\nstdout:\n%s", got, out)
 				}
 			},
@@ -86,10 +85,10 @@ func TestDrive_SecureLabelDryRun(t *testing.T) {
 			require.NoError(t, err)
 			result.AssertExitCode(t, 0)
 			out := result.Stdout
-			if got := gjson.Get(out, "api.0.method").String(); got != tt.wantMethod {
+			if got := clie2e.DryRunGet(out, "api.0.method").String(); got != tt.wantMethod {
 				t.Fatalf("method = %q, want %s\nstdout:\n%s", got, tt.wantMethod, out)
 			}
-			if got := gjson.Get(out, "api.0.url").String(); got != tt.wantURL {
+			if got := clie2e.DryRunGet(out, "api.0.url").String(); got != tt.wantURL {
 				t.Fatalf("url = %q, want %q\nstdout:\n%s", got, tt.wantURL, out)
 			}
 			tt.assert(t, out)
