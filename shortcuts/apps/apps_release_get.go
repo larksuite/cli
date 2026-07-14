@@ -30,8 +30,12 @@ var AppsReleaseGet = common.Shortcut{
 		{Name: "release-id", Desc: "release ID (the release_id returned by +release-create)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if strings.TrimSpace(rctx.Str("app-id")) == "" {
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		if appID == "" {
 			return appsValidationParamError("--app-id", "--app-id is required")
+		}
+		if err := validateRealAppID(appID); err != nil {
+			return err
 		}
 		if strings.TrimSpace(rctx.Str("release-id")) == "" {
 			return appsValidationParamError("--release-id", "--release-id is required")

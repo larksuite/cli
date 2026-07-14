@@ -38,8 +38,12 @@ var AppsHTMLPublish = common.Shortcut{
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / .aws/credentials / etc. in the publish payload)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if strings.TrimSpace(rctx.Str("app-id")) == "" {
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		if appID == "" {
 			return appsValidationParamError("--app-id", "--app-id is required")
+		}
+		if err := validateRealAppID(appID); err != nil {
+			return err
 		}
 		path := strings.TrimSpace(rctx.Str("path"))
 		if path == "" {

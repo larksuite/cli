@@ -94,6 +94,12 @@ lark-cli auth login --domain apps
 
 `app_id` 必须是妙搭应用 ID（`app_` 开头）。`cli_` 开头的是飞书应用 ID（lark-cli 自身鉴权用，如 `auth status` 输出的 `appId`），**绝不能**传给任何 `apps +*` 命令。
 
+如果你拿到的是 `/page/<token>/` 这类链接里的 token（meta_token），先用 `+get` 解析出 `app_id`：
+
+```bash
+lark-cli apps +get --app-id <meta_token> -q '.data.app.app_id'
+```
+
 按顺序尝试，不要一上来要求用户手填：
 
 1. 用户给出 `app_xxx` 或妙搭链接（如 `/app/app_xxx`）时直接提取。

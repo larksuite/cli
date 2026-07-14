@@ -123,8 +123,12 @@ var AppsInit = common.Shortcut{
 		{Name: "source-path", Desc: "path to existing source files (e.g. HTML output from an agent) to incorporate into the initialized project"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if strings.TrimSpace(rctx.Str("app-id")) == "" {
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		if appID == "" {
 			return appsValidationParamError("--app-id", "--app-id is required")
+		}
+		if err := validateRealAppID(appID); err != nil {
+			return err
 		}
 		if sp := strings.TrimSpace(rctx.Str("source-path")); sp != "" {
 			if err := charcheck.RejectControlChars(sp, "--source-path"); err != nil {
