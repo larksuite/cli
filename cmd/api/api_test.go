@@ -352,6 +352,9 @@ func TestApiCmd_OutputAndPageAllConflict(t *testing.T) {
 }
 
 func TestApiCmd_BinaryResponse_AutoSave(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-bin", AppSecret: "test-secret-bin", Brand: core.BrandFeishu,
 	})

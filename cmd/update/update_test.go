@@ -33,13 +33,17 @@ func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffe
 	return f, stdout, stderr
 }
 
-// mockDetect sets up newUpdater to return an Updater with the given DetectResult.
+// mockDetect sets up newUpdater to return an Updater with the given DetectResult
+// and fully mocked skills operations. Tests that only care about install-method
+// detection must never fall through to the real npx skills CLI.
 func mockDetect(t *testing.T, result selfupdate.DetectResult) {
 	t.Helper()
 	origNew := newUpdater
 	newUpdater = func() *selfupdate.Updater {
 		u := selfupdate.New()
 		u.DetectOverride = func() selfupdate.DetectResult { return result }
+		u.SkillsIndexFetchOverride = successfulSkillsIndexFetch()
+		u.SkillsCommandOverride = successfulSkillsCommand()
 		return u
 	}
 	t.Cleanup(func() { newUpdater = origNew })
@@ -104,6 +108,18 @@ func successfulSkillsCommand() func(args ...string) *selfupdate.NpmResult {
 		}
 		return r
 	}
+}
+
+func mockSkillsSync(t *testing.T) {
+	t.Helper()
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.SkillsIndexFetchOverride = successfulSkillsIndexFetch()
+		u.SkillsCommandOverride = successfulSkillsCommand()
+		return u
+	}
+	t.Cleanup(func() { newUpdater = origNew })
 }
 
 func TestUpdatePnpm_JSON(t *testing.T) {
@@ -230,6 +246,9 @@ func TestNormalizeVersion(t *testing.T) {
 }
 
 func TestUpdateAlreadyUpToDate_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	mockSkillsSync(t)
+
 	f, stdout, _ := newTestFactory(t)
 
 	cmd := NewCmdUpdate(f)
@@ -258,6 +277,9 @@ func TestUpdateAlreadyUpToDate_JSON(t *testing.T) {
 }
 
 func TestUpdateAlreadyUpToDate_Human(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	mockSkillsSync(t)
+
 	f, _, stderr := newTestFactory(t)
 
 	cmd := NewCmdUpdate(f)
