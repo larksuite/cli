@@ -54,19 +54,26 @@ func meetingQueryMissingScopeMessage() string {
 }
 
 func addMeetingQueryRecovery(runtime *common.RuntimeContext, permissionErr *errs.PermissionError) error {
+	isBot := runtime.As().IsBot()
 	recommended := meetingQueryUserScope
-	if runtime.As().IsBot() {
+	if isBot {
 		recommended = meetingQueryBotScope
 	}
 	permissionErr.Identity = string(runtime.As())
 	permissionErr.ConsoleURL = ""
-	if runtime.As().IsBot() {
+	switch {
+	case permissionErr.Code == output.LarkErrAppScopeNotEnabled:
 		consoleURL := registry.BuildConsoleScopeURL(runtime.Config.Brand, runtime.Config.AppID, recommended)
 		return permissionErr.
 			WithConsoleURL(consoleURL).
-			WithHint("either compatible scope is sufficient; for bot identity, the app developer should apply for the recommended scope %s at the developer console: %s", recommended, consoleURL)
+			WithHint("either compatible scope is sufficient; the app developer must apply for the recommended scope %s at the developer console: %s", recommended, consoleURL)
+	case permissionErr.Code == output.LarkErrUserScopeInsufficient && !isBot:
+		return permissionErr.WithHint("either compatible scope is sufficient; for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
+	case permissionErr.Code == output.LarkErrUserScopeInsufficient && isBot:
+		return permissionErr.WithHint("either compatible scope is sufficient; received a user-authorization scope error while using bot identity. User re-authorization does not apply to this identity; verify the resolved identity and server response. The bot-side recommended compatible scope is %s", recommended)
+	default:
+		return permissionErr
 	}
-	return permissionErr.WithHint("either compatible scope is sufficient; for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
 }
 
 func containsAllScopes(granted []string, required []string) bool {

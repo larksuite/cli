@@ -23,7 +23,7 @@ func bareMeetingQueryRuntime(as core.Identity) *common.RuntimeContext {
 	return common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "test"}, defaultConfig(), as)
 }
 
-func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Identity) {
+func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Identity, code int) {
 	t.Helper()
 
 	var pe *errs.PermissionError
@@ -55,9 +55,10 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 	if !strings.Contains(pe.Hint, "either") {
 		t.Fatalf("Hint = %q, want compatible OR-scope explanation", pe.Hint)
 	}
-	if identity.IsBot() {
+	switch code {
+	case output.LarkErrAppScopeNotEnabled:
 		if strings.Contains(pe.Hint, "auth login") {
-			t.Fatalf("Hint = %q, must not recommend user login for bot identity", pe.Hint)
+			t.Fatalf("Hint = %q, app-scope error must not recommend user login", pe.Hint)
 		}
 		if !strings.Contains(pe.Hint, "developer console") {
 			t.Fatalf("Hint = %q, want developer console guidance", pe.Hint)
@@ -65,16 +66,25 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 		if !strings.Contains(pe.ConsoleURL, url.QueryEscape(wantScope)) {
 			t.Fatalf("ConsoleURL = %q, want scope %q", pe.ConsoleURL, wantScope)
 		}
-		if strings.Contains(pe.ConsoleURL, url.QueryEscape(meetingQueryUserScope)) {
+		if identity.IsBot() && strings.Contains(pe.ConsoleURL, url.QueryEscape(meetingQueryUserScope)) {
 			t.Fatalf("ConsoleURL = %q, must recommend only bot scope", pe.ConsoleURL)
 		}
-	} else {
-		if !strings.Contains(pe.Hint, "auth login --scope") {
+	case output.LarkErrUserScopeInsufficient:
+		if identity.IsBot() {
+			if strings.Contains(pe.Hint, "auth login") {
+				t.Fatalf("Hint = %q, bot identity must never recommend user login", pe.Hint)
+			}
+			if !strings.Contains(pe.Hint, "verify") {
+				t.Fatalf("Hint = %q, want identity mismatch guidance", pe.Hint)
+			}
+		} else if !strings.Contains(pe.Hint, "auth login --scope") {
 			t.Fatalf("Hint = %q, want auth login guidance", pe.Hint)
 		}
 		if pe.ConsoleURL != "" {
-			t.Fatalf("ConsoleURL = %q, want empty for user identity", pe.ConsoleURL)
+			t.Fatalf("ConsoleURL = %q, user-scope error must not expose a developer-console URL", pe.ConsoleURL)
 		}
+	default:
+		t.Fatalf("unexpected code %d", code)
 	}
 	for _, scope := range meetingQueryAnyScopes {
 		if !strings.Contains(pe.Error(), scope) {
@@ -124,7 +134,7 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsOneCompatibleScope(t *te
 				if !reflect.DeepEqual(pe.RequestedScopes, original.RequestedScopes) || !reflect.DeepEqual(pe.GrantedScopes, original.GrantedScopes) {
 					t.Fatalf("scope diagnostics changed: requested=%v granted=%v", pe.RequestedScopes, pe.GrantedScopes)
 				}
-				assertMeetingQueryPermissionError(t, got, identity)
+				assertMeetingQueryPermissionError(t, got, identity, code)
 			})
 		}
 	}
