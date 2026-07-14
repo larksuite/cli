@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -15,6 +16,10 @@ import (
 )
 
 func TestBaseRecordBatchUpdatePerRecordWorkflow(t *testing.T) {
+	if os.Getenv("LARKSUITE_CLI_E2E_ENABLE_UPDATE_RECORDS") != "1" {
+		t.Skip("update_records is not available in the online backend; set LARKSUITE_CLI_E2E_ENABLE_UPDATE_RECORDS=1 after rollout")
+	}
+
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)
