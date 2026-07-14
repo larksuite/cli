@@ -18,7 +18,7 @@ metadata:
 ## 内测提示
 
 - 当前功能正在内测中，仅少数用户可用。scope 缺失先按下方“会议查询 scope 恢复规则”和 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 的身份授权流程处理，不要把普通 scope 错误直接解释成灰度未开通。
-- 只有 `lark-cli` 明确返回 `error.code=20017` / `ErrNotInGray` 时，才提示用户加入早鸟群确认内测权限：`https://go.larkoffice.com/join-chat/2f4nb0e1-fe00-4f67-bed7-25beaf533fbd`。
+- `lark-cli` 明确返回 `error.code=20017` / `ErrNotInGray` 时，直接提示用户加入早鸟群确认内测权限；未返回明确灰度码，但 scope、安装和数据范围均正确后仍无权限，也用灰度流程兜底：`https://go.larkoffice.com/join-chat/2f4nb0e1-fe00-4f67-bed7-25beaf533fbd`。
 
 ## 定位
 
@@ -181,7 +181,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 | 用户身份 `--as user` | 推荐 `vc:meeting.meetingevent:read`；按 shared skill 的 split-flow 执行 `lark-cli auth login --scope "vc:meeting.meetingevent:read"` |
 | 应用身份 `--as bot` | 推荐 `vc:meeting.bot.join:write`；使用错误中的 `console_url` 或开发者后台申请，禁止执行 `auth login` |
 
-旧版 CLI 可能只原样输出服务端的两个 scope、没有解释 OR 关系；仍按本表选择一个恢复动作。scope 配好后再检查应用安装、权限可访问的数据范围；只有明确出现 `20017` / `ErrNotInGray` 才进入灰度排查。
+旧版 CLI 可能只原样输出服务端的两个 scope、没有解释 OR 关系；仍按本表选择一个恢复动作。后续按“应用身份权限配置检查”处理。
 
 ## 应用身份权限配置检查
 
@@ -191,7 +191,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 2. 应用已发布并安装到当前租户。
 3. 开放平台“权限可访问的数据范围”已开通并保存。
 4. 数据范围选择“按条件筛选”，条件配置为：**会议的归属者 包含 与应用的可用范围一致**。
-5. 如果 scope、安装和数据范围都正确，仍返回 `ErrNotInGray` / `20017`，再按 VC Agent 内测 privilege / 灰度白名单处理，提示加入早鸟群或联系平台同学开通。
+5. 明确返回 `ErrNotInGray` / `20017` 时直接处理内测 privilege / 灰度白名单；没有明确灰度码，但 scope、安装和数据范围都正确后仍无权限，也将灰度作为最后兜底。
 
 ## 用户身份被拒绝时
 
