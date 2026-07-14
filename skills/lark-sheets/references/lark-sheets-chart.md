@@ -31,7 +31,9 @@
 
 **常见配置错误（必须注意）**：
 - **图表类型选择错误**：用户说"堆积柱形图/百分比堆积"时，应在 `properties.snapshot.plotArea.plot.extra.stack` 中配置堆叠；百分比堆叠需在该 stack 下设置 `percentage: true`。用户说"占比/比例"时，优先考虑饼图或百分比堆积图。注意区分 `column`（柱形图，纵向）与 `bar`（条形图，横向）是两个不同的 type 取值，"对比/各 XX" 类纵向柱默认用 `column`
-- **数据标签缺失**：用户需要看到具体数值时，需配置 `properties.snapshot.plotArea.plot.labels`（数据标签）相关字段
+- **数据标签开关**：`plotArea.plot.labels` 对象的**存在性即开关**——
+  - 用户需要看到具体数值/类别时：传入 `labels` 并配置 `value` / `category` / `series` / `percentage` 等显示位。
+  - 用户明确说"不要数据标签 / 关掉标签"时：**整个 `labels` 字段省略**。不要用 `labels: { value: false, category: false, series: false }` 这种"全部置 false"的写法关闭——只要传了 `labels`，系统就会显示数据标签（且默认兜底显示 value）。
 - **数据源范围与系列名来源要对齐**：
   - **默认情况（inline 模式）**：`refs` 范围**应包含表头行**（首行/首列即系列名），且范围要精确覆盖目标数据，不要多选或少选。
   - **合并标题行要跳过**：如果表格在表头上方存在合并的标题行（如"员工统计表"横跨多列的大标题），`refs` 必须跳过标题行、从真正的列标题行开始。例如表头在第 3 行、数据在第 4-20 行，则 `refs` 应为 `A3:G20` 而非 `A1:G20`。包含合并标题行会导致列名识别错误、表头被当作数据参与聚合计算。
@@ -122,7 +124,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--properties` | string + File + Stdin（复合 JSON） | required | 图表完整配置 JSON。顶层字段为 `position` / `offset` / `size` / `snapshot`（无顶层 `data`，也无再嵌一层 `properties`）；图表数据配置在 `snapshot.data` 下（含 `refs` / `headerMode` / `dim1` / `dim2`）。结构嵌套深，完整结构跑 `--print-schema --flag-name properties` |
+| `--properties` | string + File + Stdin（复合 JSON） | required | 图表完整配置 JSON。顶层字段为 `position` / `offset` / `size` / `snapshot`（无顶层 `data`，也无再嵌一层 `properties`）；图表数据配置在 `snapshot.data` 下（含 `refs` / `headerMode` / `dim1` / `dim2`）；必须至少含 `snapshot.data.dim1.serie.index` 或 `dim2.series[].index` 之一，否则 server 拒。结构嵌套深，完整结构跑 `--print-schema --flag-name properties` |
 
 ### `+chart-update`
 

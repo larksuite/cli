@@ -287,16 +287,16 @@ func TestDrive_MemberAddDryRun(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			if got := gjson.Get(out, "api.0.method").String(); got != "POST" {
+			if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "POST" {
 				t.Fatalf("method = %q, want POST\nstdout:\n%s", got, out)
 			}
-			if got := gjson.Get(out, "api.0.url").String(); got != tt.wantURL {
+			if got := clie2e.DryRunGet(out, "api.0.url").String(); got != tt.wantURL {
 				t.Fatalf("url = %q, want %q\nstdout:\n%s", got, tt.wantURL, out)
 			}
-			if got := gjson.Get(out, "api.0.params.type").String(); got != tt.wantResourceType {
+			if got := clie2e.DryRunGet(out, "api.0.params.type").String(); got != tt.wantResourceType {
 				t.Fatalf("params.type = %q, want %q\nstdout:\n%s", got, tt.wantResourceType, out)
 			}
-			notification := gjson.Get(out, "api.0.params.need_notification")
+			notification := clie2e.DryRunGet(out, "api.0.params.need_notification")
 			if tt.wantNeedNotification == "" {
 				if notification.Exists() {
 					t.Fatalf("need_notification should be omitted\nstdout:\n%s", out)
@@ -304,10 +304,10 @@ func TestDrive_MemberAddDryRun(t *testing.T) {
 			} else if got := notification.String(); got != tt.wantNeedNotification {
 				t.Fatalf("need_notification = %q, want %q\nstdout:\n%s", got, tt.wantNeedNotification, out)
 			}
-			bodyPath := "api.0.body"
+			bodyPath := "data.api.0.body"
 			if tt.wantBatch {
-				bodyPath = "api.0.body.members.0"
-				if count := len(gjson.Get(out, "api.0.body.members").Array()); count != 2 {
+				bodyPath = "data.api.0.body.members.0"
+				if count := len(clie2e.DryRunGet(out, "api.0.body.members").Array()); count != 2 {
 					t.Fatalf("body.members count = %d, want 2\nstdout:\n%s", count, out)
 				}
 			}

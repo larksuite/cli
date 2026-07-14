@@ -281,6 +281,12 @@ func TestWorkbook_Validation(t *testing.T) {
 			args:    []string{"--url", testURL, "--title", "X", "--row-count", "999999"},
 			wantMsg: "--row-count must be between",
 		},
+		{
+			name:    "+sheet-create rejects hidden bitable type",
+			sc:      SheetCreate,
+			args:    []string{"--url", testURL, "--title", "Tasks", "--type", "bitable"},
+			wantMsg: `invalid value "bitable" for --type`,
+		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -394,6 +400,37 @@ func TestWorkbookCreate_DryRun(t *testing.T) {
 		raw, _ := json.Marshal(input["cells"])
 		if got := strings.Count(string(raw), "horizontal_alignment"); got != 4 {
 			t.Errorf("horizontal_alignment occurrences = %d, want 4 in 2x2 range; cells=%s", got, raw)
+		}
+	})
+
+	t.Run("cell style past the data pads empty cells so blank cells can be styled", func(t *testing.T) {
+		t.Parallel()
+		// Data is a single cell (A1), but the style targets A1:C3 — the matrix is
+		// padded to 3x3 with empty cells so the style range fits, letting blank
+		// cells carry styling. The written range must reflect the padded extent.
+		calls := parseDryRunAPI(t, WorkbookCreate, []string{
+			"--title", "X",
+			"--values", `[["a"]]`,
+			"--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1:C3","background_color":"#FFEEAA"}]}]}`,
+		})
+		body, _ := calls[1].(map[string]interface{})["body"].(map[string]interface{})
+		input := decodeToolInput(t, body, "set_cell_range")
+		if input["range"] != "A1:C3" {
+			t.Errorf("range = %v, want A1:C3 (padded to the style extent)", input["range"])
+		}
+		cells, _ := input["cells"].([]interface{})
+		if len(cells) != 3 {
+			t.Fatalf("cells rows = %d, want 3 (padded); cells=%#v", len(cells), input["cells"])
+		}
+		lastRow, _ := cells[2].([]interface{})
+		if len(lastRow) != 3 {
+			t.Fatalf("last row width = %d, want 3 (padded)", len(lastRow))
+		}
+		// A blank padded cell (C3) still carries the style.
+		c3, _ := lastRow[2].(map[string]interface{})
+		c3s, _ := c3["cell_styles"].(map[string]interface{})
+		if c3s["background_color"] != "#FFEEAA" {
+			t.Errorf("padded blank cell C3 style = %#v, want background_color", c3)
 		}
 	})
 	t.Run("style-only payload (cell_merges) still fills and emits merge_cells", func(t *testing.T) {
@@ -594,4 +631,61 @@ func deepEqualJSON(a, b interface{}) bool {
 		return true
 	}
 	return a == b
+}
+
+// TestApplyWorkbookCreateStylesToMatrix covers the pad-then-style behavior
+// directly: a style range past the data grows the matrix with empty cells (so
+// blank cells can be styled), an in-range style leaves the matrix size alone,
+// and a range up/left of the anchor — which padding can't reach — is rejected.
+func TestApplyWorkbookCreateStylesToMatrix(t *testing.T) {
+	t.Parallel()
+	cell := func() interface{} { return map[string]interface{}{} }
+
+	t.Run("pads down and right for a style past the data", func(t *testing.T) {
+		t.Parallel()
+		matrix := [][]interface{}{{cell()}} // 1x1 data
+		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
+			{Range: "A1:C3", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"background_color": "#FFEEAA"}}},
+		}}
+		out, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 0, 0, "--styles")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(out) != 3 || len(out[0]) != 3 || len(out[2]) != 3 {
+			t.Fatalf("padded matrix = %d rows x %v cols, want 3x3", len(out), out)
+		}
+		// A blank padded corner (C3) carries the style.
+		c3, _ := out[2][2].(map[string]interface{})
+		c3s, _ := c3["cell_styles"].(map[string]interface{})
+		if c3s["background_color"] != "#FFEEAA" {
+			t.Errorf("padded cell C3 = %#v, want background_color", c3)
+		}
+	})
+
+	t.Run("no pad when the style is within the data", func(t *testing.T) {
+		t.Parallel()
+		matrix := [][]interface{}{{cell(), cell()}, {cell(), cell()}} // 2x2 data
+		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
+			{Range: "A1:B2", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"font_weight": "bold"}}},
+		}}
+		out, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 0, 0, "--styles")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(out) != 2 || len(out[0]) != 2 {
+			t.Errorf("matrix = %dx%d, want 2x2 (no pad)", len(out), len(out[0]))
+		}
+	})
+
+	t.Run("rejects a range up/left of the anchor", func(t *testing.T) {
+		t.Parallel()
+		matrix := [][]interface{}{{cell()}} // anchored at C3 (col 2, row 2)
+		styles := &workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{
+			{Range: "A1", Style: map[string]interface{}{"cell_styles": map[string]interface{}{"font_weight": "bold"}}},
+		}}
+		_, err := applyWorkbookCreateStylesToMatrix(matrix, styles, 2, 2, "--styles")
+		if err == nil || !strings.Contains(err.Error(), "starts outside the write range") {
+			t.Errorf("err = %v, want 'starts outside the write range'", err)
+		}
+	})
 }

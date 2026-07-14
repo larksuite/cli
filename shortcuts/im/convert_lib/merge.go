@@ -209,6 +209,10 @@ func fetchMergeForwardSubMessages(messageID string, runtime *common.RuntimeConte
 	data, err := runtime.DoAPIJSONTyped(http.MethodGet, mergeForwardMessagesPath(messageID), larkcore.QueryParams{
 		"user_id_type":          []string{"open_id"},
 		"card_msg_content_type": []string{"raw_card_content"},
+		// Opt in to server-side sender names: without it, senders that appear
+		// only inside this merge_forward carry no sender_name and — since there
+		// is no contact/mention fallback — render as their raw id.
+		"with_sender_name": []string{"true"},
 	}, nil)
 	if err != nil {
 		return nil, err

@@ -8,14 +8,28 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 )
+
+var dryRunURLPlaceholderRE = regexp.MustCompile(`:([A-Za-z_][A-Za-z0-9_]*)`)
+
+// DryRunOutputOptions controls dry-run stdout/stderr rendering.
+type DryRunOutputOptions struct {
+	Format      string
+	JqExpr      string
+	CommandPath string
+	Identity    core.Identity
+	Out         io.Writer
+	ErrOut      io.Writer
+}
 
 // DryRunAPICall describes a single API call in dry-run output.
 type DryRunAPICall struct {
@@ -26,12 +40,21 @@ type DryRunAPICall struct {
 	Body   interface{}            `json:"body,omitempty"`
 }
 
+// DryRunContext is the execution context shared by every dry-run preview:
+// which app would make the call and, when known, as which user. The identity
+// itself lives at the envelope top level, not here.
+type DryRunContext struct {
+	AppID      string `json:"app_id,omitempty"`
+	UserOpenID string `json:"user_open_id,omitempty"`
+}
+
 // DryRunAPI is the builder and result type for dry-run output.
 // URL templates use :param placeholders; Set stores actual values; MarshalJSON and Format resolve them.
 type DryRunAPI struct {
-	desc  string
-	calls []DryRunAPICall
-	extra map[string]interface{}
+	desc    string
+	calls   []DryRunAPICall
+	context *DryRunContext
+	extra   map[string]interface{}
 }
 
 func NewDryRunAPI() *DryRunAPI {
@@ -40,30 +63,22 @@ func NewDryRunAPI() *DryRunAPI {
 
 // --- HTTP method builders (add a call, return self for chaining) ---
 
-func (d *DryRunAPI) GET(url string) *DryRunAPI {
-	d.calls = append(d.calls, DryRunAPICall{Method: "GET", URL: url})
+// call appends a request with the method transcribed verbatim, so previews
+// never misreport what the real client would send.
+func (d *DryRunAPI) call(method, url string) *DryRunAPI {
+	d.calls = append(d.calls, DryRunAPICall{Method: method, URL: url})
 	return d
 }
 
-func (d *DryRunAPI) POST(url string) *DryRunAPI {
-	d.calls = append(d.calls, DryRunAPICall{Method: "POST", URL: url})
-	return d
-}
+func (d *DryRunAPI) GET(url string) *DryRunAPI { return d.call("GET", url) }
 
-func (d *DryRunAPI) PUT(url string) *DryRunAPI {
-	d.calls = append(d.calls, DryRunAPICall{Method: "PUT", URL: url})
-	return d
-}
+func (d *DryRunAPI) POST(url string) *DryRunAPI { return d.call("POST", url) }
 
-func (d *DryRunAPI) DELETE(url string) *DryRunAPI {
-	d.calls = append(d.calls, DryRunAPICall{Method: "DELETE", URL: url})
-	return d
-}
+func (d *DryRunAPI) PUT(url string) *DryRunAPI { return d.call("PUT", url) }
 
-func (d *DryRunAPI) PATCH(url string) *DryRunAPI {
-	d.calls = append(d.calls, DryRunAPICall{Method: "PATCH", URL: url})
-	return d
-}
+func (d *DryRunAPI) DELETE(url string) *DryRunAPI { return d.call("DELETE", url) }
+
+func (d *DryRunAPI) PATCH(url string) *DryRunAPI { return d.call("PATCH", url) }
 
 // Body sets the request body on the last added call.
 func (d *DryRunAPI) Body(body interface{}) *DryRunAPI {
@@ -98,12 +113,26 @@ func (d *DryRunAPI) Set(key string, value interface{}) *DryRunAPI {
 	return d
 }
 
+// Context records the calling app/user under data.context; empty values are
+// omitted, and a fully empty context is not emitted at all.
+func (d *DryRunAPI) Context(appID, userOpenID string) *DryRunAPI {
+	if appID == "" && userOpenID == "" {
+		return d
+	}
+	d.context = &DryRunContext{AppID: appID, UserOpenID: userOpenID}
+	return d
+}
+
 // resolveURL replaces :key placeholders in url with path-escaped values from extra.
 func (d *DryRunAPI) resolveURL(rawURL string) string {
-	for k, v := range d.extra {
-		rawURL = strings.ReplaceAll(rawURL, ":"+k, url.PathEscape(fmt.Sprintf("%v", v)))
-	}
-	return rawURL
+	return dryRunURLPlaceholderRE.ReplaceAllStringFunc(rawURL, func(token string) string {
+		name := token[1:]
+		value, ok := d.extra[name]
+		if !ok {
+			return token
+		}
+		return url.PathEscape(fmt.Sprintf("%v", value))
+	})
 }
 
 // MarshalJSON serializes as {"description": "...", "api": [...calls with resolved URLs], ...extra}.
@@ -118,13 +147,17 @@ func (d *DryRunAPI) MarshalJSON() ([]byte, error) {
 			Body:   c.Body,
 		}
 	}
-	m := make(map[string]interface{}, len(d.extra)+2)
+	m := make(map[string]interface{}, len(d.extra)+3)
+	for k, v := range d.extra {
+		m[k] = v
+	}
+	// Typed fields win over same-named extra keys.
 	if d.desc != "" {
 		m["description"] = d.desc
 	}
 	m["api"] = resolved
-	for k, v := range d.extra {
-		m[k] = v
+	if d.context != nil {
+		m["context"] = d.context
 	}
 	return json.Marshal(m)
 }
@@ -154,11 +187,7 @@ func (d *DryRunAPI) Format() string {
 			u += "?" + encodeParams(c.Params)
 		}
 
-		method := c.Method
-		if method == "" {
-			method = "GET"
-		}
-		b.WriteString(method)
+		b.WriteString(c.Method)
 		b.WriteByte(' ')
 		b.WriteString(u)
 		b.WriteByte('\n')
@@ -215,83 +244,74 @@ func encodeParams(params map[string]interface{}) string {
 	return vals.Encode()
 }
 
-// PrintDryRunWithFile outputs a dry-run summary for file upload requests.
-// Instead of serializing the Formdata body, it shows file metadata.
-func PrintDryRunWithFile(w io.Writer, request client.RawApiRequest, config *core.CliConfig, format, fileField, filePath string, formFields any) error {
-	dr := NewDryRunAPI()
-	switch request.Method {
-	case "POST":
-		dr.POST(request.URL)
-	case "PUT":
-		dr.PUT(request.URL)
-	case "PATCH":
-		dr.PATCH(request.URL)
-	case "DELETE":
-		dr.DELETE(request.URL)
-	default:
-		dr.GET(request.URL)
-	}
+// buildDryRunPreview assembles the shared preview skeleton: HTTP method, URL,
+// query params, and the app/user context common to every dry-run.
+func buildDryRunPreview(request client.RawApiRequest, config *core.CliConfig) *DryRunAPI {
+	dr := NewDryRunAPI().call(request.Method, request.URL)
 	if len(request.Params) > 0 {
 		dr.Params(request.Params)
 	}
-	filePathDisplay := filePath
+	// Identity is reported at the envelope top level, not duplicated here.
+	dr.Context(config.AppID, config.UserOpenId)
+	return dr
+}
+
+// PrintDryRunWithFile outputs a dry-run summary for file upload requests.
+// Instead of serializing the Formdata body, it shows file metadata.
+func PrintDryRunWithFile(request client.RawApiRequest, config *core.CliConfig, opts DryRunOutputOptions, file FileUploadMeta) error {
+	dr := buildDryRunPreview(request, config)
+	filePathDisplay := file.FilePath
 	if filePathDisplay == "" {
 		filePathDisplay = "<stdin>"
 	}
 	fileInfo := map[string]any{
-		"file": map[string]string{"field": fileField, "path": filePathDisplay},
+		"file": map[string]string{"field": file.FieldName, "path": filePathDisplay},
 	}
-	if formFields != nil {
-		fileInfo["form_fields"] = formFields
+	if file.FormFields != nil {
+		fileInfo["form_fields"] = file.FormFields
 	}
 	fileInfo["options"] = []string{"WithFileUpload"}
 	dr.Body(fileInfo)
-	dr.Set("as", string(request.As))
-	dr.Set("appId", config.AppID)
-	if config.UserOpenId != "" {
-		dr.Set("userOpenId", config.UserOpenId)
-	}
-	fmt.Fprintln(w, "=== Dry Run ===")
-	if format == "pretty" {
-		fmt.Fprint(w, dr.Format())
-	} else {
-		output.PrintJson(w, dr)
-	}
-	return nil
+	return WriteDryRun(dr, opts)
 }
 
 // PrintDryRun outputs a standardised dry-run summary using DryRunAPI.
 // When format is "pretty", outputs human-readable text; otherwise JSON.
-func PrintDryRun(w io.Writer, request client.RawApiRequest, config *core.CliConfig, format string) error {
-	dr := NewDryRunAPI()
-	switch request.Method {
-	case "POST":
-		dr.POST(request.URL)
-	case "PUT":
-		dr.PUT(request.URL)
-	case "PATCH":
-		dr.PATCH(request.URL)
-	case "DELETE":
-		dr.DELETE(request.URL)
-	default:
-		dr.GET(request.URL)
-	}
-	if len(request.Params) > 0 {
-		dr.Params(request.Params)
-	}
+func PrintDryRun(request client.RawApiRequest, config *core.CliConfig, opts DryRunOutputOptions) error {
+	dr := buildDryRunPreview(request, config)
 	if !util.IsNil(request.Data) {
 		dr.Body(request.Data)
 	}
-	dr.Set("as", string(request.As))
-	dr.Set("appId", config.AppID)
-	if config.UserOpenId != "" {
-		dr.Set("userOpenId", config.UserOpenId)
+	return WriteDryRun(dr, opts)
+}
+
+// WriteDryRun emits a DryRunAPI using the shared dry-run output contract.
+// Identity may be empty; the envelope omits it rather than guessing.
+func WriteDryRun(dr *DryRunAPI, opts DryRunOutputOptions) error {
+	if dr == nil {
+		return errs.NewInternalError(errs.SubtypeUnknown, "dry-run produced no request preview")
 	}
-	fmt.Fprintln(w, "=== Dry Run ===")
-	if format == "pretty" {
-		fmt.Fprint(w, dr.Format())
-	} else {
-		output.PrintJson(w, dr)
+	// The JqExpr guard is defensive: every entry point already rejects --jq
+	// combined with --format pretty via output.ValidateJqFlags.
+	if opts.Format == "pretty" && opts.JqExpr == "" {
+		// A nil ErrOut only skips the banner decoration (mirroring
+		// WriteSuccessEnvelope's warning path); the payload write to Out
+		// must fail loudly rather than be silently discarded.
+		if opts.ErrOut != nil {
+			fmt.Fprintln(opts.ErrOut, "=== Dry Run ===")
+		}
+		// stdout carries its own marker so logs that drop stderr still show
+		// this was a preview, not an executed request.
+		fmt.Fprintln(opts.Out, "# dry-run: request not sent")
+		fmt.Fprint(opts.Out, dr.Format())
+		return nil
 	}
-	return nil
+	return output.WriteSuccessEnvelope(dr, output.SuccessEnvelopeOptions{
+		CommandPath: opts.CommandPath,
+		Identity:    string(opts.Identity),
+		DryRun:      true,
+		JqExpr:      opts.JqExpr,
+		Out:         opts.Out,
+		ErrOut:      opts.ErrOut,
+	})
 }

@@ -69,7 +69,7 @@ func TestApiCmd_FlagParsing(t *testing.T) {
 }
 
 func TestApiCmd_DryRun(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
@@ -79,12 +79,42 @@ func TestApiCmd_DryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	output := stdout.String()
-	if !strings.Contains(output, "Dry Run") {
-		t.Error("expected dry run output")
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(output, "/open-apis/test") {
-		t.Error("expected path in dry run output")
+	if got["ok"] != true || got["identity"] != "bot" || got["dry_run"] != true {
+		t.Fatalf("unexpected dry-run envelope: %#v", got)
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("data = %#v, want object", got["data"])
+	}
+	api, ok := data["api"].([]interface{})
+	if !ok || len(api) != 1 {
+		t.Fatalf("api = %#v, want one call", data["api"])
+	}
+	call, ok := api[0].(map[string]interface{})
+	if !ok || call["url"] != "/open-apis/test" {
+		t.Fatalf("api[0] = %#v", api[0])
+	}
+	if strings.Contains(stdout.String(), "=== Dry Run ===") {
+		t.Fatalf("stdout should not contain dry-run banner: %s", stdout.String())
+	}
+}
+
+func TestApiCmd_DryRunWithJq(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--dry-run", "--jq", ".data.api[0].url"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "/open-apis/test" {
+		t.Fatalf("jq output = %q, want /open-apis/test", got)
 	}
 }
 
@@ -149,6 +179,22 @@ func TestApiCmd_MissingArgs(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Error("expected error for missing args")
+	}
+}
+
+func TestApiCmd_EmptyMethodRejected(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{"", "/open-apis/test", "--as", "bot", "--dry-run"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected validation error for empty HTTP method")
+	}
+	if !strings.Contains(err.Error(), "method") {
+		t.Fatalf("error should name the method argument, got: %v", err)
 	}
 }
 
@@ -1000,11 +1046,23 @@ func TestApiCmd_DryRunWithFile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "image") {
-		t.Errorf("expected dry-run output to mention file field, got: %s", out)
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "Dry Run") {
-		t.Errorf("expected dry-run header, got: %s", out)
+	if env["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", env["dry_run"])
+	}
+	data := env["data"].(map[string]interface{})
+	api := data["api"].([]interface{})
+	call := api[0].(map[string]interface{})
+	body := call["body"].(map[string]interface{})
+	file := body["file"].(map[string]interface{})
+	if file["field"] != "image" || file["path"] != tmpFile {
+		t.Fatalf("unexpected file dry-run body: %#v", body)
+	}
+	if strings.Contains(out, "=== Dry Run ===") {
+		t.Fatalf("stdout should not contain dry-run banner: %s", out)
 	}
 }
 

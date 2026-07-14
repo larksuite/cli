@@ -5,6 +5,7 @@ package backward
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -17,20 +18,30 @@ import (
 
 // Drive media parent_type values for uploading an image into a spreadsheet.
 // Native spreadsheets use "sheet_image"; imported "office" spreadsheets carry a
-// synthetic token prefixed with "fake_office_" and the backend requires
-// "office_sheet_file" instead.
+// synthetic token prefixed with "fake_office_" (being renamed to
+// "local_office_") and the backend requires "office_sheet_file" instead.
 const (
 	sheetImageParentType      = "sheet_image"
 	officeSheetFileParentType = "office_sheet_file"
-	fakeOfficeTokenPrefix     = "fake_office_"
+	fakeOfficePrefix          = "fake_office_"
+	localOfficePrefix         = "local_office_"
 )
 
+// officePrefixes are the synthetic token prefixes an imported "office"
+// spreadsheet may carry. The prefix is being renamed from "fake_office_" to
+// "local_office_"; accept either so image uploads keep working across the
+// rename.
+var officePrefixes = []string{fakeOfficePrefix, localOfficePrefix}
+
 // sheetMediaParentType returns the drive media parent_type to use when
-// uploading an image whose parent_node is spreadsheetToken, mapping the
-// "fake_office_" imported-spreadsheet token prefix to "office_sheet_file".
+// uploading an image whose parent_node is spreadsheetToken, mapping either the
+// "fake_office_" or "local_office_" imported-spreadsheet token prefix to
+// "office_sheet_file".
 func sheetMediaParentType(spreadsheetToken string) string {
-	if strings.HasPrefix(spreadsheetToken, fakeOfficeTokenPrefix) {
-		return officeSheetFileParentType
+	for _, prefix := range officePrefixes {
+		if strings.HasPrefix(spreadsheetToken, prefix) {
+			return officeSheetFileParentType
+		}
 	}
 	return sheetImageParentType
 }
@@ -135,7 +146,8 @@ func validateSheetMediaUploadFile(runtime *common.RuntimeContext, filePath strin
 	stat, err := runtime.FileIO().Stat(filePath)
 	if err != nil {
 		wrapped := common.WrapInputStatErrorTyped(err, "file not found")
-		if v, ok := wrapped.(*errs.ValidationError); ok {
+		var v *errs.ValidationError
+		if errors.As(wrapped, &v) {
 			return "", nil, v.WithParam("--file")
 		}
 		return "", nil, wrapped

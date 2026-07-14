@@ -13,7 +13,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestMarkdownCreateDryRun_Content(t *testing.T) {
@@ -122,10 +121,10 @@ func TestMarkdownCreateDryRun_RejectsEmptyContent(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	if api := gjson.Get(result.Stdout, "api"); api.IsArray() && len(api.Array()) > 0 {
+	if api := clie2e.DryRunGet(result.Stdout, "api"); api.IsArray() && len(api.Array()) > 0 {
 		t.Fatalf("dry-run api list must be empty when validation fails\nstdout:\n%s", result.Stdout)
 	}
-	errMsg := gjson.Get(result.Stdout, "error").String()
+	errMsg := clie2e.DryRunGet(result.Stdout, "error").String()
 	assert.Contains(t, errMsg, "empty markdown content is not supported")
 }
 
@@ -279,10 +278,10 @@ func TestMarkdownOverwriteDryRun_RejectsEmptyFile(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	if api := gjson.Get(result.Stdout, "api"); api.IsArray() && len(api.Array()) > 0 {
+	if api := clie2e.DryRunGet(result.Stdout, "api"); api.IsArray() && len(api.Array()) > 0 {
 		t.Fatalf("dry-run api list must be empty when validation fails\nstdout:\n%s", result.Stdout)
 	}
-	errMsg := gjson.Get(result.Stdout, "error").String()
+	errMsg := clie2e.DryRunGet(result.Stdout, "error").String()
 	assert.Contains(t, errMsg, "empty markdown content is not supported")
 }
 

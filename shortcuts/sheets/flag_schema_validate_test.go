@@ -360,6 +360,142 @@ func TestValidateInputAgainstSchema_RealEnumCaseNormalized(t *testing.T) {
 	}
 }
 
+// TestValidateAgainstSchema_EnumAliasNormalized pins the cross-vocabulary
+// auto-fix: CSS-habit "center" for a vertical alignment unambiguously means
+// Lark's "middle", so the payload is normalized in place and the call
+// proceeds — same treatment as the "SUM" vs "sum" casing class.
+func TestValidateAgainstSchema_EnumAliasNormalized(t *testing.T) {
+	t.Parallel()
+	schema := parseSchema(t, `{
+		"type":"object",
+		"properties":{"vertical_alignment":{"type":"string","enum":["top","middle","bottom"]}}
+	}`)
+	obj := map[string]interface{}{"vertical_alignment": "center"}
+	if err := validateAgainstSchema(obj, schema, ""); err != nil {
+		t.Fatalf("center should normalize to middle and pass, got: %v", err)
+	}
+	if got := obj["vertical_alignment"]; got != "middle" {
+		t.Errorf("vertical_alignment = %q, want normalized to %q", got, "middle")
+	}
+}
+
+// TestValidateAgainstSchema_EnumTypoSuggestedNotApplied pins the auto-apply
+// boundary on the error path: an edit-distance typo stays an error with a
+// "did you mean" suggestion, never a silent rewrite.
+func TestValidateAgainstSchema_EnumTypoSuggestedNotApplied(t *testing.T) {
+	t.Parallel()
+	schema := parseSchema(t, `{
+		"type":"object",
+		"properties":{"order":{"type":"string","enum":["asc","desc"]}}
+	}`)
+	obj := map[string]interface{}{"order": "ascc"}
+	err := validateAgainstSchema(obj, schema, "")
+	if err == nil {
+		t.Fatal("typo must be rejected")
+	}
+	if !strings.Contains(err.Error(), `did you mean "asc"?`) {
+		t.Errorf("enum error should suggest asc for the typo, got %q", err.Error())
+	}
+	if got := obj["order"]; got != "ascc" {
+		t.Errorf("typo must not be rewritten, got %q", got)
+	}
+}
+
+// TestValidateValueAgainstSchema_ShapeSkeletonOnShallowTypeMismatch
+// pins the highest-frequency eval failure: passing an object where
+// --cells expects a 2D array must inline a skeleton of the expected
+// shape (with the "value" key visible) so an agent fixes the retry
+// without a --print-schema round trip.
+func TestValidateValueAgainstSchema_ShapeSkeletonOnShallowTypeMismatch(t *testing.T) {
+	t.Parallel()
+	fv := mapFlagView{command: "+cells-set"}
+	err := validateValueAgainstSchema(fv, "cells",
+		map[string]interface{}{"cells": []interface{}{}})
+	if err == nil {
+		t.Fatal("object where array expected must fail")
+	}
+	msg := err.Error()
+	for _, want := range []string{`expected type "array", got "object"`, "expected shape: [[{", `"value"`} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error should contain %q, got %q", want, msg)
+		}
+	}
+
+	// Deep value-level mismatch keeps the plain --print-schema pointer
+	// (a whole-shape skeleton would not address the actual problem).
+	deep := []interface{}{[]interface{}{
+		map[string]interface{}{"note": 12.5},
+	}}
+	err = validateValueAgainstSchema(fv, "cells", deep)
+	if err == nil {
+		t.Fatal("wrong type for note must fail")
+	}
+	if strings.Contains(err.Error(), "expected shape:") {
+		t.Errorf("deep mismatch should not inline a skeleton, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "--print-schema") {
+		t.Errorf("deep mismatch should keep the --print-schema pointer, got %q", err.Error())
+	}
+}
+
+func TestPathDepth(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"", 0},
+		{"[0]", 1},
+		{"[0][3]", 2},
+		{"[0][3].value", 3},
+		{"legend", 1},
+		{"snapshot.axes", 2},
+	}
+	for _, c := range cases {
+		if got := pathDepth(c.path); got != c.want {
+			t.Errorf("pathDepth(%q) = %d, want %d", c.path, got, c.want)
+		}
+	}
+}
+
+func TestSchemaSkeleton(t *testing.T) {
+	t.Parallel()
+	schema := parseSchema(t, `{
+		"type":"array",
+		"items":{
+			"type":"array",
+			"items":{
+				"type":"object",
+				"properties":{
+					"value":{},
+					"formula":{"type":"string"},
+					"align":{"type":"string","enum":["top","middle","bottom"]},
+					"styles":{"type":"object","properties":{"bold":{"type":"boolean"}}}
+				}
+			}
+		}
+	}`)
+	got := schemaSkeleton(schema, skeletonMaxDepth)
+	// Wide object (>2 keys) collapses nested containers to placeholders;
+	// enum strings surface their first allowed value.
+	want := `[[{"align": "top", "formula": "…", "styles": {…}, "value": …}]]`
+	if got != want {
+		t.Errorf("skeleton = %s, want %s", got, want)
+	}
+
+	narrow := parseSchema(t, `{
+		"type":"object",
+		"required":["sheets"],
+		"properties":{"sheets":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"}}}}}
+	}`)
+	got = schemaSkeleton(narrow, skeletonMaxDepth)
+	// Narrow object (≤2 keys) keeps descending so the inner shape shows.
+	want = `{"sheets": [{"name": "…"}]}`
+	if got != want {
+		t.Errorf("narrow skeleton = %s, want %s", got, want)
+	}
+}
+
 // TestValidateAgainstSchema_NilSchemaSafe pins the defensive
 // `if schema == nil { return nil }` guard. Current production callers
 // always hand validator a real schema, but the guard means future

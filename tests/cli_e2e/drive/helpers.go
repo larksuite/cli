@@ -26,6 +26,14 @@ var driveDeleteVisibilityWait = clie2e.WaitOptions{
 	Interval: driveDeleteVisibilityPoll,
 }
 
+var driveDeleteRetry = clie2e.RetryOptions{
+	Attempts:        6,
+	InitialDelay:    2 * time.Second,
+	MaxDelay:        8 * time.Second,
+	BackoffMultiple: 2,
+	ShouldRetry:     clie2e.ResultHasRetryableError,
+}
+
 // CreateDriveFolder creates a Drive folder, optionally under a parent folder, and
 // deletes it during parent cleanup.
 func CreateDriveFolder(t *testing.T, parentT *testing.T, ctx context.Context, name string, defaultAs string, parentFolderToken string) string {
@@ -80,10 +88,10 @@ func deleteDriveResourceAndVerify(ctx context.Context, token, docType, defaultAs
 		defaultAs = "bot"
 	}
 
-	deleteResult, deleteErr := clie2e.RunCmd(ctx, clie2e.Request{
+	deleteResult, deleteErr := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 		Args:      []string{"drive", "+delete", "--file-token", token, "--type", docType, "--yes"},
 		DefaultAs: defaultAs,
-	})
+	}, driveDeleteRetry)
 	if deleteErr != nil || deleteResult == nil {
 		return deleteResult, deleteErr
 	}

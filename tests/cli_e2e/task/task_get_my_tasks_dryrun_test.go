@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestTask_GetMyTasksDryRun validates the request shape emitted by
@@ -38,28 +37,28 @@ func TestTask_GetMyTasksDryRun(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if count := gjson.Get(out, "api.#").Int(); count != 1 {
+	if count := clie2e.DryRunGet(out, "api.#").Int(); count != 1 {
 		t.Fatalf("expected 1 API call, got %d\nstdout:\n%s", count, out)
 	}
-	if method := gjson.Get(out, "api.0.method").String(); method != "GET" {
+	if method := clie2e.DryRunGet(out, "api.0.method").String(); method != "GET" {
 		t.Fatalf("api[0].method = %q, want GET\nstdout:\n%s", method, out)
 	}
-	if url := gjson.Get(out, "api.0.url").String(); url != "/open-apis/task/v2/tasks" {
+	if url := clie2e.DryRunGet(out, "api.0.url").String(); url != "/open-apis/task/v2/tasks" {
 		t.Fatalf("api[0].url = %q, want /open-apis/task/v2/tasks\nstdout:\n%s", url, out)
 	}
-	if got := gjson.Get(out, "api.0.params.type").String(); got != "my_tasks" {
+	if got := clie2e.DryRunGet(out, "api.0.params.type").String(); got != "my_tasks" {
 		t.Fatalf("api[0].params.type = %q, want my_tasks\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.params.user_id_type").String(); got != "open_id" {
+	if got := clie2e.DryRunGet(out, "api.0.params.user_id_type").String(); got != "open_id" {
 		t.Fatalf("api[0].params.user_id_type = %q, want open_id\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.params.completed").Bool(); !got {
+	if got := clie2e.DryRunGet(out, "api.0.params.completed").Bool(); !got {
 		t.Fatalf("api[0].params.completed = %v, want true\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.params.page_token").String(); got != "pt_001" {
+	if got := clie2e.DryRunGet(out, "api.0.params.page_token").String(); got != "pt_001" {
 		t.Fatalf("api[0].params.page_token = %q, want pt_001\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.params.page_size").Int(); got != 50 {
+	if got := clie2e.DryRunGet(out, "api.0.params.page_size").Int(); got != 50 {
 		t.Fatalf("api[0].params.page_size = %d, want 50\nstdout:\n%s", got, out)
 	}
 }

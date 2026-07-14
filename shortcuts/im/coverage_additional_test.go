@@ -213,6 +213,7 @@ func TestBuildChatMessageListRequest(t *testing.T) {
 			"page_size":                 {"50"},
 			"only_thread_root_messages": {"true"},
 			"card_msg_content_type":     {"raw_card_content"},
+			"with_sender_name":          {"true"},
 			"start_time":                {"1772294400"},
 			"end_time":                  {"1772467199"},
 			"page_token":                {"next"},

@@ -35,7 +35,7 @@ var ImMessagesReply = common.Shortcut{
 		{Name: "video-cover", Desc: "video cover image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"},
 		{Name: "audio", Desc: audioMessageInputDesc},
 		{Name: "reply-in-thread", Type: "bool", Desc: "reply in thread (message appears in thread stream instead of main chat)"},
-		{Name: "idempotency-key", Desc: "idempotency key (prevents duplicate sends)"},
+		{Name: "idempotency-key", Desc: "idempotency key, max 50 characters (prevents duplicate sends)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
@@ -85,6 +85,7 @@ var ImMessagesReply = common.Shortcut{
 		content := runtime.Str("content")
 		text := runtime.Str("text")
 		markdown := runtime.Str("markdown")
+		idempotencyKey := runtime.Str("idempotency-key")
 		imageKey := runtime.Str("image")
 		fileKey := runtime.Str("file")
 		videoKey := runtime.Str("video")
@@ -113,6 +114,9 @@ var ImMessagesReply = common.Shortcut{
 
 		if msg := validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey); msg != "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg)
+		}
+		if err := validateIdempotencyKey(idempotencyKey); err != nil {
+			return err
 		}
 		if content != "" && !json.Valid([]byte(content)) {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content).WithParam("--content")

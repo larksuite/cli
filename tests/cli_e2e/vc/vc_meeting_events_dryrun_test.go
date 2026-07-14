@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestVCMeetingEventsDryRun(t *testing.T) {
@@ -35,12 +34,12 @@ func TestVCMeetingEventsDryRun(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	require.Equal(t, int64(1), gjson.Get(out, "api.#").Int(), "stdout:\n%s", out)
-	require.Equal(t, "GET", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-	require.Equal(t, "/open-apis/vc/v1/bots/events", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
-	require.Equal(t, "7628568141510692381", gjson.Get(out, "api.0.params.meeting_id").String(), "stdout:\n%s", out)
-	require.Equal(t, "1710000000000000000", gjson.Get(out, "api.0.params.page_token").String(), "stdout:\n%s", out)
-	require.Equal(t, "40", gjson.Get(out, "api.0.params.page_size").String(), "stdout:\n%s", out)
-	require.Equal(t, "1710000000", gjson.Get(out, "api.0.params.start_time").String(), "stdout:\n%s", out)
-	require.Equal(t, "1710003600", gjson.Get(out, "api.0.params.end_time").String(), "stdout:\n%s", out)
+	require.Equal(t, int64(1), clie2e.DryRunGet(out, "api.#").Int(), "stdout:\n%s", out)
+	require.Equal(t, "GET", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+	require.Equal(t, "/open-apis/vc/v1/bots/events", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+	require.Equal(t, "7628568141510692381", clie2e.DryRunGet(out, "api.0.params.meeting_id").String(), "stdout:\n%s", out)
+	require.Equal(t, "1710000000000000000", clie2e.DryRunGet(out, "api.0.params.page_token").String(), "stdout:\n%s", out)
+	require.Equal(t, "40", clie2e.DryRunGet(out, "api.0.params.page_size").String(), "stdout:\n%s", out)
+	require.Equal(t, "1710000000", clie2e.DryRunGet(out, "api.0.params.start_time").String(), "stdout:\n%s", out)
+	require.Equal(t, "1710003600", clie2e.DryRunGet(out, "api.0.params.end_time").String(), "stdout:\n%s", out)
 }

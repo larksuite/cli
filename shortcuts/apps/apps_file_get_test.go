@@ -46,13 +46,7 @@ func TestAppsFileGet_DryRunSendsPathQuery(t *testing.T) {
 		[]string{"+file-get", "--app-id", "app_x", "--path", "/x.png", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	if env.API[0].Method != "GET" || env.API[0].URL != fileGetURL || env.API[0].Params["path"] != "/x.png" {
 		t.Fatalf("dry-run = %s %s params=%v", env.API[0].Method, env.API[0].URL, env.API[0].Params)

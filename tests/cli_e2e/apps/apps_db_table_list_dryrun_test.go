@@ -11,7 +11,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestAppsDBTableListDryRun pins +db-table-list 复用存量 URL（/apps/{app_id}/tables，
@@ -30,14 +29,14 @@ func TestAppsDBTableListDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/tables", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.params.env").Exists(),
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/tables", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.env").Exists(),
 			"default: no --environment → env key must be omitted (server picks workspace default branch)")
-		assert.Equal(t, "20", gjson.Get(result.Stdout, "api.0.params.page_size").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.params.page_token").Exists(),
+		assert.Equal(t, "20", clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.page_token").Exists(),
 			"empty page_token must be omitted")
-		assert.False(t, gjson.Get(result.Stdout, "api.0.params.include_stats").Exists(),
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.include_stats").Exists(),
 			"CLI should not send include_stats query (server returns stats by default)")
 	})
 
@@ -55,9 +54,9 @@ func TestAppsDBTableListDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "dev", gjson.Get(result.Stdout, "api.0.params.env").String())
-		assert.Equal(t, "50", gjson.Get(result.Stdout, "api.0.params.page_size").String())
-		assert.Equal(t, "cursor-abc", gjson.Get(result.Stdout, "api.0.params.page_token").String())
+		assert.Equal(t, "dev", clie2e.DryRunGet(result.Stdout, "api.0.params.env").String())
+		assert.Equal(t, "50", clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").String())
+		assert.Equal(t, "cursor-abc", clie2e.DryRunGet(result.Stdout, "api.0.params.page_token").String())
 	})
 
 	t.Run("RejectsBlankAppID", func(t *testing.T) {
