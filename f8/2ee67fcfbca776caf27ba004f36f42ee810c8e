@@ -1,0 +1,21 @@
+docs/superpowers/specs/2026-07-11-keyless-refactor-design.md
+  s_64bcc2f29a4ce4::t_f70748b012896a 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f82ee67fcfbca776caf27ba004f36f42ee810c8e",
+  "prompts": {},
+  "sessions": {
+    "s_64bcc2f29a4ce4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5016-707d-7ce2-ae99-7e59224fb3a6",
+        "model": "unknown"
+      },
+      "human_author": "AlbertSun <sunxingjian@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

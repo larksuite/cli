@@ -1,0 +1,21 @@
+skills/lark-slides/references/slides_xml_schema_definition.xml
+  s_d6acbbccb84c83::t_396fd2b5ae4d06 677-689,1448,1456
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "361a18b48fc0b87dfcce1f3aa68e19b34b3ed13d",
+  "prompts": {},
+  "sessions": {
+    "s_d6acbbccb84c83": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4696-35aa-7d83-ab5e-ae3bff88e473",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
