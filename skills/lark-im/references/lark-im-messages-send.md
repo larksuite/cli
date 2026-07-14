@@ -129,6 +129,12 @@ lark-cli im +messages-send --user-id ou_xxx --text "Hello"
 # Send multi-line text while preserving formatting
 lark-cli im +messages-send --chat-id oc_xxx --text $'Line 1\nLine 2\n  indented line'
 
+# Safest option for long or generated content: read a cwd-relative file
+lark-cli im +messages-send --chat-id oc_xxx --markdown @./message.md
+
+# Or pipe exactly one body flag through stdin
+generate-message | lark-cli im +messages-send --chat-id oc_xxx --markdown -
+
 # Send Markdown with an image (must pre-upload via images.create)
 lark-cli im images create --data '{"image_type":"message"}' --file ./screenshot.png
 # Use the returned image_key in the markdown content

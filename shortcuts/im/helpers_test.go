@@ -676,6 +676,24 @@ func TestShortcuts(t *testing.T) {
 	}
 }
 
+func TestMessageBodyFlagsAcceptFileAndStdin(t *testing.T) {
+	for _, shortcut := range []common.Shortcut{ImMessagesSend, ImMessagesReply} {
+		for _, name := range []string{"content", "text", "markdown"} {
+			var got []string
+			for _, flag := range shortcut.Flags {
+				if flag.Name == name {
+					got = flag.Input
+					break
+				}
+			}
+			want := []string{common.File, common.Stdin}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("%s --%s Input = %#v, want %#v", shortcut.Command, name, got, want)
+			}
+		}
+	}
+}
+
 // TestSenderDisplay covers the human-readable sender column: a resolved name wins,
 // otherwise the sender id is shown (AC3 fallback), and a system/senderless message
 // with neither yields an empty string (no name is normal, not an error).
