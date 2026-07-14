@@ -26,6 +26,25 @@ func TestAutomationPaths(t *testing.T) {
 	}
 }
 
+// TestValidateAutomationNameLen_CountsRunes pins the char-not-byte contract:
+// the flag help documents "<=100 chars", and Chinese/emoji names would be
+// silently rejected below the char limit if we counted UTF-8 bytes.
+// A 100-rune Chinese string is 300 bytes but is 100 chars — must pass.
+func TestValidateAutomationNameLen_CountsRunes(t *testing.T) {
+	// 100 Chinese characters (each 3 UTF-8 bytes = 300 bytes total). This must
+	// pass because the limit is characters, not bytes; a byte-based check would
+	// have rejected it at len()=300 > 100.
+	name := strings.Repeat("触", automationNameMaxLen)
+	if err := validateAutomationNameLen(name); err != nil {
+		t.Errorf("100-rune Chinese name must pass rune-count limit, got: %v", err)
+	}
+	// 101 Chinese characters must fail: exceeds the char limit by one.
+	over := strings.Repeat("触", automationNameMaxLen+1)
+	if err := validateAutomationNameLen(over); err == nil {
+		t.Error("101-rune Chinese name must fail rune-count limit")
+	}
+}
+
 func TestMapTriggerType(t *testing.T) {
 	cases := map[string]string{
 		"cron": "cron", "record-change": "record_change",

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/larksuite/cli/internal/validate"
 )
@@ -122,20 +123,23 @@ const (
 // validateAutomationNameLen guards against a --name that would be rejected by
 // the backend on length. Empty is intentionally permitted here — the required
 // check lives in the create Validate hook (which fires first) and in Update
-// the flag is not required at all.
+// the flag is not required at all. Counts runes, not bytes: the flag help
+// documents "<=100 chars", and Chinese/emoji names would be silently rejected
+// well below the char limit if we counted UTF-8 bytes.
 func validateAutomationNameLen(name string) error {
-	if len(name) > automationNameMaxLen {
+	if n := utf8.RuneCountInString(name); n > automationNameMaxLen {
 		return appsValidationParamError("--name",
-			"--name must be at most %d chars, got %d", automationNameMaxLen, len(name))
+			"--name must be at most %d chars, got %d", automationNameMaxLen, n)
 	}
 	return nil
 }
 
 // validateAutomationDescriptionLen guards --description length; empty passes.
+// Counts runes for the same reason as validateAutomationNameLen.
 func validateAutomationDescriptionLen(desc string) error {
-	if len(desc) > automationDescriptionMaxLen {
+	if n := utf8.RuneCountInString(desc); n > automationDescriptionMaxLen {
 		return appsValidationParamError("--description",
-			"--description must be at most %d chars, got %d", automationDescriptionMaxLen, len(desc))
+			"--description must be at most %d chars, got %d", automationDescriptionMaxLen, n)
 	}
 	return nil
 }
