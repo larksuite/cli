@@ -432,6 +432,7 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 
 ## 坑点
 
+- ⚠️ **filters 是对象形状，别和 record/view 筛选混用**：`+data-query` 的 `filters.conditions` 是对象 `{"field_name":"状态","operator":"is","value":["Open"]}`（operator 用 `is`/`contains`，value 恒为数组）；而 `+record-list` / `+record-search` / `+view-set-filter` 的 `--filter-json` 是 tuple `[["状态","==","Open"]]`（operator 用 `==`/`intersects`，标量字段用标量）。两者不通用，用错会报校验失败（`800010701`）。
 - ⚠️ **必须先查表结构**：DSL 的 `field_name` 必须与表中字段名称精确匹配（区分大小写），不能凭猜测构造。先用 `lark-cli base +field-list --base-token <base_token> --table-id <table_id>` 获取真实字段名
 - ⚠️ **权限要求按文档类型分流**：普通多维表格只需文档**阅读权限**；高级权限多维表格必须是文档管理员（**FA / Full Access**），否则返回权限错误
 - ⚠️ **alias 不支持中文**：dimensions 和 measures 的 alias 必须使用英文（如 `dim_city`、`total_amount`），中文 alias 会导致错误

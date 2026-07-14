@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.2
+version: 1.2.3
 description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、workflow、角色权限；遇到 Base/多维表格/bitable 或 /base/ 链接时使用。文件导入转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
@@ -134,6 +134,8 @@ metadata:
 | `not found` 且输入来自 Wiki 链接 | 优先检查是否把 wiki token 当成 base token，不要立刻改走裸 API |
 | `1254045` 字段名不存在 | 重新 `+field-list`，使用真实字段名或字段 ID；注意空格、大小写和跨表字段 |
 | `1254015` 字段值类型不匹配 | 先 `+field-list`，再按 [lark-base-cell-value.md](references/lark-base-cell-value.md) 构造 CellValue |
+| `800010701` `Invalid discriminator value`（`+field-update` / `+field-create` 缺 `type`） | 字段写入是按 `type` 区分的全量定义：先 `+field-get` / `+field-list` 取当前 `type` 与关键 `style`/`options`，`--json` 带上 `type` 再提交；不要只传 `{"name":...}` |
+| `800010701` `... Provide a value of type array` 或 `800010507` `Only string values` | 筛选形状/值写错：`+record-list` / `+record-search` / `+view-set-filter` 的 `--filter-json` 用 tuple `[["字段","==","值"]]`，`text`/`number` 等标量字段用标量、不要包数组，也别套用 `+data-query` 的对象型 filters；详见 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md) `## 0` |
 | 日期 / 人员 / 超链接字段报格式错误 | 日期用 `YYYY-MM-DD HH:mm:ss`；人员用 `[{ "id": "ou_xxx" }]`；超链接用 URL 或 markdown link 字符串 |
 | formula / lookup 创建失败 | 先读 [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)，再按 guide 重建请求 |
 | `ignored_fields` / `READONLY` | 移除只读字段，只写存储字段 |

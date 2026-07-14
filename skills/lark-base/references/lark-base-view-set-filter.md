@@ -4,6 +4,17 @@
 
 更新视图筛选配置。
 
+## 0. 选对筛选 DSL 与 value 形状（易错，先读）
+
+**这套 tuple DSL 由 `+view-set-filter`、`+record-list --filter-json`、`+record-search --filter-json` 共用**，形状是 `{logic, conditions:[[field, operator, value]]}`。
+
+- ⚠️ **不要和 `+data-query` 的 filters 混用**：`+data-query --dsl` 的 filters 是对象形状 `{"conjunction":"and","conditions":[{"field_name":"状态","operator":"is","value":["Open"]}]}`（operator 用 `is`/`contains`，value 恒为数组）。**本 DSL 不认这套写法**，传对象会报 `800010701 Request validation failed ... Provide a value of type array`。本 DSL 请写 tuple：`["状态","==","Open"]`。
+- ⚠️ **value 形状由字段真实 type 决定，先 `+field-list` 确认，别按字段名猜**：像「状态」「优先级」这种名字常被误当成 `select`，但若实际是 `text`，用数组会报 `800010507 Only string values`。
+  - **标量**（`text` / `number` / `auto_number` / `datetime` / `checkbox` / `location`）：直接写值，如 `["状态","==","Open"]`、`["工时",">=",3.5]`。**不要包成数组** `["状态","==",["Open"]]`。
+  - **数组**（`select` / `user` / `created_by` / `updated_by` / `group_chat` / `link`）：写数组，如 `["标签","intersects",["P0","P1"]]`、`["负责人","intersects",[{"id":"ou_x"}]]`。
+  - 各类型 operator 与 value 细节见下方「## 3. value 写法」。
+- ⚠️ **筛选值要用字段里真实存储的值**：枚举/状态类常是英文（如 `High`/`Open`），别用中文（`高`/`打开`）去猜；拿不准先 `+record-list` 抽样几条看真实值，再写筛选，避免 0 命中后反复重试。
+
 ## 1. 顶层规则
 
 - `--json` 必须是 JSON 对象。
@@ -178,7 +189,8 @@ lark-cli base +view-set-filter \
 
 ## 7. 易错点
 
-- 不要再写旧对象风格：`{"field_name":...,"operator":...}`。
+- 不要再写旧对象风格：`{"field_name":...,"operator":...}`（那是 `+data-query` 的 filters 形状，本 DSL 不认，见 ## 0）。
+- `text` / `number` / `datetime` 等标量字段的 value 不要包成数组：写 `["状态","==","Open"]`，不是 `["状态","==",["Open"]]`（后者报 `800010507 Only string values`）。
 - `user` / `group_chat` / `link` 不要写成单个标量。
 - `empty` / `non_empty` 不要硬塞无意义的 value。
 - 日期条件稳定写法用 `ExactDate(...)` 或 `Today` / `Yesterday` / `Tomorrow`。
