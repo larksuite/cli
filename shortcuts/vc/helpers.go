@@ -66,7 +66,7 @@ func addMeetingQueryRecovery(runtime *common.RuntimeContext, permissionErr *errs
 		consoleURL := registry.BuildConsoleScopeURL(runtime.Config.Brand, runtime.Config.AppID, recommended)
 		return permissionErr.
 			WithConsoleURL(consoleURL).
-			WithHint("either compatible scope is sufficient; the app developer must apply for the recommended scope %s at the developer console: %s", recommended, consoleURL)
+			WithHint("either compatible scope is sufficient; apply only one. For %s identity, the recommended scope is %s. The app developer can enable it at the developer console: %s", runtime.As(), recommended, consoleURL)
 	case permissionErr.Code == output.LarkErrUserScopeInsufficient && !isBot:
 		return permissionErr.WithHint("either compatible scope is sufficient; for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
 	case permissionErr.Code == output.LarkErrUserScopeInsufficient && isBot:

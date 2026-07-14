@@ -60,6 +60,15 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 		if strings.Contains(pe.Hint, "auth login") {
 			t.Fatalf("Hint = %q, app-scope error must not recommend user login", pe.Hint)
 		}
+		if strings.Contains(pe.Hint, "must apply") {
+			t.Fatalf("Hint = %q, must not present the identity-based recommendation as the only required scope", pe.Hint)
+		}
+		if !strings.Contains(pe.Hint, "apply only one") {
+			t.Fatalf("Hint = %q, want explicit single-scope guidance", pe.Hint)
+		}
+		if !strings.Contains(strings.ToLower(pe.Hint), "for "+string(identity)+" identity") {
+			t.Fatalf("Hint = %q, want current identity context", pe.Hint)
+		}
 		if !strings.Contains(pe.Hint, "developer console") {
 			t.Fatalf("Hint = %q, want developer console guidance", pe.Hint)
 		}
