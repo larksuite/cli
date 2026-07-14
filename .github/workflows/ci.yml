@@ -202,7 +202,11 @@ jobs:
         run: python3 scripts/fetch_meta.py
       - name: Run tests with coverage
         run: |
-          packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '^github.com/larksuite/cli/tests/cli_e2e/')
+          # tests/ holds only L3/L4 suites (cli_e2e, plugin_e2e, sidecar_e2e) that
+          # have dedicated jobs; exclude the whole subtree so none of them runs a
+          # second time here — and, crucially, so an observe-only suite's failure
+          # can never block merges through coverage's spot in the results loop.
+          packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/')
           go test -race -coverprofile=coverage.txt -covermode=atomic $packages
       - name: Upload coverage to Codecov
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
