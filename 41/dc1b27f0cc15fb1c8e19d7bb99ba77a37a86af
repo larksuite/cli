@@ -1,0 +1,31 @@
+skills/lark-slides/references/lark-slides-screenshot.md
+  s_04ad627f0ead8a::t_e394a8e16605b3 7
+skills/lark-slides/references/troubleshooting.md
+  s_38bc706d159c76::t_db07425e40a526 3,9-10,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "41dc1b27f0cc15fb1c8e19d7bb99ba77a37a86af",
+  "prompts": {},
+  "sessions": {
+    "s_04ad627f0ead8a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5fe5-513b-7aa0-83c1-4b0631f6e756",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_38bc706d159c76": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5fe2-1c7c-7f92-a009-81581c216cd3",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
