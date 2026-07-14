@@ -24,6 +24,8 @@ import (
 	"github.com/larksuite/cli/internal/skillscheck"
 )
 
+const runLiveSkillsTestsEnv = "LARKSUITE_CLI_RUN_LIVE_SKILLS_TESTS"
+
 // newTestFactory creates a test factory with minimal config.
 func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
@@ -1513,19 +1515,80 @@ func TestEmitSkillsTextHints_Success(t *testing.T) {
 	}
 }
 
+func prepareLiveSkillsIntegration(t *testing.T) string {
+	t.Helper()
+	if os.Getenv(runLiveSkillsTestsEnv) != "1" {
+		t.Skipf("live skills integration test disabled; set %s=1 to run", runLiveSkillsTestsEnv)
+	}
+
+	home := t.TempDir()
+	for key, value := range map[string]string{
+		"HOME":                     home,
+		"USERPROFILE":              home,
+		"APPDATA":                  filepath.Join(home, "AppData", "Roaming"),
+		"LOCALAPPDATA":             filepath.Join(home, "AppData", "Local"),
+		"XDG_CONFIG_HOME":          filepath.Join(home, ".config"),
+		"XDG_DATA_HOME":            filepath.Join(home, ".local", "share"),
+		"CODEX_HOME":               filepath.Join(home, ".codex"),
+		"CLAUDE_CONFIG_DIR":        filepath.Join(home, ".claude"),
+		"LARKSUITE_CLI_CONFIG_DIR": filepath.Join(home, ".lark-cli"),
+	} {
+		t.Setenv(key, value)
+	}
+	return home
+}
+
+func TestPrepareLiveSkillsIntegration(t *testing.T) {
+	reachedAfterGate := false
+	t.Run("requires explicit opt-in", func(t *testing.T) {
+		t.Setenv(runLiveSkillsTestsEnv, "")
+		prepareLiveSkillsIntegration(t)
+		reachedAfterGate = true
+	})
+	if reachedAfterGate {
+		t.Fatal("prepareLiveSkillsIntegration continued without explicit opt-in")
+	}
+
+	t.Run("isolates user directories", func(t *testing.T) {
+		t.Setenv(runLiveSkillsTestsEnv, "1")
+		home := prepareLiveSkillsIntegration(t)
+		want := map[string]string{
+			"HOME":                     home,
+			"USERPROFILE":              home,
+			"APPDATA":                  filepath.Join(home, "AppData", "Roaming"),
+			"LOCALAPPDATA":             filepath.Join(home, "AppData", "Local"),
+			"XDG_CONFIG_HOME":          filepath.Join(home, ".config"),
+			"XDG_DATA_HOME":            filepath.Join(home, ".local", "share"),
+			"CODEX_HOME":               filepath.Join(home, ".codex"),
+			"CLAUDE_CONFIG_DIR":        filepath.Join(home, ".claude"),
+			"LARKSUITE_CLI_CONFIG_DIR": filepath.Join(home, ".lark-cli"),
+		}
+		for key, expected := range want {
+			if got := os.Getenv(key); got != expected {
+				t.Errorf("%s = %q, want %q", key, got, expected)
+			}
+		}
+	})
+}
+
 // TestUpdateCommand_RealSkillsSyncRewritesState is a live integration test that
 // verifies "lark-cli update" correctly triggers skills sync and rewrites the
-// state file. It calls the real npx skills CLI, so the test is skipped when
-// npx or the skills registry is unavailable (e.g. no network or fork PRs).
+// state file. It calls the real npx skills CLI and only runs with explicit
+// opt-in. All user directories are redirected to a temporary home.
 func TestUpdateCommand_RealSkillsSyncRewritesState(t *testing.T) {
+	prepareLiveSkillsIntegration(t)
+
 	// Phase 1: Verify the real npx skills CLI is available; skip otherwise.
 	if _, err := exec.LookPath("npx"); err != nil {
 		t.Skipf("npx not found in PATH: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn", "--list").Run(); err != nil {
 		t.Skipf("real skills CLI unavailable: %v", err)
+	}
+	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn", "-s", "lark-calendar", "-g", "-y").Run(); err != nil {
+		t.Skipf("failed to seed isolated global skills: %v", err)
 	}
 	globalOut, err := exec.CommandContext(ctx, "npx", "-y", "skills", "ls", "-g").Output()
 	if err != nil {
@@ -1630,9 +1693,12 @@ func TestUpdateCommand_RealSkillsSyncRewritesState(t *testing.T) {
 // not exist (cold start), the update command installs all official skills and
 // writes a fresh state file. No skill should appear in SkippedDeletedSkills
 // because there is no previous state to preserve user deletions from.
-// This is a live integration test that calls the real npx skills CLI; it is
-// skipped when npx or the skills registry is unavailable.
+// This is a live integration test that calls the real npx skills CLI and only
+// runs with explicit opt-in. All user directories are redirected to a temporary
+// home.
 func TestUpdateCommand_SkillsSyncColdStart(t *testing.T) {
+	prepareLiveSkillsIntegration(t)
+
 	// Phase 1: Verify the real npx skills CLI is available; skip otherwise.
 	if _, err := exec.LookPath("npx"); err != nil {
 		t.Skipf("npx not found in PATH: %v", err)
