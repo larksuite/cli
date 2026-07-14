@@ -64,6 +64,9 @@ examples-build:
 	go build ./extension/platform/examples/audit-observer
 	go build ./extension/platform/examples/readonly-policy
 
+# ./tests/... includes tests/plugin_e2e, which builds ~20 customer-fork
+# binaries (~1 min warm; a cold module cache also downloads via GOPROXY).
+# Deliberate: local `make test` exercises the L4 plugin contract by default.
 integration-test: build
 	go test -v -count=1 ./tests/...
 

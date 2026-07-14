@@ -34,14 +34,33 @@
 // same code paths this file would otherwise exercise via a real subprocess.
 //
 // So instead, this test builds its OWN in-test sidecar (an httptest.Server)
-// that mirrors server-demo/handler.go's verify+inject steps 0-8 exactly,
-// using the real protocol package (sidecar.Verify, sidecar.CanonicalRequest,
+// built on the real protocol package (sidecar.Verify, sidecar.CanonicalRequest,
 // sidecar.BodySHA256, the Header* / Sentinel* / Identity* constants) — the
-// same symbols server-demo itself uses. This is the standard shape for this
-// kind of test: one real external process (the fork binary, compiled with
-// the production interceptor code) plus two in-process httptest.Server
-// stand-ins (sidecar, upstream). It proves the real wire protocol end-to-end
-// without requiring live credentials, real feishu/lark hosts, or TLS.
+// same symbols server-demo itself uses. Against server-demo/handler.go's
+// numbered steps, the coverage accounting is:
+//
+//   - steps 0-3 (protocol version, timestamp presence, body SHA256, HMAC
+//     verification): MIRRORED in the in-test handler. Note server-demo's
+//     step 1 checks timestamp presence only — no freshness/skew window
+//     exists there either; the timestamp's integrity is covered by the HMAC.
+//   - steps 4/5/5.5 (target-host / identity / auth-header allowlists): NOT
+//     enforced in the handler (a mock's 127.0.0.1 host can never be in a
+//     real allowlist); replaced by post-hoc test assertions that the docs
+//     request named the real Feishu host, identity=user, and the committed
+//     auth header was present.
+//   - step 6 (resolve real token): replaced by a synthetic injected token —
+//     the point of the offline design.
+//   - steps 7-10 (build forward request, inject, forward, relay response):
+//     mirrored in shape, except the forward goes to the in-test mock's URL
+//     instead of "https://"+targetHost (deliberate, documented on
+//     forwardWithInjectedToken).
+//   - step 11 (audit log): not covered; irrelevant to the wire contract.
+//
+// This is the standard shape for this kind of test: one real external
+// process (the fork binary, compiled with the production interceptor code)
+// plus two in-process httptest.Server stand-ins (sidecar, upstream). It
+// proves the real wire protocol end-to-end without requiring live
+// credentials, real feishu/lark hosts, or TLS.
 //
 // Every key/token/app-id here is an obviously-synthetic placeholder; nothing
 // in this file can authenticate against anything real.
@@ -251,7 +270,7 @@ func startInTestSidecar(t *testing.T, key []byte, upstreamURL string) *inTestSid
 	return s
 }
 
-// handle is the request flow: capture -> verify (steps 0-4) -> inject+forward.
+// handle is the request flow: capture -> verify (steps 0-3) -> inject+forward.
 func (s *inTestSidecar) handle(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	snap := &capturedRequest{
@@ -271,11 +290,14 @@ func (s *inTestSidecar) handle(w http.ResponseWriter, r *http.Request) {
 	s.forwardWithInjectedToken(w, r, body, authHeader)
 }
 
-// verifyProxyRequest mirrors server-demo/handler.go steps 0-4: protocol
-// version, body SHA256, target validation, and HMAC signature verification.
-// It returns the auth header the client committed to, whether verification
-// (step 4) actually ran, and its result. On any pre-step-4 failure it writes
-// the HTTP error and returns ok=false with verifyRan=false.
+// verifyProxyRequest mirrors server-demo/handler.go steps 0-3 (protocol
+// version, timestamp presence, body SHA256, HMAC signature verification —
+// including the target parse and identity/auth-header reads that feed the
+// canonical signing string). The allowlist steps 4/5/5.5 are intentionally
+// absent; the package comment's coverage accounting explains what replaces
+// them. It returns the auth header the client committed to, whether HMAC
+// verification (step 3) actually ran, and its result. On any earlier failure
+// it writes the HTTP error and returns ok=false with verifyRan=false.
 func (s *inTestSidecar) verifyProxyRequest(w http.ResponseWriter, r *http.Request, body []byte) (authHeader string, verifyRan bool, verifyErr error, ok bool) {
 	// Step 0: protocol version.
 	version := r.Header.Get(sidecar.HeaderProxyVersion)
@@ -284,26 +306,34 @@ func (s *inTestSidecar) verifyProxyRequest(w http.ResponseWriter, r *http.Reques
 		return "", false, nil, false
 	}
 
-	// Step 1-2: timestamp + body SHA256.
+	// Step 1: timestamp presence (matching server-demo, which enforces
+	// presence only — the value's integrity is covered by the HMAC below;
+	// an empty-but-signed timestamp would otherwise verify fine).
 	ts := r.Header.Get(sidecar.HeaderProxyTimestamp)
+	if ts == "" {
+		http.Error(w, "missing "+sidecar.HeaderProxyTimestamp, http.StatusBadRequest)
+		return "", false, nil, false
+	}
+
+	// Step 2: body SHA256.
 	claimedSHA := r.Header.Get(sidecar.HeaderBodySHA256)
 	if claimedSHA == "" || claimedSHA != sidecar.BodySHA256(body) {
 		http.Error(w, "body SHA256 mismatch", http.StatusBadRequest)
 		return "", false, nil, false
 	}
 
-	// Step 3: target host, identity, auth-header (all covered by the sig).
+	// Step 3 inputs: target host, identity, auth-header (all covered by the sig).
 	targetHost, perr := parseTargetHost(r.Header.Get(sidecar.HeaderProxyTarget))
 	if perr != nil {
 		http.Error(w, "invalid "+sidecar.HeaderProxyTarget+": "+perr.Error(), http.StatusForbidden)
-		// verifyRan=false: step 4 never ran; surface the parse error so the
-		// diagnostic dump shows why this request was rejected early.
+		// verifyRan=false: HMAC verification never ran; surface the parse error
+		// so the diagnostic dump shows why this request was rejected early.
 		return "", false, perr, false
 	}
 	identity := r.Header.Get(sidecar.HeaderProxyIdentity)
 	authHeader = r.Header.Get(sidecar.HeaderProxyAuthHeader)
 
-	// Step 4: verify HMAC signature over the canonical request.
+	// Step 3: verify HMAC signature over the canonical request.
 	err := sidecar.Verify(s.key, sidecar.CanonicalRequest{
 		Version:      version,
 		Method:       r.Method,
@@ -474,7 +504,19 @@ func runFork(t *testing.T, binPath, sidecarURL string) forkResult {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binPath, "docs", "+fetch", "--doc", testDocToken, "--as", "user")
-	cmd.Env = append(os.Environ(),
+	// Strip the host's LARKSUITE_CLI_* namespace before appending overrides: a
+	// developer machine exporting, say, LARKSUITE_CLI_DEFAULT_AS or
+	// LARKSUITE_CLI_STRICT_MODE would otherwise leak into the fork (the sidecar
+	// credential provider reads them via os.Getenv), so the fork's CLI-facing
+	// environment is exactly the variables set below, on any machine.
+	env := os.Environ()
+	base := env[:0]
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "LARKSUITE_CLI_") {
+			base = append(base, kv)
+		}
+	}
+	cmd.Env = append(base,
 		"LARKSUITE_CLI_AUTH_PROXY=http://"+scURL.Host,
 		"LARKSUITE_CLI_PROXY_KEY="+testProxyKey,
 		"LARKSUITE_CLI_APP_ID="+testAppID,

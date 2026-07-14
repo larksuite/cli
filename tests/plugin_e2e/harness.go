@@ -27,6 +27,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -85,12 +86,22 @@ func gitArchive(root, dst string) error {
 }
 
 // builtForks caches fork binaries by name so identical forks are built once.
-var builtForks = map[string]string{}
+// builtForksMu guards it: no test in this package uses t.Parallel() today, but
+// that is an implicit convention a future test could silently break, and an
+// unguarded map write would then be a runtime panic. The lock is held across
+// the whole build so concurrent callers also dedupe instead of racing to build
+// the same fork twice.
+var (
+	builtForksMu sync.Mutex
+	builtForks   = map[string]string{}
+)
 
 // buildFork generates a customer module whose plugin package body is pluginSrc,
 // builds the fork, and returns the binary path. Forks are cached by name.
 func buildFork(t *testing.T, name, pluginSrc string) string {
 	t.Helper()
+	builtForksMu.Lock()
+	defer builtForksMu.Unlock()
 	if bin, ok := builtForks[name]; ok {
 		return bin
 	}
@@ -166,11 +177,30 @@ func run(t *testing.T, bin string, args ...string) result {
 	return runWithEnv(t, bin, isolatedEnv(t), args...)
 }
 
+// baseEnv is the host environment with every LARKSUITE_CLI_* variable removed.
+// Appending overrides to a raw os.Environ() only isolates the variables we
+// explicitly set — a developer machine exporting, say, LARKSUITE_CLI_AUTH_PROXY
+// or LARKSUITE_CLI_BRAND would leak them into the fork (the transport
+// interceptor and credential providers read them via os.Getenv directly),
+// breaking the "deterministic on any machine" guarantee. Stripping the whole
+// namespace first makes the fork's CLI-facing environment exactly the
+// variables the harness sets, everywhere.
+func baseEnv() []string {
+	env := os.Environ()
+	kept := env[:0]
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "LARKSUITE_CLI_") {
+			kept = append(kept, kv)
+		}
+	}
+	return kept
+}
+
 // isolatedEnv is the bare-module, offline environment shared by run() and (as a
 // base) by runWithSeededCatalog.
 func isolatedEnv(t *testing.T) []string {
 	t.Helper()
-	return append(os.Environ(),
+	return append(baseEnv(),
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+t.TempDir(),
@@ -190,6 +220,12 @@ func runWithEnv(t *testing.T, bin string, env []string, args ...string) result {
 	c.Stdout = &stdout
 	c.Stderr = &stderr
 	err := c.Run()
+	// A fork that hangs is killed by the context and surfaces as a generic
+	// exit=-1 ExitError; name the timeout explicitly so the failure reads as
+	// "hung" rather than "crashed".
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("run %v: timed out after 60s; stdout=%s stderr=%s", args, stdout.String(), stderr.String())
+	}
 	exit := 0
 	if err != nil {
 		var ee *exec.ExitError

@@ -69,7 +69,7 @@ func runWithSeededCatalog(t *testing.T, bin, cacheJSON string, args ...string) r
 	writeFile(t, filepath.Join(cacheDir, "remote_meta.json"), cacheJSON)
 	writeFile(t, filepath.Join(cacheDir, "remote_meta.meta.json"),
 		fmt.Sprintf(`{"last_check_at":%d,"version":%q,"brand":""}`, time.Now().Unix(), seededCatalogVersion))
-	env := append(os.Environ(),
+	env := append(baseEnv(),
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+cfg,
