@@ -43,13 +43,8 @@ func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err er
 	}
 
 	mapped := *permissionErr
-	mapped.Problem.Message = meetingQueryMissingScopeMessage()
 	mapped.Cause = err
 	return addMeetingQueryRecovery(runtime, &mapped)
-}
-
-func meetingQueryMissingScopeMessage() string {
-	return "missing compatible meeting query scopes: either " + meetingQueryUserScope + " or " + meetingQueryBotScope + " is sufficient"
 }
 
 func addMeetingQueryRecovery(runtime *common.RuntimeContext, permissionErr *errs.PermissionError) error {

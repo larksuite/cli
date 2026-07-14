@@ -101,11 +101,6 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 	default:
 		t.Fatalf("unexpected code %d", code)
 	}
-	for _, scope := range meetingQueryAnyScopes {
-		if !strings.Contains(pe.Error(), scope) {
-			t.Fatalf("error %q does not mention compatible scope %q", pe.Error(), scope)
-		}
-	}
 }
 
 func TestNormalizeMeetingQueryPermissionError_RecommendsOneCompatibleScope(t *testing.T) {
@@ -147,6 +142,9 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsOneCompatibleScope(t *te
 			if pe.Troubleshooter != original.Troubleshooter {
 				t.Fatalf("Troubleshooter = %q, want %q", pe.Troubleshooter, original.Troubleshooter)
 			}
+			if pe.Message != original.Message {
+				t.Fatalf("Message = %q, want original %q", pe.Message, original.Message)
+			}
 			if !reflect.DeepEqual(pe.MissingScopes, meetingQueryAnyScopes) {
 				t.Fatalf("MissingScopes = %v, want %v", pe.MissingScopes, meetingQueryAnyScopes)
 			}
@@ -179,7 +177,8 @@ func TestNormalizeMeetingQueryPermissionError_PassesThroughNonMatchingErrors(t *
 				WithMissingScopes(meetingQueryAnyScopes...),
 		},
 		{
-			name: "single_scope",
+			name:     "single_scope",
+			identity: core.AsUser,
 			err: errs.NewPermissionError(errs.SubtypeMissingScope, "single").
 				WithCode(output.LarkErrUserScopeInsufficient).
 				WithMissingScopes(meetingQueryUserScope),
