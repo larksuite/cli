@@ -68,17 +68,9 @@ func TestBaseRecordBatchUpdatePerRecordWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	updateResult.AssertExitCode(t, 0)
 	updateResult.AssertStdoutStatus(t, true)
-	require.ElementsMatch(
-		t,
-		[]string{firstRecordID, secondRecordID},
-		[]string{
-			gjson.Get(updateResult.Stdout, "data.record_id_list.0").String(),
-			gjson.Get(updateResult.Stdout, "data.record_id_list.1").String(),
-		},
-		updateResult.Stdout,
-	)
-	require.Equal(t, "Done", gjson.Get(updateResult.Stdout, "data.update_records."+firstRecordID+".Status.0").String(), updateResult.Stdout)
-	require.Equal(t, int64(20), gjson.Get(updateResult.Stdout, "data.update_records."+secondRecordID+".Score").Int(), updateResult.Stdout)
+	updateData := gjson.Get(updateResult.Stdout, "data")
+	require.True(t, updateData.IsObject(), updateResult.Stdout)
+	require.Empty(t, updateData.Map(), updateResult.Stdout)
 
 	assertRecordFields := func(recordID, expectedStatus string, expectedScore int64) {
 		t.Helper()
@@ -106,4 +98,20 @@ func TestBaseRecordBatchUpdatePerRecordWorkflow(t *testing.T) {
 
 	assertRecordFields(firstRecordID, "Done", 10)
 	assertRecordFields(secondRecordID, "Open", 20)
+
+	missingResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"base", "+record-batch-update",
+			"--base-token", baseToken,
+			"--table-id", tableID,
+			"--json", `{"update_records":{"recZZZZZZZZZZZ":{"Name":"missing-record"}}}`,
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	missingResult.AssertExitCode(t, 0)
+	missingResult.AssertStdoutStatus(t, true)
+	missingData := gjson.Get(missingResult.Stdout, "data")
+	require.True(t, missingData.IsObject(), missingResult.Stdout)
+	require.Empty(t, missingData.Map(), missingResult.Stdout)
 }

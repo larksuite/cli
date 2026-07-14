@@ -50,7 +50,9 @@ lark-cli base +record-batch-update --base-token <base_token> --table-id <table_i
 
 ## 返回重点
 
-同值模式返回 `record_id_list`、`update`；逐记录模式返回 `record_id_list`、`update_records`。两者都可能返回 `ignored_fields`。
+同值模式返回 `record_id_list`、`update`，并可能返回 `ignored_fields`。
+
+逐记录模式成功响应只包含可选的 `ignored_fields`；没有忽略字段时 `data` 为空对象。逐记录模式不会预先校验 record ID 是否存在，因此需要确认实际写入结果时，应再用 `+record-get` 读回目标记录。
 
 ## 坑点
 

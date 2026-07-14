@@ -839,6 +839,8 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"Two mutually exclusive modes are supported",
 				"update_records maps each record ID to its own field map",
 				`{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`,
+				"returns only optional ignored_fields",
+				"does not check whether record IDs exist",
 				"use +field-list to confirm real writable fields",
 				"Batch update supports max 200 records per call",
 				"CellValue happy path: text/phone/url",
