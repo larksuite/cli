@@ -33,7 +33,7 @@ var VCMeetingListActive = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "user-id", Desc: "target user ID when using bot identity"},
 	},
-	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateMeetingListActiveUserID(runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

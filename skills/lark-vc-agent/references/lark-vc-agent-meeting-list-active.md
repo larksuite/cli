@@ -4,17 +4,6 @@
 
 本 skill 对应 shortcut：`lark-cli vc +meeting-list-active`（调用 `GET /open-apis/vc/v1/bots/user_active_meeting`）。
 
-## 权限建议
-
-按调用身份申请对应 scope：
-
-| 身份 | 推荐 scope |
-|------|-----------|
-| 用户身份 `--as user` | `vc:meeting.meetingevent:read` |
-| 应用身份 `--as bot` | `vc:meeting.bot.join:write` |
-
-两个 scope 是兼容的 OR；表格仅表示缺失时的推荐项。申请和恢复流程统一见主 skill 的“会议查询 scope 恢复规则”。
-
 ## 命令
 
 ```bash

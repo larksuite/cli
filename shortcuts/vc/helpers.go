@@ -60,14 +60,10 @@ func addMeetingQueryRecovery(runtime *common.RuntimeContext, permissionErr *errs
 	}
 	permissionErr.Identity = string(runtime.As())
 	permissionErr.ConsoleURL = ""
-	switch {
-	case isBot && permissionErr.Code == output.LarkErrAppScopeNotEnabled:
+	if isBot {
 		return permissionErr.WithHint("for %s identity, ask the app developer to enable scope %s", runtime.As(), recommended)
-	case permissionErr.Code == output.LarkErrUserScopeInsufficient && !isBot:
-		return permissionErr.WithHint("for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
-	default:
-		return permissionErr
 	}
+	return permissionErr.WithHint("for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
 }
 
 func containsAllScopes(granted []string, required []string) bool {

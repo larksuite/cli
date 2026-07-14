@@ -67,7 +67,7 @@ var VCMeetingEvents = common.Shortcut{
 		{Name: "page-size", Default: "20", Desc: "page size, 20-100 (default 20)"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all available pages"},
 	},
-	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateMeetingEventsMeetingID(runtime.Str("meeting-id")); err != nil {
 			return err
 		}

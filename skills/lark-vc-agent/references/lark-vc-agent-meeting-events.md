@@ -11,17 +11,6 @@
 - `meeting_id` 来自 `+meeting-list-active --as bot --user-id <user_open_id>` 或 `+meeting-join --as bot`：后续读取事件继续 `--as bot`。
 - 应用身份下，应用机器人必须在该会中或参会过；应用身份 active meeting 返回的是“目标用户在会中且应用机器人也在会中”的会议，不表示可以读取任意 `meeting_id`。
 
-## 权限建议
-
-按调用身份申请对应 scope：
-
-| 身份 | 推荐 scope |
-|------|-----------|
-| 用户身份 `--as user` | `vc:meeting.meetingevent:read` |
-| 应用身份 `--as bot` | `vc:meeting.bot.join:write` |
-
-两个 scope 是兼容的 OR；表格仅表示缺失时的推荐项。申请和恢复流程统一见主 skill 的“会议查询 scope 恢复规则”。
-
 ## 命令
 
 ```bash
