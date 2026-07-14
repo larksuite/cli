@@ -78,6 +78,18 @@ func TestAutomationEnable_APIErrorAttachesNotFoundHint(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected typed problem, got %T: %v", err, err)
 	}
+	// Per AGENTS.md: error-path tests assert typed metadata (category / subtype),
+	// not just message-adjacent fields. Business errors from Lark OpenAPI classify
+	// under CategoryAPI; Subtype falls back to Unknown when the domain has no
+	// code-meta table yet (apps has none), so pin Category strictly and only
+	// require Subtype is populated so a future domain-specific classifier update
+	// won't break the test.
+	if p.Category != errs.CategoryAPI {
+		t.Errorf("category = %q, want %q", p.Category, errs.CategoryAPI)
+	}
+	if p.Subtype == "" {
+		t.Error("subtype must be populated on typed API errors")
+	}
 	if p.Code != 400400001 {
 		t.Errorf("code = %d, want 400400001", p.Code)
 	}
@@ -104,6 +116,15 @@ func TestAutomationDisable_APIErrorAttachesNotFoundHint(t *testing.T) {
 	p, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryAPI {
+		t.Errorf("category = %q, want %q", p.Category, errs.CategoryAPI)
+	}
+	if p.Subtype == "" {
+		t.Error("subtype must be populated on typed API errors")
+	}
+	if p.Code != 400400001 {
+		t.Errorf("code = %d, want 400400001", p.Code)
 	}
 	if !strings.Contains(p.Hint, "+automation-list") {
 		t.Errorf("hint must point at +automation-list, got %q", p.Hint)

@@ -84,6 +84,12 @@ func TestAutomationGet_APIErrorAttachesNotFoundHint(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected typed problem, got %T: %v", err, err)
 	}
+	if p.Category != errs.CategoryAPI {
+		t.Errorf("category = %q, want %q", p.Category, errs.CategoryAPI)
+	}
+	if p.Subtype == "" {
+		t.Error("subtype must be populated on typed API errors")
+	}
 	if !strings.Contains(p.Hint, "+automation-list") {
 		t.Errorf("hint must point at +automation-list, got %q", p.Hint)
 	}
