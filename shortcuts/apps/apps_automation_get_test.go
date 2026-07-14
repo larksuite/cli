@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -52,4 +53,59 @@ func TestAutomationGet_MissingName(t *testing.T) {
 		map[string]string{"app-id": "app_x"})
 	err := AppsAutomationGet.Validate(context.Background(), rctx)
 	assertValidationParamError(t, err, "--name")
+}
+
+// TestAutomationGet_MissingAppID covers the sibling branch of Validate:
+// automationValidateName rejects an empty --app-id before checking --name.
+func TestAutomationGet_MissingAppID(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t,
+		map[string]string{"app-id": "string", "name": "string"},
+		map[string]string{"name": "t1"})
+	err := AppsAutomationGet.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--app-id")
+}
+
+// TestAutomationGet_APIErrorAttachesNotFoundHint covers the failure branch of
+// Execute: a business error on GET must surface typed and carry the
+// automation-list hint so the caller has a next step.
+func TestAutomationGet_APIErrorAttachesNotFoundHint(t *testing.T) {
+	rctx, _, reg := newOpenAPIKeyRCtx(t,
+		map[string]string{"app-id": "string", "name": "string"},
+		map[string]string{"app-id": "app_x", "name": "missing"})
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers/missing",
+		Body: map[string]interface{}{"code": 400400001, "msg": "trigger not found"},
+	})
+	err := AppsAutomationGet.Execute(context.Background(), rctx)
+	if err == nil {
+		t.Fatal("expected typed api error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if !strings.Contains(p.Hint, "+automation-list") {
+		t.Errorf("hint must point at +automation-list, got %q", p.Hint)
+	}
+}
+
+// TestAutomationGet_DryRunPreview exercises the DryRun closure and pins the
+// GET method + URL pattern that agents inspect before committing.
+func TestAutomationGet_DryRunPreview(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t,
+		map[string]string{"app-id": "string", "name": "string"},
+		map[string]string{"app-id": "app_x", "name": "t1"})
+	preview := AppsAutomationGet.DryRun(context.Background(), rctx)
+	if preview == nil {
+		t.Fatal("DryRun returned nil")
+	}
+	blob, err := preview.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal preview: %v", err)
+	}
+	got := string(blob)
+	if !strings.Contains(got, `"method":"GET"`) ||
+		!strings.Contains(got, "/apps/app_x/triggers/t1") {
+		t.Errorf("preview missing expected GET/URL fields: %s", got)
+	}
 }

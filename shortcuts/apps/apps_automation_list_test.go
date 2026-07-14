@@ -19,6 +19,61 @@ func automationListFlagDefs() map[string]string {
 	}
 }
 
+// TestAutomationList_InvalidTriggerTypeFilter covers Validate's mapTriggerType
+// error branch: an unknown --trigger-type is rejected before any API call, with
+// a typed error naming the failing flag.
+func TestAutomationList_InvalidTriggerTypeFilter(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+		map[string]string{"app-id": "app_x", "trigger-type": "bogus"})
+	err := AppsAutomationList.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--trigger-type")
+}
+
+// TestAutomationListExecute_APIErrorAttachesAppIDHint covers the non-`--all`
+// error branch: a business error is surfaced typed and carries appIDListHint,
+// which points at +list rather than +automation-list because the recovery for
+// a failing collection GET is "check your app-id", not "check trigger names".
+func TestAutomationListExecute_APIErrorAttachesAppIDHint(t *testing.T) {
+	rctx, _, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+		map[string]string{"app-id": "app_x"})
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",
+		Body: map[string]interface{}{"code": 400400002, "msg": "app not accessible"},
+	})
+	err := AppsAutomationList.Execute(context.Background(), rctx)
+	if err == nil {
+		t.Fatal("expected typed api error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if !strings.Contains(p.Hint, "apps +list") {
+		t.Errorf("hint must point at `lark-cli apps +list`, got %q", p.Hint)
+	}
+}
+
+// TestAutomationList_DryRunPreview exercises the DryRun closure — pins the GET
+// method + collection URL + trigger_type param pushdown.
+func TestAutomationList_DryRunPreview(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+		map[string]string{"app-id": "app_x", "trigger-type": "webhook"})
+	preview := AppsAutomationList.DryRun(context.Background(), rctx)
+	if preview == nil {
+		t.Fatal("DryRun returned nil")
+	}
+	blob, err := preview.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal preview: %v", err)
+	}
+	got := string(blob)
+	if !strings.Contains(got, `"method":"GET"`) ||
+		!strings.Contains(got, "/apps/app_x/triggers") ||
+		!strings.Contains(got, `"trigger_type":"webhook"`) {
+		t.Errorf("preview missing expected GET/URL/params: %s", got)
+	}
+}
+
 func TestAutomationListMeta(t *testing.T) {
 	if AppsAutomationList.Command != "+automation-list" || AppsAutomationList.Risk != "read" {
 		t.Errorf("meta mismatch: %+v", AppsAutomationList)
