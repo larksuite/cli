@@ -170,6 +170,8 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 
 ## 会议查询权限
 
+`+meeting-list-active` 和 `+meeting-events` 按调用身份使用以下 scope：
+
 | 调用身份 | scope |
 | -------- | ----- |
 | 用户身份 `--as user` | `vc:meeting.meetingevent:read` |
