@@ -632,6 +632,37 @@ func TestMeetingListActive_UsesCustomAnyScopeCheck(t *testing.T) {
 	}
 }
 
+func TestMeetingListActive_ValidateUsesCustomAnyScopeCheck(t *testing.T) {
+	cases := []struct {
+		name    string
+		scopes  string
+		wantErr bool
+	}{
+		{name: "user_only_join", scopes: meetingQueryBotScope},
+		{name: "user_unrelated_scope", scopes: "vc:meeting.message:write", wantErr: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "+meeting-list-active"}
+			cmd.Flags().String("user-id", "", "")
+			runtime := newMeetingQueryRuntimeWithScopes(cmd, core.AsUser, tc.scopes)
+
+			err := VCMeetingListActive.Validate(context.Background(), runtime)
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("Validate() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("Validate() error = nil, want missing scope")
+			}
+			assertMeetingQueryPermissionError(t, err, core.AsUser)
+		})
+	}
+}
+
 func TestMeetingListActive_DryRun_UserIdentityIgnoresUserID(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, VCMeetingListActive, []string{

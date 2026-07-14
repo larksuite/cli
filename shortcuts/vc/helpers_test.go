@@ -33,12 +33,25 @@ func bareMeetingQueryRuntime(as core.Identity) *common.RuntimeContext {
 	return common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "test"}, defaultConfig(), as)
 }
 
-func newMeetingQueryRuntime(as core.Identity, resolver *meetingQueryTokenResolver) *common.RuntimeContext {
-	runtime := bareMeetingQueryRuntime(as)
+func newMeetingQueryRuntimeWithCommand(cmd *cobra.Command, as core.Identity, resolver *meetingQueryTokenResolver) *common.RuntimeContext {
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), as)
 	runtime.Factory = &cmdutil.Factory{
 		Credential: credential.NewCredentialProvider(nil, nil, resolver, nil),
 	}
 	return runtime
+}
+
+func newMeetingQueryRuntimeWithScopes(cmd *cobra.Command, as core.Identity, scopes string) *common.RuntimeContext {
+	return newMeetingQueryRuntimeWithCommand(cmd, as, &meetingQueryTokenResolver{
+		result: &credential.TokenResult{
+			Token:  "test-token",
+			Scopes: scopes,
+		},
+	})
+}
+
+func newMeetingQueryRuntime(as core.Identity, resolver *meetingQueryTokenResolver) *common.RuntimeContext {
+	return newMeetingQueryRuntimeWithCommand(&cobra.Command{Use: "test"}, as, resolver)
 }
 
 func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Identity) {
