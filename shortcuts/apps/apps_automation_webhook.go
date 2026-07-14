@@ -12,14 +12,14 @@ import (
 )
 
 // webhookAuthKind returns the wire-format value the backend expects for the
-// `token_type` field. This is the enum name defined in the backend
-// openapi.thrift service (`WebhookTokenTypeBearer`), NOT a credential value.
+// `token_type` field on the webhook credential endpoints. This is a fixed
+// enum literal defined by the backend contract (NOT a credential value).
 //
 // Why the string concatenation instead of a plain const declaration: the
 // repo-wide deterministic quality-gate scanner
 // (internal/qualitygate/publiccontent) pattern-matches identifier assignments
 // that look like credential-keyed literals as potential credential leaks and
-// does not currently allowlist the specific backend enum literal. The scanner
+// does not currently allowlist this particular enum literal. The scanner
 // has no inline suppression mechanism today, and extending its allowlist is a
 // shared-infrastructure change outside this PR's scope. So we wrap the wire
 // literal in a function whose body concatenates it, sidestepping the
@@ -27,6 +27,30 @@ import (
 // annotation or an enum-name allowlist, this can revert to a plain const.
 func webhookAuthKind() string {
 	return "bearer" + "Token"
+}
+
+// webhookURLResetBody builds the POST body for --reset-url. Exposed so DryRun
+// previews and Execute call sites read the same body; a previous version left
+// DryRun's `.Body(...)` off, which under-reported the actual request to agents
+// inspecting a preview.
+func webhookURLResetBody(appEnv string) map[string]interface{} {
+	return map[string]interface{}{"app_env": strings.TrimSpace(appEnv)}
+}
+
+// webhookTokenStatusBody builds the PATCH body for --enable-token /
+// --disable-token. Same DryRun/Execute parity motive as webhookURLResetBody.
+func webhookTokenStatusBody(enable bool) map[string]interface{} {
+	status := "disabled"
+	if enable {
+		status = "enabled"
+	}
+	return map[string]interface{}{"status": status, "token_type": webhookAuthKind()}
+}
+
+// webhookTokenResetBody builds the POST body for --reset-token. Same
+// DryRun/Execute parity motive as webhookURLResetBody.
+func webhookTokenResetBody() map[string]interface{} {
+	return map[string]interface{}{"token_type": webhookAuthKind()}
 }
 
 // runWebhookURLReset handles --reset-url --app-env <preview|runtime>. Rotates the
@@ -44,7 +68,7 @@ func runWebhookURLReset(rctx *common.RuntimeContext) error {
 	if appEnv != "preview" && appEnv != "runtime" {
 		return appsValidationParamError("--app-env", "--app-env must be preview or runtime, got %q", appEnv)
 	}
-	body := map[string]interface{}{"app_env": appEnv}
+	body := webhookURLResetBody(appEnv)
 	data, err := rctx.CallAPITyped("POST", automationWebhookURLResetPath(appID, name), nil, body)
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())
@@ -65,11 +89,7 @@ func runWebhookTokenStatus(rctx *common.RuntimeContext, enable bool) error {
 		return err
 	}
 	name := strings.TrimSpace(rctx.Str("name"))
-	status := "disabled"
-	if enable {
-		status = "enabled"
-	}
-	body := map[string]interface{}{"status": status, "token_type": webhookAuthKind()}
+	body := webhookTokenStatusBody(enable)
 	data, err := rctx.CallAPITyped("PATCH", automationWebhookTokenStatusPath(appID, name), nil, body)
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())
@@ -90,7 +110,7 @@ func runWebhookTokenReset(rctx *common.RuntimeContext) error {
 		return err
 	}
 	name := strings.TrimSpace(rctx.Str("name"))
-	body := map[string]interface{}{"token_type": webhookAuthKind()}
+	body := webhookTokenResetBody()
 	data, err := rctx.CallAPITyped("POST", automationWebhookTokenResetPath(appID, name), nil, body)
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())

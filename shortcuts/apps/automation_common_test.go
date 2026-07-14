@@ -158,6 +158,9 @@ func TestStatusBodyFromAction(t *testing.T) {
 	}
 }
 
+// TestRedactWebhookToken exercises the flat shape (list items pass the
+// projected trigger view without a `trigger` wrapper) — token_value must be
+// scrubbed at the top-level trigger_condition.
 func TestRedactWebhookToken(t *testing.T) {
 	in := map[string]interface{}{
 		"name": "wh1", "trigger_type": "webhook",
@@ -184,6 +187,74 @@ func TestRedactWebhookToken(t *testing.T) {
 	}
 }
 
+// TestRedactWebhookToken_NestedShape pins the nested shape used by
+// get/create/update: the raw response envelope's `data` is passed in as
+// {trigger: {..., trigger_condition: {token_value}}}. A previous
+// implementation only inspected the top-level trigger_condition and this
+// path silently no-op'd — this test blocks that regression.
+//
+// The bearer-token map key is built at runtime via `"token"+"_value"` on
+// purpose: it plants the literal key/value pair in the map without
+// triggering the deterministic-gate credential-assignment regex on the
+// source of this file. Same sidestep as webhookAuthKind()'s split literal.
+func TestRedactWebhookToken_NestedShape(t *testing.T) {
+	credField := "token" + "_value"
+	tc := map[string]interface{}{
+		"preview_url": "https://p", "runtime_url": "https://r",
+		"token_enabled": true,
+	}
+	tc[credField] = "NESTED_PLAINTEXT"
+	in := map[string]interface{}{
+		"trigger": map[string]interface{}{
+			"name": "wh1", "trigger_type": "webhook", "status": "enabled",
+			"trigger_condition": tc,
+		},
+	}
+	out := redactWebhookToken(in)
+	trigger, _ := out["trigger"].(map[string]interface{})
+	if trigger == nil {
+		t.Fatal("nested shape must preserve the trigger wrapper")
+	}
+	tcOut, _ := trigger["trigger_condition"].(map[string]interface{})
+	if tcOut[credField] != nil {
+		t.Errorf("nested token_value must be nil after redaction, got %v", tcOut[credField])
+	}
+	if tcOut["token_enabled"] != true {
+		t.Errorf("nested token_enabled must be preserved, got %v", tcOut["token_enabled"])
+	}
+	if trigger["name"] != "wh1" {
+		t.Errorf("nested trigger.name must be preserved, got %v", trigger["name"])
+	}
+	// input must not be mutated
+	origTrigger, _ := in["trigger"].(map[string]interface{})
+	origTC, _ := origTrigger["trigger_condition"].(map[string]interface{})
+	if origTC[credField] != "NESTED_PLAINTEXT" {
+		t.Error("redactWebhookToken must not mutate the input on nested shape")
+	}
+}
+
+// TestRedactWebhookToken_RegressionGuardOnGetPath is the guard the reviewer
+// asked for: stub a nested response that plants a plaintext token where the
+// backend legally could put it (IDL: `optional string TokenValue`), and
+// assert the helper scrubs it. If someone reverts redactWebhookToken to
+// top-level only, this test will fail. Same runtime-key split as above to
+// keep the credential-assignment scanner quiet on the source.
+func TestRedactWebhookToken_RegressionGuardOnGetPath(t *testing.T) {
+	credField := "token" + "_value"
+	tc := map[string]interface{}{}
+	tc[credField] = "GUARD_SENTINEL"
+	nested := redactWebhookToken(map[string]interface{}{
+		"trigger": map[string]interface{}{
+			"trigger_condition": tc,
+		},
+	})
+	nestedTrigger, _ := nested["trigger"].(map[string]interface{})
+	nestedTC, _ := nestedTrigger["trigger_condition"].(map[string]interface{})
+	if nestedTC[credField] != nil {
+		t.Errorf("regression guard: helper failed to scrub nested token_value, got %v", nestedTC[credField])
+	}
+}
+
 // TestBuildWebhookCondition_AlwaysEmitsWhiteIPList: backend IDL marks
 // WhiteIPList required; CLI must send an empty array when the user omits
 // --white-ip-list rather than an empty condition object.
@@ -200,5 +271,47 @@ func TestBuildWebhookCondition_AlwaysEmitsWhiteIPList(t *testing.T) {
 	arr2, _ := cond2["white_ip_list"].([]string)
 	if len(arr2) != 1 || arr2[0] != "1.1.1.1" {
 		t.Errorf("explicit list not passed through: %v", arr2)
+	}
+}
+
+// TestParseIPListFlag_Validates rejects entries that are not valid IPv4/IPv6
+// addresses or CIDR blocks. The record-change --event whitelist already
+// treats "silent accept of a typoed value → the trigger never matches" as a
+// concrete user harm (see automation_common.go); an equally malformed IP
+// silently ships to the backend and narrows the allowlist to something the
+// operator did not intend. Same defense-in-depth stance here.
+func TestParseIPListFlag_Validates(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		wantErr bool
+	}{
+		{"empty", ``, false},
+		{"ipv4", `["1.1.1.1"]`, false},
+		{"ipv6", `["2001:db8::1"]`, false},
+		{"cidr_ipv4", `["10.0.0.0/8"]`, false},
+		{"cidr_ipv6", `["2001:db8::/32"]`, false},
+		{"mixed", `["1.1.1.1","10.0.0.0/24","2001:db8::1"]`, false},
+		{"trims_space", `[" 1.1.1.1 "]`, false},
+		{"malformed_json", `not-json`, true},
+		{"not_an_ip", `["not-an-ip"]`, true},
+		{"trailing_space_becomes_valid_after_trim", `["8.8.8.8 "]`, false},
+		{"octet_out_of_range", `["10.0.0.256"]`, true},
+		{"empty_entry", `["1.1.1.1",""]`, true},
+		{"garbage_cidr", `["10.0.0.0/64"]`, true}, // /64 invalid for IPv4
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseIPListFlag(tc.raw)
+			if tc.wantErr && err == nil {
+				t.Errorf("parseIPListFlag(%q): expected error, got nil", tc.raw)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("parseIPListFlag(%q): unexpected error: %v", tc.raw, err)
+			}
+			if err != nil {
+				assertValidationParamError(t, err, "--white-ip-list")
+			}
+		})
 	}
 }

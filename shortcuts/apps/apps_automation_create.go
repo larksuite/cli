@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -79,14 +80,13 @@ var AppsAutomationCreate = common.Shortcut{
 		if err != nil {
 			return withAppsHint(err, appIDListHint)
 		}
-		// Bearer-token redaction reverse invariant: the CreateTrigger backend
-		// re-reads GetTriggerModel and returns TriggerInfo, sharing the
-		// decrypting webhook-condition converter with the get/list read path
-		// — theoretically capable of returning a plaintext bearerToken. On a
-		// fresh create the token is not yet enabled and this response should
-		// not carry plaintext, but redact for defense-in-depth and to keep
-		// every read-shaped output path (create / get / list / update-patch)
-		// consistently scrubbed.
+		// Bearer-token redaction reverse invariant: the backend create path
+		// re-reads the freshly created trigger through the same read-path
+		// converter used by get/list — theoretically capable of returning a
+		// plaintext bearer token. On a fresh create the token is not yet
+		// enabled and this response should not carry plaintext, but redact
+		// for defense-in-depth and to keep every read-shaped output path
+		// (create / get / list / update-patch) consistently scrubbed.
 		redacted := redactWebhookToken(data)
 		trigger, _ := redacted["trigger"].(map[string]interface{})
 		rctx.OutFormat(redacted, nil, func(w io.Writer) {
@@ -192,7 +192,13 @@ func parseFieldsFlag(raw string) ([]string, error) {
 	return arr, nil
 }
 
-// parseIPListFlag parses --white-ip-list JSON array; empty → nil (field omitted).
+// parseIPListFlag parses --white-ip-list JSON array; empty → nil (field
+// omitted). Each entry is validated as an IPv4/IPv6 address or CIDR, matching
+// the defense-in-depth stance the record-change --event whitelist takes —
+// silent acceptance of malformed IPs would let a typoed entry (`"1.1.1.1 "`
+// with trailing space, `"not-an-ip"`, or `"10.0.0.256"`) narrow the webhook
+// caller allowlist to nothing while the operator believes it is enforcing
+// origin restrictions.
 func parseIPListFlag(raw string) ([]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -202,5 +208,23 @@ func parseIPListFlag(raw string) ([]string, error) {
 	if err := json.Unmarshal([]byte(raw), &arr); err != nil {
 		return nil, appsValidationParamError("--white-ip-list", "--white-ip-list must be a JSON array of strings: %v", err)
 	}
-	return arr, nil
+	out := make([]string, 0, len(arr))
+	for i, entry := range arr {
+		trimmed := strings.TrimSpace(entry)
+		if trimmed == "" {
+			return nil, appsValidationParamError("--white-ip-list",
+				"--white-ip-list entry %d is empty; either drop it or provide a valid IP/CIDR", i)
+		}
+		if net.ParseIP(trimmed) != nil {
+			out = append(out, trimmed)
+			continue
+		}
+		if _, _, cidrErr := net.ParseCIDR(trimmed); cidrErr == nil {
+			out = append(out, trimmed)
+			continue
+		}
+		return nil, appsValidationParamError("--white-ip-list",
+			"--white-ip-list entry %d %q is not a valid IPv4/IPv6 address or CIDR block", i, entry)
+	}
+	return out, nil
 }

@@ -87,7 +87,7 @@
 - `--event-type` 必填，取 `approval_instance` 或 `approval_task`，决定状态用哪套 flag：
   - `approval_instance` → `--instance-status`（可重复）
   - `approval_task` → `--task-status`（可重复）
-- **领域规则**：状态按 `event-type` 分桶校验，两桶枚举**不重合**（例如 `TRANSFERRED`/`ROLLBACK`/`DONE` 仅 task 有；`CANCELED`/`DELETED` 仅 instance 有）；传错桶的状态会被 CLI 本地拦截，错误信息会打印该桶的合法值列表。具体枚举见命令 `--help`。
+- **领域规则**：状态按 `event-type` 分桶校验，两桶枚举**不完全相同**（`PENDING`/`APPROVED`/`REJECTED`/`REVERTED`/`OVERTIME_CLOSE`/`OVERTIME_RECOVER` 两桶共享；`TRANSFERRED`/`ROLLBACK`/`DONE` 仅 task 有；`CANCELED`/`DELETED` 仅 instance 有）；传错桶的状态会被 CLI 本地拦截，错误信息会打印该桶的合法值列表。具体枚举见命令 `--help`。
 
 ## approval-code 获取路径
 
@@ -153,7 +153,7 @@
 | 创建报名字冲突（`--name` 应用内唯一） | 换名或加后缀重试 |
 | cron 报非法 / 间隔过小 | 检查是否五段式、分钟字段是否 `*` 或 `*/n`(n<30) |
 | `--reset-url` 报缺 app-env | 补 `--app-env preview` 或 `--app-env runtime` |
-| 想把 cron 触发器改成 webhook（跨类型改） | update 不支持换类型；需删旧建新（新建一个 webhook 触发器） |
+| 想把 cron 触发器改成 webhook（跨类型改） | update 不支持换类型，本 skill 也不提供删除。旧触发器只能 `+automation-disable` 停用（保留在应用里），另建一个 webhook 触发器；若要真正清理旧触发器，请到妙搭 web 手动删除 |
 | 触发器 enable 了但不触发 | 确认应用**已发布**；触发器跑的是线上已发布代码 |
 | 「token 泄露了」 | 优先 `+automation-update --reset-token --yes` 轮换（旧 token 立即失效），而非直接 disable-token 关校验 |
 | 「回调 URL 泄露了」 | `+automation-update --reset-url --app-env <env> --yes` 轮换 |
