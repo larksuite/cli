@@ -224,9 +224,6 @@ func asString(v any) string {
 // contains the newest items.
 func executeListAllPages(rt *common.RuntimeContext) error {
 	maxPages := rt.Int("page-limit")
-	if maxPages > 1000 {
-		maxPages = 1000
-	}
 
 	// Use make([]any, 0) to ensure empty arrays serialize as [] not null
 	allFlagItems := make([]any, 0)
