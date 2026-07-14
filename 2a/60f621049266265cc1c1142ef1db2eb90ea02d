@@ -1,0 +1,60 @@
+skills/lark-minutes/SKILL.md
+  s_59282305a8da30::t_bcd1705889e662 4 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a5632843bee4a9816a10a17","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":4}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2a60f621049266265cc1c1142ef1db2eb90ea02d",
+  "prompts": {},
+  "sessions": {
+    "s_59282305a8da30": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a55a0013bee4a9816a109f8",
+        "model": "openrouter-3o__max"
+      },
+      "human_author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "skills/lark-minutes/SKILL.md": [
+      {
+        "hash": "s_59282305a8da30::t_bcd1705889e662",
+        "line_ranges": [
+          {
+            "Single": 4
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a5632843bee4a9816a10a17",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 4
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_59282305a8da30": {
+      "tool": "trae",
+      "conversation_id": "6a55a0013bee4a9816a109f8",
+      "session_id": "6a55a0013bee4a9816a109f8",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_59282305a8da30::t_bcd1705889e662": {
+      "tool": "trae",
+      "conversation_id": "6a55a0013bee4a9816a109f8",
+      "session_id": "6a55a0013bee4a9816a109f8",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
