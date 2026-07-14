@@ -28,7 +28,7 @@ var ImFlagList = common.Shortcut{
 		{Name: "page-size", Type: "int", Default: "50", Desc: "page size (1-50)"},
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
-		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
+		{Name: "page-limit", Type: "int", Default: "0", Desc: "max pages when auto-pagination is enabled (0 = unlimited, max 1000)"},
 		{Name: "enrich-feed-thread", Type: "bool", Default: "true", Desc: "fetch message content for feed-type thread entries (default true; may call messages/mget and require im:message.group_msg:get_as_user/im:message.p2p_msg:get_as_user; use --enrich-feed-thread=false to avoid extra scopes)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -74,8 +74,8 @@ func validateListOptions(rt *common.RuntimeContext) error {
 	if n := rt.Int("page-size"); n < 1 || n > 50 {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
 	}
-	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")
+	if n := rt.Int("page-limit"); n < 0 || n > 1000 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 0 and 1000 (0 = unlimited)").WithParam("--page-limit")
 	}
 	return nil
 }
@@ -224,9 +224,6 @@ func asString(v any) string {
 // contains the newest items.
 func executeListAllPages(rt *common.RuntimeContext) error {
 	maxPages := rt.Int("page-limit")
-	if maxPages < 1 {
-		maxPages = 20
-	}
 	if maxPages > 1000 {
 		maxPages = 1000
 	}
@@ -239,7 +236,7 @@ func executeListAllPages(rt *common.RuntimeContext) error {
 	var lastPageToken string
 	prevPageToken := "__START__" // Sentinel to detect unchanged token
 
-	for page := 0; page < maxPages; page++ {
+	for page := 0; maxPages == 0 || page < maxPages; page++ {
 		token := ""
 		if page > 0 {
 			token = lastPageToken
@@ -287,6 +284,12 @@ func executeListAllPages(rt *common.RuntimeContext) error {
 		"messages":          allMessages,
 		"has_more":          lastHasMore,
 		"page_token":        lastPageToken,
+	}
+	if lastHasMore {
+		merged["truncated"] = true
+		if maxPages > 0 {
+			fmt.Fprintf(rt.IO().ErrOut, "warning: page limit (%d) reached before all flags were fetched; result has truncated=true, resume with --page-token or use --page-limit 0\n", maxPages)
+		}
 	}
 
 	if rt.Bool("enrich-feed-thread") {

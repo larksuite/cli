@@ -31,7 +31,7 @@ lark-cli im +flag-list --as user --page-all -q '.data.flag_items[].item_id'
 # Disable auto-enrichment of message content (enabled by default)
 lark-cli im +flag-list --as user --page-all --enrich-feed-thread=false
 
-# Limit max pages (default 20, max 1000)
+# Limit max pages (0 is the default and means unlimited; max 1000)
 lark-cli im +flag-list --as user --page-all --page-limit 10
 ```
 
@@ -42,7 +42,7 @@ lark-cli im +flag-list --as user --page-all --page-limit 10
 | `--page-size <n>` | 50 | Range 1-50 (server max is 50) |
 | `--page-token <token>` | empty | Pagination token from previous page; empty string must still be provided |
 | `--page-all` | false | Auto-paginate to fetch all pages and merge results |
-| `--page-limit <n>` | 20 | Max pages in `--page-all` mode (max 1000) |
+| `--page-limit <n>` | 0 | Max pages in `--page-all` mode (`0` = unlimited, max 1000). If a positive limit stops pagination early, the result includes `truncated: true` |
 | `--enrich-feed-thread` | true | Auto-enrich feed-layer thread entries with message content (calls `im.messages.mget`) |
 | `--as user` | Required | Currently only supports user identity |
 
@@ -57,6 +57,7 @@ The response has `data` as the main body, with fields described below:
 | `messages` | array | Message content inlined by the server for `(default, message)` type flags |
 | `has_more` | boolean | Whether there's a next page |
 | `page_token` | string | Pagination token for the next page |
+| `truncated` | boolean | Present and `true` only when pagination stopped before all pages were fetched |
 
 Note: `(thread, feed)` / `(msg_thread, feed)` entries are automatically enriched via `mget` by the shortcut, and written to the corresponding entry's `message` field.
 

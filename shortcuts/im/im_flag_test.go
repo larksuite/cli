@@ -949,7 +949,7 @@ func TestFlagListRejectsInvalidPageLimit(t *testing.T) {
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
-	if err := cmd.Flags().Set("page-limit", "0"); err != nil {
+	if err := cmd.Flags().Set("page-limit", "-1"); err != nil {
 		t.Fatalf("Set page-limit error = %v", err)
 	}
 	runtime := &common.RuntimeContext{Cmd: cmd}
@@ -964,6 +964,22 @@ func TestFlagListRejectsInvalidPageLimit(t *testing.T) {
 	}
 	if strings.Contains(got, "/open-apis/im/v1/flags") {
 		t.Fatalf("DryRun output = %q, should not include request for invalid input", got)
+	}
+}
+
+func TestFlagListAcceptsUnlimitedPageLimit(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 50, "")
+	cmd.Flags().String("page-token", "", "")
+	cmd.Flags().Bool("page-all", false, "")
+	cmd.Flags().Int("page-limit", 0, "")
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	runtime := &common.RuntimeContext{Cmd: cmd}
+
+	if err := ImFlagList.Validate(context.Background(), runtime); err != nil {
+		t.Fatalf("Validate() rejected unlimited --page-limit 0: %v", err)
 	}
 }
 
@@ -1538,6 +1554,43 @@ func TestExecuteListAllPages(t *testing.T) {
 	}
 }
 
+func TestExecuteListAllPages_Unlimited(t *testing.T) {
+	callCount := 0
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.Contains(req.URL.Path, "/open-apis/im/v1/flags") {
+			callCount++
+			hasMore := callCount < 21
+			return shortcutJSONResponse(200, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"flag_items":        []any{},
+					"delete_flag_items": []any{},
+					"messages":          []any{},
+					"has_more":          hasMore,
+					"page_token":        fmt.Sprintf("token_%d", callCount),
+				},
+			}), nil
+		}
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.Path)
+	}))
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 50, "")
+	cmd.Flags().Int("page-limit", 0, "")
+	cmd.Flags().Bool("enrich-feed-thread", false, "")
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	setRuntimeField(t, rt, "Cmd", cmd)
+
+	if err := executeListAllPages(rt); err != nil {
+		t.Fatalf("executeListAllPages() error = %v", err)
+	}
+	if callCount != 21 {
+		t.Fatalf("unlimited pagination stopped after %d calls, want 21", callCount)
+	}
+}
+
 func TestExecuteListAllPages_EnrichFeedThread(t *testing.T) {
 	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if strings.Contains(req.URL.Path, "/open-apis/im/v1/flags") {
@@ -1624,6 +1677,18 @@ func TestExecuteListAllPages_PageLimit(t *testing.T) {
 	// Should stop at page-limit
 	if callCount != 3 {
 		t.Fatalf("expected 3 API calls (page limit), got %d", callCount)
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(rt.IO().Out.(*bytes.Buffer).Bytes(), &envelope); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	data, _ := envelope["data"].(map[string]any)
+	if truncated, _ := data["truncated"].(bool); !truncated {
+		t.Fatalf("limited result must report truncated=true, got %#v", data)
+	}
+	if stderr := rt.IO().ErrOut.(*bytes.Buffer).String(); !strings.Contains(stderr, "page limit") {
+		t.Fatalf("limited result must warn about the page limit, got %q", stderr)
 	}
 }
 

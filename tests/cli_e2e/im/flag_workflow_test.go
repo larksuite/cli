@@ -302,4 +302,20 @@ func TestIM_FlagDryRun(t *testing.T) {
 		require.Contains(t, result.Stdout, "/open-apis/im/v1/flags")
 		require.Contains(t, result.Stdout, "page_size")
 	})
+
+	t.Run("list flag dry-run accepts unlimited pagination", func(t *testing.T) {
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"im", "+flag-list",
+				"--page-all",
+				"--page-limit", "0",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+		require.Contains(t, result.Stdout, "/open-apis/im/v1/flags")
+	})
 }
