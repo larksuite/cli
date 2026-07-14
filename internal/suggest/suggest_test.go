@@ -54,13 +54,21 @@ func TestLevenshtein(t *testing.T) {
 		{"kitten", "sitting", 3},
 		{"cell-get", "cells-get", 1},
 		{"--query", "--find", 5},
-		{"飞书", "飞书", 0}, // rune-aware: multi-byte equal
-		{"飞书", "飞s", 1}, // one rune substitution, not byte count
+		{"飞书", "飞书", 0},   // rune-aware: multi-byte equal
+		{"飞书", "飞s", 1},   // one rune substitution, not byte count
+		{"abc", "ABC", 3}, // case-sensitive: ASCII bytes differ
+		{"abc", "acb", 2}, // classic Levenshtein, no transposition
 	}
 	for _, c := range cases {
 		if d := Levenshtein(c.a, c.b); d != c.want {
 			t.Errorf("Levenshtein(%q,%q) = %d, want %d", c.a, c.b, d, c.want)
 		}
+	}
+}
+
+func TestClosest_EmptyCandidates(t *testing.T) {
+	if got := Closest("+cells-get", nil, 3); len(got) != 0 {
+		t.Errorf("expected no suggestions for empty candidate list, got %v", got)
 	}
 }
 
