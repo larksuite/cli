@@ -23,23 +23,18 @@ var VCMeetingListActive = common.Shortcut{
 	Command:     "+meeting-list-active",
 	Description: "List active meetings for the current identity or target user",
 	Risk:        "read",
-	// Scopes stays empty so the framework AND preflight never fires; the OR
-	// check lives in Validate. ConditionalUserScopes/BotScopes only feed
-	// metadata (auth login --domain vc, hints, diagnostics), matching the
-	// scope each identity can actually obtain.
-	Scopes:                []string{},
-	ConditionalUserScopes: []string{meetingQueryUserScope},
-	ConditionalBotScopes:  []string{meetingQueryBotScope},
-	AuthTypes:             []string{"user", "bot"},
-	HasFormat:             true,
+	// UAT exposes user-granted scopes, so the framework can preflight the user
+	// recommendation. TAT has no scope metadata; keep the bot recommendation
+	// conditional so it is available to diagnostics without a local preflight.
+	UserScopes:           []string{meetingQueryUserScope},
+	ConditionalBotScopes: []string{meetingQueryBotScope},
+	AuthTypes:            []string{"user", "bot"},
+	HasFormat:            true,
 	Flags: []common.Flag{
 		{Name: "user-id", Desc: "target user ID when using bot identity"},
 	},
-	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateMeetingListActiveUserID(runtime); err != nil {
-			return err
-		}
-		return checkMeetingQueryAnyScope(ctx, runtime)
+	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
+		return validateMeetingListActiveUserID(runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		params, err := buildMeetingListActiveParams(runtime)

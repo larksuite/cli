@@ -16,7 +16,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -419,64 +418,18 @@ func TestMeetingEvents_Validation_PageAllIgnoresInvalidPageSize(t *testing.T) {
 	}
 }
 
-func TestMeetingEvents_UsesCustomAnyScopeCheck(t *testing.T) {
-	if got := VCMeetingEvents.ScopesForIdentity("user"); len(got) != 0 {
-		t.Fatalf("ScopesForIdentity(user) = %v, want no framework AND preflight scopes", got)
+func TestMeetingEvents_UsesUserScopePreflightAndBotScopeHint(t *testing.T) {
+	if got := VCMeetingEvents.ScopesForIdentity("user"); !reflect.DeepEqual(got, []string{meetingQueryUserScope}) {
+		t.Fatalf("ScopesForIdentity(user) = %v, want %v", got, []string{meetingQueryUserScope})
 	}
 	if got := VCMeetingEvents.ScopesForIdentity("bot"); len(got) != 0 {
-		t.Fatalf("ScopesForIdentity(bot) = %v, want no framework AND preflight scopes", got)
+		t.Fatalf("ScopesForIdentity(bot) = %v, want no bot preflight scopes", got)
 	}
 	if got := VCMeetingEvents.DeclaredScopesForIdentity("user"); !reflect.DeepEqual(got, []string{meetingQueryUserScope}) {
 		t.Fatalf("DeclaredScopesForIdentity(user) = %v, want %v", got, []string{meetingQueryUserScope})
 	}
 	if got := VCMeetingEvents.DeclaredScopesForIdentity("bot"); !reflect.DeepEqual(got, []string{meetingQueryBotScope}) {
 		t.Fatalf("DeclaredScopesForIdentity(bot) = %v, want %v", got, []string{meetingQueryBotScope})
-	}
-	if !hasAnyGrantedScope("vc:meeting.meetingevent:read", meetingQueryAnyScopes) {
-		t.Fatal("meetingevent scope should satisfy meeting query OR scope check")
-	}
-	if !hasAnyGrantedScope("vc:meeting.bot.join:write", meetingQueryAnyScopes) {
-		t.Fatal("bot join scope should satisfy meeting query OR scope check")
-	}
-	if hasAnyGrantedScope("vc:meeting.message:write", meetingQueryAnyScopes) {
-		t.Fatal("unrelated vc scope should not satisfy meeting query OR scope check")
-	}
-}
-
-func TestMeetingEvents_ValidateUsesCustomAnyScopeCheck(t *testing.T) {
-	cases := []struct {
-		name    string
-		scopes  string
-		wantErr bool
-	}{
-		{name: "user_only_join", scopes: meetingQueryBotScope},
-		{name: "user_unrelated_scope", scopes: "vc:meeting.message:write", wantErr: true},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := &cobra.Command{Use: "+meeting-events"}
-			cmd.Flags().String("meeting-id", "", "")
-			cmd.Flags().String("start", "", "")
-			cmd.Flags().String("end", "", "")
-			cmd.Flags().String("page-token", "", "")
-			cmd.Flags().String("page-size", "", "")
-			cmd.Flags().Bool("page-all", false, "")
-			runtime := newMeetingQueryRuntimeWithScopes(cmd, core.AsUser, tc.scopes)
-			mustSetMeetingEventsFlag(t, runtime, "meeting-id", "7628568141510692381")
-
-			err := VCMeetingEvents.Validate(context.Background(), runtime)
-			if !tc.wantErr {
-				if err != nil {
-					t.Fatalf("Validate() error = %v, want nil", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("Validate() error = nil, want missing scope")
-			}
-			assertMeetingQueryPermissionError(t, err, core.AsUser)
-		})
 	}
 }
 

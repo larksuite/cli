@@ -298,6 +298,7 @@ lark-cli vc +meeting-events \
 |---------|---------|---------|
 | `--meeting-id is required` | 未传入 `--meeting-id` | 传入长数字 `meeting.id` |
 | `10005 bot is not in meeting` | 使用应用身份读取，但应用机器人从未真实入会该会议；或会议已结束但应用机器人从未在会中出现过 | 如果 `meeting_id` 来自用户身份发现，改回 `--as user`；如果确实要应用身份读取，先让应用机器人入会或确认它曾参会后再用 `--as bot`。**如果只是想看参会人快照，改用 `lark-cli vc meeting get --params '{"meeting_id":"<meeting.id>"}' --with-participants`** |
+| 用户身份无权限 / 不可见 | 当前用户不是该会议的可见参与者，或 `meeting_id` 不是从用户身份路径获得 | 不要反复执行 `auth login`。先确认 `meeting_id` 是否来自 `+meeting-list-active --as user`；如果用户明确要切到应用身份，再通过 `+meeting-list-active --as bot --user-id <user_open_id>` 获取应用身份可读的 `meeting_id`，或在用户明确同意后让应用机器人入会，再用 `+meeting-events --as bot` 读取 |
 | `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。先用 `lark-cli vc +detail --meeting-ids <meeting.id>` 获取会议产物信息，再根据 `note_display_type` / `note_id` / `minute_token` 和用户意图选择纪要正文、逐字稿或妙记；参会人请用 `lark-cli vc meeting get --params '{"meeting_id":"<meeting.id>"}' --with-participants` |
 | `20002 meeting not exist` | `meeting_id` 错误，或会议实例当前已不可获取（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |
 | 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | 不要执行 `auth login`。若错误同时列出两个兼容 scope，只通过错误中的 `console_url` 或开发者后台申请 `vc:meeting.bot.join:write`；再检查应用发布/安装和权限可访问的数据范围，均正确仍失败时用灰度流程兜底 |

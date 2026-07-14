@@ -52,15 +52,13 @@ var VCMeetingEvents = common.Shortcut{
 	Command:     "+meeting-events",
 	Description: "List meeting events by meeting ID",
 	Risk:        "read",
-	// Scopes stays empty so the framework AND preflight never fires; the OR
-	// check lives in Validate. ConditionalUserScopes/BotScopes only feed
-	// metadata (auth login --domain vc, hints, diagnostics), matching the
-	// scope each identity can actually obtain.
-	Scopes:                []string{},
-	ConditionalUserScopes: []string{meetingQueryUserScope},
-	ConditionalBotScopes:  []string{meetingQueryBotScope},
-	AuthTypes:             []string{"user", "bot"},
-	HasFormat:             true,
+	// UAT exposes user-granted scopes, so the framework can preflight the user
+	// recommendation. TAT has no scope metadata; keep the bot recommendation
+	// conditional so it is available to diagnostics without a local preflight.
+	UserScopes:           []string{meetingQueryUserScope},
+	ConditionalBotScopes: []string{meetingQueryBotScope},
+	AuthTypes:            []string{"user", "bot"},
+	HasFormat:            true,
 	Flags: []common.Flag{
 		{Name: "meeting-id", Required: true, Desc: "meeting ID to query"},
 		{Name: "start", Desc: "time lower bound (ISO 8601, YYYY-MM-DD, or Unix seconds)"},
@@ -69,7 +67,7 @@ var VCMeetingEvents = common.Shortcut{
 		{Name: "page-size", Default: "20", Desc: "page size, 20-100 (default 20)"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all available pages"},
 	},
-	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
 		if err := validateMeetingEventsMeetingID(runtime.Str("meeting-id")); err != nil {
 			return err
 		}
@@ -79,7 +77,7 @@ var VCMeetingEvents = common.Shortcut{
 		if _, _, err := parseMeetingEventsTimeRange(runtime); err != nil {
 			return err
 		}
-		return checkMeetingQueryAnyScope(ctx, runtime)
+		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		startTime, endTime, err := parseMeetingEventsTimeRange(runtime)

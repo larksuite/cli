@@ -4,12 +4,9 @@
 package vc
 
 import (
-	"context"
 	"errors"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -20,54 +17,12 @@ const (
 	meetingQueryBotScope  = "vc:meeting.bot.join:write"
 )
 
-// meetingQueryAnyScopes are the scopes accepted by the VC meeting query
-// commands (+meeting-list-active, +meeting-events). UAT recommends
-// vc:meeting.meetingevent:read and TAT recommends vc:meeting.bot.join:write,
-// but both identities accept either scope for compatibility.
-//
-// The shortcut framework's Scopes/UserScopes/BotScopes preflight is AND, so
-// it cannot express "any of these". Those commands therefore leave the
-// unconditional scope fields empty and call checkMeetingQueryAnyScope from
-// Validate instead.
+// meetingQueryAnyScopes are the compatible alternatives reported by the VC
+// API. The local preflight only checks the user recommendation because UAT,
+// unlike TAT, exposes granted scope metadata.
 var meetingQueryAnyScopes = []string{
 	meetingQueryUserScope,
 	meetingQueryBotScope,
-}
-
-func checkMeetingQueryAnyScope(ctx context.Context, runtime *common.RuntimeContext) error {
-	if runtime == nil || runtime.Config == nil {
-		return nil
-	}
-	if runtime.Factory == nil || runtime.Factory.Credential == nil {
-		return nil
-	}
-	// Mirror the framework's best-effort local preflight: rely on the resolved
-	// token scopes when available, but if scope state cannot be determined
-	// locally, skip the pre-check and let the API remain the source of truth.
-	result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err
-		}
-		return nil //nolint:nilerr // intentional: fall back to remote authorization
-	}
-	if result == nil || result.Scopes == "" {
-		return nil
-	}
-	if hasAnyGrantedScope(result.Scopes, meetingQueryAnyScopes) {
-		return nil
-	}
-	return newMeetingQueryPermissionError(runtime)
-}
-
-func newMeetingQueryPermissionError(runtime *common.RuntimeContext) error {
-	permissionErr := errs.NewPermissionError(
-		errs.SubtypeMissingScope,
-		meetingQueryMissingScopeMessage(),
-	).
-		WithMissingScopes(meetingQueryAnyScopes...).
-		WithIdentity(string(runtime.As()))
-	return addMeetingQueryRecovery(runtime, permissionErr)
 }
 
 func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err error) error {
@@ -128,13 +83,4 @@ func containsAllScopes(granted []string, required []string) bool {
 		}
 	}
 	return true
-}
-
-func hasAnyGrantedScope(granted string, candidates []string) bool {
-	for _, scope := range candidates {
-		if len(auth.MissingScopes(granted, []string{scope})) == 0 {
-			return true
-		}
-	}
-	return false
 }
