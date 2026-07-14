@@ -124,6 +124,7 @@ func TestRegisterService_MergesExistingCommand(t *testing.T) {
 }
 
 func TestMailSenderAllowBlockCommandsDryRun(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	spec := map[string]interface{}{
 		"name":        "mail",
 		"servicePath": "/open-apis/mail/v1",

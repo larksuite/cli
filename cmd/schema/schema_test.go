@@ -6,12 +6,79 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 )
+
+var schemaTestConfigDir string
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "larksuite-cli-schema-test-*")
+	if err != nil {
+		panic(err)
+	}
+	schemaTestConfigDir = dir
+	cacheDir := filepath.Join(dir, "cache")
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		panic(err)
+	}
+	remoteMeta := map[string]interface{}{
+		"version": "schema-test",
+		"services": []map[string]interface{}{
+			{
+				"name":        "mail",
+				"version":     "v1",
+				"servicePath": "/open-apis/mail/v1",
+				"resources": map[string]interface{}{
+					"user_mailbox.allow_senders": map[string]interface{}{
+						"methods": map[string]interface{}{
+							"list": map[string]interface{}{
+								"id":         "user_mailbox.allow_senders.list",
+								"path":       "user_mailboxes/{user_mailbox_id}/allow_senders",
+								"httpMethod": "GET",
+								"parameters": map[string]interface{}{
+									"user_mailbox_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
+									"keyword":         map[string]interface{}{"type": "string", "location": "query"},
+									"page_size":       map[string]interface{}{"type": "integer", "location": "query"},
+									"page_token":      map[string]interface{}{"type": "string", "location": "query"},
+								},
+								"requiredScopes": []interface{}{"mail:user_mailbox.message:readonly"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	meta := map[string]interface{}{
+		"last_check_at": time.Now().Unix(),
+		"version":       "schema-test",
+		"brand":         "feishu",
+	}
+	writeJSON := func(path string, value interface{}) {
+		data, err := json.Marshal(value)
+		if err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			panic(err)
+		}
+	}
+	writeJSON(filepath.Join(cacheDir, "remote_meta.json"), remoteMeta)
+	writeJSON(filepath.Join(cacheDir, "remote_meta.meta.json"), meta)
+	os.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	os.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
+	os.Setenv("LARKSUITE_CLI_META_TTL", "3600")
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 func TestSchemaCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
@@ -49,6 +116,7 @@ func TestSchemaCmd_NoArgs(t *testing.T) {
 }
 
 func TestSchemaCmd_MailSenderAllowBlockList(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", schemaTestConfigDir)
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
@@ -60,8 +128,8 @@ func TestSchemaCmd_MailSenderAllowBlockList(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("not valid JSON: %v\n%s", err, stdout.String())
 	}
-	if env["id"] != "user_mailbox.allow_sender.list" {
-		t.Fatalf("id = %v, want user_mailbox.allow_sender.list", env["id"])
+	if env["id"] != "user_mailbox.allow_senders.list" {
+		t.Fatalf("id = %v, want user_mailbox.allow_senders.list", env["id"])
 	}
 	if env["path"] != "user_mailboxes/{user_mailbox_id}/allow_senders" {
 		t.Fatalf("path = %v, want user_mailboxes/{user_mailbox_id}/allow_senders", env["path"])
