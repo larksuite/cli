@@ -18,9 +18,6 @@ const (
 )
 
 func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err error) error {
-	if runtime == nil {
-		return err
-	}
 	var permissionErr *errs.PermissionError
 	if !errors.As(err, &permissionErr) {
 		return err
