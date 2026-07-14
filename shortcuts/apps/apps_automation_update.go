@@ -241,6 +241,19 @@ func checkUpdateSubordinateFlags(rctx *common.RuntimeContext) error {
 			return appsValidationParamError("--task-status",
 				"--task-status requires --event-type approval_task")
 		}
+		return nil
+	}
+	// Event-type is set: buildAutomationUpdateBody only reads the status array
+	// matching event-type, so passing the wrong array is a silent-drop inert
+	// flag (same hazard the missing-parent branch above closes, in reverse).
+	// Reject up-front and name the mismatched flag as the failing Param.
+	if eventType == "approval_instance" && len(rctx.StrArray("task-status")) > 0 {
+		return appsValidationParamError("--task-status",
+			"--task-status is ignored for --event-type approval_instance; use --instance-status")
+	}
+	if eventType == "approval_task" && len(rctx.StrArray("instance-status")) > 0 {
+		return appsValidationParamError("--instance-status",
+			"--instance-status is ignored for --event-type approval_task; use --task-status")
 	}
 	return nil
 }
@@ -277,6 +290,9 @@ func noUpdateFieldsError() error {
 func buildAutomationUpdateBody(rctx *common.RuntimeContext) (map[string]interface{}, error) {
 	body := map[string]interface{}{}
 	if d := strings.TrimSpace(rctx.Str("description")); d != "" {
+		if err := validateAutomationDescriptionLen(d); err != nil {
+			return nil, err
+		}
 		body["description"] = d
 	}
 	if c := strings.TrimSpace(rctx.Str("cron")); c != "" {

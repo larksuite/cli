@@ -104,11 +104,18 @@ func buildAutomationCreateBody(rctx *common.RuntimeContext) (map[string]interfac
 	if err != nil {
 		return nil, err
 	}
+	name := strings.TrimSpace(rctx.Str("name"))
+	if err := validateAutomationNameLen(name); err != nil {
+		return nil, err
+	}
 	body := map[string]interface{}{
-		"name":         strings.TrimSpace(rctx.Str("name")),
+		"name":         name,
 		"trigger_type": snake,
 	}
 	if d := strings.TrimSpace(rctx.Str("description")); d != "" {
+		if err := validateAutomationDescriptionLen(d); err != nil {
+			return nil, err
+		}
 		body["description"] = d
 	}
 	// --status is an optional passthrough: when set, backend creates + enables

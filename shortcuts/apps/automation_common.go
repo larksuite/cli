@@ -108,6 +108,38 @@ func validateCronExpr(expr string) error {
 
 const defaultCronTimezone = "Asia/Shanghai"
 
+// Local length limits mirrored from the flag help ("--name <=100 chars",
+// "--description <=50 chars"). Enforcing here catches a violation before the
+// API round-trip and returns a typed --name / --description error, whereas
+// hitting the backend surfaces an opaque business error the agent has to
+// diagnose. Constants (not magic numbers) so the flag help and the check
+// share one source of truth if the backend ever renegotiates the limits.
+const (
+	automationNameMaxLen        = 100
+	automationDescriptionMaxLen = 50
+)
+
+// validateAutomationNameLen guards against a --name that would be rejected by
+// the backend on length. Empty is intentionally permitted here — the required
+// check lives in the create Validate hook (which fires first) and in Update
+// the flag is not required at all.
+func validateAutomationNameLen(name string) error {
+	if len(name) > automationNameMaxLen {
+		return appsValidationParamError("--name",
+			"--name must be at most %d chars, got %d", automationNameMaxLen, len(name))
+	}
+	return nil
+}
+
+// validateAutomationDescriptionLen guards --description length; empty passes.
+func validateAutomationDescriptionLen(desc string) error {
+	if len(desc) > automationDescriptionMaxLen {
+		return appsValidationParamError("--description",
+			"--description must be at most %d chars, got %d", automationDescriptionMaxLen, len(desc))
+	}
+	return nil
+}
+
 // approvalStatusSets 是 feishu-approval 两种 event-type 各自的合法状态集合。
 // 后端 OpenAPI 不逐值校验 status，CLI 本地分桶校验是唯一保障。
 var approvalStatusSets = map[string]map[string]struct{}{

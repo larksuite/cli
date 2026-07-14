@@ -295,6 +295,58 @@ func TestAutomationUpdate_SubordinateFlagsRequireParent(t *testing.T) {
 	}
 }
 
+// TestAutomationUpdate_MismatchedStatusArrayWithEventType pins the reverse
+// inert-flag branch: --event-type is set, but the caller also passes the
+// wrong status-array flag (e.g. --event-type approval_instance --task-status).
+// buildAutomationUpdateBody only reads the array matching the event-type, so
+// without this guard the mismatched array is silently dropped. Reject with a
+// typed error naming the mismatched flag.
+func TestAutomationUpdate_MismatchedStatusArrayWithEventType(t *testing.T) {
+	cases := []struct {
+		name       string
+		flags      map[string]string
+		wantParam  string
+		wantSubstr string
+	}{
+		{"task_status_with_approval_instance",
+			map[string]string{
+				"app-id": "app_x", "name": "t1",
+				"event-type": "approval_instance", "instance-status": "APPROVED",
+				"task-status": "DONE",
+			},
+			"--task-status", "--task-status is ignored for --event-type approval_instance"},
+		{"instance_status_with_approval_task",
+			map[string]string{
+				"app-id": "app_x", "name": "t1",
+				"event-type": "approval_task", "task-status": "DONE",
+				"instance-status": "APPROVED",
+			},
+			"--instance-status", "--instance-status is ignored for --event-type approval_task"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(), tc.flags)
+			err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+			assertValidationParamError(t, err, tc.wantParam)
+			if !strings.Contains(err.Error(), tc.wantSubstr) {
+				t.Errorf("expected message containing %q, got %q", tc.wantSubstr, err.Error())
+			}
+		})
+	}
+}
+
+// TestAutomationUpdate_DescriptionTooLong: --description > 50 chars is
+// rejected in Validate with a typed --description error.
+func TestAutomationUpdate_DescriptionTooLong(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "t1",
+			"description": strings.Repeat("d", automationDescriptionMaxLen+1),
+		})
+	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--description")
+}
+
 func TestAutomationUpdateMeta_HighRisk(t *testing.T) {
 	if AppsAutomationUpdate.Risk != "high-risk-write" {
 		t.Errorf("update must be high-risk-write, got %q", AppsAutomationUpdate.Risk)

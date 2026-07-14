@@ -26,10 +26,17 @@ func automationCreateFlagDefs() map[string]string {
 func TestAutomationCreateCron_BuildsBody(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "daily", "trigger-type": "cron", "cron": "0 9 * * *"})
+	// Real backend response wraps the created trigger under `trigger` (a live
+	// test-env probe confirmed the shape, same as GET/PUT). The Execute pretty
+	// path reads trigger["name"]/["trigger_type"]/["status"] from that key —
+	// a flat fixture makes the pretty path print `<nil>` and only passes via
+	// the JSON envelope, which hides regressions in the pretty branch.
 	reg.Register(&httpmock.Stub{
 		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/triggers",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
-			"name": "daily", "trigger_type": "cron", "status": "disabled",
+			"trigger": map[string]interface{}{
+				"name": "daily", "trigger_type": "cron", "status": "disabled",
+			},
 		}},
 	})
 	if err := AppsAutomationCreate.Execute(context.Background(), rctx); err != nil {
@@ -178,4 +185,28 @@ func TestAutomationCreate_StatusOmitted(t *testing.T) {
 	if _, present := body["status"]; present {
 		t.Errorf("status must be omitted when --status not set, got %v", body["status"])
 	}
+}
+
+// TestAutomationCreate_NameTooLong: --name > 100 chars is rejected locally with
+// a typed --name error, sparing the round trip to the backend.
+func TestAutomationCreate_NameTooLong(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": strings.Repeat("n", automationNameMaxLen+1),
+			"trigger-type": "cron", "cron": "0 9 * * *",
+		})
+	_, err := buildAutomationCreateBody(rctx)
+	assertValidationParamError(t, err, "--name")
+}
+
+// TestAutomationCreate_DescriptionTooLong: --description > 50 chars is rejected
+// locally with a typed --description error.
+func TestAutomationCreate_DescriptionTooLong(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "n", "trigger-type": "cron",
+			"cron": "0 9 * * *", "description": strings.Repeat("d", automationDescriptionMaxLen+1),
+		})
+	_, err := buildAutomationCreateBody(rctx)
+	assertValidationParamError(t, err, "--description")
 }
