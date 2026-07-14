@@ -27,15 +27,15 @@ lark-cli slides +xml-get --as user \
 
 ## Automated XML Text Overlap Lint
 
-`slides +xml-get` 保存 XML 到本地文件后，优先运行 XML 语法和文本重叠静态检查：
+提交前本地 XML 必须运行 XML 语法和文本重叠静态检查：
 
 ```bash
-python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation.xml>
+python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation-or-slide.xml>
 ```
 
 通过标准：
 
-- `summary.error_count == 0`。任何 error 都必须先修复再交付。
+- `summary.error_count == 0`。任何 error 都必须先修复再提交接口。
 - 当前工具检查 XML well-formed、SXSD tag/attr 支持情况、IconPark icon 类型和 icon 填充可见性、文本元素之间的明显重叠，以及 whiteboard 容器与外部 sibling 元素的可疑边界重叠；它不检查越界、文本高度不足、图文压盖、表格/图表压盖或底部拥挤。
 - 该工具不能替代页数核对、关键内容核对或真实视觉验收。
 

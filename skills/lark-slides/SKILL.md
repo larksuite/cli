@@ -41,7 +41,9 @@ metadata:
 
 **CRITICAL — 新建演示文稿或大幅改写页面时，规划 `asset_need` MUST 遵循 [asset-planning.md](references/asset-planning.md)：只做元数据规划，必须有 `fallback_if_missing`，不得要求真实搜索、下载或上传素材。**
 
-**CRITICAL — 创建或大幅改写后，MUST 按 [validation-checklist.md](references/validation-checklist.md) 做显式验证：回读全文 XML、核对页数和关键元素、检查空白/破损页、明显溢出、布局风险；XML 语法和文本重叠静态检查优先使用 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py)。**
+**CRITICAL — 将完整 `<slide>` XML 提交给 `slides +create --slides`、`xml_presentation.slide create` 或 `slides +replace-pages` 之前，MUST 先把待提交 XML 保存到本地文件并运行 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py)；`summary.error_count` 必须为 0 才能调用接口。**
+
+**CRITICAL — 创建或大幅改写后，MUST 按 [validation-checklist.md](references/validation-checklist.md) 做显式验证：回读全文 XML、核对页数和关键元素、检查空白/破损页、明显溢出、布局风险。**
 
 **CRITICAL — 创建前自检或失败排障时，MUST 按 [troubleshooting.md](references/troubleshooting.md) 检查 XML 转义、结构、shell 截断、图片 token、3350001 和布局风险。**
 
@@ -160,10 +162,11 @@ Step 2: 生成大纲 → 用户确认 → 写入 slide_plan.json
 Step 3: 按 slide_plan.json 生成 XML → 创建
   - 逐页消费 plan：key_message 定主结论，layout_type 定几何，visual_focus 定主视觉，text_density 定文本量
   - 缺少真实素材时必须用 `fallback_if_missing` 生成 XML-native 兜底视觉；不要留空
+  - 调用创建或整页替换接口前，先保存待提交 XML 并运行 xml_text_overlap_lint.py；error_count 不为 0 必须先修
   - 创建方式按“创建方式选择”判断；图片、复杂 XML、转义和 3350001 排查按 lark-slides-create.md、media-upload.md、troubleshooting.md 执行
 
 Step 4: 审查 & 交付
-  - 创建完成后，必须用 `slides +xml-get` 读取全文 XML，并按 validation-checklist.md 做显式验证记录，包括 XML 文本重叠检查
+  - 创建完成后，必须用 `slides +xml-get` 读取全文 XML，并按 validation-checklist.md 做显式验证记录
   - 失败或部分成功按 troubleshooting.md 处理；局部问题优先用 `+replace-slide` 修正
   - 没问题 → 交付：告知用户演示文稿 ID 和访问方式
 ```
