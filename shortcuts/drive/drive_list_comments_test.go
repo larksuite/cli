@@ -47,6 +47,25 @@ func TestResolveDriveListCommentsInput(t *testing.T) {
 			wantType:     "wiki",
 		},
 		{
+			name:         "bare apps token",
+			rawInput:     "appsResource",
+			docType:      "apps",
+			wantResource: "appsResource",
+			wantType:     "apps",
+		},
+		{
+			name:         "miaoda page url",
+			urlInput:     "https://bytedance.feishu.cn/page/appsResource/?from=home",
+			wantResource: "appsResource",
+			wantType:     "apps",
+		},
+		{
+			name:         "token flag also accepts miaoda page url",
+			rawInput:     "https://bytedance.feishu.cn/page/appsResource/",
+			wantResource: "appsResource",
+			wantType:     "apps",
+		},
+		{
 			name:      "url and token mutually exclusive",
 			urlInput:  "https://example.larksuite.com/docx/docxResource",
 			rawInput:  "docxResource",
@@ -228,6 +247,14 @@ func TestBuildDriveListCommentsParams(t *testing.T) {
 	if _, ok := sheetParams["need_relation"]; ok {
 		t.Fatalf("need_relation should be ignored for non-docx: %#v", sheetParams)
 	}
+
+	appsParams := buildDriveListCommentsParams(allPartialSpec, "apps")
+	if got := appsParams["file_type"]; got != "apps" {
+		t.Fatalf("apps file_type = %#v, want apps", got)
+	}
+	if _, ok := appsParams["need_relation"]; ok {
+		t.Fatalf("need_relation should be ignored for apps: %#v", appsParams)
+	}
 }
 
 func TestDriveListCommentsExecuteDocx(t *testing.T) {
@@ -351,5 +378,57 @@ func TestDriveListCommentsExecuteWikiResolvesToDocx(t *testing.T) {
 	}
 	if got := mustStringField(t, data, "file_type", "data.file_type"); got != "docx" {
 		t.Fatalf("file_type = %q, want docx", got)
+	}
+}
+
+func TestDriveListCommentsExecuteAppsPageURL(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/files/appsResource/comments",
+		OnMatch: func(req *http.Request) {
+			query := req.URL.Query()
+			if got := query.Get("file_type"); got != "apps" {
+				t.Errorf("file_type = %q, want apps", got)
+			}
+			if got := query.Get("is_solved"); got != "false" {
+				t.Errorf("is_solved = %q, want false", got)
+			}
+			if got := query.Get("need_relation"); got != "" {
+				t.Errorf("need_relation = %q, want omitted for apps", got)
+			}
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{
+				"items": []map[string]interface{}{
+					{"comment_id": "comment_apps_1", "is_solved": false},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveListComments, []string{
+		"+list-comments",
+		"--url", "https://bytedance.feishu.cn/page/appsResource/",
+		"--need-relation",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := decodeJSONMap(t, stdout.String())
+	data := mustMapValue(t, out["data"], "data")
+	if got := mustStringField(t, data, "file_token", "data.file_token"); got != "appsResource" {
+		t.Fatalf("file_token = %q, want appsResource", got)
+	}
+	if got := mustStringField(t, data, "file_type", "data.file_type"); got != "apps" {
+		t.Fatalf("file_type = %q, want apps", got)
+	}
+	if got := data["count"]; got != float64(1) {
+		t.Fatalf("count = %#v, want 1", got)
 	}
 }

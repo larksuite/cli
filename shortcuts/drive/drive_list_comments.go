@@ -6,6 +6,7 @@ package drive
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -19,7 +20,7 @@ const (
 	driveListCommentsDefaultScope        = "all"
 )
 
-var driveListCommentsTypes = []string{"doc", "docx", "sheet", "file", "slides", "bitable", "base", "wiki"}
+var driveListCommentsTypes = []string{"doc", "docx", "sheet", "file", "slides", "bitable", "base", "apps", "wiki"}
 
 type driveListCommentsRef struct {
 	Token      string
@@ -43,17 +44,17 @@ type driveListCommentsSpec struct {
 }
 
 // DriveListComments lists document comments through the Drive comments API,
-// while accepting Wiki URLs/tokens and resolving them to the underlying object.
+// while accepting Wiki URLs/tokens and Miaoda /page/<token> apps URLs.
 var DriveListComments = common.Shortcut{
 	Service:           "drive",
 	Command:           "+list-comments",
-	Description:       "List comments for doc/docx/sheet/file/slides/base(bitable), with URL parsing and Wiki token unwrapping",
+	Description:       "List comments for doc/docx/sheet/file/slides/base(bitable)/apps, with URL parsing and Wiki token unwrapping",
 	Risk:              "read",
 	Scopes:            []string{"docs:document.comment:read"},
 	ConditionalScopes: []string{"wiki:node:retrieve"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "url", Desc: "recommended: Lark/Feishu document URL (doc/docx/sheet/file/slides/base/bitable/wiki); Wiki URLs are unwrapped automatically"},
+		{Name: "url", Desc: "recommended: Lark/Feishu document URL (doc/docx/sheet/file/slides/base/bitable/apps/wiki); apps Miaoda URLs use /page/<token>; Wiki URLs are unwrapped automatically"},
 		{Name: "token", Desc: "document token, Wiki token, or document URL; bare tokens require --type"},
 		{Name: "type", Desc: "document type for bare --token; optional for URLs but must match the URL type when provided", Enum: driveListCommentsTypes},
 		{Name: "solved-status", Default: driveListCommentsDefaultSolvedStatus, Desc: "comment solved filter: false=unresolved, true=solved, all=all comments", Enum: []string{"false", "true", "all"}},
@@ -165,27 +166,58 @@ func resolveDriveListCommentsInput(urlInput, tokenInput, explicitType string) (d
 		if !driveListCommentsTypeSupported(refType) {
 			return driveListCommentsRef{}, errs.NewValidationError(
 				errs.SubtypeInvalidArgument,
-				"unsupported %s resource type %q; comments list supports doc, docx, sheet, file, slides, bitable/base, and wiki",
+				"unsupported %s resource type %q; comments list supports doc, docx, sheet, file, slides, bitable/base, apps, and wiki",
 				sourceFlag,
 				refType,
 			).WithParam(sourceFlag)
 		}
 		return driveListCommentsRef{Token: ref.Token, Type: refType, SourceFlag: sourceFlag}, nil
 	}
+	if token, ok := parseDriveListCommentsAppsURL(raw); ok {
+		const refType = "apps"
+		if inputType != "" && inputType != refType {
+			return driveListCommentsRef{}, errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"--type %q conflicts with URL path type %q; remove --type or use a matching value",
+				inputType,
+				refType,
+			).WithParam("--type")
+		}
+		return driveListCommentsRef{Token: token, Type: refType, SourceFlag: sourceFlag}, nil
+	}
 
 	if strings.Contains(raw, "://") {
-		return driveListCommentsRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported %s URL %q: use a recognized Lark document URL or pass a bare token with --type", sourceFlag, raw).WithParam(sourceFlag)
+		return driveListCommentsRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported %s URL %q: use a recognized Lark document URL, a Miaoda /page/<token> URL, or pass a bare token with --type", sourceFlag, raw).WithParam(sourceFlag)
 	}
 	if strings.ContainsAny(raw, "/?#") {
 		return driveListCommentsRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid bare token %q: remove path/query fragments or pass a recognized Lark document URL", raw).WithParam(sourceFlag)
 	}
 	if inputType == "" {
-		return driveListCommentsRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--type is required when %s is a bare token (allowed: doc, docx, sheet, file, slides, bitable, base, wiki)", sourceFlag).WithParam("--type")
+		return driveListCommentsRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--type is required when %s is a bare token (allowed: doc, docx, sheet, file, slides, bitable, base, apps, wiki)", sourceFlag).WithParam("--type")
 	}
 	if !driveListCommentsTypeSupported(inputType) {
-		return driveListCommentsRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --type %q; allowed: doc, docx, sheet, file, slides, bitable, base, wiki", inputType).WithParam("--type")
+		return driveListCommentsRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --type %q; allowed: doc, docx, sheet, file, slides, bitable, base, apps, wiki", inputType).WithParam("--type")
 	}
 	return driveListCommentsRef{Token: raw, Type: inputType, SourceFlag: sourceFlag}, nil
+}
+
+func parseDriveListCommentsAppsURL(rawURL string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "", false
+	}
+
+	path := strings.Trim(u.Path, "/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 || parts[0] != "page" {
+		return "", false
+	}
+
+	token := strings.TrimSpace(parts[1])
+	if token == "" {
+		return "", false
+	}
+	return token, true
 }
 
 func normalizeDriveListCommentsType(docType string) string {
@@ -199,7 +231,7 @@ func normalizeDriveListCommentsType(docType string) string {
 
 func driveListCommentsTypeSupported(docType string) bool {
 	switch normalizeDriveListCommentsType(docType) {
-	case "doc", "docx", "sheet", "file", "slides", "bitable", "wiki":
+	case "doc", "docx", "sheet", "file", "slides", "bitable", "apps", "wiki":
 		return true
 	default:
 		return false
@@ -231,7 +263,7 @@ func resolveDriveListCommentsTarget(ctx context.Context, runtime *common.Runtime
 	if !driveListCommentsTypeSupported(objType) || objType == "wiki" {
 		return driveListCommentsTarget{}, errs.NewValidationError(
 			errs.SubtypeInvalidArgument,
-			"wiki resolved to %q, but comments list only supports doc, docx, sheet, file, slides, and bitable",
+			"wiki resolved to %q, but comments list only supports doc, docx, sheet, file, slides, bitable, and apps",
 			objType,
 		).WithParam(ref.SourceFlag)
 	}

@@ -51,6 +51,32 @@ func TestDriveListCommentsDryRun_DocxDefaults(t *testing.T) {
 	}
 }
 
+func TestDriveListCommentsDryRun_AppsPageURL(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+list-comments",
+			"--url", "https://bytedance.feishu.cn/page/appsDryRunCommentList/",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/files/appsDryRunCommentList/comments" {
+		t.Fatalf("api.0.url=%q, want apps comments list\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.params.file_type").String(); got != "apps" {
+		t.Fatalf("api.0.params.file_type=%q, want apps\nstdout:\n%s", got, out)
+	}
+}
+
 func TestDriveListCommentsDryRun_WikiToken(t *testing.T) {
 	setDriveDryRunConfigEnv(t)
 
