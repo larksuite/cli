@@ -64,7 +64,7 @@ func TestAppsAutomationListDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+automation-list",
 				"--app-id", automationDryRunAppID,
-				"--trigger-type", "webhook",
+				"--trigger-type", "record-change",
 				"--page-token", "cursor-abc",
 				"--dry-run",
 			},
@@ -74,9 +74,10 @@ func TestAppsAutomationListDryRun(t *testing.T) {
 		result.AssertExitCode(t, 0)
 
 		// --trigger-type is CLI-facing kebab-case; the backend expects the
-		// snake_case wire form. Pin the mapping so a regression to raw
-		// pass-through is caught here rather than at the backend.
-		assert.Equal(t, "webhook", clie2e.DryRunGet(result.Stdout, "api.0.params.trigger_type").String())
+		// snake_case wire form. Use "record-change" (not "webhook", which is
+		// identical in both forms) so a raw-pass-through regression fails
+		// this assertion.
+		assert.Equal(t, "record_change", clie2e.DryRunGet(result.Stdout, "api.0.params.trigger_type").String())
 		assert.Equal(t, "cursor-abc", clie2e.DryRunGet(result.Stdout, "api.0.params.page_token").String())
 	})
 

@@ -90,9 +90,18 @@ func validateCronExpr(expr string) error {
 			return appsValidationParamError("--cron",
 				"cron minute step %q must be an integer 1..59", minute)
 		}
-		if n < 30 {
+		// */N in cron expands to [0, N, 2N, ...] within 0..59, then wraps to 0
+		// of the next hour. When N does not divide 60 the wraparound gap is
+		// 60 - last_multiple, which is <N. For the 30-minute floor to hold on
+		// every gap (in-hour AND wrap), *only* N=30 works: */30 fires at :00
+		// and :30, gaps [30, 30]. */45 fires at :00 and :45, gaps [45, 15] —
+		// the 15-min wraparound gap violates the floor. All 31..59 fail the
+		// same way (small wraparound remainder); 1..29 fail the in-hour gap.
+		if n != 30 {
 			return appsValidationParamError("--cron",
-				"cron interval */%d minutes is below the 30-minute minimum", n)
+				"cron step */%d produces a gap below the 30-minute minimum "+
+					"(only */30 keeps every gap >=30 including the wraparound); "+
+					"use */30, or an explicit list like '0,30'", n)
 		}
 		return nil
 	}

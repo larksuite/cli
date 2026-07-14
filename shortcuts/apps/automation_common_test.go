@@ -71,15 +71,25 @@ func TestValidateCronExpr(t *testing.T) {
 	}
 }
 
-// TestValidateCronExpr_RejectsRangeStepBypass pins the F4 fix: range-step
-// syntax like "1-59/10" or shorthand "0/10" is a 10-minute interval, but the
-// old *,*/N,list-only matcher fell through and accepted these. The new
-// whitelist rejects any minute form outside {"N", "N,M,...", "*/N"}.
+// TestValidateCronExpr_RejectsRangeStepBypass pins two related tightenings:
+//
+//   - Range-step syntax like "1-59/10" or shorthand "0/10" is a 10-minute
+//     interval, but the old *,*/N,list-only matcher fell through and
+//     accepted these. The new whitelist rejects any minute form outside
+//     {"N", "N,M,...", "*/N"}.
+//   - */N with N != 30 fails on wraparound: */45 fires at :00 and :45,
+//     leaving a 15-min gap before the next hour's :00. In standard cron,
+//     */N expands to [0, N, 2N, ...] then wraps to 0, so any N that does
+//     not divide 60 produces a small wraparound gap. Only N=30 keeps
+//     every gap (in-hour AND wrap) >= 30.
 func TestValidateCronExpr_RejectsRangeStepBypass(t *testing.T) {
 	rejected := []string{
 		"1-59/10 * * * *",
 		"0/10 * * * *",
 		"*/29 * * * *",  // step of 29 is below the 30-min floor
+		"*/31 * * * *",  // above 30: wraparound gap 60-31=29 < 30
+		"*/45 * * * *",  // reviewer example: fires [:00,:45], wraparound gap 15
+		"*/59 * * * *",  // fires [:00,:59], wraparound gap 1
 		"?  * * * *",    // range/? shorthand not supported
 		"5-25 * * * *",  // plain range not supported (backend may accept it, but CLI stays strict)
 		"5,10 * * * *",  // 5-min gap in comma list
@@ -98,7 +108,6 @@ func TestValidateCronExpr_RejectsRangeStepBypass(t *testing.T) {
 		"30 9 * * *",
 		"0,30 * * * *",
 		"*/30 * * * *",
-		"*/59 * * * *",
 	}
 	for _, expr := range accepted {
 		if err := validateCronExpr(expr); err != nil {
