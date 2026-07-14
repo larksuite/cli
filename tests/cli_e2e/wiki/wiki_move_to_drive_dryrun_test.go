@@ -11,7 +11,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func setWikiMoveToDriveDryRunEnv(t *testing.T) {
@@ -43,12 +42,12 @@ func TestWikiMoveToDriveDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/nodes/wikcnABC123/move_wiki_to_docs", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "fldABC123", gjson.Get(result.Stdout, "api.0.body.folder_token").String())
-		assert.Equal(t, "GET", gjson.Get(result.Stdout, "api.1.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/tasks/%3Ctask_id%3E", gjson.Get(result.Stdout, "api.1.url").String())
-		assert.Equal(t, "move_wiki_to_docs", gjson.Get(result.Stdout, "api.1.params.task_type").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/nodes/wikcnABC123/move_wiki_to_docs", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "fldABC123", clie2e.DryRunGet(result.Stdout, "api.0.body.folder_token").String())
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/tasks/%3Ctask_id%3E", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
+		assert.Equal(t, "move_wiki_to_docs", clie2e.DryRunGet(result.Stdout, "api.1.params.task_type").String())
 	})
 
 	t.Run("personal space root", func(t *testing.T) {
@@ -66,8 +65,8 @@ func TestWikiMoveToDriveDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.folder_token").Exists(),
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.folder_token").Exists(),
 			"folder_token must be omitted when targeting personal-space root; stdout:\n%s", result.Stdout)
 	})
 
@@ -87,8 +86,8 @@ func TestWikiMoveToDriveDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/tasks/task-raw-signature", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "move_wiki_to_docs", gjson.Get(result.Stdout, "api.0.params.task_type").String())
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/tasks/task-raw-signature", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "move_wiki_to_docs", clie2e.DryRunGet(result.Stdout, "api.0.params.task_type").String())
 	})
 }
