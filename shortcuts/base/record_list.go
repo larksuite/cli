@@ -29,7 +29,6 @@ var BaseRecordList = common.Shortcut{
 		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
 		pageSizeLimitAliasFlag(),
 		recordReadFormatFlag(),
-		{Name: "json", Type: "bool", Desc: "hidden alias for --format json", Hidden: true},
 	},
 	Tips: []string{
 		"Example: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
@@ -45,9 +44,6 @@ var BaseRecordList = common.Shortcut{
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := normalizeRecordListJSONAlias(runtime); err != nil {
-			return err
-		}
 		if err := validateRecordListFieldAlias(runtime); err != nil {
 			return err
 		}
@@ -102,24 +98,9 @@ func recordReadFormatFlag() common.Flag {
 	return common.Flag{
 		Name:    "format",
 		Default: "markdown",
+		Enum:    []string{"markdown", "json"},
 		Desc:    "output format: markdown (default) | json",
 	}
-}
-
-func normalizeRecordListJSONAlias(runtime *common.RuntimeContext) error {
-	if !runtime.Changed("json") {
-		return nil
-	}
-	if runtime.Changed("format") {
-		return baseFlagErrorf("--json and --format are mutually exclusive; use --format json")
-	}
-	if runtime.Bool("json") {
-		if err := runtime.Cmd.Flags().Set("format", "json"); err != nil {
-			return baseFlagErrorf("cannot apply --json alias: %v", err)
-		}
-		runtime.Format = "json"
-	}
-	return nil
 }
 
 func validateRecordListFieldAlias(runtime *common.RuntimeContext) error {

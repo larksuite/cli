@@ -1367,14 +1367,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("list json alias conflicts with format", func(t *testing.T) {
-		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--json", "--format", "markdown"}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "--json and --format are mutually exclusive") {
-			t.Fatalf("err=%v", err)
-		}
-	})
-
 	t.Run("list markdown format", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
