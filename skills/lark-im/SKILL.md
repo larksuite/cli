@@ -1,7 +1,7 @@
 ---
 name: lark-im
 version: 1.0.0
-description: "飞书即时通讯：收发消息和管理群聊。发送和回复消息、搜索聊天记录、管理群聊成员、上传下载图片和文件（支持大文件分片下载）、管理表情回复、发送应用内/短信/电话加急、发送和处理交互卡片（Interactive Card）、监听卡片按钮回调（card.action.trigger）。当用户需要发消息、查看或搜索聊天记录、下载聊天中的文件、查看群成员、搜索群、创建群聊或话题群、管理标记数据、管理 Feed 置顶（添加/移除/查询置顶会话）、管理标签数据、处理卡片回调时使用。"
+description: "飞书即时通讯：收发消息和管理群聊。发送和回复消息、搜索聊天记录、批量查询当前用户对消息是否已读、管理群聊成员、上传下载图片和文件（支持大文件分片下载）、管理表情回复、发送应用内/短信/电话加急、发送和处理交互卡片（Interactive Card）、监听卡片按钮回调（card.action.trigger）。当用户需要发消息、查看或搜索聊天记录、查询自己的消息已读状态、下载聊天中的文件、查看群成员、搜索群、创建群聊或话题群、管理标记数据、管理 Feed 置顶（添加/移除/查询置顶会话）、管理标签数据、处理卡片回调时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -169,10 +169,11 @@ lark-cli im <resource> <method> [flags] # 调用 API
 
 ### messages
 
+  - `batch_get_read_status` — 批量查询当前用户对消息的阅读状态。Identity: `user` only (`user_access_token`); accepts up to 50 visible message IDs. `unexpected` is indeterminate and must not be treated as unread.[Must-read](references/lark-im-message-read-status.md)
   - `delete` — 撤回消息。Identity: supports `user` and `bot`; for `bot` calls, the bot must be in the chat to revoke group messages; to revoke another user's group message, the bot must be the owner, an admin, or the creator; for user P2P recalls, the target user must be within the bot's availability.
   - `forward` — 转发消息。Identity: supports `user` and `bot`.
   - `merge_forward` — 合并转发消息。Identity: `bot` only (`tenant_access_token`).
-  - `read_users` — 查询消息已读信息。Identity: `bot` only (`tenant_access_token`); the bot must be in the chat, and can only query read status for messages it sent within the last 7 days.
+  - `read_users` — 查询消息已读用户列表。Identity: supports `user` and `bot`. With `user_access_token`, the caller can query only messages they sent within the last 7 days. With `tenant_access_token`, the bot must be in the chat and can query only its own messages within the last 7 days.[Must-read](references/lark-im-message-read-status.md)
   - `urgent_app` — 发送应用内加急。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message.
   - `urgent_phone` — 发送电话加急。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message.
   - `urgent_sms` — 发送短信加急。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message.
@@ -225,10 +226,11 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `chat.managers.delete_managers` | `im:chat.managers:write_only` |
 | `chat.moderation.get` | `im:chat.moderation:read` |
 | `chat.moderation.update` | `im:chat:moderation:write_only` |
+| `messages.batch_get_read_status` | `im:message.read_status:readonly` |
 | `messages.delete` | `im:message:recall` |
 | `messages.forward` | `im:message` |
 | `messages.merge_forward` | `im:message` |
-| `messages.read_users` | `im:message:readonly` |
+| `messages.read_users` | user: `im:message:get_as_user`; bot: `im:message:readonly` |
 | `messages.urgent_app` | `im:message.urgent` |
 | `messages.urgent_phone` | `im:message.urgent:phone` |
 | `messages.urgent_sms` | `im:message.urgent:sms` |
