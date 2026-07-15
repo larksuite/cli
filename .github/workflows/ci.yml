@@ -302,6 +302,7 @@ jobs:
   e2e-dry-run:
     needs: [unit-test, lint, script-test, deterministic-gate]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
       mode: ${{ steps.e2e_domains.outputs.mode }}
       reason: ${{ steps.e2e_domains.outputs.reason }}

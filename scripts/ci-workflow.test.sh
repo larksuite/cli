@@ -246,6 +246,11 @@ if ! grep -Fq "needs: [unit-test, lint, script-test, deterministic-gate, e2e-dry
   exit 1
 fi
 
+if ! grep -Fq "timeout-minutes: 20" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should bound the planning gate before live E2E" >&2
+  exit 1
+fi
+
 if ! grep -Fq "timeout-minutes: 30" <<<"$section"; then
   echo "e2e-live should release the repository-wide slot after 30 minutes" >&2
   exit 1
