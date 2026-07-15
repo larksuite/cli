@@ -1,0 +1,26 @@
+skills/lark-apps/SKILL.md
+  s_b7bb7773f957ef::t_45c82f860408ba 91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c35d04f540c0f54159286182d78e6fbd72959d83",
+  "prompts": {},
+  "humans": {
+    "h_72a6dbd1e15b00": {
+      "author": "zhangli <zhangli.268@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_b7bb7773f957ef": {
+      "agent_id": {
+        "tool": "trae-cue",
+        "id": "ai_tab-icr-3cad1693-5c0f-45e4-9501-f043ae774d82",
+        "model": "default"
+      },
+      "human_author": "zhangli <zhangli.268@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
