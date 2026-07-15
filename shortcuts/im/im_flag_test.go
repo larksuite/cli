@@ -1536,6 +1536,9 @@ func TestExecuteListAllPages(t *testing.T) {
 	if callCount != 2 {
 		t.Fatalf("expected 2 API calls, got %d", callCount)
 	}
+	if stderr := rt.IO().ErrOut.(*bytes.Buffer).String(); strings.Contains(stderr, "reached page limit") {
+		t.Fatalf("natural pagination completion must not warn about a page limit, got %q", stderr)
+	}
 }
 
 func TestExecuteListAllPages_EnrichFeedThread(t *testing.T) {
@@ -1624,6 +1627,73 @@ func TestExecuteListAllPages_PageLimit(t *testing.T) {
 	// Should stop at page-limit
 	if callCount != 3 {
 		t.Fatalf("expected 3 API calls (page limit), got %d", callCount)
+	}
+	stderr := rt.IO().ErrOut.(*bytes.Buffer).String()
+	for _, want := range []string{"reached page limit (3)", "has_more=true", "result is incomplete", "up to 1000", "page_token returned in stdout"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr = %q, want %q", stderr, want)
+		}
+	}
+	if strings.Contains(stderr, "token_3") {
+		t.Fatalf("stderr must not expose the continuation token, got %q", stderr)
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(rt.IO().Out.(*bytes.Buffer).Bytes(), &envelope); err != nil {
+		t.Fatalf("decode stdout: %v", err)
+	}
+	data, _ := envelope["data"].(map[string]any)
+	if hasMore, _ := data["has_more"].(bool); !hasMore {
+		t.Fatalf("has_more = %#v, want true for an incomplete result", data["has_more"])
+	}
+	if pageToken, _ := data["page_token"].(string); pageToken != "token_3" {
+		t.Fatalf("page_token = %q, want token_3", pageToken)
+	}
+	if _, exists := data["truncated"]; exists {
+		t.Fatalf("output schema must remain unchanged; unexpected truncated field in %#v", data)
+	}
+}
+
+func TestExecuteListAllPages_RepeatedTokenDoesNotReportPageLimit(t *testing.T) {
+	callCount := 0
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.Contains(req.URL.Path, "/open-apis/im/v1/flags") {
+			callCount++
+			return shortcutJSONResponse(200, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"flag_items":        []any{},
+					"delete_flag_items": []any{},
+					"messages":          []any{},
+					"has_more":          true,
+					"page_token":        "same_token",
+				},
+			}), nil
+		}
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.Path)
+	}))
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 50, "")
+	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Bool("enrich-feed-thread", false, "")
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	setRuntimeField(t, rt, "Cmd", cmd)
+
+	if err := executeListAllPages(rt); err != nil {
+		t.Fatalf("executeListAllPages() error = %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("API calls = %d, want 2 before repeated-token stop", callCount)
+	}
+	stderr := rt.IO().ErrOut.(*bytes.Buffer).String()
+	if !strings.Contains(stderr, "page_token did not change") {
+		t.Fatalf("stderr = %q, want non-advancing token warning", stderr)
+	}
+	if strings.Contains(stderr, "reached page limit") {
+		t.Fatalf("stderr = %q, repeated token must not be reported as a page-limit stop", stderr)
 	}
 }
 

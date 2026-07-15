@@ -27,8 +27,8 @@ var ImFlagList = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "page-size", Type: "int", Default: "50", Desc: "page size (1-50)"},
 		{Name: "page-token", Desc: "pagination token for next page"},
-		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
-		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
+		{Name: "page-all", Type: "bool", Desc: "automatically paginate, capped by --page-limit"},
+		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages with --page-all (default 20; configurable range 1-1000)"},
 		{Name: "enrich-feed-thread", Type: "bool", Default: "true", Desc: "fetch message content for feed-type thread entries (default true; may call messages/mget and require im:message.group_msg:get_as_user/im:message.p2p_msg:get_as_user; use --enrich-feed-thread=false to avoid extra scopes)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -276,6 +276,10 @@ func executeListAllPages(rt *common.RuntimeContext) error {
 		// Detect server anomaly: same token returned twice means infinite loop
 		if lastPageToken == prevPageToken {
 			fmt.Fprintf(rt.IO().ErrOut, "warning: page_token did not change, stopping pagination to avoid infinite loop\n")
+			break
+		}
+		if page+1 >= maxPages {
+			fmt.Fprintf(rt.IO().ErrOut, "[pagination] reached page limit (%d) while has_more=true; result is incomplete. Increase --page-limit up to 1000 or resume with the page_token returned in stdout.\n", maxPages)
 			break
 		}
 		prevPageToken = lastPageToken
