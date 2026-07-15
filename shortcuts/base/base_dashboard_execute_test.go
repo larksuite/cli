@@ -4,9 +4,11 @@
 package base
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -674,6 +676,95 @@ func TestBaseDashboardBlockCreate_InvalidRollup(t *testing.T) {
 	if got := err.Error(); !strings.Contains(got, "rollup") || !strings.Contains(got, "data_config 校验失败") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+// TestBaseDashboardBlockCreate_IllegalSortOrderType guards against a P1 where a
+// non-string sort.order (123 / null / false) was silently coerced to "asc" and
+// created a block with a tampered sort. A present-but-illegal order must now
+// surface a typed validation error, never a silent default.
+func TestBaseDashboardBlockCreate_IllegalSortOrderType(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		order string // raw JSON literal for the order value
+	}{
+		{"number", "123"},
+		{"null", "null"},
+		{"bool", "false"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			dc := `{"table_name":"T","series":[{"field_name":"金额","rollup":"SUM"}],` +
+				`"group_by":[{"field_name":"状态","mode":"integrated","sort":{"type":"group","order":` + tc.order + `}}]}`
+			args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+				"--name", "Bad", "--type", "column", "--data-config", dc}
+			err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+			if err == nil {
+				t.Fatalf("expected validation error for order=%s, got nil (stdout=%s)", tc.order, stdout.String())
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T %v", err, err)
+			}
+			if ve.Category != errs.CategoryValidation || ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("category=%q subtype=%q, want validation/invalid_argument", ve.Category, ve.Subtype)
+			}
+			if ve.Param != "--data-config" {
+				t.Fatalf("param=%q, want --data-config", ve.Param)
+			}
+			if !strings.Contains(ve.Error(), "sort.order") {
+				t.Fatalf("error should name sort.order, got: %v", ve)
+			}
+		})
+	}
+}
+
+// TestNormalizeDataConfigSortOrder pins the normalization contract for sort.order:
+// only a truly absent key gets the "asc" default; a present illegal value is left
+// untouched so validation can reject it; a valid string is lower-cased.
+func TestNormalizeDataConfigSortOrder(t *testing.T) {
+	sortOf := func(cfg map[string]interface{}) map[string]interface{} {
+		gb := cfg["group_by"].([]interface{})
+		return gb[0].(map[string]interface{})["sort"].(map[string]interface{})
+	}
+	newCfg := func(sort map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"table_name": "T",
+			"series":     []interface{}{map[string]interface{}{"field_name": "v", "rollup": "sum"}},
+			"group_by":   []interface{}{map[string]interface{}{"field_name": "g", "sort": sort}},
+		}
+	}
+
+	t.Run("absent order defaults to asc for group", func(t *testing.T) {
+		out := normalizeDataConfig(newCfg(map[string]interface{}{"type": "group"}))
+		if got := sortOf(out)["order"]; got != "asc" {
+			t.Fatalf("order=%v, want asc", got)
+		}
+	})
+	t.Run("absent order not defaulted for value", func(t *testing.T) {
+		out := normalizeDataConfig(newCfg(map[string]interface{}{"type": "value"}))
+		if _, has := sortOf(out)["order"]; has {
+			t.Fatalf("value sort must not get a defaulted order: %v", sortOf(out))
+		}
+	})
+	t.Run("valid string lower-cased", func(t *testing.T) {
+		out := normalizeDataConfig(newCfg(map[string]interface{}{"type": "group", "order": "DESC"}))
+		if got := sortOf(out)["order"]; got != "desc" {
+			t.Fatalf("order=%v, want desc", got)
+		}
+	})
+	t.Run("illegal number not coerced", func(t *testing.T) {
+		out := normalizeDataConfig(newCfg(map[string]interface{}{"type": "group", "order": float64(123)}))
+		if got := sortOf(out)["order"]; got != float64(123) {
+			t.Fatalf("order=%v (type %T), want untouched 123", got, got)
+		}
+	})
+	t.Run("illegal nil not coerced", func(t *testing.T) {
+		out := normalizeDataConfig(newCfg(map[string]interface{}{"type": "view", "order": nil}))
+		got, has := sortOf(out)["order"]
+		if !has || got != nil {
+			t.Fatalf("order=%v has=%v, want present nil (untouched)", got, has)
+		}
+	})
 }
 
 // ── Text Block Tests ────────────────────────────────────────────────

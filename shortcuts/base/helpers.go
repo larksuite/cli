@@ -1043,12 +1043,17 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 						sortType = strings.ToLower(strings.TrimSpace(t))
 						sub["type"] = sortType
 					}
-					sortOrder := ""
-					if o, ok := sub["order"].(string); ok {
-						sortOrder = strings.ToLower(strings.TrimSpace(o))
-						sub["order"] = sortOrder
+					// Only lowercase a string order; leave a present-but-non-string
+					// order untouched so validateBlockDataConfig can reject it
+					// instead of it being silently coerced below.
+					_, hasOrderKey := sub["order"]
+					orderStr, orderIsString := sub["order"].(string)
+					if orderIsString {
+						sub["order"] = strings.ToLower(strings.TrimSpace(orderStr))
 					}
-					if sortOrder == "" && (sortType == "group" || sortType == "view") {
+					// Default only when the order key is truly absent. A present
+					// key (even an illegal type/value) must survive to validation.
+					if !hasOrderKey && (sortType == "group" || sortType == "view") {
 						sub["order"] = "asc"
 					}
 					m["sort"] = sub
@@ -1133,14 +1138,16 @@ func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []str
 			if sub, ok := m["sort"].(map[string]interface{}); ok {
 				t, _ := sub["type"].(string)
 				t = strings.ToLower(strings.TrimSpace(t))
-				o, _ := sub["order"].(string)
-				o = strings.ToLower(strings.TrimSpace(o))
 				if t != "group" && t != "value" && t != "view" {
 					errs = append(errs, fmt.Sprintf("group_by[%d].sort.type 仅支持 group|value|view", i))
 				}
-				if o == "" {
+				orderRaw, hasOrder := sub["order"]
+				o, orderIsString := orderRaw.(string)
+				o = strings.ToLower(strings.TrimSpace(o))
+				switch {
+				case !hasOrder:
 					errs = append(errs, fmt.Sprintf("group_by[%d].sort.order 缺失；sort 存在时必须设置 order 为 asc 或 desc，例如 \"sort\":{\"type\":\"group\",\"order\":\"asc\"}", i))
-				} else if o != "asc" && o != "desc" {
+				case !orderIsString || (o != "asc" && o != "desc"):
 					errs = append(errs, fmt.Sprintf("group_by[%d].sort.order 仅支持 asc|desc", i))
 				}
 			}
