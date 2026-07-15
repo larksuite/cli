@@ -51,10 +51,15 @@ results_section="$(awk '
   in_job { print }
 ' "$workflow")"
 fork_safe_guard="github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork"
-live_job_condition="always() && ($fork_safe_guard) && needs.unit-test.result == 'success' && needs.lint.result == 'success' && needs.script-test.result == 'success' && needs.deterministic-gate.result == 'success'"
+live_job_condition="always() && ($fork_safe_guard) && needs.unit-test.result == 'success' && needs.lint.result == 'success' && needs.script-test.result == 'success' && needs.deterministic-gate.result == 'success' && needs.e2e-dry-run.result == 'success' && (needs.e2e-dry-run.outputs.mode == 'full' || needs.e2e-dry-run.outputs.mode == 'subset') && needs.e2e-dry-run.outputs.live_packages != ''"
 
-if ! grep -Fq "run-name: \${{ format('CI / {0}', github.event.pull_request.number || github.run_id) }}" "$workflow"; then
-  echo "CI should expose a stable per-PR run generation for supersession checks" >&2
+if ! grep -Fq "run-name: \${{ github.event_name == 'pull_request' && format('CI / {0}', github.event.pull_request.number) || '' }}" "$workflow"; then
+  echo "CI should expose a stable PR generation while preserving default push and manual run titles" >&2
+  exit 1
+fi
+
+if ! grep -Fq "RUN_GENERATION: \${{ github.event_name == 'pull_request' && format('CI / {0}', github.event.pull_request.number) || '' }}" <<<"$section"; then
+  echo "the supersession generation should match the PR-only run name" >&2
   exit 1
 fi
 
@@ -232,7 +237,12 @@ if ! grep -Fq "deterministic-gate" <<<"$results_section"; then
 fi
 
 if ! grep -Fq "if: \${{ $live_job_condition }}" <<<"$section"; then
-  echo "e2e-live should preserve active cleanup while requiring successful upstream gates and excluding fork pull requests"
+  echo "e2e-live should preserve active cleanup while requiring a successful non-skip dry run and excluding fork pull requests"
+  exit 1
+fi
+
+if ! grep -Fq "needs: [unit-test, lint, script-test, deterministic-gate, e2e-dry-run]" <<<"$section"; then
+  echo "e2e-live should wait outside the exclusive queue until e2e-dry-run finishes"
   exit 1
 fi
 
@@ -267,7 +277,7 @@ live_test_step="$(awk '
   in_step && /^      - name: Publish CLI E2E test report/ { exit }
 ' <<<"$section")"
 
-if ! grep -Fq "if: \${{ always() && steps.e2e_domains.outputs.mode != 'skip' && steps.build_cli.outcome == 'success' && steps.live_e2e_tat.outcome == 'success' }}" <<<"$live_test_step"; then
+if ! grep -Fq "if: \${{ always() && steps.build_cli.outcome == 'success' && steps.live_e2e_tat.outcome == 'success' }}" <<<"$live_test_step"; then
   echo "the active live test step should survive ordinary workflow supersession only after setup succeeds" >&2
   exit 1
 fi
@@ -302,6 +312,39 @@ if ! grep -Fq "name: Resolve CLI E2E domains" <<<"$dry_run_section" ||
   exit 1
 fi
 
+for output in \
+  'mode: ${{ steps.e2e_domains.outputs.mode }}' \
+  'reason: ${{ steps.e2e_domains.outputs.reason }}' \
+  'live_packages: ${{ steps.e2e_domains.outputs.live_packages }}'; do
+  if ! grep -Fq "$output" <<<"$dry_run_section"; then
+    echo "e2e-dry-run should publish $output for the live job" >&2
+    exit 1
+  fi
+done
+
+for validation_contract in \
+  'case "$E2E_MODE" in' \
+  'skip)' \
+  '[ -z "$E2E_LIVE_PACKAGES" ]' \
+  'full|subset)' \
+  '[ -n "$E2E_LIVE_PACKAGES" ]' \
+  'Invalid CLI E2E mode' \
+  'exit 1'; do
+  if ! grep -Fq "$validation_contract" <<<"$dry_run_section"; then
+    echo "e2e-dry-run should fail invalid domain output before live can be skipped: missing $validation_contract" >&2
+    exit 1
+  fi
+done
+
+if ! awk '
+  /- name: Validate CLI E2E domain outputs/ { validated = 1 }
+  /- name: Build lark-cli/ { exit validated ? 0 : 1 }
+  END { if (!validated) exit 1 }
+' <<<"$dry_run_section"; then
+  echo "e2e-dry-run should validate domain outputs before building" >&2
+  exit 1
+fi
+
 if ! grep -Fq "steps.e2e_domains.outputs.dry_packages" <<<"$dry_run_section"; then
   echo "e2e-dry-run should use resolved dry_packages instead of always running the full suite"
   exit 1
@@ -324,21 +367,21 @@ if ! grep -Fq "No dry-run CLI E2E needed" <<<"$dry_run_section"; then
   exit 1
 fi
 
-if ! grep -Fq "name: Resolve CLI E2E domains" <<<"$section" ||
-   ! grep -Fq "id: e2e_domains" <<<"$section" ||
-   ! grep -Fq "run: node scripts/e2e_domains.js" <<<"$section"; then
-  echo "e2e-live should resolve changed-file CLI E2E domains before credentials and tests"
+if grep -Fq "name: Resolve CLI E2E domains" <<<"$section" ||
+   grep -Fq "run: node scripts/e2e_domains.js" <<<"$section"; then
+  echo "e2e-live should reuse e2e-dry-run outputs instead of resolving domains again"
   exit 1
 fi
 
-if ! grep -Fq "steps.e2e_domains.outputs.live_packages" <<<"$section"; then
-  echo "e2e-live should use resolved live_packages instead of always running the full suite"
+if ! grep -Fq "E2E_LIVE_PACKAGES: \${{ needs.e2e-dry-run.outputs.live_packages }}" <<<"$section"; then
+  echo "e2e-live should reuse live_packages resolved by e2e-dry-run"
   exit 1
 fi
 
-if ! grep -Fq "E2E_REASON: \${{ steps.e2e_domains.outputs.reason }}" <<<"$section" ||
+if ! grep -Fq "E2E_MODE: \${{ needs.e2e-dry-run.outputs.mode }}" <<<"$section" ||
+   ! grep -Fq "E2E_REASON: \${{ needs.e2e-dry-run.outputs.reason }}" <<<"$section" ||
    ! grep -Fq 'echo "Live CLI E2E domains: $E2E_MODE ($E2E_REASON)"' <<<"$section"; then
-  echo "e2e-live should pass dynamic domain output through env before shell use"
+  echo "e2e-live should consume the exact mode and reason produced by e2e-dry-run"
   exit 1
 fi
 
@@ -352,15 +395,22 @@ if ! awk '
   exit 1
 fi
 
-if ! awk '
-  /^      - name: Build lark-cli/ { in_step = 1 }
-  in_step && /if: \$\{\{ steps\.e2e_domains\.outputs\.mode != '\''skip'\'' \}\}/ { found = 1 }
-  in_step && /^      - name:/ && !/Build lark-cli/ { in_step = 0 }
-  END { exit found ? 0 : 1 }
-' <<<"$section"; then
-  echo "e2e-live should skip building lark-cli when domain mode is skip"
+if grep -Fq "steps.e2e_domains.outputs" <<<"$section"; then
+  echo "e2e-live should not retain step-local domain outputs after adopting the dry-run job gate"
   exit 1
 fi
+
+for step_name in "Build lark-cli" "Prepare shared live E2E tenant token"; do
+  live_setup_step="$(awk -v name="$step_name" '
+    $0 == "      - name: " name { in_step = 1 }
+    in_step { print }
+    in_step && /^      - name:/ && $0 != "      - name: " name { exit }
+  ' <<<"$section")"
+  if grep -Eq '^        if:' <<<"$live_setup_step"; then
+    echo "e2e-live $step_name should run unconditionally after the non-skip job gate" >&2
+    exit 1
+  fi
+done
 
 if ! grep -Fq "permissions:" <<<"$section" ||
    ! grep -Fq "contents: read" <<<"$section" ||
@@ -426,13 +476,13 @@ fi
 if ! awk '
   /^      - name: Prepare shared live E2E tenant token/ { in_step = 1 }
   in_step && /id: live_e2e_tat/ { has_id = 1 }
-  in_step && /if: \$\{\{ steps\.e2e_domains\.outputs\.mode != '\''skip'\'' \}\}/ { has_if = 1 }
+  in_step && /^        if:/ { has_if = 1 }
   in_step && /LARKSUITE_CLI_APP_ID: \$\{\{ secrets\.TEST_BOT1_APP_ID \}\}/ { has_app_id = 1 }
   in_step && /secrets\.TEST_BOT1_APP_SECRET/ { has_bot_credential = 1 }
   in_step && /node scripts\/fetch_e2e_tat\.js/ { has_script = 1 }
   in_step && /GITHUB_ENV/ { uses_github_env = 1 }
   in_step && /^      - name:/ && !/Prepare shared live E2E tenant token/ { in_step = 0 }
-  END { exit has_id && has_if && has_app_id && has_bot_credential && has_script && !uses_github_env ? 0 : 1 }
+  END { exit has_id && !has_if && has_app_id && has_bot_credential && has_script && !uses_github_env ? 0 : 1 }
 ' <<<"$section"; then
   echo "e2e-live should pass only a private tenant token file path through step output"
   exit 1
@@ -459,13 +509,18 @@ if ! awk '
   exit 1
 fi
 
+if grep -Fq 'if [ "$E2E_MODE" = "skip" ]' <<<"$section"; then
+  echo "e2e-live should not retain an unreachable step-level skip branch"
+  exit 1
+fi
+
 if grep -Fq "steps.live_e2e_credentials.outputs.configured" <<<"$section"; then
   echo "e2e-live build, configure, test, and report steps should not be gated by a skip-state output"
   exit 1
 fi
 
-if ! grep -Fq "if: \${{ !cancelled() && steps.e2e_domains.outputs.mode != 'skip' }}" <<<"$section"; then
-  echo "e2e-live report step should run after attempted live tests unless the workflow is cancelled or domain mode is skip"
+if ! grep -Fq "if: \${{ !cancelled() }}" <<<"$section"; then
+  echo "e2e-live report step should run after attempted live tests unless the workflow is cancelled"
   exit 1
 fi
 

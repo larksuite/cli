@@ -1,5 +1,5 @@
 name: CI
-run-name: ${{ format('CI / {0}', github.event.pull_request.number || github.run_id) }}
+run-name: ${{ github.event_name == 'pull_request' && format('CI / {0}', github.event.pull_request.number) || '' }}
 
 on:
   push:
@@ -302,6 +302,10 @@ jobs:
   e2e-dry-run:
     needs: [unit-test, lint, script-test, deterministic-gate]
     runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.e2e_domains.outputs.mode }}
+      reason: ${{ steps.e2e_domains.outputs.reason }}
+      live_packages: ${{ steps.e2e_domains.outputs.live_packages }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -315,6 +319,23 @@ jobs:
       - name: Resolve CLI E2E domains
         id: e2e_domains
         run: node scripts/e2e_domains.js
+      - name: Validate CLI E2E domain outputs
+        env:
+          E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
+          E2E_LIVE_PACKAGES: ${{ steps.e2e_domains.outputs.live_packages }}
+        run: |
+          case "$E2E_MODE" in
+            skip)
+              [ -z "$E2E_LIVE_PACKAGES" ] || { echo "::error::Skip mode must not resolve live packages"; exit 1; }
+              ;;
+            full|subset)
+              [ -n "$E2E_LIVE_PACKAGES" ] || { echo "::error::No live packages resolved for mode $E2E_MODE"; exit 1; }
+              ;;
+            *)
+              echo "::error::Invalid CLI E2E mode: $E2E_MODE"
+              exit 1
+              ;;
+          esac
       - name: Build lark-cli
         if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: make build
@@ -348,8 +369,8 @@ jobs:
           fi
 
   e2e-live:
-    needs: [unit-test, lint, script-test, deterministic-gate]
-    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) && needs.unit-test.result == 'success' && needs.lint.result == 'success' && needs.script-test.result == 'success' && needs.deterministic-gate.result == 'success' }}
+    needs: [unit-test, lint, script-test, deterministic-gate, e2e-dry-run]
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) && needs.unit-test.result == 'success' && needs.lint.result == 'success' && needs.script-test.result == 'success' && needs.deterministic-gate.result == 'success' && needs.e2e-dry-run.result == 'success' && (needs.e2e-dry-run.outputs.mode == 'full' || needs.e2e-dry-run.outputs.mode == 'subset') && needs.e2e-dry-run.outputs.live_packages != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Live E2E uses one repository-wide execution slot.
@@ -374,16 +395,11 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
-      - name: Resolve CLI E2E domains
-        id: e2e_domains
-        run: node scripts/e2e_domains.js
       - name: Build lark-cli
         id: build_cli
-        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: make build
       - name: Prepare shared live E2E tenant token
         id: live_e2e_tat
-        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         env:
           LARKSUITE_CLI_APP_ID: ${{ secrets.TEST_BOT1_APP_ID }}
           TEST_BOT1_APP_SECRET: ${{ secrets.TEST_BOT1_APP_SECRET }}
@@ -391,7 +407,7 @@ jobs:
       - name: Run CLI E2E tests
         # Keep an active Go test alive so t.Cleanup can finish. A queued stale
         # run is rejected below before it can start live E2E.
-        if: ${{ always() && steps.e2e_domains.outputs.mode != 'skip' && steps.build_cli.outcome == 'success' && steps.live_e2e_tat.outcome == 'success' }}
+        if: ${{ always() && steps.build_cli.outcome == 'success' && steps.live_e2e_tat.outcome == 'success' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -399,11 +415,11 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
-          RUN_GENERATION: ${{ format('CI / {0}', github.event.pull_request.number || github.run_id) }}
+          RUN_GENERATION: ${{ github.event_name == 'pull_request' && format('CI / {0}', github.event.pull_request.number) || '' }}
           LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
-          E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
-          E2E_REASON: ${{ steps.e2e_domains.outputs.reason }}
-          E2E_LIVE_PACKAGES: ${{ steps.e2e_domains.outputs.live_packages }}
+          E2E_MODE: ${{ needs.e2e-dry-run.outputs.mode }}
+          E2E_REASON: ${{ needs.e2e-dry-run.outputs.reason }}
+          E2E_LIVE_PACKAGES: ${{ needs.e2e-dry-run.outputs.live_packages }}
           E2E_TENANT_AUTH_FILE: ${{ steps.live_e2e_tat.outputs.path }}
           TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
         run: |
@@ -419,10 +435,6 @@ jobs:
               echo "::error::Superseded before live E2E started by newer workflow run(s): $newer_runs"
               exit 1
             fi
-          fi
-          if [ "$E2E_MODE" = "skip" ]; then
-            echo "No live CLI E2E needed: $E2E_REASON"
-            exit 0
           fi
           if [ -z "${E2E_TENANT_AUTH_FILE:-}" ] || [ ! -f "$E2E_TENANT_AUTH_FILE" ]; then
             echo "::error::Missing shared live E2E tenant token file"
@@ -454,7 +466,7 @@ jobs:
           echo "Live CLI E2E packages: $packages"
           go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
       - name: Publish CLI E2E test report
-        if: ${{ !cancelled() && steps.e2e_domains.outputs.mode != 'skip' }}
+        if: ${{ !cancelled() }}
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         with:
           name: CLI E2E Tests
@@ -531,8 +543,8 @@ jobs:
           echo "| L4 | sidecar-integration (observe-only) | ${{ needs.sidecar-integration.result }} |" >> $GITHUB_STEP_SUMMARY
 
           # Any failure or cancellation in any job blocks the merge.
-          # Legitimately skipped jobs (deadcode on push, e2e-live on fork,
-          # license-header on push) are OK.
+          # Legitimately skipped jobs (deadcode on push, e2e-live when not
+          # needed or on a fork, license-header on push) are OK.
           #
           # plugin-integration and sidecar-integration are intentionally NOT
           # in this loop yet: they run on every PR and their status is shown
