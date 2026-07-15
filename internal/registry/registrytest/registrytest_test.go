@@ -176,3 +176,54 @@ func TestSeedWritesFixtureAndInitializesRegistry(t *testing.T) {
 		}
 	}
 }
+
+// TestSeedPropagatesCacheSetupFailures pins that filesystem failures while
+// materializing the cache surface as errors instead of leaving the registry
+// silently unseeded. Each obstacle is a same-named file/directory in the
+// way, which fails on every platform without permission tricks.
+func TestSeedPropagatesCacheSetupFailures(t *testing.T) {
+	seedWith := func(t *testing.T, prepare func(root, configDir string)) error {
+		t.Helper()
+		root := t.TempDir()
+		configDir := filepath.Join(root, "config")
+		prepare(root, configDir)
+		t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+		return Seed(root)
+	}
+
+	t.Run("cache dir creation fails", func(t *testing.T) {
+		err := seedWith(t, func(root, configDir string) {
+			// config is a regular file, so MkdirAll(config/cache) fails.
+			if err := os.WriteFile(configDir, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if err == nil {
+			t.Fatal("Seed() error = nil, want cache dir creation failure")
+		}
+	})
+
+	t.Run("fixture write fails", func(t *testing.T) {
+		err := seedWith(t, func(root, configDir string) {
+			// remote_meta.json is a directory, so WriteFile fails.
+			if err := os.MkdirAll(filepath.Join(configDir, "cache", "remote_meta.json"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if err == nil {
+			t.Fatal("Seed() error = nil, want fixture write failure")
+		}
+	})
+
+	t.Run("cache meta write fails", func(t *testing.T) {
+		err := seedWith(t, func(root, configDir string) {
+			// remote_meta.meta.json is a directory, so WriteFile fails.
+			if err := os.MkdirAll(filepath.Join(configDir, "cache", "remote_meta.meta.json"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if err == nil {
+			t.Fatal("Seed() error = nil, want cache meta write failure")
+		}
+	})
+}
