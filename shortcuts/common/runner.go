@@ -431,6 +431,10 @@ func (ctx *RuntimeContext) buildRequest(method, url string, params map[string]in
 	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
 		req.ExtraOpts = append(req.ExtraOpts, optFn)
 	}
+	// TODO: remove BOE header once testing is complete and promoted to production.
+	boeHeaders := http.Header{}
+	boeHeaders.Set("x-tt-env", "boe_aily_lark_cli")
+	req.ExtraOpts = append(req.ExtraOpts, larkcore.WithHeaders(boeHeaders))
 	return req
 }
 
