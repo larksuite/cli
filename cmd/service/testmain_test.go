@@ -6,13 +6,34 @@ package service
 import (
 	"os"
 	"testing"
+
+	"github.com/larksuite/cli/internal/registry/registrytest"
 )
 
+// TestMain isolates service command tests from the host machine: config (and
+// the registry cache under it) is redirected to a temp dir, then the registry
+// is seeded from the tracked fixture and initialized eagerly. Tests pass on a
+// clean checkout with no network, no `make fetch_meta`, and no user cache.
+//
+// Note: os.Exit skips deferred functions, so cleanup runs explicitly after
+// m.Run before exiting.
 func TestMain(m *testing.M) {
-	// Service command tests exercise the embedded catalog. They must not start
-	// a background remote-metadata refresh that touches user state or network.
-	if err := os.Setenv("LARKSUITE_CLI_REMOTE_META", "off"); err != nil {
-		panic(err)
+	root, err := os.MkdirTemp("", "lark-cli-cmd-service-test-*")
+	if err != nil {
+		println("cmd/service test setup: MkdirTemp failed:", err.Error())
+		os.Exit(2)
 	}
-	os.Exit(m.Run())
+	if err := os.Setenv("LARKSUITE_CLI_CONFIG_DIR", root); err != nil {
+		println("cmd/service test setup: Setenv failed:", err.Error())
+		os.RemoveAll(root)
+		os.Exit(2)
+	}
+	if err := registrytest.Seed(root); err != nil {
+		println("cmd/service test setup: registrytest.Seed failed:", err.Error())
+		os.RemoveAll(root)
+		os.Exit(2)
+	}
+	code := m.Run()
+	os.RemoveAll(root)
+	os.Exit(code)
 }

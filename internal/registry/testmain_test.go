@@ -18,6 +18,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	code := m.Run()
+	// A test that ran Init without a trailing resetInit can leave a background
+	// refresh goroutine alive; removing the temp root while it writes would
+	// let it recreate the directory after cleanup. Wait it out first.
+	waitBackgroundRefresh()
 	_ = os.RemoveAll(root)
 	os.Exit(code)
 }
