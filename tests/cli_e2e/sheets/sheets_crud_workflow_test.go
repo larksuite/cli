@@ -21,6 +21,7 @@ import (
 // TestSheets_CRUDE2EWorkflow tests the full lifecycle of spreadsheet operations
 // using all shortcut methods: +create, +read, +write, +append, +find, +info, +export
 func TestSheets_CRUDE2EWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -174,6 +175,7 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 
 // TestSheets_SpreadsheetsResource tests the spreadsheets resource methods
 func TestSheets_SpreadsheetsResource(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

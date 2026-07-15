@@ -348,9 +348,8 @@ jobs:
       contents: read
       checks: write
     env:
-      TEST_BOT1_APP_ID: ${{ secrets.TEST_BOT1_APP_ID }}
-      TEST_BOT1_APP_SECRET: ${{ secrets.TEST_BOT1_APP_SECRET }}
-      TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
+      LARKSUITE_CLI_APP_ID: ${{ secrets.TEST_BOT1_APP_ID }}
+      LARKSUITE_CLI_BRAND: feishu
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -367,25 +366,44 @@ jobs:
       - name: Build lark-cli
         if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: make build
-      - name: Configure bot credentials
+      - name: Prepare shared live E2E tenant token
+        id: live_e2e_tat
         if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
-        run: |
-          if [ -z "$TEST_BOT1_APP_ID" ] || [ -z "$TEST_BOT1_APP_SECRET" ]; then
-            echo "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_APP_SECRET"
-            exit 1
-          fi
-          printf '%s\n' "$TEST_BOT1_APP_SECRET" | ./lark-cli config init --app-id "$TEST_BOT1_APP_ID" --app-secret-stdin
+        env:
+          TEST_BOT1_APP_SECRET: ${{ secrets.TEST_BOT1_APP_SECRET }}
+        run: node scripts/fetch_e2e_tat.js
       - name: Run CLI E2E tests
         env:
           LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
           E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
           E2E_REASON: ${{ steps.e2e_domains.outputs.reason }}
           E2E_LIVE_PACKAGES: ${{ steps.e2e_domains.outputs.live_packages }}
+          E2E_TENANT_AUTH_FILE: ${{ steps.live_e2e_tat.outputs.path }}
+          TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
         run: |
           if [ "$E2E_MODE" = "skip" ]; then
             echo "No live CLI E2E needed: $E2E_REASON"
             exit 0
           fi
+          if [ -z "${E2E_TENANT_AUTH_FILE:-}" ] || [ ! -f "$E2E_TENANT_AUTH_FILE" ]; then
+            echo "::error::Missing shared live E2E tenant token file"
+            exit 1
+          fi
+          export LARKSUITE_CLI_TENANT_ACCESS_TOKEN="$(cat "$E2E_TENANT_AUTH_FILE")"
+          rm -f "$E2E_TENANT_AUTH_FILE"
+          if ! ./lark-cli whoami --as bot | node -e '
+            let input = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", (chunk) => { input += chunk; });
+            process.stdin.on("end", () => {
+              const result = JSON.parse(input);
+              if (result.identity !== "bot" || result.available !== true || result.tokenStatus !== "ready") process.exit(1);
+            });
+          '; then
+            echo "::error::Tenant credential preflight failed"
+            exit 1
+          fi
+          echo "Tenant credential preflight succeeded"
           packages="$E2E_LIVE_PACKAGES"
           if [ -z "$packages" ]; then
             echo "::error::No live CLI E2E packages resolved for mode $E2E_MODE"

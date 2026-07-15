@@ -38,7 +38,7 @@ const (
 
 func SkipWithoutUserToken(t *testing.T) {
 	t.Helper()
-	if os.Getenv("LARKSUITE_CLI_USER_ACCESS_TOKEN") != "" {
+	if os.Getenv("LARKSUITE_CLI_USER_ACCESS_TOKEN") != "" || os.Getenv("TEST_USER_ACCESS_TOKEN") != "" {
 		return
 	}
 
@@ -72,6 +72,13 @@ func SkipWithoutUserToken(t *testing.T) {
 			t.Skipf("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and local user login verification failed: %s", verifyErr)
 		}
 		t.Skip("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and local user login verification failed")
+	}
+}
+
+func SkipWithoutTenantAccessToken(t *testing.T) {
+	t.Helper()
+	if os.Getenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN") == "" {
+		t.Skip("skipped: LARKSUITE_CLI_TENANT_ACCESS_TOKEN not set")
 	}
 }
 
@@ -225,13 +232,10 @@ func buildCommandEnv(req Request) []string {
 		overrides[k] = v
 	}
 	// Keep user-token injection scoped to user-only test commands so bot
-	// commands continue to use config-init credentials in the same process.
+	// commands retain the process-level bot credentials.
 	if req.DefaultAs == "user" {
-		if appID := os.Getenv("TEST_BOT1_APP_ID"); appID != "" {
-			if token := os.Getenv("TEST_USER_ACCESS_TOKEN"); token != "" {
-				overrides["LARKSUITE_CLI_APP_ID"] = appID
-				overrides["LARKSUITE_CLI_USER_ACCESS_TOKEN"] = token
-			}
+		if token := os.Getenv("TEST_USER_ACCESS_TOKEN"); token != "" {
+			overrides["LARKSUITE_CLI_USER_ACCESS_TOKEN"] = token
 		}
 	}
 	for k, v := range overrides {

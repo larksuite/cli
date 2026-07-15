@@ -19,6 +19,7 @@ import (
 // TestDrive_PreviewAndCoverWorkflow verifies preview and cover shortcuts against
 // a live Drive workflow, skipping when required bot scopes are unavailable.
 func TestDrive_PreviewAndCoverWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)
