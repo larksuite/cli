@@ -692,6 +692,10 @@ func TestMeetingEvents_Execute_NormalizesMeetingScopeError(t *testing.T) {
 	if permissionErr.Identity != "bot" {
 		t.Fatalf("Identity = %q, want bot", permissionErr.Identity)
 	}
+	wantMessage := "access denied for bot identity; recommended scope: " + meetingQueryBotScope
+	if permissionErr.Message != wantMessage {
+		t.Fatalf("Message = %q, want %q", permissionErr.Message, wantMessage)
+	}
 	if !strings.Contains(permissionErr.Hint, meetingQueryBotScope) {
 		t.Fatalf("Hint = %q, want bot scope %q", permissionErr.Hint, meetingQueryBotScope)
 	}

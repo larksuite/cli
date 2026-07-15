@@ -99,11 +99,17 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			wantScope := meetingQueryUserScope
+			if tc.identity == core.AsBot {
+				wantScope = meetingQueryBotScope
+			}
+			wantMessage := "access denied for " + string(tc.identity) + " identity; recommended scope: " + wantScope
 			original := errs.NewPermissionError(tc.subtype, "upstream permission failure").
 				WithCode(tc.code).
 				WithLogID("log-id").
 				WithRetryable().
 				WithIdentity(string(tc.identity)).
+				WithMissingScopes(meetingQueryUserScope, meetingQueryBotScope).
 				WithRequestedScopes("requested:scope").
 				WithGrantedScopes("granted:scope")
 			if tc.identity == core.AsBot {
@@ -125,8 +131,11 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 			if pe.Troubleshooter != original.Troubleshooter {
 				t.Fatalf("Troubleshooter = %q, want %q", pe.Troubleshooter, original.Troubleshooter)
 			}
-			if pe.Message != original.Message {
-				t.Fatalf("Message = %q, want original %q", pe.Message, original.Message)
+			if pe.Message != wantMessage {
+				t.Fatalf("Message = %q, want %q", pe.Message, wantMessage)
+			}
+			if len(pe.MissingScopes) != 2 || pe.MissingScopes[0] != meetingQueryUserScope || pe.MissingScopes[1] != meetingQueryBotScope {
+				t.Fatalf("MissingScopes = %v, want original scope diagnostics", pe.MissingScopes)
 			}
 			if pe.ConsoleURL != original.ConsoleURL {
 				t.Fatalf("ConsoleURL = %q, want original %q", pe.ConsoleURL, original.ConsoleURL)
