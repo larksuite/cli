@@ -30,7 +30,6 @@ lark-cli apps +html-publish --app-id app_xxx --path ./index.html --dry-run
 
 ## 链接边界
 
-- 开发态链接可由 `app_id` 拼出：`https://miaoda.feishu.cn/app/{app_id}`，用于进入妙搭编辑/开发态。
 - 发布态访问链接以 `+release-get` 轮询 `finished` 返回的 `online_url` 为准。
 - 重新发布前，`+list` 的 `is_published=true` 只能说明历史上发布过，不代表当前本地产物已经部署。
 
