@@ -24,19 +24,14 @@ lark-cli apps +html-publish --app-id app_xxx --path ./index.html --dry-run
 
 ## 输出契约
 
-根据应用类型，输出字段不同：
-
-- **静态 HTML 应用**：`data.url` 是本轮发布后的访问链接，一步完成发布。
-- **其他 HTML 应用**：`data.release_id` 是发布标识，命令内部已完成产物上传和发布创建。用 `+release-get --app-id <app_id> --release-id <release_id>` 轮询发布状态直到 `finished`。
-
-判断走哪条路径：有 `url` 字段说明已直接发布完成；有 `release_id` 字段说明需要用 `+release-get` 轮询。
+命令内部完成 tar.gz 打包 → TOS 上传 → 触发发布，返回 `data.release_id`。拿到 `release_id` 后用 `+release-get --app-id <app_id> --release-id <release_id>` 轮询发布状态直到 `finished`，从中读取 `online_url`。
 
 - 业务失败如构建失败、应用不存在通常带 `error.hint`；优先转述 hint。网络/服务端失败则建议稍后重试。
 
 ## 链接边界
 
 - 开发态链接可由 `app_id` 拼出：`https://miaoda.feishu.cn/app/{app_id}`，用于进入妙搭编辑/开发态。
-- 发布态访问链接以本命令成功返回的 `data.url` 为准。
+- 发布态访问链接以 `+release-get` 轮询 `finished` 返回的 `online_url` 为准。
 - 重新发布前，`+list` 的 `is_published=true` 只能说明历史上发布过，不代表当前本地产物已经部署。
 
 ## 发布前置门（第一步，先于任何其他动作）
