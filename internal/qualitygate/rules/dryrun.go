@@ -337,7 +337,7 @@ func fakeValueFromPlaceholderName(name string) (string, bool) {
 	case name == "open_id" || hasPlaceholderToken(tokens, "user", "owner", "participant", "approver", "speaker"):
 		return "ou_test123", true
 	case hasPlaceholderToken(tokens, "department", "dept"):
-		return "od_test123", true
+		return "od-test123", true
 	case hasPlaceholderToken(tokens, "message"):
 		return "om_test123", true
 	case name == "file_key":

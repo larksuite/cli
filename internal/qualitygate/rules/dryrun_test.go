@@ -316,6 +316,13 @@ func TestRunDryRunsMaterializesInlinePlaceholderFlagValues(t *testing.T) {
 	}
 }
 
+func TestFakeValueFromPlaceholderNameUsesOpenDepartmentPrefix(t *testing.T) {
+	got, ok := fakeValueFromPlaceholderName("open_department_id")
+	if !ok || got != "od-test123" {
+		t.Fatalf("open_department_id placeholder = %q, %v; want od-test123, true", got, ok)
+	}
+}
+
 func TestRunDryRunsMaterializesNumericPlaceholderFlagValues(t *testing.T) {
 	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/vc/v1/bots/events","params":{"meeting_id":"400000000001","page_size":50}}]}`)
 	m := manifest.Manifest{Commands: []manifest.Command{{
