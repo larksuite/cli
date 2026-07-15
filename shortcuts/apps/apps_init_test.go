@@ -1713,13 +1713,15 @@ func TestScaffoldInitArgs_WithAppType(t *testing.T) {
 }
 
 func TestPolicyForAppType(t *testing.T) {
-	// modern_html decouples all control points: skip install, env-pull, skills sync.
-	if p := policyForAppType("modern_html"); !p.skipInstall || !p.skipEnvPull || !p.skipSkillsSync {
-		t.Errorf("modern_html policy = %+v, want all skip flags set", p)
+	// modern_html and html decouple all control points: skip install, env-pull, skills sync, app sync.
+	for _, at := range []string{"modern_html", "html"} {
+		if p := policyForAppType(at); !p.skipInstall || !p.skipEnvPull || !p.skipSkillsSync || !p.skipAppSync {
+			t.Errorf("%s policy = %+v, want all skip flags set", at, p)
+		}
 	}
 	// Unlisted types (including "") get the zero-value policy: everything runs.
 	for _, at := range []string{"full_stack", "", "backend"} {
-		if p := policyForAppType(at); p.skipInstall || p.skipEnvPull || p.skipSkillsSync {
+		if p := policyForAppType(at); p.skipInstall || p.skipEnvPull || p.skipSkillsSync || p.skipAppSync {
 			t.Errorf("policy for %q = %+v, want zero value", at, p)
 		}
 	}

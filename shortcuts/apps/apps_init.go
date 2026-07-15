@@ -74,6 +74,8 @@ type appTypePolicy struct {
 	// skipSkillsSync skips the conditional `npx ... skills sync --local` step on
 	// the non-empty (`app sync`) scaffold path.
 	skipSkillsSync bool
+	// skipAppSync skips `npx ... app sync` on the non-empty repo path.
+	skipAppSync bool
 }
 
 // appTypePolicies maps an app_type to its +init control strategy. Types absent
@@ -81,9 +83,9 @@ type appTypePolicy struct {
 // are synced).
 var appTypePolicies = map[string]appTypePolicy{
 	// modern_html / html are static HTML sites: no dependencies to install,
-	// no startup env vars to pull, and no steering skills to sync.
-	"modern_html": {skipInstall: true, skipEnvPull: true, skipSkillsSync: true},
-	"html":        {skipInstall: true, skipEnvPull: true, skipSkillsSync: true},
+	// no startup env vars to pull, no steering skills to sync, and no app sync.
+	"modern_html": {skipInstall: true, skipEnvPull: true, skipSkillsSync: true, skipAppSync: true},
+	"html":        {skipInstall: true, skipEnvPull: true, skipSkillsSync: true, skipAppSync: true},
 }
 
 // policyForAppType returns the +init control strategy for appType. Unlisted
@@ -413,13 +415,16 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 		}
 		return scaffoldKindInit, nil
 	}
-	if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "app", "sync"); err != nil {
-		return "", appsExternalToolError(err, "npx app sync failed: %s", gitErr(stderr, err))
+	policy := policyForAppType(appType)
+	if !policy.skipAppSync {
+		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "app", "sync"); err != nil {
+			return "", appsExternalToolError(err, "npx app sync failed: %s", gitErr(stderr, err))
+		}
 	}
 	if err := ensureMetaAppID(dir, appID); err != nil {
 		return "", err
 	}
-	if !policyForAppType(appType).skipSkillsSync && !hasSteeringSkills(dir) {
+	if !policy.skipSkillsSync && !hasSteeringSkills(dir) {
 		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "skills", "sync", "--local"); err != nil {
 			return "", appsExternalToolError(err, "npx skills sync failed: %s", gitErr(stderr, err))
 		}
