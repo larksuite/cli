@@ -476,8 +476,9 @@ jobs:
           # plugin-integration and sidecar-integration are intentionally NOT
           # in this loop yet: they run on every PR and their status is shown
           # in the table above, but a failure is observe-only (non-blocking)
-          # during the initial soak. Add them back here to make them required
-          # once they have proven stable.
+          # during the initial soak. Graduation to required is tracked in
+          # https://github.com/larksuite/cli/issues/1894 (criteria: 4
+          # consecutive weeks with zero false positives).
           FAILED=0
           for result in \
             "${{ needs.fast-gate.result }}" \
