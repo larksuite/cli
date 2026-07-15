@@ -9,6 +9,7 @@
 ## 命令骨架
 
 - 必填：`--app-id`、`--path`。
+- `--path` **必须是相对路径**（如 `./dist`、`./index.html`），不支持绝对路径。如果目标文件在其他目录，先 `cd` 到该目录再用相对路径，或用相对于当前目录的路径。
 - `--path` 可以是单个文件或目录；入口必须是 `index.html`。
 - 可选：`--allow-sensitive`，跳过凭据文件扫描。
 - 客户端打包 tar.gz 上传发布。三条硬性大小限制，任一超限即被客户端拒绝、无法发布：单个 `.html` 文件 ≤ 10MB、打包后 tar.gz ≤ 20MB、未压缩候选文件总量 ≤ 200MB。
@@ -59,4 +60,5 @@ lark-cli apps +html-publish --app-id app_xxx --path ./index.html --dry-run
 
 ## 常见失败
 
+- `--path` 传了绝对路径：`--path` 只接受相对路径，传绝对路径会报 `unsafe --path`。改用 `cd` + 相对路径，例如 `cd /target/dir && lark-cli apps +html-publish --path .`。
 - 缺少 `index.html`：目录根放置 `index.html`，或单文件路径直接指向名为 `index.html` 的文件。
