@@ -17,6 +17,10 @@ class XmlTextOverlapLintError(Exception):
     pass
 
 
+FONT_FAMILY_PLACEHOLDER_VALUES = {"undefined"}
+_SUPPORTED_FONT_FAMILIES: set[str] | None = None
+
+
 def fail(message: str) -> None:
     raise XmlTextOverlapLintError(message)
 
@@ -73,6 +77,81 @@ def strip_xml(value: str) -> str:
 
 def xml_local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if tag.startswith("{") else tag
+
+
+def schema_definition_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "references" / "slides_xml_schema_definition.xml"
+
+
+def extract_supported_font_families(schema_xml: str) -> set[str]:
+    simple_type_match = re.search(
+        r'<xs:simpleType\s+name="FontFamilyType">([\s\S]*?)</xs:simpleType>',
+        schema_xml,
+    )
+    if simple_type_match is None:
+        fail("FontFamilyType definition not found in slides XML schema")
+
+    documentation_match = re.search(
+        r"<xs:documentation>([\s\S]*?)</xs:documentation>",
+        simple_type_match.group(1),
+    )
+    if documentation_match is None:
+        fail("FontFamilyType documentation not found in slides XML schema")
+
+    font_families: set[str] = set()
+    for raw_line in documentation_match.group(1).splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("字体族名称") or line.endswith("："):
+            continue
+        for font_family in re.split(r"[、，,]", line):
+            font_family = font_family.strip()
+            if font_family:
+                font_families.add(font_family)
+
+    if not font_families:
+        fail("FontFamilyType supported font list is empty")
+    return font_families
+
+
+def supported_font_families() -> set[str]:
+    global _SUPPORTED_FONT_FAMILIES
+    if _SUPPORTED_FONT_FAMILIES is None:
+        _SUPPORTED_FONT_FAMILIES = extract_supported_font_families(read_file(schema_definition_path()))
+    return _SUPPORTED_FONT_FAMILIES
+
+
+def line_column_at_offset(source: str, offset: int) -> tuple[int, int]:
+    line = source.count("\n", 0, offset) + 1
+    line_start = source.rfind("\n", 0, offset)
+    column = offset + 1 if line_start == -1 else offset - line_start
+    return line, column
+
+
+def lint_font_families(xml: str) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    allowed_font_families = supported_font_families()
+    for match in re.finditer(r"\bfontFamily\s*=\s*([\"'])(.*?)\1", xml):
+        font_family = match.group(2).strip()
+        if not font_family or font_family in FONT_FAMILY_PLACEHOLDER_VALUES:
+            continue
+        if font_family in allowed_font_families:
+            continue
+        line, column = line_column_at_offset(xml, match.start())
+        issues.append(
+            {
+                "level": "error",
+                "code": "unsupported_font_family",
+                "message": f'fontFamily "{font_family}" is not supported',
+                "line": line,
+                "column": column,
+                "fontFamily": font_family,
+                "hint": (
+                    "Use a FontFamilyType value from slides_xml_schema_definition.xml, "
+                    "or omit fontFamily to use the default font."
+                ),
+            }
+        )
+    return issues
 
 
 def extract_error_context(xml: str, line: int | None, column: int | None, radius: int = 40) -> str | None:
@@ -326,18 +405,24 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         }
 
     presentation = parse_presentation(xml)
+    global_issues = lint_font_families(xml)
     slides = [
         lint_slide(slide_xml, index + 1)
         for index, slide_xml in enumerate(presentation["slides"])
     ]
-    error_count = sum(1 for slide in slides for issue in slide["issues"] if issue["level"] == "error")
-    warning_count = sum(1 for slide in slides for issue in slide["issues"] if issue["level"] == "warning")
-    return {
+    error_count = sum(1 for issue in global_issues if issue["level"] == "error")
+    error_count += sum(1 for slide in slides for issue in slide["issues"] if issue["level"] == "error")
+    warning_count = sum(1 for issue in global_issues if issue["level"] == "warning")
+    warning_count += sum(1 for slide in slides for issue in slide["issues"] if issue["level"] == "warning")
+    result = {
         "file": source_path,
         "slide_size": {"width": presentation["width"], "height": presentation["height"]},
         "summary": {"slide_count": len(slides), "error_count": error_count, "warning_count": warning_count},
         "slides": slides,
     }
+    if global_issues:
+        result["issues"] = global_issues
+    return result
 
 
 def print_usage() -> None:

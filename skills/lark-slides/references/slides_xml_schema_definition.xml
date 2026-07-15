@@ -150,7 +150,7 @@
     <xs:simpleType name="FontFamilyType">
         <xs:annotation>
             <xs:documentation>
-                字体族名称, 支持任意字体。
+                字体族名称, 支持下列字体。
 
                 常用中文字体：
                 思源宋体、寒蝉德黑体、标小智无界黑、寒蝉锦书宋、站酷小薇体、

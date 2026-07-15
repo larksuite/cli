@@ -146,6 +146,61 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         )
         self.assertEqual(result["summary"]["error_count"], 0)
 
+    def test_lint_xml_accepts_supported_font_family(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <theme>
+                <textStyles>
+                  <body fontFamily="思源黑体"/>
+                </textStyles>
+              </theme>
+              <slide>
+                <data>
+                  <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                    <content textType="body" fontFamily="Inter"><p>Body text</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertNotIn("issues", result)
+
+    def test_lint_xml_allows_legacy_undefined_font_family_placeholder(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                  <content textType="body" fontFamily="undefined"><p>Body text</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertNotIn("issues", result)
+
+    def test_lint_xml_reports_unsupported_font_family(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                  <content textType="body" fontFamily="微软雅黑"><p>Body text</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issue = result["issues"][0]
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(issue["code"], "unsupported_font_family")
+        self.assertEqual(issue["fontFamily"], "微软雅黑")
+        self.assertIn("FontFamilyType", issue["hint"])
+
     def test_lint_xml_single_slide_uses_default_canvas_without_bounds_checks(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
