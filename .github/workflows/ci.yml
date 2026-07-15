@@ -1,4 +1,5 @@
 name: CI
+run-name: ${{ format('CI / {0}', github.event.pull_request.number || github.run_id) }}
 
 on:
   push:
@@ -348,14 +349,16 @@ jobs:
 
   e2e-live:
     needs: [unit-test, lint, script-test, deterministic-gate]
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) && needs.unit-test.result == 'success' && needs.lint.result == 'success' && needs.script-test.result == 'success' && needs.deterministic-gate.result == 'success' }}
     runs-on: ubuntu-latest
-    # All live runs share one bot credential and remote resource pool.
+    timeout-minutes: 30
+    # Live E2E uses one repository-wide execution slot.
     concurrency:
-      group: lark-cli-e2e-live-shared-bot
+      group: lark-cli-e2e-live
       cancel-in-progress: false
       queue: max
     permissions:
+      actions: read
       contents: read
       checks: write
     env:
@@ -375,6 +378,7 @@ jobs:
         id: e2e_domains
         run: node scripts/e2e_domains.js
       - name: Build lark-cli
+        id: build_cli
         if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: make build
       - name: Prepare shared live E2E tenant token
@@ -385,7 +389,17 @@ jobs:
           TEST_BOT1_APP_SECRET: ${{ secrets.TEST_BOT1_APP_SECRET }}
         run: node scripts/fetch_e2e_tat.js
       - name: Run CLI E2E tests
+        # Keep an active Go test alive so t.Cleanup can finish. A queued stale
+        # run is rejected below before it can start live E2E.
+        if: ${{ always() && steps.e2e_domains.outputs.mode != 'skip' && steps.build_cli.outcome == 'success' && steps.live_e2e_tat.outcome == 'success' }}
+        shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_GENERATION: ${{ format('CI / {0}', github.event.pull_request.number || github.run_id) }}
           LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
           E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
           E2E_REASON: ${{ steps.e2e_domains.outputs.reason }}
@@ -393,6 +407,18 @@ jobs:
           E2E_TENANT_AUTH_FILE: ${{ steps.live_e2e_tat.outputs.path }}
           TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
         run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            workflow_id="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" --jq '.workflow_id')"
+            newer_runs="$(
+              gh api --paginate "repos/$REPOSITORY/actions/workflows/$workflow_id/runs?event=pull_request&per_page=100" |
+                jq -r --arg generation "$RUN_GENERATION" --argjson run_number "$RUN_NUMBER" \
+                  '.workflow_runs[] | select(.display_title == $generation and .run_number > $run_number) | .id'
+            )"
+            if [ -n "$newer_runs" ]; then
+              echo "::error::Superseded before live E2E started by newer workflow run(s): $newer_runs"
+              exit 1
+            fi
+          fi
           if [ "$E2E_MODE" = "skip" ]; then
             echo "No live CLI E2E needed: $E2E_REASON"
             exit 0

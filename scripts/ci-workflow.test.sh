@@ -51,6 +51,12 @@ results_section="$(awk '
   in_job { print }
 ' "$workflow")"
 fork_safe_guard="github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork"
+live_job_condition="always() && ($fork_safe_guard) && needs.unit-test.result == 'success' && needs.lint.result == 'success' && needs.script-test.result == 'success' && needs.deterministic-gate.result == 'success'"
+
+if ! grep -Fq "run-name: \${{ format('CI / {0}', github.event.pull_request.number || github.run_id) }}" "$workflow"; then
+  echo "CI should expose a stable per-PR run generation for supersession checks" >&2
+  exit 1
+fi
 
 if ! grep -Fq 'group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}' <<<"$workflow_concurrency"; then
   echo "CI should deduplicate runs for the same pull request without grouping push or manual runs" >&2
@@ -225,23 +231,66 @@ if ! grep -Fq "deterministic-gate" <<<"$results_section"; then
   exit 1
 fi
 
-if ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$section"; then
-  echo "e2e-live should run on push and same-repository pull_request, but skip fork pull_request"
+if ! grep -Fq "if: \${{ $live_job_condition }}" <<<"$section"; then
+  echo "e2e-live should preserve active cleanup while requiring successful upstream gates and excluding fork pull requests"
   exit 1
 fi
 
-if ! grep -Fq "group: lark-cli-e2e-live-shared-bot" <<<"$section"; then
-  echo "e2e-live should serialize access to the shared bot credential and resource pool" >&2
+if ! grep -Fq "timeout-minutes: 30" <<<"$section"; then
+  echo "e2e-live should release the repository-wide slot after 30 minutes" >&2
+  exit 1
+fi
+
+if ! grep -Fq "group: lark-cli-e2e-live" <<<"$section"; then
+  echo "e2e-live should use one repository-wide execution slot" >&2
   exit 1
 fi
 
 if ! grep -Fq "cancel-in-progress: false" <<<"$section"; then
-  echo "e2e-live should queue shared-resource runs instead of cancelling an active live test" >&2
+  echo "e2e-live should queue waiting runs instead of cancelling an active live test" >&2
   exit 1
 fi
 
 if ! grep -Fq "queue: max" <<<"$section"; then
   echo "e2e-live should preserve queued runs instead of replacing an existing pending run" >&2
+  exit 1
+fi
+
+if ! grep -Fq "actions: read" <<<"$section"; then
+  echo "e2e-live should use read-only Actions access for the supersession check" >&2
+  exit 1
+fi
+
+live_test_step="$(awk '
+  /^      - name: Run CLI E2E tests/ { in_step = 1 }
+  in_step { print }
+  in_step && /^      - name: Publish CLI E2E test report/ { exit }
+' <<<"$section")"
+
+if ! grep -Fq "if: \${{ always() && steps.e2e_domains.outputs.mode != 'skip' && steps.build_cli.outcome == 'success' && steps.live_e2e_tat.outcome == 'success' }}" <<<"$live_test_step"; then
+  echo "the active live test step should survive ordinary workflow supersession only after setup succeeds" >&2
+  exit 1
+fi
+
+for required in \
+  'gh api "repos/$REPOSITORY/actions/runs/$RUN_ID"' \
+  'gh api --paginate "repos/$REPOSITORY/actions/workflows/$workflow_id/runs?event=pull_request&per_page=100"' \
+  '.display_title == $generation and .run_number > $run_number' \
+  '::error::Superseded before live E2E started' \
+  'exit 1'; do
+  if ! grep -Fq "$required" <<<"$live_test_step"; then
+    echo "the live startup check should fail closed before a superseded run starts live E2E: missing $required" >&2
+    exit 1
+  fi
+done
+
+if ! awk '
+  /::error::Superseded before live E2E started/ { superseded = 1; next }
+  superseded && /exit 1/ { rejected = 1 }
+  /go run gotest.tools\/gotestsum@/ { test_started = 1; if (!rejected) exit 2 }
+  END { exit rejected && test_started ? 0 : 1 }
+' <<<"$live_test_step"; then
+  echo "a superseded live run must stop before gotestsum starts" >&2
   exit 1
 fi
 
@@ -437,7 +486,7 @@ if grep -Fq '${{ secrets.CODECOV_TOKEN }}' <<<"$coverage_step" &&
 fi
 
 if grep -Fq '${{ secrets.' <<<"$section" &&
-   ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$section"; then
+   ! grep -Fq "$fork_safe_guard" <<<"$section"; then
   echo "live E2E secrets should be available on push and same-repository pull_request, but not fork pull_request" >&2
   exit 1
 fi
