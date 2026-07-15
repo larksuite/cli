@@ -1960,46 +1960,19 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"has_more":       false,
-					"record_id_list": []interface{}{"rec_1"},
-					"update":         map[string]interface{}{"Status": "Done"},
+					"ignored_fields": []interface{}{"Formula"},
 				},
 			},
 		})
-		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_1"],"patch":{"Status":"Done"}}`}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"update_records":{"rec_1":{"Status":["Done"]}}}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"update"`) || !strings.Contains(got, `"Done"`) {
+		if got := stdout.String(); !strings.Contains(got, `"ignored_fields"`) || !strings.Contains(got, `"Formula"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
 
 	t.Run("batch update passthrough", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		updateStub := &httpmock.Stub{
-			Method: "POST",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_update",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"record_id_list": []interface{}{"rec_1"},
-				},
-			},
-		}
-		reg.Register(updateStub)
-		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_1"],"patch":{"Name":"Alice","Status":"Done"}}`}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) {
-			t.Fatalf("stdout=%s", got)
-		}
-		body := string(updateStub.CapturedBody)
-		if !strings.Contains(body, `"record_id_list":["rec_1"]`) || !strings.Contains(body, `"patch":{"Name":"Alice","Status":"Done"}`) {
-			t.Fatalf("request body=%s", body)
-		}
-	})
-
-	t.Run("batch update per-record passthrough", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		updateStub := &httpmock.Stub{
 			Method: "POST",

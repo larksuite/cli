@@ -768,8 +768,8 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "record batch update json",
 			shortcut: BaseRecordBatchUpdate,
 			wantHelp: []string{
-				`use {"record_id_list":["rec_xxx"],"patch":{"Status":"Done"}} for one shared patch`,
-				`{"update_records":{"rec_xxx":{"Status":"Done"}}} for per-record values`,
+				"update_records maps each record ID to its field map",
+				`{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`,
 			},
 		},
 	}
@@ -836,10 +836,10 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 			name:     "record batch update",
 			shortcut: BaseRecordBatchUpdate,
 			wantTips: []string{
-				"Two mutually exclusive modes are supported",
+				"Happy path field: update_records",
 				"update_records maps each record ID to its own field map",
 				`{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`,
-				"returns only optional ignored_fields",
+				"contains only optional ignored_fields",
 				"does not check whether record IDs exist",
 				"use +field-list to confirm real writable fields",
 				"Batch update supports max 200 records per call",
