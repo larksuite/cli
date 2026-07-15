@@ -21,6 +21,13 @@ metadata:
 - 如果 `lark-cli` 提示 `missing required scope(s)` / `permission_violations`，不要走普通权限申请流程；先提示用户加入早鸟群确认内测权限已开通，再按“应用身份权限配置检查”处理应用权限、安装和数据范围。
 - 如果 `lark-cli` 返回 `error.code=20017` / `ErrNotInGray`，提示用户加入早鸟群：`https://go.larkoffice.com/join-chat/2f4nb0e1-fe00-4f67-bed7-25beaf533fbd`。
 
+## 会议查询权限
+
+`+meeting-list-active` 和 `+meeting-events` 缺少权限时，先按上面的内测提示确认功能已开通，再根据当前调用身份处理：
+
+- 用户身份 `--as user`：按 CLI 提示为当前用户授权 `vc:meeting.meetingevent:read`。
+- 应用身份 `--as bot`：请应用开发者开通 `vc:meeting.bot.join:write`，不要执行 `auth login`；随后按“应用身份权限配置检查”确认应用发布、安装和数据范围。
+
 ## 定位
 
 本 skill 与 [`lark-vc`](../lark-vc/SKILL.md) 并列：
@@ -168,15 +175,6 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 - [`+meeting-message-send`](references/lark-vc-agent-meeting-message-send.md)：会中文本、完整 `emoji_type` 列表、身份延续和写操作风险。
 - [`+meeting-leave`](references/lark-vc-agent-meeting-leave.md)：`meeting_id` 的来源与写操作可见性。
 
-## 会议查询权限
-
-`+meeting-list-active` 和 `+meeting-events` 按调用身份使用以下 scope：
-
-| 调用身份 | scope |
-| -------- | ----- |
-| 用户身份 `--as user` | `vc:meeting.meetingevent:read` |
-| 应用身份 `--as bot` | `vc:meeting.bot.join:write` |
-
 ## 应用身份权限配置检查
 
 应用身份 `--as bot` 报 `no permission`、`missing required scope(s)`、`permission_violations`、`ErrNotInGray` 或 `20017` 时，不要引导用户执行 `auth login`。按顺序检查：
@@ -189,7 +187,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 
 ## 用户身份被拒绝时
 
-用户身份 `--as user` 报权限或身份不支持类错误时，不要反复引导用户执行 `auth login`。先以 CLI 返回的 metadata / error envelope 为准判断：如果错误表明当前接口不支持用户身份访问，再按用户意图切换处理：
+用户身份 `--as user` 报普通 scope 缺失时，按“会议查询权限”处理；不要把它解释为接口不支持用户身份。只有 CLI 明确表明当前接口不支持用户身份访问时，才按用户意图切换处理：
 
 1. 如果用户只是查询当前登录用户所在的进行中会议，说明当前接口链路不支持用户身份访问，改用应用身份流程；需要目标用户 open_id，并要求应用机器人已在会中或先按用户确认执行入会。
 2. 如果用户明确要求应用机器人入会、旁听、代参会或读取应用机器人可见事件，直接切到 `--as bot`，并按上面的应用身份权限配置检查处理。
