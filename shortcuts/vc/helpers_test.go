@@ -5,6 +5,7 @@ package vc
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -72,7 +73,10 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 			t.Fatalf("Hint = %q, want app developer guidance", pe.Hint)
 		}
 		if pe.ConsoleURL == "" {
-			t.Fatal("ConsoleURL is empty, want upstream developer-console URL preserved")
+			t.Fatal("ConsoleURL is empty, want identity-specific developer-console URL")
+		}
+		if strings.Contains(pe.ConsoleURL, url.QueryEscape(meetingQueryUserScope)) || !strings.Contains(pe.ConsoleURL, url.QueryEscape(meetingQueryBotScope)) {
+			t.Fatalf("ConsoleURL = %q, want only bot scope", pe.ConsoleURL)
 		}
 	case output.LarkErrUserScopeInsufficient:
 		if !strings.Contains(pe.Hint, "auth login --scope") {
@@ -137,8 +141,13 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 			if len(pe.MissingScopes) != 2 || pe.MissingScopes[0] != meetingQueryUserScope || pe.MissingScopes[1] != meetingQueryBotScope {
 				t.Fatalf("MissingScopes = %v, want original scope diagnostics", pe.MissingScopes)
 			}
-			if pe.ConsoleURL != original.ConsoleURL {
-				t.Fatalf("ConsoleURL = %q, want original %q", pe.ConsoleURL, original.ConsoleURL)
+			if tc.identity == core.AsBot {
+				wantConsoleURL := "https://open.feishu.cn/page/scope-apply?clientID=test-app&scopes=vc%3Ameeting.bot.join%3Awrite"
+				if pe.ConsoleURL != wantConsoleURL {
+					t.Fatalf("ConsoleURL = %q, want %q", pe.ConsoleURL, wantConsoleURL)
+				}
+			} else if pe.ConsoleURL != "" {
+				t.Fatalf("ConsoleURL = %q, user-scope error must not expose a developer-console URL", pe.ConsoleURL)
 			}
 			assertMeetingQueryPermissionError(t, got, tc.identity, tc.code)
 		})

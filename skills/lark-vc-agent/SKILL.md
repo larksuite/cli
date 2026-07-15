@@ -23,7 +23,7 @@ metadata:
 
 ## 会议查询权限
 
-`+meeting-list-active` 和 `+meeting-events` 缺少权限时，先按上面的内测提示确认功能已开通，再根据当前调用身份处理：
+`+meeting-list-active` 和 `+meeting-events` 缺少权限时，先按上面的内测提示确认功能已开通，再读取 CLI 错误中的 `hint`，并根据当前调用身份处理：
 
 - 用户身份 `--as user`：按 CLI 提示为当前用户授权 `vc:meeting.meetingevent:read`。
 - 应用身份 `--as bot`：请应用开发者开通 `vc:meeting.bot.join:write`，不要执行 `auth login`；随后按“应用身份权限配置检查”确认应用发布、安装和数据范围。

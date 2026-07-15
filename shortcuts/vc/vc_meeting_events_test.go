@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -700,7 +701,10 @@ func TestMeetingEvents_Execute_NormalizesMeetingScopeError(t *testing.T) {
 		t.Fatalf("Hint = %q, want bot scope %q", permissionErr.Hint, meetingQueryBotScope)
 	}
 	if permissionErr.ConsoleURL == "" {
-		t.Fatal("ConsoleURL is empty, want developer-console URL preserved")
+		t.Fatal("ConsoleURL is empty, want identity-specific developer-console URL")
+	}
+	if strings.Contains(permissionErr.ConsoleURL, url.QueryEscape(meetingQueryUserScope)) || !strings.Contains(permissionErr.ConsoleURL, url.QueryEscape(meetingQueryBotScope)) {
+		t.Fatalf("ConsoleURL = %q, want only bot scope", permissionErr.ConsoleURL)
 	}
 }
 
