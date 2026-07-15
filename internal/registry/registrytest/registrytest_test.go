@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/registry"
 )
 
 func TestValidateConfigDir(t *testing.T) {
@@ -148,4 +149,30 @@ func TestSeedRejectsUnsafeConfigDir(t *testing.T) {
 			t.Fatal("Seed wrote into the rejected config dir")
 		}
 	})
+}
+
+// TestSeedWritesFixtureAndInitializesRegistry covers the seeding happy path:
+// cache files land under the config dir, the registry initializes from them,
+// and both self-checks pass.
+func TestSeedWritesFixtureAndInitializesRegistry(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+
+	if err := Seed(root); err != nil {
+		t.Fatalf("Seed() error = %v, want nil", err)
+	}
+	for _, name := range []string{"remote_meta.json", "remote_meta.meta.json"} {
+		if _, err := os.Stat(filepath.Join(configDir, "cache", name)); err != nil {
+			t.Errorf("cache file %s: %v", name, err)
+		}
+	}
+	if got := os.Getenv("LARKSUITE_CLI_REMOTE_META"); got != "off" {
+		t.Errorf("LARKSUITE_CLI_REMOTE_META = %q, want off after seeding", got)
+	}
+	for _, service := range []string{"calendar", "im", "task"} {
+		if _, ok := registry.ServiceTyped(service); !ok {
+			t.Errorf("registry missing service %s after seeding", service)
+		}
+	}
 }
