@@ -31,10 +31,12 @@ func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err er
 	case runtime.As() == core.AsUser && permissionErr.Code == output.LarkErrUserScopeInsufficient:
 		permissionErr.Message = "access denied for user identity; recommended scope: " + meetingQueryUserScope
 		permissionErr.WithHint("for user identity, run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", meetingQueryUserScope)
+		permissionErr.WithMissingScopes(meetingQueryUserScope)
 		return err
 	case runtime.As() == core.AsBot && permissionErr.Code == output.LarkErrAppScopeNotEnabled:
 		permissionErr.Message = "access denied for bot identity; recommended scope: " + meetingQueryBotScope
 		permissionErr.WithHint("ask the app developer to enable scope %s", meetingQueryBotScope)
+		permissionErr.WithMissingScopes(meetingQueryBotScope)
 		if runtime.Config != nil {
 			consoleURL := registry.BuildConsoleScopeURL(runtime.Config.Brand, runtime.Config.AppID, meetingQueryBotScope)
 			if consoleURL != "" {

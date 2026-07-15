@@ -61,6 +61,9 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 	if !strings.Contains(pe.Hint, wantScope) {
 		t.Fatalf("Hint = %q, want recommended scope %q", pe.Hint, wantScope)
 	}
+	if len(pe.MissingScopes) != 1 || pe.MissingScopes[0] != wantScope {
+		t.Fatalf("MissingScopes = %v, want only recommended scope %q", pe.MissingScopes, wantScope)
+	}
 	if strings.Contains(pe.Hint, "either compatible scope") {
 		t.Fatalf("Hint = %q, must not repeat the OR-scope explanation from message", pe.Hint)
 	}
@@ -138,13 +141,13 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 			if pe.Message != wantMessage {
 				t.Fatalf("Message = %q, want %q", pe.Message, wantMessage)
 			}
-			if len(pe.MissingScopes) != 2 || pe.MissingScopes[0] != meetingQueryUserScope || pe.MissingScopes[1] != meetingQueryBotScope {
-				t.Fatalf("MissingScopes = %v, want original scope diagnostics", pe.MissingScopes)
-			}
 			if tc.identity == core.AsBot {
-				wantConsoleURL := "https://open.feishu.cn/page/scope-apply?clientID=test-app&scopes=vc%3Ameeting.bot.join%3Awrite"
-				if pe.ConsoleURL != wantConsoleURL {
-					t.Fatalf("ConsoleURL = %q, want %q", pe.ConsoleURL, wantConsoleURL)
+				consoleURL, err := url.Parse(pe.ConsoleURL)
+				if err != nil {
+					t.Fatalf("ConsoleURL = %q is invalid: %v", pe.ConsoleURL, err)
+				}
+				if consoleURL.Host == "" || consoleURL.Query().Get("clientID") != "test-app" || consoleURL.Query().Get("scopes") != meetingQueryBotScope {
+					t.Fatalf("ConsoleURL = %q, want test-app and only bot scope", pe.ConsoleURL)
 				}
 			} else if pe.ConsoleURL != "" {
 				t.Fatalf("ConsoleURL = %q, user-scope error must not expose a developer-console URL", pe.ConsoleURL)
