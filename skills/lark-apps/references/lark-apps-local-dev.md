@@ -1,6 +1,6 @@
-# lark-apps 本地全栈开发
+# lark-apps 本地开发
 
-适用：用户要把妙搭全栈应用源码拉到本地，用本地 code agent/IDE 开发、调试数据库，再发布。
+适用：用户要把妙搭应用（full_stack 或 html）源码拉到本地，用本地 code agent/IDE 开发、调试数据库，再发布。
 
 ## 新建 vs 已有应用
 
@@ -10,6 +10,8 @@
 - **已有应用**（本地还没有源码）：跳过 `+create`，先按下方「存量应用入口」拿 `app_id`，再 `+init`（或 `+git-credential-init` + `git clone`）把它拉到本地，然后照常开发。
 
 ## 端到端流程（新建应用）
+
+### full_stack
 
 `+create(full_stack)` -> `+init`（或手动 `+git-credential-init` + `git clone`）-> 读仓库 Skill -> `npm install && npm run dev` -> 按需 `+db-*` 调库 -> 非自动化改动按本页 commit/push/release；包含自动化 handler 时，在任何 release 前转到 [automation SOP](lark-apps-automation.md)，由它接管状态门禁和完整发布。
 
@@ -32,6 +34,26 @@ git add <本次开发的文件>          # 提交粒度见下方「改完代码�
 git commit -m "feat: ..."
 git push origin sprint/default
 lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
+```
+
+### html
+
+`+create(html)` -> `+init` -> 本地开发 HTML -> `git add` + `git commit` -> `git push origin sprint/default` -> `+release-create` -> `+release-get`。
+
+```bash
+lark-cli apps +create --name "活动页" --app-type html --as user
+
+lark-cli apps +init --app-id app_xxx --dir ./my-page
+
+cd ./my-page
+# html 类型无需 npm install，+init 已跳过依赖安装
+# 直接开发 HTML 文件
+
+# 开发完成后提交并推送
+git add <本次开发的文件>
+git commit -m "feat: ..."
+git push origin sprint/default
+lark-cli apps +release-create --app-id app_xxx
 ```
 
 `+init` 是推荐便捷入口；想逐步手动控制时，先 `+git-credential-init` 拿 `repository_url`，再用原生 `git clone` / `git checkout sprint/default`。
