@@ -10,7 +10,7 @@ metadata:
 
 # apps (v1)
 
-妙搭应用属于用户资产。默认用 `--as user`；认证、scope、exit-10、高风险确认、`_notice` 等通用处理只读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不要在本 skill 里复制。妙搭应用有三条开发路径：**本地全栈**（拉源码本地写）/ **HTML 托管**（发布静态产物）/ **云端会话**（妙搭 AI 生成）。
+妙搭应用属于用户资产。默认用 `--as user`；认证、scope、exit-10、高风险确认、`_notice` 等通用处理只读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不要在本 skill 里复制。妙搭应用有两条开发路径：**本地开发**（拉源码本地写）/ **云端会话**（妙搭 AI 生成）。
 
 ## 身份与授权
 
@@ -66,7 +66,7 @@ lark-cli auth login --domain apps
 |---|---|
 | 静态展示 / 单页 / PPT/deck / demo / 落地页 / 仪表盘 / UI mockup / 可交互原型 / 线框图 / 视觉探索 / 无后端状态 | `app_type=html`，走本地开发链路，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) |
 | 登录 / 数据库 / 持久化 / 多人协作 / 增删改查 / 报名 / 投票 / 站会 / OKR / 泛称"系统·工具" | `app_type=full_stack` |
-| 用户要自己写 / 本地 IDE·code agent / 拉源码到本地 / 交研发 | 本地全栈，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) |
+| 用户要自己写 / 本地 IDE·code agent / 拉源码到本地 / 交研发 | 本地开发，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) |
 | 让妙搭 AI 云端生成 / 对话式 / 自己不碰代码 | 云端会话，读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |
 | 未表达"谁来写"偏好 | **必须先问**（本地代码开发 vs 云端 AI 生成）；选定前不擅自选边、不暗示默认，不得以"需求不模糊"为由跳过提问直接 `+init` / `git clone` / `+session-create` / 首轮 `+chat` |
 | 修改已有 + 当前目录是 `.spark/meta.json` 项目 | 直接继续本地按意图路由，不必问也不必判云端 |
