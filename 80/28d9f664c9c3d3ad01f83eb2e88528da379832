@@ -1,0 +1,21 @@
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_2c1f5fd0037928::t_2e82c1c7880631 580-598,649,670
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8028d9f664c9c3d3ad01f83eb2e88528da379832",
+  "prompts": {},
+  "sessions": {
+    "s_2c1f5fd0037928": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f63c6-7d0d-7302-92ca-b9b4a2f69352",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
