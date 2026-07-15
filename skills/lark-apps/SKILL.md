@@ -32,7 +32,7 @@ lark-cli auth login --domain apps
 | 找已有 app_id、按名字过滤应用 | `+list --keyword <name>` | [`lark-apps-list.md`](references/lark-apps-list.md) |
 | 查单个应用详情（类型、名称、发布状态等） | `+get --app-id <app_id>` | [`lark-apps-get.md`](references/lark-apps-get.md) |
 | 改应用名或描述 | `+update` | [`lark-apps-update.md`](references/lark-apps-update.md) |
-| 创意设计产物（静态页 / PPT / deck / 落地页 / 仪表盘 / UI mockup / 原型 / 线框图 / 视觉探索） | 先加载 [`creative-design`](creative-design/SKILL.md) skill 产出 HTML，完成后 `+html-publish` 发布 | [`creative-design/SKILL.md`](creative-design/SKILL.md), [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) |
+| 创意设计产物（静态页 / PPT / deck / 落地页 / 仪表盘 / UI mockup / 原型 / 线框图 / 视觉探索） | 加载 [`creative-design`](creative-design/SKILL.md) skill 产出 HTML，读取 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) 按本地开发流程执行开发与发布 | [`creative-design/SKILL.md`](creative-design/SKILL.md), [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) |
 | 发布本地 `index.html` 或静态目录为可访问 URL | `+html-publish` | [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) |
 | 开发已有应用 / 初始化本地仓库（开发方式已定为本地后；先解析 app_id，勿 `+create` 新建） | `+init`（或手动 `+git-credential-init` + 原生 git）。**执行前必读** [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)；修改源码还须遵守下方「平台资源与应用源码边界」 | [`lark-apps-init.md`](references/lark-apps-init.md), [`lark-apps-git-credential.md`](references/lark-apps-git-credential.md) |
 | 本地开发时 `.env.local` 损坏/丢失，重新拉取启动期环境变量 | `+env-pull` | [`lark-apps-env-pull.md`](references/lark-apps-env-pull.md) |
@@ -64,7 +64,7 @@ lark-cli auth login --domain apps
 
 | 信号 | 判定 |
 |---|---|
-| 静态展示 / 单页 / PPT/deck / demo / 落地页 / 仪表盘 / UI mockup / 可交互原型 / 线框图 / 视觉探索 / 无后端状态 | `app_type=html`，跳过本地/云端轴。先加载 [`creative-design`](creative-design/SKILL.md) skill 按其方法论产出 HTML，发布走 [`+html-publish`](references/lark-apps-html-publish.md)（含"未提部署→先问是否发布"） |
+| 静态展示 / 单页 / PPT/deck / demo / 落地页 / 仪表盘 / UI mockup / 可交互原型 / 线框图 / 视觉探索 / 无后端状态 | `app_type=html`，走本地开发链路，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) |
 | 登录 / 数据库 / 持久化 / 多人协作 / 增删改查 / 报名 / 投票 / 站会 / OKR / 泛称"系统·工具" | `app_type=full_stack` |
 | 用户要自己写 / 本地 IDE·code agent / 拉源码到本地 / 交研发 | 本地全栈，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) |
 | 让妙搭 AI 云端生成 / 对话式 / 自己不碰代码 | 云端会话，读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |

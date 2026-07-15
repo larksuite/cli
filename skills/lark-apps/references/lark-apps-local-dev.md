@@ -106,5 +106,4 @@ lark-cli apps +list --keyword "应用名"
 
 ## 何时不用
 
-- 用户只想发布现成 HTML / 静态目录拿分享链接：读 [`lark-apps-html-publish.md`](lark-apps-html-publish.md)。
 - 用户明确要云端妙搭 Agent 生成/迭代，而不是本地写代码：读 [`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md)。
