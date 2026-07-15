@@ -13,7 +13,7 @@ import (
 
 // AppsCacheDelete deletes a single business cache key (idempotent).
 //
-// DELETE /apps/{app_id}/cache?env=&key=。缓存是可回源重建的派生数据、删单 key 仅触发一次回源，
+// DELETE /apps/{app_id}/cache?env=&key=。缓存是派生数据、删单 key 影响面小且可重建，
 // 故定 write（非 high-risk-write、不需 --yes）。目标不存在按幂等成功处理（deleted_key_count=0）。
 var AppsCacheDelete = common.Shortcut{
 	Service:     appsService,
@@ -55,7 +55,7 @@ var AppsCacheDelete = common.Shortcut{
 		out := map[string]interface{}{
 			"key":               key,
 			"environment":       resolvedEnv(data, rctx),
-			"deleted_key_count": data["deleted_key_count"],
+			"deleted_key_count": cacheInt(data["deleted_key_count"]),
 		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			renderCacheDeletePretty(w, out)

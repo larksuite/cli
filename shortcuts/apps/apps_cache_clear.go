@@ -39,20 +39,20 @@ var AppsCacheClear = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST(appCacheClearPath(appID)).
 			Desc("Clear all cache entries for the app in the given environment").
-			Body(cacheEnvBody(rctx))
+			Body(dbEnvParams(rctx, map[string]interface{}{}))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, err := requireAppID(rctx.Str("app-id"))
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPITyped("POST", appCacheClearPath(appID), nil, cacheEnvBody(rctx))
+		data, err := rctx.CallAPITyped("POST", appCacheClearPath(appID), nil, dbEnvParams(rctx, map[string]interface{}{}))
 		if err != nil {
 			return withAppsHint(err, appIDListHint)
 		}
 		out := map[string]interface{}{
 			"environment":       resolvedEnv(data, rctx),
-			"deleted_key_count": data["deleted_key_count"],
+			"deleted_key_count": cacheInt(data["deleted_key_count"]),
 		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			renderCacheClearPretty(w, out)

@@ -65,7 +65,7 @@ var AppsCacheGet = common.Shortcut{
 // projectCacheGet 组装 cache-get 输出：key 回显、environment 取 resolved env、exists 直读；
 // 命中时带 ttl_ms + value（原始串）+ value_size_bytes（CLI 算），未命中时 ttl_ms/value_size_bytes 为 null、无 value。
 func projectCacheGet(data map[string]interface{}, key string, rctx *common.RuntimeContext) map[string]interface{} {
-	exists, _ := data["exists"].(bool)
+	exists := cacheBool(data["exists"])
 	out := map[string]interface{}{
 		"key":         key,
 		"environment": resolvedEnv(data, rctx),
@@ -73,7 +73,7 @@ func projectCacheGet(data map[string]interface{}, key string, rctx *common.Runti
 	}
 	if exists {
 		val := common.GetString(data, "value")
-		out["ttl_ms"] = data["ttl_ms"]
+		out["ttl_ms"] = cacheInt(data["ttl_ms"])
 		out["value_size_bytes"] = len([]byte(val))
 		out["value"] = val
 	} else {

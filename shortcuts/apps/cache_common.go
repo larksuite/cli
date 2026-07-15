@@ -7,17 +7,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// 应用运行时缓存（Cache）调试命令共享件：路由 + 环境体 + 渲染。
+// 应用运行时缓存（Cache）调试命令共享件：路由 + 环境 flag + 渲染。
 //
-// 三条命令都走 spark OpenAPI `/apps/{app_id}/cache[/clear]`，按运行环境（env→dbBranch）隔离，
-// 复用 db 家族的 --environment flag（dbEnvFlags/dbEnv/dbEnvParams/rejectLegacyEnvFlag）：
-// get/delete 把 env 放 query（省略即服务端自动选分支），clear 把 env 放 body。
+// 三条命令都走 spark OpenAPI `/apps/{app_id}/cache[/clear]`，按运行环境（env→dbBranch）隔离：
+// 环境 flag 用 cacheEnvFlag()（只 --environment，不带 db 家族的旧名 --env），env 值经 dbEnv 读、
+// 经 dbEnvParams 注入——get/delete 放 query，clear 放 body（省略即服务端自动选分支）。
 
 // appCachePath 返回缓存单 key 读/删 URL：cache（GET 读、DELETE 删，靠方法区分）。
 func appCachePath(appID string) string {
@@ -40,14 +41,26 @@ func cacheEnvFlag() common.Flag {
 	}
 }
 
-// cacheEnvBody 组装 clear 的请求体：仅当显式指定 --environment 才带 env 键；
-// 省略时不发（由服务端按应用多环境状态自动选分支），与家族 omit-empty 约定一致。
-func cacheEnvBody(rctx *common.RuntimeContext) map[string]interface{} {
-	body := map[string]interface{}{}
-	if env := dbEnv(rctx); env != "" {
-		body["env"] = env
+// cacheBool 防御性解析布尔：真 bool 直接用；若服务端把 exists 返成字符串 "true"/"false" 也归一成 bool，
+// 其它类型按 false。避免 exists 万一以字符串形态出现时被误判成未命中（hit→miss 翻转）。
+func cacheBool(v interface{}) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case string:
+		return strings.EqualFold(strings.TrimSpace(x), "true")
 	}
-	return body
+	return false
+}
+
+// cacheInt 把服务端下发的数值字段归一成 int64（无法解析→nil）。本仓惯例：数值可能以字符串下发
+// （见 numericAsFloat 的 string 分支），若直接透传，--format json 的字段类型会随服务端 wire 形态漂移
+// （number ↔ string）。归一后输出类型恒定为数字或 null，消费方无需自己容忍字符串。
+func cacheInt(raw interface{}) interface{} {
+	if f, ok := numericAsFloat(raw); ok {
+		return int64(f)
+	}
+	return nil
 }
 
 // resolvedEnv 取服务端回吐的 resolved env；缺失时兜底成请求侧 --environment（可能为空）。

@@ -45,6 +45,10 @@ func TestAppsCacheGet_HitJSON(t *testing.T) {
 	if sz, _ := numericAsFloat(d["value_size_bytes"]); int(sz) != len(cacheValueStr) {
 		t.Fatalf("value_size_bytes = %v, want %d", d["value_size_bytes"], len(cacheValueStr))
 	}
+	// ttl_ms 必须是 JSON number（透传服务端数字，不得变成字符串）；JSON 解析后为 float64。
+	if _, ok := d["ttl_ms"].(float64); !ok {
+		t.Fatalf("ttl_ms must be a JSON number, got %T (%v)", d["ttl_ms"], d["ttl_ms"])
+	}
 }
 
 // TestAppsCacheGet_HitPretty：pretty 把 value 反序列化后展开（含缩进后的字段），并打元信息标签。
@@ -90,6 +94,90 @@ func TestAppsCacheGet_Miss(t *testing.T) {
 	}
 	if d["ttl_ms"] != nil || d["value_size_bytes"] != nil {
 		t.Fatalf("miss ttl_ms/value_size_bytes must be null: %v", d)
+	}
+}
+
+// TestAppsCacheGet_ExistsAsString：服务端把 exists 返成字符串 "true" 时仍按命中处理
+// （cacheBool 容错，防 exists 以字符串形态出现被误判成未命中、hit→miss 翻转）。
+func TestAppsCacheGet_ExistsAsString(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: cacheURL,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"env": "online", "exists": "true", "ttl_ms": 272000, "value": cacheValueStr,
+		}},
+	})
+	if err := runAppsShortcut(t, AppsCacheGet,
+		[]string{"+cache-get", "--app-id", "app_x", "--environment", "online", "--key", "k:1", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	d := parseEnvelopeData(t, stdout)
+	if d["exists"] != true {
+		t.Fatalf("exists string \"true\" 应按命中解析, got exists=%v", d["exists"])
+	}
+	if v, _ := d["value"].(string); v != cacheValueStr {
+		t.Fatalf("命中应带 value, got %v", d["value"])
+	}
+}
+
+// TestAppsCacheGet_PrettyNonJSONFallback：pretty 下 value 不是合法 JSON 时降级原样输出
+// （safeParseJSON 解析失败→原样打印，不报错、不吞值）。补齐 HitPretty 只覆盖了"能反序列化"路径的缺口。
+func TestAppsCacheGet_PrettyNonJSONFallback(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: cacheURL,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"env": "online", "exists": true, "ttl_ms": 272000, "value": "hello-plain-not-json",
+		}},
+	})
+	if err := runAppsShortcut(t, AppsCacheGet,
+		[]string{"+cache-get", "--app-id", "app_x", "--environment", "online", "--key", "k:1", "--format", "pretty", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	if !strings.Contains(stdout.String(), "hello-plain-not-json") {
+		t.Fatalf("非 JSON value 应原样输出（降级）, got:\n%s", stdout.String())
+	}
+}
+
+// TestAppsCacheGet_TTLAsStringNormalized：服务端把 ttl_ms 返成字符串 "272000" 时，
+// 输出的 ttl_ms 必须归一成 JSON number（cacheInt），不得随 wire 形态漂移成字符串。
+func TestAppsCacheGet_TTLAsStringNormalized(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: cacheURL,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"env": "online", "exists": true, "ttl_ms": "272000", "value": cacheValueStr,
+		}},
+	})
+	if err := runAppsShortcut(t, AppsCacheGet,
+		[]string{"+cache-get", "--app-id", "app_x", "--environment", "online", "--key", "k:1", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	d := parseEnvelopeData(t, stdout)
+	f, ok := d["ttl_ms"].(float64)
+	if !ok {
+		t.Fatalf("ttl_ms string wire 应归一成 JSON number, got %T (%v)", d["ttl_ms"], d["ttl_ms"])
+	}
+	if int(f) != 272000 {
+		t.Fatalf("ttl_ms = %v, want 272000", f)
+	}
+}
+
+// TestAppsCacheDelete_CountAsStringNormalized：服务端把 deleted_key_count 返成字符串 "1" 时，
+// 输出必须归一成 JSON number（cacheInt）。
+func TestAppsCacheDelete_CountAsStringNormalized(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE", URL: cacheURL,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"env": "dev", "deleted_key_count": "1"}},
+	})
+	if err := runAppsShortcut(t, AppsCacheDelete,
+		[]string{"+cache-delete", "--app-id", "app_x", "--environment", "dev", "--key", "k:1", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	d := parseEnvelopeData(t, stdout)
+	if _, ok := d["deleted_key_count"].(float64); !ok {
+		t.Fatalf("deleted_key_count string wire 应归一成 JSON number, got %T (%v)", d["deleted_key_count"], d["deleted_key_count"])
 	}
 }
 
