@@ -173,7 +173,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 - 长度/结构
   - `group_by` 最多 2 个；每项 `field_name` 必填
   - `group_by[].sort.type` 取值 `group|value|view`；`order` 取值 `asc|desc`
-- 规范化（CLI 自动处理）
+- 规范化（CLI 自动处理；`--no-validate` 时不生效，`data_config` 原样透传给后端）
   - `series[].rollup` 自动转成大写（如 `sum` → `SUM`）
   - `group_by[].sort.type/order` 自动转成小写
   - `group_by[].sort.type` 为 `group` 或 `view` 且缺少 `order` 时，自动补 `order:"asc"`；`value` 排序不会自动补方向

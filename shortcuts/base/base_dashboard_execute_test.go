@@ -718,6 +718,56 @@ func TestBaseDashboardBlockCreate_IllegalSortOrderType(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockCreate_MissingSortOrder pins the full create-path behavior
+// when sort.order is absent: group/view are normalized to order:"asc" and succeed
+// (matching the documented auto-fill), while value has no safe default and must
+// surface a typed validation error. These run end-to-end (Validate → normalize →
+// validate), so reverting the normalize/validate change flips a case and fails.
+func TestBaseDashboardBlockCreate_MissingSortOrder(t *testing.T) {
+	dc := func(sortType string) string {
+		return `{"table_name":"T","series":[{"field_name":"金额","rollup":"SUM"}],` +
+			`"group_by":[{"field_name":"状态","mode":"integrated","sort":{"type":"` + sortType + `"}}]}`
+	}
+
+	// group / view: absent order is auto-filled with "asc" and the request goes through.
+	for _, sortType := range []string{"group", "view"} {
+		t.Run(sortType+" defaults to asc", func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+				"--name", "OK", "--type", "column", "--data-config", dc(sortType),
+				"--dry-run", "--format", "pretty"}
+			if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+				t.Fatalf("err=%v", err)
+			}
+			if got := stdout.String(); !strings.Contains(got, `"order":"asc"`) {
+				t.Fatalf("expected normalized order:asc for type=%s, stdout=%s", sortType, got)
+			}
+		})
+	}
+
+	// value: no meaningful default direction, so a missing order is a typed error.
+	t.Run("value requires explicit order", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+			"--name", "Bad", "--type", "column", "--data-config", dc("value")}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for value sort missing order, got nil (stdout=%s)", stdout.String())
+		}
+		p, ok := errs.ProblemOf(err)
+		if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("expected validation/invalid_argument problem, got %T %v", err, err)
+		}
+		var ve *errs.ValidationError
+		if !errors.As(err, &ve) || ve.Param != "--data-config" {
+			t.Fatalf("expected param --data-config, got %T %v", err, err)
+		}
+		if !strings.Contains(ve.Error(), "sort.order 缺失") {
+			t.Fatalf("error should report missing order, got: %v", ve)
+		}
+	})
+}
+
 // TestNormalizeDataConfigSortOrder pins the normalization contract for sort.order:
 // only a truly absent key gets the "asc" default; a present illegal value is left
 // untouched so validation can reject it; a valid string is lower-cased.
