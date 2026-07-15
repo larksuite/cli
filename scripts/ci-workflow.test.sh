@@ -274,11 +274,12 @@ fi
 
 for required in \
   'gh api "repos/$REPOSITORY/actions/runs/$RUN_ID"' \
-  'gh api --paginate "repos/$REPOSITORY/actions/workflows/$workflow_id/runs?event=pull_request&per_page=100"' \
-  '.display_title == $generation and .run_number > $run_number' \
+  'gh api --paginate -X GET "repos/$REPOSITORY/actions/workflows/$workflow_id/runs"' \
+  '-f event=pull_request -f branch="$GITHUB_HEAD_REF" -f per_page=100' \
+  '.head_repository.full_name == $repository and .display_title == $generation and .run_number > $run_number' \
   '::error::Superseded before live E2E started' \
   'exit 1'; do
-  if ! grep -Fq "$required" <<<"$live_test_step"; then
+  if ! grep -Fq -- "$required" <<<"$live_test_step"; then
     echo "the live startup check should fail closed before a superseded run starts live E2E: missing $required" >&2
     exit 1
   fi

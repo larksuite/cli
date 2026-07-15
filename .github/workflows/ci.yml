@@ -410,9 +410,10 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             workflow_id="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" --jq '.workflow_id')"
             newer_runs="$(
-              gh api --paginate "repos/$REPOSITORY/actions/workflows/$workflow_id/runs?event=pull_request&per_page=100" |
-                jq -r --arg generation "$RUN_GENERATION" --argjson run_number "$RUN_NUMBER" \
-                  '.workflow_runs[] | select(.display_title == $generation and .run_number > $run_number) | .id'
+              gh api --paginate -X GET "repos/$REPOSITORY/actions/workflows/$workflow_id/runs" \
+                -f event=pull_request -f branch="$GITHUB_HEAD_REF" -f per_page=100 |
+                jq -r --arg repository "$REPOSITORY" --arg generation "$RUN_GENERATION" --argjson run_number "$RUN_NUMBER" \
+                  '.workflow_runs[] | select(.head_repository.full_name == $repository and .display_title == $generation and .run_number > $run_number) | .id'
             )"
             if [ -n "$newer_runs" ]; then
               echo "::error::Superseded before live E2E started by newer workflow run(s): $newer_runs"
