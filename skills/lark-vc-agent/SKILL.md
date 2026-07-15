@@ -181,9 +181,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 
 应用身份 `--as bot` 报 `no permission`、`missing required scope(s)`、`permission_violations`、`ErrNotInGray` 或 `20017` 时，不要引导用户执行 `auth login`。按顺序检查：
 
-先按错误中的 `hint` 处理；返回 `console_url` 时将其原样提供给用户。
-
-1. 以 CLI 返回的 metadata / error envelope 为准，确认提示的 VC Agent 相关权限已开通。常见读取 active meeting / events 需要会中事件读取权限；应用机器人入会 / 离会需要 bot 入会写权限。
+1. 确认内测权限后，按 CLI 错误中的 `hint` 处理；返回 `console_url` 时将其原样提供给用户。
 2. 应用已发布并安装到当前租户。
 3. 开放平台“权限可访问的数据范围”已开通并保存。
 4. 数据范围选择“按条件筛选”，条件配置为：**会议的归属者 包含 与应用的可用范围一致**。
