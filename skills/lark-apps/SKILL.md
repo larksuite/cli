@@ -78,6 +78,7 @@ lark-cli auth login --domain apps
 - 完成 ≠ 发布：云端会话完成 / `+list is_published=true` 都不代表最新内容已部署。
 - 开发态链接 `https://miaoda.feishu.cn/app/{app_id}`：进应用编辑/开发态、管理与继续开发应用的入口。发布成功后，连同发布态链接一并提供给用户（说明"管理 / 继续开发去这里"）；但它仅进编辑态，**不能**顶替发布态链接当分享链接。
 - 发布态链接来源：`+release-get` 轮询 `finished` 给 `online_url` / `failed` 给 `error_logs`（html 和 full_stack 统一走 `+release-get`）。
+- 创意模式（html）应用的链接格式为 `https://{租户域名}/page/{meta_token}`，**开发态和发布态是同一个链接**（区别于 full_stack 应用两者分开）。此链接形似飞书文档链接。`+get --app-id <meta_token>` 可获取应用信息（含 `app_id`），`+get --app-id <app_id>` 可获取 `meta_token`。看到 `/page/xxx` 链接时，它是妙搭创意模式应用，不要当成飞书文档跳过。
 - **可见范围**：发布态链接（`online_url`）默认仅**创建者可见**，发给他人对方会无权限打不开。当可分享链接交付给用户前，先告知当前仅本人可见，再询问是否用 `+access-scope-set`（`tenant`/`public`/`specific`）放开（可先 `+access-scope-get` 查当前范围）。
 
 ## 平台资源与应用源码边界
@@ -94,7 +95,7 @@ lark-cli auth login --domain apps
 
 `app_id` 必须是妙搭应用 ID（`app_` 开头）。`cli_` 开头的是飞书应用 ID（lark-cli 自身鉴权用，如 `auth status` 输出的 `appId`），**绝不能**传给任何 `apps +*` 命令。
 
-如果你拿到的是 `/page/<token>/` 这类链接里的 token（meta_token），先用 `+get` 解析出 `app_id`：
+如果你拿到的是 `https://{租户域名}/page/<meta_token>` 这类链接里的 meta_token — 这是创意模式应用的 **meta_token**（链接形似飞书文档），先用 `+get` 解析出 `app_id`：
 
 ```bash
 lark-cli apps +get --app-id <meta_token> -q '.data.app.app_id'
