@@ -41,7 +41,7 @@ var AppsGet = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			GET(fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))).
-			Desc("Get app detail (returns app_id, app_type, name, description, icon_url, created_at, updated_at, is_published)")
+			Desc("Get app detail (returns app_id, meta_token, app_type, name, description, icon_url, created_at, updated_at, is_published)")
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
@@ -55,6 +55,9 @@ var AppsGet = common.Shortcut{
 				return
 			}
 			fmt.Fprintf(w, "app_id: %v\n", app["app_id"])
+			if mt, ok := app["meta_token"].(string); ok && mt != "" {
+				fmt.Fprintf(w, "meta_token: %s\n", mt)
+			}
 			fmt.Fprintf(w, "app_type: %v\n", app["app_type"])
 			fmt.Fprintf(w, "name: %v\n", app["name"])
 			if desc, ok := app["description"].(string); ok && desc != "" {
