@@ -17,8 +17,10 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	extcs "github.com/larksuite/cli/extension/contentsafety"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/spf13/cobra"
@@ -198,6 +200,121 @@ func TestNewCmdServiceMethod_RunFCallback(t *testing.T) {
 	}
 	if captured.SchemaPath != "drive.files.list" {
 		t.Errorf("expected SchemaPath=drive.files.list, got %s", captured.SchemaPath)
+	}
+}
+
+func TestClassifyServiceAPIError_UserAllowBlockCachePreparing(t *testing.T) {
+	opts := &ServiceMethodOptions{
+		Method: meta.FromMap(map[string]interface{}{
+			"id":         "user_mailbox.blocked_sender.list",
+			"httpMethod": "GET",
+		}),
+	}
+	request := client.RawApiRequest{
+		Params: map[string]interface{}{
+			"user_mailbox_id": "me",
+			"page_size":       10,
+			"keyword":         "cache-cli@example.test",
+		},
+	}
+	result := map[string]interface{}{
+		"code":   456,
+		"msg":    "[15190000] ErrCacheEmpty",
+		"log_id": "2026071610521332E0FBDFB331EE0E73F5",
+		"error": map[string]interface{}{
+			"troubleshooter": "https://open.feishu.cn/document/troubleshoot/cache",
+		},
+	}
+	check := classifyServiceAPIError(func(result interface{}, identity core.Identity) error {
+		resultMap, _ := result.(map[string]interface{})
+		return errclass.BuildAPIError(resultMap, errclass.ClassifyContext{Identity: string(identity)})
+	}, opts, request)
+
+	err := check(result, core.AsUser)
+	if err == nil {
+		t.Fatal("expected cache preparing error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf returned !ok for %T", err)
+	}
+	if p.Subtype != errs.SubtypeUserAllowBlockCachePreparing {
+		t.Fatalf("Subtype = %q, want %q", p.Subtype, errs.SubtypeUserAllowBlockCachePreparing)
+	}
+	if p.Code != 456 {
+		t.Fatalf("Code = %d, want 456", p.Code)
+	}
+	if p.LogID != "2026071610521332E0FBDFB331EE0E73F5" {
+		t.Fatalf("LogID = %q, want preserved", p.LogID)
+	}
+	if p.Troubleshooter != "https://open.feishu.cn/document/troubleshoot/cache" {
+		t.Fatalf("Troubleshooter = %q, want preserved", p.Troubleshooter)
+	}
+	if !strings.Contains(p.Message, "UserAllowBlockCachePreparing") || !strings.Contains(p.Message, "ErrCacheEmpty") {
+		t.Fatalf("Message = %q, want semantic and raw cache-empty detail", p.Message)
+	}
+	for _, want := range []string{"Retry later", "without keyword", "initialize the cache"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Fatalf("Hint = %q, want %q", p.Hint, want)
+		}
+	}
+	if !p.Retryable {
+		t.Fatal("Retryable = false, want true")
+	}
+}
+
+func TestClassifyServiceAPIError_UserAllowBlockCachePreparingScope(t *testing.T) {
+	result := map[string]interface{}{"code": 456, "msg": "[15190000] ErrCacheEmpty"}
+	base := func(result interface{}, identity core.Identity) error {
+		resultMap, _ := result.(map[string]interface{})
+		return errclass.BuildAPIError(resultMap, errclass.ClassifyContext{Identity: string(identity)})
+	}
+
+	cases := []struct {
+		name    string
+		method  string
+		request client.RawApiRequest
+	}{
+		{
+			name:   "different method",
+			method: "user_mailbox.blocked_sender.batch_create",
+			request: client.RawApiRequest{Params: map[string]interface{}{
+				"keyword": "cache-cli@example.test",
+			}},
+		},
+		{
+			name:   "no keyword",
+			method: "user_mailbox.blocked_sender.list",
+			request: client.RawApiRequest{Params: map[string]interface{}{
+				"user_mailbox_id": "me",
+			}},
+		},
+		{
+			name:   "empty keyword",
+			method: "user_mailbox.allow_sender.list",
+			request: client.RawApiRequest{Params: map[string]interface{}{
+				"keyword": " ",
+			}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := &ServiceMethodOptions{Method: meta.FromMap(map[string]interface{}{
+				"id":         tc.method,
+				"httpMethod": "GET",
+			})}
+			err := classifyServiceAPIError(base, opts, tc.request)(result, core.AsUser)
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf returned !ok for %T", err)
+			}
+			if p.Subtype == errs.SubtypeUserAllowBlockCachePreparing {
+				t.Fatalf("Subtype = %q, want generic API classification outside scoped keyword search", p.Subtype)
+			}
+			if p.Hint == userAllowBlockCachePreparingHint {
+				t.Fatalf("Hint = %q, want no cache-preparing hint outside scoped keyword search", p.Hint)
+			}
+		})
 	}
 }
 

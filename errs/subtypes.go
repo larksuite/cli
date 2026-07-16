@@ -67,6 +67,9 @@ const (
 	SubtypeServerError       Subtype = "server_error"       // upstream server-side transient error (HTTP 5xx alignment, retryable)
 	SubtypeQuotaExceeded     Subtype = "quota_exceeded"     // resource quota / collection size limit reached (assignees, followers, members, etc.)
 	SubtypeAlreadyExists     Subtype = "already_exists"     // idempotency violation: resource already exists in target state
+	// SubtypeUserAllowBlockCachePreparing preserves the mail OpenAPI business
+	// code spelling for user allow/block sender keyword search cache warm-up.
+	SubtypeUserAllowBlockCachePreparing Subtype = "UserAllowBlockCachePreparing"
 )
 
 // CategoryPolicy subtypes (security-policy envelope shape)
