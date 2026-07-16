@@ -110,9 +110,11 @@
 | 新增记录时 | `AddRecordTrigger` |
 | 字段变为特定值时（**仅修改**） | `SetRecordTrigger` |
 | **新增或修改**都触发 | `ChangeRecordTrigger` |
+| 记录被物理删除时 | 不支持；不要使用 `DeleteRecordTrigger`，改用删除前状态/字段变更建模 |
 | 拿不准用哪个 | `ChangeRecordTrigger` |
 
 > ⚠️ `SetRecordTrigger` 仅监听修改，`ChangeRecordTrigger` 同时监听新增 + 修改。
+> ⚠️ 当前 StepType 不包含记录删除触发器。需要“删除时通知”时，先把记录标记为离职/待删除/已删除，再用 `SetRecordTrigger` 或 `ChangeRecordTrigger` 监听该字段变化；如果必须监听物理删除事件，则 Base workflow 暂不支持。
 
 ### Action 类型
 
