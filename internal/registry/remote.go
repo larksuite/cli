@@ -314,12 +314,63 @@ func shouldRefresh(cm CacheMeta) bool {
 }
 
 // overlayMergedServices merges remote services into the in-memory map.
-// Remote entries override embedded entries with the same name.
+// Remote entries override embedded entries with the same name, but a remote
+// service snapshot must not delete resources or methods compiled into this
+// binary. That keeps MR-built commands visible even when the published remote
+// cache has a newer version string but an older resource set.
 func overlayMergedServices(reg *MergedRegistry) {
 	for _, svc := range reg.Services {
 		if svc.Name == "" {
 			continue
 		}
+		if existing, ok := mergedServices[svc.Name]; ok {
+			mergedServices[svc.Name] = mergeService(existing, svc)
+			continue
+		}
 		mergedServices[svc.Name] = svc
 	}
+}
+
+func mergeService(base, overlay meta.Service) meta.Service {
+	merged := overlay
+	merged.Resources = mergeResourceMaps(base.Resources, overlay.Resources)
+	return merged
+}
+
+func mergeResourceMaps(base, overlay map[string]meta.Resource) map[string]meta.Resource {
+	if len(base) == 0 {
+		return overlay
+	}
+	if len(overlay) == 0 {
+		return base
+	}
+	merged := make(map[string]meta.Resource, len(base)+len(overlay))
+	for name, resource := range base {
+		merged[name] = resource
+	}
+	for name, resource := range overlay {
+		if existing, ok := merged[name]; ok {
+			resource.Methods = mergeMethodMaps(existing.Methods, resource.Methods)
+			resource.Resources = mergeResourceMaps(existing.Resources, resource.Resources)
+		}
+		merged[name] = resource
+	}
+	return merged
+}
+
+func mergeMethodMaps(base, overlay map[string]meta.Method) map[string]meta.Method {
+	if len(base) == 0 {
+		return overlay
+	}
+	if len(overlay) == 0 {
+		return base
+	}
+	merged := make(map[string]meta.Method, len(base)+len(overlay))
+	for name, method := range base {
+		merged[name] = method
+	}
+	for name, method := range overlay {
+		merged[name] = method
+	}
+	return merged
 }
