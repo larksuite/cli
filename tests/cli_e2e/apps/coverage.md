@@ -5,7 +5,7 @@
 - Command coverage: 100% (9/9)
 - API dry-run coverage: 100% (7/7 API-backed commands)
 - Local E2E coverage: 100% (2/2 local-only commands)
-- Live coverage: 0%
+- Live coverage: 1/1 live-capable command (`apps +list`); all other commands blocked — see "Blocked" below
 
 ## Summary
 - `TestAppsCreateDryRun`: happy path with `--app-type html`, all-fields shape, rejection paths (missing name, missing app-type, invalid app-type, legacy uppercase `HTML`). `--app-type` is a strict lowercase enum (`html`/`full_stack`); the CLI does not normalize case — legacy uppercase compatibility is a server concern.
@@ -17,8 +17,9 @@
 - `TestAppsGitCredentialInitDryRun`: URL shape for issuing an app Git PAT; no body; `app_id` query metadata included.
 - `TestAppsGitCredentialListLocalE2E`: local-only command scans every app storage directory and reports repository URL and status without exposing PAT or expiry details.
 - `TestAppsGitCredentialRemoveLocalE2E`: local cleanup command removes app-scoped metadata under an isolated config dir.
+- `TestAppsListWorkflowAsUser`: live `apps +list` against the service. Five `t.Run` proof points — default list (envelope `ok:true`, `data.items` array, and when non-empty each item has `app_id`/`name` with `icon_url`/`created_at` stripped), `--page-size 1` caps items when the tenant has multiple apps, high-entropy `--keyword` returns a well-formed empty list, `--ownership mine` accepted, `--app-type html` never returns `full_stack`. All assertions are tenant-data-independent (empty list is valid); skips via `SkipWithoutUserToken` when no user credentials are present.
 
-Blocked: Live E2E intentionally not implemented yet. Apps has no `+delete` endpoint (OAPI doc explicitly defers archive/delete), so a create-and-cleanup workflow would leak tenant state. Revisit when the server exposes `DELETE /apps/{appId}`.
+Blocked (live): every command except `apps +list` remains without live coverage. Apps has no `+delete` endpoint (OAPI doc explicitly defers archive/delete), so any create-and-cleanup workflow would leak tenant state. Every read command other than `+list` requires a `--app-id` (or a session/release id), and obtaining a real one means creating an app that cannot be cleaned up. A shared per-run fixture app was considered and rejected: with no delete path, each CI run would leave an orphaned app — a real and accumulating drain on Miaoda tenant resources. Only `apps +list` is read-only AND fixture-independent, so it is the sole live-covered command. Revisit the rest when the server exposes `DELETE /apps/{appId}`.
 
 ## Command Table
 
@@ -26,7 +27,7 @@ Blocked: Live E2E intentionally not implemented yet. Apps has no `+delete` endpo
 | --- | --- | --- | --- | --- | --- |
 | ✓ | apps +create | shortcut | apps_create_dryrun_test.go::TestAppsCreateDryRun | `--name`, `--app-type` (required, case-sensitive, `html`/`full_stack`), `--description`, `--icon-url` | live blocked: no +delete to clean up |
 | ✓ | apps +update | shortcut | apps_update_dryrun_test.go::TestAppsUpdateDryRun | `--app-id`; at least one of `--name`/`--description` | live blocked: no +delete |
-| ✓ | apps +list | shortcut | apps_list_dryrun_test.go::TestAppsListDryRun | `--keyword`; `--ownership` (enum all/mine/shared); `--app-type` (enum html/full_stack); `--page-size` default 20; `--page-token` cursor | live blocked: needs tenant fixtures |
+| ✓ | apps +list | shortcut | apps_list_dryrun_test.go::TestAppsListDryRun; apps_list_workflow_test.go::TestAppsListWorkflowAsUser | `--keyword`; `--ownership` (enum all/mine/shared); `--app-type` (enum html/full_stack); `--page-size` default 20; `--page-token` cursor | live covered: read-only, no app_id fixture needed; tenant-data-independent assertions |
 | ✓ | apps +access-scope-set | shortcut | apps_access_scope_set_dryrun_test.go::TestAppsAccessScopeSetDryRun | `--scope specific/public/tenant`; `--targets` JSON; `--apply-enabled --approver`; `--require-login` | live blocked: needs real open_ids |
 | ✓ | apps +access-scope-get | shortcut | apps_access_scope_get_dryrun_test.go::TestAppsAccessScopeGetDryRun | `--app-id` | live blocked: depends on +access-scope-set state |
 | ✓ | apps +html-publish | shortcut | apps_html_publish_dryrun_test.go::TestAppsHTMLPublishDryRun | `--app-id`, `--path` (file or directory containing `index.html`) | live blocked: real upload has side effects; no rollback API |
