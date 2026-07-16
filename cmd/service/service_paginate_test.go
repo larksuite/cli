@@ -11,54 +11,34 @@ import (
 	"net/http"
 	"testing"
 
-	lark "github.com/larksuite/oapi-sdk-go/v3"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 )
 
-type servicePaginateRoundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f servicePaginateRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
-
-type servicePaginateTokenResolver struct{}
-
-func (*servicePaginateTokenResolver) ResolveToken(context.Context, credential.TokenSpec) (*credential.TokenResult, error) {
-	return &credential.TokenResult{Token: "test-token"}, nil
-}
-
-func newServicePaginateTestClient(t *testing.T, rt http.RoundTripper) *client.APIClient {
+func newServicePaginateTestHarness(t *testing.T) (*client.APIClient, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
-	sdk := lark.NewClient("test-app", "test-secret",
-		lark.WithEnableTokenCache(false),
-		lark.WithLogLevel(larkcore.LogLevelError),
-		lark.WithHttpClient(&http.Client{Transport: rt}),
-	)
-	return &client.APIClient{
-		SDK:        sdk,
-		ErrOut:     &bytes.Buffer{},
-		Credential: credential.NewCredentialProvider(nil, nil, &servicePaginateTokenResolver{}, nil),
-		Config: &core.CliConfig{
-			AppID:     "test-app",
-			AppSecret: "test-secret",
-			Brand:     core.BrandFeishu,
-		},
-	}
-}
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+	previousNotice := output.PendingNotice
+	output.PendingNotice = nil
+	t.Cleanup(func() { output.PendingNotice = previousNotice })
 
-func servicePaginateJSONResponse(body interface{}) *http.Response {
-	b, _ := json.Marshal(body)
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(bytes.NewReader(b)),
+	config := &core.CliConfig{
+		AppID:     "test-app",
+		AppSecret: "test-secret",
+		Brand:     core.BrandFeishu,
 	}
+	f, out, errOut, reg := cmdutil.TestFactory(t, config)
+	ac, err := f.NewAPIClientWithConfig(config)
+	if err != nil {
+		t.Fatalf("NewAPIClientWithConfig() error = %v", err)
+	}
+	ac.ErrOut = io.Discard
+	return ac, out, errOut, reg
 }
 
 func servicePaginateRequest() client.RawApiRequest {
@@ -67,15 +47,6 @@ func servicePaginateRequest() client.RawApiRequest {
 		URL:    "/open-apis/test/v1/items",
 		As:     core.AsBot,
 	}
-}
-
-func prepareServicePaginateOutput(t *testing.T) (*bytes.Buffer, *bytes.Buffer) {
-	t.Helper()
-	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
-	previousNotice := output.PendingNotice
-	output.PendingNotice = nil
-	t.Cleanup(func() { output.PendingNotice = previousNotice })
-	return &bytes.Buffer{}, &bytes.Buffer{}
 }
 
 func assertServicePaginateJSONBytes(t *testing.T, got []byte, want interface{}) {
@@ -91,32 +62,34 @@ func assertServicePaginateJSONBytes(t *testing.T, got []byte, want interface{}) 
 }
 
 func TestServicePaginate_DefaultAggregatesAllPages(t *testing.T) {
+	ac, out, errOut, reg := newServicePaginateTestHarness(t)
 	calls := 0
-	rt := servicePaginateRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		wantTokens := []string{"", "next-1", "next-2"}
-		if calls >= len(wantTokens) {
-			t.Fatalf("unexpected pagination request %d: %s", calls+1, req.URL.String())
-		}
-		if got := req.URL.Query().Get("page_token"); got != wantTokens[calls] {
-			t.Errorf("request %d page_token = %q, want %q", calls+1, got, wantTokens[calls])
-		}
-		calls++
-		hasMore := calls < len(wantTokens)
+	wantTokens := []string{"", "next-1", "next-2"}
+	for i, wantToken := range wantTokens {
+		page := i + 1
+		hasMore := page < len(wantTokens)
 		data := map[string]interface{}{
-			"items":    []interface{}{map[string]interface{}{"id": string(rune('0' + calls))}},
+			"items":    []interface{}{map[string]interface{}{"id": string(rune('0' + page))}},
 			"has_more": hasMore,
 		}
 		if hasMore {
-			data["page_token"] = wantTokens[calls]
+			data["page_token"] = wantTokens[page]
 		}
-		return servicePaginateJSONResponse(map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": data,
-		}), nil
-	})
-	ac := newServicePaginateTestClient(t, rt)
-	out, errOut := prepareServicePaginateOutput(t)
+		reg.Register(&httpmock.Stub{
+			URL: "/open-apis/test/v1/items",
+			OnMatch: func(req *http.Request) {
+				calls++
+				if got := req.URL.Query().Get("page_token"); got != wantToken {
+					t.Errorf("request %d page_token = %q, want %q", page, got, wantToken)
+				}
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"msg":  "ok",
+				"data": data,
+			},
+		})
+	}
 
 	err := servicePaginate(context.Background(), ac, servicePaginateRequest(),
 		output.FormatJSON, "", out, errOut, "lark-cli test items list", client.PaginationOptions{
@@ -148,18 +121,18 @@ func TestServicePaginate_DefaultAggregatesAllPages(t *testing.T) {
 }
 
 func TestServicePaginate_StreamingFormatFallsBackToJSONWithoutList(t *testing.T) {
-	rt := servicePaginateRoundTripFunc(func(*http.Request) (*http.Response, error) {
-		return servicePaginateJSONResponse(map[string]interface{}{
+	ac, out, errOut, reg := newServicePaginateTestHarness(t)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/test/v1/items",
+		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
 			"data": map[string]interface{}{
 				"name":    "Test User",
 				"user_id": "u123",
 			},
-		}), nil
+		},
 	})
-	ac := newServicePaginateTestClient(t, rt)
-	out, errOut := prepareServicePaginateOutput(t)
 
 	err := servicePaginate(context.Background(), ac, servicePaginateRequest(),
 		output.FormatNDJSON, "", out, errOut, "lark-cli test items get",
@@ -199,11 +172,11 @@ func TestServicePaginate_BusinessErrorsWriteRawAndRemainUnmarked(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rt := servicePaginateRoundTripFunc(func(*http.Request) (*http.Response, error) {
-				return servicePaginateJSONResponse(businessResponse), nil
+			ac, out, errOut, reg := newServicePaginateTestHarness(t)
+			reg.Register(&httpmock.Stub{
+				URL:  "/open-apis/test/v1/items",
+				Body: businessResponse,
 			})
-			ac := newServicePaginateTestClient(t, rt)
-			out, errOut := prepareServicePaginateOutput(t)
 
 			err := servicePaginate(context.Background(), ac, servicePaginateRequest(),
 				tt.format, tt.jqExpr, out, errOut, "lark-cli test items list",
@@ -239,11 +212,7 @@ func TestServicePaginate_TransportErrorsRemainUnmarked(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rt := servicePaginateRoundTripFunc(func(*http.Request) (*http.Response, error) {
-				return nil, io.ErrUnexpectedEOF
-			})
-			ac := newServicePaginateTestClient(t, rt)
-			out, errOut := prepareServicePaginateOutput(t)
+			ac, out, errOut, _ := newServicePaginateTestHarness(t)
 
 			err := servicePaginate(context.Background(), ac, servicePaginateRequest(),
 				tt.format, tt.jqExpr, out, errOut, "lark-cli test items list",
@@ -266,15 +235,15 @@ func TestServicePaginate_TransportErrorsRemainUnmarked(t *testing.T) {
 }
 
 func TestServicePaginate_StreamBusinessErrorRemainsUnmarked(t *testing.T) {
-	rt := servicePaginateRoundTripFunc(func(*http.Request) (*http.Response, error) {
-		return servicePaginateJSONResponse(map[string]interface{}{
+	ac, out, errOut, reg := newServicePaginateTestHarness(t)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/test/v1/items",
+		Body: map[string]interface{}{
 			"code": 123456,
 			"msg":  "fixture business error",
 			"data": map[string]interface{}{},
-		}), nil
+		},
 	})
-	ac := newServicePaginateTestClient(t, rt)
-	out, errOut := prepareServicePaginateOutput(t)
 
 	err := servicePaginate(context.Background(), ac, servicePaginateRequest(),
 		output.FormatNDJSON, "", out, errOut, "lark-cli test items list",
