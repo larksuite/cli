@@ -57,4 +57,3 @@ func TestAppsFileIOError_ClassifiesInternalFileIO(t *testing.T) {
 		t.Fatalf("cause chain not preserved: %v", err)
 	}
 }
-

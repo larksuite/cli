@@ -73,4 +73,3 @@ func appsInputPathEntryError(path string, err error) error {
 func appsFileIOError(err error, format string, args ...any) *errs.InternalError {
 	return errs.NewInternalError(errs.SubtypeFileIO, format, args...).WithCause(err)
 }
-
