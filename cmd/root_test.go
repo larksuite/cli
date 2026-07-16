@@ -624,7 +624,7 @@ func TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT(t *testi
 		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
 	}
 
-	if !strings.Contains(problem.Hint, `auth login --scope "docx:document:create" --no-wait --json`) {
+	if !strings.Contains(problem.Hint, `auth login --scope "docx:document:create docs:document.media:upload docx:document:write_only docx:document:readonly" --no-wait --json`) {
 		t.Errorf("expected shortcut scoped recovery, got %q", problem.Hint)
 	}
 }
@@ -699,7 +699,12 @@ func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 		t.Errorf("rendered error lost need-authorization cause %v: %v", authErr.Cause, rendered)
 	}
 
-	want := "existing hint\n" + recovery.UserAuthorization("docx:document:create").String()
+	want := "existing hint\n" + recovery.UserAuthorization(
+		"docx:document:create",
+		"docs:document.media:upload",
+		"docx:document:write_only",
+		"docx:document:readonly",
+	).String()
 	if problem.Hint != want {
 		t.Errorf("expected appended hint %q, got %q", want, problem.Hint)
 	}

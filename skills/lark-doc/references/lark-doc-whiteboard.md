@@ -1,12 +1,10 @@
 # lark-doc 画板处理指南
 
-> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-
 ## 两个 Skill 的职责边界
 
 | Skill             | 核心职责                                                      | 约束                              |
 |-------------------|-----------------------------------------------------------|---------------------------------|
-| `lark-doc`        | 识别画板机会、使用 Mermaid/SVG 创建图表、调度 SubAgent、插入简单 SVG 画板或复杂空白画板 | 主 Agent 不直接创作画板内容；              |
+| `lark-doc`        | 识别画板机会、使用 Mermaid/SVG 创建图表、调度 SubAgent、插入简单图表或复杂空白画板 | 简单图可由主 Agent 直接写入；复杂图再隔离到 SubAgent |
 | `lark-whiteboard` | 查询/导出已有画板；复杂图表生成（Mermaid/DSL/SVG 路由、场景选型、渲染验证）；写入已有/空白画板  | 仅特别复杂的图表或已有画板更新时由独立 SubAgent 读取 |
 
 ## 画板适用规则
@@ -29,11 +27,9 @@
 > [!IMPORTANT]
 > ⚠️ **分别对每个图表进行决策**
 
-如果有多个位置需要插入图表，你需要根据每个图表的内容**分别决定**采用步骤 2A 还是 2B
-中的方式插入这个图表。在需要插入思维导图、时序图、类图、饼图、甘特图的时候可以插入 mermaid 块，在需要插入其他类型图表时启动
-SubAgent 插入 SVG。
+如果有多个位置需要插入图表，你需要根据每个图表的内容**分别决定**采用步骤 2A 还是 2B。思维导图、时序图、类图、饼图、甘特图可插入 mermaid 块；其他类型图表使用 SVG，简单图由主 Agent 直接写入，复杂图再启动 SubAgent。
 
-建议优先使用 SVG 插入图表，除非其属于思维导图、时序图、类图、饼图、甘特图这类可以直接使用 mermaid 语法描述，且不适宜用 SVG 绘制的图表
+简单 Mermaid / SVG 图可由主 Agent 直接写入本地 XML；需要专门视觉设计、信息密度较高或容易布局翻车的 SVG，再启动 SubAgent 产出完整片段。
 
 ### 步骤 2A: 使用 mermaid 插入图表
 
@@ -44,7 +40,7 @@ SubAgent 插入 SVG。
 </whiteboard>
 ```
 
-如果 Mermaid 已在本地文件中，可写成 `<whiteboard type="mermaid" path="@diagram.mmd"></whiteboard>`；CLI 会在写入前读取文件并展开为内联内容。
+如果 Mermaid 已在本地文件中，可写成 `<whiteboard type="mermaid" path="@./diagram.mmd"></whiteboard>`；CLI 会在写入前读取文件并展开为内联内容。
 
 ### 步骤 2B: SubAgent 使用 SVG 插入图表
 
@@ -58,7 +54,7 @@ SubAgent 插入 SVG。
 </whiteboard>
 ```
 
-如果 SVG 已在本地文件中，可写成 `<whiteboard type="svg" path="@diagram.svg"></whiteboard>`；PlantUML 文件同理使用 `<whiteboard type="plantuml" path="@sequence.puml"></whiteboard>`。
+如果 SVG 已在本地文件中，可写成 `<whiteboard type="svg" path="@./diagram.svg"></whiteboard>`；PlantUML 文件同理使用 `<whiteboard type="plantuml" path="@./sequence.puml"></whiteboard>`。
 
 Sub Agent 需要携带以下的最小上下文，以及后续的 [SVG 设计 Workflow] 章节指南：
 

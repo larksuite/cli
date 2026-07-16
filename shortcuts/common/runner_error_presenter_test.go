@@ -124,7 +124,7 @@ func TestNewRuntimeContextUsesEffectiveBotOnlyIdentityForDeclaredScopes(t *testi
 		t.Fatal(err)
 	}
 	cmd := newTestShortcutCmd(shortcut, f)
-	runtime, err := newRuntimeContext(cmd, f, shortcut, config, core.AsUser, true)
+	runtime, err := newRuntimeContext(cmd, f, shortcut, config, core.AsUser, true, true)
 	if err != nil {
 		t.Fatalf("newRuntimeContext() error = %v", err)
 	}

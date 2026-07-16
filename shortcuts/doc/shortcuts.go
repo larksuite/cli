@@ -17,6 +17,7 @@ func Shortcuts() []common.Shortcut {
 		DocsCreate,
 		DocsFetch,
 		DocsUpdate,
+		DocsScript,
 		DocsHistoryList,
 		DocsHistoryRevert,
 		DocsHistoryRevertStatus,

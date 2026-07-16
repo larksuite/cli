@@ -42,18 +42,39 @@ func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 			errs.InvalidParam{Name: "--parent-position", Reason: "mutually exclusive with --parent-token"},
 		)
 	}
-	if runtime.Str("content") == "" && title == "" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is required unless --title is provided").WithParam("--content")
+	content := runtime.Str("content")
+	if strings.TrimSpace(content) == "" && title == "" {
+		if path, ok := runtime.Cmd.Annotations[docsContentPathAnnotation]; ok {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--content file %q is empty", path).
+				WithParam("--content").
+				WithHint("write non-empty XML or Markdown to this file; if the path was reserved by init-draft, use the exact data.draft_path returned by that command, then retry with --content \"@./<data.draft_path>\"")
+		}
+		if runtime.Changed("content") {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--content was provided but is empty; an @file input may point to an empty draft").
+				WithParam("--content").
+				WithHint("write non-empty XML or Markdown to the draft and retry with --content \"@./<data.draft_path>\", or omit --content and pass --title to create a title-only document")
+		}
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--content is required unless --title is provided").
+			WithParam("--content").
+			WithHint("provide XML or Markdown directly, use --content \"@relative/path\", or pass --title to create a title-only document")
 	}
-	if runtime.Str("content") != "" {
-		_, err := resolveDocsV2ContentReferenceMap(runtime)
-		return err
+	if content != "" {
+		input, err := resolveDocsV2ContentReferenceMap(runtime)
+		if err != nil {
+			return err
+		}
+		if len(input.LocalResources) > 0 {
+			return runtime.EnsureScopes(docsCreateLocalResourceScopes)
+		}
 	}
 	return nil
 }
 
 func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, err := buildCreateBodyWithHTML5ReferenceMap(runtime)
+	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
 	if err != nil {
 		return common.NewDryRunAPI().Set("error", err.Error())
 	}
@@ -61,14 +82,16 @@ func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 	if runtime.IsBot() {
 		desc += ". After document creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new document."
 	}
-	return common.NewDryRunAPI().
+	dry := common.NewDryRunAPI().
 		POST("/open-apis/docs_ai/v1/documents").
 		Desc(desc).
 		Body(body)
+	dry = appendRemoteDocImageDownloadsDryRun(dry, resources)
+	return appendLocalDocResourcesDryRun(dry, "<created_document_id>", resources)
 }
 
 func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
-	body, err := buildCreateBodyWithHTML5ReferenceMap(runtime)
+	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
 	if err != nil {
 		return err
 	}
@@ -77,9 +100,18 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if docsAPIOperationFailed(data) {
+		return runtime.OutPartialFailure(data, nil)
+	}
 
 	augmentDocsCreatePermission(runtime, data)
 	fallbackDocsCreateURLV2(runtime, data)
+	if len(resources) > 0 {
+		doc, _ := data["document"].(map[string]interface{})
+		if err := finalizeLocalDocResources(runtime, strings.TrimSpace(common.GetString(doc, "document_id")), data, resources); err != nil {
+			return err
+		}
+	}
 	runtime.OutRaw(data, nil)
 	return nil
 }

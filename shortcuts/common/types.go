@@ -63,9 +63,15 @@ type Shortcut struct {
 	// used to satisfy a Cobra Required flag; alternatives such as "A or legacy B"
 	// are a business constraint and must be validated as such.
 	Normalize FlagNormalizer
-	DryRun    func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
-	Validate  func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
-	Execute   func(ctx context.Context, runtime *RuntimeContext) error      // main logic
+	// Local returns true when the current flag combination does not require a
+	// Lark account or OpenAPI client. The framework then skips Lark
+	// identity/config, scope, and SDK initialization while preserving normal
+	// input resolution, validation, dry-run, and output behavior. A local
+	// operation may still access an explicitly supplied external resource.
+	Local    func(cmd *cobra.Command) bool
+	DryRun   func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
+	Validate func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
+	Execute  func(ctx context.Context, runtime *RuntimeContext) error      // main logic
 
 	// OnInvoke, when non-nil, runs from the command's cobra PreRunE — before
 	// cobra validates required flags — so its side effect fires even when the

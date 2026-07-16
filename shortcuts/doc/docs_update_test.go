@@ -124,6 +124,53 @@ func TestDocsUpdateV2ReferenceMapFlagIsPublicFileInput(t *testing.T) {
 	}
 }
 
+func TestDocsUpdateV2BlockIDFlagDocumentsServiceSentinels(t *testing.T) {
+	t.Parallel()
+
+	var desc string
+	for _, candidate := range v2UpdateFlags() {
+		if candidate.Name == "block-id" {
+			desc = candidate.Desc
+			break
+		}
+	}
+	if desc == "" {
+		t.Fatal("block-id flag not found")
+	}
+	for _, want := range []string{
+		"passed through to the service",
+		"-1 means document end",
+		"0 means document start",
+	} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("block-id help = %q, want it to contain %q", desc, want)
+		}
+	}
+}
+
+func TestDocsUpdateV2CommandFlagDocumentsStrReplaceLimits(t *testing.T) {
+	t.Parallel()
+
+	var desc string
+	for _, candidate := range v2UpdateFlags() {
+		if candidate.Name == "command" {
+			desc = candidate.Desc
+			break
+		}
+	}
+	if desc == "" {
+		t.Fatal("command flag not found")
+	}
+	for _, want := range []string{
+		"str_replace does not support resource replacement",
+		"prefer block_replace when multiple blocks are involved",
+	} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("command help = %q, want it to contain %q", desc, want)
+		}
+	}
+}
+
 func TestBuildUpdateBodyIncludesReferenceMap(t *testing.T) {
 	t.Parallel()
 

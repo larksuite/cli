@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -28,15 +29,19 @@ const docsReferenceMapFlagDesc = "Structured `reference_map` JSON object; must b
 
 const docsUpdateReferenceMapFlagDesc = docsReferenceMapFlagDesc
 
+const docsUpdateBlockIDFlagDesc = "target block ID(s) for block operations (comma-separated for batch delete); sentinel values are passed through to the service: -1 means document end where supported, 0 means document start where supported"
+
+const docsUpdateCommandFlagDesc = "operation; str_replace does not support resource replacement; prefer block_replace when multiple blocks are involved; requirements: str_replace(--pattern), block_delete(--block-id, comma-separated for batch), block_insert_after/block_replace(--block-id,--content), block_copy_insert_after/block_move_after(--block-id,--src-block-ids), overwrite/append(--content)"
+
 // v2UpdateFlags returns the flag definitions for the v2 (OpenAPI) update path.
 func v2UpdateFlags() []common.Flag {
 	return []common.Flag{
-		{Name: "command", Desc: "operation; requirements: str_replace(--pattern), block_delete(--block-id, comma-separated for batch), block_insert_after/block_replace(--block-id,--content), block_copy_insert_after/block_move_after(--block-id,--src-block-ids), overwrite/append(--content)", Enum: validCommandsV2Keys()},
+		{Name: "command", Desc: docsUpdateCommandFlagDesc, Enum: validCommandsV2Keys()},
 		{Name: "doc-format", Desc: "content format for --content; xml is default for precise rich edits, markdown for user-provided Markdown or plain append/overwrite", Default: "xml", Enum: []string{"xml", "markdown"}},
 		{Name: "content", Desc: docsUpdateContentFlagBase, Input: []string{common.File, common.Stdin}},
 		{Name: "reference-map", Desc: docsUpdateReferenceMapFlagDesc, Input: []string{common.File, common.Stdin}},
-		{Name: "pattern", Desc: "str_replace match pattern; XML mode is inline text, Markdown mode can match multiline text"},
-		{Name: "block-id", Desc: "target block ID(s) for block operations (comma-separated for batch delete); -1 means document end where supported"},
+		{Name: "pattern", Desc: "simple inline text matched by str_replace; use block_replace for paragraphs, multiline content, or multiple blocks"},
+		{Name: "block-id", Desc: docsUpdateBlockIDFlagDesc},
 		{Name: "src-block-ids", Desc: "comma-separated source block ids for block_copy_insert_after and block_move_after"},
 		{Name: "revision-id", Desc: "base revision id; -1 means latest", Type: "int", Default: "-1"},
 	}
@@ -50,7 +55,8 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err := validateDocsV2Only(runtime, "+update", docsUpdateLegacyFlags()); err != nil {
 		return err
 	}
-	if _, err := parseDocumentRef(runtime.Str("doc")); err != nil {
+	docRef, err := parseDocumentRef(runtime.Str("doc"))
+	if err != nil {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --doc: %v", err).WithParam("--doc")
 	}
 	cmd := runtime.Str("command")
@@ -118,8 +124,21 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		}
 	}
 	if content != "" {
-		_, err := resolveDocsV2ContentReferenceMap(runtime)
-		return err
+		input, err := resolveDocsV2ContentReferenceMap(runtime)
+		if err != nil {
+			return err
+		}
+		if len(input.LocalResources) > 0 {
+			if err := validateLocalDocResourceUpdateCommand(cmd, input.LocalResources); err != nil {
+				return err
+			}
+			if docRef.Kind == "doc" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"local images and files require a docx token/URL or a wiki URL that resolves to docx").
+					WithParam("--doc")
+			}
+			return runtime.EnsureScopes(docsUpdateLocalResourceScopesFor(docRef))
+		}
 	}
 	return nil
 }
@@ -127,32 +146,54 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 func dryRunUpdateV2(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	// Validate has already accepted --doc; parseDocumentRef cannot fail here.
 	ref, _ := parseDocumentRef(runtime.Str("doc"))
-	body, err := buildUpdateBodyWithHTML5ReferenceMap(runtime)
+	body, resources, err := buildUpdateBodyWithPreparedInput(runtime)
 	if err != nil {
 		return common.NewDryRunAPI().Set("error", err.Error())
 	}
-	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s", ref.Token)
-	return common.NewDryRunAPI().
-		PUT(apiPath).
+	documentID := ref.Token
+	dry := common.NewDryRunAPI()
+	if len(resources) > 0 && ref.Kind == "wiki" {
+		documentID = "<resolved_docx_token>"
+		dry.GET("/open-apis/wiki/v2/spaces/get_node").
+			Desc("Resolve wiki node to its docx document before writing local resources").
+			Params(map[string]interface{}{"token": ref.Token})
+	}
+	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s", validate.EncodePathSegment(documentID))
+	dry.PUT(apiPath).
 		Desc("OpenAPI: update document").
 		Body(body).
-		Set("document_id", ref.Token)
+		Set("document_id", documentID)
+	dry = appendRemoteDocImageDownloadsDryRun(dry, resources)
+	return appendLocalDocResourcesDryRun(dry, documentID, resources)
 }
 
 func executeUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	ref, _ := parseDocumentRef(runtime.Str("doc"))
 
-	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s", ref.Token)
-	body, err := buildUpdateBodyWithHTML5ReferenceMap(runtime)
+	body, resources, err := buildUpdateBodyWithPreparedInput(runtime)
 	if err != nil {
 		return err
 	}
+	documentID := ref.Token
+	if len(resources) > 0 {
+		documentID, err = resolveDocxDocumentID(runtime, runtime.Str("doc"))
+		if err != nil {
+			return err
+		}
+	}
+	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s", validate.EncodePathSegment(documentID))
 
 	data, err := doDocAPI(runtime, "PUT", apiPath, body)
 	if err != nil {
 		return err
 	}
+	if docsAPIOperationFailed(data) {
+		return runtime.OutPartialFailure(data, nil)
+	}
 
+	if err := finalizeLocalDocResources(runtime, documentID, data, resources); err != nil {
+		return err
+	}
 	runtime.OutRaw(data, nil)
 	return nil
 }
