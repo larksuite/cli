@@ -145,12 +145,6 @@ CREATE UNIQUE INDEX uk_teacher_user_id ON teacher (((teacher_profile).user_id));
 | 删表 / 删列 | 有业务数据默认禁止；必须用户明确授权后才执行，并说明数据丢失风险 |
 | 强约束 | `UNIQUE` / `FOREIGN KEY` / `NOT NULL` 默认谨慎，不确定不加 |
 
-**`IF NOT EXISTS` 支持矩阵**（用错会直接语法/执行错）：
-
-| 支持 | 不支持 |
-|---|---|
-| `CREATE TABLE` / `CREATE INDEX` / `CREATE EXTENSION` / `ALTER TABLE ADD COLUMN` | `CREATE TYPE` / `CREATE POLICY` / `ALTER TABLE ADD CONSTRAINT` |
-
 **多环境库加约束前先查 online 存量**：`dev` 干净不代表 `online` 干净，约束发布到 online 会撞线上存量数据而失败。发布前一律先用 `--environment online` 查清楚，按约束类型分三种：
 
 - **加唯一约束（`UNIQUE` / 唯一索引）**：线上不能有重复值。先查重复，有则先清理再加：
@@ -212,7 +206,7 @@ WHERE id = (SELECT id FROM task WHERE title = '梳理需求' ORDER BY _created_a
 
 | 陷阱 | 正确做法 |
 |---|---|
-| 表名带 schema 前缀 | 业务表一律裸表名 `FROM user_profile`，别写 `public.t` |
+| 表名带 schema 前缀 | 业务表一律裸表名 `FROM orders`，别写 `public.orders` |
 | 保留字作标识符 | 避免 `user` / `order` / `desc` / `offset` / `references` 等 |
 | 内联 COMMENT | 禁止 `col TEXT COMMENT 'xx'`，用独立 `COMMENT ON COLUMN` |
 | 手写系统表查结构 | 常规结构查询用 `+db-table-list` / `+db-table-get`，别手写 `information_schema` / `pg_indexes` 模拟 |
@@ -226,7 +220,7 @@ WHERE id = (SELECT id FROM task WHERE title = '梳理需求' ORDER BY _created_a
 
 | 项目 | 规则 |
 |---|---|
-| 主键 | 默认 `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`；人员实体表可用 `user_profile PRIMARY KEY` |
+| 主键 | 默认 `id uuid PRIMARY KEY DEFAULT gen_random_uuid()` |
 | 命名 | 表名单数、全小写、snake_case、无冗余后缀 |
 | 枚举 / 状态 | 用 `varchar(255)`，值用小写英文 + 下划线 |
 | JSONB | 必须 `COMMENT ON COLUMN ... IS '@type { ... }'` 声明类型 |
