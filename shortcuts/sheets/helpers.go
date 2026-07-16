@@ -681,7 +681,10 @@ func expandBorderAllShorthand(border map[string]interface{}) {
 }
 
 // borderStylesFromFlag parses --border-styles as a JSON object (top/bottom/
-// left/right with style sub-objects). Returns nil when the flag is empty.
+// left/right with style sub-objects), expanding the "all" side shorthand the
+// same as the typed --cells and --styles paths so +cells-set-style /
+// +cells-batch-set-style don't ship {"all":…} for the backend to reject.
+// Returns nil when the flag is empty.
 func borderStylesFromFlag(runtime flagView) (map[string]interface{}, error) {
 	if runtime.Str("border-styles") == "" {
 		return nil, nil
@@ -694,6 +697,7 @@ func borderStylesFromFlag(runtime flagView) (map[string]interface{}, error) {
 	if !ok {
 		return nil, sheetsValidationForFlag("border-styles", "--border-styles must be a JSON object")
 	}
+	expandBorderAllShorthand(m)
 	return m, nil
 }
 

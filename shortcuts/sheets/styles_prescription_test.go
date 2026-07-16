@@ -113,6 +113,33 @@ func TestCellsSet_BorderAllAndMisNestedBorder(t *testing.T) {
 	})
 }
 
+// TestCellsSetStyle_BorderAllExpands covers the --border-styles flag path
+// (+cells-set-style / +cells-batch-set-style go through borderStylesFromFlag,
+// not the typed --cells or --styles walkers): the "all" shorthand must expand
+// CLI-side here too, or the backend rejects {"all":…}.
+func TestCellsSetStyle_BorderAllExpands(t *testing.T) {
+	t.Parallel()
+	sc := shortcutFromRegistry(t, "+cells-set-style")
+	stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+		"--url", testURL,
+		"--sheet-name", "s",
+		"--range", "A1:A1",
+		"--border-styles", `{"all":{"style":"solid","weight":"thin"}}`,
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("border all should expand to four sides and pass, got: %v", err)
+	}
+	for _, side := range []string{`"top"`, `"bottom"`, `"left"`, `"right"`} {
+		if !strings.Contains(stdout, side) {
+			t.Errorf("dry-run body should carry expanded side %s, got %q", side, stdout)
+		}
+	}
+	if strings.Contains(stdout, `"all"`) {
+		t.Errorf("dry-run body must not carry the raw all shorthand, got %q", stdout)
+	}
+}
+
 // TestCellsMerge_RawAPIVocabularyNormalizes pins MERGE_ALL → all (the raw
 // OpenAPI enum agents copy from Lark API docs) via the enum alias table.
 func TestCellsMerge_RawAPIVocabularyNormalizes(t *testing.T) {
