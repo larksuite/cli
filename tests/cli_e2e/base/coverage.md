@@ -28,6 +28,7 @@
 | ✓ | base +base-block-move | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/move root,move after | `--base-token`; `--block-id`; optional `--parent-id`; `--after-id`; dry-run only | request shape only |
 | ✓ | base +base-block-rename | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/rename | `--base-token`; `--block-id`; `--name`; dry-run only | request shape only |
 | ✕ | base +dashboard-arrange | shortcut |  | none | dashboard workflows not covered |
+| ✓ | base +dashboard-block-batch-create | shortcut | base_dashboard_block_batch_create_dryrun_test.go::TestBaseDashboardBlockBatchCreateDryRun | `--base-token`; `--dashboard-id`; `--blocks`; dry-run only | request shape only |
 | ✕ | base +dashboard-block-create | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-block-delete | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-block-get | shortcut |  | none | dashboard workflows not covered |

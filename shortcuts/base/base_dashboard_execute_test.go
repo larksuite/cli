@@ -395,6 +395,73 @@ func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 	})
 }
 
+// TestBaseDashboardBlockExecuteBatchCreate tests the +dashboard-block-batch-create command.
+func TestBaseDashboardBlockExecuteBatchCreate(t *testing.T) {
+	t.Run("creates blocks sequentially with compact output", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_stat",
+					"name":     "订单数",
+					"type":     "statistics",
+					"data_config": map[string]interface{}{
+						"table_name": "订单表",
+						"count_all":  true,
+					},
+				},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_line",
+					"name":     "月度趋势",
+					"type":     "line",
+					"data_config": map[string]interface{}{
+						"table_name": "订单表",
+					},
+				},
+			},
+		})
+		blocks := `[
+			{"name":"订单数","type":"statistics","data_config":{"table_name":"订单表","count_all":true}},
+			{"name":"月度趋势","type":"line","data_config":{"table_name":"订单表","series":[{"field_name":"金额","rollup":"sum"}],"group_by":[{"field_name":"月份","mode":"integrated","sort":{"type":"group","order":"asc"}}]}}
+		]`
+		args := []string{"+dashboard-block-batch-create", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--blocks", blocks}
+		if err := runShortcut(t, BaseDashboardBlockBatchCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"created_count": 2`) || !strings.Contains(got, `"blk_stat"`) || !strings.Contains(got, `"blk_line"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		if strings.Contains(got, "data_config") {
+			t.Fatalf("batch output should stay compact, stdout=%s", got)
+		}
+	})
+
+	t.Run("rejects invalid block data config", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-batch-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--blocks", `[{"name":"Bad","type":"column","data_config":{"series":[{"field_name":"金额","rollup":"COUNTA"}]}}]`,
+		}
+		err := runShortcut(t, BaseDashboardBlockBatchCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error")
+		}
+		if got := err.Error(); !strings.Contains(got, "blocks[0].data_config") || !strings.Contains(got, "data_config 校验失败") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 // TestBaseDashboardBlockExecuteUpdate tests the +dashboard-block-update command.
 func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 	t.Run("update name and data-config", func(t *testing.T) {
@@ -592,6 +659,20 @@ func TestBaseDashboardBlockDryRun_Create(t *testing.T) {
 	}
 	got := stdout.String()
 	if !strings.Contains(got, "POST /open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks") || !strings.Contains(got, "\"name\":\"订单趋势\"") || !strings.Contains(got, "table_name") || !strings.Contains(got, "open_id") {
+		t.Fatalf("stdout=%s", got)
+	}
+}
+
+// TestBaseDashboardBlockDryRun_BatchCreate tests the +dashboard-block-batch-create --dry-run flag.
+func TestBaseDashboardBlockDryRun_BatchCreate(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	blocks := `[{"name":"订单数","type":"statistics","data_config":{"table_name":"订单表","count_all":true}},{"name":"月度趋势","type":"line","data_config":{"table_name":"订单表","series":[{"field_name":"金额","rollup":"SUM"}],"group_by":[{"field_name":"月份","mode":"integrated","sort":{"type":"group","order":"asc"}}]}}]`
+	args := []string{"+dashboard-block-batch-create", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--blocks", blocks, "--user-id-type", "open_id", "--dry-run", "--format", "pretty"}
+	if err := runShortcut(t, BaseDashboardBlockBatchCreate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "POST /open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks") || !strings.Contains(got, "\"blocks\"") || !strings.Contains(got, "\"sequential\":true") || !strings.Contains(got, "open_id") {
 		t.Fatalf("stdout=%s", got)
 	}
 }

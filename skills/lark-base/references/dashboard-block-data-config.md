@@ -36,6 +36,8 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 
 ## data_config 通用结构
 
+创建多个组件时，把每个组件写成 `{"name":"...","type":"...","data_config":{...}}`，整体放入 `+dashboard-block-batch-create --blocks '[...]'`。只创建或修复单个组件时，才把本页模板直接传给 `+dashboard-block-create --data-config '{...}'`。
+
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `table_name` | string | 关联数据表名称 |

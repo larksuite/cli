@@ -93,6 +93,7 @@ func Shortcuts() []common.Shortcut {
 		BaseDashboardBlockGet,
 		BaseDashboardBlockGetData,
 		BaseDashboardBlockCreate,
+		BaseDashboardBlockBatchCreate,
 		BaseDashboardBlockUpdate,
 		BaseDashboardBlockDelete,
 	}
