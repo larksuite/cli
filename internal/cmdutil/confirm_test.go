@@ -111,6 +111,13 @@ func TestRetryCommandWithYes(t *testing.T) {
 		}
 	})
 
+	t.Run("bundled stdin flag omits the retry line", func(t *testing.T) {
+		// --flag=- reads stdin the same as --flag -; both must suppress the line.
+		if got := retryCommandWithYes([]string{"lark-cli", "sheets", "+cells-set", "--cells=-"}); got != "" {
+			t.Errorf("--flag=- stdin invocation must not render a retry line, got %q", got)
+		}
+	})
+
 	t.Run("oversized command omits the retry line", func(t *testing.T) {
 		if got := retryCommandWithYes([]string{"lark-cli", "x", "--operations", strings.Repeat("a", 400)}); got != "" {
 			t.Errorf("oversized invocation must not render a retry line, got %q", got)

@@ -22,9 +22,10 @@ import (
 // the hint carries the complete retry command with --yes appended — eval
 // traces show agents always self-heal by appending --yes, so handing them
 // the exact line saves the reconstruction step. The retry line is omitted
-// (falling back to the plain hint) when any argument reads stdin ("-",
-// whose piped data a bare re-run would not reproduce) or when the rendered
-// command would be unreasonably long to echo back.
+// (falling back to the plain hint) when any argument reads stdin (a bare "-",
+// as its own token or bundled onto a flag as --flag=-, whose piped data a
+// bare re-run would not reproduce) or when the rendered command would be
+// unreasonably long to echo back.
 func RequireConfirmation(action string) error {
 	err := errs.NewConfirmationRequiredError(errs.RiskHighRiskWrite, action,
 		"%s requires confirmation", action)
@@ -49,7 +50,7 @@ func retryCommandWithYes(args []string) string {
 	parts := make([]string, 0, len(args)+1)
 	parts = append(parts, filepath.Base(args[0]))
 	for _, a := range args[1:] {
-		if a == "-" {
+		if argReadsStdin(a) {
 			return ""
 		}
 		parts = append(parts, shellQuoteArg(a))
@@ -60,6 +61,22 @@ func retryCommandWithYes(args []string) string {
 		return ""
 	}
 	return line
+}
+
+// argReadsStdin reports whether an argument makes a flag read from stdin — the
+// portable bare "-" value, whether passed as its own token (--flag -) or
+// bundled onto the flag (--flag=- / -f=-). Piped stdin is one-shot data a bare
+// re-run cannot reproduce, so any such argument suppresses the retry line.
+func argReadsStdin(a string) bool {
+	if a == "-" {
+		return true
+	}
+	if strings.HasPrefix(a, "-") {
+		if i := strings.IndexByte(a, '='); i >= 0 && a[i+1:] == "-" {
+			return true
+		}
+	}
+	return false
 }
 
 // shellQuoteArg single-quotes an argument when it contains any character a
