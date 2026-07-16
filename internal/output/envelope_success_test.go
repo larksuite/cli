@@ -104,6 +104,47 @@ func TestWriteSuccessEnvelope_JqUsesEnvelope(t *testing.T) {
 	}
 }
 
+func TestWriteSuccessEnvelope_DryRunMarker(t *testing.T) {
+	var out strings.Builder
+
+	err := WriteSuccessEnvelope(map[string]interface{}{"api": []interface{}{}}, SuccessEnvelopeOptions{
+		Identity: "bot",
+		DryRun:   true,
+		Out:      &out,
+	})
+	if err != nil {
+		t.Fatalf("WriteSuccessEnvelope() error = %v", err)
+	}
+
+	var env map[string]interface{}
+	if err := json.Unmarshal([]byte(out.String()), &env); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, out.String())
+	}
+	if env["ok"] != true || env["identity"] != "bot" || env["dry_run"] != true {
+		t.Fatalf("unexpected dry-run envelope: %#v", env)
+	}
+	if _, ok := env["data"].(map[string]interface{}); !ok {
+		t.Fatalf("data = %#v, want object", env["data"])
+	}
+}
+
+func TestWriteSuccessEnvelope_DryRunJqUsesEnvelope(t *testing.T) {
+	var out strings.Builder
+
+	err := WriteSuccessEnvelope(map[string]interface{}{"api": []interface{}{}}, SuccessEnvelopeOptions{
+		Identity: "bot",
+		DryRun:   true,
+		JqExpr:   ".dry_run",
+		Out:      &out,
+	})
+	if err != nil {
+		t.Fatalf("WriteSuccessEnvelope() error = %v", err)
+	}
+	if strings.TrimSpace(out.String()) != "true" {
+		t.Fatalf("jq output = %q, want true", out.String())
+	}
+}
+
 func TestWriteSuccessEnvelope_JqWarnsWhenSafetyAlertFiltered(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
 	extcs.Register(&mockProvider{

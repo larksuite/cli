@@ -23,9 +23,13 @@ var VCMeetingListActive = common.Shortcut{
 	Command:     "+meeting-list-active",
 	Description: "List active meetings for the current identity or target user",
 	Risk:        "read",
-	Scopes:      []string{"vc:meeting.meetingevent:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	// UAT exposes user-granted scopes, so the framework can preflight the user
+	// recommendation. TAT has no scope metadata; keep the bot recommendation
+	// conditional so it is available to diagnostics without a local preflight.
+	UserScopes:           []string{meetingQueryUserScope},
+	ConditionalBotScopes: []string{meetingQueryBotScope},
+	AuthTypes:            []string{"user", "bot"},
+	HasFormat:            true,
 	Flags: []common.Flag{
 		{Name: "user-id", Desc: "target user ID when using bot identity"},
 	},
@@ -50,7 +54,7 @@ var VCMeetingListActive = common.Shortcut{
 		}
 		data, err := runtime.CallAPITyped(http.MethodGet, vcMeetingListActiveAPIPath, params, nil)
 		if err != nil {
-			return err
+			return normalizeMeetingQueryPermissionError(runtime, err)
 		}
 		if data == nil {
 			data = map[string]interface{}{}

@@ -21,6 +21,7 @@ var BaseRecordList = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordListFieldRefFlag(),
+		recordListFieldNamesAliasFlag(),
 		recordListViewRefFlag(),
 		recordFilterFlag(),
 		recordSortFlag(),
@@ -43,6 +44,9 @@ var BaseRecordList = common.Shortcut{
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateRecordListFieldAlias(runtime); err != nil {
+			return err
+		}
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err
 		}
@@ -75,6 +79,15 @@ func recordListFieldRefFlag() common.Flag {
 	return flag
 }
 
+func recordListFieldNamesAliasFlag() common.Flag {
+	return common.Flag{
+		Name:   "field-names",
+		Type:   "string_slice",
+		Desc:   "hidden alias for --field-id; accepts comma-separated field names",
+		Hidden: true,
+	}
+}
+
 func recordListViewRefFlag() common.Flag {
 	flag := viewRefFlag(false)
 	flag.Desc = "view ID or name; omit for reading all table records, or set to read a user-specified or temporary filtered/sorted view"
@@ -88,4 +101,11 @@ func recordReadFormatFlag() common.Flag {
 		Enum:    []string{"markdown", "json"},
 		Desc:    "output format: markdown (default) | json",
 	}
+}
+
+func validateRecordListFieldAlias(runtime *common.RuntimeContext) error {
+	if runtime.Changed("field-id") && runtime.Changed("field-names") {
+		return baseFlagErrorf("--field-id and --field-names are mutually exclusive; use --field-id")
+	}
+	return nil
 }

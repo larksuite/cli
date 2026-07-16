@@ -268,7 +268,7 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		ProfileName: app.ProfileName(),
 		AppID:       app.AppId,
 		AppSecret:   secret,
-		Brand:       app.Brand,
+		Brand:       ParseBrand(string(app.Brand)),
 		Lang:        app.Lang,
 		DefaultAs:   app.DefaultAs,
 	}

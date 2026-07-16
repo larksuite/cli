@@ -1255,7 +1255,7 @@ func TestMinutesReadError_ProblemOf_EnrichesMessage(t *testing.T) {
 		t.Errorf("error message not enriched: %q", errMsg)
 	}
 	hint, _ := note["hint"].(string)
-	if !strings.Contains(hint, "minute file read permission") {
+	if !strings.Contains(hint, "+apply-permission") {
 		t.Errorf("hint not surfaced: %q", hint)
 	}
 }

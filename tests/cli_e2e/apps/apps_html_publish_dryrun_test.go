@@ -13,7 +13,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestAppsHTMLPublishDryRun exercises the walker / manifest layer without
@@ -50,13 +49,13 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code", gjson.Get(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
 		// file_count / files / total_size_bytes sit at envelope top level
 		// (not under api.0.body — manifest is dry-run metadata, not the HTTP body).
-		assert.Equal(t, int64(2), gjson.Get(result.Stdout, "file_count").Int())
-		assert.Greater(t, gjson.Get(result.Stdout, "total_size_bytes").Int(), int64(0))
-		files := gjson.Get(result.Stdout, "files").Array()
+		assert.Equal(t, int64(2), clie2e.DryRunGet(result.Stdout, "file_count").Int())
+		assert.Greater(t, clie2e.DryRunGet(result.Stdout, "total_size_bytes").Int(), int64(0))
+		files := clie2e.DryRunGet(result.Stdout, "files").Array()
 		require.Len(t, files, 2)
 		names := []string{files[0].String(), files[1].String()}
 		assert.Contains(t, names, "index.html")
@@ -83,8 +82,8 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, int64(1), gjson.Get(result.Stdout, "file_count").Int())
-		assert.Equal(t, "page.html", gjson.Get(result.Stdout, "files.0").String())
+		assert.Equal(t, int64(1), clie2e.DryRunGet(result.Stdout, "file_count").Int())
+		assert.Equal(t, "page.html", clie2e.DryRunGet(result.Stdout, "files.0").String())
 	})
 
 	t.Run("HiddenFilesIncludedExceptGit", func(t *testing.T) {
@@ -115,9 +114,9 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		// index.html + .DS_Store kept; .git/HEAD filtered out → 2 files.
-		assert.Equal(t, int64(2), gjson.Get(result.Stdout, "file_count").Int(),
+		assert.Equal(t, int64(2), clie2e.DryRunGet(result.Stdout, "file_count").Int(),
 			"walker must keep non-.git hidden files but drop .git; got: %s", result.Stdout)
-		names := gjson.Get(result.Stdout, "files").Array()
+		names := clie2e.DryRunGet(result.Stdout, "files").Array()
 		var got []string
 		for _, n := range names {
 			got = append(got, n.String())
@@ -145,9 +144,9 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, int64(0), gjson.Get(result.Stdout, "file_count").Int())
-		assert.Equal(t, int64(0), gjson.Get(result.Stdout, "total_size_bytes").Int())
-		assert.Contains(t, gjson.Get(result.Stdout, "validation_error").String(), "index.html",
+		assert.Equal(t, int64(0), clie2e.DryRunGet(result.Stdout, "file_count").Int())
+		assert.Equal(t, int64(0), clie2e.DryRunGet(result.Stdout, "total_size_bytes").Int())
+		assert.Contains(t, clie2e.DryRunGet(result.Stdout, "validation_error").String(), "index.html",
 			"empty dir should report index.html validation_error: %s", result.Stdout)
 	})
 
@@ -171,9 +170,9 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, int64(1), gjson.Get(result.Stdout, "file_count").Int())
-		assert.Equal(t, "page.html", gjson.Get(result.Stdout, "files.0").String())
-		assert.Contains(t, gjson.Get(result.Stdout, "validation_error").String(), "index.html")
+		assert.Equal(t, int64(1), clie2e.DryRunGet(result.Stdout, "file_count").Int())
+		assert.Equal(t, "page.html", clie2e.DryRunGet(result.Stdout, "files.0").String())
+		assert.Contains(t, clie2e.DryRunGet(result.Stdout, "validation_error").String(), "index.html")
 	})
 
 	t.Run("RejectsMissingAppID", func(t *testing.T) {
@@ -269,7 +268,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		waived := gjson.Get(result.Stdout, "sensitive_waived").Array()
+		waived := clie2e.DryRunGet(result.Stdout, "sensitive_waived").Array()
 		require.Len(t, waived, 1, "expected sensitive_waived to list the file, got: %s", result.Stdout)
 		assert.Equal(t, ".env.example", waived[0].String())
 	})
@@ -295,7 +294,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, int64(1), gjson.Get(result.Stdout, "file_count").Int())
+		assert.Equal(t, int64(1), clie2e.DryRunGet(result.Stdout, "file_count").Int())
 	})
 
 	t.Run("TrimsAppIDAndPath", func(t *testing.T) {
@@ -319,8 +318,8 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code",
-			gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, int64(1), gjson.Get(result.Stdout, "file_count").Int(),
+			clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, int64(1), clie2e.DryRunGet(result.Stdout, "file_count").Int(),
 			"path trimming must produce the same manifest as untrimmed input")
 	})
 }

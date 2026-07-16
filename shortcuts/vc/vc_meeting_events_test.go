@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -418,6 +420,21 @@ func TestMeetingEvents_Validation_PageAllIgnoresInvalidPageSize(t *testing.T) {
 	}
 }
 
+func TestMeetingEvents_UsesUserScopePreflightAndBotScopeHint(t *testing.T) {
+	if got := VCMeetingEvents.ScopesForIdentity("user"); !reflect.DeepEqual(got, []string{meetingQueryUserScope}) {
+		t.Fatalf("ScopesForIdentity(user) = %v, want %v", got, []string{meetingQueryUserScope})
+	}
+	if got := VCMeetingEvents.ScopesForIdentity("bot"); len(got) != 0 {
+		t.Fatalf("ScopesForIdentity(bot) = %v, want no bot preflight scopes", got)
+	}
+	if got := VCMeetingEvents.DeclaredScopesForIdentity("user"); !reflect.DeepEqual(got, []string{meetingQueryUserScope}) {
+		t.Fatalf("DeclaredScopesForIdentity(user) = %v, want %v", got, []string{meetingQueryUserScope})
+	}
+	if got := VCMeetingEvents.DeclaredScopesForIdentity("bot"); !reflect.DeepEqual(got, []string{meetingQueryBotScope}) {
+		t.Fatalf("DeclaredScopesForIdentity(bot) = %v, want %v", got, []string{meetingQueryBotScope})
+	}
+}
+
 func TestMeetingEvents_Validation_InvalidPageSizeReturnsFlagError(t *testing.T) {
 	runtime := newMeetingEventsRuntime()
 	mustSetMeetingEventsFlag(t, runtime, "meeting-id", "7628568141510692381")
@@ -634,6 +651,63 @@ func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 		if strings.Contains(out, unwanted) {
 			t.Fatalf("json output should not contain %q: %s", unwanted, stdout.String())
 		}
+	}
+}
+
+func TestMeetingEvents_Execute_NormalizesMeetingScopeError(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    vcMeetingEventsAPIPath,
+		Status: 400,
+		Body: map[string]interface{}{
+			"code": output.LarkErrAppScopeNotEnabled,
+			"msg":  "access denied",
+			"error": map[string]interface{}{
+				"permission_violations": []interface{}{
+					map[string]interface{}{"subject": meetingQueryUserScope},
+					map[string]interface{}{"subject": meetingQueryBotScope},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected permission error")
+	}
+	reg.Verify(t)
+
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) {
+		t.Fatalf("error = %T %v, want *errs.PermissionError", err, err)
+	}
+	if permissionErr.Code != output.LarkErrAppScopeNotEnabled {
+		t.Fatalf("Code = %d, want %d", permissionErr.Code, output.LarkErrAppScopeNotEnabled)
+	}
+	if permissionErr.Identity != "bot" {
+		t.Fatalf("Identity = %q, want bot", permissionErr.Identity)
+	}
+	wantMessage := "access denied for bot identity; recommended scope: " + meetingQueryBotScope
+	if permissionErr.Message != wantMessage {
+		t.Fatalf("Message = %q, want %q", permissionErr.Message, wantMessage)
+	}
+	if !strings.Contains(permissionErr.Hint, meetingQueryBotScope) {
+		t.Fatalf("Hint = %q, want bot scope %q", permissionErr.Hint, meetingQueryBotScope)
+	}
+	if len(permissionErr.MissingScopes) != 1 || permissionErr.MissingScopes[0] != meetingQueryBotScope {
+		t.Fatalf("MissingScopes = %v, want only bot scope %q", permissionErr.MissingScopes, meetingQueryBotScope)
+	}
+	if permissionErr.ConsoleURL == "" {
+		t.Fatal("ConsoleURL is empty, want identity-specific developer-console URL")
+	}
+	if strings.Contains(permissionErr.ConsoleURL, url.QueryEscape(meetingQueryUserScope)) || !strings.Contains(permissionErr.ConsoleURL, url.QueryEscape(meetingQueryBotScope)) {
+		t.Fatalf("ConsoleURL = %q, want only bot scope", permissionErr.ConsoleURL)
 	}
 }
 

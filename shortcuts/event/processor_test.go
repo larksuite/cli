@@ -792,7 +792,6 @@ func TestImMessageProcessor_CompactInteractiveFallsBackToRaw(t *testing.T) {
 		t.Fatalf("stderr hint = %q, want interactive fallback message", string(hint))
 	}
 }
-
 func TestGenericProcessor_CompactUnmarshalError(t *testing.T) {
 	p := &GenericProcessor{}
 	raw := makeRawEvent("some.type", `not valid json`)

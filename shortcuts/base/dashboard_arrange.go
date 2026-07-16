@@ -23,7 +23,7 @@ var BaseDashboardArrange = common.Shortcut{
 		{Name: "user-id-type", Desc: "user ID type: open_id / union_id / user_id"},
 	},
 	Tips: []string{
-		"Server-side smart layout is not deterministic or position-specific; use only when the user asks to arrange or beautify a dashboard.",
+		"Server-side smart layout is not deterministic or position-specific; use only when the user asks to arrange or beautify a dashboard, or to tidy up a dashboard created from scratch in this session.",
 	},
 	DryRun: dryRunDashboardArrange,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

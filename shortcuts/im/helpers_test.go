@@ -675,3 +675,27 @@ func TestShortcuts(t *testing.T) {
 		t.Fatalf("Shortcuts() commands = %#v, want %#v", commands, want)
 	}
 }
+
+// TestSenderDisplay covers the human-readable sender column: a resolved name wins,
+// otherwise the sender id is shown (AC3 fallback), and a system/senderless message
+// with neither yields an empty string (no name is normal, not an error).
+func TestSenderDisplay(t *testing.T) {
+	cases := []struct {
+		name   string
+		sender map[string]interface{}
+		want   string
+	}{
+		{"name wins", map[string]interface{}{"name": "Bot Alpha", "id": "cli_bot"}, "Bot Alpha"},
+		{"id fallback when no name (AC3)", map[string]interface{}{"id": "cli_bot", "open_bot_id": "ou_bot"}, "cli_bot"},
+		{"user id fallback", map[string]interface{}{"id": "ou_user"}, "ou_user"},
+		{"empty name falls back to id", map[string]interface{}{"name": "", "id": "cli_x"}, "cli_x"},
+		{"no name no id (system)", map[string]interface{}{"sender_type": "system"}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := senderDisplay(c.sender); got != c.want {
+				t.Fatalf("senderDisplay(%#v) = %q, want %q", c.sender, got, c.want)
+			}
+		})
+	}
+}

@@ -105,6 +105,20 @@ Signatures that are easy to guess wrong:
 
 Program output (JSON envelopes) goes to stdout. Progress, warnings, hints go to stderr. Mixing them corrupts pipe chains.
 
+### Typed data over loose maps
+
+Parse `map[string]interface{}` into a typed struct at the boundary — one projection function per shape — and let everything downstream consume struct fields, not string keys. A typo'd map key compiles fine and fails at runtime, which an agent then debugs blind.
+
+Use distinct types when two values could be swapped silently: see `internal/meta.Token` — a bare string compiles on either side of a string/string signature, a distinct type does not.
+
+Legacy loose-map code exists in older paths. Match its call sites when touching it, but do not copy the pattern into new code.
+
+### Transcribe faithfully — no silent fallbacks
+
+When code echoes input onward (request previews, transformations, proxies), transcribe verbatim. A `default:` branch that coerces unrecognized input into a plausible value ("unknown HTTP verb → GET") makes the output lie, and an agent reasons from the lie.
+
+The same rule applies to flag combinations and internal wiring: if a requested option cannot be honored, return a typed validation error — never silently substitute another behavior and exit 0. Silent guesses (defaulting a missing identity, discarding writes on a nil writer) are bugs even when every current caller happens to avoid them.
+
 ### Use `vfs.*` instead of `os.*`
 
 All filesystem access goes through `internal/vfs`. This enables test mocking.
@@ -116,6 +130,7 @@ CLI arguments are untrusted (they come from AI agents). Call `validate.SafeInput
 ### Tests
 
 - Every behavior change needs a test alongside the change.
+- A contract test must fail if the implementation is reverted. If you can undo the code change and the suite stays green, the contract is not pinned — assert the new field/behavior directly, not a happy-path substring.
 - `cmdutil.TestFactory(t, config)` for test factories.
 - `t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())` to isolate config state.
 

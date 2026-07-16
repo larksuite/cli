@@ -36,7 +36,7 @@ func TestSheets_TableGetDefaultDryRun(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	out := result.Stdout
+	out := clie2e.DryRunData(result.Stdout)
 
 	// api.0 — the structure read that supplies the grid dimensions.
 	require.Equal(t, "get_workbook_structure", gjson.Get(out, "api.0.body.tool_name").String(), "stdout:\n%s", out)
@@ -69,7 +69,7 @@ func TestSheets_TableGetSingleSheetDryRun(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	out := result.Stdout
+	out := clie2e.DryRunData(result.Stdout)
 	require.Equal(t, "get_workbook_structure", gjson.Get(out, "api.0.body.tool_name").String(),
 		"single-sheet path must still read the structure for grid dimensions; stdout:\n%s", out)
 	require.Equal(t, "get_cell_ranges", gjson.Get(out, "api.1.body.tool_name").String(), "stdout:\n%s", out)

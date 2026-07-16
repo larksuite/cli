@@ -39,7 +39,7 @@ func wrapExportContextErr(err error) error {
 var DriveExport = common.Shortcut{
 	Service:     "drive",
 	Command:     "+export",
-	Description: "Export a doc/docx/sheet/bitable/slides to a local file with limited polling",
+	Description: "Export a doc/docx/sheet/bitable/slides or wiki document to a local file with limited polling",
 	Risk:        "read",
 	Scopes: []string{
 		"docs:document.content:read",
@@ -47,10 +47,12 @@ var DriveExport = common.Shortcut{
 		"docx:document:readonly",
 		"drive:drive.metadata:readonly",
 	},
-	AuthTypes: []string{"user", "bot"},
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "token", Desc: "source document token", Required: true},
-		{Name: "doc-type", Desc: "source document type: doc | docx | sheet | bitable | slides", Required: true, Enum: []string{"doc", "docx", "sheet", "bitable", "slides"}},
+		{Name: "url", Desc: "source document URL; doc type and token are inferred, and wiki URLs are resolved to the underlying document"},
+		{Name: "token", Desc: "source document token; bare tokens require --doc-type, and wiki tokens should use --doc-type wiki"},
+		{Name: "doc-type", Desc: "source document type: doc | docx | sheet | bitable | slides | wiki (required only when --token is a bare token)", Enum: []string{"doc", "docx", "sheet", "bitable", "slides", "wiki"}},
 		{Name: "file-extension", Desc: "export format: docx | pdf | xlsx | csv | markdown | base (bitable only) | pptx (slides only)", Required: true, Enum: []string{"docx", "pdf", "xlsx", "csv", "markdown", "base", "pptx"}},
 		{Name: "sub-id", Desc: "sub-table/sheet ID, required when exporting sheet/bitable as csv"},
 		{Name: "only-schema", Type: "bool", Desc: "export only bitable schema when --doc-type bitable --file-extension base"},
@@ -75,6 +77,7 @@ var DriveExport = common.Shortcut{
 // task and poll, but do not download" — callers that only need the ready file
 // token / status get it back without writing a local file.
 type ExportParams struct {
+	URL           string
 	Token         string
 	DocType       string
 	FileExtension string
@@ -87,6 +90,7 @@ type ExportParams struct {
 
 func (p ExportParams) spec() driveExportSpec {
 	return driveExportSpec{
+		URL:           p.URL,
 		Token:         p.Token,
 		DocType:       p.DocType,
 		FileExtension: p.FileExtension,
@@ -106,6 +110,7 @@ func exportParamsFromFlags(runtime *common.RuntimeContext) ExportParams {
 		outputDir = "."
 	}
 	return ExportParams{
+		URL:           runtime.Str("url"),
 		Token:         runtime.Str("token"),
 		DocType:       runtime.Str("doc-type"),
 		FileExtension: runtime.Str("file-extension"),
@@ -127,60 +132,90 @@ func validateExport(p ExportParams) error {
 
 // PlanExportDryRun builds the dry-run plan for an export without performing I/O.
 func PlanExportDryRun(runtime *common.RuntimeContext, p ExportParams) *common.DryRunAPI {
-	spec := p.spec()
+	spec, source, err := normalizeDriveExportSpecInput(p.spec())
+	if err != nil {
+		return common.NewDryRunAPI().Set("error", err.Error())
+	}
+	if err := validateDriveExportNormalizedSpecForSource(spec, source); err != nil {
+		return common.NewDryRunAPI().Set("error", err.Error())
+	}
+
+	dry := common.NewDryRunAPI()
+	if source.Type == "wiki" {
+		dry.GET("/open-apis/wiki/v2/spaces/get_node").
+			Desc("[0] Resolve wiki node to underlying document token").
+			Params(map[string]interface{}{"token": source.Token})
+		spec.Token = "obj_token_from_step_0"
+		if spec.DocType == "" {
+			spec.DocType = "obj_type_from_step_0"
+		}
+		dry.Set("wiki_token", source.Token)
+	}
+
 	// Markdown export is a special case: docx markdown comes from the V2
 	// docs_ai fetch API directly instead of the Drive export task API.
 	if spec.FileExtension == "markdown" {
 		apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", validate.EncodePathSegment(spec.Token))
-		dr := common.NewDryRunAPI().
-			Desc("2-step orchestration: fetch docx markdown -> write local file").
+		desc := "2-step orchestration: fetch docx markdown -> write local file"
+		if source.Type == "wiki" {
+			desc = "3-step orchestration: resolve wiki -> fetch docx markdown -> write local file"
+		}
+		dry.Desc(desc).
 			POST(apiPath).
 			Body(map[string]interface{}{
 				"format": "markdown",
 			}).
 			Set("output_dir", p.OutputDir)
 		if name := strings.TrimSpace(p.FileName); name != "" {
-			dr.Set("file_name", ensureExportFileExtension(sanitizeExportFileName(name, spec.Token), spec.FileExtension))
+			dry.Set("file_name", ensureExportFileExtension(sanitizeExportFileName(name, spec.Token), spec.FileExtension))
 		}
-		return dr
+		return dry
 	}
 
-	body := map[string]interface{}{
-		"token":          spec.Token,
-		"type":           spec.DocType,
-		"file_extension": spec.FileExtension,
+	desc := "3-step orchestration: create export task -> limited polling -> download file"
+	if source.Type == "wiki" {
+		desc = "4-step orchestration: resolve wiki -> create export task -> limited polling -> download file"
 	}
-	if strings.TrimSpace(spec.SubID) != "" {
-		body["sub_id"] = spec.SubID
-	}
-	if spec.OnlySchema {
-		body["only_schema"] = true
-	}
-
-	dr := common.NewDryRunAPI().
-		Desc("3-step orchestration: create export task -> limited polling -> download file").
+	dry.Desc(desc).
 		POST("/open-apis/drive/v1/export_tasks").
-		Body(body).
+		Body(buildDriveExportTaskBody(spec)).
 		Set("output_dir", p.OutputDir)
 	if name := strings.TrimSpace(p.FileName); name != "" {
-		dr.Set("file_name", ensureExportFileExtension(sanitizeExportFileName(name, spec.Token), spec.FileExtension))
+		dry.Set("file_name", ensureExportFileExtension(sanitizeExportFileName(name, spec.Token), spec.FileExtension))
 	}
-	return dr
+	return dry
 }
 
 // RunExport drives create export task -> bounded poll -> optional download. It
 // is the shared core behind both drive +export and sheets +workbook-export. An
 // empty p.OutputDir skips the download step and returns the ready file token.
 func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportParams) error {
-	spec := p.spec()
+	spec, source, err := normalizeDriveExportSpecInput(p.spec())
+	if err != nil {
+		return err
+	}
+	if err := validateDriveExportNormalizedSpecForSource(spec, source); err != nil {
+		return err
+	}
+
 	outputDir := p.OutputDir
 	preferredFileName := strings.TrimSpace(p.FileName)
 	overwrite := p.Overwrite
+
+	var wikiResolution driveExportWikiResolution
 
 	// Markdown export bypasses the async export task and writes the fetched
 	// markdown content directly to disk. Uses the V2 docs_ai fetch API for
 	// higher-quality Lark-flavored Markdown output.
 	if spec.FileExtension == "markdown" {
+		if source.Type == "wiki" {
+			resolvedSpec, resolution, err := resolveDriveExportWikiSource(ctx, runtime, spec, source.Token)
+			if err != nil {
+				return err
+			}
+			spec = resolvedSpec
+			wikiResolution = resolution
+		}
 		fmt.Fprintf(runtime.IO().ErrOut, "Exporting docx as markdown: %s\n", common.MaskToken(spec.Token))
 		apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", validate.EncodePathSegment(spec.Token))
 		data, err := runtime.CallAPITyped(
@@ -222,21 +257,23 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 			return err
 		}
 
-		runtime.Out(map[string]interface{}{
+		runtime.Out(annotateDriveExportWikiOutput(map[string]interface{}{
 			"token":          spec.Token,
 			"doc_type":       spec.DocType,
 			"file_extension": spec.FileExtension,
 			"file_name":      filepath.Base(savedPath),
 			"saved_path":     savedPath,
 			"size_bytes":     len(content),
-		}, nil)
+		}, wikiResolution), nil)
 		return nil
 	}
 
-	ticket, err := createDriveExportTask(runtime, spec)
+	ticket, resolvedSpec, resolution, err := createDriveExportTaskResolvingWiki(ctx, runtime, spec, source)
 	if err != nil {
 		return err
 	}
+	spec = resolvedSpec
+	wikiResolution = resolution
 	fmt.Fprintf(runtime.IO().ErrOut, "Created export task: %s\n", ticket)
 
 	var lastStatus driveExportStatus
@@ -274,7 +311,7 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 			// no local download (e.g. sheets +workbook-export without an output
 			// path). Skip the download and return the status envelope.
 			if strings.TrimSpace(outputDir) == "" {
-				runtime.Out(map[string]interface{}{
+				runtime.Out(annotateDriveExportWikiOutput(map[string]interface{}{
 					"ticket":         ticket,
 					"token":          spec.Token,
 					"doc_type":       spec.DocType,
@@ -284,7 +321,7 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 					"file_size":      status.FileSize,
 					"ready":          true,
 					"downloaded":     false,
-				}, nil)
+				}, wikiResolution), nil)
 				return nil
 			}
 
@@ -307,7 +344,7 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 			out["ticket"] = ticket
 			out["doc_type"] = spec.DocType
 			out["file_extension"] = spec.FileExtension
-			runtime.Out(out, nil)
+			runtime.Out(annotateDriveExportWikiOutput(out, wikiResolution), nil)
 			return nil
 		}
 
@@ -357,7 +394,19 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 	if preferredFileName != "" {
 		result["file_name"] = ensureExportFileExtension(sanitizeExportFileName(preferredFileName, spec.Token), spec.FileExtension)
 	}
-	runtime.Out(result, nil)
+	runtime.Out(annotateDriveExportWikiOutput(result, wikiResolution), nil)
 	fmt.Fprintf(runtime.IO().ErrOut, "Export task is still in progress. Continue with: %s\n", nextCommand)
 	return nil
+}
+
+func annotateDriveExportWikiOutput(out map[string]interface{}, resolution driveExportWikiResolution) map[string]interface{} {
+	if !resolution.Resolved {
+		return out
+	}
+	out["wiki_token"] = resolution.WikiToken
+	out["wiki_node"] = map[string]interface{}{
+		"obj_token": resolution.ObjToken,
+		"obj_type":  resolution.ObjType,
+	}
+	return out
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -122,6 +123,13 @@ var SheetCreate = common.Shortcut{
 func sheetCreateInput(runtime flagView, token string) (map[string]interface{}, error) {
 	if strings.TrimSpace(runtime.Str("title")) == "" {
 		return nil, common.ValidationErrorf("--title is required")
+	}
+	sheetType := strings.TrimSpace(runtime.Str("type"))
+	if sheetType == "" {
+		sheetType = "sheet"
+	}
+	if sheetType != "sheet" {
+		return nil, common.ValidationErrorf("--type must be 'sheet'")
 	}
 	if n := runtime.Int("row-count"); n < 0 || n > 50000 {
 		return nil, common.ValidationErrorf("--row-count must be between 0 and 50000")
@@ -590,8 +598,11 @@ var WorkbookCreate = common.Shortcut{
 			if err != nil {
 				return err
 			}
-			_, err = parseWorkbookCreateSheetStyles(runtime, payload)
-			return err
+			styles, err := parseWorkbookCreateSheetStyles(runtime, payload)
+			if err != nil {
+				return err
+			}
+			return payload.checkCellBudgetWithStyles(styles)
 		}
 		// Untyped --values path: parse (and validate) --styles as a single sheet
 		// style item, then synthesize --values into a type-less typed payload —
@@ -634,16 +645,26 @@ var WorkbookCreate = common.Shortcut{
 			s := &payload.Sheets[i]
 			matrix, _ := buildSheetMatrix(s, headerOn(s))
 			_, col0, row0, _ := sheetAnchor(s)
-			_ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
+			matrix, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
+			// Padding can widen / lengthen the matrix past the data, so build the
+			// range from the padded dims to match what Execute writes.
+			rng := tablePutFullRange(s, len(matrix))
+			writeCols := len(s.Columns)
+			if len(matrix) > 0 {
+				writeCols = len(matrix[0])
+				rng = fmt.Sprintf("%s%d:%s%d",
+					columnIndexToLetter(col0), row0+1,
+					columnIndexToLetter(col0+writeCols-1), row0+len(matrix))
+			}
 			input := map[string]interface{}{
 				"excel_id":   "<new-token>",
 				"sheet_name": s.Name,
-				"range":      tablePutFullRange(s, len(matrix)),
+				"range":      rng,
 				"cells":      matrix,
 			}
 			wireBody, _ := buildToolBody("set_cell_range", input)
 			dry.POST("/open-apis/sheet_ai/v2/spreadsheets/<new-token>/tools/invoke_write").
-				Desc(fmt.Sprintf("write sheet %q (%d data rows × %d cols) via set_cell_range", s.Name, len(s.Rows), len(s.Columns))).
+				Desc(fmt.Sprintf("write sheet %q (%d data rows × %d cols) via set_cell_range", s.Name, len(s.Rows), writeCols)).
 				Body(wireBody)
 			appendWorkbookCreateVisualOpsDryRun(dry, "<new-token>", "", s.Name, sheetStyles.styleFor(i))
 		}
@@ -822,6 +843,9 @@ func buildValuesPayload(runtime flagView, sheetStyles *workbookCreateSheetStyles
 	if maxCols == 0 || nrows == 0 {
 		return nil, nil // nothing to write (e.g. --values '[]' with no styles)
 	}
+	if err := checkTablePutCellBudget(int64(nrows) * int64(maxCols)); err != nil {
+		return nil, err
+	}
 	// Pad to a rectangle; nil cells become empty cells in buildTypedCell.
 	for len(rows) < nrows {
 		rows = append(rows, nil)
@@ -836,13 +860,19 @@ func buildValuesPayload(runtime flagView, sheetStyles *workbookCreateSheetStyles
 		cols[i] = tableColumnSpec{Name: fmt.Sprintf("col%d", i+1)} // type-less
 	}
 	noHeader := false
-	return &tablePayload{Sheets: []tableSheetSpec{{
+	payload := &tablePayload{Sheets: []tableSheetSpec{{
 		Name:    valuesSheetName,
 		Mode:    "overwrite",
 		Header:  &noHeader,
 		Columns: cols,
 		Rows:    rows,
-	}}}, nil
+	}}}
+	// --values bypasses tablePayload.validate(), so enforce the cell budget here
+	// too — otherwise a giant --values array materializes unbounded.
+	if err := payload.checkCellBudget(); err != nil {
+		return nil, err
+	}
+	return payload, nil
 }
 
 // parseValuesRows decodes --values (JSON 2D array, with @file/stdin already
@@ -1139,10 +1169,14 @@ func parseWorkbookCreateResizeOps(v interface{}, path, dimension string) ([]work
 			}
 			return nil, common.ValidationErrorf("%s[%d].range %q must use %s", path, i, rangeStr, want)
 		}
+		typeHint := "pixel/standard"
+		if dimension == "row" {
+			typeHint = "pixel/standard/auto"
+		}
 		resizeType, _ := op["type"].(string)
 		resizeType = strings.TrimSpace(resizeType)
 		if resizeType == "" {
-			return nil, common.ValidationErrorf("%s[%d].type is required (pixel/standard%s)", path, i, autoSuffix(dimension))
+			return nil, common.ValidationErrorf("%s[%d].type is required (%s)", path, i, typeHint)
 		}
 		if dimension == "column" && resizeType == "auto" {
 			return nil, common.ValidationErrorf("%s[%d].type auto is rows-only", path, i)
@@ -1150,7 +1184,7 @@ func parseWorkbookCreateResizeOps(v interface{}, path, dimension string) ([]work
 		switch resizeType {
 		case "pixel", "standard", "auto":
 		default:
-			return nil, common.ValidationErrorf("%s[%d].type %q is invalid (want pixel/standard%s)", path, i, resizeType, autoSuffix(dimension))
+			return nil, common.ValidationErrorf("%s[%d].type %q is invalid (want %s)", path, i, resizeType, typeHint)
 		}
 		size := 0
 		if raw, ok := op["size"]; ok {
@@ -1246,7 +1280,7 @@ func normalizeWorkbookCreateStyleObject(in map[string]interface{}, path string) 
 
 func workbookCreateCellStyleField(name string) bool {
 	switch name {
-	case "font_color", "font_size", "font_weight", "font_style", "font_line",
+	case "font_color", "font_family", "font_size", "font_weight", "font_style", "font_line",
 		"background_color", "horizontal_alignment", "vertical_alignment",
 		"number_format", "word_wrap":
 		return true
@@ -1357,20 +1391,76 @@ func workbookCreateStyleDimensions(styles *workbookCreateStylePayload, baseCol, 
 	return rows, cols
 }
 
-func applyWorkbookCreateStylesToMatrix(rows [][]interface{}, styles *workbookCreateStylePayload, baseCol, baseRow int, label string) error {
+// matrixDimensionsForStyles projects the padded matrix size without allocating
+// it. Only cell_styles contribute; merges and row/column sizes use separate API
+// calls. Ranges up/left of the write anchor are left for the caller to reject.
+func matrixDimensionsForStyles(rows, cols int, styles *workbookCreateStylePayload, baseCol, baseRow int) (int, int) {
 	if styles == nil {
-		return nil
+		return rows, cols
 	}
+	for _, op := range styles.CellStyles {
+		startCol, startRow, endCol, endRow, err := workbookCreateStyleRangeBounds(op.Range)
+		if err != nil || startCol < baseCol || startRow < baseRow {
+			continue // unparsable, or up/left of the anchor: not paddable
+		}
+		if endCol-baseCol+1 > cols {
+			cols = endCol - baseCol + 1
+		}
+		if endRow-baseRow+1 > rows {
+			rows = endRow - baseRow + 1
+		}
+	}
+	return rows, cols
+}
+
+// padMatrixForStyles grows the matrix down and right to the projected style
+// extent, appending empty cells that cell_styles can mutate in place.
+func padMatrixForStyles(rows [][]interface{}, styles *workbookCreateStylePayload, baseCol, baseRow int) [][]interface{} {
+	needCols := 0
+	if len(rows) > 0 {
+		needCols = len(rows[0])
+	}
+	needRows, needCols := matrixDimensionsForStyles(len(rows), needCols, styles, baseCol, baseRow)
+	// Widen existing rows to needCols.
+	for r := range rows {
+		for len(rows[r]) < needCols {
+			rows[r] = append(rows[r], map[string]interface{}{})
+		}
+	}
+	// Append full empty rows to reach needRows.
+	for len(rows) < needRows {
+		row := make([]interface{}, needCols)
+		for c := range row {
+			row[c] = map[string]interface{}{}
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// applyWorkbookCreateStylesToMatrix pads the matrix to cover the cell_styles
+// ranges (see padMatrixForStyles), merges each op's style into the covered
+// cells, and returns the padded matrix. A range that starts left of / above the
+// write anchor can't be padded to and is rejected.
+func applyWorkbookCreateStylesToMatrix(rows [][]interface{}, styles *workbookCreateStylePayload, baseCol, baseRow int, label string) ([][]interface{}, error) {
+	if styles == nil {
+		return rows, nil
+	}
+	rows = padMatrixForStyles(rows, styles, baseCol, baseRow)
 	for i, op := range styles.CellStyles {
 		startCol, startRow, endCol, endRow, err := workbookCreateStyleRangeBounds(op.Range)
 		if err != nil {
-			return common.ValidationErrorf("%s[%d].range %q: %v", label, i, op.Range, err)
+			return rows, common.ValidationErrorf("%s[%d].range %q: %v", label, i, op.Range, err)
 		}
-		if startCol < baseCol || startRow < baseRow || endRow-baseRow >= len(rows) || len(rows) == 0 || endCol-baseCol >= len(rows[0]) {
-			return common.ValidationErrorf("%s[%d].range %q is outside the write range %s%d:%s%d",
+		// After padding, the matrix reaches every range that starts at or after
+		// the anchor; a start left of / above it can't be covered. The endRow /
+		// endCol checks stay as a defensive backstop (padding should have made
+		// them unreachable).
+		if startCol < baseCol || startRow < baseRow || len(rows) == 0 ||
+			endRow-baseRow >= len(rows) || endCol-baseCol >= len(rows[0]) {
+			return rows, common.ValidationErrorf("%s[%d].range %q starts outside the write range (its top-left must be at or after %s%d)",
 				label, i, op.Range,
-				columnIndexToLetter(baseCol), baseRow+1,
-				columnIndexToLetter(baseCol+len(rows[0])-1), baseRow+len(rows))
+				columnIndexToLetter(baseCol), baseRow+1)
 		}
 		for r := startRow - baseRow; r <= endRow-baseRow; r++ {
 			for c := startCol - baseCol; c <= endCol-baseCol; c++ {
@@ -1378,7 +1468,7 @@ func applyWorkbookCreateStylesToMatrix(rows [][]interface{}, styles *workbookCre
 			}
 		}
 	}
-	return nil
+	return rows, nil
 }
 
 func appendWorkbookCreateVisualOpsDryRun(dry *common.DryRunAPI, token, sheetID, sheetName string, styles *workbookCreateStylePayload) {
@@ -1730,9 +1820,13 @@ func lookupFirstSheetID(ctx context.Context, runtime *common.RuntimeContext, tok
 //
 // Imports a local xlsx/xls/csv file as a brand-new spreadsheet. The full
 // upload → create-task → poll flow is the shared drive import core
-// (drive.RunImport); this shortcut only pins the target type to "sheet" and
-// omits the bitable-only --target-token. Symmetric with +workbook-export.
-// Not exposed as an MCP tool.
+// (drive.RunImport); this shortcut only pins the target type to "sheet",
+// omits the bitable-only --target-token, and — because spreadsheet source
+// files are routinely misnamed (an .xlsx exported/renamed to .xls, etc.) —
+// sniffs the file's real container so the drive import backend receives the
+// true file_extension instead of failing with a cryptic
+// "xml_version_not_support". Symmetric with +workbook-export. Not exposed as
+// an MCP tool.
 
 // WorkbookImport imports a local spreadsheet file as a new Feishu spreadsheet
 // by delegating to the shared drive import core with type fixed to "sheet".
@@ -1746,24 +1840,119 @@ var WorkbookImport = common.Shortcut{
 	HasFormat:   true,
 	Flags:       flagsFor("+workbook-import"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return drive.ValidateImport(workbookImportParams(runtime))
+		params, err := workbookImportParams(runtime)
+		if err != nil {
+			return err
+		}
+		return drive.ValidateImport(params)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		return drive.PlanImportDryRun(runtime, workbookImportParams(runtime))
+		params, err := workbookImportParams(runtime)
+		if err != nil {
+			return common.NewDryRunAPI().Set("error", err.Error())
+		}
+		dry := drive.PlanImportDryRun(runtime, params)
+		if note := workbookImportMislabelNote(params); note != "" {
+			dry.Desc(note)
+		}
+		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return drive.RunImport(ctx, runtime, workbookImportParams(runtime))
+		params, err := workbookImportParams(runtime)
+		if err != nil {
+			return err
+		}
+		if note := workbookImportMislabelNote(params); note != "" {
+			fmt.Fprintln(runtime.IO().ErrOut, note)
+		}
+		return drive.RunImport(ctx, runtime, params)
 	},
 }
 
 // workbookImportParams builds the drive import request for +workbook-import,
 // pinning DocType to "sheet". The bitable-only --target-token is intentionally
-// not exposed here — use drive +import for non-sheet import targets.
-func workbookImportParams(runtime *common.RuntimeContext) drive.ImportParams {
-	return drive.ImportParams{
-		File:        runtime.Str("file"),
+// not exposed here — use drive +import for non-sheet import targets. It also
+// resolves a corrected file extension via content sniffing (see
+// correctedWorkbookExtension) and surfaces it through ImportParams.FileExtension.
+func workbookImportParams(runtime *common.RuntimeContext) (drive.ImportParams, error) {
+	file := runtime.Str("file")
+	params := drive.ImportParams{
+		File:        file,
 		DocType:     "sheet",
 		FolderToken: runtime.Str("folder-token"),
 		Name:        runtime.Str("name"),
 	}
+	ext, err := correctedWorkbookExtension(runtime.FileIO(), file)
+	if err != nil {
+		return params, err
+	}
+	params.FileExtension = ext
+	return params, nil
+}
+
+// correctedWorkbookExtension returns an override extension when the file's
+// declared .xls/.xlsx suffix disagrees with its real container, "" when the
+// declared suffix is correct (or the extension is not in the Excel family, or
+// the file cannot yet be read). A declared Excel file whose bytes match neither
+// container yields a prescriptive validation error rather than deferring to the
+// backend's opaque "xml_version_not_support".
+func correctedWorkbookExtension(fio fileio.FileIO, filePath string) (string, error) {
+	declared := strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), ".")
+	if declared != "xls" && declared != "xlsx" {
+		return "", nil
+	}
+
+	sniffed, ok := sniffWorkbookContainer(fio, filePath)
+	if !ok {
+		// Not readable here; let the drive core's stat/upload surface any error.
+		return "", nil
+	}
+	switch sniffed {
+	case declared:
+		return "", nil
+	case "xls", "xlsx":
+		return sniffed, nil
+	default:
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"file %s has a .%s extension but its content is neither an OOXML (.xlsx) nor a legacy Excel (.xls) workbook; re-save it as a real .xlsx/.xls (or export to .csv) before importing",
+			filePath, declared).WithParam("--file")
+	}
+}
+
+// sniffWorkbookContainer inspects a file's leading magic bytes to tell an OOXML
+// workbook (zip container -> .xlsx) apart from a legacy OLE2/BIFF workbook
+// (compound document -> .xls). The second return value is false when the file
+// cannot be read far enough to judge (open error or fewer than the four
+// discriminating bytes). When true, the format is "xlsx", "xls", or "" (bytes
+// matching neither container).
+func sniffWorkbookContainer(fio fileio.FileIO, filePath string) (string, bool) {
+	f, err := fio.Open(filePath)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+
+	var head [8]byte
+	n, _ := io.ReadFull(f, head[:])
+	if n < 4 {
+		return "", false
+	}
+	switch {
+	case head[0] == 0x50 && head[1] == 0x4B: // "PK" -> ZIP, i.e. OOXML .xlsx
+		return "xlsx", true
+	case head[0] == 0xD0 && head[1] == 0xCF && head[2] == 0x11 && head[3] == 0xE0: // OLE2 compound doc -> legacy .xls
+		return "xls", true
+	}
+	return "", true
+}
+
+// workbookImportMislabelNote returns a user-facing note when content sniffing
+// overrode the declared extension, or "" when no correction was applied.
+func workbookImportMislabelNote(params drive.ImportParams) string {
+	declared := strings.TrimPrefix(strings.ToLower(filepath.Ext(params.File)), ".")
+	if params.FileExtension == "" || params.FileExtension == declared {
+		return ""
+	}
+	return fmt.Sprintf("Note: %s has a mislabeled .%s extension but is actually a .%s workbook; importing it as .%s.",
+		filepath.Base(params.File), declared, params.FileExtension, params.FileExtension)
 }

@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -419,6 +420,116 @@ func TestBatchUpdate_TranslatorRejects(t *testing.T) {
 	}
 }
 
+// TestBatchUpdate_PrescriptiveHints pins the recovery hints that ride on the
+// highest-frequency batch failures, so an agent can repair its payload in a
+// single retry without --help / --print-schema round trips.
+func TestBatchUpdate_PrescriptiveHints(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		opsJSON    string
+		wantMatch  string
+		wantInHint []string
+	}{
+		{
+			name:       "missing shortcut gets entry template",
+			opsJSON:    `[{"input":{"range":"A1"}}]`,
+			wantMatch:  "'shortcut' field is required",
+			wantInHint: []string{`{"shortcut":"+cells-set"`, `"input"`},
+		},
+		{
+			name:       "disallowed shortcut lists the allow-list inline",
+			opsJSON:    `[{"shortcut":"+cells-batch-set-style","input":{}}]`,
+			wantMatch:  "not allowed in +batch-update",
+			wantInHint: []string{"allowed shortcuts:", "+cells-set-style", "+range-copy"},
+		},
+		{
+			name:       "translator failure lists full key contract",
+			opsJSON:    `[{"shortcut":"+dim-insert","input":{"sheet_name":"s"}}]`,
+			wantMatch:  "--position is required",
+			wantInHint: []string{"+dim-insert input keys:", "sheet_id|sheet_name (choose one)", "position (required)", "count (required)", "inherit_style"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, BatchUpdate, []string{
+				"--url", testURL,
+				"--operations", tc.opsJSON,
+				"--yes",
+				"--dry-run",
+			})
+			ve := requireValidation(t, err, tc.wantMatch)
+			for _, want := range tc.wantInHint {
+				if !strings.Contains(ve.Hint, want) {
+					t.Errorf("hint should contain %q, got %q", want, ve.Hint)
+				}
+			}
+		})
+	}
+}
+
+// TestTranslateBatchOperations_OverLimitSplitHint pins the split
+// prescription on the 100-entry cap: the hint must say how many batches
+// the caller should re-issue.
+func TestTranslateBatchOperations_OverLimitSplitHint(t *testing.T) {
+	t.Parallel()
+	ops := make([]interface{}, 185)
+	for i := range ops {
+		ops[i] = map[string]interface{}{"shortcut": "+cells-set", "input": map[string]interface{}{}}
+	}
+	_, err := translateBatchOperations(ops, "shtcnX")
+	ve := requireValidation(t, err, "accepts at most 100 entries; got 185")
+	for _, want := range []string{"2 separate +batch-update calls", "at most 100 entries each"} {
+		if !strings.Contains(ve.Hint, want) {
+			t.Errorf("hint should contain %q, got %q", want, ve.Hint)
+		}
+	}
+}
+
+func TestTranslateBatchOperations_AggregateCellCap(t *testing.T) {
+	ops := []interface{}{
+		map[string]interface{}{
+			"shortcut": "+cells-set-style",
+			"input": map[string]interface{}{
+				"sheet-id": "sh1", "range": "A1:A100001", "font-weight": "bold",
+			},
+		},
+		map[string]interface{}{
+			"shortcut": "+cells-set-style",
+			"input": map[string]interface{}{
+				"sheet-id": "sh1", "range": "A1:A100000", "font-weight": "bold",
+			},
+		},
+	}
+	_, err := translateBatchOperations(ops, "shtcnX")
+	ve := requireValidation(t, err, "materialize 200001 cells total")
+	if ve.Param != "--operations" {
+		t.Fatalf("param = %q, want --operations", ve.Param)
+	}
+}
+
+// TestSubOpInputContract pins the contract line derivation from flag-defs:
+// reserved spreadsheet locators are omitted, the sheet selector collapses
+// to a choose-one, and required flags are marked.
+func TestSubOpInputContract(t *testing.T) {
+	t.Parallel()
+	got := subOpInputContract("+dim-insert")
+	for _, want := range []string{"sheet_id|sheet_name (choose one)", "position (required)", "count (required)", "inherit_style"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("contract should contain %q, got %q", want, got)
+		}
+	}
+	for _, banned := range []string{"url", "spreadsheet_token", "dry_run"} {
+		if strings.Contains(got, banned) {
+			t.Errorf("contract must not expose %q, got %q", banned, got)
+		}
+	}
+	if got := subOpInputContract("+no-such-shortcut"); got != "" {
+		t.Errorf("unknown shortcut should yield empty contract, got %q", got)
+	}
+}
+
 // TestBatchUpdate_DimFreezeInjectsFreeze covers the static-freeze-only
 // path: +dim-freeze always injects operation=freeze (count==0 unfreeze
 // path of the single shortcut is intentionally not supported in batch).
@@ -447,7 +558,7 @@ func TestBatchUpdate_ResizeNoOperationField(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, BatchUpdate, []string{
 		"--url", testURL,
-		"--operations", `[{"shortcut":"+rows-resize","input":{"sheet_id":"sh1","range":"1:3","type":"pixel","size":30}}]`,
+		"--operations", `[{"shortcut":"+rows-resize","input":{"sheet_id":"sh1","range":"1:3","height":30}}]`,
 		"--yes",
 	})
 	input := decodeToolInput(t, body, "batch_update")

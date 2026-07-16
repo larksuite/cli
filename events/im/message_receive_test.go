@@ -84,19 +84,32 @@ func TestProcessImMessageReceive_Text(t *testing.T) {
 		},
 		"event": {
 			"sender": {
+				"sender_type": "user",
 				"sender_id": {"open_id": "ou_sender"}
 			},
 			"message": {
 				"message_id":   "om_text_001",
+				"root_id":      "om_root_001",
+				"parent_id":    "om_parent_001",
+				"thread_id":    "omt_thread_001",
 				"chat_id":      "oc_chat",
 				"chat_type":    "p2p",
 				"message_type": "text",
 				"create_time":  "1776409468987",
-				"content":      "{\"text\":\"hello there\"}"
+				"update_time":  "1776409469999",
+				"content":      "{\"text\":\"hello @_user_1\"}",
+				"mentions": [
+					{
+						"key": "@_user_1",
+						"id": {"open_id": "ou_mentioned"},
+						"name": "Alice"
+					}
+				]
 			}
 		}
 	}`
 	out := runReceive(t, payload)
+	outMap := runReceiveMap(t, payload)
 
 	if out.Type != "im.message.receive_v1" {
 		t.Errorf("Type = %q", out.Type)
@@ -110,11 +123,68 @@ func TestProcessImMessageReceive_Text(t *testing.T) {
 	if out.SenderID != "ou_sender" {
 		t.Errorf("SenderID = %q", out.SenderID)
 	}
-	if out.Content != "hello there" {
-		t.Errorf("Content = %q, want \"hello there\"", out.Content)
+	if out.Content != "hello @Alice" {
+		t.Errorf("Content = %q, want \"hello @Alice\"", out.Content)
 	}
 	if out.Timestamp != "1776409469273" {
 		t.Errorf("Timestamp = %q", out.Timestamp)
+	}
+	for field, want := range map[string]string{
+		"sender_type": "user",
+		"root_id":     "om_root_001",
+		"thread_id":   "omt_thread_001",
+		"reply_to":    "om_parent_001",
+		"update_time": "1776409469999",
+	} {
+		if got, _ := outMap[field].(string); got != want {
+			t.Errorf("%s = %q, want %q", field, got, want)
+		}
+	}
+	mentions, _ := outMap["mentions"].([]interface{})
+	if len(mentions) != 1 {
+		t.Fatalf("mentions length = %d, want 1: %#v", len(mentions), outMap["mentions"])
+	}
+	mention, _ := mentions[0].(map[string]interface{})
+	for field, want := range map[string]string{
+		"key":  "@_user_1",
+		"id":   "ou_mentioned",
+		"name": "Alice",
+	} {
+		if got, _ := mention[field].(string); got != want {
+			t.Errorf("mentions[0].%s = %q, want %q", field, got, want)
+		}
+	}
+}
+
+func TestProcessImMessageReceive_OmitsUnchangedUpdateTime(t *testing.T) {
+	payload := `{
+		"schema": "2.0",
+		"header": {
+			"event_id": "ev_test_text",
+			"event_type": "im.message.receive_v1",
+			"create_time": "1776409469273",
+			"app_id": "cli_test"
+		},
+		"event": {
+			"sender": {
+				"sender_type": "user",
+				"sender_id": {"open_id": "ou_sender"}
+			},
+			"message": {
+				"message_id":   "om_text_001",
+				"chat_id":      "oc_chat",
+				"chat_type":    "p2p",
+				"message_type": "text",
+				"create_time":  "1776409468987",
+				"update_time":  "1776409468987",
+				"content":      "{\"text\":\"hello there\"}"
+			}
+		}
+	}`
+	outMap := runReceiveMap(t, payload)
+
+	if _, ok := outMap["update_time"]; ok {
+		t.Errorf("update_time should be omitted when it equals create_time: %#v", outMap)
 	}
 }
 
@@ -185,6 +255,25 @@ func runReceive(t *testing.T, payload string) ImMessageReceiveOutput {
 	var out ImMessageReceiveOutput
 	if err := json.Unmarshal(got, &out); err != nil {
 		t.Fatalf("Process output is not valid ImMessageReceiveOutput JSON: %v\nraw=%s", err, string(got))
+	}
+	return out
+}
+
+func runReceiveMap(t *testing.T, payload string) map[string]interface{} {
+	t.Helper()
+	raw := &event.RawEvent{
+		EventID:   "ev_test",
+		EventType: "im.message.receive_v1",
+		Payload:   json.RawMessage(payload),
+		Timestamp: time.Now(),
+	}
+	got, err := processImMessageReceive(context.Background(), nil, raw, nil)
+	if err != nil {
+		t.Fatalf("Process error: %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(got, &out); err != nil {
+		t.Fatalf("Process output is not valid JSON: %v\nraw=%s", err, string(got))
 	}
 	return out
 }

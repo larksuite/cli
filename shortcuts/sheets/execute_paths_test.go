@@ -93,6 +93,36 @@ func TestExecute_WikiURLResolvesToSheet(t *testing.T) {
 	}
 }
 
+// TestExecute_RevisionGet_WikiURL guards RevisionGet's custom Execute hook:
+// the wiki node token must be resolved before get_workbook_structure runs.
+func TestExecute_RevisionGet_WikiURL(t *testing.T) {
+	t.Parallel()
+	getNode := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "sheet",
+					"obj_token": testToken,
+				},
+			},
+		},
+	}
+	tool := toolOutputStub(testToken, "read", `{"revision":60}`)
+	out, err := runShortcutWithStubs(t, RevisionGet,
+		[]string{"--url", "https://example.feishu.cn/wiki/wikTestNODE"}, getNode, tool)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+	data := decodeEnvelopeData(t, out)
+	if data["revision"] != float64(60) {
+		t.Fatalf("revision = %v, want 60; out=%s", data["revision"], out)
+	}
+}
+
 // TestExecute_WikiURLWrongObjType rejects a wiki node that resolves to a
 // non-spreadsheet obj_type before any tool invoke.
 func TestExecute_WikiURLWrongObjType(t *testing.T) {

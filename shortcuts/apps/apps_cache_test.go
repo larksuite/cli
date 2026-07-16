@@ -346,18 +346,10 @@ func TestAppsCacheClear_DryRunBodyOmitsEnv(t *testing.T) {
 }
 
 // firstDryRunAPI 解析 dry-run 输出的第一个 api[] 项（method/url/params/body）。
-type dryRunAPIItem struct {
-	Method string                 `json:"method"`
-	URL    string                 `json:"url"`
-	Params map[string]interface{} `json:"params"`
-	Body   map[string]interface{} `json:"body"`
-}
-
-func firstDryRunAPI(t *testing.T, s string) dryRunAPIItem {
+// 复用本包规范的 dryRunAPIEnvelope（api 现嵌在 data.api 下，见 dryrun_test.go）。
+func firstDryRunAPI(t *testing.T, s string) dryRunAPICall {
 	t.Helper()
-	var env struct {
-		API []dryRunAPIItem `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	if err := json.Unmarshal([]byte(s), &env); err != nil || len(env.API) == 0 {
 		t.Fatalf("bad dry-run json: %v\n%s", err, s)
 	}

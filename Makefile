@@ -23,7 +23,7 @@ PREFIX   ?= /usr/local
 TEST_GOARCH := $(or $(GOARCH),$(shell go env GOARCH))
 RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
-.PHONY: all build vet fmt-check script-test test unit-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks
+.PHONY: all build vet fmt-check script-test test unit-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks sidecar-test
 
 all: test
 
@@ -64,6 +64,9 @@ examples-build:
 	go build ./extension/platform/examples/audit-observer
 	go build ./extension/platform/examples/readonly-policy
 
+# ./tests/... includes tests/plugin_e2e, which builds ~20 customer-fork
+# binaries (~1 min warm; a cold module cache also downloads via GOPROXY).
+# Deliberate: local `make test` exercises the L4 plugin contract by default.
 integration-test: build
 	go test -v -count=1 ./tests/...
 
@@ -104,6 +107,14 @@ uninstall:
 
 clean:
 	rm -f $(BINARY)
+
+# sidecar-test compiles and runs the authsidecar* build-tagged code that the
+# default CI matrix never sees (they carry //go:build tags).
+sidecar-test:
+	go build -tags authsidecar -o /dev/null .
+	go test $(RACE_FLAG) -count=1 -tags authsidecar ./extension/credential/sidecar/ ./extension/transport/sidecar/ ./internal/cmdutil/
+	go test $(RACE_FLAG) -count=1 -tags authsidecar_demo ./sidecar/server-demo/
+	go test $(RACE_FLAG) -count=1 -tags authsidecar ./tests/sidecar_e2e/
 
 # Run secret-leak checks locally before pushing.
 # Step 1: check-doc-tokens catches realistic-looking example tokens in reference

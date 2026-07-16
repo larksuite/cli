@@ -25,6 +25,7 @@ var BaseRecordBatchCreate = common.Shortcut{
 		"Happy path fields: fields is the column order; rows is an array of row arrays; each row must match fields order and may use null for empty cells.",
 		"Before writing, use +field-list to confirm real writable fields; do not write system fields, formula, lookup, or attachment fields as normal CellValue.",
 		"Batch create supports max 200 rows per call.",
+		"After batch-creating known helper rows, use the returned record IDs and your submitted rows; do not immediately +record-list the same table unless you need server-normalized formula/lookup values or failure diagnosis.",
 		"Use the record-batch-create guide for command limits and edge cases.",
 	}, recordCellValueHappyPathTips...),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

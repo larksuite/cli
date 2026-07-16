@@ -49,7 +49,10 @@ lark-cli slides xml_presentation.slide delete --as user --params '{
 
 ```bash
 # 先读取 XML 内容，确认待删除页面
-lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id":"slides_example_presentation_id"}' | jq -r '.data.xml_presentation.content'
+lark-cli slides +xml-get --as user \
+  --presentation "slides_example_presentation_id" \
+  --output .lark-slides/plan/slides_example_presentation_id/readback.xml \
+  --json
 
 # 然后按已知 slide_id 删除
 lark-cli slides xml_presentation.slide delete --as user --params '{"xml_presentation_id":"slides_example_presentation_id","slide_id":"slide_example_id"}'
@@ -61,11 +64,11 @@ lark-cli slides xml_presentation.slide delete --as user --params '{"xml_presenta
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "revision_id": 100
-  },
-  "msg": "success"
+  }
 }
 ```
 
@@ -118,6 +121,5 @@ done
 
 ## 相关命令
 
-- [slides +create](lark-slides-create.md) - 创建空白 PPT
-- [xml_presentations get](lark-slides-xml-presentations-get.md) - 读取 PPT 内容
-- [xml_presentation.slide create](lark-slides-xml-presentation-slide-create.md) - 添加幻灯片页面
+- [slides +create](lark-slides-create.md) - 创建 PPT / 添加幻灯片页面
+- [slides +xml-get](lark-slides-xml-get.md) - 读取 PPT 内容并保存到本地文件

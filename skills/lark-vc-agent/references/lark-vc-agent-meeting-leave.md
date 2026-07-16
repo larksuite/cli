@@ -46,7 +46,7 @@ lark-cli vc +meeting-leave --as bot --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 ## 输出结果
 
 接口成功返回时，默认输出：`Left meeting <meeting-id> successfully.`。
-`--format json` 返回 API 原始响应体。
+`--format json` 返回标准 `{ok, identity, data}` 信封，例如 `{"ok":true,"identity":"bot","data":{}}`，不是带 `code` / `msg` 的 API 原始响应体。
 
 ## 如何获取输入参数
 

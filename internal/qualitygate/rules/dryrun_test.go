@@ -33,6 +33,17 @@ func TestExtractDryRunJSONSkipsBanner(t *testing.T) {
 	}
 }
 
+func TestExtractDryRunJSONReadsSuccessEnvelope(t *testing.T) {
+	raw := `{"ok":true,"dry_run":true,"data":{"api":[{"method":"GET","url":"/open-apis/test"}]}}`
+	got, apiCallCount, err := extractDryRunJSON([]byte(raw))
+	if err != nil {
+		t.Fatalf("extractDryRunJSON() error = %v", err)
+	}
+	if got.Method != "GET" || got.URL != "/open-apis/test" || apiCallCount != 1 {
+		t.Fatalf("got request=%#v apiCallCount=%d, want enveloped GET and count 1", got, apiCallCount)
+	}
+}
+
 func TestExtractDryRunJSONSkipsBannerWithBraces(t *testing.T) {
 	raw := "banner {not json}\n{\"api\":[{\"method\":\"GET\",\"url\":\"/open-apis/test\"}]}\n"
 	got, apiCallCount, err := extractDryRunJSON([]byte(raw))
@@ -302,6 +313,13 @@ func TestRunDryRunsMaterializesInlinePlaceholderFlagValues(t *testing.T) {
 	wantArgs := []string{"im", "+chat-messages-list", "--chat-id=oc_test123", "--dry-run"}
 	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
 		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
+func TestFakeValueFromPlaceholderNameUsesOpenDepartmentPrefix(t *testing.T) {
+	got, ok := fakeValueFromPlaceholderName("open_department_id")
+	if !ok || got != "od-test123" {
+		t.Fatalf("open_department_id placeholder = %q, %v; want od-test123, true", got, ok)
 	}
 }
 

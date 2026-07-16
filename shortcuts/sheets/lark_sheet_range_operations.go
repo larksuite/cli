@@ -5,6 +5,8 @@ package sheets
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -208,77 +210,81 @@ func mergeInput(runtime flagView, token, sheetID, sheetName, op string, withMerg
 	return input, nil
 }
 
-// resize_range exposes two CLI shortcuts:
+// resize_range exposes two CLI shortcuts, each with two input forms:
 //
-//   +rows-resize / +cols-resize — set row heights / column widths. --type
-//   enum (pixel / standard / [auto]) controls how: --type pixel needs --size,
-//   --type standard restores the sheet default, --type auto auto-fits row
-//   heights (rows only). --range is an A1 closed range ("2:10" / "5" rows or
-//   "A:E" / "C" columns); single-element form is expanded to "N:N" before
-//   send because resize_range rejects bare single-element ranges.
+//   +rows-resize / +cols-resize — set row heights / column widths.
+//
+//   Uniform form: --range + --height/--width <px>; the pixel mode is implied
+//   so --type can be omitted (or set to `pixel` — equivalent). Non-pixel
+//   modes go through --type standard / --type auto (rows only) and cannot be
+//   combined with the pixel flag. --range is an A1 closed range ("2:10" /
+//   "5" rows or "A:E" / "C" columns); single-element form is expanded to
+//   "N:N" before send because resize_range rejects bare single-element
+//   ranges.
+//
+//   Map form: --heights / --widths carries a JSON object of per-row/column
+//   sizes ({"A": 100, "C:E": 120, "G": "standard"}) and fans out into one
+//   atomic batch_update of resize_range ops — different sizes for many
+//   rows/columns in a single CLI call, no +batch-update needed. Mutually
+//   exclusive with --range/--height/--width/--type, and not accepted as a
+//   +batch-update sub-op (nested batch_update is unsupported upstream).
 //
 // Wire shape: resize_height / resize_width carries { type, value? }, e.g.
 //   { "type": "pixel", "value": 30 }  or  { "type": "standard" }.
+//
+// Units are pixels. Column widths in Excel character units (openpyxl /
+// xlsxwriter mental model, px ≈ chars × 8 + 16) are a real agent trap, so
+// widths below minSaneColumnWidthPx are rejected with a conversion hint.
 
-// RowsResize wraps resize_range for row heights. --type auto enables
-// auto-fit (rows only); --type pixel requires --size.
+// RowsResize wraps resize_range for row heights. Pass --range + --height
+// <px> for a uniform pixel height, --heights '{"1":50,"2:20":30}' for
+// per-row heights, or --type standard/auto for non-pixel modes.
 var RowsResize = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+rows-resize",
-	Description: "Resize rows by pixel / standard / auto (--type pixel needs --size; --range is 1-based A1 like \"2:10\" or \"5\").",
+	Description: "Resize rows in pixels: --range + --height <px> for one uniform height, --heights '{\"1\":50,\"2:20\":30,\"21\":\"auto\"}' for per-row heights in one atomic call, or --type standard/auto (--range is 1-based A1 like \"2:10\" or \"5\").",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+rows-resize"),
 	Validate:    validateViaResize("row"),
-	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		token, _ := resolveSpreadsheetToken(runtime)
-		sheetID, sheetName, _ := resolveSheetSelector(runtime)
-		input, _ := resizeInput(runtime, token, sheetID, sheetName, "row")
-		return invokeToolDryRun(token, ToolKindWrite, "resize_range", input)
-	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetTokenExec(runtime)
-		if err != nil {
-			return err
-		}
-		sheetID, sheetName, err := resolveSheetSelector(runtime)
-		if err != nil {
-			return err
-		}
-		input, err := resizeInput(runtime, token, sheetID, sheetName, "row")
-		if err != nil {
-			return err
-		}
-		out, err := callTool(ctx, runtime, token, ToolKindWrite, "resize_range", input)
-		if err != nil {
-			return err
-		}
-		runtime.Out(out, nil)
-		return nil
-	},
+	DryRun:      resizeDryRun("row"),
+	Execute:     resizeExecute("row"),
 }
 
-// ColsResize wraps resize_range for column widths. Column widths do not
-// support auto-fit — --type only accepts pixel / standard.
+// ColsResize wraps resize_range for column widths. Pass --range + --width
+// <px> for a uniform pixel width, --widths '{"A":100,"C:E":120}' for
+// per-column widths, or --type standard for the default width. Column
+// widths do not support auto-fit — --type does not accept auto.
 var ColsResize = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cols-resize",
-	Description: "Resize columns by pixel / standard (--type pixel needs --size; --range is column letters like \"A:E\" or \"C\"; no auto for cols).",
+	Description: "Resize columns in pixels (NOT Excel char units): --range + --width <px> for one uniform width, --widths '{\"A\":100,\"C:E\":120}' for per-column widths in one atomic call, or --type standard to reset (--range is column letters like \"A:E\" or \"C\"; no auto for cols).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cols-resize"),
 	Validate:    validateViaResize("column"),
-	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	DryRun:      resizeDryRun("column"),
+	Execute:     resizeExecute("column"),
+}
+
+// resizeDryRun / resizeExecute route a resize shortcut through resizeToolCall
+// so the uniform form hits resize_range and the map form hits batch_update
+// with identical inputs in preview and execution.
+func resizeDryRun(dimension string) func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	return func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
-		input, _ := resizeInput(runtime, token, sheetID, sheetName, "column")
-		return invokeToolDryRun(token, ToolKindWrite, "resize_range", input)
-	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		toolName, input, _ := resizeToolCall(runtime, token, sheetID, sheetName, dimension)
+		return invokeToolDryRun(token, ToolKindWrite, toolName, input)
+	}
+}
+
+func resizeExecute(dimension string) func(ctx context.Context, runtime *common.RuntimeContext) error {
+	return func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
@@ -287,22 +293,21 @@ var ColsResize = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		input, err := resizeInput(runtime, token, sheetID, sheetName, "column")
+		toolName, input, err := resizeToolCall(runtime, token, sheetID, sheetName, dimension)
 		if err != nil {
 			return err
 		}
-		out, err := callTool(ctx, runtime, token, ToolKindWrite, "resize_range", input)
+		out, err := callTool(ctx, runtime, token, ToolKindWrite, toolName, input)
 		if err != nil {
 			return err
 		}
 		runtime.Out(out, nil)
 		return nil
-	},
+	}
 }
 
-// validateViaResize wires the standalone Validate to resizeInput so both
-// paths (standalone + batch sub-op) emit the same error for missing --type,
-// malformed --range, or --type auto on columns.
+// validateViaResize wires the standalone Validate to resizeToolCall so both
+// forms (uniform + map) are fully validated before execution.
 func validateViaResize(dimension string) func(ctx context.Context, runtime *common.RuntimeContext) error {
 	return func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetToken(runtime)
@@ -311,17 +316,82 @@ func validateViaResize(dimension string) func(ctx context.Context, runtime *comm
 		}
 		sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 		sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
-		_, err = resizeInput(runtime, token, sheetID, sheetName, dimension)
+		_, _, err = resizeToolCall(runtime, token, sheetID, sheetName, dimension)
 		return err
 	}
 }
 
-// autoSuffix appends " / auto" to the enum hint for rows.
-func autoSuffix(dimension string) string {
-	if dimension == "row" {
-		return " / auto"
+// resizeToolCall picks the input form: map form (--heights/--widths) builds a
+// batch_update of resize_range ops; uniform form builds a single resize_range
+// input. Returns the tool name to invoke alongside its input.
+func resizeToolCall(runtime flagView, token, sheetID, sheetName, dimension string) (string, map[string]interface{}, error) {
+	if runtime.Changed(sizeMapFlag(dimension)) {
+		input, err := resizeMapInput(runtime, token, sheetID, sheetName, dimension)
+		return "batch_update", input, err
 	}
-	return ""
+	input, err := resizeInput(runtime, token, sheetID, sheetName, dimension)
+	return "resize_range", input, err
+}
+
+// nonPixelTypes lists the --type values a given dimension accepts (rows also
+// accept auto; columns only accept standard). Used to shape the hint printed
+// when --type is missing or invalid.
+func nonPixelTypes(dimension string) string {
+	if dimension == "row" {
+		return "standard / auto"
+	}
+	return "standard"
+}
+
+// pixelFlag maps a dimension to its pixel-value flag name (--height for rows,
+// --width for cols). The wire block always emits "pixel" as the mode; the
+// per-dimension flag name is just the surface knob.
+func pixelFlag(dimension string) string {
+	if dimension == "row" {
+		return "height"
+	}
+	return "width"
+}
+
+// sizeMapFlag maps a dimension to its map-form flag name (--heights for rows,
+// --widths for cols).
+func sizeMapFlag(dimension string) string {
+	return pixelFlag(dimension) + "s"
+}
+
+// rejectResizeMapInBatch blocks the map form inside +batch-update sub-ops:
+// it expands into its own batch_update and nesting batch_update is
+// unsupported upstream. Called by the batch dispatch closures only — the
+// standalone path routes the map form through resizeMapInput instead.
+func rejectResizeMapInBatch(fv flagView, dimension string) error {
+	mapFlag := sizeMapFlag(dimension)
+	if !fv.Changed(mapFlag) {
+		return nil
+	}
+	return sheetsValidationForFlag(mapFlag,
+		"%q is not supported inside +batch-update (it expands into its own atomic batch); call %s --%s standalone, or give each sub-op the single-range form (range + %s/type)",
+		mapFlag, commandForDimension(dimension), mapFlag, pixelFlag(dimension))
+}
+
+// minSaneColumnWidthPx is the floor below which a column width almost
+// certainly means the caller thought in Excel character units (openpyxl /
+// xlsxwriter widths run 8-30 chars) instead of pixels. 10px columns are
+// unusable; real pixel spacer columns start around 20px.
+const minSaneColumnWidthPx = 20
+
+// checkPixelSize validates a pixel value for one dimension. label names the
+// offending input in the error ("--width" for the uniform flag, "--widths
+// key \"A\"" for a map entry).
+func checkPixelSize(dimension, flagName, label string, px int) error {
+	if px <= 0 {
+		return sheetsValidationForFlag(flagName, "%s must be > 0", label)
+	}
+	if dimension == "column" && px < minSaneColumnWidthPx {
+		return sheetsValidationForFlag(flagName,
+			"%s = %dpx is below %dpx and looks like an Excel character-unit width — column widths here are pixels (px ≈ chars × 8 + 16, so %d chars ≈ %dpx)",
+			label, px, minSaneColumnWidthPx, px, px*8+16)
+	}
+	return nil
 }
 
 // commandForDimension returns the shortcut command name a given dimension
@@ -339,6 +409,11 @@ func commandForDimension(dimension string) string {
 // dimension (row → digits like "2:10" / "5"; column → letters like "A:E" /
 // "C"). Single-element form is expanded to "N:N" because resize_range
 // rejects bare single-element ranges.
+//
+// Surface: pixel size goes through --height / --width (dimension-specific).
+// --type is optional when the pixel flag is present (defaults to "pixel");
+// explicit --type pixel is accepted and equivalent. --type standard / auto
+// select non-pixel modes and cannot be combined with the pixel flag.
 func resizeInput(runtime flagView, token, sheetID, sheetName, dimension string) (map[string]interface{}, error) {
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, err
@@ -361,35 +436,188 @@ func resizeInput(runtime flagView, token, sheetID, sheetName, dimension string) 
 	if !strings.Contains(rangeStr, ":") {
 		rangeStr = rangeStr + ":" + rangeStr
 	}
+
+	sizeFlag := pixelFlag(dimension)
+	hasSize := runtime.Changed(sizeFlag)
 	typ := strings.TrimSpace(runtime.Str("type"))
-	if typ == "" {
-		return nil, sheetsValidationForFlag("type", "--type is required (pixel / standard%s)", autoSuffix(dimension))
+	hasType := typ != ""
+
+	if !hasSize && !hasType {
+		return nil, common.ValidationErrorf("give --%s <px> for a pixel size, or --type %s", sizeFlag, nonPixelTypes(dimension)).WithParams(sheetsInvalidParam(sizeFlag, "required"), sheetsInvalidParam("type", "required"))
 	}
-	if dimension == "column" && typ == "auto" {
+	if hasSize && hasType && typ != "pixel" {
+		return nil, common.ValidationErrorf("--%s cannot be combined with --type %s", sizeFlag, typ).WithParams(sheetsInvalidParam(sizeFlag, "mutually exclusive"), sheetsInvalidParam("type", "mutually exclusive"))
+	}
+	if hasType && dimension == "column" && typ == "auto" {
 		return nil, sheetsValidationForFlag("type", "--type auto is rows-only (column widths do not support auto-fit); use +rows-resize")
 	}
-	hasSize := runtime.Changed("size") && runtime.Int("size") > 0
-	if typ == "pixel" && !hasSize {
-		return nil, common.ValidationErrorf("--type pixel requires --size <px>").WithParams(sheetsInvalidParam("type", "required"), sheetsInvalidParam("size", "required"))
+	if hasType && typ == "pixel" && !hasSize {
+		return nil, common.ValidationErrorf("--type pixel requires --%s <px>", sizeFlag).WithParams(sheetsInvalidParam("type", "required"), sheetsInvalidParam(sizeFlag, "required"))
 	}
-	if typ != "pixel" && hasSize {
-		return nil, common.ValidationErrorf("--size is only valid with --type pixel").WithParams(sheetsInvalidParam("size", "mutually exclusive"), sheetsInvalidParam("type", "mutually exclusive"))
+
+	sizeBlock := map[string]interface{}{}
+	if hasSize {
+		px := runtime.Int(sizeFlag)
+		if err := checkPixelSize(dimension, sizeFlag, "--"+sizeFlag, px); err != nil {
+			return nil, err
+		}
+		sizeBlock["type"] = "pixel"
+		sizeBlock["value"] = px
+	} else {
+		sizeBlock["type"] = typ
 	}
+
 	input := map[string]interface{}{
 		"excel_id": token,
 		"range":    rangeStr,
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
-	sizeBlock := map[string]interface{}{"type": typ}
-	if typ == "pixel" {
-		sizeBlock["value"] = runtime.Int("size")
-	}
 	if dimension == "row" {
 		input["resize_height"] = sizeBlock
 	} else {
 		input["resize_width"] = sizeBlock
 	}
 	return input, nil
+}
+
+// resizeMapInput builds the batch_update input for the map form: every
+// --heights/--widths entry becomes one resize_range op inside a single atomic
+// batch. Keys are single rows/columns ("5" / "A") or closed ranges ("2:8" /
+// "C:E") matching the command's dimension; values are positive pixel ints or
+// the non-pixel mode strings ("standard", and "auto" for rows). Ops are
+// sorted by start position so dry-run output and execution order are
+// deterministic (JSON object order is not preserved by Go maps).
+func resizeMapInput(runtime flagView, token, sheetID, sheetName, dimension string) (map[string]interface{}, error) {
+	if err := requireSheetSelector(sheetID, sheetName); err != nil {
+		return nil, err
+	}
+	mapFlag := sizeMapFlag(dimension)
+	for _, other := range []string{"range", pixelFlag(dimension), "type"} {
+		if runtime.Changed(other) {
+			return nil, common.ValidationErrorf("--%s is a self-contained map; do not combine it with --%s", mapFlag, other).WithParams(sheetsInvalidParam(mapFlag, "mutually exclusive"), sheetsInvalidParam(other, "mutually exclusive"))
+		}
+	}
+	parsed, err := parseJSONFlag(runtime, mapFlag)
+	if err != nil {
+		return nil, err
+	}
+	entries, ok := parsed.(map[string]interface{})
+	if !ok || parsed == nil {
+		return nil, sheetsValidationForFlag(mapFlag, "--%s must be a JSON object like {\"%s\": 100}", mapFlag, exampleMapKey(dimension))
+	}
+	if len(entries) == 0 {
+		return nil, sheetsValidationForFlag(mapFlag, "--%s must contain at least one entry", mapFlag)
+	}
+	if len(entries) > maxBatchOperations {
+		return nil, sheetsValidationForFlag(mapFlag, "--%s accepts at most %d entries; got %d", mapFlag, maxBatchOperations, len(entries))
+	}
+
+	type resizeOp struct {
+		start    int
+		end      int
+		rangeKey string
+		input    map[string]interface{}
+	}
+	ops := make([]resizeOp, 0, len(entries))
+	seen := make(map[string]string, len(entries)) // normalized range → original key
+	for key, raw := range entries {
+		parsedDim, startIdx, endIdx, err := parseA1Range(key)
+		if err != nil {
+			return nil, sheetsValidationForFlag(mapFlag, "--%s key %q: %v", mapFlag, key, err)
+		}
+		if parsedDim != dimension {
+			want := "row numbers (e.g. \"2:10\")"
+			if dimension == "column" {
+				want = "column letters (e.g. \"A:E\")"
+			}
+			return nil, sheetsValidationForFlag(mapFlag, "--%s key %q is a %s range; %s expects %s", mapFlag, key, parsedDim, commandForDimension(dimension), want)
+		}
+		normalized := strings.TrimSpace(key)
+		if !strings.Contains(normalized, ":") {
+			normalized = normalized + ":" + normalized
+		}
+		if prev, dup := seen[normalized]; dup {
+			return nil, sheetsValidationForFlag(mapFlag, "--%s keys %q and %q target the same range %s; merge them into one entry", mapFlag, prev, key, normalized)
+		}
+		seen[normalized] = key
+
+		sizeBlock := map[string]interface{}{}
+		switch v := raw.(type) {
+		case float64:
+			px := int(v)
+			if float64(px) != v {
+				return nil, sheetsValidationForFlag(mapFlag, "--%s[%q] must be an integer pixel value, got %v", mapFlag, key, v)
+			}
+			if err := checkPixelSize(dimension, mapFlag, fmt.Sprintf("--%s[%q]", mapFlag, key), px); err != nil {
+				return nil, err
+			}
+			sizeBlock["type"] = "pixel"
+			sizeBlock["value"] = px
+		case string:
+			mode := strings.TrimSpace(v)
+			if mode == "auto" && dimension == "column" {
+				return nil, sheetsValidationForFlag(mapFlag, "--%s[%q]: \"auto\" is rows-only (column widths do not support auto-fit); estimate a pixel width instead (px ≈ chars × 8 + 16)", mapFlag, key)
+			}
+			if mode != "standard" && !(mode == "auto" && dimension == "row") {
+				return nil, sheetsValidationForFlag(mapFlag, "--%s[%q] = %q is invalid; use a pixel integer or %s", mapFlag, key, v, nonPixelTypes(dimension))
+			}
+			sizeBlock["type"] = mode
+		default:
+			return nil, sheetsValidationForFlag(mapFlag, "--%s[%q] must be a pixel integer or a mode string (%s), got %s", mapFlag, key, nonPixelTypes(dimension), jsonTypeName(raw))
+		}
+
+		opInput := map[string]interface{}{
+			"excel_id": token,
+			"range":    normalized,
+		}
+		sheetSelectorForToolInput(opInput, sheetID, sheetName)
+		if dimension == "row" {
+			opInput["resize_height"] = sizeBlock
+		} else {
+			opInput["resize_width"] = sizeBlock
+		}
+		ops = append(ops, resizeOp{
+			start:    startIdx,
+			end:      endIdx,
+			rangeKey: normalized,
+			input:    opInput,
+		})
+	}
+
+	sort.Slice(ops, func(i, j int) bool {
+		if ops[i].start != ops[j].start {
+			return ops[i].start < ops[j].start
+		}
+		return ops[i].end < ops[j].end
+	})
+	for i := 1; i < len(ops); i++ {
+		if ops[i].start <= ops[i-1].end {
+			return nil, sheetsValidationForFlag(
+				mapFlag,
+				"--%s ranges %q and %q overlap; use non-overlapping ranges",
+				mapFlag, ops[i-1].rangeKey, ops[i].rangeKey,
+			)
+		}
+	}
+	operations := make([]interface{}, 0, len(ops))
+	for _, op := range ops {
+		operations = append(operations, map[string]interface{}{
+			"tool_name": "resize_range",
+			"input":     op.input,
+		})
+	}
+	return map[string]interface{}{
+		"excel_id":   token,
+		"operations": operations,
+	}, nil
+}
+
+// exampleMapKey renders a dimension-appropriate sample key for error hints.
+func exampleMapKey(dimension string) string {
+	if dimension == "row" {
+		return "2:10"
+	}
+	return "A"
 }
 
 // ─── transform_range (4 shortcuts) ────────────────────────────────────

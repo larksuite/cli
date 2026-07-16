@@ -241,6 +241,10 @@
                     "description": "字体颜色（十六进制，例如 \"#000000\"）",
                     "type": "string"
                   },
+                  "font_family": {
+                    "description": "字体名称/字族（例如 \"Arial\"、\"微软雅黑\"、\"宋体\"）",
+                    "type": "string"
+                  },
                   "font_size": {
                     "description": "字体大小（单位：px/像素，例如 10、12、14）",
                     "type": "number"
@@ -1171,6 +1175,150 @@
                             "type": "number",
                             "description": "数据点大小"
                           },
+                          "fillGradient": {
+                            "type": "object",
+                            "description": "数据点填充渐变配置",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
+                          },
+                          "strokeGradient": {
+                            "type": "object",
+                            "description": "数据点描边渐变配置",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
+                          },
                           "point": {
                             "type": "array",
                             "description": "单个数据点配置数组",
@@ -1192,6 +1340,78 @@
                                 "size": {
                                   "type": "number",
                                   "description": "大小"
+                                },
+                                "fillGradient": {
+                                  "type": "object",
+                                  "description": "单个数据点填充渐变配置",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "radial"
+                                      ],
+                                      "description": "渐变类型"
+                                    },
+                                    "x0": {
+                                      "type": "number",
+                                      "description": "起点 x，0-1 归一化坐标"
+                                    },
+                                    "y0": {
+                                      "type": "number",
+                                      "description": "起点 y，0-1 归一化坐标"
+                                    },
+                                    "x1": {
+                                      "type": "number",
+                                      "description": "终点 x，0-1 归一化坐标"
+                                    },
+                                    "y1": {
+                                      "type": "number",
+                                      "description": "终点 y，0-1 归一化坐标"
+                                    },
+                                    "r0": {
+                                      "type": "number",
+                                      "description": "径向渐变起点半径"
+                                    },
+                                    "r1": {
+                                      "type": "number",
+                                      "description": "径向渐变终点半径"
+                                    },
+                                    "gradientMethod": {
+                                      "type": "string",
+                                      "description": "渐变插值方法"
+                                    },
+                                    "stops": {
+                                      "type": "array",
+                                      "description": "渐变色标数组，至少 2 个",
+                                      "minItems": 2,
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "offset": {
+                                            "type": "number",
+                                            "description": "色标位置 0-1"
+                                          },
+                                          "color": {
+                                            "type": "string",
+                                            "description": "色标颜色"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "description": "色标透明度 0-1"
+                                          }
+                                        },
+                                        "required": [
+                                          "offset",
+                                          "color"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "stops"
+                                  ]
                                 }
                               },
                               "required": [
@@ -1230,6 +1450,78 @@
                               "zero",
                               "link"
                             ]
+                          },
+                          "strokeGradient": {
+                            "type": "object",
+                            "description": "线条描边渐变配置",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
                           }
                         }
                       },
@@ -1240,6 +1532,78 @@
                           "color": {
                             "type": "string",
                             "description": "区域填充颜色"
+                          },
+                          "fillGradient": {
+                            "type": "object",
+                            "description": "区域填充渐变",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
                           }
                         }
                       },
@@ -1280,6 +1644,150 @@
                             "type": "string",
                             "description": "背景颜色"
                           },
+                          "fillGradient": {
+                            "type": "object",
+                            "description": "柱子填充渐变",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
+                          },
+                          "strokeGradient": {
+                            "type": "object",
+                            "description": "柱子描边渐变",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
+                          },
                           "bar": {
                             "type": "array",
                             "description": "单个柱子配置数组",
@@ -1305,6 +1813,78 @@
                                 "borderStyle": {
                                   "type": "string",
                                   "description": "边框样式"
+                                },
+                                "fillGradient": {
+                                  "type": "object",
+                                  "description": "单个柱子填充渐变",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "radial"
+                                      ],
+                                      "description": "渐变类型"
+                                    },
+                                    "x0": {
+                                      "type": "number",
+                                      "description": "起点 x，0-1 归一化坐标"
+                                    },
+                                    "y0": {
+                                      "type": "number",
+                                      "description": "起点 y，0-1 归一化坐标"
+                                    },
+                                    "x1": {
+                                      "type": "number",
+                                      "description": "终点 x，0-1 归一化坐标"
+                                    },
+                                    "y1": {
+                                      "type": "number",
+                                      "description": "终点 y，0-1 归一化坐标"
+                                    },
+                                    "r0": {
+                                      "type": "number",
+                                      "description": "径向渐变起点半径"
+                                    },
+                                    "r1": {
+                                      "type": "number",
+                                      "description": "径向渐变终点半径"
+                                    },
+                                    "gradientMethod": {
+                                      "type": "string",
+                                      "description": "渐变插值方法"
+                                    },
+                                    "stops": {
+                                      "type": "array",
+                                      "description": "渐变色标数组，至少 2 个",
+                                      "minItems": 2,
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "offset": {
+                                            "type": "number",
+                                            "description": "色标位置 0-1"
+                                          },
+                                          "color": {
+                                            "type": "string",
+                                            "description": "色标颜色"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "description": "色标透明度 0-1"
+                                          }
+                                        },
+                                        "required": [
+                                          "offset",
+                                          "color"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "stops"
+                                  ]
                                 }
                               },
                               "required": [
@@ -1316,7 +1896,7 @@
                       },
                       "labels": {
                         "type": "object",
-                        "description": "数据标签配置",
+                        "description": "数据标签配置。labels 对象的存在性即开关：不显示数据标签时省略整个 labels 字段；一旦传入 labels（即便 value/category/series/percentage 全部置为 false），数据标签仍会显示，且默认兜底显示 value。",
                         "properties": {
                           "position": {
                             "type": "string",
@@ -1420,7 +2000,7 @@
                             },
                             "labels": {
                               "type": "object",
-                              "description": "数据标签配置"
+                              "description": "数据标签配置（覆盖单系列，配置项同 plotArea.plot.labels）。不覆盖该系列数据标签时省略整个 labels 字段；一旦传入 labels（即便显示开关全部置为 false），该系列仍会显示数据标签。"
                             },
                             "sectors": {
                               "type": "object",
@@ -1441,6 +2021,78 @@
                                 "startAngle": {
                                   "type": "number",
                                   "description": "起始角度，0-359"
+                                },
+                                "fillGradient": {
+                                  "type": "object",
+                                  "description": "扇区填充渐变",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "radial"
+                                      ],
+                                      "description": "渐变类型"
+                                    },
+                                    "x0": {
+                                      "type": "number",
+                                      "description": "起点 x，0-1 归一化坐标"
+                                    },
+                                    "y0": {
+                                      "type": "number",
+                                      "description": "起点 y，0-1 归一化坐标"
+                                    },
+                                    "x1": {
+                                      "type": "number",
+                                      "description": "终点 x，0-1 归一化坐标"
+                                    },
+                                    "y1": {
+                                      "type": "number",
+                                      "description": "终点 y，0-1 归一化坐标"
+                                    },
+                                    "r0": {
+                                      "type": "number",
+                                      "description": "径向渐变起点半径"
+                                    },
+                                    "r1": {
+                                      "type": "number",
+                                      "description": "径向渐变终点半径"
+                                    },
+                                    "gradientMethod": {
+                                      "type": "string",
+                                      "description": "渐变插值方法"
+                                    },
+                                    "stops": {
+                                      "type": "array",
+                                      "description": "渐变色标数组，至少 2 个",
+                                      "minItems": 2,
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "offset": {
+                                            "type": "number",
+                                            "description": "色标位置 0-1"
+                                          },
+                                          "color": {
+                                            "type": "string",
+                                            "description": "色标颜色"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "description": "色标透明度 0-1"
+                                          }
+                                        },
+                                        "required": [
+                                          "offset",
+                                          "color"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "stops"
+                                  ]
                                 },
                                 "sector": {
                                   "type": "array",
@@ -1463,6 +2115,78 @@
                                       "color": {
                                         "type": "string",
                                         "description": "颜色"
+                                      },
+                                      "fillGradient": {
+                                        "type": "object",
+                                        "description": "单个扇区填充渐变",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
+                                              "linear",
+                                              "radial"
+                                            ],
+                                            "description": "渐变类型"
+                                          },
+                                          "x0": {
+                                            "type": "number",
+                                            "description": "起点 x，0-1 归一化坐标"
+                                          },
+                                          "y0": {
+                                            "type": "number",
+                                            "description": "起点 y，0-1 归一化坐标"
+                                          },
+                                          "x1": {
+                                            "type": "number",
+                                            "description": "终点 x，0-1 归一化坐标"
+                                          },
+                                          "y1": {
+                                            "type": "number",
+                                            "description": "终点 y，0-1 归一化坐标"
+                                          },
+                                          "r0": {
+                                            "type": "number",
+                                            "description": "径向渐变起点半径"
+                                          },
+                                          "r1": {
+                                            "type": "number",
+                                            "description": "径向渐变终点半径"
+                                          },
+                                          "gradientMethod": {
+                                            "type": "string",
+                                            "description": "渐变插值方法"
+                                          },
+                                          "stops": {
+                                            "type": "array",
+                                            "description": "渐变色标数组，至少 2 个",
+                                            "minItems": 2,
+                                            "items": {
+                                              "type": "object",
+                                              "properties": {
+                                                "offset": {
+                                                  "type": "number",
+                                                  "description": "色标位置 0-1"
+                                                },
+                                                "color": {
+                                                  "type": "string",
+                                                  "description": "色标颜色"
+                                                },
+                                                "opacity": {
+                                                  "type": "number",
+                                                  "description": "色标透明度 0-1"
+                                                }
+                                              },
+                                              "required": [
+                                                "offset",
+                                                "color"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        "required": [
+                                          "type",
+                                          "stops"
+                                        ]
                                       }
                                     },
                                     "required": [
@@ -2207,6 +2931,150 @@
                             "type": "number",
                             "description": "数据点大小"
                           },
+                          "fillGradient": {
+                            "type": "object",
+                            "description": "数据点填充渐变配置",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
+                          },
+                          "strokeGradient": {
+                            "type": "object",
+                            "description": "数据点描边渐变配置",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
+                          },
                           "point": {
                             "type": "array",
                             "description": "单个数据点配置数组",
@@ -2228,6 +3096,78 @@
                                 "size": {
                                   "type": "number",
                                   "description": "大小"
+                                },
+                                "fillGradient": {
+                                  "type": "object",
+                                  "description": "单个数据点填充渐变配置",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "radial"
+                                      ],
+                                      "description": "渐变类型"
+                                    },
+                                    "x0": {
+                                      "type": "number",
+                                      "description": "起点 x，0-1 归一化坐标"
+                                    },
+                                    "y0": {
+                                      "type": "number",
+                                      "description": "起点 y，0-1 归一化坐标"
+                                    },
+                                    "x1": {
+                                      "type": "number",
+                                      "description": "终点 x，0-1 归一化坐标"
+                                    },
+                                    "y1": {
+                                      "type": "number",
+                                      "description": "终点 y，0-1 归一化坐标"
+                                    },
+                                    "r0": {
+                                      "type": "number",
+                                      "description": "径向渐变起点半径"
+                                    },
+                                    "r1": {
+                                      "type": "number",
+                                      "description": "径向渐变终点半径"
+                                    },
+                                    "gradientMethod": {
+                                      "type": "string",
+                                      "description": "渐变插值方法"
+                                    },
+                                    "stops": {
+                                      "type": "array",
+                                      "description": "渐变色标数组，至少 2 个",
+                                      "minItems": 2,
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "offset": {
+                                            "type": "number",
+                                            "description": "色标位置 0-1"
+                                          },
+                                          "color": {
+                                            "type": "string",
+                                            "description": "色标颜色"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "description": "色标透明度 0-1"
+                                          }
+                                        },
+                                        "required": [
+                                          "offset",
+                                          "color"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "stops"
+                                  ]
                                 }
                               },
                               "required": [
@@ -2266,6 +3206,78 @@
                               "zero",
                               "link"
                             ]
+                          },
+                          "strokeGradient": {
+                            "type": "object",
+                            "description": "线条描边渐变配置",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
                           }
                         }
                       },
@@ -2276,6 +3288,78 @@
                           "color": {
                             "type": "string",
                             "description": "区域填充颜色"
+                          },
+                          "fillGradient": {
+                            "type": "object",
+                            "description": "区域填充渐变",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
                           }
                         }
                       },
@@ -2316,6 +3400,150 @@
                             "type": "string",
                             "description": "背景颜色"
                           },
+                          "fillGradient": {
+                            "type": "object",
+                            "description": "柱子填充渐变",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
+                          },
+                          "strokeGradient": {
+                            "type": "object",
+                            "description": "柱子描边渐变",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "linear",
+                                  "radial"
+                                ],
+                                "description": "渐变类型"
+                              },
+                              "x0": {
+                                "type": "number",
+                                "description": "起点 x，0-1 归一化坐标"
+                              },
+                              "y0": {
+                                "type": "number",
+                                "description": "起点 y，0-1 归一化坐标"
+                              },
+                              "x1": {
+                                "type": "number",
+                                "description": "终点 x，0-1 归一化坐标"
+                              },
+                              "y1": {
+                                "type": "number",
+                                "description": "终点 y，0-1 归一化坐标"
+                              },
+                              "r0": {
+                                "type": "number",
+                                "description": "径向渐变起点半径"
+                              },
+                              "r1": {
+                                "type": "number",
+                                "description": "径向渐变终点半径"
+                              },
+                              "gradientMethod": {
+                                "type": "string",
+                                "description": "渐变插值方法"
+                              },
+                              "stops": {
+                                "type": "array",
+                                "description": "渐变色标数组，至少 2 个",
+                                "minItems": 2,
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "offset": {
+                                      "type": "number",
+                                      "description": "色标位置 0-1"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "色标颜色"
+                                    },
+                                    "opacity": {
+                                      "type": "number",
+                                      "description": "色标透明度 0-1"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset",
+                                    "color"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "stops"
+                            ]
+                          },
                           "bar": {
                             "type": "array",
                             "description": "单个柱子配置数组",
@@ -2341,6 +3569,78 @@
                                 "borderStyle": {
                                   "type": "string",
                                   "description": "边框样式"
+                                },
+                                "fillGradient": {
+                                  "type": "object",
+                                  "description": "单个柱子填充渐变",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "radial"
+                                      ],
+                                      "description": "渐变类型"
+                                    },
+                                    "x0": {
+                                      "type": "number",
+                                      "description": "起点 x，0-1 归一化坐标"
+                                    },
+                                    "y0": {
+                                      "type": "number",
+                                      "description": "起点 y，0-1 归一化坐标"
+                                    },
+                                    "x1": {
+                                      "type": "number",
+                                      "description": "终点 x，0-1 归一化坐标"
+                                    },
+                                    "y1": {
+                                      "type": "number",
+                                      "description": "终点 y，0-1 归一化坐标"
+                                    },
+                                    "r0": {
+                                      "type": "number",
+                                      "description": "径向渐变起点半径"
+                                    },
+                                    "r1": {
+                                      "type": "number",
+                                      "description": "径向渐变终点半径"
+                                    },
+                                    "gradientMethod": {
+                                      "type": "string",
+                                      "description": "渐变插值方法"
+                                    },
+                                    "stops": {
+                                      "type": "array",
+                                      "description": "渐变色标数组，至少 2 个",
+                                      "minItems": 2,
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "offset": {
+                                            "type": "number",
+                                            "description": "色标位置 0-1"
+                                          },
+                                          "color": {
+                                            "type": "string",
+                                            "description": "色标颜色"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "description": "色标透明度 0-1"
+                                          }
+                                        },
+                                        "required": [
+                                          "offset",
+                                          "color"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "stops"
+                                  ]
                                 }
                               },
                               "required": [
@@ -2352,7 +3652,7 @@
                       },
                       "labels": {
                         "type": "object",
-                        "description": "数据标签配置",
+                        "description": "数据标签配置。labels 对象的存在性即开关：不显示数据标签时省略整个 labels 字段；一旦传入 labels（即便 value/category/series/percentage 全部置为 false），数据标签仍会显示，且默认兜底显示 value。",
                         "properties": {
                           "position": {
                             "type": "string",
@@ -2456,7 +3756,7 @@
                             },
                             "labels": {
                               "type": "object",
-                              "description": "数据标签配置"
+                              "description": "数据标签配置（覆盖单系列，配置项同 plotArea.plot.labels）。不覆盖该系列数据标签时省略整个 labels 字段；一旦传入 labels（即便显示开关全部置为 false），该系列仍会显示数据标签。"
                             },
                             "sectors": {
                               "type": "object",
@@ -2477,6 +3777,78 @@
                                 "startAngle": {
                                   "type": "number",
                                   "description": "起始角度，0-359"
+                                },
+                                "fillGradient": {
+                                  "type": "object",
+                                  "description": "扇区填充渐变",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "radial"
+                                      ],
+                                      "description": "渐变类型"
+                                    },
+                                    "x0": {
+                                      "type": "number",
+                                      "description": "起点 x，0-1 归一化坐标"
+                                    },
+                                    "y0": {
+                                      "type": "number",
+                                      "description": "起点 y，0-1 归一化坐标"
+                                    },
+                                    "x1": {
+                                      "type": "number",
+                                      "description": "终点 x，0-1 归一化坐标"
+                                    },
+                                    "y1": {
+                                      "type": "number",
+                                      "description": "终点 y，0-1 归一化坐标"
+                                    },
+                                    "r0": {
+                                      "type": "number",
+                                      "description": "径向渐变起点半径"
+                                    },
+                                    "r1": {
+                                      "type": "number",
+                                      "description": "径向渐变终点半径"
+                                    },
+                                    "gradientMethod": {
+                                      "type": "string",
+                                      "description": "渐变插值方法"
+                                    },
+                                    "stops": {
+                                      "type": "array",
+                                      "description": "渐变色标数组，至少 2 个",
+                                      "minItems": 2,
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "offset": {
+                                            "type": "number",
+                                            "description": "色标位置 0-1"
+                                          },
+                                          "color": {
+                                            "type": "string",
+                                            "description": "色标颜色"
+                                          },
+                                          "opacity": {
+                                            "type": "number",
+                                            "description": "色标透明度 0-1"
+                                          }
+                                        },
+                                        "required": [
+                                          "offset",
+                                          "color"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "stops"
+                                  ]
                                 },
                                 "sector": {
                                   "type": "array",
@@ -2499,6 +3871,78 @@
                                       "color": {
                                         "type": "string",
                                         "description": "颜色"
+                                      },
+                                      "fillGradient": {
+                                        "type": "object",
+                                        "description": "单个扇区填充渐变",
+                                        "properties": {
+                                          "type": {
+                                            "type": "string",
+                                            "enum": [
+                                              "linear",
+                                              "radial"
+                                            ],
+                                            "description": "渐变类型"
+                                          },
+                                          "x0": {
+                                            "type": "number",
+                                            "description": "起点 x，0-1 归一化坐标"
+                                          },
+                                          "y0": {
+                                            "type": "number",
+                                            "description": "起点 y，0-1 归一化坐标"
+                                          },
+                                          "x1": {
+                                            "type": "number",
+                                            "description": "终点 x，0-1 归一化坐标"
+                                          },
+                                          "y1": {
+                                            "type": "number",
+                                            "description": "终点 y，0-1 归一化坐标"
+                                          },
+                                          "r0": {
+                                            "type": "number",
+                                            "description": "径向渐变起点半径"
+                                          },
+                                          "r1": {
+                                            "type": "number",
+                                            "description": "径向渐变终点半径"
+                                          },
+                                          "gradientMethod": {
+                                            "type": "string",
+                                            "description": "渐变插值方法"
+                                          },
+                                          "stops": {
+                                            "type": "array",
+                                            "description": "渐变色标数组，至少 2 个",
+                                            "minItems": 2,
+                                            "items": {
+                                              "type": "object",
+                                              "properties": {
+                                                "offset": {
+                                                  "type": "number",
+                                                  "description": "色标位置 0-1"
+                                                },
+                                                "color": {
+                                                  "type": "string",
+                                                  "description": "色标颜色"
+                                                },
+                                                "opacity": {
+                                                  "type": "number",
+                                                  "description": "色标透明度 0-1"
+                                                }
+                                              },
+                                              "required": [
+                                                "offset",
+                                                "color"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        "required": [
+                                          "type",
+                                          "stops"
+                                        ]
                                       }
                                     },
                                     "required": [
@@ -2839,6 +4283,28 @@
               "data"
             ]
           }
+        }
+      }
+    },
+    "+cols-resize": {
+      "widths": {
+        "type": "object",
+        "description": "列 → 宽度 map。键：单列（\"A\"）或列闭区间（\"C:E\"）；值：正整数像素宽（如 80 / 120 / 200；⚠️ 单位是像素，不是 Excel 字符单位，像素 ≈ 字符数×8+16）或 \"standard\"（重置为默认列宽）。列宽不支持 \"auto\"。",
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "description": "像素宽度（宽度 < 20px 会被 CLI 拒绝并提示疑似字符单位）"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "standard"
+              ],
+              "description": "重置为默认列宽"
+            }
+          ]
         }
       }
     },
@@ -5699,6 +7165,29 @@
         "description": "排序条件列表（仅 sort 操作）。支持多级排序，靠前的条件优先级更高。"
       }
     },
+    "+rows-resize": {
+      "heights": {
+        "type": "object",
+        "description": "行 → 高度 map。键：单行（\"1\"）或行闭区间（\"2:20\"）；值：正整数像素高（如 30 / 50；⚠️ 单位是像素，不是磅/points）、\"auto\"（自适应内容）或 \"standard\"（重置为默认行高）。",
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "description": "像素高度"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "standard",
+                "auto"
+              ],
+              "description": "standard=重置默认行高；auto=自适应内容"
+            }
+          ]
+        }
+      }
+    },
     "+sparkline-create": {
       "properties": {
         "description": "创建/更新/部分删除的迷你图属性。delete 时不传 sparklines 即删整组，传则删指定项。",
@@ -6498,6 +7987,9 @@
                   "font_color": {
                     "type": "string"
                   },
+                  "font_family": {
+                    "type": "string"
+                  },
                   "font_line": {
                     "enum": [
                       "none",
@@ -6865,6 +8357,9 @@
                     }
                   },
                   "font_color": {
+                    "type": "string"
+                  },
+                  "font_family": {
                     "type": "string"
                   },
                   "font_line": {

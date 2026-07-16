@@ -151,12 +151,12 @@ func resolveFetchLang(runtime *common.RuntimeContext) string {
 
 // buildReadOption 拼装 read_option JSON；full/空模式返回 nil，让服务端走默认全文路径。
 func buildReadOption(runtime *common.RuntimeContext) map[string]interface{} {
-	mode := strings.TrimSpace(runtime.Str("scope"))
+	mode := effectiveFetchReadMode(runtime)
 	if mode == "" || mode == "full" {
 		return nil
 	}
 	ro := map[string]interface{}{"read_mode": mode}
-	if v := strings.TrimSpace(runtime.Str("start-block-id")); v != "" {
+	if v := effectiveFetchStartBlockID(runtime, mode); v != "" {
 		ro["start_block_id"] = v
 	}
 	if v := strings.TrimSpace(runtime.Str("end-block-id")); v != "" {
@@ -175,6 +175,72 @@ func buildReadOption(runtime *common.RuntimeContext) map[string]interface{} {
 		ro["max_depth"] = strconv.Itoa(v)
 	}
 	return ro
+}
+
+func effectiveFetchReadMode(runtime *common.RuntimeContext) string {
+	mode := rawFetchReadMode(runtime)
+	if shouldUseDocSelectionAnchor(runtime, mode) {
+		if anchor := docSelectionAnchorStartBlockID(runtime); anchor != "" {
+			return "range"
+		}
+	}
+	return mode
+}
+
+func rawFetchReadMode(runtime *common.RuntimeContext) string {
+	mode := strings.TrimSpace(runtime.Str("scope"))
+	if mode == "" {
+		return "full"
+	}
+	return mode
+}
+
+func effectiveFetchStartBlockID(runtime *common.RuntimeContext, mode string) string {
+	if v := strings.TrimSpace(runtime.Str("start-block-id")); v != "" {
+		return v
+	}
+	if mode == "range" && shouldUseDocSelectionAnchor(runtime, rawFetchReadMode(runtime)) {
+		if anchor := docSelectionAnchorStartBlockID(runtime); anchor != "" {
+			return anchor
+		}
+	}
+	return ""
+}
+
+func shouldUseDocSelectionAnchor(runtime *common.RuntimeContext, mode string) bool {
+	if runtime.Changed("start-block-id") || runtime.Changed("end-block-id") {
+		return false
+	}
+	if runtime.Changed("scope") {
+		return mode == "range"
+	}
+	return mode == "" || mode == "full"
+}
+
+func docSelectionAnchorStartBlockID(runtime *common.RuntimeContext) string {
+	ref, err := parseDocumentRef(runtime.Str("doc"))
+	if err != nil {
+		return ""
+	}
+	anchor, ok := parseDocShareSelectionAnchor(ref.Fragment)
+	if !ok {
+		return ""
+	}
+	return anchor
+}
+
+func parseDocShareSelectionAnchor(raw string) (string, bool) {
+	value := strings.TrimSpace(raw)
+	value = strings.TrimPrefix(value, "#")
+	const prefix = "share-"
+	if !strings.HasPrefix(value, prefix) {
+		return "", false
+	}
+	anchorID := strings.TrimSpace(strings.TrimPrefix(value, prefix))
+	if anchorID == "" {
+		return "", false
+	}
+	return prefix + anchorID, true
 }
 
 // effectiveFetchDetail degrades detail options that cannot be represented by
@@ -208,7 +274,7 @@ func addFetchDetailDowngradeWarning(runtime *common.RuntimeContext, data map[str
 
 // validateReadModeFlags 客户端前置校验，服务端也会再校验一次。
 func validateReadModeFlags(runtime *common.RuntimeContext) error {
-	mode := strings.TrimSpace(runtime.Str("scope"))
+	mode := effectiveFetchReadMode(runtime)
 	if mode == "" || mode == "full" {
 		return nil
 	}
@@ -227,7 +293,7 @@ func validateReadModeFlags(runtime *common.RuntimeContext) error {
 	case "outline":
 		return nil
 	case "range":
-		if strings.TrimSpace(runtime.Str("start-block-id")) == "" &&
+		if effectiveFetchStartBlockID(runtime, mode) == "" &&
 			strings.TrimSpace(runtime.Str("end-block-id")) == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "range mode requires --start-block-id or --end-block-id").WithParams(
 				errs.InvalidParam{Name: "--start-block-id", Reason: "provide --start-block-id or --end-block-id for range mode"},

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -513,5 +514,25 @@ func TestDetectInstallMethod_Caches(t *testing.T) {
 	got := u.DetectInstallMethod()
 	if got.Method != InstallPnpm || !got.PnpmAvailable {
 		t.Errorf("expected cached pnpm result to be returned, got %+v", got)
+	}
+}
+
+func TestSkillsBrandHosts(t *testing.T) {
+	cases := []struct {
+		brand      core.LarkBrand
+		wantIndex  string
+		wantSource string
+	}{
+		{core.BrandFeishu, "https://open.feishu.cn/.well-known/skills/index.json", "https://open.feishu.cn"},
+		{core.BrandLark, "https://open.larksuite.com/.well-known/skills/index.json", "https://open.larksuite.com"},
+	}
+	for _, c := range cases {
+		u := &Updater{Brand: c.brand}
+		if got := u.skillsIndexURL(); got != c.wantIndex {
+			t.Errorf("brand %q: skillsIndexURL = %q, want %q", c.brand, got, c.wantIndex)
+		}
+		if got := u.skillsSource(); got != c.wantSource {
+			t.Errorf("brand %q: skillsSource = %q, want %q", c.brand, got, c.wantSource)
+		}
 	}
 }

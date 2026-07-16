@@ -63,8 +63,11 @@ var TablePut = common.Shortcut{
 		// --styles is parsed (and aligned against the payload's sheets) up front
 		// so a malformed style item fails before any write lands — mirroring
 		// +workbook-create's Validate.
-		_, err = parseWorkbookCreateSheetStyles(runtime, payload)
-		return err
+		styles, err := parseWorkbookCreateSheetStyles(runtime, payload)
+		if err != nil {
+			return err
+		}
+		return payload.checkCellBudgetWithStyles(styles)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return tablePutDryRun(runtime)
@@ -317,15 +320,50 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 	// compare against the canonical set.
 	for k := range in.Dtypes {
 		if !seenCol[k] {
-			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: dtypes references unknown column %q", idx, in.Name, k)
+			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: dtypes references unknown column %q", idx, in.Name, k).
+				WithHint("%s", columnKeyHint("dtypes", k, in.Columns))
 		}
 	}
 	for k := range in.Formats {
 		if !seenCol[k] {
-			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: formats references unknown column %q", idx, in.Name, k)
+			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: formats references unknown column %q", idx, in.Name, k).
+				WithHint("%s", columnKeyHint("formats", k, in.Columns))
 		}
 	}
 	return spec, nil
+}
+
+// columnKeyHint explains a dtypes/formats key that matched no column. The
+// dominant failure is Excel habit — keying by column letter (A/B/AA) instead
+// of the column name — so call that out explicitly; either way, inline the
+// declared column names so the retry needs no second look at the payload.
+func columnKeyHint(field, key string, columns []string) string {
+	shown := columns
+	const maxShown = 12
+	suffix := ""
+	if len(shown) > maxShown {
+		shown = shown[:maxShown]
+		suffix = ", …"
+	}
+	list := `"` + strings.Join(shown, `", "`) + `"` + suffix
+	if isColumnLetterKey(key) {
+		return fmt.Sprintf("%s keys must be column names from `columns`, not A1-style column letters; this sheet's columns: %s", field, list)
+	}
+	return fmt.Sprintf("%s keys must exactly match a name in `columns`: %s", field, list)
+}
+
+// isColumnLetterKey reports whether key looks like an A1-style column letter
+// (A, B, AA, …) rather than a real column name.
+func isColumnLetterKey(key string) bool {
+	if key == "" || len(key) > 3 {
+		return false
+	}
+	for _, r := range key {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *tablePayload) validate() error {
@@ -381,6 +419,55 @@ func (p *tablePayload) validate() error {
 		default:
 			return common.ValidationErrorf("--sheets[%d] %q: mode %q is invalid (want \"overwrite\" or \"append\")", i, s.Name, s.Mode)
 		}
+	}
+	return p.checkCellBudget()
+}
+
+// maxTablePutCells bounds how many cells a single +table-put / +workbook-create
+// write may materialize. Unlike the fan-out stamp cap (maxStampMatrixCells),
+// these cells come from the caller's own --sheets/--values payload rather than a
+// range blow-up, so this is a generous OOM guardrail, not a usability limit:
+// buildSheetMatrix builds the whole rows×cols matrix of per-cell maps in memory
+// before slicing it into tablePutMaxCellsPerWrite-sized writes, so an unbounded
+// payload (2.6M cells ≈ 900MB heap, doubled again by json.Marshal) OOMs the
+// process before the first write leaves.
+const maxTablePutCells = 1_000_000
+
+// checkCellBudget rejects a payload whose total materialized cell count across
+// all sheets exceeds maxTablePutCells. Counted in int64 to stay overflow-safe on
+// pathological row/column counts.
+func (p *tablePayload) checkCellBudget() error {
+	var total int64
+	for i := range p.Sheets {
+		total += int64(len(p.Sheets[i].Rows)) * int64(len(p.Sheets[i].Columns))
+	}
+	return checkTablePutCellBudget(total)
+}
+
+// checkCellBudgetWithStyles includes the blank cells that cell_styles will add
+// to each sheet's matrix. It must run before DryRun / Execute pads any matrix.
+func (p *tablePayload) checkCellBudgetWithStyles(styles *workbookCreateSheetStyles) error {
+	var total int64
+	for i := range p.Sheets {
+		s := &p.Sheets[i]
+		rows, cols := len(s.Rows), len(s.Columns)
+		_, baseCol, baseRow, _ := sheetAnchor(s)
+		if s.Mode == "append" {
+			// Append resolves its real row at Execute time. Zero is a safe upper
+			// bound for the style-driven extent and keeps validation allocation-free.
+			baseRow = 0
+		}
+		rows, cols = matrixDimensionsForStyles(rows, cols, styles.styleFor(i), baseCol, baseRow)
+		total += int64(rows) * int64(cols)
+	}
+	return checkTablePutCellBudget(total)
+}
+
+func checkTablePutCellBudget(total int64) error {
+	if total > maxTablePutCells {
+		return common.ValidationErrorf(
+			"--sheets/--values cover %d cells total, over the %d-cell safety cap; split the write across smaller payloads",
+			total, maxTablePutCells)
 	}
 	return nil
 }
@@ -558,6 +645,12 @@ var excelEpoch = time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
 // parser still rejects it cleanly.
 func isoDateToSerial(s string) (int, error) {
 	s = strings.TrimSpace(s)
+	if s == "" {
+		// Empty cells in a date-typed column are the classic header/total-row
+		// clash with the column-wide dtype declaration; name the three ways
+		// out so the caller does not have to guess what "bad format" means.
+		return 0, fmt.Errorf("date column has an empty cell — drop the empty rows, fill real yyyy-mm-dd dates, or declare the column dtype as object (text)") //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
+	}
 	if i := strings.Index(s, "T"); i > 0 {
 		s = s[:i]
 	}
@@ -643,7 +736,8 @@ func writeSheetData(ctx context.Context, runtime *common.RuntimeContext, token, 
 	if err != nil {
 		return nil, err
 	}
-	if err := applyWorkbookCreateStylesToMatrix(matrix, styles, col0, baseRow, fmt.Sprintf("--styles for sheet %q", s.Name)); err != nil {
+	matrix, err = applyWorkbookCreateStylesToMatrix(matrix, styles, col0, baseRow, fmt.Sprintf("--styles for sheet %q", s.Name))
+	if err != nil {
 		return nil, err
 	}
 
@@ -655,11 +749,15 @@ func writeSheetData(ctx context.Context, runtime *common.RuntimeContext, token, 
 		}, nil
 	}
 
+	// styles can pad the matrix wider than the declared columns (cell_styles on
+	// blank cells past the data extent), so the written width comes from the
+	// padded matrix, not ncols.
+	writeCols := len(matrix[0])
 	startCol := columnIndexToLetter(col0)
-	endCol := columnIndexToLetter(col0 + ncols - 1)
+	endCol := columnIndexToLetter(col0 + writeCols - 1)
 	allowOverwrite := s.AllowOverwrite == nil || *s.AllowOverwrite
 
-	rowsPerBatch := tablePutMaxCellsPerWrite / ncols
+	rowsPerBatch := tablePutMaxCellsPerWrite / writeCols
 	if rowsPerBatch < 1 {
 		rowsPerBatch = 1
 	}
@@ -693,7 +791,7 @@ func writeSheetData(ctx context.Context, runtime *common.RuntimeContext, token, 
 		"sheet_id":  sheetID,
 		"range":     fmt.Sprintf("%s%d:%s%d", startCol, baseRow+1, endCol, baseRow+len(matrix)),
 		"data_rows": len(s.Rows),
-		"columns":   ncols,
+		"columns":   writeCols,
 		"writes":    writes,
 		"mode":      writeModeName(s),
 	}, nil
@@ -785,7 +883,7 @@ func writeTypedSheets(ctx context.Context, runtime *common.RuntimeContext, token
 		s := &payload.Sheets[i]
 		sheetID, ok := byName[s.Name]
 		if !ok {
-			rows, cols := sheetCreateDims(s)
+			rows, cols := sheetCreateDims(s, styles.styleFor(i))
 			sheetID, err = createSheet(ctx, runtime, token, s.Name, rows, cols)
 			if err != nil {
 				return written, fmt.Errorf("creating sheet %q failed: %w", s.Name, err) //nolint:forbidigo // intermediate error; surfaced as a partial_success message string via tablePutPartial, not a typed final error
@@ -864,10 +962,12 @@ func createSheet(ctx context.Context, runtime *common.RuntimeContext, token, nam
 
 // sheetCreateDims sizes a to-be-created sheet to the spec's write range so the
 // follow-up set_cell_range can't exceed sheet bounds. It accounts for the
-// start_cell offset and the optional header row. The backend's 20×200 defaults
-// are kept as floors (ordinary small tables are created exactly as before) and
-// its hard limits (200 cols, 50000 rows) as ceilings.
-func sheetCreateDims(s *tableSheetSpec) (rows, cols int) {
+// start_cell offset, the optional header row, and any --styles extent (so a
+// cell_styles / merge / resize op past the data still fits the grid). The
+// backend's 20×200 defaults are kept as floors (ordinary small tables are
+// created exactly as before) and its hard limits (200 cols, 50000 rows) as
+// ceilings.
+func sheetCreateDims(s *tableSheetSpec, styles *workbookCreateStylePayload) (rows, cols int) {
 	_, col0, row0, _ := sheetAnchor(s)
 	cols = col0 + len(s.Columns)
 	rows = row0 + len(s.Rows)
@@ -881,6 +981,19 @@ func sheetCreateDims(s *tableSheetSpec) (rows, cols int) {
 	// would bounce off the backend's hard cap.
 	if headerOn(s) || (s.Mode == "append" && s.Header == nil) {
 		rows++
+	}
+	// --styles can reach past the data (cell_styles on blank cells get padded
+	// into the matrix and written; merges / resizes run as separate ops). Size
+	// the grid to cover them too. workbookCreateStyleDimensions returns the
+	// extent relative to the anchor, so add the anchor offset back.
+	if styles != nil {
+		styleRows, styleCols := workbookCreateStyleDimensions(styles, col0, row0)
+		if col0+styleCols > cols {
+			cols = col0 + styleCols
+		}
+		if row0+styleRows > rows {
+			rows = row0 + styleRows
+		}
 	}
 	if cols < 20 {
 		cols = 20
@@ -979,8 +1092,6 @@ func tablePutDryRun(runtime *common.RuntimeContext) *common.DryRunAPI {
 	for i := range payload.Sheets {
 		s := &payload.Sheets[i]
 		matrix, _ := buildSheetMatrix(s, headerOn(s))
-		desc := fmt.Sprintf("write sheet %q (%d data rows × %d cols, mode=%s) via set_cell_range",
-			s.Name, len(s.Rows), len(s.Columns), writeModeName(s))
 		rng := tablePutFullRange(s, len(matrix))
 		if s.Mode == "append" {
 			rng = "<append below existing data>"
@@ -988,10 +1099,23 @@ func tablePutDryRun(runtime *common.RuntimeContext) *common.DryRunAPI {
 			// cell_styles are merged into the matrix only for overwrite mode,
 			// where the anchor row is known statically; append's base row is
 			// resolved at execute time, so the preview leaves the matrix bare
-			// (the merges / sizes ops below still render).
+			// (the merges / sizes ops below still render). Padding can widen /
+			// lengthen the matrix past the data, so recompute the range from the
+			// padded dims to match what Execute writes.
 			_, col0, row0, _ := sheetAnchor(s)
-			_ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
+			matrix, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
+			if len(matrix) > 0 {
+				rng = fmt.Sprintf("%s%d:%s%d",
+					columnIndexToLetter(col0), row0+1,
+					columnIndexToLetter(col0+len(matrix[0])-1), row0+len(matrix))
+			}
 		}
+		writeCols := len(s.Columns)
+		if len(matrix) > 0 {
+			writeCols = len(matrix[0])
+		}
+		desc := fmt.Sprintf("write sheet %q (%d data rows × %d cols, mode=%s) via set_cell_range",
+			s.Name, len(s.Rows), writeCols, writeModeName(s))
 		input := map[string]interface{}{
 			"excel_id":   token,
 			"sheet_name": s.Name,

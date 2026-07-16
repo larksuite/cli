@@ -47,7 +47,7 @@ lark-cli slides +replace-slide --as user \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--presentation` | 是 | `xml_presentation_id`、`/slides/<token>` URL，或 `/wiki/<token>` URL |
-| `--slide-id` | 是 | 页面 ID（`xml_presentation.slide.get` / `xml_presentations.get` 都能拿到） |
+| `--slide-id` | 是 | 页面 ID（`xml_presentation.slide.get` / `slides +xml-get` 都能拿到） |
 | `--parts` | 是 | JSON 数组（`[{...}, ...]`），单次最多 200 条。支持 `@<file>` 和 `-`（stdin）读取 |
 | `--revision-id` | 否 | 基础版本号；默认 `-1` 表示基于最新版执行；传具体版本号时，服务端以该版本为 base 执行；**传不存在的版本号（超过当前 revision）返回 3350002** |
 | `--tid` | 否 | 并发事务 ID；多人协作长事务才用，单次单人调用留空 |

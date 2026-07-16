@@ -105,3 +105,45 @@ func TestAppsReleaseCreateExecute_Success(t *testing.T) {
 		t.Errorf("status = %v, want publishing", env.Data["status"])
 	}
 }
+
+func TestAppsReleaseCreate_SyncField(t *testing.T) {
+	rctx, stdoutBuf, reg := newReleaseCreateRuntimeContext(t, "app_sync", "main")
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_sync/releases",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "",
+			"data": map[string]interface{}{
+				"release_id": "456",
+				"status":     "publishing",
+				"sync":       true,
+			},
+		},
+	})
+
+	err := AppsReleaseCreate.Execute(context.Background(), rctx)
+	if err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+
+	var env struct {
+		OK   bool                   `json:"ok"`
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdoutBuf.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal output: %v\nraw: %s", err, stdoutBuf.String())
+	}
+	if !env.OK {
+		t.Fatalf("expected ok=true, got: %s", stdoutBuf.String())
+	}
+	if env.Data["release_id"] != "456" {
+		t.Errorf("release_id = %v, want 456", env.Data["release_id"])
+	}
+	if env.Data["status"] != "publishing" {
+		t.Errorf("status = %v, want publishing", env.Data["status"])
+	}
+	if env.Data["sync"] != true {
+		t.Errorf("sync = %v, want true", env.Data["sync"])
+	}
+}

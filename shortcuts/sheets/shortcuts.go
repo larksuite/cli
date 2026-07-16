@@ -35,6 +35,10 @@ func Shortcuts() []common.Shortcut {
 		if hasFlag(all[i].Flags, "spreadsheet-token") {
 			all[i].PostMount = withTokenAlias(all[i].PostMount)
 		}
+		// Sheets-scoped flag ergonomics (unknown-flag hints with the valid
+		// flags inlined, enum vocabulary normalization) ride the same
+		// PostMount composition, so no other domain's behavior shifts.
+		all[i].PostMount = withFlagErgonomics(all[i].PostMount)
 	}
 	return all
 }
@@ -70,6 +74,7 @@ func shortcutList() []common.Shortcut {
 	return []common.Shortcut{
 		// lark_sheet_workbook
 		WorkbookInfo,
+		RevisionGet,
 		SheetCreate,
 		SheetDelete,
 		SheetRename,
@@ -95,6 +100,9 @@ func shortcutList() []common.Shortcut {
 		DimUngroup,
 		DimMove,
 
+		// lark_sheet_changeset
+		ChangesetGet,
+
 		// lark_sheet_read_data
 		CellsGet,
 		CsvGet,
@@ -104,6 +112,9 @@ func shortcutList() []common.Shortcut {
 		// lark_sheet_search_replace
 		CellsSearch,
 		CellsReplace,
+
+		// lark_sheet_formula_verify
+		FormulaVerify,
 
 		// lark_sheet_write_cells
 		CellsSet,
@@ -148,5 +159,10 @@ func shortcutList() []common.Shortcut {
 		CellsBatchClear,
 		DropdownUpdate,
 		DropdownDelete,
+
+		// lark_sheet_history
+		HistoryList,
+		HistoryRevert,
+		HistoryRevertStatus,
 	}
 }

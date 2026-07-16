@@ -1070,7 +1070,7 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			if rctx.stdinConsumed {
 				return ValidationErrorf("--%s: stdin (-) can only be used by one flag", fl.Name).
 					WithParam("--"+fl.Name).
-					WithHint("a process has a single stdin, so only one flag per call may use '-'; pass the others as @file (e.g. --%s @/path/to/file)", fl.Name)
+					WithHint("a process has a single stdin, so only one flag per call may use '-'; pass the others inline or as @file with a relative path under the current directory (e.g. --%s @./payload.json)", fl.Name)
 			}
 			rctx.stdinConsumed = true
 			data, err := io.ReadAll(rctx.IO().In)
@@ -1104,9 +1104,16 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			}
 			data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
 			if err != nil {
-				return ValidationErrorf("--%s: %v", fl.Name, err).
+				verr := ValidationErrorf("--%s: %v", fl.Name, err).
 					WithParam("--" + fl.Name).
 					WithCause(err)
+				if slices.Contains(fl.Input, Stdin) {
+					// Rejected @file paths are usually absolute (temp files under
+					// /tmp). Steer toward stdin rather than cd / copying the file
+					// into the project tree.
+					verr = verr.WithHint("this flag also reads stdin: pipe the file contents into this command and pass --%s -", fl.Name)
+				}
+				return verr
 			}
 			// strip a leading UTF-8 BOM so it
 			// can't corrupt the first CSV cell or break JSON parsing downstream.
@@ -1146,14 +1153,19 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 		return ValidationErrorf("--dry-run is not supported for %s %s", s.Service, s.Command).
 			WithParam("--dry-run")
 	}
-	fmt.Fprintln(f.IOStreams.ErrOut, "=== Dry Run ===")
 	dryResult := s.DryRun(rctx.ctx, rctx)
-	if rctx.Format == "pretty" {
-		fmt.Fprint(f.IOStreams.Out, dryResult.Format())
-	} else {
-		output.PrintJson(f.IOStreams.Out, dryResult)
+	if dryResult != nil {
+		// Same data.context contract as the service/api dry-run paths.
+		dryResult.Context(rctx.Config.AppID, rctx.UserOpenId())
 	}
-	return nil
+	return cmdutil.WriteDryRun(dryResult, cmdutil.DryRunOutputOptions{
+		Format:      rctx.Format,
+		JqExpr:      rctx.JqExpr,
+		CommandPath: rctx.Cmd.CommandPath(),
+		Identity:    rctx.As(),
+		Out:         f.IOStreams.Out,
+		ErrOut:      f.IOStreams.ErrOut,
+	})
 }
 
 // rejectPositionalArgs returns a cobra.PositionalArgs that rejects any

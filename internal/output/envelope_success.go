@@ -9,6 +9,7 @@ import "io"
 type SuccessEnvelopeOptions struct {
 	CommandPath string
 	Identity    string
+	DryRun      bool
 	JqExpr      string
 	Out         io.Writer
 	ErrOut      io.Writer
@@ -41,6 +42,7 @@ func WriteSuccessEnvelope(data interface{}, opts SuccessEnvelopeOptions) error {
 	env := Envelope{
 		OK:       true,
 		Identity: opts.Identity,
+		DryRun:   opts.DryRun,
 		Data:     data,
 		Notice:   GetNotice(),
 	}

@@ -75,6 +75,19 @@ func SkipWithoutUserToken(t *testing.T) {
 	}
 }
 
+// DryRunGet reads a field from the dry-run payload inside the standard success envelope.
+func DryRunGet(stdout, path string) gjson.Result {
+	if path == "" {
+		return gjson.Get(stdout, "data")
+	}
+	return gjson.Get(stdout, "data."+path)
+}
+
+// DryRunData returns the dry-run payload for tests that assert legacy raw paths.
+func DryRunData(stdout string) string {
+	return gjson.Get(stdout, "data").Raw
+}
+
 // Request describes one lark-cli invocation.
 type Request struct {
 	// Args are required and exclude the lark-cli binary name.
