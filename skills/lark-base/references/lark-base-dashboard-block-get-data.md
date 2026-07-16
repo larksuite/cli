@@ -98,12 +98,12 @@ lark-cli base +dashboard-block-get \
 
 ## 返回结构总览
 
-服务端响应外层仍然是标准 OpenAPI 包装：
+CLI 输出标准信封 `{ok, identity, data}`，其中 `data` 就是图表协议本体：
 
 ```json
 {
-  "code": 0,
-  "msg": "success",
+  "ok": true,
+  "identity": "user",
   "data": {
     "dimensions": [...],
     "measures": [...],
