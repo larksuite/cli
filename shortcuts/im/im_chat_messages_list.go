@@ -23,7 +23,7 @@ var ImChatMessageList = common.Shortcut{
 	Description: "List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range/sort/pagination",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
-	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read", "contact:user.base:readonly"},
+	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
 	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
@@ -168,8 +168,8 @@ var ImChatMessageList = common.Shortcut{
 					"type": msg["msg_type"],
 				}
 				if sender, ok := msg["sender"].(map[string]interface{}); ok {
-					if name, _ := sender["name"].(string); name != "" {
-						row["sender"] = name
+					if disp := senderDisplay(sender); disp != "" {
+						row["sender"] = disp
 					}
 				}
 				if content, _ := msg["content"].(string); content != "" {
@@ -206,6 +206,9 @@ func buildChatMessageListParams(sortFlag, pageSizeStr, chatId string) larkcore.Q
 		"page_size":                 []string{strconv.Itoa(pageSize)},
 		"card_msg_content_type":     []string{"raw_card_content"},
 		"only_thread_root_messages": []string{"true"},
+		// Opt into server-side sender name filling (sender_name / sender_i18n_names /
+		// open_bot_id) for both user and bot senders; without it the server omits them.
+		"with_sender_name": []string{"true"},
 	}
 }
 

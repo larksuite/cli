@@ -6,6 +6,7 @@ package common
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
@@ -226,6 +227,75 @@ func TestRunShortcut_JqRuntimeError_PropagatesError(t *testing.T) {
 	err := runShortcut(cmd, newTestFactory(), s, true)
 	if err == nil {
 		t.Fatal("expected error from jq runtime failure to propagate")
+	}
+}
+
+func TestRunShortcut_DryRunJSONUsesEnvelope(t *testing.T) {
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		DryRun: func(ctx context.Context, rctx *RuntimeContext) *cmdutil.DryRunAPI {
+			return cmdutil.NewDryRunAPI().GET("/open-apis/test")
+		},
+		Execute: func(ctx context.Context, rctx *RuntimeContext) error {
+			t.Fatal("Execute should not run in dry-run")
+			return nil
+		},
+	}
+	f := newTestFactory()
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("dry-run", "true")
+	cmd.Flags().Set("as", "bot")
+
+	if err := runShortcut(cmd, f, s, false); err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	stdout := f.IOStreams.Out.(*bytes.Buffer)
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if env["ok"] != true || env["identity"] != "bot" || env["dry_run"] != true {
+		t.Fatalf("unexpected dry-run envelope: %#v", env)
+	}
+	data := env["data"].(map[string]interface{})
+	api := data["api"].([]interface{})
+	call := api[0].(map[string]interface{})
+	if call["url"] != "/open-apis/test" {
+		t.Fatalf("api[0] = %#v", call)
+	}
+	dctx, ok := data["context"].(map[string]interface{})
+	if !ok || dctx["app_id"] != "test" {
+		t.Fatalf("runner must inject data.context like the service/api paths, got: %#v", data["context"])
+	}
+}
+
+func TestRunShortcut_DryRunWithJq(t *testing.T) {
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		DryRun: func(ctx context.Context, rctx *RuntimeContext) *cmdutil.DryRunAPI {
+			return cmdutil.NewDryRunAPI().GET("/open-apis/test")
+		},
+		Execute: func(ctx context.Context, rctx *RuntimeContext) error {
+			t.Fatal("Execute should not run in dry-run")
+			return nil
+		},
+	}
+	f := newTestFactory()
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("dry-run", "true")
+	cmd.Flags().Set("jq", ".dry_run")
+	cmd.Flags().Set("as", "bot")
+
+	if err := runShortcut(cmd, f, s, false); err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	stdout := f.IOStreams.Out.(*bytes.Buffer)
+	if got := strings.TrimSpace(stdout.String()); got != "true" {
+		t.Fatalf("jq output = %q, want true", got)
 	}
 }
 

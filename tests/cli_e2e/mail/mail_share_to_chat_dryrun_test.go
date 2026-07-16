@@ -11,7 +11,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestMail_ShareToChatDryRun validates the request shape emitted by
@@ -99,14 +98,14 @@ func TestMail_ShareToChatDryRun(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			gotCount := int(gjson.Get(out, "api.#").Int())
+			gotCount := int(clie2e.DryRunGet(out, "api.#").Int())
 			if gotCount != len(tt.wantURLs) {
 				t.Fatalf("expected %d API calls, got %d\nstdout:\n%s", len(tt.wantURLs), gotCount, out)
 			}
 			for i, wantURL := range tt.wantURLs {
 				idx := strconv.Itoa(i)
-				gotMethod := gjson.Get(out, "api."+idx+".method").String()
-				gotURL := gjson.Get(out, "api."+idx+".url").String()
+				gotMethod := clie2e.DryRunGet(out, "api."+idx+".method").String()
+				gotURL := clie2e.DryRunGet(out, "api."+idx+".url").String()
 				if gotMethod != "POST" {
 					t.Fatalf("api[%d].method = %q, want POST\nstdout:\n%s", i, gotMethod, out)
 				}
@@ -116,19 +115,19 @@ func TestMail_ShareToChatDryRun(t *testing.T) {
 			}
 
 			for k, v := range tt.wantCreateBody {
-				got := gjson.Get(out, "api.0.body."+k).String()
+				got := clie2e.DryRunGet(out, "api.0.body."+k).String()
 				if got != v {
 					t.Fatalf("api[0].body.%s = %q, want %q\nstdout:\n%s", k, got, v, out)
 				}
 			}
 			for k, v := range tt.wantSendBody {
-				got := gjson.Get(out, "api.1.body."+k).String()
+				got := clie2e.DryRunGet(out, "api.1.body."+k).String()
 				if got != v {
 					t.Fatalf("api[1].body.%s = %q, want %q\nstdout:\n%s", k, got, v, out)
 				}
 			}
 			for k, v := range tt.wantSendParams {
-				got := gjson.Get(out, "api.1.params."+k).String()
+				got := clie2e.DryRunGet(out, "api.1.params."+k).String()
 				if got != v {
 					t.Fatalf("api[1].params.%s = %q, want %q\nstdout:\n%s", k, got, v, out)
 				}

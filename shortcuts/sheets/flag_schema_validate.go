@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -97,11 +98,22 @@ func validateValueAgainstSchema(fv flagView, name string, value interface{}) err
 		// Composite-JSON shape errors (e.g. +cells-set --cells, chart
 		// --properties) are the highest-frequency usage-layer failure for
 		// sheets, and agents often burn several retries guessing the shape.
-		// Point them straight at --print-schema, which dumps the exact JSON
-		// Schema for this (command, flag) pair. The hint is always actionable:
-		// reaching this branch means entry[name] resolved a schema from the
-		// embedded index, and --print-schema reads that same index, so the
-		// suggested command is guaranteed to print it.
+		// A shallow type mismatch means the caller misremembered the overall
+		// container shape (the classic {"cells": ...} wrapper around what
+		// must be a bare 2D array), so inline a skeleton of the expected
+		// shape — that fixes the retry without a --print-schema round trip.
+		// Deeper failures keep the --print-schema pointer, which dumps the
+		// exact JSON Schema for this (command, flag) pair; reaching this
+		// branch means entry[name] resolved a schema from the embedded
+		// index, so the suggested command is guaranteed to print it.
+		var tm *typeMismatchError
+		if errors.As(vErr, &tm) && pathDepth(tm.path) <= skeletonPathDepthLimit {
+			if sk := schemaSkeleton(&schema, skeletonMaxDepth); sk != "" {
+				return sheetsValidationForFlag(name,
+					"--%s: %s; expected shape: %s (run `lark-cli sheets %s --print-schema --flag-name %s` for the full JSON Schema)",
+					name, vErr.Error(), sk, command, name).WithCause(vErr)
+			}
+		}
 		return sheetsValidationForFlag(name,
 			"--%s: %s; run `lark-cli sheets %s --print-schema --flag-name %s` to see the expected JSON Schema",
 			name, vErr.Error(), command, name).WithCause(vErr)
@@ -243,7 +255,7 @@ func validateAgainstSchema(value interface{}, schema *schemaProperty, path strin
 
 	if schema.Type != "" {
 		if !matchesJSONType(value, schema.Type) {
-			return fmt.Errorf("%sexpected type %q, got %q", pathPrefix(path), schema.Type, jsType(value))
+			return &typeMismatchError{path: path, expected: schema.Type, got: jsType(value)}
 		}
 	}
 
@@ -251,20 +263,20 @@ func validateAgainstSchema(value interface{}, schema *schemaProperty, path strin
 	// already reported above). Apply to both `number` and `integer` types.
 	if num, ok := value.(float64); ok {
 		if schema.Minimum != nil && num < *schema.Minimum {
-			return fmt.Errorf("%svalue %v is below minimum %v", pathPrefix(path), num, *schema.Minimum)
+			return fmt.Errorf("%svalue %v is below minimum %v", pathPrefix(path), num, *schema.Minimum) //nolint:forbidigo // intermediate error; validateFlagAgainstSchema wraps it into a typed flag validation error with a --print-schema hint
 		}
 		if schema.Maximum != nil && num > *schema.Maximum {
-			return fmt.Errorf("%svalue %v is above maximum %v", pathPrefix(path), num, *schema.Maximum)
+			return fmt.Errorf("%svalue %v is above maximum %v", pathPrefix(path), num, *schema.Maximum) //nolint:forbidigo // intermediate error; validateFlagAgainstSchema wraps it into a typed flag validation error with a --print-schema hint
 		}
 	}
 
 	// Array length bounds — only checked when value is an array.
 	if arr, ok := value.([]interface{}); ok {
 		if schema.MinItems != nil && len(arr) < *schema.MinItems {
-			return fmt.Errorf("%sarray has %d items, minimum is %d", pathPrefix(path), len(arr), *schema.MinItems)
+			return fmt.Errorf("%sarray has %d items, minimum is %d", pathPrefix(path), len(arr), *schema.MinItems) //nolint:forbidigo // intermediate error; validateFlagAgainstSchema wraps it into a typed flag validation error with a --print-schema hint
 		}
 		if schema.MaxItems != nil && len(arr) > *schema.MaxItems {
-			return fmt.Errorf("%sarray has %d items, maximum is %d", pathPrefix(path), len(arr), *schema.MaxItems)
+			return fmt.Errorf("%sarray has %d items, maximum is %d", pathPrefix(path), len(arr), *schema.MaxItems) //nolint:forbidigo // intermediate error; validateFlagAgainstSchema wraps it into a typed flag validation error with a --print-schema hint
 		}
 	}
 
@@ -279,10 +291,10 @@ func validateAgainstSchema(value interface{}, schema *schemaProperty, path strin
 		if !matched {
 			msg := fmt.Sprintf("%svalue %s is not in enum %s",
 				pathPrefix(path), formatJSONValue(value), formatEnum(schema.Enum))
-			if hint := suggestEnumMatch(value, schema.Enum); hint != "" {
+			if hint := suggestEnumForError(value, schema.Enum); hint != "" {
 				msg += fmt.Sprintf(` (did you mean %q?)`, hint)
 			}
-			return fmt.Errorf("%s", msg)
+			return fmt.Errorf("%s", msg) //nolint:forbidigo // intermediate error; validateFlagAgainstSchema wraps it into a typed flag validation error with a --print-schema hint
 		}
 	}
 
@@ -295,7 +307,7 @@ func validateAgainstSchema(value interface{}, schema *schemaProperty, path strin
 			}
 		}
 		if !matched {
-			return fmt.Errorf("%svalue does not match any of oneOf alternatives", pathPrefix(path))
+			return fmt.Errorf("%svalue does not match any of oneOf alternatives", pathPrefix(path)) //nolint:forbidigo // intermediate error; validateFlagAgainstSchema wraps it into a typed flag validation error with a --print-schema hint
 		}
 	}
 
@@ -305,7 +317,7 @@ func validateAgainstSchema(value interface{}, schema *schemaProperty, path strin
 	if obj, ok := value.(map[string]interface{}); ok {
 		for _, key := range schema.Required {
 			if _, present := obj[key]; !present {
-				return fmt.Errorf("required property %q is missing at %s", key, pathOrRoot(path))
+				return fmt.Errorf("required property %q is missing at %s", key, pathOrRoot(path)) //nolint:forbidigo // intermediate error; validateFlagAgainstSchema wraps it into a typed flag validation error with a --print-schema hint
 			}
 		}
 		if schema.Properties != nil {
@@ -357,7 +369,7 @@ func validateAgainstSchema(value interface{}, schema *schemaProperty, path strin
 			sort.Strings(extras)
 			for _, key := range extras {
 				if schema.AdditionalProperties.Strict {
-					return fmt.Errorf("%sunexpected property %q (not declared in schema)", pathPrefix(path), key)
+					return fmt.Errorf("%sunexpected property %q (not declared in schema)", pathPrefix(path), key) //nolint:forbidigo // intermediate error; validateFlagAgainstSchema wraps it into a typed flag validation error with a --print-schema hint
 				}
 				if schema.AdditionalProperties.Schema != nil {
 					child := key
@@ -386,6 +398,126 @@ func validateAgainstSchema(value interface{}, schema *schemaProperty, path strin
 	}
 
 	return nil
+}
+
+// typeMismatchError is the type-check branch of validateAgainstSchema
+// as a typed error, so validateValueAgainstSchema can recognize shape
+// confusion (vs. deep value errors) and inline a skeleton of the
+// expected shape. Error() keeps the exact legacy wording.
+type typeMismatchError struct {
+	path     string
+	expected string
+	got      string
+}
+
+func (e *typeMismatchError) Error() string {
+	return fmt.Sprintf("%sexpected type %q, got %q", pathPrefix(e.path), e.expected, e.got)
+}
+
+// pathDepth counts how many levels below the flag root a JSON path
+// points at: "" → 0, "[0]" → 1, "[0][3]" → 2, "[0][3].value" → 3,
+// "legend" → 1, "snapshot.axes" → 2. Every "[" and "." starts a new
+// segment; a leading bare key (no bracket) is one segment of its own.
+func pathDepth(path string) int {
+	depth := strings.Count(path, "[") + strings.Count(path, ".")
+	if path != "" && path[0] != '[' {
+		depth++
+	}
+	return depth
+}
+
+// Skeleton rendering bounds: a mismatch at depth ≤ 2 is container-shape
+// confusion worth a skeleton; deeper mismatches are value-level and the
+// full schema pointer serves better. The skeleton itself stops after
+// four levels and eight keys per object so it stays one line; a wide
+// object (> skeletonWideObject keys) collapses its children to type
+// placeholders so every key stays visible instead of the first branch
+// eating the whole line.
+const (
+	skeletonPathDepthLimit = 2
+	skeletonMaxDepth       = 4
+	skeletonMaxKeys        = 8
+	skeletonWideObject     = 2
+)
+
+// schemaSkeleton renders a compact single-line sketch of the shape a
+// schema expects, e.g. [[{"value": …, "formula": "…", …}]] for
+// +cells-set --cells. Required keys come first, then alphabetical,
+// capped at skeletonMaxKeys with a trailing … marker. Values render as
+// their type placeholder; enum strings show the first allowed value.
+func schemaSkeleton(s *schemaProperty, depth int) string {
+	if s == nil {
+		return "…"
+	}
+	if len(s.OneOf) > 0 && s.Type == "" {
+		return schemaSkeleton(s.OneOf[0], depth)
+	}
+	switch s.Type {
+	case "array":
+		if depth <= 0 {
+			return "[…]"
+		}
+		return "[" + schemaSkeleton(s.Items, depth-1) + "]"
+	case "object":
+		if depth <= 0 || len(s.Properties) == 0 {
+			return "{…}"
+		}
+		keys := skeletonKeys(s)
+		childDepth := depth - 1
+		if len(s.Properties) > skeletonWideObject {
+			childDepth = 0
+		}
+		parts := make([]string, 0, len(keys)+1)
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%q: %s", k, schemaSkeleton(s.Properties[k], childDepth)))
+		}
+		if len(s.Properties) > len(keys) {
+			parts = append(parts, "…")
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
+	case "string":
+		if len(s.Enum) > 0 {
+			return formatJSONValue(s.Enum[0])
+		}
+		return `"…"`
+	case "number", "integer":
+		return "0"
+	case "boolean":
+		return "false"
+	}
+	return "…"
+}
+
+// skeletonKeys picks which object keys a skeleton shows: required keys
+// first (schema order), then remaining keys alphabetically, capped at
+// skeletonMaxKeys.
+func skeletonKeys(s *schemaProperty) []string {
+	keys := make([]string, 0, skeletonMaxKeys)
+	seen := make(map[string]struct{}, skeletonMaxKeys)
+	for _, k := range s.Required {
+		if _, ok := s.Properties[k]; !ok {
+			continue
+		}
+		if len(keys) == skeletonMaxKeys {
+			return keys
+		}
+		keys = append(keys, k)
+		seen[k] = struct{}{}
+	}
+	rest := make([]string, 0, len(s.Properties))
+	for k := range s.Properties {
+		if _, dup := seen[k]; !dup {
+			rest = append(rest, k)
+		}
+	}
+	sort.Strings(rest)
+	for _, k := range rest {
+		if len(keys) == skeletonMaxKeys {
+			break
+		}
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func matchesJSONType(value interface{}, expected string) bool {
@@ -473,25 +605,48 @@ func joinFormatted(values []interface{}) string {
 	return strings.Join(parts, ", ")
 }
 
-// suggestEnumMatch returns a "did you mean" candidate when the user's
-// value differs from an allowed enum entry only in casing — the most
-// common real-world mistake ("SUM" vs "sum", "True" vs "true"). The
-// match is restricted to strings; non-string enums (numbers, etc.)
-// don't have a casing notion. Returns "" when no near-miss exists.
+// suggestEnumMatch returns the canonical enum entry when the user's
+// value unambiguously means one — casing ("SUM" vs "sum", "True" vs
+// "true") or a cross-vocabulary alias (CSS "center" for Lark's vertical
+// "middle"). Callers auto-apply the result, so it must stay restricted
+// to unambiguous matches (edit-distance guesses belong in
+// suggestEnumForError only). Non-string values have no vocabulary
+// notion. Returns "" when no unambiguous match exists.
 func suggestEnumMatch(value interface{}, values []interface{}) string {
 	s, ok := value.(string)
 	if !ok {
 		return ""
 	}
-	lower := strings.ToLower(s)
+	canon := canonicalEnumValue(s, stringEnumEntries(values))
+	if canon == "" || canon == s { // skip exact-equal (already would have matched).
+		return ""
+	}
+	return canon
+}
+
+// stringEnumEntries extracts the string members of a JSON-schema enum
+// list (mixed-type enums keep only their string entries).
+func stringEnumEntries(values []interface{}) []string {
+	out := make([]string, 0, len(values))
 	for _, v := range values {
-		if vs, ok := v.(string); ok && strings.ToLower(vs) == lower {
-			if vs != s { // skip exact-equal (already would have matched).
-				return vs
-			}
+		if vs, ok := v.(string); ok {
+			out = append(out, vs)
 		}
 	}
-	return ""
+	return out
+}
+
+// suggestEnumForError picks the "did you mean" candidate for an enum
+// error message. Unlike suggestEnumMatch (whose result is auto-applied,
+// so it must stay unambiguous), this one may also draw on edit distance
+// — the suggestion is only prose, the user still has to re-issue the
+// value explicitly.
+func suggestEnumForError(value interface{}, values []interface{}) string {
+	s, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return closestEnumValue(s, stringEnumEntries(values))
 }
 
 func pathPrefix(path string) string {

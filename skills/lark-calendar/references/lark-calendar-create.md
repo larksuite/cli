@@ -63,6 +63,7 @@ lark-cli calendar event.attendees create \
 - 时间参数是 **Unix 秒字符串**（非 ISO 8601）。
 - 全天日程的开始日期和结束日期必须分别是日程开始的第一天和结束的最后一天；单日全天日程两者相同。
 - 手动拆成“创建日程 + 添加参会人”两步时，若第二步失败，建议删除刚创建的空日程，避免遗留无参会人的日程。
+- 设置会议 owner：`+create` 不支持，需用完整 API 命令在 `vchat.meeting_settings.owner_id` 中设置，且必须同时设置 `vchat.vc_type` 为 `vc`（代表该日程为 VC 视频会议）。仅当以应用（bot）身份在应用日历上操作时生效；owner 必须为用户身份（`ou_` open_id），不能为非用户或外部租户用户。
 
 ## 参会人类型
 

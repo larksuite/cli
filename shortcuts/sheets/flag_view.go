@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -118,20 +119,21 @@ func (m mapFlagView) lookup(name string) (interface{}, bool) {
 // lookupRaw resolves a flag name against the user-supplied input only, trying
 // the exact key then the hyphen↔underscore variants.
 func (m mapFlagView) lookupRaw(name string) (interface{}, bool) {
-	if v, ok := m.raw[name]; ok {
-		return v, true
-	}
-	if alt := strings.ReplaceAll(name, "-", "_"); alt != name {
-		if v, ok := m.raw[alt]; ok {
-			return v, true
+	_, v, ok := m.lookupRawWithKey(name)
+	return v, ok
+}
+
+func (m mapFlagView) lookupRawWithKey(name string) (string, interface{}, bool) {
+	for _, key := range []string{
+		name,
+		strings.ReplaceAll(name, "-", "_"),
+		strings.ReplaceAll(name, "_", "-"),
+	} {
+		if v, ok := m.raw[key]; ok {
+			return key, v, true
 		}
 	}
-	if alt := strings.ReplaceAll(name, "_", "-"); alt != name {
-		if v, ok := m.raw[alt]; ok {
-			return v, true
-		}
-	}
-	return nil, false
+	return "", nil, false
 }
 
 func (m mapFlagView) Str(name string) string {
@@ -281,20 +283,61 @@ func (m mapFlagView) validateRawTypes() error {
 			// parse time; reject here too to keep batch/standalone parity.
 			f, isNum := val.(float64)
 			if !isNum {
-				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val))
+				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 			}
 			if math.Trunc(f) != f {
-				return fmt.Errorf("--%s must be an integer, got %s", name, strconv.FormatFloat(f, 'g', -1, 64))
+				return fmt.Errorf("--%s must be an integer, got %s", name, strconv.FormatFloat(f, 'g', -1, 64)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 			}
 		case "float64":
 			if _, isNum := val.(float64); !isNum {
-				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val))
+				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 			}
 		case "bool":
 			if _, isBool := val.(bool); !isBool {
-				return fmt.Errorf("--%s must be a boolean, got %s", name, jsonTypeName(val))
+				return fmt.Errorf("--%s must be a boolean, got %s", name, jsonTypeName(val)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 			}
 		}
+	}
+	return nil
+}
+
+// normalizeAndValidateEnums applies the same flat string-enum contract as the
+// standalone cobra path. Canonical casing and known aliases are rewritten in
+// place; unknown values are rejected before a translator can silently fall
+// back to a different operation.
+func (m *mapFlagView) normalizeAndValidateEnums() error {
+	defs, err := loadFlagDefs()
+	if err != nil {
+		return nil //nolint:nilerr // match validateRawTypes: missing embedded metadata must not block the batch
+	}
+	spec, ok := defs[m.command]
+	if !ok {
+		return nil
+	}
+	for _, df := range spec.Flags {
+		if df.Kind == "system" || df.Type != "string" || len(df.Enum) == 0 {
+			continue
+		}
+		rawKey, raw, changed := m.lookupRawWithKey(df.Name)
+		if !changed {
+			continue
+		}
+		value, ok := raw.(string)
+		if !ok {
+			return fmt.Errorf("--%s must be a string, got %s", df.Name, jsonTypeName(raw)) //nolint:forbidigo // intermediate error; batch dispatcher adds typed operations context
+		}
+		if value == "" || slices.Contains(df.Enum, value) {
+			continue
+		}
+		if canonical := canonicalEnumValue(value, df.Enum); canonical != "" {
+			m.raw[rawKey] = canonical
+			continue
+		}
+		message := fmt.Sprintf("invalid value %q for --%s, allowed: %s", value, df.Name, strings.Join(df.Enum, ", "))
+		if match := closestEnumValue(value, df.Enum); match != "" {
+			message += fmt.Sprintf("; did you mean %q?", match)
+		}
+		return fmt.Errorf("%s", message) //nolint:forbidigo // intermediate error; batch dispatcher adds typed operations context
 	}
 	return nil
 }

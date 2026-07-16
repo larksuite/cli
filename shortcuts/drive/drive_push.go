@@ -623,6 +623,10 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	case problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400:
 		decision.Class = "rate_limited"
 		decision.Terminal = true
+	case problem.Code == 1062507:
+		decision.Class = "parent_sibling_limit"
+		decision.Terminal = true
+		decision.Hint = "The destination parent folder has reached its child-count limit. Clean up that folder, choose another --folder-token, or split the upload across subfolders before retrying."
 	case problem.Subtype == errs.SubtypeQuotaExceeded || problem.Code == 1061043:
 		decision.Class = "file_size_limit"
 	case problem.Code == 1062009:

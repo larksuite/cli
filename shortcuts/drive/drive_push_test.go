@@ -1334,6 +1334,75 @@ func TestDrivePushAbortsAfterCreateFolderMissingScope(t *testing.T) {
 	}
 }
 
+func TestDrivePushAbortsAfterCreateFolderParentSiblingLimit(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll(filepath.Join("local", "a"), 0o755); err != nil {
+		t.Fatalf("MkdirAll a: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join("local", "b"), 0o755); err != nil {
+		t.Fatalf("MkdirAll b: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/create_folder",
+		Body: map[string]interface{}{
+			"code": 1062507,
+			"msg":  "parent node out of sibling num.",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	summary, items := splitDrivePushStdout(t, stdout.Bytes())
+	if got := summary["failed"]; got != float64(1) {
+		t.Fatalf("summary.failed = %v, want 1", got)
+	}
+	if got := summary["aborted"]; got != true {
+		t.Fatalf("summary.aborted = %v, want true", got)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; items=%#v", len(items), items)
+	}
+	item := items[0]
+	if item["rel_path"] != "a" || item["phase"] != "create_folder" || item["error_class"] != "parent_sibling_limit" {
+		t.Fatalf("unexpected failed item: %#v", item)
+	}
+	if item["code"] != float64(1062507) || item["subtype"] != "quota_exceeded" || item["retryable"] != false {
+		t.Fatalf("unexpected failure metadata: %#v", item)
+	}
+	if got, _ := item["hint"].(string); !strings.Contains(got, "--folder-token") || !strings.Contains(got, "child-count limit") {
+		t.Fatalf("hint should explain the destination folder child-count limit, got item=%#v", item)
+	}
+	for _, item := range items {
+		if item["rel_path"] == "b" {
+			t.Fatalf("parent sibling limit must abort before b, got items=%#v", items)
+		}
+	}
+}
+
 func TestDrivePushDetectsLocalFileChangedBeforeUpload(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 

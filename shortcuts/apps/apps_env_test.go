@@ -149,11 +149,7 @@ func TestAppsEnvVarList_DryRunIncludesScene(t *testing.T) {
 	}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var dryRun struct {
-		API []struct {
-			Body map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var dryRun dryRunAPIEnvelope
 	if err := json.Unmarshal(stdout.Bytes(), &dryRun); err != nil {
 		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
 	}
@@ -228,11 +224,7 @@ func TestAppsEnvVarSet_OnlineDryRunDoesNotRequireYes(t *testing.T) {
 			t.Fatalf("dry-run missing %q: %s", want, got)
 		}
 	}
-	var dryRun struct {
-		API []struct {
-			Body map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var dryRun dryRunAPIEnvelope
 	if err := json.Unmarshal([]byte(got), &dryRun); err != nil {
 		t.Fatalf("decode dry-run: %v\n%s", err, got)
 	}
@@ -353,13 +345,7 @@ func TestAppsEnvVarDelete_OnlineDryRunDoesNotRequireYes(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 
-	var dryRun struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var dryRun dryRunAPIEnvelope
 	got := stdout.String()
 	if err := json.Unmarshal([]byte(got), &dryRun); err != nil {
 		t.Fatalf("decode dry-run: %v\n%s", err, got)

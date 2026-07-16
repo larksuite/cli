@@ -11,7 +11,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestIM_DownloadResourcesDryRun verifies the --download-resources flag is wired
@@ -43,17 +42,17 @@ func TestIM_DownloadResourcesDryRun(t *testing.T) {
 
 	t.Run("default off: no resources declaration, request unchanged", func(t *testing.T) {
 		out := run(t)
-		require.Equal(t, "GET", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-		require.Equal(t, "/open-apis/im/v1/messages", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
-		require.Equal(t, "oc_dryrun", gjson.Get(out, "api.0.params.container_id").String(), "stdout:\n%s", out)
+		require.Equal(t, "GET", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+		require.Equal(t, "/open-apis/im/v1/messages", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+		require.Equal(t, "oc_dryrun", clie2e.DryRunGet(out, "api.0.params.container_id").String(), "stdout:\n%s", out)
 		require.NotContains(t, strings.ToLower(out), "lark-im-resources", "default must not declare resource download:\n%s", out)
 	})
 
 	t.Run("with --download-resources: request unchanged, declares download", func(t *testing.T) {
 		out := run(t, "--download-resources")
-		require.Equal(t, "GET", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-		require.Equal(t, "/open-apis/im/v1/messages", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
-		require.Equal(t, "oc_dryrun", gjson.Get(out, "api.0.params.container_id").String(), "stdout:\n%s", out)
+		require.Equal(t, "GET", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+		require.Equal(t, "/open-apis/im/v1/messages", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+		require.Equal(t, "oc_dryrun", clie2e.DryRunGet(out, "api.0.params.container_id").String(), "stdout:\n%s", out)
 		require.Contains(t, strings.ToLower(out), "lark-im-resources", "flag must declare resource download:\n%s", out)
 	})
 }

@@ -83,10 +83,9 @@ func commandFormResolver(service string) func(string) string {
 		}
 	}
 	return func(h string) string {
-		h = strings.TrimSpace(h)
-		if id, ok := byForm[h]; ok {
+		if id, ok := byForm[strings.TrimSpace(h)]; ok {
 			return id
 		}
-		return strings.ReplaceAll(h, " ", ".")
+		return headingToKey(h) // one home for the shortcut/method key convention
 	}
 }

@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestMail_TriageDryRunPreservesMailboxInRequestChain(t *testing.T) {
@@ -32,15 +31,15 @@ func TestMail_TriageDryRunPreservesMailboxInRequestChain(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	require.Equal(t, int64(2), gjson.Get(result.Stdout, "api.#").Int(), "stdout:\n%s", result.Stdout)
-	require.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String(), "stdout:\n%s", result.Stdout)
-	require.Equal(t, "/open-apis/mail/v1/user_mailboxes/alias@example.com/messages", gjson.Get(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
-	require.Equal(t, int64(3), gjson.Get(result.Stdout, "api.0.params.page_size").Int(), "stdout:\n%s", result.Stdout)
-	require.Equal(t, "INBOX", gjson.Get(result.Stdout, "api.0.params.folder_id").String(), "stdout:\n%s", result.Stdout)
+	require.Equal(t, int64(2), clie2e.DryRunGet(result.Stdout, "api.#").Int(), "stdout:\n%s", result.Stdout)
+	require.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String(), "stdout:\n%s", result.Stdout)
+	require.Equal(t, "/open-apis/mail/v1/user_mailboxes/alias@example.com/messages", clie2e.DryRunGet(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
+	require.Equal(t, int64(3), clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").Int(), "stdout:\n%s", result.Stdout)
+	require.Equal(t, "INBOX", clie2e.DryRunGet(result.Stdout, "api.0.params.folder_id").String(), "stdout:\n%s", result.Stdout)
 
-	require.Equal(t, "POST", gjson.Get(result.Stdout, "api.1.method").String(), "stdout:\n%s", result.Stdout)
-	require.Equal(t, "/open-apis/mail/v1/user_mailboxes/alias@example.com/messages/batch_get", gjson.Get(result.Stdout, "api.1.url").String(), "stdout:\n%s", result.Stdout)
-	require.Equal(t, "metadata", gjson.Get(result.Stdout, "api.1.body.format").String(), "stdout:\n%s", result.Stdout)
+	require.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.1.method").String(), "stdout:\n%s", result.Stdout)
+	require.Equal(t, "/open-apis/mail/v1/user_mailboxes/alias@example.com/messages/batch_get", clie2e.DryRunGet(result.Stdout, "api.1.url").String(), "stdout:\n%s", result.Stdout)
+	require.Equal(t, "metadata", clie2e.DryRunGet(result.Stdout, "api.1.body.format").String(), "stdout:\n%s", result.Stdout)
 }
 
 func setMailTriageDryRunEnv(t *testing.T) {

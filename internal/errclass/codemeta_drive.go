@@ -17,6 +17,7 @@ var driveCodeMeta = map[int]CodeMeta{
 	1061043:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeQuotaExceeded},                // file size beyond limit
 	1061044:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                     // parent folder does not exist (upload)
 	1061101:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeQuotaExceeded},                // file quota exceeded
+	1062507:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeQuotaExceeded},                // parent folder child count limit exceeded
 	1062009:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // actual size inconsistent with declared size
 	1063001:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // secure label invalid parameter
 	1063002:   {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied},   // secure label permission denied

@@ -54,7 +54,7 @@ lark-cli drive +member-add \
 }
 ```
 
-批量部分失败时，`partial` 为 `true`，CLI 以非零退出码返回 `error.type=partial_failure`。检查 `error.detail` 中的 `requested_count`、`succeeded_count`、`members`、`missing_member_ids` 和可选的 `mismatched_member_ids`。响应顺序不影响匹配结果。
+批量部分失败时，`partial` 为 `true`，同一份结果以 `ok:false` 部分失败信封写到 **stdout**（stderr 不再输出单独的错误信封），CLI 以非零退出码结束。检查 `data` 中的 `requested_count`、`succeeded_count`、`members`、`missing_member_ids` 和可选的 `mismatched_member_ids`。响应顺序不影响匹配结果。
 
 ## 行为说明
 

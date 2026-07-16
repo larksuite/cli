@@ -215,7 +215,8 @@ func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[
 	if borderStyles != nil {
 		prototype["border_styles"] = borderStyles
 	}
-	var ops []interface{}
+	ops := make([]interface{}, 0, len(ranges))
+	var totalCells int64
 	for _, rng := range ranges {
 		sheet, sub, err := splitSheetPrefixedRange(rng)
 		if err != nil {
@@ -224,6 +225,13 @@ func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[
 		rows, cols, err := rangeDimensions(sub)
 		if err != nil {
 			return nil, sheetsValidationForFlag("range", "range %q: %v", rng, err)
+		}
+		if err := checkStampMatrixBudget("ranges", rng, rows, cols); err != nil {
+			return nil, err
+		}
+		totalCells += int64(rows) * int64(cols)
+		if err := checkBatchStampBudget(totalCells); err != nil {
+			return nil, err
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
 		ops = append(ops, map[string]interface{}{
@@ -299,7 +307,7 @@ func cellsBatchClearInput(runtime *common.RuntimeContext, token string) (map[str
 		return nil, err
 	}
 	clearType := normalizeClearType(runtime.Str("scope"))
-	var ops []interface{}
+	ops := make([]interface{}, 0, len(ranges))
 	for _, rng := range ranges {
 		sheet, sub, err := splitSheetPrefixedRange(rng)
 		if err != nil {
@@ -382,12 +390,9 @@ var DropdownDelete = common.Shortcut{
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err
 		}
-		ranges, err := validateDropdownRanges(runtime)
-		if err != nil {
+		// validateDropdownRanges enforces the shared maxBatchRanges cap.
+		if _, err := validateDropdownRanges(runtime); err != nil {
 			return err
-		}
-		if len(ranges) > 100 {
-			return sheetsValidationForFlag("ranges", "--ranges accepts at most 100 entries; got %d", len(ranges))
 		}
 		return nil
 	},
@@ -432,7 +437,8 @@ func dropdownBatchInput(runtime *common.RuntimeContext, token string, clear bool
 		}
 		prototype = map[string]interface{}{"data_validation": validation}
 	}
-	var ops []interface{}
+	ops := make([]interface{}, 0, len(ranges))
+	var totalCells int64
 	for _, rng := range ranges {
 		sheet, sub, err := splitSheetPrefixedRange(rng)
 		if err != nil {
@@ -441,6 +447,13 @@ func dropdownBatchInput(runtime *common.RuntimeContext, token string, clear bool
 		rows, cols, err := rangeDimensions(sub)
 		if err != nil {
 			return nil, sheetsValidationForFlag("range", "range %q: %v", rng, err)
+		}
+		if err := checkStampMatrixBudget("ranges", rng, rows, cols); err != nil {
+			return nil, err
+		}
+		totalCells += int64(rows) * int64(cols)
+		if err := checkBatchStampBudget(totalCells); err != nil {
+			return nil, err
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
 		ops = append(ops, map[string]interface{}{
@@ -460,6 +473,25 @@ func dropdownBatchInput(runtime *common.RuntimeContext, token string, clear bool
 }
 
 // ─── helpers resurrected from B3 (used here + future skills) ──────────
+
+// maxBatchRanges caps how many ranges a fan-out batch (+cells-batch-set-style /
+// +cells-batch-clear / +dropdown-update / +dropdown-delete) may carry, bounding
+// the number of ops materialized into one batch_update.
+const maxBatchRanges = 100
+
+// checkBatchStampBudget rejects a fan-out batch whose ranges materialize more
+// than maxStampMatrixCells cells in aggregate. A batch builds every range's
+// cells matrix up front, so the SUM across ranges is the real peak-memory bound
+// — the per-range checkStampMatrixBudget alone can't stop many ranges from
+// summing past it. totalCells is int64 to stay overflow-safe.
+func checkBatchStampBudget(totalCells int64) error {
+	if totalCells > maxStampMatrixCells {
+		return sheetsValidationForFlag("ranges",
+			"ranges expand to %d cells total, over the %d-cell safety cap; reduce the number or size of ranges",
+			totalCells, maxStampMatrixCells)
+	}
+	return nil
+}
 
 // validateDropdownRanges parses --ranges, requires every entry to carry a
 // sheet prefix, and returns the parsed list.
@@ -489,6 +521,9 @@ func validateDropdownRanges(runtime *common.RuntimeContext) ([]string, error) {
 			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] (%q): %v", i, s, err)
 		}
 		out = append(out, s)
+	}
+	if len(out) > maxBatchRanges {
+		return nil, sheetsValidationForFlag("ranges", "--ranges accepts at most %d entries; got %d", maxBatchRanges, len(out))
 	}
 	return out, nil
 }

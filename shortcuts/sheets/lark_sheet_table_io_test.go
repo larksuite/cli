@@ -54,6 +54,67 @@ func TestTablePut_IsoDateToSerial(t *testing.T) {
 	}
 }
 
+// TestTablePut_EmptyDatePrescription pins the empty-cell branch: the error
+// must name the three ways out (drop rows / fill dates / object dtype)
+// instead of the generic "must be ISO" parse failure.
+func TestTablePut_EmptyDatePrescription(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{"", "   "} {
+		_, err := isoDateToSerial(in)
+		if err == nil {
+			t.Fatalf("isoDateToSerial(%q) should fail", in)
+		}
+		for _, want := range []string{"empty cell", "object (text)"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("isoDateToSerial(%q) error should contain %q, got %q", in, want, err.Error())
+			}
+		}
+	}
+}
+
+// TestTablePut_ColumnKeyHint pins the dtypes/formats unknown-column hint:
+// A1-style letter keys get the Excel-habit callout, and the declared column
+// names ride inline either way.
+func TestTablePut_ColumnKeyHint(t *testing.T) {
+	t.Parallel()
+	cols := []string{"姓名", "出生日期"}
+	got := columnKeyHint("dtypes", "A", cols)
+	for _, want := range []string{"not A1-style column letters", `"姓名", "出生日期"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("letter-key hint should contain %q, got %q", want, got)
+		}
+	}
+	got = columnKeyHint("formats", "出生 日期", cols)
+	if strings.Contains(got, "A1-style") {
+		t.Errorf("non-letter key must not get the letter callout, got %q", got)
+	}
+	if !strings.Contains(got, `"姓名", "出生日期"`) {
+		t.Errorf("hint should inline column names, got %q", got)
+	}
+
+	many := make([]string, 20)
+	for i := range many {
+		many[i] = fmt.Sprintf("col%02d", i)
+	}
+	got = columnKeyHint("dtypes", "X", many)
+	if !strings.Contains(got, ", …") || strings.Contains(got, "col19") {
+		t.Errorf("hint should truncate long column lists, got %q", got)
+	}
+}
+
+func TestIsColumnLetterKey(t *testing.T) {
+	t.Parallel()
+	cases := map[string]bool{
+		"A": true, "Z": true, "AA": true, "ABC": true,
+		"": false, "ABCD": false, "a": false, "A1": false, "姓名": false,
+	}
+	for in, want := range cases {
+		if got := isColumnLetterKey(in); got != want {
+			t.Errorf("isColumnLetterKey(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
 func TestTablePut_BuildTypedCell(t *testing.T) {
 	t.Parallel()
 
@@ -399,6 +460,16 @@ func TestTablePut_StylesNameMismatchRejected(t *testing.T) {
 	requireValidation(t, err, "must match")
 }
 
+func TestTablePut_StylePaddingBudgetRejectedBeforeDryRun(t *testing.T) {
+	_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+		"--url", testURL,
+		"--sheets", `{"sheets":[{"name":"数据","columns":["a"],"data":[["x"]]}]}`,
+		"--styles", `{"styles":[{"name":"数据","cell_styles":[{"range":"A1:AX25000","font_weight":"bold"}]}]}`,
+		"--dry-run",
+	})
+	requireValidation(t, err, "over the 1000000-cell safety cap")
+}
+
 // TestTablePut_ExecuteWithStyles drives the full write + visual-ops path: the
 // set_cell_range write carries the merged cell_styles, then merge_cells /
 // resize_range tool calls apply the structural styles in the same call.
@@ -537,14 +608,15 @@ func TestTablePut_SheetCreateDims(t *testing.T) {
 	cases := []struct {
 		name               string
 		spec               tableSheetSpec
+		styles             *workbookCreateStylePayload
 		wantRows, wantCols int
 	}{
-		{"small table keeps 20x200 floor", tableSheetSpec{Columns: cols(3), Rows: rows(5)}, 200, 20},
-		{"wide table grows columns", tableSheetSpec{Columns: cols(37), Rows: rows(22)}, 200, 37},
-		{"long table grows rows", tableSheetSpec{Columns: cols(3), Rows: rows(500)}, 501, 20},
-		{"start_cell offset adds to both", tableSheetSpec{StartCell: "C5", Columns: cols(40), Rows: rows(5)}, 200, 42},
-		{"header:false drops the header row", tableSheetSpec{Header: bp(false), Columns: cols(3), Rows: rows(500)}, 500, 20},
-		{"columns clamp at backend max 200", tableSheetSpec{Columns: cols(250), Rows: rows(5)}, 200, 200},
+		{"small table keeps 20x200 floor", tableSheetSpec{Columns: cols(3), Rows: rows(5)}, nil, 200, 20},
+		{"wide table grows columns", tableSheetSpec{Columns: cols(37), Rows: rows(22)}, nil, 200, 37},
+		{"long table grows rows", tableSheetSpec{Columns: cols(3), Rows: rows(500)}, nil, 501, 20},
+		{"start_cell offset adds to both", tableSheetSpec{StartCell: "C5", Columns: cols(40), Rows: rows(5)}, nil, 200, 42},
+		{"header:false drops the header row", tableSheetSpec{Header: bp(false), Columns: cols(3), Rows: rows(500)}, nil, 500, 20},
+		{"columns clamp at backend max 200", tableSheetSpec{Columns: cols(250), Rows: rows(5)}, nil, 200, 200},
 		// Default headerOn() is false for append mode, but writeSheetData forces
 		// a header when append hits an empty sheet with no explicit Header
 		// choice (so column names aren't lost). sheetCreateDims runs only on
@@ -552,14 +624,22 @@ func TestTablePut_SheetCreateDims(t *testing.T) {
 		// match: append + Header=nil ⇒ +1 row. Otherwise an append-near-50000
 		// payload would be created one row short.
 		{"append on new sheet sizes for the forced header row (49999 data rows + 1 header = 50000)",
-			tableSheetSpec{Mode: "append", Columns: cols(3), Rows: rows(49999)}, 50000, 20},
+			tableSheetSpec{Mode: "append", Columns: cols(3), Rows: rows(49999)}, nil, 50000, 20},
 		{"append + Header=false (explicit) does NOT add the forced header row",
-			tableSheetSpec{Mode: "append", Header: bp(false), Columns: cols(3), Rows: rows(50)}, 200, 20},
+			tableSheetSpec{Mode: "append", Header: bp(false), Columns: cols(3), Rows: rows(50)}, nil, 200, 20},
+		// --styles reaching past the data grows the grid so a cell_styles op on a
+		// blank cell (or a merge / resize) still fits after the create.
+		{"styles past the data grow the grid",
+			tableSheetSpec{Columns: cols(3), Rows: rows(5)},
+			&workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{{Range: "A1:Z400"}}}, 400, 26},
+		{"styles inside the data don't shrink the grid",
+			tableSheetSpec{Columns: cols(3), Rows: rows(5)},
+			&workbookCreateStylePayload{CellStyles: []workbookCreateCellStyleOp{{Range: "A1:B2"}}}, 200, 20},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotRows, gotCols := sheetCreateDims(&tt.spec)
+			gotRows, gotCols := sheetCreateDims(&tt.spec, tt.styles)
 			if gotRows != tt.wantRows || gotCols != tt.wantCols {
 				t.Errorf("sheetCreateDims = (%d rows, %d cols), want (%d, %d)", gotRows, gotCols, tt.wantRows, tt.wantCols)
 			}

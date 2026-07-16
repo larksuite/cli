@@ -113,6 +113,7 @@ func TestBuildAPIError_ExitCodeMatrix(t *testing.T) {
 		{"230027 user_not_authorized", 230027, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 3, "PermissionError"},
 		{"1470403 task_permission_denied", 1470403, errs.CategoryAuthorization, errs.SubtypePermissionDenied, 3, "PermissionError"},
 		{"1470400 task_invalid_params", 1470400, errs.CategoryAPI, errs.SubtypeInvalidParameters, 1, "APIError"},
+		{"1062507 drive_parent_sibling_limit", 1062507, errs.CategoryAPI, errs.SubtypeQuotaExceeded, 1, "APIError"},
 		{"99991400 rate_limit", 99991400, errs.CategoryAPI, errs.SubtypeRateLimit, 1, "APIError"},
 		{"99991661 token_missing", 99991661, errs.CategoryAuthentication, errs.SubtypeTokenMissing, 3, "AuthenticationError"},
 		{"21000 challenge_required", 21000, errs.CategoryPolicy, errs.Subtype("challenge_required"), 6, "SecurityPolicyError"},

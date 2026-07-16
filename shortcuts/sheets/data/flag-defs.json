@@ -1,5 +1,86 @@
 {
+  "+formula-verify": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Sheet reference_id(s); repeat or comma-separate to scan multiple sheets. Omit to scan all visible sheets."
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Sheet name(s); repeat or comma-separate to scan multiple sheets. Omit to scan all visible sheets."
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Optional A1 ranges (e.g. `A1:Z200`); repeat or comma-separate for multiple ranges. Omit to scan each sheet's current_region."
+      },
+      {
+        "name": "max-locations",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Max locations / samples per error type; default 20.",
+        "default": "20"
+      },
+      {
+        "name": "exit-on-error",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "When status=errors_found, exit non-zero. Useful for CI gate after batch formula writes."
+      }
+    ]
+  },
   "+workbook-info": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+revision-get": {
     "risk": "read",
     "flags": [
       {
@@ -72,6 +153,17 @@
         "required": "optional",
         "desc": "Initial column count (default 20, max 200)",
         "default": "20"
+      },
+      {
+        "name": "type",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "New sub-sheet type: sheet (spreadsheet); default sheet.",
+        "default": "sheet",
+        "enum": [
+          "sheet"
+        ]
       },
       {
         "name": "dry-run",
@@ -219,7 +311,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Source position (0-based); optional. If omitted, the CLI runtime derives it from the current workbook index of `--sheet-id` / `--sheet-name`",
+        "desc": "Source position (0-based); optional for standalone calls — if omitted, the CLI runtime derives it from the current workbook index of `--sheet-id` / `--sheet-name`. Inside `+batch-update` it must be passed explicitly, since batch cannot issue a structure query mid-run to derive it",
         "default": "-1"
       },
       {
@@ -515,7 +607,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Untyped initial data as one 2D JSON array (`[[\"alice\",95]]`); values are written as-is with their type auto-detected, through the same batched set_cell_range path as --sheets — pair with --styles for number formats, colors, merges, and row/col sizes",
+        "desc": "Untyped initial data as one 2D JSON array (`[[\"alice\",95]]`); values are written as-is with their type auto-detected (dates / numbers land as text — use --sheets to preserve types), through the same batched set_cell_range path as --sheets — pair with --styles for number formats, colors, merges, and row/col sizes",
         "input": [
           "file",
           "stdin"
@@ -1069,7 +1161,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Group nesting level to ungroup; default 1 (outermost)",
+        "desc": "Group nesting level to ungroup; default 1 (1 = outermost, larger = deeper)",
         "default": "1"
       },
       {
@@ -1712,6 +1804,13 @@
         "desc": "Font color (hex, e.g. `#000000`)"
       },
       {
+        "name": "font-family",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font family name (e.g. `Arial`, `Microsoft YaHei`)"
+      },
+      {
         "name": "font-size",
         "kind": "own",
         "type": "float64",
@@ -2295,11 +2394,30 @@
         "desc": "Sheet name (XOR with `--sheet-id`)"
       },
       {
+        "name": "height",
+        "kind": "own",
+        "type": "int",
+        "required": "xor",
+        "desc": "Uniform row height in pixels (e.g. 30 / 40 / 60; NOT points), used with `--range`. Passing --height implies pixel mode; --type may be omitted (or set to `pixel` — equivalent). For per-row heights use `--heights`",
+        "default": "0"
+      },
+      {
+        "name": "heights",
+        "kind": "own",
+        "type": "string",
+        "required": "xor",
+        "desc": "Per-row height map — set different heights for many rows in one atomic call. Keys: single row (`\"1\"`) or closed range (`\"2:20\"`); values: pixel height (e.g. 30 / 50), `\"auto\"` (fit content) or `\"standard\"` (reset to default). Units are pixels, NOT points. Mutually exclusive with `--range` / `--height` / `--type`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
         "name": "type",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "Sizing mode: `pixel` (explicit px value, requires `--size`) / `standard` (reset to default row height) / `auto` (fit content)",
+        "required": "xor",
+        "desc": "Sizing mode: `pixel` (requires `--height`) / `standard` (reset to default row height) / `auto` (fit content). Passing --height alone is the common form; `--type standard` / `--type auto` cannot be combined with `--height`",
         "enum": [
           "pixel",
           "standard",
@@ -2307,19 +2425,11 @@
         ]
       },
       {
-        "name": "size",
-        "kind": "own",
-        "type": "int",
-        "required": "optional",
-        "desc": "Row height in pixels (e.g. 30 / 40 / 60); required when `--type pixel`, ignored otherwise",
-        "default": "0"
-      },
-      {
         "name": "range",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "Row closed range to resize; 1-based row numbers like `2:10` or `5` (single row)"
+        "required": "xor",
+        "desc": "Row closed range to resize; 1-based row numbers like `2:10` or `5` (single row). Required for the uniform form (with `--height` or `--type`); omit with the map form (`--heights`)"
       },
       {
         "name": "dry-run",
@@ -2362,30 +2472,41 @@
         "desc": "Sheet name (XOR with `--sheet-id`)"
       },
       {
+        "name": "width",
+        "kind": "own",
+        "type": "int",
+        "required": "xor",
+        "desc": "Uniform column width in pixels (e.g. 80 / 120 / 200; NOT Excel character units), used with `--range`. Passing --width implies pixel mode; --type may be omitted (or set to `pixel` — equivalent). For per-column widths use `--widths`",
+        "default": "0"
+      },
+      {
+        "name": "widths",
+        "kind": "own",
+        "type": "string",
+        "required": "xor",
+        "desc": "Per-column width map — set different widths for many columns in one atomic call. Keys: single column (`\"A\"`) or closed range (`\"C:E\"`); values: pixel width (e.g. 80 / 120 / 200) or `\"standard\"` (reset to default). Units are pixels, NOT Excel character units (px ≈ chars × 8 + 16). Mutually exclusive with `--range` / `--width` / `--type`",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
         "name": "type",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "Sizing mode: `pixel` (explicit px value, requires `--size`) / `standard` (reset to default column width)",
+        "required": "xor",
+        "desc": "Sizing mode: `pixel` (requires `--width`) / `standard` (reset to default column width). Passing --width alone is the common form; `--type standard` cannot be combined with `--width`",
         "enum": [
           "pixel",
           "standard"
         ]
       },
       {
-        "name": "size",
-        "kind": "own",
-        "type": "int",
-        "required": "optional",
-        "desc": "Column width in pixels (e.g. 80 / 120 / 200); required when `--type pixel`, ignored otherwise",
-        "default": "0"
-      },
-      {
         "name": "range",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "Column closed range to resize; column letters like `A:E` or `C` (single column)"
+        "required": "xor",
+        "desc": "Column closed range to resize; column letters like `A:E` or `C` (single column). Required for the uniform form (with `--width` or `--type`); omit with the map form (`--widths`)"
       },
       {
         "name": "dry-run",
@@ -2739,7 +2860,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Target ranges as a JSON array (e.g. `[\"'Sheet1'!A1:B2\",\"'Sheet2'!D1:D10\"]`); each item must include a sheet prefix; the prefix must be the sheet display name (e.g. `Sheet1`), not the sheet reference_id; ranges may target different sheets; the same style is applied to every range",
+        "desc": "Target ranges as a JSON array (up to 100 items, e.g. `[\"Sheet1!A1:B2\",\"Sheet2!D1:D10\"]`, prefix written bare without quotes); each prefix must exactly match the sheet display name (case-sensitive), not the sheet reference_id; ranges may target different sheets; the same style is applied to every range",
         "input": [
           "file",
           "stdin"
@@ -2758,6 +2879,13 @@
         "type": "string",
         "required": "optional",
         "desc": "Font color (hex, e.g. `#000000`)"
+      },
+      {
+        "name": "font-family",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font family name (e.g. `Arial`, `Microsoft YaHei`)"
       },
       {
         "name": "font-size",
@@ -2885,7 +3013,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Target ranges as a JSON array (e.g. `[\"'Sheet1'!A2:A100\",\"'Sheet1'!C2:C100\"]`); each item must include a sheet prefix; the prefix must be the sheet display name (e.g. `Sheet1`), not the sheet reference_id",
+        "desc": "Target ranges as a JSON array (up to 100 items, e.g. `[\"Sheet1!A2:A100\",\"Sheet1!C2:C100\"]`, prefix written bare without quotes); each item must include a sheet prefix; the prefix must exactly match the sheet display name (case-sensitive), not the sheet reference_id",
         "input": [
           "file",
           "stdin"
@@ -2965,7 +3093,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Target ranges as a JSON array (up to 100 items, e.g. `[\"'Sheet1'!E2:E6\"]`); each item must include a sheet prefix; the prefix must be the sheet display name (e.g. `Sheet1`), not the sheet reference_id",
+        "desc": "Target ranges as a JSON array (up to 100 items, e.g. `[\"Sheet1!E2:E6\"]`, prefix written bare without quotes); each item must include a sheet prefix; the prefix must exactly match the sheet display name (case-sensitive), not the sheet reference_id",
         "input": [
           "file",
           "stdin"
@@ -3009,7 +3137,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Target ranges as a JSON array (e.g. `[\"'Sheet1'!A2:Z1000\",\"'Sheet2'!A2:Z1000\"]`); each item must include a sheet prefix; the prefix must be the sheet display name (e.g. `Sheet1`), not the sheet reference_id; ranges may target different sheets; the same scope is cleared from every range",
+        "desc": "Target ranges as a JSON array (up to 100 items, e.g. `[\"Sheet1!A2:Z1000\",\"Sheet2!A2:Z1000\"]`, prefix written bare without quotes); each prefix must exactly match the sheet display name (case-sensitive), not the sheet reference_id; ranges may target different sheets; the same scope is cleared from every range",
         "input": [
           "file",
           "stdin"
@@ -3127,7 +3255,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Full chart config JSON. Top-level keys: `position` / `offset` / `size` / `snapshot` (no top-level `data`, no extra nested `properties`); chart data config lives under `snapshot.data` (`refs` / `headerMode` / `dim1` / `dim2`). Deeply nested — run `--print-schema --flag-name properties` for the full structure.",
+        "desc": "Full chart config JSON. Top-level keys: `position` / `offset` / `size` / `snapshot` (no top-level `data`, no extra nested `properties`); chart data config lives under `snapshot.data` (`refs` / `headerMode` / `dim1` / `dim2`); must include at least one of `snapshot.data.dim1.serie.index` or `dim2.series[].index`, otherwise the server rejects it. Deeply nested — run `--print-schema --flag-name properties` for the full structure.",
         "input": [
           "file",
           "stdin"
@@ -4066,7 +4194,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Filter-view name; auto-assigned by the server when omitted on create, kept unchanged when omitted on update; takes precedence over the same-named field inside `--properties`"
+        "desc": "Filter-view name; auto-assigned by the server when omitted; takes precedence over the same-named field inside `--properties`"
       },
       {
         "name": "dry-run",
@@ -4510,7 +4638,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Image reference_id (XOR with `--image-token`); the reference_id returned by the image upload flow"
+        "desc": "Image URI handle returned by the upload flow (not a sheet object reference_id; XOR with `--image-token`); converted to file_token automatically"
       },
       {
         "name": "position-row",
@@ -4626,15 +4754,15 @@
         "name": "image-token",
         "kind": "own",
         "type": "string",
-        "required": "xor",
-        "desc": "Image file_token (XOR with `--image-uri`). Common source: `image_token` returned by `+float-image-list`"
+        "required": "optional",
+        "desc": "Optional image file_token; mutually exclusive with `--image-uri`; omit both to keep the current image. Common source: `image_token` returned by `+float-image-list`"
       },
       {
         "name": "image-uri",
         "kind": "own",
         "type": "string",
-        "required": "xor",
-        "desc": "Image reference_id (XOR with `--image-token`); the reference_id returned by the image upload flow"
+        "required": "optional",
+        "desc": "Optional image URI handle returned by the upload flow (not a sheet object reference_id); mutually exclusive with `--image-token`; omit both to keep the current image; converted to file_token automatically"
       },
       {
         "name": "position-row",
@@ -4745,6 +4873,139 @@
         "type": "bool",
         "required": "optional",
         "desc": ""
+      }
+    ]
+  },
+  "+history-list": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "end-version",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Max version to query (descending pagination). Omit on the first call; pass next_end_version from the previous response."
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+history-revert": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "history-version-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "History version to revert to (from +history-list)."
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+history-revert-status": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "transaction-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Async revert transaction id (from +history-revert)."
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+changeset-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "start-revision",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Start version (CS revision); the before baseline for review (must be >= 1)"
+      },
+      {
+        "name": "end-revision",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "End version (CS revision); defaults to the latest revision. Gap (end-start+1) must be <= 20",
+        "default": "-1"
       }
     ]
   }

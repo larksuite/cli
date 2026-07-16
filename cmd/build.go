@@ -25,8 +25,10 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
 )
@@ -42,6 +44,18 @@ type buildConfig struct {
 	skipStrictMode bool
 	skipService    bool
 	serviceCatalog *apicatalog.Catalog
+	startupBrand   core.LarkBrand
+}
+
+// WithStartupBrand initializes the API registry with the given brand before
+// any command registration touches the runtime catalog. Without it the
+// registry's sync.Once locks onto the Feishu default at first catalog access,
+// long before the lazily-resolved config brand is known — see
+// ResolveStartupBrand for the caller-side resolution.
+func WithStartupBrand(brand core.LarkBrand) BuildOption {
+	return func(c *buildConfig) {
+		c.startupBrand = brand
+	}
 }
 
 // WithIO sets the IO streams for the CLI by wrapping raw reader/writers.
@@ -152,6 +166,12 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	// the same values the Factory ends up using.
 	if cfg.streams == nil {
 		cfg.streams = cmdutil.SystemIO()
+	}
+
+	// Initialize the registry brand before anything touches the runtime
+	// catalog (its sync.Once would otherwise lock onto the Feishu default).
+	if cfg.startupBrand != "" {
+		registry.InitWithBrand(cfg.startupBrand)
 	}
 
 	f := cmdutil.NewDefault(cfg.streams, inv)

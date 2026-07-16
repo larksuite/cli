@@ -27,14 +27,34 @@ var (
 	driveExportPollInterval = 5 * time.Second
 )
 
+const (
+	driveExportResolvedDocTypeValues = "doc, docx, sheet, bitable, slides"
+	driveExportInputDocTypeValues    = driveExportResolvedDocTypeValues + ", wiki"
+	driveExportFileExtensionValues   = "docx, pdf, xlsx, csv, markdown, base, pptx"
+)
+
 // driveExportSpec contains the normalized export request understood by the
 // shortcut and the underlying export task APIs.
 type driveExportSpec struct {
+	URL           string
 	Token         string
 	DocType       string
 	FileExtension string
 	SubID         string
 	OnlySchema    bool
+}
+
+type driveExportInputSource struct {
+	Type  string
+	Token string
+	Param string
+}
+
+type driveExportWikiResolution struct {
+	Resolved  bool
+	WikiToken string
+	ObjToken  string
+	ObjType   string
 }
 
 // driveExportTaskResultCommand prints the resume command shown when bounded
@@ -127,45 +147,49 @@ func (s driveExportStatus) StatusLabel() string {
 // validateDriveExportSpec enforces shortcut-level export constraints before any
 // backend request is sent.
 func validateDriveExportSpec(spec driveExportSpec) error {
-	if err := validate.ResourceName(spec.Token, "--token"); err != nil {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
+	normalized, source, err := normalizeDriveExportSpecInput(spec)
+	if err != nil {
+		return err
 	}
+	return validateDriveExportNormalizedSpecForSource(normalized, source)
+}
 
+func validateDriveExportNormalizedSpec(spec driveExportSpec) error {
 	switch spec.DocType {
 	case "doc", "docx", "sheet", "bitable", "slides":
 	default:
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --doc-type %q: allowed values are doc, docx, sheet, bitable, slides", spec.DocType).WithParam("--doc-type")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --doc-type %q: allowed values are %s", spec.DocType, driveExportInputDocTypeValues).
+			WithParam("--doc-type").
+			WithHint("use --url when you have a document URL; use --doc-type wiki only with a bare Wiki node token so the CLI can resolve the underlying document type")
+	}
+
+	if err := validate.ResourceName(spec.Token, "--token"); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
 	}
 
 	switch spec.FileExtension {
 	case "docx", "pdf", "xlsx", "csv", "markdown", "base", "pptx":
 	default:
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --file-extension %q: allowed values are docx, pdf, xlsx, csv, markdown, base, pptx", spec.FileExtension).WithParam("--file-extension")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --file-extension %q: allowed values are %s", spec.FileExtension, driveExportFileExtensionValues).
+			WithParam("--file-extension").
+			WithHint("choose an export format supported by the source type; common choices are docx/pdf for docs, xlsx/csv for sheets, xlsx/csv/base for bitable, and pptx/pdf for slides")
 	}
 
-	if spec.FileExtension == "markdown" && spec.DocType != "docx" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-extension markdown only supports --doc-type docx")
-	}
-
-	if spec.FileExtension == "base" && spec.DocType != "bitable" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-extension base only supports --doc-type bitable")
+	if err := validateDriveExportFormatCompatibility(spec); err != nil {
+		return err
 	}
 
 	if spec.OnlySchema && (spec.DocType != "bitable" || spec.FileExtension != "base") {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--only-schema is only used when exporting bitable as base").WithParam("--only-schema")
-	}
-
-	if spec.FileExtension == "pptx" && spec.DocType != "slides" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-extension pptx only supports --doc-type slides")
-	}
-
-	if spec.DocType == "slides" && spec.FileExtension != "pptx" && spec.FileExtension != "pdf" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--doc-type slides only supports --file-extension pptx or pdf")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--only-schema is only used when exporting bitable as base").
+			WithParam("--only-schema").
+			WithHint("retry with --doc-type bitable --file-extension base, or remove --only-schema")
 	}
 
 	if strings.TrimSpace(spec.SubID) != "" {
 		if spec.FileExtension != "csv" || (spec.DocType != "sheet" && spec.DocType != "bitable") {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sub-id is only used when exporting sheet/bitable as csv").WithParam("--sub-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sub-id is only used when exporting sheet/bitable as csv").
+				WithParam("--sub-id").
+				WithHint("remove --sub-id, or retry with --doc-type sheet|bitable --file-extension csv")
 		}
 		if err := validate.ResourceName(spec.SubID, "--sub-id"); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--sub-id")
@@ -173,15 +197,212 @@ func validateDriveExportSpec(spec driveExportSpec) error {
 	}
 
 	if spec.FileExtension == "csv" && (spec.DocType == "sheet" || spec.DocType == "bitable") && strings.TrimSpace(spec.SubID) == "" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sub-id is required when exporting sheet/bitable as csv").WithParam("--sub-id")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sub-id is required when exporting sheet/bitable as csv").
+			WithParam("--sub-id").
+			WithHint("retry with --sub-id <sheet_id_or_table_id>; if you need the whole workbook, use --file-extension xlsx instead")
 	}
 
 	return nil
 }
 
-// createDriveExportTask starts the asynchronous export job and returns its
-// ticket for subsequent polling.
-func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec) (string, error) {
+func validateDriveExportFormatCompatibility(spec driveExportSpec) error {
+	if driveExportFileExtensionAllowedForDocType(spec.DocType, spec.FileExtension) {
+		return nil
+	}
+	allowed := strings.Join(driveExportAllowedFileExtensions(spec.DocType), ", ")
+	return errs.NewValidationError(
+		errs.SubtypeInvalidArgument,
+		"unsupported export format: --doc-type %s cannot be exported as %s",
+		spec.DocType,
+		spec.FileExtension,
+	).
+		WithParam("--file-extension").
+		WithHint("retry with --file-extension %s. If the token came from a URL, prefer --url so the CLI infers the correct source type before validating the export format", allowed)
+}
+
+func driveExportFileExtensionAllowedForDocType(docType, fileExtension string) bool {
+	for _, allowed := range driveExportAllowedFileExtensions(docType) {
+		if fileExtension == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func driveExportAllowedFileExtensions(docType string) []string {
+	switch normalizeDriveExportDocType(docType) {
+	case "doc":
+		return []string{"docx", "pdf"}
+	case "docx":
+		return []string{"docx", "pdf", "markdown"}
+	case "sheet":
+		return []string{"xlsx", "csv"}
+	case "bitable":
+		return []string{"xlsx", "csv", "base"}
+	case "slides":
+		return []string{"pptx", "pdf"}
+	default:
+		return []string{"docx", "pdf", "xlsx", "csv", "markdown", "base", "pptx"}
+	}
+}
+
+func validateDriveExportNormalizedSpecForSource(spec driveExportSpec, source driveExportInputSource) error {
+	if source.Type == "wiki" && spec.DocType == "" {
+		return validateDriveExportPendingWikiSpec(spec, source)
+	}
+	return validateDriveExportNormalizedSpec(spec)
+}
+
+func validateDriveExportPendingWikiSpec(spec driveExportSpec, source driveExportInputSource) error {
+	param := source.Param
+	if param == "" {
+		param = "--token"
+	}
+	if err := validate.ResourceName(spec.Token, param); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam(param)
+	}
+
+	switch spec.FileExtension {
+	case "docx", "pdf", "xlsx", "csv", "markdown", "base", "pptx":
+	default:
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --file-extension %q: allowed values are %s", spec.FileExtension, driveExportFileExtensionValues).
+			WithParam("--file-extension").
+			WithHint("Wiki export format is validated after resolving the Wiki node; choose a format normally supported by the underlying document type")
+	}
+	if spec.OnlySchema && spec.FileExtension != "base" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--only-schema is only used when exporting bitable as base").
+			WithParam("--only-schema").
+			WithHint("retry with --file-extension base, or remove --only-schema")
+	}
+	if strings.TrimSpace(spec.SubID) != "" && spec.FileExtension != "csv" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sub-id is only used when exporting sheet/bitable as csv").
+			WithParam("--sub-id").
+			WithHint("remove --sub-id, or retry with --file-extension csv if the Wiki node resolves to a sheet/bitable")
+	}
+	if strings.TrimSpace(spec.SubID) != "" {
+		if err := validate.ResourceName(spec.SubID, "--sub-id"); err != nil {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--sub-id")
+		}
+	}
+	return nil
+}
+
+func normalizeDriveExportSpecInput(spec driveExportSpec) (driveExportSpec, driveExportInputSource, error) {
+	spec.URL = strings.TrimSpace(spec.URL)
+	spec.Token = strings.TrimSpace(spec.Token)
+	spec.DocType = strings.ToLower(strings.TrimSpace(spec.DocType))
+	spec.FileExtension = strings.ToLower(strings.TrimSpace(spec.FileExtension))
+
+	if spec.Token == "" && spec.URL == "" {
+		return spec, driveExportInputSource{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "either --url or --token is required").WithParam("--url")
+	}
+	if spec.Token != "" && spec.URL != "" {
+		return spec, driveExportInputSource{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--url and --token are mutually exclusive").WithParam("--url")
+	}
+
+	source := driveExportInputSource{
+		Type:  spec.DocType,
+		Token: spec.Token,
+		Param: "--token",
+	}
+
+	rawInput := spec.Token
+	inputParam := "--token"
+	if spec.URL != "" {
+		rawInput = spec.URL
+		inputParam = "--url"
+	}
+
+	if ref, ok := common.ParseResourceURL(rawInput); ok {
+		refType := normalizeDriveExportDocType(ref.Type)
+		source = driveExportInputSource{
+			Type:  refType,
+			Token: ref.Token,
+			Param: inputParam,
+		}
+		spec.Token = ref.Token
+		if refType != "wiki" {
+			if !isDriveExportDocType(refType) {
+				return spec, source, errs.NewValidationError(
+					errs.SubtypeInvalidArgument,
+					"%s URL type %q is not supported by drive +export; use a doc/docx/sheet/base/slides/wiki URL or token",
+					inputParam,
+					ref.Type,
+				).WithParam(inputParam)
+			}
+			if spec.DocType == "wiki" {
+				return spec, source, errs.NewValidationError(
+					errs.SubtypeInvalidArgument,
+					"--doc-type wiki conflicts with %s URL type %q",
+					inputParam,
+					refType,
+				).
+					WithParam("--doc-type").
+					WithHint("remove --doc-type when passing --url; the CLI will infer %q from the URL", refType)
+			}
+			if spec.DocType != "" && spec.DocType != refType {
+				return spec, source, errs.NewValidationError(
+					errs.SubtypeInvalidArgument,
+					"--doc-type %q conflicts with %s URL type %q",
+					spec.DocType,
+					inputParam,
+					refType,
+				).WithParam("--doc-type")
+			}
+			spec.DocType = refType
+		} else if spec.DocType == "wiki" {
+			spec.DocType = ""
+		}
+		return spec, source, nil
+	}
+
+	if strings.Contains(rawInput, "://") {
+		return spec, source, errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"unsupported %s URL %q: use a recognized Lark document URL",
+			inputParam,
+			rawInput,
+		).WithParam(inputParam)
+	}
+	if spec.URL != "" {
+		return spec, source, errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"unsupported --url %q: use a recognized Lark document URL",
+			spec.URL,
+		).WithParam("--url")
+	}
+	if spec.DocType == "" {
+		return spec, source, errs.NewValidationError(errs.SubtypeInvalidArgument, "--doc-type is required when --token is a bare token (allowed: %s)", driveExportInputDocTypeValues).
+			WithParam("--doc-type").
+			WithHint("if you have the original document link, prefer --url <document_url>; if this is a Wiki node token, use --doc-type wiki")
+	}
+	if spec.DocType == "wiki" {
+		source.Type = "wiki"
+		source.Token = spec.Token
+		spec.DocType = ""
+	}
+	return spec, source, nil
+}
+
+func normalizeDriveExportDocType(docType string) string {
+	switch strings.ToLower(strings.TrimSpace(docType)) {
+	case "base":
+		return "bitable"
+	default:
+		return strings.ToLower(strings.TrimSpace(docType))
+	}
+}
+
+func isDriveExportDocType(docType string) bool {
+	switch normalizeDriveExportDocType(docType) {
+	case "doc", "docx", "sheet", "bitable", "slides":
+		return true
+	default:
+		return false
+	}
+}
+
+func buildDriveExportTaskBody(spec driveExportSpec) map[string]interface{} {
 	body := map[string]interface{}{
 		"token":          spec.Token,
 		"type":           spec.DocType,
@@ -193,8 +414,13 @@ func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec)
 	if spec.OnlySchema {
 		body["only_schema"] = true
 	}
+	return body
+}
 
-	data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/export_tasks", nil, body)
+// createDriveExportTask starts the asynchronous export job and returns its
+// ticket for subsequent polling.
+func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec) (string, error) {
+	data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/export_tasks", nil, buildDriveExportTaskBody(spec))
 	if err != nil {
 		return "", err
 	}
@@ -204,6 +430,79 @@ func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec)
 		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "export task created but ticket is missing")
 	}
 	return ticket, nil
+}
+
+func resolveDriveExportWikiSource(ctx context.Context, runtime *common.RuntimeContext, spec driveExportSpec, wikiToken string) (driveExportSpec, driveExportWikiResolution, error) {
+	wikiToken = strings.TrimSpace(wikiToken)
+	if err := validate.ResourceName(wikiToken, "--token"); err != nil {
+		return spec, driveExportWikiResolution{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
+	}
+
+	fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node for export: %s\n", common.MaskToken(wikiToken))
+	data, err := driveInspectCallWithRetry(ctx, func() (map[string]interface{}, error) {
+		return runtime.CallAPITyped(
+			"GET",
+			"/open-apis/wiki/v2/spaces/get_node",
+			map[string]interface{}{"token": wikiToken},
+			nil,
+		)
+	})
+	if err != nil {
+		return spec, driveExportWikiResolution{}, err
+	}
+
+	node := common.GetMap(data, "node")
+	objType := normalizeDriveExportDocType(common.GetString(node, "obj_type"))
+	objToken := common.GetString(node, "obj_token")
+	if objType == "" || objToken == "" {
+		return spec, driveExportWikiResolution{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data (obj_type=%q, obj_token=%q)", objType, objToken)
+	}
+	if !isDriveExportDocType(objType) {
+		return spec, driveExportWikiResolution{}, errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"wiki resolved to %q, but drive +export only supports doc, docx, sheet, bitable, and slides",
+			objType,
+		).WithParam("--token")
+	}
+	if spec.DocType != "" && spec.DocType != objType {
+		return spec, driveExportWikiResolution{}, errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"wiki resolved to %q, but --doc-type is %q; use --doc-type %s",
+			objType,
+			spec.DocType,
+			objType,
+		).WithParam("--doc-type")
+	}
+
+	spec.Token = objToken
+	spec.DocType = objType
+	if err := validateDriveExportNormalizedSpec(spec); err != nil {
+		return spec, driveExportWikiResolution{}, err
+	}
+	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
+	return spec, driveExportWikiResolution{
+		Resolved:  true,
+		WikiToken: wikiToken,
+		ObjToken:  objToken,
+		ObjType:   objType,
+	}, nil
+}
+
+func createDriveExportTaskResolvingWiki(ctx context.Context, runtime *common.RuntimeContext, spec driveExportSpec, source driveExportInputSource) (string, driveExportSpec, driveExportWikiResolution, error) {
+	if source.Type == "wiki" {
+		resolvedSpec, resolution, err := resolveDriveExportWikiSource(ctx, runtime, spec, source.Token)
+		if err != nil {
+			return "", spec, resolution, err
+		}
+		ticket, err := createDriveExportTask(runtime, resolvedSpec)
+		return ticket, resolvedSpec, resolution, err
+	}
+
+	ticket, err := createDriveExportTask(runtime, spec)
+	if err != nil {
+		return "", spec, driveExportWikiResolution{}, err
+	}
+	return ticket, spec, driveExportWikiResolution{}, nil
 }
 
 // getDriveExportStatus fetches the current backend state for a previously

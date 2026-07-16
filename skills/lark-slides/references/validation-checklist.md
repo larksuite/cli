@@ -7,7 +7,7 @@
 ## Required Flow
 
 1. 记录创建或编辑返回的 `xml_presentation_id`，以及已知的 `slide_id` / `revision_id`。
-2. 用 `xml_presentations.get` 回读全文 XML。
+2. 用 `slides +xml-get` 回读全文 XML 到本地文件。
 3. 检查实际页数是否符合计划或用户要求。
 4. 检查每页 `<data>` 内是否有预期主要元素。
 5. 检查没有明显空白页、破损页、缺失标题或缺失主视觉。
@@ -19,22 +19,24 @@
 回读命令：
 
 ```bash
-lark-cli slides xml_presentations get --as user \
-  --params '{"xml_presentation_id":"YOUR_ID"}'
+lark-cli slides +xml-get --as user \
+  --presentation "YOUR_ID" \
+  --output .lark-slides/plan/<deck-or-task-id>/readback.xml \
+  --json
 ```
 
 ## Automated XML Text Overlap Lint
 
-回读 XML 保存到本地文件后，优先运行 XML 语法和文本重叠静态检查：
+提交前本地 XML 必须运行 XML 语法和文本重叠静态检查：
 
 ```bash
-python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation.xml>
+python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation-or-slide.xml>
 ```
 
 通过标准：
 
-- `summary.error_count == 0`。任何 error 都必须先修复再交付。
-- 当前工具只检查 XML well-formed 和文本元素之间的明显重叠；它不检查越界、文本高度不足、图文压盖、表格/图表压盖或底部拥挤。
+- `summary.error_count == 0`。任何 error 都必须先修复再提交接口。
+- 当前工具检查 XML well-formed、SXSD tag/attr 支持情况、IconPark icon 类型和 icon 填充可见性、文本元素之间的明显重叠，以及 whiteboard 容器与外部 sibling 元素的可疑边界重叠；它不检查越界、文本高度不足、图文压盖、表格/图表压盖或底部拥挤。
 - 该工具不能替代页数核对、关键内容核对或真实视觉验收。
 
 常见 code 的处理方向：
@@ -42,7 +44,14 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 | code | 含义 | 处理方式 |
 |------|------|----------|
 | `xml_not_well_formed` | XML 语法错误或文本未转义 | 修复标签闭合、属性引号、`&` / `<` / `>` 转义 |
+| `sml_prefixed_tag` | SML 元素使用了命名空间前缀，如 `<ns0:slide>` 或 `<sml:shape>` | 使用 `<slide xmlns="http://www.larkoffice.com/sml/2.0">` 的默认命名空间，或使用无前缀标签 |
+| `sxsd_unsupported_tag` | 使用了 SXSD 不支持的标签 | 按 lint `hint` 替换为受支持标签；常见如 `textbox -> <shape type="text">`、`image -> <img>` |
+| `sxsd_unsupported_attr` | 支持的标签上使用了不支持的属性 | 按 lint `hint` 改为支持的属性；常见如 `x -> topLeftX`、`fontColor -> color` |
+| `iconpark_unsupported_icon_type` | `<icon>` 使用了 `iconpark-index.json` 中不存在的 `iconType` | 按 lint `hint` 改为名单内的 `iconType`，或先用 `scripts/iconpark_tool.py` 搜索 |
+| `icon_missing_fill_color` | 视觉规范要求 `<icon>` 设置 `<fill><fillColor color="..."/></fill>`，避免图标不可见 | 给 `<icon>` 添加显式非透明填充色，例如 `rgba(37, 99, 235, 1)` |
+| `icon_transparent_fill_color` | `<icon>` 的 `fillColor` 是透明色，不满足视觉可见性要求 | 改成与背景有足够对比的非透明颜色 |
 | `bbox_overlap` | 文本元素的估算绘制区域明显重叠 | 拉开文本坐标、缩小文本框/字号，或改成明确的分栏/分组结构 |
+| `whiteboard_external_overlap` | whiteboard 容器 bbox 与外部 sibling 元素跨边界重叠 | 按 lint `hint` 缩小或移动 whiteboard / 外部元素；若接受该风险，最终必须以截图 QA 或等价渲染视觉检查为准 |
 
 ## Page Count And Structure
 
@@ -80,7 +89,7 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 
 `slide.get` 回读 XML 时，`<whiteboard>` 块只返回位置属性（`topLeftX`、`topLeftY`、`width`、`height`），SVG / Mermaid 内容**不随 XML 返回**。
 
-- whiteboard 验证只能核对坐标是否越界：`topLeftX + width ≤ 960`，`topLeftY + height ≤ 540`。
+- whiteboard 验证可以核对坐标是否越界：`topLeftX + width ≤ 960`，`topLeftY + height ≤ 540`；lint 还会报告 whiteboard 容器与外部 sibling 元素的可疑边界重叠。
 - SVG 和 Mermaid 内容的正确性无法通过回读 XML 验证，需要人工视觉验收。
 - 不要在验证记录中声称 whiteboard 内容已验证，除非用户确认了视觉效果。
 
@@ -101,7 +110,7 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 
 ```text
 验证记录：
-- 回读：已执行 xml_presentations.get，实际页数 N / 预期 N。
+- 回读：已执行 slides +xml-get，实际页数 N / 预期 N。
 - 关键页：架构解释 / Self-Attention / 对比或演进 / 总结页均存在。
 - 结构：检查了主要 shape/img/table/chart 元素，无明显空白页或破损页。
 - 布局：检查了标题层级、主视觉、重叠/越界/文本溢出风险。

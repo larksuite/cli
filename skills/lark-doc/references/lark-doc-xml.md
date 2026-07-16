@@ -46,7 +46,8 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 - `<task>` — `<task task-id="GUID"></task>`，必传 task-id（任务 guid）
 - `<chat_card>` — `<chat_card chat-id="CHAT_ID"></chat_card>`，必传 chat-id
 - `<sub-page-list>` — `<sub-page-list></sub-page-list>` 子页面列表块；仅 wiki 文档可插入
-- bitable、base_ref、synced_reference、synced_source、okr — 不可创建，仅支持移动
+- bitable、base_ref、synced_reference、synced_source — 不可创建，仅支持移动
+- `<okr>` — 创建时仅支持 root-only `<okr cycle-id="..."/>` 挂载已有 OKR；完整结构与字段规则见 [`lark-doc-xml-extended-blocks.md`](lark-doc-xml-extended-blocks.md#okr-block)
 
 # 四、块级复制与移动
 

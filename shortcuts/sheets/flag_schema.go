@@ -6,7 +6,6 @@ package sheets
 import (
 	_ "embed"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"sync"
 
@@ -54,7 +53,7 @@ func loadFlagSchemas() (*flagSchemaIndex, error) {
 	flagSchemasOnce.Do(func() {
 		var idx flagSchemaIndex
 		if err := json.Unmarshal(flagSchemasJSON, &idx); err != nil {
-			parseFlagErr = fmt.Errorf("flag-schemas.json: %w", err)
+			parseFlagErr = errs.NewInternalError(errs.SubtypeUnknown, "flag-schemas.json: %v", err).WithCause(err)
 			return
 		}
 		if idx.Flags == nil {

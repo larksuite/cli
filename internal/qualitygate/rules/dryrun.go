@@ -878,16 +878,23 @@ func extractDryRunJSON(raw []byte) (facts.DryRunRequest, int, error) {
 	var firstErr error
 	for start >= 0 {
 		var preview struct {
-			API []facts.DryRunRequest `json:"api"`
+			API  []facts.DryRunRequest `json:"api"`
+			Data struct {
+				API []facts.DryRunRequest `json:"api"`
+			} `json:"data"`
 		}
 		dec := json.NewDecoder(bytes.NewReader(raw[start:]))
 		if err := dec.Decode(&preview); err == nil {
-			if len(preview.API) == 0 {
+			api := preview.API
+			if len(api) == 0 {
+				api = preview.Data.API
+			}
+			if len(api) == 0 {
 				if firstErr == nil {
 					firstErr = errNoDryRunAPI
 				}
 			} else {
-				return preview.API[0], len(preview.API), nil
+				return api[0], len(api), nil
 			}
 		} else if firstErr == nil {
 			firstErr = err

@@ -34,9 +34,35 @@ func TestValidateDriveExportSpec(t *testing.T) {
 			spec: driveExportSpec{Token: "docx123", DocType: "docx", FileExtension: "markdown"},
 		},
 		{
+			name: "docx url infers doc type",
+			spec: driveExportSpec{URL: "https://example.feishu.cn/docx/docxURL123", FileExtension: "pdf"},
+		},
+		{
+			name: "wiki url can defer doc type until resolution",
+			spec: driveExportSpec{URL: "https://example.feishu.cn/wiki/wikiURL123", FileExtension: "pdf"},
+		},
+		{
+			name: "wiki url with doc-type wiki can defer doc type until resolution",
+			spec: driveExportSpec{URL: "https://example.feishu.cn/wiki/wikiURL123", DocType: "wiki", FileExtension: "pdf"},
+		},
+		{
+			name: "wiki token with doc-type wiki can defer doc type until resolution",
+			spec: driveExportSpec{Token: "wiki123", DocType: "wiki", FileExtension: "pdf"},
+		},
+		{
+			name:    "bare token requires doc type",
+			spec:    driveExportSpec{Token: "docx123", FileExtension: "pdf"},
+			wantErr: "--doc-type is required",
+		},
+		{
 			name:    "markdown non docx rejected",
 			spec:    driveExportSpec{Token: "doc123", DocType: "doc", FileExtension: "markdown"},
-			wantErr: "only supports --doc-type docx",
+			wantErr: "cannot be exported as markdown",
+		},
+		{
+			name:    "docx csv rejected",
+			spec:    driveExportSpec{Token: "docx123", DocType: "docx", FileExtension: "csv"},
+			wantErr: "cannot be exported as csv",
 		},
 		{
 			name:    "csv without sub id rejected",
@@ -72,17 +98,27 @@ func TestValidateDriveExportSpec(t *testing.T) {
 		{
 			name:    "base non bitable rejected",
 			spec:    driveExportSpec{Token: "sheet123", DocType: "sheet", FileExtension: "base"},
-			wantErr: "only supports --doc-type bitable",
+			wantErr: "cannot be exported as base",
+		},
+		{
+			name:    "sheet pdf rejected",
+			spec:    driveExportSpec{Token: "sheet123", DocType: "sheet", FileExtension: "pdf"},
+			wantErr: "cannot be exported as pdf",
+		},
+		{
+			name:    "bitable pdf rejected",
+			spec:    driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "pdf"},
+			wantErr: "cannot be exported as pdf",
 		},
 		{
 			name:    "pptx non slides rejected",
 			spec:    driveExportSpec{Token: "docx123", DocType: "docx", FileExtension: "pptx"},
-			wantErr: "only supports --doc-type slides",
+			wantErr: "cannot be exported as pptx",
 		},
 		{
 			name:    "slides csv rejected",
 			spec:    driveExportSpec{Token: "slides123", DocType: "slides", FileExtension: "csv"},
-			wantErr: "slides only supports",
+			wantErr: "cannot be exported as csv",
 		},
 		{
 			name:    "unknown doc type rejected",
@@ -110,6 +146,29 @@ func TestValidateDriveExportSpec(t *testing.T) {
 				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestValidateDriveExportUnsupportedFormatHasHint(t *testing.T) {
+	t.Parallel()
+
+	err := validateDriveExportSpec(driveExportSpec{
+		Token:         "docx123",
+		DocType:       "docx",
+		FileExtension: "csv",
+	})
+	if err == nil {
+		t.Fatal("expected unsupported format error, got nil")
+	}
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if valErr.Param != "--file-extension" {
+		t.Fatalf("param = %q, want --file-extension", valErr.Param)
+	}
+	if !strings.Contains(valErr.Hint, "docx, pdf, markdown") || !strings.Contains(valErr.Hint, "--url") {
+		t.Fatalf("hint = %q, want allowed formats and URL retry guidance", valErr.Hint)
 	}
 }
 
@@ -440,6 +499,76 @@ func TestDriveExportMarkdownRejectsMissingDocumentContent(t *testing.T) {
 	}
 }
 
+func TestDriveExportURLInfersDocType(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_url"},
+		},
+	}
+	reg.Register(createStub)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_url",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{
+					"job_status":     0,
+					"file_token":     "box_url",
+					"file_name":      "url-report",
+					"file_extension": "pdf",
+					"type":           "docx",
+					"file_size":      3,
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/export_tasks/file/box_url/download",
+		Status:  200,
+		RawBody: []byte("pdf"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/pdf"},
+			"Content-Disposition": []string{`attachment; filename="url-report.pdf"`},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--url", "https://example.feishu.cn/docx/docxURL123",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var createBody map[string]interface{}
+	if err := json.Unmarshal(createStub.CapturedBody, &createBody); err != nil {
+		t.Fatalf("unmarshal export_tasks body: %v", err)
+	}
+	if createBody["token"] != "docxURL123" {
+		t.Fatalf("export_tasks body token = %v, want token from URL", createBody["token"])
+	}
+	if createBody["type"] != "docx" {
+		t.Fatalf("export_tasks body type = %v, want inferred docx", createBody["type"])
+	}
+}
+
 func TestDriveExportAsyncSuccess(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -507,6 +636,266 @@ func TestDriveExportAsyncSuccess(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"ticket": "tk_123"`) {
 		t.Fatalf("stdout missing ticket: %s", stdout.String())
+	}
+}
+
+func TestDriveExportWikiURLResolvesBeforeAsyncTask(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "docx",
+					"obj_token": "docxResolved",
+				},
+			},
+		},
+	})
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_wiki"},
+		},
+	}
+	reg.Register(createStub)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_wiki",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{
+					"job_status":     0,
+					"file_token":     "box_wiki",
+					"file_name":      "wiki-report",
+					"file_extension": "pdf",
+					"type":           "docx",
+					"file_size":      3,
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/export_tasks/file/box_wiki/download",
+		Status:  200,
+		RawBody: []byte("pdf"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/pdf"},
+			"Content-Disposition": []string{`attachment; filename="wiki-report.pdf"`},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--url", "https://example.feishu.cn/wiki/wikiNode123",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var createBody map[string]interface{}
+	if err := json.Unmarshal(createStub.CapturedBody, &createBody); err != nil {
+		t.Fatalf("unmarshal export_tasks body: %v", err)
+	}
+	if createBody["token"] != "docxResolved" {
+		t.Fatalf("export_tasks body token = %v, want resolved docx token", createBody["token"])
+	}
+	if createBody["type"] != "docx" {
+		t.Fatalf("export_tasks body type = %v, want docx", createBody["type"])
+	}
+	if !strings.Contains(stdout.String(), `"wiki_token": "wikiNode123"`) {
+		t.Fatalf("stdout missing wiki token context: %s", stdout.String())
+	}
+}
+
+func TestDriveExportBareWikiTypeResolvesBeforeAsyncTask(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "docx",
+					"obj_token": "docxResolved",
+				},
+			},
+		},
+	})
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_wiki_token"},
+		},
+	}
+	reg.Register(createStub)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_wiki_token",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{
+					"job_status":     0,
+					"file_token":     "box_wiki_token",
+					"file_name":      "wiki-token-report",
+					"file_extension": "pdf",
+					"type":           "docx",
+					"file_size":      3,
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/export_tasks/file/box_wiki_token/download",
+		Status:  200,
+		RawBody: []byte("pdf"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/pdf"},
+			"Content-Disposition": []string{`attachment; filename="wiki-token-report.pdf"`},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "wikiNodeBare",
+		"--doc-type", "wiki",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var createBody map[string]interface{}
+	if err := json.Unmarshal(createStub.CapturedBody, &createBody); err != nil {
+		t.Fatalf("unmarshal export_tasks body: %v", err)
+	}
+	if createBody["token"] != "docxResolved" {
+		t.Fatalf("export_tasks body token = %v, want resolved docx token", createBody["token"])
+	}
+	if createBody["type"] != "docx" {
+		t.Fatalf("export_tasks body type = %v, want resolved docx type", createBody["type"])
+	}
+	if !strings.Contains(stdout.String(), `"wiki_token": "wikiNodeBare"`) {
+		t.Fatalf("stdout missing wiki token context: %s", stdout.String())
+	}
+}
+
+func TestDriveExportBareWikiTokenFileTokenInvalidDoesNotFallback(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, driveTestConfig())
+	firstCreate := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Status: 404,
+		Body: map[string]interface{}{
+			"code":   1069914,
+			"msg":    "file token invalid",
+			"log_id": "20260708000000TEST",
+		},
+		BodyFilter: func(body []byte) bool {
+			return strings.Contains(string(body), `"token":"wikiNodeBare"`)
+		},
+	}
+	reg.Register(firstCreate)
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "wikiNodeBare",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected file token invalid error, got nil")
+	}
+
+	if len(firstCreate.CapturedBody) == 0 {
+		t.Fatal("first export task request was not sent with the original token")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed API error, got %T: %v", err, err)
+	}
+	if problem.Code != 1069914 {
+		t.Fatalf("error code = %d, want 1069914", problem.Code)
+	}
+	if strings.Contains(stderr.String(), "Resolving wiki node for export") {
+		t.Fatalf("stderr unexpectedly contains wiki resolution log: %s", stderr.String())
+	}
+}
+
+func TestDriveExportWikiResolvedTypeMismatch(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "sheet",
+					"obj_token": "shtResolved",
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "https://example.feishu.cn/wiki/wikiSheet123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected type mismatch error, got nil")
+	}
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if !strings.Contains(valErr.Message, `wiki resolved to "sheet"`) {
+		t.Fatalf("error message = %q, want resolved type", valErr.Message)
 	}
 }
 

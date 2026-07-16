@@ -889,6 +889,7 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 		}
 	}
 	cmdmeta.SetSource(cmd, cmdmeta.SourceShortcut, false)
+	cmdmeta.SetAffordanceRef(cmd, shortcut.Service, shortcut.Command)
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
@@ -1026,6 +1027,7 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	}
 	rctx.larkSDK = sdk
 
+	applyJSONShorthand(cmd, s)
 	rctx.Format = rctx.Str("format")
 	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
 	return rctx, nil
@@ -1068,7 +1070,7 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			if rctx.stdinConsumed {
 				return ValidationErrorf("--%s: stdin (-) can only be used by one flag", fl.Name).
 					WithParam("--"+fl.Name).
-					WithHint("a process has a single stdin, so only one flag per call may use '-'; pass the others as @file (e.g. --%s @/path/to/file)", fl.Name)
+					WithHint("a process has a single stdin, so only one flag per call may use '-'; pass the others inline or as @file with a relative path under the current directory (e.g. --%s @./payload.json)", fl.Name)
 			}
 			rctx.stdinConsumed = true
 			data, err := io.ReadAll(rctx.IO().In)
@@ -1102,9 +1104,16 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			}
 			data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
 			if err != nil {
-				return ValidationErrorf("--%s: %v", fl.Name, err).
+				verr := ValidationErrorf("--%s: %v", fl.Name, err).
 					WithParam("--" + fl.Name).
 					WithCause(err)
+				if slices.Contains(fl.Input, Stdin) {
+					// Rejected @file paths are usually absolute (temp files under
+					// /tmp). Steer toward stdin rather than cd / copying the file
+					// into the project tree.
+					verr = verr.WithHint("this flag also reads stdin: pipe the file contents into this command and pass --%s -", fl.Name)
+				}
+				return verr
 			}
 			// strip a leading UTF-8 BOM so it
 			// can't corrupt the first CSV cell or break JSON parsing downstream.
@@ -1144,14 +1153,19 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 		return ValidationErrorf("--dry-run is not supported for %s %s", s.Service, s.Command).
 			WithParam("--dry-run")
 	}
-	fmt.Fprintln(f.IOStreams.ErrOut, "=== Dry Run ===")
 	dryResult := s.DryRun(rctx.ctx, rctx)
-	if rctx.Format == "pretty" {
-		fmt.Fprint(f.IOStreams.Out, dryResult.Format())
-	} else {
-		output.PrintJson(f.IOStreams.Out, dryResult)
+	if dryResult != nil {
+		// Same data.context contract as the service/api dry-run paths.
+		dryResult.Context(rctx.Config.AppID, rctx.UserOpenId())
 	}
-	return nil
+	return cmdutil.WriteDryRun(dryResult, cmdutil.DryRunOutputOptions{
+		Format:      rctx.Format,
+		JqExpr:      rctx.JqExpr,
+		CommandPath: rctx.Cmd.CommandPath(),
+		Identity:    rctx.As(),
+		Out:         f.IOStreams.Out,
+		ErrOut:      f.IOStreams.ErrOut,
+	})
 }
 
 // rejectPositionalArgs returns a cobra.PositionalArgs that rejects any
@@ -1169,6 +1183,75 @@ func rejectPositionalArgs() cobra.PositionalArgs {
 
 func registerShortcutFlags(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	registerShortcutFlagsWithContext(context.Background(), cmd, f, s)
+}
+
+// shortcutDeclaresJSONFlag reports whether the shortcut itself declares a flag
+// named "json" in its Flags list (custom semantics, e.g. event +subscribe's
+// pretty-print switch or base +record-search's request-body payload).
+// Framework-injected flags never appear in s.Flags, so this cleanly separates
+// "self-declared json" from "injected shorthand".
+func shortcutDeclaresJSONFlag(s *Shortcut) bool {
+	for _, fl := range s.Flags {
+		if fl.Name == "json" {
+			return true
+		}
+	}
+	return false
+}
+
+// shortcutFormatSupportsJSON reports whether the command's format flag accepts
+// "json": a self-declared format supports it only when its Enum lists "json";
+// a framework-injected default format (no format entry in s.Flags) always does.
+func shortcutFormatSupportsJSON(s *Shortcut) bool {
+	for _, fl := range s.Flags {
+		if fl.Name == "format" {
+			return slices.Contains(fl.Enum, "json")
+		}
+	}
+	return true // framework-injected: json (default) | pretty | table | ndjson | csv
+}
+
+// ensureJSONShorthand registers --json as a shorthand for --format json when:
+//  1. the command has a format flag (self-declared or framework-injected), AND
+//  2. that format supports "json" (see shortcutFormatSupportsJSON), AND
+//  3. no flag named "json" is registered yet — pflag panics on duplicate
+//     registration, and commands that declare their own --json (event
+//     +subscribe, base +record-search/-get) keep their custom semantics.
+func ensureJSONShorthand(cmd *cobra.Command, s *Shortcut) {
+	// A shortcut that declares its own "json" flag defines custom semantics
+	// (e.g. pretty-print switch, request-body payload) — never a shorthand.
+	if shortcutDeclaresJSONFlag(s) {
+		return
+	}
+	if cmd.Flags().Lookup("format") == nil {
+		return
+	}
+	if !shortcutFormatSupportsJSON(s) {
+		return
+	}
+	// Safety net: pflag panics on duplicate registration.
+	if cmd.Flags().Lookup("json") != nil {
+		return
+	}
+	cmd.Flags().Bool("json", false, "shorthand for --format json")
+}
+
+// applyJSONShorthand folds the injected --json shorthand into the format flag
+// itself, before rctx.Format caches it — so both the cached value (OutFormat,
+// ValidateJqFlags, dry-run) and later runtime.Str("format") reads observe
+// "json". An explicitly passed --format always wins over the shorthand (the
+// shorthand only fills in when the user did not choose a format). Shortcuts
+// that declare their own "json" flag keep its custom semantics untouched.
+func applyJSONShorthand(cmd *cobra.Command, s *Shortcut) {
+	if shortcutDeclaresJSONFlag(s) {
+		return
+	}
+	if cmd.Flags().Lookup("json") == nil || cmd.Flags().Changed("format") {
+		return
+	}
+	if set, _ := cmd.Flags().GetBool("json"); set {
+		_ = cmd.Flags().Set("format", "json")
+	}
 }
 
 func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
@@ -1234,10 +1317,8 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
 		})
-		if cmd.Flags().Lookup("json") == nil {
-			cmd.Flags().Bool("json", false, "shorthand for --format json")
-		}
 	}
+	ensureJSONShorthand(cmd, s)
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}

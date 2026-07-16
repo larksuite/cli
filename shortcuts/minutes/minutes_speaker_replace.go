@@ -135,7 +135,7 @@ func minutesSpeakerReplaceError(err error, minuteToken, sourceSpeaker string) er
 	switch p.Code {
 	case minutesSpeakerReplaceNoEditPermission:
 		p.Message = fmt.Sprintf("No edit permission for minute %q: cannot replace the transcript speaker.", minuteToken)
-		p.Hint = "Ask the minute owner for minute edit permission"
+		p.Hint = fmt.Sprintf("Ask the user before running: minutes +apply-permission --minute-token %s --perm edit", minuteToken)
 	case minutesSpeakerReplaceSpeakerNotFoundCode:
 		p.Subtype = errs.SubtypeNotFound
 		p.Message = fmt.Sprintf("Speaker not found in minute %q: source speaker %q does not match an existing speaker in the transcript.", minuteToken, sourceSpeaker)

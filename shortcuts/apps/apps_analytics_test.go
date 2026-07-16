@@ -23,19 +23,21 @@ func TestAppsAnalyticsList_DryRunUsesNanoseconds(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Method string                 `json:"method"`
+				URL    string                 `json:"url"`
+				Body   map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
 	}
-	if env.API[0].Method != "POST" || env.API[0].URL != "/open-apis/spark/v1/apps/app_x/query_analytics_data" {
-		t.Fatalf("method/url = %s %s", env.API[0].Method, env.API[0].URL)
+	if env.Data.API[0].Method != "POST" || env.Data.API[0].URL != "/open-apis/spark/v1/apps/app_x/query_analytics_data" {
+		t.Fatalf("method/url = %s %s", env.Data.API[0].Method, env.Data.API[0].URL)
 	}
-	body := env.API[0].Body
+	body := env.Data.API[0].Body
 	if _, ok := body["start_timestamp_ns"]; !ok {
 		t.Fatalf("analytics dry-run missing start_timestamp_ns: %#v", body)
 	}
@@ -92,14 +94,16 @@ func TestAppsAnalyticsList_PageViewDesktopSeriesSetsDeviceFilter(t *testing.T) {
 				t.Fatalf("dry-run err=%v", err)
 			}
 			var env struct {
-				API []struct {
-					Body map[string]interface{} `json:"body"`
-				} `json:"api"`
+				Data struct {
+					API []struct {
+						Body map[string]interface{} `json:"body"`
+					} `json:"api"`
+				} `json:"data"`
 			}
 			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 				t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
 			}
-			filter := env.API[0].Body["filter"].(map[string]interface{})
+			filter := env.Data.API[0].Body["filter"].(map[string]interface{})
 			deviceTypes := filter["device_types"].([]interface{})
 			if len(deviceTypes) != 1 || deviceTypes[0] != "desktop" {
 				t.Fatalf("device_types = %#v", deviceTypes)

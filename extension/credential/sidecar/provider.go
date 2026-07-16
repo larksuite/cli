@@ -16,6 +16,7 @@ import (
 	"os"
 
 	"github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
 )
@@ -58,10 +59,7 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		}
 	}
 
-	brand := credential.Brand(os.Getenv(envvars.CliBrand))
-	if brand == "" {
-		brand = credential.BrandFeishu
-	}
+	brand := credential.Brand(core.ParseBrand(os.Getenv(envvars.CliBrand)))
 
 	acct := &credential.Account{
 		AppID:     appID,

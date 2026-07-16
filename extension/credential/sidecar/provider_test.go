@@ -56,7 +56,7 @@ func TestResolveAccount_Active(t *testing.T) {
 	setEnv(t, envvars.CliAuthProxy, "http://127.0.0.1:16384")
 	setEnv(t, envvars.CliProxyKey, "test-key")
 	setEnv(t, envvars.CliAppID, "cli_test123")
-	setEnv(t, envvars.CliBrand, "lark")
+	setEnv(t, envvars.CliBrand, " LARK ")
 	unsetEnv(t, envvars.CliDefaultAs)
 	unsetEnv(t, envvars.CliStrictMode)
 

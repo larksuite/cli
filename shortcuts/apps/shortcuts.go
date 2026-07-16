@@ -12,6 +12,7 @@ func Shortcuts() []common.Shortcut {
 
 	return []common.Shortcut{
 		AppsCreate,
+		AppsGet,
 		AppsUpdate,
 		AppsList,
 		AppsAccessScopeSet,
@@ -75,6 +76,13 @@ func Shortcuts() []common.Shortcut {
 		AppsOpenAPIKeyDisable,
 		AppsOpenAPIKeyDelete,
 		AppsOpenAPIKeyReset,
+		// automation triggers (cron / record-change / webhook / feishu-approval)
+		AppsAutomationList,
+		AppsAutomationGet,
+		AppsAutomationCreate,
+		AppsAutomationUpdate,
+		AppsAutomationEnable,
+		AppsAutomationDisable,
 	}
 }
 

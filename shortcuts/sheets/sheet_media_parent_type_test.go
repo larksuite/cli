@@ -25,8 +25,8 @@ import (
 
 // TestSheetMediaParentType pins the token→parent_type mapping that every
 // sheets image-upload entry point funnels through. Native spreadsheet tokens
-// use "sheet_image"; imported "office" spreadsheets carry a "fake_office_"
-// synthetic token and must upload with "office_sheet_file".
+// use "sheet_image"; imported "office" spreadsheets carry a "fake_office_" or
+// "local_office_" synthetic token and must upload with "office_sheet_file".
 func TestSheetMediaParentType(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -36,9 +36,12 @@ func TestSheetMediaParentType(t *testing.T) {
 	}{
 		{"native spreadsheet token", "shtcnABC123", sheetImageParentType},
 		{"empty token", "", sheetImageParentType},
-		{"office imported token", "fake_office_abc123", officeSheetFileParentType},
-		{"office token, only the prefix", fakeOfficeTokenPrefix, officeSheetFileParentType},
-		{"prefix mid-string is not matched", "shtfake_office_abc", sheetImageParentType},
+		{"fake_office imported token", "fake_office_abc123", officeSheetFileParentType},
+		{"fake_office token, only the prefix", fakeOfficePrefix, officeSheetFileParentType},
+		{"local_office imported token", "local_office_abc123", officeSheetFileParentType},
+		{"local_office token, only the prefix", localOfficePrefix, officeSheetFileParentType},
+		{"fake_office prefix mid-string is not matched", "shtfake_office_abc", sheetImageParentType},
+		{"local_office prefix mid-string is not matched", "shtlocal_office_abc", sheetImageParentType},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -62,7 +65,8 @@ func TestUploadSheetImage_ParentType(t *testing.T) {
 		wantParentType string
 	}{
 		{"native spreadsheet", "shtcnTOK123", sheetImageParentType},
-		{"office imported spreadsheet", "fake_office_abc123", officeSheetFileParentType},
+		{"fake_office imported spreadsheet", "fake_office_abc123", officeSheetFileParentType},
+		{"local_office imported spreadsheet", "local_office_abc123", officeSheetFileParentType},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

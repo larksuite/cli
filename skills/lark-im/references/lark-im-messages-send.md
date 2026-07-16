@@ -191,7 +191,7 @@ lark-cli im +messages-send --chat-id oc_xxx --msg-type interactive --content '<c
 | `--video-cover <path\|url\|key>` | **Required with `--video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`). Local paths and URLs are uploaded automatically                                                                         |
 | `--audio <path\|url\|key>` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
 | `--msg-type <type>` | No | Message type (default `text`). If you use `--text` / `--markdown` / media flags, the effective type is inferred automatically. Explicitly setting a conflicting `--msg-type` fails validation |
-| `--idempotency-key <key>` | No | Idempotency key; the same key sends only one message within 1 hour                                                                                                                            |
+| `--idempotency-key <key>` | No | Idempotency key, max 50 characters; the same key sends only one message within 1 hour                                                                                                        |
 | `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`)                                                                                                                                                |
 | `--dry-run` | No | Print the request only, do not execute it                                                                                                                                                     |
 

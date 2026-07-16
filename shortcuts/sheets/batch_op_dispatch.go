@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -118,10 +119,19 @@ var batchOpDispatch = map[string]batchOpMapping{
 	}},
 
 	// ─── 行高列宽 (resize_range, 无 operation 字段) ─────────────────
+	// The map form (--heights/--widths) fans out into its own batch_update
+	// and cannot nest inside +batch-update; sub-ops must use the uniform
+	// single-range form (range + height/width or type).
 	"+rows-resize": {"resize_range", func(fv flagView, token, sid, sname string) (map[string]interface{}, error) {
+		if err := rejectResizeMapInBatch(fv, "row"); err != nil {
+			return nil, err
+		}
 		return resizeInput(fv, token, sid, sname, "row")
 	}},
 	"+cols-resize": {"resize_range", func(fv flagView, token, sid, sname string) (map[string]interface{}, error) {
+		if err := rejectResizeMapInBatch(fv, "column"); err != nil {
+			return nil, err
+		}
 		return resizeInput(fv, token, sid, sname, "column")
 	}},
 
@@ -197,6 +207,54 @@ var batchOpDispatch = map[string]batchOpMapping{
 	"+float-image-delete": {"manage_float_image_object", objDeleteTranslate(floatImageDeleteSpec)},
 }
 
+// allowedBatchShortcuts lists every shortcut accepted inside +batch-update,
+// sorted, for the not-allowed error hint.
+func allowedBatchShortcuts() []string {
+	out := make([]string, 0, len(batchOpDispatch))
+	for sc := range batchOpDispatch {
+		out = append(out, sc)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// subOpInputContract renders one shortcut's complete sub-op key vocabulary
+// (wire-style underscore names) for the translator-failure hint: required
+// flags are marked, the sheet selector pair collapses to a choose-one, and
+// spreadsheet locators are omitted (reserved for the batch top level).
+// Returns "" for shortcuts without a flag-defs entry.
+func subOpInputContract(sc string) string {
+	defs, _ := loadFlagDefs()
+	spec, ok := defs[sc]
+	if !ok {
+		return ""
+	}
+	idFlag, nameFlag := sheetSelectorFlagsForSubOp(sc)
+	var keys []string
+	sheetSelector := ""
+	for _, df := range spec.Flags {
+		if df.Kind == "system" || df.Hidden {
+			continue
+		}
+		switch df.Name {
+		case "url", "spreadsheet-token":
+			continue // reserved: supplied by +batch-update top level
+		case idFlag, nameFlag:
+			sheetSelector = strings.ReplaceAll(idFlag, "-", "_") + "|" + strings.ReplaceAll(nameFlag, "-", "_") + " (choose one)"
+			continue
+		}
+		key := strings.ReplaceAll(df.Name, "-", "_")
+		if df.Required == "required" {
+			key += " (required)"
+		}
+		keys = append(keys, key)
+	}
+	if sheetSelector != "" {
+		keys = append([]string{sheetSelector}, keys...)
+	}
+	return strings.Join(keys, ", ")
+}
+
 // rejectLocalImageInBatch blocks the local-file --image source inside
 // +batch-update: a batch sub-op has no upload phase, so the file could not be
 // turned into a file_token. Callers must pass --image-token / --image-uri.
@@ -262,7 +320,8 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	}
 	scRaw, present := op["shortcut"]
 	if !present {
-		return nil, sheetsValidationForFlag("operations", "operations[%d]: 'shortcut' field is required", index)
+		return nil, sheetsValidationForFlag("operations", "operations[%d]: 'shortcut' field is required", index).
+			WithHint(`each entry must look like {"shortcut":"+cells-set","input":{"sheet_name":"…","range":"A1:B2","cells":[[…]]}} — input uses the shortcut's own flag names`)
 	}
 	sc, ok := scRaw.(string)
 	if !ok || sc == "" {
@@ -270,13 +329,15 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	}
 	mapping, ok := batchOpDispatch[sc]
 	if !ok {
+		// Inline the full allow-list: an agent that guessed a read op or a
+		// fan-out wrapper can pick the right shortcut immediately instead of
+		// spending a --print-schema round trip on the operations enum.
 		return nil, sheetsValidationForFlag(
 			"operations",
 			"operations[%d]: shortcut %q not allowed in +batch-update "+
-				"(read ops / fan-out wrappers like +batch-update / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete} are excluded; "+
-				"run `lark-cli sheets +batch-update --print-schema --flag-name operations` to see the full enum)",
+				"(read ops / fan-out wrappers like +batch-update / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete} are excluded)",
 			index, sc,
-		)
+		).WithHint("allowed shortcuts: %s", strings.Join(allowedBatchShortcuts(), ", "))
 	}
 	inputRaw, hasInput := op["input"]
 	var input map[string]interface{}
@@ -319,12 +380,22 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	if err := fv.validateRawTypes(); err != nil {
 		return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
 	}
+	if err := fv.normalizeAndValidateEnums(); err != nil {
+		return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
+	}
 	sheetIDFlag, sheetNameFlag := sheetSelectorFlagsForSubOp(sc)
 	sheetID := strings.TrimSpace(fv.Str(sheetIDFlag))
 	sheetName := strings.TrimSpace(fv.Str(sheetNameFlag))
 	body, err := mapping.translate(fv, token, sheetID, sheetName)
 	if err != nil {
-		return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
+		// The inner error names one problem at a time (first missing flag);
+		// the hint lists the sub-op's complete key contract so an agent fixes
+		// every gap in a single retry instead of iterating flag by flag.
+		verr := sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
+		if contract := subOpInputContract(sc); contract != "" {
+			verr = verr.WithHint("%s input keys: %s", sc, contract)
+		}
+		return nil, verr
 	}
 	return map[string]interface{}{
 		"tool_name": mapping.mcpToolName,
@@ -332,18 +403,59 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	}, nil
 }
 
+// maxBatchOperations caps how many sub-operations a single +batch-update may
+// carry. Every translated op (with its own cells/properties payload) is held in
+// the out slice at once before the whole batch is marshaled, so an unbounded
+// operation count is the same unbounded-materialization hazard as the fan-out
+// matrix, on the operations axis.
+const maxBatchOperations = 100
+
 // translateBatchOperations 翻译整个 ops 数组；fail-fast，遇错立即返回。
 func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}, error) {
 	if len(rawOps) == 0 {
 		return nil, sheetsValidationForFlag("operations", "--operations must be a non-empty JSON array")
 	}
+	if len(rawOps) > maxBatchOperations {
+		batches := (len(rawOps) + maxBatchOperations - 1) / maxBatchOperations
+		return nil, sheetsValidationForFlag("operations", "--operations accepts at most %d entries; got %d", maxBatchOperations, len(rawOps)).
+			WithHint("split the operations into %d separate +batch-update calls of at most %d entries each", batches, maxBatchOperations)
+	}
 	out := make([]interface{}, 0, len(rawOps))
+	var totalCells int64
 	for i, raw := range rawOps {
 		translated, err := translateBatchOp(raw, token, i)
 		if err != nil {
 			return nil, err
 		}
+		totalCells += translatedCellCount(translated)
+		if totalCells > maxStampMatrixCells {
+			return nil, sheetsValidationForFlag("operations",
+				"--operations materialize %d cells total, over the %d-cell safety cap; reduce the number or size of cell operations",
+				totalCells, maxStampMatrixCells)
+		}
 		out = append(out, translated)
 	}
 	return out, nil
+}
+
+func translatedCellCount(op map[string]interface{}) int64 {
+	input, _ := op["input"].(map[string]interface{})
+	switch cells := input["cells"].(type) {
+	case [][]interface{}:
+		var total int64
+		for _, row := range cells {
+			total += int64(len(row))
+		}
+		return total
+	case []interface{}:
+		var total int64
+		for _, rawRow := range cells {
+			if row, ok := rawRow.([]interface{}); ok {
+				total += int64(len(row))
+			}
+		}
+		return total
+	default:
+		return 0
+	}
 }

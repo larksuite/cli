@@ -2,6 +2,114 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.70] - 2026-07-15
+
+### Features
+
+- add minutes permission application shortcut (#1876)
+- **drive**: support apps in list comments (#1877)
+- slide style
+- edit ppt template
+- **slides**: add sxsd validation to slides lint
+- **slides**: validate iconpark icon types in slides lint
+- **slides**: lint before create
+- **apps**: add automation trigger commands for Miaoda (#1886)
+
+### Bug Fixes
+
+- unify dry-run output contract (#1870)
+- **skills**: align skill guidance with the typed error contract (#1786)
+- **slides**: limit slides screenshot page requests
+- **slides**: detect lark slides text overflow overlap
+- **vc**: align meeting query scopes by identity (#1850)
+
+### Documentation
+
+- clarify task search relevance filters (#1884)
+- surface minutes permission application in skill description (#1890)
+- clarify okr progress children (#1861)
+- **slides**: prefer slides xml-get shortcut
+- **calendar**: document setting meeting owner via full API (#1903)
+
+### Refactoring
+
+- **slides**: streamline create workflow and validate SML namespaces
+
+### Misc
+
+- **slides**: address PR review feedback
+
+## [v1.0.69] - 2026-07-13
+
+### Features
+
+- support docs fetch selection anchors (#1815)
+- **apps**: support modern_html app type with TOS publish path and app type querying
+- **im**: show bot sender display names when reading messages (#1829)
+- add drive list comments shortcut (#1845)
+- support wiki sources in drive export (#1802)
+- add application domain with slash command management shortcuts (#1806)
+- validate IM idempotency key length (#1797)
+- surface reply context and mentions in im.message.receive_v1 (#1798)
+
+### Bug Fixes
+
+- route brand-sensitive endpoints through the resolver (#1836)
+
+### Documentation
+
+- document OKR block XML guidance (#1648)
+- refine doubao whiteboard workflow routing (#1841)
+- clarify Mindnote token handling (#1827)
+
+### Tests
+
+- isolate semantic waiver fixtures from wall clock
+
+### Misc
+
+- Merge lark sheets development branch (#1833)
+
+## [v1.0.68] - 2026-07-09
+
+### Features
+
+- **drive**: Strengthen lark-drive high-risk write operations and read-only recognition boundaries. (#1801)
+- **slides**: add slides chart demo reference
+
+### Bug Fixes
+
+- register and consume --json shorthand for custom-format shortcuts (#1737)
+- **drive**: abort push on parent sibling limit (#1813)
+
+### Documentation
+
+- require native charts in slide planning
+- register knowledge organize workflow (#1828)
+
+## [v1.0.67] - 2026-07-08
+
+### Features
+
+- **mail**: add message modify and trash shortcuts (#1567)
+- support whiteboard file inputs in docs XML (#1784)
+- **vc**: refine meeting-events output and reaction forwarding (#1674)
+- **affordance**: usage guidance for shortcuts and per-command skills (#1793)
+
+### Bug Fixes
+
+- accept opaque wiki node tokens (#1789)
+- **apps**: make db --environment optional, auto-select branch server-side (#1735)
+- preserve original filename in multipart file upload (#1767)
+
+### Documentation
+
+- restore one-time authorization guidance in lark-apps skill (#1794)
+
+### Misc
+
+- e2e: harden CLI E2E retry, cleanup, and domain selection (#1709)
+
 ## [v1.0.66] - 2026-07-07
 
 ### Features
@@ -1398,6 +1506,10 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.70]: https://github.com/larksuite/cli/releases/tag/v1.0.70
+[v1.0.69]: https://github.com/larksuite/cli/releases/tag/v1.0.69
+[v1.0.68]: https://github.com/larksuite/cli/releases/tag/v1.0.68
+[v1.0.67]: https://github.com/larksuite/cli/releases/tag/v1.0.67
 [v1.0.66]: https://github.com/larksuite/cli/releases/tag/v1.0.66
 [v1.0.65]: https://github.com/larksuite/cli/releases/tag/v1.0.65
 [v1.0.64]: https://github.com/larksuite/cli/releases/tag/v1.0.64

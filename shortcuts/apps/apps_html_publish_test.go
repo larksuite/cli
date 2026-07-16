@@ -6,10 +6,21 @@ package apps
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 type fakeAppsHTMLPublishClient struct {
@@ -53,7 +64,7 @@ func TestRunHTMLPublish_HappyPath(t *testing.T) {
 }
 
 func TestRunHTMLPublish_OnlyURLInEnvelope(t *testing.T) {
-	// Pin 概要设计 §5.3 不变量 4 "同步语义不会变成异步":
+	// Pin 概要设计 §5.3 不变量 4 "同步语义不会变成异步" (legacy html path only):
 	// envelope 只含 url，未来若有人加 status / release_id 字段会被这个测试拦截。
 	site := writeAppsSampleSite(t)
 	fake := &fakeAppsHTMLPublishClient{
@@ -580,5 +591,228 @@ func TestRunHTMLPublish_IgnoresOversizeNonHTML(t *testing.T) {
 	}
 	if len(fake.calls) != 1 {
 		t.Fatalf("client should be called; calls=%v", fake.calls)
+	}
+}
+
+// ── runHTMLPublishTOS tests ──
+
+// permissiveFIOProvider wraps permissiveFIO as a fileio.Provider for tests
+// that call runHTMLPublishTOS (which obtains FileIO via rctx.FileIO()).
+type permissiveFIOProvider struct{}
+
+func (permissiveFIOProvider) Name() string                                { return "test-permissive" }
+func (permissiveFIOProvider) ResolveFileIO(context.Context) fileio.FileIO { return permissiveFIO{} }
+
+// newTOSTestRuntime builds a RuntimeContext with httpmock registry and a
+// permissive FileIO provider, ready for runHTMLPublishTOS unit tests.
+func newTOSTestRuntime(t *testing.T) (*common.RuntimeContext, *httpmock.Registry) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	cfg := &core.CliConfig{
+		AppID:      "test-app-" + strings.ToLower(t.Name()),
+		AppSecret:  "test-secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_test",
+	}
+	factory, _, _, reg := cmdutil.TestFactory(t, cfg)
+	factory.FileIOProvider = permissiveFIOProvider{}
+	rt := common.TestNewRuntimeContextForAPI(
+		context.Background(),
+		&cobra.Command{Use: "+tos-test"},
+		cfg, factory, core.AsUser,
+	)
+	return rt, reg
+}
+
+func TestRunHTMLPublishTOS_Success(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+
+	// Start httptest server to accept the TOS upload.
+	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("TOS upload method = %s, want PUT", r.Method)
+		}
+		if ct := r.Header.Get("Content-Type"); ct != "application/gzip" {
+			t.Errorf("TOS upload Content-Type = %s, want application/gzip", ct)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tosServer.Close()
+
+	// Register pre_release API stub.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"kvs": []interface{}{
+					map[string]interface{}{"key": "upload_url", "value": tosServer.URL},
+					map[string]interface{}{"key": "tos_path", "value": "tos://bucket/key"},
+				},
+			},
+		},
+	})
+
+	// Register release-create API stub.
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_tos/releases",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"release_id": "rel_123",
+				"status":     "publishing",
+			},
+		},
+	})
+
+	out, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{
+		AppID: "app_tos",
+		Path:  site,
+	})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if out["release_id"] != "rel_123" {
+		t.Fatalf("release_id=%v, want rel_123", out["release_id"])
+	}
+}
+
+func TestRunHTMLPublishTOS_MissingIndexHTML(t *testing.T) {
+	dir := t.TempDir()
+	// Create a file that is NOT named index.html.
+	if err := os.WriteFile(filepath.Join(dir, "foo.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	rt, _ := newTOSTestRuntime(t)
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{
+		AppID: "app_tos",
+		Path:  dir,
+	})
+	if err == nil {
+		t.Fatalf("expected error for missing index.html")
+	}
+	if !strings.Contains(err.Error(), "index.html") {
+		t.Fatalf("error should mention index.html, got: %v", err)
+	}
+}
+
+func TestRunHTMLPublishTOS_PreReleaseError(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+
+	// Register pre_release API stub that returns an error code.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(99999),
+			"msg":  "internal server error",
+		},
+	})
+
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{
+		AppID: "app_tos",
+		Path:  site,
+	})
+	if err == nil {
+		t.Fatalf("expected error from pre_release API failure")
+	}
+}
+
+func TestRunHTMLPublishTOS_MissingParams(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+
+	// Register pre_release API stub that returns empty kvs list.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"kvs": []interface{}{},
+			},
+		},
+	})
+
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{
+		AppID: "app_tos",
+		Path:  site,
+	})
+	if err == nil {
+		t.Fatalf("expected error for empty kvs")
+	}
+	problem := requireAppsProblem(t, err, errs.CategoryInternal)
+	if !strings.Contains(problem.Message, "no kvs") {
+		t.Fatalf("error should mention 'no kvs', got: %q", problem.Message)
+	}
+}
+
+func TestRunHTMLPublishTOS_MissingParamsObject(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+
+	// Register pre_release API stub that returns no kvs key at all.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{},
+		},
+	})
+
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{
+		AppID: "app_tos",
+		Path:  site,
+	})
+	if err == nil {
+		t.Fatalf("expected error for missing kvs")
+	}
+	problem := requireAppsProblem(t, err, errs.CategoryInternal)
+	if !strings.Contains(problem.Message, "no kvs") {
+		t.Fatalf("error should mention 'no kvs', got: %q", problem.Message)
+	}
+}
+
+func TestRunHTMLPublishTOS_UploadFails(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+
+	// Start httptest server that returns 500.
+	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer tosServer.Close()
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"kvs": []interface{}{
+					map[string]interface{}{"key": "upload_url", "value": tosServer.URL},
+					map[string]interface{}{"key": "tos_path", "value": "tos://bucket/key"},
+				},
+			},
+		},
+	})
+
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{
+		AppID: "app_tos",
+		Path:  site,
+	})
+	if err == nil {
+		t.Fatalf("expected error from TOS upload failure")
+	}
+	problem := requireAppsProblem(t, err, errs.CategoryNetwork)
+	if !strings.Contains(problem.Message, "500") {
+		t.Fatalf("error should mention HTTP 500, got: %q", problem.Message)
 	}
 }

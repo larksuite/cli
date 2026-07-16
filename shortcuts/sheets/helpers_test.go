@@ -197,7 +197,7 @@ func TestSheetHelpersValidationMetadata(t *testing.T) {
 // api call's body. The dry-run output format is:
 //
 //	=== Dry Run ===
-//	{ "api": [{...}], ... }
+//	{ "ok": true, "dry_run": true, "data": { "api": [{...}], ... } }
 //
 // Tests use this to assert the One-OpenAPI wire body is constructed
 // correctly without exercising the real endpoint.
@@ -220,7 +220,7 @@ func parseDryRunAPI(t *testing.T, sc common.Shortcut, args []string) []interface
 		t.Fatalf("dry-run failed: %v\noutput=%s", err, out)
 	}
 	dryRun := decodeDryRunRaw(t, out)
-	calls, _ := dryRun["api"].([]interface{})
+	calls, _ := dryRunAPIEntries(dryRun)
 	return calls
 }
 
@@ -240,7 +240,7 @@ func decodeDryRunRaw(t *testing.T, out string) map[string]interface{} {
 func decodeDryRunFirstCall(t *testing.T, out string) map[string]interface{} {
 	t.Helper()
 	dryRun := decodeDryRunRaw(t, out)
-	calls, ok := dryRun["api"].([]interface{})
+	calls, ok := dryRunAPIEntries(dryRun)
 	if !ok || len(calls) == 0 {
 		t.Fatalf("dry-run api array empty or wrong shape: %#v", dryRun)
 	}
@@ -250,6 +250,15 @@ func decodeDryRunFirstCall(t *testing.T, out string) map[string]interface{} {
 		t.Fatalf("dry-run first call has no body: %#v", call)
 	}
 	return body
+}
+
+func dryRunAPIEntries(dryRun map[string]interface{}) ([]interface{}, bool) {
+	if data, ok := dryRun["data"].(map[string]interface{}); ok {
+		calls, ok := data["api"].([]interface{})
+		return calls, ok
+	}
+	calls, ok := dryRun["api"].([]interface{})
+	return calls, ok
 }
 
 // decodeToolInput parses the JSON-string `input` field embedded in a

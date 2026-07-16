@@ -47,11 +47,14 @@
 
 **然后按图表类型 × 身份选路径**，读对应文件按其完整 workflow 执行（含读 scene 指南、生成内容、渲染审查、交付）：
 
+按上到下匹配, 命中即停:
+
 | 图表类型               | 身份                                  | 路径                                             |
 |--------------------|-------------------------------------|------------------------------------------------|
 | 思维导图、时序图、类图、饼图、甘特图 | 任何身份                                | [`../routes/mermaid.md`](../routes/mermaid.md) |
-| 其他图表               | `Claude` / `Gemini` / `GPT` / `GLM` | [`../routes/svg.md`](../routes/svg.md)         |
-| 其他图表               | `Doubao` / `Seed` / `Other`         | [`../routes/dsl.md`](../routes/dsl.md)         |
+| 鱼骨图、金字塔图、流程图    | `Doubao` / `Seed`                   | [`../routes/dsl.md`](../routes/dsl.md)         |
+| 其他图表               | `Claude` / `Gemini` / `GPT` / `GLM` / `Doubao` / `Seed`  | [`../routes/svg.md`](../routes/svg.md)         |
+| 其他图表               | `Other`                             | [`../routes/dsl.md`](../routes/dsl.md)         |
 
 > **⚠️ SVG 路径失败回退**：走 `routes/svg.md` 时，碰到以下情况之一 → **丢弃当前 SVG，改读 `routes/dsl.md` 从零重画，不要逐行修补**：
 > - 渲染命令直接报错（语法级崩溃，不是 `--check` 的 warn/error）

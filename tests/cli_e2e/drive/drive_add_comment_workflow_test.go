@@ -81,4 +81,41 @@ func TestDriveAddCommentMarkdownFileWorkflow(t *testing.T) {
 	if got := gjson.Get(commentResult.Stdout, "data.file_extension").String(); got != ".md" {
 		t.Fatalf("data.file_extension=%q, want .md\nstdout:\n%s", got, commentResult.Stdout)
 	}
+
+	listResult, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+list-comments",
+			"--token", fileToken,
+			"--type", "file",
+			"--solved-status", "all",
+			"--page-size", "100",
+		},
+		DefaultAs: "bot",
+	}, clie2e.RetryOptions{
+		ShouldRetry: func(result *clie2e.Result) bool {
+			return result == nil || result.ExitCode != 0 || !driveCommentListContainsID(result.Stdout, commentID)
+		},
+	})
+	require.NoError(t, err)
+	listResult.AssertExitCode(t, 0)
+	listResult.AssertStdoutStatus(t, true)
+
+	if got := gjson.Get(listResult.Stdout, "data.file_token").String(); got != fileToken {
+		t.Fatalf("list data.file_token=%q, want %q\nstdout:\n%s", got, fileToken, listResult.Stdout)
+	}
+	if got := gjson.Get(listResult.Stdout, "data.file_type").String(); got != "file" {
+		t.Fatalf("list data.file_type=%q, want file\nstdout:\n%s", got, listResult.Stdout)
+	}
+	if !driveCommentListContainsID(listResult.Stdout, commentID) {
+		t.Fatalf("list comments did not include comment_id %q\nstdout:\n%s", commentID, listResult.Stdout)
+	}
+}
+
+func driveCommentListContainsID(stdout, commentID string) bool {
+	for _, item := range gjson.Get(stdout, "data.items").Array() {
+		if item.Get("comment_id").String() == commentID {
+			return true
+		}
+	}
+	return false
 }

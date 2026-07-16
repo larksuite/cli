@@ -111,10 +111,10 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 
 // CellsSetStyle stamps a single style block across every cell in --range.
 // Style is composed from a dozen flat flags (background-color, font-color,
-// font-size, font-style, font-weight, font-line, horizontal-alignment,
-// vertical-alignment, word-wrap, number-format) plus --border-styles for
-// the only field that still needs a nested object. At least one flag must
-// be set.
+// font-family, font-size, font-style, font-weight, font-line,
+// horizontal-alignment, vertical-alignment, word-wrap, number-format) plus
+// --border-styles for the only field that still needs a nested object. At
+// least one flag must be set.
 var CellsSetStyle = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cells-set-style",
@@ -164,6 +164,9 @@ func cellsSetStyleInput(runtime flagView, token, sheetID, sheetName string) (map
 	rows, cols, err := rangeDimensions(rangeStr)
 	if err != nil {
 		return nil, sheetsValidationForFlag("range", "--range %q: %v", rangeStr, err)
+	}
+	if err := checkStampMatrixBudget("range", rangeStr, rows, cols); err != nil {
+		return nil, err
 	}
 	if err := requireAnyStyleFlag(runtime); err != nil {
 		return nil, err
@@ -450,6 +453,9 @@ func dropdownSetInput(runtime flagView, token, sheetID, sheetName string) (map[s
 	if err != nil {
 		return nil, sheetsValidationForFlag("range", "--range %q: %v", rangeStr, err)
 	}
+	if err := checkStampMatrixBudget("range", rangeStr, rows, cols); err != nil {
+		return nil, err
+	}
 	validation, err := buildDropdownValidation(runtime)
 	if err != nil {
 		return nil, err
@@ -625,23 +631,23 @@ func rangeDimensions(rangeStr string) (rows, cols int, err error) {
 	}
 	rangeStr = strings.TrimSpace(rangeStr)
 	if rangeStr == "" {
-		return 0, 0, fmt.Errorf("empty range")
+		return 0, 0, fmt.Errorf("empty range") //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
 	}
 	parts := strings.SplitN(rangeStr, ":", 2)
 	if len(parts) == 1 {
 		// single cell, e.g. "A1"
 		if _, _, ok := splitCellRef(parts[0]); !ok {
-			return 0, 0, fmt.Errorf("invalid cell ref %q", parts[0])
+			return 0, 0, fmt.Errorf("invalid cell ref %q", parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
 		}
 		return 1, 1, nil
 	}
 	startCol, startRow, ok1 := splitCellRef(parts[0])
 	endCol, endRow, ok2 := splitCellRef(parts[1])
 	if !ok1 || !ok2 {
-		return 0, 0, fmt.Errorf("unsupported range form %q (need rectangular A1:B2)", rangeStr)
+		return 0, 0, fmt.Errorf("unsupported range form %q (need rectangular A1:B2)", rangeStr) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
 	}
 	if endRow < startRow || endCol < startCol {
-		return 0, 0, fmt.Errorf("end %q must be at or after start %q", parts[1], parts[0])
+		return 0, 0, fmt.Errorf("end %q must be at or after start %q", parts[1], parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
 	}
 	return endRow - startRow + 1, endCol - startCol + 1, nil
 }
@@ -692,9 +698,31 @@ func letterToColumnIndex(letters string) int {
 	return n - 1
 }
 
+// maxStampMatrixCells bounds how many per-cell maps a fan-out / stamp shortcut
+// will materialize from a single A1 range. The backing tools take an explicit
+// cells matrix, so the CLI must expand a range like "A1:Z100000" into rows×cols
+// maps before sending it — an unbounded blow-up (2.6M cells ≈ 900MB heap, then
+// doubled again by json.Marshal) that OOMs the process before the request even
+// leaves. The 200000 ceiling is the selected fan-out guardrail; the separately
+// documented --max-cells flag defaults to 50000.
+const maxStampMatrixCells = 200000
+
+// checkStampMatrixBudget rejects a range whose materialized cell count would
+// exceed maxStampMatrixCells, before fillCellsMatrix allocates it. rows*cols is
+// computed in int64 to stay safe against overflow on pathological ranges.
+func checkStampMatrixBudget(flagName, rangeStr string, rows, cols int) error {
+	if total := int64(rows) * int64(cols); total > maxStampMatrixCells {
+		return sheetsValidationForFlag(flagName,
+			"range %q covers %d cells, over the %d-cell safety cap; narrow the range or split it across smaller ranges",
+			rangeStr, total, maxStampMatrixCells)
+	}
+	return nil
+}
+
 // fillCellsMatrix returns a rows×cols matrix where every cell is the same
 // (shallow-copied) prototype map. Use for fan-out shortcuts that stamp a
 // single attribute (style / data_validation) across an entire range.
+// Callers MUST gate the dimensions through checkStampMatrixBudget first.
 func fillCellsMatrix(rows, cols int, prototype map[string]interface{}) [][]interface{} {
 	cells := make([][]interface{}, rows)
 	for r := range cells {

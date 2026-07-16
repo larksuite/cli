@@ -5,6 +5,7 @@ package cmdupdate
 
 import (
 	"fmt"
+	stdio "io"
 	"runtime"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
@@ -125,13 +127,15 @@ func updateRun(opts *UpdateOptions) error {
 	io := opts.Factory.IOStreams
 	cur := currentVersion()
 	updater := newUpdater()
-
+	// Brand only steers skills sync. updateRun skips that resolution in --check,
+	// where the Updater's zero-value brand retains the Feishu default.
 	if !opts.Check {
+		updater.Brand = resolveSkillsBrand(opts.Factory, io.ErrOut)
 		updater.CleanupStaleFiles()
 	}
 	output.PendingNotice = nil
 
-	// 1. Fetch latest version
+	// 1. Fetch latest version.
 	latest, err := fetchLatest()
 	if err != nil {
 		return reportError(opts, io, "network",
@@ -153,7 +157,7 @@ func updateRun(opts *UpdateOptions) error {
 		return reportAlreadyUpToDate(opts, io, cur, latest, skillsResult, opts.Check)
 	}
 
-	// 4. Detect installation method
+	// 4. Detect installation method.
 	detect := updater.DetectInstallMethod()
 
 	// 5. --check
@@ -166,6 +170,22 @@ func updateRun(opts *UpdateOptions) error {
 		return doManualUpdate(opts, io, cur, latest, detect, updater)
 	}
 	return doAutoUpdate(opts, io, cur, latest, detect, updater)
+}
+
+// resolveSkillsBrand returns the skills-source brand: resolved config first,
+// then the active profile's raw config entry (the brand is not a secret; a
+// locked keychain must not flip the source), then the default with a notice.
+func resolveSkillsBrand(f *cmdutil.Factory, errOut stdio.Writer) core.LarkBrand {
+	if cfg, err := f.Config(); err == nil && cfg != nil {
+		return core.ParseBrand(string(cfg.Brand))
+	}
+	if raw, err := core.LoadMultiAppConfig(); err == nil {
+		if app := raw.CurrentAppConfig(f.Invocation.Profile); app != nil {
+			return core.ParseBrand(string(app.Brand))
+		}
+	}
+	fmt.Fprintf(errOut, "note: could not resolve the configured brand; syncing skills from the default source\n")
+	return core.BrandFeishu
 }
 
 // --- Output helpers ---

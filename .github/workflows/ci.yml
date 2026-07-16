@@ -47,6 +47,34 @@ jobs:
             exit 1
           fi
 
+  plugin-integration:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      # No fetch_meta: the git-archive clean tree must embed only the
+      # committed meta_data stub (reproduces the bare-module customer state).
+      - name: Run plugin-integration L4 tests
+        run: go test -count=1 -timeout=15m ./tests/plugin_e2e/...
+
+  sidecar-integration:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Run sidecar tag build + HMAC round-trip
+        run: make sidecar-test
+
   # ── Layer 2: Quality Gate ──────────────────────────────────────────
   unit-test:
     needs: fast-gate
@@ -86,8 +114,10 @@ jobs:
         run: echo "QUALITY_GATE_CHANGED_FROM=$(bash scripts/resolve-changed-from.sh)" >> "$GITHUB_ENV"
       - name: Run golangci-lint
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev="$QUALITY_GATE_CHANGED_FROM"
-      - name: Run errs/ lint guards (lintcheck)
+      - name: Run source-contract lint guards (lintcheck)
         run: go run -C lint . --changed-from "$QUALITY_GATE_CHANGED_FROM" ..
+      - name: Run lint module tests
+        run: go test -C lint ./... -count=1
 
   script-test:
     needs: fast-gate
@@ -174,7 +204,11 @@ jobs:
         run: python3 scripts/fetch_meta.py
       - name: Run tests with coverage
         run: |
-          packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '^github.com/larksuite/cli/tests/cli_e2e/')
+          # tests/ holds only L3/L4 suites (cli_e2e, plugin_e2e, sidecar_e2e) that
+          # have dedicated jobs; exclude the whole subtree so none of them runs a
+          # second time here — and, crucially, so an observe-only suite's failure
+          # can never block merges through coverage's spot in the results loop.
+          packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/')
           go test -race -coverprofile=coverage.txt -covermode=atomic $packages
       - name: Upload coverage to Codecov
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
@@ -414,7 +448,7 @@ jobs:
   # ── Results Gate (single required check for branch protection) ─────
   results:
     if: ${{ always() }}
-    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header]
+    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header, plugin-integration, sidecar-integration]
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate results
@@ -434,10 +468,19 @@ jobs:
           echo "| L3 | e2e-live | ${{ needs.e2e-live.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L4 | security | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L4 | license-header | ${{ needs.license-header.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L4 | plugin-integration (observe-only) | ${{ needs.plugin-integration.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L4 | sidecar-integration (observe-only) | ${{ needs.sidecar-integration.result }} |" >> $GITHUB_STEP_SUMMARY
 
           # Any failure or cancellation in any job blocks the merge.
           # Legitimately skipped jobs (deadcode on push, e2e-live on fork,
           # license-header on push) are OK.
+          #
+          # plugin-integration and sidecar-integration are intentionally NOT
+          # in this loop yet: they run on every PR and their status is shown
+          # in the table above, but a failure is observe-only (non-blocking)
+          # during the initial soak. Graduation to required is tracked in
+          # https://github.com/larksuite/cli/issues/1894 (criteria: 4
+          # consecutive weeks with zero false positives).
           FAILED=0
           for result in \
             "${{ needs.fast-gate.result }}" \
