@@ -222,6 +222,7 @@ func TestClassifyServiceAPIError_UserAllowBlockCachePreparing(t *testing.T) {
 		"msg":    "[15190000] ErrCacheEmpty",
 		"log_id": "2026071610521332E0FBDFB331EE0E73F5",
 		"error": map[string]interface{}{
+			"details":        []interface{}{map[string]interface{}{"value": "backend hint"}},
 			"troubleshooter": "https://open.feishu.cn/document/troubleshoot/cache",
 		},
 	}
@@ -258,6 +259,9 @@ func TestClassifyServiceAPIError_UserAllowBlockCachePreparing(t *testing.T) {
 			t.Fatalf("Hint = %q, want %q", p.Hint, want)
 		}
 	}
+	if !strings.Contains(p.Hint, "backend hint") {
+		t.Fatalf("Hint = %q, want server-provided hint preserved", p.Hint)
+	}
 	if !p.Retryable {
 		t.Fatal("Retryable = false, want true")
 	}
@@ -273,11 +277,21 @@ func TestClassifyServiceAPIError_UserAllowBlockCachePreparingScope(t *testing.T)
 	cases := []struct {
 		name    string
 		method  string
+		result  map[string]interface{}
 		request client.RawApiRequest
 	}{
 		{
+			name:   "allow sender list positive",
+			method: "user_mailbox.allow_sender.list",
+			result: map[string]interface{}{"code": 456, "msg": "[15190000] ErrCacheEmpty"},
+			request: client.RawApiRequest{Params: map[string]interface{}{
+				"keyword": "cache-cli@example.test",
+			}},
+		},
+		{
 			name:   "different method",
 			method: "user_mailbox.blocked_sender.batch_create",
+			result: result,
 			request: client.RawApiRequest{Params: map[string]interface{}{
 				"keyword": "cache-cli@example.test",
 			}},
@@ -285,6 +299,7 @@ func TestClassifyServiceAPIError_UserAllowBlockCachePreparingScope(t *testing.T)
 		{
 			name:   "no keyword",
 			method: "user_mailbox.blocked_sender.list",
+			result: result,
 			request: client.RawApiRequest{Params: map[string]interface{}{
 				"user_mailbox_id": "me",
 			}},
@@ -292,8 +307,41 @@ func TestClassifyServiceAPIError_UserAllowBlockCachePreparingScope(t *testing.T)
 		{
 			name:   "empty keyword",
 			method: "user_mailbox.allow_sender.list",
+			result: result,
 			request: client.RawApiRequest{Params: map[string]interface{}{
 				"keyword": " ",
+			}},
+		},
+		{
+			name:   "non string keyword",
+			method: "user_mailbox.allow_sender.list",
+			result: result,
+			request: client.RawApiRequest{Params: map[string]interface{}{
+				"keyword": 123,
+			}},
+		},
+		{
+			name:   "wrong code",
+			method: "user_mailbox.allow_sender.list",
+			result: map[string]interface{}{"code": 500, "msg": "[15190000] ErrCacheEmpty"},
+			request: client.RawApiRequest{Params: map[string]interface{}{
+				"keyword": "cache-cli@example.test",
+			}},
+		},
+		{
+			name:   "missing pb code marker",
+			method: "user_mailbox.allow_sender.list",
+			result: map[string]interface{}{"code": 456, "msg": "ErrCacheEmpty"},
+			request: client.RawApiRequest{Params: map[string]interface{}{
+				"keyword": "cache-cli@example.test",
+			}},
+		},
+		{
+			name:   "missing cache marker",
+			method: "user_mailbox.allow_sender.list",
+			result: map[string]interface{}{"code": 456, "msg": "[15190000] other error"},
+			request: client.RawApiRequest{Params: map[string]interface{}{
+				"keyword": "cache-cli@example.test",
 			}},
 		},
 	}
@@ -303,10 +351,16 @@ func TestClassifyServiceAPIError_UserAllowBlockCachePreparingScope(t *testing.T)
 				"id":         tc.method,
 				"httpMethod": "GET",
 			})}
-			err := classifyServiceAPIError(base, opts, tc.request)(result, core.AsUser)
+			err := classifyServiceAPIError(base, opts, tc.request)(tc.result, core.AsUser)
 			p, ok := errs.ProblemOf(err)
 			if !ok {
 				t.Fatalf("ProblemOf returned !ok for %T", err)
+			}
+			if tc.name == "allow sender list positive" {
+				if p.Subtype != errs.SubtypeUserAllowBlockCachePreparing {
+					t.Fatalf("Subtype = %q, want %q", p.Subtype, errs.SubtypeUserAllowBlockCachePreparing)
+				}
+				return
 			}
 			if p.Subtype == errs.SubtypeUserAllowBlockCachePreparing {
 				t.Fatalf("Subtype = %q, want generic API classification outside scoped keyword search", p.Subtype)

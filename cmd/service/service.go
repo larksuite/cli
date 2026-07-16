@@ -471,9 +471,20 @@ func annotateUserAllowBlockCachePreparing(err error, result interface{}, opts *S
 	if !strings.Contains(p.Message, userAllowBlockCachePreparingSemantic) {
 		p.Message = fmt.Sprintf("%s: %s", userAllowBlockCachePreparingSemantic, p.Message)
 	}
-	p.Hint = userAllowBlockCachePreparingHint
+	p.Hint = appendUserAllowBlockCachePreparingHint(p.Hint)
 	p.Retryable = true
 	return err
+}
+
+func appendUserAllowBlockCachePreparingHint(existing string) string {
+	existing = strings.TrimSpace(existing)
+	if existing == "" {
+		return userAllowBlockCachePreparingHint
+	}
+	if strings.Contains(existing, userAllowBlockCachePreparingHint) {
+		return existing
+	}
+	return existing + " " + userAllowBlockCachePreparingHint
 }
 
 func isUserAllowBlockSenderListMethod(methodID string) bool {
@@ -486,8 +497,8 @@ func isUserAllowBlockSenderListMethod(methodID string) bool {
 }
 
 func serviceRequestHasKeyword(request client.RawApiRequest) bool {
-	keyword, ok := request.Params["keyword"]
-	return ok && strings.TrimSpace(fmt.Sprint(keyword)) != ""
+	keyword, ok := request.Params["keyword"].(string)
+	return ok && strings.TrimSpace(keyword) != ""
 }
 
 func isUserAllowBlockCachePreparingResult(result interface{}) bool {
@@ -502,13 +513,13 @@ func isUserAllowBlockCachePreparingResult(result interface{}) bool {
 func serviceCachePreparingText(resultMap map[string]interface{}) []string {
 	var parts []string
 	for _, key := range []string{"msg", "message"} {
-		if value := strings.TrimSpace(fmt.Sprint(resultMap[key])); value != "" && value != "<nil>" {
+		if value, ok := resultMap[key].(string); ok && strings.TrimSpace(value) != "" {
 			parts = append(parts, value)
 		}
 	}
 	if errBlock, ok := resultMap["error"].(map[string]interface{}); ok {
 		for _, key := range []string{"msg", "message"} {
-			if value := strings.TrimSpace(fmt.Sprint(errBlock[key])); value != "" && value != "<nil>" {
+			if value, ok := errBlock[key].(string); ok && strings.TrimSpace(value) != "" {
 				parts = append(parts, value)
 			}
 		}
@@ -517,9 +528,22 @@ func serviceCachePreparingText(resultMap map[string]interface{}) []string {
 }
 
 func serviceNumberEquals(value interface{}, want int) bool {
-	got := strings.TrimSpace(fmt.Sprint(value))
 	wantStr := fmt.Sprint(want)
-	return got == wantStr || got == wantStr+".0"
+	switch v := value.(type) {
+	case int:
+		return v == want
+	case int32:
+		return int(v) == want
+	case int64:
+		return v == int64(want)
+	case float64:
+		return v == float64(want)
+	case string:
+		got := strings.TrimSpace(v)
+		return got == wantStr || got == wantStr+".0"
+	default:
+		return false
+	}
 }
 
 // checkServiceScopes pre-checks user scopes before making the API call.

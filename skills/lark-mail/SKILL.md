@@ -303,15 +303,14 @@ lark-cli mail +send --as user \
     --subject '产品评审' \
     --body '<p>请参加本次产品评审会议。</p>' \
     --event-summary '产品评审' \
-    --event-start '2026-05-10T14:00+08:00' \
-    --event-end '2026-05-10T15:00+08:00' \
-    --event-location '5F 大会议室' \
-    --confirm-send
+    --event-start '2026-12-10T14:00+08:00' \
+    --event-end '2026-12-10T15:00+08:00' \
+    --event-location '5F 大会议室'
 ```
 
 **参数说明：**
 - `--event-summary`：日程标题，设置此参数即开启日程邀请模式，需同时设置 `--event-start` 和 `--event-end`
-- `--event-start` / `--event-end`：ISO 8601 格式时间，如 `2026-05-10T14:00+08:00`
+- `--event-start` / `--event-end`：ISO 8601 格式时间，如 `2026-12-10T14:00+08:00`
 - `--event-location`：可选，日程地点
 
 **约束：**
@@ -426,7 +425,7 @@ lark-cli mail +message --message-id <id>
 | Q4 附件 | 全部 5 个 shortcut | 模板 inline（SMALL）由 CLI 走 `user_mailbox.template.attachments.download_url` 下载后以 MIME part 注入；SMALL 非 inline 同样注入；LARGE（`attachment_type=2`）不下载，只把 `file_key` 放到 `X-Lms-Large-Attachment-Ids` header 让服务端渲染下载卡片 |
 | Q5 cid 冲突 | inline 图片 | cid 由 UUID v4 生成（碰撞概率 ~ 2^-122），不显式检测 |
 
-**Warning**：`+reply` / `+reply-all` + 模板且模板自带 tos/ccs/bccs 时，CLI 在 stderr 打印：`warning: template to/cc/bcc are appended without de-duplication; you may see repeated recipients. Use --to/--cc/--bcc to override, or run +template-update to clear template addresses.`
+**Warning**：`+reply` / `+reply-all` + 模板且模板自带 tos/ccs/bccs 时，CLI 在 stderr 打印：`warning: template to/cc/bcc are appended without de-duplication; you may see repeated recipients. Review recipients before sending, or run +template-update to clear template addresses.`
 
 **size 约束**：单模板 `template_content` ≤ 3 MB；`body + inline + SMALL` 累计 ≤ 25 MB（超过则该批次剩余非 inline 附件切换为 LARGE；inline 不能切换）。
 
@@ -507,35 +506,16 @@ lark-cli mail user_mailbox.folders create \
 
 `batch_create` 在语义上等同于“设置到当前名单”。同一个 sender 黑白互斥：加入白名单会从黑名单移除同一 sender，加入黑名单会从白名单移除同一 sender。删除使用 `batch_remove`，只从当前名单移除，不会自动加入另一侧。
 
-```bash
-# list：列出白名单第一页；不带 keyword 的 list 也可触发搜索缓存初始化
-lark-cli mail user_mailbox.allow_sender list \
-  --params '{"user_mailbox_id":"me","page_size":50}'
+可用命令以当前 `lark-cli mail -h` 和对应 resource 的帮助输出为准。确认资源已存在后，按下面的参数结构调用：
 
-# search：按 keyword 搜索黑名单
-lark-cli mail user_mailbox.blocked_sender list \
-  --params '{"user_mailbox_id":"me","keyword":"bad.example.com","page_size":10}'
-
-# set allow：把 sender 设置为用户白名单；如它原在黑名单，会被移除
-lark-cli mail user_mailbox.allow_sender batch_create \
-  --params '{"user_mailbox_id":"me"}' \
-  --data '{"items":[{"sender":"friend@example.com"}]}'
-
-# set block：把 sender 设置为用户黑名单；如它原在白名单，会被移除
-lark-cli mail user_mailbox.blocked_sender batch_create \
-  --params '{"user_mailbox_id":"me"}' \
-  --data '{"items":[{"sender":"bad.example.com"}]}'
-
-# delete allow：从白名单删除 sender
-lark-cli mail user_mailbox.allow_sender batch_remove \
-  --params '{"user_mailbox_id":"me"}' \
-  --data '{"senders":["friend@example.com"]}'
-
-# delete block：从黑名单删除 sender
-lark-cli mail user_mailbox.blocked_sender batch_remove \
-  --params '{"user_mailbox_id":"me"}' \
-  --data '{"senders":["bad.example.com"]}'
-```
+| 操作 | resource / method | 参数 |
+|---|---|---|
+| 列出白名单第一页；不带 keyword 的 list 也可触发搜索缓存初始化 | `user_mailbox.allow_sender` / `list` | `--params '{"user_mailbox_id":"me","page_size":50}'` |
+| 按 keyword 搜索黑名单 | `user_mailbox.blocked_sender` / `list` | `--params '{"user_mailbox_id":"me","keyword":"bad.example.com","page_size":10}'` |
+| 把 sender 设置为用户白名单；如它原在黑名单，会被移除 | `user_mailbox.allow_sender` / `batch_create` | `--params '{"user_mailbox_id":"me"}' --data '{"items":[{"sender":"friend@example.com"}]}'` |
+| 把 sender 设置为用户黑名单；如它原在白名单，会被移除 | `user_mailbox.blocked_sender` / `batch_create` | `--params '{"user_mailbox_id":"me"}' --data '{"items":[{"sender":"bad.example.com"}]}'` |
+| 从白名单删除 sender | `user_mailbox.allow_sender` / `batch_remove` | `--params '{"user_mailbox_id":"me"}' --data '{"senders":["friend@example.com"]}'` |
+| 从黑名单删除 sender | `user_mailbox.blocked_sender` / `batch_remove` | `--params '{"user_mailbox_id":"me"}' --data '{"senders":["bad.example.com"]}'` |
 
 带 `keyword` 搜索时，如果返回 456 / `UserAllowBlockCachePreparing`，表示搜索缓存正在准备中。稍后重试；也可以先执行一次不带 `keyword` 的 `list` 初始化缓存，再重新搜索。
 
@@ -692,6 +672,8 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 
 ## 权限表
 
+Scope 列中逗号分隔的多个 scope 表示满足任一即可，不要求同时具备。
+
 | 方法 | 所需 scope |
 |------|-----------|
 | `multi_entity.search` | `mail:user_mailbox:readonly` |
@@ -748,8 +730,8 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.template.attachments.download_url` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.templates.create` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.templates.delete` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.templates.get` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.templates.list` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.templates.get` | `mail:user_mailbox.message:readonly`, `mail:user_mailbox.message:modify` |
+| `user_mailbox.templates.list` | `mail:user_mailbox.message:readonly`, `mail:user_mailbox.message:modify` |
 | `user_mailbox.templates.update` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.batch_modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.batch_trash` | `mail:user_mailbox.message:modify` |
