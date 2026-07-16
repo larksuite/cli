@@ -1,0 +1,16 @@
+skills/lark-apps/SKILL.md
+  h_72a6dbd1e15b00 44,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "90497b70ad100f796f28e34399057884437ab215",
+  "prompts": {},
+  "humans": {
+    "h_72a6dbd1e15b00": {
+      "author": "zhangli <zhangli.268@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
