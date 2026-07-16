@@ -41,7 +41,7 @@ lark-cli auth login --domain apps
 | 看表 / 看结构 / 初始化多环境 / 导入导出数据 / 变更追溯 / 行级审计 / dev→online 发布 / 时间点恢复 / 查 DB 用量 | `+db-table-list`、`+db-table-get`、`+db-env-create`、`+db-data-export`/`+db-data-import`、`+db-changelog-list`、`+db-audit-status`/`+db-audit-enable`/`+db-audit-disable`/`+db-audit-list`、`+db-env-diff`/`+db-env-migrate`、`+db-recovery-diff`/`+db-recovery-apply`、`+db-quota-get` | [`lark-apps-db.md`](references/lark-apps-db.md) |
 | 逐条执行 SQL（SELECT / DML / DDL）；建表 / 改表 / 写 SQL 的平台规范 | `+db-execute` | [`lark-apps-db-execute.md`](references/lark-apps-db-execute.md)（含「平台 SQL 规范」：审计列 / RLS / `user_profile` / 禁用 SQL / PG 陷阱） |
 | 管理应用文件存储：上传/下载本地文件、列出/查看/删除已存文件、生成临时分享链接、查存储用量 | `+file-upload`/`+file-download`/`+file-list`/`+file-get`/`+file-sign`/`+file-delete`/`+file-quota-get` | [`lark-apps-file.md`](references/lark-apps-file.md) |
-| **部署/上线应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史 | `+release-create`（部署上线动作）, `+release-get`（轮询发布结果，finished 给 online_url / failed 给 error_logs）, `+release-list` | [`lark-apps-release-create.md`](references/lark-apps-release-create.md), [`lark-apps-release-get.md`](references/lark-apps-release-get.md), [`lark-apps-release-list.md`](references/lark-apps-release-list.md) |
+| **部署/上线应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史 | 本地开发链路先按 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) 确认本次改动已 git commit + git push，再用 `+release-create` / `+release-get`；查历史用 `+release-list` | [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md), [`lark-apps-release-create.md`](references/lark-apps-release-create.md), [`lark-apps-release-get.md`](references/lark-apps-release-get.md), [`lark-apps-release-list.md`](references/lark-apps-release-list.md) |
 | 设置或查看运行时可见范围 | `+access-scope-set`, `+access-scope-get` | 对应 access-scope reference |
 | 管理 `app_...` 应用内角色、角色成员，或查询用户匹配角色 | `+role-list/get/create/update/delete`, `+role-member-list/add/remove`, `+role-match-list` | [`lark-apps-role.md`](references/lark-apps-role.md) |
 | 云端 Agent 生成/迭代应用（开发方式已定为云端后） | `+session-create` -> `+chat` -> `+session-get` | [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |
@@ -78,6 +78,7 @@ lark-cli auth login --domain apps
 - 完成 ≠ 发布：云端会话完成 / `+list is_published=true` 都不代表最新内容已部署。
 - 开发态链接 `https://miaoda.feishu.cn/app/{app_id}`（仅 full_stack 应用）：进应用编辑/开发态、管理与继续开发应用的入口。创意模式（html）应用开发态和发布态是同一个链接，无需额外提供开发态链接。
 - 发布态链接来源：`+release-get` 轮询 `finished` 给 `online_url` / `failed` 给 `error_logs`（html 和 full_stack 统一走 `+release-get`）。
+- html 应用的主链路是创意模式开发方式：按 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) 初始化仓库、在仓库内产出 HTML 及关联文件，并通过 git commit / git push / `+release-create` / `+release-get` 发布部署。Git 认证失败、沙箱重建后凭证失效或 token 过期时，先刷新 Git 凭证并重试原 git 命令；不要改走 `+html-publish`，也不要把 `+html-publish` 当作本地开发链路的 fallback。
 - 创意模式（html）应用的链接格式为 `https://{租户域名}/page/{meta_token}`，**开发态和发布态是同一个链接**（区别于 full_stack 应用两者分开）。此链接形似飞书文档链接。`+get --app-id <meta_token>` 可获取应用信息（含 `app_id`），`+get --app-id <app_id>` 可获取 `meta_token`。看到 `/page/xxx` 链接时，它是妙搭创意模式应用，不要当成飞书文档跳过。
 - **可见范围**：发布态链接（`online_url`）默认仅**创建者可见**，发给他人对方会无权限打不开。当可分享链接交付给用户前，先告知当前仅本人可见，再询问是否用 `+access-scope-set`（`tenant`/`public`/`specific`）放开（可先 `+access-scope-get` 查当前范围）。
 

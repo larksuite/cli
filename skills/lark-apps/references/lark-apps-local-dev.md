@@ -84,7 +84,7 @@ lark-cli apps +release-create --app-id app_xxx
 > `+release-create` 部署的是远端 `sprint/default` 上**已 push** 的代码，不是你本地工作区——未 commit / 未 push 的改动不会进入这次发布。所以发布前务必先把本次改动提交并推送。
 
 1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
-2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push）。
+2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push；遇 Git 认证失败 / 401 / 403 / credential helper 缺失 / token 过期：先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令）。
 3. `lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default` 发起部署上线，记下返回的 `release_id`。
 4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。交付线上访问链接给他人前，注意 `online_url` 默认仅创建者可见，需先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围。无需再调 `+list`；`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因（`+list` 仅作独立查询入口）。
 
@@ -93,10 +93,12 @@ lark-cli apps +release-create --app-id app_xxx
 ## 领域规则
 
 - 代码读写走原生 `git`；CLI 负责凭证、初始化、发布和数据库调试。不存在 `apps +pull` / `apps +push` / `apps code +read` 这类代码读写 shortcut，不要臆造。
+- 工作环境没有 `git` 时，先引导安装 Git（macOS 可用 `xcode-select --install` 或 `brew install git`；Linux 按发行版包管理器安装），安装后重试原 `+init` / git 命令；不要因此改走其他发布链路。
 - `+init` 会编排 `+git-credential-init`、`git clone`、切到 `sprint/default`、运行脚手架，并在有变更时提交/推送。
 - `+init --dir` 选目录：用户已预授权或表达"不要询问"（见 SKILL.md「预授权判定」）→ 按应用名派生 `./<app-name>` 直接传 `--dir`、不停问；否则先问用户用哪个目录再传。目标已存在/非空时回问换目录。
 - `sprint/default` 是工作分支；`main` 是发布态快照，由 `+release-create` 成功后服务端 fast-forward 推进；服务端护栏禁直推 `main`、拒 force-push、要求 `sprint/default` fast-forward。
 - 已拉到本地后，pull/push/diff/log 都用原生 git；云端 `sprint/default` 比本地新时，先 `git pull --rebase origin sprint/default`，解决冲突后再 push 和 publish。
+- `git clone` / `git pull` / `git push` 如果报认证失败、401/403、credential helper 缺失或 token 过期，优先重新执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 更新本地 Git 凭证，然后重试原 git 命令；不要手动复制 token、不要把 token 拼进 remote URL。
 - 环境变量由脚手架在本地启动时处理；需要手动刷新时用 `+env-pull`。
 - DB 调试用 `+db-table-list` / `+db-table-get` / `+db-execute`；不要裸连数据库或自行拼连接串。
 - DB 分 `dev` / `online`；使用 `--environment dev|online`，不要使用旧的 `--env`。只有确认应用已开启多环境时才引导 `--environment dev`；单环境应用省略 `--environment`（服务端选 online）或显式传 `--environment online`。在 dev 写入不能证明线上 handler 已验证。dev 的库结构变更要上线时，仍按应用发布链路走 `+release-create`，不要另造“数据库发布”步骤。
