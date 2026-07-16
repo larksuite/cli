@@ -24,6 +24,7 @@ metadata:
 
 ## 快速决策
 
+- 用户要**按特定主题 / 关键词 / 内容线索查找资料并收集到知识库节点或新建知识库节点下**，必须先阅读 [`../lark-drive/references/lark-drive-workflow.md`](../lark-drive/references/lark-drive-workflow.md)，再按其中 `Workflow Registry` 进入 [`topic_move_collector`](../lark-drive/references/lark-drive-workflow-topic-move-collector.md) workflow。该 workflow 使用 Drive 全量搜索召回，再按 Wiki 目标解析、确认和移动；不要只用 Wiki 节点列表做局部遍历。
 - 用户要**整理 / 盘点 / 归类 / 重构知识库、个人文档库、文档库目录或 Wiki 节点结构**，或要生成整理方案、目标目录树、移动计划时，不要只使用 Wiki 节点 API。必须先阅读 [`../lark-drive/references/lark-drive-workflow.md`](../lark-drive/references/lark-drive-workflow.md)，再按其中 `Workflow Registry` 进入 [`knowledge_organize`](../lark-drive/references/lark-drive-workflow-knowledge-organize.md) workflow；该 workflow 负责 Drive / Wiki / 个人文档库的统一入口解析、资源盘点、分类计划、写前确认和结果验证。
 - 用户要把**已有 Wiki 节点移出知识库，放到 Drive 文件夹或“我的空间”根目录**：使用 `wiki +move-to-drive`，不要使用 `wiki +move` 或 `drive +move`。这是会改变节点归属和权限继承的写操作，执行前确认源节点与目标位置。
 - 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先调用 `lark-cli wiki spaces get_node --params '{"token":"<wiki_token>"}'` 获取 `space_id`，后续成员接口统一使用 `space_id`。
