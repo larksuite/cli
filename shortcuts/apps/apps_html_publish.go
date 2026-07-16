@@ -79,8 +79,9 @@ var AppsHTMLPublish = common.Shortcut{
 		dry := common.NewDryRunAPI()
 		dry.Desc("Pack tar.gz → GET pre_release for TOS upload URL → PUT tar.gz to TOS → POST release-create with tos_path; returns release_id")
 		dry.GET(fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, validate.EncodePathSegment(appID))).
-			Set("tos_upload", "PUT <presigned_upload_url> (application/gzip)").
-			Set("release_create", fmt.Sprintf("POST %s (body: {tos_path})", fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(appID))))
+			PUT("<presigned_upload_url> (from pre_release response)").
+			POST(fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(appID))).
+			Body(map[string]string{"tos_path": "<from pre_release response>"})
 
 		candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), path)
 		if err != nil {

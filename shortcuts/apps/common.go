@@ -41,10 +41,10 @@ func withAppsHint(err error, hint string) error {
 	return err
 }
 
-// validateRealAppID checks that --app-id is a real app ID (app_/cli_ prefix).
+// validateRealAppID checks that --app-id is a real app ID (app_ prefix).
 // meta_token values are rejected with a hint to resolve via +get first.
 func validateRealAppID(appID string) error {
-	if !strings.HasPrefix(appID, "app_") && !strings.HasPrefix(appID, "cli_") {
+	if !strings.HasPrefix(appID, "app_") {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument,
 			`--app-id must be an app_id starting with "app_".`,
 		).WithParam("--app-id").WithHint(
