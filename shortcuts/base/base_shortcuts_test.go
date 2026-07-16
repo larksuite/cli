@@ -164,7 +164,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+record-history-list",
 		"+base-get", "+base-copy", "+base-create",
 		"+role-create", "+role-delete", "+role-update", "+role-list", "+role-get", "+advperm-enable", "+advperm-disable",
-		"+workflow-list", "+workflow-get", "+workflow-create", "+workflow-update", "+workflow-enable", "+workflow-disable",
+		"+workflow-list", "+workflow-get", "+workflow-create", "+workflow-update", "+workflow-enable", "+workflow-enable-all-disabled", "+workflow-disable",
 		"+data-query",
 		"+form-create", "+form-delete", "+form-list", "+form-update", "+form-get", "+form-detail",
 		"+form-questions-create", "+form-questions-delete", "+form-questions-update", "+form-questions-list",
@@ -644,6 +644,15 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"workflow-id must start with wkf",
 				"does not modify steps",
 				"New workflows are created disabled",
+			},
+		},
+		{
+			name:     "workflow enable all disabled",
+			shortcut: BaseWorkflowEnableAllDisabled,
+			wantTips: []string{
+				"enable every disabled workflow",
+				"succeeded/failed/remaining_disabled summaries",
+				"do not switch to steps repair",
 			},
 		},
 		{

@@ -70,6 +70,7 @@ func Shortcuts() []common.Shortcut {
 		BaseWorkflowCreate,
 		BaseWorkflowUpdate,
 		BaseWorkflowEnable,
+		BaseWorkflowEnableAllDisabled,
 		BaseWorkflowDisable,
 		BaseDataQuery,
 		BaseFormCreate,

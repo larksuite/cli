@@ -116,6 +116,63 @@ func TestBaseWorkflowExecuteDisable(t *testing.T) {
 	}
 }
 
+func TestBaseWorkflowExecuteEnableAllDisabledContinuesAfterItemFailure(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows/list",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"workflow_id": "wkf_ok", "title": "OK"},
+					map[string]interface{}{"workflow_id": "wkf_bad", "title": "Bad"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows/wkf_ok/enable",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"workflow_id": "wkf_ok", "status": "enabled"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows/wkf_bad/enable",
+		Body: map[string]interface{}{
+			"code": 800004535,
+			"msg":  "compile workflow failed",
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows/list",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"workflow_id": "wkf_bad", "title": "Bad"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	if err := runShortcut(t, BaseWorkflowEnableAllDisabled, []string{"+workflow-enable-all-disabled", "--base-token", "app_x"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{`"initial_disabled": 2`, `"enabled": 1`, `"failed": 1`, `"remaining_disabled": 1`, `"wkf_ok"`, `"wkf_bad"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestBaseWorkflowExecuteDisableValidate(t *testing.T) {
 	t.Run("missing base-token", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
