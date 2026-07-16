@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-查询异步任务结果。该 shortcut 聚合了导入、导出、移动/删除文件夹、Wiki 节点 / 文档迁入 Wiki、Wiki 节点移出 Wiki 等多种异步任务的结果查询，统一接口方便调用。
+查询异步任务结果。该 shortcut 聚合了导入、导出、Drive 文件/文件夹移动/删除、Wiki 节点 / 文档迁入 Wiki、Wiki 节点移出 Wiki、Wiki 删除等多种异步任务的结果查询，统一接口方便调用。
 
 > [!IMPORTANT]
 > 对于 `import` 场景，如果使用 `--as bot` 且这次查询**已经拿到最终在线文档目标**（`ready=true` 且返回了最终 `token` / `url`），CLI 会**再次尝试为当前 CLI 用户自动授予该资源的 `full_access`（可管理权限）**。
@@ -31,7 +31,7 @@ lark-cli drive +task_result \
   --ticket <EXPORT_TICKET> \
   --file-token <SOURCE_DOC_TOKEN>
 
-# 查询移动/删除文件夹任务状态
+# 查询 Drive 文件/文件夹移动/删除任务状态
 lark-cli drive +task_result \
   --scenario task_check \
   --task-id <TASK_ID>
@@ -56,7 +56,7 @@ lark-cli drive +task_result \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--scenario` | 是 | 任务场景，可选值：`import`、`export`、`task_check`、`wiki_move`、`wiki_move_to_drive`、`wiki_delete_space`、`wiki_delete_node` |
+| `--scenario` | 是 | 任务场景，可选值：`import` (导入任务)、`export` (导出任务)、`task_check` (Drive 文件/文件夹移动/删除任务)、`wiki_move` (Wiki 移动任务)、`wiki_move_to_drive` (Wiki 节点移出知识库任务)、`wiki_delete_space` (Wiki 删除知识空间任务)、`wiki_delete_node` (Wiki 删除节点任务) |
 | `--ticket` | 条件必填 | 异步任务 ticket，**import/export 场景必填** |
 | `--task-id` | 条件必填 | 异步任务 ID，**task_check 及所有 wiki 场景必填**；必须原样传递完整 ID |
 | `--file-token` | 条件必填 | 导出任务对应的源文档 token，**export 场景必填** |
@@ -67,7 +67,7 @@ lark-cli drive +task_result \
 |------|------|----------|
 | `import` | 文档导入任务（如将本地文件导入为云文档） | `--ticket` |
 | `export` | 文档导出任务（如云文档导出为 PDF/Word） | `--ticket`、`--file-token` |
-| `task_check` | 文件夹移动/删除任务 | `--task-id` |
+| `task_check` | Drive 文件/文件夹移动/删除任务 | `--task-id` |
 | `wiki_move` | Wiki 移动任务（`wiki +move` 的 docs-to-wiki 异步流程，超时后续跑用） | `--task-id` |
 | `wiki_move_to_drive` | Wiki 节点移出知识库任务（`wiki +move-to-drive` 超时后续跑用） | `--task-id` |
 | `wiki_delete_space` | Wiki 删除知识空间任务（`wiki +delete-space` 的异步流程，超时后续跑用） | `--task-id` |

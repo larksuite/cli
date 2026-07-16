@@ -23,7 +23,7 @@ const (
 )
 
 // DriveTaskResult exposes a unified read path for the async task types produced
-// by Drive import, export, folder move/delete, wiki move, wiki move-to-drive,
+// by Drive import, export, file/folder move/delete, wiki move, wiki move-to-drive,
 // and wiki delete flows.
 var DriveTaskResult = common.Shortcut{
 	Service:     "drive",
@@ -106,7 +106,7 @@ var DriveTaskResult = common.Shortcut{
 				Params(map[string]interface{}{"token": fileToken})
 		case "task_check":
 			dry.GET("/open-apis/drive/v1/files/task_check").
-				Desc("[1] Query move/delete folder task status").
+				Desc("[1] Query Drive file/folder move/delete task status").
 				Params(driveTaskCheckParams(taskID))
 		case "wiki_move":
 			dry.GET("/open-apis/wiki/v2/tasks/:task_id").
@@ -225,7 +225,7 @@ func queryExportTask(runtime *common.RuntimeContext, ticket, fileToken string) (
 	}, nil
 }
 
-// queryTaskCheck returns the normalized status of a folder move/delete task.
+// queryTaskCheck returns the normalized status of a Drive file/folder move/delete task.
 func queryTaskCheck(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
 	status, err := getDriveTaskCheckStatus(runtime, taskID)
 	if err != nil {
