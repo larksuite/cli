@@ -17,6 +17,8 @@ import (
 
 func TestEventLookup_VCMeetingLifecycleKeys(t *testing.T) {
 	for _, key := range []string{
+		"approval.instance.status_changed_v4",
+		"approval.task.status_changed_v4",
 		"vc.meeting.participant_meeting_started_v1",
 		"vc.meeting.participant_meeting_joined_v1",
 	} {
@@ -36,6 +38,8 @@ func TestRunList_TextOutput(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"KEY", "AUTH", "PARAMS", "DESCRIPTION",
+		"approval.instance.status_changed_v4",
+		"approval.task.status_changed_v4",
 		"im.message.receive_v1",
 		"im.message.message_read_v1",
 		"task.task.update_user_access_v2",
@@ -90,6 +94,8 @@ func TestRunList_JSONOutput(t *testing.T) {
 		t.Fatal("event list JSON missing task.task.update_user_access_v2")
 	}
 	for _, want := range []string{
+		"approval.instance.status_changed_v4",
+		"approval.task.status_changed_v4",
 		"vc.meeting.participant_meeting_started_v1",
 		"vc.meeting.participant_meeting_joined_v1",
 	} {
