@@ -28,6 +28,7 @@ var BaseRecordList = common.Shortcut{
 		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
 		pageSizeLimitAliasFlag(),
 		recordReadFormatFlag(),
+		recordReadJSONOutputAliasFlag(),
 	},
 	Tips: []string{
 		"Example: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
@@ -88,4 +89,8 @@ func recordReadFormatFlag() common.Flag {
 		Enum:    []string{"markdown", "json"},
 		Desc:    "output format: markdown (default) | json",
 	}
+}
+
+func recordReadJSONOutputAliasFlag() common.Flag {
+	return common.Flag{Name: "json", Type: "bool", Desc: "hidden shorthand for --format json", Hidden: true}
 }

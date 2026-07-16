@@ -461,6 +461,22 @@ func TestBaseLimitPageSizeAliasIsHidden(t *testing.T) {
 	}
 }
 
+func TestBaseRecordListJSONAliasIsHidden(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseRecordList.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+	flag := cmd.Flags().Lookup("json")
+	if flag == nil {
+		t.Fatal("flag --json missing")
+	}
+	if !flag.Hidden {
+		t.Fatal("flag --json must be hidden")
+	}
+	if strings.Contains(cmd.Flags().FlagUsages(), "--json") {
+		t.Fatalf("help should not include hidden --json:\n%s", cmd.Flags().FlagUsages())
+	}
+}
+
 func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 	tests := []struct {
 		name     string

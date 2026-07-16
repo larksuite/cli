@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -257,6 +258,7 @@ func executeDashboardBlockGet(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	attachDashboardTextBlockDiagnostics(data)
 	runtime.Out(map[string]interface{}{"block": data}, nil)
 	return nil
 }
@@ -267,8 +269,78 @@ func executeDashboardBlockGetData(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	attachDashboardBlockDataDiagnostics(data)
 	runtime.Out(data, nil)
 	return nil
+}
+
+func attachDashboardBlockDataDiagnostics(data map[string]interface{}) {
+	measureAliases := dashboardBlockMeasureAliases(data["measures"])
+	if len(measureAliases) == 0 {
+		return
+	}
+	rows, ok := data["main_data"].([]interface{})
+	if !ok || len(rows) == 0 {
+		return
+	}
+	for _, rawRow := range rows {
+		row, ok := rawRow.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if dashboardBlockRowHasMeasureValue(row, measureAliases) {
+			return
+		}
+	}
+	data["_diagnostics"] = []interface{}{
+		map[string]interface{}{
+			"type":            "empty_measure_values",
+			"message":         "chart data defines measures, but main_data rows contain no computed measure values",
+			"hint":            "Recreate or update the block data_config with a computable numeric measure or count_all, then rerun +dashboard-block-get-data before declaring the chart complete.",
+			"measure_aliases": measureAliases,
+			"main_data_rows":  len(rows),
+		},
+	}
+}
+
+func dashboardBlockMeasureAliases(raw interface{}) []string {
+	measures, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	aliases := make([]string, 0, len(measures))
+	for _, rawMeasure := range measures {
+		measure, ok := rawMeasure.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		alias, ok := measure["alias"].(string)
+		if !ok {
+			continue
+		}
+		alias = strings.TrimSpace(alias)
+		if alias != "" {
+			aliases = append(aliases, alias)
+		}
+	}
+	return aliases
+}
+
+func dashboardBlockRowHasMeasureValue(row map[string]interface{}, aliases []string) bool {
+	for _, alias := range aliases {
+		value, ok := row[alias]
+		if !ok || value == nil {
+			continue
+		}
+		valueMap, ok := value.(map[string]interface{})
+		if !ok {
+			return true
+		}
+		if nestedValue, exists := valueMap["value"]; exists && nestedValue != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // executeDashboardBlockCreate creates a new dashboard block.
@@ -325,8 +397,57 @@ func executeDashboardBlockUpdate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	attachDashboardTextBlockDiagnostics(data)
 	runtime.Out(map[string]interface{}{"block": data, "updated": true}, nil)
 	return nil
+}
+
+func attachDashboardTextBlockDiagnostics(block map[string]interface{}) {
+	if !isDashboardTextBlock(block) {
+		return
+	}
+	cfg, ok := block["data_config"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	rawText, ok := cfg["text"].(string)
+	if !ok || strings.TrimSpace(rawText) == "" {
+		return
+	}
+	plainText, ok := decodeDashboardTextReadback(rawText)
+	if !ok || plainText == rawText {
+		return
+	}
+	appendDashboardDiagnostic(block, map[string]interface{}{
+		"type":       "dashboard_text_json_readback",
+		"message":    "text block data_config.text is returned as a JSON-encoded string",
+		"hint":       "When verifying text block content, compare text_plain with the target text; keep data_config.text unchanged for raw API compatibility.",
+		"text_plain": plainText,
+	})
+}
+
+func isDashboardTextBlock(block map[string]interface{}) bool {
+	blockType, _ := block["type"].(string)
+	if blockType == "" {
+		blockType, _ = block["block_type"].(string)
+	}
+	return strings.EqualFold(strings.TrimSpace(blockType), "text")
+}
+
+func decodeDashboardTextReadback(raw string) (string, bool) {
+	var decoded string
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return "", false
+	}
+	return decoded, true
+}
+
+func appendDashboardDiagnostic(target map[string]interface{}, diagnostic map[string]interface{}) {
+	if existing, ok := target["_diagnostics"].([]interface{}); ok {
+		target["_diagnostics"] = append(existing, diagnostic)
+		return
+	}
+	target["_diagnostics"] = []interface{}{diagnostic}
 }
 
 // executeDashboardBlockDelete deletes a dashboard block by ID.
