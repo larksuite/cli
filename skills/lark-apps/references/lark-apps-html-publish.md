@@ -54,5 +54,5 @@ lark-cli apps +html-publish --app-id app_xxx --path ./index.html --dry-run
 
 ## 常见失败
 
-- `--path` 传了绝对路径：`--path` 只接受相对路径，传绝对路径会报 `unsafe --path`。改用 `cd` + 相对路径，例如 `cd /target/dir && lark-cli apps +html-publish --path .`。
+- `--path` 传了绝对路径：`--path` 只接受相对路径，传绝对路径会报 `--path must be a relative path within the current directory`。改用 `cd` + 相对路径，例如 `cd /target/dir && lark-cli apps +html-publish --path .`。
 - 缺少 `index.html`：目录根放置 `index.html`，或单文件路径直接指向名为 `index.html` 的文件。

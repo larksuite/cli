@@ -14,7 +14,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -261,25 +260,7 @@ func prepareHTMLPublishTarball(fio fileio.FileIO, path string) (*htmlPublishTarb
 	return tarball, nil
 }
 
-func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
-	tarball, err := prepareHTMLPublishTarball(fio, spec.Path)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := publisher.HTMLPublish(ctx, spec.AppID, tarball)
-	if err != nil {
-		return nil, client.WrapDoAPIError(err)
-	}
-
-	out := map[string]interface{}{}
-	if resp.URL != "" {
-		out["url"] = resp.URL
-	}
-	return out, nil
-}
-
-// runHTMLPublishTOS handles the modern_html publish path: validate → tar.gz →
+// runHTMLPublishTOS handles the publish path: validate → tar.gz →
 // call pre_release to get TOS upload URL → upload tar.gz to TOS → return
 // tos_path for +release-create --tos-path.
 func runHTMLPublishTOS(ctx context.Context, rctx *common.RuntimeContext, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
