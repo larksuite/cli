@@ -239,9 +239,8 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 				CommandPath:    "lark-cli fixture +emit",
 				Identity:       "bot",
 				NoticeProvider: func() map[string]interface{} { return notice },
-			}, output.EmitOptions{
+			}, tc.ok, output.EmitOptions{
 				Raw:    tc.raw,
-				OK:     tc.ok,
 				Meta:   tc.meta,
 				Format: tc.format,
 				JQ:     tc.jq,
@@ -310,12 +309,18 @@ func runRuntimeContextOracle(t *testing.T, data interface{}, opts runtimeOracleO
 	return emitterCapture{stdout: stdout.String(), stderr: stderr.String(), err: err}
 }
 
-func runEmitterSuccess(data interface{}, config output.EmitterConfig, opts output.EmitOptions) emitterCapture {
+func runEmitterSuccess(data interface{}, config output.EmitterConfig, ok bool, opts output.EmitOptions) emitterCapture {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	config.Out = stdout
 	config.ErrOut = stderr
-	err := output.NewEmitter(config).Success(data, opts)
+	emitter := output.NewEmitter(config)
+	var err error
+	if ok {
+		err = emitter.Success(data, opts)
+	} else {
+		err = emitter.PartialFailure(data, opts)
+	}
 	return emitterCapture{stdout: stdout.String(), stderr: stderr.String(), err: err}
 }
 
@@ -403,8 +408,7 @@ func TestEmitterMatchesWriteSuccessEnvelopeLegacyOracle(t *testing.T) {
 				CommandPath:    "lark-cli fixture +emit",
 				Identity:       "bot",
 				NoticeProvider: func() map[string]interface{} { return notice },
-			}, output.EmitOptions{
-				OK:              true,
+			}, true, output.EmitOptions{
 				Format:          "json",
 				JQ:              tc.jq,
 				DryRun:          tc.dryRun,
@@ -518,7 +522,7 @@ func runEmitterStreamPages(pages []interface{}, format string) emitterCapture {
 	})
 	var emitErr error
 	for _, page := range pages {
-		if emitErr = emitter.StreamPage(page, output.EmitOptions{OK: true, Format: format}); emitErr != nil {
+		if emitErr = emitter.StreamPage(page, output.StreamOptions{Format: format}); emitErr != nil {
 			break
 		}
 	}
@@ -546,10 +550,7 @@ func TestEmitterCapturesNoticeAndColorDependencies(t *testing.T) {
 			return map[string]interface{}{"source": "captured"}
 		},
 	})
-	if err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{
-		OK:     true,
-		Format: "json",
-	}); err != nil {
+	if err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{Format: "json"}); err != nil {
 		t.Fatalf("Emitter.Success() error = %v", err)
 	}
 	if strings.Contains(stdout.String(), "global") || !strings.Contains(stdout.String(), "captured") {
@@ -557,9 +558,7 @@ func TestEmitterCapturesNoticeAndColorDependencies(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{
-		OK:     true,
-		Format: "pretty",
+	if err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{Format: "pretty",
 		Pretty: func(w io.Writer, colorEnabled bool) error {
 			colorSeen = colorEnabled
 			_, err := fmt.Fprintln(w, "pretty")
@@ -573,10 +572,7 @@ func TestEmitterCapturesNoticeAndColorDependencies(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := emitter.Success(map[string]interface{}{"ok": true, "id": "1"}, output.EmitOptions{
-		OK:     true,
-		Format: "yaml",
-	}); err != nil {
+	if err := emitter.Success(map[string]interface{}{"ok": true, "id": "1"}, output.EmitOptions{Format: "yaml"}); err != nil {
 		t.Fatalf("Emitter.Success(unknown format) error = %v", err)
 	}
 	if strings.Contains(stdout.String(), "global") || !strings.Contains(stdout.String(), "captured") {
@@ -599,10 +595,8 @@ func TestEmitterPropagatesOutputError(t *testing.T) {
 		CommandPath: "lark-cli fixture +emit",
 	})
 	err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{
-		Raw:    true,
-		OK:     true,
-		Format: "json",
-		JQ:     ".data",
+		Raw: true, Format: "json",
+		JQ: ".data",
 	})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("Emitter.Success() error = %v, want preserved writer cause", err)
@@ -623,33 +617,36 @@ func TestEmitterRawJSONPropagatesWriteError(t *testing.T) {
 	})
 	// Raw JSON without jq must surface the encoder write error, not discard it.
 	err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{
-		Raw:    true,
-		OK:     true,
-		Format: "json",
+		Raw: true, Format: "json",
 	})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("Emitter.Success() error = %v, want preserved writer cause", err)
 	}
 }
 
-func TestEmitterStreamPageRejectsJQ(t *testing.T) {
+func TestEmitterInvalidJQReturnsErrorWithoutStderr(t *testing.T) {
+	// jq failures surface as a returned error and write nothing to stderr. The
+	// legacy RuntimeContext.emit instead prints "error: <err>\n" to stderr and
+	// swallows the error (runner.go). Reproducing that exact stderr byte on
+	// migration is the C08b adapter's job: it re-emits the stderr line and the
+	// outputErrOnce capture around this returned error. This test pins the
+	// Emitter's half of that split contract so the difference stays intentional.
 	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+	stderr := &bytes.Buffer{}
 	emitter := output.NewEmitter(output.EmitterConfig{
-		Out:         io.Discard,
-		ErrOut:      io.Discard,
+		Out:         &bytes.Buffer{},
+		ErrOut:      stderr,
 		CommandPath: "lark-cli fixture +emit",
 	})
-	err := emitter.StreamPage([]interface{}{map[string]interface{}{"id": "1"}}, output.EmitOptions{
-		OK:     true,
-		Format: "ndjson",
-		JQ:     ".data",
+	err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{
+		Format: "json",
+		JQ:     "this is not valid jq (((",
 	})
-	var verr *errs.ValidationError
-	if !errors.As(err, &verr) {
-		t.Fatalf("StreamPage() error = %T, want *errs.ValidationError", err)
+	if err == nil {
+		t.Fatal("Success() with invalid jq = nil, want error")
 	}
-	if verr.Param != "--jq" {
-		t.Errorf("Param = %q, want --jq", verr.Param)
+	if stderr.Len() != 0 {
+		t.Fatalf("Success() with invalid jq wrote stderr %q, want empty (adapter owns the stderr line)", stderr.String())
 	}
 }
 

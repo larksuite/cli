@@ -42,13 +42,23 @@ type EmitterConfig struct {
 // (false) and WriteSuccessEnvelope (true) until their callers are migrated.
 type EmitOptions struct {
 	Raw             bool
-	OK              bool
 	Meta            *Meta
 	Format          string
 	JQ              string
 	DryRun          bool
 	Pretty          PrettyRenderer
 	JQSafetyWarning bool
+}
+
+// StreamOptions describes one streamed page's wire representation. Streaming
+// carries page items directly, so it deliberately exposes only the fields that
+// affect a single page: the format and, for pretty, its renderer. It has no
+// OK/Meta/DryRun/JQ — an ok:false envelope, metadata, dry-run, and jq all need
+// the aggregated result, which the caller's pagination layer owns before it
+// streams pages.
+type StreamOptions struct {
+	Format string
+	Pretty PrettyRenderer
 }
 
 // Emitter owns all command-scoped output dependencies and pagination state.
@@ -86,12 +96,12 @@ func (e *Emitter) Success(data interface{}, opts EmitOptions) error {
 	}
 
 	if opts.JQ != "" {
-		return e.emitEnvelope(data, opts)
+		return e.emitEnvelope(data, true, opts)
 	}
 
 	switch opts.Format {
 	case "", "json":
-		return e.emitEnvelope(data, opts)
+		return e.emitEnvelope(data, true, opts)
 	case "pretty":
 		return e.emitPretty(data, opts)
 	default:
@@ -99,16 +109,29 @@ func (e *Emitter) Success(data interface{}, opts EmitOptions) error {
 	}
 }
 
-// StreamPage scans and emits one page while retaining table/csv columns from
-// the first page. Streamed output carries page items directly and therefore
-// does not use OK, Meta, DryRun, or notices from EmitOptions.
-func (e *Emitter) StreamPage(data interface{}, opts EmitOptions) error {
+// PartialFailure emits a multi-status result whose envelope honestly reports
+// ok:false. It is the typed counterpart to Success for batch operations where
+// some items failed but the per-item outcomes are the primary stdout output.
+// Like the legacy OutPartialFailure it produces only the JSON/jq envelope; the
+// caller owns the non-zero exit signal, keeping the Emitter free of exit
+// semantics.
+func (e *Emitter) PartialFailure(data interface{}, opts EmitOptions) error {
 	if err := e.requireOutput(); err != nil {
 		return err
 	}
-	if opts.JQ != "" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"jq requires aggregated pagination output").WithParam("--jq")
+	return e.emitEnvelope(data, false, opts)
+}
+
+// StreamPage scans and emits one page while retaining table/csv columns from
+// the first page. Streamed output carries page items directly, so it takes a
+// StreamOptions (format + optional pretty renderer) rather than the full
+// EmitOptions: ok/meta/dry-run/jq all need the aggregated result and are the
+// caller's pagination-layer responsibility, not a per-page concern. Excluding
+// jq from the type makes "jq requires aggregated output" a compile-time fact
+// instead of a runtime rejection.
+func (e *Emitter) StreamPage(data interface{}, opts StreamOptions) error {
+	if err := e.requireOutput(); err != nil {
+		return err
 	}
 
 	scanResult := ScanForSafety(e.commandPath, data, e.errOut)
@@ -143,14 +166,14 @@ func (e *Emitter) StreamPage(data interface{}, opts EmitOptions) error {
 	return nil
 }
 
-func (e *Emitter) emitEnvelope(data interface{}, opts EmitOptions) error {
+func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) error {
 	scanResult := ScanForSafety(e.commandPath, data, e.errOut)
 	if scanResult.Blocked {
 		return scanResult.BlockErr
 	}
 
 	env := Envelope{
-		OK:       opts.OK,
+		OK:       ok,
 		Identity: e.identity,
 		DryRun:   opts.DryRun,
 		Data:     data,
@@ -196,7 +219,7 @@ func (e *Emitter) emitPretty(data interface{}, opts EmitOptions) error {
 	// RuntimeContext.outFormat falls back through Out/OutRaw when no pretty
 	// renderer is supplied. Keep that second scan visible in the leaf contract
 	// until production callers are migrated and the legacy behavior is removed.
-	return e.emitEnvelope(data, opts)
+	return e.emitEnvelope(data, true, opts)
 }
 
 func (e *Emitter) emitFormatted(data interface{}, rawFormat string) error {
