@@ -301,10 +301,17 @@ for required in \
 done
 
 if ! awk '
-  /::error::Superseded before live E2E started/ { superseded = 1; next }
-  superseded && /exit 1/ { rejected = 1 }
-  /go run gotest.tools\/gotestsum@/ { test_started = 1; if (!rejected) exit 2 }
-  END { exit rejected && test_started ? 0 : 1 }
+  /if \[ -n "\$newer_runs" \]; then/ { superseded_state = 1; next }
+  superseded_state == 1 && /::error::Superseded before live E2E started/ { superseded_state = 2; next }
+  superseded_state == 2 && /^[[:space:]]+exit 1[[:space:]]*$/ { superseded_state = 3; next }
+  superseded_state > 0 && /^[[:space:]]+fi[[:space:]]*$/ {
+    if (superseded_state != 3) exit 2
+    superseded_closed = 1
+    superseded_state = 0
+    next
+  }
+  /go run gotest.tools\/gotestsum@/ { test_started = 1; if (!superseded_closed) exit 3 }
+  END { exit superseded_closed && test_started ? 0 : 1 }
 ' <<<"$live_test_step"; then
   echo "a superseded live run must stop before gotestsum starts" >&2
   exit 1
