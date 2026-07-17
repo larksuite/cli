@@ -323,7 +323,7 @@ func TestLocalDevSkillContract_UsesEnvironmentAndDefersEnableToAutomationSOP(t *
 	for _, boundary := range []string{
 		"`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。",
 		"若本次发布包含自动化 handler，继续读取 [automation SOP](lark-apps-automation.md)。enable 不能替代 commit/push/release，也绝不能发生在本轮 release finished 之前；只有用户明确要求启动、启用或测试时才在该门槛后启用 trigger。",
-		"用户只要求启用已有 trigger 时，转到 automation SOP 的 enable-only 路径；不得因 enable 反向修改 handler、commit/push 或 release。",
+		"用户只要求启用已有 trigger 时，转到 [automation SOP 的「仅启用已有 disabled trigger」路径](lark-apps-automation.md#仅启用已有-disabled-trigger)；不得因 enable 反向修改 handler、commit/push 或 release。",
 		"使用 `--environment dev|online`，不要使用旧的 `--env`。只有确认应用已开启多环境时才引导 `--environment dev`；单环境应用省略 `--environment`（服务端选 online）或显式传 `--environment online`。",
 	} {
 		if !strings.Contains(doc, boundary) {
