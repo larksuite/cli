@@ -5,6 +5,7 @@ package apps
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -80,6 +81,21 @@ func requireInOrder(t *testing.T, text string, tokens ...string) {
 	}
 }
 
+func requireFirstOccurrencesInOrder(t *testing.T, text string, tokens ...string) {
+	t.Helper()
+	previous := -1
+	for _, token := range tokens {
+		idx := strings.Index(text, token)
+		if idx < 0 {
+			t.Fatalf("missing %q", token)
+		}
+		if idx <= previous {
+			t.Fatalf("first %q at %d must follow the previous contract token at %d", token, idx, previous)
+		}
+		previous = idx
+	}
+}
+
 func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testing.T) {
 	section := skillSubsection(t, readAutomationSkillDoc(t), "### 实现或更新 handler 后发布并启动/测试")
 
@@ -98,6 +114,13 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 		"+automation-enable",
 		"+automation-get",
 		"真实 runtime",
+	)
+	requireFirstOccurrencesInOrder(t, section,
+		"git push origin sprint/default",
+		"+release-create --branch sprint/default",
+		"data.status=finished",
+		"+automation-enable",
+		"+automation-get",
 	)
 	for _, boundary := range []string{
 		"仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler，且用户要求把这次代码发布后启动或测试时，才使用此路径。",
@@ -167,10 +190,7 @@ func TestAutomationSkillContract_EnableExistingTriggerDoesNotPublish(t *testing.
 		"不得修改 handler、commit/push 或 release",
 		"对 UPSERT 或 feishu-approval 只改变配置状态",
 	)
-	for _, forbidden := range []string{
-		"git push origin sprint/default",
-		"+release-create --branch sprint/default",
-	} {
+	for _, forbidden := range []string{"git push", "+release-create"} {
 		if strings.Contains(section, forbidden) {
 			t.Errorf("enable-only flow must not contain %q", forbidden)
 		}
@@ -191,10 +211,7 @@ func TestAutomationSkillContract_TestExistingTriggerDoesNotPublish(t *testing.T)
 		"测试请求已明确包含临时 enable，或另行取得 enable 授权",
 		"运行时验证的操作级授权",
 	)
-	for _, forbidden := range []string{
-		"git push origin sprint/default",
-		"+release-create --branch sprint/default",
-	} {
+	for _, forbidden := range []string{"git push", "+release-create"} {
 		if strings.Contains(section, forbidden) {
 			t.Errorf("existing-trigger test flow must not contain %q", forbidden)
 		}
@@ -257,6 +274,7 @@ func TestAutomationSkillContract_RuntimeProbeRequiresOperationScope(t *testing.T
 
 	for _, boundary := range []string{
 		"启用 trigger 的授权不等于制造 runtime 事件的授权，测试授权也不等于任意数据库写入授权。",
+		"record-change 在执行任何 DML 前，必须明确并取得覆盖以下作用域的授权",
 		"环境、表、操作、精确测试记录或筛选条件、payload、预期结果和清理方式",
 		"优先使用专用测试记录",
 		"`DELETE`",
@@ -279,6 +297,10 @@ func TestAutomationSkillContract_UsesResolvableSharedSkillLink(t *testing.T) {
 	}
 	if !strings.Contains(doc, "](../../lark-shared/SKILL.md)") {
 		t.Error("automation reference must link to the sibling lark-shared skill")
+	}
+	sharedSkillDoc := filepath.Clean(filepath.Join(filepath.Dir(automationSkillDoc), "../../lark-shared/SKILL.md"))
+	if _, err := os.Stat(sharedSkillDoc); err != nil {
+		t.Fatalf("automation reference target %s must exist: %v", sharedSkillDoc, err)
 	}
 }
 
