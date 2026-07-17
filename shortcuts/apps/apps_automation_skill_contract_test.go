@@ -103,11 +103,13 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 	requireInOrder(t, section,
 		"仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler",
 		"+automation-get",
+		"记录发布前状态",
 		"--name",
 		"项目 guide",
 		"按项目 guide 完成同名业务 handler 并本地验证。",
 		"在 Git 已确认/预授权时 commit，然后执行",
 		"git push origin sprint/default",
+		"临时停用授权",
 		"+automation-disable",
 		"确认 disabled",
 		"+release-create --branch sprint/default",
@@ -117,10 +119,13 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 		"+automation-enable",
 		"+automation-get",
 		"真实 runtime",
+		"仅要求测试",
+		"恢复到发布前状态",
 	)
 	requireFirstOccurrencesInOrder(t, section,
 		"+automation-get",
 		"git push origin sprint/default",
+		"临时停用授权",
 		"+automation-disable",
 		"+release-create --branch sprint/default",
 		"data.status=finished",
@@ -130,8 +135,10 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 		"仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler，且用户要求把这次代码发布后启动或测试时，才使用此路径。",
 		"按项目 guide 完成同名业务 handler 并本地验证。",
 		"在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。",
-		"只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；`failed` 时报告发布失败并保持 disabled。`is_published=true` 不能代替这轮发布完成。",
+		"只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟。",
+		"确认 `failed` 时报告发布失败，原本 enabled 的 trigger 仅在确认新代码未上线后恢复 enabled，原本 disabled 的保持 disabled。",
 		"获得启动/测试授权后才执行 `+automation-enable`，并用 `+automation-get` 确认 enabled。",
+		"若用户仅要求测试而不是持续启动，必须在成功、失败或提前结束时都恢复到发布前状态",
 		"没有通用的 `automation-debug` 或 trigger 日志 shortcut。",
 	} {
 		if !strings.Contains(section, boundary) {
@@ -188,12 +195,17 @@ func TestAutomationSkillContract_EnableExistingTriggerDoesNotPublish(t *testing.
 	requireInOrder(t, section,
 		"用户只要求启用已存在且 disabled 的 trigger",
 		"+automation-get",
+		"apps +get",
+		"is_published",
 		"当前线上已发布代码",
 		"+automation-enable",
 		"+automation-get",
 		"不得修改 handler、commit/push 或 release",
 		"对 UPSERT 或 feishu-approval 只改变配置状态",
 	)
+	if !strings.Contains(section, "未发布时不得自动创建 release，也不得声称 trigger 已开始实际运行") {
+		t.Error("enable-only flow must distinguish configuration enablement from a published runtime")
+	}
 	for _, forbidden := range []string{"git push", "+release-create"} {
 		if strings.Contains(section, forbidden) {
 			t.Errorf("enable-only flow must not contain %q", forbidden)
@@ -249,8 +261,10 @@ func TestAutomationSkillContract_PublishedHandlerStaysDisabled(t *testing.T) {
 
 	for _, boundary := range []string{
 		"仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。",
-		"先用 `+automation-get` 核对当前状态，并记录它是否 enabled。",
-		"若 trigger 已 enabled，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled。",
+		"先用 `+automation-get` 定位；不存在时用 `+automation-create` 创建同名 disabled trigger，再次回读确认。",
+		"已存在时记录它是否 enabled。",
+		"若 trigger 已 enabled，先说明发布前必须临时停用以及可能造成的运行中断，并取得这次临时停用授权；未获授权时停止在发布前。",
+		"取得授权后，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled。",
 		"按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`。",
 		"随后发布完整应用：",
 		"保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成；`failed` 时报告发布失败、保持 disabled，修复并重新发布后再取得新的 finished 结果。",
@@ -263,6 +277,7 @@ func TestAutomationSkillContract_PublishedHandlerStaysDisabled(t *testing.T) {
 	requireFirstOccurrencesInOrder(t, section,
 		"+automation-get",
 		"git push origin sprint/default",
+		"临时停用授权",
 		"+automation-disable",
 		"+release-create",
 	)
@@ -305,6 +320,10 @@ func TestAutomationSkillContract_RuntimeProbeRequiresOperationScope(t *testing.T
 		"[lark-apps-db-execute.md](lark-apps-db-execute.md)",
 		"先 `SELECT count(*)`、执行 `--dry-run`",
 		"取得针对该删除目标的明确授权",
+		"+automation-list --trigger-type record-change --all",
+		"同一环境、表和操作可能命中的其他 enabled trigger",
+		"聚合业务影响",
+		"恢复 UPDATE 或清理 INSERT 也可能再次触发自动化",
 		"缺少安全、已授权且可清理的事件入口时，记录 blocked",
 	} {
 		if !strings.Contains(section, boundary) {
@@ -386,6 +405,7 @@ func TestAppsSkillContract_DoesNotExposeSteeringImplementation(t *testing.T) {
 
 func TestLocalDevSkillContract_UsesEnvironmentAndDefersEnableToAutomationSOP(t *testing.T) {
 	doc := readLocalDevSkillDoc(t)
+	releaseSection := skillSection(t, doc, "## 改完代码后部署上线")
 	for _, legacy := range []string{"--env dev", "--env online"} {
 		if strings.Contains(doc, legacy) {
 			t.Errorf("local-dev skill must not recommend legacy %q", legacy)
@@ -393,13 +413,18 @@ func TestLocalDevSkillContract_UsesEnvironmentAndDefersEnableToAutomationSOP(t *
 	}
 	for _, boundary := range []string{
 		"`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。",
-		"若本次发布包含自动化 handler，继续读取 [automation SOP](lark-apps-automation.md)。enable 不能替代 commit/push/release，也绝不能发生在本轮 release finished 之前；只有用户明确要求启动、启用或测试时才在该门槛后启用 trigger。",
+		"若本次改动包含自动化 handler，在执行本节通用 commit/push/release 序列前就转到 [automation SOP](lark-apps-automation.md) 的匹配路径，由该 SOP 负责完整的状态门禁、commit/push、release 和可选 enable/test；不要先按本节发布再补 trigger 状态检查。",
 		"用户只要求启用已有 trigger 时，转到 [automation SOP 的「仅启用已有 disabled trigger」路径](lark-apps-automation.md#仅启用已有-disabled-trigger)；不得因 enable 反向修改 handler、commit/push 或 release。",
 		"使用 `--environment dev|online`，不要使用旧的 `--env`。只有确认应用已开启多环境时才引导 `--environment dev`；单环境应用省略 `--environment`（服务端选 online）或显式传 `--environment online`。",
 	} {
 		if !strings.Contains(doc, boundary) {
 			t.Errorf("local-dev skill must preserve %q", boundary)
 		}
+	}
+	routeIndex := strings.Index(releaseSection, "若本次改动包含自动化 handler")
+	releaseIndex := strings.Index(releaseSection, "+release-create")
+	if routeIndex < 0 || releaseIndex < 0 || routeIndex >= releaseIndex {
+		t.Error("automation routing must appear before the generic release sequence")
 	}
 }
 
