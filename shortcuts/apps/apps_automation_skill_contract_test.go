@@ -146,7 +146,9 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 		"发布状态仍不确定时不得进入 enable、probe 或状态恢复分支。",
 		"**仅启动**：取得持续启动授权后执行 `+automation-enable`，并用 `+automation-get` 确认 enabled；到此结束，不制造 runtime probe。",
 		"**测试（含“启动并测试”）**：先按下节“运行时验证的操作级授权”完成全部 preflight",
-		"若用户仅要求测试而不是持续启动，只在本轮 release 已 `finished` 且进入 probe 后，于成功、probe 失败或提前结束时恢复到发布前状态",
+		"若用户仅要求测试而不是持续启动，只在本轮 release 已 `finished` 且 probe 成功后恢复到发布前状态",
+		"无论用户是仅测试还是启动并测试，probe 失败、结果不确定或 enable 后提前结束时，一律 `+automation-disable` 并回读 disabled",
+		"不得把“发布前 enabled”当作失败后的恢复依据",
 		"没有通用的 `automation-debug` 或 trigger 日志 shortcut。",
 	} {
 		if !strings.Contains(section, boundary) {

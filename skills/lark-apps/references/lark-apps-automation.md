@@ -201,8 +201,8 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 5. 执行 `+release-create --branch sprint/default`，保存返回的 `data.release_id`。
 6. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟。超时且状态仍不确定时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；确认 `failed` 时报告发布失败，原本 enabled 的 trigger 仅在确认新代码未上线后恢复 enabled，原本 disabled 的保持 disabled。发布状态仍不确定时不得进入 enable、probe 或状态恢复分支。`is_published=true` 不能代替这轮发布完成。
 7. **仅启动**：取得持续启动授权后执行 `+automation-enable`，并用 `+automation-get` 确认 enabled；到此结束，不制造 runtime probe。
-8. **测试（含“启动并测试”）**：先按下节“运行时验证的操作级授权”完成全部 preflight，包括具体事件、sibling 影响、载荷、观察结果和清理；完成前保持 disabled，之后才执行 `+automation-enable` 并回读，再由已授权主体制造真实 runtime 条件并核验业务结果。若同时明确要求持续启动，测试结束后保持 enabled。
-9. 若用户仅要求测试而不是持续启动，只在本轮 release 已 `finished` 且进入 probe 后，于成功、probe 失败或提前结束时恢复到发布前状态：原本 disabled 或本轮新建的 trigger `+automation-disable` 并回读；原本 enabled 的结束时保持 enabled。恢复失败时明确报告当前状态，不得把“测试完成”写成持续启动授权。
+8. **测试（含“启动并测试”）**：先按下节“运行时验证的操作级授权”完成全部 preflight，包括具体事件、sibling 影响、载荷、观察结果和清理；完成前保持 disabled，之后才执行 `+automation-enable` 并回读，再由已授权主体制造真实 runtime 条件并核验业务结果。若同时明确要求持续启动，只有 probe 成功后才保持 enabled。
+9. 若用户仅要求测试而不是持续启动，只在本轮 release 已 `finished` 且 probe 成功后恢复到发布前状态：原本 disabled 或本轮新建的 trigger `+automation-disable` 并回读；原本 enabled 的可保持 enabled。无论用户是仅测试还是启动并测试，probe 失败、结果不确定或 enable 后提前结束时，一律 `+automation-disable` 并回读 disabled；不得把“发布前 enabled”当作失败后的恢复依据，因为本轮新代码已经上线。只有旧 release 已回滚并验证，或修复后重新发布且 probe 成功，才可再次 enabled。恢复失败时明确报告当前状态。
 
 没有通用的 `automation-debug` 或 trigger 日志 shortcut。缺少安全事件入口、匹配环境或可观察结果时，记录 blocked，不能编造测试成功。
 
