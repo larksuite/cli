@@ -146,7 +146,11 @@ func assertDriveDeleteTaskSucceeded(t *testing.T, ctx context.Context, taskID st
 	require.Equal(t, 0, taskResult.ExitCode, "drive +task_result failed\nstdout:\n%s\nstderr:\n%s", taskResult.Stdout, taskResult.Stderr)
 	taskResult.AssertStdoutStatus(t, true)
 	require.Equal(t, taskID, gjson.Get(taskResult.Stdout, "data.task_id").String(), "stdout:\n%s", taskResult.Stdout)
-	require.False(t, gjson.Get(taskResult.Stdout, "data.failed").Bool(), "stdout:\n%s", taskResult.Stdout)
+	// gjson returns false for an absent field too, so require presence or a
+	// malformed task envelope would pass validation.
+	failedField := gjson.Get(taskResult.Stdout, "data.failed")
+	require.True(t, failedField.Exists(), "task result must report data.failed\nstdout:\n%s", taskResult.Stdout)
+	require.False(t, failedField.Bool(), "stdout:\n%s", taskResult.Stdout)
 }
 
 // isTransientDriveDeleteFailure reports whether a failed drive +delete carries

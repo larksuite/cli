@@ -123,38 +123,95 @@ func TestIsTransientDriveDeleteFailure(t *testing.T) {
 // guard from the main loop turns this test red.
 func TestDeleteAsyncAndVerifyRejectsUnexpectedFailure(t *testing.T) {
 	fake := mustWriteDriveDeleteWorkflowFakeCLI(t)
-	dir := t.TempDir()
-	deletes := filepath.Join(dir, "delete-attempts")
-	metas := filepath.Join(dir, "meta-calls")
-	taskResults := filepath.Join(dir, "task-result-calls")
+	counters := newFakeWorkflowCounterPaths(t)
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestDeleteAsyncAndVerifyUnexpectedFailureSubprocess$", "-test.v")
+	output, err := runDeleteWorkflowSubprocess(t, fake, counters, map[string]string{
+		"FAKE_WORKFLOW_TOKEN":       "docx_unexpected",
+		"FAKE_WORKFLOW_DELETE_MODE": "fail-unexpected",
+		"FAKE_WORKFLOW_META_MODE":   "gone",
+	})
+	require.Error(t, err, "deleteAsyncAndVerify must fail the test process on an unexpected delete error\noutput:\n%s", output)
+	assert.Contains(t, output, "drive +delete failed with an unexpected error", "output:\n%s", output)
+
+	assert.Equal(t, "1", readFakeCounter(t, counters.deletes))
+	assert.Equal(t, "0", readFakeCounter(t, counters.metas), "unexpected failures must not fall through to terminal-state checking")
+	assert.Equal(t, "0", readFakeCounter(t, counters.taskResults))
+}
+
+// TestDeleteAsyncAndVerifyFailsOnTaskResultFailure proves a non-zero
+// drive +task_result exit fails the workflow before the final visibility
+// polling: the task-result endpoint is reached once and the meta endpoint
+// never.
+func TestDeleteAsyncAndVerifyFailsOnTaskResultFailure(t *testing.T) {
+	fake := mustWriteDriveDeleteWorkflowFakeCLI(t)
+	counters := newFakeWorkflowCounterPaths(t)
+
+	output, err := runDeleteWorkflowSubprocess(t, fake, counters, map[string]string{
+		"FAKE_WORKFLOW_TOKEN":       "docx_taskresult",
+		"FAKE_WORKFLOW_DELETE_MODE": "async",
+		"FAKE_WORKFLOW_META_MODE":   "gone",
+		// FAKE_WORKFLOW_TASK_RESULT_OK stays unset: +task_result exits 2.
+	})
+	require.Error(t, err, "deleteAsyncAndVerify must fail the test process when +task_result fails\noutput:\n%s", output)
+	assert.Contains(t, output, "drive +task_result failed", "output:\n%s", output)
+
+	assert.Equal(t, "1", readFakeCounter(t, counters.deletes))
+	assert.Equal(t, "1", readFakeCounter(t, counters.taskResults))
+	assert.Equal(t, "0", readFakeCounter(t, counters.metas), "task-result failure must abort before visibility polling")
+}
+
+// TestDeleteAsyncAndVerifyStopsAfterExhaustedRetries proves the transient
+// tolerance is bounded: with the resource still present, exactly
+// deleteWorkflowMaxAttempts delete attempts (each followed by one terminal
+// state check) run before the workflow fails for good.
+func TestDeleteAsyncAndVerifyStopsAfterExhaustedRetries(t *testing.T) {
+	fake := mustWriteDriveDeleteWorkflowFakeCLI(t)
+	counters := newFakeWorkflowCounterPaths(t)
+
+	output, err := runDeleteWorkflowSubprocess(t, fake, counters, map[string]string{
+		"FAKE_WORKFLOW_TOKEN":        "docx_exhausted",
+		"FAKE_WORKFLOW_DELETE_MODE":  "fail",
+		"FAKE_WORKFLOW_META_MODE":    "exists",
+		"FAKE_WORKFLOW_FAST_BACKOFF": "1",
+	})
+	require.Error(t, err, "deleteAsyncAndVerify must fail the test process after exhausting retries\noutput:\n%s", output)
+	assert.Contains(t, output, "drive +delete failed 3 times", "output:\n%s", output)
+
+	assert.Equal(t, "3", readFakeCounter(t, counters.deletes))
+	assert.Equal(t, "3", readFakeCounter(t, counters.metas))
+	assert.Equal(t, "0", readFakeCounter(t, counters.taskResults))
+}
+
+// runDeleteWorkflowSubprocess re-runs this test binary anchored to the child
+// entry point below with the fake CLI and counter files wired in via env.
+func runDeleteWorkflowSubprocess(t *testing.T, fake string, counters fakeWorkflowCounters, env map[string]string) (string, error) {
+	t.Helper()
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestDeleteAsyncAndVerifySubprocess$", "-test.v")
 	cmd.Env = append(os.Environ(),
 		"FAKE_WORKFLOW_SUBPROCESS=1",
 		clie2e.EnvBinaryPath+"="+fake,
-		"FAKE_WORKFLOW_DELETE_MODE=fail-unexpected",
-		"FAKE_WORKFLOW_META_MODE=gone",
-		"FAKE_WORKFLOW_DELETE_STATE="+deletes,
-		"FAKE_WORKFLOW_META_STATE="+metas,
-		"FAKE_WORKFLOW_TASK_RESULT_STATE="+taskResults,
+		"FAKE_WORKFLOW_DELETE_STATE="+counters.deletes,
+		"FAKE_WORKFLOW_META_STATE="+counters.metas,
+		"FAKE_WORKFLOW_TASK_RESULT_STATE="+counters.taskResults,
 	)
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
 	output, err := cmd.CombinedOutput()
-	require.Error(t, err, "deleteAsyncAndVerify must fail the test process on an unexpected delete error\noutput:\n%s", output)
-	assert.Contains(t, string(output), "drive +delete failed with an unexpected error", "output:\n%s", output)
-
-	assert.Equal(t, "1", readFakeCounter(t, deletes))
-	assert.Equal(t, "0", readFakeCounter(t, metas), "unexpected failures must not fall through to terminal-state checking")
-	assert.Equal(t, "0", readFakeCounter(t, taskResults))
+	return string(output), err
 }
 
-// TestDeleteAsyncAndVerifyUnexpectedFailureSubprocess is the child entry point
-// driven by TestDeleteAsyncAndVerifyRejectsUnexpectedFailure. It does nothing
-// in a normal test run.
-func TestDeleteAsyncAndVerifyUnexpectedFailureSubprocess(t *testing.T) {
+// TestDeleteAsyncAndVerifySubprocess is the child entry point driven by
+// runDeleteWorkflowSubprocess. It does nothing in a normal test run.
+func TestDeleteAsyncAndVerifySubprocess(t *testing.T) {
 	if os.Getenv("FAKE_WORKFLOW_SUBPROCESS") != "1" {
 		return
 	}
-	deleteAsyncAndVerify(t, context.Background(), "docx_unexpected", "docx")
+	if os.Getenv("FAKE_WORKFLOW_FAST_BACKOFF") == "1" {
+		deleteWorkflowRetryBackoff = time.Millisecond
+	}
+	deleteAsyncAndVerify(t, context.Background(), os.Getenv("FAKE_WORKFLOW_TOKEN"), "docx")
 }
 
 type fakeWorkflowCounters struct {
@@ -163,17 +220,23 @@ type fakeWorkflowCounters struct {
 	taskResults string
 }
 
+func newFakeWorkflowCounterPaths(t *testing.T) fakeWorkflowCounters {
+	t.Helper()
+
+	dir := t.TempDir()
+	return fakeWorkflowCounters{
+		deletes:     filepath.Join(dir, "delete-attempts"),
+		metas:       filepath.Join(dir, "meta-calls"),
+		taskResults: filepath.Join(dir, "task-result-calls"),
+	}
+}
+
 // setupFakeWorkflowCounters wires per-endpoint call counters into the fake CLI
 // so tests can assert exactly which commands ran.
 func setupFakeWorkflowCounters(t *testing.T) fakeWorkflowCounters {
 	t.Helper()
 
-	dir := t.TempDir()
-	counters := fakeWorkflowCounters{
-		deletes:     filepath.Join(dir, "delete-attempts"),
-		metas:       filepath.Join(dir, "meta-calls"),
-		taskResults: filepath.Join(dir, "task-result-calls"),
-	}
+	counters := newFakeWorkflowCounterPaths(t)
 	t.Setenv("FAKE_WORKFLOW_DELETE_STATE", counters.deletes)
 	t.Setenv("FAKE_WORKFLOW_META_STATE", counters.metas)
 	t.Setenv("FAKE_WORKFLOW_TASK_RESULT_STATE", counters.taskResults)
@@ -241,6 +304,10 @@ if [ "$1" = "drive" ] && [ "$2" = "+delete" ]; then
     echo '{"ok":false,"identity":"bot","error":{"type":"api","subtype":"invalid_request","message":"file token not found"}}' >&2
     exit 1
     ;;
+  async)
+    echo '{"ok":true,"identity":"bot","data":{"task_id":"task_123","status":"success","file_token":"tok","type":"docx"}}'
+    exit 0
+    ;;
   fail-then-async)
     if [ "$count" -lt 1 ]; then
       echo '{"ok":false,"identity":"bot","error":{"type":"api","subtype":"server_error","message":"drive task failed"}}' >&2
@@ -274,6 +341,10 @@ if [ "$1" = "api" ] && [ "$2" = "post" ] && [ "$3" = "/open-apis/drive/v1/metas/
   case "$FAKE_WORKFLOW_META_MODE" in
   gone)
     echo '{"ok":true,"data":{"metas":[]}}'
+    exit 0
+    ;;
+  exists)
+    echo '{"ok":true,"data":{"metas":[{"url":"https://example.com/still-visible"}]}}'
     exit 0
     ;;
   exists-then-gone)
