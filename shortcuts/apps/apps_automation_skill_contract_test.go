@@ -195,8 +195,8 @@ func TestAutomationSkillContract_EnableExistingTriggerDoesNotPublish(t *testing.
 	requireInOrder(t, section,
 		"用户只要求启用已存在且 disabled 的 trigger",
 		"+automation-get",
-		"apps +get",
-		"is_published",
+		"+release-list --status finished --page-size 1",
+		"已完成线上 release",
 		"当前线上已发布代码",
 		"+automation-enable",
 		"+automation-get",
@@ -205,6 +205,9 @@ func TestAutomationSkillContract_EnableExistingTriggerDoesNotPublish(t *testing.
 	)
 	if !strings.Contains(section, "未发布时不得自动创建 release，也不得声称 trigger 已开始实际运行") {
 		t.Error("enable-only flow must distinguish configuration enablement from a published runtime")
+	}
+	if strings.Contains(section, "apps +get") || strings.Contains(section, "`is_published`") {
+		t.Error("enable-only flow must use finished release history instead of an optional app detail field")
 	}
 	for _, forbidden := range []string{"git push", "+release-create"} {
 		if strings.Contains(section, forbidden) {

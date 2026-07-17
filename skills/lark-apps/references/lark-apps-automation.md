@@ -162,7 +162,7 @@
 
 ### 仅启用已有 disabled trigger
 
-用户只要求启用已存在且 disabled 的 trigger、没有要求修改代码或制造真实 runtime 事件时，先用 `+automation-get` 核对 name、类型和 disabled 状态，再用 `apps +get` 核对应用的 `is_published`。已发布时明确它将运行当前线上已发布代码，而不是本地工作区内容；未发布时说明 enable 只会改变配置状态、当前没有可执行的线上版本。随后按用户要求执行 `+automation-enable`，再用 `+automation-get` 确认 enabled。
+用户只要求启用已存在且 disabled 的 trigger、没有要求修改代码或制造真实 runtime 事件时，先用 `+automation-get` 核对 name、类型和 disabled 状态，再用 `+release-list --status finished --page-size 1` 核对是否存在已完成线上 release。存在时明确它将运行当前线上已发布代码，而不是本地工作区内容；不存在时说明 enable 只会改变配置状态、当前没有可执行的线上版本。随后按用户要求执行 `+automation-enable`，再用 `+automation-get` 确认 enabled。
 
 这条路径不得修改 handler、commit/push 或 release。未发布时不得自动创建 release，也不得声称 trigger 已开始实际运行。若用户期待尚未发布的本地改动生效，或检查后发现确实需要新增/修改 handler，转到下方“实现或更新 handler 后发布并启动/测试”路径；不要为单纯 enable 发布整个 `sprint/default`。
 
