@@ -18,6 +18,8 @@ import (
 // TestWiki_MoveToDriveWorkflow validates the live async round trip, including
 // the standalone drive +task_result continuation path.
 func TestWiki_MoveToDriveWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
+
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	t.Cleanup(cancel)

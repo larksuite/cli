@@ -309,8 +309,20 @@ if grep -Fq "config init" <<<"$section"; then
   exit 1
 fi
 
-if ! grep -Fq "LARKSUITE_CLI_APP_ID: \${{ secrets.TEST_BOT1_APP_ID }}" <<<"$section"; then
-  echo "e2e-live should expose the bot app id through job env"
+if ! grep -Fq "TEST_BOT1_APP_ID: \${{ secrets.TEST_BOT1_APP_ID }}" <<<"$section"; then
+  echo "e2e-live should keep the bot app id under a test-only job env name"
+  exit 1
+fi
+
+if awk '
+  /^  e2e-live:/ { in_job = 1; next }
+  in_job && /^  [A-Za-z0-9_-]+:/ { in_job = 0 }
+  in_job && /^    env:/ { in_env = 1; next }
+  in_env && /^    steps:/ { in_env = 0 }
+  in_env && /LARKSUITE_CLI_APP_ID:/ { found_standard_app_id = 1 }
+  END { exit found_standard_app_id ? 0 : 1 }
+' "$workflow"; then
+  echo "e2e-live should not activate the env credential provider at job scope"
   exit 1
 fi
 
@@ -335,11 +347,12 @@ if ! awk '
   /^      - name: Prepare shared live E2E tenant token/ { in_step = 1 }
   in_step && /id: live_e2e_tat/ { has_id = 1 }
   in_step && /if: \$\{\{ steps\.e2e_domains\.outputs\.mode != '\''skip'\'' \}\}/ { has_if = 1 }
+  in_step && /LARKSUITE_CLI_APP_ID: \$\{\{ secrets\.TEST_BOT1_APP_ID \}\}/ { has_app_id = 1 }
   in_step && /secrets\.TEST_BOT1_APP_SECRET/ { has_bot_credential = 1 }
   in_step && /node scripts\/fetch_e2e_tat\.js/ { has_script = 1 }
   in_step && /GITHUB_ENV/ { uses_github_env = 1 }
   in_step && /^      - name:/ && !/Prepare shared live E2E tenant token/ { in_step = 0 }
-  END { exit has_id && has_if && has_bot_credential && has_script && !uses_github_env ? 0 : 1 }
+  END { exit has_id && has_if && has_app_id && has_bot_credential && has_script && !uses_github_env ? 0 : 1 }
 ' <<<"$section"; then
   echo "e2e-live should pass only a private tenant token file path through step output"
   exit 1
@@ -350,14 +363,17 @@ if ! awk '
   in_step && /E2E_TENANT_AUTH_FILE: \$\{\{ steps\.live_e2e_tat\.outputs\.path \}\}/ { has_file = 1 }
   in_step && /secrets\.TEST_USER_ACCESS_TOKEN/ { has_user_credential = 1 }
   in_step && /Missing shared live E2E tenant token file/ { checks_file = 1 }
-  in_step && /^ *export / && /LARKSUITE_CLI_TENANT_ACCESS_TOKEN/ && /E2E_TENANT_AUTH_FILE/ { exports_tat = 1 }
+  in_step && /^ *export / && /TEST_TENANT_ACCESS_TOKEN/ && /E2E_TENANT_AUTH_FILE/ { exports_test_tat = 1 }
+  in_step && /^ *export / && /LARKSUITE_CLI_TENANT_ACCESS_TOKEN/ { exports_standard_tat = 1 }
+  in_step && /LARKSUITE_CLI_APP_ID="\$TEST_BOT1_APP_ID"/ { scopes_preflight_app_id = 1 }
+  in_step && /LARKSUITE_CLI_TENANT_ACCESS_TOKEN="\$TEST_TENANT_ACCESS_TOKEN"/ { scopes_preflight_tat = 1 }
   in_step && /lark-cli whoami --as bot/ { has_preflight = 1 }
   in_step && /Tenant credential preflight failed/ { checks_preflight = 1 }
   in_step && /TEST_USER_ACCESS_TOKEN/ && /secrets\.TEST_USER_ACCESS_TOKEN/ { has_user_env = 1 }
   in_step && /LARKSUITE_CLI_USER_ACCESS_TOKEN/ && /secrets\.TEST_USER_ACCESS_TOKEN/ { has_global_user_env = 1 }
   in_step && /trap / { has_trap = 1 }
   in_step && /^      - name:/ && !/Run CLI E2E tests/ { in_step = 0 }
-  END { exit has_file && has_user_credential && checks_file && exports_tat && has_preflight && checks_preflight && has_user_env && !has_global_user_env && !has_trap ? 0 : 1 }
+  END { exit has_file && has_user_credential && checks_file && exports_test_tat && !exports_standard_tat && scopes_preflight_app_id && scopes_preflight_tat && has_preflight && checks_preflight && has_user_env && !has_global_user_env && !has_trap ? 0 : 1 }
 ' <<<"$section"; then
   echo "e2e-live should expose live E2E credentials only inside the test shell step"
   exit 1

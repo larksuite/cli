@@ -14,6 +14,8 @@ import (
 )
 
 func TestDrive_DeleteAsyncWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
+
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	t.Cleanup(cancel)

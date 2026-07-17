@@ -161,6 +161,9 @@ func TestSkipWithoutUserToken(t *testing.T) {
 
 func TestSkipWithoutTenantAccessToken(t *testing.T) {
 	t.Run("skips when env tenant access token is missing", func(t *testing.T) {
+		t.Setenv("TEST_BOT1_APP_ID", "")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
 		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
 
 		ran := false
@@ -172,7 +175,10 @@ func TestSkipWithoutTenantAccessToken(t *testing.T) {
 		assert.False(t, ran)
 	})
 
-	t.Run("returns immediately when env tenant access token exists", func(t *testing.T) {
+	t.Run("accepts standard tenant credentials", func(t *testing.T) {
+		t.Setenv("TEST_BOT1_APP_ID", "")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("LARKSUITE_CLI_APP_ID", "app-from-env")
 		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "test-token")
 
 		ran := false
@@ -182,6 +188,22 @@ func TestSkipWithoutTenantAccessToken(t *testing.T) {
 		})
 		require.True(t, ok)
 		assert.True(t, ran)
+	})
+
+	t.Run("scopes shared tenant credentials to the requiring test", func(t *testing.T) {
+		t.Setenv("TEST_BOT1_APP_ID", "shared-test-app")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "shared-test-token")
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+
+		ok := t.Run("inner", func(t *testing.T) {
+			SkipWithoutTenantAccessToken(t)
+			assert.Equal(t, "shared-test-app", os.Getenv("LARKSUITE_CLI_APP_ID"))
+			assert.Equal(t, "shared-test-token", os.Getenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN"))
+		})
+		require.True(t, ok)
+		assert.Empty(t, os.Getenv("LARKSUITE_CLI_APP_ID"))
+		assert.Empty(t, os.Getenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN"))
 	})
 }
 
@@ -253,13 +275,21 @@ func TestRunCmd(t *testing.T) {
 	})
 
 	t.Run("injects user token env only for user commands", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
 		t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "")
+		t.Setenv("TEST_BOT1_APP_ID", "cli_app_test")
 		t.Setenv("TEST_USER_ACCESS_TOKEN", "uat_test")
 
 		env := buildCommandEnv(Request{DefaultAs: "user"})
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
 		assert.Contains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
 
 		env = buildCommandEnv(Request{DefaultAs: "bot"})
+		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
+		assert.NotContains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
+
+		env = buildCommandEnv(Request{})
+		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
 		assert.NotContains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
 	})
 
