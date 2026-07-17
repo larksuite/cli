@@ -161,6 +161,8 @@
 
 ### 仅完成 handler（不发布/不启用）
 
+仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。
+
 创建或定位已明确 name 的 disabled trigger，读取项目 guide，按其要求实现同名业务 handler，完成本地验证。只在既有 Git 确认或预授权下 commit/push；停止在 `+release-create` 和 `+automation-enable` 之前。用户没有明确“发布好”时，先问，不能默认把完整应用上线。
 
 ### 把 handler 发布好，但先不要启动
