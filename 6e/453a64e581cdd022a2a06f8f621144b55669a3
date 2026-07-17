@@ -1,0 +1,21 @@
+skills/lark-slides/references/xml-format-guide.md
+  s_7c2f80ef1cc07a::t_041a91b4a8ca0d 251-270
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6e453a64e581cdd022a2a06f8f621144b55669a3",
+  "prompts": {},
+  "sessions": {
+    "s_7c2f80ef1cc07a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6088-cbc3-7b93-991f-5377c4d2f6e8",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

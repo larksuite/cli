@@ -1,0 +1,33 @@
+shortcuts/slides/slides_xml_get.go
+  s_6940e839c24169::t_087469a15403d2 18-21,25,33-36,50-51,53-57,59-68,81,86,91-99,102-113,125-127,131-167,171,176,178-179,181,183-184,186-194,198-202,204-207,209-254,256-257,260-287
+shortcuts/slides/slides_xml_get_test.go
+  s_50a9bb30f10d7d::t_ab7f0742a6d29e 94-313,386-447
+skills/lark-slides/SKILL.md
+  s_50a9bb30f10d7d::t_987ea1350d6aa2 26,163,254,259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "19e8506c9ae127551e61f7aefe60d7a1f1c25575",
+  "prompts": {},
+  "sessions": {
+    "s_50a9bb30f10d7d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5ec3-1d68-7991-9b31-35d2757b86a0",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_6940e839c24169": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5f60-4118-73b2-9f6f-d6ddc164dfef",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
