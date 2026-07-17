@@ -60,7 +60,7 @@ lark-cli mail +draft-send --draft-id <draft_id_1>,<draft_id_2> --dry-run
 }
 ```
 
-部分失败时，输出为结构化的 partial failure envelope，`sent` 中保留已发送成功的草稿，`failed` 中列出失败草稿和错误原因。不要把部分失败当作全部失败重试；重试前先确认 `sent` 中的草稿已经发出。
+部分失败时，输出为结构化的 partial failure envelope，`ok:false`，`data.sent` 中保留已发送成功的草稿，`data.failed` 中列出失败草稿和错误原因，`data.total` / `success_count` / `failure_count` 记录本次尝试的统计。账号级失败会终止后续草稿发送，响应会带 `data.aborted:true` 与 `data.abort_reason`；这些未尝试的草稿不会出现在 `sent` 或 `failed` 中。不要把部分失败当作全部失败重试；重试前先确认 `sent` 中的草稿已经发出，并只对失败或未尝试的草稿重新操作。
 
 ## 典型场景
 

@@ -149,7 +149,7 @@ lark-cli mail multi_entity search --as user --data '{"query":"<关键词>"}'
 
 **处理规则：**
 1. 从结果中筛选有 `email` 字段的条目
-2. 无论匹配数量多少，都必须列出候选项供用户确认后再使用（搜索是模糊匹配，单条结果不代表精确命中）。展示尽可能多的字段帮助用户区分：
+2. 有匹配结果时，无论匹配数量多少，都必须列出候选项供用户确认后再使用（搜索是模糊匹配，单条结果不代表精确命中）。展示尽可能多的字段帮助用户区分：
    ```text
    找到以下匹配"张三"的结果：
    1. 张三 <zhangsan@example.com>
@@ -297,21 +297,20 @@ lark-cli mail user_mailbox.sent_messages get_recall_detail --as user \
 在邮件中嵌入日程邀请（`text/calendar`），收件人收信后可直接接受或拒绝日程。`To`/`Cc` 收件人自动成为参会人（ATTENDEE），发件人自动成为组织者（ORGANIZER）。
 
 ```bash
-# 发送带日程邀请的新邮件（先保存草稿，确认后发送）
+# 创建带日程邀请的新邮件草稿，确认后再发送
 lark-cli mail +send --as user \
     --to alice@example.com --cc bob@example.com \
     --subject '产品评审' \
     --body '<p>请参加本次产品评审会议。</p>' \
     --event-summary '产品评审' \
-    --event-start '2026-05-10T14:00+08:00' \
-    --event-end '2026-05-10T15:00+08:00' \
-    --event-location '5F 大会议室' \
-    --confirm-send
+    --event-start '2026-08-10T14:00+08:00' \
+    --event-end '2026-08-10T15:00+08:00' \
+    --event-location '5F 大会议室'
 ```
 
 **参数说明：**
 - `--event-summary`：日程标题，设置此参数即开启日程邀请模式，需同时设置 `--event-start` 和 `--event-end`
-- `--event-start` / `--event-end`：ISO 8601 格式时间，如 `2026-05-10T14:00+08:00`
+- `--event-start` / `--event-end`：ISO 8601 格式时间，如 `2026-08-10T14:00+08:00`
 - `--event-location`：可选，日程地点
 
 **约束：**
