@@ -57,7 +57,7 @@ lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
 
 若本次发布包含自动化 handler，继续读取 [automation SOP](lark-apps-automation.md)。enable 不能替代 commit/push/release，也绝不能发生在本轮 release finished 之前；只有用户明确要求启动、启用或测试时才在该门槛后启用 trigger。
 
-用户只要求启用已有 trigger 时，转到 automation SOP 的 enable-only 路径；不得因 enable 反向修改 handler、commit/push 或 release。
+用户只要求启用已有 trigger 时，转到 [automation SOP 的「仅启用已有 disabled trigger」路径](lark-apps-automation.md#仅启用已有-disabled-trigger)；不得因 enable 反向修改 handler、commit/push 或 release。
 
 ## 领域规则
 
