@@ -144,6 +144,18 @@ func TestMailRuleReorder_FullRuleIDsUnchanged(t *testing.T) {
 	}
 }
 
+func TestMailRuleReorder_DeduplicatesListRuleIDs(t *testing.T) {
+	_, posted, err := runMailRuleReorder(t, `{"rule_ids":["3"]}`, func(reg *httpmock.Registry, calls, posted *[]string) {
+		registerSuccessfulMailRuleFlow(reg, calls, posted, "1", "1", "2", "3")
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{"3", "1", "2"}; !reflect.DeepEqual(posted, want) {
+		t.Fatalf("posted rule_ids = %v, want %v", posted, want)
+	}
+}
+
 func TestMailRuleReorder_ValidationErrors(t *testing.T) {
 	tests := []struct {
 		name string

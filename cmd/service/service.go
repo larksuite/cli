@@ -400,9 +400,10 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if err != nil {
 		return err
 	}
+	extension := serviceMethodExtensionFor(opts.SchemaPath)
 
-	if opts.SchemaPath == mailRuleReorderSchemaPath && opts.DryRun {
-		return serviceDryRunMailRuleReorder(f, request, config, opts.Format)
+	if opts.DryRun && extension.dryRun != nil {
+		return extension.dryRun(f, request, config, opts.Format)
 	}
 	if opts.DryRun {
 		if fileMeta != nil {
@@ -422,8 +423,8 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		return err
 	}
 
-	if opts.SchemaPath == mailRuleReorderSchemaPath {
-		request, err = completeMailRuleReorderRequest(opts.Ctx, ac, request)
+	if extension.prepareRequest != nil {
+		request, err = extension.prepareRequest(opts.Ctx, ac, request)
 		if err != nil {
 			return err
 		}

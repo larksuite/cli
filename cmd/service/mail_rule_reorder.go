@@ -155,6 +155,7 @@ func extractMailRuleIDsFromListResponse(result interface{}) []string {
 		return nil
 	}
 	ids := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
 	for _, item := range items {
 		itemMap, ok := item.(map[string]interface{})
 		if !ok {
@@ -162,6 +163,10 @@ func extractMailRuleIDsFromListResponse(result interface{}) []string {
 		}
 		id, ok := itemMap["rule_id"].(string)
 		if ok && id != "" {
+			if _, exists := seen[id]; exists {
+				continue
+			}
+			seen[id] = struct{}{}
 			ids = append(ids, id)
 		}
 	}
@@ -180,15 +185,16 @@ func mergeMailRuleIDs(explicit, all []string) ([]string, error) {
 	}
 
 	completed := append([]string(nil), explicit...)
-	explicitSet := make(map[string]struct{}, len(explicit))
+	completedSet := make(map[string]struct{}, len(explicit)+len(all))
 	for _, id := range explicit {
-		explicitSet[id] = struct{}{}
+		completedSet[id] = struct{}{}
 	}
 	for _, id := range all {
-		if _, ok := explicitSet[id]; ok {
+		if _, ok := completedSet[id]; ok {
 			continue
 		}
 		completed = append(completed, id)
+		completedSet[id] = struct{}{}
 	}
 	return completed, nil
 }
