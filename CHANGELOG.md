@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.72] - 2026-07-17
+
+### Features
+
+- **slides**: lint table out of canvas
+- **slides**: report resolved table size mismatches
+- **approval**: support approval event consumption (#1924)
+
+### Bug Fixes
+
+- **vc**: don't fail +detail for in-progress meetings (#1930)
+- stabilize drive delete E2E terminal-state checks (#1939)
+
+### Documentation
+
+- **slides**: document table dimensions
+- document base field default values (#1500)
+- **sheets**: use English placeholder in table-get guidance (#1936)
+
+### Tests
+
+- stabilize live e2e auth retries (#1904)
+- use tri-state wiki node identity in delete verification (#1931)
+- fix drive cover download retries (#1934)
+
 ## [v1.0.71] - 2026-07-16
 
 ### Features
@@ -1527,6 +1552,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.72]: https://github.com/larksuite/cli/releases/tag/v1.0.72
 [v1.0.71]: https://github.com/larksuite/cli/releases/tag/v1.0.71
 [v1.0.70]: https://github.com/larksuite/cli/releases/tag/v1.0.70
 [v1.0.69]: https://github.com/larksuite/cli/releases/tag/v1.0.69
