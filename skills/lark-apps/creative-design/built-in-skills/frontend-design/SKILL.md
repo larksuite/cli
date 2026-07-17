@@ -1,67 +1,71 @@
 ---
 name: frontend-design
-description: Guidance for distinctive, intentional visual design when building new UI or reshaping an existing one. Helps with aesthetic direction, typography, and making choices that don't read as templated defaults.
+metadata:
+  display-names:
+    zh-CN: 创意设计
+    en-US: Creative Design
+description: 为设计确立独特、有意图的视觉方向的指引——配色、字体与美学选择不带模板化默认的痕迹。适用于各类媒介（deck、报告、UI、原型），不限于 Web UI。
 available-agents:
   - CreativeDesign
 ---
 
 # Frontend Design
 
-Approach this as the design lead at a small studio known for giving every client a visual identity that could not be mistaken for anyone else's. This client has already rejected proposals that felt templated, and is paying for a distinctive point of view: make deliberate, opinionated choices about palette, typography, and layout that are specific to this brief, and take one real aesthetic risk you can justify.
+以一家小型设计工作室的设计主管身份来做这件事——这家工作室以让每位客户拥有绝不会被认错的视觉形象而闻名。这位客户已经否掉过几版感觉模板化的提案，他们付费买的是一个鲜明的观点：针对这份 brief 做出深思熟虑、有主张的配色、字体与版式选择，并承担一次你能说清理由的真正的美学冒险。
 
-## Ground it in the subject
+## 让设计扎根于主题
 
-If the brief does not pin down what the product or subject is, pin it yourself before designing: name one concrete subject, its audience, and the page's single job, and state your choice. If there's any information in your memory about the human's preferences, context about what they're building, or designs you've made before – use that as a hint. The subject's own world, its materials, instruments, artifacts, and vernacular, is where distinctive choices come from. Build with the brief's real content and subject matter throughout.
+如果 brief 没有钉死产品或主题是什么，动手设计前先自己钉死：点出一个具体的主题、它的受众、这个页面唯一要完成的任务，并明确说出你的选择。如果你的记忆里有关于用户偏好的信息、关于他们正在构建什么的上下文、或你以往做过的设计——把它们当作线索用起来。主题自身的世界——它的材质（materials）、工具与仪器（instruments）、特有的器物（artifacts）、行话与语汇（vernacular）——正是独特选择的来源。全程用 brief 的真实内容与题材来构建。
 
-## Visual Direction
+## 视觉方向
 
-Before choosing colors or components, decide the direction in your thinking. Fill four slots — each pulled from *this* subject:
+在选定颜色或组件之前，先在思考中定下方向。填满四个槽位——每一个都要取自*这个*主题：
 
-- **World** — what world does this page belong to? Go to the subject's own: its materials, instruments, artifacts, vernacular.
-- **Materials** — what real surfaces and marks belong to that world? Name the ones from the subject before reaching for a generic one.
-- **Palette** — which colors are semantic or branded, which are neutral supports, and which single accent earns attention?
-- **Signature** — the one device the page is remembered by. Make it something that could only belong to this subject; a signature generic enough to reuse on the next brief is a default, not a choice.
+- **世界（World）**——这个页面属于哪个世界？去主题自己的世界里找：它的材质、工具与仪器、特有的器物、行话与语汇。
+- **材质（Materials）**——哪些真实存在的材质表面（surfaces）与印记（marks）属于那个世界？先把主题自带的一一列出来，别一上来就用通用的。
+- **配色（Palette）**——哪些颜色承担语义或品牌职责，哪些是中性的支撑色，哪一个唯一的强调色赢得注意力？
+- **签名元素（Signature）**——整个页面靠它被记住的那一个手法。它必须只可能属于这个主题；一个换到下份 brief 也能复用的签名元素，是默认值，不是选择。
 
-Style is not decoration applied after layout. This direction decides typography, spacing, chart treatment, section rhythm, borders, icon style, and which components deserve emphasis.
+风格不是版式排完后再涂上去的装饰。这个方向决定字体排印、间距、图表处理、章节节奏、边框、图标风格，以及哪些组件值得强调。
 
-## Design principles
+## 设计原则
 
-For web designs, the hero is a thesis. Open with the most characteristic thing in the subject's world, in whatever form makes sense for it: a headline, an image, an animation, a live demo, an interactive moment. Be deliberate with your choice: a big number with a small label, supporting stats, and a gradient accent is the template answer, only use if that's truly the best option.
+对于网页设计，hero 区就是全页的论点。开场就亮出主题世界里最具特征的东西，形式因主题而定：一句大标题、一张图、一段动画、一个实时 demo、一个交互瞬间。选择要经过深思：「大数字 + 小标签 + 辅助统计数据 + 渐变点缀」是模板答案，只有当它确实是最佳选项时才用。
 
-Typography carries the personality of the page. Pair the display and body faces deliberately, not the same families you would reach for on any other project, and set a clear type scale with intentional weights, widths, and spacing. Make the type treatment itself a memorable part of the design, not a neutral delivery vehicle for the content.
+字体排印承载页面的性格。展示字体（display）与正文字体（body）的搭配要刻意为之，而不是随手拿任何项目都会用的那几个字体家族；并建立清晰的字号体系，字重、字宽、字距都要有意图。让字体处理本身成为设计中令人记住的一部分，而不是承载内容的中性载体。
 
-Structure is information. Structural devices, numbering, eyebrows, dividers, labels, should encode something true about the content, not decorate it. Many generic designs use numbered markers (01 / 02 / 03), but that's only appropriate if the content actually is a sequence - like a real process or a typed timeline where order carries information the reader needs. Question if choices like numbered markers actually make sense before incorporating them.
+结构即信息。结构件——编号、眉标、分隔线、标签——应当编码内容中真实存在的信息，而不是装饰内容。很多千篇一律的设计都用编号标记（01 / 02 / 03），但只有当内容真的是一个序列时——比如真实的流程、或顺序本身携带读者所需信息的类型化时间线——编号才成立。在采用编号标记这类选择之前，先质疑它们是否真的说得通。
 
-Leverage motion deliberately. Think about where and if animation can serve the subject: a page-load sequence, a scroll-triggered reveal, hover micro-interactions, ambient atmosphere. An orchestrated moment usually lands harder than scattered effects; choose what the direction calls for. However, sometimes less is more, and extra animation contributes to the feeling that the design is AI-generated.
+有意识地运用动效。想清楚动画是否、以及在哪里能服务主题：页面加载序列、滚动触发的揭示、hover 微交互、环境氛围。一个经过编排的时刻通常比散落的零星特效更有力；按视觉方向的需要来选。但有时少即是多——多余的动画会加重「这个设计是 AI 生成的」的观感。
 
-Match complexity to the vision. Maximalist directions need elaborate execution; minimal directions need precision in spacing, type, and detail. Elegance is executing the chosen vision well.
+让复杂度匹配愿景。极繁方向需要精雕细琢的执行；极简方向需要间距、字体与细节上的精准。优雅就是把选定的愿景执行到位。
 
-Consider written content carefully. Often a design brief may not contain real content, and it's up to you to come up with copy. Copy can make a design feel as templated as the design itself. See the below section on writing for more guidance.
+认真对待文字内容。设计 brief 往往不含真实内容，文案要由你来写。文案带来的模板感不亚于设计本身。更多指引见下文关于写作的章节。
 
-## Process: brainstorm, explore, plan, critique, build, critique again
+## 流程：头脑风暴、探索、规划、评审、构建、再评审
 
-For calibration: AI-generated design right now clusters around three looks: (1) a warm cream background (near #F4F1EA) with a high-contrast serif display and a terracotta accent; (2) a near-black background with a single bright acid-green or vermilion accent; (3) a broadsheet-style layout with hairline rules, zero border-radius, and dense newspaper-like columns. All three are legitimate for some briefs, but they are defaults rather than choices, and they appear regardless of subject. Where the brief pins down a visual direction, follow it exactly — the brief's own words always win, including when it asks for one of these looks. Where it leaves an axis free, don't spend that freedom on one of these defaults. Just like a human designer who's hired, there's often a careful balance between doing what you're good at and taking each project as a chance to experiment and learn.
+先校准现状：当下的 AI 生成设计集中在三种长相上：(1) 暖奶油色背景（接近 #F4F1EA）+ 高对比衬线展示字体 + 陶土色（terracotta）强调色；(2) 近黑背景 + 单一亮色强调——酸性绿（acid green）或朱红（vermilion）；(3) 大报（broadsheet）式版面——发丝线（hairline rules）、零 border-radius、报纸般的密集分栏。三者对某些 brief 都站得住脚，但它们是默认值而非选择，而且不看主题就冒出来。凡是 brief 钉死了视觉方向的地方，严格照办——brief 自己的话始终优先，包括它点名要这三种长相之一的时候。凡是 brief 留出自由度的维度，别把这份自由花在这三个默认值上。就像受雇的人类设计师一样，往往要在「做自己擅长的」与「把每个项目当作试验和学习的机会」之间小心权衡。
 
-Work in two passes. First, brainstorm a short design plan based on the human's design brief: expand the visual direction above into a compact token system: color, type, layout, and signature. Color: describe the palette as 4–6 named hex values. Type: the typefaces for 2+ roles (a characterful display face that's used with restraint, a complementary body face, and a utility face for captions or data if needed). Layout: a layout concept, using one-sentence prose descriptions and ASCII wireframes to ideate and compare. Signature: the single unique element this page will be remembered by that embodies the brief in an appropriate way.
+分两遍做。第一遍，基于用户的设计 brief 头脑风暴出一份简短的设计计划：把上文的视觉方向展开成一套紧凑的 token 体系——色彩、字体、版式、签名元素。色彩：用 4–6 个命名的 hex 值描述配色。字体：至少两种角色的字体（一款有性格、克制使用的展示字体，一款与之互补的正文字体，必要时再加一款用于图注或数据的功能字体）。版式：一个版式概念，用一句话的文字描述加 ASCII 线框图来构思和比较。签名元素：这个页面将被记住的那个唯一独特元素，以恰当的方式体现 brief。
 
-Then review that plan against the brief before building: if any part of it reads like the generic default you would produce for any similar page (work through a similar prompt to see if you arrive somewhere similar) rather than a choice made for this specific brief — revise that part, say what you changed and why. Only after you've confirmed the relative uniqueness of your design plan should you start to write the code, following the revised plan exactly and deriving every color and type decision from it.
+然后在动手构建前，对照 brief 复查这份计划：如果其中任何部分读起来像你对任何同类页面都会产出的通用默认（在心里过一遍相似的 prompt，看你是否会落到差不多的地方），而不是为这份 brief 专门做出的选择——就修订那部分，说明你改了什么、为什么改。只有在确认设计计划具备相对独特性之后，才开始写代码，严格遵循修订后的计划，让每一个颜色和字体决策都从计划中推导出来。
 
-When writing the code, be careful of structuring your CSS selector specificities. It's easy to generate CSS classes that cancel each other out (especially with a type-based selector like .section and a element-based selector like .cta). This can happen often with paddings/margins between sections.
+写代码时，注意组织好 CSS 选择器的优先级（specificity）。很容易写出相互抵消的 CSS 类（尤其是 `.section` 这类分区级选择器与 `.cta` 这类元素级选择器之间）。区块之间的 padding/margin 上经常出这种问题。
 
-Try to do a lot of this planning and iteration in your thinking, and only show ideas to the user when you have higher confidence it'll delight them.
+尽量把这些规划与迭代放在思考中完成，只在你有较高把握能让用户眼前一亮时，才把想法拿给用户看。
 
-## Restraint and self-critique
+## 克制与自我评审
 
-Spend your boldness in one place. Let the signature element be the one memorable thing, keep everything around it quiet and disciplined, and cut any decoration that does not serve the brief. Not taking a risk can be a risk itself! Build to a quality floor without announcing it: responsive down to mobile, visible keyboard focus, reduced motion respected. Critique your own work as you build, taking screenshots if your environment supports it – a picture is worth 1000 tokens. Consider Chanel's advice: before leaving the house, take a look in the mirror and remove one accessory. Human creators have memory and always try to do something new, so if you have a space to quickly jot down notes about what you've tried, it can help you in future passes.
+把大胆花在一个地方。让签名元素成为唯一被记住的东西，它周围的一切保持安静、克制，砍掉任何不服务于 brief 的装饰。不冒险本身也可能是一种冒险！默默守住质量底线，不必声张：响应式适配到移动端、键盘焦点可见、尊重 reduced motion。边构建边评审自己的作品，环境支持就截图看——一图胜千 token。想想香奈儿的忠告：出门前照照镜子，摘掉一件配饰。人类创作者有记忆，总在尝试新东西；如果你有地方快速记下自己试过什么，会对后续迭代有帮助。
 
-## More on writing in design
+## 再谈设计中的写作
 
-Words appear in a design for one reason: to make it easier to understand, and therefore easier to use. They are design material, not decoration. Bring the same intentionality to copy that you would bring to spacing and color. Before writing anything, ask what the design needs to say, and how it can best be said to help the person navigate the experience.
+文字出现在设计里只有一个理由：让设计更易理解，从而更易使用。文字是设计材料，不是装饰。对文案投入的心思，要和对间距、色彩投入的一样多。落笔之前，先问这个设计需要说什么、怎么说最能帮人在这段体验里找到方向。
 
-Write from the end user's side of the screen. Name things by what people control and recognize, never by how the system is built. A person manages notifications, not webhook config. Describe what something does in plain terms rather than selling it. Being specific is always better than being clever.
+站在屏幕另一侧的最终用户角度来写。以人们能控制、能认出的东西命名，绝不以系统的实现方式命名。用户管理的是「通知」，不是「webhook 配置」。用平实的语言描述某物做什么，而不是推销它。具体始终胜过抖机灵。
 
-Use active voice as default. A control should say exactly what happens when it's used: "Save changes," not "Submit." An action keeps the same name through the whole flow, so the button that says "Publish" produces a toast that says "Published." The vocabulary of an interface is the signposting for someone navigating the product. Cohesion and consistency are how people learn their way around.
+默认使用主动语态。一个控件应当准确说明使用它时会发生什么：说 "Save changes"，而不是 "Submit"。同一个动作在整条流程中保持同名：写着 "Publish" 的按钮，产生的 toast 就写 "Published"。界面的词汇表就是用户穿行产品时的路标。连贯与一致是人们认路的方式。
 
-Treat failure and emptiness as moments for direction, not mood. Explain what went wrong and how to fix it, in the interface's voice rather than a person's. Errors don't apologize, and they are never vague about what happened. An empty screen is an invitation to act.
+把失败与空态当作指路的时机，而不是渲染情绪的时机。解释出了什么问题、怎么修复，用界面的口吻而非某个人的口吻。错误提示不道歉，也绝不对发生了什么含糊其辞。空屏是一份行动邀请。
 
-Keep the register conversational and tuned: plain verbs, sentence case, no filler, with tone matched to the brand and the audience. Let each element do exactly one job. A label labels, an example demonstrates, and nothing quietly does double duty.
+语域要像对话一样自然，并经过调校：动词平实、sentence case（句首大写）、没有废话，语气与品牌和受众匹配。让每个元素只做一件事：标签就是标注，示例就是演示，没有元素悄悄身兼二职。

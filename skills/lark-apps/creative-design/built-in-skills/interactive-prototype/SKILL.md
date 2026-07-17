@@ -1,5 +1,9 @@
 ---
 name: interactive-prototype
+metadata:
+  display-names:
+    zh-CN: 交互原型
+    en-US: Interactive Prototype
 description: Working app with real interactions
 available-agents:
   - CreativeDesign

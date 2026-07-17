@@ -1,5 +1,9 @@
 ---
 name: hi-fi-design
+metadata:
+  display-names:
+    zh-CN: 高保真设计
+    en-US: Hi-Fi Design
 description: 用于创建高保真 UI mockup、设计探索，或带多种变体的视觉原型。触发词：mockup, hi-fi, prototype, UI design, 高保真, 设计稿, 原型, 界面设计, 视觉设计, 设计方案
 available-agents:
   - CreativeDesign

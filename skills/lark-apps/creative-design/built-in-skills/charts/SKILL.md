@@ -1,5 +1,9 @@
 ---
 name: charts
+metadata:
+  display-names:
+    zh-CN: 图表
+    en-US: Charts
 description: "基于 ECharts 的数据可视化，用于浏览器直出 HTML。当需要创建图表、仪表盘或数据可视化时使用。触发词：chart, ECharts, 图表, 可视化, visualization, 饼图, 柱状图, 折线图, 数据图表, 甘特图, 热力图, 数据展示, dashboard, 仪表盘, 数据看板"
 available-agents:
   - CreativeDesign
@@ -139,7 +143,7 @@ Object.assign(window, { EChart });
 | 6 | Funnel label 被隐藏或位置不在内部 | `label: { show: true, position: 'inside' }` |
 | 7 | 容器高度 <300px | `min-height: 300px` |
 | 8 | 单张图表中分类色（每项一个色相）>8 种 | 聚合或分组 |
-| 9 | Pie 使用了外部引导线标签（`position` 缺失或为 `'outside'`） | `label: { show: false }` + `emphasis: { label: { show: false } }`；使用 tooltip。允许 `position: 'inside'` 和 doughnut 中心标签 |
+| 9 | Pie / 环形图的分类或数值只能靠 tooltip 读到——用了外部引导线标签（`position` 为 `'outside'` 或缺失），或干脆 `label: { show: false }` 且既无图例也无中心标注 | 分类 + 数值必须**静态可读**（tooltip 不算，图表常被导出 / 截图当静态图看）。任选其一：inside 标签标注 `name` + 百分比（扇区够大时）、图例映射色 → 分类、或环形图中心标注关键数值。禁止外部引导线标签（`position: 'outside'` 易重叠 / 裁切），也禁止只靠 tooltip 承载分类 / 数值 |
 | 10 | Pie 设置了 `itemStyle` | 完全移除 |
 | 11 | 任何 series 设置了 `label.color` | 禁止设置；由 theme 控制 |
 | 12 | `label.formatter` 使用字符串模板 | 改用回调：`formatter: (params) => ...` |

@@ -1,5 +1,9 @@
 ---
 name: animated-video
+metadata:
+  display-names:
+    zh-CN: 动画视频
+    en-US: Animated Video
 description: Use when creating animated videos, motion graphics, product walkthroughs, or visual storytelling with timeline-based playback. 触发词：animation, video, motion, 动画, 视频, 动效, 产品演示, 演示动画, walkthrough
 available-agents:
   - CreativeDesign

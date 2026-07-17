@@ -28,6 +28,11 @@
 // When placing a device frame inside a DCArtboard, pass chromeless to
 // suppress the card chrome and let the artboard size to its content:
 //   <DCArtboard chromeless><IOSDevice>…</IOSDevice></DCArtboard>
+//
+// On mobile (UA-detected) the canvas is browse-only: one-finger drag pans
+// (starting on artboards too), two-finger pinch zooms, the zoom control is
+// hidden, and drag-reorder / inline-rename are disabled. Tap on an artboard
+// label still opens the focus overlay.
 /* END USAGE */
 
 const DC = {
@@ -39,6 +44,15 @@ const DC = {
   postitText: '#5a4a2a',
   font: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
 };
+
+// ── 移动端判定：复刻主仓 @apaas-ai/global-states isMobile() 的 UA 语义
+// （跨域产物 iframe 无法 import 该包，同 deck-stage 的先例）。刻意不用视口
+// 断点——桌面工作台的预览 iframe 本身就窄，视口宽度会把桌面预览误判成移动端。
+// 启动时一次性判定，不随 resize 抖动。
+const DC_MOBILE_UA_RE = /(phone|pad|pod|iPhone|iPod|ios|iPad|Android|Mobile|BlackBerry|IEMobile|MQQBrowser|JUC|Fennec|wOSBrowser|BrowserNG|WebOS|Symbian|Windows Phone)/i;
+const dcIsMobile = typeof navigator !== 'undefined' &&
+  (DC_MOBILE_UA_RE.test(navigator.userAgent) ||
+    (/iPad|Tab|Tablet/i.test(navigator.userAgent) && !!navigator.maxTouchPoints && navigator.maxTouchPoints > 1));
 
 // One-time CSS injection (classes are dc-prefixed so they don't collide with
 // the hosted design's own styles).
@@ -92,6 +106,39 @@ if (typeof document !== 'undefined' && !document.getElementById('dc-styles')) {
     // can't be reveal-on-hover and tends to stick visible after a tap — hide it
     // entirely on mobile. The grip + label stay for per-screen context.
     '@media (hover: none){.dc-btns{display:none}}',
+    // Mobile (UA-detected, .dc-mobile on the viewport root) is browse-only:
+    // drag-reorder is disabled there, so the grip is dead weight — hide it.
+    '.dc-mobile .dc-grip{display:none}',
+    // Mobile is browse-only: kill text selection + iOS long-press callout
+    // inside the canvas. iOS interprets a drag over selectable TEXT as a
+    // selection gesture and steals the pointer (pointercancel) — touch-action
+    // only suppresses native pan/zoom, not selection — so text-dense
+    // artboards became un-pannable while image-heavy ones panned fine.
+    '.dc-mobile, .dc-mobile *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}',
+    // Prototype content routinely carries inner scrollers (the device/window
+    // frames all have overflow:auto bodies). On iOS a touch starting inside a
+    // scrollable element is consumed by THAT scroller (native scroll attempt
+    // + pointercancel), so pans could never start on those artboards while
+    // plain-HTML cards panned fine. Mobile canvas is browse-only: kill native
+    // touch handling on everything inside the cards so gestures always reach
+    // the viewport state machine. Desktop (no .dc-mobile) keeps inner scroll.
+    '.dc-mobile [data-dc-slot] *{touch-action:none !important}',
+    // Pinch updates --dc-inv-zoom per frame (PC semantics: chrome size AND
+    // section spacing stay constant). The per-frame relayout that implies
+    // white-flashed on WKWebView when the whole world was one paint layer —
+    // every head resize invalidated and re-rasterized ALL content. Promote
+    // each card (and head) to its own compositing layer: relayout then only
+    // MOVES card layers (compositor, no repaint) and repaints just the tiny
+    // head layers. contain:paint bounds invalidation to the card box.
+    // contain:paint must live on .dc-card, NOT the slot: .dc-header is an
+    // abs-positioned slot child sitting entirely ABOVE the slot box
+    // (bottom:100%) — paint containment on the slot would clip it out of
+    // rendering AND hit-testing, killing the label tap that is mobile's only
+    // focus-overlay entry. will-change (the layer-promotion half of the
+    // white-flash fix) stays on the slot so header + card share one layer.
+    '.dc-mobile [data-dc-slot]{will-change:transform}',
+    '.dc-mobile .dc-card{contain:paint}',
+    '.dc-mobile .dc-sectionhead{will-change:transform}',
     '[data-dc-slot]:hover .dc-card.chromeless>*,  [data-dc-slot]:hover .dc-card:not(.chromeless){box-shadow:0 4px 8px -8px rgba(0, 0, 0, 0.06), 0 6px 12px 0 rgba(0, 0, 0, 0.04), 0 8px 24px 8px rgba(0, 0, 0, 0.04)}',
     '.dc-expand,.dc-kebab{width:22px;height:22px;border-radius:6px;border:none;cursor:pointer;padding:0;',
     '  background:transparent;color:#646A73;display:flex;align-items:center;justify-content:center;',
@@ -439,7 +486,10 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
     el.style.setProperty('--dc-inv-zoom', String(1 / scale));
     // Keep the on-canvas zoom control's % readout in sync. React bails out on
     // an unchanged rounded value, so pan ticks (scale unchanged) don't render.
-    setScalePct(Math.round(scale * 100));
+    // Mobile renders no zoom control — a per-frame setState during pinch
+    // would re-render the whole subtree every frame (visible repaint flicker
+    // on phones) for a readout nobody consumes, so skip it there entirely.
+    if (!dcIsMobile) setScalePct(Math.round(scale * 100));
     // Keep the host toolbar's % readout in sync with the canvas scale. Pan
     // ticks leave scale unchanged — skip the cross-frame post for those.
     if (lastPostedScale.current !== scale) {
@@ -490,7 +540,9 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
     const slots = world.querySelectorAll('[data-dc-slot]');
     if (!slots.length) return; // content not mounted yet — wait for the ready commit
     const heads = world.querySelectorAll('.dc-sectionhead');
-    const PAD = 64;
+    // Fit margin from the screen edges. Mobile screens are narrow — 64px a
+    // side eats a third of the width, so fit flush-ish at 16px there.
+    const PAD = dcIsMobile ? 16 : 64;
 
     // Content bounding box in WORLD space at the currently applied transform.
     // X extent from cards only (section-head blocks are full width and would
@@ -630,11 +682,18 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
     // better feel there. No-ops on other browsers. Safari also fires
     // ctrlKey wheel events during the same pinch — isGesturing makes
     // onWheel drop those entirely so they neither zoom nor pan.
+    //
+    // On mobile the pointer-based two-finger pinch below is the single zoom
+    // source. iOS fires BOTH pointer events and these WebKit gesture* events
+    // for the same two fingers — zooming from both would double-apply, so on
+    // mobile gesture* degrades to preventDefault only (still suppressing the
+    // native page zoom).
     let gsBase = 1;
     let isGesturing = false;
     const onGestureStart = (e) => { e.preventDefault(); isGesturing = true; gsBase = tf.current.scale; };
     const onGestureChange = (e) => {
       e.preventDefault();
+      if (dcIsMobile) return;
       zoomAt(e.clientX, e.clientY, (gsBase * e.scale) / tf.current.scale);
     };
     const onGestureEnd = (e) => { e.preventDefault(); isGesturing = false; };
@@ -662,6 +721,87 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
       vp.releasePointerCapture(e.pointerId);
       drag = null;
       vp.style.cursor = '';
+    };
+
+    // ── Mobile touch gestures (replaces the desktop pointer mapping above):
+    // one-finger drag pans — starting on artboards too, since cards fill a
+    // phone viewport and background is scarce; two-finger pinch zooms about
+    // the midpoint while the midpoint's own travel pans (Figma semantics, one
+    // gesture frames the view). A tap/pan slop keeps label taps working: no
+    // capture happens within the slop, so a clean tap still clicks through to
+    // focus; past it the viewport captures the pointer and the click retargets
+    // harmlessly. No fling/inertia — release stops the canvas (spec §8).
+    const touches = new Map(); // pointerId -> last {x, y}
+    let mobMode = null;        // null | 'tap' | 'pan' | 'pinch'
+    let tapStart = null;       // down point for slop arbitration
+    let pinchDist = 0;         // previous-frame finger distance
+    let pinchMid = null;       // previous-frame midpoint
+    const MOB_SLOP = 9;        // px of travel before a tap becomes a pan
+
+    // First two insertion-ordered touches define the pinch; a third finger is
+    // tracked but inert (its moves shift neither midpoint nor distance).
+    const pinchGeom = () => {
+      const [a, b] = [...touches.values()];
+      return { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+    };
+
+    const onTouchDown = (e) => {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 1) {
+        mobMode = 'tap';
+        tapStart = { x: e.clientX, y: e.clientY };
+      } else if (touches.size === 2) {
+        mobMode = 'pinch';
+        const g = pinchGeom();
+        pinchDist = g.d;
+        pinchMid = { x: g.mx, y: g.my };
+        try { vp.setPointerCapture(e.pointerId); } catch {}
+      }
+    };
+    const onTouchMove = (e) => {
+      const t = touches.get(e.pointerId);
+      if (!t) return;
+      const px = t.x, py = t.y;
+      t.x = e.clientX; t.y = e.clientY;
+      if (mobMode === 'tap' && Math.hypot(t.x - tapStart.x, t.y - tapStart.y) > MOB_SLOP) {
+        mobMode = 'pan';
+        try { vp.setPointerCapture(e.pointerId); } catch {}
+      }
+      if (mobMode === 'pan') {
+        tf.current.x += t.x - px;
+        tf.current.y += t.y - py;
+        apply();
+      } else if (mobMode === 'pinch') {
+        const g = pinchGeom();
+        tf.current.x += g.mx - pinchMid.x;
+        tf.current.y += g.my - pinchMid.y;
+        pinchMid = { x: g.mx, y: g.my };
+        // zoomAt applies the pan mutation above too; degenerate distances
+        // (fingers together) skip the zoom but still need the pan applied.
+        // Same full zoomAt as the desktop trackpad-pinch path (gesturechange):
+        // per-frame --dc-inv-zoom keeps chrome size AND section spacing
+        // constant throughout the gesture, with the same drift compensation.
+        if (pinchDist > 0 && g.d > 0) zoomAt(g.mx, g.my, g.d / pinchDist);
+        else apply();
+        pinchDist = g.d;
+      }
+    };
+    const onTouchUp = (e) => {
+      if (!touches.delete(e.pointerId)) return;
+      try { vp.releasePointerCapture(e.pointerId); } catch {}
+      if (touches.size === 0) {
+        mobMode = null;
+      } else if (touches.size === 1) {
+        // Pinch collapsing to one finger hands off to pan with the surviving
+        // finger as the new baseline — no jump.
+        mobMode = 'pan';
+      } else if (mobMode === 'pinch') {
+        // 3+ fingers losing one: re-baseline so the new leading pair doesn't
+        // read as a sudden midpoint/distance delta.
+        const g = pinchGeom();
+        pinchDist = g.d;
+        pinchMid = { x: g.mx, y: g.my };
+      }
     };
 
     // Host-driven zoom (toolbar % menu). Zooms around viewport centre so the
@@ -694,31 +834,37 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
     lastPostedScale.current = undefined;
     apply();
 
+    // Mobile swaps the desktop pointer mapping (bg-only pan) for the touch
+    // state machine; wheel/gesture listeners stay on both (harmless without
+    // the hardware, and a bluetooth mouse on Android still pans via wheel).
+    const pd = dcIsMobile ? onTouchDown : onPointerDown;
+    const pm = dcIsMobile ? onTouchMove : onPointerMove;
+    const pu = dcIsMobile ? onTouchUp : onPointerUp;
     vp.addEventListener('wheel', onWheel, { passive: false });
     vp.addEventListener('gesturestart', onGestureStart, { passive: false });
     vp.addEventListener('gesturechange', onGestureChange, { passive: false });
     vp.addEventListener('gestureend', onGestureEnd, { passive: false });
-    vp.addEventListener('pointerdown', onPointerDown);
-    vp.addEventListener('pointermove', onPointerMove);
-    vp.addEventListener('pointerup', onPointerUp);
-    vp.addEventListener('pointercancel', onPointerUp);
+    vp.addEventListener('pointerdown', pd);
+    vp.addEventListener('pointermove', pm);
+    vp.addEventListener('pointerup', pu);
+    vp.addEventListener('pointercancel', pu);
     return () => {
       window.removeEventListener('message', onHostMsg);
       vp.removeEventListener('wheel', onWheel);
       vp.removeEventListener('gesturestart', onGestureStart);
       vp.removeEventListener('gesturechange', onGestureChange);
       vp.removeEventListener('gestureend', onGestureEnd);
-      vp.removeEventListener('pointerdown', onPointerDown);
-      vp.removeEventListener('pointermove', onPointerMove);
-      vp.removeEventListener('pointerup', onPointerUp);
-      vp.removeEventListener('pointercancel', onPointerUp);
+      vp.removeEventListener('pointerdown', pd);
+      vp.removeEventListener('pointermove', pm);
+      vp.removeEventListener('pointerup', pu);
+      vp.removeEventListener('pointercancel', pu);
     };
   }, [apply, minScale, maxScale]);
 
   return (
     <div
       ref={vpRef}
-      className="design-canvas"
+      className={dcIsMobile ? 'design-canvas dc-mobile' : 'design-canvas'}
       style={{
         height: '100vh', width: '100vw',
         background: DC.bg,
@@ -744,12 +890,16 @@ function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
       >
         {children}
       </div>
-      <DCZoomControl
-        scalePct={scalePct}
-        minScale={minScale}
-        maxScale={maxScale}
-        onZoomTo={(pct) => zoomCenteredRef.current?.(pct / 100)}
-      />
+      {/* Mobile zooms by pinch — the control is not rendered at all (host
+          set-zoom messages still work; the protocol is independent of it). */}
+      {!dcIsMobile && (
+        <DCZoomControl
+          scalePct={scalePct}
+          minScale={minScale}
+          maxScale={maxScale}
+          onZoomTo={(pct) => zoomCenteredRef.current?.(pct / 100)}
+        />
+      )}
     </div>
   );
 }
@@ -1035,9 +1185,12 @@ function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorde
 
   return (
     <div ref={ref} data-dc-slot={id} style={{ position: 'relative', flexShrink: 0 }}>
-      <div className="dc-header" data-miaoda-chrome="" style={{ color: DC.label }} onPointerDown={(e) => e.stopPropagation()}>
+      {/* Desktop stops pointerdown so header interactions never start a
+          bg-pan; mobile pans FROM chrome too (slop arbitration keeps label
+          taps working), so the event must bubble to the viewport there. */}
+      <div className="dc-header" data-miaoda-chrome="" style={{ color: DC.label }} onPointerDown={dcIsMobile ? undefined : (e) => e.stopPropagation()}>
         <div className="dc-labelrow">
-          <div className="dc-grip" onPointerDown={onGripDown} title="Drag to reorder">
+          <div className="dc-grip" onPointerDown={dcIsMobile ? undefined : onGripDown} title="Drag to reorder">
             <svg width="9" height="13" viewBox="0 0 9 13" fill="currentColor"><circle cx="2" cy="2" r="1.1"/><circle cx="7" cy="2" r="1.1"/><circle cx="2" cy="6.5" r="1.1"/><circle cx="7" cy="6.5" r="1.1"/><circle cx="2" cy="11" r="1.1"/><circle cx="7" cy="11" r="1.1"/></svg>
           </div>
           <div className="dc-labeltext" onClick={onFocus} title="Click to focus">
@@ -1086,6 +1239,13 @@ function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorde
 // Inline rename — commits on blur or Enter.
 function DCEditable({ value, onChange, style, tag = 'span', onClick }) {
   const T = tag;
+  // Mobile is browse-only: render plain text — no contentEditable (a tap
+  // would pop the soft keyboard), no stopPropagation (pans start on labels
+  // too), and no onClick swallow (desktop uses it to keep an edit-click from
+  // bubbling; on mobile the tap should bubble so a label tap opens focus).
+  if (dcIsMobile) {
+    return <T className="dc-editable" style={style}>{value}</T>;
+  }
   return (
     <T className="dc-editable" contentEditable suppressContentEditableWarning
       onClick={onClick}

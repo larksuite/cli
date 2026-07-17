@@ -1,6 +1,3 @@
-// Copyright (c) 2026 Lark Technologies Pte. Ltd.
-// SPDX-License-Identifier: MIT
-
 /* BEGIN USAGE */
 /**
  * <deck-stage> — reusable web component for HTML decks.
@@ -15,8 +12,9 @@
  *      hidden while presenting / in preview / on narrow / noscale / no-rail.
  *  (b) keyboard navigation — ←/→, PgUp/PgDn, Space, Home/End, number keys.
  *      On touch devices, tapping the left/right half of the stage goes
- *      prev/next — taps on links, buttons and other interactive slide
- *      content are left alone.
+ *      prev/next (desktop / presenting mode; mobile browse mode scrolls
+ *      instead — see (g)) — taps on links, buttons and other interactive
+ *      slide content are left alone.
  *  (c) press R to reset to slide 0.
  *  (d) auto-scaling — inner canvas is a fixed design size (default 1920×1080)
  *      scaled with `transform: scale()` to fit the viewport, letterboxed.
@@ -37,6 +35,18 @@
  *      (≤640px), and via the `no-rail` attribute. Rail mutations dispatch
  *      a `deckchange`
  *      CustomEvent on the element: detail = {action, from, to, slide}.
+ *  (g) mobile — on mobile UA (mirrors the host platform's isMobile()
+ *      semantics: UA regex + iPad maxTouchPoints, never viewport width),
+ *      browse mode renders slides as a vertical card stream (12px margin,
+ *      8px gap, 8px radius) with native scrolling; a per-card page badge
+ *      fades in while scrolling (16|20×12, ink 20% bg, fixed 8px digits)
+ *      and fades out 2s after scrolling stops. Presenting mode
+ *      (miaoda:deck:presenting) rotates the stage 90° (CSS pseudo-
+ *      landscape, no orientation.lock): tap left/right third to navigate,
+ *      tap center to toggle the controls overlay (back button +
+ *      filmstrip; auto-hides after 3s). The back button exits presenting
+ *      and posts miaoda:deck:presenting-dismissed to the parent.
+ *      Desktop behaviour is unchanged.
  *
  * Slides are HIDDEN, not unmounted. Non-active slides stay in the DOM with
  * `visibility: hidden` + `opacity: 0`, so their state (videos, iframes,
@@ -118,6 +128,21 @@
   const NARROW_MQ = matchMedia('(max-width: 640px)');
   // Slide-authored controls that should keep a tap instead of it navigating.
   const INTERACTIVE_SEL = 'a[href], button, input, select, textarea, summary, label, video[controls], audio[controls], [role="button"], [onclick], [tabindex]:not([tabindex^="-"]), [contenteditable]:not([contenteditable="false" i])';
+
+  // ── 移动端（复刻主仓 @apaas-ai/global-states isMobile() 的 UA 语义；
+  //    跨域产物 iframe 无法 import 该包）。刻意不用视口断点：桌面工作台的
+  //    预览 iframe 本身就窄，视口宽度会把桌面预览误判成移动端。
+  //    mode=desktop 逃生阀只作用于壳层自身 location、不透传到本 iframe，不实现。
+  const MOBILE_UA_RE = /(phone|pad|pod|iPhone|iPod|ios|iPad|Android|Mobile|BlackBerry|IEMobile|MQQBrowser|JUC|Fennec|wOSBrowser|BrowserNG|WebOS|Symbian|Windows Phone)/i;
+  const isMobileUA = () =>
+    MOBILE_UA_RE.test(navigator.userAgent) ||
+    (/iPad|Tab|Tablet/i.test(navigator.userAgent) && !!navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+  // 移动端视觉常量（Figma node 2965:32138 / 2965:32047 / 2965:34386 已确认）
+  const MOB_MARGIN = 12;        // 竖排卡片页边距
+  const MOB_GAP = 8;            // 卡片间距
+  const MOB_RADIUS = 8;         // 卡片圆角
+  const MOB_BADGE_IDLE_MS = 2000;  // 滚动停止 → 徽标淡出（UX 确认 2s）
+  const MOB_UI_HIDE_MS = 3000;     // 播放控件层自动收起
 
   const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -383,6 +408,143 @@
     .rail[data-presenting] + .rail-resize,
     .rail[data-user-hidden] + .rail-resize { display: none; }
 
+    /* ── 移动端竖排浏览 ─────────────────────────────────────── */
+    :host([data-mobile-list]) .stage {
+      display: block;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      background: #F8F9FA;
+    }
+    :host([data-mobile-list]) .canvas {
+      transform: none !important;
+      background: transparent;
+      will-change: auto;
+    }
+    :host([data-mobile-list][data-windowed]) .canvas { border: none; box-shadow: none; }
+    :host([data-mobile-list]) .rail, :host([data-mobile-list]) .rail-resize { display: none; }
+    :host([data-mobile-list]) ::slotted(*) {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform-origin: 0 0;
+      box-sizing: border-box;
+    }
+    /* Skipped slides get no nth-child placement rule from _fitMobileList —
+       without this they'd fall back to the base inset:0 stacking rule and,
+       now force-visible, paint over the whole list canvas and swallow taps.
+       (The equivalent rule further down lives inside @media print only.) */
+    :host([data-mobile-list]) ::slotted([data-deck-skip]) { display: none !important; }
+
+    /* ── 移动端播放：CSS 旋转伪横屏（不依赖 orientation.lock）────
+       只在设备物理竖屏时旋转；用户顺势把手机转成横屏（系统自动旋转）
+       后，视口本身已是横屏，再叠 90° 会让画面侧躺——此时退化为常规
+       full-bleed 适配，_fitMobilePresent/_mobPresentZone 同步按
+       orientation 分支换轴。 */
+    :host([data-mobile-present]) .stage { background: #000; }
+    @media (orientation: portrait) {
+      :host([data-mobile-present]) .stage {
+        inset: auto;
+        left: 50%;
+        top: 50%;
+        width: 100vh;
+        height: 100vw;
+        transform: translate(-50%, -50%) rotate(90deg);
+      }
+    }
+
+    /* ── 移动端页码徽标（规格：Figma 2965:32047）────────────── */
+    .mob-badges { display: none; }
+    :host([data-mobile-list]) .mob-badges {
+      display: block;
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .mob-badge {
+      position: absolute;
+      height: 12px;
+      box-sizing: border-box;
+      padding: 0 2px;
+      border-radius: 3px;
+      background: rgba(31, 35, 41, 0.2);
+      color: #fff;
+      font-family: 'PingFang SC', -apple-system, system-ui, sans-serif;
+      font-size: 8px;
+      line-height: 12px;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.1s linear;
+    }
+    :host([data-mob-scrolling]) .mob-badge { opacity: 1; }
+
+    /* ── 移动端播放控件层（规格：Figma 2965:34386）──────────── */
+    .mob-ui { display: none; }
+    :host([data-mobile-present][data-mob-ui]) .mob-ui {
+      display: block;
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .mob-back {
+      position: absolute;
+      left: max(16px, env(safe-area-inset-left));
+      top: 12px;
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      border-radius: 999px;
+      padding: 6px 14px;
+      background: rgba(0, 0, 0, 0.4);
+      color: #fff;
+      font-family: 'PingFang SC', -apple-system, system-ui, sans-serif;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .mob-strip {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: auto;
+      display: flex;
+      gap: 8px;
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+      /* 透明浮在 slide 上（验收对齐设计稿）——缩略图自带白底+描边已足够区分 */
+      background: transparent;
+      overflow-x: auto;
+    }
+    .mob-strip .mthumb { flex: 0 0 132px; cursor: pointer; }
+    .mob-strip .mframe {
+      width: 132px;
+      height: 72px;
+      border-radius: 8px;
+      border: 0.5px solid #DEE0E3;
+      overflow: hidden;
+      position: relative;
+      background: #fff;
+    }
+    .mob-strip .mthumb[data-current] .mframe {
+      outline: 1px solid #336DF4;
+      outline-offset: 2px;
+      border-radius: 10px;
+    }
+    .mob-strip .mnum {
+      margin-top: 2px;
+      text-align: center;
+      font-family: 'PingFang SC', -apple-system, system-ui, sans-serif;
+      font-size: 12px;
+      line-height: 20px;
+      font-weight: 500;
+      /* 条带透明、底衬通常是播放态黑底/slide 内容——页码用白色（对齐设计稿） */
+      color: rgba(255, 255, 255, 0.9);
+    }
+    .mob-strip .mthumb[data-current] .mnum { color: #336DF4; }
+
     /* ── Speaker-notes dock ──────────────────────────────────────────────
        Bottom panel spanning the non-rail width in edit mode: a resize grip
        (drag to set height, persisted to localStorage) + an editable textarea
@@ -541,6 +703,8 @@
       // windowed margin/shadow, see _fit. A bare load with no #N hash starts at
       // slide 1, so ?thumbnail=1 alone yields a clean first-slide frame.
       this._snthumb = /[?&](_snthumb|thumbnail)=/.test(location.search);
+      this._mobile = isMobileUA();
+      this._syncMobileMode();
       if (this._snthumb) this.setAttribute('no-rail', '');
       this._render();
       this._loadNotes();
@@ -833,6 +997,9 @@
       if (this._tweakTimer) clearTimeout(this._tweakTimer);
       if (this._railAnimTimer) clearTimeout(this._railAnimTimer);
       if (this._notesPersistTimer) clearTimeout(this._notesPersistTimer);
+      clearTimeout(this._mobUiTimer);
+      clearTimeout(this._mobScrollIdleTimer);
+      if (this._mobScrollRaf) { cancelAnimationFrame(this._mobScrollRaf); this._mobScrollRaf = null; }
       if (this._scaleRaf) cancelAnimationFrame(this._scaleRaf);
       if (this._liveObserver) this._liveObserver.disconnect();
       if (this._railObserver) this._railObserver.disconnect();
@@ -848,6 +1015,7 @@
         if (this._rail) {
           this._rail.style.setProperty('--deck-aspect', this.designWidth + '/' + this.designHeight);
         }
+        this._syncMobileMode();
         this._fit();
         this._scaleThumbs();
         this._syncPrintPageRule();
@@ -872,6 +1040,17 @@
       slot.addEventListener('slotchange', this._onSlotChange);
       canvas.appendChild(slot);
       stage.appendChild(canvas);
+
+      this._onMobScroll = this._onMobScroll.bind(this);
+      stage.addEventListener('scroll', this._onMobScroll, { passive: true });
+
+      // 移动竖排的逐页定位规则（::slotted(:nth-child(i))），_fitMobileList 重建。
+      this._mobStyle = document.createElement('style');
+
+      this._mobBadges = document.createElement('div');
+      this._mobBadges.className = 'mob-badges export-hidden';
+      this._mobBadges.setAttribute('data-miaoda-chrome', '');
+      canvas.appendChild(this._mobBadges);
 
       // Thumbnail rail + context menu. Thumbnails are populated in
       // _renderRail() after _collectSlides().
@@ -1013,7 +1192,7 @@
       // the note instead of navigating slides (same trick as the thumb keydown).
       notesBody.addEventListener('keydown', (e) => e.stopPropagation());
 
-      this._root.append(style, rail, resize, stage, notes, menu);
+      this._root.append(style, this._mobStyle, rail, resize, stage, notes, menu);
       this._canvas = canvas;
       this._stage = stage;
       this._slot = slot;
@@ -1288,7 +1467,154 @@
         }));
       }
 
+      if (this.hasAttribute('data-mob-ui')) this._syncMobStrip();
+
       this._prevIndex = curr;
+    }
+
+    // 移动端两种呈现互斥：竖排浏览（list）/ 旋转横屏播放（present）。
+    // noscale / _snthumb（导出与演讲者缩略图捕获）必须保持桌面几何。
+    _syncMobileMode() {
+      const eligible = this._mobile && !this.hasAttribute('noscale') && !this._snthumb;
+      this.toggleAttribute('data-mobile-list', eligible && !this._presenting);
+      this.toggleAttribute('data-mobile-present', eligible && !!this._presenting);
+    }
+
+    _fitMobileList() {
+      const dw = this.designWidth, dh = this.designHeight;
+      const vw = window.innerWidth;
+      this._mobLastVw = vw; // _onResize 高度变化跳过的基线
+      const stage = this._canvas.parentElement;
+      // 清掉桌面 _fit 写过的 inset 内联值
+      if (stage) { stage.style.left = '0'; stage.style.right = '0'; stage.style.top = '0'; stage.style.bottom = '0'; }
+      this.removeAttribute('data-windowed');
+      const cardW = vw - 2 * MOB_MARGIN;
+      const s = cardW / dw;
+      const cardH = dh * s;
+      const kids = Array.prototype.slice.call(this.children);
+      const rules = [];
+      const cards = [];
+      let y = MOB_MARGIN;
+      this._slides.forEach((slide, i) => {
+        if (slide.hasAttribute('data-deck-skip')) return;
+        const nth = kids.indexOf(slide) + 1;
+        if (nth <= 0) return;
+        rules.push(
+          ':host([data-mobile-list]) ::slotted(:nth-child(' + nth + ')) {' +
+          ' inset: auto !important; top: 0 !important; left: 0 !important;' +
+          ' width: ' + dw + 'px !important; height: ' + dh + 'px !important;' +
+          ' transform: translate(' + MOB_MARGIN + 'px, ' + y + 'px) scale(' + s + ') !important;' +
+          // 圆角/描边随 scale 反向放大，落地后视觉为 8px / 0.5px
+          ' border-radius: ' + (MOB_RADIUS / s) + 'px; overflow: hidden !important;' +
+          ' border: ' + (0.5 / s) + 'px solid #DEE0E3; }'
+        );
+        cards.push({ slide, i, y, h: cardH });
+        y += cardH + MOB_GAP;
+      });
+      // 竖排规则只作用于屏幕媒体——print 的 ::slotted 分页规则特异性更低，
+      // 否则每页会带着列表位移/缩放进入打印流。
+      this._mobStyle.textContent = '@media screen {\n' + rules.join('\n') + '\n}';
+      this._canvas.style.transform = 'none';
+      this._canvas.style.width = vw + 'px';
+      this._canvas.style.height = Math.max(y - MOB_GAP + MOB_MARGIN, 0) + 'px';
+      this._mobCards = cards;
+      this._mobScale = s;
+
+      // 徽标：每卡片左下角内 6px；宽度按位数 16/16/20。布局是确定性的，
+      // 直接按 _mobCards 几何摆放，无需 IntersectionObserver。
+      this._mobBadges.textContent = '';
+      cards.forEach((c, ordinal) => {
+        const b = document.createElement('div');
+        b.className = 'mob-badge';
+        const n = ordinal + 1;
+        b.textContent = String(n);
+        b.style.width = (String(n).length >= 3 ? 20 : 16) + 'px';
+        b.style.left = (MOB_MARGIN + 6) + 'px';
+        b.style.top = (c.y + c.h - 6 - 12) + 'px';
+        this._mobBadges.appendChild(b);
+      });
+
+      this._mobScrollTo(this._index, false);
+    }
+
+    _onMobScroll() {
+      if (!this.hasAttribute('data-mobile-list') || !this._mobCards || !this._mobCards.length) return;
+
+      // 徽标显隐：程序化滚动也算"滚动"，两种来源都给可见性反馈。
+      this.setAttribute('data-mob-scrolling', '');
+      clearTimeout(this._mobScrollIdleTimer);
+      this._mobScrollIdleTimer = setTimeout(
+        () => this.removeAttribute('data-mob-scrolling'), MOB_BADGE_IDLE_MS);
+
+      if (this._mobScrollRaf) return;
+      this._mobScrollRaf = requestAnimationFrame(() => {
+        this._mobScrollRaf = null;
+        const stage = this._canvas.parentElement;
+        const top = stage.scrollTop;
+        const moved = this._mobLastTop == null ? Infinity : Math.abs(top - this._mobLastTop);
+        this._mobLastTop = top; // 抑制期间也持续跟踪位置
+        if (this._mobProgUntil && performance.now() < this._mobProgUntil) {
+          // 程序化滚动事件流仍在到达：续期窗口，动画多长都盖得住；
+          // 事件停止 120ms 后窗口自然过期，之后才恢复用户滚动反推。
+          this._mobProgUntil = Math.max(this._mobProgUntil, performance.now() + 120);
+          return;
+        }
+        if (moved < 1) return; // 无真实位移（合成事件/终点回调）不反推
+        // 纯视口中心公式在卡片高 < 半视口时到不了首/末页（卡片高 ~= 0.5625 * 宽,
+        // 竖屏视口高通常远大于宽的一半），两端改用 clamp，中段维持视口中心语义。
+        const max = stage.scrollHeight - stage.clientHeight;
+        let cur;
+        if (max <= 0 || stage.scrollTop <= 1) {
+          cur = this._mobCards[0];
+        } else if (stage.scrollTop >= max - 1) {
+          cur = this._mobCards[this._mobCards.length - 1];
+        } else {
+          const center = stage.scrollTop + stage.clientHeight / 2;
+          cur = this._mobCards[0];
+          for (const c of this._mobCards) {
+            if (center >= c.y) cur = c; else break;
+          }
+        }
+        if (cur.i !== this._index) {
+          this._index = cur.i;
+          // 广播走现有内核：hash 同步 + slide-changed + slidechange 事件。
+          // data-deck-active 的切换在竖排 CSS 下无视觉副作用。
+          this._applyIndex({ broadcast: true, reason: 'api' });
+        }
+      });
+    }
+
+    _mobScrollTo(i, smooth) {
+      const card = (this._mobCards || []).find((c) => c.i === i);
+      if (!card) return;
+      const stage = this._canvas.parentElement;
+      const top = Math.max(0, card.y - Math.max(0, (stage.clientHeight - card.h) / 2));
+      // 程序化滚动期间抑制 _onMobScroll 的反推——goto/deep-link 已直接设定
+      // _index，多张边缘卡片的居中目标会被 clamp 到同一个 scrollTop，
+      // 反推无法区分它们对应哪一页，故导航直接落 index、反推只处理真实
+      // 用户位移。
+      this._mobProgUntil = performance.now() + (smooth ? 800 : 200);
+      // 目标位置立为基线：即便这次 scrollTo 因目标已等于当前位置（如居中
+      // 目标 clamp 到 0）而不产生真实 scroll 事件，_mobLastTop 也不会停留
+      // 在 null——避免之后任意一次无位移事件被当成"首次滚动"误判有位移。
+      this._mobLastTop = top;
+      stage.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
+    }
+
+    _fitMobilePresent() {
+      const stage = this._canvas.parentElement;
+      if (stage) { stage.style.left = ''; stage.style.right = ''; stage.style.top = ''; stage.style.bottom = ''; }
+      this.removeAttribute('data-windowed');
+      this._canvas.style.width = this.designWidth + 'px';
+      this._canvas.style.height = this.designHeight + 'px';
+      // 物理竖屏：CSS 旋转 90°，stage 逻辑尺寸 = (innerHeight × innerWidth)；
+      // 物理横屏（用户顺势转了手机）：不旋转，按真实视口常规适配。
+      // CSS 侧由 @media (orientation) 同步分支。
+      const portrait = window.innerHeight >= window.innerWidth;
+      const lw = portrait ? window.innerHeight : window.innerWidth;
+      const lh = portrait ? window.innerWidth : window.innerHeight;
+      const s = Math.min(lw / this.designWidth, lh / this.designHeight);
+      this._canvas.style.transform = 'scale(' + s + ')';
     }
 
     _railWidth() {
@@ -1304,6 +1630,8 @@
 
     _fit() {
       if (!this._canvas) return;
+      if (this.hasAttribute('data-mobile-list')) return this._fitMobileList();
+      if (this.hasAttribute('data-mobile-present')) return this._fitMobilePresent();
       const stage = this._canvas.parentElement;
       // PPTX export sets noscale so the DOM capture sees authored-size
       // geometry — the scaled canvas is in shadow DOM, so the exporter's
@@ -1314,6 +1642,8 @@
         if (stage) { stage.style.left = '0'; stage.style.right = '0'; stage.style.top = '0'; stage.style.bottom = '0'; }
         return;
       }
+      this._canvas.style.width = this.designWidth + 'px';
+      this._canvas.style.height = this.designHeight + 'px';
       const rw = this._railWidth();
       const nh = this._notesHeight();
       // Windowed (20px margin + card shadow) in edit/preview; full-bleed while
@@ -1339,6 +1669,14 @@
     }
 
     _onResize() {
+      // 竖排列表几何只依赖视口宽度。移动浏览器地址栏收起/展开只改高度，
+      // 若照常全量 refit（重建规则/徽标 + 无条件回中当前页），用户滚动中
+      // 会被可见地"拽"一下——纯高度变化直接跳过。宽度变化（旋转/分屏）
+      // 照常走完整 refit。
+      if (this.hasAttribute('data-mobile-list')) {
+        if (this._mobLastVw === window.innerWidth) return;
+        this._mobLastVw = window.innerWidth;
+      }
       this._fit();
       // Crossing the narrow-viewport breakpoint reveals the rail — rerun the
       // thumbnail scale the same way _setRailWidth does.
@@ -1354,6 +1692,8 @@
       const d = e.data;
       if (d && d.type === 'miaoda:deck:presenting' && typeof d.on === 'boolean') {
         this._presenting = d.on;
+        this._syncMobileMode();
+        if (!d.on) this._toggleMobUi(false);
         this._syncRailHidden();
         this._syncNotesHidden();
         this._closeMenu();
@@ -1434,10 +1774,116 @@
         if (n === this._stage) break;
         if (n.matches && n.matches(INTERACTIVE_SEL)) return;
       }
+      // 竖排浏览是滚动列表，tap 不翻页（spec 决策 #5）
+      if (this.hasAttribute('data-mobile-list')) return;
       e.preventDefault();
+      if (this.hasAttribute('data-mobile-present')) {
+        const zone = this._mobPresentZone(e);
+        if (zone === 'menu') this._toggleMobUi();
+        else {
+          this._advance(zone === 'prev' ? -1 : 1, 'tap');
+          if (this.hasAttribute('data-mob-ui')) this._toggleMobUi(true);
+        }
+        return;
+      }
       const rw = this._railWidth();
       const mid = rw + (window.innerWidth - rw) / 2;
       this._advance(e.clientX < mid ? -1 : 1, 'tap');
+    }
+
+    // rotate(90deg) 后视觉横屏的 x 轴对应视口 y 轴。方向以真机/仿真实测为准：
+    // 若实测发现 prev/next 颠倒，翻转此处的比较符（保持单点修改）。
+    _mobPresentZone(e) {
+      const rect = this._stage.getBoundingClientRect();
+      // 物理竖屏 = stage 被 CSS 旋转 90°，视觉横屏 x 轴对应视口 y 轴；
+      // 物理横屏 = 无旋转，直接用视口 x 轴。与 _fitMobilePresent 同分支。
+      const portrait = window.innerHeight >= window.innerWidth;
+      const x = portrait
+        ? (e.clientY - rect.top) / Math.max(1, rect.height)
+        : (e.clientX - rect.left) / Math.max(1, rect.width);
+      return x < 1 / 3 ? 'prev' : x > 2 / 3 ? 'next' : 'menu';
+    }
+
+    _toggleMobUi(force) {
+      const wasOpen = this.hasAttribute('data-mob-ui');
+      const on = force != null ? !!force : !wasOpen;
+      this.toggleAttribute('data-mob-ui', on);
+      clearTimeout(this._mobUiTimer);
+      if (!on) return;
+      // 从隐藏态唤出才全量重建（吸收直编/重排/skip 变化——strip 是静态
+      // 快照、不接 _liveObserver 刷新管线）；已展开时的调用（缩略图点击/
+      // 翻页重置计时）只同步高亮，避免高频路径 O(页数) 重建。
+      if (!wasOpen || !this._mobUi) {
+        if (this._mobUi) { this._mobUi.remove(); this._mobUi = null; }
+        this._buildMobUi();
+      }
+      this._syncMobStrip();
+      this._mobUiTimer = setTimeout(() => this._toggleMobUi(false), MOB_UI_HIDE_MS);
+    }
+
+    _buildMobUi() {
+      // 移动 viewer 语境 host 可能从不发 rail-enabled，author-CSS 快照
+      // （_enableRail 才建）不存在时缩略图克隆会裸渲染——此处兜底建一次。
+      // _snapshotAuthorCss 可重入且带 generation guard。
+      if (!this._adoptedSheet && this._authorCss == null) this._snapshotAuthorCss();
+      const ui = document.createElement('div');
+      ui.className = 'mob-ui export-hidden';
+      ui.setAttribute('data-miaoda-chrome', '');
+      const back = document.createElement('button');
+      back.className = 'mob-back';
+      back.type = 'button';
+      back.textContent = '‹ 演示模式';
+      back.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._presenting = false;
+        this._syncMobileMode();
+        this._syncRailHidden();
+        this._syncNotesHidden();
+        this._fit();
+        this._toggleMobUi(false);
+        try { window.parent.postMessage({ type: 'miaoda:deck:presenting-dismissed' }, '*'); } catch (err) {}
+      });
+      const strip = document.createElement('div');
+      strip.className = 'mob-strip';
+      this._mobStripEntries = this._slides
+        .map((slide, i) => ({ slide, i }))
+        .filter((e2) => !e2.slide.hasAttribute('data-deck-skip'))
+        .map((e2, ordinal) => {
+          const t = document.createElement('div');
+          t.className = 'mthumb';
+          const frame = document.createElement('div');
+          frame.className = 'mframe';
+          const num = document.createElement('div');
+          num.className = 'mnum';
+          num.textContent = String(ordinal + 1);
+          t.append(frame, num);
+          t.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            this._go(e2.i, 'click');
+            this._toggleMobUi(true); // 重置自动收起计时，保持控件层可见
+          });
+          strip.appendChild(t);
+          // 复用 _materialize 的克隆管线（media 熄火、canvas 快照、custom
+          // element 中性化）：它会自建 host/shadow 并直接挂进 entry.frame，
+          // 所以这里不需要再手工搭 host——只需在其后把统一走 _thumbScale
+          // （rail 宽度）算出的缩放，改写成本条带 132px 专属的缩放。
+          const entry = { slide: e2.slide, frame, host: null, clone: null };
+          this._materialize(entry);
+          if (entry.clone) entry.clone.style.transform = 'scale(' + (132 / this.designWidth) + ')';
+          return { el: t, i: e2.i };
+        });
+      // 控件层内任何点击不冒泡成翻页 tap
+      ui.addEventListener('click', (e) => e.stopPropagation());
+      ui.append(back, strip);
+      this._stage.appendChild(ui);
+      this._mobUi = ui;
+    }
+
+    _syncMobStrip() {
+      (this._mobStripEntries || []).forEach((en) => {
+        en.el.toggleAttribute('data-current', en.i === this._index);
+        if (en.i === this._index) en.el.scrollIntoView({ block: 'nearest', inline: 'center' });
+      });
     }
 
     _onKey(e) {
@@ -1480,6 +1926,17 @@
     _go(i, reason = 'api') {
       if (!this._slides.length) return;
       const clamped = Math.max(0, Math.min(this._slides.length - 1, i));
+      // 竖排浏览：导航直接落 index（与桌面语义一致），滚动只是视觉跟随；
+      // 不再依赖 _onMobScroll 从滚动位置反推——多张边缘卡片的居中滚动目标
+      // 会被 clamp 到同一个 scrollTop，反推无法区分它们是哪一页。
+      if (this.hasAttribute('data-mobile-list')) {
+        const changed = clamped !== this._index;
+        this._index = clamped;
+        // 同页 goto 不重复广播（与桌面分支语义一致），但仍需重新居中滚动。
+        if (changed) this._applyIndex({ broadcast: true, reason });
+        this._mobScrollTo(clamped, true);
+        return;
+      }
       if (clamped === this._index) return;
       this._index = clamped;
       this._applyIndex({ broadcast: true, reason });
