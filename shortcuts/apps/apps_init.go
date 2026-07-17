@@ -39,7 +39,7 @@ const (
 )
 
 const (
-	miaodaCLIPkg    = "@lark-apaas/miaoda-cli@0.1.24-alpha.fb2cf0a"
+	miaodaCLIPkg    = "@lark-apaas/miaoda-cli@latest"
 	npmRegistry     = "https://registry.npmmirror.com"
 	metaRelPath     = ".spark/meta.json"
 	steeringRelPath = ".agent/skills/steering"
