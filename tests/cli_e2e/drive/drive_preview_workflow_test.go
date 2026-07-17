@@ -125,15 +125,7 @@ func TestDrive_PreviewAndCoverWorkflow(t *testing.T) {
 			InitialDelay:    2 * time.Second,
 			MaxDelay:        8 * time.Second,
 			BackoffMultiple: 2,
-			ShouldRetry: func(result *clie2e.Result) bool {
-				if result == nil {
-					return true
-				}
-				if result.ExitCode == 0 {
-					return false
-				}
-				return false
-			},
+			ShouldRetry:     shouldRetryCoverDownload,
 		})
 		require.NoError(t, err)
 		coverResult.AssertExitCode(t, 0)
@@ -154,6 +146,80 @@ func TestDrive_PreviewAndCoverWorkflow(t *testing.T) {
 			t.Fatalf("cover artifact should not be empty: %s", outputPath)
 		}
 	})
+}
+
+func shouldRetryCoverDownload(result *clie2e.Result) bool {
+	return result == nil || result.ExitCode != 0
+}
+
+func TestShouldRetryCoverDownload(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		result *clie2e.Result
+		want   bool
+	}{
+		{name: "nil result", result: nil, want: true},
+		{name: "successful result", result: &clie2e.Result{ExitCode: 0}, want: false},
+		{name: "failed result", result: &clie2e.Result{ExitCode: 1}, want: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldRetryCoverDownload(tt.result))
+		})
+	}
+
+	fakeCLI := writeCoverDownloadRetryFakeCLI(t)
+	for _, tt := range []struct {
+		name         string
+		succeedAfter string
+		wantCount    string
+		wantExitCode int
+	}{
+		{name: "retries after failure", succeedAfter: "2", wantCount: "2\n", wantExitCode: 0},
+		{name: "stops after success", succeedAfter: "1", wantCount: "1\n", wantExitCode: 0},
+		{name: "stops after eight failures", succeedAfter: "9", wantCount: "8\n", wantExitCode: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			statePath := filepath.Join(t.TempDir(), "attempt-count")
+			result, err := clie2e.RunCmdWithRetry(context.Background(), clie2e.Request{
+				BinaryPath: fakeCLI,
+				Args:       []string{statePath, tt.succeedAfter},
+			}, clie2e.RetryOptions{
+				Attempts:        8,
+				InitialDelay:    time.Millisecond,
+				MaxDelay:        time.Millisecond,
+				BackoffMultiple: 2,
+				ShouldRetry:     shouldRetryCoverDownload,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tt.wantExitCode, result.ExitCode)
+
+			count, err := os.ReadFile(statePath)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantCount, string(count))
+		})
+	}
+}
+
+func writeCoverDownloadRetryFakeCLI(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "fake-lark-cli")
+	script := `#!/bin/sh
+state="$1"
+succeed_after="$2"
+count=0
+if [ -f "$state" ]; then
+  count="$(cat "$state")"
+fi
+count=$((count + 1))
+echo "$count" > "$state"
+if [ "$count" -lt "$succeed_after" ]; then
+  exit 1
+fi
+exit 0
+`
+	require.NoError(t, os.WriteFile(path, []byte(script), 0o755))
+	return path
 }
 
 // writePreviewFixture writes a local fixture file used by the live workflow.
