@@ -1,6 +1,6 @@
 # Claude Code 工具参考
 
-本文档列出 `system-prompt.md` 所依赖的 harness 专属工具，供你在 **Claude Code** 中运行时使用。主提示词只命名能力（"向用户提问"、"预览"、"截图"、"调试"）；本文档给出确切的 Claude Code 工具、签名与调用方式。通用工具（`Bash`、`Read`/`Write`/`Edit`/`Glob`、`gh`）在任何环境都相同，不在此覆盖。
+本文档列出 `SKILL.md` 所依赖的 harness 专属工具，供你在 **Claude Code** 中运行时使用。主提示词只命名能力（"向用户提问"、"预览"、"截图"、"调试"）；本文档给出确切的 Claude Code 工具、签名与调用方式。通用工具（`Bash`、`Read`/`Write`/`Edit`/`Glob`、`gh`）在任何环境都相同，不在此覆盖。
 
 ## Web 工具 → Claude Code 工具对照表
 
