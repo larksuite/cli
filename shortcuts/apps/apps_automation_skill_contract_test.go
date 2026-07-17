@@ -11,6 +11,8 @@ import (
 
 const automationSkillDoc = "../../skills/lark-apps/references/lark-apps-automation.md"
 const localDevSkillDoc = "../../skills/lark-apps/references/lark-apps-local-dev.md"
+const larkAppsSkillDoc = "../../skills/lark-apps/SKILL.md"
+const releaseGetSkillDoc = "../../skills/lark-apps/references/lark-apps-release-get.md"
 
 func readAutomationSkillDoc(t *testing.T) string {
 	return readAppsSkillDoc(t, automationSkillDoc)
@@ -18,6 +20,14 @@ func readAutomationSkillDoc(t *testing.T) string {
 
 func readLocalDevSkillDoc(t *testing.T) string {
 	return readAppsSkillDoc(t, localDevSkillDoc)
+}
+
+func readLarkAppsSkillDoc(t *testing.T) string {
+	return readAppsSkillDoc(t, larkAppsSkillDoc)
+}
+
+func readReleaseGetSkillDoc(t *testing.T) string {
+	return readAppsSkillDoc(t, releaseGetSkillDoc)
 }
 
 func readAppsSkillDoc(t *testing.T, path string) string {
@@ -157,6 +167,14 @@ func TestAutomationSkillContract_HandlerOnlyStopsBeforeRelease(t *testing.T) {
 	}
 }
 
+func TestAutomationSkillContract_HandlerOnlyExcludesUnverifiedRuntimeTypes(t *testing.T) {
+	section := skillSubsection(t, readAutomationSkillDoc(t), "### 仅完成 handler（不发布/不启用）")
+
+	if !strings.Contains(section, "仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。") {
+		t.Error("handler-only flow must exclude UPSERT and feishu-approval without a verified runtime contract")
+	}
+}
+
 func TestAutomationSkillContract_PublishedHandlerStaysDisabled(t *testing.T) {
 	section := skillSubsection(t, readAutomationSkillDoc(t), "### 把 handler 发布好，但先不要启动")
 
@@ -243,5 +261,34 @@ func TestLocalDevSkillContract_DoesNotRequireOnlineURL(t *testing.T) {
 	}
 	if !strings.Contains(section, "若返回 `online_url`，可直接使用；未返回时不要编造链接。") {
 		t.Error("release guidance must explain that online_url is optional")
+	}
+}
+
+func TestLocalDevSkillContract_TreatsErrorLogsAsOptional(t *testing.T) {
+	section := skillSection(t, readLocalDevSkillDoc(t), "## 改完代码后部署上线")
+
+	if !strings.Contains(section, "`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因") {
+		t.Error("release guidance must not promise error_logs on every failed release")
+	}
+}
+
+func TestReleaseSkillContract_TreatsOptionalOutputAsOptional(t *testing.T) {
+	mainSkill := readLarkAppsSkillDoc(t)
+	if !strings.Contains(mainSkill, "`finished` 后若返回 `online_url` 可交付；`failed` 时若返回 `error_logs` 可据此排查") {
+		t.Error("lark-apps routing must not promise optional release output")
+	}
+	if !strings.Contains(mainSkill, "发布成功且返回 `online_url` 后，再连同发布态链接一并提供给用户") {
+		t.Error("lark-apps publish guard must not promise a link when the release returns none")
+	}
+
+	releaseGet := readReleaseGetSkillDoc(t)
+	for _, boundary := range []string{
+		"`finished` 后才可能有 `online_url`。",
+		"若输出含 `online_url`，直接读取它作为本轮发布的线上访问链接；未返回时只报告发布完成，不要编造链接。",
+		"若输出含 `error_logs`（`step`/`error_log`），据此向用户转述关键失败步骤和可行动修复；未返回时不要编造失败原因。",
+	} {
+		if !strings.Contains(releaseGet, boundary) {
+			t.Errorf("release-get skill must preserve optional-output boundary %q", boundary)
+		}
 	}
 }
