@@ -146,6 +146,56 @@
 
 创建成功后的推荐话术：`已创建 <name>，当前 disabled；需要真正开始自动运行时告诉我，我用 +automation-enable 启用它。` **不要**在创建成功后立即启用，即使 skill 里说"需 enable 才自动触发"——这条是给用户的说明，不是给 agent 的行动指令。
 
+## 本地全栈 Trigger 闭环
+
+当用户希望触发器实际执行业务代码时，先确认项目 `.spark/meta.json` 的 `stack=nestjs-react-fullstack` 且 `app_id` 非空。创建或定位 trigger 后，读取项目已经同步的 `trigger-guide`；本 SOP 只决定 Apps API、Git、发布和启用时序，不重复 NestJS handler 细节。
+
+`--name` 是应用内唯一的 trigger 定位键，也是 `@BindTrigger('<exact-name>')` 的代码绑定字符串。不得用 trigger ID 或方法名代替它。
+
+### 仅创建/配置触发器
+
+适用于 cron、record-change、webhook 和 feishu-approval。用 `+automation-create` 创建，并省略 `--status` 或显式传 `disabled`，然后报告 name 和 disabled 状态。
+
+不要传 `--status enabled`，也不要写 handler、commit/push、release 或 enable；更不能把创建 API 成功称为“可运行”。默认 disabled 是这个意图的终点，不是稍后自动 enable 的待办。
+
+### 仅完成 handler（不发布/不启用）
+
+创建或定位已明确 name 的 disabled trigger，读取同步的 `trigger-guide`，实现并注册同名 handler，完成本地验证。只在既有 Git 确认或预授权下 commit/push；停止在 `+release-create` 和 `+automation-enable` 之前。用户没有明确“发布好”时，先问，不能默认把完整应用上线。
+
+### 把 handler 发布好，但先不要启动
+
+仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。完成同名 handler 和 module 注册后，commit、`git push origin sprint/default`，再发布完整应用：
+
+```bash
+lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default
+```
+
+保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成；`failed` 时报告发布失败、保持 disabled，修复并重新发布后再取得新的 finished 结果。release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，始终保持 disabled，不执行 `+automation-enable`。
+
+### 完成并启动/启用/测试
+
+仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。按以下不可跳过的顺序执行：
+
+1. 创建或定位 `disabled` trigger，确认其 `--name`，并读取项目已同步的 `trigger-guide`。
+2. 实现同名 handler、注册 module，并完成本地验证。
+3. 在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。
+4. 执行 `+release-create --branch sprint/default`，保存返回的 `data.release_id`。
+5. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；`failed` 时报告发布失败并保持 disabled。`is_published=true` 不能代替这轮发布完成。
+6. 获得启动/测试授权后才执行 `+automation-enable`，并用 `+automation-get` 确认 enabled。
+7. 由已授权主体制造真实 runtime 条件并核验业务结果：cron 等待计划时间；record-change 对确认环境执行 INSERT/UPDATE/DELETE；webhook 向既有 runtime URL 发送安全请求。
+
+没有通用的 `automation-debug` 或 trigger 日志 shortcut。缺少安全事件入口、匹配环境或可观察结果时，记录 blocked，不能编造测试成功。
+
+### UPSERT 与飞书审批边界
+
+record-change 的 UPSERT 可创建 disabled 配置，但现有 runtime `DataChangeEventInput.type` 只定义 INSERT、UPDATE、DELETE；不得静默按 UPDATE 处理，也不得承诺 handler payload 或 live 验证。
+
+feishu-approval 可创建 disabled 配置，并读取或更新 `event_type`、对应 status 和可选 `approval_code`。当前没有已证实的 `TaskHandlerArgs.content.input` schema、`@BindTrigger` handler 或实际投递验证；不要把 enable 或审批 API 成功称为业务代码已执行。
+
+### 未触发时的诊断顺序
+
+按 `--name` / handler / module 注册 → 本轮 release `finished` → enabled 状态 → 类型条件、环境和已有日志的顺序排查。客户审批投递故障属于服务端事件投递排查，不要归因于此 SOP 或改写无关业务代码。
+
 ## 常见错误与决策场景
 
 | 现象 / 用户意图 | 正确处理 |
