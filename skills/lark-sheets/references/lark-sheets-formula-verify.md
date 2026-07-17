@@ -24,6 +24,7 @@
 | `--range` | 限定 A1 范围；省略则用各 sheet 的 `current_region` |
 | `--max-locations` | 每类错误样本上限，默认 20 |
 | `--exit-on-error` | `status='errors_found'` 时返回非 0 退出码（CI 网关用） |
+| `--ai-only` | 只校验 AI 公式（见「AI 公式校验」），跳过普通公式的 7 类 Excel 错误扫描；写完 AI 公式后轮询等待用 |
 
 返回核心字段：
 
@@ -66,6 +67,26 @@
 - 把工作簿按 `--sheet-id` / `--sheet-name` 拆成多次调用。
 - 同 sheet 内按 `--range` 切片（如先 `A1:Z200` 再 `AA1:AZ200`），逐块自检。
 - 每块都跑到 `has_more=false` 且 `status='success'` 才算通过。
+
+## AI 公式校验（`--ai-only`）
+
+飞书表格支持一批 **AI 公式**（`AI_WRITE` / `AI_CLASSIFY` / `AI_SENTIMENT` / `AI_EXTRACT` / `AI_POLISH` / `AI_SUMMARY` / `AI_TRANSLATE`，写法与清单见 `lark-sheets-formula-translation`）。AI 公式的写入与普通公式一致（复用 `+cells-set` / `set_cell_range`，无需特殊接口），但**计算是异步的**：写入后要排队等 AI 中台算完才有结果。普通的 `+formula-verify` 只扫本地单元格值（7 类 Excel 错误），看不到 AI 公式的计算状态。
+
+`--ai-only` 让 `+formula-verify` 只校验 AI 公式、跳过普通公式的 Excel 错误扫描，专用于「写完 AI 公式后轮询等到全部算完」：
+
+- **单次探针语义**：`+formula-verify --ai-only` 一次调用只返回**当前** AI 公式状态，**不在 CLI 内置轮询 / 超时**。收敛（等所有 AI 公式算完）由调用方多次调用完成。
+- **状态三态**：至少能区分「完成」/「进行中（仍在排队计算）」/「失败或不支持」。仍处于「进行中」时应间隔一段时间后重试。
+- **批量与排队**：AI 公式很多时会自然分批拉取（后端单次按 50 个 AI 公式自动分批），批量越大排队等待越久。写一大批 AI 公式后不要期望立刻收敛，按间隔轮询。
+- **`--exit-on-error` 兼容**：`--ai-only --exit-on-error` 时，若仍有 AI 公式处于失败态，返回非 0 退出码，便于脚本 / CI 轮询收敛。
+- 可与 `--sheet-id` / `--sheet-name` / `--range` 共存，表示「只在指定范围里校验 AI 公式」。
+
+典型轮询用法：
+
+```bash
+# 写入一批 AI 公式后，轮询直到不再有 pending
+lark-cli sheets +formula-verify --url <表URL> --ai-only
+# 若仍在计算，间隔重试；直到所有 AI 公式状态收敛
+```
 
 ## 常见陷阱
 

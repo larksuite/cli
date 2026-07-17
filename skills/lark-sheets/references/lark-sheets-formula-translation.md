@@ -29,6 +29,22 @@
 2. 公式一旦落表，就默认进入 `lark-sheets-formula-verify` 的收尾阶段。
 3. 最终必须跑 `+formula-verify` 收敛到 `status='success'`；`errors_found` / `partial` 都不算完成。
 
+## AI 公式
+
+飞书表格支持一批 **AI 公式**：用自然语言驱动生成文本、分类、情感分析、信息提取、润色、总结、翻译等结果。AI 公式的**写入方式与普通公式完全一致**（复用 `lark-sheets-write-cells` 的 `+cells-set` / `set_cell_range`，无需特殊接口），只是计算是**异步**的——写入后要排队等 AI 中台算完才有结果。
+
+| 公式 | 功能 | 示例 & 说明 |
+|---|---|---|
+| `AI_WRITE` | 根据自然语言描述返回文本结果 | `AI_WRITE("帮我写一封邮件,收信人是",A2)`——用自然语言描述需求，AI 返回文本；多个提示词用逗号分隔 |
+| `AI_CLASSIFY` | 标签分类（国内不支持，国外支持） | `AI_CLASSIFY(A2, 2, "Sheet1!A:C", 20)`——把内容智能分类；模式 0 手动标签 / 1 关键词 / 2 引用区域标签库，末位为标签召回数量（模式 2，默认 20） |
+| `AI_SENTIMENT` | 正面 / 负面 / 中性情感分析 | `AI_SENTIMENT(A2)`——对指定内容做情感分析 |
+| `AI_EXTRACT` | 从内容里智能提取信息 | `AI_EXTRACT(A2,"人名")`——第二参为要提取的信息 |
+| `AI_POLISH` | 对指定内容润色 | `AI_POLISH(A3)` |
+| `AI_SUMMARY` | 对指定内容总结 | `AI_SUMMARY(A3)` |
+| `AI_TRANSLATE` | 翻译到目标语言 | `AI_TRANSLATE(A2,"spanish")`——第二参为目标语言 |
+
+**写完 AI 公式后的校验**：AI 公式异步计算，一次批量写入过多时预期需要排队等待一段时间才能算完。写完后用 `lark-sheets-formula-verify` 的 `+formula-verify --ai-only` **轮询**（CLI 不内置轮询，多次调用直到 AI 公式状态收敛、不再 pending 才算完成），批量大时后端按 50 个 AI 公式自动分批拉取。细节见 `lark-sheets-formula-verify`。
+
 ## 决策流程
 
 1. 最终结果是**标量**（单值）→ 通常不需要 `ARRAYFORMULA`

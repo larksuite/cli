@@ -654,6 +654,7 @@ var flagDefs = map[string]commandDef{
 			{Name: "range", Kind: "own", Type: "string_slice", Required: "optional", Desc: "Optional A1 ranges (e.g. `A1:Z200`); repeat or comma-separate for multiple ranges. Omit to scan each sheet's current_region."},
 			{Name: "max-locations", Kind: "own", Type: "int", Required: "optional", Desc: "Max locations / samples per error type; default 20.", Default: "20"},
 			{Name: "exit-on-error", Kind: "own", Type: "bool", Required: "optional", Desc: "When status=errors_found, exit non-zero. Useful for CI gate after batch formula writes."},
+			{Name: "ai-only", Kind: "own", Type: "bool", Required: "optional", Desc: "Only verify AI formulas (AI_WRITE / AI_CLASSIFY / AI_SENTIMENT / AI_EXTRACT / AI_POLISH / AI_SUMMARY / AI_TRANSLATE), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously; a single call is a polling probe that returns current status only (no built-in wait/timeout) - poll until pending clears. Large batches queue and take time."},
 		},
 	},
 	"+history-list": {

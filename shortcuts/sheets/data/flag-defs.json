@@ -51,6 +51,13 @@
         "type": "bool",
         "required": "optional",
         "desc": "When status=errors_found, exit non-zero. Useful for CI gate after batch formula writes."
+      },
+      {
+        "name": "ai-only",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Only verify AI formulas (AI_WRITE / AI_CLASSIFY / AI_SENTIMENT / AI_EXTRACT / AI_POLISH / AI_SUMMARY / AI_TRANSLATE), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously; a single call is a polling probe that returns current status only (no built-in wait/timeout) - poll until pending clears. Large batches queue and take time."
       }
     ]
   },
