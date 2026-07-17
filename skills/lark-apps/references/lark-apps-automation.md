@@ -162,9 +162,9 @@
 
 ### 仅启用已有 disabled trigger
 
-用户只要求启用已存在且 disabled 的 trigger、没有要求修改代码或制造真实 runtime 事件时，先用 `+automation-get` 核对 name、类型和 disabled 状态，并明确它将运行当前线上已发布代码，而不是本地工作区内容。随后执行 `+automation-enable`，再用 `+automation-get` 确认 enabled。
+用户只要求启用已存在且 disabled 的 trigger、没有要求修改代码或制造真实 runtime 事件时，先用 `+automation-get` 核对 name、类型和 disabled 状态，再用 `apps +get` 核对应用的 `is_published`。已发布时明确它将运行当前线上已发布代码，而不是本地工作区内容；未发布时说明 enable 只会改变配置状态、当前没有可执行的线上版本。随后按用户要求执行 `+automation-enable`，再用 `+automation-get` 确认 enabled。
 
-这条路径不得修改 handler、commit/push 或 release。若用户期待尚未发布的本地改动生效，或检查后发现确实需要新增/修改 handler，转到下方“实现或更新 handler 后发布并启动/测试”路径；不要为单纯 enable 发布整个 `sprint/default`。
+这条路径不得修改 handler、commit/push 或 release。未发布时不得自动创建 release，也不得声称 trigger 已开始实际运行。若用户期待尚未发布的本地改动生效，或检查后发现确实需要新增/修改 handler，转到下方“实现或更新 handler 后发布并启动/测试”路径；不要为单纯 enable 发布整个 `sprint/default`。
 
 对 UPSERT 或 feishu-approval 只改变配置状态；由于本 guide 没有其已证实的 handler、投递或 live 验证契约，启用后也不得声称业务代码已运行或触发器已实测可用。
 
@@ -182,7 +182,7 @@
 
 ### 把 handler 发布好，但先不要启动
 
-仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。先用 `+automation-get` 核对当前状态，并记录它是否 enabled。按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`。若 trigger 已 enabled，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled。随后发布完整应用：
+仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。先用 `+automation-get` 定位；不存在时用 `+automation-create` 创建同名 disabled trigger，再次回读确认。已存在时记录它是否 enabled。按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`。若 trigger 已 enabled，先说明发布前必须临时停用以及可能造成的运行中断，并取得这次临时停用授权；未获授权时停止在发布前。取得授权后，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled。随后发布完整应用：
 
 ```bash
 lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default
@@ -194,14 +194,15 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 
 仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler，且用户要求把这次代码发布后启动或测试时，才使用此路径。按以下不可跳过的顺序执行：
 
-1. 创建或定位 trigger，用 `+automation-get` 核对其 `--name`、类型和当前状态，并读取项目 guide；新建 trigger 应保持默认 disabled。
+1. 用 `+automation-get` 定位并记录发布前状态，再核对其 `--name`、类型并读取项目 guide；不存在时用 `+automation-create` 创建同名 trigger 并保持默认 disabled。
 2. 按项目 guide 完成同名业务 handler 并本地验证。
 3. 在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。
-4. 若 trigger 当前 enabled，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled；原本 disabled 时不要无意义切换状态。
+4. 若 trigger 当前 enabled，先说明发布前必须临时停用以及可能造成的运行中断，并取得这次临时停用授权；未获授权时停止在发布前。取得授权后执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled；原本 disabled 时不要无意义切换状态。
 5. 执行 `+release-create --branch sprint/default`，保存返回的 `data.release_id`。
-6. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；`failed` 时报告发布失败并保持 disabled。`is_published=true` 不能代替这轮发布完成。
+6. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟。超时且状态仍不确定时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；确认 `failed` 时报告发布失败，原本 enabled 的 trigger 仅在确认新代码未上线后恢复 enabled，原本 disabled 的保持 disabled。`is_published=true` 不能代替这轮发布完成。
 7. 获得启动/测试授权后才执行 `+automation-enable`，并用 `+automation-get` 确认 enabled。
 8. 再按下节取得与具体事件匹配的操作级授权，由已授权主体制造真实 runtime 条件并核验业务结果。
+9. 若用户仅要求测试而不是持续启动，必须在成功、失败或提前结束时都恢复到发布前状态：原本 disabled 或本轮新建的 trigger 在 probe 后 `+automation-disable` 并回读；原本 enabled 的结束时保持 enabled。恢复失败时明确报告当前状态，不得把“测试完成”写成持续启动授权。
 
 没有通用的 `automation-debug` 或 trigger 日志 shortcut。缺少安全事件入口、匹配环境或可观察结果时，记录 blocked，不能编造测试成功。
 
@@ -209,7 +210,7 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 
 启用 trigger 的授权不等于制造 runtime 事件的授权，测试授权也不等于任意数据库写入授权。cron 可等待计划时间；webhook 只能向既有 runtime URL 发送已授权、安全且不泄露凭证的请求。record-change 在执行任何 DML 前，必须明确并取得覆盖以下作用域的授权：环境、表、操作、精确测试记录或筛选条件、payload、预期结果和清理方式。
 
-优先使用专用测试记录，不要任取线上业务记录。用户已明确授权精确、可撤回的测试夹具及其清理时，不机械追加一轮确认；目标或影响仍不清楚时必须停下。`UPDATE` 要限定精确条件并保留恢复方式；`INSERT` 要预先约定清理。`DELETE` 必须遵循 [lark-apps-db-execute.md](lark-apps-db-execute.md)：先 `SELECT count(*)`、执行 `--dry-run`，展示影响后取得针对该删除目标的明确授权，再带 `--yes` 执行；清理动作若包含未预先授权的删除，同样走该门槛。
+优先使用专用测试记录，不要任取线上业务记录。用户已明确授权精确、可撤回的测试夹具及其清理时，不机械追加一轮确认；目标或影响仍不清楚时必须停下。record-change probe 前先执行 `+automation-list --trigger-type record-change --all`，检查同一环境、表和操作可能命中的其他 enabled trigger；若存在 sibling match，必须说明聚合业务影响并取得覆盖这些影响的授权，或换成隔离夹具/经授权临时停用后再测。`UPDATE` 要限定精确条件并保留恢复方式；`INSERT` 要预先约定清理；恢复 UPDATE 或清理 INSERT 也可能再次触发自动化，必须纳入影响说明和授权。`DELETE` 必须遵循 [lark-apps-db-execute.md](lark-apps-db-execute.md)：先 `SELECT count(*)`、执行 `--dry-run`，展示影响后取得针对该删除目标的明确授权，再带 `--yes` 执行；清理动作若包含未预先授权的删除，同样走该门槛。
 
 缺少安全、已授权且可清理的事件入口时，记录 blocked，不得用“测试一下”推导任意 online 数据写入。
 
