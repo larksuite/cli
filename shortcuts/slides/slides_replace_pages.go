@@ -139,6 +139,7 @@ type replacePageResult struct {
 	NewSlideID string
 	Status     string
 	Error      string
+	Issues     interface{}
 	RevisionID *int
 }
 
@@ -330,6 +331,9 @@ func replaceOnePage(runtime *common.RuntimeContext, presentationID string, item 
 		return result, err
 	}
 	result.NewSlideID = newSlideID
+	if issues, ok := createData["issues"]; ok {
+		result.Issues = issues
+	}
 	if rev, ok := revisionFromData(createData); ok {
 		revisionID = rev
 		result.RevisionID = &rev
@@ -388,6 +392,9 @@ func replacePageResultsOutput(results []replacePageResult) []map[string]interfac
 		}
 		if result.Error != "" {
 			m["error"] = result.Error
+		}
+		if result.Issues != nil {
+			m["issues"] = result.Issues
 		}
 		if result.RevisionID != nil {
 			m["revision_id"] = *result.RevisionID
