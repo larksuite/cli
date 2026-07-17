@@ -182,7 +182,7 @@
 
 ### 把 handler 发布好，但先不要启动
 
-仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`，再发布完整应用：
+仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。先用 `+automation-get` 核对当前状态，并记录它是否 enabled。按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`。若 trigger 已 enabled，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled。随后发布完整应用：
 
 ```bash
 lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default
@@ -194,13 +194,14 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 
 仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler，且用户要求把这次代码发布后启动或测试时，才使用此路径。按以下不可跳过的顺序执行：
 
-1. 创建或定位 `disabled` trigger，确认其 `--name`，并读取项目 guide。
+1. 创建或定位 trigger，用 `+automation-get` 核对其 `--name`、类型和当前状态，并读取项目 guide；新建 trigger 应保持默认 disabled。
 2. 按项目 guide 完成同名业务 handler 并本地验证。
 3. 在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。
-4. 执行 `+release-create --branch sprint/default`，保存返回的 `data.release_id`。
-5. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；`failed` 时报告发布失败并保持 disabled。`is_published=true` 不能代替这轮发布完成。
-6. 获得启动/测试授权后才执行 `+automation-enable`，并用 `+automation-get` 确认 enabled。
-7. 再按下节取得与具体事件匹配的操作级授权，由已授权主体制造真实 runtime 条件并核验业务结果。
+4. 若 trigger 当前 enabled，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled；原本 disabled 时不要无意义切换状态。
+5. 执行 `+release-create --branch sprint/default`，保存返回的 `data.release_id`。
+6. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；`failed` 时报告发布失败并保持 disabled。`is_published=true` 不能代替这轮发布完成。
+7. 获得启动/测试授权后才执行 `+automation-enable`，并用 `+automation-get` 确认 enabled。
+8. 再按下节取得与具体事件匹配的操作级授权，由已授权主体制造真实 runtime 条件并核验业务结果。
 
 没有通用的 `automation-debug` 或 trigger 日志 shortcut。缺少安全事件入口、匹配环境或可观察结果时，记录 blocked，不能编造测试成功。
 

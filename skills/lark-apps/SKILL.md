@@ -1,7 +1,7 @@
 ---
 name: lark-apps
 version: 1.0.0
-description: "妙搭（Spark/Miaoda）应用开发与托管：创建或查找应用，选择本地全栈、HTML 托管或云端 AI 开发路径，并管理发布、数据库、文件、环境变量、角色、插件、开放 API、自动化触发器和观测能力。当用户要新建、修改、部署、上线或排查妙搭应用，给出 app_id / *.aiforce.cloud 链接，或提到妙搭应用资源时使用。不负责普通飞书云盘、文档、表格/Base 或幻灯片内容操作。"
+description: "妙搭（Spark/Miaoda）应用开发与托管：当用户要开发或新建系统、工具、平台、应用，或创建、查找、修改、部署、上线、排查妙搭应用（含 app_id / *.aiforce.cloud），以及管理本地全栈、HTML、云端 AI、发布、数据库、文件、环境变量、角色、插件、开放 API、自动化触发器、日志与监控时使用。不负责普通飞书云盘、文档、表格/Base 或幻灯片内容操作。"
 metadata:
   requires:
     bins: ["lark-cli"]
