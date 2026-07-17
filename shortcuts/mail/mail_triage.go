@@ -272,9 +272,12 @@ var MailTriage = common.Shortcut{
 
 		// Inject mailbox_id into every message so downstream consumers
 		// (e.g. mail +message) can preserve the mailbox context for
-		// public/shared mailbox scenarios.
+		// public/shared mailbox scenarios. Only inject if not already set
+		// by buildTriageMessageMeta (which extracts it from backend response).
 		for _, msg := range messages {
-			msg["mailbox_id"] = mailbox
+			if _, hasMailboxID := msg["mailbox_id"]; !hasMailboxID {
+				msg["mailbox_id"] = mailbox
+			}
 		}
 
 		switch outFormat {
@@ -569,6 +572,10 @@ func buildTriageMessageMeta(msg map[string]interface{}, fallbackMessageID string
 		}
 	}
 	item["labels"] = strings.Join(labelIDs, ",")
+	// Extract mailbox_id from response if present (backend returns it for public/shared mailbox scenarios)
+	if v := strVal(msg["mailbox_id"]); v != "" {
+		item["mailbox_id"] = v
+	}
 	return item
 }
 
