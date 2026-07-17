@@ -80,11 +80,11 @@ func requireInOrder(t *testing.T, text string, tokens ...string) {
 	}
 }
 
-func TestAutomationSkillContract_CompleteStartWaitsForThisRelease(t *testing.T) {
-	section := skillSubsection(t, readAutomationSkillDoc(t), "### 完成并启动/启用/测试")
+func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testing.T) {
+	section := skillSubsection(t, readAutomationSkillDoc(t), "### 实现或更新 handler 后发布并启动/测试")
 
 	requireInOrder(t, section,
-		"仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。",
+		"仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler",
 		"disabled",
 		"--name",
 		"项目 guide",
@@ -100,7 +100,7 @@ func TestAutomationSkillContract_CompleteStartWaitsForThisRelease(t *testing.T) 
 		"真实 runtime",
 	)
 	for _, boundary := range []string{
-		"仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。",
+		"仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler，且用户要求把这次代码发布后启动或测试时，才使用此路径。",
 		"按项目 guide 完成同名业务 handler 并本地验证。",
 		"在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。",
 		"只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；`failed` 时报告发布失败并保持 disabled。`is_published=true` 不能代替这轮发布完成。",
@@ -149,6 +149,54 @@ func TestAutomationSkillContract_ConfigurationStopsDisabled(t *testing.T) {
 	} {
 		if !strings.Contains(section, boundary) {
 			t.Errorf("configuration-only section must preserve %q", boundary)
+		}
+	}
+}
+
+func TestAutomationSkillContract_EnableExistingTriggerDoesNotPublish(t *testing.T) {
+	doc := readAutomationSkillDoc(t)
+	section := skillSubsection(t, doc, "### 仅启用已有 disabled trigger")
+	routeSection := skillSection(t, doc, "## 何时用本 skill（路由锚点）")
+
+	requireInOrder(t, section,
+		"用户只要求启用已存在且 disabled 的 trigger",
+		"+automation-get",
+		"当前线上已发布代码",
+		"+automation-enable",
+		"+automation-get",
+		"不得修改 handler、commit/push 或 release",
+		"对 UPSERT 或 feishu-approval 只改变配置状态",
+	)
+	for _, forbidden := range []string{
+		"git push origin sprint/default",
+		"+release-create --branch sprint/default",
+	} {
+		if strings.Contains(section, forbidden) {
+			t.Errorf("enable-only flow must not contain %q", forbidden)
+		}
+	}
+	if !strings.Contains(routeSection, "「启用 / 启动已有 trigger」→ 先核对现有状态；只启用时不要修改源码或发布应用。") {
+		t.Error("routing anchors must keep existing-trigger enablement separate from code release")
+	}
+}
+
+func TestAutomationSkillContract_TestExistingTriggerDoesNotPublish(t *testing.T) {
+	section := skillSubsection(t, readAutomationSkillDoc(t), "### 测试已有线上 trigger（不改代码）")
+
+	requireInOrder(t, section,
+		"用户要求测试已经发布的 trigger",
+		"+automation-get",
+		"当前线上代码",
+		"不得修改源码、commit/push 或 release",
+		"测试请求已明确包含临时 enable，或另行取得 enable 授权",
+		"运行时验证的操作级授权",
+	)
+	for _, forbidden := range []string{
+		"git push origin sprint/default",
+		"+release-create --branch sprint/default",
+	} {
+		if strings.Contains(section, forbidden) {
+			t.Errorf("existing-trigger test flow must not contain %q", forbidden)
 		}
 	}
 }
@@ -204,6 +252,36 @@ func TestAutomationSkillContract_UPSERTAndApprovalStayConfigurationOnly(t *testi
 	}
 }
 
+func TestAutomationSkillContract_RuntimeProbeRequiresOperationScope(t *testing.T) {
+	section := skillSubsection(t, readAutomationSkillDoc(t), "### 运行时验证的操作级授权")
+
+	for _, boundary := range []string{
+		"启用 trigger 的授权不等于制造 runtime 事件的授权，测试授权也不等于任意数据库写入授权。",
+		"环境、表、操作、精确测试记录或筛选条件、payload、预期结果和清理方式",
+		"优先使用专用测试记录",
+		"`DELETE`",
+		"[lark-apps-db-execute.md](lark-apps-db-execute.md)",
+		"先 `SELECT count(*)`、执行 `--dry-run`",
+		"取得针对该删除目标的明确授权",
+		"缺少安全、已授权且可清理的事件入口时，记录 blocked",
+	} {
+		if !strings.Contains(section, boundary) {
+			t.Errorf("runtime probe section must preserve %q", boundary)
+		}
+	}
+}
+
+func TestAutomationSkillContract_UsesResolvableSharedSkillLink(t *testing.T) {
+	doc := readAutomationSkillDoc(t)
+
+	if strings.Contains(doc, "](../lark-shared/SKILL.md)") {
+		t.Error("automation reference must not resolve lark-shared inside the lark-apps directory")
+	}
+	if !strings.Contains(doc, "](../../lark-shared/SKILL.md)") {
+		t.Error("automation reference must link to the sibling lark-shared skill")
+	}
+}
+
 func TestLocalDevSkillContract_UsesProjectGuideWithoutSyncInternals(t *testing.T) {
 	section := skillSection(t, readLocalDevSkillDoc(t), "## Trigger guide 的项目边界")
 
@@ -245,6 +323,7 @@ func TestLocalDevSkillContract_UsesEnvironmentAndDefersEnableToAutomationSOP(t *
 	for _, boundary := range []string{
 		"`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。",
 		"若本次发布包含自动化 handler，继续读取 [automation SOP](lark-apps-automation.md)。enable 不能替代 commit/push/release，也绝不能发生在本轮 release finished 之前；只有用户明确要求启动、启用或测试时才在该门槛后启用 trigger。",
+		"用户只要求启用已有 trigger 时，转到 automation SOP 的 enable-only 路径；不得因 enable 反向修改 handler、commit/push 或 release。",
 		"使用 `--environment dev|online`，不要使用旧的 `--env`。只有确认应用已开启多环境时才引导 `--environment dev`；单环境应用省略 `--environment`（服务端选 online）或显式传 `--environment online`。",
 	} {
 		if !strings.Contains(doc, boundary) {
