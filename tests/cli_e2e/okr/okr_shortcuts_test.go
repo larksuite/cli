@@ -39,10 +39,12 @@ func TestOKR_CreateDryRun_Objective(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	output := result.Stdout
-	assert.True(t, strings.Contains(output, "POST"), "dry-run should contain POST method, got: %s", output)
-	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/cycles/123456/objectives"), "dry-run should contain objective API path, got: %s", output)
+	assert.Equal(t, "POST", gjson.Get(output, "data.api.0.method").String(), "dry-run should contain POST method")
+	assert.Equal(t, "/open-apis/okr/v2/cycles/123456/objectives", gjson.Get(output, "data.api.0.url").String(), "dry-run should contain objective API path")
 	assert.Equal(t, "123456", gjson.Get(output, "data.api.0.params.cycle_id").String(), "dry-run should contain cycle-id query param")
 	assert.Equal(t, "open_id", gjson.Get(output, "data.api.0.params.user_id_type").String(), "dry-run should contain default user-id-type")
+	assert.Equal(t, "Objective 1", gjson.Get(output, "data.api.0.body.content.blocks.0.paragraph.elements.0.text_run.text").String(), "dry-run should contain serialized content text")
+	assert.Equal(t, "ou_123", gjson.Get(output, "data.api.0.body.content.blocks.0.paragraph.elements.1.mention.user_id").String(), "dry-run should contain serialized mention")
 }
 
 // TestOKR_CreateDryRun_KeyResult validates +create dry-run for key-result creation.
@@ -66,10 +68,11 @@ func TestOKR_CreateDryRun_KeyResult(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	output := result.Stdout
-	assert.True(t, strings.Contains(output, "POST"), "dry-run should contain POST method, got: %s", output)
-	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/objectives/789/key_results"), "dry-run should contain key-result API path, got: %s", output)
+	assert.Equal(t, "POST", gjson.Get(output, "data.api.0.method").String(), "dry-run should contain POST method")
+	assert.Equal(t, "/open-apis/okr/v2/objectives/789/key_results", gjson.Get(output, "data.api.0.url").String(), "dry-run should contain key-result API path")
 	assert.Equal(t, "789", gjson.Get(output, "data.api.0.params.objective_id").String(), "dry-run should contain objective-id query param")
 	assert.Equal(t, "user_id", gjson.Get(output, "data.api.0.params.user_id_type").String(), "dry-run should contain explicit user-id-type")
+	assert.Equal(t, "KR 1", gjson.Get(output, "data.api.0.body.content.blocks.0.paragraph.elements.0.text_run.text").String(), "dry-run should contain rich-text body")
 }
 
 // TestOKR_BatchCreateDryRun validates +batch-create dry-run output contains expected API paths.

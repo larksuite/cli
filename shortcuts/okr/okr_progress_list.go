@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -76,7 +75,7 @@ var OKRListProgress = common.Shortcut{
 			"department_id_type": runtime.Str("department-id-type"),
 			"page_size":          runtime.Int("page-size"),
 		}
-		if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
 			params["page_token"] = pageToken
 		}
 
@@ -107,7 +106,7 @@ var OKRListProgress = common.Shortcut{
 			"department_id_type": deptIDType,
 			"page_size":          runtime.Int("page-size"),
 		}
-		if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
 			queryParams["page_token"] = pageToken
 		}
 

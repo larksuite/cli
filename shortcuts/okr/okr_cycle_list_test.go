@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -133,8 +134,13 @@ func TestCycleListValidate_InvalidPageSize(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid --page-size")
 	}
-	if !strings.Contains(err.Error(), "--page-size") {
-		t.Fatalf("unexpected error: %v", err)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected validation invalid_argument problem, got: %v", err)
+	}
+	validationErr, ok := err.(*errs.ValidationError)
+	if !ok || validationErr.Param != "--page-size" {
+		t.Fatalf("expected param --page-size, got: %v", err)
 	}
 }
 

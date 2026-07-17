@@ -4,8 +4,10 @@
 package okr
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -23,6 +25,103 @@ type createParams struct {
 	Style       string
 	Content     *ContentBlock
 	UserIDType  string
+}
+
+type createContentMultipleJSONValuesError struct{}
+
+func (createContentMultipleJSONValuesError) Error() string {
+	return "multiple JSON values"
+}
+
+var errCreateContentMultipleJSONValues createContentMultipleJSONValuesError
+
+type okrCreateRequestBody struct {
+	Content *ContentBlock `json:"content"`
+}
+
+type okrCreateObjectiveQuery struct {
+	CycleID    string
+	UserIDType string
+}
+
+type okrCreateKeyResultQuery struct {
+	ObjectiveID string
+	UserIDType  string
+}
+
+type okrCreateObjectiveResponse struct {
+	ObjectiveID string
+}
+
+type okrCreateKeyResultResponse struct {
+	KeyResultID string
+}
+
+type okrCreateObjectiveOutput struct {
+	Level       string `json:"level"`
+	ObjectiveID string `json:"objective_id"`
+}
+
+type okrCreateKeyResultOutput struct {
+	Level       string `json:"level"`
+	ObjectiveID string `json:"objective_id"`
+	KeyResultID string `json:"key_result_id"`
+}
+
+func decodeCreateContentStrict(contentStr string, target interface{}, message string) error {
+	dec := json.NewDecoder(bytes.NewReader([]byte(contentStr)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(target); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, message, err).
+			WithParam("--content").
+			WithCause(err)
+	}
+	var trailing interface{}
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = errCreateContentMultipleJSONValues
+		}
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, message, err).
+			WithParam("--content").
+			WithCause(err)
+	}
+	return nil
+}
+
+func projectCreateRequestBody(body okrCreateRequestBody) map[string]interface{} {
+	return map[string]interface{}{
+		"content": body.Content,
+	}
+}
+
+func projectCreateObjectiveQuery(query okrCreateObjectiveQuery) map[string]interface{} {
+	return map[string]interface{}{
+		"cycle_id":     query.CycleID,
+		"user_id_type": query.UserIDType,
+	}
+}
+
+func projectCreateKeyResultQuery(query okrCreateKeyResultQuery) map[string]interface{} {
+	return map[string]interface{}{
+		"objective_id": query.ObjectiveID,
+		"user_id_type": query.UserIDType,
+	}
+}
+
+func projectCreateObjectiveResponse(data map[string]interface{}) (*okrCreateObjectiveResponse, error) {
+	objectiveID, ok := data["objective_id"].(string)
+	if !ok || objectiveID == "" {
+		return nil, errs.NewInternalError(errs.SubtypeUnknown, "create objective response missing objective_id")
+	}
+	return &okrCreateObjectiveResponse{ObjectiveID: objectiveID}, nil
+}
+
+func projectCreateKeyResultResponse(data map[string]interface{}) (*okrCreateKeyResultResponse, error) {
+	keyResultID, ok := data["key_result_id"].(string)
+	if !ok || keyResultID == "" {
+		return nil, errs.NewInternalError(errs.SubtypeUnknown, "create key result response missing key_result_id")
+	}
+	return &okrCreateKeyResultResponse{KeyResultID: keyResultID}, nil
 }
 
 // parseCreateParams parses and validates flags from runtime into request-ready parameters.
@@ -45,8 +144,8 @@ func parseCreateParams(runtime *common.RuntimeContext) (*createParams, error) {
 
 	if p.Style == "simple" {
 		var sp SemiPlainContent
-		if err := json.Unmarshal([]byte(contentStr), &sp); err != nil {
-			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid semi-plain JSON: {\"text\":\"...\",\"mention\":[\"...\"]}: %s", err).WithParam("--content").WithCause(err)
+		if err := decodeCreateContentStrict(contentStr, &sp, "--content must be valid semi-plain JSON: {\"text\":\"...\",\"mention\":[\"...\"]}: %s"); err != nil {
+			return nil, err
 		}
 		if strings.TrimSpace(sp.Text) == "" {
 			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content text is required and cannot be empty").WithParam("--content")
@@ -64,8 +163,8 @@ func parseCreateParams(runtime *common.RuntimeContext) (*createParams, error) {
 	}
 
 	var cb ContentBlock
-	if err := json.Unmarshal([]byte(contentStr), &cb); err != nil {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid ContentBlock JSON: %s", err).WithParam("--content").WithCause(err)
+	if err := decodeCreateContentStrict(contentStr, &cb, "--content must be valid ContentBlock JSON: %s"); err != nil {
+		return nil, err
 	}
 	if len(cb.Blocks) == 0 {
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must contain at least one block").WithParam("--content")
@@ -125,6 +224,9 @@ var OKRCreate = common.Shortcut{
 
 		switch level {
 		case "objective":
+			if runtime.Str("objective-id") != "" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--objective-id cannot be used when --level=objective").WithParam("--objective-id")
+			}
 			cycleID := runtime.Str("cycle-id")
 			if cycleID == "" {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--cycle-id is required when --level=objective").WithParam("--cycle-id")
@@ -136,6 +238,9 @@ var OKRCreate = common.Shortcut{
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--cycle-id must be a positive int64").WithParam("--cycle-id")
 			}
 		case "key-result":
+			if runtime.Str("cycle-id") != "" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--cycle-id cannot be used when --level=key-result").WithParam("--cycle-id")
+			}
 			objectiveID := runtime.Str("objective-id")
 			if objectiveID == "" {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--objective-id is required when --level=key-result").WithParam("--objective-id")
@@ -159,15 +264,13 @@ var OKRCreate = common.Shortcut{
 				Desc(fmt.Sprintf("Dry-run skipped: %s", err.Error()))
 		}
 
-		body := map[string]interface{}{
-			"content": p.Content,
-		}
-		params := map[string]interface{}{
-			"user_id_type": p.UserIDType,
-		}
+		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content})
 
 		if p.Level == "objective" {
-			params["cycle_id"] = p.CycleID
+			params := projectCreateObjectiveQuery(okrCreateObjectiveQuery{
+				CycleID:    p.CycleID,
+				UserIDType: p.UserIDType,
+			})
 			return common.NewDryRunAPI().
 				POST("/open-apis/okr/v2/cycles/:cycle_id/objectives").
 				Set("cycle_id", p.CycleID).
@@ -176,7 +279,10 @@ var OKRCreate = common.Shortcut{
 				Desc("Create OKR objective")
 		}
 
-		params["objective_id"] = p.ObjectiveID
+		params := projectCreateKeyResultQuery(okrCreateKeyResultQuery{
+			ObjectiveID: p.ObjectiveID,
+			UserIDType:  p.UserIDType,
+		})
 		return common.NewDryRunAPI().
 			POST("/open-apis/okr/v2/objectives/:objective_id/key_results").
 			Set("objective_id", p.ObjectiveID).
@@ -190,51 +296,54 @@ var OKRCreate = common.Shortcut{
 			return err
 		}
 
-		body := map[string]interface{}{
-			"content": p.Content,
-		}
-		queryParams := map[string]interface{}{
-			"user_id_type": p.UserIDType,
-		}
-
-		result := map[string]interface{}{
-			"level": p.Level,
-		}
+		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content})
 
 		if p.Level == "objective" {
-			queryParams["cycle_id"] = p.CycleID
+			queryParams := projectCreateObjectiveQuery(okrCreateObjectiveQuery{
+				CycleID:    p.CycleID,
+				UserIDType: p.UserIDType,
+			})
 			path := fmt.Sprintf("/open-apis/okr/v2/cycles/%s/objectives", p.CycleID)
 			data, err := runtime.CallAPITyped("POST", path, queryParams, body)
 			if err != nil {
 				return wrapOkrNetworkErr(err, "failed to create objective")
 			}
-			objectiveID, ok := data["objective_id"].(string)
-			if !ok || objectiveID == "" {
-				return errs.NewInternalError(errs.SubtypeUnknown, "create objective response missing objective_id")
+			resp, err := projectCreateObjectiveResponse(data)
+			if err != nil {
+				return err
 			}
-			result["objective_id"] = objectiveID
+			result := okrCreateObjectiveOutput{
+				Level:       p.Level,
+				ObjectiveID: resp.ObjectiveID,
+			}
 
 			runtime.OutFormat(result, nil, func(w io.Writer) {
-				fmt.Fprintf(w, "Created OKR objective [%s]\n", objectiveID)
+				fmt.Fprintf(w, "Created OKR objective [%s]\n", resp.ObjectiveID)
 			})
 			return nil
 		}
 
-		queryParams["objective_id"] = p.ObjectiveID
+		queryParams := projectCreateKeyResultQuery(okrCreateKeyResultQuery{
+			ObjectiveID: p.ObjectiveID,
+			UserIDType:  p.UserIDType,
+		})
 		path := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results", p.ObjectiveID)
 		data, err := runtime.CallAPITyped("POST", path, queryParams, body)
 		if err != nil {
 			return wrapOkrNetworkErr(err, "failed to create key result")
 		}
-		keyResultID, ok := data["key_result_id"].(string)
-		if !ok || keyResultID == "" {
-			return errs.NewInternalError(errs.SubtypeUnknown, "create key result response missing key_result_id")
+		resp, err := projectCreateKeyResultResponse(data)
+		if err != nil {
+			return err
 		}
-		result["key_result_id"] = keyResultID
-		result["objective_id"] = p.ObjectiveID
+		result := okrCreateKeyResultOutput{
+			Level:       p.Level,
+			ObjectiveID: p.ObjectiveID,
+			KeyResultID: resp.KeyResultID,
+		}
 
 		runtime.OutFormat(result, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "Created OKR key-result [%s] under objective [%s]\n", keyResultID, p.ObjectiveID)
+			fmt.Fprintf(w, "Created OKR key-result [%s] under objective [%s]\n", resp.KeyResultID, p.ObjectiveID)
 		})
 		return nil
 	},

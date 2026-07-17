@@ -146,6 +146,44 @@ func TestCreateValidate_MissingObjectiveIDForKR(t *testing.T) {
 	}
 }
 
+func TestCreateValidate_RejectObjectiveIDForObjective(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
+	err := runCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--level", "objective",
+		"--cycle-id", "123",
+		"--objective-id", "456",
+		"--content", validCreateSimpleJSON,
+	})
+	if err == nil {
+		t.Fatal("expected objective-id rejection")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--objective-id" {
+		t.Fatalf("expected param --objective-id, got: %v", err)
+	}
+}
+
+func TestCreateValidate_RejectCycleIDForKeyResult(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
+	err := runCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--level", "key-result",
+		"--cycle-id", "123",
+		"--objective-id", "456",
+		"--content", validCreateSimpleJSON,
+	})
+	if err == nil {
+		t.Fatal("expected cycle-id rejection")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--cycle-id" {
+		t.Fatalf("expected param --cycle-id, got: %v", err)
+	}
+}
+
 func TestCreateValidate_InvalidObjectiveID(t *testing.T) {
 	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
@@ -295,6 +333,28 @@ func TestCreateValidate_SimpleContentRejectsDocsImages(t *testing.T) {
 	}
 }
 
+func TestCreateValidate_SimpleContentRejectsUnknownFields(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
+	err := runCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--level", "objective",
+		"--cycle-id", "123",
+		"--style", "simple",
+		"--content", `{"text":"test","mentions":["ou_123"]}`,
+	})
+	if err == nil {
+		t.Fatal("expected unknown simple content field error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--content" {
+		t.Fatalf("expected param --content, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("expected unknown field error, got: %v", err)
+	}
+}
+
 func TestCreateValidate_InvalidRichTextJSON(t *testing.T) {
 	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
@@ -311,6 +371,28 @@ func TestCreateValidate_InvalidRichTextJSON(t *testing.T) {
 	var ve *errs.ValidationError
 	if !errors.As(err, &ve) || ve.Param != "--content" {
 		t.Fatalf("expected param --content, got: %v", err)
+	}
+}
+
+func TestCreateValidate_RichTextRejectsUnknownFields(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
+	err := runCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--level", "objective",
+		"--cycle-id", "123",
+		"--style", "richtext",
+		"--content", `{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"test content"}}]}}],"mentions":["ou_123"]}`,
+	})
+	if err == nil {
+		t.Fatal("expected unknown richtext content field error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--content" {
+		t.Fatalf("expected param --content, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("expected unknown field error, got: %v", err)
 	}
 }
 
@@ -349,8 +431,11 @@ func TestCreateDryRun_Objective(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, `"/open-apis/okr/v2/cycles/123/objectives"`) {
-		t.Fatalf("expected objective create path in dry-run, got: %s", output)
+	if got := gjson.Get(output, "data.api.0.method").String(); got != "POST" {
+		t.Fatalf("dry-run method = %q, want POST; output: %s", got, output)
+	}
+	if got := gjson.Get(output, "data.api.0.url").String(); got != "/open-apis/okr/v2/cycles/123/objectives" {
+		t.Fatalf("dry-run url = %q, want objective create path; output: %s", got, output)
 	}
 	if gjson.Get(output, "data.api.0.params.cycle_id").String() != "123" {
 		t.Fatalf("expected query params in dry-run, got: %s", output)
@@ -358,8 +443,11 @@ func TestCreateDryRun_Objective(t *testing.T) {
 	if gjson.Get(output, "data.api.0.params.user_id_type").String() != "open_id" {
 		t.Fatalf("expected default user-id-type in dry-run, got: %s", output)
 	}
-	if !strings.Contains(output, `"content"`) {
-		t.Fatalf("expected content body in dry-run, got: %s", output)
+	if got := gjson.Get(output, "data.api.0.body.content.blocks.0.paragraph.elements.0.text_run.text").String(); got != "test objective" {
+		t.Fatalf("dry-run content text = %q, want test objective; output: %s", got, output)
+	}
+	if got := gjson.Get(output, "data.api.0.body.content.blocks.0.paragraph.elements.1.mention.user_id").String(); got != "ou_123" {
+		t.Fatalf("dry-run mention user_id = %q, want ou_123; output: %s", got, output)
 	}
 }
 
@@ -379,14 +467,20 @@ func TestCreateDryRun_KeyResult(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, `"/open-apis/okr/v2/objectives/456/key_results"`) {
-		t.Fatalf("expected key result create path in dry-run, got: %s", output)
+	if got := gjson.Get(output, "data.api.0.method").String(); got != "POST" {
+		t.Fatalf("dry-run method = %q, want POST; output: %s", got, output)
+	}
+	if got := gjson.Get(output, "data.api.0.url").String(); got != "/open-apis/okr/v2/objectives/456/key_results" {
+		t.Fatalf("dry-run url = %q, want key result create path; output: %s", got, output)
 	}
 	if gjson.Get(output, "data.api.0.params.objective_id").String() != "456" {
 		t.Fatalf("expected objective-id query param in dry-run, got: %s", output)
 	}
 	if gjson.Get(output, "data.api.0.params.user_id_type").String() != "union_id" {
 		t.Fatalf("expected query params in dry-run, got: %s", output)
+	}
+	if got := gjson.Get(output, "data.api.0.body.content.blocks.0.paragraph.elements.0.text_run.text").String(); got != "test content" {
+		t.Fatalf("dry-run richtext content = %q, want test content; output: %s", got, output)
 	}
 }
 

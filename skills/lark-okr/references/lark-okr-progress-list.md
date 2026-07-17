@@ -7,19 +7,19 @@
 ## 推荐命令
 
 ```bash
-# 获取目标的所有进展记录
+# 获取目标进展记录第一页 (默认页大小为 100，一般不用翻页)
 lark-cli okr +progress-list \
   --target-id 1234567890123456789 \
   --target-type objective
 
-# 获取下一页进展记录 (默认页大小为 100，一般不用翻页)
+# 获取下一页进展记录 
 lark-cli okr +progress-list \
   --target-id 1234567890123456789 \
   --target-type objective \
   --page-size 100 \
   --page-token "7000000000000000002"
 
-# 获取关键结果的所有进展记录
+# 获取关键结果进展记录第一页
 lark-cli okr +progress-list \
   --target-id 9876543210987654321 \
   --target-type key_result

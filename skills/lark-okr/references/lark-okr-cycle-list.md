@@ -7,10 +7,10 @@
 ## 推荐命令
 
 ```bash
-# 列出用户的所有周期
+# 获取用户周期第一页 (默认页大小为 100 按时间倒序排列，一般不用翻页)
 lark-cli okr +cycle-list --user-id "ou_xxx"
 
-# 获取下一页(默认页大小为 100，一般不用翻页)
+# 获取下一页
 lark-cli okr +cycle-list --user-id "ou_xxx" --page-size 100 --page-token "7000000000000000002"
 
 # 使用特定的用户 ID 类型列出周期
