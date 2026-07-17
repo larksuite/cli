@@ -6,6 +6,7 @@ package apps
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -101,12 +102,14 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 
 	requireInOrder(t, section,
 		"仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler",
-		"disabled",
+		"+automation-get",
 		"--name",
 		"项目 guide",
 		"按项目 guide 完成同名业务 handler 并本地验证。",
 		"在 Git 已确认/预授权时 commit，然后执行",
 		"git push origin sprint/default",
+		"+automation-disable",
+		"确认 disabled",
 		"+release-create --branch sprint/default",
 		"data.release_id",
 		"+release-get",
@@ -116,11 +119,12 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 		"真实 runtime",
 	)
 	requireFirstOccurrencesInOrder(t, section,
+		"+automation-get",
 		"git push origin sprint/default",
+		"+automation-disable",
 		"+release-create --branch sprint/default",
 		"data.status=finished",
 		"+automation-enable",
-		"+automation-get",
 	)
 	for _, boundary := range []string{
 		"仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler，且用户要求把这次代码发布后启动或测试时，才使用此路径。",
@@ -245,13 +249,33 @@ func TestAutomationSkillContract_PublishedHandlerStaysDisabled(t *testing.T) {
 
 	for _, boundary := range []string{
 		"仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。",
-		"按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`，再发布完整应用：",
+		"先用 `+automation-get` 核对当前状态，并记录它是否 enabled。",
+		"若 trigger 已 enabled，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled。",
+		"按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`。",
+		"随后发布完整应用：",
 		"保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成；`failed` 时报告发布失败、保持 disabled，修复并重新发布后再取得新的 finished 结果。",
 		"release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，始终保持 disabled，不执行 `+automation-enable`。",
 	} {
 		if !strings.Contains(section, boundary) {
 			t.Errorf("publish-without-start section must preserve %q", boundary)
 		}
+	}
+	requireFirstOccurrencesInOrder(t, section,
+		"+automation-get",
+		"git push origin sprint/default",
+		"+automation-disable",
+		"+release-create",
+	)
+}
+
+func TestAppsSkillContract_RoutesGenericAppDevelopment(t *testing.T) {
+	doc := readLarkAppsSkillDoc(t)
+	description := regexp.MustCompile(`(?m)^description: "([^"]+)"$`).FindStringSubmatch(doc)
+	if len(description) != 2 {
+		t.Fatal("lark-apps skill must have a single-line frontmatter description")
+	}
+	if !strings.Contains(description[1], "当用户要开发或新建系统、工具、平台、应用") {
+		t.Error("lark-apps description must route generic app-development requests before the skill body is loaded")
 	}
 }
 
@@ -304,6 +328,26 @@ func TestAutomationSkillContract_UsesResolvableSharedSkillLink(t *testing.T) {
 	}
 }
 
+func TestAppsSkillContract_AllSharedSkillLinksResolve(t *testing.T) {
+	docs := []string{larkAppsSkillDoc}
+	references, err := filepath.Glob("../../skills/lark-apps/references/*.md")
+	if err != nil {
+		t.Fatalf("glob lark-apps references: %v", err)
+	}
+	docs = append(docs, references...)
+	sharedLink := regexp.MustCompile(`\]\(([^)]+lark-shared/SKILL\.md)\)`)
+
+	for _, docPath := range docs {
+		doc := readAppsSkillDoc(t, docPath)
+		for _, match := range sharedLink.FindAllStringSubmatch(doc, -1) {
+			target := filepath.Clean(filepath.Join(filepath.Dir(docPath), match[1]))
+			if _, err := os.Stat(target); err != nil {
+				t.Errorf("%s shared-skill link %q resolves to missing target %s: %v", docPath, match[1], target, err)
+			}
+		}
+	}
+}
+
 func TestLocalDevSkillContract_UsesProjectGuideWithoutSyncInternals(t *testing.T) {
 	section := skillSection(t, readLocalDevSkillDoc(t), "## Trigger guide 的项目边界")
 
@@ -315,7 +359,10 @@ func TestLocalDevSkillContract_UsesProjectGuideWithoutSyncInternals(t *testing.T
 			t.Errorf("trigger-guide boundary section must explain %q", boundary)
 		}
 	}
-	for _, implementationShape := range []string{"npx ", "skills sync", "data.", "skills_", "_CACHE_DIR", "nestjs-"} {
+	for _, implementationShape := range []string{
+		"npx ", "skills sync", "data.", "skills_", "_CACHE_DIR", "nestjs-",
+		"@lark-apaas/miaoda-cli", "@lark-apaas/coding-steering", "miaoda-coding", "skills_common/",
+	} {
 		if strings.Contains(section, implementationShape) {
 			t.Errorf("local-dev skill must not expose project-sync implementation shape %q", implementationShape)
 		}
@@ -327,7 +374,9 @@ func TestAppsSkillContract_DoesNotExposeSteeringImplementation(t *testing.T) {
 		"automation": readAutomationSkillDoc(t),
 		"local-dev":  readLocalDevSkillDoc(t),
 	} {
-		for _, implementationShape := range []string{"npx ", "skills sync"} {
+		for _, implementationShape := range []string{
+			"npx ", "skills sync", "@lark-apaas/miaoda-cli", "@lark-apaas/coding-steering", "miaoda-coding", "skills_common/",
+		} {
 			if strings.Contains(doc, implementationShape) {
 				t.Errorf("%s skill must not expose project-sync implementation shape %q", name, implementationShape)
 			}
