@@ -92,7 +92,7 @@ metadata:
 ### 3. 发送会中文本或会中表情（写操作）
 
 1. 用户明确要求在当前进行中的会议里发送提示、说明、会中表情，或反馈“听不到 / 看不到 / 声音清楚 / 效果不错”时，用 `+meeting-message-send`。
-2. 输入是长数字 `meeting_id`，不是 9 位会议号。若用户只给 9 位会议号，先按当前身份执行 `+meeting-list-active` 并按 `meeting_no` 匹配，匹配到唯一会议后再发送；不要为了发消息自动入会。
+2. 输入是长数字 `meeting_id`，不是 9 位会议号。若用户只给 9 位会议号，先按当前身份执行 `+meeting-list-active` 并按 `meeting_no` 匹配，匹配到唯一会议后再发送；不要为了发消息自动入会。发消息只需 `meeting_id`，不要先查 `+detail`。
 3. 身份必须延续：`meeting_id` 来自用户身份发现，就继续 `--as user`；来自应用身份发现或应用机器人入会，就继续 `--as bot`。
 4. 文本消息使用 `--text`；会中表情 / 反馈使用 `--emoji-type`。`--emoji-type` 必须从 reference 里的完整列表中选择，大小写敏感。
 5. 支持普通 Feishu reaction emoji（如 `LOVE`、`SMILE`、`THUMBSUP`）和 4 个 VC 反馈 key（`VC_CanNotSee`、`VC_NoSound`、`VC_LooksGood`、`VC_SoundsClear`）。
