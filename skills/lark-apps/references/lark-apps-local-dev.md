@@ -15,11 +15,11 @@
 
 ```bash
 # 新建 full_stack 应用
-lark-cli apps +create --name "审批系统" --app-type full_stack \
+lark-cli apps +create --as user --name "审批系统" --app-type full_stack \
   --description "支持登录、提交申请、多级审批、状态查询"
 
 # 初始化本地仓库（--dir 取值见下方「领域规则」，勿照抄此处示例值）
-lark-cli apps +init --app-id app_xxx --dir ./approval-app
+lark-cli apps +init --as user --app-id app_xxx --dir ./approval-app
 
 # 进入仓库后按项目脚手架启动
 cd ./approval-app
@@ -31,12 +31,31 @@ npm run dev
 git add <本次开发的文件>          # 提交粒度见下方「改完代码后部署上线」
 git commit -m "feat: ..."
 git push origin sprint/default
-lark-cli apps +release-create --app-id app_xxx
+lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
 ```
 
 `+init` 是推荐便捷入口；想逐步手动控制时，先 `+git-credential-init` 拿 `repository_url`，再用原生 `git clone` / `git checkout sprint/default`。
 
 **`+init` 完成后必须执行**：`cat <project-path>/.agents/skills/plugin-guide/SKILL.md`，读取仓库插件指引。该文件包含插件目录、实例配置规则和调用代码生成方式——不读就无法正确集成插件能力。文件不存在则跳过。
+
+## Trigger guide 同步与版本证明
+
+涉及自动化业务代码时，只在项目根目录存在 `.spark/meta.json`、其中 `stack=nestjs-react-fullstack` 时使用 trigger guide。先读取 `.agents/skills/trigger-guide/SKILL.md`，它定义 handler、module 注册、发布和启用的边界；Apps 触发器配置细节见 [automation SOP](lark-apps-automation.md)。
+
+文件缺失，或需要证明本轮使用的 steering 版本时，在这个项目根目录运行带确定版本号的同步命令：
+
+```bash
+npx -y @lark-apaas/miaoda-cli@<cli-version> skills sync --local --version <published-coding-steering-version>
+```
+
+同步后必须确认：
+
+1. 命令 exit 0；
+2. JSON 的 `data.stack=nestjs-react-fullstack` 与 `data.version=<published-coding-steering-version>`；
+3. `data.syncedSkills` 包含 `nestjs-react-fullstack/skills_common/trigger-guide`，且不包含旧的 `nestjs-react-fullstack/skills/trigger-guide`；
+4. 最终文件存在于 `.agents/skills/trigger-guide/SKILL.md`。
+
+`+init` 只是一条初始化流程，**不等于版本证明**；浮动 `@latest` 也不能证明当前项目安装了目标版本。普通本地验证应保持 `MIAODA_DEP_CACHE_DIR` 未设置或为空，配合 `--local` 生成 flat `.agents/skills/` 输出。sandbox 的同步路径和输出不同，不能把它与此检查混用。
 
 ## 改完代码后部署上线
 
@@ -46,8 +65,10 @@ lark-cli apps +release-create --app-id app_xxx
 
 1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
 2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push）。
-3. `lark-cli apps +release-create --app-id <app_id>` 发起部署上线，记下返回的 `release_id`。
-4. `lark-cli apps +release-get --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 继续轮询；`finished` 成功时该命令输出已含 `online_url`，直接读取它返回给用户（这是本轮发布完成后的可分享链接），无需再调 `+list`；`failed` 时该命令输出已含 `error_logs`，直接据此给出失败原因（`+list` 仅作独立查询入口）。
+3. `lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default` 发起部署上线，记下返回的 `release_id`。
+4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时该命令输出已含 `online_url`，直接读取它返回给用户（这是本轮发布完成后的可分享链接），无需再调 `+list`；`failed` 时该命令输出已含 `error_logs`，直接据此给出失败原因（`+list` 仅作独立查询入口）。
+
+若本次发布包含自动化 handler，继续读取 [automation SOP](lark-apps-automation.md)。enable 不能替代 commit/push/release，也绝不能发生在本轮 release finished 之前；只有用户明确要求启动、启用或测试时才在该门槛后启用 trigger。
 
 ## 领域规则
 
@@ -58,8 +79,8 @@ lark-cli apps +release-create --app-id app_xxx
 - 已拉到本地后，pull/push/diff/log 都用原生 git；云端 `sprint/default` 比本地新时，先 `git pull --rebase origin sprint/default`，解决冲突后再 push 和 publish。
 - 环境变量由脚手架在本地启动时处理；需要手动刷新时用 `+env-pull`。
 - DB 调试用 `+db-table-list` / `+db-table-get` / `+db-execute`；不要裸连数据库或自行拼连接串。
-- DB 分 `dev` / `online`；日常调试优先 `--env dev`。dev 的库结构变更要上线时，仍按应用发布链路走 `+release-create`，不要另造“数据库发布”步骤。
-- 存量单库应用需要 dev/online 多环境时，用 `+db-env-create --env dev`。这是不可逆 high-risk 操作。
+- DB 分 `dev` / `online`；使用 `--environment dev|online`，不要使用旧的 `--env`。只有确认应用已开启多环境时才引导 `--environment dev`；单环境应用省略 `--environment`（服务端选 online）或显式传 `--environment online`。在 dev 写入不能证明线上 handler 已验证。dev 的库结构变更要上线时，仍按应用发布链路走 `+release-create`，不要另造“数据库发布”步骤。
+- 存量单库应用需要 dev/online 多环境时，用 `+db-env-create --environment dev`。这是不可逆 high-risk 操作。
 - 只从 `+list` 看到 `is_published=true`，不能证明本地刚推送的代码已经部署；必须有本轮 `+release-get finished`。
 
 ## 存量应用入口
