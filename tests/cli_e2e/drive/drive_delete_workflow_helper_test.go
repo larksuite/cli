@@ -6,6 +6,7 @@ package drive
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -113,28 +114,47 @@ func TestIsTransientDriveDeleteFailure(t *testing.T) {
 }
 
 // TestDeleteAsyncAndVerifyRejectsUnexpectedFailure locks the P1 boundary
-// end-to-end: an unrelated non-zero exit must fail the workflow immediately —
-// no terminal-state check may rescue it even though meta reports the resource
-// gone. Fatalf cannot be observed on the real *testing.T, so the boundary is
-// proven by call counts: the meta endpoint must never be reached.
+// end-to-end by re-running this test binary as a subprocess that really calls
+// deleteAsyncAndVerify: an unrelated non-zero exit must fail the helper
+// immediately — no terminal-state check may rescue it even though meta reports
+// the resource gone. Fatalf cannot be observed on the parent *testing.T, so
+// the boundary is proven by the child process exiting non-zero AND the meta
+// endpoint never being reached. Removing the isTransientDriveDeleteFailure
+// guard from the main loop turns this test red.
 func TestDeleteAsyncAndVerifyRejectsUnexpectedFailure(t *testing.T) {
 	fake := mustWriteDriveDeleteWorkflowFakeCLI(t)
-	t.Setenv(clie2e.EnvBinaryPath, fake)
-	t.Setenv("FAKE_WORKFLOW_DELETE_MODE", "fail-unexpected")
-	t.Setenv("FAKE_WORKFLOW_META_MODE", "gone")
-	counters := setupFakeWorkflowCounters(t)
+	dir := t.TempDir()
+	deletes := filepath.Join(dir, "delete-attempts")
+	metas := filepath.Join(dir, "meta-calls")
+	taskResults := filepath.Join(dir, "task-result-calls")
 
-	result, err := clie2e.RunCmdWithRetry(context.Background(), clie2e.Request{
-		Args:      []string{"drive", "+delete", "--file-token", "docx_unexpected", "--type", "docx", "--yes"},
-		DefaultAs: "bot",
-	}, driveDeleteRetry)
-	require.NoError(t, err)
-	require.Equal(t, 1, result.ExitCode)
-	assert.False(t, isTransientDriveDeleteFailure(result), "an unrelated error must not be classified as the tolerated transient")
+	cmd := exec.Command(os.Args[0], "-test.run=TestDeleteAsyncAndVerifyUnexpectedFailureSubprocess$", "-test.v")
+	cmd.Env = append(os.Environ(),
+		"FAKE_WORKFLOW_SUBPROCESS=1",
+		clie2e.EnvBinaryPath+"="+fake,
+		"FAKE_WORKFLOW_DELETE_MODE=fail-unexpected",
+		"FAKE_WORKFLOW_META_MODE=gone",
+		"FAKE_WORKFLOW_DELETE_STATE="+deletes,
+		"FAKE_WORKFLOW_META_STATE="+metas,
+		"FAKE_WORKFLOW_TASK_RESULT_STATE="+taskResults,
+	)
+	output, err := cmd.CombinedOutput()
+	require.Error(t, err, "deleteAsyncAndVerify must fail the test process on an unexpected delete error\noutput:\n%s", output)
+	assert.Contains(t, string(output), "drive +delete failed with an unexpected error", "output:\n%s", output)
 
-	assert.Equal(t, "1", readFakeCounter(t, counters.deletes))
-	assert.Equal(t, "0", readFakeCounter(t, counters.metas), "unexpected failures must not fall through to terminal-state checking")
-	assert.Equal(t, "0", readFakeCounter(t, counters.taskResults))
+	assert.Equal(t, "1", readFakeCounter(t, deletes))
+	assert.Equal(t, "0", readFakeCounter(t, metas), "unexpected failures must not fall through to terminal-state checking")
+	assert.Equal(t, "0", readFakeCounter(t, taskResults))
+}
+
+// TestDeleteAsyncAndVerifyUnexpectedFailureSubprocess is the child entry point
+// driven by TestDeleteAsyncAndVerifyRejectsUnexpectedFailure. It does nothing
+// in a normal test run.
+func TestDeleteAsyncAndVerifyUnexpectedFailureSubprocess(t *testing.T) {
+	if os.Getenv("FAKE_WORKFLOW_SUBPROCESS") != "1" {
+		return
+	}
+	deleteAsyncAndVerify(t, context.Background(), "docx_unexpected", "docx")
 }
 
 type fakeWorkflowCounters struct {
