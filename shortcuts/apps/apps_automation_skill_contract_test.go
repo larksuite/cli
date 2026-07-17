@@ -116,8 +116,14 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 		"data.release_id",
 		"+release-get",
 		"data.status=finished",
+		"仅启动",
 		"+automation-enable",
 		"+automation-get",
+		"不制造 runtime probe",
+		"测试",
+		"运行时验证的操作级授权",
+		"完成全部 preflight",
+		"才执行 `+automation-enable`",
 		"真实 runtime",
 		"仅要求测试",
 		"恢复到发布前状态",
@@ -129,7 +135,7 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 		"+automation-disable",
 		"+release-create --branch sprint/default",
 		"data.status=finished",
-		"+automation-enable",
+		"仅启动",
 	)
 	for _, boundary := range []string{
 		"仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler，且用户要求把这次代码发布后启动或测试时，才使用此路径。",
@@ -137,8 +143,10 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 		"在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。",
 		"只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟。",
 		"确认 `failed` 时报告发布失败，原本 enabled 的 trigger 仅在确认新代码未上线后恢复 enabled，原本 disabled 的保持 disabled。",
-		"获得启动/测试授权后才执行 `+automation-enable`，并用 `+automation-get` 确认 enabled。",
-		"若用户仅要求测试而不是持续启动，必须在成功、失败或提前结束时都恢复到发布前状态",
+		"发布状态仍不确定时不得进入 enable、probe 或状态恢复分支。",
+		"**仅启动**：取得持续启动授权后执行 `+automation-enable`，并用 `+automation-get` 确认 enabled；到此结束，不制造 runtime probe。",
+		"**测试（含“启动并测试”）**：先按下节“运行时验证的操作级授权”完成全部 preflight",
+		"若用户仅要求测试而不是持续启动，只在本轮 release 已 `finished` 且进入 probe 后，于成功、probe 失败或提前结束时恢复到发布前状态",
 		"没有通用的 `automation-debug` 或 trigger 日志 shortcut。",
 	} {
 		if !strings.Contains(section, boundary) {
@@ -197,7 +205,8 @@ func TestAutomationSkillContract_EnableExistingTriggerDoesNotPublish(t *testing.
 		"+automation-get",
 		"+release-list --status finished --page-size 1",
 		"已完成线上 release",
-		"当前线上已发布代码",
+		"当前线上应用",
+		"不能证明该 trigger name 已绑定 handler",
 		"+automation-enable",
 		"+automation-get",
 		"不得修改 handler、commit/push 或 release",
@@ -205,6 +214,9 @@ func TestAutomationSkillContract_EnableExistingTriggerDoesNotPublish(t *testing.
 	)
 	if !strings.Contains(section, "未发布时不得自动创建 release，也不得声称 trigger 已开始实际运行") {
 		t.Error("enable-only flow must distinguish configuration enablement from a published runtime")
+	}
+	if !strings.Contains(section, "即使存在 finished release，也只能把 enable 报告为配置激活") {
+		t.Error("enable-only flow must not infer handler provenance from app release history")
 	}
 	if strings.Contains(section, "apps +get") || strings.Contains(section, "`is_published`") {
 		t.Error("enable-only flow must use finished release history instead of an optional app detail field")
@@ -225,8 +237,10 @@ func TestAutomationSkillContract_TestExistingTriggerDoesNotPublish(t *testing.T)
 	requireInOrder(t, section,
 		"用户要求测试已经发布的 trigger",
 		"+automation-get",
+		"+release-list --status finished --page-size 1",
 		"当前线上代码",
-		"不得修改源码、commit/push 或 release",
+		"不得为测试自动修改源码、commit/push 或 release",
+		"在任何临时 enable 之前完成",
 		"测试请求已明确包含临时 enable，或另行取得 enable 授权",
 		"运行时验证的操作级授权",
 	)
@@ -270,8 +284,9 @@ func TestAutomationSkillContract_PublishedHandlerStaysDisabled(t *testing.T) {
 		"取得授权后，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled。",
 		"按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`。",
 		"随后发布完整应用：",
-		"保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成；`failed` 时报告发布失败、保持 disabled，修复并重新发布后再取得新的 finished 结果。",
-		"release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，始终保持 disabled，不执行 `+automation-enable`。",
+		"保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时且状态仍不确定时报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成。",
+		"确认 `failed` 且新代码未上线时，原本 enabled 的 trigger 恢复 enabled 并回读，原本 disabled 的保持 disabled。",
+		"release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，finished 后始终保持 disabled，不执行 `+automation-enable`。",
 	} {
 		if !strings.Contains(section, boundary) {
 			t.Errorf("publish-without-start section must preserve %q", boundary)

@@ -162,17 +162,17 @@
 
 ### 仅启用已有 disabled trigger
 
-用户只要求启用已存在且 disabled 的 trigger、没有要求修改代码或制造真实 runtime 事件时，先用 `+automation-get` 核对 name、类型和 disabled 状态，再用 `+release-list --status finished --page-size 1` 核对是否存在已完成线上 release。存在时明确它将运行当前线上已发布代码，而不是本地工作区内容；不存在时说明 enable 只会改变配置状态、当前没有可执行的线上版本。随后按用户要求执行 `+automation-enable`，再用 `+automation-get` 确认 enabled。
+用户只要求启用已存在且 disabled 的 trigger、没有要求修改代码或制造真实 runtime 事件时，先用 `+automation-get` 核对 name、类型和 disabled 状态，再用 `+release-list --status finished --page-size 1` 核对是否存在已完成线上 release。release history 只能证明当前线上应用有已发布版本，不能证明该 trigger name 已绑定 handler。不存在 finished release 时说明 enable 只会改变配置状态、当前没有可执行的线上版本；存在时说明它会对当前线上应用激活这条 trigger 配置。随后按用户要求执行 `+automation-enable`，再用 `+automation-get` 确认 enabled。
 
-这条路径不得修改 handler、commit/push 或 release。未发布时不得自动创建 release，也不得声称 trigger 已开始实际运行。若用户期待尚未发布的本地改动生效，或检查后发现确实需要新增/修改 handler，转到下方“实现或更新 handler 后发布并启动/测试”路径；不要为单纯 enable 发布整个 `sprint/default`。
+这条路径不得修改 handler、commit/push 或 release。未发布时不得自动创建 release，也不得声称 trigger 已开始实际运行。即使存在 finished release，也只能把 enable 报告为配置激活；没有 handler 来源或 runtime 结果时，不得声称业务 handler 已存在、已运行或可用。若用户期待尚未发布的本地改动生效，或检查后发现确实需要新增/修改 handler，转到下方“实现或更新 handler 后发布并启动/测试”路径；不要为单纯 enable 发布整个 `sprint/default`。
 
 对 UPSERT 或 feishu-approval 只改变配置状态；由于本 guide 没有其已证实的 handler、投递或 live 验证契约，启用后也不得声称业务代码已运行或触发器已实测可用。
 
 ### 测试已有线上 trigger（不改代码）
 
-用户要求测试已经发布的 trigger、没有要求修改 handler 时，先用 `+automation-get` 核对 name、类型、当前状态，并说明本次测试覆盖当前线上代码。不得修改源码、commit/push 或 release；若用户期待本地未发布改动，改走代码变更闭环。
+用户要求测试已经发布的 trigger、没有要求修改 handler 时，先用 `+automation-get` 核对 name、类型、当前状态，再用 `+release-list --status finished --page-size 1` 确认应用存在 finished release，并说明本次测试覆盖当前线上代码。没有 finished release 时停止 runtime test，只报告配置状态；不得为测试自动修改源码、commit/push 或 release。release history 不证明该 name 已绑定 handler，真实 probe 的结果才是本次验证证据；若用户期待本地未发布改动，改走代码变更闭环。
 
-记录测试前状态：原本 disabled 时，只有测试请求已明确包含临时 enable，或另行取得 enable 授权后，才可临时 enable，并在验证结束后恢复 disabled；原本 enabled 时不要无意义切换状态。制造真实事件前仍必须遵循下方“运行时验证的操作级授权”，测试意图本身不决定数据库记录、Webhook 请求或其他事件载荷。
+记录测试前状态，并在任何临时 enable 之前完成两类授权和全部 preflight：测试请求已明确包含临时 enable，或另行取得 enable 授权；同时按下方“运行时验证的操作级授权”确定具体事件、影响、载荷、观察结果和清理。原本 disabled 时完成这些门槛后才临时 enable，并在验证结束后恢复 disabled；原本 enabled 时不要无意义切换状态。测试意图本身不决定数据库记录、Webhook 请求或其他事件载荷。
 
 ### 仅完成 handler（不发布/不启用）
 
@@ -188,7 +188,7 @@
 lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default
 ```
 
-保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成；`failed` 时报告发布失败、保持 disabled，修复并重新发布后再取得新的 finished 结果。release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，始终保持 disabled，不执行 `+automation-enable`。
+保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时且状态仍不确定时报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成。确认 `failed` 且新代码未上线时，原本 enabled 的 trigger 恢复 enabled 并回读，原本 disabled 的保持 disabled。release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，finished 后始终保持 disabled，不执行 `+automation-enable`。
 
 ### 实现或更新 handler 后发布并启动/测试
 
@@ -199,10 +199,10 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 3. 在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。
 4. 若 trigger 当前 enabled，先说明发布前必须临时停用以及可能造成的运行中断，并取得这次临时停用授权；未获授权时停止在发布前。取得授权后执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled；原本 disabled 时不要无意义切换状态。
 5. 执行 `+release-create --branch sprint/default`，保存返回的 `data.release_id`。
-6. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟。超时且状态仍不确定时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；确认 `failed` 时报告发布失败，原本 enabled 的 trigger 仅在确认新代码未上线后恢复 enabled，原本 disabled 的保持 disabled。`is_published=true` 不能代替这轮发布完成。
-7. 获得启动/测试授权后才执行 `+automation-enable`，并用 `+automation-get` 确认 enabled。
-8. 再按下节取得与具体事件匹配的操作级授权，由已授权主体制造真实 runtime 条件并核验业务结果。
-9. 若用户仅要求测试而不是持续启动，必须在成功、失败或提前结束时都恢复到发布前状态：原本 disabled 或本轮新建的 trigger 在 probe 后 `+automation-disable` 并回读；原本 enabled 的结束时保持 enabled。恢复失败时明确报告当前状态，不得把“测试完成”写成持续启动授权。
+6. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟。超时且状态仍不确定时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；确认 `failed` 时报告发布失败，原本 enabled 的 trigger 仅在确认新代码未上线后恢复 enabled，原本 disabled 的保持 disabled。发布状态仍不确定时不得进入 enable、probe 或状态恢复分支。`is_published=true` 不能代替这轮发布完成。
+7. **仅启动**：取得持续启动授权后执行 `+automation-enable`，并用 `+automation-get` 确认 enabled；到此结束，不制造 runtime probe。
+8. **测试（含“启动并测试”）**：先按下节“运行时验证的操作级授权”完成全部 preflight，包括具体事件、sibling 影响、载荷、观察结果和清理；完成前保持 disabled，之后才执行 `+automation-enable` 并回读，再由已授权主体制造真实 runtime 条件并核验业务结果。若同时明确要求持续启动，测试结束后保持 enabled。
+9. 若用户仅要求测试而不是持续启动，只在本轮 release 已 `finished` 且进入 probe 后，于成功、probe 失败或提前结束时恢复到发布前状态：原本 disabled 或本轮新建的 trigger `+automation-disable` 并回读；原本 enabled 的结束时保持 enabled。恢复失败时明确报告当前状态，不得把“测试完成”写成持续启动授权。
 
 没有通用的 `automation-debug` 或 trigger 日志 shortcut。缺少安全事件入口、匹配环境或可观察结果时，记录 blocked，不能编造测试成功。
 
