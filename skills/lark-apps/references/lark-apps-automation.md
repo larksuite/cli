@@ -12,6 +12,7 @@
 - 「（审批 / 报销 / 请假 / 出差）（通过 / 拒绝 / 提交 / 撤回）后自动 X」→ `+automation-create --trigger-type feishu-approval`
 - 「这个应用配了哪些（自动化 / 触发器 / 定时任务）」→ `+automation-list`
 - 「（暂停 / 停用 / 先别自动跑 / 关掉自动触发）某个（触发器 / 定时任务 / 自动化）」→ `+automation-disable`（不是 update 改条件、不是 delete——本 skill 不提供删除）
+- 「启用 / 启动已有 trigger」→ 先核对现有状态；只启用时不要修改源码或发布应用。
 - 「换 / 重置 webhook 回调地址 / URL」→ `+automation-update --reset-url --app-env <preview|runtime>`
 - 「换 / 重置 / 轮换 webhook token / bearer」→ `+automation-update --reset-token`
 - 「触发器没反应 / enable 了不触发 / 为什么没执行 / 验证一下触发器」→ 先按「未触发时的诊断顺序」诊断；对 UPSERT 和 feishu-approval 仅验证配置边界，不承诺 handler 或 live 验证。
@@ -159,6 +160,20 @@
 
 不要传 `--status enabled`，也不要写 handler、commit/push、release 或 enable；更不能把创建 API 成功称为“可运行”。默认 disabled 是这个意图的终点，不是稍后自动 enable 的待办。
 
+### 仅启用已有 disabled trigger
+
+用户只要求启用已存在且 disabled 的 trigger、没有要求修改代码或制造真实 runtime 事件时，先用 `+automation-get` 核对 name、类型和 disabled 状态，并明确它将运行当前线上已发布代码，而不是本地工作区内容。随后执行 `+automation-enable`，再用 `+automation-get` 确认 enabled。
+
+这条路径不得修改 handler、commit/push 或 release。若用户期待尚未发布的本地改动生效，或检查后发现确实需要新增/修改 handler，转到下方“实现或更新 handler 后发布并启动/测试”路径；不要为单纯 enable 发布整个 `sprint/default`。
+
+对 UPSERT 或 feishu-approval 只改变配置状态；由于本 guide 没有其已证实的 handler、投递或 live 验证契约，启用后也不得声称业务代码已运行或触发器已实测可用。
+
+### 测试已有线上 trigger（不改代码）
+
+用户要求测试已经发布的 trigger、没有要求修改 handler 时，先用 `+automation-get` 核对 name、类型、当前状态，并说明本次测试覆盖当前线上代码。不得修改源码、commit/push 或 release；若用户期待本地未发布改动，改走代码变更闭环。
+
+记录测试前状态：原本 disabled 时，只有测试请求已明确包含临时 enable，或另行取得 enable 授权后，才可临时 enable，并在验证结束后恢复 disabled；原本 enabled 时不要无意义切换状态。制造真实事件前仍必须遵循下方“运行时验证的操作级授权”，测试意图本身不决定数据库记录、Webhook 请求或其他事件载荷。
+
 ### 仅完成 handler（不发布/不启用）
 
 仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。
@@ -175,9 +190,9 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 
 保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成；`failed` 时报告发布失败、保持 disabled，修复并重新发布后再取得新的 finished 结果。release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，始终保持 disabled，不执行 `+automation-enable`。
 
-### 完成并启动/启用/测试
+### 实现或更新 handler 后发布并启动/测试
 
-仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。按以下不可跳过的顺序执行：
+仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler，且用户要求把这次代码发布后启动或测试时，才使用此路径。按以下不可跳过的顺序执行：
 
 1. 创建或定位 `disabled` trigger，确认其 `--name`，并读取项目 guide。
 2. 按项目 guide 完成同名业务 handler 并本地验证。
@@ -185,9 +200,17 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 4. 执行 `+release-create --branch sprint/default`，保存返回的 `data.release_id`。
 5. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；`failed` 时报告发布失败并保持 disabled。`is_published=true` 不能代替这轮发布完成。
 6. 获得启动/测试授权后才执行 `+automation-enable`，并用 `+automation-get` 确认 enabled。
-7. 由已授权主体制造真实 runtime 条件并核验业务结果：cron 等待计划时间；record-change 对确认环境执行 INSERT/UPDATE/DELETE；webhook 向既有 runtime URL 发送安全请求。
+7. 再按下节取得与具体事件匹配的操作级授权，由已授权主体制造真实 runtime 条件并核验业务结果。
 
 没有通用的 `automation-debug` 或 trigger 日志 shortcut。缺少安全事件入口、匹配环境或可观察结果时，记录 blocked，不能编造测试成功。
+
+### 运行时验证的操作级授权
+
+启用 trigger 的授权不等于制造 runtime 事件的授权，测试授权也不等于任意数据库写入授权。cron 可等待计划时间；webhook 只能向既有 runtime URL 发送已授权、安全且不泄露凭证的请求。record-change 在执行任何 DML 前，必须明确并取得覆盖以下作用域的授权：环境、表、操作、精确测试记录或筛选条件、payload、预期结果和清理方式。
+
+优先使用专用测试记录，不要任取线上业务记录。用户已明确授权精确、可撤回的测试夹具及其清理时，不机械追加一轮确认；目标或影响仍不清楚时必须停下。`UPDATE` 要限定精确条件并保留恢复方式；`INSERT` 要预先约定清理。`DELETE` 必须遵循 [lark-apps-db-execute.md](lark-apps-db-execute.md)：先 `SELECT count(*)`、执行 `--dry-run`，展示影响后取得针对该删除目标的明确授权，再带 `--yes` 执行；清理动作若包含未预先授权的删除，同样走该门槛。
+
+缺少安全、已授权且可清理的事件入口时，记录 blocked，不得用“测试一下”推导任意 online 数据写入。
 
 ### UPSERT 与飞书审批边界
 
@@ -214,4 +237,4 @@ feishu-approval 可创建 disabled 配置，并读取或更新 `event_type`、�
 ## 不在本 skill 范围
 
 - 审批定义查询、Webhook 消费端实现、实时触发日志 tail：本期不支持。
-- 身份选择、权限不足处理、exit-10 审批、通用「禁输出密钥」红线、高风险操作通用框架：见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不在此重复。
+- 身份选择、权限不足处理、exit-10 审批、通用「禁输出密钥」红线、高风险操作通用框架：见 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)，不在此重复。
