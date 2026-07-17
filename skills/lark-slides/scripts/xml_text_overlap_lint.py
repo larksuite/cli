@@ -867,11 +867,56 @@ def detect_whiteboard_external_overlaps(
     return issues
 
 
+def detect_table_out_of_canvas(
+    elements: list[dict[str, Any]], slide_width: int | float, slide_height: int | float
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for table in (element for element in elements if element["kind"] == "table"):
+        overflow = {
+            "left": max(-table["x"], 0),
+            "top": max(-table["y"], 0),
+            "right": max(table["x"] + table["width"] - slide_width, 0),
+            "bottom": max(table["y"] + table["height"] - slide_height, 0),
+        }
+        overflow_details = [
+            f"{side} by {amount:g}px" for side, amount in overflow.items() if amount > 0
+        ]
+        if not overflow_details:
+            continue
+        issues.append(
+            {
+                "level": "error",
+                "code": "table_out_of_canvas",
+                "elements": [table["id"]],
+                "canvas": {"width": slide_width, "height": slide_height},
+                "bbox": {
+                    "x": table["x"],
+                    "y": table["y"],
+                    "width": table["width"],
+                    "height": table["height"],
+                },
+                "overflow": overflow,
+                "message": (
+                    f'table {table["id"]} exceeds the {slide_width:g}x{slide_height:g} canvas '
+                    f'({", ".join(overflow_details)})'
+                ),
+                "hint": (
+                    "Move the table inside the canvas, reduce table.width/table.height, or split the table across "
+                    "slides."
+                ),
+            }
+        )
+    return issues
+
+
 def lint_slide(
     slide_xml: str, slide_number: int, slide_width: int | float = 960, slide_height: int | float = 540
 ) -> dict[str, Any]:
     elements = extract_elements(slide_xml)
-    issues: list[dict[str, Any]] = detect_whiteboard_external_overlaps(elements, slide_width, slide_height)
+    issues: list[dict[str, Any]] = [
+        *detect_whiteboard_external_overlaps(elements, slide_width, slide_height),
+        *detect_table_out_of_canvas(elements, slide_width, slide_height),
+    ]
 
     for index, left in enumerate(elements):
         for right in elements[index + 1 :]:

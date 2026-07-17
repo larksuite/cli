@@ -712,6 +712,63 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         )
         self.assertEqual(result["summary"]["error_count"], 0)
 
+    def test_lint_xml_reports_table_bottom_overflow_from_declared_bounds(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <table id="score-table" topLeftX="54" topLeftY="238" width="414" height="385">
+                    <tr><td><content><p>Score</p></content></td></tr>
+                  </table>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        issue = result["slides"][0]["issues"][0]
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(issue["code"], "table_out_of_canvas")
+        self.assertEqual(issue["elements"], ["score-table"])
+        self.assertEqual(issue["overflow"], {"left": 0, "top": 0, "right": 0, "bottom": 83})
+        self.assertEqual(issue["bbox"], {"x": 54, "y": 238, "width": 414, "height": 385})
+
+    def test_lint_xml_reports_table_right_overflow_from_declared_bounds(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <table id="wide-table" topLeftX="850" topLeftY="80" width="180" height="120">
+                    <tr><td><content><p>Score</p></content></td></tr>
+                  </table>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        issue = result["slides"][0]["issues"][0]
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(issue["code"], "table_out_of_canvas")
+        self.assertEqual(issue["overflow"], {"left": 0, "top": 0, "right": 70, "bottom": 0})
+
+    def test_lint_xml_allows_table_with_declared_bounds_inside_canvas(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <table id="inside-table" topLeftX="40" topLeftY="120" width="880" height="360">
+                    <tr><td><content><p>Score</p></content></td></tr>
+                  </table>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["summary"]["warning_count"], 0)
+
     def test_lint_xml_warns_for_whiteboard_external_boundary_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
