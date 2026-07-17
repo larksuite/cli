@@ -14,6 +14,7 @@
 - 「（暂停 / 停用 / 先别自动跑 / 关掉自动触发）某个（触发器 / 定时任务 / 自动化）」→ `+automation-disable`（不是 update 改条件、不是 delete——本 skill 不提供删除）
 - 「换 / 重置 webhook 回调地址 / URL」→ `+automation-update --reset-url --app-env <preview|runtime>`
 - 「换 / 重置 / 轮换 webhook token / bearer」→ `+automation-update --reset-token`
+- 「触发器没反应 / enable 了不触发 / 为什么没执行 / 验证一下触发器」→ 先按「未触发时的诊断顺序」诊断；对 UPSERT 和 feishu-approval 仅验证配置边界，不承诺 handler 或 live 验证。
 
 **边界（防误路由）**：`lark-event` 是**实时事件流消费**（agent 长连接订阅事件），不管妙搭应用触发器的**配置**；用户说「配 / 设置一个触发器」而不是「订阅事件流」时，本 skill 才是正确选择。「审批通过触发」在妙搭应用语境下属于本 skill 的 `feishu-approval` 类型，不是 lark-event。
 
@@ -148,9 +149,9 @@
 
 ## 本地全栈 Trigger 闭环
 
-当用户希望触发器实际执行业务代码时，先确认项目 `.spark/meta.json` 的 `stack=nestjs-react-fullstack` 且 `app_id` 非空。创建或定位 trigger 后，读取项目已经同步的 `trigger-guide`；本 SOP 只决定 Apps API、Git、发布和启用时序，不重复 NestJS handler 细节。
+当用户希望触发器实际执行业务代码时，先确认当前工作区是已初始化的应用项目，并读取其中与触发器任务匹配的 guide。
 
-`--name` 是应用内唯一的 trigger 定位键，也是 `@BindTrigger('<exact-name>')` 的代码绑定字符串。不得用 trigger ID 或方法名代替它。
+`--name` 是应用内唯一的 trigger 定位键；代码侧绑定名称必须与它逐字相同。不得用 trigger ID 或方法名代替它。具体 handler 语法和接入方式以项目 guide 为准。
 
 ### 仅创建/配置触发器
 
@@ -160,11 +161,11 @@
 
 ### 仅完成 handler（不发布/不启用）
 
-创建或定位已明确 name 的 disabled trigger，读取同步的 `trigger-guide`，实现并注册同名 handler，完成本地验证。只在既有 Git 确认或预授权下 commit/push；停止在 `+release-create` 和 `+automation-enable` 之前。用户没有明确“发布好”时，先问，不能默认把完整应用上线。
+创建或定位已明确 name 的 disabled trigger，读取项目 guide，按其要求实现同名业务 handler，完成本地验证。只在既有 Git 确认或预授权下 commit/push；停止在 `+release-create` 和 `+automation-enable` 之前。用户没有明确“发布好”时，先问，不能默认把完整应用上线。
 
 ### 把 handler 发布好，但先不要启动
 
-仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。完成同名 handler 和 module 注册后，commit、`git push origin sprint/default`，再发布完整应用：
+仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`，再发布完整应用：
 
 ```bash
 lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default
@@ -176,8 +177,8 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 
 仅对 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` 使用此路径。按以下不可跳过的顺序执行：
 
-1. 创建或定位 `disabled` trigger，确认其 `--name`，并读取项目已同步的 `trigger-guide`。
-2. 实现同名 handler、注册 module，并完成本地验证。
+1. 创建或定位 `disabled` trigger，确认其 `--name`，并读取项目 guide。
+2. 按项目 guide 完成同名业务 handler 并本地验证。
 3. 在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。
 4. 执行 `+release-create --branch sprint/default`，保存返回的 `data.release_id`。
 5. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；`failed` 时报告发布失败并保持 disabled。`is_published=true` 不能代替这轮发布完成。
@@ -188,13 +189,13 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 
 ### UPSERT 与飞书审批边界
 
-record-change 的 UPSERT 可创建 disabled 配置，但现有 runtime `DataChangeEventInput.type` 只定义 INSERT、UPDATE、DELETE；不得静默按 UPDATE 处理，也不得承诺 handler payload 或 live 验证。
+record-change 的 UPSERT 可创建 disabled 配置，但当前没有已证实的运行时代码契约；不得静默按 UPDATE 处理，也不得承诺 handler 或 live 验证。
 
-feishu-approval 可创建 disabled 配置，并读取或更新 `event_type`、对应 status 和可选 `approval_code`。当前没有已证实的 `TaskHandlerArgs.content.input` schema、`@BindTrigger` handler 或实际投递验证；不要把 enable 或审批 API 成功称为业务代码已执行。
+feishu-approval 可创建 disabled 配置，并读取或更新 `event_type`、对应 status 和可选 `approval_code`。当前没有已证实的运行时 handler 契约或实际投递验证；不要把 enable 或审批 API 成功称为业务代码已执行。
 
 ### 未触发时的诊断顺序
 
-按 `--name` / handler / module 注册 → 本轮 release `finished` → enabled 状态 → 类型条件、环境和已有日志的顺序排查。客户审批投递故障属于服务端事件投递排查，不要归因于此 SOP 或改写无关业务代码。
+按 `--name` / 项目 guide 要求的代码接入 → 本轮 release `finished` → enabled 状态 → 类型条件、环境和已有日志的顺序排查。客户审批投递故障属于服务端事件投递排查，不要归因于此 SOP 或改写无关业务代码。
 
 ## 常见错误与决策场景
 
@@ -204,7 +205,7 @@ feishu-approval 可创建 disabled 配置，并读取或更新 `event_type`、�
 | cron 报非法 / 间隔过小 | 检查是否五段式、分钟字段是否 `*` 或 `*/n`(n<30) |
 | `--reset-url` 报缺 app-env | 补 `--app-env preview` 或 `--app-env runtime` |
 | 想把 cron 触发器改成 webhook（跨类型改） | update 不支持换类型，本 skill 也不提供删除。旧触发器只能 `+automation-disable` 停用（保留在应用里），另建一个 webhook 触发器；若要真正清理旧触发器，请到妙搭 web 手动删除 |
-| 触发器 enable 了但不触发 | 确认应用**已发布**；触发器跑的是线上已发布代码 |
+| 触发器 enable 了但不触发 | 已证实的 cron、webhook、record-change（INSERT/UPDATE/DELETE）按「未触发时的诊断顺序」排查；UPSERT 和 feishu-approval 仅核对配置边界，不承诺 handler 或 live 验证。 |
 | 「token 泄露了」 | 优先 `+automation-update --reset-token --yes` 轮换（旧 token 立即失效），而非直接 disable-token 关校验 |
 | 「回调 URL 泄露了」 | `+automation-update --reset-url --app-env <env> --yes` 轮换 |
 

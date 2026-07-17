@@ -38,24 +38,11 @@ lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
 
 **`+init` 完成后必须执行**：`cat <project-path>/.agents/skills/plugin-guide/SKILL.md`，读取仓库插件指引。该文件包含插件目录、实例配置规则和调用代码生成方式——不读就无法正确集成插件能力。文件不存在则跳过。
 
-## Trigger guide 同步与版本证明
+## Trigger guide 的项目边界
 
-涉及自动化业务代码时，只在项目根目录存在 `.spark/meta.json`、其中 `stack=nestjs-react-fullstack` 时使用 trigger guide。先读取 `.agents/skills/trigger-guide/SKILL.md`，它定义 handler、module 注册、发布和启用的边界；Apps 触发器配置细节见 [automation SOP](lark-apps-automation.md)。
+涉及自动化业务代码时，先查看工作区 `.agents/skills/`，读取与自动化任务匹配的 `trigger-guide`。它定义业务 handler 的实现与接入约束；Apps 触发器配置细节见 [automation SOP](lark-apps-automation.md)。
 
-文件缺失，或需要证明本轮使用的 steering 版本时，在这个项目根目录运行带确定版本号的同步命令：
-
-```bash
-npx -y @lark-apaas/miaoda-cli@<cli-version> skills sync --local --version <published-coding-steering-version>
-```
-
-同步后必须确认：
-
-1. 命令 exit 0；
-2. JSON 的 `data.stack=nestjs-react-fullstack` 与 `data.version=<published-coding-steering-version>`；
-3. `data.syncedSkills` 包含 `nestjs-react-fullstack/skills_common/trigger-guide`，且不包含旧的 `nestjs-react-fullstack/skills/trigger-guide`；
-4. 最终文件存在于 `.agents/skills/trigger-guide/SKILL.md`。
-
-`+init` 只是一条初始化流程，**不等于版本证明**；浮动 `@latest` 也不能证明当前项目安装了目标版本。普通本地验证应保持 `MIAODA_DEP_CACHE_DIR` 未设置或为空，配合 `--local` 生成 flat `.agents/skills/` 输出。sandbox 的同步路径和输出不同，不能把它与此检查混用。
+文件缺失或不能覆盖当前任务时，报告项目缺少可用的领域 guide；不要在本 lark-cli reference 中猜测安装命令、版本或包内目录。由项目维护方通过其受支持的初始化或同步流程补齐后，再继续代码闭环；`+init` 只负责准备本地项目，不能替代领域 guide。
 
 ## 改完代码后部署上线
 
@@ -66,7 +53,7 @@ npx -y @lark-apaas/miaoda-cli@<cli-version> skills sync --local --version <publi
 1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
 2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push）。
 3. `lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default` 发起部署上线，记下返回的 `release_id`。
-4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时该命令输出已含 `online_url`，直接读取它返回给用户（这是本轮发布完成后的可分享链接），无需再调 `+list`；`failed` 时该命令输出已含 `error_logs`，直接据此给出失败原因（`+list` 仅作独立查询入口）。
+4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。无需再调 `+list`；`failed` 时该命令输出已含 `error_logs`，直接据此给出失败原因（`+list` 仅作独立查询入口）。
 
 若本次发布包含自动化 handler，继续读取 [automation SOP](lark-apps-automation.md)。enable 不能替代 commit/push/release，也绝不能发生在本轮 release finished 之前；只有用户明确要求启动、启用或测试时才在该门槛后启用 trigger。
 
