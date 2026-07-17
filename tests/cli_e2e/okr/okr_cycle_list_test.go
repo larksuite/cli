@@ -35,6 +35,8 @@ func TestOKR_CycleListDryRun(t *testing.T) {
 	output := result.Stdout
 	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/cycles"), "dry-run should contain API path, got: %s", output)
 	assert.True(t, strings.Contains(output, "ou_dryrun_test"), "dry-run should contain user-id, got: %s", output)
+	assert.Equal(t, int64(100), clie2e.DryRunGet(output, "api.0.params.page_size").Int(), "dry-run should contain default page_size=100, got: %s", output)
+	assert.False(t, clie2e.DryRunGet(output, "api.0.params.page_token").Exists(), "empty page_token should be omitted, got: %s", output)
 }
 
 // TestOKR_CycleListDryRun_WithTimeRange validates +cycle-list dry-run with --time-range flag.
@@ -56,4 +58,27 @@ func TestOKR_CycleListDryRun_WithTimeRange(t *testing.T) {
 
 	output := result.Stdout
 	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/cycles"), "dry-run should contain API path, got: %s", output)
+}
+
+// TestOKR_CycleListDryRun_WithPagination validates +cycle-list dry-run with explicit pagination.
+func TestOKR_CycleListDryRun_WithPagination(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+cycle-list",
+			"--user-id", "ou_dryrun_test",
+			"--page-size", "20",
+			"--page-token", "next_page",
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.Equal(t, int64(20), clie2e.DryRunGet(output, "api.0.params.page_size").Int(), "dry-run should contain page_size=20, got: %s", output)
+	assert.Equal(t, "next_page", clie2e.DryRunGet(output, "api.0.params.page_token").String(), "dry-run should contain page_token, got: %s", output)
 }

@@ -21,7 +21,7 @@ func createTestConfig(t *testing.T) *core.CliConfig {
 	t.Helper()
 	return &core.CliConfig{
 		AppID:     "test-okr-create",
-		AppSecret: "secret-okr-create",
+		AppSecret: patchTestValue(),
 		Brand:     core.BrandFeishu,
 	}
 }
