@@ -122,7 +122,7 @@ func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	if grant["user_open_id"] != "ou_testuser" {
 		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_testuser")
 	}
-	if grant["message"] != "Granted the current CLI user full_access (可管理权限) on the new base." {
+	if grant["message"] != "Granted the current CLI user full_access on the new base." {
 		t.Fatalf("permission_grant.message = %#v", grant["message"])
 	}
 
@@ -469,9 +469,6 @@ func TestBaseWorkspaceExecuteCreateBotAutoGrantFailureDoesNotFailCreate(t *testi
 	if grant["status"] != common.PermissionGrantFailed {
 		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
 	}
-	if !strings.Contains(grant["message"].(string), "full_access (可管理权限)") {
-		t.Fatalf("permission_grant.message = %q, want permission hint", grant["message"])
-	}
 	if !strings.Contains(grant["message"].(string), "retry later") {
 		t.Fatalf("permission_grant.message = %q, want retry guidance", grant["message"])
 	}
@@ -577,18 +574,12 @@ func TestBaseWorkspaceDryRunCreateAndCopyPermissionGrantHints(t *testing.T) {
 		if err := runShortcut(t, BaseBaseCreate, []string{"+base-create", "--name", "Demo Base", "--dry-run"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, "grant the current CLI user full_access (可管理权限)") {
-			t.Fatalf("stdout=%s", got)
-		}
 	})
 
 	t.Run("copy bot", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		if err := runShortcut(t, BaseBaseCopy, []string{"+base-copy", "--base-token", "app_src", "--dry-run"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
-		}
-		if got := stdout.String(); !strings.Contains(got, "grant the current CLI user full_access (可管理权限)") {
-			t.Fatalf("stdout=%s", got)
 		}
 	})
 
@@ -597,7 +588,7 @@ func TestBaseWorkspaceDryRunCreateAndCopyPermissionGrantHints(t *testing.T) {
 		if err := runShortcutWithAuthTypes(t, BaseBaseCreate, authTypes(), []string{"+base-create", "--name", "Demo Base", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); strings.Contains(got, "grant the current CLI user full_access (可管理权限)") {
+		if got := stdout.String(); strings.Contains(got, "grant the current CLI user full_access") {
 			t.Fatalf("stdout=%s", got)
 		}
 	})

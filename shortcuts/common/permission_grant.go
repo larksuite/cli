@@ -14,11 +14,10 @@ import (
 )
 
 const (
-	PermissionGrantGranted  = "granted"
-	PermissionGrantSkipped  = "skipped"
-	PermissionGrantFailed   = "failed"
-	permissionGrantPerm     = "full_access"
-	permissionGrantPermHint = "可管理权限"
+	PermissionGrantGranted = "granted"
+	PermissionGrantSkipped = "skipped"
+	PermissionGrantFailed  = "failed"
+	permissionGrantPerm    = "full_access"
 )
 
 // AutoGrantCurrentUserDrivePermission grants full_access on a newly created
@@ -121,7 +120,7 @@ func buildPermissionGrantResult(status, userOpenID, message, reason string) map[
 }
 
 func permissionGrantPermMessage() string {
-	return permissionGrantPerm + " (" + permissionGrantPermHint + ")"
+	return permissionGrantPerm
 }
 
 func permissionGrantPermType(resourceType string) string {

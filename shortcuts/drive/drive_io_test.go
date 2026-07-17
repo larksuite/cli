@@ -1088,7 +1088,7 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 		t.Fatalf("set --wiki-token: %v", err)
 	}
 
-	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, core.AsBot)
 	dry := DriveUpload.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -1100,7 +1100,8 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	}
 
 	var got struct {
-		API []struct {
+		PostUploadNote string `json:"post_upload_note"`
+		API            []struct {
 			URL  string                 `json:"url"`
 			Body map[string]interface{} `json:"body"`
 		} `json:"api"`

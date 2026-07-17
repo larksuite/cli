@@ -63,7 +63,7 @@ func TestDocsCreateV2BotAutoGrantSuccess(t *testing.T) {
 	if grant["user_open_id"] != "ou_current_user" {
 		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_current_user")
 	}
-	if grant["message"] != "Granted the current CLI user full_access (可管理权限) on the new document." {
+	if grant["message"] != "Granted the current CLI user full_access on the new document." {
 		t.Fatalf("permission_grant.message = %#v", grant["message"])
 	}
 
@@ -173,7 +173,7 @@ func TestDocsCreateV2BotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	if grant["status"] != common.PermissionGrantFailed {
 		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
 	}
-	if !strings.Contains(grant["message"].(string), "full_access (可管理权限)") {
+	if !strings.Contains(grant["message"].(string), "full_access") {
 		t.Fatalf("permission_grant.message = %q, want permission hint", grant["message"])
 	}
 	if !strings.Contains(grant["message"].(string), "retry later") {

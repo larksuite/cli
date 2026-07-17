@@ -95,7 +95,7 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 		t.Fatalf("set --folder-token: %v", err)
 	}
 
-	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, core.AsBot)
 	dry := DriveImport.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")

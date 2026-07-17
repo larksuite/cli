@@ -118,7 +118,7 @@ var SlidesCreate = common.Shortcut{
 		}
 
 		if runtime.IsBot() {
-			dry.Desc("After creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new presentation.")
+			dry.Desc("After creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new presentation.")
 		}
 		return dry
 	},
