@@ -184,6 +184,15 @@ func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 	if !strings.Contains(got, "/open-apis/spark/v1/apps/app_x/pre_release") {
 		t.Fatalf("dry-run missing pre_release endpoint: %s", got)
 	}
+	if !strings.Contains(got, "presigned_upload_url") {
+		t.Fatalf("dry-run missing TOS PUT step: %s", got)
+	}
+	if !strings.Contains(got, "/open-apis/spark/v1/apps/app_x/releases") {
+		t.Fatalf("dry-run missing release-create endpoint: %s", got)
+	}
+	if !strings.Contains(got, "tos_path") {
+		t.Fatalf("dry-run missing tos_path in release-create body: %s", got)
+	}
 	if !strings.Contains(got, "index.html") {
 		t.Fatalf("dry-run missing file list: %s", got)
 	}
