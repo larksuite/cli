@@ -21,43 +21,154 @@ func TestDeleteAsyncAndVerify(t *testing.T) {
 		t.Setenv(clie2e.EnvBinaryPath, fake)
 		t.Setenv("FAKE_WORKFLOW_DELETE_MODE", "sync")
 		t.Setenv("FAKE_WORKFLOW_META_MODE", "gone")
+		counters := setupFakeWorkflowCounters(t)
 
 		taskID := deleteAsyncAndVerify(t, context.Background(), "docx_sync", "docx")
 		assert.Empty(t, taskID)
+
+		assert.Equal(t, "1", readFakeCounter(t, counters.deletes), "sync path must delete exactly once")
+		assert.Equal(t, "1", readFakeCounter(t, counters.metas), "sync path must still verify the resource is gone")
+		assert.Equal(t, "0", readFakeCounter(t, counters.taskResults), "sync path must not query task status")
 	})
 
 	t.Run("transient failure with resource gone is tolerated", func(t *testing.T) {
 		fake := mustWriteDriveDeleteWorkflowFakeCLI(t)
 		t.Setenv(clie2e.EnvBinaryPath, fake)
 		t.Setenv("FAKE_WORKFLOW_DELETE_MODE", "fail")
-		t.Setenv("FAKE_WORKFLOW_DELETE_STATE", filepath.Join(t.TempDir(), "delete-attempts"))
 		t.Setenv("FAKE_WORKFLOW_META_MODE", "gone")
+		counters := setupFakeWorkflowCounters(t)
 
 		taskID := deleteAsyncAndVerify(t, context.Background(), "docx_transient", "docx")
 		assert.Empty(t, taskID)
 
-		attempts, err := os.ReadFile(os.Getenv("FAKE_WORKFLOW_DELETE_STATE"))
-		require.NoError(t, err)
-		assert.Equal(t, "1", string(attempts), "resource already gone must not trigger another delete attempt")
+		assert.Equal(t, "1", readFakeCounter(t, counters.deletes), "resource already gone must not trigger another delete attempt")
+		assert.Equal(t, "1", readFakeCounter(t, counters.metas), "transient failure must verify the terminal state")
+		assert.Equal(t, "0", readFakeCounter(t, counters.taskResults))
 	})
 
 	t.Run("failed delete retries until async success", func(t *testing.T) {
 		fake := mustWriteDriveDeleteWorkflowFakeCLI(t)
 		t.Setenv(clie2e.EnvBinaryPath, fake)
 		t.Setenv("FAKE_WORKFLOW_DELETE_MODE", "fail-then-async")
-		t.Setenv("FAKE_WORKFLOW_DELETE_STATE", filepath.Join(t.TempDir(), "delete-attempts"))
 		t.Setenv("FAKE_WORKFLOW_META_MODE", "exists-then-gone")
-		t.Setenv("FAKE_WORKFLOW_META_STATE", filepath.Join(t.TempDir(), "meta-calls"))
 		t.Setenv("FAKE_WORKFLOW_TASK_RESULT_OK", "1")
+		counters := setupFakeWorkflowCounters(t)
 		withFastDeleteWorkflowBackoff(t)
 
 		taskID := deleteAsyncAndVerify(t, context.Background(), "docx_retry", "docx")
 		assert.Equal(t, "task_123", taskID)
 
-		attempts, err := os.ReadFile(os.Getenv("FAKE_WORKFLOW_DELETE_STATE"))
-		require.NoError(t, err)
-		assert.Equal(t, "2", string(attempts))
+		assert.Equal(t, "2", readFakeCounter(t, counters.deletes))
+		assert.Equal(t, "2", readFakeCounter(t, counters.metas), "one terminal-state check after the failure plus the final visibility wait")
+		assert.Equal(t, "1", readFakeCounter(t, counters.taskResults), "async success must verify the task result")
 	})
+}
+
+// TestIsTransientDriveDeleteFailure locks the tolerance boundary: only the one
+// verified backend transient may fall through to terminal-state checking, so a
+// crash, a protocol regression, or any other error keeps failing the workflow
+// even when the resource happens to be gone.
+func TestIsTransientDriveDeleteFailure(t *testing.T) {
+	t.Run("matches compact envelope", func(t *testing.T) {
+		result := &clie2e.Result{
+			ExitCode: 1,
+			Stderr:   "Deleting docx tok...\n{\"ok\":false,\"identity\":\"bot\",\"error\":{\"type\":\"api\",\"subtype\":\"server_error\",\"message\":\"drive task failed\"}}",
+		}
+		assert.True(t, isTransientDriveDeleteFailure(result))
+	})
+
+	t.Run("matches pretty-printed envelope from CI", func(t *testing.T) {
+		result := &clie2e.Result{
+			ExitCode: 1,
+			Stderr: "Deleting docx NTw0...Rngb...\nDelete is async, polling task schedule|7663369798226545963...\n" +
+				"{\n  \"ok\": false,\n  \"identity\": \"bot\",\n  \"error\": {\n    \"type\": \"api\",\n    \"subtype\": \"server_error\",\n    \"message\": \"drive task failed\"\n  }\n}",
+		}
+		assert.True(t, isTransientDriveDeleteFailure(result))
+	})
+
+	t.Run("rejects other server errors", func(t *testing.T) {
+		result := &clie2e.Result{
+			ExitCode: 1,
+			Stderr:   "{\"ok\":false,\"identity\":\"bot\",\"error\":{\"type\":\"api\",\"subtype\":\"server_error\",\"message\":\"internal error\"}}",
+		}
+		assert.False(t, isTransientDriveDeleteFailure(result))
+	})
+
+	t.Run("rejects non-server-error subtypes", func(t *testing.T) {
+		result := &clie2e.Result{
+			ExitCode: 1,
+			Stderr:   "{\"ok\":false,\"identity\":\"bot\",\"error\":{\"type\":\"api\",\"subtype\":\"permission_denied\",\"message\":\"drive task failed\"}}",
+		}
+		assert.False(t, isTransientDriveDeleteFailure(result))
+	})
+
+	t.Run("rejects non-JSON output", func(t *testing.T) {
+		result := &clie2e.Result{ExitCode: 2, Stderr: "panic: runtime error"}
+		assert.False(t, isTransientDriveDeleteFailure(result))
+	})
+
+	t.Run("rejects nil result", func(t *testing.T) {
+		assert.False(t, isTransientDriveDeleteFailure(nil))
+	})
+}
+
+// TestDeleteAsyncAndVerifyRejectsUnexpectedFailure locks the P1 boundary
+// end-to-end: an unrelated non-zero exit must fail the workflow immediately —
+// no terminal-state check may rescue it even though meta reports the resource
+// gone. Fatalf cannot be observed on the real *testing.T, so the boundary is
+// proven by call counts: the meta endpoint must never be reached.
+func TestDeleteAsyncAndVerifyRejectsUnexpectedFailure(t *testing.T) {
+	fake := mustWriteDriveDeleteWorkflowFakeCLI(t)
+	t.Setenv(clie2e.EnvBinaryPath, fake)
+	t.Setenv("FAKE_WORKFLOW_DELETE_MODE", "fail-unexpected")
+	t.Setenv("FAKE_WORKFLOW_META_MODE", "gone")
+	counters := setupFakeWorkflowCounters(t)
+
+	result, err := clie2e.RunCmdWithRetry(context.Background(), clie2e.Request{
+		Args:      []string{"drive", "+delete", "--file-token", "docx_unexpected", "--type", "docx", "--yes"},
+		DefaultAs: "bot",
+	}, driveDeleteRetry)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.ExitCode)
+	assert.False(t, isTransientDriveDeleteFailure(result), "an unrelated error must not be classified as the tolerated transient")
+
+	assert.Equal(t, "1", readFakeCounter(t, counters.deletes))
+	assert.Equal(t, "0", readFakeCounter(t, counters.metas), "unexpected failures must not fall through to terminal-state checking")
+	assert.Equal(t, "0", readFakeCounter(t, counters.taskResults))
+}
+
+type fakeWorkflowCounters struct {
+	deletes     string
+	metas       string
+	taskResults string
+}
+
+// setupFakeWorkflowCounters wires per-endpoint call counters into the fake CLI
+// so tests can assert exactly which commands ran.
+func setupFakeWorkflowCounters(t *testing.T) fakeWorkflowCounters {
+	t.Helper()
+
+	dir := t.TempDir()
+	counters := fakeWorkflowCounters{
+		deletes:     filepath.Join(dir, "delete-attempts"),
+		metas:       filepath.Join(dir, "meta-calls"),
+		taskResults: filepath.Join(dir, "task-result-calls"),
+	}
+	t.Setenv("FAKE_WORKFLOW_DELETE_STATE", counters.deletes)
+	t.Setenv("FAKE_WORKFLOW_META_STATE", counters.metas)
+	t.Setenv("FAKE_WORKFLOW_TASK_RESULT_STATE", counters.taskResults)
+	return counters
+}
+
+func readFakeCounter(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return "0"
+	}
+	require.NoError(t, err)
+	return string(data)
 }
 
 func withFastDeleteWorkflowBackoff(t *testing.T) {
@@ -71,9 +182,11 @@ func withFastDeleteWorkflowBackoff(t *testing.T) {
 }
 
 // mustWriteDriveDeleteWorkflowFakeCLI writes a fake lark-cli that emulates the
-// three drive delete outcomes exercised by deleteAsyncAndVerify. +task_result
-// rejects every call unless FAKE_WORKFLOW_TASK_RESULT_OK=1, which proves the
-// sync path never queries task status.
+// drive delete outcomes exercised by deleteAsyncAndVerify. Every endpoint
+// bumps a per-endpoint counter when its FAKE_WORKFLOW_*_STATE env is set, so
+// tests can assert call contracts. +task_result rejects every call unless
+// FAKE_WORKFLOW_TASK_RESULT_OK=1, which proves the sync path never queries
+// task status.
 func mustWriteDriveDeleteWorkflowFakeCLI(t *testing.T) string {
 	t.Helper()
 
@@ -90,19 +203,25 @@ bump_counter() {
 }
 
 if [ "$1" = "drive" ] && [ "$2" = "+delete" ]; then
+  count=0
+  if [ -n "$FAKE_WORKFLOW_DELETE_STATE" ]; then
+    count="$(bump_counter "$FAKE_WORKFLOW_DELETE_STATE")"
+  fi
   case "$FAKE_WORKFLOW_DELETE_MODE" in
   sync)
     echo '{"ok":true,"identity":"bot","data":{"deleted":true,"file_token":"tok","type":"docx"}}'
     exit 0
     ;;
   fail)
-    bump_counter "$FAKE_WORKFLOW_DELETE_STATE" > /dev/null
     echo "Deleting docx tok..." >&2
     echo '{"ok":false,"identity":"bot","error":{"type":"api","subtype":"server_error","message":"drive task failed"}}' >&2
     exit 1
     ;;
+  fail-unexpected)
+    echo '{"ok":false,"identity":"bot","error":{"type":"api","subtype":"invalid_request","message":"file token not found"}}' >&2
+    exit 1
+    ;;
   fail-then-async)
-    count="$(bump_counter "$FAKE_WORKFLOW_DELETE_STATE")"
     if [ "$count" -lt 1 ]; then
       echo '{"ok":false,"identity":"bot","error":{"type":"api","subtype":"server_error","message":"drive task failed"}}' >&2
       exit 1
@@ -116,6 +235,9 @@ if [ "$1" = "drive" ] && [ "$2" = "+delete" ]; then
 fi
 
 if [ "$1" = "drive" ] && [ "$2" = "+task_result" ]; then
+  if [ -n "$FAKE_WORKFLOW_TASK_RESULT_STATE" ]; then
+    bump_counter "$FAKE_WORKFLOW_TASK_RESULT_STATE" > /dev/null
+  fi
   if [ "${FAKE_WORKFLOW_TASK_RESULT_OK:-0}" != "1" ]; then
     echo "unexpected +task_result call: $*" >&2
     exit 2
@@ -125,13 +247,16 @@ if [ "$1" = "drive" ] && [ "$2" = "+task_result" ]; then
 fi
 
 if [ "$1" = "api" ] && [ "$2" = "post" ] && [ "$3" = "/open-apis/drive/v1/metas/batch_query" ]; then
+  count=0
+  if [ -n "$FAKE_WORKFLOW_META_STATE" ]; then
+    count="$(bump_counter "$FAKE_WORKFLOW_META_STATE")"
+  fi
   case "$FAKE_WORKFLOW_META_MODE" in
   gone)
     echo '{"ok":true,"data":{"metas":[]}}'
     exit 0
     ;;
   exists-then-gone)
-    count="$(bump_counter "$FAKE_WORKFLOW_META_STATE")"
     if [ "$count" -lt 1 ]; then
       echo '{"ok":true,"data":{"metas":[{"url":"https://example.com/still-visible"}]}}'
       exit 0

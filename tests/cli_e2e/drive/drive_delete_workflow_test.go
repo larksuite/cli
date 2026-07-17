@@ -5,6 +5,7 @@ package drive
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,8 +105,16 @@ func deleteAsyncAndVerify(t *testing.T, ctx context.Context, token, docType stri
 			return taskID
 		}
 
-		// The failed delete may still have removed the resource server-side,
-		// so check the real terminal state before deciding to retry.
+		// Only the one verified backend transient may fall through to
+		// terminal-state checking; any other failure is a real regression and
+		// must not be rescued by the resource happening to be gone.
+		if !isTransientDriveDeleteFailure(result) {
+			t.Fatalf("drive +delete failed with an unexpected error on attempt %d\nstdout:\n%s\nstderr:\n%s",
+				attempt, result.Stdout, result.Stderr)
+		}
+
+		// The failed delete task may still have removed the resource
+		// server-side, so check the real terminal state before retrying.
 		deleted, verifyErr := IsDriveResourceDeleted(ctx, token, docType, "bot")
 		require.NoError(t, verifyErr, "verify %s %s after failed delete attempt %d", docType, token, attempt)
 		if deleted {
@@ -131,8 +140,39 @@ func assertDriveDeleteTaskSucceeded(t *testing.T, ctx context.Context, taskID st
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
-	taskResult.AssertExitCode(t, 0)
+	require.NotNil(t, taskResult)
+	// Fatal exit-code gate first: the non-fatal assert flavor would cascade
+	// into misleading empty-stdout failures, exactly what this fix removes.
+	require.Equal(t, 0, taskResult.ExitCode, "drive +task_result failed\nstdout:\n%s\nstderr:\n%s", taskResult.Stdout, taskResult.Stderr)
 	taskResult.AssertStdoutStatus(t, true)
 	require.Equal(t, taskID, gjson.Get(taskResult.Stdout, "data.task_id").String(), "stdout:\n%s", taskResult.Stdout)
 	require.False(t, gjson.Get(taskResult.Stdout, "data.failed").Bool(), "stdout:\n%s", taskResult.Stdout)
+}
+
+// isTransientDriveDeleteFailure reports whether a failed drive +delete carries
+// the one backend error this workflow tolerates: the async delete task
+// transiently reporting a terminal "fail" state (observed as flake in CI; the
+// resource is usually deleted regardless). Everything else — crashes, protocol
+// regressions, auth or parameter errors — stays fatal.
+func isTransientDriveDeleteFailure(result *clie2e.Result) bool {
+	if result == nil {
+		return false
+	}
+	for _, raw := range []string{result.Stderr, result.Stdout} {
+		idx := strings.Index(raw, "{")
+		if idx < 0 {
+			continue
+		}
+		payload := raw[idx:]
+		if !gjson.Valid(payload) {
+			continue
+		}
+		errObj := gjson.Get(payload, "error")
+		if errObj.Get("type").String() == "api" &&
+			errObj.Get("subtype").String() == "server_error" &&
+			errObj.Get("message").String() == "drive task failed" {
+			return true
+		}
+	}
+	return false
 }
