@@ -24,7 +24,7 @@
 | `--range` | 限定 A1 范围；省略则用各 sheet 的 `current_region` |
 | `--max-locations` | 每类错误样本上限，默认 20 |
 | `--exit-on-error` | `status='errors_found'` 时返回非 0 退出码（CI 网关用） |
-| `--ai-only` | 只校验 AI 公式（见「AI 公式校验」），跳过普通公式的 7 类 Excel 错误扫描；写完 AI 公式后轮询等待用 |
+| `--ai-only` | 只校验 AI 公式（见「AI 公式校验」），跳过普通公式的 7 类 Excel 错误扫描；写完 AI 公式后查看计算状态用 |
 
 返回核心字段：
 
@@ -70,22 +70,22 @@
 
 ## AI 公式校验（`--ai-only`）
 
-飞书表格支持一批 **AI 公式**（`AI_WRITE` / `AI_CLASSIFY` / `AI_SENTIMENT` / `AI_EXTRACT` / `AI_POLISH` / `AI_SUMMARY` / `AI_TRANSLATE`，写法与清单见 `lark-sheets-formula-translation`）。AI 公式的写入与普通公式一致（复用 `+cells-set` / `set_cell_range`，无需特殊接口），但**计算是异步的**：写入后要排队等 AI 中台算完才有结果。普通的 `+formula-verify` 只扫本地单元格值（7 类 Excel 错误），看不到 AI 公式的计算状态。
+飞书表格支持一批 **AI 公式**（`AI_WRITE` / `AI_CLASSIFY` / `AI_SENTIMENT` / `AI_EXTRACT` / `AI_POLISH` / `AI_SUMMARY` / `AI_TRANSLATE`，写法与清单见 `lark-sheets-formula-translation`）。AI 公式的写入与普通公式一致（复用 `+cells-set` / `set_cell_range`，无需特殊接口），但**计算是异步的**：写入后要等 AI 算完才有结果。普通的 `+formula-verify` 只扫本地单元格值（7 类 Excel 错误），看不到 AI 公式的计算状态。
 
-`--ai-only` 让 `+formula-verify` 只校验 AI 公式、跳过普通公式的 Excel 错误扫描，专用于「写完 AI 公式后轮询等到全部算完」：
+`--ai-only` 让 `+formula-verify` 只校验 AI 公式、跳过普通公式的 Excel 错误扫描，专用于「写完 AI 公式后确认是否都算完」：
 
-- **单次探针语义**：`+formula-verify --ai-only` 一次调用只返回**当前** AI 公式状态，**不在 CLI 内置轮询 / 超时**。收敛（等所有 AI 公式算完）由调用方多次调用完成。
-- **状态三态**：至少能区分「完成」/「进行中（仍在排队计算）」/「失败或不支持」。仍处于「进行中」时应间隔一段时间后重试。
-- **批量与排队**：AI 公式很多时会自然分批拉取（后端单次按 50 个 AI 公式自动分批），批量越大排队等待越久。写一大批 AI 公式后不要期望立刻收敛，按间隔轮询。
-- **`--exit-on-error` 兼容**：`--ai-only --exit-on-error` 时，若仍有 AI 公式处于失败态，返回非 0 退出码，便于脚本 / CI 轮询收敛。
+- **返回当前计算状态**：`+formula-verify --ai-only` 返回本次调用时 AI 公式的**当前**计算状态快照。
+- **收敛预期**：少量 AI 公式通常写完后很快就能算出结果，短时间内再查一次即可看到收敛；一次写入较多 AI 公式时，计算需要更长时间，校验返回部分公式仍处于 `pending`（计算中）属于**正常现象**，稍后再查即可，不代表出错。
+- **状态三态**：至少能区分「完成」/「进行中（仍在计算）」/「失败或不支持」。仍有「进行中」时，间隔一段时间后再查一次。
+- **`--exit-on-error` 兼容**：`--ai-only --exit-on-error` 时，若仍有 AI 公式处于失败态，返回非 0 退出码，便于脚本 / CI 收敛。
 - 可与 `--sheet-id` / `--sheet-name` / `--range` 共存，表示「只在指定范围里校验 AI 公式」。
 
-典型轮询用法：
+典型用法：
 
 ```bash
-# 写入一批 AI 公式后，轮询直到不再有 pending
+# 写入一批 AI 公式后，查看 AI 公式计算状态
 lark-cli sheets +formula-verify --url <表URL> --ai-only
-# 若仍在计算，间隔重试；直到所有 AI 公式状态收敛
+# 若仍有 pending，稍后再查一次；直到不再有 pending 即算完成
 ```
 
 ## 常见陷阱

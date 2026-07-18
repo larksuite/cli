@@ -31,19 +31,58 @@
 
 ## AI 公式
 
-飞书表格支持一批 **AI 公式**：用自然语言驱动生成文本、分类、情感分析、信息提取、润色、总结、翻译等结果。AI 公式的**写入方式与普通公式完全一致**（复用 `lark-sheets-write-cells` 的 `+cells-set` / `set_cell_range`，无需特殊接口），只是计算是**异步**的——写入后要排队等 AI 中台算完才有结果。
+飞书表格支持一批 **AI 公式**：用自然语言驱动生成文本、问答、导数据、推断、分类、情感分析、信息提取、润色、总结、翻译等结果。AI 公式的**写入方式与普通公式完全一致**（复用 `lark-sheets-write-cells` 的 `+cells-set` / `set_cell_range`，无需特殊接口），只是计算是**异步**的——写入后要等 AI 算完才有结果。
 
-| 公式 | 功能 | 示例 & 说明 |
+### 参数通用约定（写对参数是成功的关键）
+
+- **大多数 AI 公式只接受单值 / 单个单元格，不接受 range**：`AI_TRANSLATE` / `AI_EXTRACT` / `AI_SUMMARY` / `AI_POLISH` / `AI_SENTIMENT` / `AI_IMPORTDATA` 的每个参数都**不允许传 range**（如 `A2:A10`），只能传字符串常量或单个单元格（如 `A2`）。要对一列逐行处理，用模板单元格 + `--copy-to-range` 向下扩展，而不是把整列 range 塞进一个公式。
+- **允许 range 的例外**：`AI_WRITE` / `AI_DEEPSEEK_WRITE` / `AI_ASK` 可接受 range（会先被序列化成 markdown 表格字符串再整体发给 AI，而非按网格结构传输）；`AI_INFER` 要求三个参数都是单行或单列 range；`AI_CLASSIFY` 仅在 `mode=2` 时第三参支持引用范围。
+- **参数值要传"机器可识别的键"而非自然语言显示名**：最典型的是 `AI_TRANSLATE` 第二参要传语言 key（`en` / `ja` / …），传 `"english"` / `"英语"` 这类显示名在部分路径下虽被兼容，但不是推荐写法、容易失败。
+
+### 函数清单与参数
+
+| 公式 | 功能 | 参数 | 示例 & 说明 |
+|---|---|---|---|
+| `AI_WRITE` | 按自然语言描述生成文本 | 1~255 个；string / number / 单元格 / range 均可 | `=AI_WRITE("帮我写一封邮件，收件人是",A2)`——多个提示词用逗号分隔；range 会被展平成文本 |
+| `AI_ASK` | 基于企业知识库问答 | 1~255 个；同 `AI_WRITE` | `=AI_ASK("根据企业知识库回答：",A2)` |
+| `AI_IMPORTDATA` | 生成结构化数据（数组公式，返回二维矩阵） | 1~256 个；string / 单元格；**不允许 range** | `=AI_IMPORTDATA("帮我输出一个班级信息统计表示例")` |
+| `AI_INFER` | 按示例输入/输出推断目标结果（数组公式，返回一列） | 固定 3 个，且**都必须是单行或单列 range** | `=AI_INFER(A1:A3, B1:B3, A4:A6)`——参数含义：示例输入范围、示例输出范围、目标输入范围 |
+| `AI_CLASSIFY` | 标签分类 | `AI_CLASSIFY(value, mode, tag_or_range, [topK])` | 见下方「AI_CLASSIFY 三种模式」 |
+| `AI_EXTRACT` | 从内容里提取信息 | 2 个；均 string / 单元格；**不允许 range** | `=AI_EXTRACT(A2,"人名")`——第二参是"要提取什么"的自由描述（非固定枚举），如 `邮箱` / `手机号码` |
+| `AI_TRANSLATE` | 翻译到目标语言 | 2 个；均 string / 单元格；**不允许 range** | `=AI_TRANSLATE(A2,"en")`——第二参传语言 key（见下方语言映射） |
+| `AI_SENTIMENT` | 情感分析（正面 / 负面 / 中性） | 1 个；string / 单元格；**不允许 range** | `=AI_SENTIMENT(A2)` |
+| `AI_SUMMARY` | 总结 | 1 个；string / 单元格；**不允许 range** | `=AI_SUMMARY(A2)` |
+| `AI_POLISH` | 润色 | 1 个；string / 单元格；**不允许 range** | `=AI_POLISH(A3)` |
+
+> `AI_DEEPSEEK_WRITE` 与 `AI_WRITE` 用法一致，走 DeepSeek 模型；参数规则相同。
+
+### AI_TRANSLATE 语言 key 映射
+
+第二参优先传语言 key（不是显示名）：
+
+| 语言 | key | 语言 | key | 语言 | key |
+|---|---|---|---|---|---|
+| 英语 | `en` | 日语 | `ja` | 法语 | `fr` |
+| 西班牙语 | `es` | 泰语 | `th` | 印地语 | `hi` |
+| 印尼语 | `id` | 葡萄牙语 | `pt` | 韩语 | `ko` |
+| 越南语 | `vi` | 俄语 | `ru` | 德语 | `de` |
+| 意大利语 | `it` | 阿拉伯语 | `ar` | | |
+
+示例：`=AI_TRANSLATE(A2,"en")`、`=AI_TRANSLATE(A2,"ja")`、`=AI_TRANSLATE(A2,"fr")`。
+
+### AI_CLASSIFY 三种模式
+
+签名 `AI_CLASSIFY(value, mode, tag_or_range, [topK])`：第一参是待分类内容（不允许 range），`mode` 是数字，第三参含义随 mode 变化，第四参 `topK` 仅 `mode=2` 有意义（默认 20，必须 > 0）。
+
+| mode | 第三参 | 示例 |
 |---|---|---|
-| `AI_WRITE` | 根据自然语言描述返回文本结果 | `AI_WRITE("帮我写一封邮件,收信人是",A2)`——用自然语言描述需求，AI 返回文本；多个提示词用逗号分隔 |
-| `AI_CLASSIFY` | 标签分类（国内不支持，国外支持） | `AI_CLASSIFY(A2, 2, "Sheet1!A:C", 20)`——把内容智能分类；模式 0 手动标签 / 1 关键词 / 2 引用区域标签库，末位为标签召回数量（模式 2，默认 20） |
-| `AI_SENTIMENT` | 正面 / 负面 / 中性情感分析 | `AI_SENTIMENT(A2)`——对指定内容做情感分析 |
-| `AI_EXTRACT` | 从内容里智能提取信息 | `AI_EXTRACT(A2,"人名")`——第二参为要提取的信息 |
-| `AI_POLISH` | 对指定内容润色 | `AI_POLISH(A3)` |
-| `AI_SUMMARY` | 对指定内容总结 | `AI_SUMMARY(A3)` |
-| `AI_TRANSLATE` | 翻译到目标语言 | `AI_TRANSLATE(A2,"spanish")`——第二参为目标语言 |
+| `0` | 标签字符串 | `=AI_CLASSIFY(A2, 0, "好评,差评")` |
+| `1` | 分类维度字符串 | `=AI_CLASSIFY(A2, 1, "行业")` |
+| `2` | **引用范围或 ImportRange**（不能是普通字符串） | `=AI_CLASSIFY(A2, 2, Sheet1!A:C, 20)` |
 
-**写完 AI 公式后的校验**：AI 公式异步计算，一次批量写入过多时预期需要排队等待一段时间才能算完。写完后用 `lark-sheets-formula-verify` 的 `+formula-verify --ai-only` **轮询**（CLI 不内置轮询，多次调用直到 AI 公式状态收敛、不再 pending 才算完成），批量大时后端按 50 个 AI 公式自动分批拉取。细节见 `lark-sheets-formula-verify`。
+> `mode=2` 的参考范围有限制：最多 3 列、至少 2 行、有效数据行最多 10000，且 `topK` 必须 > 0。`mode` 传其他值默认按 `0` 处理。
+
+**写完 AI 公式后的校验**：AI 公式异步计算，少量公式通常很快就能算出结果；一次批量写入较多公式时，部分公式在校验时仍处于计算中（pending）属于正常现象。写完后用 `lark-sheets-formula-verify` 的 `+formula-verify --ai-only` 查看 AI 公式计算状态，直到不再有 pending 即算完成。细节见 `lark-sheets-formula-verify`。
 
 ## 决策流程
 
