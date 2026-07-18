@@ -34,27 +34,17 @@ func SuccessEnvelopeData(result interface{}) interface{} {
 // JSON output carries content-safety alerts inside the envelope. When jq is
 // applied, the alert may be filtered away, so warn mode also writes stderr.
 func WriteSuccessEnvelope(data interface{}, opts SuccessEnvelopeOptions) error {
-	scanResult := ScanForSafety(opts.CommandPath, data, opts.ErrOut)
-	if scanResult.Blocked {
-		return scanResult.BlockErr
-	}
-
-	env := Envelope{
-		OK:       true,
-		Identity: opts.Identity,
-		DryRun:   opts.DryRun,
-		Data:     data,
-		Notice:   GetNotice(),
-	}
-	if scanResult.Alert != nil {
-		env.ContentSafetyAlert = scanResult.Alert
-	}
-	if opts.JqExpr != "" {
-		if scanResult.Alert != nil && opts.ErrOut != nil {
-			WriteAlertWarning(opts.ErrOut, scanResult.Alert)
-		}
-		return JqFilter(opts.Out, env, opts.JqExpr)
-	}
-	PrintJson(opts.Out, env)
-	return nil
+	return NewEmitter(EmitterConfig{
+		Out:            opts.Out,
+		ErrOut:         opts.ErrOut,
+		CommandPath:    opts.CommandPath,
+		Identity:       opts.Identity,
+		NoticeProvider: GetNotice,
+	}).Success(data, EmitOptions{
+		Format:          "",
+		Raw:             false,
+		JQ:              opts.JqExpr,
+		DryRun:          opts.DryRun,
+		JQSafetyWarning: true,
+	})
 }

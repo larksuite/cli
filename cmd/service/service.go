@@ -707,20 +707,18 @@ func servicePaginate(ctx context.Context, ac *client.APIClient, request client.R
 
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
-		pf := output.NewPaginatedFormatter(out, format)
+		emitter := output.NewEmitter(output.EmitterConfig{
+			Out:            out,
+			ErrOut:         errOut,
+			CommandPath:    commandPath,
+			Identity:       string(pagOpts.Identity),
+			NoticeProvider: output.GetNotice,
+		})
 		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) error {
 			// Streaming formats intentionally emit each page after that page has
 			// passed safety scanning. A later page may still fail, so callers
 			// must use the exit code to distinguish complete vs partial output.
-			scanResult := output.ScanForSafety(commandPath, items, errOut)
-			if scanResult.Blocked {
-				return scanResult.BlockErr
-			}
-			if scanResult.Alert != nil {
-				output.WriteAlertWarning(errOut, scanResult.Alert)
-			}
-			pf.FormatPage(items)
-			return nil
+			return emitter.StreamPage(items, output.StreamOptions{Format: format.String()})
 		}, pagOpts)
 		if err != nil {
 			return err

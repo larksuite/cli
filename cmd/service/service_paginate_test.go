@@ -120,6 +120,79 @@ func TestServicePaginate_DefaultAggregatesAllPages(t *testing.T) {
 	}
 }
 
+func TestServicePaginate_StreamingFormatsEmitExactMultiPageBytes(t *testing.T) {
+	tests := []struct {
+		name   string
+		format output.Format
+		want   string
+	}{
+		{
+			name:   "ndjson",
+			format: output.FormatNDJSON,
+			want:   "{\"id\":\"1\",\"name\":\"Alice\"}\n{\"id\":\"2\",\"name\":\"Carol\",\"page_only\":\"ignored\"}\n",
+		},
+		{
+			name:   "table",
+			format: output.FormatTable,
+			want:   "id  name \n──  ─────\n1   Alice\n2   Carol\n",
+		},
+		{
+			name:   "csv",
+			format: output.FormatCSV,
+			want:   "id,name\n1,Alice\n2,Carol\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ac, out, errOut, reg := newServicePaginateTestHarness(t)
+			reg.Register(&httpmock.Stub{
+				URL: "/open-apis/test/v1/items",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]interface{}{
+						"items": []interface{}{
+							map[string]interface{}{"id": "1", "name": "Alice"},
+						},
+						"has_more":   true,
+						"page_token": "next-1",
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				URL: "/open-apis/test/v1/items",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]interface{}{
+						"items": []interface{}{
+							map[string]interface{}{"id": "2", "name": "Carol", "page_only": "ignored"},
+						},
+						"has_more": false,
+					},
+				},
+			})
+
+			err := servicePaginate(context.Background(), ac, servicePaginateRequest(),
+				tt.format, "", out, errOut, "lark-cli test items list", client.PaginationOptions{
+					PageLimit: 10,
+					PageDelay: -1,
+				}, ac.CheckResponse)
+
+			if err != nil {
+				t.Fatalf("servicePaginate() error = %v, want nil", err)
+			}
+			if got := out.String(); got != tt.want {
+				t.Fatalf("stdout byte mismatch\ngot (%d bytes):\n%q\nwant (%d bytes):\n%q", len(got), got, len(tt.want), tt.want)
+			}
+			if got := errOut.String(); got != "" {
+				t.Fatalf("stderr bytes = %q, want empty", got)
+			}
+		})
+	}
+}
+
 func TestServicePaginate_StreamingFormatFallsBackToJSONWithoutList(t *testing.T) {
 	ac, out, errOut, reg := newServicePaginateTestHarness(t)
 	reg.Register(&httpmock.Stub{

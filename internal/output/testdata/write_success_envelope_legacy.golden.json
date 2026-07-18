@@ -1,0 +1,41 @@
+{
+  "cases": {
+    "dry_run": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"dry_run\": true,\n  \"data\": {\n    \"api\": []\n  }\n}\n",
+      "stderr": ""
+    },
+    "jq": {
+      "stdout": "1\n",
+      "stderr": ""
+    },
+    "jq_safety_warning": {
+      "stdout": "1\n",
+      "stderr": "warning: content safety alert from emitter-oracle (rules: fixture-rule)\n"
+    },
+    "json": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"id\": \"1\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "notice": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"id\": \"1\"\n  },\n  \"_notice\": {\n    \"update\": {\n      \"latest\": \"9.9.9\"\n    }\n  }\n}\n",
+      "stderr": ""
+    },
+    "scanner_block": {
+      "stdout": "",
+      "stderr": "",
+      "error": {
+        "go_type": "*errs.ContentSafetyError",
+        "json": {
+          "type": "policy",
+          "subtype": "content_safety",
+          "message": "content safety violation detected (rules: fixture-rule)",
+          "rules": [
+            "fixture-rule"
+          ]
+        },
+        "message": "content safety violation detected (rules: fixture-rule)",
+        "exit_code": 6
+      }
+    }
+  }
+}
