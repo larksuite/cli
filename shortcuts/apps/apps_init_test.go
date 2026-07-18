@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/testutil/gitcmd"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -929,8 +930,7 @@ func TestAppsInit_NonEmpty_SingleInitCommit(t *testing.T) {
 // gitMust runs a git command in dir with a real binary, failing the test on error.
 func gitMust(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
+	cmd := gitcmd.Command(dir, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v in %s failed: %v\n%s", args, dir, err, out)
@@ -946,6 +946,7 @@ func TestCommitAndPushIfDirty_RealGit_IgnoredAgentDir(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+	gitcmd.SetSynchronousMaintenanceEnv(t)
 	// Bare remote so `git push origin sprint/default` succeeds.
 	remote := t.TempDir()
 	gitMust(t, remote, "init", "--bare", "-q", "--initial-branch", defaultInitBranch)
@@ -1067,6 +1068,7 @@ func TestCommitAndPushIfDirty_RealGit_NonEmptyUpgrade(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+	gitcmd.SetSynchronousMaintenanceEnv(t)
 	remote := t.TempDir()
 	gitMust(t, remote, "init", "--bare", "-q", "--initial-branch", defaultInitBranch)
 

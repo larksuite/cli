@@ -6,10 +6,11 @@ package publiccontent
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/testutil/gitcmd"
 )
 
 func TestCollectScansOnlyCurrentContributionAndMetadata(t *testing.T) {
@@ -855,8 +856,7 @@ func runGit(t *testing.T, repo string, args ...string) {
 	if len(args) > 0 && args[0] == "commit" {
 		args = append([]string{"commit", "--no-verify"}, args[1:]...)
 	}
-	cmd := exec.Command("git", args...)
-	cmd.Dir = repo
+	cmd := gitcmd.Command(repo, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, out)
@@ -865,8 +865,7 @@ func runGit(t *testing.T, repo string, args ...string) {
 
 func runGitOutput(t *testing.T, repo string, args ...string) []byte {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = repo
+	cmd := gitcmd.Command(repo, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, out)
