@@ -1296,6 +1296,29 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("list field names alias", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "field_id=Name&field_id=Age&limit=1&offset=0",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Name", "Age"},
+					"record_id_list": []interface{}{"rec_alias"},
+					"data":           []interface{}{[]interface{}{"Alice", 18}},
+					"total":          1,
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1", "--field-names", "Name,Age", "--format", "json"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"rec_alias"`) || !strings.Contains(got, `"Alice"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
 	t.Run("list json format", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -1316,6 +1339,30 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"Bob"`) || !strings.Contains(got, `"rec_2"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list json alias", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "limit=1&offset=0",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Name"},
+					"field_id_list":  []interface{}{"fld_name"},
+					"record_id_list": []interface{}{"rec_alias"},
+					"data":           []interface{}{[]interface{}{"Carol"}},
+					"total":          1,
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1", "--json"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"Carol"`) || !strings.Contains(got, `"rec_alias"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
@@ -1572,6 +1619,14 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name"}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "unknown flag: --fields") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("list field ids and field names alias are mutually exclusive", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "Name", "--field-names", "Age"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "--field-id and --field-names are mutually exclusive") {
 			t.Fatalf("err=%v", err)
 		}
 	})

@@ -1,7 +1,7 @@
 ---
 name: lark-minutes
 version: 1.0.0
-description: "飞书妙记：搜索妙记、查看妙记基础信息、下载/上传音视频、读取或编辑妙记的产物内容、改标题、替换说话人/关键词。当给出minute_token、本地音视频文件，要查/改/转妙记产物时使用；本地音视频转纪要/逐字稿优先走本 skill，不要用 ffmpeg/whisper 本地转写。不负责：获取会议关联妙记，或仅按自然语言标题定位纪要"
+description: "飞书妙记：搜索妙记、查看妙记基础信息、下载/上传音视频、读取或编辑妙记的产物内容、改标题、替换说话人/关键词、申请妙记查看/编辑权限。当给出minute_token、本地音视频文件，要查/改/转妙记产物，或用户明确要主动申请妙记权限时使用；本地音视频转纪要/逐字稿优先走本 skill，不要用 ffmpeg/whisper 本地转写。不负责：获取会议关联妙记，或仅按自然语言标题定位纪要"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -31,6 +31,7 @@ metadata:
 | [`+download`](references/lark-minutes-download.md) | 下载妙记音视频媒体文件 |
 | [`+upload`](references/lark-minutes-upload.md) | 上传 file_token 生成妙记 |
 | [`+update`](references/lark-minutes-update.md) | 更新妙记标题 |
+| `+apply-permission` | 申请妙记查看或编辑权限 |
 | [`+speaker-replace`](references/lark-minutes-speaker-replace.md) | 替换妙记逐字稿中的说话人（须先 `lark-cli api GET .../speakerlist` 取 `speaker_id`） |
 | `+word-replace` | 批量替换逐字稿关键词（详见 `lark-cli minutes +word-replace --help`） |
 | [`+summary`](references/lark-minutes-summary.md) | 替换妙记 AI 总结全文 |
@@ -52,6 +53,7 @@ metadata:
 | 在妙记里增加 / 更改 / 删除 AI 待办 | `+todo`（**禁止走 lark-task**） |
 | 替换妙记的AI 总结 | `+summary` |
 | 重命名妙记/改妙记标题 | `+update` |
+| 申请妙记权限（查看/编辑） | `+apply-permission --perm view\|edit` |
 | 替换说话人/把 A 的发言改成 B/重新归属发言人/把外部（非飞书）说话人改成飞书用户" | 先 `lark-cli api GET .../transcript/speakerlist` 取 `speaker_id`，再 [`minutes +speaker-replace`](references/lark-minutes-speaker-replace.md)；`--from-speaker-id` 只传 id，不传展示名 |
 | 批量替换逐字稿关键词 | `+word-replace` |
 | 用户同时提到"会议/开会"和"妙记" | 先 [lark-vc](../lark-vc/SKILL.md)（`+search` → `+recording`）获取 `minute_token`，再本 skill |
@@ -75,8 +77,21 @@ metadata:
 2. 如果是会议 / 日程上下文中的妙记基础信息，先通过 VC/Calendar 链路拿到 `minute_token`，再调用 `minutes minutes get`。
 3. 用户意图不明确时，默认先给基础元信息，帮助确认是否命中目标妙记。
 
+### 3. 申请妙记权限
 
-### 3. 上传音视频文件生成妙记（并可继续获取纪要 / 逐字稿）
+遇到妙记没有查看或编辑权限时，引导用户申请对应权限；只有用户明确要申请时，才调用 `minutes +apply-permission`。
+
+只有当用户明确要求"申请查看权限"、"申请编辑权限"、"帮我申请这条妙记权限"时，才调用：
+
+```bash
+lark-cli minutes +apply-permission --minute-token <token> --perm view|edit
+```
+
+这是向妙记所有者发起权限申请，不代表立即获得权限。
+
+**安全约束**：遇到无权限错误时，不要自动调用 `+apply-permission`；先把无权限事实告知用户，只有用户明确要求申请权限时才发起申请。
+
+### 4. 上传音视频文件生成妙记（并可继续获取纪要 / 逐字稿）
 
 1. 当用户说"把音视频文件转成纪要""把录音转成逐字稿/文字稿/撰写文字""把 mp4/mp3 转成总结/待办/章节"时，也先走这个入口。
 2. **处理流程**：
@@ -120,9 +135,9 @@ lark-cli minutes +todo --minute-token <token> --as user --todos '[
 
 **更新 / 删除前**：先用 `minutes +detail --minute-tokens <token> --todo` 读取 `todos[].todo_id`（按 `content` 匹配目标条目；列表顺序不保证稳定，**不要**用"第 2 条"代替 `todo_id`）。
 
-**无编辑权限**：若 CLI 返回 `error.type=no_edit_permission`，表示对**这条妙记**没有编辑权，应请所有者授权；**不要**误走 `auth login --scope`。
+**无编辑权限**：若 CLI 返回 `error.subtype=permission_denied`，表示对**这条妙记**没有编辑权，应请所有者授权；**不要**误走 `auth login --scope`。
 
-**逐字稿关键词替换无命中**：`minutes +word-replace` 时，若 CLI 返回 `error.type=words_not_found`，表示传入的 `source_word` 在该妙记逐字稿中**一个都没匹配到**，未做任何替换。这是**参数问题不是权限问题**：先用 `minutes +detail --minute-tokens <token> --transcript` 读取当前逐字稿，核对 `source_word` 的精确写法与大小写后重试。
+**逐字稿关键词替换无命中**：`minutes +word-replace` 时，若 CLI 返回 `error.subtype=not_found`，表示传入的 `source_word` 在该妙记逐字稿中**一个都没匹配到**，未做任何替换。这是**参数问题不是权限问题**：先用 `minutes +detail --minute-tokens <token> --transcript` 读取当前逐字稿，核对 `source_word` 的精确写法与大小写后重试。
 
 **替换 AI 总结全文**：见 [minutes +summary](references/lark-minutes-summary.md)。
 

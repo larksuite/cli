@@ -271,6 +271,37 @@ func TestSlidesScreenshotListRequiresSelector(t *testing.T) {
 	}
 }
 
+func TestSlidesScreenshotListRejectsMoreThanTenSelectors(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "1",
+		"--slide-number", "2",
+		"--slide-number", "3",
+		"--slide-number", "4",
+		"--slide-number", "5",
+		"--slide-number", "6",
+		"--slide-number", "7",
+		"--slide-number", "8",
+		"--slide-number", "9",
+		"--slide-number", "10",
+		"--slide-number", "11",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %v, want typed validation error", err)
+	}
+	if problem.Hint != "request at most 10 pages at a time" {
+		t.Fatalf("hint = %q, want max 10 pages guidance", problem.Hint)
+	}
+}
+
 func TestSlidesScreenshotRenderContentWritesFile(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)

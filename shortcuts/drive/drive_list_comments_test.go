@@ -47,6 +47,32 @@ func TestResolveDriveListCommentsInput(t *testing.T) {
 			wantType:     "wiki",
 		},
 		{
+			name:         "bare apps token",
+			rawInput:     "appsResource",
+			docType:      "apps",
+			wantResource: "appsResource",
+			wantType:     "apps",
+		},
+		{
+			name:         "miaoda page url",
+			urlInput:     "https://bytedance.feishu.cn/page/appsResource/?from=home",
+			wantResource: "appsResource",
+			wantType:     "apps",
+		},
+		{
+			name:         "token flag also accepts miaoda page url",
+			rawInput:     "https://bytedance.feishu.cn/page/appsResource/",
+			wantResource: "appsResource",
+			wantType:     "apps",
+		},
+		{
+			name:      "miaoda page url type conflict",
+			urlInput:  "https://bytedance.feishu.cn/page/appsResource/",
+			docType:   "docx",
+			wantErr:   "conflicts",
+			wantParam: "--type",
+		},
+		{
 			name:      "url and token mutually exclusive",
 			urlInput:  "https://example.larksuite.com/docx/docxResource",
 			rawInput:  "docxResource",
@@ -72,6 +98,19 @@ func TestResolveDriveListCommentsInput(t *testing.T) {
 			wantErr:   "unsupported",
 			wantParam: "--url",
 		},
+		{
+			name:      "unsupported miaoda url path",
+			urlInput:  "https://bytedance.feishu.cn/app/appsResource",
+			wantErr:   "Miaoda /page/<token>",
+			wantParam: "--url",
+		},
+		{
+			name:      "invalid bare token type",
+			rawInput:  "appsResource",
+			docType:   "folder",
+			wantErr:   "invalid --type",
+			wantParam: "--type",
+		},
 	}
 
 	for _, tt := range tests {
@@ -91,6 +130,50 @@ func TestResolveDriveListCommentsInput(t *testing.T) {
 			}
 			if got.Token != tt.wantResource || got.Type != tt.wantType {
 				t.Fatalf("got (%q, %q), want (%q, %q)", got.Token, got.Type, tt.wantResource, tt.wantType)
+			}
+		})
+	}
+}
+
+func TestParseDriveListCommentsAppsURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		rawURL    string
+		wantToken string
+		wantOK    bool
+	}{
+		{
+			name:      "page url",
+			rawURL:    "https://bytedance.feishu.cn/page/appsResource?from=home",
+			wantToken: "appsResource",
+			wantOK:    true,
+		},
+		{
+			name:   "bare token is not url",
+			rawURL: "appsResource",
+		},
+		{
+			name:   "non page path",
+			rawURL: "https://bytedance.feishu.cn/app/appsResource",
+		},
+		{
+			name:   "empty page token",
+			rawURL: "https://bytedance.feishu.cn/page/%20",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotToken, gotOK := parseDriveListCommentsAppsURL(tt.rawURL)
+			if gotOK != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", gotOK, tt.wantOK)
+			}
+			if gotToken != tt.wantToken {
+				t.Fatalf("token = %q, want %q", gotToken, tt.wantToken)
 			}
 		})
 	}
@@ -228,6 +311,14 @@ func TestBuildDriveListCommentsParams(t *testing.T) {
 	if _, ok := sheetParams["need_relation"]; ok {
 		t.Fatalf("need_relation should be ignored for non-docx: %#v", sheetParams)
 	}
+
+	appsParams := buildDriveListCommentsParams(allPartialSpec, "apps")
+	if got := appsParams["file_type"]; got != "apps" {
+		t.Fatalf("apps file_type = %#v, want apps", got)
+	}
+	if _, ok := appsParams["need_relation"]; ok {
+		t.Fatalf("need_relation should be ignored for apps: %#v", appsParams)
+	}
 }
 
 func TestDriveListCommentsExecuteDocx(t *testing.T) {
@@ -351,5 +442,86 @@ func TestDriveListCommentsExecuteWikiResolvesToDocx(t *testing.T) {
 	}
 	if got := mustStringField(t, data, "file_type", "data.file_type"); got != "docx" {
 		t.Fatalf("file_type = %q, want docx", got)
+	}
+}
+
+func TestDriveListCommentsExecuteWikiRejectsUnsupportedResolvedType(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "folder",
+					"obj_token": "folderResource",
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveListComments, []string{
+		"+list-comments",
+		"--token", "wikiResource",
+		"--type", "wiki",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "supports doc, docx, sheet, file, slides, bitable, and apps") {
+		t.Fatalf("expected unsupported resolved type error, got %v", err)
+	}
+	assertDriveListCommentsValidationError(t, err, "--token")
+}
+
+func TestDriveListCommentsExecuteAppsPageURL(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/files/appsResource/comments",
+		OnMatch: func(req *http.Request) {
+			query := req.URL.Query()
+			if got := query.Get("file_type"); got != "apps" {
+				t.Errorf("file_type = %q, want apps", got)
+			}
+			if got := query.Get("is_solved"); got != "false" {
+				t.Errorf("is_solved = %q, want false", got)
+			}
+			if got := query.Get("need_relation"); got != "" {
+				t.Errorf("need_relation = %q, want omitted for apps", got)
+			}
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{
+				"items": []map[string]interface{}{
+					{"comment_id": "comment_apps_1", "is_solved": false},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveListComments, []string{
+		"+list-comments",
+		"--url", "https://bytedance.feishu.cn/page/appsResource/",
+		"--need-relation",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := decodeJSONMap(t, stdout.String())
+	data := mustMapValue(t, out["data"], "data")
+	if got := mustStringField(t, data, "file_token", "data.file_token"); got != "appsResource" {
+		t.Fatalf("file_token = %q, want appsResource", got)
+	}
+	if got := mustStringField(t, data, "file_type", "data.file_type"); got != "apps" {
+		t.Fatalf("file_type = %q, want apps", got)
+	}
+	if got := data["count"]; got != float64(1) {
+		t.Fatalf("count = %#v, want 1", got)
 	}
 }

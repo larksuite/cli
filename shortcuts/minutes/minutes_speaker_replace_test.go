@@ -361,7 +361,7 @@ func TestMinutesSpeakerReplace_NoEditPermission(t *testing.T) {
 	if !strings.Contains(p.Message, minutesSpeakerReplaceTestToken) {
 		t.Errorf("message should include minute token, got: %s", p.Message)
 	}
-	if !strings.Contains(p.Hint, "edit permission") {
-		t.Errorf("hint should mention edit permission, got: %s", p.Hint)
+	if !strings.Contains(p.Hint, "+apply-permission") {
+		t.Errorf("hint should mention apply-permission, got: %s", p.Hint)
 	}
 }

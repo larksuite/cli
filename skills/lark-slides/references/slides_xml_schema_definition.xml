@@ -1464,6 +1464,7 @@
         <xs:annotation>
             <xs:documentation>
                 表格元素, 用于展示结构化数据
+                宽高分配规则参考 HTML table 的整体值 / 子项值处理逻辑, 但在 SXSD 中做确定化约束, 以保证跨端实现一致。
                 边框规则：
                 - 后设置优先：相邻单元格线条只有一个颜色, 如果均设置, 则右下单元格的设置覆盖左上单元格
                 - 不设置边框属性时使用默认样式
@@ -1476,6 +1477,8 @@
                 - id: 表格唯一标识符(可选)
                 - topLeftX/topLeftY: 左上角坐标
                 - flipX/flipY: 水平/垂直翻转
+                - width: 表格目标总宽度(可选)。若设置, 优先用于为未填写列宽的列分配剩余宽度; 当所有列宽均为空时, 所有列均分该值; 当所有列均已填写且该值大于已填写列宽总和时, 多出空间继续分配给现有列, 默认按各列当前宽度作为权重分配; 当已填写列宽之和超过或无法容纳该值时, 保留已填写列宽, 并以最终列宽总和回写 table.width
+                - height: 表格目标总高度(可选)。若设置, 优先用于为未填写行高的行分配剩余高度; 当所有行高均为空时, 所有行均分该值; 当所有行均已填写且该值大于已填写行高总和时, 多出空间继续分配给现有行, 默认按各行当前高度作为权重分配; 当已填写行高之和超过或无法容纳该值时, 保留已填写行高, 并以最终行高总和回写 table.height
                 table 子元素:
                 - colgroup: 列组元素, 用于定义列的宽度
                 - tr: 行元素, 包含多个单元格
@@ -1484,10 +1487,10 @@
                 - col: 列元素
                 col 属性:
                 - span: 列跨数, 默认为1, 可选
-                - width: 列宽度, 默认值为110, 可选
+                - width: 列宽度输入值, 默认值为110, 可选。无 table.width 时, 已填写列保持原值, 空列使用默认值; 有 table.width 时, 已填写列保持原值, 空列优先均分剩余宽度; 若不存在空列且 table.width 大于已填写列宽总和, 则多出空间按各列当前宽度作为权重分配到所有列; 若剩余宽度不足则空列回退为默认值, 并以最终列宽总和作为 table.width
 
                 tr 属性:
-                - height: 行高, 默认为单元格高度
+                - height: 行高输入值, 默认值为37, 可选。无 table.height 时, 已填写行保持原值, 空行使用默认值; 有 table.height 时, 已填写行保持原值, 空行优先均分剩余高度; 若不存在空行且 table.height 大于已填写行高总和, 则多出空间按各行当前高度作为权重分配到所有行; 若剩余高度不足则空行回退为默认值, 并以最终行高总和作为 table.height。若行高低于内容高度, 需要手动修改行高
                 tr 子元素:
                 - td: 单元格元素, 用于显示数据
 
@@ -1543,6 +1546,8 @@
             <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
             <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
             <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="width" type="sml:PositiveSize" use="optional"/>
+            <xs:attribute name="height" type="sml:PositiveSize" use="optional"/>
         </xs:complexType>
     </xs:element>
 

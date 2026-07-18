@@ -2,6 +2,89 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.72] - 2026-07-17
+
+### Features
+
+- **slides**: lint table out of canvas
+- **slides**: report resolved table size mismatches
+- **approval**: support approval event consumption (#1924)
+
+### Bug Fixes
+
+- **vc**: don't fail +detail for in-progress meetings (#1930)
+- stabilize drive delete E2E terminal-state checks (#1939)
+
+### Documentation
+
+- **slides**: document table dimensions
+- document base field default values (#1500)
+- **sheets**: use English placeholder in table-get guidance (#1936)
+
+### Tests
+
+- stabilize live e2e auth retries (#1904)
+- use tri-state wiki node identity in delete verification (#1931)
+- fix drive cover download retries (#1934)
+
+## [v1.0.71] - 2026-07-16
+
+### Features
+
+- add wiki move-to-drive shortcut (#1869)
+- **apps**: add role management shortcuts (#1881)
+- **drive**: add secure label support and clarify comment location API (#1913)
+
+### Bug Fixes
+
+- **base**: improve dashboard shortcut guidance (#1787)
+
+### Documentation
+
+- **apps**: add platform SQL authoring guide to the db-execute skill (#1912)
+
+### Misc
+
+- add L4 plugin-integration and sidecar-integration CI jobs (#1840)
+- **drive**: optimize drive +delete workflow (#1909)
+
+## [v1.0.70] - 2026-07-15
+
+### Features
+
+- add minutes permission application shortcut (#1876)
+- **drive**: support apps in list comments (#1877)
+- slide style
+- edit ppt template
+- **slides**: add sxsd validation to slides lint
+- **slides**: validate iconpark icon types in slides lint
+- **slides**: lint before create
+- **apps**: add automation trigger commands for Miaoda (#1886)
+
+### Bug Fixes
+
+- unify dry-run output contract (#1870)
+- **skills**: align skill guidance with the typed error contract (#1786)
+- **slides**: limit slides screenshot page requests
+- **slides**: detect lark slides text overflow overlap
+- **vc**: align meeting query scopes by identity (#1850)
+
+### Documentation
+
+- clarify task search relevance filters (#1884)
+- surface minutes permission application in skill description (#1890)
+- clarify okr progress children (#1861)
+- **slides**: prefer slides xml-get shortcut
+- **calendar**: document setting meeting owner via full API (#1903)
+
+### Refactoring
+
+- **slides**: streamline create workflow and validate SML namespaces
+
+### Misc
+
+- **slides**: address PR review feedback
+
 ## [v1.0.69] - 2026-07-13
 
 ### Features
@@ -1469,6 +1552,9 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.72]: https://github.com/larksuite/cli/releases/tag/v1.0.72
+[v1.0.71]: https://github.com/larksuite/cli/releases/tag/v1.0.71
+[v1.0.70]: https://github.com/larksuite/cli/releases/tag/v1.0.70
 [v1.0.69]: https://github.com/larksuite/cli/releases/tag/v1.0.69
 [v1.0.68]: https://github.com/larksuite/cli/releases/tag/v1.0.68
 [v1.0.67]: https://github.com/larksuite/cli/releases/tag/v1.0.67

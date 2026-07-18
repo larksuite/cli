@@ -1140,7 +1140,7 @@ func TestTableGet_InferColumnType(t *testing.T) {
 	// Mixed number+text degrades to string (self-consistent: every value is then
 	// a string), so the column round-trips and pandas doesn't choke. Numeric
 	// coercion of the dirty cells is left to the caller (pandas to_numeric).
-	if typ, _ := inferColumnType(col(mk(100.0, ""), mk("暂无", ""), mk(200.0, "")), 0); typ != "string" {
+	if typ, _ := inferColumnType(col(mk(100.0, ""), mk("N/A", ""), mk(200.0, "")), 0); typ != "string" {
 		t.Errorf("mixed number+text col → %s, want string", typ)
 	}
 	// A bare number mixed into a date column must NOT stay date (would serial-

@@ -1213,7 +1213,7 @@ var TableGet = common.Shortcut{
 	},
 	Tips: []string{
 		"Output is the same shape +table-put consumes — pipe it back in, or load sheets[].rows into a DataFrame keyed by columns[].name.",
-		"Column types are inferred per column, but only when every non-empty cell agrees; a column mixing types (e.g. numbers + \"暂无\") degrades to string — lossless and round-trips cleanly. Numeric coercion of dirty cells is the caller's job (pandas to_numeric(errors=\"coerce\") on the string column).",
+		"Column types are inferred per column, but only when every non-empty cell agrees; a column mixing types (e.g. numbers + \"N/A\") degrades to string — lossless and round-trips cleanly. Numeric coercion of dirty cells is the caller's job (pandas to_numeric(errors=\"coerce\") on the string column).",
 	},
 }
 
@@ -1522,7 +1522,7 @@ func readCellFormat(cell map[string]interface{}) string {
 // inferColumnType decides a column's type from its data cells: a date
 // number_format guides each cell's type, but a column is given a non-string type
 // only when EVERY non-empty cell agrees. Real sheet columns often mix types (a
-// number column with a stray "暂无", a date column with a bare count); declaring
+// number column with a stray "N/A", a date column with a bare count); declaring
 // number/date while a string value rides along makes the output inconsistent —
 // it breaks round-trip back into +table-put (which rejects a string in a number
 // column) and crashes pandas astype. So a mixed column degrades to string
