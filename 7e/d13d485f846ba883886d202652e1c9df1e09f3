@@ -1,0 +1,21 @@
+skills/lark-slides/references/funel_chart_demo.xml
+  s_78ee4f24052934::t_944e8049147b64 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7ed13d485f846ba883886d202652e1c9df1e09f3",
+  "prompts": {},
+  "sessions": {
+    "s_78ee4f24052934": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5ae6-0291-7df0-9913-95bcfe2521e6",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

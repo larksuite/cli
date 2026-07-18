@@ -1,0 +1,23 @@
+shortcuts/slides/slides_xml_get.go
+  s_18dcd51eb01ce0::t_6ba307c743cdd3 19-20,32-33,53-63,96-99,134-151
+shortcuts/slides/slides_xml_get_test.go
+  s_18dcd51eb01ce0::t_e2cece2283b299 94,121-127,134-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "24762d232b5e1d297a8821c150f0c8e0f2c5fc64",
+  "prompts": {},
+  "sessions": {
+    "s_18dcd51eb01ce0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f40c8-0d83-73c0-8a96-70270f07a0be",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

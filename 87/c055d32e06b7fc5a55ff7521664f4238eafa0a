@@ -1,0 +1,21 @@
+shortcuts/slides/slides_xml_get_test.go
+  s_c4fdae15195cbc::t_831a4d963a6294 8,388-426,439-448,469-478,500-509
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "87c055d32e06b7fc5a55ff7521664f4238eafa0a",
+  "prompts": {},
+  "sessions": {
+    "s_c4fdae15195cbc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f63f3-aa9b-72e0-ae38-a058b1d25d0c",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

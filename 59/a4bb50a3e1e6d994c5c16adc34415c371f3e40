@@ -1,0 +1,27 @@
+skills/lark-whiteboard/references/lark-whiteboard-workflow.md
+  h_4d07886566f797 50-51,55,57
+  s_97cf1b5c13c08c::t_8f6c2118b3690c 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "59a4bb50a3e1e6d994c5c16adc34415c371f3e40",
+  "prompts": {},
+  "humans": {
+    "h_4d07886566f797": {
+      "author": "cl900811 <chenliang.0811@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_97cf1b5c13c08c": {
+      "agent_id": {
+        "tool": "trae-cue",
+        "id": "ai_tab-icr-5b68752b-b95c-4006-bb84-3e5dd272f3ff",
+        "model": "default"
+      },
+      "human_author": null
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

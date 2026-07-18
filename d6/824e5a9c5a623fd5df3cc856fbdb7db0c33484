@@ -1,0 +1,23 @@
+skills/lark-slides/references/asset-planning.md
+  s_817e1d2fe731cd::t_d66369271e5ba1 10,46,67-73,78,128
+skills/lark-slides/references/planning-layer.md
+  s_817e1d2fe731cd::t_51ec1f39594ff2 122-139,204,212,223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d6824e5a9c5a623fd5df3cc856fbdb7db0c33484",
+  "prompts": {},
+  "sessions": {
+    "s_817e1d2fe731cd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c51-0c8e-7800-8c55-96d6c45808fd",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

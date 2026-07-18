@@ -1,0 +1,21 @@
+skills/lark-slides/SKILL.md
+  s_f9ee18c25276ae::t_c98c0e6865b627 29-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "842b17c37e72a9d0c5cd780aaa724957dfbf7cf8",
+  "prompts": {},
+  "sessions": {
+    "s_f9ee18c25276ae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f63c7-9670-7cf0-9c60-0b22db789b94",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
