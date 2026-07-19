@@ -10,9 +10,10 @@ import (
 	"github.com/larksuite/cli/internal/charcheck"
 )
 
-// ansiEscape matches ANSI CSI sequences (ESC[ ... letter) and OSC sequences (ESC] ... BEL).
-// Private CSI sequences (e.g. ESC[?25l) use the extended parameter byte range [0-9;?>=!].
-var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;?>=!]*[a-zA-Z]|\x1b\][^\x07]*\x07`)
+// ansiEscape matches ANSI CSI sequences and OSC sequences terminated by BEL or ST.
+var ansiEscape = regexp.MustCompile(
+	`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)`,
+)
 
 // SanitizeForTerminal strips ANSI escape sequences, C0 control characters
 // (except \n and \t), and dangerous Unicode from text, preserving the actual

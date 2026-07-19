@@ -29,11 +29,14 @@ func TestSanitizeForTerminal_StripsEscapesAndDangerousChars(t *testing.T) {
 		{"red color", "before\x1b[31mred\x1b[0mafter", "beforeredafter"},
 		{"bold", "before\x1b[1mbold\x1b[0mafter", "beforeboldafter"},
 		{"cursor move", "before\x1b[10;20Hafter", "beforeafter"},
+		{"tilde final byte", "before\x1b[3~after", "beforeafter"},
+		{"intermediate byte", "before\x1b[1 qafter", "beforeafter"},
 		{"multiple sequences", "\x1b[31m\x1b[1mhello\x1b[0m", "hello"},
 
 		// ── GIVEN: ANSI OSC sequences → THEN: stripped ──
 		{"OSC title change", "before\x1b]0;evil title\x07after", "beforeafter"},
 		{"OSC with text", "text\x1b]2;new title\x07more", "textmore"},
+		{"OSC ST terminator", "before\x1b]0;evil title\x1b\\after", "beforeafter"},
 
 		// ── GIVEN: C0 control characters → THEN: stripped ──
 		{"null byte", "hello\x00world", "helloworld"},
