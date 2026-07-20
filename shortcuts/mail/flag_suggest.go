@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 )
 
 // flagName is a package-private snapshot of a pflag.Flag's identity.
@@ -48,11 +49,16 @@ const maxCandidates = 5
 // Cobra's FlagErrorFunc walks up the parent chain looking for the nearest
 // non-nil hook, so every mail subcommand inherits this behaviour without
 // any per-shortcut wiring.
-func InstallOnMail(svc *cobra.Command) {
+func InstallOnMail(svc *cobra.Command, factories ...*cmdutil.Factory) {
 	if svc == nil {
 		return
 	}
 	svc.SetFlagErrorFunc(flagSuggestErrorFunc)
+	var f *cmdutil.Factory
+	if len(factories) > 0 {
+		f = factories[0]
+	}
+	installUserAllowBlockCommands(svc, f)
 }
 
 // flagSuggestErrorFunc converts pflag's unknown-flag errors into a typed
