@@ -43,7 +43,10 @@ func TestQueryAppType_Success(t *testing.T) {
 		},
 	})
 
-	result := queryAppType(context.Background(), rt, "app_test")
+	result, err := queryAppType(context.Background(), rt, "app_test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result != "modern_html" {
 		t.Errorf("queryAppType = %q, want modern_html", result)
 	}
@@ -65,7 +68,10 @@ func TestQueryAppType_FullStack(t *testing.T) {
 		},
 	})
 
-	result := queryAppType(context.Background(), rt, "app_fs")
+	result, err := queryAppType(context.Background(), rt, "app_fs")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result != "full_stack" {
 		t.Errorf("queryAppType = %q, want full_stack", result)
 	}
@@ -87,7 +93,10 @@ func TestQueryAppType_Html(t *testing.T) {
 		},
 	})
 
-	result := queryAppType(context.Background(), rt, "app_html")
+	result, err := queryAppType(context.Background(), rt, "app_html")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result != "html" {
 		t.Errorf("queryAppType = %q, want html", result)
 	}
@@ -102,9 +111,9 @@ func TestQueryAppType_APIError(t *testing.T) {
 		Body:   map[string]interface{}{"code": float64(99999), "msg": "internal error"},
 	})
 
-	result := queryAppType(context.Background(), rt, "app_bad")
-	if result != "" {
-		t.Errorf("queryAppType = %q, want empty on error", result)
+	_, err := queryAppType(context.Background(), rt, "app_bad")
+	if err == nil {
+		t.Error("expected error on API failure")
 	}
 }
 
@@ -119,9 +128,9 @@ func TestQueryAppType_MissingAppObject(t *testing.T) {
 		},
 	})
 
-	result := queryAppType(context.Background(), rt, "app_no")
-	if result != "" {
-		t.Errorf("queryAppType = %q, want empty when app object missing", result)
+	_, err := queryAppType(context.Background(), rt, "app_no")
+	if err == nil {
+		t.Error("expected error when app object missing")
 	}
 }
 
@@ -141,8 +150,8 @@ func TestQueryAppType_EmptyAppType(t *testing.T) {
 		},
 	})
 
-	result := queryAppType(context.Background(), rt, "app_empty")
-	if result != "" {
-		t.Errorf("queryAppType = %q, want empty when app_type is empty", result)
+	_, err := queryAppType(context.Background(), rt, "app_empty")
+	if err == nil {
+		t.Error("expected error when app_type is empty")
 	}
 }

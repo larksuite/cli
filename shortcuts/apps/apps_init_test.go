@@ -156,6 +156,22 @@ func withFakeRunner(t *testing.T, f *fakeCommandRunner) {
 	t.Cleanup(func() { initRunner = orig })
 }
 
+func stubAppType(reg *httpmock.Registry, appID, appType string) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/" + appID,
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":   appID,
+					"app_type": appType,
+				},
+			},
+		},
+	})
+}
+
 func credInitOK(repoURL string) fakeCallResult {
 	return fakeCallResult{stdout: `{"ok":true,"data":{"repository_url":"` + repoURL + `"}}`}
 }
@@ -320,7 +336,8 @@ func TestAppsInit_EmptyRepo_EndToEnd(t *testing.T) {
 		"git status":      {stdout: " M src/app.ts\n"}, // scaffold produced changes
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -361,7 +378,8 @@ func TestAppsInit_AlreadyInitialized_ShortCircuit(t *testing.T) {
 	}
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{"env-pull": envPullOK(filepath.Join(abs, ".env.local"))}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
@@ -430,7 +448,8 @@ func TestAppsInit_HappyPathCleanTree(t *testing.T) {
 		"git status":      {},           // clean tree after scaffold -> no commit/push
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 
 	err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout)
@@ -479,7 +498,8 @@ func TestAppsInit_DirtyTreeCommitPush(t *testing.T) {
 		"git status":      {stdout: " M file.txt"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 
 	err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout)
@@ -549,7 +569,8 @@ func TestAppsInit_CloneFailure(t *testing.T) {
 		"git clone":       {stderr: "fatal: unable to access 'http://u:t@h/r.git'", err: errors.New("exit 128")},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 
 	err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout)
@@ -623,7 +644,8 @@ func TestAppsInit_AsPassthrough(t *testing.T) {
 		"git status":      {},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 
 	// AppsInit.AuthTypes is ["user"], so the framework rejects --as bot. Use
@@ -729,7 +751,7 @@ func TestIsEmptyRepo(t *testing.T) {
 // newAppsExecuteFactoryWithStderr mirrors newAppsExecuteFactory but also returns
 // the stderr buffer, so tests can assert on the +init progress log lines that
 // initLogf writes to IO().ErrOut.
-func newAppsExecuteFactoryWithStderr(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
+func newAppsExecuteFactoryWithStderr(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -739,12 +761,12 @@ func newAppsExecuteFactoryWithStderr(t *testing.T) (*cmdutil.Factory, *bytes.Buf
 		Brand:      core.BrandFeishu,
 		UserOpenId: "ou_test",
 	}
-	factory, stdout, stderr, _ := cmdutil.TestFactory(t, cfg)
-	return factory, stdout, stderr
+	factory, stdout, stderr, reg := cmdutil.TestFactory(t, cfg)
+	return factory, stdout, stderr, reg
 }
 
 func TestAppsInit_Req1_Wording(t *testing.T) {
-	factory, stdout, _ := newAppsExecuteFactoryWithStderr(t)
+	factory, stdout, _, _ := newAppsExecuteFactoryWithStderr(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -773,7 +795,8 @@ func TestAppsInit_Req1_Wording(t *testing.T) {
 		"git status":      {},
 	}}
 	withFakeRunner(t, f)
-	factory2, stdout2, stderr2 := newAppsExecuteFactoryWithStderr(t)
+	factory2, stdout2, stderr2, reg2 := newAppsExecuteFactoryWithStderr(t)
+	stubAppType(reg2, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory2, stdout2); err != nil {
 		t.Fatalf("run err=%v", err)
@@ -836,7 +859,8 @@ func TestAppsInit_EmptyRepo_TwoCommits(t *testing.T) {
 		"git status":      {stdout: " A src/app.ts\n A .spark/meta.json\n A .agent/skills/steering/x.md\n"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -877,7 +901,8 @@ func TestAppsInit_EmptyRepo_AppCodeOnly_SingleCommit(t *testing.T) {
 		"git status":      {stdout: " A src/app.ts\n"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -897,7 +922,8 @@ func TestAppsInit_EmptyRepo_ConfigOnly_SingleCommit(t *testing.T) {
 		"git status":      {stdout: " A .spark/meta.json\n"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -917,7 +943,8 @@ func TestAppsInit_NonEmpty_SingleInitCommit(t *testing.T) {
 		"git status":      {stdout: " M file.txt\n M .spark/meta.json\n"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -1297,7 +1324,8 @@ func TestAppsInit_EnvPull_Success(t *testing.T) {
 		"env-pull":        envPullOK("/abs/app_x/.env.local"),
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1335,7 +1363,8 @@ func TestAppsInit_EnvPull_NonFatal(t *testing.T) {
 		},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("env-pull failure must be non-fatal, got: %v", err)
@@ -1374,7 +1403,8 @@ func TestAppsInit_AlreadyInitialized_RunsEnvPull(t *testing.T) {
 	envFile := filepath.Join(abs, ".env.local")
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{"env-pull": envPullOK(envFile)}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1421,7 +1451,8 @@ func TestAppsInit_AlreadyInitialized_EnvPullFailure_NonFatal(t *testing.T) {
 		},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("env-pull failure must be non-fatal, got: %v", err)
 	}

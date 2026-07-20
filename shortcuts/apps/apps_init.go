@@ -557,7 +557,10 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 		return err
 	}
 
-	appType := queryAppType(ctx, rctx, appID)
+	appType, err := queryAppType(ctx, rctx, appID)
+	if err != nil {
+		return err
+	}
 	policy := policyForAppType(appType)
 
 	// Already-initialized short-circuit: a dir containing .spark/meta.json is an
