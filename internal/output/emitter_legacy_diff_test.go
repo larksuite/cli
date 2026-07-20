@@ -880,6 +880,33 @@ func TestEmitterInvalidJQReturnsErrorWithoutStderr(t *testing.T) {
 	}
 }
 
+func TestEmitterUnknownFormatStructKeepsNotice(t *testing.T) {
+	// Regression for the printLegacyDataJSON toGeneric fix: an unknown --format
+	// falls back to JSON, and a struct / named-map payload must still get its
+	// _notice injected (matching the legacy FormatValue -> toGeneric -> PrintJson
+	// path) rather than silently dropping it.
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+	type payload struct {
+		OK    bool   `json:"ok"`
+		Value string `json:"value"`
+	}
+	stdout := &bytes.Buffer{}
+	emitter := output.NewEmitter(output.EmitterConfig{
+		Out:         stdout,
+		ErrOut:      io.Discard,
+		CommandPath: "lark-cli fixture +emit",
+		NoticeProvider: func() map[string]interface{} {
+			return map[string]interface{}{"update": map[string]interface{}{"latest": "9.9.9"}}
+		},
+	})
+	if err := emitter.Success(payload{OK: true, Value: "fixture"}, output.EmitOptions{Format: "yaml"}); err != nil {
+		t.Fatalf("Success() error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "_notice") {
+		t.Fatalf("struct payload on unknown-format fallback dropped _notice:\n%s", stdout.String())
+	}
+}
+
 func assertEmitterBytes(t *testing.T, legacy, current emitterCapture) {
 	t.Helper()
 	if legacy.stdout != current.stdout {

@@ -248,6 +248,10 @@ type emitterDataMap map[string]interface{}
 // printLegacyDataJSON matches FormatValue's JSON branch while sourcing notice
 // data from this Emitter instead of PrintJson's global PendingNotice hook.
 func (e *Emitter) printLegacyDataJSON(data interface{}) {
+	// Normalise structs / named maps to plain generic types first, exactly as
+	// FormatValue does, so a struct or named-map payload still matches the map
+	// case below and keeps its injected _notice on the unknown-format fallback.
+	data = toGeneric(data)
 	if m, ok := data.(map[string]interface{}); ok {
 		if _, isEnvelope := m["ok"]; isEnvelope {
 			if notice := e.notice(); notice != nil {
