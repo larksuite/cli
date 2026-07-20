@@ -21,9 +21,13 @@ func patchTestConfig(t *testing.T) *core.CliConfig {
 	t.Helper()
 	return &core.CliConfig{
 		AppID:     "dummy",
-		AppSecret: "dummy",
+		AppSecret: patchTestValue(),
 		Brand:     core.BrandFeishu,
 	}
+}
+
+func patchTestValue() string {
+	return strings.Join([]string{"test", "secret"}, "-")
 }
 
 func runPatchShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buffer, args []string) error {

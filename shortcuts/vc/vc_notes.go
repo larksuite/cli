@@ -68,7 +68,7 @@ func minutesReadError(err error, minuteToken string) error {
 		return err
 	}
 	p.Message = fmt.Sprintf("No read permission for minute %s: cannot query the minute.", minuteToken)
-	p.Hint = "Ask the minute owner for minute file read permission"
+	p.Hint = fmt.Sprintf("Ask the user before running: minutes +apply-permission --minute-token %s --perm view", minuteToken)
 	return err
 }
 

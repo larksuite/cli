@@ -2,7 +2,6 @@
 
 > **路由**：本命令操作**妙记内的 AI 待办**，不是飞书任务（Task）。用户说「在妙记里新建待办」时**必须**用本命令，**禁止**走 `lark-cli task` / `tasklists list` / `task +create`。详见 [lark-minutes/SKILL.md](../SKILL.md) 第 6 节。
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 对妙记中的待办做新增 / 更新 / 删除（单条或批量）。写操作。
 
@@ -127,12 +126,11 @@ lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --operation add -
 | 未指定操作 | 单条模式传 `--operation`，或批量传 `--todos` |
 | `--todos` 与单条 flags 冲突 | 二选一 |
 | `todos[i]` 校验失败 | 检查该条 `operation` 与字段组合 |
-| `error.type` = `no_edit_permission` | **妙记资源无编辑权**：向妙记所有者申请该妙记的编辑/协作权限；**不要**走 `auth login --scope` |
-| 缺少 OAuth scope（`permission_violations` 含 `minutes:minutes:update`） | `lark-cli auth login --scope "minutes:minutes:update"` |
+| `error.subtype` = `permission_denied` | **妙记资源无编辑权**：向妙记所有者申请该妙记的编辑/协作权限；**不要**走 `auth login --scope` |
+| 缺少 OAuth scope（`error.missing_scopes` 含 `minutes:minutes:update`） | `lark-cli auth login --scope "minutes:minutes:update"` |
 
 ## 参考
 
 - [lark-minutes](../SKILL.md)
 - [minutes +summary](lark-minutes-summary.md)
 - [minutes +detail](lark-minutes-detail.md)
-- [lark-shared](../../lark-shared/SKILL.md)

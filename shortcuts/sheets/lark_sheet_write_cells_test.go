@@ -116,6 +116,18 @@ func TestWriteCellsShortcuts_DryRun(t *testing.T) {
 	}
 }
 
+func TestCsvPut_MissingCSVFailsRequiredGate(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, CsvPut, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--start-cell", "A1",
+	})
+	if err == nil || !strings.Contains(err.Error(), "required flag(s) \"csv\" not set") {
+		t.Fatalf("missing --csv error = %v, want cobra required-flag error", err)
+	}
+}
+
 // TestDropdownSet_CellsShape inspects the 3×1 matrix produced from
 // --range A2:A4 to confirm the data_validation prototype is replicated.
 // Also covers --colors / --highlight emitting the canonical

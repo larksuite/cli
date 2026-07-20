@@ -12,7 +12,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestSheets_ImageUploadDryRunParentType pins the parent_type the sheets
@@ -100,12 +99,12 @@ func TestSheets_ImageUploadDryRunParentType(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), "api.0 must be the drive upload; stdout:\n%s", out)
+			require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "data.api.0 must be the drive upload; stdout:\n%s", out)
 			require.Equal(t, "/open-apis/drive/v1/medias/upload_all",
-				gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
-			require.Equal(t, tt.wantParentType, gjson.Get(out, "api.0.body.parent_type").String(),
+				clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+			require.Equal(t, tt.wantParentType, clie2e.DryRunGet(out, "api.0.body.parent_type").String(),
 				"parent_type for token %q must be %q; stdout:\n%s", tt.token, tt.wantParentType, out)
-			require.Equal(t, tt.token, gjson.Get(out, "api.0.body.parent_node").String(),
+			require.Equal(t, tt.token, clie2e.DryRunGet(out, "api.0.body.parent_node").String(),
 				"parent_node must equal the spreadsheet token; stdout:\n%s", out)
 		})
 	}

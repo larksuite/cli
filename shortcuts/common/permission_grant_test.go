@@ -31,6 +31,14 @@ func apiErrWithScopes(code int, msg string, subjects ...string) error {
 	return errclass.BuildAPIError(resp, errclass.ClassifyContext{})
 }
 
+func TestPermissionGrantPermMessageUsesAPINameOnly(t *testing.T) {
+	t.Parallel()
+
+	if got := permissionGrantPermMessage(); got != "full_access" {
+		t.Fatalf("permissionGrantPermMessage() = %q, want %q", got, "full_access")
+	}
+}
+
 func TestAutoGrantStderrWarning_SkippedNoUser(t *testing.T) {
 	config := &core.CliConfig{
 		AppID:     "perm-grant-test-skip",

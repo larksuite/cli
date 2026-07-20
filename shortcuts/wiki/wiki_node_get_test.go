@@ -31,6 +31,22 @@ func TestParseWikiNodeGetSpecRawNodeToken(t *testing.T) {
 	}
 }
 
+func TestParseWikiNodeGetSpecOpaqueRawNodeToken(t *testing.T) {
+	t.Parallel()
+
+	const opaqueNodeToken = "Sm78_EXAMPLE_TOKEN"
+	spec, err := parseWikiNodeGetSpec(opaqueNodeToken, "", "")
+	if err != nil {
+		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
+	}
+	if spec.Token != opaqueNodeToken || spec.ObjType != "" || spec.SourceKind != "raw-node" {
+		t.Fatalf("spec = %+v, want raw-node %s with no obj_type", spec, opaqueNodeToken)
+	}
+	if got := spec.RequestParams(); !reflect.DeepEqual(got, map[string]interface{}{"token": opaqueNodeToken}) {
+		t.Fatalf("RequestParams() = %v, want {token: %s}", got, opaqueNodeToken)
+	}
+}
+
 func TestParseWikiNodeGetSpecRawObjTokenWithExplicitObjType(t *testing.T) {
 	t.Parallel()
 
@@ -43,23 +59,30 @@ func TestParseWikiNodeGetSpecRawObjTokenWithExplicitObjType(t *testing.T) {
 	}
 }
 
-func TestParseWikiNodeGetSpecRejectsRawObjTokenWithoutObjType(t *testing.T) {
+func TestParseWikiNodeGetSpecRawTokenWithoutObjTypeDefaultsToNodeToken(t *testing.T) {
 	t.Parallel()
 
-	// Mirrors +node-delete: a raw obj_token with no --obj-type must fail
-	// upfront instead of defaulting to "doc" and hitting an opaque API error.
-	_, err := parseWikiNodeGetSpec("bascnXYZ", "", "")
-	if err == nil || !strings.Contains(err.Error(), "--obj-type is required for a raw obj_token") {
-		t.Fatalf("expected raw obj_token obj-type-required error, got %v", err)
+	spec, err := parseWikiNodeGetSpec("bascnXYZ", "", "")
+	if err != nil {
+		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
+	}
+	if spec.Token != "bascnXYZ" || spec.ObjType != "" || spec.SourceKind != "raw-node" {
+		t.Fatalf("spec = %+v, want raw-node bascnXYZ with no obj_type", spec)
 	}
 }
 
-func TestParseWikiNodeGetSpecRejectsObjTypeOnNodeToken(t *testing.T) {
+func TestParseWikiNodeGetSpecRawTokenWithObjTypeUsesObjTokenLookup(t *testing.T) {
 	t.Parallel()
 
-	_, err := parseWikiNodeGetSpec("wikcnABC", "docx", "")
-	if err == nil || !strings.Contains(err.Error(), "only valid for obj_tokens") {
-		t.Fatalf("expected node_token + obj_type rejection, got %v", err)
+	spec, err := parseWikiNodeGetSpec("wikcnABC", "docx", "")
+	if err != nil {
+		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
+	}
+	if spec.Token != "wikcnABC" || spec.ObjType != "docx" || spec.SourceKind != "raw-obj" {
+		t.Fatalf("spec = %+v, want raw-obj wikcnABC with obj_type docx", spec)
+	}
+	if got := spec.RequestParams(); !reflect.DeepEqual(got, map[string]interface{}{"token": "wikcnABC", "obj_type": "docx"}) {
+		t.Fatalf("RequestParams() = %v, want {token: wikcnABC, obj_type: docx}", got)
 	}
 }
 

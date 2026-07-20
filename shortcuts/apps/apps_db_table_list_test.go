@@ -165,13 +165,7 @@ func TestAppsDBTableList_DryRunSendsPaginationAndEnv(t *testing.T) {
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
 		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
 	}
@@ -196,11 +190,7 @@ func TestAppsDBTableList_DoesNotSendIncludeStatsQuery(t *testing.T) {
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -236,7 +226,11 @@ func TestNumericAsFloat_AllTypes(t *testing.T) {
 		{"json.Number valid", json.Number("13.5"), 13.5, true},
 		{"json.Number invalid", json.Number("abc"), 0, false},
 		{"nil", nil, 0, false},
-		{"unsupported string", "x", 0, false},
+		{"non-numeric string", "x", 0, false},
+		{"numeric string", "13.5", 13.5, true},
+		{"numeric string int", "2", 2, true},
+		{"numeric string padded", " 13.5 ", 13.5, true},
+		{"empty string", "", 0, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

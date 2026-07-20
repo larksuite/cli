@@ -180,6 +180,64 @@ func TestBuildFetchBodyIncludesReadOption(t *testing.T) {
 	}
 }
 
+func TestBuildFetchBodyUsesSelectionAnchorFragmentAsRangeStart(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "doc", "https://example.larksuite.com/wiki/wikcnToken#share-CUE3d6Ykno2fkexEvt8cGF8Wnse")
+
+	body := buildFetchBody(runtime)
+	want := map[string]interface{}{
+		"read_mode":      "range",
+		"start_block_id": "share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+	}
+	if got := body["read_option"]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("read_option = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildFetchBodyExplicitFullIgnoresSelectionAnchorFragment(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "doc", "https://example.larksuite.com/wiki/wikcnToken#share-CUE3d6Ykno2fkexEvt8cGF8Wnse")
+	mustSetFetchFlag(t, runtime, "scope", "full")
+
+	body := buildFetchBody(runtime)
+	if _, ok := body["read_option"]; ok {
+		t.Fatalf("did not expect read_option for explicit full scope: %#v", body["read_option"])
+	}
+}
+
+func TestBuildFetchBodyDoesNotAutoReadOrdinaryFragment(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "doc", "https://example.larksuite.com/wiki/wikcnToken#blk_plain")
+
+	body := buildFetchBody(runtime)
+	if _, ok := body["read_option"]; ok {
+		t.Fatalf("did not expect read_option for ordinary URL fragment: %#v", body["read_option"])
+	}
+}
+
+func TestBuildFetchBodyDoesNotAutoReadUnsupportedSelectionAnchorFragments(t *testing.T) {
+	t.Parallel()
+
+	for _, doc := range []string{
+		"https://example.larksuite.com/wiki/wikcnToken#part-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+		"https://example.larksuite.com/wiki/wikcnToken#share-",
+	} {
+		runtime := newFetchBodyTestRuntime(context.Background())
+		mustSetFetchFlag(t, runtime, "doc", doc)
+
+		body := buildFetchBody(runtime)
+		if _, ok := body["read_option"]; ok {
+			t.Fatalf("did not expect read_option for unsupported URL fragment %q: %#v", doc, body["read_option"])
+		}
+	}
+}
+
 func TestBuildReadOptionModes(t *testing.T) {
 	t.Parallel()
 
@@ -376,10 +434,16 @@ func TestValidateReadModeFlagsAcceptsValidScopeOptions(t *testing.T) {
 			},
 		},
 		{
+			name: "default scope with selection anchor fragment",
+			setFlags: map[string]string{
+				"doc": "https://example.larksuite.com/wiki/wikcnToken#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+			},
+		},
+		{
 			name: "keyword with keyword",
 			setFlags: map[string]string{
 				"scope":   "keyword",
-				"keyword": "bug|缺陷",
+				"keyword": "bug|error",
 			},
 		},
 		{
@@ -884,6 +948,7 @@ func TestDocsFetchRejectsLegacyFlags(t *testing.T) {
 
 func newFetchBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "+fetch"}
+	cmd.Flags().String("doc", "doxcnFetchDryRun", "")
 	cmd.Flags().String("doc-format", fetchDefault("doc-format"), "")
 	cmd.Flags().String("detail", fetchDefault("detail"), "")
 	cmd.Flags().String("lang", fetchDefault("lang"), "")

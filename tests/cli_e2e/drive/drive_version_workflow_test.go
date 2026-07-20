@@ -16,6 +16,7 @@ import (
 )
 
 func TestDriveVersionWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	if os.Getenv("LARK_DRIVE_VERSION_E2E") == "" {
 		t.Skip("set LARK_DRIVE_VERSION_E2E=1 to run drive version live workflow")
 	}

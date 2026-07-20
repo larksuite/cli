@@ -258,6 +258,10 @@ func fetchThreadReplies(runtime *common.RuntimeContext, threadID string, limit i
 		"sort_type":             []string{"ByCreateTimeAsc"},
 		"page_size":             []string{fmt.Sprint(limit)},
 		"card_msg_content_type": []string{"raw_card_content"},
+		// Opt in to server-side sender names: without it, reply senders that
+		// appear only inside this thread carry no sender_name and — since there
+		// is no contact/mention fallback — render as their raw id.
+		"with_sender_name": []string{"true"},
 	}, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("fetch thread replies for %s: %w", threadID, err) //nolint:forbidigo // best-effort internal thread fetch; never surfaced as a final shortcut error (ExpandThreadReplies is void)

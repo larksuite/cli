@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -128,7 +129,7 @@ func BuildFormdata(fileIO fileio.FileIO, fieldName, filePath string, isStdin boo
 				WithParam("--file").
 				WithCause(err)
 		}
-		fd.AddFile(fieldName, bytes.NewReader(data))
+		fd.AddFileWithName(fieldName, filepath.Base(filePath), bytes.NewReader(data))
 	}
 
 	// Add top-level JSON keys as text form fields.

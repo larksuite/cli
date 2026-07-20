@@ -90,6 +90,10 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 
 `sort.order`：`asc`（升序）/ `desc`（降序）
 
+只要写 `sort` 对象，就需要明确排序方向。CLI 会把 `sort.type` 为 `group` 或 `view` 且缺少 `order` 的情况规范化为 `order:"asc"`；`sort.type:"value"` 必须显式写 `order:"asc"` 或 `order:"desc"`，因为指标值排序方向会改变业务含义。
+
+如果表中行序就是业务顺序，首次创建 block 时就一次性设置 `sort:{"type":"view","order":"asc"}` 保留行序，避免创建后再二次更新排序条件。
+
 示例 — 柱状图按销售额降序：
 
 ```json
@@ -169,9 +173,10 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 - 长度/结构
   - `group_by` 最多 2 个；每项 `field_name` 必填
   - `group_by[].sort.type` 取值 `group|value|view`；`order` 取值 `asc|desc`
-- 规范化（CLI 自动处理）
+- 规范化（CLI 自动处理；`--no-validate` 时不生效，`data_config` 原样透传给后端）
   - `series[].rollup` 自动转成大写（如 `sum` → `SUM`）
   - `group_by[].sort.type/order` 自动转成小写
+  - `group_by[].sort.type` 为 `group` 或 `view` 且缺少 `order` 时，自动补 `order:"asc"`；`value` 排序不会自动补方向
 - 本地校验（可通过 `--no-validate` 跳过）
   - `+dashboard-block-create` 默认对 `data_config` 做轻量校验；失败会聚合错误并给出修复建议
   - `+dashboard-block-update` 不做强类型校验，由后端验证具体字段
@@ -264,13 +269,34 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 
 漏斗图（流程转化）：
 
+先判断用户要看的数值语义：
+
+- **当前数量**：统计每个当前状态/阶段下有多少记录，例如“各环节当前数量”“当前阶段分布”。源表有状态/阶段字段时，直接用 `count_all:true` + `group_by`。
+- **累计数量**：统计到达该阶段及其后续阶段（后缀和）的累计数量，例如“流程转化”“从 A 到 B 各环节转化”。此口径假设流程单向、无跳阶/回退、记录不删除；不满足时须用状态变更历史，不能对当前快照累加。如果表中已有累计数量字段或阶段汇总表，直接用该字段画漏斗图；否则先计算累计数量，创建并写入 helper 汇总表后再画图。
+
+当前数量：
+
 ```json
 {
   "table_name": "表名",
-  "series": [{ "field_name": "数值字段", "rollup": "SUM" }],
+  "count_all": true,
   "group_by": [{ "field_name": "状态字段", "mode": "integrated" }]
 }
 ```
+
+累计数量：
+
+```json
+{
+  "table_name": "流程汇总表名",
+  "series": [{ "field_name": "累计数量", "rollup": "SUM" }],
+  "group_by": [{ "field_name": "阶段字段", "mode": "integrated", "sort": {"type":"view","order":"asc"} }]
+}
+```
+
+如果只有当前状态数据但用户要看流程转化，需要先按业务阶段顺序计算每个阶段的累计数量，再创建 helper 汇总表（如：阶段、累计数量），用 `+record-batch-create` 一次写入后，按“累计数量”模板创建漏斗图。helper 表行序就是业务顺序时，首次创建 block 时一次性设置好 `group_by.sort`。
+
+> ⚠️ 注意:helper 汇总表仅用于源表无法直接聚合出目标形态的场景（如上面的累计数量漏斗图）。只要能在源表上直接用 `group_by` + `rollup`（含 `AVERAGE`）算出，就不需要新建 helper 表。
 
 词云（文本频率）：
 

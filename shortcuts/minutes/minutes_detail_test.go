@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -108,6 +109,17 @@ func detailArtifactsStub(token, transcript string) *httpmock.Stub {
 	}
 }
 
+func detailProcessingStub(path string) *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    path,
+		Body: map[string]interface{}{
+			"code": 2091003,
+			"msg":  "minute is processing",
+		},
+	}
+}
+
 func TestDetail_Validation_MissingMinuteTokens(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := detailMountAndRun(t, MinutesDetail, []string{"+detail", "--as", "user"}, f, nil)
@@ -169,6 +181,34 @@ func TestDetail_DryRun_WithArtifactFlags(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "artifacts") {
 		t.Errorf("dry-run should show artifacts API path when artifact flags are set, got: %s", stdout.String())
+	}
+}
+
+func TestDetail_HiddenWaitFlags(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	parent := &cobra.Command{Use: "minutes"}
+	MinutesDetail.Mount(parent, f)
+	parent.SetOut(stdout)
+	parent.SetArgs([]string{"+detail", "--help"})
+	parent.SilenceErrors = true
+	parent.SilenceUsage = true
+	if err := parent.Execute(); err != nil {
+		t.Fatalf("help failed: %v", err)
+	}
+	help := stdout.String()
+	for _, hidden := range []string{"wait-ready", "wait-timeout-seconds", "wait-interval-seconds"} {
+		if strings.Contains(help, hidden) {
+			t.Fatalf("hidden flag %q should not appear in help:\n%s", hidden, help)
+		}
+	}
+
+	stdout.Reset()
+	err := detailMountAndRun(t, MinutesDetail, []string{
+		"+detail", "--minute-tokens", "tok001", "--summary", "--wait-ready",
+		"--wait-timeout-seconds", "0", "--wait-interval-seconds", "0", "--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("hidden wait flags should parse: %v", err)
 	}
 }
 
@@ -355,6 +395,136 @@ func TestDetail_Execute_MinuteNotFound(t *testing.T) {
 	}
 }
 
+func TestDetail_Execute_MetadataProcessing(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(detailProcessingStub("/open-apis/minutes/v1/minutes/tokpending"))
+
+	err := detailMountAndRun(t, MinutesDetail, []string{"+detail", "--minute-tokens", "tokpending", "--summary", "--as", "user"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected partial failure error")
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	m := firstDetailMinute(t, stdout.Bytes())
+	if m["status"] != "processing" {
+		t.Fatalf("status = %v, want processing", m["status"])
+	}
+	if m["retryable"] != true {
+		t.Fatalf("retryable = %v, want true", m["retryable"])
+	}
+	if !strings.Contains(fmt.Sprint(m["next_command"]), "minutes +detail --minute-tokens tokpending --summary --wait-ready") {
+		t.Fatalf("next_command = %v", m["next_command"])
+	}
+}
+
+func TestDetail_Execute_ArtifactsProcessing(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(detailMinuteGetStub("tokartpending", "note_pending", "Pending Artifacts"))
+	reg.Register(detailProcessingStub("/open-apis/minutes/v1/minutes/tokartpending/artifacts"))
+
+	err := detailMountAndRun(t, MinutesDetail, []string{"+detail", "--minute-tokens", "tokartpending", "--summary", "--todo", "--as", "user"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected partial failure error")
+	}
+	m := firstDetailMinute(t, stdout.Bytes())
+	if m["status"] != "processing" {
+		t.Fatalf("status = %v, want processing", m["status"])
+	}
+	if m["title"] != "Pending Artifacts" || m["note_id"] != "note_pending" {
+		t.Fatalf("metadata should be preserved on artifacts processing, got title=%v note_id=%v", m["title"], m["note_id"])
+	}
+	if !strings.Contains(fmt.Sprint(m["next_command"]), "--summary --todo --wait-ready") {
+		t.Fatalf("next_command = %v", m["next_command"])
+	}
+}
+
+func TestDetail_WaitReady_MetadataEventuallyReady(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(detailProcessingStub("/open-apis/minutes/v1/minutes/tokwaitmeta"))
+	reg.Register(detailMinuteGetStub("tokwaitmeta", "", "Ready Metadata"))
+
+	err := detailMountAndRun(t, MinutesDetail, []string{
+		"+detail", "--minute-tokens", "tokwaitmeta", "--wait-ready",
+		"--wait-timeout-seconds", "5", "--wait-interval-seconds", "1", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := firstDetailMinute(t, stdout.Bytes())
+	if m["title"] != "Ready Metadata" {
+		t.Fatalf("title = %v, want Ready Metadata", m["title"])
+	}
+	if _, ok := m["artifacts"]; ok {
+		t.Fatal("artifacts should not be fetched without artifact flags")
+	}
+}
+
+func TestDetail_WaitReady_ArtifactsEventuallyReady(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(detailMinuteGetStub("tokwaitart", "note_wait", "Ready Artifacts"))
+	reg.Register(detailProcessingStub("/open-apis/minutes/v1/minutes/tokwaitart/artifacts"))
+	reg.Register(detailArtifactsStub("tokwaitart", ""))
+
+	err := detailMountAndRun(t, MinutesDetail, []string{
+		"+detail", "--minute-tokens", "tokwaitart", "--summary", "--wait-ready",
+		"--wait-timeout-seconds", "5", "--wait-interval-seconds", "1", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := firstDetailMinute(t, stdout.Bytes())
+	arts, _ := m["artifacts"].(map[string]any)
+	if arts == nil {
+		t.Fatal("expected artifacts")
+	}
+	if arts["summary"] != "Test summary content" {
+		t.Fatalf("summary = %v", arts["summary"])
+	}
+}
+
+func TestDetail_WaitReady_TimeoutUsesProcessingResult(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(detailMinuteGetStub("toktimeout", "note_timeout", "Timeout Artifacts"))
+	reg.Register(detailProcessingStub("/open-apis/minutes/v1/minutes/toktimeout/artifacts"))
+
+	err := detailMountAndRun(t, MinutesDetail, []string{
+		"+detail", "--minute-tokens", "toktimeout", "--summary", "--wait-ready",
+		"--wait-timeout-seconds", "1", "--wait-interval-seconds", "2", "--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected partial failure error")
+	}
+	m := firstDetailMinute(t, stdout.Bytes())
+	if m["status"] != "processing" || m["title"] != "Timeout Artifacts" || m["note_id"] != "note_timeout" {
+		t.Fatalf("timeout should preserve processing status and metadata, got %+v", m)
+	}
+}
+
+func TestDetail_WaitReady_DoesNotPollNonProcessingErrors(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	var callCount int
+	reg.Register(&httpmock.Stub{
+		Method:   "GET",
+		URL:      "/open-apis/minutes/v1/minutes/tokmissing",
+		Body:     map[string]interface{}{"code": 2091004, "msg": "not found"},
+		Reusable: true,
+		OnMatch:  func(req *http.Request) { callCount++ },
+	})
+
+	err := detailMountAndRun(t, MinutesDetail, []string{
+		"+detail", "--minute-tokens", "tokmissing", "--wait-ready",
+		"--wait-timeout-seconds", "5", "--wait-interval-seconds", "1", "--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected partial failure error")
+	}
+	if callCount != 1 {
+		t.Fatalf("non-processing error should not be retried, callCount=%d", callCount)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Pure function tests
 // ---------------------------------------------------------------------------
@@ -376,6 +546,36 @@ func TestValidMinuteTokenDetail(t *testing.T) {
 			t.Errorf("validMinuteTokenDetail(%q) = %v, want %v", tt.token, got, tt.valid)
 		}
 	}
+}
+
+func TestNormalizeMinutesDetailWaitSeconds(t *testing.T) {
+	timeout, interval := normalizeMinutesDetailWaitSeconds(0, 0)
+	if timeout != minutesDetailWaitTimeoutDefault || interval != minutesDetailWaitIntervalDefault {
+		t.Fatalf("normalize(0,0) = (%d,%d), want defaults (%d,%d)", timeout, interval, minutesDetailWaitTimeoutDefault, minutesDetailWaitIntervalDefault)
+	}
+	timeout, interval = normalizeMinutesDetailWaitSeconds(-1, -2)
+	if timeout != minutesDetailWaitTimeoutDefault || interval != minutesDetailWaitIntervalDefault {
+		t.Fatalf("normalize(negative) = (%d,%d), want defaults", timeout, interval)
+	}
+	timeout, interval = normalizeMinutesDetailWaitSeconds(9, 3)
+	if timeout != 9 || interval != 3 {
+		t.Fatalf("normalize(9,3) = (%d,%d)", timeout, interval)
+	}
+}
+
+func firstDetailMinute(t *testing.T, raw []byte) map[string]any {
+	t.Helper()
+	var resp map[string]any
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatalf("failed to parse output: %v\n%s", err, string(raw))
+	}
+	data, _ := resp["data"].(map[string]any)
+	minutes, _ := data["minutes"].([]any)
+	if len(minutes) != 1 {
+		t.Fatalf("expected 1 minute, got %d in %s", len(minutes), string(raw))
+	}
+	m, _ := minutes[0].(map[string]any)
+	return m
 }
 
 // chdirForDetailTest switches cwd to a temp dir for the test.

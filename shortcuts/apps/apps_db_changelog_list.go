@@ -39,7 +39,7 @@ var AppsDBChangelogList = common.Shortcut{
 		{Name: "until", Desc: "filter: changed at or before; same formats as --since"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -77,10 +77,9 @@ var AppsDBChangelogList = common.Shortcut{
 
 // buildChangelogParams 组装 changelog_list 查询参数：env / page_size 及可选 table/change_id/since/until/page_token。
 func buildChangelogParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{
-		"env":       dbEnv(rctx),
+	params := dbEnvParams(rctx, map[string]interface{}{
 		"page_size": rctx.Int("page-size"),
-	}
+	})
 	addStr := func(flag, key string) {
 		if v := strings.TrimSpace(rctx.Str(flag)); v != "" {
 			params[key] = v

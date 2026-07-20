@@ -26,8 +26,8 @@ lark-cli slides +screenshot --as user \
 | 参数 | 必需 | 说明 |
 |------|------|------|
 | `--presentation` | list 模式必需 | `xml_presentation_id`、`/slides/` URL，或解析后为 slides 的 `/wiki/` URL。传 `--content` 时不能使用 |
-| `--slide-id` | list 模式至少提供 `--slide-id` / `--slide-number` 之一 | 页面 short ID；多页截图时重复传入 |
-| `--slide-number` | list 模式至少提供 `--slide-id` / `--slide-number` 之一 | 页面页号；多页截图时重复传入 |
+| `--slide-id` | list 模式至少提供 `--slide-id` / `--slide-number` 之一 | 页面 short ID；多页截图时重复传入；一次最多 10 页（`--slide-id` + `--slide-number` 合计小于等于 10） |
+| `--slide-number` | list 模式至少提供 `--slide-id` / `--slide-number` 之一 | 页面页号；多页截图时重复传入；一次最多 10 页（`--slide-id` + `--slide-number` 合计小于等于 10） |
 | `--content` | render 模式必需 | 要直接渲染的 `<slide>` XML 片段；支持直接传值、`@file`、`-` stdin。传入后不能同时传 `--slide-id` / `--slide-number` |
 | `--output-dir` | 否 | 输出目录，默认 `.lark-slides/screenshots`；必须是当前目录内的相对路径 |
 | `--output-name` | 否 | render 模式的输出文件名 stem；未指定时优先用返回的 `slide_id`，否则用 `rendered-slide`。若目标文件已存在，会自动追加递增后缀避免覆盖 |
@@ -43,6 +43,8 @@ lark-cli slides +screenshot --as user \
 ```
 
 ### 多页截图
+
+一次不要超过 10 页；如需更多页面，分批调用。
 
 ```bash
 lark-cli slides +screenshot --as user \
@@ -66,7 +68,8 @@ lark-cli slides +screenshot --as user \
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "xml_presentation_id": "slides_example_presentation_id",
     "output_dir": ".lark-slides/screenshots",
@@ -79,8 +82,7 @@ lark-cli slides +screenshot --as user \
         "size": 12345
       }
     ]
-  },
-  "msg": "success"
+  }
 }
 ```
 
@@ -90,5 +92,6 @@ lark-cli slides +screenshot --as user \
 2. 已存在 PPT 页面截图时，不传 `--content`，用 `--presentation` + `--slide-id` 或 `--slide-number`。
 3. 本地 XML 预览时，传 `--content @file` 或 `--content -`，内容应为单个 `<slide>` XML 片段；此时不要传 `--presentation` / `--slide-id` / `--slide-number`。
 4. `slide_id` 是页面 short ID，页码请用 `--slide-number`。
-5. list 模式默认文件名包含 presentation ID、页码和/或 slide ID；文件已存在时自动追加 `_2`、`_3` 等后缀，避免覆盖旧截图。
-6. 截图来自服务端渲染结果，适合创建/替换后验证页面是否为空白、破图或布局明显异常。
+5. list 模式一次最多传 10 页（`--slide-id` + `--slide-number` 合计小于等于 10）；更多页面请分批截图。
+6. list 模式默认文件名包含 presentation ID、页码和/或 slide ID；文件已存在时自动追加 `_2`、`_3` 等后缀，避免覆盖旧截图。
+7. 截图来自服务端渲染结果，适合创建/替换后验证页面是否为空白、破图或布局明显异常。

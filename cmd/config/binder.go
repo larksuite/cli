@@ -205,7 +205,7 @@ func (b *openclawBinder) Build(appID string) (*core.AppConfig, error) {
 	return &core.AppConfig{
 		AppId:     selected.AppID,
 		AppSecret: stored,
-		Brand:     core.LarkBrand(normalizeBrand(selected.Brand)),
+		Brand:     core.ParseBrand(selected.Brand),
 	}, nil
 }
 
@@ -261,7 +261,7 @@ func (b *hermesBinder) Build(appID string) (*core.AppConfig, error) {
 	return &core.AppConfig{
 		AppId:     appID,
 		AppSecret: stored,
-		Brand:     core.LarkBrand(normalizeBrand(b.envMap["FEISHU_DOMAIN"])),
+		Brand:     core.ParseBrand(b.envMap["FEISHU_DOMAIN"]),
 	}, nil
 }
 
@@ -326,7 +326,7 @@ func (b *larkChannelBinder) Build(appID string) (*core.AppConfig, error) {
 	return &core.AppConfig{
 		AppId:     appID,
 		AppSecret: stored,
-		Brand:     core.LarkBrand(normalizeBrand(b.cfg.Accounts.App.Tenant)),
+		Brand:     core.ParseBrand(b.cfg.Accounts.App.Tenant),
 	}, nil
 }
 
@@ -348,16 +348,6 @@ func sourceDisplayName(source string) string {
 	default:
 		return source
 	}
-}
-
-// normalizeBrand applies .strip().lower() and defaults to "feishu".
-// Aligns with Hermes gateway/platforms/feishu.py:1119 behavior.
-func normalizeBrand(raw string) string {
-	s := strings.TrimSpace(strings.ToLower(raw))
-	if s == "" {
-		return "feishu"
-	}
-	return s
 }
 
 // resolveHermesEnvPath returns the path to Hermes's .env file.

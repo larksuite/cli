@@ -1,6 +1,6 @@
 # apps file 域命令（应用存储）
 
-管理妙搭应用的文件存储：上传 / 下载本地文件、列出与查看已存文件、生成临时分享链接、批量删除、查看用量。运行时命令事实以 `lark-cli apps +<cmd> --help` 为准；认证、`--as user`、exit 码、`_notice` 等通用处理见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 与本域 [`SKILL.md`](../SKILL.md)。
+管理妙搭应用的文件存储：上传 / 下载本地文件、列出与查看已存文件、生成临时分享链接、批量删除、查看用量。运行时命令事实以 `lark-cli apps +<cmd> --help` 为准；认证、`--as user`、exit 码、`_notice` 等通用处理见 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 与本域 [`SKILL.md`](../SKILL.md)。
 
 ## 何时用
 

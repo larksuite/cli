@@ -101,14 +101,16 @@ func TestAppsDBAuditEnable_DryRunAndSuccess(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Method string                 `json:"method"`
+				URL    string                 `json:"url"`
+				Body   map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
-	a := env.API[0]
+	a := env.Data.API[0]
 	if a.Method != "POST" || a.URL != dbAuditSetURL || a.Body["enabled"] != true || a.Body["retention"] != "30d" || a.Body["table"] != "orders" {
 		t.Fatalf("dry-run = %s %s body=%v", a.Method, a.URL, a.Body)
 	}
@@ -136,13 +138,15 @@ func TestAppsDBAuditDisable_DryRunAndSuccess(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	var env struct {
-		API []struct {
-			Body map[string]interface{} `json:"body"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Body map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
-	if env.API[0].Body["enabled"] != false || env.API[0].Body["table"] != "orders" {
-		t.Fatalf("dry-run body=%v (want enabled:false)", env.API[0].Body)
+	if env.Data.API[0].Body["enabled"] != false || env.Data.API[0].Body["table"] != "orders" {
+		t.Fatalf("dry-run body=%v (want enabled:false)", env.Data.API[0].Body)
 	}
 
 	factory2, stdout2, reg := newAppsExecuteFactory(t)
@@ -178,14 +182,16 @@ func TestAppsDBAuditList_DryRunJoinsTables(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
+		Data struct {
+			API []struct {
+				Method string                 `json:"method"`
+				URL    string                 `json:"url"`
+				Params map[string]interface{} `json:"params"`
+			} `json:"api"`
+		} `json:"data"`
 	}
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
-	a := env.API[0]
+	a := env.Data.API[0]
 	if a.Method != "GET" || a.URL != dbAuditListURL || a.Params["tables"] != "orders,users" {
 		t.Fatalf("dry-run = %s %s tables=%v", a.Method, a.URL, a.Params["tables"])
 	}

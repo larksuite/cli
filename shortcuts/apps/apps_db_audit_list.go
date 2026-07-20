@@ -40,7 +40,7 @@ var AppsDBAuditList = common.Shortcut{
 		{Name: "until", Desc: "filter: event at or before; same formats as --since"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -145,7 +145,10 @@ func fetchExistingTables(rctx *common.RuntimeContext, appID, env string) (map[st
 	existing := map[string]bool{}
 	token := ""
 	for {
-		params := map[string]interface{}{"env": env, "page_size": 100}
+		params := map[string]interface{}{"page_size": 100}
+		if env != "" {
+			params["env"] = env
+		}
 		if token != "" {
 			params["page_token"] = token
 		}
@@ -168,7 +171,11 @@ func fetchExistingTables(rctx *common.RuntimeContext, appID, env string) (map[st
 
 // fetchAuditEnabledTables 拉审计状态，返回当前已开启审计的表名集合（status 命令同源接口）。
 func fetchAuditEnabledTables(rctx *common.RuntimeContext, appID, env string) (map[string]bool, error) {
-	data, err := rctx.CallAPITyped("GET", appAuditStatusPath(appID), map[string]interface{}{"env": env}, nil)
+	statusParams := map[string]interface{}{}
+	if env != "" {
+		statusParams["env"] = env
+	}
+	data, err := rctx.CallAPITyped("GET", appAuditStatusPath(appID), statusParams, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -208,11 +215,10 @@ func auditListTables(rctx *common.RuntimeContext) []string {
 
 // buildAuditListParams 组装 audit_list 查询参数：env / tables(逗号拼接) / page_size 及可选 since/until/page_token。
 func buildAuditListParams(rctx *common.RuntimeContext, tables []string) map[string]interface{} {
-	params := map[string]interface{}{
-		"env":       dbEnv(rctx),
+	params := dbEnvParams(rctx, map[string]interface{}{
 		"tables":    strings.Join(tables, ","),
 		"page_size": rctx.Int("page-size"),
-	}
+	})
 	addStr := func(flag, key string) {
 		if v := strings.TrimSpace(rctx.Str(flag)); v != "" {
 			params[key] = v

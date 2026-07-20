@@ -248,10 +248,18 @@ func TestLoadPlatformAutoApproveSet(t *testing.T) {
 
 func TestLoadOverrideAutoApproveAllow(t *testing.T) {
 	allowSet := LoadOverrideAutoApproveAllow()
-	// recommend.allow in scope_overrides.json is intentionally empty:
-	// no scopes are special-cased into the auto-approve set anymore.
-	if len(allowSet) != 0 {
-		t.Errorf("expected empty override allow set, got %d entries", len(allowSet))
+	// recommend.allow special-cases scopes absent from scope_priorities.json
+	// (application v7 is not in the platform catalog yet) so interactive
+	// login's "common scopes" tier still offers them. Only the read scope is
+	// admitted: write stays out of the recommended tier by design.
+	if !allowSet["application:app_slash_command:read"] {
+		t.Error("expected application:app_slash_command:read in override allow set")
+	}
+	if allowSet["application:app_slash_command:write"] {
+		t.Error("write scope must NOT be in the recommended tier")
+	}
+	if len(allowSet) != 1 {
+		t.Errorf("expected exactly 1 override allow entry, got %d", len(allowSet))
 	}
 }
 

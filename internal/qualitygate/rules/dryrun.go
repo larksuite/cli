@@ -337,7 +337,7 @@ func fakeValueFromPlaceholderName(name string) (string, bool) {
 	case name == "open_id" || hasPlaceholderToken(tokens, "user", "owner", "participant", "approver", "speaker"):
 		return "ou_test123", true
 	case hasPlaceholderToken(tokens, "department", "dept"):
-		return "od_test123", true
+		return "od-test123", true
 	case hasPlaceholderToken(tokens, "message"):
 		return "om_test123", true
 	case name == "file_key":
@@ -878,16 +878,23 @@ func extractDryRunJSON(raw []byte) (facts.DryRunRequest, int, error) {
 	var firstErr error
 	for start >= 0 {
 		var preview struct {
-			API []facts.DryRunRequest `json:"api"`
+			API  []facts.DryRunRequest `json:"api"`
+			Data struct {
+				API []facts.DryRunRequest `json:"api"`
+			} `json:"data"`
 		}
 		dec := json.NewDecoder(bytes.NewReader(raw[start:]))
 		if err := dec.Decode(&preview); err == nil {
-			if len(preview.API) == 0 {
+			api := preview.API
+			if len(api) == 0 {
+				api = preview.Data.API
+			}
+			if len(api) == 0 {
 				if firstErr == nil {
 					firstErr = errNoDryRunAPI
 				}
 			} else {
-				return preview.API[0], len(preview.API), nil
+				return api[0], len(api), nil
 			}
 		} else if firstErr == nil {
 			firstErr = err

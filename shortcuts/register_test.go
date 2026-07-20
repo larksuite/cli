@@ -532,10 +532,11 @@ func TestApplySheetsCompatGroups(t *testing.T) {
 	}
 }
 
-// End-to-end: the rendered `sheets --help` must surface the deprecated-group
-// heading (telling users to update their skill) plus the per-alias migration
-// pointers, while keeping the refactored shortcuts under Available Commands.
-func TestRegisterShortcutsSheetsHelpGroupsDeprecatedAliases(t *testing.T) {
+// End-to-end: `sheets --help` must list refactored shortcuts under Available
+// Commands, but no longer advertise the deprecated pre-refactor aliases or the
+// deprecated group heading (sheetsUsageTemplate skips that group). The aliases
+// stay registered and executable — hidden from the parent listing, not removed.
+func TestRegisterShortcutsSheetsHelpHidesDeprecatedAliases(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	RegisterShortcuts(program, newRegisterTestFactory(t))
 
@@ -551,18 +552,24 @@ func TestRegisterShortcutsSheetsHelpGroupsDeprecatedAliases(t *testing.T) {
 	}
 	got := out.String()
 
-	for _, want := range []string{
-		"Available Commands:",
-		"Deprecated pre-refactor commands",
-		"update your lark-sheets skill",
-		"+read",
-		"(→ +cells-get)",
-		"+write",
-		"(→ +cells-set)",
-	} {
+	for _, want := range []string{"Available Commands:", "+cells-get"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("sheets help missing %q:\n%s", want, got)
 		}
+	}
+	for _, unwanted := range []string{
+		"Deprecated pre-refactor commands",
+		"update your lark-sheets skill",
+		"+read",
+		"+write",
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("sheets help still shows deprecated content %q:\n%s", unwanted, got)
+		}
+	}
+
+	if alias, _, ferr := sheetsCmd.Find([]string{"+read"}); ferr != nil || alias == nil {
+		t.Fatalf("deprecated alias +read should stay registered, got err=%v cmd=%v", ferr, alias)
 	}
 }
 

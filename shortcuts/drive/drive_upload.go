@@ -103,7 +103,7 @@ var DriveUpload = common.Shortcut{
 		"Omit both --folder-token and --wiki-token to upload into the caller's Drive root folder.",
 		"Use --wiki-token <wiki_node_token> to upload under a wiki node; the shortcut maps this to parent_type=wiki automatically.",
 		"Pass --file-token <file_token> to overwrite an existing Drive file in place; the shortcut forwards file_token to the upload API.",
-		"In bot mode, automatic full_access (可管理权限) grant only applies to newly uploaded files; overwrite via --file-token does not modify existing file permissions.",
+		"In bot mode, automatic full_access grant only applies to newly uploaded files; overwrite via --file-token does not modify existing file permissions.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateDriveUploadSpec(runtime, newDriveUploadSpec(runtime))
@@ -137,7 +137,7 @@ var DriveUpload = common.Shortcut{
 				"with_url": true,
 			})
 		if runtime.IsBot() && !isOverwrite {
-			d.Set("post_upload_note", "After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new file.")
+			d.Set("post_upload_note", "After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new file.")
 		}
 		return d
 	},

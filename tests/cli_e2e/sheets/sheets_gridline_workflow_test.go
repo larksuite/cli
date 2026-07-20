@@ -20,6 +20,7 @@ import (
 // field exposed via +sheet-info / +workbook-info — so success here is the
 // ok=true envelope, not a value comparison).
 func TestSheets_GridlineWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

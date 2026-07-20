@@ -2,32 +2,34 @@
 
 新建演示文稿或大幅改写页面时，在 `slide_plan.json` 完成后、生成 XML 前读取本文件。目标是让 `layout_type`、`visual_focus`、`text_density` 变成实际页面几何，而不是只写在 plan 里。
 
-默认画布按 `960 x 540` 规划。已有页面回读 XML 可以影响具体坐标，但不能覆盖这些原则：页面要有主视觉区域、文本要受密度约束、不同 `layout_type` 必须产生明显不同的坐标结构。
+默认画布按 `960 x 540` 规划。模板 XML 可以覆盖具体坐标，但不能覆盖这些原则：页面要有主视觉区域、文本要受密度约束、不同 `layout_type` 必须产生明显不同的坐标结构。
 
 ## Core Rules
 
 - `layout_type` must change geometry: element positions, region sizes, alignment, and visual rhythm must differ across page types.
-- `visual_focus` determines the largest or highest-contrast region. It can be an image, diagram, metric, quote, table, or shape-based placeholder.
+- `visual_focus` determines the largest or highest-contrast region. It can be an image, diagram, metric, quote, or table.
 - `text_density` caps visible text:
   - `low`: title plus one short statement, or 1-3 labels.
   - `medium`: title plus 2-4 concise bullets or labeled regions.
   - `high`: use a table, columns, grouped labels, or annotations. Do not use one long bullet box.
 - Do not create a deck where every content page is title plus bullets. For 4 or more pages, use at least 4 different layout structures when the content allows.
-- Keep generous margins. Use `60-80` px outer margins on standard content pages unless a full-bleed image or cover treatment is intentional.
+- Keep safe outer margins around `40` px on standard content pages, and fill the content area densely with a card grid rather than leaving large empty space. Only go full-bleed for an intentional image or cover treatment.
 - Reserve vertical space for titles. A typical content title area is `y=36..90`; main content should usually start at `y>=110`.
 - Avoid crowding the bottom edge. Keep non-background content above `y=500` unless it is a footer.
-- Prefer fewer, larger objects over many small text boxes.
 - Keep backgrounds consistent with the deck's `visual_system.background_strategy`. Normal content pages should use the same base background unless there is a clear page-role reason to change.
 - Treat text fit as a layout constraint, not a cleanup step. If a text box is too small for the intended line count, shorten the text, split it, or allocate more space before creating XML.
+- Do not use `<shape>` to build pictorial visuals like mock photos or fake objects. Use the image generation tool instead.
+- Do not place a `rect` or `line` for dividing or decorative purposes directly under a `headline` or `title`.
+- Do not use section bands, horizontal bars, vertical bars, or page-edge strips.
 
 ## Background And Motif Consistency
 
 Decks can vary page backgrounds, but variation must be intentional and legible:
 
 - Pick one default background for ordinary content pages and reuse it exactly. Avoid near-identical drift such as several slightly different off-white values unless it encodes a clear section change.
-- Cover, section divider, emphasis, and conclusion pages may use a dark, image-led, or high-contrast background. They must still share the deck's primary color, motif, edge treatment, typography, or geometry.
+- Cover, section divider, emphasis, and conclusion pages may use a dark, image-led, or high-contrast background. They must still share the deck's primary color, motif, typography, or geometry.
 - If a cover uses a split composition, make the split visible in the background or layout. For example, reserve a darker text region and a related but distinct visual region instead of placing all elements on one flat field.
-- Reuse a small number of visual devices: side bar, card radius, node style, line weight, icon container, or footer treatment. Do not introduce a new decorative language on each page.
+- Reuse a small number of visual devices: card radius, node style, icon container, or footer treatment. Do not introduce a new decorative language on each page.
 - Insert background and motif shapes before content elements so they do not cover text, images, or diagrams.
 
 ## Text Fit Guardrails
@@ -38,11 +40,11 @@ Use these as conservative minimums on a 960 x 540 canvas. Increase height when u
 |----------|-------------------|----------------|
 | Caption, 1 line | 10-12 | 18 |
 | Caption, 2 lines | 10-12 | 30 |
-| Body, 1 line | 13-16 | 24 |
-| Body, 2 lines | 13-16 | 40 |
-| Body, 2 lines, bold | 15-18 | 48 |
-| Headline, 1 line | 24-32 | 42 |
-| Title, 2 lines | 34-44 | 110 |
+| Body, 1 line | 12-14 | 24 |
+| Body, 2 lines | 12-14 | 40 |
+| Body, 2 lines, bold | 12-14 | 48 |
+| Headline, 1 line | 20-28 | 42 |
+| Title, 2 lines | 28-36 | 110 |
 
 Additional rules:
 
@@ -62,11 +64,12 @@ Purpose: introduce the deck's point of view.
 Geometry:
 - Use one dominant title block, usually `x=70..120`, `y=150..250`, `width=700..820`.
 - Add one subtitle or context line, not a bullet list.
-- Optional visual focus can be a full-bleed background, large side image, accent band, or abstract shape motif.
-- If the cover has a right-side diagram, screenshot, or motif cluster, use a split layout: keep the title/subtitle region within the left or central text region, and reserve a separate visual region so labels and connectors do not cross the title.
+- Visual focus MUST be an `<img>`: a full-bleed background image or a large **full-height** side image (searched by the image search tool or generated by the image generation tool). Do NOT compose the cover visual from `<shape>` or `<icon>`.
+- If the cover has a large full-height side image, use a split layout: keep the title and subtitle in the text region on the opposite side, and reserve a separate visual region so the image does not overlap the title. Crop (size and place) the side image so it stays within its visual region and does not extend into the text region.
 - For split covers, make the background reinforce the composition, such as a darker text side and a related visual panel. Avoid one flat field where title and diagram compete for attention.
 - Keep source metadata to one short line where possible. If it wraps, shorten author lists or move details to notes.
 - The main title should be controlled, normally one or two lines. Do not let it occupy both the text region and the visual region.
+- Do not add a vertical accent bar, side rail, or decorative line/strip. 
 
 Text:
 - `low` only unless the user explicitly asks for detail.
@@ -78,7 +81,7 @@ Purpose: reset rhythm and mark a new chapter.
 Geometry:
 - Use a large section number, chapter label, or single centered claim.
 - Keep the page sparse. A divider is not a content page.
-- Visual focus can be one oversized number, a vertical accent bar, or a full-width band.
+- Visual focus can be one oversized number.
 
 Text:
 - Title plus one phrase. No bullets.
@@ -103,7 +106,7 @@ Purpose: let a visual establish context, with text explaining implication.
 Geometry:
 - Left visual region should occupy roughly `35-45%` of slide width, often full height or tall crop.
 - Right text region starts around `x=420` and should have a strong headline plus short support.
-- If no real image is available, create a shape-based placeholder visual that matches `asset_need`.
+- If no image is available, use the image generation tool to create an approximate image that matches `asset_need`.
 - For dense screenshots, paper figures, or product captures with small labels, allocate a larger visual region when possible: often `50-65%` of slide width or at least `320` px height.
 - Place screenshots in a deliberate frame or panel, and leave enough margin so axes, captions, and edge labels are not cropped by the slide boundary.
 
@@ -118,7 +121,7 @@ Purpose: lead with a message, then reinforce it with a visual.
 Geometry:
 - Left text region starts around `x=60..90`, width `400..460`.
 - Right visual region occupies roughly `35-45%` of slide width.
-- Align the image or placeholder with the main text block, not only with the title.
+- Align the image with the main text block, not only with the title.
 - For dense screenshots, paper figures, or product captures with small labels, increase the visual region and reduce text. A readable image is more valuable than a fully populated text column.
 
 Text:
@@ -130,7 +133,8 @@ Text:
 Purpose: make one metric or fact memorable.
 
 Geometry:
-- Reserve the largest object for the metric: font size often `64-110`, region at least `300 x 120`.
+- Reserve the largest object for the metric: font size often `40-52`.
+- MUST Set `wrap="true" autoFit="normal-auto-fit"` on the metric's `<content>` so an oversized number shrinks to fit its box.
 - Pair the number with one explanation and optional 2-3 small supporting labels.
 - Do not bury the number in a bullet list or small card.
 
@@ -168,7 +172,7 @@ Text:
 
 Purpose: explain components, dependencies, or system flow.
 
-Implementation: prefer `<whiteboard>` (see `lark-slides-whiteboard.md`); use `<shape>` + `<line>` only as fallback.
+Implementation: use `<shape>` + `<line>`.
 
 Geometry:
 - Main visual area should be a diagram, not prose.
@@ -184,7 +188,7 @@ Text:
 
 Purpose: show operational steps, workflow, or cause-effect path.
 
-Implementation: prefer `<whiteboard>` (see `lark-slides-whiteboard.md`); use `<shape>` + `<line>` only as fallback.
+Implementation: use `<shape>` + `<line>`.
 
 Geometry:
 - Use numbered steps connected by arrows or lines.
@@ -213,19 +217,19 @@ Purpose: close with decision, recommendation, or next action.
 
 Geometry:
 - Use one dominant closing statement or call to action.
-- Add up to 3 next-step cards, checklist items, or owner/date labels.
 - Visual focus should be the recommendation or action, not decorative filler.
+- When using a full-bleed background image, add a semi-transparent scrim between the image and the text so the text stays legible; verify contrast.
 
 Text:
 - Keep the final page easy to remember. Avoid recap overload.
-- Conclusion pages may mirror the cover background, but must clearly reuse the deck's motif or color roles so the ending feels intentional.
+- Conclusion pages may mirror the cover background.
 
 ## Screenshot And Paper Figure Pages
 
 When a page uses a real screenshot, chart, paper figure, or product capture:
 
 - Choose screenshot placement based on page role, not a fixed slide number. Method overview, evidence, comparison, and failure-analysis pages are common candidates; title, agenda, and conclusion pages usually are not.
-- Use the real asset only when it is readable at slide size. If the figure is too dense, crop to the relevant region, create a zoomed detail, or redraw the core message with native shapes.
+- Use the real asset only when it is readable at slide size. If the figure is too dense, crop to the relevant region, create a zoomed detail, or regenerate the core message with the image generation tool.
 - A screenshot should normally be the visual focus. Do not shrink it into a decorative thumbnail while surrounding it with dense text.
 - Pair the image with a small number of interpretive annotations that tell the audience what to notice.
 - Always include a short source caption when using external or paper-derived visuals.

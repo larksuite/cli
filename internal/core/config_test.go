@@ -230,3 +230,20 @@ func TestCliConfig_CanBot(t *testing.T) {
 		})
 	}
 }
+
+// Runtime configs must never carry raw brand casing: the config ingress
+// normalizes it, so downstream equality checks see canonical values.
+func TestResolveConfigFromMulti_NormalizesBrand(t *testing.T) {
+	multi := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:     "cli_x",
+		AppSecret: PlainSecret("test-secret"),
+		Brand:     LarkBrand(" LARK "),
+	}}}
+	cfg, err := ResolveConfigFromMulti(multi, nil, "")
+	if err != nil {
+		t.Fatalf("ResolveConfigFromMulti error = %v", err)
+	}
+	if cfg.Brand != BrandLark {
+		t.Errorf("Brand = %q, want %q (normalized at ingress)", cfg.Brand, BrandLark)
+	}
+}

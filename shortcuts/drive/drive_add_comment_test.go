@@ -45,6 +45,16 @@ func decodeJSONMap(t *testing.T, raw string) map[string]interface{} {
 	return data
 }
 
+func dryRunDataMap(t *testing.T, raw string) map[string]interface{} {
+	t.Helper()
+	out := decodeJSONMap(t, raw)
+	data, ok := out["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("dry-run data is %T, want map[string]interface{}\nstdout:\n%s", out["data"], raw)
+	}
+	return data
+}
+
 func mustMapValue(t *testing.T, value interface{}, path string) map[string]interface{} {
 	t.Helper()
 
@@ -1628,8 +1638,8 @@ func TestDryRunSlidesDirectURL(t *testing.T) {
 	if !strings.Contains(stdout.String(), "slide block comment") {
 		t.Fatalf("dry-run output missing slide block comment: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	call := mustMapValue(t, api[0], "api[0]")
 	body := mustMapValue(t, call["body"], "api[0].body")
 	anchor := mustMapValue(t, body["anchor"], "api[0].body.anchor")
@@ -1656,8 +1666,8 @@ func TestDryRunBaseDirectURL(t *testing.T) {
 	if !strings.Contains(stdout.String(), "record-local comment") {
 		t.Fatalf("dry-run output missing record-local comment: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	call := mustMapValue(t, api[0], "api[0]")
 	body := mustMapValue(t, call["body"], "api[0].body")
 	anchor := mustMapValue(t, body["anchor"], "api[0].body.anchor")
@@ -1699,8 +1709,8 @@ func TestDryRunWikiResolvesToSlides(t *testing.T) {
 	if !strings.Contains(stdout.String(), "slide block comment") {
 		t.Fatalf("dry-run output missing slide block comment: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	call := mustMapValue(t, api[0], "api[0]")
 	body := mustMapValue(t, call["body"], "api[0].body")
 	anchor := mustMapValue(t, body["anchor"], "api[0].body.anchor")
@@ -1736,8 +1746,8 @@ func TestDryRunWikiSlidesInvalidBlockIDSurfaces(t *testing.T) {
 	if !strings.Contains(stdout.String(), "slide --block-id must be") || !strings.Contains(stdout.String(), "shape_2") {
 		t.Fatalf("dry-run output missing block-id format error: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	if len(api) != 0 {
 		t.Fatalf("dry-run should not preview API calls with malformed block-id: %s", stdout.String())
 	}
@@ -1821,8 +1831,8 @@ func TestDryRunFileDirectURL(t *testing.T) {
 	if !strings.Contains(stdout.String(), "verify supported file metadata") {
 		t.Fatalf("dry-run output missing supported file metadata verification step: %s", stdout.String())
 	}
-	out := decodeJSONMap(t, stdout.String())
-	api := mustSliceValue(t, out["api"], "api")
+	out := dryRunDataMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "data.api")
 	if len(api) != 2 {
 		t.Fatalf("expected 2 dry-run api calls, got %d\nstdout:\n%s", len(api), stdout.String())
 	}

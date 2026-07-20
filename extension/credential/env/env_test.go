@@ -22,13 +22,13 @@ func TestProvider_Name(t *testing.T) {
 func TestResolveAccount_BothSet(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "cli_test")
 	t.Setenv(envvars.CliAppSecret, "secret_test")
-	t.Setenv(envvars.CliBrand, "feishu")
+	t.Setenv(envvars.CliBrand, " LARK ")
 
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if acct.AppID != "cli_test" || acct.AppSecret != "secret_test" || acct.Brand != "feishu" {
+	if acct.AppID != "cli_test" || acct.AppSecret != "secret_test" || acct.Brand != "lark" {
 		t.Errorf("unexpected: %+v", acct)
 	}
 }

@@ -97,14 +97,7 @@ func TestAppsDBDataImport_DryRunMultipartShape(t *testing.T) {
 		[]string{"+db-data-import", "--app-id", "app_x", "--file", "orders.csv", "--environment", "dev", "--dry-run", "--yes", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	a := env.API[0]
 	if a.Method != "POST" || a.URL != dbDataImportURL {
@@ -118,6 +111,30 @@ func TestAppsDBDataImport_DryRunMultipartShape(t *testing.T) {
 	}
 	if a.Params["env"] != "dev" || a.Params["table"] != "orders" {
 		t.Fatalf("dry-run params (env+table) = %v", a.Params)
+	}
+}
+
+// TestAppsDBDataImport_DryRunOmitsEnvWhenUnset 验证不传 --environment 时 dry-run 的 query
+// 不带 env 键（交服务端按应用形态自动选分支），但仍携带 table。
+func TestAppsDBDataImport_DryRunOmitsEnvWhenUnset(t *testing.T) {
+	chdirTemp(t)
+	_ = os.WriteFile("orders.csv", []byte("id\n1\n"), 0o600)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBDataImport,
+		[]string{"+db-data-import", "--app-id", "app_x", "--file", "orders.csv", "--dry-run", "--yes", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var env dryRunAPIEnvelope
+	_ = json.Unmarshal([]byte(stdout.String()), &env)
+	if len(env.API) != 1 {
+		t.Fatalf("dry-run API calls = %d, want 1; stdout=%s", len(env.API), stdout.String())
+	}
+	p := env.API[0].Params
+	if _, ok := p["env"]; ok {
+		t.Fatalf("no --environment → env key must be omitted, got params=%v", p)
+	}
+	if p["table"] != "orders" {
+		t.Fatalf("table should still default to file basename, got params=%v", p)
 	}
 }
 
@@ -149,11 +166,7 @@ func TestAppsDBDataImport_TableDefaultsToFileBasename(t *testing.T) {
 		[]string{"+db-data-import", "--app-id", "app_x", "--file", "customers.json", "--dry-run", "--yes", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	if env.API[0].Params["table"] != "customers" {
 		t.Fatalf("expected table=customers (from file basename) in params, got %v", env.API[0].Params)

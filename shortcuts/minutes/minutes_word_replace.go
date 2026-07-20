@@ -139,7 +139,7 @@ func minutesWordReplaceError(err error, minuteToken string) error {
 	case minutesWordReplaceNoEditPermission:
 		p.Subtype = errs.SubtypePermissionDenied
 		p.Message = fmt.Sprintf("No edit permission for minute %q: cannot replace transcript words.", minuteToken)
-		p.Hint = "Ask the minute owner for minute edit permission"
+		p.Hint = fmt.Sprintf("Ask the user before running: minutes +apply-permission --minute-token %s --perm edit", minuteToken)
 	case minutesWordReplaceOthersEditing:
 		p.Subtype = errs.SubtypeConflict
 		p.Message = fmt.Sprintf("Minute %q transcript is being edited by someone else.", minuteToken)

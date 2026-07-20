@@ -114,8 +114,35 @@ func TestLookupCodeMeta_DrivePushCodes(t *testing.T) {
 		{1061004, errs.CategoryAuthorization, errs.SubtypePermissionDenied, false},
 		{1061007, errs.CategoryAPI, errs.SubtypeNotFound, false},
 		{1061043, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
+		{1061101, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
 		{1062009, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
 		{2200, errs.CategoryAPI, errs.SubtypeServerError, true},
+		{233523001, errs.CategoryAPI, errs.SubtypeServerError, true},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%d", tc.code), func(t *testing.T) {
+			got, ok := LookupCodeMeta(tc.code)
+			if !ok {
+				t.Fatalf("LookupCodeMeta(%d) ok=false, want true", tc.code)
+			}
+			if got.Category != tc.wantCat || got.Subtype != tc.wantSubtype || got.Retryable != tc.wantRetry {
+				t.Fatalf("LookupCodeMeta(%d) = %+v, want Category=%v Subtype=%v Retryable=%v",
+					tc.code, got, tc.wantCat, tc.wantSubtype, tc.wantRetry)
+			}
+		})
+	}
+}
+
+func TestLookupCodeMeta_WikiCodes(t *testing.T) {
+	cases := []struct {
+		code        int
+		wantCat     errs.Category
+		wantSubtype errs.Subtype
+		wantRetry   bool
+	}{
+		{131002, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
+		{131005, errs.CategoryAPI, errs.SubtypeNotFound, false},
+		{131006, errs.CategoryAuthorization, errs.SubtypePermissionDenied, false},
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("%d", tc.code), func(t *testing.T) {

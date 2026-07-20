@@ -44,7 +44,7 @@ var AppsDBDataImport = common.Shortcut{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "file", Desc: "local data file (.csv/.json), relative to cwd", Required: true},
 		{Name: "table", Desc: "target table (default: file name without extension)"},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -76,7 +76,7 @@ var AppsDBDataImport = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST(appDataImportPath(appID)).
 			Desc("Import data file into Miaoda app table (multipart upload)").
-			Params(map[string]interface{}{"env": dbEnv(rctx), "table": importTableName(rctx)}).
+			Params(dbEnvParams(rctx, map[string]interface{}{"table": importTableName(rctx)})).
 			Body(map[string]interface{}{"file_name": fileName, "file": "<contents of --file>"})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -100,10 +100,14 @@ var AppsDBDataImport = common.Shortcut{
 		fd.AddField("file_name", fileName)
 		fd.AddFile("file", bytes.NewReader(content))
 
+		importQuery := larkcore.QueryParams{"table": []string{table}}
+		if env := dbEnv(rctx); env != "" {
+			importQuery["env"] = []string{env}
+		}
 		resp, err := rctx.DoAPI(&larkcore.ApiReq{
 			HttpMethod:  http.MethodPost,
 			ApiPath:     appDataImportPath(appID),
-			QueryParams: larkcore.QueryParams{"env": []string{dbEnv(rctx)}, "table": []string{table}},
+			QueryParams: importQuery,
 			Body:        fd,
 		}, larkcore.WithFileUpload())
 		if err != nil {

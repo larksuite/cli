@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +59,27 @@ func mockDetectAndNpm(t *testing.T, result selfupdate.DetectResult, npmFn func(s
 	t.Cleanup(func() { newUpdater = origNew })
 }
 
+// mockDetectAndPnpm mirrors mockDetectAndNpm but wires the pnpm install path
+// and fails the test if the npm install path is invoked.
+func mockDetectAndPnpm(t *testing.T, result selfupdate.DetectResult, pnpmFn func(string) *selfupdate.NpmResult) {
+	t.Helper()
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult { return result }
+		u.PnpmInstallOverride = pnpmFn
+		u.NpmInstallOverride = func(string) *selfupdate.NpmResult {
+			t.Errorf("npm install must not be called for a pnpm install")
+			return &selfupdate.NpmResult{}
+		}
+		u.VerifyOverride = func(string) error { return nil }
+		u.SkillsIndexFetchOverride = successfulSkillsIndexFetch()
+		u.SkillsCommandOverride = successfulSkillsCommand()
+		return u
+	}
+	t.Cleanup(func() { newUpdater = origNew })
+}
+
 func successfulSkillsIndexFetch() func() *selfupdate.NpmResult {
 	return func() *selfupdate.NpmResult {
 		r := &selfupdate.NpmResult{}
@@ -78,6 +101,110 @@ func successfulSkillsCommand() func(args ...string) *selfupdate.NpmResult {
 		default:
 		}
 		return r
+	}
+}
+
+func TestUpdatePnpm_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetectAndPnpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/x/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: true},
+		func(string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out := stdout.String(); !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected updated in output, got: %s", out)
+	}
+}
+
+func TestUpdatePnpm_Human(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetectAndPnpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/x/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: true},
+		func(string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "via pnpm") {
+		t.Errorf("expected 'via pnpm' in stderr, got: %s", out)
+	}
+	if !strings.Contains(out, "Updating skills via pnpm dlx ...") {
+		t.Errorf("expected skills sync to report pnpm dlx launcher, got: %s", out)
+	}
+	if !strings.Contains(out, "Successfully updated") {
+		t.Errorf("expected success message, got: %s", out)
+	}
+}
+
+func TestUpdatePnpm_InstallError_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetectAndPnpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/x/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: true},
+		func(string) *selfupdate.NpmResult { return &selfupdate.NpmResult{Err: errors.New("pnpm boom")} },
+	)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error exit")
+	}
+	if out := stdout.String(); !strings.Contains(out, `"ok": false`) || !strings.Contains(out, "update_error") {
+		t.Errorf("expected failure envelope, got: %s", out)
+	}
+	if out := stdout.String(); !strings.Contains(out, "pnpm install failed") {
+		t.Errorf("expected message to report pnpm as the package manager, got: %s", out)
+	}
+}
+
+func TestUpdatePnpm_Unavailable_ManualFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/x/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: false})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "installed via pnpm, but pnpm is not available in PATH") {
+		t.Errorf("expected pnpm manual reason, got: %s", out)
+	}
+	if !strings.Contains(out, "pnpm add -g") {
+		t.Errorf("expected pnpm add -g hint, got: %s", out)
 	}
 }
 
@@ -265,6 +392,9 @@ func TestUpdateNpm_Human(t *testing.T) {
 	out := stderr.String()
 	if !strings.Contains(out, "Successfully updated") {
 		t.Errorf("expected success message in stderr, got: %s", out)
+	}
+	if !strings.Contains(out, "Updating skills via npx ...") {
+		t.Errorf("expected skills sync to report npx launcher for npm install, got: %s", out)
 	}
 }
 
@@ -739,9 +869,9 @@ func TestPermissionHint(t *testing.T) {
 	origOS := currentOS
 	defer func() { currentOS = origOS }()
 
-	// Linux: EACCES should produce a hint with npm prefix guidance.
+	// Linux + npm: EACCES should produce a hint with npm prefix guidance.
 	currentOS = "linux"
-	hint := permissionHint("EACCES: permission denied, access '/usr/local/lib'")
+	hint := permissionHint("EACCES: permission denied, access '/usr/local/lib'", "npm")
 	if !strings.Contains(hint, "npm global prefix") {
 		t.Errorf("expected npm prefix hint on linux, got: %s", hint)
 	}
@@ -749,16 +879,25 @@ func TestPermissionHint(t *testing.T) {
 		t.Errorf("should not suggest raw sudo npm install, got: %s", hint)
 	}
 
+	// Linux + pnpm: EACCES should point at pnpm setup, not npm prefix/sudo.
+	pnpmHint := permissionHint("EACCES: permission denied, access '/Users/x/Library/pnpm'", "pnpm")
+	if !strings.Contains(pnpmHint, "pnpm setup") {
+		t.Errorf("expected pnpm setup hint, got: %s", pnpmHint)
+	}
+	if strings.Contains(pnpmHint, "npm global prefix") || strings.Contains(pnpmHint, "sudo") {
+		t.Errorf("pnpm hint must not reference npm prefix or sudo, got: %s", pnpmHint)
+	}
+
 	// Windows: EACCES hint is suppressed (no EACCES on Windows).
 	currentOS = "windows"
-	hint = permissionHint("EACCES: permission denied")
+	hint = permissionHint("EACCES: permission denied", "npm")
 	if hint != "" {
 		t.Errorf("expected empty hint on Windows, got: %s", hint)
 	}
 
 	// Non-EACCES error: always empty.
 	currentOS = "linux"
-	if got := permissionHint("some other error"); got != "" {
+	if got := permissionHint("some other error", "npm"); got != "" {
 		t.Errorf("expected empty hint for non-EACCES, got: %s", got)
 	}
 }
@@ -1593,4 +1732,65 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestResolveSkillsBrand_LayeredFallback(t *testing.T) {
+	// Layer 1: resolved config wins.
+	var errBuf bytes.Buffer
+	f := &cmdutil.Factory{Config: func() (*core.CliConfig, error) {
+		return &core.CliConfig{Brand: core.LarkBrand(" LARK ")}, nil
+	}}
+	if got := resolveSkillsBrand(f, &errBuf); got != core.BrandLark {
+		t.Errorf("resolved-config brand = %q, want lark", got)
+	}
+
+	// Layer 2: credential resolution fails, raw config file still supplies the
+	// brand (a locked keychain must not flip a Lark profile to Feishu).
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	raw := `{"apps":[{"appId":"cli_x","appSecret":"test-secret","brand":"lark","users":[]}]}`
+	if err := os.WriteFile(filepath.Join(tmp, "config.json"), []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f = &cmdutil.Factory{Config: func() (*core.CliConfig, error) { return nil, errors.New("keychain locked") }}
+	errBuf.Reset()
+	if got := resolveSkillsBrand(f, &errBuf); got != core.BrandLark {
+		t.Errorf("raw-config brand = %q, want lark", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("unexpected notice when raw config supplied the brand: %q", errBuf.String())
+	}
+
+	// Layer 3: nothing readable → default brand with a notice.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	errBuf.Reset()
+	if got := resolveSkillsBrand(f, &errBuf); got != core.BrandFeishu {
+		t.Errorf("fallback brand = %q, want feishu", got)
+	}
+	if !strings.Contains(errBuf.String(), "could not resolve the configured brand") {
+		t.Errorf("expected fallback notice, got %q", errBuf.String())
+	}
+}
+
+// The raw-config fallback must read the active profile, not the default one.
+func TestResolveSkillsBrand_RespectsActiveProfile(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	raw := `{"currentApp":"feishu-app","apps":[` +
+		`{"name":"feishu-app","appId":"cli_f","appSecret":"test-secret","brand":"feishu","users":[]},` +
+		`{"name":"lark-prof","appId":"cli_l","appSecret":"test-secret","brand":"lark","users":[]}]}`
+	if err := os.WriteFile(filepath.Join(tmp, "config.json"), []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f := &cmdutil.Factory{
+		Invocation: cmdutil.InvocationContext{Profile: "lark-prof"},
+		Config:     func() (*core.CliConfig, error) { return nil, errors.New("keychain locked") },
+	}
+	var errBuf bytes.Buffer
+	if got := resolveSkillsBrand(f, &errBuf); got != core.BrandLark {
+		t.Errorf("brand = %q, want lark (the active profile's brand)", got)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("unexpected notice: %q", errBuf.String())
+	}
 }

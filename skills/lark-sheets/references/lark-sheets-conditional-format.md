@@ -43,6 +43,8 @@
 
 **正确做法（两步走）**：
 
+Step 1 的 `+cells-set` 及 `--copy-to-range` 等 flag 以 `lark-sheets-write-cells` 为准。
+
 ```
 Step 1: `+cells-set` 在新列写判断公式（形成"是/否"或布尔辅助列）
   range="H2", cells=[[{formula: "=IF(A2>B2, \"是\", \"否\")"}]], --copy-to-range="H2:H100"

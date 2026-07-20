@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/update"
 )
 
 //go:embed scope_priorities.json scope_overrides.json
@@ -68,6 +69,12 @@ func Init() {
 	InitWithBrand(core.BrandFeishu)
 }
 
+// ConfiguredBrand reports the brand the registry was initialized with
+// (empty before initialization). Diagnostics and startup-order tests use it.
+func ConfiguredBrand() core.LarkBrand {
+	return configuredBrand
+}
+
 // InitWithBrand initializes the registry by loading embedded data and optionally
 // overlaying cached remote data. The brand determines which remote API host to use.
 // It is safe to call multiple times (sync.Once).
@@ -85,7 +92,9 @@ func InitWithBrand(brand core.LarkBrand) {
 			brandChanged := metaErr == nil && cm.Brand != "" && cm.Brand != string(brand)
 
 			if !brandChanged {
-				if cached, err := loadCachedMerged(); err == nil {
+				// After a CLI upgrade the embedded data can be fresher than an old
+				// cache; an equal/older cache must not shadow it.
+				if cached, err := loadCachedMerged(); err == nil && update.IsNewer(cached.Version, embeddedVersion) {
 					overlayMergedServices(cached)
 				}
 			}

@@ -935,7 +935,7 @@
                 单页幻灯片结构
                 子元素:
                 - style: 页面样式(背景色等), style的fill默认颜色为白色rgba(255, 255, 255, 1)
-                - data: 页面元素容器(shape/line/polyline/img/table/icon/chart/whiteboard/undefined)
+                - data: 页面元素容器(shape/line/polyline/img/table/icon/chart/undefined)
                 - note: 演讲者备注
             </xs:documentation>
         </xs:annotation>
@@ -960,7 +960,6 @@
                         <xs:element ref="sml:table"/>
                         <xs:element ref="sml:icon"/>
                         <xs:element ref="sml:chart"/>
-                        <xs:element ref="sml:whiteboard"/>
                         <xs:element ref="sml:undefined"/>
                     </xs:choice>
                 </xs:complexType>
@@ -1464,6 +1463,7 @@
         <xs:annotation>
             <xs:documentation>
                 表格元素, 用于展示结构化数据
+                宽高分配规则参考 HTML table 的整体值 / 子项值处理逻辑, 但在 SXSD 中做确定化约束, 以保证跨端实现一致。
                 边框规则：
                 - 后设置优先：相邻单元格线条只有一个颜色, 如果均设置, 则右下单元格的设置覆盖左上单元格
                 - 不设置边框属性时使用默认样式
@@ -1476,6 +1476,8 @@
                 - id: 表格唯一标识符(可选)
                 - topLeftX/topLeftY: 左上角坐标
                 - flipX/flipY: 水平/垂直翻转
+                - width: 表格目标总宽度(可选)。若设置, 优先用于为未填写列宽的列分配剩余宽度; 当所有列宽均为空时, 所有列均分该值; 当所有列均已填写且该值大于已填写列宽总和时, 多出空间继续分配给现有列, 默认按各列当前宽度作为权重分配; 当已填写列宽之和超过或无法容纳该值时, 保留已填写列宽, 并以最终列宽总和回写 table.width
+                - height: 表格目标总高度(可选)。若设置, 优先用于为未填写行高的行分配剩余高度; 当所有行高均为空时, 所有行均分该值; 当所有行均已填写且该值大于已填写行高总和时, 多出空间继续分配给现有行, 默认按各行当前高度作为权重分配; 当已填写行高之和超过或无法容纳该值时, 保留已填写行高, 并以最终行高总和回写 table.height
                 table 子元素:
                 - colgroup: 列组元素, 用于定义列的宽度
                 - tr: 行元素, 包含多个单元格
@@ -1484,10 +1486,10 @@
                 - col: 列元素
                 col 属性:
                 - span: 列跨数, 默认为1, 可选
-                - width: 列宽度, 默认值为110, 可选
+                - width: 列宽度输入值, 默认值为110, 可选。无 table.width 时, 已填写列保持原值, 空列使用默认值; 有 table.width 时, 已填写列保持原值, 空列优先均分剩余宽度; 若不存在空列且 table.width 大于已填写列宽总和, 则多出空间按各列当前宽度作为权重分配到所有列; 若剩余宽度不足则空列回退为默认值, 并以最终列宽总和作为 table.width
 
                 tr 属性:
-                - height: 行高, 默认为单元格高度
+                - height: 行高输入值, 默认值为37, 可选。无 table.height 时, 已填写行保持原值, 空行使用默认值; 有 table.height 时, 已填写行保持原值, 空行优先均分剩余高度; 若不存在空行且 table.height 大于已填写行高总和, 则多出空间按各行当前高度作为权重分配到所有行; 若剩余高度不足则空行回退为默认值, 并以最终行高总和作为 table.height。若行高低于内容高度, 需要手动修改行高
                 tr 子元素:
                 - td: 单元格元素, 用于显示数据
 
@@ -1543,6 +1545,8 @@
             <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
             <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
             <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="width" type="sml:PositiveSize" use="optional"/>
+            <xs:attribute name="height" type="sml:PositiveSize" use="optional"/>
         </xs:complexType>
     </xs:element>
 
@@ -3003,47 +3007,4 @@
         </xs:complexType>
     </xs:element>
 
-    <!-- 画板元素 -->
-    <xs:element name="whiteboard">
-      <xs:annotation>
-        <xs:documentation>
-          画板元素, 用于在幻灯片中嵌入 Mermaid 或 SVG 绘制内容。
-
-          属性说明:
-          - id: 画板唯一标识符(可选)
-          - topLeftX/topLeftY: 左上角坐标, 必须
-          - width/height: 宽高尺寸, 必须
-          - flipX/flipY: 水平/垂直翻转
-          - alpha: 不透明度[0,1]
-
-          子元素(mermaid 与 svg 二选一):
-          - mermaid: Mermaid 源码文本, 可使用 CDATA 包裹
-            适用场景: 流程图、时序图、思维导图、类图、甘特图、饼图等结构化图表
-            特点: 用简短的文本声明描述图表逻辑, 由渲染引擎自动布局, 无需手动计算坐标
-            示例: &lt;mermaid&gt;&lt;![CDATA[flowchart TD\n  A[开始] --&gt; B[结束]]]&gt;&lt;/mermaid&gt;
-          - svg: SVG 内容
-            适用场景: 需要精确控制坐标、配色、路径的自定义图形
-            特点: 像素级精确定位，支持 rect/circle/path/text/polygon/g/linearGradient 等元素；radialGradient/filter/clipPath/mask/pattern 不支持，需手动计算所有坐标
-            示例: &lt;svg xmlns="http://www.w3.org/2000/svg"&gt;...&lt;/svg&gt;（xmlns 必填；width/height/viewBox 不影响渲染，仅百分比属性值场景需声明 viewBox）
-          - border: 边框样式, 可选, 无border标签代表无边框, 空border标签代表使用默认样式
-        </xs:documentation>
-      </xs:annotation>
-      <xs:complexType>
-        <xs:sequence>
-          <xs:choice>
-            <xs:element name="mermaid" type="xs:string" />
-            <xs:any namespace="http://www.w3.org/2000/svg" processContents="skip"/>
-          </xs:choice>
-          <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
-        </xs:sequence>
-        <xs:attribute name="id" type="xs:string" use="optional"/>
-        <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
-        <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
-        <xs:attribute name="width" type="sml:PositiveSize" use="required"/>
-        <xs:attribute name="height" type="sml:PositiveSize" use="required"/>
-        <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
-        <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
-        <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
-      </xs:complexType>
-    </xs:element>
 </xs:schema>

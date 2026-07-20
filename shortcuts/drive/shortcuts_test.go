@@ -5,6 +5,7 @@ package drive
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -20,14 +21,15 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 		"+download",
 		"+preview",
 		"+cover",
+		"+add-comment",
+		"+list-comments",
+		"+export",
+		"+export-download",
+		"+import",
 		"+version-history",
 		"+version-get",
 		"+version-revert",
 		"+version-delete",
-		"+add-comment",
-		"+export",
-		"+export-download",
-		"+import",
 		"+move",
 		"+delete",
 		"+status",
@@ -69,4 +71,19 @@ func TestDriveSearchSupportsUserAndBotIdentity(t *testing.T) {
 	if !reflect.DeepEqual(DriveSearch.AuthTypes, want) {
 		t.Fatalf("DriveSearch.AuthTypes = %v, want %v", DriveSearch.AuthTypes, want)
 	}
+}
+
+func TestDriveUploadHelpTipUsesEnglishPermissionName(t *testing.T) {
+	t.Parallel()
+
+	want := "In bot mode, automatic full_access grant only applies to newly uploaded files; overwrite via --file-token does not modify existing file permissions."
+	for _, tip := range DriveUpload.Tips {
+		if strings.Contains(tip, "automatic full_access") {
+			if tip != want {
+				t.Fatalf("DriveUpload full_access tip = %q, want %q", tip, want)
+			}
+			return
+		}
+	}
+	t.Fatal("DriveUpload full_access help tip not found")
 }

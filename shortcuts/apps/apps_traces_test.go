@@ -24,13 +24,7 @@ func TestAppsTraceList_DryRunBuildsSearchTracesBody(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
 	}
@@ -73,13 +67,7 @@ func TestAppsTraceGet_DryRunBuildsGetTraceBody(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
 	}

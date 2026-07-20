@@ -65,15 +65,15 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "slide": {
       "slide_id": "slide_example_id",
       "content": "<slide id=\"slide_example_id\"><style/><data>...</data></slide>"
     },
     "revision_id": 100
-  },
-  "msg": "success"
+  }
 }
 ```
 
@@ -94,7 +94,7 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 ## 注意事项
 
 1. **执行前必做**：`lark-cli schema slides.xml_presentation.slide.get` 查看最新参数结构
-2. **block_id 提取**：返回 XML 里每个顶层块（shape、img、table、chart、whiteboard 等）的 `id` 属性即为 `block_id`，通常是 3 字符短码，例如 `<shape id="bUn" ...>`。用以下命令列出当前页所有 block_id：
+2. **block_id 提取**：返回 XML 里每个顶层块（shape、img、table、chart 等）的 `id` 属性即为 `block_id`，通常是 3 字符短码，例如 `<shape id="bUn" ...>`。用以下命令列出当前页所有 block_id：
 
    ```bash
    lark-cli slides xml_presentation.slide get --as user \
@@ -106,5 +106,5 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 
 - [slides +replace-slide](lark-slides-replace-slide.md) — 块级替换 shortcut（推荐）
 - [xml_presentation.slide replace](lark-slides-xml-presentation-slide-replace.md) — 底层 replace API 参考
-- [xml_presentations get](lark-slides-xml-presentations-get.md) — 读整个 PPT
+- [slides +xml-get](lark-slides-xml-presentations-get.md) — 读整个 PPT 并保存到本地文件
 - [lark-slides-edit-workflows.md](lark-slides-edit-workflows.md) — 读-改-写闭环
