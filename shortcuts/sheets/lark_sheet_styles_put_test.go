@@ -112,6 +112,131 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 	})
 }
 
+// TestStylesPayloadVocabularyForgiveness pins the 07-20 rerun fixes: the
+// payload path (--styles cell_styles objects) accepts the same habitual
+// vocabulary the flag path already normalized — border family folding, wrap
+// aliases, and enum VALUE canonicalization (CSS center → Lark middle etc.).
+func TestStylesPayloadVocabularyForgiveness(t *testing.T) {
+	t.Parallel()
+
+	stamp := func(styleFields map[string]interface{}) ([]interface{}, error) {
+		item := map[string]interface{}{"range": "A1:B1"}
+		for k, v := range styleFields {
+			item[k] = v
+		}
+		return stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":        "S1",
+				"cell_styles": []interface{}{item},
+			}},
+		}), testToken)
+	}
+	cellProto := func(t *testing.T, ops []interface{}) map[string]interface{} {
+		t.Helper()
+		input := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+		cells := input["cells"].([][]interface{})
+		return cells[0][0].(map[string]interface{})
+	}
+
+	t.Run("vertical_alignment center canonicalizes to middle", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stamp(map[string]interface{}{"vertical_alignment": "center", "font_weight": "BOLD"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		cs := cellProto(t, ops)["cell_styles"].(map[string]interface{})
+		if cs["vertical_alignment"] != "middle" || cs["font_weight"] != "bold" {
+			t.Fatalf("cell_styles = %v, want middle/bold", cs)
+		}
+	})
+
+	t.Run("off-enum value rejected client-side with did-you-mean", func(t *testing.T) {
+		t.Parallel()
+		_, err := stamp(map[string]interface{}{"vertical_alignment": "botom"})
+		requireValidation(t, err, `did you mean "bottom"`)
+	})
+
+	t.Run("boolean wrap_text folds to word_wrap auto-wrap", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stamp(map[string]interface{}{"wrap_text": true})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		cs := cellProto(t, ops)["cell_styles"].(map[string]interface{})
+		if cs["word_wrap"] != "auto-wrap" {
+			t.Fatalf("word_wrap = %v, want auto-wrap", cs["word_wrap"])
+		}
+	})
+
+	t.Run("borders object folds into border_styles", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stamp(map[string]interface{}{
+			"borders": map[string]interface{}{"style": "solid", "color": "#000000"},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		bs := cellProto(t, ops)["border_styles"].(map[string]interface{})
+		top, _ := bs["top"].(map[string]interface{})
+		if top == nil || top["style"] != "solid" {
+			t.Fatalf("border_styles = %v, want all-sides solid", bs)
+		}
+	})
+
+	t.Run("flattened border_bottom and border_top_color fold per side", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stamp(map[string]interface{}{
+			"border_bottom":    map[string]interface{}{"style": "solid"},
+			"border_top_color": "#FF0000",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		bs := cellProto(t, ops)["border_styles"].(map[string]interface{})
+		bottom, _ := bs["bottom"].(map[string]interface{})
+		topSide, _ := bs["top"].(map[string]interface{})
+		if bottom["style"] != "solid" || topSide["color"] != "#FF0000" {
+			t.Fatalf("border_styles = %v", bs)
+		}
+	})
+
+	t.Run("border_style thin means thin solid line", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stamp(map[string]interface{}{"border_style": "thin"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		bs := cellProto(t, ops)["border_styles"].(map[string]interface{})
+		top, _ := bs["top"].(map[string]interface{})
+		if top["weight"] != "thin" || top["style"] != "solid" {
+			t.Fatalf("border_styles.top = %v, want thin solid", top)
+		}
+	})
+
+	t.Run("fore_color prescribes instead of guessing", func(t *testing.T) {
+		t.Parallel()
+		_, err := stamp(map[string]interface{}{"fore_color": "#FF0000"})
+		requireValidation(t, err, "fore_color is ambiguous")
+	})
+
+	t.Run("bare string cell_merges accepted", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":        "S1",
+				"cell_merges": []interface{}{"A5:B6"},
+			}},
+		}), testToken)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+		if input["range"] != "A5:B6" || input["merge_type"] != "all" {
+			t.Fatalf("merge op = %v", input)
+		}
+	})
+}
+
 // TestStylesResizeSizeAliases pins the one-way Excel-vocabulary aliases on
 // the shared styles resize parser: height in row_sizes / width in col_sizes
 // resolve to size silently; the wrong dimension's word is a targeted error.

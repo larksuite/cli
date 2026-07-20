@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	neturl "net/url"
+	"slices"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -596,6 +597,36 @@ var cellStyleAliases = []struct{ alias, canonical string }{
 	{"halign", "horizontal_alignment"},
 	{"vertical_align", "vertical_alignment"},
 	{"valign", "vertical_alignment"},
+	// wrap family: word_wrap is the sole wrap concept, no ambiguity. 07-20
+	// eval: wrap_text alone produced an 88-issue retry loop on --styles.
+	{"wrap_text", "word_wrap"},
+	{"text_wrap", "word_wrap"},
+}
+
+// cellStyleEnumFields sources the enum vocabulary for enum-bearing
+// cell_styles fields from the +cells-set-style flag-defs, so the payload path
+// (--styles / typed --cells) validates and canonicalizes values the same way
+// the cobra flag path does. 07-20 eval: "vertical_alignment":"center" (CSS
+// vocabulary; Lark spells it "middle") passed the CLI and burned a
+// server-side round trip ~10 times — the flag path had normalized it since
+// round 2, the payload path never did.
+func cellStyleEnumFields() map[string][]string {
+	defs, err := loadFlagDefs()
+	if err != nil {
+		return nil
+	}
+	spec, ok := defs["+cells-set-style"]
+	if !ok {
+		return nil
+	}
+	out := map[string][]string{}
+	for _, df := range spec.Flags {
+		if df.Kind != "own" || df.Type != "string" || len(df.Enum) == 0 {
+			continue
+		}
+		out[strings.ReplaceAll(df.Name, "-", "_")] = df.Enum
+	}
+	return out
 }
 
 // normalizeCellStyleAliases renames known shorthand keys in a single
@@ -604,7 +635,10 @@ var cellStyleAliases = []struct{ alias, canonical string }{
 // applies the style instead of hitting an "unsupported field" error (--styles)
 // or having the field silently dropped by the backend (typed --cells). If both
 // the shorthand and its canonical key are present it returns a validation error
-// rather than picking one. path labels the map for the error message.
+// rather than picking one. It then canonicalizes enum VALUES (casing + known
+// cross-vocabulary aliases like CSS "center" → Lark "middle"; boolean
+// word_wrap → the enum) and rejects off-enum values client-side instead of
+// letting the server fail the whole batch. path labels the map for errors.
 func normalizeCellStyleAliases(style map[string]interface{}, path string) error {
 	if len(style) == 0 {
 		return nil
@@ -619,6 +653,39 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 		}
 		style[a.canonical] = v
 		delete(style, a.alias)
+	}
+	// fore_color is deliberately NOT aliased: in openpyxl vocabulary fgColor
+	// is the FILL color while a plain reading suggests the font color — a
+	// silent pick could color the wrong thing. Prescribe both options.
+	if _, has := style["fore_color"]; has {
+		return common.ValidationErrorf("%s.fore_color is ambiguous — use font_color for text color or background_color for the cell fill", path)
+	}
+	// Boolean wrap habit: true unambiguously means wrap on, false means off.
+	if b, isBool := style["word_wrap"].(bool); isBool {
+		if b {
+			style["word_wrap"] = "auto-wrap"
+		} else {
+			style["word_wrap"] = "overflow"
+		}
+	}
+	for field, enum := range cellStyleEnumFields() {
+		raw, has := style[field]
+		if !has {
+			continue
+		}
+		val, isStr := raw.(string)
+		if !isStr || val == "" || slices.Contains(enum, val) {
+			continue
+		}
+		if canon := canonicalEnumValue(val, enum); canon != "" {
+			style[field] = canon
+			continue
+		}
+		msg := fmt.Sprintf("%s.%s value %q is invalid (allowed: %s)", path, field, val, strings.Join(enum, ", "))
+		if match := closestEnumValue(val, enum); match != "" {
+			msg += fmt.Sprintf("; did you mean %q?", match)
+		}
+		return common.ValidationErrorf("%s", msg)
 	}
 	return nil
 }
