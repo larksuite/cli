@@ -574,12 +574,20 @@ func TestBaseWorkspaceDryRunCreateAndCopyPermissionGrantHints(t *testing.T) {
 		if err := runShortcut(t, BaseBaseCreate, []string{"+base-create", "--name", "Demo Base", "--dry-run"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
+		wantDesc := "After Base creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new Base."
+		if got := stdout.String(); !strings.Contains(got, wantDesc) {
+			t.Fatalf("stdout=%s, want desc %q", got, wantDesc)
+		}
 	})
 
 	t.Run("copy bot", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		if err := runShortcut(t, BaseBaseCopy, []string{"+base-copy", "--base-token", "app_src", "--dry-run"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
+		}
+		wantDesc := "After Base copy succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new Base."
+		if got := stdout.String(); !strings.Contains(got, wantDesc) {
+			t.Fatalf("stdout=%s, want desc %q", got, wantDesc)
 		}
 	})
 

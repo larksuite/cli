@@ -173,11 +173,9 @@ func TestDocsCreateV2BotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	if grant["status"] != common.PermissionGrantFailed {
 		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
 	}
-	if !strings.Contains(grant["message"].(string), "full_access") {
-		t.Fatalf("permission_grant.message = %q, want permission hint", grant["message"])
-	}
-	if !strings.Contains(grant["message"].(string), "retry later") {
-		t.Fatalf("permission_grant.message = %q, want retry guidance", grant["message"])
+	wantMessage := "Resource was created, but granting current user full_access failed: no permission. You can retry later or continue using bot identity."
+	if grant["message"] != wantMessage {
+		t.Fatalf("permission_grant.message = %q, want %q", grant["message"], wantMessage)
 	}
 	if !strings.Contains(stderr.String(), "auto-grant failed") {
 		t.Fatalf("stderr missing auto-grant failed warning; got:\n%s", stderr.String())

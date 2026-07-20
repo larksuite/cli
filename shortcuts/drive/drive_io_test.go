@@ -1124,6 +1124,10 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	if got.API[1].Body["with_url"] != true {
 		t.Fatalf("metadata with_url = %#v, want true", got.API[1].Body["with_url"])
 	}
+	wantPostUploadNote := "After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new file."
+	if got.PostUploadNote != wantPostUploadNote {
+		t.Fatalf("post_upload_note = %q, want %q", got.PostUploadNote, wantPostUploadNote)
+	}
 }
 
 func TestNewDriveUploadSpecPreservesPathAndName(t *testing.T) {

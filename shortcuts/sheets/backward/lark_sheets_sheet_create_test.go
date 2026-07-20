@@ -161,6 +161,21 @@ func TestSheetCreateDryRunIncludesFolderToken(t *testing.T) {
 	if !strings.Contains(got, `"folder_token":"fldcn123"`) {
 		t.Fatalf("DryRun should include folder_token, got: %s", got)
 	}
+	var dryRun struct {
+		API []struct {
+			Desc string `json:"desc"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal([]byte(got), &dryRun); err != nil {
+		t.Fatalf("unmarshal dry run: %v", err)
+	}
+	if len(dryRun.API) != 1 {
+		t.Fatalf("dry-run API count = %d, want 1", len(dryRun.API))
+	}
+	wantDesc := "After spreadsheet creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new spreadsheet."
+	if dryRun.API[0].Desc != wantDesc {
+		t.Fatalf("desc = %q, want %q", dryRun.API[0].Desc, wantDesc)
+	}
 }
 
 func TestSheetCreatePreservesBackendURL(t *testing.T) {
