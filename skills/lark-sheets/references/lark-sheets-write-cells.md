@@ -102,7 +102,7 @@ Step 2: `+cells-set` — range="A2", cells 含 value + cell_styles + border_styl
 ```
 这比在 99 个单元格中都重复写样式 JSON 高效得多。
 
-💡 **样式更新是「部分合并」，不是整体覆盖**：`+cells-set-style` / `+cells-batch-set-style`（以及 `+cells-set` 的 `cell_styles` / `border_styles`）只改你**显式传入**的样式属性，未传的属性保留原值。两个实用推论：
+💡 **样式更新是「部分合并」，不是整体覆盖**：`+cells-set-style` / `+styles-put`（以及 `+cells-set` 的 `cell_styles` / `border_styles`）只改你**显式传入**的样式属性，未传的属性保留原值。两个实用推论：
 - **可分层叠加**：对同一区域先刷字体色、再单独刷背景色、再单独刷边框，后一步不会清掉前一步——美化已有区域时无需一次带齐所有字段，可拆成多次窄调用。
 - **`border_styles` 按边合并**：只传 `{"top":{...}}` 只更新上边框，`bottom` / `left` / `right` 保留原状；不必为了「只改一条边」而把四边全部重传。（例外见上方「新增行的边框/样式禁止用 `{}` 跳过」：**全新行**底子里没有边框，仍需把要显示的边都显式传出。）
 
@@ -236,7 +236,7 @@ lark-cli sheets +dropdown-set \
 
 > ⚠️ **`--source-range` 必须带 sheet 前缀**（即使跟 `--range` 同 sheet）。注意一个坑：回读这种 listFromRange 下拉单元格时，`data_validation.range` 看起来不带 sheet 前缀（形如 `$T$1:$T$3`），如果要把读出来的 range 反过来写回 `--source-range`，**必须自己重新补上 sheet 前缀**，否则会被拒。
 >
-> ⚠️ **`--ranges` 类批量 flag 的 sheet 前缀必须「裸写」**——`+cells-batch-set-style` / `+cells-batch-clear` / `+dropdown-update` / `+dropdown-delete` 的 `--ranges` 解析器不接受引号：表名含点或空格（如 `2025.9`、`一月份`）也直接写 `2025.9!A1`，写成 `'2025.9'!A1` 会被当成表名一部分、报 `sheet not found`。**但 `--source-range`、透视表 `--source`、`--range` 走 A1 标准**：sheet 名带单引号（如 `'Sheet1'!A1:B2`）是标准写法、裸写也接受，回读统一返回带引号形式——别把 `--ranges` 的裸写要求套到这些 flag 上。
+> ⚠️ **`--ranges` 类批量 flag 的 sheet 前缀必须「裸写」**——`+cells-batch-clear` / `+dropdown-update` / `+dropdown-delete` 的 `--ranges` 解析器不接受引号：表名含点或空格（如 `2025.9`、`一月份`）也直接写 `2025.9!A1`，写成 `'2025.9'!A1` 会被当成表名一部分、报 `sheet not found`。**但 `--source-range`、透视表 `--source`、`--range` 走 A1 标准**：sheet 名带单引号（如 `'Sheet1'!A1:B2`）是标准写法、裸写也接受，回读统一返回带引号形式——别把 `--ranges` 的裸写要求套到这些 flag 上。
 
 `+dropdown-update`（多 range 批量更新）的所有 flag 语义与 `+dropdown-set` 完全一致；只是目标 `--ranges` 由单值变成 JSON 数组（每项带 sheet 前缀），同一份选项 + 配色应用到所有 range。
 
@@ -402,7 +402,7 @@ _一个或多个子表的 typed 数据，每个数组元素写入一张子表；
 | 只改**已有 cell 的样式**，不动 value/formula | `+cells-set-style` | `+cells-set`（会触发不必要的值写入） |
 | 把**单张图片嵌入**到某个 cell | `+cells-set-image` | `+cells-set`（参数更繁琐） |
 | **插行/列 + 写入** 这种多步组合，且要原子 | `+batch-update`（见 lark-sheets-batch-update） | 多次独立 `+cells-set`（非原子；插入会扰动后续 range） |
-| 在**多个不连续 range** 上应用同一组样式 | `+cells-batch-set-style`（见 lark-sheets-batch-update） | 多次 `+cells-set-style`（非原子） |
+| 在**多个不连续 range** 上应用同一组样式 | `+styles-put`（cell_styles 多项即多区域，见 lark-sheets-styles-put） | 多次 `+cells-set-style`（非原子） |
 
 ### `+cells-set`
 

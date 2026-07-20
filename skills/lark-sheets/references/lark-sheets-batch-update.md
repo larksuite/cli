@@ -16,7 +16,7 @@
 
 **先分流再动手（按操作组合选入口）**：美化收尾（样式 / 合并 / 行高列宽 / 冻结的任意组合）→ 一次 `+styles-put`（声明式规格，见 `lark-sheets-styles-put`），不要拼 `--operations` 子操作数组；**同一个写操作**打多个区域 → 用该命令自身的复数形态（`+cells-batch-clear` / `+dim-delete --ranges` / resize 的 map 形态等）；只有跨类型的原子操作链才用本命令。
 
-**不可放进 `--operations` 的写 shortcut**（`shortcut` 枚举不含它们，强行写入会被校验拒）：`+cells-set-image`（需本地上传图片）、`+styles-put` / `+dropdown-update` / `+dropdown-delete` / `+cells-batch-set-style` / `+cells-batch-clear`（自身已是批量入口，不可再嵌套）、`+dim-move`。这些操作需在 `+batch-update` 之外单独调用。
+**不可放进 `--operations` 的写 shortcut**（`shortcut` 枚举不含它们，强行写入会被校验拒）：`+cells-set-image`（需本地上传图片）、`+styles-put` / `+dropdown-update` / `+dropdown-delete` / `+cells-batch-clear`（自身已是批量入口，不可再嵌套）、`+dim-move`。这些操作需在 `+batch-update` 之外单独调用。
 
 **行高列宽批量不走这里**：多行 / 多列不同尺寸用 `+styles-put` 的 `row_sizes` / `col_sizes`（可与样式同批），或 `+rows-resize --heights` / `+cols-resize --widths` 的 map 形态（见 `lark-sheets-range-operations`）；map 形态不可作为 `--operations` 子操作嵌入（子操作里仍可用单区间形态 `range` + `height`/`width`）。
 
@@ -34,7 +34,6 @@
 | Shortcut | Risk | 分组 |
 | --- | --- | --- |
 | `+batch-update` | high-risk-write | 批量 |
-| `+cells-batch-set-style` | write | 批量 |
 | `+dropdown-update` | write | 对象 |
 | `+dropdown-delete` | high-risk-write | 对象 |
 | `+cells-batch-clear` | high-risk-write | 批量 |
@@ -49,26 +48,6 @@ _公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
 | --- | --- | --- | --- |
 | `--operations` | string + File + Stdin（复合 JSON） | required | JSON 数组：[{"shortcut":"+xxx-yyy","input":{...}}, ...]。shortcut 用 CLI 名；input 是该 shortcut 的入参集——含子表定位 sheet_id（或 sheet_name），但不含 spreadsheet token/url（后者只在顶层 --url/--spreadsheet-token 给一次；+batch-update 顶层没有 --sheet-id）；input 的键是该 shortcut 的 flag 展平成 JSON（如 "range":"A11:B12"），不是再套一层嵌套。基础 flag 查 --help，复合 JSON flag 查 --print-schema --flag-name <flag>；不要手填 operation 字段（由 CLI 按 shortcut 自动注入）。默认 fail-fast：首个失败即中断剩余操作，**已执行的子操作不回滚**（服务端报 "N succeeded, M failed" 时 N 个已生效，修复后只重发失败起的剩余子集，不要整批重发）；传 --continue-on-error 遇失败仍继续；不支持嵌套；按数组顺序串行执行 |
 | `--continue-on-error` | bool | optional | 遇子操作失败时继续执行剩余操作；默认 false（首个失败即整批中断） |
-
-### `+cells-batch-set-style`
-
-_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
-
-| Flag | Type | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `--ranges` | string + File + Stdin（简单 JSON） | required | 目标范围 JSON 数组（最多 100 个），每项必须带 sheet 前缀（如 `["Sheet1!A1:B2","Sheet2!D1:D10"]`，前缀裸写不加引号）；前缀必须与 sheet 真实显示名完全一致（含大小写），不接受 sheet reference_id；支持跨 sheet；所有 range 应用同一组 style |
-| `--background-color` | string | optional | 背景颜色（十六进制，如 `#ffffff`） |
-| `--font-color` | string | optional | 字体颜色（十六进制，如 `#000000`） |
-| `--font-family` | string | optional | 字体名称（如 `Arial`、`微软雅黑`） |
-| `--font-size` | float64 | optional | 字体大小（px，例：10、12、14） |
-| `--font-style` | string | optional | 字体样式（可选值：`normal` / `italic`） |
-| `--font-weight` | string | optional | 字重（可选值：`normal` / `bold`） |
-| `--font-line` | string | optional | 字体线条样式（可选值：`none` / `underline` / `line-through`） |
-| `--horizontal-alignment` | string | optional | 水平对齐（可选值：`left` / `center` / `right`） |
-| `--vertical-alignment` | string | optional | 垂直对齐（可选值：`top` / `middle` / `bottom`） |
-| `--word-wrap` | string | optional | 换行策略（可选值：`overflow` / `auto-wrap` / `word-clip`） |
-| `--number-format` | string | optional | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
-| `--border-styles` | string + File + Stdin（复合 JSON） | optional | 边框配置 JSON（结构同 +cells-set-style） |
 
 ### `+dropdown-update`
 
@@ -111,16 +90,6 @@ _要批量执行的 CLI shortcut 操作列表，按声明顺序串行执行；�
 **数组项**（类型 object）：
 - `shortcut` (enum) — CLI shortcut 名（不是底层 MCP tool 名） [+cells-set / +cells-set-style / +cells-clear / +cells-merge / +cells-unmerge / +cells-replace / +csv-put / +dropdown-set / +dim-insert / +dim-delete / +dim-hide / +dim-unhide / +dim-freeze / +dim-group / +dim-ungroup / +rows-resize / +cols-resize / +range-move / +range-copy / +range-fill / +range-sort / +sheet-create / +sheet-delete / +sheet-rename / +sheet-move / +sheet-copy / +sheet-hide / +sheet-unhide / +sheet-set-tab-color / +sheet-show-gridline / +sheet-hide-gridline / +chart-create / +chart-update / +chart-delete / +pivot-create / +pivot-update / +pivot-delete / +cond-format-create / +cond-format-update / +cond-format-delete / +filter-create / +filter-update / +filter-delete / +filter-view-create / +filter-view-update / +filter-view-delete / +sparkline-create / +sparkline-update / +sparkline-delete / +float-image-create / +float-image-update / +float-image-delete]
 - `input` (object) — 该 shortcut 的入参集——含子表定位 sheet_id（或 sheet_name），但不含 spreadsheet token/url（后者只在顶层 …
-
-### `+cells-batch-set-style` `--border-styles`
-
-_单元格边框配置，含 top/bottom/left/right 四个方向，每个方向的结构相同（见 top）_
-
-**顶层字段**：
-- `top` (object?) { style?: enum, weight?: enum, color?: string }
-- `bottom` (object?) { style?: enum, weight?: enum, color?: string }
-- `left` (object?) { style?: enum, weight?: enum, color?: string }
-- `right` (object?) { style?: enum, weight?: enum, color?: string }
 
 ### `+dropdown-update` `--options`
 
@@ -165,10 +134,6 @@ lark-cli sheets +batch-update --url "https://example.feishu.cn/sheets/shtXXX" --
 >              "cells": [[{"value":"score"}], [{"value":95}], [{"value":87}], /* ... 97 more rows ... */ ]}}
 > ]
 > ```
-
-### `+cells-batch-set-style`
-
-已被 `+styles-put` 取代（后者一份规格同时覆盖样式 / 合并 / 行高列宽 / 冻结，见 `lark-sheets-styles-put`）；本命令暂保留兼容，新任务请直接用 `+styles-put`。
 
 ### `+cells-batch-clear`
 
