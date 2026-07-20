@@ -1,0 +1,27 @@
+skills/lark-vc/references/vc-domain-boundaries.md
+  s_72c5678393c9b5::t_5f5781a89387c6 33-34
+  s_72c5678393c9b5::t_115d0ac1d0712a 48-49
+  s_72c5678393c9b5::t_b2e897151ea65e 61-65
+skills/lark-vc/SKILL.md
+  s_72c5678393c9b5::t_76665acf61b15e 76
+  s_72c5678393c9b5::t_a1eee4a2cda4c7 68-69,74-75
+  s_72c5678393c9b5::t_682e97c6c1e123 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "14d71c04bf61a3df2c1bfa0f56b153fab51eb573",
+  "prompts": {},
+  "sessions": {
+    "s_72c5678393c9b5": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a5dc050f38380483a779791",
+        "model": "openrouter-3o__max"
+      },
+      "human_author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
