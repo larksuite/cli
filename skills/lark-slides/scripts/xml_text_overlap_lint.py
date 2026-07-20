@@ -168,8 +168,10 @@ def solve_weighted_min_layout(
     return {"final_sizes": final_sizes, "actual_size": sum_sizes(final_sizes), "ratio": ratio}
 
 
-def strip_xml(value: str) -> str:
+def strip_xml(value: str, preserve_line_breaks: bool = False) -> str:
     stripped = re.sub(r"<!\[CDATA\[([\s\S]*?)\]\]>", r"\1", value)
+    if preserve_line_breaks:
+        stripped = re.sub(r"<br\b[^>]*>", "\n", stripped)
     stripped = re.sub(r"<[^>]+>", " ", stripped)
     stripped = stripped.replace("&nbsp;", " ")
     stripped = stripped.replace("&amp;", "&")
@@ -177,14 +179,35 @@ def strip_xml(value: str) -> str:
     stripped = stripped.replace("&gt;", ">")
     stripped = stripped.replace("&quot;", '"')
     stripped = stripped.replace("&#39;", "'")
+    if preserve_line_breaks:
+        return "\n".join(re.sub(r"\s+", " ", line).strip() for line in stripped.split("\n"))
     return re.sub(r"\s+", " ", stripped).strip()
 
 
 def strip_xml_paragraphs(value: str) -> str:
     paragraphs = re.findall(r"<p\b[^>]*>([\s\S]*?)</p\s*>", value)
     if paragraphs:
-        return "\n".join(strip_xml(paragraph) for paragraph in paragraphs)
-    return strip_xml(value)
+        return "\n".join(strip_xml(paragraph, preserve_line_breaks=True) for paragraph in paragraphs)
+    return strip_xml(value, preserve_line_breaks=True)
+
+
+def extract_text_paragraphs(value: str) -> list[dict[str, str | None]]:
+    paragraphs = []
+    for attrs, body in re.findall(r"<p\b([^>]*)>([\s\S]*?)</p\s*>", value):
+        paragraphs.append(
+            {
+                "text": strip_xml(body, preserve_line_breaks=True),
+                "lineSpacing": extract_attribute(attrs, "lineSpacing"),
+                "beforeLineSpacing": extract_attribute(attrs, "beforeLineSpacing"),
+                "afterLineSpacing": extract_attribute(attrs, "afterLineSpacing"),
+            }
+        )
+    return paragraphs
+
+
+def extract_tag_attributes(value: str, tag: str) -> str:
+    match = re.search(fr"<{re.escape(tag)}\b([^>]*)>", value)
+    return match.group(1) if match else ""
 
 
 def xml_local_name(tag: str) -> str:
@@ -635,15 +658,24 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                     }
                 )
             if kind == "shape":
+                content_attrs = extract_tag_attributes(content, "content")
+                font_size = extract_numeric_attribute(content_attrs, "fontSize")
+                if font_size is None:
+                    font_size = extract_numeric_attribute(attrs, "fontSize")
                 element.update(
                     {
-                        "textType": extract_attribute(content, "textType"),
-                        "textAlign": extract_attribute(content, "textAlign"),
-                        "autoFit": extract_attribute(content, "autoFit"),
-                        "fontSize": float(
-                            extract_attribute(content, "fontSize") or extract_attribute(attrs, "fontSize") or 16
-                        ),
+                        "textType": extract_attribute(content_attrs, "textType"),
+                        "textAlign": extract_attribute(content_attrs, "textAlign"),
+                        "autoFit": extract_attribute(content_attrs, "autoFit"),
+                        "wrap": extract_attribute(content_attrs, "wrap"),
+                        "lineSpacing": extract_attribute(content_attrs, "lineSpacing"),
+                        "beforeLineSpacing": extract_attribute(content_attrs, "beforeLineSpacing"),
+                        "afterLineSpacing": extract_attribute(content_attrs, "afterLineSpacing"),
+                        "paddingTop": extract_numeric_attribute(content_attrs, "paddingTop") or 0,
+                        "paddingBottom": extract_numeric_attribute(content_attrs, "paddingBottom") or 0,
+                        "fontSize": font_size if font_size is not None else 16,
                         "text": strip_xml_paragraphs(content),
+                        "paragraphs": extract_text_paragraphs(content),
                     }
                 )
             elements.append(element)
@@ -708,14 +740,105 @@ def is_similar_text_overlay(left: dict[str, Any], right: dict[str, Any]) -> bool
     return SequenceMatcher(None, left_text, right_text).ratio() >= 0.75
 
 
-def estimate_text_line_count(element: dict[str, Any]) -> int:
+def estimate_text_line_count_for_text(element: dict[str, Any], text: str) -> int:
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
-    paragraphs = [paragraph for paragraph in re.split(r"\n+", element["text"]) if paragraph]
+    hard_lines = text.split("\n")
+    if not text:
+        return 0
     line_count = 0
-    for paragraph in paragraphs:
-        logical_width = max(estimate_text_width(paragraph, font_size), 1)
+    for hard_line in hard_lines:
+        if element.get("wrap") in {"false", "0"}:
+            line_count += 1
+            continue
+        logical_width = max(estimate_text_width(hard_line, font_size), 1)
         line_count += max(1, math.ceil(logical_width / max(element["width"], 1)))
-    return max(line_count, 1)
+    return line_count
+
+
+def estimate_text_line_count(element: dict[str, Any]) -> int:
+    return max(estimate_text_line_count_for_text(element, element["text"]), 1)
+
+
+def estimate_text_line_height(element: dict[str, Any], line_spacing: str | None = None) -> int | float | None:
+    font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    line_spacing = line_spacing or "multiple:1.5"
+    match = re.fullmatch(r"(multiple|fixed):([0-9]+(?:\.[0-9]+)?)", line_spacing)
+    if match is None:
+        return None
+    spacing_type, value = match.groups()
+    return font_size * float(value) if spacing_type == "multiple" else float(value)
+
+
+def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for element in elements:
+        if not is_text_element(element) or not has_text_content(element):
+            continue
+        if element.get("autoFit") in {"normal-auto-fit", "shape-auto-fit"}:
+            continue
+
+        font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+        paragraphs = element.get("paragraphs") or [
+            {
+                "text": element["text"],
+                "lineSpacing": None,
+                "beforeLineSpacing": None,
+                "afterLineSpacing": None,
+            }
+        ]
+        line_count = 0
+        estimated_height = 0.0
+        line_heights: list[int | float] = []
+        for paragraph in paragraphs:
+            paragraph_line_count = estimate_text_line_count_for_text(element, paragraph["text"])
+            if paragraph_line_count == 0:
+                continue
+            line_height = estimate_text_line_height(element, paragraph["lineSpacing"] or element["lineSpacing"])
+            before_spacing = estimate_text_line_height(
+                element, paragraph["beforeLineSpacing"] or element["beforeLineSpacing"] or "fixed:0"
+            )
+            after_spacing = estimate_text_line_height(
+                element, paragraph["afterLineSpacing"] or element["afterLineSpacing"] or "fixed:0"
+            )
+            if line_height is None or before_spacing is None or after_spacing is None:
+                line_count = 0
+                break
+            first_line_height = font_size if line_count == 0 else line_height
+            line_count += paragraph_line_count
+            line_heights.append(line_height)
+            estimated_height += (
+                before_spacing + first_line_height + max(paragraph_line_count - 1, 0) * line_height + after_spacing
+            )
+        if line_count == 0:
+            continue
+        available_height = max(element["height"] - element["paddingTop"] - element["paddingBottom"], 0)
+        overflow = estimated_height - available_height
+        if overflow <= 0:
+            continue
+
+        issues.append(
+            {
+                "level": "warning",
+                "code": "text_may_overflow_shape",
+                "elements": [element["id"]],
+                "line_count": line_count,
+                "line_height": max(line_heights),
+                "estimated_height": estimated_height,
+                "available_height": available_height,
+                "overflow": overflow,
+                "message": (
+                    f'text shape {element["id"]} may overflow its own content box '
+                    f'(estimated {estimated_height:g}px, available {available_height:g}px); '
+                    'consider setting content wrap="true" autoFit="normal-auto-fit"'
+                ),
+                "hint": (
+                    "Increase shape.height, reduce the text, or set content wrap=\"true\" "
+                    "autoFit=\"normal-auto-fit\". "
+                    "This is an estimate based on font size, line spacing, and wrapped line count."
+                ),
+            }
+        )
+    return issues
 
 
 def estimate_text_visual_bbox(element: dict[str, Any]) -> dict[str, int | float] | None:
@@ -1116,6 +1239,7 @@ def lint_slide(
         *detect_whiteboard_external_overlaps(elements, slide_width, slide_height),
         *detect_elements_out_of_canvas(elements, slide_width, slide_height),
         *detect_table_layout_size_mismatches(elements),
+        *detect_text_may_overflow_shapes(elements),
     ]
 
     for index, left in enumerate(elements):

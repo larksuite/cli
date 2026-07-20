@@ -523,6 +523,7 @@ class XmlTextOverlapLintTest(unittest.TestCase):
             """
         )
         self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["summary"]["warning_count"], 0)
         self.assertEqual(result["slides"][0]["issues"][0]["code"], "bbox_overlap")
 
     def test_lint_xml_detects_current_itinerary_cjk_caption_occlusion(self) -> None:
@@ -599,10 +600,28 @@ class XmlTextOverlapLintTest(unittest.TestCase):
             """
         )
         self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["summary"]["warning_count"], 0)
         self.assertEqual(result["slides"][0]["issues"][0]["code"], "bbox_overlap")
         self.assertEqual(result["slides"][0]["issues"][0]["elements"], ["source", "target"])
 
-    def test_lint_xml_reports_text_out_of_canvas_but_not_text_height(self) -> None:
+    def test_lint_xml_allows_horizontal_text_with_default_wrap(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="source" type="text" topLeftX="80" topLeftY="100" width="160" height="40">
+                  <content fontSize="18"><p>这是一个足够长的中文文本用于检测默认自动换行</p></content>
+                </shape>
+                <shape id="target" type="text" topLeftX="260" topLeftY="100" width="160" height="40">
+                  <content fontSize="18"><p>目标</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_reports_text_out_of_canvas_and_warns_for_text_height(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
@@ -621,9 +640,97 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         )
         issue = result["slides"][0]["issues"][0]
         self.assertEqual(result["summary"]["error_count"], 1)
-        self.assertEqual(result["summary"]["warning_count"], 0)
+        self.assertEqual(result["summary"]["warning_count"], 1)
         self.assertEqual(issue["code"], "shape_out_of_canvas")
         self.assertEqual(issue["overflow"], {"left": 0, "top": 0, "right": 160, "bottom": 40})
+
+    def test_lint_xml_warns_when_text_may_overflow_its_own_shape(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="overflowing" type="text" topLeftX="80" topLeftY="80" width="360" height="80">
+                  <content fontSize="20" lineSpacing="multiple:1.5">
+                    <p>第一段</p><p>第二段</p><p>第三段</p><p>第四段</p>
+                  </content>
+                </shape>
+                <shape id="fitting" type="text" topLeftX="480" topLeftY="80" width="360" height="120">
+                  <content fontSize="20" lineSpacing="multiple:1.5">
+                    <p>第一段</p><p>第二段</p><p>第三段</p><p>第四段</p>
+                  </content>
+                </shape>
+                <shape id="auto-fit" type="text" topLeftX="80" topLeftY="240" width="360" height="80">
+                  <content fontSize="20" lineSpacing="multiple:1.5" autoFit="normal-auto-fit">
+                    <p>第一段</p><p>第二段</p><p>第三段</p><p>第四段</p>
+                  </content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issues = result["slides"][0]["issues"]
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["summary"]["warning_count"], 1)
+        self.assertEqual(issues[0]["code"], "text_may_overflow_shape")
+        self.assertEqual(issues[0]["elements"], ["overflowing"])
+        self.assertEqual(issues[0]["line_count"], 4)
+        self.assertEqual(issues[0]["estimated_height"], 110)
+        self.assertEqual(issues[0]["available_height"], 80)
+        self.assertEqual(issues[0]["overflow"], 30)
+        self.assertIn('wrap="true" autoFit="normal-auto-fit"', issues[0]["message"])
+
+    def test_lint_xml_uses_fixed_line_spacing_for_text_height_warning(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="fixed-overflow" type="text" topLeftX="80" topLeftY="80" width="360" height="50">
+                  <content fontSize="20" lineSpacing="fixed:20">
+                    <p>第一段</p><p>第二段</p><p>第三段</p>
+                  </content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issue = result["slides"][0]["issues"][0]
+        self.assertEqual(result["summary"]["warning_count"], 1)
+        self.assertEqual(issue["line_height"], 20)
+        self.assertEqual(issue["estimated_height"], 60)
+        self.assertEqual(issue["overflow"], 10)
+
+    def test_lint_xml_uses_paragraph_spacing_overrides_for_text_height_warning(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="paragraph-overflow" type="text" topLeftX="80" topLeftY="80" width="360" height="35">
+                  <content fontSize="20" lineSpacing="multiple:1.5">
+                    <p lineSpacing="fixed:10" beforeLineSpacing="fixed:5" afterLineSpacing="fixed:5">第一行<br/>第二行</p>
+                  </content>
+                </shape>
+                <shape id="paragraph-fitting" type="text" topLeftX="480" topLeftY="80" width="360" height="40">
+                  <content fontSize="20" lineSpacing="multiple:1.5">
+                    <p lineSpacing="fixed:10">第一行<br/>第二行<br/>第三行</p>
+                  </content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issues = result["slides"][0]["issues"]
+        self.assertEqual(result["summary"]["warning_count"], 1)
+        self.assertEqual(issues[0]["elements"], ["paragraph-overflow"])
+        self.assertEqual(issues[0]["line_count"], 2)
+        self.assertEqual(issues[0]["line_height"], 10)
+        self.assertEqual(issues[0]["estimated_height"], 40)
+        self.assertEqual(issues[0]["overflow"], 5)
+
+    def test_strip_xml_paragraphs_preserves_br_as_hard_line_break(self) -> None:
+        self.assertEqual(
+            xml_text_overlap_lint.strip_xml_paragraphs("<p>第一行<br/>第二行<br />第三行</p>"),
+            "第一行\n第二行\n第三行",
+        )
 
     def test_lint_xml_allows_template_style_bleed_and_text_over_images(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
