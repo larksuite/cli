@@ -1,0 +1,31 @@
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_9e76e5dd86affc::t_7fb72a3d4b2ca6 5-8,10,777-1039
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_e443e5ad52bd5a::t_5ef6346f62edb7 41-43,94-171,593,599-600,609-619,631-638,1012-1102,1106-1107,1109,1112,1138,1150,1154-1159,1172-1173,1177-1182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2c32381b391021c9949b54caeca7e66879130602",
+  "prompts": {},
+  "sessions": {
+    "s_9e76e5dd86affc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6ef7-4550-7283-96fc-729b03db8ce5",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_e443e5ad52bd5a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6e3d-b276-71c2-967b-534e96cd1a5f",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,28 @@
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_e8bc9dd810ef53::t_45cf0b579a2c71 694,709,723-760,762
+  s_e8bc9dd810ef53::t_87ee12d3d964ed 761
+  s_e8bc9dd810ef53::t_b1c26e49c5f5d3 763-765
+  s_e8bc9dd810ef53::t_e692b1d74c1e09 604,621-622,624-625,680,766-768
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_e8bc9dd810ef53::t_bfe94560dd136b 991,995-1001,1003-1006,1016-1017,1019,1022,1028-1029,1114
+  s_e8bc9dd810ef53::t_1b5dcfdae16190 988-990
+  s_e8bc9dd810ef53::t_215f7a45946cde 608,626,968-987
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "41c89fba7034f9a5bc8b6eb117f62cc8a2626706",
+  "prompts": {},
+  "sessions": {
+    "s_e8bc9dd810ef53": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f763b-f580-7663-a085-5137fda7087b",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
