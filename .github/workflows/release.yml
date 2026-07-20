@@ -41,13 +41,11 @@ jobs:
             exit 1
           fi
 
-  publish-release:
+  build-release:
     needs: preflight
     runs-on: ubuntu-22.04
-    environment: npm-production
     permissions:
       contents: write
-      id-token: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -83,5 +81,63 @@ jobs:
           test -s dist/checksums.txt
           cp dist/checksums.txt checksums.txt
 
+      - name: Pack npm tarball
+        id: pack
+        run: |
+          set -euo pipefail
+          PACK_JSON="$(npm pack --ignore-scripts --json)"
+          PACK_FILE="$(node -e 'const p=JSON.parse(process.argv[1]); if(p.length!==1 || !p[0].filename) process.exit(1); process.stdout.write(p[0].filename)' "$PACK_JSON")"
+          test -s "$PACK_FILE"
+          tar -tzf "$PACK_FILE" | grep -qx 'package/checksums.txt'
+          echo "filename=$PACK_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Collect npm publish asset
+        env:
+          PACK_FILE: ${{ steps.pack.outputs.filename }}
+        run: |
+          set -euo pipefail
+          mkdir npm-publish-asset
+          cp dist/*.tar.gz dist/*.zip dist/checksums.txt "$PACK_FILE" npm-publish-asset/
+
+      - name: Upload npm publish asset
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-publish-asset-${{ github.run_id }}
+          path: npm-publish-asset/
+          if-no-files-found: error
+          overwrite: true
+
+  publish-npm:
+    needs: build-release
+    runs-on: ubuntu-22.04
+    environment: npm-production
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install pinned npm
+        run: npm install --global npm@11.16.0
+
+      - name: Download npm publish asset
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: npm-publish-asset-${{ github.run_id }}
+          path: npm-publish-asset
+
+      - name: Verify npm publish asset
+        id: asset
+        run: |
+          set -euo pipefail
+          (cd npm-publish-asset && sha256sum --check checksums.txt)
+          PACK_FILE="$(find npm-publish-asset -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          test -n "$PACK_FILE"
+          test -s "$PACK_FILE"
+          tar -tzf "$PACK_FILE" | grep -qx 'package/checksums.txt'
+          echo "filename=$PACK_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish "${{ steps.asset.outputs.filename }}" --access public
