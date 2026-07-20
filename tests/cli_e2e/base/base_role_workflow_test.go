@@ -111,14 +111,23 @@ func TestBase_RoleWorkflow(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
-		getResult, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"base", "+role-get", "--base-token", baseToken, "--role-id", roleID},
-			DefaultAs: "bot",
-		})
-		require.NoError(t, err)
+		var getResult *clie2e.Result
+		require.Eventually(t, func() bool {
+			var getErr error
+			getResult, getErr = clie2e.RunCmd(ctx, clie2e.Request{
+				Args:      []string{"base", "+role-get", "--base-token", baseToken, "--role-id", roleID},
+				DefaultAs: "bot",
+			})
+			if getErr != nil || getResult == nil || getResult.ExitCode != 0 {
+				return false
+			}
+
+			rolePayload := gjson.Get(getResult.Stdout, "data.data").String()
+			return gjson.Valid(rolePayload) && gjson.Get(rolePayload, "role_name").String() == updatedRoleName
+		}, 15*time.Second, time.Second, "updated role name was not visible before timeout")
+
 		getResult.AssertExitCode(t, 0)
 		getResult.AssertStdoutStatus(t, true)
-
 		rolePayload := gjson.Get(getResult.Stdout, "data.data").String()
 		require.NotEmpty(t, rolePayload, "stdout:\n%s", getResult.Stdout)
 		require.True(t, gjson.Valid(rolePayload), "stdout:\n%s", getResult.Stdout)
