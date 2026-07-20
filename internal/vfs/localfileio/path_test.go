@@ -175,7 +175,7 @@ func TestSafeOutputPath_DeepNonExistentPathStaysInCWD(t *testing.T) {
 	}
 }
 
-func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
+func TestSafeUploadPath_RejectsTempFileAbsolutePath(t *testing.T) {
 	// GIVEN: a real temp file (absolute path under os.TempDir())
 	f, err := os.CreateTemp("", "upload-test-*.bin")
 	if err != nil {
@@ -185,13 +185,65 @@ func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 	f.Close()
 	t.Cleanup(func() { os.Remove(tmpPath) })
 
-	// WHEN: SafeUploadPath validates the absolute temp path
+	// WHEN: SafeInputPath validates the absolute temp path
 	_, err = SafeInputPath(tmpPath)
 
-	// THEN: absolute paths are rejected even in temp dir
+	// THEN: the strict validator rejects it — uploads / drive sync rely on
+	// relative-only; temp-dir reads go through SafeTempAbsInputPath instead
 	if err == nil {
 		t.Fatal("expected error for absolute temp path, got nil")
 	}
+}
+
+func TestSafeTempAbsInputPath(t *testing.T) {
+	t.Run("accepts a file under the temp dir", func(t *testing.T) {
+		f, err := os.CreateTemp("", "payload-*.json")
+		if err != nil {
+			t.Fatalf("CreateTemp: %v", err)
+		}
+		tmpPath := f.Name()
+		f.Close()
+		t.Cleanup(func() { os.Remove(tmpPath) })
+
+		resolved, err := SafeTempAbsInputPath(tmpPath)
+		if err != nil {
+			t.Fatalf("expected temp path accepted, got %v", err)
+		}
+		canonical, err := filepath.EvalSymlinks(tmpPath)
+		if err != nil {
+			t.Fatalf("EvalSymlinks: %v", err)
+		}
+		if resolved != canonical {
+			t.Fatalf("resolved = %q, want %q", resolved, canonical)
+		}
+	})
+
+	t.Run("rejects relative paths", func(t *testing.T) {
+		if _, err := SafeTempAbsInputPath("./ops.json"); err == nil {
+			t.Fatal("expected error for relative path, got nil")
+		}
+	})
+
+	t.Run("rejects absolute paths outside the temp dir", func(t *testing.T) {
+		if _, err := SafeTempAbsInputPath("/etc/passwd"); err == nil {
+			t.Fatal("expected error for non-temp absolute path, got nil")
+		}
+	})
+
+	t.Run("rejects a temp-dir symlink escaping outside", func(t *testing.T) {
+		dir, err := os.MkdirTemp("", "escape-*")
+		if err != nil {
+			t.Fatalf("MkdirTemp: %v", err)
+		}
+		t.Cleanup(func() { os.RemoveAll(dir) })
+		link := filepath.Join(dir, "escape.json")
+		if err := os.Symlink("/etc/passwd", link); err != nil {
+			t.Skipf("symlink not supported: %v", err)
+		}
+		if _, err := SafeTempAbsInputPath(link); err == nil {
+			t.Fatal("expected error for symlink escaping the temp dir, got nil")
+		}
+	})
 }
 
 func TestSafeUploadPath_RejectsNonTempAbsolutePath(t *testing.T) {

@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/validate"
 )
 
 // ResolveInput resolves special input conventions for a raw flag value:
@@ -77,7 +80,25 @@ func ResolveInput(raw string, stdin io.Reader, fileIO fileio.FileIO) (string, er
 
 // ReadInputFile reads path through fileIO. Open/read failures are wrapped with
 // path context; fileio.ErrPathValidation remains matchable with errors.Is.
+// An absolute path under the system temp dir is read directly instead:
+// agents stage generated payloads (@/tmp/ops.json) there as a matter of
+// course, and the strict relative-to-cwd policy — load-bearing for uploads
+// and drive sync — only cost @file callers a python/stdin detour.
 func ReadInputFile(fileIO fileio.FileIO, path string) ([]byte, error) {
+	resolved, terr := validate.SafeTempAbsInputPath(path)
+	if terr == nil {
+		data, err := os.ReadFile(resolved) //nolint:forbidigo // resolved is confined to the system temp dir by SafeTempAbsInputPath
+		if err != nil {
+			return nil, wrapInputFileError(path, err)
+		}
+		return data, nil
+	}
+	if filepath.IsAbs(path) {
+		// Absolute but outside the temp dir: surface the prescriptive error
+		// (relative path / temp-dir path / stdin) instead of the generic
+		// relative-only message the strict validator below would produce.
+		return nil, fmt.Errorf("invalid file path %q: %w", path, terr)
+	}
 	if fileIO == nil {
 		return nil, fmt.Errorf("file input is not available in this context")
 	}
