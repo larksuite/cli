@@ -53,10 +53,10 @@ lark-cli whiteboard +query \
 
 ```bash
 # 渲染 PNG 预览
-npx -y @larksuite/whiteboard-cli@^0.2.12 -i <dir>/edited.svg -o <dir>/edited.png -f svg
+npx -y @larksuite/whiteboard-cli@^0.2.13 -i <dir>/edited.svg -o <dir>/edited.png -f svg
 
 # 几何检查（text-overflow / node-overlap）
-npx -y @larksuite/whiteboard-cli@^0.2.12 -i <dir>/edited.svg -f svg --check
+npx -y @larksuite/whiteboard-cli@^0.2.13 -i <dir>/edited.svg -f svg --check
 ```
 
 结合 PNG 视觉效果和 `--check` 报告进行调整，有问题则修改 SVG 后重新渲染（最多 2 轮）。
