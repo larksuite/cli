@@ -4,6 +4,8 @@
 
 通过表单分享链接填写并提交多维表格表单。仅支持分享模式（share_token），支持填写普通字段值和上传本地文件作为附件。
 
+> **⚠️ 高风险写操作（high-risk-write）：** 本命令会向表单写入并提交数据，属于高风险写操作，必须额外传递 `--yes` 进行确认，否则会返回 `confirmation_required` 错误并退出。当用户明确要求提交且目标表单无歧义时，直接附加 `--yes`，无需再次询问。
+
 ## 填写前必读：先获取表单详情
 
 **在调用 `+form-submit` 之前，必须先使用 `+form-detail` 获取表单详情。** 原因如下：
@@ -21,10 +23,11 @@ lark-cli base +form-detail --share-token <share_token>
 
 # 2️⃣ 根据返回的 questions 列表，按 type 格式化值、检查 required、判断 filter 条件
 
-# 3️⃣ 再提交
+# 3️⃣ 再提交（高风险写操作，必须带 --yes）
 lark-cli base +form-submit \
   --share-token <share_token> \
-  --json '{"fields":{...}}'
+  --json '{"fields":{...}}' \
+  --yes
 ```
 
 `+form-detail` 的返回中要重点读取 `questions[].type`、`questions[].required`、题目 `filter` 和附件场景所需的 `data.base_token`。
@@ -35,7 +38,8 @@ lark-cli base +form-submit \
 # 基本提交（填写普通字段）
 lark-cli base +form-submit \
   --share-token <share_token> \
-  --json '{"fields":{"服务评分":5,"评价内容":"服务态度好"}}'
+  --json '{"fields":{"服务评分":5,"评价内容":"服务态度好"}}' \
+  --yes
 
 # 带附件提交（需要额外提供 --base-token）
 lark-cli base +form-submit \
@@ -47,15 +51,17 @@ lark-cli base +form-submit \
       "附件字段名": ["./report.pdf", "./photo.png"],
       "另一个附件字段": ["./doc.docx"]
     }
-  }'
+  }' \
+  --yes
 
 # 使用应用身份（bot）
 lark-cli base +form-submit \
   --share-token <share_token> \
   --json '{"fields":{...}}' \
-  --as bot
+  --as bot \
+  --yes
 
-# 预览 API 调用（不实际执行）
+# 预览 API 调用（不实际执行，dry-run 无需 --yes）
 lark-cli base +form-submit \
   --share-token <share_token> \
   --json '{"fields":{...}}' \
@@ -69,6 +75,7 @@ lark-cli base +form-submit \
 | `--share-token <token>` | 是 | 表单分享 Token（必填），从表单分享链接中提取 |
 | `--base-token <token>` | 条件必填 | Base token；**当 `--json` 包含 `attachments` 时必须提供**，用于将附件上传到 Base Drive Media |
 | `--json <json>` | 是 | JSON 对象，包含 `"fields"`（普通字段值）和 `"attachments"`（附件上传），详见下方说明 |
+| `--yes` | 是 | 确认高风险写操作。本命令为 high-risk-write，不带 `--yes` 会返回 `confirmation_required` |
 | `--format` | 否 | 输出格式：json（默认）\| pretty \| table \| ndjson \| csv |
 | `--as` | 否 | 身份：user（默认）\| bot |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
@@ -138,7 +145,8 @@ https://www.example.com/share/base/form/shrbcvST8eZy0vk8zjVZ1CAXNye
 ```bash
 lark-cli base +form-submit \
   --share-token shrbcvST8eZy0vk8zjVZ1CAXNye \
-  --json '{"fields":{...}}'
+  --json '{"fields":{...}}' \
+  --yes
 ```
 
 ## 输出格式
@@ -158,6 +166,7 @@ lark-cli base +form-submit \
 
 ## 提示
 
+- **本命令为高风险写操作（high-risk-write），必须额外传递 `--yes` 确认**，否则返回 `confirmation_required` 并以非零码退出；`--dry-run` 预览除外
 - 本命令仅支持通过表单分享链接（share_token）提交，不支持通过 base_token + table_id + view_id 方式提交
 - **当 `--json` 包含 `attachments` 时，必须额外提供 `--base-token`**，因为附件上传到 Base Drive Media 需要指定目标 Base
 - 附件字段只需在 `--json.attachments` 中提供本地路径即可，CLI 自动完成校验、并行上传、Token 获取和合并写入

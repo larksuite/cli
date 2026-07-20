@@ -108,14 +108,14 @@ metadata:
 - 附件上传、下载、删除走专用 `+record-*-attachment` 命令。
 - 写字段前先读 [lark-base-field-json.md](references/lark-base-field-json.md)；涉及 `formula` / `lookup` 时必须读 [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)。
 - 表名、字段名、视图名、workflow 配置中的名称必须来自真实返回；跨表场景还要读取目标表结构。
-- 删除、角色更新、字段更新等高风险操作遵循 CLI 的 confirmation gate；目标不明确时先用 get/list 消歧。
+- 删除、角色更新、字段更新、表单提交（`+form-submit`）等高风险操作遵循 CLI 的 confirmation gate，必须带 `--yes`；目标不明确时先用 get/list 消歧。
 - 批量写入单批最多 200 条；连续写同一表时串行执行，遇到 `1254291` 按短暂等待后重试处理。
 - `+record-batch-update` 是“同值批量更新”：同一份 patch 应用到全部 `record_id_list`，不要拿它做逐行不同值映射。
 - select/multiselect 写入未知选项可能触发平台新增选项；不是要新增时，先用 `+field-list` 或 `+field-search-options` 确认可选值。
 
 ## 表单与视图细节
 
-- `+form-submit` 前必须先跑 `+form-detail`，读取 `questions[].type`、`required`、`filter` 和附件场景需要的 `base_token`；不要填写被 filter 隐藏的问题。
+- `+form-submit` 是高风险写操作，必须带 `--yes` 确认；调用前必须先跑 `+form-detail`，读取 `questions[].type`、`required`、`filter` 和附件场景需要的 `base_token`；不要填写被 filter 隐藏的问题。
 - 表单附件不要写进 `fields`，放在 `--json.attachments`；提交附件时必须同时传表单所属 Base 的 `--base-token`。
 - `+view-set-filter` 是唯一保留的 view reference；sort/group/card/timebar/visible-fields 这类配置先用对应 get 命令读现状，保留未修改字段，只替换用户要求变更的配置。
 - 视图适合持久化、共享和 UI 复用；一次性筛选/排序可先用 `+record-list` / `+record-search` 的 filter/sort 验证结果，再按需要沉淀为持久视图。

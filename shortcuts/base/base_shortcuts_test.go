@@ -1937,8 +1937,8 @@ func TestBaseFormSubmitShortcut(t *testing.T) {
 		if s.Service != "base" {
 			t.Fatalf("Service=%q want base", s.Service)
 		}
-		if s.Risk != "write" {
-			t.Fatalf("Risk=%q want write", s.Risk)
+		if s.Risk != "high-risk-write" {
+			t.Fatalf("Risk=%q want high-risk-write", s.Risk)
 		}
 		if !s.HasFormat {
 			t.Fatal("HasFormat should be true")
@@ -2238,6 +2238,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"+form-submit",
 			"--share-token", "shr_exec1",
 			"--json", `{"fields":{"Name":"Alice","Rating":5}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2306,6 +2307,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"--share-token", "shr_exec6",
 			"--base-token", "bas_exec6",
 			"--json", `{"attachments":{"File":["./nonexistent.pdf"]}}`,
+			"--yes",
 		}
 		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
 		if err == nil {
@@ -2354,6 +2356,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"--share-token", "shr_dedup",
 			"--base-token", "bas_dedup",
 			"--json", `{"attachments":{"FieldA":["./shared.pdf"],"FieldB":["./shared.pdf"]}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2363,6 +2366,33 @@ func TestExecuteFormSubmit(t *testing.T) {
 			t.Fatalf("stdout should contain record, got: %s", got)
 		}
 	})
+}
+
+// TestFormSubmitRequiresConfirmation pins the high-risk-write classification:
+// without --yes the runner's confirmation gate must fire before Execute runs,
+// returning a typed confirmation_required error and touching no API.
+func TestFormSubmitRequiresConfirmation(t *testing.T) {
+	if BaseFormSubmit.Risk != "high-risk-write" {
+		t.Fatalf("Risk=%q want high-risk-write", BaseFormSubmit.Risk)
+	}
+
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{
+		"+form-submit",
+		"--share-token", "shr_confirm",
+		"--json", `{"fields":{"Rating":5}}`,
+	}
+	err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
+	if err == nil {
+		t.Fatal("expected confirmation_required error without --yes")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Subtype != errs.SubtypeConfirmationRequired {
+		t.Fatalf("subtype=%q want %q", problem.Subtype, errs.SubtypeConfirmationRequired)
+	}
 }
 
 func TestUploadAttachmentsParallel(t *testing.T) {
@@ -2401,6 +2431,7 @@ func TestUploadAttachmentsParallel(t *testing.T) {
 			"--share-token", "shr_para1",
 			"--base-token", "bas_para1",
 			"--json", `{"attachments":{"Doc":["./doc.txt"]}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2435,6 +2466,7 @@ func TestUploadAttachmentsParallel(t *testing.T) {
 			"--share-token", "shr_err",
 			"--base-token", "bas_err",
 			"--json", `{"attachments":{"Bad":["./bad.txt"]}}`,
+			"--yes",
 		}
 		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
 		if err == nil {
