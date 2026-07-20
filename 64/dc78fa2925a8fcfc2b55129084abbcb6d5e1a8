@@ -1,0 +1,36 @@
+skills/lark-vc-agent/references/lark-vc-agent-meeting-message-send.md
+  s_fc59d61a5ee39d::t_af1164a8b7e1d0 14-15
+shortcuts/vc/vc_detail.go
+  s_fc59d61a5ee39d::t_4a94d654568040 159
+  s_fc59d61a5ee39d::t_3d0832d603a3ed 82-101,104-117,130-158
+skills/lark-vc-agent/SKILL.md
+  h_28e3eba6e3c972 95
+shortcuts/vc/vc_detail_test.go
+  s_fc59d61a5ee39d::t_e09198a0bbfe3c 277,283-320,322-323
+  s_fc59d61a5ee39d::t_37f56f8c8c5c51 278-282
+  s_fc59d61a5ee39d::t_2715986530b12b 272-276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "64dc78fa2925a8fcfc2b55129084abbcb6d5e1a8",
+  "prompts": {},
+  "humans": {
+    "h_28e3eba6e3c972": {
+      "author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_fc59d61a5ee39d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a5849223bee4a9816a10b11",
+        "model": "openrouter-3o__max",
+        "display_model_name": "openrouter-3o"
+      },
+      "human_author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

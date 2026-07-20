@@ -1,0 +1,47 @@
+skills/lark-slides/SKILL.md
+  s_92773c8ab668c9::t_a92cae70bb7a0c 23,40,44-45,138-139,143,153,158,183,195-196,198-199
+shortcuts/slides/slides_create.go
+  s_13b47bd4c186e0::t_b9281cfa566a06 41,191
+skills/lark-slides/references/lark-slides-create.md
+  s_13b47bd4c186e0::t_ea520af13f2b49 12,14,17-20,22-23,26,28,30,35-46,59
+skills/lark-slides/references/validation-checklist.md
+  s_92773c8ab668c9::t_23cab061ee9b44 65-76
+shortcuts/slides/slides_create_test.go
+  s_13b47bd4c186e0::t_f10ad1f436fc63 420-422,444-447,459,461,464-465,467-468,506-544
+skills/lark-slides/references/lark-slides-edit-workflows.md
+  s_5ba6de959139cf::t_1f53ffa23bef6b 3,5,7,9-14,16,18-22,28,32,38,40-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "10d8a9ba90298451e365fd8a5579469b5d9f05db",
+  "prompts": {},
+  "sessions": {
+    "s_13b47bd4c186e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6afd-f049-7d21-add5-23143ab8b3fb",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_5ba6de959139cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6b17-d17c-7a63-ab09-295fd43da88d",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_92773c8ab668c9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f65a0-a0a4-76f1-9687-b547b65e639f",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

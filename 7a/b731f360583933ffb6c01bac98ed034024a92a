@@ -1,0 +1,27 @@
+shortcuts/slides/slides_create.go
+  s_22584c6aa16591::t_51a318fc6e5752 157-159,188,201-202,205-211,216-218
+shortcuts/slides/slides_create_test.go
+  s_22584c6aa16591::t_e3c46d7a699520 354-403
+shortcuts/slides/slides_replace_pages.go
+  s_22584c6aa16591::t_1b5c3c9d909fce 142,334-336,396-398
+shortcuts/slides/slides_replace_pages_test.go
+  s_22584c6aa16591::t_d8a70e2d9e6e35 45,126-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7ab731f360583933ffb6c01bac98ed034024a92a",
+  "prompts": {},
+  "sessions": {
+    "s_22584c6aa16591": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6f5e-a7c8-7601-ab4f-6b58abbcba5a",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
