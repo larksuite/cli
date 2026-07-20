@@ -70,7 +70,7 @@ func fetchMinuteDetail(ctx context.Context, runtime *common.RuntimeContext, minu
 		if isMinutesDetailProcessingError(err) {
 			markMinutesDetailProcessing(result, minuteToken, artifactFlags, "minute metadata is still being generated")
 		} else if p, ok := errs.ProblemOf(err); ok && p.Code == minutesDetailNoReadPermissionCode {
-			result.Error = fmt.Sprintf("No read permission for minute %s. Ask the minute owner for minute file read permission", minuteToken)
+			result.Error = fmt.Sprintf("No read permission for minute %s. Ask the user before running: minutes +apply-permission --minute-token %s --perm view", minuteToken, minuteToken)
 		} else {
 			result.Error = fmt.Sprintf("failed to query minute: %v", err)
 		}

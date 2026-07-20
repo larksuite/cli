@@ -12,7 +12,7 @@
 4. 写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`。
 5. 读取 `xml-schema-quick-ref.md`、`visual-planning.md` 和 `asset-planning.md`。
 6. 按 plan、visual planning 和 asset planning 规则逐页生成 XML，把 `layout_type`、`visual_focus`、`text_density` 转成具体页面几何和文本量约束，并把缺失素材转成可执行兜底视觉。
-7. 创建 PPT 后用 `xml_presentations.get` 回读，核对页面数量、关键元素和 plan 到 XML 的对应关系。
+7. 创建 PPT 后用 `slides +xml-get` 回读，核对页面数量、关键元素和 plan 到 XML 的对应关系。
 
 ## Plan Path
 

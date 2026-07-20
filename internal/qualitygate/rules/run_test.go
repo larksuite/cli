@@ -203,7 +203,8 @@ func TestRunCollectsPublicContentFindingsIntoDiagnosticsAndFacts(t *testing.T) {
 	if err := vfs.MkdirAll(filepath.Join(repo, "docs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	publicDoc := "api_" + "key = \"example-public-key\"\n" +
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	publicDoc := "api_" + "key = \"" + providerValue + "\"\n" +
 		"Public docs describe a pri" + "vate request header and trust classification detail.\n"
 	if err := vfs.WriteFile(filepath.Join(repo, "docs", "public.md"), []byte(publicDoc), 0o644); err != nil {
 		t.Fatal(err)

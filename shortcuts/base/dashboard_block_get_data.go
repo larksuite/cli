@@ -20,6 +20,7 @@ var BaseDashboardBlockGetData = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		blockIDFlag(true),
+		{Name: "dashboard-id", Desc: "hidden compatibility flag accepted by dashboard block commands; ignored by get-data", Hidden: true},
 	},
 	Tips: []string{
 		"lark-cli base +dashboard-block-get-data --base-token <base_token> --block-id <block_id>",

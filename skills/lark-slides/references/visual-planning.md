@@ -2,7 +2,7 @@
 
 新建演示文稿或大幅改写页面时，在 `slide_plan.json` 完成后、生成 XML 前读取本文件。目标是让 `layout_type`、`visual_focus`、`text_density` 变成实际页面几何，而不是只写在 plan 里。
 
-默认画布按 `960 x 540` 规划。已有页面回读 XML 可以影响具体坐标，但不能覆盖这些原则：页面要有主视觉区域、文本要受密度约束、不同 `layout_type` 必须产生明显不同的坐标结构。
+默认画布按 `960 x 540` 规划。模板 XML 可以覆盖具体坐标，但不能覆盖这些原则：页面要有主视觉区域、文本要受密度约束、不同 `layout_type` 必须产生明显不同的坐标结构。
 
 ## Core Rules
 
@@ -131,6 +131,7 @@ Purpose: make one metric or fact memorable.
 
 Geometry:
 - Reserve the largest object for the metric: font size often `64-110`, region at least `300 x 120`.
+- Set `autoFit="normal-auto-fit"` on the metric's `<content>` so an oversized number shrinks to fit its box instead of overflowing.
 - Pair the number with one explanation and optional 2-3 small supporting labels.
 - Do not bury the number in a bullet list or small card.
 
@@ -168,7 +169,7 @@ Text:
 
 Purpose: explain components, dependencies, or system flow.
 
-Implementation: prefer `<whiteboard>` (see `lark-slides-whiteboard.md`); use `<shape>` + `<line>` only as fallback.
+Implementation: prefer Mermaid `<whiteboard>` (see `lark-slides-whiteboard.md`); use `<shape>` + `<line>` as fallback.
 
 Geometry:
 - Main visual area should be a diagram, not prose.
@@ -184,7 +185,7 @@ Text:
 
 Purpose: show operational steps, workflow, or cause-effect path.
 
-Implementation: prefer `<whiteboard>` (see `lark-slides-whiteboard.md`); use `<shape>` + `<line>` only as fallback.
+Implementation: prefer Mermaid `<whiteboard>` (see `lark-slides-whiteboard.md`); use `<shape>` + `<line>` as fallback.
 
 Geometry:
 - Use numbered steps connected by arrows or lines.

@@ -27,6 +27,7 @@ import (
 // validates the full flow including the async poll and that the resulting
 // token is a usable sheet token.
 func TestSheets_WorkbookImportWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)

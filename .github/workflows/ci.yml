@@ -1,4 +1,5 @@
 name: CI
+run-name: ${{ github.event_name == 'pull_request' && format('CI / {0}', github.event.pull_request.number) || '' }}
 
 on:
   push:
@@ -7,6 +8,12 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
+
+# PR metadata edits can retrigger full CI for the same head. Keep only the
+# newest run for a pull request; push and manual runs use a unique run ID.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -46,6 +53,34 @@ jobs:
             git diff go.mod go.sum
             exit 1
           fi
+
+  plugin-integration:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      # No fetch_meta: the git-archive clean tree must embed only the
+      # committed meta_data stub (reproduces the bare-module customer state).
+      - name: Run plugin-integration L4 tests
+        run: go test -count=1 -timeout=15m ./tests/plugin_e2e/...
+
+  sidecar-integration:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Run sidecar tag build + HMAC round-trip
+        run: make sidecar-test
 
   # ── Layer 2: Quality Gate ──────────────────────────────────────────
   unit-test:
@@ -176,7 +211,11 @@ jobs:
         run: python3 scripts/fetch_meta.py
       - name: Run tests with coverage
         run: |
-          packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '^github.com/larksuite/cli/tests/cli_e2e/')
+          # tests/ holds only L3/L4 suites (cli_e2e, plugin_e2e, sidecar_e2e) that
+          # have dedicated jobs; exclude the whole subtree so none of them runs a
+          # second time here — and, crucially, so an observe-only suite's failure
+          # can never block merges through coverage's spot in the results loop.
+          packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/')
           go test -race -coverprofile=coverage.txt -covermode=atomic $packages
       - name: Upload coverage to Codecov
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
@@ -263,6 +302,11 @@ jobs:
   e2e-dry-run:
     needs: [unit-test, lint, script-test, deterministic-gate]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      mode: ${{ steps.e2e_domains.outputs.mode }}
+      reason: ${{ steps.e2e_domains.outputs.reason }}
+      live_packages: ${{ steps.e2e_domains.outputs.live_packages }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -276,6 +320,23 @@ jobs:
       - name: Resolve CLI E2E domains
         id: e2e_domains
         run: node scripts/e2e_domains.js
+      - name: Validate CLI E2E domain outputs
+        env:
+          E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
+          E2E_LIVE_PACKAGES: ${{ steps.e2e_domains.outputs.live_packages }}
+        run: |
+          case "$E2E_MODE" in
+            skip)
+              [ -z "$E2E_LIVE_PACKAGES" ] || { echo "::error::Skip mode must not resolve live packages"; exit 1; }
+              ;;
+            full|subset)
+              [ -n "$E2E_LIVE_PACKAGES" ] || { echo "::error::No live packages resolved for mode $E2E_MODE"; exit 1; }
+              ;;
+            *)
+              echo "::error::Invalid CLI E2E mode: $E2E_MODE"
+              exit 1
+              ;;
+          esac
       - name: Build lark-cli
         if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: make build
@@ -309,16 +370,22 @@ jobs:
           fi
 
   e2e-live:
-    needs: [unit-test, lint, script-test, deterministic-gate]
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+    needs: [unit-test, lint, script-test, deterministic-gate, e2e-dry-run]
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) && needs.unit-test.result == 'success' && needs.lint.result == 'success' && needs.script-test.result == 'success' && needs.deterministic-gate.result == 'success' && needs.e2e-dry-run.result == 'success' && (needs.e2e-dry-run.outputs.mode == 'full' || needs.e2e-dry-run.outputs.mode == 'subset') && needs.e2e-dry-run.outputs.live_packages != '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Live E2E uses one repository-wide execution slot.
+    concurrency:
+      group: lark-cli-e2e-live
+      cancel-in-progress: false
+      queue: max
     permissions:
+      actions: read
       contents: read
       checks: write
     env:
       TEST_BOT1_APP_ID: ${{ secrets.TEST_BOT1_APP_ID }}
-      TEST_BOT1_APP_SECRET: ${{ secrets.TEST_BOT1_APP_SECRET }}
-      TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
+      LARKSUITE_CLI_BRAND: feishu
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -329,31 +396,68 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
-      - name: Resolve CLI E2E domains
-        id: e2e_domains
-        run: node scripts/e2e_domains.js
       - name: Build lark-cli
-        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
+        id: build_cli
         run: make build
-      - name: Configure bot credentials
-        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
+      - name: Prepare shared live E2E tenant token
+        id: live_e2e_tat
+        env:
+          LARKSUITE_CLI_APP_ID: ${{ secrets.TEST_BOT1_APP_ID }}
+          TEST_BOT1_APP_SECRET: ${{ secrets.TEST_BOT1_APP_SECRET }}
+        run: node scripts/fetch_e2e_tat.js
+      - name: Run CLI E2E tests
+        # Keep an active Go test alive so t.Cleanup can finish. A queued stale
+        # run is rejected below before it can start live E2E.
+        if: ${{ always() && steps.build_cli.outcome == 'success' && steps.live_e2e_tat.outcome == 'success' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_GENERATION: ${{ github.event_name == 'pull_request' && format('CI / {0}', github.event.pull_request.number) || '' }}
+          LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
+          E2E_MODE: ${{ needs.e2e-dry-run.outputs.mode }}
+          E2E_REASON: ${{ needs.e2e-dry-run.outputs.reason }}
+          E2E_LIVE_PACKAGES: ${{ needs.e2e-dry-run.outputs.live_packages }}
+          E2E_TENANT_AUTH_FILE: ${{ steps.live_e2e_tat.outputs.path }}
+          TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
         run: |
-          if [ -z "$TEST_BOT1_APP_ID" ] || [ -z "$TEST_BOT1_APP_SECRET" ]; then
-            echo "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_APP_SECRET"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            workflow_id="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" --jq '.workflow_id')"
+            newer_runs="$(
+              gh api --paginate -X GET "repos/$REPOSITORY/actions/workflows/$workflow_id/runs" \
+                -f event=pull_request -f branch="$GITHUB_HEAD_REF" -f per_page=100 |
+                jq -r --arg repository "$REPOSITORY" --arg generation "$RUN_GENERATION" --argjson run_number "$RUN_NUMBER" \
+                  '.workflow_runs[] | select(.head_repository.full_name == $repository and .display_title == $generation and .run_number > $run_number) | .id'
+            )"
+            if [ -n "$newer_runs" ]; then
+              echo "::error::Superseded before live E2E started by newer workflow run(s): $newer_runs"
+              exit 1
+            fi
+          fi
+          if [ -z "${E2E_TENANT_AUTH_FILE:-}" ] || [ ! -f "$E2E_TENANT_AUTH_FILE" ]; then
+            echo "::error::Missing shared live E2E tenant token file"
             exit 1
           fi
-          printf '%s\n' "$TEST_BOT1_APP_SECRET" | ./lark-cli config init --app-id "$TEST_BOT1_APP_ID" --app-secret-stdin
-      - name: Run CLI E2E tests
-        env:
-          LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
-          E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
-          E2E_REASON: ${{ steps.e2e_domains.outputs.reason }}
-          E2E_LIVE_PACKAGES: ${{ steps.e2e_domains.outputs.live_packages }}
-        run: |
-          if [ "$E2E_MODE" = "skip" ]; then
-            echo "No live CLI E2E needed: $E2E_REASON"
-            exit 0
+          export TEST_TENANT_ACCESS_TOKEN="$(cat "$E2E_TENANT_AUTH_FILE")"
+          rm -f "$E2E_TENANT_AUTH_FILE"
+          if ! LARKSUITE_CLI_APP_ID="$TEST_BOT1_APP_ID" \
+            LARKSUITE_CLI_TENANT_ACCESS_TOKEN="$TEST_TENANT_ACCESS_TOKEN" \
+            ./lark-cli whoami --as bot | node -e '
+            let input = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", (chunk) => { input += chunk; });
+            process.stdin.on("end", () => {
+              const result = JSON.parse(input);
+              if (result.identity !== "bot" || result.available !== true || result.tokenStatus !== "ready") process.exit(1);
+            });
+          '; then
+            echo "::error::Tenant credential preflight failed"
+            exit 1
           fi
+          echo "Tenant credential preflight succeeded"
           packages="$E2E_LIVE_PACKAGES"
           if [ -z "$packages" ]; then
             echo "::error::No live CLI E2E packages resolved for mode $E2E_MODE"
@@ -363,7 +467,7 @@ jobs:
           echo "Live CLI E2E packages: $packages"
           go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
       - name: Publish CLI E2E test report
-        if: ${{ !cancelled() && steps.e2e_domains.outputs.mode != 'skip' }}
+        if: ${{ !cancelled() }}
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         with:
           name: CLI E2E Tests
@@ -416,7 +520,7 @@ jobs:
   # ── Results Gate (single required check for branch protection) ─────
   results:
     if: ${{ always() }}
-    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header]
+    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header, plugin-integration, sidecar-integration]
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate results
@@ -436,10 +540,19 @@ jobs:
           echo "| L3 | e2e-live | ${{ needs.e2e-live.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L4 | security | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L4 | license-header | ${{ needs.license-header.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L4 | plugin-integration (observe-only) | ${{ needs.plugin-integration.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L4 | sidecar-integration (observe-only) | ${{ needs.sidecar-integration.result }} |" >> $GITHUB_STEP_SUMMARY
 
           # Any failure or cancellation in any job blocks the merge.
-          # Legitimately skipped jobs (deadcode on push, e2e-live on fork,
-          # license-header on push) are OK.
+          # Legitimately skipped jobs (deadcode on push, e2e-live when not
+          # needed or on a fork, license-header on push) are OK.
+          #
+          # plugin-integration and sidecar-integration are intentionally NOT
+          # in this loop yet: they run on every PR and their status is shown
+          # in the table above, but a failure is observe-only (non-blocking)
+          # during the initial soak. Graduation to required is tracked in
+          # https://github.com/larksuite/cli/issues/1894 (criteria: 4
+          # consecutive weeks with zero false positives).
           FAILED=0
           for result in \
             "${{ needs.fast-gate.result }}" \

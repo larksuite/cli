@@ -32,6 +32,7 @@ import (
 // The true used range is A1:F10. The default +table-get must return all 9 data
 // rows and 6 columns and report a range covering row 10 / column F.
 func TestSheets_TableGetUsedRangeWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

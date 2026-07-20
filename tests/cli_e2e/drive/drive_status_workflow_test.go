@@ -37,6 +37,7 @@ import (
 // Expected output: each of the four buckets contains exactly the file we
 // expect, with file_token set for the three buckets that have a Drive side.
 func TestDrive_StatusWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)
@@ -241,6 +242,7 @@ func TestDrive_StatusWorkflow(t *testing.T) {
 // modified_time values fetched from the list API, plus the expected new_local /
 // new_remote buckets.
 func TestDrive_StatusQuickWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)

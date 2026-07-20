@@ -52,9 +52,13 @@ var VCMeetingEvents = common.Shortcut{
 	Command:     "+meeting-events",
 	Description: "List meeting events by meeting ID",
 	Risk:        "read",
-	Scopes:      []string{"vc:meeting.meetingevent:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	// UAT exposes user-granted scopes, so the framework can preflight the user
+	// recommendation. TAT has no scope metadata; keep the bot recommendation
+	// conditional so it is available to diagnostics without a local preflight.
+	UserScopes:           []string{meetingQueryUserScope},
+	ConditionalBotScopes: []string{meetingQueryBotScope},
+	AuthTypes:            []string{"user", "bot"},
+	HasFormat:            true,
 	Flags: []common.Flag{
 		{Name: "meeting-id", Required: true, Desc: "meeting ID to query"},
 		{Name: "start", Desc: "time lower bound (ISO 8601, YYYY-MM-DD, or Unix seconds)"},
@@ -101,7 +105,7 @@ var VCMeetingEvents = common.Shortcut{
 		}
 		data, events, hasMore, pageToken, err := fetchMeetingEvents(ctx, runtime, startTime, endTime)
 		if err != nil {
-			return err
+			return normalizeMeetingQueryPermissionError(runtime, err)
 		}
 		events = compactMeetingEvents(events)
 		identity, identityWarning := meetingEventsCurrentIdentity(runtime)

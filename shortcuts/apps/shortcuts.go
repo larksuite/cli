@@ -17,6 +17,15 @@ func Shortcuts() []common.Shortcut {
 		AppsList,
 		AppsAccessScopeSet,
 		AppsAccessScopeGet,
+		AppsRoleList,
+		AppsRoleGet,
+		AppsRoleCreate,
+		AppsRoleUpdate,
+		AppsRoleDelete,
+		AppsRoleMemberList,
+		AppsRoleMemberAdd,
+		AppsRoleMemberRemove,
+		AppsRoleMatchList,
 		AppsHTMLPublish,
 		AppsInit,
 		AppsReleaseCreate,
@@ -76,6 +85,13 @@ func Shortcuts() []common.Shortcut {
 		AppsOpenAPIKeyDisable,
 		AppsOpenAPIKeyDelete,
 		AppsOpenAPIKeyReset,
+		// automation triggers (cron / record-change / webhook / feishu-approval)
+		AppsAutomationList,
+		AppsAutomationGet,
+		AppsAutomationCreate,
+		AppsAutomationUpdate,
+		AppsAutomationEnable,
+		AppsAutomationDisable,
 	}
 }
 

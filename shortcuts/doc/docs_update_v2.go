@@ -24,7 +24,7 @@ var validCommandsV2 = map[string]bool{
 	"append":                  true,
 }
 
-const docsReferenceMapFlagDesc = "结构化 `reference_map` JSON object；必须与 `--content` 一起使用。普通写入优先把结构写在正文里；`--reference-map` 主要用于保留或回放已有 `document.reference_map`。支持直接 JSON、`@reference-map.json`（相对路径）或 `-` 从 stdin 读取。"
+const docsReferenceMapFlagDesc = "Structured `reference_map` JSON object; must be used with `--content`. Prefer embedding structure directly in the document body for ordinary writes; use `--reference-map` primarily to preserve or replay an existing `document.reference_map`. Accepts inline JSON, `@reference-map.json` (relative path), or `-` to read from stdin."
 
 const docsUpdateReferenceMapFlagDesc = docsReferenceMapFlagDesc
 

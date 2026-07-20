@@ -19,7 +19,7 @@
 
 ## 远端同名文件冲突
 
-如果 Drive 中多个条目映射到同一个 `rel_path`，`+status` 会在下载/hash 前直接失败，返回 `error.type=duplicate_remote_path`，并在 `error.detail.duplicates_remote[]` 中列出该路径下所有冲突条目的 `file_token`、`type`、名称、大小和时间字段；其中 `created_time`、`modified_time` 缺失时会省略，`size` 在缺失或为 `0` 时都可能被省略。不要把这种情况当成普通 `modified`；它表示同步域本身有歧义，需要先整理云端结构，或在 `+pull` / `+push` 中仅对“duplicate file”场景显式选择冲突策略。
+如果 Drive 中多个条目映射到同一个 `rel_path`，`+status` 会在下载/hash 前直接失败，在 stderr 返回类型化错误信封（`error.type=validation`、`error.subtype=failed_precondition`）；`error.params[]` 每条的 `name` 是冲突的 `rel_path`，`reason` 枚举该路径下所有碰撞条目（`type` + `file_token`）。不要把这种情况当成普通 `modified`；它表示同步域本身有歧义，需要先整理云端结构，或在 `+pull` / `+push` 中仅对“duplicate file”场景显式选择冲突策略。
 
 ## 命令
 
@@ -76,20 +76,18 @@ lark-cli drive +status \
 ```json
 {
   "ok": false,
+  "identity": "user",
   "error": {
-    "type": "duplicate_remote_path",
-    "message": "multiple Drive entries map to the same rel_path",
-    "detail": {
-      "duplicates_remote": [
-        {
-          "rel_path": "dup.txt",
-          "entries": [
-            {"file_token": "<full_file_token>", "type": "file", "name": "dup.txt", "size": 5, "created_time": "1730000000", "modified_time": "1730000000"},
-            {"file_token": "<folder_token>", "type": "folder", "name": "dup.txt", "created_time": "1730000060", "modified_time": "1730000060"}
-          ]
-        }
-      ]
-    }
+    "type": "validation",
+    "subtype": "failed_precondition",
+    "message": "1 rel_path(s) map to multiple Drive entries",
+    "hint": "resolve the duplicate remote files first: re-run +pull with --on-duplicate-remote=rename (downloads each with a hashed suffix), or use --on-duplicate-remote=newest|oldest (supported by +pull/+sync/+push) to pick one, or delete the extra remote files; a plain retry will not help",
+    "params": [
+      {
+        "name": "dup.txt",
+        "reason": "2 Drive entries collide here: file <full_file_token>, folder <folder_token>"
+      }
+    ]
   }
 }
 ```

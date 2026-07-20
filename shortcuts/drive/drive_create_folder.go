@@ -59,7 +59,7 @@ var DriveCreateFolder = common.Shortcut{
 			Desc("[1] Create folder").
 			Body(spec.RequestBody())
 		if runtime.IsBot() {
-			dry.Desc("After folder creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new folder.")
+			dry.Desc("After folder creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new folder.")
 		}
 		return dry
 	},

@@ -1088,7 +1088,7 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 		t.Fatalf("set --wiki-token: %v", err)
 	}
 
-	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, core.AsBot)
 	dry := DriveUpload.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -1100,7 +1100,8 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	}
 
 	var got struct {
-		API []struct {
+		PostUploadNote string `json:"post_upload_note"`
+		API            []struct {
 			URL  string                 `json:"url"`
 			Body map[string]interface{} `json:"body"`
 		} `json:"api"`
@@ -1122,6 +1123,10 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	}
 	if got.API[1].Body["with_url"] != true {
 		t.Fatalf("metadata with_url = %#v, want true", got.API[1].Body["with_url"])
+	}
+	wantPostUploadNote := "After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new file."
+	if got.PostUploadNote != wantPostUploadNote {
+		t.Fatalf("post_upload_note = %q, want %q", got.PostUploadNote, wantPostUploadNote)
 	}
 }
 

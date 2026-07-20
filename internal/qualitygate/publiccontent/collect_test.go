@@ -23,9 +23,10 @@ func TestCollectScansOnlyCurrentContributionAndMetadata(t *testing.T) {
 	runGit(t, repo, "add", "baseline.md")
 	runGit(t, repo, "commit", "-m", "base")
 
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
 	writeFile(t, filepath.Join(repo, "docs", "public.md"), `# Public change
 
-api_`+`key = "example-public-key"
+api_`+`key = "`+providerValue+`"
 `)
 	runGit(t, repo, "add", "docs/public.md")
 	runGit(t, repo, "commit", "-m", "add public doc", "-m", "Change"+"-Id: I0123456789abcdef0123456789abcdef01234567")
@@ -199,13 +200,14 @@ func TestCollectDetectsQuotedJSONCredentialAssignments(t *testing.T) {
 	runGit(t, repo, "add", "docs/public.json")
 	runGit(t, repo, "commit", "-m", "base")
 
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
 	writeFile(t, filepath.Join(repo, "docs", "public.json"), strings.Join([]string{
-		`{"access_` + `token":"real-json-token"}`,
-		`{"client_` + `secret": "real ` + `secret value"}`,
-		`{"tenantAccess` + `Token":"real-tenant-camel-token"}`,
-		`{"github` + `Token":"real-github-token"}`,
-		`{"vendorApi` + `Key":"real-vendor-key"}`,
-		`{"slackBot` + `Token":"xoxb-real-token"}`,
+		`{"access_` + `token":"` + providerValue + `"}`,
+		`{"client_` + `secret": "` + providerValue + `"}`,
+		`{"tenantAccess` + `Token":"` + providerValue + `"}`,
+		`{"github` + `Token":"` + providerValue + `"}`,
+		`{"vendorApi` + `Key":"` + providerValue + `"}`,
+		`{"slackBot` + `Token":"xoxb_` + `1234567890abcdef"}`,
 	}, "\n")+"\n")
 	runGit(t, repo, "add", "docs/public.json")
 	runGit(t, repo, "commit", "-m", "add json config")
@@ -215,14 +217,7 @@ func TestCollectDetectsQuotedJSONCredentialAssignments(t *testing.T) {
 	for _, item := range got {
 		if item.File == "docs/public.json" && item.Rule == "public_content_generic_credential" {
 			count++
-			for _, forbidden := range []string{
-				"real-json-token",
-				"real secret value",
-				"real-tenant-camel-token",
-				"real-github-token",
-				"real-vendor-key",
-				"xoxb-real-token",
-			} {
+			for _, forbidden := range []string{providerValue, "xoxb_" + "1234567890abcdef"} {
 				if strings.Contains(item.Excerpt, forbidden) {
 					t.Fatalf("JSON credential finding leaked value %q in excerpt %q", forbidden, item.Excerpt)
 				}
@@ -306,8 +301,8 @@ func TestCollectDetectsAngleWrappedRealisticCredentialValues(t *testing.T) {
 			count++
 		}
 	}
-	if count != 3 {
-		t.Fatalf("angle-wrapped realistic credential findings = %d, want 3: %#v", count, got)
+	if count != 2 {
+		t.Fatalf("angle-wrapped provider credential findings = %d, want 2: %#v", count, got)
 	}
 }
 
@@ -338,12 +333,12 @@ func TestCollectDetectsCredentialShapedValuesUnderBenignKeys(t *testing.T) {
 			count++
 		}
 	}
-	if count != 7 {
-		t.Fatalf("credential-shaped benign-key findings = %d, want 7: %#v", count, got)
+	if count != 4 {
+		t.Fatalf("provider-shaped benign-key findings = %d, want 4: %#v", count, got)
 	}
 }
 
-func TestCollectDetectsBareIdentifierCredentialsWithMetadataSuffixes(t *testing.T) {
+func TestCollectAllowsBareIdentifierCredentialsWithMetadataSuffixes(t *testing.T) {
 	repo := newGitRepo(t)
 	writeFile(t, filepath.Join(repo, "docs", "config.yaml"), "base: true\n")
 	runGit(t, repo, "add", "docs/config.yaml")
@@ -358,14 +353,10 @@ func TestCollectDetectsBareIdentifierCredentialsWithMetadataSuffixes(t *testing.
 	runGit(t, repo, "commit", "-m", "add credential config")
 
 	got := collectFromPreviousCommit(t, repo)
-	var count int
 	for _, item := range got {
 		if item.File == "docs/config.yaml" && item.Rule == "public_content_generic_credential" {
-			count++
+			t.Fatalf("readable metadata values should not be credential findings: %#v", got)
 		}
-	}
-	if count != 3 {
-		t.Fatalf("metadata-suffixed bare credential findings = %d, want 3: %#v", count, got)
 	}
 }
 
@@ -374,7 +365,7 @@ func TestCollectDetectsAccessKeyCredentials(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "docs", "config.yaml"), "base: true\n")
 	runGit(t, repo, "add", "docs/config.yaml")
 	runGit(t, repo, "commit", "-m", "base")
-	accessKey := "AK" + "IAIOSFODNN7EXAMPX"
+	accessKey := "AK" + "IAIOSFODNN7EXAMPXX"
 
 	writeFile(t, filepath.Join(repo, "docs", "config.yaml"), strings.Join([]string{
 		"AWS_ACCESS_KEY_ID: " + accessKey,
@@ -391,7 +382,7 @@ func TestCollectDetectsAccessKeyCredentials(t *testing.T) {
 			continue
 		}
 		count++
-		if strings.Contains(item.Excerpt, "AKIAIOSFODNN7EXAMPX") {
+		if strings.Contains(item.Excerpt, accessKey) {
 			t.Fatalf("access key finding leaked value in excerpt %q", item.Excerpt)
 		}
 	}
@@ -432,7 +423,7 @@ func TestCollectDetectsPrivateKeyAssignments(t *testing.T) {
 	}
 }
 
-func TestCollectDetectsCredentialValuesThatLookLikeBareIdentifiers(t *testing.T) {
+func TestCollectAllowsCredentialValuesThatLookLikeBareIdentifiers(t *testing.T) {
 	repo := newGitRepo(t)
 	writeFile(t, filepath.Join(repo, "docs", "config.yaml"), "base: true\n")
 	runGit(t, repo, "add", "docs/config.yaml")
@@ -448,14 +439,10 @@ func TestCollectDetectsCredentialValuesThatLookLikeBareIdentifiers(t *testing.T)
 	runGit(t, repo, "commit", "-m", "add credential config")
 
 	got := collectFromPreviousCommit(t, repo)
-	var count int
 	for _, item := range got {
 		if item.File == "docs/config.yaml" && item.Rule == "public_content_generic_credential" {
-			count++
+			t.Fatalf("readable identifiers should not be credential findings: %#v", got)
 		}
-	}
-	if count != 4 {
-		t.Fatalf("bare identifier credential findings = %d, want 4: %#v", count, got)
 	}
 }
 
@@ -489,12 +476,13 @@ func TestCollectDetectsCredentialPhraseBeforeEnvironmentSuffix(t *testing.T) {
 	runGit(t, repo, "add", "docs/config.yaml")
 	runGit(t, repo, "commit", "-m", "base")
 
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
 	writeFile(t, filepath.Join(repo, "docs", "config.yaml"), strings.Join([]string{
-		"API_KEY_OPENAI: real-openai-key",
-		"TOKEN_GITHUB: real-github-token",
-		"CLIENT_SECRET_GOOGLE: real-google-secret",
-		"SECRET_KEY_BASE: real-secret-key-base",
-		"APP_PASSWORD_PROD: real-prod-password",
+		"API_KEY_OPENAI: " + providerValue,
+		"TOKEN_GITHUB: " + providerValue,
+		"CLIENT_SECRET_GOOGLE: " + providerValue,
+		"SECRET_KEY_BASE: " + providerValue,
+		"APP_PASSWORD_PROD: " + providerValue,
 	}, "\n")+"\n")
 	runGit(t, repo, "add", "docs/config.yaml")
 	runGit(t, repo, "commit", "-m", "add credential config")
@@ -506,13 +494,7 @@ func TestCollectDetectsCredentialPhraseBeforeEnvironmentSuffix(t *testing.T) {
 			continue
 		}
 		count++
-		for _, forbidden := range []string{
-			"real-openai-key",
-			"real-github-token",
-			"real-google-secret",
-			"real-secret-key-base",
-			"real-prod-password",
-		} {
+		for _, forbidden := range []string{providerValue} {
 			if strings.Contains(item.Excerpt, forbidden) {
 				t.Fatalf("credential finding leaked value %q in excerpt %q", forbidden, item.Excerpt)
 			}
@@ -621,7 +603,8 @@ func TestCollectSkipsOnlyKnownQualityGateFixtureFiles(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "internal", "qualitygate", "publiccontent", "scan_test.go"), "SECRET_TOKEN=fixture\n")
 	writeFile(t, filepath.Join(repo, "internal", "qualitygate", "publiccontent", "scan.go"), "const privateKeyFixture = \""+privateKeyBeginPrefix+privateKeyMarker+"\"\n")
 	writeFile(t, filepath.Join(repo, "internal", "qualitygate", "publiccontent", "rules.go"), "markers := []string{\"generated with automation\"}\n")
-	writeFile(t, filepath.Join(repo, "tests", "e2e", "new-public-workflow.test.sh"), "SECRET_TOKEN=real-leak\n")
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	writeFile(t, filepath.Join(repo, "tests", "e2e", "new-public-workflow.test.sh"), "SECRET_TOKEN="+providerValue+"\n")
 	runGit(t, repo, "add", ".")
 	runGit(t, repo, "commit", "-m", "add scanner fixtures")
 
@@ -685,10 +668,11 @@ func TestCollectScansAddedLinesInSpecialPathNames(t *testing.T) {
 	runGit(t, repo, "add", ".")
 	runGit(t, repo, "commit", "-m", "base")
 
-	writeFile(t, filepath.Join(repo, "docs", "has space.md"), "SECRET_TOKEN=space-value\n")
-	writeFile(t, filepath.Join(repo, `weird"quote.md`), "SECRET_TOKEN=quote-value\n")
+	providerValue := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	writeFile(t, filepath.Join(repo, "docs", "has space.md"), "SECRET_TOKEN="+providerValue+"\n")
+	writeFile(t, filepath.Join(repo, `weird"quote.md`), "SECRET_TOKEN="+providerValue+"\n")
 	runGit(t, repo, "mv", "docs/old.md", "docs/new name.md")
-	writeFile(t, filepath.Join(repo, "docs", "new name.md"), "base\nSECRET_TOKEN=rename-value\n")
+	writeFile(t, filepath.Join(repo, "docs", "new name.md"), "base\nSECRET_TOKEN="+providerValue+"\n")
 	runGit(t, repo, "add", ".")
 	runGit(t, repo, "commit", "-m", "add special paths")
 

@@ -248,6 +248,21 @@
 - `<tr>` 内为 `<td>`
 - `<td>` 内可放 `<content>`
 
+`<table>` 可选设置 `width` 和 `height`，分别表示表格的目标总宽度和总高度：
+
+```xml
+<table topLeftX="80" topLeftY="120" width="800" height="300">
+  <colgroup>
+    <col width="240"/>
+    <col/>
+  </colgroup>
+  <tr height="80">
+    <td><content textType="body"><p>表头 1</p></content></td>
+    <td><content textType="body"><p>表头 2</p></content></td>
+  </tr>
+</table>
+```
+
 ### `<chart>`
 
 图表元素必须至少包含：
