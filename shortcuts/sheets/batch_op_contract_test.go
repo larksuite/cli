@@ -763,7 +763,7 @@ func TestBatchOp_SchemaValidatesSubOps(t *testing.T) {
 		{
 			"+pivot-create summarize_by out of enum",
 			"+pivot-create",
-			`{"sheet-id":"sh1","source":"Sheet1!A1:D100","properties":{"values":[{"field":"A","summarize_by":"BOGUS"}]}}`,
+			`{"target_sheet_id":"sh1","source":"Sheet1!A1:D100","properties":{"values":[{"field":"A","summarize_by":"BOGUS"}]}}`,
 			"summarize_by",
 		},
 		// +chart-create properties.position.row has minimum:0 — P0

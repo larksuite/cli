@@ -134,10 +134,29 @@ func flattenToolErrorMsg(msg string) string {
 			return detail.Message
 		}
 		parts := make([]string, 0, len(detail.Failures))
+		firstFailed := detail.Failures[0].Index
 		for _, f := range detail.Failures {
 			parts = append(parts, fmt.Sprintf("operations[%d] (%s): %s", f.Index, f.ToolName, f.Error))
+			if f.Index < firstFailed {
+				firstFailed = f.Index
+			}
 		}
-		return detail.Message + " — " + strings.Join(parts, "; ")
+		out := detail.Message + " — " + strings.Join(parts, "; ")
+		// Partial failure is NOT rolled back server-side: the succeeded sub-ops
+		// stay applied. Spell out the recovery so agents don't resend the whole
+		// batch and double-apply the successes (observed in eval traces). With
+		// one failure (fail-fast) everything before it succeeded and nothing
+		// after it ran — resend from that index; with several (continue-on-error)
+		// only the listed failures need resending.
+		if strings.Contains(detail.Message, "succeeded") &&
+			!strings.Contains(detail.Message, " 0 succeeded") {
+			if len(detail.Failures) == 1 {
+				out += fmt.Sprintf("; note: succeeded operations stay applied (no rollback) — fix the failure and resend only operations[%d:] onward, do not resend the whole batch", firstFailed)
+			} else {
+				out += "; note: succeeded operations stay applied (no rollback) — fix and resend only the failed operations listed above, do not resend the whole batch"
+			}
+		}
+		return out
 	}
 	return inner
 }

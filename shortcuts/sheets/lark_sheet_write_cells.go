@@ -95,9 +95,13 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 	if err := normalizeTypedCellsStyleAliases(cells, "--cells"); err != nil {
 		return nil, err
 	}
+	rangeStr := strings.TrimSpace(runtime.Str("range"))
+	if err := checkCellsMatchRange(cells, rangeStr); err != nil {
+		return nil, err
+	}
 	input := map[string]interface{}{
 		"excel_id": token,
-		"range":    strings.TrimSpace(runtime.Str("range")),
+		"range":    rangeStr,
 		"cells":    cells,
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
@@ -633,6 +637,44 @@ func warnDropdownSourceRangeHighlight(runtime *common.RuntimeContext) {
 // and returns its row / column counts. Errors on non-rectangular forms like
 // "A:C" (whole-column) or "3:6" (whole-row) — those need a row/col total
 // from get_sheet_structure, outside the scope of pure local parsing.
+// checkCellsMatchRange rejects, before any network call, the cells-vs-range
+// mismatches the server would otherwise fail mid-batch ("cells row count (N)
+// does not match range row count (M)" — a recurring server-side error cluster
+// in eval traces, and the failure leaves earlier batch sub-ops applied). Only
+// rectangle ranges (with ':') are checked: a bare single-cell range is left to
+// the server, and an unparsable range is the range validator's job, not ours.
+func checkCellsMatchRange(cells []interface{}, rangeStr string) error {
+	if len(cells) == 0 {
+		return sheetsValidationForFlag("cells",
+			"--cells is empty; to clear values use +cells-clear --scope content (needs --yes), or pass a non-empty 2D array")
+	}
+	if !strings.Contains(rangeStr, ":") {
+		return nil
+	}
+	rows, cols, err := rangeDimensions(rangeStr)
+	if err != nil {
+		return nil //nolint:nilerr // an unparsable range is reported by the range validation path with proper context
+	}
+	if len(cells) != rows {
+		return sheetsValidationForFlag("cells",
+			"--cells has %d rows but --range %q spans %d rows; make them equal (e.g. write N rows to an N-row range)",
+			len(cells), rangeStr, rows)
+	}
+	for r, rowRaw := range cells {
+		row, ok := rowRaw.([]interface{})
+		if !ok {
+			return sheetsValidationForFlag("cells",
+				"--cells[%d] must be an array (one row of cells) — --cells is always a 2D array, a single cell is [[{…}]]", r)
+		}
+		if len(row) != cols {
+			return sheetsValidationForFlag("cells",
+				"--cells[%d] has %d columns but --range %q spans %d columns; every row must match the range width",
+				r, len(row), rangeStr, cols)
+		}
+	}
+	return nil
+}
+
 func rangeDimensions(rangeStr string) (rows, cols int, err error) {
 	if idx := strings.Index(rangeStr, "!"); idx >= 0 {
 		rangeStr = rangeStr[idx+1:]

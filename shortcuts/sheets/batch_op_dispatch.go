@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/larksuite/cli/internal/suggest"
 )
 
 // ─── +batch-update sub-op dispatch ─────────────────────────────────────
@@ -309,6 +311,126 @@ var reservedSubOpKeys = []string{"excel_id", "spreadsheet_token", "url"}
 // read input under these names, so rejecting them is safe.
 var wrappedSubOpInputKeys = []string{"cell_styles", "cell_merges", "styles"}
 
+// subOpKeyVocabulary returns the set of hyphen-canonical flag names a sub-op
+// input may carry for `sc`: every non-system flag in flag-defs except the
+// spreadsheet locators (reserved for the batch top level). Nil when the
+// shortcut has no flag-defs entry (vocabulary checks are then skipped).
+func subOpKeyVocabulary(sc string) map[string]bool {
+	defs, _ := loadFlagDefs()
+	spec, ok := defs[sc]
+	if !ok {
+		return nil
+	}
+	vocab := make(map[string]bool, len(spec.Flags))
+	for _, df := range spec.Flags {
+		if df.Kind == "system" || df.Name == "url" || df.Name == "spreadsheet-token" {
+			continue
+		}
+		vocab[df.Name] = true
+	}
+	return vocab
+}
+
+// camelToKebab converts a lowerCamelCase key to its kebab form
+// (sheetName → sheet-name). Returns "" when the key carries no uppercase
+// letter (nothing to convert).
+func camelToKebab(key string) string {
+	if strings.ToLower(key) == key {
+		return ""
+	}
+	var b strings.Builder
+	for i, r := range key {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('-')
+			}
+			b.WriteRune(r + ('a' - 'A'))
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// normalizeSubOpInputKeys validates every sub-op input key against the
+// shortcut's flag vocabulary, rewriting habitual spellings in place and
+// rejecting anything that matches nothing. Eval traces show unknown keys were
+// previously ignored silently, which turned "wrong key" (size for width,
+// camelCase sheetName, an invented styles object) into misleading
+// "missing required flag" errors downstream — the single largest batch error
+// cluster. Rewrites applied, in order:
+//
+//   - underscore ↔ hyphen forms of a declared flag (already tolerated by
+//     mapFlagView — accepted here as-is)
+//   - lowerCamelCase → the declared flag (sheetName → sheet_name)
+//   - the command's intuitive-alias table (size → width/height on the resize
+//     pair) — the same commandFlagAliases the cobra path applies
+//   - "ranges" with a single-entry array unwraps onto "range"; a multi-entry
+//     array gets a split-into-sub-ops prescription instead
+//
+// Anything else errors with a did-you-mean. Returns a bare error; the caller
+// wraps it with the operations[i] (<shortcut>) context and key contract.
+func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
+	vocab := subOpKeyVocabulary(sc)
+	if vocab == nil {
+		return nil
+	}
+	keys := make([]string, 0, len(input))
+	for k := range input {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	aliases := commandFlagAliases[sc]
+	for _, k := range keys {
+		hv := strings.ReplaceAll(k, "_", "-")
+		if vocab[hv] {
+			continue
+		}
+		if kebab := camelToKebab(k); kebab != "" && vocab[kebab] {
+			input[strings.ReplaceAll(kebab, "-", "_")] = input[k]
+			delete(input, k)
+			continue
+		}
+		if target, ok := aliases[strings.ToLower(hv)]; ok && vocab[target] {
+			if _, taken := input[target]; !taken {
+				if _, taken := input[strings.ReplaceAll(target, "-", "_")]; !taken {
+					input[target] = input[k]
+					delete(input, k)
+					continue
+				}
+			}
+		}
+		if strings.ToLower(hv) == "ranges" && vocab["range"] && !vocab["ranges"] {
+			if arr, isArr := input[k].([]interface{}); isArr {
+				if len(arr) == 1 {
+					if s, isStr := arr[0].(string); isStr {
+						input["range"] = s
+						delete(input, k)
+						continue
+					}
+				}
+				return fmt.Errorf("%s takes a single \"range\" per sub-op, got %d entries in %q — split them into %d sub-ops (one per range)", sc, len(arr), k, len(arr)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+			}
+			if s, isStr := input[k].(string); isStr {
+				input["range"] = s
+				delete(input, k)
+				continue
+			}
+		}
+		msg := fmt.Sprintf("unknown input key %q", k)
+		display := make([]string, 0, len(vocab))
+		for name := range vocab {
+			display = append(display, strings.ReplaceAll(name, "-", "_"))
+		}
+		sort.Strings(display)
+		if match := suggest.Closest(strings.ToLower(hv), display, 1); len(match) > 0 {
+			msg += fmt.Sprintf(" — did you mean %q?", match[0])
+		}
+		return fmt.Errorf("%s", msg) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+	}
+	return nil
+}
+
 // translateBatchOp 把一个 CLI 视角的 {shortcut, input} 翻成底层 MCP
 // batch_update 的 {tool_name, input}。`index` 用于错误信息定位。input 用
 // shortcut 的 CLI flag 名（连字符/下划线均可），经该 shortcut 的 standalone
@@ -367,13 +489,17 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 		)
 	}
 	// 禁在 sub-op 重复填 spreadsheet 定位 —— 由 +batch-update 顶层 --url/--token 统一提供。
-	for _, k := range reservedSubOpKeys {
-		if _, has := input[k]; has {
-			return nil, sheetsValidationForFlag(
-				"operations",
-				"operations[%d] (%s): do not pass input.%s — it is already set from +batch-update top-level --url / --token",
-				index, sc, k,
-			)
+	// 连字符 / 下划线两种写法都算命中（spreadsheet-token 与 spreadsheet_token 同罪）。
+	for userKey := range input {
+		normalized := strings.ReplaceAll(userKey, "-", "_")
+		for _, k := range reservedSubOpKeys {
+			if normalized == k {
+				return nil, sheetsValidationForFlag(
+					"operations",
+					"operations[%d] (%s): do not pass input.%s — it is already set from +batch-update top-level --url / --token",
+					index, sc, userKey,
+				)
+			}
 		}
 	}
 	// Reject a "wrapped structure" sub-op input: agents copy a shortcut's nested
@@ -396,6 +522,16 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 		if k != "shortcut" && k != "input" {
 			return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): unknown top-level key %q (expected only 'shortcut' and 'input')", index, sc, k)
 		}
+	}
+	// Reject / rewrite off-vocabulary input keys BEFORE any value reads: an
+	// unknown key silently ignored surfaces later as a misleading
+	// "missing required flag" error (the top batch error cluster in evals).
+	if err := normalizeSubOpInputKeys(sc, input); err != nil {
+		verr := sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
+		if contract := subOpInputContract(sc); contract != "" {
+			verr = verr.WithHint("%s input keys: %s", sc, contract)
+		}
+		return nil, verr
 	}
 	fv := newMapFlagViewForCommand(sc, input)
 	// operations is skipped by parse-time schema validation, so type-check the

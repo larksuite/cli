@@ -423,6 +423,39 @@ func TestShortcuts_IntuitiveFlagAliases(t *testing.T) {
 		}
 	})
 
+	t.Run("cols-resize --size parses as --width", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cols-resize")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A:C",
+			"--size", "120",
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--size should alias to --width (styles-protocol vocabulary), got: %v", err)
+		}
+		if !strings.Contains(stdout, "120") {
+			t.Errorf("dry-run body should carry the pixel width 120, got %q", stdout)
+		}
+	})
+
+	t.Run("rows-resize --size parses as --height", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+rows-resize")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "1:3",
+			"--size", "36",
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--size should alias to --height (styles-protocol vocabulary), got: %v", err)
+		}
+	})
+
 	t.Run("alias never shadows a registered flag", func(t *testing.T) {
 		t.Parallel()
 		c := &cobra.Command{Use: "+csv-put"}
