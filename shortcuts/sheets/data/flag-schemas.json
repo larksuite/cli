@@ -7776,11 +7776,15 @@
               "type": "array"
             },
             "cell_styles": {
-              "description": "单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐。",
+              "description": "单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐。加边框优先用 border 简写；只有分侧不同样式才用 border_styles 完整形态。",
               "items": {
                 "properties": {
                   "background_color": {
                     "type": "string"
+                  },
+                  "border": {
+                    "description": "边框简写（推荐）：{style, weight, color} 应用到四边（如 {\"style\":\"solid\",\"color\":\"#DDDDDD\"}）；也接受侧键形态 {top:{…},bottom:{…}}。分侧不同样式用 border_styles 完整形态。",
+                    "type": "object"
                   },
                   "border_styles": {
                     "type": "object",
@@ -7975,7 +7979,7 @@
               "type": "array"
             },
             "col_sizes": {
-              "description": "列宽操作数组；range 使用列范围如 A:C，type 为 pixel/standard，pixel 需要 size。",
+              "description": "列宽操作数组；range 使用列范围如 A:C，给 size（px）即像素列宽（type 可省略）；type 为 standard 时不带 size。",
               "items": {
                 "properties": {
                   "range": {
@@ -7993,8 +7997,7 @@
                   }
                 },
                 "required": [
-                  "range",
-                  "type"
+                  "range"
                 ],
                 "type": "object"
               },
@@ -8019,7 +8022,7 @@
               "type": "string"
             },
             "row_sizes": {
-              "description": "行高操作数组；range 使用行范围如 1:3，type 为 pixel/standard/auto，pixel 需要 size。",
+              "description": "行高操作数组；range 使用行范围如 1:3，给 size（px）即像素行高（type 可省略）；type 为 standard/auto 时不带 size。",
               "items": {
                 "properties": {
                   "range": {
@@ -8038,8 +8041,7 @@
                   }
                 },
                 "required": [
-                  "range",
-                  "type"
+                  "range"
                 ],
                 "type": "object"
               },
@@ -8162,11 +8164,15 @@
               "type": "array"
             },
             "cell_styles": {
-              "description": "单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐。",
+              "description": "单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐。加边框优先用 border 简写；只有分侧不同样式才用 border_styles 完整形态。",
               "items": {
                 "properties": {
                   "background_color": {
                     "type": "string"
+                  },
+                  "border": {
+                    "description": "边框简写（推荐）：{style, weight, color} 应用到四边（如 {\"style\":\"solid\",\"color\":\"#DDDDDD\"}）；也接受侧键形态 {top:{…},bottom:{…}}。分侧不同样式用 border_styles 完整形态。",
+                    "type": "object"
                   },
                   "border_styles": {
                     "type": "object",
@@ -8361,7 +8367,7 @@
               "type": "array"
             },
             "col_sizes": {
-              "description": "列宽操作数组；range 使用列范围如 A:C，type 为 pixel/standard，pixel 需要 size。",
+              "description": "列宽操作数组；range 使用列范围如 A:C，给 size（px）即像素列宽（type 可省略）；type 为 standard 时不带 size。",
               "items": {
                 "properties": {
                   "range": {
@@ -8379,8 +8385,7 @@
                   }
                 },
                 "required": [
-                  "range",
-                  "type"
+                  "range"
                 ],
                 "type": "object"
               },
@@ -8405,7 +8410,7 @@
               "type": "string"
             },
             "row_sizes": {
-              "description": "行高操作数组；range 使用行范围如 1:3，type 为 pixel/standard/auto，pixel 需要 size。",
+              "description": "行高操作数组；range 使用行范围如 1:3，给 size（px）即像素行高（type 可省略）；type 为 standard/auto 时不带 size。",
               "items": {
                 "properties": {
                   "range": {
@@ -8424,8 +8429,7 @@
                   }
                 },
                 "required": [
-                  "range",
-                  "type"
+                  "range"
                 ],
                 "type": "object"
               },
@@ -8548,11 +8552,15 @@
               "type": "array"
             },
             "cell_styles": {
-              "description": "单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐。",
+              "description": "单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐。加边框优先用 border 简写；只有分侧不同样式才用 border_styles 完整形态。",
               "items": {
                 "properties": {
                   "background_color": {
                     "type": "string"
+                  },
+                  "border": {
+                    "description": "边框简写（推荐）：{style, weight, color} 应用到四边（如 {\"style\":\"solid\",\"color\":\"#DDDDDD\"}）；也接受侧键形态 {top:{…},bottom:{…}}。分侧不同样式用 border_styles 完整形态。",
+                    "type": "object"
                   },
                   "border_styles": {
                     "type": "object",
@@ -8747,7 +8755,7 @@
               "type": "array"
             },
             "col_sizes": {
-              "description": "列宽操作数组；range 使用列范围如 A:C，type 为 pixel/standard，pixel 需要 size。",
+              "description": "列宽操作数组；range 使用列范围如 A:C，给 size（px）即像素列宽（type 可省略）；type 为 standard 时不带 size。",
               "items": {
                 "properties": {
                   "range": {
@@ -8765,8 +8773,7 @@
                   }
                 },
                 "required": [
-                  "range",
-                  "type"
+                  "range"
                 ],
                 "type": "object"
               },
@@ -8791,7 +8798,7 @@
               "type": "string"
             },
             "row_sizes": {
-              "description": "行高操作数组；range 使用行范围如 1:3，type 为 pixel/standard/auto，pixel 需要 size。",
+              "description": "行高操作数组；range 使用行范围如 1:3，给 size（px）即像素行高（type 可省略）；type 为 standard/auto 时不带 size。",
               "items": {
                 "properties": {
                   "range": {
@@ -8810,8 +8817,7 @@
                   }
                 },
                 "required": [
-                  "range",
-                  "type"
+                  "range"
                 ],
                 "type": "object"
               },

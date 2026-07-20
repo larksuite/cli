@@ -2850,7 +2850,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Visual spec JSON applied to an EXISTING spreadsheet: top-level `{styles:[...]}`, one item per target sheet (`name` is the real sheet name), each giving at least one of `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze`. The vocabulary is identical to `--styles` on `+workbook-create` / `+table-put` (cell_styles = A1 range + flat style fields; row/col sizes = row/column range + type/size; merges = cell range; freeze = `{rows:N, cols:N}`). The whole spec expands into one atomic batched request; ranges may target any region of the sheet",
+        "desc": "Visual spec JSON applied to an EXISTING spreadsheet: top-level `{styles:[...]}`, one item per target sheet (`name` is the real sheet name), each giving at least one of `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze`. The vocabulary is identical to `--styles` on `+workbook-create` / `+table-put` (cell_styles = A1 range + flat style fields, borders via the `border` shorthand {style,weight,color} applied to all four sides — border_styles only for per-side differences; row/col sizes = row/column range + size in px — type only for standard/auto; merges = cell range; freeze = `{rows:N, cols:N}`). The whole spec expands into one atomic batched request; ranges may target any region of the sheet",
         "input": [
           "file",
           "stdin"

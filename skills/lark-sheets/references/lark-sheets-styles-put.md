@@ -14,7 +14,8 @@
 
 - 顶层 `{styles:[...]}`，每项对应一个目标子表，`name` 必须是真实子表名（不确定先 `+workbook-info` 查，禁止猜 `Sheet1`）。
 - 每个子表项按固定顺序执行：`cell_merges` → `cell_styles` → `row_sizes` → `col_sizes` → `freeze`；样式盖章允许覆盖含合并区的区域（合并区限制只针对值写入，样式不受限）。
-- `row_sizes` / `col_sizes` 的尺寸键是 `size`（`{range, type, size}`，与整个 --styles 协议一致）。
+- `row_sizes` / `col_sizes` 只需 `{range, size}`（px，即像素尺寸；`standard` / 行的 `auto` 才需显式 `type`）。尺寸键统一是 `size`。
+- 加边框用 `border` 简写：`{"style":"solid","color":"#DDDDDD"}` 应用到四边；只有分侧不同样式才用 `border_styles` 完整形态。
 - `freeze` 用 `{rows:N, cols:N}` 冻结前 N 行 / 列，0 或省略表示该维度不冻结。
 
 **回读校验**：整份规格执行成功后按编辑准则抽样回读受影响区域（`+cells-get --include style` 或 `+sheet-info` 看合并 / 行高列宽 / 冻结），确认关键样式实际生效。
@@ -33,7 +34,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--styles` | string + File + Stdin（复合 JSON） | required | 对**已有**表格应用的视觉规格 JSON：顶层 `{styles:[...]}`，每项对应一个目标子表（`name` 用真实子表名），并至少给 `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze` 之一。字段词汇与 `+workbook-create` / `+table-put` 的 `--styles` 完全同构（cell_styles 用 A1 range + 扁平样式字段；row/col sizes 用行/列范围 + type/size；merges 用单元格 range；freeze 用 `{rows:N, cols:N}` 冻结前 N 行/列）。整份规格展开为一次原子批量提交；range 不受「本次写入区域」限制，可指向表内任意区域 |
+| `--styles` | string + File + Stdin（复合 JSON） | required | 对**已有**表格应用的视觉规格 JSON：顶层 `{styles:[...]}`，每项对应一个目标子表（`name` 用真实子表名），并至少给 `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze` 之一。字段词汇与 `+workbook-create` / `+table-put` 的 `--styles` 完全同构（cell_styles 用 A1 range + 扁平样式字段，边框用 `border` 简写 {style,weight,color} 四边同款、分侧才用 border_styles；row/col sizes 用行/列范围 + size（px 即像素，standard/auto 才需 type）；merges 用单元格 range；freeze 用 `{rows:N, cols:N}` 冻结前 N 行/列）。整份规格展开为一次原子批量提交；range 不受「本次写入区域」限制，可指向表内任意区域 |
 
 ## Schemas
 
@@ -44,11 +45,11 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 
 **数组项**（类型 object）：
 - `cell_merges` (array<object>?) — 单元格合并操作数组；range 使用 A1 单元格范围，merge_type 默认 all each: { merge_type?: enum, range: string }
-- `cell_styles` (array<object>?) — 单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐 each: { background_color?: string, border_styles?: object, font_color?: string, font_family?: string, font_line?: enum, …共 13 项 }
-- `col_sizes` (array<object>?) — 列宽操作数组；range 使用列范围如 A:C，type 为 pixel/standard，pixel 需要 size each: { range: string, size?: number, type: enum }
+- `cell_styles` (array<object>?) — 单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐 each: { background_color?: string, border?: object, border_styles?: object, font_color?: string, font_family?: string, …共 14 项 }
+- `col_sizes` (array<object>?) — 列宽操作数组；range 使用列范围如 A:C，给 size（px）即像素列宽（type 可省略）；type 为 standard 时不带 size each: { range: string, size?: number, type?: enum }
 - `freeze` (object?) — 冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结） { cols?: integer, rows?: integer }
 - `name` (string) — 子表名
-- `row_sizes` (array<object>?) — 行高操作数组；range 使用行范围如 1:3，type 为 pixel/standard/auto，pixel 需要 size each: { range: string, size?: number, type: enum }
+- `row_sizes` (array<object>?) — 行高操作数组；range 使用行范围如 1:3，给 size（px）即像素行高（type 可省略）；type 为 standard/auto 时不带 size each: { range: string, size?: number, type?: enum }
 
 ## Examples
 
@@ -63,10 +64,10 @@ lark-cli sheets +styles-put --url "https://example.feishu.cn/sheets/shtXXX" --st
   "cell_merges": [{"range":"A5:A8"},{"range":"A9:A12"}],
   "cell_styles": [
     {"range":"A1:F1","font_weight":"bold","background_color":"#1E5BC6","font_color":"#FFFFFF","horizontal_alignment":"center"},
-    {"range":"A2:F30","border_styles":{"all":{"style":"solid","color":"#DDDDDD"}}}
+    {"range":"A2:F30","border":{"style":"solid","color":"#DDDDDD"}}
   ],
-  "row_sizes":  [{"range":"1:1","type":"pixel","size":36}],
-  "col_sizes":  [{"range":"A:C","type":"pixel","size":120}],
+  "row_sizes":  [{"range":"1:1","size":36}],
+  "col_sizes":  [{"range":"A:C","size":120}],
   "freeze":     {"rows":1}
 }]}
 JSON

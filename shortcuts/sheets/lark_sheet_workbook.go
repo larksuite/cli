@@ -1328,16 +1328,15 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 	}
 	resizeType, _ := op["type"].(string)
 	resizeType = strings.TrimSpace(resizeType)
-	if resizeType == "" {
-		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type is required (%s), e.g. %s", path, typeHint, resizeOpExample(dimension))
-	}
-	if dimension == "column" && resizeType == "auto" {
-		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type auto is rows-only", path)
-	}
-	switch resizeType {
-	case "pixel", "standard", "auto":
-	default:
-		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type %q is invalid (want %s), e.g. %s", path, resizeType, typeHint, resizeOpExample(dimension))
+	if resizeType != "" {
+		if dimension == "column" && resizeType == "auto" {
+			return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type auto is rows-only", path)
+		}
+		switch resizeType {
+		case "pixel", "standard", "auto":
+		default:
+			return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type %q is invalid (want %s), e.g. %s", path, resizeType, typeHint, resizeOpExample(dimension))
+		}
 	}
 	// size is the canonical dimension key (uniform across row_sizes and
 	// col_sizes — the array name already carries the dimension). The Excel-
@@ -1365,6 +1364,15 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 			return workbookCreateResizeOp{}, common.ValidationErrorf("%s.size must be a positive number", path)
 		}
 		size = int(n)
+	}
+	// type is optional ceremony when a pixel size is given: {range, size}
+	// means a pixel resize, exactly as --width/--height without --type does
+	// on the flag path. Explicit standard/auto still needs type.
+	if resizeType == "" {
+		if size <= 0 {
+			return workbookCreateResizeOp{}, common.ValidationErrorf("%s needs size (px) or type (%s), e.g. %s", path, typeHint, resizeOpExample(dimension))
+		}
+		resizeType = "pixel"
 	}
 	if resizeType == "pixel" && size <= 0 {
 		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type pixel requires size, e.g. %s", path, resizeOpExample(dimension))
