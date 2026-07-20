@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -366,4 +367,50 @@ func readAll(t *testing.T, r interface {
 		}
 	}
 	return buf.Bytes()
+}
+
+// TestSlidesMediaUploadRetriesRateLimit verifies uploadSlidesMedia retries a
+// 99991400 "request trigger frequency limit" upload_all response with backoff
+// (one-shot stubs: the rate-limited response is consumed first, then the
+// success response) and still returns the file_token.
+//
+// Not parallel: uses os.Chdir and shrinks slidesRateLimitBaseDelay.
+func TestSlidesMediaUploadRetriesRateLimit(t *testing.T) {
+	restore := slidesRateLimitBaseDelay
+	slidesRateLimitBaseDelay = time.Millisecond
+	t.Cleanup(func() { slidesRateLimitBaseDelay = restore })
+
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+	if err := os.WriteFile("rl.png", []byte("x"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Status: 400,
+		Body:   map[string]interface{}{"code": 99991400, "msg": "request trigger frequency limit"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"file_token": "tok_rl"}},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesMediaUpload, []string{
+		"+media-upload",
+		"--file", "rl.png",
+		"--presentation", "pres_rl_upload",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error (rate limit should have been retried): %v", err)
+	}
+
+	data := decodeShortcutData(t, stdout)
+	if data["file_token"] != "tok_rl" {
+		t.Fatalf("file_token = %v, want tok_rl", data["file_token"])
+	}
 }

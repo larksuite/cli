@@ -4,14 +4,73 @@
 package slides
 
 import (
+	"context"
+	"encoding/xml"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+const (
+	// slidesRateLimitMaxRetries is the number of automatic retries (beyond the
+	// initial request) when the API answers 99991400 "request trigger frequency
+	// limit". The slides batch paths (+create slide loop, placeholder image
+	// uploads) fire consecutive POSTs and are the dominant 99991400 producers
+	// in telemetry; a short backoff absorbs a transient burst without masking a
+	// genuinely saturated tenant.
+	slidesRateLimitMaxRetries = 2
+)
+
+// slidesRateLimitBaseDelay is the initial backoff delay; subsequent retries
+// double it (1s, 2s). Mirrors the wiki +node-create lock-contention pattern
+// but with a larger base because a frequency window takes longer to clear than
+// a sub-second lock race. var (not const) only so tests can shrink it.
+var slidesRateLimitBaseDelay = 1 * time.Second
+
+// isRateLimitedErr reports whether err is a typed retryable rate-limit error
+// (e.g. 99991400), as classified by errclass.BuildAPIError.
+func isRateLimitedErr(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	return ok && p.Subtype == errs.SubtypeRateLimit && p.Retryable
+}
+
+// retryOnRateLimit runs fn, retrying with exponential backoff (1s, 2s) when it
+// returns a retryable rate-limit error. Any other outcome — success or a
+// different error — is returned immediately. Progress is announced on errOut
+// so a user watching a batch upload understands the pause.
+func retryOnRateLimit(ctx context.Context, errOut io.Writer, fn func() error) error {
+	var lastErr error
+	for attempt := 0; attempt <= slidesRateLimitMaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := slidesRateLimitBaseDelay << uint(attempt-1)
+			// Report the actual code from the error: the retry predicate matches
+			// any retryable SubtypeRateLimit, not just 99991400.
+			code := 0
+			if p, ok := errs.ProblemOf(lastErr); ok {
+				code = p.Code
+			}
+			fmt.Fprintf(errOut, "Rate limited by the API (%d), retrying (attempt %d/%d) in %v...\n",
+				code, attempt, slidesRateLimitMaxRetries, delay)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		lastErr = fn()
+		if lastErr == nil || !isRateLimitedErr(lastErr) {
+			return lastErr
+		}
+	}
+	return lastErr
+}
 
 // presentationRef holds a parsed --presentation input.
 //
@@ -125,8 +184,30 @@ func resolvePresentationID(runtime *common.RuntimeContext, ref presentationRef) 
 // around `=`); without it we'd silently leave such placeholders unrewritten.
 var imgSrcPlaceholderRegex = regexp.MustCompile(`(?s)<img\b[^>]*?\bsrc\s*=\s*(["'])@([^"']+)(["'])`)
 
+// xmlEntityUnescaper reverses the five XML built-in entities in attribute
+// values captured from raw slide XML. strings.Replacer scans left-to-right in
+// a single pass, so "&amp;lt;" correctly yields "&lt;" (the leading "&amp;"
+// is consumed first), matching XML unescape semantics.
+var xmlEntityUnescaper = strings.NewReplacer(
+	"&lt;", "<",
+	"&gt;", ">",
+	"&quot;", `"`,
+	"&apos;", "'",
+	"&amp;", "&",
+)
+
+// placeholderFilePath converts a raw <img src="@..."> capture into the local
+// filesystem path it refers to. The capture comes from well-formed XML where
+// a literal & must be written &amp; (the precheck enforces this), so the
+// entities are decoded before the path touches Stat/upload. Filesystem paths
+// containing & are therefore written as e.g. src="@./Q1&amp;Q2.png".
+func placeholderFilePath(raw string) string {
+	return xmlEntityUnescaper.Replace(strings.TrimSpace(raw))
+}
+
 // extractImagePlaceholderPaths returns the de-duplicated list of local paths
-// referenced via <img src="@path"> in the given slide XML strings.
+// referenced via <img src="@path"> in the given slide XML strings, with XML
+// built-in entities decoded (see placeholderFilePath).
 //
 // Order is preserved (first occurrence wins) so dry-run / progress messages are
 // stable across runs.
@@ -141,7 +222,7 @@ func extractImagePlaceholderPaths(slideXMLs []string) []string {
 				// so we filter it here. Treat as malformed XML and skip.
 				continue
 			}
-			path := strings.TrimSpace(m[2])
+			path := placeholderFilePath(m[2])
 			if path == "" || seen[path] {
 				continue
 			}
@@ -280,6 +361,48 @@ func ensureShapeHasContent(xmlFragment string) string {
 	return xmlFragment[:m[1]] + "<content/>" + afterOpen
 }
 
+// checkXMLWellFormed verifies that fragment parses as well-formed XML, using
+// the same parser family as the backend (Go encoding/xml). Syntax only —
+// element names and attributes are NOT checked against the SML schema, so
+// anything passing here can still be rejected server-side for semantic
+// reasons; conversely nothing rejected here could ever have succeeded, which
+// keeps the false-positive risk at zero.
+//
+// The backend reports these failures as an opaque 3350001/4001000
+// "invalid param" with no position info; catching them locally turns the
+// dominant real-world causes (bare & in text, unclosed tags, attribute
+// quoting) into actionable messages with a line number.
+//
+// An <?xml ?> declaration is rejected explicitly: the rendering backend does
+// not accept processing instructions on slide fragments (rejects with
+// "?xml not provide the implement"). encoding/xml surfaces it as a regular
+// ProcInst token, so it needs its own check.
+//
+// Multiple top-level elements are deliberately allowed — insertion fragments
+// may legitimately carry sibling elements.
+func checkXMLWellFormed(fragment string) error {
+	dec := xml.NewDecoder(strings.NewReader(fragment))
+	for {
+		tok, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			var syn *xml.SyntaxError
+			if errors.As(err, &syn) {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"XML not well-formed at line %d: %s (escape literal & as &amp; and < as &lt; in text)",
+					syn.Line, syn.Msg)
+			}
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "XML not well-formed: %v", err)
+		}
+		if pi, ok := tok.(xml.ProcInst); ok && strings.EqualFold(pi.Target, "xml") {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"XML must not contain an <?xml ?> declaration (the slides backend rejects it); remove it and start at the root element")
+		}
+	}
+}
+
 // replaceImagePlaceholders rewrites <img src="@path"> occurrences in the input
 // XML by looking up each path in tokens. Paths missing from the map are left
 // untouched (callers should ensure the map is complete).
@@ -294,7 +417,10 @@ func replaceImagePlaceholders(slideXML string, tokens map[string]string) string 
 			// Mismatched quotes — see extractImagePlaceholderPaths.
 			return match
 		}
-		token, ok := tokens[strings.TrimSpace(path)]
+		// tokens is keyed by the decoded filesystem path (see
+		// extractImagePlaceholderPaths), while oldQuoted below must use the
+		// raw capture so the literal XML text is what gets replaced.
+		token, ok := tokens[placeholderFilePath(path)]
 		if !ok {
 			return match
 		}

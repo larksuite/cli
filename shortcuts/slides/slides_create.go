@@ -50,6 +50,15 @@ var SlidesCreate = common.Shortcut{
 			if len(slides) > maxSlidesPerCreate {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides array exceeds maximum of %d slides; create the presentation first, then add slides via xml_presentation.slide.create", maxSlidesPerCreate).WithParam("--slides")
 			}
+			// Well-formedness precheck before any API call: a syntax error in
+			// slide N would otherwise create the presentation and then fail on
+			// the slide POST with an opaque backend "invalid param", leaving a
+			// partially-built deck behind.
+			for i, slideXML := range slides {
+				if err := checkXMLWellFormed(slideXML); err != nil {
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides[%d]: %v", i, err).WithParam("--slides").WithCause(err)
+				}
+			}
 			// Validate placeholder paths up front so we don't create a presentation
 			// only to fail mid-way on a missing local file.
 			for _, path := range extractImagePlaceholderPaths(slides) {
@@ -183,14 +192,22 @@ var SlidesCreate = common.Shortcut{
 
 				var slideIDs []string
 				for i, slideXML := range slides {
-					slideData, err := runtime.CallAPITyped(
-						"POST",
-						slideURL,
-						map[string]interface{}{"revision_id": -1},
-						map[string]interface{}{
-							"slide": map[string]interface{}{"content": slideXML},
-						},
-					)
+					var slideData map[string]interface{}
+					// Consecutive slide POSTs are the main 99991400 producer in
+					// telemetry; absorb the per-second frequency window with a
+					// short backoff instead of aborting the whole batch.
+					err := retryOnRateLimit(ctx, runtime.IO().ErrOut, func() error {
+						var callErr error
+						slideData, callErr = runtime.CallAPITyped(
+							"POST",
+							slideURL,
+							map[string]interface{}{"revision_id": -1},
+							map[string]interface{}{
+								"slide": map[string]interface{}{"content": slideXML},
+							},
+						)
+						return callErr
+					})
 					if err != nil {
 						return appendSlidesProgressHint(err, fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
 					}

@@ -34,6 +34,9 @@ const maxReplaceParts = 200
 //     it triggers 3350001.
 //  4. On 3350001 errors it enriches the hint with context-specific guidance
 //     so AI agents can self-correct.
+//  5. It rejects non-well-formed replacement/insertion XML before any API
+//     call, with a line number and escaping hint — the backend reports these
+//     only as an opaque 3350001/4001000 "invalid param".
 //
 // `str_replace` is intentionally NOT exposed: product direction is that
 // slide edits go through structural (block-level) operations only. The backend
@@ -286,6 +289,8 @@ func enrichSlidesReplaceError(err error) error {
 //   - size is within [1, 200]
 //   - action is one of the exposed actions (block_replace / block_insert)
 //   - per-action required fields are present
+//   - replacement / insertion fragments are well-formed XML (syntax only;
+//     see checkXMLWellFormed)
 func validateReplaceParts(parts []replacePart) error {
 	if len(parts) == 0 {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts must contain at least 1 item").WithParam("--parts")
@@ -302,9 +307,15 @@ func validateReplaceParts(parts []replacePart) error {
 			if p.Replacement == nil || strings.TrimSpace(*p.Replacement) == "" {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] (block_replace) requires non-empty replacement", i).WithParam("--parts")
 			}
+			if err := checkXMLWellFormed(*p.Replacement); err != nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].replacement: %v", i, err).WithParam("--parts").WithCause(err)
+			}
 		case "block_insert":
 			if p.Insertion == nil || strings.TrimSpace(*p.Insertion) == "" {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] (block_insert) requires non-empty insertion", i).WithParam("--parts")
+			}
+			if err := checkXMLWellFormed(*p.Insertion); err != nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].insertion: %v", i, err).WithParam("--parts").WithCause(err)
 			}
 		case "str_replace":
 			// Backend still accepts str_replace, but product decision is to

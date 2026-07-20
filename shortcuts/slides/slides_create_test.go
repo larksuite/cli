@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -391,7 +392,10 @@ func TestSlidesCreateWithSlidesPartialFailure(t *testing.T) {
 		},
 	})
 
-	slidesJSON := `["<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>","<bad-xml>"]`
+	// The second slide is well-formed XML (so it passes the local precheck)
+	// but uses an element the backend rejects — partial failure must come from
+	// the API layer, not validation.
+	slidesJSON := `["<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>","<slide><audio src=\"x\"/></slide>"]`
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
 		"--title", "Partial",
@@ -916,5 +920,95 @@ func TestSlidesCreateWithPlaceholdersDryRun(t *testing.T) {
 	}
 	if !strings.Contains(out, "Create presentation + upload 2 image(s)") {
 		t.Fatalf("dry-run header should describe upload count, got: %s", out)
+	}
+}
+
+// TestSlidesCreateRejectsMalformedSlideXML verifies the well-formedness
+// precheck fires before any API call — no presentation should be created when
+// a slide fragment has a syntax error, so no httpmock stubs are registered.
+func TestSlidesCreateRejectsMalformedSlideXML(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		slides  string
+		wantErr string
+	}{
+		{"bare ampersand", `["<slide><p>Q & A</p></slide>"]`, "--slides[0]"},
+		{"unclosed tag", `["<slide><p>ok</p></slide>","<slide><shape></slide>"]`, "--slides[1]"},
+		{"xml declaration", `["<?xml version=\"1.0\"?><slide/>"]`, "declaration"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesCreateShortcut(t, f, stdout, []string{
+				"+create",
+				"--title", "precheck",
+				"--slides", tt.slides,
+				"--as", "user",
+			})
+			if err == nil {
+				t.Fatalf("expected validation error for %s, got nil", tt.name)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %q, want substring %q", err.Error(), tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), "well-formed") && !strings.Contains(err.Error(), "declaration") {
+				t.Fatalf("error should explain the XML problem, got %q", err.Error())
+			}
+		})
+	}
+}
+
+// TestSlidesCreateRetriesSlideRateLimit verifies the +create slide loop
+// retries a 99991400 "request trigger frequency limit" slide POST with
+// backoff instead of aborting the batch (one-shot stubs: first slide POST
+// answers 99991400, the second answers success — both must be consumed).
+//
+// Not parallel: shrinks the package-level slidesRateLimitBaseDelay.
+func TestSlidesCreateRetriesSlideRateLimit(t *testing.T) {
+	restore := slidesRateLimitBaseDelay
+	slidesRateLimitBaseDelay = time.Millisecond
+	t.Cleanup(func() { slidesRateLimitBaseDelay = restore })
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"xml_presentation_id": "pres_rl", "revision_id": 1},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_rl/slide",
+		Status: 400,
+		Body:   map[string]interface{}{"code": 99991400, "msg": "request trigger frequency limit"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_rl/slide",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"slide_id": "s1", "revision_id": 2}},
+	})
+
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "RL test",
+		"--slides", `["<slide><data/></slide>"]`,
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error (rate limit should have been retried): %v", err)
+	}
+
+	data := decodeSlidesCreateEnvelope(t, stdout)
+	if data["slides_added"] != float64(1) {
+		t.Fatalf("slides_added = %v, want 1", data["slides_added"])
+	}
+	if !strings.Contains(stderr.String(), "retrying") {
+		t.Fatalf("expected retry announcement on stderr, got: %s", stderr.String())
 	}
 }

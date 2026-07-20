@@ -2,10 +2,11 @@
 
 本文档基于 [slides_xml_schema_definition.xml](slides_xml_schema_definition.xml) 整理，说明飞书 Slides XML Schema（SML 2.0）的核心结构和常用写法。
 
+> **注意**：所有提交给 API 的 XML（整篇或片段）都**不要带 `<?xml ... ?>` 声明**——slides 后端会拒绝它，直接从根元素写起。标签白名单与文本转义规则见 [xml-schema-quick-ref.md](xml-schema-quick-ref.md)。
+
 ## 基本结构
 
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
 <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
   <title>演示文稿标题</title>
   <slide>
@@ -224,7 +225,7 @@
 | `src` 形式 | 说明 |
 |---|---|
 | `file_token`（如 `boxcnXXXXXXXXXXXXXXXXXXXXXX`） | 通过 `slides +media-upload` 上传后返回的 token |
-| `@<本地路径>`（如 `@./assets/chart.png`） | **仅在 `slides +create --slides` 中可用**：CLI 会自动上传该文件并替换为 file_token |
+| `@<本地路径>`（如 `@./assets/chart.png`） | **仅在 `slides +create --slides` 中可用**：CLI 会自动上传该文件并替换为 file_token。路径也要按 XML 规则转义：文件名含 `&` 时写 `@./Q1&amp;Q2.png`，CLI 反转义后查找文件 |
 
 > **禁止使用 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，`src="https://..."` 在 PPT 里通常显示破图。要用网图必须先 `curl`/下载到 CWD 内，再走上传流程拿 `file_token`。
 
@@ -369,7 +370,6 @@
 ## 完整示例
 
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
 <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
   <title>季度报告</title>
   <theme>

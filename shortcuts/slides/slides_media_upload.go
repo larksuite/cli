@@ -128,13 +128,26 @@ func uploadSlidesMedia(runtime *common.RuntimeContext, filePath, fileName string
 			fileName, common.FormatSize(fileSize))
 	}
 	parent := presentationID
-	return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
-		FilePath:   filePath,
-		FileName:   fileName,
-		FileSize:   fileSize,
-		ParentType: slidesMediaParentType,
-		ParentNode: &parent,
+	var fileToken string
+	// upload_all is rate-limited per second; consecutive placeholder uploads
+	// from +create (and rapid repeated +media-upload calls) can hit 99991400.
+	// A failed rate-limited attempt creates nothing server-side, and each
+	// attempt re-opens the file from FilePath, so the retry is safe.
+	// The Typed variant is required here: retryOnRateLimit matches on the
+	// typed subtype, and slides error wrapping (appendSlidesProgressHint)
+	// already expects typed errs.* envelopes.
+	err := retryOnRateLimit(runtime.Ctx(), runtime.IO().ErrOut, func() error {
+		var callErr error
+		fileToken, callErr = common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   fileSize,
+			ParentType: slidesMediaParentType,
+			ParentNode: &parent,
+		})
+		return callErr
 	})
+	return fileToken, err
 }
 
 // appendSlidesUploadDryRun renders the upload_all step for a single file.

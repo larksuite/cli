@@ -4,9 +4,15 @@
 package slides
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func TestParsePresentationRef(t *testing.T) {
@@ -216,6 +222,15 @@ func TestExtractImagePlaceholderPaths(t *testing.T) {
 			in:   []string{`<img src = "@./spaced.png" />`},
 			want: []string{"./spaced.png"},
 		},
+		{
+			// Regression: the well-formedness precheck forces a literal & in a
+			// filename to be written &amp; in the XML; the captured path must
+			// be entity-decoded before it reaches Stat/upload so the file is
+			// actually found on disk.
+			name: "decodes XML entities in path",
+			in:   []string{`<img src="@./Q1&amp;Q2.png"/>`},
+			want: []string{"./Q1&Q2.png"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -233,8 +248,9 @@ func TestReplaceImagePlaceholders(t *testing.T) {
 	t.Parallel()
 
 	tokens := map[string]string{
-		"./pic.png": "tok_abc",
-		"./b.png":   "tok_b",
+		"./pic.png":   "tok_abc",
+		"./b.png":     "tok_b",
+		"./Q1&Q2.png": "tok_amp", // keyed by decoded filesystem path
 	}
 
 	tests := []struct {
@@ -279,6 +295,13 @@ func TestReplaceImagePlaceholders(t *testing.T) {
 			name: "tolerates whitespace around equals",
 			in:   `<img src = "@./pic.png" topLeftX="10"/>`,
 			want: `<img src = "tok_abc" topLeftX="10"/>`,
+		},
+		{
+			// Regression: tokens are keyed by the decoded filesystem path, but
+			// the literal XML text (with &amp;) is what must be rewritten.
+			name: "decodes XML entities when looking up token",
+			in:   `<img src="@./Q1&amp;Q2.png" topLeftX="10"/>`,
+			want: `<img src="tok_amp" topLeftX="10"/>`,
 		},
 	}
 
@@ -412,4 +435,153 @@ func TestEnsureXMLRootID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCheckXMLWellFormed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      string
+		wantErr string
+	}{
+		{name: "simple element", in: `<shape type="rect"><content/></shape>`},
+		{name: "nested with attributes", in: `<slide><shape type="text"><content><p>hi</p></content></shape></slide>`},
+		// Insertion fragments may carry sibling top-level elements; the decoder
+		// must not enforce a single document element.
+		{name: "multiple top-level elements", in: `<p>a</p><p>b</p>`},
+		{name: "escaped entities", in: `<p>A &amp; B &lt;tag&gt; &quot;q&quot;</p>`},
+		{name: "CDATA with raw ampersand", in: `<p><![CDATA[a & b < c]]></p>`},
+		{name: "comment", in: `<!-- note --><shape/>`},
+		{name: "img placeholder attr", in: `<img src="@./local.png" width="100"/>`},
+		{name: "unicode text", in: `<p>项目汇报 🎯</p>`},
+
+		// Top CLI-path failure cause in engine logs: bare & in text.
+		{name: "bare ampersand", in: `<p>Q & A</p>`, wantErr: "line 1"},
+		{name: "bare ampersand multiline", in: "<slide>\n<p>R&D</p>\n</slide>", wantErr: "line 2"},
+		{name: "unclosed tag", in: `<shape><content></shape>`, wantErr: "not well-formed"},
+		{name: "unquoted attribute", in: `<shape type=rect/>`, wantErr: "not well-formed"},
+		{name: "stray closing tag", in: `<p>hi</p></div>`, wantErr: "not well-formed"},
+		{name: "undefined entity", in: `<p>a&nbsp;b</p>`, wantErr: "not well-formed"},
+
+		// nodeserver rejects processing instructions ("?xml not provide the
+		// implement"); reject the declaration locally regardless of position.
+		{name: "xml declaration", in: `<?xml version="1.0"?><shape/>`, wantErr: "declaration"},
+		{name: "xml declaration with encoding", in: `<?xml version="1.0" encoding="UTF-8"?><slide/>`, wantErr: "declaration"},
+		{name: "uppercase xml declaration", in: `<?XML version="1.0"?><shape/>`, wantErr: "declaration"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := checkXMLWellFormed(tt.in)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected err: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("want error containing %q, got nil", tt.wantErr)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("want *errs.ValidationError, got %T: %v", err, err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("want SubtypeInvalidArgument, got %v", ve.Subtype)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("want error containing %q, got %q", tt.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+// TestRetryOnRateLimit verifies the 99991400 backoff helper: retryable
+// rate-limit errors are retried with backoff, anything else returns
+// immediately, and exhaustion surfaces the last rate-limit error.
+//
+// Not parallel: shrinks the package-level slidesRateLimitBaseDelay.
+func TestRetryOnRateLimit(t *testing.T) {
+	restore := slidesRateLimitBaseDelay
+	slidesRateLimitBaseDelay = time.Millisecond
+	t.Cleanup(func() { slidesRateLimitBaseDelay = restore })
+
+	rateLimitErr := func() error {
+		return errs.NewAPIError(errs.SubtypeRateLimit, "request trigger frequency limit").WithRetryable()
+	}
+
+	t.Run("success without retry", func(t *testing.T) {
+		var errOut bytes.Buffer
+		calls := 0
+		err := retryOnRateLimit(context.Background(), &errOut, func() error {
+			calls++
+			return nil
+		})
+		if err != nil || calls != 1 {
+			t.Fatalf("err=%v calls=%d, want nil/1", err, calls)
+		}
+		if errOut.Len() != 0 {
+			t.Fatalf("no retry message expected, got: %s", errOut.String())
+		}
+	})
+
+	t.Run("succeeds after transient rate limit", func(t *testing.T) {
+		var errOut bytes.Buffer
+		calls := 0
+		err := retryOnRateLimit(context.Background(), &errOut, func() error {
+			calls++
+			if calls <= 2 {
+				return rateLimitErr()
+			}
+			return nil
+		})
+		if err != nil || calls != 3 {
+			t.Fatalf("err=%v calls=%d, want nil/3", err, calls)
+		}
+		if !strings.Contains(errOut.String(), "retrying") {
+			t.Fatalf("expected retry announcement, got: %s", errOut.String())
+		}
+	})
+
+	t.Run("exhaustion returns last rate-limit error", func(t *testing.T) {
+		var errOut bytes.Buffer
+		calls := 0
+		err := retryOnRateLimit(context.Background(), &errOut, func() error {
+			calls++
+			return rateLimitErr()
+		})
+		if err == nil || !isRateLimitedErr(err) {
+			t.Fatalf("want rate-limit error after exhaustion, got: %v", err)
+		}
+		if calls != slidesRateLimitMaxRetries+1 {
+			t.Fatalf("calls=%d, want %d", calls, slidesRateLimitMaxRetries+1)
+		}
+	})
+
+	t.Run("non-rate-limit error returns immediately", func(t *testing.T) {
+		var errOut bytes.Buffer
+		calls := 0
+		boom := errs.NewAPIError(errs.SubtypeNotFound, "not found")
+		err := retryOnRateLimit(context.Background(), &errOut, func() error {
+			calls++
+			return boom
+		})
+		if !errors.Is(err, boom) || calls != 1 {
+			t.Fatalf("err=%v calls=%d, want boom/1", err, calls)
+		}
+	})
+
+	t.Run("cancelled context aborts the backoff wait", func(t *testing.T) {
+		var errOut bytes.Buffer
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := retryOnRateLimit(ctx, &errOut, func() error {
+			return rateLimitErr()
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("want context.Canceled, got: %v", err)
+		}
+	})
 }

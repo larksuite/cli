@@ -747,3 +747,41 @@ func TestReplaceSlideValidationParam(t *testing.T) {
 		})
 	}
 }
+
+// TestReplaceSlideRejectsMalformedFragmentXML verifies the well-formedness
+// precheck on replacement / insertion fragments fires at validation time,
+// before wiki resolution or the replace POST.
+func TestReplaceSlideRejectsMalformedFragmentXML(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		parts   string
+		wantErr string
+	}{
+		{"replacement bare ampersand", `[{"action":"block_replace","block_id":"bUn","replacement":"<shape><content><p>R & D</p></content></shape>"}]`, "--parts[0].replacement"},
+		{"replacement unclosed tag", `[{"action":"block_replace","block_id":"bUn","replacement":"<shape><content></shape>"}]`, "--parts[0].replacement"},
+		{"insertion xml declaration", `[{"action":"block_insert","insertion":"<?xml version=\"1.0\"?><shape/>"}]`, "declaration"},
+		{"second part malformed", `[{"action":"block_insert","insertion":"<p>ok</p>"},{"action":"block_insert","insertion":"<p>Q & A</p>"}]`, "--parts[1].insertion"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
+				"+replace-slide",
+				"--presentation", "pres_abc",
+				"--slide-id", "s",
+				"--parts", tt.parts,
+				"--as", "user",
+			})
+			if err == nil {
+				t.Fatalf("expected validation error for %s, got nil", tt.name)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %q, want substring %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
