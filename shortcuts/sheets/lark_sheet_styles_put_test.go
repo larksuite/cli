@@ -112,6 +112,66 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 	})
 }
 
+// TestStylesResizeSizeAliases pins the one-way Excel-vocabulary aliases on
+// the shared styles resize parser: height in row_sizes / width in col_sizes
+// resolve to size silently; the wrong dimension's word is a targeted error.
+func TestStylesResizeSizeAliases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("height aliases to size in row_sizes", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":      "S1",
+				"row_sizes": []interface{}{map[string]interface{}{"range": "1:1", "type": "pixel", "height": float64(36)}},
+			}},
+		}), testToken)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+		block := input["resize_height"].(map[string]interface{})
+		if block["value"] != 36 {
+			t.Fatalf("resize_height = %v, want value 36", block)
+		}
+	})
+
+	t.Run("width aliases to size in col_sizes", func(t *testing.T) {
+		t.Parallel()
+		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":      "S1",
+				"col_sizes": []interface{}{map[string]interface{}{"range": "A:C", "type": "pixel", "width": float64(120)}},
+			}},
+		}), testToken)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("wrong-dimension word is a targeted error", func(t *testing.T) {
+		t.Parallel()
+		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":      "S1",
+				"row_sizes": []interface{}{map[string]interface{}{"range": "1:1", "type": "pixel", "width": float64(36)}},
+			}},
+		}), testToken)
+		requireValidation(t, err, "does not apply to this array")
+	})
+
+	t.Run("size plus alias together rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":      "S1",
+				"row_sizes": []interface{}{map[string]interface{}{"range": "1:1", "type": "pixel", "size": float64(36), "height": float64(40)}},
+			}},
+		}), testToken)
+		requireValidation(t, err, "either size or height")
+	})
+}
+
 // TestDimDeleteRangesOps pins the descending-order expansion and the
 // same-dimension / non-overlap guards.
 func TestDimDeleteRangesOps(t *testing.T) {

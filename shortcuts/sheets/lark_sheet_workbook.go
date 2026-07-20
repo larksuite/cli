@@ -1334,9 +1334,28 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 	default:
 		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type %q is invalid (want %s), e.g. %s", path, resizeType, typeHint, resizeOpExample(dimension))
 	}
+	// size is the canonical dimension key (uniform across row_sizes and
+	// col_sizes — the array name already carries the dimension). The Excel-
+	// vocabulary alias (height on rows, width on columns) is accepted
+	// silently; the WRONG dimension's word is a targeted error, never a
+	// silent rewrite.
+	alias, wrongDim := "height", "width"
+	if dimension == "column" {
+		alias, wrongDim = "width", "height"
+	}
+	if _, has := op[wrongDim]; has {
+		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.%s does not apply to this array (the array name carries the dimension); use size, e.g. %s", path, wrongDim, resizeOpExample(dimension))
+	}
+	sizeRaw, hasSize := op["size"]
+	if aliasRaw, hasAlias := op[alias]; hasAlias {
+		if hasSize {
+			return workbookCreateResizeOp{}, common.ValidationErrorf("%s: give either size or %s, not both", path, alias)
+		}
+		sizeRaw, hasSize = aliasRaw, true
+	}
 	size := 0
-	if raw, ok := op["size"]; ok {
-		n, ok := util.ToFloat64(raw)
+	if hasSize {
+		n, ok := util.ToFloat64(sizeRaw)
 		if !ok || n <= 0 {
 			return workbookCreateResizeOp{}, common.ValidationErrorf("%s.size must be a positive number", path)
 		}
@@ -1348,7 +1367,7 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 	if resizeType != "pixel" && size > 0 {
 		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.size is only valid with type pixel", path)
 	}
-	if err := rejectUnexpectedWorkbookStyleFields(op, path, "range", "type", "size"); err != nil {
+	if err := rejectUnexpectedWorkbookStyleFields(op, path, "range", "type", "size", alias); err != nil {
 		return workbookCreateResizeOp{}, err
 	}
 	return workbookCreateResizeOp{Range: normalizeWorkbookResizeRange(rangeStr), ResizeType: resizeType, Size: size}, nil
