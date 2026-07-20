@@ -1,0 +1,43 @@
+shortcuts/slides/slides_replace_pages.go
+  s_b6e36a097b234e::t_14d3cf58c24812 143,338-340,399-401
+shortcuts/slides/slides_replace_pages_test.go
+  s_b6e36a097b234e::t_df30fe6bb8d444 45-49,130-132
+skills/lark-slides/references/lark-slides-create.md
+  s_b6e36a097b234e::t_44cf5e614349db 33
+skills/lark-slides/references/lark-slides-xml-presentation-slide-create.md
+  s_b6e36a097b234e::t_0acee2ae3b7791 147-148,160
+shortcuts/slides/slides_create_test.go
+  s_b6e36a097b234e::t_16cca6eb456975 38,62-64,327,357-359
+shortcuts/slides/slides_create.go
+  s_b6e36a097b234e::t_836f117f153e43 154,198-203,225-227
+skills/lark-slides/references/troubleshooting.md
+  s_b6e36a097b234e::t_8c1ba7a791a2b4 19-25,47
+skills/lark-slides/references/validation-checklist.md
+  s_7c17bc58a1634d::t_545746432e7cea 10-18,107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ec5e5cb03f9f563c802ab9d759c721529ab54766",
+  "prompts": {},
+  "sessions": {
+    "s_7c17bc58a1634d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4745-b045-7c91-b876-04b5924d3166",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_b6e36a097b234e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4700-057a-7783-9c6f-75f37a9905f0",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

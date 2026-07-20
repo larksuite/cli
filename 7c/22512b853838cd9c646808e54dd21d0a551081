@@ -1,0 +1,117 @@
+skills/lark-slides/references/troubleshooting.md
+  s_ab1335aa0710a1::t_c8e83646bbd4eb 13,26
+skills/lark-slides/SKILL.md
+  s_695fa9c2433edf::t_78ca74b0b223ed 183
+  s_2bbdddfe6ffa25::t_42b1427ede9926 39
+skills/lark-slides/references/examples.md
+  s_e5132b47093d21::t_7d921502ae84f3 57,67-68,70-77
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_5bcbe79917578d::t_6c929b40160438 648,669
+  s_695fa9c2433edf::t_aae9ad6ed339dd 580-597
+shortcuts/slides/slides_xml_get_test.go
+  s_0d598423820a5c::t_afb5c08b6ad63a 436,451-460,481-490,512-521
+  s_0d598423820a5c::t_df440ec80c66be 433-435
+  s_9009584f9d5878::t_101e5fb0bd9daa 8,388-432
+  s_0d598423820a5c::t_89e29ab3551fd3 437-438
+shortcuts/slides/slides_xml_get.go
+  s_9009584f9d5878::t_70251d7a40a8db 45-47
+shortcuts/slides/slides_screenshot_test.go
+  s_72ca9270ab42eb::t_2ce19708cea6b2 296-301
+shortcuts/slides/slides_screenshot.go
+  s_72ca9270ab42eb::t_1afa8105dca72a 286-287
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_695fa9c2433edf::t_04463a396e6605 713-719,878-879
+  s_48954ea86ef5b4::t_1a4769fb4c6ae3 422-423,434-443,453,458
+  s_5bcbe79917578d::t_c5a08c522a6a33 103-109,548
+  s_632287d49636f6::t_705a3c46a3a0eb 515
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7c22512b853838cd9c646808e54dd21d0a551081",
+  "prompts": {},
+  "sessions": {
+    "s_0d598423820a5c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f60c5-ba88-7d21-aa39-5f7a473179ba",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_2bbdddfe6ffa25": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f60f3-7690-7623-b4df-1bc03ca40db5",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_48954ea86ef5b4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6048-fc52-7942-85be-f8effdf5b813",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_5bcbe79917578d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f60e0-764a-7050-aa04-275e641183af",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_632287d49636f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f60ed-58d4-77b2-910b-f8bce979f281",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_695fa9c2433edf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f60e5-b06f-7843-aa73-78d290206456",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_72ca9270ab42eb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f60c4-a92d-79c2-bef2-1c1d8f708058",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_9009584f9d5878": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f60f0-e3da-7fa1-b9b2-a46886dbeade",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_ab1335aa0710a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f60ca-542d-7b72-bc13-6def37b92f85",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_e5132b47093d21": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f60c7-377b-7f80-91a5-5d0e712574fd",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

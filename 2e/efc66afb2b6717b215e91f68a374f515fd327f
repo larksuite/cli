@@ -1,0 +1,23 @@
+skills/lark-slides/SKILL.md
+  s_92773c8ab668c9::t_a92cae70bb7a0c 23,40,151,156,181,193-194,196-197
+skills/lark-slides/references/validation-checklist.md
+  s_92773c8ab668c9::t_23cab061ee9b44 65-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2eefc66afb2b6717b215e91f68a374f515fd327f",
+  "prompts": {},
+  "sessions": {
+    "s_92773c8ab668c9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f65a0-a0a4-76f1-9687-b547b65e639f",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

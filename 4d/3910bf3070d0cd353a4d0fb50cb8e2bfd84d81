@@ -1,0 +1,29 @@
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_e8bc9dd810ef53::t_87ee12d3d964ed 762
+  s_e8bc9dd810ef53::t_e692b1d74c1e09 220,605,622-623,625-626,681,767-789
+  s_e8bc9dd810ef53::t_b1c26e49c5f5d3 764-766
+  s_e8bc9dd810ef53::t_45cf0b579a2c71 695,710,724-761,763
+  s_e8bc9dd810ef53::t_36f2bd1c1db3d2 221
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_e8bc9dd810ef53::t_215f7a45946cde 608,626,968-990
+  s_e8bc9dd810ef53::t_1b5dcfdae16190 991-993
+  s_e8bc9dd810ef53::t_bfe94560dd136b 994,998-1004,1006-1009,1019-1020,1022,1025,1031-1032,1117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4d3910bf3070d0cd353a4d0fb50cb8e2bfd84d81",
+  "prompts": {},
+  "sessions": {
+    "s_e8bc9dd810ef53": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f763b-f580-7663-a085-5137fda7087b",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
