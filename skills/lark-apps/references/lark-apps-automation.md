@@ -172,7 +172,7 @@
 
 用户要求测试已经发布的 trigger、没有要求修改 handler 时，先用 `+automation-get` 核对 name、类型、当前状态，再用 `+release-list --status finished --page-size 1` 确认应用存在 finished release，并说明本次测试覆盖当前线上代码。没有 finished release 时停止 runtime test，只报告配置状态；不得为测试自动修改源码、commit/push 或 release。release history 不证明该 name 已绑定 handler，真实 probe 的结果才是本次验证证据；若用户期待本地未发布改动，改走代码变更闭环。
 
-记录测试前状态，并在任何临时 enable 之前完成两类授权和全部 preflight：测试请求已明确包含临时 enable，或另行取得 enable 授权；同时按下方“运行时验证的操作级授权”确定具体事件、影响、载荷、观察结果和清理。原本 disabled 时完成这些门槛后才临时 enable，并在验证结束后恢复 disabled；原本 enabled 时不要无意义切换状态。测试意图本身不决定数据库记录、Webhook 请求或其他事件载荷。
+记录测试前状态，并在任何临时 enable 之前完成两类授权和全部 preflight：测试请求已明确包含临时 enable，或另行取得 enable 授权；同时按下方“运行时验证的操作级授权”确定具体事件、影响、载荷、观察结果和清理。原本 disabled 时完成这些门槛后才临时 enable，并在验证结束后恢复 disabled；原本 enabled 时不要无意义切换状态。原本为 disabled 时，无论 probe 成功、失败、结果不确定，还是临时 enable 后提前结束或中断，最终都必须 `+automation-disable` 并回读 disabled，不得停在 enabled。测试意图本身不决定数据库记录、Webhook 请求或其他事件载荷。
 
 ### 仅完成 handler（不发布/不启用）
 
@@ -188,7 +188,7 @@
 lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default
 ```
 
-保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时且状态仍不确定时报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成。确认 `failed` 且新代码未上线时，原本 enabled 的 trigger 恢复 enabled 并回读，原本 disabled 的保持 disabled。release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，finished 后始终保持 disabled，不执行 `+automation-enable`。
+若 `+release-create` 本身返回错误或未返回 `data.release_id`：视为确认未创建本轮 release（新代码未上线），原本 enabled 的 trigger 恢复 enabled 并回读、原本 disabled 的保持 disabled，然后停止；若因超时等导致创建结果未知，保持 disabled，先用 `+release-list --status finished --page-size 1` 核对是否已产生新 release 再决定。取得 `data.release_id` 后，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时且状态仍不确定时报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成。确认 `failed` 且新代码未上线时，原本 enabled 的 trigger 恢复 enabled 并回读，原本 disabled 的保持 disabled。release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，finished 后始终保持 disabled，不执行 `+automation-enable`。
 
 ### 实现或更新 handler 后发布并启动/测试
 
@@ -198,7 +198,7 @@ lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/defaul
 2. 按项目 guide 完成同名业务 handler 并本地验证。
 3. 在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。
 4. 若 trigger 当前 enabled，先说明发布前必须临时停用以及可能造成的运行中断，并取得这次临时停用授权；未获授权时停止在发布前。取得授权后执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled；原本 disabled 时不要无意义切换状态。
-5. 执行 `+release-create --branch sprint/default`，保存返回的 `data.release_id`。
+5. 执行 `+release-create --branch sprint/default`。若该命令本身返回错误或未返回 `data.release_id`：视为确认未创建本轮 release（新代码未上线），原本 enabled 的 trigger 恢复 enabled 并回读、原本 disabled 的保持 disabled 后停止；若因超时等导致结果未知，保持 disabled，先用 `+release-list --status finished --page-size 1` 核对是否已产生新 release 再决定。取得 `data.release_id` 后进入下一步。
 6. 对该 ID 执行 `+release-get`，只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟。超时且状态仍不确定时停止本轮轮询、报告 `release_id` 和当前 status，并保持 disabled；确认 `failed` 时报告发布失败，原本 enabled 的 trigger 仅在确认新代码未上线后恢复 enabled，原本 disabled 的保持 disabled。发布状态仍不确定时不得进入 enable、probe 或状态恢复分支。`is_published=true` 不能代替这轮发布完成。
 7. **仅启动**：取得持续启动授权后执行 `+automation-enable`，并用 `+automation-get` 确认 enabled；到此结束，不制造 runtime probe。
 8. **测试（含“启动并测试”）**：先按下节“运行时验证的操作级授权”完成全部 preflight，包括具体事件、sibling 影响、载荷、观察结果和清理；完成前保持 disabled，之后才执行 `+automation-enable` 并回读，再由已授权主体制造真实 runtime 条件并核验业务结果。若同时明确要求持续启动，只有 probe 成功后才保持 enabled。

@@ -141,6 +141,7 @@ func TestAutomationSkillContract_ChangedHandlerStartWaitsForThisRelease(t *testi
 		"仅当本轮确实需要新增或修改 cron、webhook、record-change 的 `INSERT`、`UPDATE`、`DELETE` handler，且用户要求把这次代码发布后启动或测试时，才使用此路径。",
 		"按项目 guide 完成同名业务 handler 并本地验证。",
 		"在 Git 已确认/预授权时 commit，然后执行 `git push origin sprint/default`。",
+		"若该命令本身返回错误或未返回 `data.release_id`：视为确认未创建本轮 release（新代码未上线），原本 enabled 的 trigger 恢复 enabled 并回读、原本 disabled 的保持 disabled 后停止；若因超时等导致结果未知，保持 disabled，先用 `+release-list --status finished --page-size 1` 核对是否已产生新 release 再决定。",
 		"只有 `data.status=finished` 才能继续；`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟。",
 		"确认 `failed` 时报告发布失败，原本 enabled 的 trigger 仅在确认新代码未上线后恢复 enabled，原本 disabled 的保持 disabled。",
 		"发布状态仍不确定时不得进入 enable、probe 或状态恢复分支。",
@@ -245,6 +246,7 @@ func TestAutomationSkillContract_TestExistingTriggerDoesNotPublish(t *testing.T)
 		"在任何临时 enable 之前完成",
 		"测试请求已明确包含临时 enable，或另行取得 enable 授权",
 		"运行时验证的操作级授权",
+		"无论 probe 成功、失败、结果不确定，还是临时 enable 后提前结束或中断，最终都必须 `+automation-disable` 并回读 disabled",
 	)
 	for _, forbidden := range []string{"git push", "+release-create"} {
 		if strings.Contains(section, forbidden) {
@@ -286,7 +288,8 @@ func TestAutomationSkillContract_PublishedHandlerStaysDisabled(t *testing.T) {
 		"取得授权后，在发布前执行 `+automation-disable`，并再次用 `+automation-get` 确认 disabled。",
 		"按项目 guide 完成同名业务 handler 并本地验证后，commit、`git push origin sprint/default`。",
 		"随后发布完整应用：",
-		"保存返回的 `data.release_id`，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时且状态仍不确定时报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成。",
+		"若 `+release-create` 本身返回错误或未返回 `data.release_id`：视为确认未创建本轮 release（新代码未上线），原本 enabled 的 trigger 恢复 enabled 并回读、原本 disabled 的保持 disabled，然后停止；若因超时等导致创建结果未知，保持 disabled，先用 `+release-list --status finished --page-size 1` 核对是否已产生新 release 再决定。",
+		"取得 `data.release_id` 后，对**这一轮** ID 调用 `+release-get`：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时且状态仍不确定时报告 `release_id` 和当前 status，并保持 disabled；只有 `data.status=finished` 才算完成。",
 		"确认 `failed` 且新代码未上线时，原本 enabled 的 trigger 恢复 enabled 并回读，原本 disabled 的保持 disabled。",
 		"release 是整个应用上线，可能影响既有线上功能；未获得启动或测试授权时，finished 后始终保持 disabled，不执行 `+automation-enable`。",
 	} {
