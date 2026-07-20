@@ -311,6 +311,42 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         self.assertEqual(issue["tag"], "fill")
         self.assertEqual(issue["attr"], "unexpected")
 
+    def test_lint_xml_ignores_chart_roundtrip_attrs(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <chart updated="true" topLeftX="80" topLeftY="80" width="300" height="160">
+                  <chartData isStaticData="true"/>
+                </chart>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertNotIn("issues", result)
+
+    def test_lint_xml_limits_chart_roundtrip_attrs_to_matching_tags(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <chart isStaticData="true" topLeftX="80" topLeftY="80" width="300" height="160">
+                  <chartData updated="true"/>
+                </chart>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 2)
+        self.assertEqual(
+            {(issue["tag"], issue["attr"]) for issue in result["issues"]},
+            {("chart", "isStaticData"), ("chartData", "updated")},
+        )
+        self.assertTrue(all(issue["code"] == "sxsd_unsupported_attr" for issue in result["issues"]))
+
     def test_lint_xml_reports_gradient_shorthand_attrs_on_fill_color(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """

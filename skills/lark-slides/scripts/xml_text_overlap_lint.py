@@ -38,6 +38,10 @@ SXSD_ATTR_ALIASES = {
     "fontColor": "color",
 }
 SERVER_FILLED_SXSD_ATTRS = {"id"}
+ROUNDTRIP_SXSD_ATTRS = {
+    ("chart", "updated"),
+    ("chartData", "isStaticData"),
+}
 DEFAULT_TABLE_COLUMN_WIDTH = 110
 DEFAULT_TABLE_ROW_HEIGHT = 37
 _SXSD_TAG_ATTRIBUTES_CACHE: dict[str, set[str]] | None = None
@@ -342,8 +346,8 @@ def should_skip_sxsd_subtree(element: ET.Element, ancestors: list[str]) -> bool:
     return "whiteboard" in ancestors and xml_namespace(element.tag) == SVG_NS
 
 
-def should_skip_sxsd_attribute(attr_name: str) -> bool:
-    return attr_name in SERVER_FILLED_SXSD_ATTRS
+def should_skip_sxsd_attribute(tag_name: str, attr_name: str) -> bool:
+    return attr_name in SERVER_FILLED_SXSD_ATTRS or (tag_name, attr_name) in ROUNDTRIP_SXSD_ATTRS
 
 
 def validate_sxsd_tag_attributes(root: ET.Element) -> list[dict[str, Any]]:
@@ -375,7 +379,7 @@ def validate_sxsd_tag_attributes(root: ET.Element) -> list[dict[str, Any]]:
                 if raw_attr_name.startswith(XML_NS):
                     continue
                 attr_name = xml_local_name(raw_attr_name)
-                if should_skip_sxsd_attribute(attr_name):
+                if should_skip_sxsd_attribute(tag_name, attr_name):
                     continue
                 if attr_name in allowed_attrs:
                     continue
