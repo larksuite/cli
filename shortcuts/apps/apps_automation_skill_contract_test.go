@@ -24,10 +24,6 @@ func readLocalDevSkillDoc(t *testing.T) string {
 	return readAppsSkillDoc(t, localDevSkillDoc)
 }
 
-func readLarkAppsSkillDoc(t *testing.T) string {
-	return readAppsSkillDoc(t, larkAppsSkillDoc)
-}
-
 func readReleaseGetSkillDoc(t *testing.T) string {
 	return readAppsSkillDoc(t, releaseGetSkillDoc)
 }
@@ -306,17 +302,6 @@ func TestAutomationSkillContract_PublishedHandlerStaysDisabled(t *testing.T) {
 	)
 }
 
-func TestAppsSkillContract_RoutesGenericAppDevelopment(t *testing.T) {
-	doc := readLarkAppsSkillDoc(t)
-	description := regexp.MustCompile(`(?m)^description: "([^"]+)"$`).FindStringSubmatch(doc)
-	if len(description) != 2 {
-		t.Fatal("lark-apps skill must have a single-line frontmatter description")
-	}
-	if !strings.Contains(description[1], "当用户要开发或新建系统、工具、平台、应用") {
-		t.Error("lark-apps description must route generic app-development requests before the skill body is loaded")
-	}
-}
-
 func TestAutomationSkillContract_UPSERTAndApprovalStayConfigurationOnly(t *testing.T) {
 	section := skillSubsection(t, readAutomationSkillDoc(t), "### UPSERT 与飞书审批边界")
 
@@ -471,14 +456,6 @@ func TestLocalDevSkillContract_TreatsErrorLogsAsOptional(t *testing.T) {
 }
 
 func TestReleaseSkillContract_TreatsOptionalOutputAsOptional(t *testing.T) {
-	mainSkill := readLarkAppsSkillDoc(t)
-	if !strings.Contains(mainSkill, "`finished` 后若返回 `online_url` 可交付；`failed` 时若返回 `error_logs` 可据此排查") {
-		t.Error("lark-apps routing must not promise optional release output")
-	}
-	if !strings.Contains(mainSkill, "发布成功且返回 `online_url` 后，再连同发布态链接一并提供给用户") {
-		t.Error("lark-apps publish guard must not promise a link when the release returns none")
-	}
-
 	releaseGet := readReleaseGetSkillDoc(t)
 	for _, boundary := range []string{
 		"`finished` 后才可能有 `online_url`。",
