@@ -7,16 +7,15 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"os"
 )
 
 // FormatAsCSV formats data as CSV (with header) and writes it to w.
 func FormatAsCSV(w io.Writer, data interface{}) {
 	if err := WriteCSV(w, data); err != nil {
 		if isOutputMarshalError(err) {
-			fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+			legacyStderrf("json marshal error: %v\n", err)
 		} else {
-			fmt.Fprintf(os.Stderr, "csv write error: %v\n", err)
+			legacyStderrf("csv write error: %v\n", err)
 		}
 	}
 }
@@ -31,9 +30,9 @@ func WriteCSV(w io.Writer, data interface{}) error {
 func FormatAsCSVPaginated(w io.Writer, data interface{}, isFirstPage bool) {
 	if err := WriteCSVPaginated(w, data, isFirstPage); err != nil {
 		if isOutputMarshalError(err) {
-			fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+			legacyStderrf("json marshal error: %v\n", err)
 		} else {
-			fmt.Fprintf(os.Stderr, "csv write error: %v\n", err)
+			legacyStderrf("csv write error: %v\n", err)
 		}
 	}
 }

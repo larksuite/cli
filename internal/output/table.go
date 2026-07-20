@@ -6,7 +6,6 @@ package output
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 )
 
@@ -18,7 +17,7 @@ const maxColWidth = 100
 //   - empty array → "(empty)"
 func FormatAsTable(w io.Writer, data interface{}) {
 	if err := WriteTable(w, data); isOutputMarshalError(err) {
-		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+		legacyStderrf("json marshal error: %v\n", err)
 	}
 }
 
@@ -31,7 +30,7 @@ func WriteTable(w io.Writer, data interface{}) error {
 // When isFirstPage is true, outputs the header; otherwise only data rows.
 func FormatAsTablePaginated(w io.Writer, data interface{}, isFirstPage bool) {
 	if err := WriteTablePaginated(w, data, isFirstPage); isOutputMarshalError(err) {
-		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+		legacyStderrf("json marshal error: %v\n", err)
 	}
 }
 

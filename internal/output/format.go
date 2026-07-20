@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 )
 
@@ -107,11 +106,11 @@ func FormatValue(w io.Writer, data interface{}, format Format) {
 	case err == nil:
 		return
 	case isOutputMarshalError(err) && format == FormatNDJSON:
-		fmt.Fprintf(os.Stderr, "ndjson marshal error: %v\n", err)
+		legacyStderrf("ndjson marshal error: %v\n", err)
 	case isOutputMarshalError(err):
-		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+		legacyStderrf("json marshal error: %v\n", err)
 	case format == FormatCSV:
-		fmt.Fprintf(os.Stderr, "csv write error: %v\n", err)
+		legacyStderrf("csv write error: %v\n", err)
 	}
 }
 
@@ -164,9 +163,9 @@ func (pf *PaginatedFormatter) FormatPage(data interface{}) {
 	err := pf.WritePage(data)
 	switch {
 	case isOutputMarshalError(err) && (pf.Format == FormatJSON || pf.Format == FormatNDJSON):
-		fmt.Fprintf(os.Stderr, "ndjson marshal error: %v\n", err)
+		legacyStderrf("ndjson marshal error: %v\n", err)
 	case err != nil && pf.Format == FormatCSV:
-		fmt.Fprintf(os.Stderr, "csv write error: %v\n", err)
+		legacyStderrf("csv write error: %v\n", err)
 	}
 }
 

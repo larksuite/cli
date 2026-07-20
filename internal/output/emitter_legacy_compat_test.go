@@ -1,7 +1,8 @@
-// Legacy oracle fixtures are frozen at base SHA 4a56748bfa941ff0ee0bfec92e65acac427732b0.
-// Golden regeneration is allowed only from that base, never from the current system under test.
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
+
+// Legacy oracle fixtures are frozen at base SHA 4a56748bfa941ff0ee0bfec92e65acac427732b0.
+// Golden regeneration is allowed only from that base, never from the current system under test.
 
 package output_test
 

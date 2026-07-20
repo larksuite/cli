@@ -17,7 +17,7 @@ import (
 func PrintJson(w io.Writer, data interface{}) {
 	injectNotice(data)
 	if err := WriteJSON(w, data); isOutputMarshalError(err) {
-		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+		legacyStderrf("json marshal error: %v\n", err)
 	}
 }
 
@@ -36,6 +36,14 @@ func (e *outputMarshalError) Unwrap() error {
 func isOutputMarshalError(err error) bool {
 	var marshalErr *outputMarshalError
 	return errors.As(err, &marshalErr)
+}
+
+// legacyStderrf reports a leaf-formatter marshal/format failure on os.Stderr,
+// preserving the pre-Emitter behavior for direct (unmigrated) callers of the
+// Print*/FormatAs* wrappers. The Emitter never uses this — it returns typed
+// errors instead. Removed once the remaining direct callers migrate.
+func legacyStderrf(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, args...) //nolint:forbidigo // legacy leaf-formatter stderr; removed in the output-ownership follow-up
 }
 
 // WriteJSON writes data as formatted JSON to w and returns marshal or write errors.
@@ -78,13 +86,13 @@ func PrintNdjson(w io.Writer, data interface{}) {
 	if arr, ok := data.([]interface{}); ok {
 		for _, item := range arr {
 			if err := WriteNDJSON(w, item); isOutputMarshalError(err) {
-				fmt.Fprintf(os.Stderr, "ndjson marshal error: %v\n", err)
+				legacyStderrf("ndjson marshal error: %v\n", err)
 			}
 		}
 		return
 	}
 	if err := WriteNDJSON(w, data); isOutputMarshalError(err) {
-		fmt.Fprintf(os.Stderr, "ndjson marshal error: %v\n", err)
+		legacyStderrf("ndjson marshal error: %v\n", err)
 	}
 }
 
