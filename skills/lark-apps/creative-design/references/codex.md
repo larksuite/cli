@@ -1,6 +1,6 @@
 # Codex Agent 工具参考
 
-本文档列出 [`../SKILL.md`](../SKILL.md) 所依赖的 harness 专属工具，供你在 **Codex Agent** 中运行时使用。主提示词只命名能力（"向用户提问"、"展示文件"等）；本文档给出 Codex 的调用方式。通用工具（shell、文件读/写/编辑/搜索、`gh`）不在此覆盖。
+本文档列出 [`../creative-design.md`](../creative-design.md) 所依赖的 harness 专属工具，供你在 **Codex Agent** 中运行时使用。主提示词只命名能力（"向用户提问"、"展示文件"等）；本文档给出 Codex 的调用方式。通用工具（shell、文件读/写/编辑/搜索、`gh`）不在此覆盖。
 
 ## Web 工具 → Codex 对应项
 
@@ -29,4 +29,4 @@
 ## 交付与发布
 
 - 在最终回复中给出交付物的绝对本地文件路径。
-- 产物完成并提交后，按 [`../SKILL.md`](../SKILL.md)「发布」一节发布到妙搭——交付给用户的可分享链接是 `+release-get` 返回的 `online_url`。
+- 产物完成并提交后，按 [`../creative-design.md`](../creative-design.md)「发布」一节发布到妙搭——交付给用户的可分享链接是 `+release-get` 返回的 `online_url`。

@@ -4,7 +4,7 @@ description: 以自包含 HTML 创建精致的设计产物：UI mockup、可交�
 ---
 
 ## 目录结构与运行环境
-本 skill 附带以下资源，路径均相对于本 `SKILL.md` 所在目录：
+本 skill 附带以下资源，路径均相对于本文件所在目录：
 
 - `references/<name>.md` — 媒介专属技能 prompt（如 `frontend-design.md`、`hi-fi-design.md`、`charts.md` 等；见文末「Skills 元信息」的完整列表）。与下方 harness 工具映射表同在 `references/` 目录。
 - `starter-components/` — 现成的 HTML/JS/JSX 脚手架（`design-canvas.jsx`、`deck-stage.js`、`ios-frame.jsx`、`android-frame.jsx`、`tweaks-panel.jsx`、`macos-window.jsx`、`browser-window.jsx`、`animations.jsx`）。见下文「Starter Components」。

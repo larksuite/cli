@@ -21,4 +21,4 @@ Do not wrap interactive prototypes in `design-canvas.jsx`, `<DCArtboard>`, or an
 
 - 准备一份贴近业务的 mock 数据（名称、状态、时间戳都要像真的），页面从数据渲染，不要把内容写死在标记里。
 - 每个可见的按钮、输入、切换都要有反应：提交有校验和反馈、列表可增删改、状态会流转、空状态有设计。点了没反应的控件比没有这个控件更伤可信度。
-- 按 [`../SKILL.md`](../SKILL.md)「Tweaks」把关键选项（主题色、密度、布局变体等）用 `tweaks-panel.jsx` 暴露出来，不要自己实现控件面板。
+- 按 [`../creative-design.md`](../creative-design.md)「Tweaks」把关键选项（主题色、密度、布局变体等）用 `tweaks-panel.jsx` 暴露出来，不要自己实现控件面板。
