@@ -158,6 +158,9 @@ func shortcutList() []common.Shortcut {
 		SparklineCreate, SparklineUpdate, SparklineDelete,
 		FloatImageCreate, FloatImageUpdate, FloatImageDelete,
 
+		// lark_sheet_styles_put
+		StylesPut,
+
 		// lark_sheet_batch_update
 		BatchUpdate,
 		CellsBatchSetStyle,

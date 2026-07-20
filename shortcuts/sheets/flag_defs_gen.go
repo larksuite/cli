@@ -16,7 +16,7 @@ var flagDefs = map[string]commandDef{
 		Flags: []flagDef{
 			{Name: "url", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator (independent from per-operation sheet locator)"},
 			{Name: "spreadsheet-token", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator (independent from per-operation sheet locator)"},
-			{Name: "operations", Kind: "own", Type: "string", Required: "required", Desc: "JSON array: [{\"shortcut\":\"+xxx-yyy\",\"input\":{...}}, ...]. shortcut uses CLI names; input is that shortcut's flag set — it includes the per-operation sheet locator (sheet_id or sheet_name) but not the spreadsheet token/url (pass that once at the top level via --url/--spreadsheet-token; +batch-update has no top-level --sheet-id). input keys are the shortcut's flags flattened into JSON (e.g. \"range\":\"A11:B12\"), not another nested layer. For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>. Do not pass an explicit operation field. Strict transaction by default, pass --continue-on-error for soft batch; no nesting; executed serially.", Input: []string{"file", "stdin"}},
+			{Name: "operations", Kind: "own", Type: "string", Required: "required", Desc: "JSON array: [{\"shortcut\":\"+xxx-yyy\",\"input\":{...}}, ...]. shortcut uses CLI names; input is that shortcut's flag set — it includes the per-operation sheet locator (sheet_id or sheet_name) but not the spreadsheet token/url (pass that once at the top level via --url/--spreadsheet-token; +batch-update has no top-level --sheet-id). input keys are the shortcut's flags flattened into JSON (e.g. \"range\":\"A11:B12\"), not another nested layer. For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>. Do not pass an explicit operation field. Fail-fast by default: the first failure aborts the remaining operations and already-applied sub-operations are NOT rolled back (on \"N succeeded, M failed\" resend only the failed tail, not the whole batch); pass --continue-on-error to keep going past failures; no nesting; executed serially.", Input: []string{"file", "stdin"}},
 			{Name: "continue-on-error", Kind: "own", Type: "bool", Required: "optional", Desc: "Continue with remaining operations when a sub-operation fails; default false (abort on first failure)"},
 			{Name: "yes", Kind: "system", Type: "bool", Required: "required", Desc: "Confirm high-risk write (exit code 10 without this flag)"},
 			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional", Desc: "Print the request template for each sub-operation; no network side effects"},
@@ -346,7 +346,8 @@ var flagDefs = map[string]commandDef{
 			{Name: "spreadsheet-token", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet token (XOR with `--url`)"},
 			{Name: "sheet-id", Kind: "public", Type: "string", Required: "xor", Desc: "Sheet reference_id (XOR with `--sheet-name`)"},
 			{Name: "sheet-name", Kind: "public", Type: "string", Required: "xor", Desc: "Sheet name (XOR with `--sheet-id`)"},
-			{Name: "range", Kind: "own", Type: "string", Required: "required", Desc: "Row/column closed range to delete; rows use 1-based numbers like `3:7` or `5` (single row), columns use letters like `C:F` or `C`"},
+			{Name: "range", Kind: "own", Type: "string", Required: "xor", Desc: "Row/column closed range to delete; rows use 1-based numbers like `3:7` or `5` (single row), columns use letters like `C:F` or `C`. XOR with `--ranges`"},
+			{Name: "ranges", Kind: "own", Type: "string", Required: "xor", Desc: "Multiple row/column ranges to delete as a JSON array (up to 100 items, e.g. `[\"5:5\",\"8:8\",\"11:13\"]` or `[\"C:C\",\"F:G\"]`); rows and columns cannot be mixed, ranges must not overlap; XOR with `--range`. CLI sorts positions in DESCENDING order into one atomic batch delete — ascending deletion would shift later indexes as earlier rows/columns disappear; the CLI handles the ordering", Input: []string{"file", "stdin"}},
 			{Name: "yes", Kind: "system", Type: "bool", Required: "required", Desc: "Confirm destructive write (exit code 10 without this flag); row/column deletion is irreversible"},
 			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional"},
 		},
@@ -975,6 +976,15 @@ var flagDefs = map[string]commandDef{
 			{Name: "group-id", Kind: "own", Type: "string", Required: "required", Desc: "Target group id"},
 			{Name: "properties", Kind: "own", Type: "string", Required: "required", Desc: "JSON: `{config, sparklines}`; read back with `+sparkline-list --group-id <id>` first, then patch; run `--print-schema` for the full structure", Input: []string{"file", "stdin"}},
 			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional"},
+		},
+	},
+	"+styles-put": {
+		Risk: "write",
+		Flags: []flagDef{
+			{Name: "url", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator (target sheets are named inside --styles items)"},
+			{Name: "spreadsheet-token", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet token (XOR with `--url`)"},
+			{Name: "styles", Kind: "own", Type: "string", Required: "required", Desc: "Visual spec JSON applied to an EXISTING spreadsheet: top-level `{styles:[...]}`, one item per target sheet (`name` is the real sheet name), each giving at least one of `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze`. The vocabulary is identical to `--styles` on `+workbook-create` / `+table-put` (cell_styles = A1 range + flat style fields; row/col sizes = row/column range + type/size; merges = cell range; freeze = `{rows:N, cols:N}`). The whole spec expands into one atomic batched request; ranges may target any region of the sheet", Input: []string{"file", "stdin"}},
+			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional", Desc: "Print the batched request template for each expanded operation; no network side effects"},
 		},
 	},
 	"+table-get": {

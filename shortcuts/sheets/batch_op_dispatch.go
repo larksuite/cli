@@ -105,6 +105,11 @@ var batchOpDispatch = map[string]batchOpMapping{
 	// ─── 行列结构 (modify_sheet_structure, operation 区分) ──────────
 	"+dim-insert": {"modify_sheet_structure", dimInsertInput},
 	"+dim-delete": {"modify_sheet_structure", func(fv flagView, token, sid, sname string) (map[string]interface{}, error) {
+		// The --ranges plural form expands into its own atomic batch and
+		// cannot nest; sub-ops carry one range each.
+		if fv.Changed("ranges") {
+			return nil, sheetsValidationForFlag("ranges", `"ranges" is not supported inside +batch-update (it expands into its own atomic batch); call +dim-delete --ranges standalone, or give each sub-op a single "range"`)
+		}
 		return dimRangeOpInput(fv, token, sid, sname, "delete")
 	}},
 	"+dim-hide": {"modify_sheet_structure", func(fv flagView, token, sid, sname string) (map[string]interface{}, error) {
@@ -466,7 +471,7 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 		return nil, sheetsValidationForFlag(
 			"operations",
 			"operations[%d]: shortcut %q not allowed in +batch-update "+
-				"(read ops / fan-out wrappers like +batch-update / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete} are excluded)",
+				"(read ops / fan-out wrappers like +batch-update / +styles-put / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete} are excluded)",
 			index, sc,
 		).WithHint("allowed shortcuts: %s", strings.Join(allowedBatchShortcuts(), ", "))
 	}

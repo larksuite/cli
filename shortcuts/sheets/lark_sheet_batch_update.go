@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -166,6 +167,7 @@ var CellsBatchSetStyle = common.Shortcut{
 	HasFormat:   true,
 	Flags:       flagsFor("+cells-batch-set-style"),
 	Tips: []string{
+		"DEPRECATED: superseded by +styles-put, whose one spec also covers merges, row/col sizes and freeze — prefer it for new work.",
 		`Example: lark-cli sheets +cells-batch-set-style --url <URL> --ranges '["Sheet1!A1:B2","汇总!C1:C9"]' --font-weight bold`,
 		"Every range carries its sheet-NAME prefix (Sheet1!A1:B2, not a sheet_id) — there is no --sheet-id / --sheet-name flag here.",
 	},
@@ -198,6 +200,10 @@ var CellsBatchSetStyle = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		// Phase-1 deprecation (docs already point at +styles-put): keep the
+		// command working, steer new usage to the superset in-band.
+		fmt.Fprintln(runtime.IO().ErrOut,
+			"note: +cells-batch-set-style is superseded by +styles-put (one spec covers styles + merges + row/col sizes + freeze); prefer +styles-put for new work")
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", input)
 		if err != nil {
 			return err

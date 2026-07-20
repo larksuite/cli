@@ -7748,6 +7748,312 @@
         }
       }
     },
+    "+styles-put": {
+      "styles": {
+        "items": {
+          "properties": {
+            "cell_merges": {
+              "description": "单元格合并操作数组；range 使用 A1 单元格范围，merge_type 默认 all。",
+              "items": {
+                "properties": {
+                  "merge_type": {
+                    "enum": [
+                      "all",
+                      "rows",
+                      "columns"
+                    ],
+                    "type": "string"
+                  },
+                  "range": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "cell_styles": {
+              "description": "单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐。",
+              "items": {
+                "properties": {
+                  "background_color": {
+                    "type": "string"
+                  },
+                  "border_styles": {
+                    "type": "object",
+                    "description": "边框配置，结构同 +cells-set-style --border-styles。",
+                    "properties": {
+                      "bottom": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "left": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "right": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "top": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "font_color": {
+                    "type": "string"
+                  },
+                  "font_family": {
+                    "type": "string"
+                  },
+                  "font_line": {
+                    "enum": [
+                      "none",
+                      "underline",
+                      "line-through"
+                    ],
+                    "type": "string"
+                  },
+                  "font_size": {
+                    "type": "number"
+                  },
+                  "font_style": {
+                    "enum": [
+                      "normal",
+                      "italic"
+                    ],
+                    "type": "string"
+                  },
+                  "font_weight": {
+                    "enum": [
+                      "normal",
+                      "bold"
+                    ],
+                    "type": "string"
+                  },
+                  "horizontal_alignment": {
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ],
+                    "type": "string"
+                  },
+                  "number_format": {
+                    "type": "string"
+                  },
+                  "range": {
+                    "description": "A1 单元格范围，必须落在该子表本次写入区域内；例如 A1:B1、B2。",
+                    "type": "string"
+                  },
+                  "vertical_alignment": {
+                    "enum": [
+                      "top",
+                      "middle",
+                      "bottom"
+                    ],
+                    "type": "string"
+                  },
+                  "word_wrap": {
+                    "enum": [
+                      "overflow",
+                      "auto-wrap",
+                      "word-clip"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "col_sizes": {
+              "description": "列宽操作数组；range 使用列范围如 A:C，type 为 pixel/standard，pixel 需要 size。",
+              "items": {
+                "properties": {
+                  "range": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "number"
+                  },
+                  "type": {
+                    "enum": [
+                      "pixel",
+                      "standard"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "freeze": {
+              "description": "冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结）。",
+              "properties": {
+                "cols": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "rows": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "name": {
+              "description": "子表名。--sheets 模式下必须与同位置 --sheets.sheets[].name 一致；--values 模式下建议写 Sheet1（其 name 会被忽略）。",
+              "type": "string"
+            },
+            "row_sizes": {
+              "description": "行高操作数组；range 使用行范围如 1:3，type 为 pixel/standard/auto，pixel 需要 size。",
+              "items": {
+                "properties": {
+                  "range": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "number"
+                  },
+                  "type": {
+                    "enum": [
+                      "pixel",
+                      "standard",
+                      "auto"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
     "+table-put": {
       "sheets": {
         "type": "array",
@@ -8079,6 +8385,20 @@
                 "type": "object"
               },
               "type": "array"
+            },
+            "freeze": {
+              "description": "冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结）。",
+              "properties": {
+                "cols": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "rows": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
             },
             "name": {
               "description": "子表名。--sheets 模式下必须与同位置 --sheets.sheets[].name 一致；--values 模式下建议写 Sheet1（其 name 会被忽略）。",
@@ -8451,6 +8771,20 @@
                 "type": "object"
               },
               "type": "array"
+            },
+            "freeze": {
+              "description": "冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结）。",
+              "properties": {
+                "cols": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "rows": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
             },
             "name": {
               "description": "子表名。--sheets 模式下必须与同位置 --sheets.sheets[].name 一致；--values 模式下建议写 Sheet1（其 name 会被忽略）。",

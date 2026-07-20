@@ -918,6 +918,14 @@ type workbookCreateStylePayload struct {
 	RowSizes   []workbookCreateResizeOp
 	ColSizes   []workbookCreateResizeOp
 	CellMerges []workbookCreateMergeOp
+	Freeze     *workbookCreateFreezeOp
+}
+
+// workbookCreateFreezeOp freezes the first Rows rows / Cols columns.
+// Zero means "leave that dimension alone".
+type workbookCreateFreezeOp struct {
+	Rows int
+	Cols int
 }
 
 type workbookCreateCellStyleOp struct {
@@ -1073,13 +1081,50 @@ func parseWorkbookCreateStyleItem(item map[string]interface{}, path string) (*wo
 		payload.CellMerges, errsHere = parseWorkbookCreateMergeOps(raw, path+".cell_merges")
 		probs = append(probs, errsHere...)
 	}
+	if raw, ok := item["freeze"]; ok {
+		freeze, err := parseWorkbookCreateFreezeOp(raw, path+".freeze")
+		if err != nil {
+			probs = append(probs, err)
+		} else {
+			payload.Freeze = freeze
+		}
+	}
 	if len(probs) > 0 {
 		return nil, probs
 	}
-	if len(payload.CellStyles) == 0 && len(payload.RowSizes) == 0 && len(payload.ColSizes) == 0 && len(payload.CellMerges) == 0 {
-		return nil, []error{common.ValidationErrorf("%s must include at least one of cell_styles/row_sizes/col_sizes/cell_merges", path)}
+	if len(payload.CellStyles) == 0 && len(payload.RowSizes) == 0 && len(payload.ColSizes) == 0 && len(payload.CellMerges) == 0 && payload.Freeze == nil {
+		return nil, []error{common.ValidationErrorf("%s must include at least one of cell_styles/row_sizes/col_sizes/cell_merges/freeze", path)}
 	}
 	return payload, nil
+}
+
+// parseWorkbookCreateFreezeOp parses a {rows, cols} freeze section. At least
+// one dimension must be positive — an all-zero freeze is a no-op the caller
+// almost certainly didn't mean.
+func parseWorkbookCreateFreezeOp(raw interface{}, path string) (*workbookCreateFreezeOp, error) {
+	obj, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, common.ValidationErrorf("%s must be an object like {\"rows\":1} or {\"rows\":1,\"cols\":2}", path)
+	}
+	out := &workbookCreateFreezeOp{}
+	for k, v := range obj {
+		n, isNum := v.(float64)
+		if !isNum || n != float64(int(n)) || n < 0 {
+			return nil, common.ValidationErrorf("%s.%s must be a non-negative integer", path, k)
+		}
+		switch k {
+		case "rows":
+			out.Rows = int(n)
+		case "cols", "columns":
+			out.Cols = int(n)
+		default:
+			return nil, common.ValidationErrorf("%s.%s is not a supported field (want rows/cols)", path, k)
+		}
+	}
+	if out.Rows == 0 && out.Cols == 0 {
+		return nil, common.ValidationErrorf("%s must freeze at least one dimension (rows or cols > 0)", path)
+	}
+	return out, nil
 }
 
 // joinStyleValidationErrors folds the issues collected across one --styles
@@ -1618,7 +1663,7 @@ func workbookCreateVisualOps(styles *workbookCreateStylePayload) []workbookCreat
 	if styles == nil {
 		return nil
 	}
-	ops := make([]workbookCreateStyleOp, 0, len(styles.CellMerges)+len(styles.RowSizes)+len(styles.ColSizes))
+	ops := make([]workbookCreateStyleOp, 0, len(styles.CellMerges)+len(styles.RowSizes)+len(styles.ColSizes)+2)
 	for _, op := range styles.CellMerges {
 		ops = append(ops, workbookCreateStyleOp{Kind: "cell_merge", Range: op.Range, MergeType: op.MergeType})
 	}
@@ -1627,6 +1672,14 @@ func workbookCreateVisualOps(styles *workbookCreateStylePayload) []workbookCreat
 	}
 	for _, op := range styles.ColSizes {
 		ops = append(ops, workbookCreateStyleOp{Kind: "col_size", Range: op.Range, ResizeType: op.ResizeType, Size: op.Size})
+	}
+	if styles.Freeze != nil {
+		if styles.Freeze.Rows > 0 {
+			ops = append(ops, workbookCreateStyleOp{Kind: "freeze_rows", Size: styles.Freeze.Rows})
+		}
+		if styles.Freeze.Cols > 0 {
+			ops = append(ops, workbookCreateStyleOp{Kind: "freeze_cols", Size: styles.Freeze.Cols})
+		}
 	}
 	return ops
 }
@@ -1666,6 +1719,18 @@ func workbookCreateVisualOpInput(token, sheetID, sheetName string, op workbookCr
 			input["resize_width"] = block
 		}
 		return input, "resize_range"
+	case "freeze_rows", "freeze_cols":
+		input := map[string]interface{}{
+			"excel_id":  token,
+			"operation": "freeze",
+		}
+		sheetSelectorForToolInput(input, sheetID, sheetName)
+		if op.Kind == "freeze_rows" {
+			input["freeze_rows"] = op.Size
+		} else {
+			input["freeze_columns"] = op.Size
+		}
+		return input, "modify_sheet_structure"
 	default:
 		return nil, ""
 	}

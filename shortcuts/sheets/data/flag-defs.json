@@ -887,8 +887,19 @@
         "name": "range",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "Row/column closed range to delete; rows use 1-based numbers like `3:7` or `5` (single row), columns use letters like `C:F` or `C`"
+        "required": "xor",
+        "desc": "Row/column closed range to delete; rows use 1-based numbers like `3:7` or `5` (single row), columns use letters like `C:F` or `C`. XOR with `--ranges`"
+      },
+      {
+        "name": "ranges",
+        "kind": "own",
+        "type": "string",
+        "required": "xor",
+        "desc": "Multiple row/column ranges to delete as a JSON array (up to 100 items, e.g. `[\"5:5\",\"8:8\",\"11:13\"]` or `[\"C:C\",\"F:G\"]`); rows and columns cannot be mixed, ranges must not overlap; XOR with `--range`. CLI sorts positions in DESCENDING order into one atomic batch delete — ascending deletion would shift later indexes as earlier rows/columns disappear; the CLI handles the ordering",
+        "input": [
+          "file",
+          "stdin"
+        ]
       },
       {
         "name": "yes",
@@ -2817,6 +2828,43 @@
       }
     ]
   },
+  "+styles-put": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator (target sheets are named inside --styles items)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "styles",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Visual spec JSON applied to an EXISTING spreadsheet: top-level `{styles:[...]}`, one item per target sheet (`name` is the real sheet name), each giving at least one of `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze`. The vocabulary is identical to `--styles` on `+workbook-create` / `+table-put` (cell_styles = A1 range + flat style fields; row/col sizes = row/column range + type/size; merges = cell range; freeze = `{rows:N, cols:N}`). The whole spec expands into one atomic batched request; ranges may target any region of the sheet",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the batched request template for each expanded operation; no network side effects"
+      }
+    ]
+  },
   "+batch-update": {
     "risk": "high-risk-write",
     "flags": [
@@ -2839,7 +2887,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "JSON array: [{\"shortcut\":\"+xxx-yyy\",\"input\":{...}}, ...]. shortcut uses CLI names; input is that shortcut's flag set — it includes the per-operation sheet locator (sheet_id or sheet_name) but not the spreadsheet token/url (pass that once at the top level via --url/--spreadsheet-token; +batch-update has no top-level --sheet-id). input keys are the shortcut's flags flattened into JSON (e.g. \"range\":\"A11:B12\"), not another nested layer. For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>. Do not pass an explicit operation field. Strict transaction by default, pass --continue-on-error for soft batch; no nesting; executed serially.",
+        "desc": "JSON array: [{\"shortcut\":\"+xxx-yyy\",\"input\":{...}}, ...]. shortcut uses CLI names; input is that shortcut's flag set — it includes the per-operation sheet locator (sheet_id or sheet_name) but not the spreadsheet token/url (pass that once at the top level via --url/--spreadsheet-token; +batch-update has no top-level --sheet-id). input keys are the shortcut's flags flattened into JSON (e.g. \"range\":\"A11:B12\"), not another nested layer. For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>. Do not pass an explicit operation field. Fail-fast by default: the first failure aborts the remaining operations and already-applied sub-operations are NOT rolled back (on \"N succeeded, M failed\" resend only the failed tail, not the whole batch); pass --continue-on-error to keep going past failures; no nesting; executed serially.",
         "input": [
           "file",
           "stdin"

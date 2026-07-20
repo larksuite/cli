@@ -86,7 +86,8 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | required | 要删除的行/列闭区间；行用 1-based 数字如 `3:7` 或单行 `5`，列用字母如 `C:F` 或单列 `C` |
+| `--range` | string | xor | 要删除的行/列闭区间；行用 1-based 数字如 `3:7` 或单行 `5`，列用字母如 `C:F` 或单列 `C`。与 `--ranges` 二选一 |
+| `--ranges` | string + File + Stdin（简单 JSON） | xor | 要删除的多个行/列区间 JSON 数组（最多 100 个，如 `["5:5","8:8","11:13"]` 或 `["C:C","F:G"]`），全行或全列不可混用，区间不可重叠；与 `--range` 二选一。CLI 按位置**从大到小逆序**合成一次原子批量删除——正序删除会因前面的行/列被删导致后续索引前移错位，逆序由 CLI 代劳，无需自行排序 |
 
 ### `+dim-hide`
 
@@ -168,6 +169,11 @@ lark-cli sheets +dim-delete --url "..." --sheet-id "$SID" --range "5:7" --yes
 
 # 删除 D-F 列
 lark-cli sheets +dim-delete --url "..." --sheet-id "$SID" --range "D:F" --yes
+
+# 删除多个散布区间（如按查重结果删行）：--ranges 一次原子交付。
+# CLI 自动按位置从大到小逆序执行——正序会因前面的行被删导致后续索引前移错位；
+# 无需自行排序，也不要为此拼 +batch-update 的子操作数组
+lark-cli sheets +dim-delete --url "..." --sheet-id "$SID" --ranges '["5:5","8:8","11:13"]' --yes
 ```
 
 ### `+dim-hide` / `+dim-unhide`
@@ -207,6 +213,6 @@ lark-cli sheets +dim-freeze --url "..." --sheet-id "$SID" --dimension row --coun
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`--range` / `--source-range` 必须是合法 A1 闭区间（行用数字、列用字母，不可混用）；`+dim-insert` 的 `--count` > 0；`+dim-move` 的 `--target` 必须与 `--source-range` 同维度（行 vs 列）；`+dim-delete` 强制 `--yes` 或 `--dry-run`；`+rows-resize` / `+cols-resize` 的统一形态（`--range` + `--height`/`--width` 或 `--type`）与 map 形态（`--heights`/`--widths`）二选一、不可混用；详见 `lark-sheets-range-operations.md`。
+- `Validate`：XOR 公共四件套；`--range` / `--source-range` 必须是合法 A1 闭区间（行用数字、列用字母，不可混用）；`+dim-insert` 的 `--count` > 0；`+dim-move` 的 `--target` 必须与 `--source-range` 同维度（行 vs 列）；`+dim-delete` 强制 `--yes` 或 `--dry-run`，`--range` 与 `--ranges` 二选一、`--ranges` 各区间同维度且不可重叠（≤100 个）；`+rows-resize` / `+cols-resize` 的统一形态（`--range` + `--height`/`--width` 或 `--type`）与 map 形态（`--heights`/`--widths`）二选一、不可混用；详见 `lark-sheets-range-operations.md`。
 - `DryRun`：写操作输出"将要 PATCH 的目标范围 + 目标参数"。
 - `Execute`：写后不自动回读；如需确认，自行调用 `+sheet-info --include row_heights,col_widths,hidden_rows,hidden_cols,groups,frozen` 查看受影响的范围。

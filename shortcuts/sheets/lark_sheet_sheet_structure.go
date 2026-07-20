@@ -6,6 +6,7 @@ package sheets
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -207,10 +208,34 @@ var DimDelete = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+dim-delete"),
-	Validate:    validateDimRangeOp("delete"),
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if runtime.Changed("ranges") {
+			if runtime.Changed("range") {
+				return sheetsValidationForFlag("ranges", "--range and --ranges are mutually exclusive; put every range into --ranges")
+			}
+			token, err := resolveSpreadsheetToken(runtime)
+			if err != nil {
+				return err
+			}
+			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			if err != nil {
+				return err
+			}
+			_, err = dimDeleteRangesOps(runtime, token, sheetID, sheetName)
+			return err
+		}
+		return validateDimRangeOp("delete")(ctx, runtime)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
+		if runtime.Changed("ranges") {
+			ops, _ := dimDeleteRangesOps(runtime, token, sheetID, sheetName)
+			return invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
+				"excel_id":   token,
+				"operations": ops,
+			})
+		}
 		input, _ := dimRangeOpInput(runtime, token, sheetID, sheetName, "delete")
 		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 	},
@@ -222,6 +247,21 @@ var DimDelete = common.Shortcut{
 		sheetID, sheetName, err := resolveSheetSelector(runtime)
 		if err != nil {
 			return err
+		}
+		if runtime.Changed("ranges") {
+			ops, err := dimDeleteRangesOps(runtime, token, sheetID, sheetName)
+			if err != nil {
+				return err
+			}
+			out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
+				"excel_id":   token,
+				"operations": ops,
+			})
+			if err != nil {
+				return err
+			}
+			runtime.Out(out, nil)
+			return nil
 		}
 		input, err := dimRangeOpInput(runtime, token, sheetID, sheetName, "delete")
 		if err != nil {
@@ -236,7 +276,74 @@ var DimDelete = common.Shortcut{
 	},
 	Tips: []string{
 		"Row/column deletion is irreversible. Always preview with --dry-run first.",
+		`Scattered ranges: --ranges '["5:5","8:8","11:13"]' deletes them in one atomic call — the CLI orders positions descending, so indexes never shift under you.`,
 	},
+}
+
+// dimDeleteRangesOps parses --ranges into one atomic batch of
+// modify_sheet_structure delete ops, ordered DESCENDING by start position:
+// deleting an earlier row shifts every later index up, so ascending
+// execution deletes the wrong rows — the recurring failure of hand-built
+// dim-delete batches in eval traces. Same-dimension and non-overlap are
+// enforced up front.
+func dimDeleteRangesOps(runtime flagView, token, sheetID, sheetName string) ([]interface{}, error) {
+	if err := requireSheetSelector(sheetID, sheetName); err != nil {
+		return nil, err
+	}
+	raw, err := requireJSONArray(runtime, "ranges")
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return nil, sheetsValidationForFlag("ranges", "--ranges must be a non-empty JSON array")
+	}
+	if len(raw) > maxBatchRanges {
+		return nil, sheetsValidationForFlag("ranges", "--ranges accepts at most %d entries; got %d", maxBatchRanges, len(raw))
+	}
+	type span struct {
+		raw        string
+		start, end int
+	}
+	spans := make([]span, 0, len(raw))
+	dimension := ""
+	for i, v := range raw {
+		s, ok := v.(string)
+		if !ok {
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] must be a string", i)
+		}
+		dim, start, end, err := parseA1Range(s)
+		if err != nil {
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] %q: %v", i, s, err)
+		}
+		if dimension == "" {
+			dimension = dim
+		} else if dim != dimension {
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] %q is a %s range but earlier entries are %s ranges; one call deletes rows OR columns, not both", i, s, dim, dimension)
+		}
+		spans = append(spans, span{raw: strings.TrimSpace(s), start: start, end: end})
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i].start > spans[j].start })
+	for i := 1; i < len(spans); i++ {
+		// Descending order: spans[i-1] starts at or after spans[i]. Overlap
+		// (or duplicate) makes the later delete hit already-shifted positions.
+		if spans[i].end >= spans[i-1].start {
+			return nil, sheetsValidationForFlag("ranges", "--ranges entries %q and %q overlap; merge them into one range", spans[i].raw, spans[i-1].raw)
+		}
+	}
+	ops := make([]interface{}, 0, len(spans))
+	for _, sp := range spans {
+		input := map[string]interface{}{
+			"excel_id":  token,
+			"operation": "delete",
+			"range":     sp.raw,
+		}
+		sheetSelectorForToolInput(input, sheetID, sheetName)
+		ops = append(ops, map[string]interface{}{
+			"tool_name": "modify_sheet_structure",
+			"input":     input,
+		})
+	}
+	return ops, nil
 }
 
 // validateDimRangeOp returns a Validate closure that delegates to
