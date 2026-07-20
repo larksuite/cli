@@ -31,6 +31,7 @@ import (
 //	├── conflict.txt      "local"                       → modified → resolve
 //	└── unchanged.txt     "match"                       → unchanged → skip
 func TestDrive_SyncWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)
@@ -249,6 +250,7 @@ func TestDrive_SyncWorkflow(t *testing.T) {
 // TestDrive_SyncEmptyDirWorkflow proves that empty local directories are
 // created on Drive during +sync, and that a subsequent +status converges.
 func TestDrive_SyncEmptyDirWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)

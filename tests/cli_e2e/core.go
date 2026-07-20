@@ -38,7 +38,7 @@ const (
 
 func SkipWithoutUserToken(t *testing.T) {
 	t.Helper()
-	if os.Getenv("LARKSUITE_CLI_USER_ACCESS_TOKEN") != "" {
+	if os.Getenv("LARKSUITE_CLI_USER_ACCESS_TOKEN") != "" || os.Getenv("TEST_USER_ACCESS_TOKEN") != "" {
 		return
 	}
 
@@ -73,6 +73,27 @@ func SkipWithoutUserToken(t *testing.T) {
 		}
 		t.Skip("skipped: LARKSUITE_CLI_USER_ACCESS_TOKEN not set and local user login verification failed")
 	}
+}
+
+func SkipWithoutTenantAccessToken(t *testing.T) {
+	t.Helper()
+	token := os.Getenv("TEST_TENANT_ACCESS_TOKEN")
+	if token == "" {
+		token = os.Getenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN")
+	}
+	appID := os.Getenv("TEST_BOT1_APP_ID")
+	if appID == "" {
+		appID = os.Getenv("LARKSUITE_CLI_APP_ID")
+	}
+	if token == "" || appID == "" {
+		t.Skip("skipped: tenant test credentials not set")
+	}
+
+	// Scope standard env credentials to tests that explicitly require a live
+	// tenant token. Keeping TEST_* variables in the gotestsum parent prevents
+	// config and dry-run CLI subprocesses from activating the env provider.
+	t.Setenv("LARKSUITE_CLI_APP_ID", appID)
+	t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", token)
 }
 
 // DryRunGet reads a field from the dry-run payload inside the standard success envelope.
@@ -225,13 +246,13 @@ func buildCommandEnv(req Request) []string {
 		overrides[k] = v
 	}
 	// Keep user-token injection scoped to user-only test commands so bot
-	// commands continue to use config-init credentials in the same process.
+	// commands retain the process-level bot credentials.
 	if req.DefaultAs == "user" {
 		if appID := os.Getenv("TEST_BOT1_APP_ID"); appID != "" {
-			if token := os.Getenv("TEST_USER_ACCESS_TOKEN"); token != "" {
-				overrides["LARKSUITE_CLI_APP_ID"] = appID
-				overrides["LARKSUITE_CLI_USER_ACCESS_TOKEN"] = token
-			}
+			overrides["LARKSUITE_CLI_APP_ID"] = appID
+		}
+		if token := os.Getenv("TEST_USER_ACCESS_TOKEN"); token != "" {
+			overrides["LARKSUITE_CLI_USER_ACCESS_TOKEN"] = token
 		}
 	}
 	for k, v := range overrides {

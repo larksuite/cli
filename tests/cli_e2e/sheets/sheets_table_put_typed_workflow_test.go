@@ -22,6 +22,7 @@ import (
 // it back as the same typed shape, locking the dtype + format contract that
 // makes round-trip (pipe +table-get into +table-put) work.
 func TestSheets_TablePutTypedWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -89,6 +90,7 @@ func TestSheets_TablePutTypedWorkflow(t *testing.T) {
 // adopted sheet carries the typed data we sent (no empty "Sheet1" remains)
 // and that --sheets's typed contract holds end-to-end, not just on +table-put.
 func TestSheets_WorkbookCreateTypedWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

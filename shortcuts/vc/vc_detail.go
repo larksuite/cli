@@ -79,27 +79,42 @@ func fetchMeetingDetail(ctx context.Context, runtime *common.RuntimeContext, mee
 		result.NoteID = v
 	}
 
-	// Step 2: query minute_token via recording API
-	minuteToken, minuteHint, minuteErr := fetchMeetingMinuteToken(runtime, meetingID)
-	if minuteErr != nil {
-		// Recording API failed — surface the error but keep data from step 1
-		result.Error = fmt.Sprintf("failed to query minutes: %v", minuteErr)
-		minuteHint = ""
-	}
-	if minuteToken != "" {
-		result.MinuteToken = minuteToken
+	// Step 2: query minute_token via recording API — only meaningful once the
+	// meeting has ended. While it is still in progress the note/minute are not
+	// generated yet, so skip the recording call and surface an informational
+	// hint instead of letting an unclassified recording error fail the command.
+	inProgress := meetingInProgress(meeting)
+	var minuteHint string
+	if inProgress {
+		minuteHint = "meeting is still in progress; note and minute are not generated yet"
+	} else {
+		minuteToken, hint, minuteErr := fetchMeetingMinuteToken(runtime, meetingID)
+		minuteHint = hint
+		if minuteErr != nil {
+			// Recording lookup is a best-effort supplement; step 1 already
+			// succeeded, so degrade the failure to a hint rather than failing
+			// the whole command.
+			minuteHint = fmt.Sprintf("failed to query minutes: %v", minuteErr)
+		}
+		if minuteToken != "" {
+			result.MinuteToken = minuteToken
+		}
 	}
 
-	// Add hints for empty resources (not errors, just informational)
-	var emptyFields []string
-	if result.NoteID == "" {
-		emptyFields = append(emptyFields, "note_id")
-	}
-	if result.MinuteToken == "" && minuteErr == nil && minuteHint == "" {
-		emptyFields = append(emptyFields, "minute_token")
-	}
-	if len(emptyFields) > 0 {
-		result.Hint = fmt.Sprintf("%s not found for this meeting", strings.Join(emptyFields, ", "))
+	// Add hints for empty resources (not errors, just informational). For an
+	// in-progress meeting the "not found" wording is noise, so we only emit the
+	// single in-progress hint below.
+	if !inProgress {
+		var emptyFields []string
+		if result.NoteID == "" {
+			emptyFields = append(emptyFields, "note_id")
+		}
+		if result.MinuteToken == "" && minuteHint == "" {
+			emptyFields = append(emptyFields, "minute_token")
+		}
+		if len(emptyFields) > 0 {
+			result.Hint = fmt.Sprintf("%s not found for this meeting", strings.Join(emptyFields, ", "))
+		}
 	}
 	if minuteHint != "" {
 		if result.Hint != "" {
@@ -110,6 +125,36 @@ func fetchMeetingDetail(ctx context.Context, runtime *common.RuntimeContext, mee
 	}
 
 	return result
+}
+
+// meetingTimeField reads a meeting time field as a string regardless of whether
+// the API returned it as a JSON string or number. VC serializes int64
+// timestamps as strings, but coercing via %v keeps parsing robust either way;
+// float64(0) renders as "0", which parseFlexibleTime treats as "absent".
+func meetingTimeField(meeting map[string]any, key string) string {
+	v, ok := meeting[key]
+	if !ok || v == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprintf("%v", v))
+}
+
+// meetingInProgress reports whether a meeting is still ongoing, using the same
+// start/end heuristic as +meeting-events (meetingEventsMeetingFromPayload): a
+// meeting is ongoing when it has a start time but no end time, or its end time
+// is not after its start time. It reads the RAW timestamp fields, not the
+// FormatTime-rendered result strings, because parseFlexibleTime only accepts
+// Unix timestamps or RFC3339. Empty or "0" values are treated as absent.
+func meetingInProgress(meeting map[string]any) bool {
+	start, hasStart := parseFlexibleTime(meetingTimeField(meeting, "start_time"))
+	end, hasEnd := parseFlexibleTime(meetingTimeField(meeting, "end_time"))
+	if !hasStart {
+		return false
+	}
+	if !hasEnd {
+		return true
+	}
+	return !end.After(start)
 }
 
 // VCDetail gets meeting details including note_id and minute_token.

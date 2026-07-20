@@ -17,6 +17,7 @@ import (
 
 // TestDocs_CreateAndFetchWorkflow tests the create and fetch lifecycle.
 func TestDocs_CreateAndFetchWorkflowAsBot(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 

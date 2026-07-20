@@ -15,6 +15,7 @@ import (
 )
 
 func TestDriveAddCommentMarkdownFileWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	if os.Getenv("LARK_DRIVE_MD_COMMENT_E2E") == "" {
 		t.Skip("set LARK_DRIVE_MD_COMMENT_E2E=1 to run the supported file comment workflow")
 	}

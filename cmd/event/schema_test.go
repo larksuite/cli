@@ -19,6 +19,29 @@ import (
 	_ "github.com/larksuite/cli/events"
 )
 
+type approvalSchemaJSONPayload struct {
+	JQRootPath           string                           `json:"jq_root_path"`
+	AuthTypes            []string                         `json:"auth_types"`
+	Scopes               []string                         `json:"scopes"`
+	Params               []approvalSchemaJSONParam        `json:"params"`
+	ResolvedOutputSchema approvalSchemaJSONResolvedSchema `json:"resolved_output_schema"`
+}
+
+type approvalSchemaJSONParam struct {
+	Name            string `json:"name"`
+	Type            string `json:"type"`
+	Required        bool   `json:"required"`
+	SubscriptionKey bool   `json:"subscription_key"`
+}
+
+type approvalSchemaJSONResolvedSchema struct {
+	Properties map[string]approvalSchemaJSONProperty `json:"properties"`
+}
+
+type approvalSchemaJSONProperty struct {
+	Format string `json:"format"`
+}
+
 func TestRunSchema_ProcessedKey_Text(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
@@ -155,6 +178,60 @@ func TestRunSchema_TaskUpdateUserAccessJSON(t *testing.T) {
 	}
 	if _, ok := eventProps["event_types"].(map[string]interface{})["items"].(map[string]interface{})["enum"]; !ok {
 		t.Fatalf("event_types enum missing in schema: %#v", eventProps["event_types"])
+	}
+}
+
+func TestRunSchema_ApprovalStatusChangedJSON(t *testing.T) {
+	tests := []struct {
+		key   string
+		scope string
+	}{
+		{"approval.instance.status_changed_v4", "approval:instance:read"},
+		{"approval.task.status_changed_v4", "approval:task:read"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.key, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+
+			if err := runSchema(f, tc.key, true); err != nil {
+				t.Fatalf("runSchema json: %v", err)
+			}
+
+			var payload approvalSchemaJSONPayload
+			if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+				t.Fatalf("output is not valid JSON: %v\n%s", err, stdout.String())
+			}
+			if payload.JQRootPath != "." {
+				t.Errorf("jq_root_path = %v, want .", payload.JQRootPath)
+			}
+			if got := payload.AuthTypes; !reflect.DeepEqual(got, []string{"user"}) {
+				t.Errorf("auth_types = %#v, want user", got)
+			}
+			if got := payload.Scopes; !reflect.DeepEqual(got, []string{tc.scope}) {
+				t.Errorf("scopes = %#v, want %s", got, tc.scope)
+			}
+			if len(payload.Params) != 1 {
+				t.Fatalf("params = %#v, want one subscription_type param", payload.Params)
+			}
+			param := payload.Params[0]
+			if param.Name != "subscription_type" || param.Type != "multi" || param.Required || param.SubscriptionKey {
+				t.Fatalf("subscription_type param = %#v, want optional multi non-subscription-key param", param)
+			}
+			props := payload.ResolvedOutputSchema.Properties
+			for _, field := range []string{"type", "event_id", "timestamp", "approval_code", "instance_code", "status", "operate_time"} {
+				if _, ok := props[field]; !ok {
+					t.Errorf("approval schema missing flat field %q: %+v", field, props)
+				}
+			}
+			if _, ok := props["event"]; ok {
+				t.Errorf("approval Custom schema should be flat, got envelope field event: %+v", props)
+			}
+			if got := props["operate_time"].Format; got != "timestamp_ms" {
+				t.Errorf("operate_time format = %v, want timestamp_ms", got)
+			}
+		})
 	}
 }
 
