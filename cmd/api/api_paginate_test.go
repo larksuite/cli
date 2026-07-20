@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -18,6 +20,21 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 )
+
+type apiFailOnWriteWriter struct {
+	buf    bytes.Buffer
+	writes int
+	failAt int
+	err    error
+}
+
+func (w *apiFailOnWriteWriter) Write(p []byte) (int, error) {
+	w.writes++
+	if w.writes == w.failAt {
+		return 0, w.err
+	}
+	return w.buf.Write(p)
+}
 
 func newAPIPaginateTestHarness(t *testing.T) (*client.APIClient, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
@@ -190,6 +207,52 @@ func TestAPIPaginate_StreamingFormatsEmitExactMultiPageBytes(t *testing.T) {
 				t.Fatalf("stderr bytes = %q, want empty", got)
 			}
 		})
+	}
+}
+
+func TestAPIPaginate_StreamingWriteFailureStopsFurtherPages(t *testing.T) {
+	ac, _, errOut, reg := newAPIPaginateTestHarness(t)
+	sentinel := errors.New("page write failed")
+	out := &apiFailOnWriteWriter{failAt: 2, err: sentinel}
+	calls := 0
+	for page := 1; page <= 2; page++ {
+		hasMore := true
+		data := map[string]interface{}{
+			"items":    []interface{}{map[string]interface{}{"id": page}},
+			"has_more": hasMore,
+		}
+		if hasMore {
+			data["page_token"] = fmt.Sprintf("next-%d", page)
+		}
+		reg.Register(&httpmock.Stub{
+			URL: "/open-apis/test/v1/items",
+			OnMatch: func(*http.Request) {
+				calls++
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"msg":  "ok",
+				"data": data,
+			},
+		})
+	}
+
+	err := apiPaginate(context.Background(), ac, apiPaginateRequest(),
+		output.FormatNDJSON, "", out, errOut, "lark-cli api GET",
+		client.PaginationOptions{PageLimit: 10, PageDelay: -1})
+
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("apiPaginate() error = %v, want preserved writer cause", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal {
+		t.Fatalf("apiPaginate() problem = %#v, %v; want internal typed error", problem, ok)
+	}
+	if calls != 2 {
+		t.Fatalf("pagination requests = %d, want 2", calls)
+	}
+	if got, want := out.buf.String(), "{\"id\":1}\n"; got != want {
+		t.Fatalf("stdout bytes = %q, want %q", got, want)
 	}
 }
 

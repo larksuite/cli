@@ -681,15 +681,11 @@ func (ctx *RuntimeContext) handleEmitterError(err error) {
 	if err == nil {
 		return
 	}
-	var contentSafetyErr *errs.ContentSafetyError
-	if errors.As(err, &contentSafetyErr) {
-		ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
-		return
-	}
-	if ctx.JqExpr != "" {
+	var cs *errs.ContentSafetyError
+	if ctx.JqExpr != "" && !errors.As(err, &cs) {
 		fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
-		ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
 	}
+	ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
 }
 
 func wrapLegacyPrettyRenderer(prettyFn func(w io.Writer)) output.PrettyRenderer {

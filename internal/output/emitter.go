@@ -4,9 +4,11 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 
 	"github.com/larksuite/cli/errs"
 )
@@ -77,9 +79,13 @@ type Emitter struct {
 
 // NewEmitter constructs a command-scoped output emitter.
 func NewEmitter(config EmitterConfig) *Emitter {
+	errOut := config.ErrOut
+	if errOut == nil {
+		errOut = io.Discard
+	}
 	return &Emitter{
 		out:            config.Out,
-		errOut:         config.ErrOut,
+		errOut:         errOut,
 		commandPath:    config.CommandPath,
 		identity:       config.Identity,
 		colorEnabled:   config.ColorEnabled,
@@ -138,8 +144,10 @@ func (e *Emitter) StreamPage(data interface{}, opts StreamOptions) error {
 	if scanResult.Blocked {
 		return scanResult.BlockErr
 	}
-	if scanResult.Alert != nil && e.errOut != nil {
-		WriteAlertWarning(e.errOut, scanResult.Alert)
+	if scanResult.Alert != nil {
+		if err := WriteAlertWarning(e.errOut, scanResult.Alert); err != nil {
+			return wrapOutputError("write", err)
+		}
 	}
 
 	if opts.Format == "pretty" {
@@ -147,7 +155,9 @@ func (e *Emitter) StreamPage(data interface{}, opts StreamOptions) error {
 			return errs.NewInternalError(errs.SubtypeUnknown,
 				"pretty output requires a renderer")
 		}
-		return opts.Pretty(e.out, e.colorEnabled)
+		return e.emit(func(w io.Writer) error {
+			return opts.Pretty(w, e.colorEnabled)
+		})
 	}
 
 	format, known := ParseFormat(opts.Format)
@@ -156,14 +166,16 @@ func (e *Emitter) StreamPage(data interface{}, opts StreamOptions) error {
 	}
 	if e.streamFormatter == nil {
 		e.streamFormat = opts.Format
-		e.streamFormatter = NewPaginatedFormatter(e.out, format)
+		e.streamFormatter = NewPaginatedFormatter(nil, format)
 	} else if opts.Format != e.streamFormat {
 		return errs.NewInternalError(errs.SubtypeUnknown,
 			"stream output format changed from %q to %q", e.streamFormat, opts.Format)
 	}
 
-	e.streamFormatter.FormatPage(data)
-	return nil
+	return e.emit(func(w io.Writer) error {
+		e.streamFormatter.W = w
+		return e.streamFormatter.WritePage(data)
+	})
 }
 
 func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) error {
@@ -185,23 +197,40 @@ func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) erro
 	}
 
 	if opts.JQ != "" {
-		if scanResult.Alert != nil && opts.JQSafetyWarning && e.errOut != nil {
-			WriteAlertWarning(e.errOut, scanResult.Alert)
+		if scanResult.Alert != nil && opts.JQSafetyWarning {
+			if err := WriteAlertWarning(e.errOut, scanResult.Alert); err != nil {
+				return wrapOutputError("write", err)
+			}
 		}
+		// Buffer the jq output manually so jq's own typed error (a validation
+		// error for a bad expression, an api error for a runtime failure) is
+		// returned unchanged; only a genuine stdout write failure is wrapped as
+		// an internal output error.
+		var buf bytes.Buffer
+		var jqErr error
 		if opts.Raw {
-			return JqFilterRaw(e.out, env, opts.JQ)
+			jqErr = JqFilterRaw(&buf, env, opts.JQ)
+		} else {
+			jqErr = JqFilter(&buf, env, opts.JQ)
 		}
-		return JqFilter(e.out, env, opts.JQ)
+		if jqErr != nil {
+			return jqErr
+		}
+		if _, err := io.Copy(e.out, &buf); err != nil {
+			return wrapOutputError("write", err)
+		}
+		return nil
 	}
 
-	if opts.Raw {
-		enc := json.NewEncoder(e.out)
-		enc.SetEscapeHTML(false)
-		enc.SetIndent("", "  ")
-		return enc.Encode(env)
-	}
-	PrintJson(e.out, env)
-	return nil
+	return e.emit(func(w io.Writer) error {
+		if opts.Raw {
+			enc := json.NewEncoder(w)
+			enc.SetEscapeHTML(false)
+			enc.SetIndent("", "  ")
+			return enc.Encode(env)
+		}
+		return WriteJSON(w, env)
+	})
 }
 
 func (e *Emitter) emitPretty(data interface{}, opts EmitOptions) error {
@@ -209,11 +238,15 @@ func (e *Emitter) emitPretty(data interface{}, opts EmitOptions) error {
 	if scanResult.Blocked {
 		return scanResult.BlockErr
 	}
-	if scanResult.Alert != nil && e.errOut != nil {
-		WriteAlertWarning(e.errOut, scanResult.Alert)
+	if scanResult.Alert != nil {
+		if err := WriteAlertWarning(e.errOut, scanResult.Alert); err != nil {
+			return wrapOutputError("write", err)
+		}
 	}
 	if opts.Pretty != nil {
-		return opts.Pretty(e.out, e.colorEnabled)
+		return e.emit(func(w io.Writer) error {
+			return opts.Pretty(w, e.colorEnabled)
+		})
 	}
 
 	// RuntimeContext.outFormat falls back through Out/OutRaw when no pretty
@@ -227,8 +260,10 @@ func (e *Emitter) emitFormatted(data interface{}, rawFormat string) error {
 	if scanResult.Blocked {
 		return scanResult.BlockErr
 	}
-	if scanResult.Alert != nil && e.errOut != nil {
-		WriteAlertWarning(e.errOut, scanResult.Alert)
+	if scanResult.Alert != nil {
+		if err := WriteAlertWarning(e.errOut, scanResult.Alert); err != nil {
+			return wrapOutputError("write", err)
+		}
 	}
 
 	format, known := ParseFormat(rawFormat)
@@ -236,18 +271,18 @@ func (e *Emitter) emitFormatted(data interface{}, rawFormat string) error {
 		fmt.Fprintf(e.errOut, "warning: unknown format %q, falling back to json\n", rawFormat)
 	}
 	if format == FormatJSON {
-		e.printLegacyDataJSON(data)
-		return nil
+		return e.printLegacyDataJSON(data)
 	}
-	FormatValue(e.out, data, format)
-	return nil
+	return e.emit(func(w io.Writer) error {
+		return WriteFormatted(w, data, format)
+	})
 }
 
 type emitterDataMap map[string]interface{}
 
 // printLegacyDataJSON matches FormatValue's JSON branch while sourcing notice
 // data from this Emitter instead of PrintJson's global PendingNotice hook.
-func (e *Emitter) printLegacyDataJSON(data interface{}) {
+func (e *Emitter) printLegacyDataJSON(data interface{}) error {
 	// Normalise structs / named maps to plain generic types first, exactly as
 	// FormatValue does, so a struct or named-map payload still matches the map
 	// case below and keeps its injected _notice on the unknown-format fallback.
@@ -255,15 +290,34 @@ func (e *Emitter) printLegacyDataJSON(data interface{}) {
 	if m, ok := data.(map[string]interface{}); ok {
 		if _, isEnvelope := m["ok"]; isEnvelope {
 			if notice := e.notice(); notice != nil {
+				m = maps.Clone(m)
 				m["_notice"] = notice
 			}
 		}
 		// The named map retains identical JSON bytes while preventing PrintJson
 		// from consulting its legacy global notice hook a second time.
-		PrintJson(e.out, emitterDataMap(m))
-		return
+		return e.emit(func(w io.Writer) error {
+			return WriteJSON(w, emitterDataMap(m))
+		})
 	}
-	PrintJson(e.out, data)
+	return e.emit(func(w io.Writer) error {
+		return WriteJSON(w, data)
+	})
+}
+
+func (e *Emitter) emit(render func(io.Writer) error) error {
+	var buf bytes.Buffer
+	if err := render(&buf); err != nil {
+		return wrapOutputError("render", err)
+	}
+	if _, err := io.Copy(e.out, &buf); err != nil {
+		return wrapOutputError("write", err)
+	}
+	return nil
+}
+
+func wrapOutputError(op string, err error) error {
+	return errs.NewInternalError(errs.SubtypeUnknown, "failed to %s command output", op).WithCause(err)
 }
 
 func (e *Emitter) notice() map[string]interface{} {

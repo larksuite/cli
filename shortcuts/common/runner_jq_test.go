@@ -121,17 +121,54 @@ func (w failingRuntimeOutputWriter) Write([]byte) (int, error) {
 	return 0, w.err
 }
 
-func TestRuntimeContext_OutRaw_IgnoresWriteError(t *testing.T) {
+func TestRuntimeContext_OutRaw_PropagatesWriteError(t *testing.T) {
 	rctx, _, stderr := newJqTestContext("", "")
-	rctx.Factory.IOStreams.Out = failingRuntimeOutputWriter{err: errors.New("write failed")}
+	sentinel := errors.New("write failed")
+	rctx.Factory.IOStreams.Out = failingRuntimeOutputWriter{err: sentinel}
 
 	rctx.OutRaw(map[string]interface{}{"id": "1"}, nil)
 
-	if rctx.outputErr != nil {
-		t.Fatalf("OutRaw() output error = %v, want nil", rctx.outputErr)
+	if !errors.Is(rctx.outputErr, sentinel) {
+		t.Fatalf("OutRaw() output error = %v, want preserved writer cause", rctx.outputErr)
+	}
+	problem, ok := errs.ProblemOf(rctx.outputErr)
+	if !ok || problem.Category != errs.CategoryInternal {
+		t.Fatalf("OutRaw() problem = %#v, %v; want internal typed error", problem, ok)
+	}
+	if got := output.ExitCodeOf(rctx.outputErr); got != output.ExitInternal {
+		t.Fatalf("OutRaw() exit code = %d, want %d", got, output.ExitInternal)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("OutRaw() stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunShortcut_OutRawWriteErrorPropagates(t *testing.T) {
+	sentinel := errors.New("write failed")
+	f := newTestFactory()
+	f.IOStreams.Out = failingRuntimeOutputWriter{err: sentinel}
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		Execute: func(_ context.Context, rctx *RuntimeContext) error {
+			rctx.OutRaw(map[string]interface{}{"id": "1"}, nil)
+			return nil
+		},
+	}
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("as", "bot")
+
+	err := runShortcut(cmd, f, s, true)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("runShortcut() error = %v, want preserved writer cause", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal {
+		t.Fatalf("runShortcut() problem = %#v, %v; want internal typed error", problem, ok)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Fatalf("runShortcut() exit code = %d, want %d", got, output.ExitInternal)
 	}
 }
 

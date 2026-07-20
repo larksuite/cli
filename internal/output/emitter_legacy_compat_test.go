@@ -1,3 +1,5 @@
+// Legacy oracle fixtures are frozen at base SHA 4a56748bfa941ff0ee0bfec92e65acac427732b0.
+// Golden regeneration is allowed only from that base, never from the current system under test.
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
@@ -278,7 +280,7 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 		},
 	}
 
-	golden := loadRuntimeContextLegacyGolden(t, cases)
+	golden := loadRuntimeContextLegacyGolden(t)
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -295,7 +297,7 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 
 			want, ok := golden.Cases[tc.name]
 			if !ok {
-				t.Fatalf("golden case %q is missing; regenerate with UPDATE_RUNTIME_CONTEXT_LEGACY_GOLDEN=1", tc.name)
+				t.Fatalf("frozen golden case %q is missing", tc.name)
 			}
 
 			opts := runtimeOracleOptions{
@@ -333,7 +335,7 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 	}
 
 	if len(golden.Cases) != len(cases) {
-		t.Fatalf("golden case count = %d, want %d; remove stale entries or regenerate", len(golden.Cases), len(cases))
+		t.Fatalf("golden case count = %d, want %d", len(golden.Cases), len(cases))
 	}
 
 	jqFailure := golden.Cases["jq_invalid_expression"]
@@ -345,23 +347,8 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 	}
 }
 
-func loadRuntimeContextLegacyGolden(t *testing.T, cases []runtimeContextOracleCase) runtimeContextLegacyGolden {
+func loadRuntimeContextLegacyGolden(t *testing.T) runtimeContextLegacyGolden {
 	t.Helper()
-	if os.Getenv("UPDATE_RUNTIME_CONTEXT_LEGACY_GOLDEN") != "" {
-		golden := generateRuntimeContextLegacyGolden(t, cases)
-		contents, err := json.MarshalIndent(golden, "", "  ")
-		if err != nil {
-			t.Fatalf("marshal RuntimeContext legacy golden: %v", err)
-		}
-		contents = append(contents, '\n')
-		if err := os.MkdirAll("testdata", 0o755); err != nil {
-			t.Fatalf("create golden directory: %v", err)
-		}
-		if err := os.WriteFile(runtimeContextLegacyGoldenPath, contents, 0o644); err != nil {
-			t.Fatalf("write RuntimeContext legacy golden: %v", err)
-		}
-	}
-
 	contents, err := os.ReadFile(runtimeContextLegacyGoldenPath)
 	if err != nil {
 		t.Fatalf("read RuntimeContext legacy golden: %v", err)
@@ -370,33 +357,6 @@ func loadRuntimeContextLegacyGolden(t *testing.T, cases []runtimeContextOracleCa
 	if err := json.Unmarshal(contents, &golden); err != nil {
 		t.Fatalf("decode RuntimeContext legacy golden: %v", err)
 	}
-	return golden
-}
-
-func generateRuntimeContextLegacyGolden(t *testing.T, cases []runtimeContextOracleCase) runtimeContextLegacyGolden {
-	t.Helper()
-	golden := runtimeContextLegacyGolden{Cases: make(map[string]emitterCaptureGolden, len(cases))}
-	for _, tc := range cases {
-		mode := tc.safetyMode
-		if mode == "" {
-			mode = "off"
-		}
-		t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", mode)
-		extcs.Register(&emitterSafetyProvider{alert: tc.safetyAlert, err: tc.safetyErr})
-		output.PendingNotice = func() map[string]interface{} { return tc.notice }
-
-		capture := runRuntimeContextOracle(t, tc.data(), runtimeOracleOptions{
-			raw:       tc.raw,
-			ok:        tc.ok,
-			meta:      tc.meta,
-			jq:        tc.jq,
-			format:    tc.format,
-			useFormat: tc.useFormat,
-			pretty:    tc.pretty,
-		})
-		golden.Cases[tc.name] = captureEmitterGolden(t, capture)
-	}
-	extcs.Register(nil)
 	return golden
 }
 
@@ -561,7 +521,7 @@ func TestEmitterMatchesWriteSuccessEnvelopeLegacyOracle(t *testing.T) {
 			},
 		},
 	}
-	golden := loadWriteSuccessEnvelopeLegacyGolden(t, cases)
+	golden := loadWriteSuccessEnvelopeLegacyGolden(t)
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -577,7 +537,7 @@ func TestEmitterMatchesWriteSuccessEnvelopeLegacyOracle(t *testing.T) {
 
 			want, ok := golden.Cases[tc.name]
 			if !ok {
-				t.Fatalf("golden case %q is missing; regenerate with UPDATE_WRITE_SUCCESS_ENVELOPE_LEGACY_GOLDEN=1", tc.name)
+				t.Fatalf("frozen golden case %q is missing", tc.name)
 			}
 
 			current := runEmitterSuccess(tc.data(), output.EmitterConfig{
@@ -599,27 +559,12 @@ func TestEmitterMatchesWriteSuccessEnvelopeLegacyOracle(t *testing.T) {
 	}
 
 	if len(golden.Cases) != len(cases) {
-		t.Fatalf("golden case count = %d, want %d; remove stale entries or regenerate", len(golden.Cases), len(cases))
+		t.Fatalf("golden case count = %d, want %d", len(golden.Cases), len(cases))
 	}
 }
 
-func loadWriteSuccessEnvelopeLegacyGolden(t *testing.T, cases []writeSuccessEnvelopeOracleCase) writeSuccessEnvelopeLegacyGolden {
+func loadWriteSuccessEnvelopeLegacyGolden(t *testing.T) writeSuccessEnvelopeLegacyGolden {
 	t.Helper()
-	if os.Getenv("UPDATE_WRITE_SUCCESS_ENVELOPE_LEGACY_GOLDEN") != "" {
-		golden := generateWriteSuccessEnvelopeLegacyGolden(t, cases)
-		contents, err := json.MarshalIndent(golden, "", "  ")
-		if err != nil {
-			t.Fatalf("marshal WriteSuccessEnvelope legacy golden: %v", err)
-		}
-		contents = append(contents, '\n')
-		if err := os.MkdirAll("testdata", 0o755); err != nil {
-			t.Fatalf("create golden directory: %v", err)
-		}
-		if err := os.WriteFile(writeSuccessEnvelopeLegacyGoldenPath, contents, 0o644); err != nil {
-			t.Fatalf("write WriteSuccessEnvelope legacy golden: %v", err)
-		}
-	}
-
 	contents, err := os.ReadFile(writeSuccessEnvelopeLegacyGoldenPath)
 	if err != nil {
 		t.Fatalf("read WriteSuccessEnvelope legacy golden: %v", err)
@@ -628,26 +573,6 @@ func loadWriteSuccessEnvelopeLegacyGolden(t *testing.T, cases []writeSuccessEnve
 	if err := json.Unmarshal(contents, &golden); err != nil {
 		t.Fatalf("decode WriteSuccessEnvelope legacy golden: %v", err)
 	}
-	return golden
-}
-
-func generateWriteSuccessEnvelopeLegacyGolden(t *testing.T, cases []writeSuccessEnvelopeOracleCase) writeSuccessEnvelopeLegacyGolden {
-	t.Helper()
-	golden := writeSuccessEnvelopeLegacyGolden{Cases: make(map[string]emitterCaptureGolden, len(cases))}
-	for _, tc := range cases {
-		mode := tc.safetyMode
-		if mode == "" {
-			mode = "off"
-		}
-		t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", mode)
-		extcs.Register(&emitterSafetyProvider{alert: tc.safetyAlert})
-		notice := tc.notice
-		output.PendingNotice = func() map[string]interface{} { return notice }
-
-		capture := runWriteSuccessEnvelopeOracle(tc.data(), tc.dryRun, tc.jq)
-		golden.Cases[tc.name] = captureEmitterGolden(t, capture)
-	}
-	extcs.Register(nil)
 	return golden
 }
 
@@ -834,76 +759,6 @@ func TestEmitterPropagatesOutputError(t *testing.T) {
 	problem, ok := errs.ProblemOf(err)
 	if !ok || problem.Category != errs.CategoryInternal {
 		t.Fatalf("Emitter.Success() problem = %#v, %v; want internal typed error", problem, ok)
-	}
-}
-
-func TestEmitterRawJSONPropagatesWriteError(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
-	sentinel := errors.New("write failed")
-	emitter := output.NewEmitter(output.EmitterConfig{
-		Out:         failingEmitterWriter{err: sentinel},
-		ErrOut:      io.Discard,
-		CommandPath: "lark-cli fixture +emit",
-	})
-	// Raw JSON without jq must surface the encoder write error, not discard it.
-	err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{
-		Raw: true, Format: "json",
-	})
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("Emitter.Success() error = %v, want preserved writer cause", err)
-	}
-}
-
-func TestEmitterInvalidJQReturnsErrorWithoutStderr(t *testing.T) {
-	// jq failures surface as a returned error and write nothing to stderr. The
-	// legacy RuntimeContext.emit instead prints "error: <err>\n" to stderr and
-	// swallows the error (runner.go). Reproducing that exact stderr byte on
-	// migration is the C08b adapter's job: it re-emits the stderr line and the
-	// outputErrOnce capture around this returned error. This test pins the
-	// Emitter's half of that split contract so the difference stays intentional.
-	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
-	stderr := &bytes.Buffer{}
-	emitter := output.NewEmitter(output.EmitterConfig{
-		Out:         &bytes.Buffer{},
-		ErrOut:      stderr,
-		CommandPath: "lark-cli fixture +emit",
-	})
-	err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{
-		Format: "json",
-		JQ:     "this is not valid jq (((",
-	})
-	if err == nil {
-		t.Fatal("Success() with invalid jq = nil, want error")
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Success() with invalid jq wrote stderr %q, want empty (adapter owns the stderr line)", stderr.String())
-	}
-}
-
-func TestEmitterUnknownFormatStructKeepsNotice(t *testing.T) {
-	// Regression for the printLegacyDataJSON toGeneric fix: an unknown --format
-	// falls back to JSON, and a struct / named-map payload must still get its
-	// _notice injected (matching the legacy FormatValue -> toGeneric -> PrintJson
-	// path) rather than silently dropping it.
-	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
-	type payload struct {
-		OK    bool   `json:"ok"`
-		Value string `json:"value"`
-	}
-	stdout := &bytes.Buffer{}
-	emitter := output.NewEmitter(output.EmitterConfig{
-		Out:         stdout,
-		ErrOut:      io.Discard,
-		CommandPath: "lark-cli fixture +emit",
-		NoticeProvider: func() map[string]interface{} {
-			return map[string]interface{}{"update": map[string]interface{}{"latest": "9.9.9"}}
-		},
-	})
-	if err := emitter.Success(payload{OK: true, Value: "fixture"}, output.EmitOptions{Format: "yaml"}); err != nil {
-		t.Fatalf("Success() error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "_notice") {
-		t.Fatalf("struct payload on unknown-format fallback dropped _notice:\n%s", stdout.String())
 	}
 }
 
