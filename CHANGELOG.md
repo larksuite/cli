@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.73] - 2026-07-20
+
+### Features
+
+- **apps**: design_html support, creative-design skill, unified TOS publish (#1901)
+
+### Bug Fixes
+
+- **slides**: detect visual elements outside canvas
+- reduce public content credential fixture false positives
+- standardize CLI shortcut text in English (#1942)
+
+### Documentation
+
+- **base**: reduce filter and update retry loops (#1879)
+- **vc**: default transcript routing to smart notes over minutes (#1961)
+- clarify local trigger automation (#1958)
+
+### Tests
+
+- synchronize temporary Git maintenance (#1946)
+
+### Misc
+
+- **slides**: update lark-slides skill to 0715 snapshot (#1933)
+- [codex] support bot menu events (#1765)
+
 ## [v1.0.72] - 2026-07-17
 
 ### Features
@@ -1552,6 +1579,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.73]: https://github.com/larksuite/cli/releases/tag/v1.0.73
 [v1.0.72]: https://github.com/larksuite/cli/releases/tag/v1.0.72
 [v1.0.71]: https://github.com/larksuite/cli/releases/tag/v1.0.71
 [v1.0.70]: https://github.com/larksuite/cli/releases/tag/v1.0.70
