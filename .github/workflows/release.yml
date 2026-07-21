@@ -111,6 +111,7 @@ jobs:
         with:
           node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Install pinned npm
         run: npm install --global npm@11.16.0
