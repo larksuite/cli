@@ -24,7 +24,8 @@ metadata:
 
 | 用户需求                                    | 行动                                                                                                |
 |-----------------------------------------|---------------------------------------------------------------------------------------------------|
-| 查看画板内容 / 导出图片 / 导出 SVG 矢量图 | [`+export --output-type preview/svg`](references/lark-whiteboard-export.md)                       |
+| 查看画板内容 / 导出图片 | [`+export --output-type preview`](references/lark-whiteboard-export.md)                       |
+| 导出 SVG 矢量图 | [`+export --output-type svg`](references/lark-whiteboard-export.md)                       |
 | 获取画板的 Mermaid/PlantUML 代码               | [`+export --output-type source`](references/lark-whiteboard-export.md)                             |
 | 检查画板是否由代码绘制                             | [`+export --output-type source`](references/lark-whiteboard-export.md)                             |
 | 仅微调节点文字/颜色                         | `+export --output-type raw` → 手动改 JSON → `+update --input_format raw`                             |

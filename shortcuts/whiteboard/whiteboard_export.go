@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,7 +34,11 @@ const (
 
 	// Legacy output type names accepted for backward compatibility.
 	WhiteboardQueryAsImage = "image"
-	WhiteboardQueryAsCode  = "code"
+	// WhiteboardQueryAsSvg is deprecated; use WhiteboardExportAsSvg.
+	WhiteboardQueryAsSvg  = WhiteboardExportAsSvg
+	WhiteboardQueryAsCode = "code"
+	// WhiteboardQueryAsRaw is deprecated; use WhiteboardExportAsRaw.
+	WhiteboardQueryAsRaw = WhiteboardExportAsRaw
 )
 
 // SyntaxType identifies the diagram syntax extracted from whiteboard code blocks.
@@ -77,48 +82,32 @@ var wbExportScopes = []string{"board:whiteboard:node:read"}
 var wbExportAuthTypes = []string{"user", "bot"}
 var wbExportFlags = []common.Flag{
 	{Name: "whiteboard-token", Desc: "whiteboard token of the whiteboard. You will need read permission to download preview image.", Required: true},
-	{Name: "output-type", Desc: "output whiteboard as: preview | svg | source | raw.", Required: false, Enum: []string{"preview", "svg", "source", "raw"}},
-	{Name: "output_as", Desc: "deprecated alias for --output-type. use preview instead of image, and source instead of code.", Required: false, Hidden: true, Enum: []string{"image", "svg", "code", "raw"}},
+	{Name: "output-type", Desc: "output whiteboard as: preview | svg | source | raw.", Required: true, Enum: []string{"preview", "svg", "source", "raw"}},
 	{Name: "output", Desc: "output path. It is required when --output-type preview. If not specified when --output-type svg/source/raw, it will output directly.", Required: false},
 	{Name: "overwrite", Desc: "overwrite existing file if it exists", Required: false, Type: "bool"},
 }
 
-func wbExportOutputType(runtime *common.RuntimeContext) (string, string, error) {
-	outputType := runtime.Str("output-type")
-	legacyOutputAs := runtime.Str("output_as")
-	outputTypeParam := "--output-type"
-	if outputType == "" && legacyOutputAs != "" {
-		outputType = legacyOutputAs
-		outputTypeParam = "--output_as"
-	} else if outputType != "" && legacyOutputAs != "" {
-		normalizedOutputType, ok := normalizeWhiteboardExportOutputType(outputType)
-		if !ok {
-			return "", "--output-type", nil
-		}
-		normalizedLegacy, ok := normalizeLegacyWhiteboardExportOutputType(legacyOutputAs)
-		if !ok {
-			return "", "--output_as", nil
-		}
-		if normalizedOutputType != normalizedLegacy {
-			return "", "--output-type", errs.NewValidationError(
-				errs.SubtypeInvalidArgument,
-				"--output-type and --output_as specify different output types",
-			).WithParam("--output-type")
-		}
-		return normalizedOutputType, "--output-type", nil
-	}
+var wbQueryFlags = []common.Flag{
+	{Name: "whiteboard-token", Desc: "whiteboard token of the whiteboard. You will need read permission to download preview image.", Required: true},
+	{Name: "output_as", Desc: "output whiteboard as: image | svg | code | raw.", Required: true, Enum: []string{"image", "svg", "code", "raw"}},
+	{Name: "output", Desc: "output path. It is required when output as image. If not specified when --output_as svg/code/raw, it will output directly.", Required: false},
+	{Name: "overwrite", Desc: "overwrite existing file if it exists", Required: false, Type: "bool"},
+}
 
-	var normalized string
-	var ok bool
-	if outputTypeParam == "--output_as" {
-		normalized, ok = normalizeLegacyWhiteboardExportOutputType(outputType)
-	} else {
-		normalized, ok = normalizeWhiteboardExportOutputType(outputType)
-	}
+func wbExportOutputType(runtime *common.RuntimeContext) (string, string) {
+	normalized, ok := normalizeWhiteboardExportOutputType(runtime.Str("output-type"))
 	if !ok {
-		return "", outputTypeParam, nil
+		return "", "--output-type"
 	}
-	return normalized, outputTypeParam, nil
+	return normalized, "--output-type"
+}
+
+func wbQueryOutputType(runtime *common.RuntimeContext) (string, string) {
+	normalized, ok := normalizeLegacyWhiteboardExportOutputType(runtime.Str("output_as"))
+	if !ok {
+		return "", "--output_as"
+	}
+	return normalized, "--output_as"
 }
 
 func normalizeWhiteboardExportOutputType(outputType string) (string, bool) {
@@ -161,15 +150,20 @@ func wbExportOutputTypeError(param string) *errs.ValidationError {
 }
 
 func wbExportValidate(ctx context.Context, runtime *common.RuntimeContext) error {
+	return wbExportValidateWithOutputType(ctx, runtime, wbExportOutputType)
+}
+
+func wbQueryValidate(ctx context.Context, runtime *common.RuntimeContext) error {
+	return wbExportValidateWithOutputType(ctx, runtime, wbQueryOutputType)
+}
+
+func wbExportValidateWithOutputType(ctx context.Context, runtime *common.RuntimeContext, outputTypeFn func(*common.RuntimeContext) (string, string)) error {
 	// Check if token contains control characters
 	token := runtime.Str("whiteboard-token")
 	if err := common.RejectDangerousCharsTyped("--whiteboard-token", token); err != nil {
 		return err
 	}
-	outputType, outputTypeParam, err := wbExportOutputType(runtime)
-	if err != nil {
-		return err
-	}
+	outputType, outputTypeParam := outputTypeFn(runtime)
 	if outputType == "" {
 		return wbExportOutputTypeError(outputTypeParam)
 	}
@@ -187,10 +181,15 @@ func wbExportValidate(ctx context.Context, runtime *common.RuntimeContext) error
 }
 
 func wbExportDryRun(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	outputType, outputTypeParam, err := wbExportOutputType(runtime)
-	if err != nil {
-		return common.NewDryRunAPI().Desc(err.Error())
-	}
+	return wbExportDryRunWithOutputType(ctx, runtime, wbExportOutputType)
+}
+
+func wbQueryDryRun(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	return wbExportDryRunWithOutputType(ctx, runtime, wbQueryOutputType)
+}
+
+func wbExportDryRunWithOutputType(ctx context.Context, runtime *common.RuntimeContext, outputTypeFn func(*common.RuntimeContext) (string, string)) *common.DryRunAPI {
+	outputType, outputTypeParam := outputTypeFn(runtime)
 	token := runtime.Str("whiteboard-token")
 	switch outputType {
 	case WhiteboardExportAsPreview:
@@ -219,12 +218,17 @@ func wbExportDryRun(ctx context.Context, runtime *common.RuntimeContext) *common
 }
 
 func wbExportExecute(ctx context.Context, runtime *common.RuntimeContext) error {
+	return wbExportExecuteWithOutputType(ctx, runtime, wbExportOutputType)
+}
+
+func wbQueryExecute(ctx context.Context, runtime *common.RuntimeContext) error {
+	return wbExportExecuteWithOutputType(ctx, runtime, wbQueryOutputType)
+}
+
+func wbExportExecuteWithOutputType(ctx context.Context, runtime *common.RuntimeContext, outputTypeFn func(*common.RuntimeContext) (string, string)) error {
 	token := runtime.Str("whiteboard-token")
 	outDir := runtime.Str("output")
-	outputType, outputTypeParam, err := wbExportOutputType(runtime)
-	if err != nil {
-		return err
-	}
+	outputType, outputTypeParam := outputTypeFn(runtime)
 	switch outputType {
 	case WhiteboardExportAsPreview:
 		return exportWhiteboardPreview(ctx, runtime, token, outDir)
@@ -264,12 +268,12 @@ var WhiteboardQuery = common.Shortcut{
 	Risk:        "read",
 	Scopes:      wbExportScopes,
 	AuthTypes:   wbExportAuthTypes,
-	Flags:       wbExportFlags,
+	Flags:       wbQueryFlags,
 	HasFormat:   true,
 	Hidden:      true,
-	Validate:    wbExportValidate,
-	DryRun:      wbExportDryRun,
-	Execute:     wbExportExecute,
+	Validate:    wbQueryValidate,
+	DryRun:      wbQueryDryRun,
+	Execute:     wbQueryExecute,
 }
 
 // exportReq defines the request body for whiteboard export APIs.
@@ -385,8 +389,7 @@ func exportWhiteboardPreview(ctx context.Context, runtime *common.RuntimeContext
 			WithCode(resp.StatusCode)
 	}
 
-	previewExt := whiteboardPreviewExt(resp.Header)
-	finalPath, size, err := saveOutputFile(outDir, previewExt, wbToken, runtime, bytes.NewReader(resp.RawBody))
+	finalPath, size, err := saveWhiteboardPreviewOutput(outDir, wbToken, runtime, resp.Header, bytes.NewReader(resp.RawBody))
 	if err != nil {
 		return err
 	}
@@ -616,10 +619,110 @@ func saveOutputFile(outPath, ext, token string, runtime *common.RuntimeContext, 
 	return finalPath, savResult.Size(), nil
 }
 
-func whiteboardPreviewExt(header http.Header) string {
-	outputPath, _ := common.AutoAppendDownloadExtension("whiteboard", header, ".png")
-	if ext := filepath.Ext(outputPath); ext != "" {
-		return ext
+var whiteboardPreviewContentTypeExt = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+}
+
+func saveWhiteboardPreviewOutput(outPath, token string, runtime *common.RuntimeContext, header http.Header, data io.Reader) (string, int64, error) {
+	contentType := header.Get("Content-Type")
+	ext, err := whiteboardPreviewExtFromContentType(contentType)
+	if err != nil {
+		return "", 0, err
 	}
-	return ".png"
+	finalPath, err := whiteboardPreviewOutputPath(outPath, ext, token, runtime)
+	if err != nil {
+		return "", 0, err
+	}
+	return saveResolvedOutputFile(finalPath, contentType, runtime, data)
+}
+
+func whiteboardPreviewExtFromContentType(contentType string) (string, error) {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	}
+	if ext, ok := whiteboardPreviewContentTypeExt[strings.ToLower(mediaType)]; ok {
+		return ext, nil
+	}
+	if strings.TrimSpace(contentType) == "" {
+		contentType = "<empty>"
+	}
+	return "", errs.NewInternalError(
+		errs.SubtypeInvalidResponse,
+		"get whiteboard preview failed: expected image/png or image/jpeg response, got Content-Type: %s",
+		contentType,
+	)
+}
+
+func whiteboardPreviewOutputPath(outPath, ext, token string, runtime *common.RuntimeContext) (string, error) {
+	info, err := runtime.FileIO().Stat(outPath)
+	if err == nil && info.IsDir() {
+		finalPath := filepath.Join(outPath, fmt.Sprintf("whiteboard_%s%s", token, ext))
+		if _, err := runtime.ResolveSavePath(finalPath); err != nil {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid output path: %s", err).WithParam("--output").WithCause(err)
+		}
+		return finalPath, nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return "", errs.NewInternalError(errs.SubtypeFileIO, "cannot check output path: %s", err).WithCause(err)
+	}
+
+	currentExt := strings.ToLower(filepath.Ext(outPath))
+	if currentExt == "" || currentExt == "." {
+		finalPath := strings.TrimSuffix(outPath, ".") + ext
+		if _, err := runtime.ResolveSavePath(finalPath); err != nil {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid output path: %s", err).WithParam("--output").WithCause(err)
+		}
+		return finalPath, nil
+	}
+	if !isWhiteboardPreviewImageExt(currentExt) {
+		return "", errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"invalid preview output extension %q; use .png, .jpg, .jpeg, a directory, or a path without extension",
+			currentExt,
+		).WithParam("--output")
+	}
+	if !whiteboardPreviewExtMatches(currentExt, ext) {
+		return "", errs.NewValidationError(
+			errs.SubtypeFailedPrecondition,
+			"preview response is %s but output path has extension %s; use a matching extension or omit the extension",
+			ext,
+			currentExt,
+		).WithParam("--output")
+	}
+	if _, err := runtime.ResolveSavePath(outPath); err != nil {
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid output path: %s", err).WithParam("--output").WithCause(err)
+	}
+	return outPath, nil
+}
+
+func isWhiteboardPreviewImageExt(ext string) bool {
+	return ext == ".png" || ext == ".jpg" || ext == ".jpeg"
+}
+
+func whiteboardPreviewExtMatches(outputExt, responseExt string) bool {
+	if responseExt == ".jpg" {
+		return outputExt == ".jpg" || outputExt == ".jpeg"
+	}
+	return outputExt == responseExt
+}
+
+func saveResolvedOutputFile(finalPath, contentType string, runtime *common.RuntimeContext, data io.Reader) (string, int64, error) {
+	_, err := runtime.FileIO().Stat(finalPath)
+	if err == nil {
+		if !runtime.Bool("overwrite") {
+			return "", 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "file already exists: %s (use --overwrite to overwrite)", finalPath).WithParam("--overwrite")
+		}
+	} else if !os.IsNotExist(err) {
+		return "", 0, errs.NewInternalError(errs.SubtypeFileIO, "cannot check file existence: %s", err).WithCause(err)
+	}
+
+	savResult, err := runtime.FileIO().Save(finalPath, fileio.SaveOptions{
+		ContentType: contentType,
+	}, data)
+	if err != nil {
+		return "", 0, wbSaveError(err)
+	}
+	return finalPath, savResult.Size(), nil
 }
