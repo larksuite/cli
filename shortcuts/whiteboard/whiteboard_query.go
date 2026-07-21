@@ -22,14 +22,18 @@ import (
 )
 
 const (
-	// WhiteboardQueryAsImage exports a whiteboard preview image.
+	// WhiteboardExportAsPreview exports a whiteboard preview image.
+	WhiteboardExportAsPreview = "preview"
+	// WhiteboardExportAsSvg exports a whiteboard as SVG.
+	WhiteboardExportAsSvg = "svg"
+	// WhiteboardExportAsSource exports Mermaid or PlantUML source extracted from the whiteboard.
+	WhiteboardExportAsSource = "source"
+	// WhiteboardExportAsRaw exports the raw whiteboard node payload.
+	WhiteboardExportAsRaw = "raw"
+
+	// Legacy output type names accepted for backward compatibility.
 	WhiteboardQueryAsImage = "image"
-	// WhiteboardQueryAsSvg exports a whiteboard as SVG.
-	WhiteboardQueryAsSvg = "svg"
-	// WhiteboardQueryAsCode exports Mermaid or PlantUML source extracted from the whiteboard.
-	WhiteboardQueryAsCode = "code"
-	// WhiteboardQueryAsRaw exports the raw whiteboard node payload.
-	WhiteboardQueryAsRaw = "raw"
+	WhiteboardQueryAsCode  = "code"
 )
 
 // SyntaxType identifies the diagram syntax extracted from whiteboard code blocks.
@@ -69,87 +73,203 @@ func (s SyntaxType) IsValid() bool {
 	return s == SyntaxTypePlantUML || s == SyntaxTypeMermaid
 }
 
-// WhiteboardQuery registers the `whiteboard +query` shortcut.
+var wbExportScopes = []string{"board:whiteboard:node:read"}
+var wbExportAuthTypes = []string{"user", "bot"}
+var wbExportFlags = []common.Flag{
+	{Name: "whiteboard-token", Desc: "whiteboard token of the whiteboard. You will need read permission to download preview image.", Required: true},
+	{Name: "output-type", Desc: "output whiteboard as: preview | svg | source | raw.", Required: false, Enum: []string{"preview", "svg", "source", "raw"}},
+	{Name: "output_as", Desc: "deprecated alias for --output-type. use preview instead of image, and source instead of code.", Required: false, Hidden: true, Enum: []string{"image", "svg", "code", "raw"}},
+	{Name: "output", Desc: "output path. It is required when --output-type preview. If not specified when --output-type svg/source/raw, it will output directly.", Required: false},
+	{Name: "overwrite", Desc: "overwrite existing file if it exists", Required: false, Type: "bool"},
+}
+
+func wbExportOutputType(runtime *common.RuntimeContext) (string, string, error) {
+	outputType := runtime.Str("output-type")
+	legacyOutputAs := runtime.Str("output_as")
+	outputTypeParam := "--output-type"
+	if outputType == "" && legacyOutputAs != "" {
+		outputType = legacyOutputAs
+		outputTypeParam = "--output_as"
+	} else if outputType != "" && legacyOutputAs != "" {
+		normalizedOutputType, ok := normalizeWhiteboardExportOutputType(outputType)
+		if !ok {
+			return "", "--output-type", nil
+		}
+		normalizedLegacy, ok := normalizeLegacyWhiteboardExportOutputType(legacyOutputAs)
+		if !ok {
+			return "", "--output_as", nil
+		}
+		if normalizedOutputType != normalizedLegacy {
+			return "", "--output-type", errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"--output-type and --output_as specify different output types",
+			).WithParam("--output-type")
+		}
+		return normalizedOutputType, "--output-type", nil
+	}
+
+	var normalized string
+	var ok bool
+	if outputTypeParam == "--output_as" {
+		normalized, ok = normalizeLegacyWhiteboardExportOutputType(outputType)
+	} else {
+		normalized, ok = normalizeWhiteboardExportOutputType(outputType)
+	}
+	if !ok {
+		return "", outputTypeParam, nil
+	}
+	return normalized, outputTypeParam, nil
+}
+
+func normalizeWhiteboardExportOutputType(outputType string) (string, bool) {
+	switch outputType {
+	case WhiteboardExportAsPreview:
+		return WhiteboardExportAsPreview, true
+	case WhiteboardExportAsSvg:
+		return WhiteboardExportAsSvg, true
+	case WhiteboardExportAsSource:
+		return WhiteboardExportAsSource, true
+	case WhiteboardExportAsRaw:
+		return WhiteboardExportAsRaw, true
+	default:
+		return "", false
+	}
+}
+
+func normalizeLegacyWhiteboardExportOutputType(outputType string) (string, bool) {
+	switch outputType {
+	case WhiteboardQueryAsImage:
+		return WhiteboardExportAsPreview, true
+	case WhiteboardQueryAsCode:
+		return WhiteboardExportAsSource, true
+	default:
+		return normalizeWhiteboardExportOutputType(outputType)
+	}
+}
+
+func wbExportOutputTypeError(param string) *errs.ValidationError {
+	if param == "--output_as" {
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--output_as flag must be one of: image | svg | code | raw",
+		).WithParam("--output_as")
+	}
+	return errs.NewValidationError(
+		errs.SubtypeInvalidArgument,
+		"--output-type flag must be one of: preview | svg | source | raw",
+	).WithParam("--output-type")
+}
+
+func wbExportValidate(ctx context.Context, runtime *common.RuntimeContext) error {
+	// Check if token contains control characters
+	token := runtime.Str("whiteboard-token")
+	if err := common.RejectDangerousCharsTyped("--whiteboard-token", token); err != nil {
+		return err
+	}
+	outputType, outputTypeParam, err := wbExportOutputType(runtime)
+	if err != nil {
+		return err
+	}
+	if outputType == "" {
+		return wbExportOutputTypeError(outputTypeParam)
+	}
+
+	out := runtime.Str("output")
+	if out != "" {
+		if _, err := runtime.ResolveSavePath(out); err != nil {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid output path: %s", err).WithParam("--output").WithCause(err)
+		}
+	}
+	if out == "" && outputType == WhiteboardExportAsPreview {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "need a output path to export whiteboard as preview").WithParam("--output")
+	}
+	return nil
+}
+
+func wbExportDryRun(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	outputType, outputTypeParam, err := wbExportOutputType(runtime)
+	if err != nil {
+		return common.NewDryRunAPI().Desc(err.Error())
+	}
+	token := runtime.Str("whiteboard-token")
+	switch outputType {
+	case WhiteboardExportAsPreview:
+		return common.NewDryRunAPI().
+			GET(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/download_as_image", common.MaskToken(url.PathEscape(token)))).
+			Desc("Export preview image of given whiteboard")
+	case WhiteboardExportAsSource:
+		return common.NewDryRunAPI().
+			GET(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).
+			Desc("Extract Mermaid/Plantuml source from given whiteboard")
+	case WhiteboardExportAsRaw:
+		return common.NewDryRunAPI().
+			GET(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).
+			Desc("Extract raw nodes structure from given whiteboard")
+	case WhiteboardExportAsSvg:
+		return common.NewDryRunAPI().
+			POST(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/export", common.MaskToken(url.PathEscape(token)))).
+			Body(map[string]string{"export_type": "svg"}).
+			Desc("Export SVG of given whiteboard")
+	default:
+		if outputTypeParam == "--output_as" {
+			return common.NewDryRunAPI().Desc("invalid --output_as flag, must be one of: image | svg | code | raw")
+		}
+		return common.NewDryRunAPI().Desc("invalid --output-type flag, must be one of: preview | svg | source | raw")
+	}
+}
+
+func wbExportExecute(ctx context.Context, runtime *common.RuntimeContext) error {
+	token := runtime.Str("whiteboard-token")
+	outDir := runtime.Str("output")
+	outputType, outputTypeParam, err := wbExportOutputType(runtime)
+	if err != nil {
+		return err
+	}
+	switch outputType {
+	case WhiteboardExportAsPreview:
+		return exportWhiteboardPreview(ctx, runtime, token, outDir)
+	case WhiteboardExportAsSvg:
+		return exportWhiteboardSvg(runtime, token, outDir)
+	case WhiteboardExportAsSource:
+		return exportWhiteboardCode(runtime, token, outDir)
+	case WhiteboardExportAsRaw:
+		return exportWhiteboardRaw(runtime, token, outDir)
+	default:
+		return wbExportOutputTypeError(outputTypeParam)
+	}
+}
+
+const WhiteboardExportDescription = "Export an existing whiteboard as preview image, SVG, source code or raw nodes structure."
+
+// WhiteboardExport registers the `whiteboard +export` shortcut.
+var WhiteboardExport = common.Shortcut{
+	Service:     "whiteboard",
+	Command:     "+export",
+	Description: WhiteboardExportDescription,
+	Risk:        "read",
+	Scopes:      wbExportScopes,
+	AuthTypes:   wbExportAuthTypes,
+	Flags:       wbExportFlags,
+	HasFormat:   true,
+	Validate:    wbExportValidate,
+	DryRun:      wbExportDryRun,
+	Execute:     wbExportExecute,
+}
+
+// WhiteboardQuery registers the hidden, backward-compatible `whiteboard +query` shortcut.
 var WhiteboardQuery = common.Shortcut{
 	Service:     "whiteboard",
 	Command:     "+query",
-	Description: "Query a existing whiteboard, export it as preview image or raw nodes structure.",
+	Description: WhiteboardExportDescription,
 	Risk:        "read",
-	Scopes:      []string{"board:whiteboard:node:read"},
-	AuthTypes:   []string{"user", "bot"},
-	Flags: []common.Flag{
-		{Name: "whiteboard-token", Desc: "whiteboard token of the whiteboard. You will need read permission to download preview image.", Required: true},
-		{Name: "output_as", Desc: "output whiteboard as: image | svg | code | raw.", Required: true},
-		{Name: "output", Desc: "output directory. It is required when output as image. If not specified when --output_as svg/code/raw, it will output directly.", Required: false},
-		{Name: "overwrite", Desc: "overwrite existing file if it exists", Required: false, Type: "bool"},
-	},
-	HasFormat: true,
-	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		// Check if token contains control characters
-		token := runtime.Str("whiteboard-token")
-		if err := common.RejectDangerousCharsTyped("--whiteboard-token", token); err != nil {
-			return err
-		}
-		out := runtime.Str("output")
-		if out != "" {
-			if _, err := runtime.ResolveSavePath(out); err != nil {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid output path: %s", err).WithParam("--output").WithCause(err)
-			}
-		}
-		if out == "" && runtime.Str("output_as") == WhiteboardQueryAsImage {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "need a output directory to query whiteboard as image").WithParam("--output")
-		}
-
-		as := runtime.Str("output_as")
-		if as != WhiteboardQueryAsImage && as != WhiteboardQueryAsSvg && as != WhiteboardQueryAsCode && as != WhiteboardQueryAsRaw {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output_as flag must be one of: image | svg | code | raw").WithParam("--output_as")
-		}
-		return nil
-	},
-	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		as := runtime.Str("output_as")
-		token := runtime.Str("whiteboard-token")
-		switch as {
-		case WhiteboardQueryAsImage:
-			return common.NewDryRunAPI().
-				GET(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/download_as_image", common.MaskToken(url.PathEscape(token)))).
-				Desc("Export preview image of given whiteboard")
-		case WhiteboardQueryAsCode:
-			return common.NewDryRunAPI().
-				GET(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).
-				Desc("Extract Mermaid/Plantuml code from given whiteboard")
-		case WhiteboardQueryAsRaw:
-			return common.NewDryRunAPI().
-				GET(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).
-				Desc("Extract raw nodes structure from given whiteboard")
-		case WhiteboardQueryAsSvg:
-			return common.NewDryRunAPI().
-				POST(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/export", common.MaskToken(url.PathEscape(token)))).
-				Body(map[string]string{"export_type": "svg"}).
-				Desc("Export SVG of given whiteboard")
-		default:
-			return common.NewDryRunAPI().Desc("invalid --output_as flag, must be one of: image | svg | code | raw")
-		}
-	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		// 构建 API 请求
-		token := runtime.Str("whiteboard-token")
-		outDir := runtime.Str("output")
-		as := runtime.Str("output_as")
-		switch as {
-		case WhiteboardQueryAsImage:
-			return exportWhiteboardPreview(ctx, runtime, token, outDir)
-		case WhiteboardQueryAsSvg:
-			return exportWhiteboardSvg(runtime, token, outDir)
-		case WhiteboardQueryAsCode:
-			return exportWhiteboardCode(runtime, token, outDir)
-		case WhiteboardQueryAsRaw:
-			return exportWhiteboardRaw(runtime, token, outDir)
-		default:
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output_as flag must be one of: image | svg | code | raw").WithParam("--output_as")
-		}
-
-	},
+	Scopes:      wbExportScopes,
+	AuthTypes:   wbExportAuthTypes,
+	Flags:       wbExportFlags,
+	HasFormat:   true,
+	Hidden:      true,
+	Validate:    wbExportValidate,
+	DryRun:      wbExportDryRun,
+	Execute:     wbExportExecute,
 }
 
 // exportReq defines the request body for whiteboard export APIs.
@@ -265,7 +385,8 @@ func exportWhiteboardPreview(ctx context.Context, runtime *common.RuntimeContext
 			WithCode(resp.StatusCode)
 	}
 
-	finalPath, size, err := saveOutputFile(outDir, ".png", wbToken, runtime, bytes.NewReader(resp.RawBody))
+	previewExt := whiteboardPreviewExt(resp.Header)
+	finalPath, size, err := saveOutputFile(outDir, previewExt, wbToken, runtime, bytes.NewReader(resp.RawBody))
 	if err != nil {
 		return err
 	}
@@ -475,6 +596,8 @@ func saveOutputFile(outPath, ext, token string, runtime *common.RuntimeContext, 
 	switch ext {
 	case ".png":
 		contentType = "image/png"
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
 	case ".svg":
 		contentType = "image/svg+xml"
 	case ".json":
@@ -491,4 +614,12 @@ func saveOutputFile(outPath, ext, token string, runtime *common.RuntimeContext, 
 	}
 
 	return finalPath, savResult.Size(), nil
+}
+
+func whiteboardPreviewExt(header http.Header) string {
+	outputPath, _ := common.AutoAppendDownloadExtension("whiteboard", header, ".png")
+	if ext := filepath.Ext(outputPath); ext != "" {
+		return ext
+	}
+	return ".png"
 }

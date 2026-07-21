@@ -255,6 +255,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 	got := Shortcuts()
 	want := []string{
 		"+update",
+		"+export",
 		"+query",
 	}
 

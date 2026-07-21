@@ -211,6 +211,91 @@ func TestWhiteboardQuery_Validate_TypedErrors(t *testing.T) {
 	}
 }
 
+// TestWhiteboardExport_Validate verifies the canonical +export flag spelling
+// and output type names while legacy +query validation remains covered above.
+func TestWhiteboardExport_Validate(t *testing.T) {
+	ctx := context.Background()
+	chdirTemp(t)
+
+	tests := []struct {
+		name      string
+		flags     map[string]string
+		wantErr   bool
+		wantParam string
+	}{
+		{
+			name: "valid: preview with output",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "preview",
+				"output":           "output",
+			},
+		},
+		{
+			name: "valid: source without output",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "source",
+			},
+		},
+		{
+			name: "invalid: preview without output",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "preview",
+			},
+			wantErr:   true,
+			wantParam: "--output",
+		},
+		{
+			name: "invalid: bad output-type value",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "image",
+			},
+			wantErr:   true,
+			wantParam: "--output-type",
+		},
+		{
+			name: "valid: matching new and legacy aliases",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "source",
+				"output_as":        "code",
+			},
+		},
+		{
+			name: "invalid: conflicting new and legacy aliases",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "source",
+				"output_as":        "raw",
+			},
+			wantErr:   true,
+			wantParam: "--output-type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := WhiteboardExport.Validate(ctx, newTestRuntime(tt.flags, nil))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("WhiteboardExport.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil {
+				return
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error is not *errs.ValidationError: %T", err)
+			}
+			if ve.Param != tt.wantParam {
+				t.Fatalf("Param = %q, want %q", ve.Param, tt.wantParam)
+			}
+		})
+	}
+}
+
 // TestExportWhiteboardPreview_HTTPError locks the download-path failure
 // behavior: a failed preview download surfaces as a typed errs.* envelope, not
 // a flat legacy error.
@@ -390,6 +475,26 @@ func TestWhiteboardQuery_ShortcutRegistration(t *testing.T) {
 	}
 	if len(WhiteboardQuery.Flags) == 0 {
 		t.Errorf("WhiteboardQuery.Flags is empty, expected at least one flag")
+	}
+	if !WhiteboardQuery.Hidden {
+		t.Errorf("WhiteboardQuery should be hidden because +export is the canonical command")
+	}
+
+	// Verify WhiteboardExport is the visible canonical shortcut.
+	if WhiteboardExport.Command != "+export" {
+		t.Errorf("WhiteboardExport.Command = %q, want \"+export\"", WhiteboardExport.Command)
+	}
+	if WhiteboardExport.Service != "whiteboard" {
+		t.Errorf("WhiteboardExport.Service = %q, want \"whiteboard\"", WhiteboardExport.Service)
+	}
+	if WhiteboardExport.Hidden {
+		t.Errorf("WhiteboardExport should be visible")
+	}
+	if flag := shortcutFlag(WhiteboardExport, "output_as"); flag == nil || !flag.Hidden {
+		t.Errorf("WhiteboardExport --output_as should exist and be hidden for backward compatibility")
+	}
+	if flag := shortcutFlag(WhiteboardExport, "output-type"); flag == nil || flag.Hidden {
+		t.Errorf("WhiteboardExport --output-type should exist and be visible")
 	}
 }
 
@@ -880,6 +985,38 @@ func TestExportWhiteboardPreview(t *testing.T) {
 	}
 	if string(data) != "fake PNG image data" {
 		t.Fatalf("image content = %q, want %q", string(data), "fake PNG image data")
+	}
+}
+
+// TestExportWhiteboardPreview_UsesContentTypeExtension verifies preview image
+// downloads are saved according to the API response Content-Type rather than a
+// hard-coded PNG suffix.
+func TestExportWhiteboardPreview_UsesContentTypeExtension(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	chdirTemp(t)
+
+	reg.Register(&httpmock.Stub{
+		Method:      "GET",
+		URL:         "/open-apis/board/v1/whiteboards/test-token-preview-jpeg/download_as_image",
+		Status:      200,
+		RawBody:     []byte("fake JPEG image data"),
+		ContentType: "image/jpeg",
+	})
+
+	args := []string{"+export", "--whiteboard-token", "test-token-preview-jpeg", "--output-type", "preview", "--output", "output.png", "--overwrite"}
+	if err := runShortcut(t, WhiteboardExport, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	if _, err := os.Stat("output.png"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output.png should not exist when response Content-Type is image/jpeg, stat err=%v", err)
+	}
+	data, err := os.ReadFile("output.jpg")
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "fake JPEG image data" {
+		t.Fatalf("image content = %q, want %q", string(data), "fake JPEG image data")
 	}
 }
 
@@ -1521,4 +1658,13 @@ func chdirTemp(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chdir(orig) })
+}
+
+func shortcutFlag(shortcut common.Shortcut, name string) *common.Flag {
+	for i := range shortcut.Flags {
+		if shortcut.Flags[i].Name == name {
+			return &shortcut.Flags[i]
+		}
+	}
+	return nil
 }
