@@ -1,0 +1,233 @@
+shortcuts/calendar/calendar_create.go
+  s_7ea818eb69072d::t_f5f779722660e8 70-88 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a5f5f3af38380483a77992f","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[70,88]}]}]}
+  s_7ea818eb69072d::t_54ad434fef46bb 252-253 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a5f5f25f38380483a779929","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[252,253]}]}]}
+  s_7ea818eb69072d::t_e8f2928d59eb54 198-200 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a5f5f60f38380483a779938","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[198,200]}]}]}
+skills/lark-calendar/references/lark-calendar-create.md
+  s_f9298f8bc22f71::t_92e0a3f129b509 47 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a5f6ee9f38380483a779a45","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":47}]}]}
+shortcuts/calendar/calendar_test.go
+  s_7ea818eb69072d::t_aa3e1c075bdeb8 254-383 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a5f5fb1f38380483a779950","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[254,383]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c6447e4c78a3afce2d8a90ca3a39afc966beb080",
+  "prompts": {},
+  "humans": {
+    "h_28e3eba6e3c972": {
+      "author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_7ea818eb69072d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a5f4554f38380483a7798ca",
+        "model": "openrouter-3o__max"
+      },
+      "human_author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    },
+    "s_f9298f8bc22f71": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a5f6773f38380483a7799b2",
+        "model": "openrouter-3o__max"
+      },
+      "human_author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "shortcuts/calendar/calendar_create.go": [
+      {
+        "hash": "s_7ea818eb69072d::t_f5f779722660e8",
+        "line_ranges": [
+          {
+            "Range": [
+              70,
+              88
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a5f5f3af38380483a77992f",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  70,
+                  88
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hash": "s_7ea818eb69072d::t_54ad434fef46bb",
+        "line_ranges": [
+          {
+            "Range": [
+              252,
+              253
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a5f5f25f38380483a779929",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  252,
+                  253
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hash": "s_7ea818eb69072d::t_e8f2928d59eb54",
+        "line_ranges": [
+          {
+            "Range": [
+              198,
+              200
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a5f5f60f38380483a779938",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  198,
+                  200
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "shortcuts/calendar/calendar_test.go": [
+      {
+        "hash": "s_7ea818eb69072d::t_aa3e1c075bdeb8",
+        "line_ranges": [
+          {
+            "Range": [
+              254,
+              383
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a5f5fb1f38380483a779950",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  254,
+                  383
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "skills/lark-calendar/references/lark-calendar-create.md": [
+      {
+        "hash": "s_f9298f8bc22f71::t_92e0a3f129b509",
+        "line_ranges": [
+          {
+            "Single": 47
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a5f6ee9f38380483a779a45",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 47
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_7ea818eb69072d": {
+      "tool": "trae",
+      "conversation_id": "6a5f4554f38380483a7798ca",
+      "session_id": "6a5f4554f38380483a7798ca",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_7ea818eb69072d::t_54ad434fef46bb": {
+      "tool": "trae",
+      "conversation_id": "6a5f4554f38380483a7798ca",
+      "session_id": "6a5f4554f38380483a7798ca",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_7ea818eb69072d::t_aa3e1c075bdeb8": {
+      "tool": "trae",
+      "conversation_id": "6a5f4554f38380483a7798ca",
+      "session_id": "6a5f4554f38380483a7798ca",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_7ea818eb69072d::t_e8f2928d59eb54": {
+      "tool": "trae",
+      "conversation_id": "6a5f4554f38380483a7798ca",
+      "session_id": "6a5f4554f38380483a7798ca",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_7ea818eb69072d::t_f5f779722660e8": {
+      "tool": "trae",
+      "conversation_id": "6a5f4554f38380483a7798ca",
+      "session_id": "6a5f4554f38380483a7798ca",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_f9298f8bc22f71": {
+      "tool": "trae",
+      "conversation_id": "6a5f6773f38380483a7799b2",
+      "session_id": "6a5f6773f38380483a7799b2",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_f9298f8bc22f71::t_0ab2e67658c123": {
+      "tool": "trae",
+      "conversation_id": "6a5f6773f38380483a7799b2",
+      "session_id": "6a5f6773f38380483a7799b2",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_f9298f8bc22f71::t_92e0a3f129b509": {
+      "tool": "trae",
+      "conversation_id": "6a5f6773f38380483a7799b2",
+      "session_id": "6a5f6773f38380483a7799b2",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
