@@ -640,16 +640,15 @@ func warnDropdownSourceRangeHighlight(runtime *common.RuntimeContext) {
 // checkCellsMatchRange rejects, before any network call, the cells-vs-range
 // mismatches the server would otherwise fail mid-batch ("cells row count (N)
 // does not match range row count (M)" — a recurring server-side error cluster
-// in eval traces, and the failure leaves earlier batch sub-ops applied). Only
-// rectangle ranges (with ':') are checked: a bare single-cell range is left to
-// the server, and an unparsable range is the range validator's job, not ours.
+// in eval traces, and the failure leaves earlier batch sub-ops applied).
+// Single-cell ranges are checked too: the server enforces the same strict
+// match on a bare "A1" (07-21 rerun, 12 rows against range row count 1) —
+// there is no anchor semantics on +cells-set. An unparsable range is the
+// range validator's job, not ours.
 func checkCellsMatchRange(cells []interface{}, rangeStr string) error {
 	if len(cells) == 0 {
 		return sheetsValidationForFlag("cells",
 			"--cells is empty; to clear values use +cells-clear --scope content (needs --yes), or pass a non-empty 2D array")
-	}
-	if !strings.Contains(rangeStr, ":") {
-		return nil
 	}
 	rows, cols, err := rangeDimensions(rangeStr)
 	if err != nil {

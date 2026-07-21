@@ -210,10 +210,18 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 			"",
 		},
 		{
-			"bare single-cell range is left to the server",
+			"bare single-cell range enforces the 1x1 match (07-21: server rejects anchors too)",
 			map[string]interface{}{"sheet_name": "S1", "range": "A1",
 				"cells": []interface{}{
 					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
+				}},
+			"has 2 columns but --range \"A1\" spans 1 columns",
+		},
+		{
+			"single-cell range with a single cell passes",
+			map[string]interface{}{"sheet_name": "S1", "range": "B3",
+				"cells": []interface{}{
+					[]interface{}{map[string]interface{}{"value": "a"}},
 				}},
 			"",
 		},
