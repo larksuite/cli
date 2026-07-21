@@ -1,0 +1,27 @@
+cmd/event/event.go
+  s_2c541d8115c903::t_cbfe9074c6b245 9,28
+cmd/event/subscription/get.go
+  s_2c541d8115c903::t_14c9ee197b6b16 1-158
+cmd/event/subscription/list_test.go
+  s_2c541d8115c903::t_adafc2fb58d073 1-231
+cmd/event/subscription/subscription_test.go
+  s_2c541d8115c903::t_c1b32d4149386d 1-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f696313729ca8a4a5c624d098fa9e068a0c1770e",
+  "prompts": {},
+  "sessions": {
+    "s_2c541d8115c903": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a419326a17b930bb7",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
