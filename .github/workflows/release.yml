@@ -63,6 +63,7 @@ jobs:
         with:
           node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Install pinned npm
         run: npm install --global npm@11.16.0
@@ -79,6 +80,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s dist/checksums.txt
+          (cd dist && sha256sum --check checksums.txt)
           cp dist/checksums.txt checksums.txt
 
       - name: Collect release asset
