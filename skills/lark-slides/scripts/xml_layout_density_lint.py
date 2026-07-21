@@ -17,8 +17,13 @@ import xml_text_overlap_lint as xml_lint
 
 MIN_CONTAINER_WIDTH = 140
 MIN_CONTAINER_HEIGHT = 160
+MIN_SHORT_CARD_HEIGHT = 80
 MIN_CONTAINER_AREA = 20_000
 MIN_CONTENT_COVERAGE_RATIO = 0.15
+MIN_SLIDE_CONTENT_COVERAGE_RATIO = 0.035
+MIN_SLIDE_CONTENT_ELEMENT_COUNT = 4
+SHORT_CARD_SIZE_TOLERANCE_RATIO = 0.10
+MIN_SIMILAR_SHORT_CARD_COUNT = 2
 LARGE_VISUAL_CHILD_RATIO = 0.35
 LAYOUT_PANEL_SPAN_RATIO = 0.90
 IMAGE_OVERLAY_MATCH_RATIO = 0.90
@@ -57,12 +62,37 @@ def rectangle_union_area(rectangles: list[dict[str, int | float]]) -> int | floa
     return area
 
 
-def is_layout_container(element: dict[str, Any], slide_width: int | float, slide_height: int | float) -> bool:
+def has_similar_short_card_peer(element: dict[str, Any], elements: list[dict[str, Any]]) -> bool:
+    return sum(
+        other["kind"] == "shape"
+        and other["type"] == "rect"
+        and other["width"] >= MIN_CONTAINER_WIDTH
+        and other["height"] >= MIN_SHORT_CARD_HEIGHT
+        and xml_lint.element_area(other) >= MIN_CONTAINER_AREA
+        and abs(other["width"] - element["width"]) / max(other["width"], element["width"])
+        <= SHORT_CARD_SIZE_TOLERANCE_RATIO
+        and abs(other["height"] - element["height"]) / max(other["height"], element["height"])
+        <= SHORT_CARD_SIZE_TOLERANCE_RATIO
+        for other in elements
+    ) >= MIN_SIMILAR_SHORT_CARD_COUNT
+
+
+def is_layout_container(
+    element: dict[str, Any],
+    slide_width: int | float,
+    slide_height: int | float,
+    elements: list[dict[str, Any]] | None = None,
+) -> bool:
+    has_supported_height = element["height"] >= MIN_CONTAINER_HEIGHT or (
+        elements is not None
+        and element["height"] >= MIN_SHORT_CARD_HEIGHT
+        and has_similar_short_card_peer(element, elements)
+    )
     return (
         element["kind"] == "shape"
         and element["type"] == "rect"
         and element["width"] >= MIN_CONTAINER_WIDTH
-        and element["height"] >= MIN_CONTAINER_HEIGHT
+        and has_supported_height
         and xml_lint.element_area(element) >= MIN_CONTAINER_AREA
         and not (
             element["x"] <= 2
@@ -194,6 +224,20 @@ def own_text_visual_bbox(container: dict[str, Any]) -> dict[str, int | float] | 
     return clipped_bbox(estimated, container) if estimated else None
 
 
+def slide_content_visual_bbox(
+    element: dict[str, Any], slide_bbox: dict[str, int | float]
+) -> dict[str, int | float] | None:
+    if xml_lint.is_text_element(element):
+        estimated = xml_lint.estimate_text_visual_bbox(element)
+        return clipped_bbox(estimated, slide_bbox) if estimated else None
+    if element["kind"] == "shape" and xml_lint.has_text_content(element):
+        estimated = own_text_visual_bbox(element)
+        return clipped_bbox(estimated, slide_bbox) if estimated else None
+    if element["kind"] in {"img", "chart", "table", "whiteboard", "icon"}:
+        return clipped_bbox(element, slide_bbox)
+    return None
+
+
 def is_large_visual_child(element: dict[str, Any], container: dict[str, Any]) -> bool:
     if element["kind"] not in {"img", "chart", "table", "whiteboard"}:
         return False
@@ -204,7 +248,9 @@ def detect_sparse_container_content(
     elements: list[dict[str, Any]], slide_number: int, slide_width: int | float, slide_height: int | float
 ) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    for container in (element for element in elements if is_layout_container(element, slide_width, slide_height)):
+    for container in (
+        element for element in elements if is_layout_container(element, slide_width, slide_height, elements)
+    ):
         if (
             is_edge_spanning_layout_panel(container, slide_width, slide_height)
             or is_nested_in_layout_panel(container, elements, slide_width, slide_height)
@@ -255,6 +301,47 @@ def detect_sparse_container_content(
     return issues
 
 
+def detect_sparse_slide_content(
+    elements: list[dict[str, Any]], slide_number: int, slide_width: int | float, slide_height: int | float
+) -> list[dict[str, Any]]:
+    slide_bbox = {"x": 0, "y": 0, "width": slide_width, "height": slide_height}
+    content = [
+        (element, bbox)
+        for element in elements
+        if (bbox := slide_content_visual_bbox(element, slide_bbox)) is not None
+    ]
+    if len(content) < MIN_SLIDE_CONTENT_ELEMENT_COUNT:
+        return []
+    content_area = rectangle_union_area([bbox for _, bbox in content])
+    slide_area = slide_width * slide_height
+    coverage_ratio = content_area / slide_area
+    if coverage_ratio >= MIN_SLIDE_CONTENT_COVERAGE_RATIO:
+        return []
+    return [
+        {
+            "level": "warning",
+            "code": "sparse_slide_content",
+            "schema_version": "1.0",
+            "target": {
+                "slide_number": slide_number,
+                "bbox": slide_bbox,
+            },
+            "rule": {
+                "name": "slide_visible_content_coverage",
+                "threshold": MIN_SLIDE_CONTENT_COVERAGE_RATIO,
+                "comparison": "content_coverage_ratio < threshold",
+            },
+            "measurement": {
+                "slide_area": slide_area,
+                "visible_content_area": round(content_area, 3),
+                "content_coverage_ratio": round(coverage_ratio, 3),
+                "content_element_count": len(content),
+            },
+            "elements": [element["id"] for element, _ in content],
+        }
+    ]
+
+
 def detect_blank_slide(elements: list[dict[str, Any]], slide_number: int) -> list[dict[str, Any]]:
     if elements:
         return []
@@ -295,7 +382,8 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
                 "slide_number": slide_number,
                 "element_count": len(elements),
                 "issues": detect_blank_slide(elements, slide_number)
-                + detect_sparse_container_content(elements, slide_number, presentation["width"], presentation["height"]),
+                + detect_sparse_container_content(elements, slide_number, presentation["width"], presentation["height"])
+                + detect_sparse_slide_content(elements, slide_number, presentation["width"], presentation["height"]),
             }
         )
     warning_count = sum(len(slide["issues"]) for slide in slides)
