@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/qualitygate/facts"
 	"github.com/larksuite/cli/internal/qualitygate/manifest"
 	"github.com/larksuite/cli/internal/qualitygate/report"
@@ -726,7 +727,11 @@ func appendDryRunArg(raw string) ([]string, error) {
 		return nil, fmt.Errorf("not a lark-cli command")
 	}
 	argv = truncateShellTail(argv)
-	argv = forceDryRunJSONFormat(argv)
+	var jqValid bool
+	argv, jqValid = stripDryRunJQFilter(argv)
+	if jqValid {
+		argv = forceDryRunJSONFormat(argv)
+	}
 	hasDryRunArg := false
 	dryRunEnabled := false
 	for _, arg := range argv[1:] {
@@ -773,6 +778,73 @@ func truncateShellTail(argv []string) []string {
 		}
 	}
 	return argv
+}
+
+// stripDryRunJQFilter removes valid output-only jq filters from the synthetic
+// dry-run invocation. Invalid jq syntax and incompatible output flags are left
+// untouched so the real CLI execution still rejects the documented command.
+// The bool reports whether other output normalization remains safe.
+func stripDryRunJQFilter(argv []string) ([]string, bool) {
+	jqExpr, outputPath, format, hasJQ, jqHasValue := dryRunOutputFlags(argv)
+	if !hasJQ {
+		return argv, true
+	}
+	if !jqHasValue || output.ValidateJqFlags(jqExpr, outputPath, format) != nil {
+		return argv, false
+	}
+
+	out := make([]string, 0, len(argv))
+	for i := 0; i < len(argv); i++ {
+		arg := argv[i]
+		switch {
+		case arg == "--":
+			return append(out, argv[i:]...), true
+		case arg == "--jq" || arg == "-q":
+			i++
+		case strings.HasPrefix(arg, "--jq=") || strings.HasPrefix(arg, "-q="):
+			continue
+		default:
+			out = append(out, arg)
+		}
+	}
+	return out, true
+}
+
+func dryRunOutputFlags(argv []string) (jqExpr, outputPath, format string, hasJQ, jqHasValue bool) {
+	for i := 1; i < len(argv); i++ {
+		arg := argv[i]
+		if arg == "--" {
+			break
+		}
+		switch {
+		case arg == "--jq" || arg == "-q":
+			hasJQ = true
+			jqHasValue = i+1 < len(argv)
+			if jqHasValue {
+				jqExpr = argv[i+1]
+				i++
+			}
+		case strings.HasPrefix(arg, "--jq=") || strings.HasPrefix(arg, "-q="):
+			hasJQ = true
+			jqHasValue = true
+			jqExpr = arg[strings.IndexByte(arg, '=')+1:]
+		case arg == "--output":
+			if i+1 < len(argv) {
+				outputPath = argv[i+1]
+				i++
+			}
+		case strings.HasPrefix(arg, "--output="):
+			outputPath = strings.TrimPrefix(arg, "--output=")
+		case arg == "--format":
+			if i+1 < len(argv) {
+				format = argv[i+1]
+				i++
+			}
+		case strings.HasPrefix(arg, "--format="):
+			format = strings.TrimPrefix(arg, "--format=")
+		}
+	}
+	return jqExpr, outputPath, format, hasJQ, jqHasValue
 }
 
 func dryRunFlagExplicitlyTrue(arg string) bool {

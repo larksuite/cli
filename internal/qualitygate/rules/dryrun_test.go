@@ -194,6 +194,38 @@ func TestRunDryRunsIgnoresTrailingShellComment(t *testing.T) {
 	}
 }
 
+func TestRunDryRunsIgnoresJQFilterWhenValidatingRequestPreview(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/im/v1/flags"}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:       "im +flag-list",
+		Runnable:   true,
+		Identities: []string{"user"},
+		Flags: []manifest.Flag{
+			{Name: "as", TakesValue: true},
+			{Name: "page-all"},
+			{Name: "jq", Shorthand: "q", TakesValue: true},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:        `lark-cli im +flag-list --as user --page-all -q '.data.flag_items[-1]'`,
+		SourceFile: "skills/lark-im/references/lark-im-flag-list.md",
+		Line:       26,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("jq example should remain executable: %#v", facts)
+	}
+	wantArgs := []string{"im", "+flag-list", "--as", "user", "--page-all", "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
 func TestRunDryRunsMaterializesPlaceholdersInsideJSONFlags(t *testing.T) {
 	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/im/v1/messages","params":{"chat_id":"oc_test123","page_token":"page_test123"}}]}`)
 	m := manifest.Manifest{Commands: []manifest.Command{{
@@ -792,6 +824,72 @@ func TestAppendDryRunArgForcesInlineJSONFormat(t *testing.T) {
 	want := []string{"vc", "+meeting-events", "--meeting-id", "400000000001", "--format=json", "--dry-run"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("appendDryRunArg() = %#v, want %#v", got, want)
+	}
+}
+
+func TestAppendDryRunArgRemovesJQFilter(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{
+			name: "short split",
+			raw:  `lark-cli im +flag-list --page-all -q '.data.flag_items[-1]'`,
+			want: []string{"im", "+flag-list", "--page-all", "--dry-run"},
+		},
+		{
+			name: "long split",
+			raw:  `lark-cli im +flag-list --jq '.data.flag_items[].item_id' --page-all`,
+			want: []string{"im", "+flag-list", "--page-all", "--dry-run"},
+		},
+		{
+			name: "short inline",
+			raw:  `lark-cli im +flag-list -q='.data.flag_items[-1]' --page-all`,
+			want: []string{"im", "+flag-list", "--page-all", "--dry-run"},
+		},
+		{
+			name: "long inline",
+			raw:  `lark-cli im +flag-list --jq='.data.flag_items[-1]' --page-all`,
+			want: []string{"im", "+flag-list", "--page-all", "--dry-run"},
+		},
+		{
+			name: "missing value remains invalid",
+			raw:  `lark-cli im +flag-list --page-all --jq`,
+			want: []string{"im", "+flag-list", "--page-all", "--jq", "--dry-run"},
+		},
+		{
+			name: "next flag is not accepted as jq expression",
+			raw:  `lark-cli im +flag-list --jq --page-all`,
+			want: []string{"im", "+flag-list", "--jq", "--page-all", "--dry-run"},
+		},
+		{
+			name: "invalid expression remains invalid",
+			raw:  `lark-cli im +flag-list --jq 'invalid[' --page-all`,
+			want: []string{"im", "+flag-list", "--jq", "invalid[", "--page-all", "--dry-run"},
+		},
+		{
+			name: "incompatible pretty format remains invalid",
+			raw:  `lark-cli im +flag-list --jq '.data' --format pretty`,
+			want: []string{"im", "+flag-list", "--jq", ".data", "--format", "pretty", "--dry-run"},
+		},
+		{
+			name: "compatible json format preserves request preview",
+			raw:  `lark-cli im +flag-list --jq '.data' --format json`,
+			want: []string{"im", "+flag-list", "--format", "json", "--dry-run"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := appendDryRunArg(tt.raw)
+			if err != nil {
+				t.Fatalf("appendDryRunArg() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("appendDryRunArg() = %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }
 
