@@ -13,6 +13,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/suggest"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/drive"
@@ -1449,7 +1450,17 @@ func normalizeWorkbookCreateStyleObject(in map[string]interface{}, path string) 
 			return nil, common.ValidationErrorf("%s.%s is a content field — a styles spec carries no cell content; write values/formulas via +cells-set or +table-put", path, k)
 		default:
 			if !workbookCreateCellStyleField(k) {
-				return nil, common.ValidationErrorf("%s.%s is not a supported style field", path, k)
+				// Universal rejection with did-you-mean + the full field list:
+				// this is the mechanism that absorbs the infinite tail of
+				// spelling permutations at a fixed one-retry cost — silent
+				// aliases are reserved for high-frequency words from real
+				// external vocabularies (see the style_vocab.go contract).
+				msg := fmt.Sprintf("%s.%s is not a supported style field", path, k)
+				if match := suggest.Closest(strings.ToLower(k), workbookCreateCellStyleFieldList, 1); len(match) > 0 {
+					msg += fmt.Sprintf(" — did you mean %q?", match[0])
+				}
+				msg += "; supported: " + strings.Join(workbookCreateCellStyleFieldList, ", ")
+				return nil, common.ValidationErrorf("%s", msg)
 			}
 			cellStyle[k] = v
 		}
@@ -1458,6 +1469,14 @@ func normalizeWorkbookCreateStyleObject(in map[string]interface{}, path string) 
 		out["cell_styles"] = cellStyle
 	}
 	return out, nil
+}
+
+// workbookCreateCellStyleFieldList is the canonical style vocabulary plus the
+// two border carriers, in display order for the unknown-field hint.
+var workbookCreateCellStyleFieldList = []string{
+	"font_color", "font_family", "font_size", "font_weight", "font_style", "font_line",
+	"background_color", "horizontal_alignment", "vertical_alignment",
+	"number_format", "word_wrap", "border", "border_styles",
 }
 
 func workbookCreateCellStyleField(name string) bool {

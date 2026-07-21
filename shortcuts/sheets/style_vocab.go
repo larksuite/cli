@@ -30,6 +30,13 @@ import (
 //   - Every rewrite must be unambiguous; ambiguous guesses (fore_color) get
 //     a targeted prescription, never a silent pick. Silent ignoring and
 //     bare rejection are both bugs.
+//   - SILENT-ALIAS ADMISSION BAR (2026-07-21): only words from REAL external
+//     vocabularies (Excel/openpyxl, CSS, Google Sheets API), recurring
+//     across batches or ≥3 tasks in one, with zero semantic ambiguity.
+//     Spelling/word-order permutations do NOT get aliases — they are
+//     absorbed by the universal did-you-mean rejection (one self-healing
+//     retry, zero per-variant code). Real vocabularies are a finite set;
+//     permutations are not. Earlier permutation aliases are grandfathered.
 //   - Closure is enforced by two test properties: vocabulary parity (every
 //     flag-path style must be accepted on the payload paths) and the prior
 //     corpus (every observed model spelling either normalizes or

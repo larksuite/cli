@@ -176,6 +176,8 @@ var stylesPriorCorpus = []struct {
 	// prescriptions (ambiguous / unsupported / typo)
 	{name: "fore_color prescribed", fields: map[string]interface{}{"fore_color": "#F00"}, wantErr: "ambiguous"},
 	{name: "indent rejected not ignored", fields: map[string]interface{}{"indent": float64(2)}, wantErr: "not a supported style field"},
+	{name: "unknown field carries did-you-mean and the field list",
+		fields: map[string]interface{}{"fontcolor": "#000000"}, wantErr: `did you mean "font_color"`},
 	{name: "enum typo gets did-you-mean", fields: map[string]interface{}{"vertical_alignment": "botom"}, wantErr: "did you mean"},
 }
 
