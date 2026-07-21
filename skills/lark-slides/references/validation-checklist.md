@@ -29,8 +29,10 @@ lark-cli slides +xml-get --as user \
 
 `slides +xml-get` 保存 XML 到本地文件后，优先运行 XML 语法和文本重叠静态检查：
 
+先取得当前已加载 `lark-slides/SKILL.md` 的父目录，记为 `<lark-slides-skill-dir>`；不要猜测全局安装路径。下面命令中的脚本路径相对于该目录。
+
 ```bash
-python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation.xml>
+python3 "<lark-slides-skill-dir>/scripts/xml_text_overlap_lint.py" --input <presentation.xml>
 ```
 
 通过标准：
@@ -44,7 +46,7 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 在 XML 结构检查通过后、截图视觉验收前，可运行布局密度静态检查：
 
 ```bash
-python3 skills/lark-slides/scripts/xml_layout_density_lint.py --input <presentation.xml>
+python3 "<lark-slides-skill-dir>/scripts/xml_layout_density_lint.py" --input <presentation.xml>
 ```
 
 它的用途是找出大型 `rect` 容器内的可见内容面积偏小的候选区域，常见于大卡片只放少量文字、空图片占位卡、单字符伪主视觉或目录卡内容过空。
