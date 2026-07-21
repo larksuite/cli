@@ -23,7 +23,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 ## 行内组件
 | 标签 | 说明 | 关键属性 |
 |-|-|-|
-| `<cite type="user">` | @人 | `<cite type="user" user-id="userID"></cite>` |
+| `<cite type="user">` | @人 | XML 导入时必须显式传入 `user-id`：`<cite type="user" user-id="userID"></cite>` |
 | `<cite type="doc">` | @文档 | `<cite type="doc" doc-id="docx_token"></cite>` |
 | `<latex>` | 行内公式 | `<latex>E = mc^2</latex>` |
 | `<img>` | 图片（可独立成块或内联） | `<img width="800" height="600" caption="说明" name="图.png" href="http 或 https"/>` |
@@ -85,6 +85,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 
 ## 用户名写入规则
 
+- 任何包含 `<cite type="user">` 的 XML 在导入、新建或编辑回写时，都必须显式传入 `user-id`；其值为用户的 `open_id`，不得省略。
 - 当从 IM 消息、日历、审批、任务等来源获取到用户的 `open_id` 时，写入文档**必须**使用 `<cite type="user" user-id="open_id">` 标签，而非纯文本名字。这样文档中会渲染为可点击的 @人。
 - 典型场景：IM 消息的 `sender`、`mentions`、reactions 的 `operator`、卡片消息中引用的用户、系统消息中的用户名、合并转发中的用户名。
 - 当只有纯文本名字而没有 `open_id` 时（如系统消息、合并转发内容），先通过 `lark-cli contact +search-user --query "名字" --as user` 反查 `open_id`，再写入 cite 标签。
