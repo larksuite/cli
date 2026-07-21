@@ -23,10 +23,10 @@ func TestSlidesXMLGetWritesContentToFileAndSuppressesXML(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
-	wantXML, err := prettyPrintXML(xml)
-	if err != nil {
-		t.Fatalf("prettyPrintXML(xml): %v", err)
-	}
+	// Golden value computed independently of prettyPrintXML (not derived by
+	// calling it): a bug in prettyPrintXML itself must not be able to make
+	// this assertion pass by construction.
+	wantXML := "<presentation>\n  <slide id=\"s1\">\n    <shape id=\"a\">hello</shape>\n  </slide>\n</presentation>\n"
 	var capturedQuery url.Values
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
@@ -47,7 +47,7 @@ func TestSlidesXMLGetWritesContentToFileAndSuppressesXML(t *testing.T) {
 		},
 	})
 
-	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--output", "readback.xml",
@@ -101,10 +101,9 @@ func TestSlidesXMLGetReturnsContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
-	wantXML, err := prettyPrintXML(xml)
-	if err != nil {
-		t.Fatalf("prettyPrintXML(xml): %v", err)
-	}
+	// Golden value computed independently of prettyPrintXML; see the comment
+	// in TestSlidesXMLGetWritesContentToFileAndSuppressesXML.
+	wantXML := "<presentation>\n  <slide id=\"s1\">\n    <shape id=\"a\">hello</shape>\n  </slide>\n</presentation>\n"
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -119,7 +118,7 @@ func TestSlidesXMLGetReturnsContentEnvelopeWhenOutputOmitted(t *testing.T) {
 		},
 	})
 
-	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--as", "user",
@@ -145,11 +144,10 @@ func TestSlidesXMLGetJqFiltersContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
-	wantXML, err := prettyPrintXML(xml)
-	if err != nil {
-		t.Fatalf("prettyPrintXML(xml): %v", err)
-	}
-	wantXML = strings.TrimSpace(wantXML)
+	// Golden value (already trimmed, matching the --jq output path) computed
+	// independently of prettyPrintXML; see the comment in
+	// TestSlidesXMLGetWritesContentToFileAndSuppressesXML.
+	wantXML := "<presentation>\n  <slide id=\"s1\">\n    <shape id=\"a\">hello</shape>\n  </slide>\n</presentation>"
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -164,7 +162,7 @@ func TestSlidesXMLGetJqFiltersContentEnvelopeWhenOutputOmitted(t *testing.T) {
 		},
 	})
 
-	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--jq", ".data.xml_presentation.content",
@@ -183,10 +181,9 @@ func TestSlidesXMLGetPrintsRawContentWhenRaw(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
-	wantXML, err := prettyPrintXML(xml)
-	if err != nil {
-		t.Fatalf("prettyPrintXML(xml): %v", err)
-	}
+	// Golden value computed independently of prettyPrintXML; see the comment
+	// in TestSlidesXMLGetWritesContentToFileAndSuppressesXML.
+	wantXML := "<presentation>\n  <slide id=\"s1\">\n    <shape id=\"a\">hello</shape>\n  </slide>\n</presentation>\n"
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -201,7 +198,7 @@ func TestSlidesXMLGetPrintsRawContentWhenRaw(t *testing.T) {
 		},
 	})
 
-	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--raw",
@@ -220,10 +217,9 @@ func TestSlidesXMLGetFetchesSingleSlideByIDToFile(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<slide id="slide_1"><data><shape id="a"/></data></slide>`
-	wantXML, err := prettyPrintXML(xml)
-	if err != nil {
-		t.Fatalf("prettyPrintXML(xml): %v", err)
-	}
+	// Golden value computed independently of prettyPrintXML; see the comment
+	// in TestSlidesXMLGetWritesContentToFileAndSuppressesXML.
+	wantXML := "<slide id=\"slide_1\">\n  <data>\n    <shape id=\"a\"/>\n  </data>\n</slide>\n"
 	var capturedQuery url.Values
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
@@ -244,7 +240,7 @@ func TestSlidesXMLGetFetchesSingleSlideByIDToFile(t *testing.T) {
 		},
 	})
 
-	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--slide-id", "slide_1",
@@ -285,10 +281,9 @@ func TestSlidesXMLGetFetchesSingleSlideByNumberEnvelope(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<slide id="slide_2"><data><shape id="b"/></data></slide>`
-	wantXML, err := prettyPrintXML(xml)
-	if err != nil {
-		t.Fatalf("prettyPrintXML(xml): %v", err)
-	}
+	// Golden value computed independently of prettyPrintXML; see the comment
+	// in TestSlidesXMLGetWritesContentToFileAndSuppressesXML.
+	wantXML := "<slide id=\"slide_2\">\n  <data>\n    <shape id=\"b\"/>\n  </data>\n</slide>\n"
 	var capturedQuery url.Values
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
@@ -309,7 +304,7 @@ func TestSlidesXMLGetFetchesSingleSlideByNumberEnvelope(t *testing.T) {
 		},
 	})
 
-	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--slide-number", "2",
@@ -565,5 +560,181 @@ func TestPrettyPrintXML(t *testing.T) {
 func TestPrettyPrintXMLRejectsMalformedInput(t *testing.T) {
 	if _, err := prettyPrintXML(`<presentation><slide></presentation>`); err == nil {
 		t.Fatal("expected an error for malformed XML, got nil")
+	}
+}
+
+// TestPrettyPrintXMLPreservesEscapedWhitespaceAsSoleLeafContent covers the
+// schema's documented escape idiom (slides_xml_schema_definition.xml, <p>
+// element docs): "需要保留空格时...请使用&#32;字符" / "需要使用制表符时...请使用&#9;字符".
+// Both decode to a plain whitespace character indistinguishable from
+// incidental formatting whitespace, so a naive reindent (etree's bare
+// Indent()) silently deletes them. See the mixed="true" content types
+// (p/strong/em/u/span/del/a/shadow/outline/chartTitle/chartSubTitle).
+func TestPrettyPrintXMLPreservesEscapedWhitespaceAsSoleLeafContent(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"space in p", `<content><p>&#32;</p></content>`, "<content>\n  <p> </p>\n</content>\n"},
+		{"tab in p", `<content><p>&#9;</p></content>`, "<content>\n  <p>\t</p>\n</content>\n"},
+		{"space in nested span", `<content><p><span>&#32;</span></p></content>`, "<content>\n  <p><span> </span></p>\n</content>\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := prettyPrintXML(tt.input)
+			if err != nil {
+				t.Fatalf("prettyPrintXML(%q): %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Fatalf("prettyPrintXML(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPrettyPrintXMLPreservesEscapedSpaceBetweenInlineSiblings is the
+// critical case: &#32; sitting as a bare sibling text node directly between
+// two inline elements, not wrapped in its own tag -- the literal reading of
+// the schema's "标签之间...请使用&#32;" guidance, e.g. a plain-styled space
+// between two differently formatted words at a pptx run boundary. A fix
+// that only special-cases "element whose sole content is whitespace" (such
+// as etree's PreserveLeafWhitespace) does not cover this: the whitespace
+// here is one of several children of <p>, not the sole child of <span>.
+func TestPrettyPrintXMLPreservesEscapedSpaceBetweenInlineSiblings(t *testing.T) {
+	input := `<content><p><span>Hello</span>&#32;<strong>World</strong></p></content>`
+	want := "<content>\n  <p><span>Hello</span> <strong>World</strong></p>\n</content>\n"
+	got, err := prettyPrintXML(input)
+	if err != nil {
+		t.Fatalf("prettyPrintXML: %v", err)
+	}
+	if got != want {
+		t.Fatalf("prettyPrintXML(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestPrettyPrintXMLPreservesCDATA(t *testing.T) {
+	input := `<content><p><![CDATA[a-->b & <c>]]></p></content>`
+	want := "<content>\n  <p><![CDATA[a-->b & <c>]]></p>\n</content>\n"
+	got, err := prettyPrintXML(input)
+	if err != nil {
+		t.Fatalf("prettyPrintXML: %v", err)
+	}
+	if got != want {
+		t.Fatalf("prettyPrintXML(%q) = %q, want %q", input, got, want)
+	}
+}
+
+// TestPrettyPrintXMLSeparatesParagraphsWithoutTouchingTheirText is the
+// feature's actual point: a shape with many paragraphs becomes navigable
+// (each <p> on its own indented line), while every paragraph's own rich
+// text -- including an inline formatting boundary -- stays byte-for-byte
+// unchanged.
+func TestPrettyPrintXMLSeparatesParagraphsWithoutTouchingTheirText(t *testing.T) {
+	input := `<content><p>First paragraph.</p><p>Second <strong>paragraph</strong>.</p></content>`
+	want := "<content>\n  <p>First paragraph.</p>\n  <p>Second <strong>paragraph</strong>.</p>\n</content>\n"
+	got, err := prettyPrintXML(input)
+	if err != nil {
+		t.Fatalf("prettyPrintXML: %v", err)
+	}
+	if got != want {
+		t.Fatalf("prettyPrintXML(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestPrettyPrintXMLIdempotent(t *testing.T) {
+	input := `<presentation><slide id="s1"><shape id="a"><style/></shape></slide></presentation>`
+	once, err := prettyPrintXML(input)
+	if err != nil {
+		t.Fatalf("prettyPrintXML (first pass): %v", err)
+	}
+	twice, err := prettyPrintXML(once)
+	if err != nil {
+		t.Fatalf("prettyPrintXML (second pass): %v", err)
+	}
+	if once != twice {
+		t.Fatalf("not idempotent:\nonce:  %q\ntwice: %q", once, twice)
+	}
+}
+
+// TestSlidesXMLGetSurfacesReformatErrorForPresentation exercises the
+// prettyPrintXML error branch through the full command path (previously
+// uncovered: Codecov flagged both reformat error branches in
+// fetchSlidesXMLGetContent as missing patch coverage).
+func TestSlidesXMLGetSurfacesReformatErrorForPresentation(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{
+					"content": `<presentation><slide></presentation>`,
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get",
+		"--presentation", "pres_abc",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a reformat error, got nil")
+	}
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("expected *errs.InternalError, got %T %v", err, err)
+	}
+	if internalErr.Category != errs.CategoryInternal {
+		t.Fatalf("category = %q, want %q", internalErr.Category, errs.CategoryInternal)
+	}
+	if internalErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("subtype = %q, want %q", internalErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if internalErr.Cause == nil {
+		t.Fatal("expected the underlying XML parse error to be preserved as Cause")
+	}
+	if !strings.Contains(internalErr.Message, "xml_presentation.content") {
+		t.Fatalf("message = %q, want it to mention xml_presentation.content", internalErr.Message)
+	}
+}
+
+func TestSlidesXMLGetSurfacesReformatErrorForSlide(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide": map[string]interface{}{
+					"slide_id": "slide_1",
+					"content":  `<slide><data></slide>`,
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get",
+		"--presentation", "pres_abc",
+		"--slide-id", "slide_1",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a reformat error, got nil")
+	}
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("expected *errs.InternalError, got %T %v", err, err)
+	}
+	if internalErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("subtype = %q, want %q", internalErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if !strings.Contains(internalErr.Message, "slide.content") {
+		t.Fatalf("message = %q, want it to mention slide.content", internalErr.Message)
 	}
 }

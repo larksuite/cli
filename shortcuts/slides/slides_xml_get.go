@@ -300,16 +300,108 @@ func outputSlidesXMLGetContent(runtime *common.RuntimeContext, content string, o
 	return nil
 }
 
-// prettyPrintXML reindents xmlContent so nested elements each sit on their
-// own line, for readability across stdout, --output files, and the JSON
-// envelope alike. There is no flag to disable this: the server returns XML
-// as a single unbroken line, and this command has no other reason to exist
-// than to hand a human something they can read.
+// textBearingTags are the SML elements whose schema content model is
+// mixed (arbitrary text interleaved with inline markup): the <p> paragraph
+// container and its inline formatting children, plus chart title/subtitle.
+// See slides_xml_schema_definition.xml, <p> element docs: a deliberate space
+// or tab is represented via &#32;/&#9; character references, which after XML
+// parsing are byte-for-byte indistinguishable from incidental formatting
+// whitespace. reindentStructural never descends into these elements, so a
+// preserved &#32;/&#9; can never be mistaken for reformattable whitespace.
+var textBearingTags = map[string]bool{
+	"p":             true,
+	"strong":        true,
+	"em":            true,
+	"u":             true,
+	"span":          true,
+	"del":           true,
+	"a":             true,
+	"shadow":        true,
+	"outline":       true,
+	"chartTitle":    true,
+	"chartSubTitle": true,
+}
+
+// prettyPrintXML reindents xmlContent so structural elements (presentation,
+// slide, shape, style, ...) each sit on their own line, for readability
+// across stdout, --output files, and the JSON envelope alike. There is no
+// flag to disable this: the server returns XML as a single unbroken line,
+// and this command has no other reason to exist than to hand a human
+// something they can read.
+//
+// Reindentation never enters a textBearingTags element: those subtrees are
+// serialized exactly as parsed, so any deliberately preserved whitespace
+// survives untouched. CDATA sections are also preserved rather than
+// collapsed into escaped text.
 func prettyPrintXML(xmlContent string) (string, error) {
 	doc := etree.NewDocument()
+	doc.ReadSettings.PreserveCData = true
 	if err := doc.ReadFromString(xmlContent); err != nil {
 		return "", err
 	}
-	doc.Indent(2)
-	return doc.WriteToString()
+	if root := doc.Root(); root != nil {
+		reindentStructural(root, 0)
+	}
+	out, err := doc.WriteToString()
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return out, nil
+}
+
+// reindentStructural inserts newline+indent whitespace between an element's
+// direct children so each nested element sits on its own line, recursing
+// only into children that are not textBearingTags. Existing whitespace-only
+// CharData between children is treated as pre-existing formatting and
+// dropped before reinserting it at the correct depth; non-whitespace CharData
+// is never touched, and text-bearing subtrees are never entered at all.
+func reindentStructural(e *etree.Element, depth int) {
+	if textBearingTags[e.Tag] {
+		return
+	}
+
+	for i := len(e.Child) - 1; i >= 0; i-- {
+		if cd, ok := e.Child[i].(*etree.CharData); ok && isAllWhitespace(cd.Data) {
+			e.RemoveChildAt(i)
+		}
+	}
+	if len(e.Child) == 0 {
+		return
+	}
+
+	_, lastIsCharData := e.Child[len(e.Child)-1].(*etree.CharData)
+	childIndent := "\n" + strings.Repeat("  ", depth+1)
+	closeIndent := "\n" + strings.Repeat("  ", depth)
+
+	for i := len(e.Child) - 1; i >= 0; i-- {
+		child := e.Child[i]
+		if ce, ok := child.(*etree.Element); ok {
+			reindentStructural(ce, depth+1)
+		}
+		if _, isCharData := child.(*etree.CharData); !isCharData {
+			e.InsertChildAt(i, etree.NewCharData(childIndent))
+		}
+	}
+	if !lastIsCharData {
+		e.AddChild(etree.NewCharData(closeIndent))
+	}
+}
+
+// isAllWhitespace reports whether s is non-empty and consists only of XML
+// whitespace characters (space, tab, CR, LF).
+func isAllWhitespace(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch r {
+		case ' ', '\t', '\n', '\r':
+		default:
+			return false
+		}
+	}
+	return true
 }
