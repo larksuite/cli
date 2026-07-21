@@ -9,7 +9,7 @@
 - `--json` 必须是 JSON 对象。
 - `+record-upsert`：顶层直接传字段映射：`{"字段名或字段ID": CellValue}`。
 - `+record-batch-create`：`rows` 是 `CellValue[][]`，列顺序由 `fields` 决定。
-- `+record-batch-update`：`patch` 是 `Map<FieldNameOrID, CellValue>`，同一份 `patch` 会应用到所有 `record_id_list`。
+- `+record-batch-update`：使用 `update_records`，其每个 value 都是 `Map<FieldNameOrID, CellValue>`。
 - 一次 payload 里同一字段只用一种 key（字段名或字段 ID），不要重复。
 - 写入前先 `+field-list` 获取字段 `type/style/multiple`，再构造值。
 - 需要清空字段时优先传 `null`（字段允许清空时）。

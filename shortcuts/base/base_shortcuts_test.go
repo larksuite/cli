@@ -786,7 +786,8 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "record batch update json",
 			shortcut: BaseRecordBatchUpdate,
 			wantHelp: []string{
-				`batch update JSON object, e.g. {"record_id_list":["rec_xxx"],"patch":{"Status":"Done"}}; same patch applies to all records`,
+				"update_records maps each record ID to its field map",
+				`{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`,
 			},
 		},
 	}
@@ -854,9 +855,11 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 			name:     "record batch update",
 			shortcut: BaseRecordBatchUpdate,
 			wantTips: []string{
-				"Happy path fields: record_id_list is the target record IDs",
-				"patch is a field map applied unchanged to every target record",
-				"Do not use +record-batch-update for per-row different values",
+				"Happy path field: update_records",
+				"update_records maps each record ID to its own field map",
+				`{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`,
+				"contains only optional ignored_fields",
+				"does not check whether record IDs exist",
 				"use +field-list to confirm real writable fields",
 				"Batch update supports max 200 records per call",
 				"CellValue happy path: text/phone/url",

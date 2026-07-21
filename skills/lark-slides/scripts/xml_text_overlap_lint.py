@@ -66,7 +66,7 @@ def parse_args(argv: list[str]) -> dict[str, Any]:
     while index < len(argv):
         token = argv[index]
         if not token.startswith("--"):
-            fail(f"unexpected argument: {token}")
+            fail(f"unexpected argument: {token}, need --input")
         key = token[2:]
         next_token = argv[index + 1] if index + 1 < len(argv) else None
         if next_token is None or next_token.startswith("--"):

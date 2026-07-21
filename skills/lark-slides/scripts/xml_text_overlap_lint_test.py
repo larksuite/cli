@@ -34,6 +34,24 @@ class XmlTextOverlapLintTest(unittest.TestCase):
             f"{sample_name} has XML text overlap lint warnings:\n" + "\n".join(issue_summaries),
         )
 
+    def test_cli_suggests_input_flag_for_positional_argument(self) -> None:
+        script_path = Path(xml_text_overlap_lint.__file__).resolve()
+        input_path = "/sandboxdata/workspace/file/full_presentation.xml"
+
+        completed = subprocess.run(
+            [sys.executable, str(script_path), input_path],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, "")
+        self.assertEqual(
+            completed.stderr,
+            f"xml-text-overlap-lint error: unexpected argument: {input_path}，need --input\n",
+        )
+
     def test_xml_text_overlap_lint_accepts_inline_fixture_xml_samples(self) -> None:
         samples = {
             "image-led-cover": """

@@ -2014,16 +2014,14 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"has_more":       false,
-					"record_id_list": []interface{}{"rec_1"},
-					"update":         map[string]interface{}{"Status": "Done"},
+					"ignored_fields": []interface{}{"Formula"},
 				},
 			},
 		})
-		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_1"],"patch":{"Status":"Done"}}`}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"update_records":{"rec_1":{"Status":["Done"]}}}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"update"`) || !strings.Contains(got, `"Done"`) {
+		if got := stdout.String(); !strings.Contains(got, `"ignored_fields"`) || !strings.Contains(got, `"Formula"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
@@ -2035,20 +2033,16 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_update",
 			Body: map[string]interface{}{
 				"code": 0,
-				"data": map[string]interface{}{
-					"record_id_list": []interface{}{"rec_1"},
-				},
+				"data": map[string]interface{}{},
 			},
 		}
 		reg.Register(updateStub)
-		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"record_id_list":["rec_1"],"patch":{"Name":"Alice","Status":"Done"}}`}, factory, stdout); err != nil {
+		input := `{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`
+		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", input}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) {
-			t.Fatalf("stdout=%s", got)
-		}
 		body := string(updateStub.CapturedBody)
-		if !strings.Contains(body, `"record_id_list":["rec_1"]`) || !strings.Contains(body, `"patch":{"Name":"Alice","Status":"Done"}`) {
+		if !strings.Contains(body, `"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}`) {
 			t.Fatalf("request body=%s", body)
 		}
 	})
