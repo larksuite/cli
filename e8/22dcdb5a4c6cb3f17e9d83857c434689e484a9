@@ -1,0 +1,97 @@
+tests/cli_e2e/calendar/calendar_update_dryrun_test.go
+  s_83bf7528619172::t_42203b44200bd0 43-46,48-51,54-62 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a5defaa95bafecf63b8f6d3","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[43,46]},{"Range":[48,51]},{"Range":[54,62]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e822dcdb5a4c6cb3f17e9d83857c434689e484a9",
+  "prompts": {},
+  "sessions": {
+    "s_83bf7528619172": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a4f15a58f1111b3b9b645fa",
+        "model": "openrouter-2o__dev"
+      },
+      "human_author": "胡港 <hugang.g1230@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "tests/cli_e2e/calendar/calendar_update_dryrun_test.go": [
+      {
+        "hash": "s_83bf7528619172::t_42203b44200bd0",
+        "line_ranges": [
+          {
+            "Range": [
+              43,
+              46
+            ]
+          },
+          {
+            "Range": [
+              48,
+              51
+            ]
+          },
+          {
+            "Range": [
+              54,
+              62
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a5defaa95bafecf63b8f6d3",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  43,
+                  46
+                ]
+              },
+              {
+                "Range": [
+                  48,
+                  51
+                ]
+              },
+              {
+                "Range": [
+                  54,
+                  62
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_83bf7528619172": {
+      "tool": "trae",
+      "conversation_id": "6a4f15a58f1111b3b9b645fa",
+      "session_id": "6a4f15a58f1111b3b9b645fa",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_83bf7528619172::t_42203b44200bd0": {
+      "tool": "trae",
+      "conversation_id": "6a4f15a58f1111b3b9b645fa",
+      "session_id": "6a4f15a58f1111b3b9b645fa",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_83bf7528619172::t_d2630997b63ffa": {
+      "tool": "trae",
+      "conversation_id": "6a4f15a58f1111b3b9b645fa",
+      "session_id": "6a4f15a58f1111b3b9b645fa",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
