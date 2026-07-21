@@ -67,6 +67,25 @@ func parseAttendees(attendeesStr string, currentUserId string) ([]map[string]str
 	return attendees, nil
 }
 
+// selfAttendeeId resolves the open_id of the identity running the command so it
+// can be auto-added to the attendee list, mirroring how a human user is joined
+// to their own events. For a user it comes from config; for a bot it is fetched
+// from /bot/v3/info. If the bot lookup fails, we warn and return "" so the event
+// is still created with the explicitly requested attendees.
+func selfAttendeeId(runtime *common.RuntimeContext) string {
+	if !runtime.IsBot() {
+		return runtime.UserOpenId()
+	}
+	info, err := runtime.BotInfo()
+	if err != nil {
+		fmt.Fprintf(runtime.IO().ErrOut,
+			"[calendar +create] warning: could not resolve bot identity to add it as an attendee (%v); proceeding without the bot\n",
+			err)
+		return ""
+	}
+	return info.OpenID
+}
+
 func attendeesIncludeRoom(attendees []map[string]string) bool {
 	for _, attendee := range attendees {
 		if attendee["type"] == "resource" || attendee["room_id"] != "" {
@@ -176,7 +195,9 @@ var CalendarCreate = common.Shortcut{
 		eventData := buildEventData(runtime, startTs, endTs)
 		attendeesStr := runtime.Str("attendee-ids")
 		if attendeesStr != "" {
-			// Note: dry-run doesn't network resolve the current user's open_id.
+			// Note: dry-run doesn't network resolve the running identity's own
+			// open_id (user from config, bot from /bot/v3/info), so the auto-joined
+			// self attendee is not shown here.
 			attendees, err := parseAttendees(attendeesStr, "")
 			if err != nil {
 				return common.NewDryRunAPI().Set("error", err.Error())
@@ -228,11 +249,8 @@ var CalendarCreate = common.Shortcut{
 
 		// Add attendees if specified
 		if attendeesStr := runtime.Str("attendee-ids"); attendeesStr != "" {
-			currentUserId := ""
-			if !runtime.IsBot() {
-				currentUserId = runtime.UserOpenId()
-			}
-			attendees, err := parseAttendees(attendeesStr, currentUserId)
+			selfId := selfAttendeeId(runtime)
+			attendees, err := parseAttendees(attendeesStr, selfId)
 			if err != nil {
 				return withParam(err, "--attendee-ids")
 			}
