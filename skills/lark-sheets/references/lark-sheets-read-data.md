@@ -119,7 +119,7 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | required | A1 范围，如 `A1:F30`（不带 sheet 前缀；用 `--sheet-id` / `--sheet-name` 指定 sheet） |
+| `--range` | string | optional | A1 范围，如 `A1:F30`（不带 sheet 前缀；用 `--sheet-id` / `--sheet-name` 指定 sheet）。**可省略：缺省读取整个子表**（按表格实际边界裁剪，返回的 actual_range 标注实际读取范围）；大表配合 --max-chars / --output-path 控制体量 |
 | `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆）。要整表无截断直接用 --output-path 落盘（自动放开为无限）；仅当要让结果直接进上下文、又不落盘时才调小（如 25000），按 has_more 分页。 |
 | `--output-path` | string | optional | 把完整读取结果写入本地路径（如 `./out.json`），文件内容为 data 载荷的 JSON；stdout 只回一个含 output_path/字节数的确认信息。**一旦设置，字符上限默认放开为无限**（覆盖 --max-chars 默认），适合大表整表落盘再分析，避免 stdout 被 max_chars 截断。省略时按常规把结果打到 stdout。 |
 | `--include-row-prefix` | bool | optional | 是否在每行前加 `[row=N]` 前缀，默认 `true` |
@@ -152,6 +152,10 @@ lark-cli sheets +csv-get --url "https://example.feishu.cn/sheets/shtXXX" --sheet
 
 # 用 sheet-name 模糊定位（运行时框架会先解析到 sheet-id）
 lark-cli sheets +csv-get --spreadsheet-token shtXXX --sheet-name "销售明细" --range "A1:F30"
+
+# 全量读：省略 --range 即读整个子表（按实际边界裁剪，返回 actual_range 标注实读范围），
+# 无需先 +workbook-info 探行列再拼 range；大表配合 --max-chars / --output-path
+lark-cli sheets +csv-get --spreadsheet-token shtXXX --sheet-name "销售明细"
 ```
 
 输出契约（envelope.data）：

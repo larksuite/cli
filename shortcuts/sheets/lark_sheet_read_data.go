@@ -143,9 +143,6 @@ var CsvGet = common.Shortcut{
 		if _, _, err := resolveSheetSelector(runtime); err != nil {
 			return err
 		}
-		if strings.TrimSpace(runtime.Str("range")) == "" {
-			return sheetsValidationForFlag("range", "--range is required")
-		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -173,11 +170,21 @@ var CsvGet = common.Shortcut{
 	},
 }
 
+// csvGetFullSheetRange is the range sent when --range is omitted: the tool
+// requires one, but clips anything past the grid bounds and reports the clip
+// in actual_range — so an over-wide whole-columns range reads the entire
+// sheet in one call, with no workbook-info pre-flight. Eval traces show
+// "read the whole sheet" as a recurring intent (--range was the single most
+// missed required flag once the rest of the surface was fixed).
+const csvGetFullSheetRange = "A:ZZZ"
+
 func csvGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) map[string]interface{} {
 	input := map[string]interface{}{"excel_id": token}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if r := strings.TrimSpace(runtime.Str("range")); r != "" {
 		input["range"] = r
+	} else {
+		input["range"] = csvGetFullSheetRange
 	}
 	if runtime.Bool("skip-hidden") {
 		input["skip_hidden"] = true

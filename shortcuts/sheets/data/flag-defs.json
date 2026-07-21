@@ -1411,8 +1411,8 @@
         "name": "range",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "A1 range, e.g. `A1:F30` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet)"
+        "required": "optional",
+        "desc": "A1 range, e.g. `A1:F30` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet). Optional: when omitted the whole sheet is read (clipped to the actual grid bounds; actual_range in the response names what was read); pair with --max-chars / --output-path on large sheets"
       },
       {
         "name": "max-chars",
