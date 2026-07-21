@@ -64,7 +64,7 @@ func TestSheetCreateBotAutoGrantSuccess(t *testing.T) {
 	if grant["user_open_id"] != "ou_current_user" {
 		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_current_user")
 	}
-	if grant["message"] != "Granted the current CLI user full_access (可管理权限) on the new spreadsheet." {
+	if grant["message"] != "Granted the current CLI user full_access on the new spreadsheet." {
 		t.Fatalf("permission_grant.message = %#v", grant["message"])
 	}
 
@@ -156,9 +156,25 @@ func TestSheetCreateDryRunIncludesFolderToken(t *testing.T) {
 			"data":         "",
 		},
 		nil, nil)
+	rt = common.TestNewRuntimeContextWithIdentity(rt.Cmd, nil, core.AsBot)
 	got := mustMarshalSheetsDryRun(t, SheetCreate.DryRun(context.Background(), rt))
 	if !strings.Contains(got, `"folder_token":"fldcn123"`) {
 		t.Fatalf("DryRun should include folder_token, got: %s", got)
+	}
+	var dryRun struct {
+		API []struct {
+			Desc string `json:"desc"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal([]byte(got), &dryRun); err != nil {
+		t.Fatalf("unmarshal dry run: %v", err)
+	}
+	if len(dryRun.API) != 1 {
+		t.Fatalf("dry-run API count = %d, want 1", len(dryRun.API))
+	}
+	wantDesc := "After spreadsheet creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new spreadsheet."
+	if dryRun.API[0].Desc != wantDesc {
+		t.Fatalf("desc = %q, want %q", dryRun.API[0].Desc, wantDesc)
 	}
 }
 

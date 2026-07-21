@@ -10,9 +10,10 @@
 ## Build & Test
 
 ```bash
-make build          # Build (runs fetch_meta first)
-make unit-test      # Required before PR (runs with -race where supported, e.g. amd64/arm64)
-make test           # Full: vet + unit + integration
+make build             # Build (runs fetch_meta first)
+make unit-test         # Required before PR (runs with -race where supported, e.g. amd64/arm64)
+make live-skills-test  # Opt-in real Skills CLI tests; runs with isolated user directories
+make test              # Full: vet + unit + integration
 ```
 
 ## Notification Opt-Outs

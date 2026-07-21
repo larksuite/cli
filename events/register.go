@@ -5,6 +5,8 @@
 package events
 
 import (
+	"github.com/larksuite/cli/events/application"
+	"github.com/larksuite/cli/events/approval"
 	"github.com/larksuite/cli/events/im"
 	"github.com/larksuite/cli/events/minutes"
 	"github.com/larksuite/cli/events/task"
@@ -16,6 +18,8 @@ import (
 // Mail is intentionally omitted in this phase.
 func init() {
 	all := [][]event.KeyDefinition{
+		application.Keys(),
+		approval.Keys(),
 		im.Keys(),
 		minutes.Keys(),
 		task.Keys(),

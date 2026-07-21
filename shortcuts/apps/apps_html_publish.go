@@ -14,7 +14,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -38,8 +37,12 @@ var AppsHTMLPublish = common.Shortcut{
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / .aws/credentials / etc. in the publish payload)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if strings.TrimSpace(rctx.Str("app-id")) == "" {
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		if appID == "" {
 			return appsValidationParamError("--app-id", "--app-id is required")
+		}
+		if err := validateRealAppID(appID); err != nil {
+			return err
 		}
 		path := strings.TrimSpace(rctx.Str("path"))
 		if path == "" {
@@ -73,9 +76,11 @@ var AppsHTMLPublish = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		path := strings.TrimSpace(rctx.Str("path"))
 		dry := common.NewDryRunAPI()
-		dry.Desc("Pack tar.gz and publish HTML app (actual API path determined at runtime by app type; returns url or release_id)")
-		dry.POST(fmt.Sprintf("%s/apps/%s/upload_and_release_html_code", apiBasePath, validate.EncodePathSegment(appID))).
-			Set("content_type", "multipart/form-data")
+		dry.Desc("Pack tar.gz → GET pre_release for TOS upload URL → PUT tar.gz to TOS → POST release-create with tos_path; returns release_id")
+		dry.GET(fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, validate.EncodePathSegment(appID))).
+			PUT("<presigned_upload_url> (from pre_release response)").
+			POST(fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(appID))).
+			Body(map[string]string{"tos_path": "<from pre_release response>"})
 
 		candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), path)
 		if err != nil {
@@ -123,16 +128,7 @@ var AppsHTMLPublish = common.Shortcut{
 			Path:  strings.TrimSpace(rctx.Str("path")),
 		}
 
-		appType := queryAppType(ctx, rctx, spec.AppID)
-
-		var out map[string]interface{}
-		var err error
-		if appType == "modern_html" {
-			out, err = runHTMLPublishTOS(ctx, rctx, spec)
-		} else {
-			client := appsHTMLPublishAPI{runtime: rctx}
-			out, err = runHTMLPublish(ctx, rctx.FileIO(), client, spec)
-		}
+		out, err := runHTMLPublishTOS(ctx, rctx, spec)
 		if err != nil {
 			return err
 		}
@@ -264,25 +260,7 @@ func prepareHTMLPublishTarball(fio fileio.FileIO, path string) (*htmlPublishTarb
 	return tarball, nil
 }
 
-func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
-	tarball, err := prepareHTMLPublishTarball(fio, spec.Path)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := publisher.HTMLPublish(ctx, spec.AppID, tarball)
-	if err != nil {
-		return nil, client.WrapDoAPIError(err)
-	}
-
-	out := map[string]interface{}{}
-	if resp.URL != "" {
-		out["url"] = resp.URL
-	}
-	return out, nil
-}
-
-// runHTMLPublishTOS handles the modern_html publish path: validate → tar.gz →
+// runHTMLPublishTOS handles the publish path: validate → tar.gz →
 // call pre_release to get TOS upload URL → upload tar.gz to TOS → return
 // tos_path for +release-create --tos-path.
 func runHTMLPublishTOS(ctx context.Context, rctx *common.RuntimeContext, spec appsHTMLPublishSpec) (map[string]interface{}, error) {

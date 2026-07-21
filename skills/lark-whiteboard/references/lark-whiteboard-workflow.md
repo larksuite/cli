@@ -79,19 +79,9 @@ diagram.png           ← 渲染结果
 
 ### 写入画板
 
-> 关于 --overwrite
-> 画板更新命令中，若不携带 --overwrite flag，则是增量更新画板内容，若画板内已有内容的话，新增内容可能会和已有内容重叠，导致问题。
-> 因此，若需要整体更新画板内容，需携带 --overwrite flag 覆盖式更新。
+写入画板时按最终产物类型选择 `+update --input_format`：
 
-```bash
-npx -y @larksuite/whiteboard-cli@^0.2.12 -i <产物文件> --to openapi --format json \
-  | lark-cli whiteboard +update \
-    --whiteboard-token <Token> \
-    --source - --input_format raw \
-    --idempotent-token <10+字符唯一串> \
-    --as user \
-    --overwrite
-```
+- Mermaid / PlantUML / SVG 产物直接用对应的 `mermaid` / `plantuml` / `svg` 写入。
+- 只有 DSL 产物或已明确需要 OpenAPI 原生节点格式时，才先用 `npx -y @larksuite/whiteboard-cli@^0.2.13 --to openapi --format json` 转换，再用 `raw` 写入。
 
-> `--idempotent-token` 最少 10 字符，建议用时间戳+标识拼接（如 `1744800000-board-1`），避免重试导致重复写入。
-> 如需应用身份上传，将 `--as user` 替换为 `--as bot`。
+具体命令示例、`--overwrite`、`--idempotent-token` 和 `--as user/bot` 的使用方式，统一参考 [`whiteboard +update`](./lark-whiteboard-update.md)。

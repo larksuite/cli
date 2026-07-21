@@ -75,6 +75,7 @@ var AppsGitCredentialInit = common.Shortcut{
 				"save the issued PAT in the local system credential store",
 				"write app-scoped git credential metadata",
 				"configure a URL-scoped Git credential helper in global git config when possible",
+				"return commit_author_name and commit_author_email for repo-local git identity",
 			}).
 			Params(gitCredentialIssueParams(appID))
 	},
@@ -89,6 +90,12 @@ var AppsGitCredentialInit = common.Shortcut{
 			"app_id":         result.AppID,
 			"repository_url": result.GitHTTPURL,
 			"status":         initStatus(result),
+		}
+		if result.CommitAuthorName != "" {
+			payload["commit_author_name"] = result.CommitAuthorName
+		}
+		if result.CommitAuthorEmail != "" {
+			payload["commit_author_email"] = result.CommitAuthorEmail
 		}
 		if result.ConfigWarning != "" {
 			payload["git_config_warning"] = result.ConfigWarning
@@ -461,11 +468,13 @@ func issuedFromData(appID string, data map[string]interface{}) (*gitcred.IssuedC
 		}
 	}
 	issued := &gitcred.IssuedCredential{
-		AppID:      firstString(source, "app_id", appID),
-		GitHTTPURL: firstString(source, "gitURL", "GitURL", "GitUrl", "gitUrl", "git_url", "git_http_url", "repository_url"),
-		Username:   firstString(source, "username"),
-		PAT:        firstString(source, "token", "Token", "pat", "password"),
-		ExpiresAt:  firstInt64(source, "expiredTime", "ExpiredTime", "expired_time", "expires_at"),
+		AppID:             firstString(source, "app_id", appID),
+		GitHTTPURL:        firstString(source, "gitURL", "GitURL", "GitUrl", "gitUrl", "git_url", "git_http_url", "repository_url"),
+		Username:          firstString(source, "username"),
+		PAT:               firstString(source, "token", "Token", "pat", "password"),
+		ExpiresAt:         firstInt64(source, "expiredTime", "ExpiredTime", "expired_time", "expires_at"),
+		CommitAuthorName:  firstString(source, "commit_author_name"),
+		CommitAuthorEmail: firstString(source, "commit_author_email"),
 	}
 	if issued.AppID == "" {
 		issued.AppID = appID

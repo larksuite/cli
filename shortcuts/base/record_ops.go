@@ -376,6 +376,9 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 }
 
 func recordListFields(runtime *common.RuntimeContext) []string {
+	if runtime.Changed("field-names") {
+		return runtime.StrSlice("field-names")
+	}
 	return runtime.StrArray("field-id")
 }
 

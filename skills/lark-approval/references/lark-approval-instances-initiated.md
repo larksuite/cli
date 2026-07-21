@@ -14,6 +14,9 @@ lark-cli approval instances initiated --params '{"page_size":20}' --as user
 # 只看某个审批定义下我发起的实例
 lark-cli approval instances initiated --params '{"definition_code":"<DEFINITION_CODE>","page_size":20}' --as user
 
+# 按发起时间范围筛选（秒级时间戳）
+lark-cli approval instances initiated --params '{"start_timestamp":"<START_SECONDS>","end_timestamp":"<END_SECONDS>","page_size":20}' --as user
+
 # 使用 page_token 翻页
 lark-cli approval instances initiated --params '{"page_size":20,"page_token":"example_page_token"}' --as user
 
@@ -30,6 +33,8 @@ lark-cli approval instances initiated --params '{"page_size":20}' --as user --dr
 |------|------|------|
 | `--params '{...}'` | 否 | 查询参数，使用 JSON 传入；不传时使用默认分页与筛选 |
 | `definition_code` | 否 | 审批定义 Code，用于只查看某个审批定义下我发起的实例 |
+| `start_timestamp` | 否 | 按发起时间筛选，时间范围开始值，秒级时间戳 |
+| `end_timestamp` | 否 | 按发起时间筛选，时间范围结束值，秒级时间戳 |
 | `locale` | 否 | 返回语言：`zh-CN`、`en-US`、`ja-JP` |
 | `page_size` | 否 | 分页大小 |
 | `page_token` | 否 | 翻页标记；首次请求不填，后续使用上一次返回的 `page_token` |
@@ -101,6 +106,7 @@ lark-cli approval instances initiated \
 
 - **这是定位“我发起的审批实例”的首选命令**：如果你的目标是撤回、抄送、查看某个已发起审批，优先从这里拿 `instance_code`。
 - **优先用 `definition_code` 缩小范围**：当你已知审批定义时，先筛掉无关实例，可显著提升可读性。
+- **按时间排查时使用 `start_timestamp` / `end_timestamp`**：这两个值都是秒级时间戳，用于按发起时间缩小结果范围。
 - **结果很多时优先 `--format table`**：适合人工快速浏览。
 - **`count` 只在第一页返回**：做分页处理时不要假设后续页还会带总数。
 - **`instance_status` 可直接判断下一步**：例如状态为 `1` 时通常可继续查看详情或考虑撤回，状态为 `4` 表示已经撤销，无需重复撤回。

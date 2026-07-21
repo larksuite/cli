@@ -73,7 +73,7 @@ var WikiNodeCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		dry := buildWikiNodeCreateDryRun(readWikiNodeCreateSpec(runtime))
 		if runtime.IsBot() {
-			dry.Desc("After wiki node creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new wiki node.")
+			dry.Desc("After wiki node creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new wiki node.")
 		}
 		return dry
 	},

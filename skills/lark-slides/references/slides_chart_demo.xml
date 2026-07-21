@@ -1,1 +1,1416 @@
-<presentation xmlns="/sml/2.0" width="960" height="540"><title>全球消费电子市场洞察 · 图表可视化 Demo</title><theme><textStyles><headline fontColor="rgba(31, 35, 41, 1)"/><sub-headline fontColor="rgba(31, 35, 41, 1)"/><body fontColor="rgba(31, 35, 41, 1)"/><caption fontColor="rgba(155, 158, 162, 1)" fontSize="14"/></textStyles></theme><slide><style><fill><fillColor color="linear-gradient(135deg,rgba(10, 20, 45, 1) 0%,rgba(28, 71, 120, 1) 100%)"/></fill></style><data><shape width="8" height="180" topLeftX="72" topLeftY="188" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="760" height="60" topLeftX="100" topLeftY="180" type="text"><content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(240, 129, 54, 1)" bold="true"><p>CONSULTING INSIGHTS · MARKET SERIES 2026 / Q3</p></content></shape><shape width="760" height="90" topLeftX="100" topLeftY="222" type="text"><content textType="title" fontSize="44" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>全球消费电子市场洞察</p></content></shape><shape width="760" height="50" topLeftX="100" topLeftY="300" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" bold="true"><p>数据可视化图谱 · Chart Library Demo</p></content></shape><shape width="760" height="30" topLeftX="100" topLeftY="358" type="text"><content fontSize="14" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>覆盖柱状 · 折线 · 饼图 · 条形 · 面积 · 散点 · 组合 · 雷达 · 其他 九大类</p></content></shape><line startX="100" startY="410" endX="240.0035713830186" endY="410"><border color="rgba(240, 129, 54, 1)"/></line><shape width="500" height="24" topLeftX="100" topLeftY="420" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>Prepared by Consulting Insights · July 2026</p></content></shape><shape width="180" height="24" topLeftX="720" topLeftY="480" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>Strictly Private &amp; Confidential</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>目录 · 图表类型索引</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>CHART LIBRARY OVERVIEW · 9 CATEGORIES</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 00 / OVERVIEW</p></content></shape><shape width="400" height="30" topLeftX="60" topLeftY="110" type="text"><content textType="headline" fontSize="16" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>数据比较类</p></content></shape><line startX="60" startY="140" endX="440.0013157871956" endY="140"><border color="rgba(240, 129, 54, 1)"/></line><shape width="36" height="36" topLeftX="60" topLeftY="160" presetHandlers="0" type="rect"><fill><fillColor color="rgba(28, 71, 120, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="36" height="30" topLeftX="60" topLeftY="163" type="text"><content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center"><p>01</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="160" type="text"><content fontSize="15" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>柱状图 Column</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="180" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(100, 116, 139, 1)"><p>分组 / 堆叠 / 百分比堆叠</p></content></shape><shape width="36" height="36" topLeftX="60" topLeftY="210" presetHandlers="0" type="rect"><fill><fillColor color="rgba(28, 71, 120, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="36" height="30" topLeftX="60" topLeftY="213" type="text"><content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center"><p>02</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="210" type="text"><content fontSize="15" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>条形图 Bar</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="230" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(100, 116, 139, 1)"><p>分组 / 堆叠 / 百分比堆叠</p></content></shape><shape width="36" height="36" topLeftX="60" topLeftY="260" presetHandlers="0" type="rect"><fill><fillColor color="rgba(28, 71, 120, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="36" height="30" topLeftX="60" topLeftY="263" type="text"><content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center"><p>03</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="260" type="text"><content fontSize="15" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>饼图 Pie</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="280" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(100, 116, 139, 1)"><p>饼图 / 环形图</p></content></shape><shape width="400" height="30" topLeftX="60" topLeftY="330" type="text"><content textType="headline" fontSize="16" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>趋势与结构类</p></content></shape><line startX="60" startY="360" endX="440.0013157871956" endY="360"><border color="rgba(240, 129, 54, 1)"/></line><shape width="36" height="36" topLeftX="60" topLeftY="380" presetHandlers="0" type="rect"><fill><fillColor color="rgba(28, 71, 120, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="36" height="30" topLeftX="60" topLeftY="383" type="text"><content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center"><p>04</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="380" type="text"><content fontSize="15" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>折线图 Line</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="400" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(100, 116, 139, 1)"><p>直线 / 平滑 / 阶梯</p></content></shape><shape width="36" height="36" topLeftX="60" topLeftY="430" presetHandlers="0" type="rect"><fill><fillColor color="rgba(28, 71, 120, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="36" height="30" topLeftX="60" topLeftY="433" type="text"><content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center"><p>05</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="430" type="text"><content fontSize="15" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>面积图 Area</p></content></shape><shape width="340" height="20" topLeftX="108" topLeftY="450" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(100, 116, 139, 1)"><p>分组 / 堆叠 / 百分比堆叠</p></content></shape><shape width="400" height="30" topLeftX="500" topLeftY="110" type="text"><content textType="headline" fontSize="16" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>关系与多维类</p></content></shape><line startX="500" startY="140" endX="880.0013157871956" endY="140"><border color="rgba(240, 129, 54, 1)"/></line><shape width="36" height="36" topLeftX="500" topLeftY="160" presetHandlers="0" type="rect"><fill><fillColor color="rgba(28, 71, 120, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="36" height="30" topLeftX="500" topLeftY="163" type="text"><content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center"><p>06</p></content></shape><shape width="340" height="20" topLeftX="548" topLeftY="160" type="text"><content fontSize="15" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>散点图 Scatter</p></content></shape><shape width="340" height="20" topLeftX="548" topLeftY="180" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(100, 116, 139, 1)"><p>散点图 / 气泡图</p></content></shape><shape width="36" height="36" topLeftX="500" topLeftY="210" presetHandlers="0" type="rect"><fill><fillColor color="rgba(28, 71, 120, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="36" height="30" topLeftX="500" topLeftY="213" type="text"><content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center"><p>07</p></content></shape><shape width="340" height="20" topLeftX="548" topLeftY="210" type="text"><content fontSize="15" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>组合图 Combo</p></content></shape><shape width="340" height="20" topLeftX="548" topLeftY="230" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(100, 116, 139, 1)"><p>柱状 + 折线 双轴组合</p></content></shape><shape width="36" height="36" topLeftX="500" topLeftY="260" presetHandlers="0" type="rect"><fill><fillColor color="rgba(28, 71, 120, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="36" height="30" topLeftX="500" topLeftY="263" type="text"><content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center"><p>08</p></content></shape><shape width="340" height="20" topLeftX="548" topLeftY="260" type="text"><content fontSize="15" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>雷达图 Radar</p></content></shape><shape width="340" height="20" topLeftX="548" topLeftY="280" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(100, 116, 139, 1)"><p>多边形 / 圆形 / 无填充</p></content></shape><shape width="400" height="30" topLeftX="500" topLeftY="330" type="text"><content textType="headline" fontSize="16" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>其他</p></content></shape><line startX="500" startY="360" endX="880.0013157871956" endY="360"><border color="rgba(240, 129, 54, 1)"/></line><shape width="36" height="36" topLeftX="500" topLeftY="380" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="36" height="30" topLeftX="500" topLeftY="383" type="text"><content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center"><p>09</p></content></shape><shape width="340" height="20" topLeftX="548" topLeftY="380" type="text"><content fontSize="15" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>其他 Others</p></content></shape><shape width="340" height="20" topLeftX="548" topLeftY="400" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(100, 116, 139, 1)"><p>词云 / 漏斗 / 帕累托</p></content></shape><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Consulting Insights © 2026 · CE Market Series</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>02 / 12</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>柱状图 · Column Chart</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>季度出货量对比 · GROUPED / STACKED / 100% STACKED</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 01 / COLUMN</p></content></shape><shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="44" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>① 分组柱状图 · Grouped</p></content></shape><chart width="270" height="350" topLeftX="42" topLeftY="132"><chartPlotArea><chartPlot type="column"><chartExtra/></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="9"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="季度">2024Q1,2024Q2,2024Q3,2024Q4</chartField></dim1><dim2><chartField name="Apple">52,48,55,68</chartField><chartField name="Samsung">60,58,63,72</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">智能手机季度出货（百万台）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="347" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>② 堆叠柱状图 · Stacked</p></content></shape><chart width="270" height="350" topLeftX="345" topLeftY="132"><chartPlotArea><chartPlot type="column"><chartExtra><chartStack/></chartExtra></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="9"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="季度">2024Q1,2024Q2,2024Q3,2024Q4</chartField></dim1><dim2><chartField name="硬件">80,85,92,105</chartField><chartField name="服务">45,52,58,66</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">收入结构（亿美元）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="650" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>③ 百分比堆叠 · 100% Stacked</p></content></shape><chart width="270" height="350" topLeftX="648" topLeftY="132"><chartPlotArea><chartPlot type="column"><chartExtra><chartStack percentage="true"/></chartExtra><chartSeriesList><chartSeries index="1"><chartTooltip format="0%"/></chartSeries><chartSeries index="2"><chartTooltip format="0%"/></chartSeries></chartSeriesList></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="9"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9" format="0%"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="区域">北美,欧洲,亚太,拉美</chartField></dim1><dim2><chartField name="Apple">0.55,0.42,0.3,0.28</chartField><chartField name="Samsung">0.45,0.58,0.7,0.72</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">区域市场份额构成</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle><chartTooltip format="0%"/></chart><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Source: Consulting Insights Research · 数据仅用于示意</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>03 / 12</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>折线图 · Line Chart</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>用户规模趋势 · STRAIGHT / SMOOTH / STEP</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 02 / LINE</p></content></shape><shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="44" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>① 直线折线图 · Straight</p></content></shape><chart width="270" height="350" topLeftX="42" topLeftY="132"><chartPlotArea><chartPlot type="line"><chartExtra/></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="9"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="月份">1月,2月,3月,4月,5月,6月</chartField></dim1><dim2><chartField name="iOS">120,135,128,152,168,180</chartField><chartField name="Android">200,215,232,228,250,265</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">MAU 月活跃用户（百万）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="347" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>② 平滑折线图 · Smooth</p></content></shape><chart width="270" height="350" topLeftX="345" topLeftY="132"><chartPlotArea><chartPlot type="line"><chartExtra><chartSmooth/></chartExtra></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="9"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="月份">1月,2月,3月,4月,5月,6月</chartField></dim1><dim2><chartField name="iOS">42,58,55,72,88,96</chartField><chartField name="Android">78,82,96,102,118,132</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">DAU 日活跃用户（百万）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="650" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>③ 阶梯折线图 · Step</p></content></shape><chart width="270" height="350" topLeftX="648" topLeftY="132"><chartPlotArea><chartPlot type="line"><chartExtra><chartStep/></chartExtra></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="9"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="月份">1月,2月,3月,4月,5月,6月</chartField></dim1><dim2><chartField name="Pro 版">999,999,899,899,799,799</chartField><chartField name="标准版">699,699,649,599,599,549</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">定价调整轨迹（美元）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Source: Consulting Insights Research · 数据仅用于示意</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>04 / 12</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>饼图 · Pie Chart</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>市场份额结构 · PIE / DONUT</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 03 / PIE</p></content></shape><shape width="440" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="440" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="420" height="22" topLeftX="44" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>① 饼图 · Pie</p></content></shape><chart width="420" height="350" topLeftX="42" topLeftY="132"><chartPlotArea><chartPlot type="pie" yAxisPosition="right"><chartExtra/><chartLabels position="outside" value="false" percentage="true" fontSize="10"/></chartPlot></chartPlotArea><chartLegend position="right" fontSize="10"/><chartData><dim1><chartField name="品牌">Apple,Samsung,Xiaomi,Huawei,Others</chartField></dim1><dim2><chartField name="份额">28,24,15,12,21</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">全球智能手机品牌份额 2026H1</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/><color value="rgb(56, 142, 60)"/><color value="rgb(148, 163, 184)"/><color value="rgb(120, 144, 180)"/></chartColorTheme></chartStyle></chart><shape width="440" height="400" topLeftX="488" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="440" height="32" topLeftX="488" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="420" height="22" topLeftX="500" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>② 环形图 · Donut</p></content></shape><chart width="420" height="350" topLeftX="498" topLeftY="132"><chartPlotArea><chartPlot type="pie" yAxisPosition="right"><chartExtra/><chartLabels position="outside" category="true" value="false" percentage="true" fontSize="10"/><chartSeriesList><chartSeries index="1"><chartSectors innerRadius="0.55" offsetRadius="0" startAngle="0"/></chartSeries></chartSeriesList></chartPlot></chartPlotArea><chartData><dim1><chartField name="业务">硬件,服务,可穿戴,其他</chartField></dim1><dim2><chartField name="占比">52,26,15,7</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">收入结构（按业务线）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/><color value="rgb(56, 142, 60)"/><color value="rgb(148, 163, 184)"/></chartColorTheme></chartStyle></chart><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Source: Consulting Insights Research · 数据仅用于示意</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>05 / 12</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>条形图 · Bar Chart</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>横向排名对比 · GROUPED / STACKED / 100% STACKED</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 04 / BAR</p></content></shape><shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="44" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>① 分组条形图 · Grouped</p></content></shape><chart width="270" height="350" topLeftX="42" topLeftY="132"><chartPlotArea><chartPlot type="bar"><chartExtra/></chartPlot><chartAxes><chartAxis type="y" position="left"><chartLabel fontSize="9"/></chartAxis><chartAxis type="x"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="品类">手机,平板,手表,耳机</chartField></dim1><dim2><chartField name="2025">180,68,42,96</chartField><chartField name="2026">210,82,58,132</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">品类销售对比（万台）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="347" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>② 堆叠条形图 · Stacked</p></content></shape><chart width="270" height="350" topLeftX="345" topLeftY="132"><chartPlotArea><chartPlot type="bar"><chartExtra><chartStack/></chartExtra></chartPlot><chartAxes><chartAxis type="y" position="left"><chartLabel fontSize="9"/></chartAxis><chartAxis type="x"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="品类">手机,平板,手表,耳机</chartField></dim1><dim2><chartField name="线上">125,45,32,78</chartField><chartField name="线下">85,37,26,54</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">渠道构成（万台）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="650" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>③ 百分比堆叠 · 100% Stacked</p></content></shape><chart width="270" height="350" topLeftX="648" topLeftY="132"><chartPlotArea><chartPlot type="bar"><chartExtra><chartStack percentage="true"/></chartExtra><chartSeriesList><chartSeries index="1"><chartTooltip format="0%"/></chartSeries><chartSeries index="2"><chartTooltip format="0%"/></chartSeries></chartSeriesList></chartPlot><chartAxes><chartAxis type="y" position="left"><chartLabel fontSize="9"/></chartAxis><chartAxis type="x"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9" format="0%"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="品类">手机,平板,手表,耳机</chartField></dim1><dim2><chartField name="线上">1.25,0.45,0.32,0.78</chartField><chartField name="线下">0.85,0.37,0.26,0.54</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">渠道占比结构</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle><chartTooltip format="0%"/></chart><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Source: Consulting Insights Research · 数据仅用于示意</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>06 / 12</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>面积图 · Area Chart</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>体量与结构演进 · OVERLAY / STACKED / 100% STACKED</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 05 / AREA</p></content></shape><shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="44" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>① 重叠面积图 · Overlay</p></content></shape><chart width="270" height="350" topLeftX="42" topLeftY="132"><chartPlotArea><chartPlot type="area"><chartExtra/></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="9"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="年份">2021,2022,2023,2024,2025,2026</chartField></dim1><dim2><chartField name="北美">180,210,245,268,295,322</chartField><chartField name="亚太">120,155,180,220,258,296</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">全年营收走势（亿美元）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="347" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>② 堆叠面积图 · Stacked</p></content></shape><chart width="270" height="350" topLeftX="345" topLeftY="132"><chartPlotArea><chartPlot type="area"><chartExtra><chartStack/></chartExtra></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="9"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="年份">2021,2022,2023,2024,2025,2026</chartField></dim1><dim2><chartField name="北美">180,210,245,268,295,322</chartField><chartField name="亚太">120,155,180,220,258,296</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">总营收堆叠视图</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="650" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>③ 百分比堆叠 · 100% Stacked</p></content></shape><chart width="270" height="350" topLeftX="648" topLeftY="132"><chartPlotArea><chartPlot type="area"><chartExtra><chartStack percentage="true"/></chartExtra></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="9"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="9" format="0%"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="年份">2021,2022,2023,2024,2025,2026</chartField></dim1><dim2><chartField name="北美">180,210,245,268,295,322</chartField><chartField name="亚太">120,155,180,220,258,296</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">区域营收占比演进</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle><chartTooltip format="0%"/></chart><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Source: Consulting Insights Research · 数据仅用于示意</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>07 / 12</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>散点图 · Scatter &amp; Bubble</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>价格-口碑二维分布 &amp; 三维气泡 · SCATTER / BUBBLE</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 06 / SCATTER</p></content></shape><shape width="440" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="440" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="420" height="22" topLeftX="44" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>① 散点图 · Scatter</p></content></shape><whiteboard width="420" height="350" topLeftX="42" topLeftY="132"/><shape width="440" height="400" topLeftX="488" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="440" height="32" topLeftX="488" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="420" height="22" topLeftX="500" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>② 气泡图 · Bubble</p></content></shape><whiteboard width="420" height="350" topLeftX="498" topLeftY="132"/><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Source: Consulting Insights Research · 数据仅用于示意</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>08 / 12</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>组合图 · Combo Chart</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>营收规模 &amp; 增长率双轴视图 · COLUMN + LINE</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 07 / COMBO</p></content></shape><shape width="576" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="576" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="560" height="22" topLeftX="44" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>八季度营收与同比增速</p></content></shape><chart width="556" height="350" topLeftX="42" topLeftY="132"><chartPlotArea><chartPlot type="combo"><chartExtra/><chartSeriesList><chartSeries index="1" comboType="column"/><chartSeries index="2" comboType="line" yAxisPosition="right"><chartTooltip format="0%"/></chartSeries></chartSeriesList></chartPlot><chartAxes><chartAxis type="x"><chartLabel fontSize="10"/></chartAxis><chartAxis type="y" position="left"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="10"/></chartAxis><chartAxis type="y" position="right"><chartLabel fontSize="10" format="0%"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="11"/><chartData><dim1><chartField name="季度">24Q1,24Q2,24Q3,24Q4,25Q1,25Q2,25Q3,25Q4</chartField></dim1><dim2><chartField name="营收">180,195,210,245,220,238,258,296</chartField><chartField name="增速">0.08,0.12,0.15,0.18,0.22,0.22,0.23,0.21</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">营收（亿美元, 左轴） · 同比增速（%, 右轴）</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="304" height="400" topLeftX="624" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="304" height="4" topLeftX="624" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="264" height="26" topLeftX="644" topLeftY="118" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(240, 129, 54, 1)" bold="true"><p>KEY TAKEAWAY</p></content></shape><shape width="264" height="90" topLeftX="644" topLeftY="146" type="text"><content textType="headline" fontSize="18" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>营收连续 6 季度双位数增长</p></content></shape><shape width="264" height="80" topLeftX="644" topLeftY="248" type="text"><content fontSize="13" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)"><p>24Q4 - 25Q4 期间同比增速稳定在 18-23%，营收规模从 245 亿扩张至 296 亿美元。</p></content></shape><line startX="644" startY="352" endX="720.0065786626394" endY="352"><border color="rgba(240, 129, 54, 1)"/></line><shape width="264" height="26" topLeftX="644" topLeftY="360" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(240, 129, 54, 1)" bold="true"><p>WHAT TO WATCH</p></content></shape><shape width="264" height="90" topLeftX="644" topLeftY="386" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)"><p>· 25Q4 增速首次微降 2pp</p><p>· 高基数效应即将显现</p><p>· 需关注亚太区库存周期</p></content></shape><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Source: Consulting Insights Research · 数据仅用于示意</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>09 / 12</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>雷达图 · Radar Chart</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>产品能力多维对比 · POLYGON / CIRCLE / OUTLINE</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 08 / RADAR</p></content></shape><shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="44" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>① 多边形雷达 · Polygon</p></content></shape><chart width="270" height="350" topLeftX="42" topLeftY="132"><chartPlotArea><chartPlot type="radar"><chartExtra><chartRadar/></chartExtra><chartAreas/></chartPlot><chartAxes><chartAxis type="angle"><chartLabel fontSize="9"/></chartAxis><chartAxis type="radius" max="10"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="8"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="维度">性能,续航,拍照,屏幕,系统,生态</chartField></dim1><dim2><chartField name="品牌 A">9,7,8,9,8,9</chartField><chartField name="品牌 B">7,9,9,7,8,6</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">旗舰机型能力评估</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="347" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>② 圆形雷达 · Circle</p></content></shape><chart width="270" height="350" topLeftX="345" topLeftY="132"><chartPlotArea><chartPlot type="radar"><chartExtra><chartSmooth/><chartRadar shape="circle"/></chartExtra><chartAreas/></chartPlot><chartAxes><chartAxis type="angle"><chartLabel fontSize="9"/></chartAxis><chartAxis type="radius" max="10"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="8"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="维度">性能,续航,拍照,屏幕,系统,生态</chartField></dim1><dim2><chartField name="品牌 A">7,8,6,8,7,7</chartField><chartField name="品牌 B">8,6,7,7,8,8</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">中端机型能力评估</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="650" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>③ 无填充雷达 · Outline</p></content></shape><chart width="270" height="350" topLeftX="648" topLeftY="132"><chartPlotArea><chartPlot type="radar"><chartExtra><chartRadar area="false"/></chartExtra></chartPlot><chartAxes><chartAxis type="angle"><chartLabel fontSize="9"/></chartAxis><chartAxis type="radius" max="10"><chartGridLine color="rgb(226, 232, 240)"/><chartLabel fontSize="8"/></chartAxis></chartAxes></chartPlotArea><chartLegend position="bottom" fontSize="10"/><chartData><dim1><chartField name="维度">性能,续航,拍照,屏幕,系统,生态</chartField></dim1><dim2><chartField name="品牌 A">6,7,5,6,6,5</chartField><chartField name="品牌 B">5,6,6,5,7,6</chartField></dim2></chartData><chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">入门机型能力评估</chartTitle><chartStyle><chartBackground color="rgba(0, 0, 0, 0)"/><chartBorder color="rgb(222, 224, 227)" width="0"/><chartColorTheme><color value="rgb(28, 71, 120)"/><color value="rgb(240, 129, 54)"/></chartColorTheme></chartStyle></chart><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Source: Consulting Insights Research · 数据仅用于示意</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>10 / 12</p></content></shape></data><note><content/></note></slide><slide><style><fill><fillColor color="rgba(248, 249, 251, 1)"/></fill></style><data><shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(15, 30, 58, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 129, 54, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="700" height="30" topLeftX="32" topLeftY="14" type="text"><content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true"><p>其他 · Word Cloud · Funnel · Pareto</p></content></shape><shape width="700" height="20" topLeftX="32" topLeftY="46" type="text"><content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)"><p>词云 / 漏斗 / 帕累托 · 补充可视化视角</p></content></shape><shape width="160" height="22" topLeftX="770" topLeftY="26" type="text"><content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right"><p>SECTION 09 / OTHERS</p></content></shape><shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="44" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>① 词云图 · Word Cloud</p></content></shape><whiteboard width="270" height="350" topLeftX="42" topLeftY="132"/><shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="347" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>② 漏斗图 · Funnel</p></content></shape><whiteboard width="270" height="350" topLeftX="345" topLeftY="132"/><shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(255, 255, 255, 1)"/></fill><border color="rgba(226, 232, 240, 1)" width="1"/><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect"><fill><fillColor color="rgba(240, 244, 249, 1)"/></fill><content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/></shape><shape width="270" height="22" topLeftX="650" topLeftY="98" type="text"><content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true"><p>③ 帕累托图 · Pareto</p></content></shape><whiteboard width="270" height="350" topLeftX="648" topLeftY="132"/><line startX="32" startY="506" endX="928.0005580355405" endY="506"><border color="rgba(226, 232, 240, 1)" width="1"/></line><shape width="500" height="18" topLeftX="32" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)"><p>Source: Consulting Insights Research · 数据仅用于示意</p></content></shape><shape width="128" height="18" topLeftX="800" topLeftY="512" type="text"><content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right"><p>11 / 12</p></content></shape></data><note><content/></note></slide></presentation>
+<?xml version="1.0" encoding="UTF-8"?>
+<presentation xmlns="/sml/2.0" width="960" height="540">
+  <title>原生图表 Chart Demo</title>
+  <theme>
+    <textStyles>
+      <headline fontColor="rgba(31, 35, 41, 1)"/>
+      <sub-headline fontColor="rgba(31, 35, 41, 1)"/>
+      <body fontColor="rgba(31, 35, 41, 1)"/>
+      <caption fontColor="rgba(155, 158, 162, 1)" fontSize="14"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(248, 249, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(15, 30, 58, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 129, 54, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
+        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>柱状图 · Column Chart</p>
+        </content>
+      </shape>
+      <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+          <p>季度出货量对比 · GROUPED / STACKED / 100% STACKED</p>
+        </content>
+      </shape>
+      <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
+        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 01 / COLUMN</p>
+        </content>
+      </shape>
+      <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>① 分组柱状图 · Grouped</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="42" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="column">
+            <chartExtra/>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="季度">2024Q1,2024Q2,2024Q3,2024Q4</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="Apple">52,48,55,68</chartField>
+            <chartField name="Samsung">60,58,63,72</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">智能手机季度出货（百万台）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>② 堆叠柱状图 · Stacked</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="345" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="column">
+            <chartExtra>
+              <chartStack/>
+            </chartExtra>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="季度">2024Q1,2024Q2,2024Q3,2024Q4</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="硬件">80,85,92,105</chartField>
+            <chartField name="服务">45,52,58,66</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">收入结构（亿美元）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>③ 百分比堆叠 · 100% Stacked</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="648" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="column">
+            <chartExtra>
+              <chartStack percentage="true"/>
+            </chartExtra>
+            <chartSeriesList>
+              <chartSeries index="1">
+                <chartTooltip format="0%"/>
+              </chartSeries>
+              <chartSeries index="2">
+                <chartTooltip format="0%"/>
+              </chartSeries>
+            </chartSeriesList>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9" format="0%"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="区域">北美,欧洲,亚太,拉美</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="Apple">0.55,0.42,0.3,0.28</chartField>
+            <chartField name="Samsung">0.45,0.58,0.7,0.72</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">区域市场份额构成</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+        <chartTooltip format="0%"/>
+      </chart>
+      <line startX="32" startY="506" endX="928.0005580355405" endY="506">
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+      </line>
+      <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+          <p>Source: Consulting Insights Research · 数据仅用于示意</p>
+        </content>
+      </shape>
+      <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>03 / 12</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(248, 249, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(15, 30, 58, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 129, 54, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
+        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>折线图 · Line Chart</p>
+        </content>
+      </shape>
+      <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+          <p>用户规模趋势 · STRAIGHT / SMOOTH / STEP</p>
+        </content>
+      </shape>
+      <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
+        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 02 / LINE</p>
+        </content>
+      </shape>
+      <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>① 直线折线图 · Straight</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="42" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="line">
+            <chartExtra/>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="月份">1月,2月,3月,4月,5月,6月</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="iOS">120,135,128,152,168,180</chartField>
+            <chartField name="Android">200,215,232,228,250,265</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">MAU 月活跃用户（百万）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>② 平滑折线图 · Smooth</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="345" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="line">
+            <chartExtra>
+              <chartSmooth/>
+            </chartExtra>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="月份">1月,2月,3月,4月,5月,6月</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="iOS">42,58,55,72,88,96</chartField>
+            <chartField name="Android">78,82,96,102,118,132</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">DAU 日活跃用户（百万）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>③ 阶梯折线图 · Step</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="648" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="line">
+            <chartExtra>
+              <chartStep/>
+            </chartExtra>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="月份">1月,2月,3月,4月,5月,6月</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="Pro 版">999,999,899,899,799,799</chartField>
+            <chartField name="标准版">699,699,649,599,599,549</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">定价调整轨迹（美元）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <line startX="32" startY="506" endX="928.0005580355405" endY="506">
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+      </line>
+      <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+          <p>Source: Consulting Insights Research · 数据仅用于示意</p>
+        </content>
+      </shape>
+      <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>04 / 12</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(248, 249, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(15, 30, 58, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 129, 54, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
+        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>饼图 · Pie Chart</p>
+        </content>
+      </shape>
+      <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+          <p>市场份额结构 · PIE / DONUT</p>
+        </content>
+      </shape>
+      <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
+        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 03 / PIE</p>
+        </content>
+      </shape>
+      <shape width="440" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="440" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="420" height="22" topLeftX="44" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>① 饼图 · Pie</p>
+        </content>
+      </shape>
+      <chart width="420" height="350" topLeftX="42" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="pie" yAxisPosition="right">
+            <chartExtra/>
+            <chartLabels position="outside" value="false" percentage="true" fontSize="10"/>
+          </chartPlot>
+        </chartPlotArea>
+        <chartLegend position="right" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="品牌">Apple,Samsung,Xiaomi,Huawei,Others</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="份额">28,24,15,12,21</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">全球智能手机品牌份额 2026H1</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+            <color value="rgb(56, 142, 60)"/>
+            <color value="rgb(148, 163, 184)"/>
+            <color value="rgb(120, 144, 180)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="440" height="400" topLeftX="488" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="440" height="32" topLeftX="488" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="420" height="22" topLeftX="500" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>② 环形图 · Donut</p>
+        </content>
+      </shape>
+      <chart width="420" height="350" topLeftX="498" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="pie" yAxisPosition="right">
+            <chartExtra/>
+            <chartLabels position="outside" category="true" value="false" percentage="true" fontSize="10"/>
+            <chartSeriesList>
+              <chartSeries index="1">
+                <chartSectors innerRadius="0.55" offsetRadius="0" startAngle="0"/>
+              </chartSeries>
+            </chartSeriesList>
+          </chartPlot>
+        </chartPlotArea>
+        <chartData>
+          <dim1>
+            <chartField name="业务">硬件,服务,可穿戴,其他</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="占比">52,26,15,7</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">收入结构（按业务线）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+            <color value="rgb(56, 142, 60)"/>
+            <color value="rgb(148, 163, 184)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <line startX="32" startY="506" endX="928.0005580355405" endY="506">
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+      </line>
+      <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+          <p>Source: Consulting Insights Research · 数据仅用于示意</p>
+        </content>
+      </shape>
+      <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>05 / 12</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(248, 249, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(15, 30, 58, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 129, 54, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
+        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>条形图 · Bar Chart</p>
+        </content>
+      </shape>
+      <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+          <p>横向排名对比 · GROUPED / STACKED / 100% STACKED</p>
+        </content>
+      </shape>
+      <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
+        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 04 / BAR</p>
+        </content>
+      </shape>
+      <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>① 分组条形图 · Grouped</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="42" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="bar">
+            <chartExtra/>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="y" position="left">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="x">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="品类">手机,平板,手表,耳机</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="2025">180,68,42,96</chartField>
+            <chartField name="2026">210,82,58,132</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">品类销售对比（万台）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>② 堆叠条形图 · Stacked</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="345" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="bar">
+            <chartExtra>
+              <chartStack/>
+            </chartExtra>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="y" position="left">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="x">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="品类">手机,平板,手表,耳机</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="线上">125,45,32,78</chartField>
+            <chartField name="线下">85,37,26,54</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">渠道构成（万台）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>③ 百分比堆叠 · 100% Stacked</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="648" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="bar">
+            <chartExtra>
+              <chartStack percentage="true"/>
+            </chartExtra>
+            <chartSeriesList>
+              <chartSeries index="1">
+                <chartTooltip format="0%"/>
+              </chartSeries>
+              <chartSeries index="2">
+                <chartTooltip format="0%"/>
+              </chartSeries>
+            </chartSeriesList>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="y" position="left">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="x">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9" format="0%"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="品类">手机,平板,手表,耳机</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="线上">1.25,0.45,0.32,0.78</chartField>
+            <chartField name="线下">0.85,0.37,0.26,0.54</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">渠道占比结构</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+        <chartTooltip format="0%"/>
+      </chart>
+      <line startX="32" startY="506" endX="928.0005580355405" endY="506">
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+      </line>
+      <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+          <p>Source: Consulting Insights Research · 数据仅用于示意</p>
+        </content>
+      </shape>
+      <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>06 / 12</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(248, 249, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(15, 30, 58, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 129, 54, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
+        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>面积图 · Area Chart</p>
+        </content>
+      </shape>
+      <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+          <p>体量与结构演进 · OVERLAY / STACKED / 100% STACKED</p>
+        </content>
+      </shape>
+      <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
+        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 05 / AREA</p>
+        </content>
+      </shape>
+      <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>① 重叠面积图 · Overlay</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="42" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="area">
+            <chartExtra/>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="年份">2021,2022,2023,2024,2025,2026</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="北美">180,210,245,268,295,322</chartField>
+            <chartField name="亚太">120,155,180,220,258,296</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">全年营收走势（亿美元）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>② 堆叠面积图 · Stacked</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="345" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="area">
+            <chartExtra>
+              <chartStack/>
+            </chartExtra>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="年份">2021,2022,2023,2024,2025,2026</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="北美">180,210,245,268,295,322</chartField>
+            <chartField name="亚太">120,155,180,220,258,296</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">总营收堆叠视图</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>③ 百分比堆叠 · 100% Stacked</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="648" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="area">
+            <chartExtra>
+              <chartStack percentage="true"/>
+            </chartExtra>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9" format="0%"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="年份">2021,2022,2023,2024,2025,2026</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="北美">180,210,245,268,295,322</chartField>
+            <chartField name="亚太">120,155,180,220,258,296</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">区域营收占比演进</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+        <chartTooltip format="0%"/>
+      </chart>
+      <line startX="32" startY="506" endX="928.0005580355405" endY="506">
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+      </line>
+      <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+          <p>Source: Consulting Insights Research · 数据仅用于示意</p>
+        </content>
+      </shape>
+      <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>07 / 12</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(248, 249, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(15, 30, 58, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 129, 54, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
+        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>组合图 · Combo Chart</p>
+        </content>
+      </shape>
+      <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+          <p>营收规模 &amp; 增长率双轴视图 · COLUMN + LINE</p>
+        </content>
+      </shape>
+      <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
+        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 07 / COMBO</p>
+        </content>
+      </shape>
+      <shape width="576" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="576" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="560" height="22" topLeftX="44" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>八季度营收与同比增速</p>
+        </content>
+      </shape>
+      <chart width="556" height="350" topLeftX="42" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="combo">
+            <chartExtra/>
+            <chartSeriesList>
+              <chartSeries index="1" comboType="column"/>
+              <chartSeries index="2" comboType="line" yAxisPosition="right">
+                <chartTooltip format="0%"/>
+              </chartSeries>
+            </chartSeriesList>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="10"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="10"/>
+            </chartAxis>
+            <chartAxis type="y" position="right">
+              <chartLabel fontSize="10" format="0%"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="11"/>
+        <chartData>
+          <dim1>
+            <chartField name="季度">24Q1,24Q2,24Q3,24Q4,25Q1,25Q2,25Q3,25Q4</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="营收">180,195,210,245,220,238,258,296</chartField>
+            <chartField name="增速">0.08,0.12,0.15,0.18,0.22,0.22,0.23,0.21</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">营收（亿美元, 左轴） · 同比增速（%, 右轴）</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="304" height="400" topLeftX="624" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(15, 30, 58, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="304" height="4" topLeftX="624" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 129, 54, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="264" height="26" topLeftX="644" topLeftY="118" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(240, 129, 54, 1)" bold="true">
+          <p>KEY TAKEAWAY</p>
+        </content>
+      </shape>
+      <shape width="264" height="90" topLeftX="644" topLeftY="146" type="text">
+        <content textType="headline" fontSize="18" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>营收连续 6 季度双位数增长</p>
+        </content>
+      </shape>
+      <shape width="264" height="80" topLeftX="644" topLeftY="248" type="text">
+        <content fontSize="13" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)">
+          <p>24Q4 - 25Q4 期间同比增速稳定在 18-23%，营收规模从 245 亿扩张至 296 亿美元。</p>
+        </content>
+      </shape>
+      <line startX="644" startY="352" endX="720.0065786626394" endY="352">
+        <border color="rgba(240, 129, 54, 1)"/>
+      </line>
+      <shape width="264" height="26" topLeftX="644" topLeftY="360" type="text">
+        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(240, 129, 54, 1)" bold="true">
+          <p>WHAT TO WATCH</p>
+        </content>
+      </shape>
+      <shape width="264" height="90" topLeftX="644" topLeftY="386" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)">
+          <p>· 25Q4 增速首次微降 2pp</p>
+          <p>· 高基数效应即将显现</p>
+          <p>· 需关注亚太区库存周期</p>
+        </content>
+      </shape>
+      <line startX="32" startY="506" endX="928.0005580355405" endY="506">
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+      </line>
+      <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+          <p>Source: Consulting Insights Research · 数据仅用于示意</p>
+        </content>
+      </shape>
+      <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>09 / 12</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(248, 249, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(15, 30, 58, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 129, 54, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
+        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>雷达图 · Radar Chart</p>
+        </content>
+      </shape>
+      <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+          <p>产品能力多维对比 · POLYGON / CIRCLE / OUTLINE</p>
+        </content>
+      </shape>
+      <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
+        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 08 / RADAR</p>
+        </content>
+      </shape>
+      <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>① 多边形雷达 · Polygon</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="42" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="radar">
+            <chartExtra>
+              <chartRadar/>
+            </chartExtra>
+            <chartAreas/>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="angle">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="radius" max="10">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="8"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="维度">性能,续航,拍照,屏幕,系统,生态</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="品牌 A">9,7,8,9,8,9</chartField>
+            <chartField name="品牌 B">7,9,9,7,8,6</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">旗舰机型能力评估</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>② 圆形雷达 · Circle</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="345" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="radar">
+            <chartExtra>
+              <chartSmooth/>
+              <chartRadar shape="circle"/>
+            </chartExtra>
+            <chartAreas/>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="angle">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="radius" max="10">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="8"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="维度">性能,续航,拍照,屏幕,系统,生态</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="品牌 A">7,8,6,8,7,7</chartField>
+            <chartField name="品牌 B">8,6,7,7,8,8</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">中端机型能力评估</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>③ 无填充雷达 · Outline</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="648" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="radar">
+            <chartExtra>
+              <chartRadar area="false"/>
+            </chartExtra>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="angle">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="radius" max="10">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="8"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartLegend position="bottom" fontSize="10"/>
+        <chartData>
+          <dim1>
+            <chartField name="维度">性能,续航,拍照,屏幕,系统,生态</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="品牌 A">6,7,5,6,6,5</chartField>
+            <chartField name="品牌 B">5,6,6,5,7,6</chartField>
+          </dim2>
+        </chartData>
+        <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">入门机型能力评估</chartTitle>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <line startX="32" startY="506" endX="928.0005580355405" endY="506">
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+      </line>
+      <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+          <p>Source: Consulting Insights Research · 数据仅用于示意</p>
+        </content>
+      </shape>
+      <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>10 / 12</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>

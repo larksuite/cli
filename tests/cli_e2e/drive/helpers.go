@@ -108,7 +108,7 @@ func deleteDriveResourceAndVerify(ctx context.Context, token, docType, defaultAs
 	}
 	if err := waitDriveResourceDeleted(ctx, token, docType, defaultAs, visibilityWait); err != nil {
 		return deleteResult, clie2e.CleanupWarning(
-			fmt.Errorf("drive resource %s/%s still visible after accepted delete: %w", docType, token, err),
+			fmt.Errorf("drive resource %s/%s still visible after async delete: %w", docType, token, err),
 		)
 	}
 	return deleteResult, nil

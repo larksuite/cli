@@ -59,7 +59,7 @@ func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 	}
 	desc := "OpenAPI: create document"
 	if runtime.IsBot() {
-		desc += ". After document creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new document."
+		desc += ". After document creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new document."
 	}
 	return common.NewDryRunAPI().
 		POST("/open-apis/docs_ai/v1/documents").

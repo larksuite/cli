@@ -15,6 +15,7 @@ OKR block 可用 XML 格式完整表达。创建前先参考 [`lark-okr`](../../
     <okr-progress>
       <p>O 进展</p>
       <checkbox done="true">事项</checkbox>
+      <ul><li>列表项内可包含 <a href="https://example.com">链接</a></li></ul>
     </okr-progress>
     <okr-key-result key-result-id="KEY_RESULT_ID" status="risk" percent="60" score="80">
       <p>KR 描述</p>
@@ -31,4 +32,4 @@ OKR block 可用 XML 格式完整表达。创建前先参考 [`lark-okr`](../../
 - `okr-objective` / `okr-key-result`
   - 可更新 `status`、`percent`、`score`；`percent` / `score` 取值 0-100，`status` 取值 `unset`/`normal`/`risk`/`extended`。
   - 不可更新 objective 和 key-result 内容描述。
-- `okr-progress` 承载进展内容，支持更新。支持内嵌 `<p>`、`<checkbox>`、`<grid>`、`<img>`。
+- `okr-progress` 承载进展内容，支持更新。直接子节点支持 `<p>`、`<checkbox>`、`<grid>`、`<img>`、`<source>`、`<ol>`、`<ul>`、`<h1>` 到 `<h9>`。

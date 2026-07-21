@@ -95,7 +95,7 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 		t.Fatalf("set --folder-token: %v", err)
 	}
 
-	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, core.AsBot)
 	dry := DriveImport.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -108,6 +108,7 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 
 	var got struct {
 		API []struct {
+			Desc string                 `json:"desc"`
 			Body map[string]interface{} `json:"body"`
 		} `json:"api"`
 	}
@@ -116,6 +117,10 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 	}
 	if len(got.API) != 4 {
 		t.Fatalf("expected 4 API calls, got %d", len(got.API))
+	}
+	wantDesc := "After the import result returns the final cloud document target in bot mode, the CLI will also try to grant the current CLI user full_access on it."
+	if got.API[len(got.API)-1].Desc != wantDesc {
+		t.Fatalf("desc = %q, want %q", got.API[len(got.API)-1].Desc, wantDesc)
 	}
 
 	if got.API[0].Body != nil {

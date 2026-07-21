@@ -15,6 +15,7 @@ import (
 )
 
 func TestIM_MessageForwardWorkflowAsUser(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)
 

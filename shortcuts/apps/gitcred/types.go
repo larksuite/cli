@@ -51,18 +51,22 @@ type CredentialRecord struct {
 }
 
 type IssuedCredential struct {
-	AppID      string
-	GitHTTPURL string
-	Username   string
-	PAT        string
-	ExpiresAt  int64
+	AppID             string
+	GitHTTPURL        string
+	Username          string
+	PAT               string
+	ExpiresAt         int64
+	CommitAuthorName  string
+	CommitAuthorEmail string
 }
 
 type InitResult struct {
-	AppID         string
-	GitHTTPURL    string
-	Refreshed     bool
-	ConfigWarning string
+	AppID             string
+	GitHTTPURL        string
+	Refreshed         bool
+	ConfigWarning     string
+	CommitAuthorName  string
+	CommitAuthorEmail string
 }
 
 type RemoveResult struct {

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -32,16 +33,16 @@ func TestValidateDriveDeleteSpecRejectsWiki(t *testing.T) {
 	}
 }
 
-func TestDriveDeleteDryRunFolderIncludesTaskCheckParams(t *testing.T) {
+func TestDriveDeleteDryRunIncludesAsyncAndTaskCheckParams(t *testing.T) {
 	t.Parallel()
 
 	cmd := &cobra.Command{Use: "drive +delete"}
 	cmd.Flags().String("file-token", "", "")
 	cmd.Flags().String("type", "", "")
-	if err := cmd.Flags().Set("file-token", "fld_src"); err != nil {
+	if err := cmd.Flags().Set("file-token", "docx_src"); err != nil {
 		t.Fatalf("set --file-token: %v", err)
 	}
-	if err := cmd.Flags().Set("type", "folder"); err != nil {
+	if err := cmd.Flags().Set("type", "docx"); err != nil {
 		t.Fatalf("set --type: %v", err)
 	}
 
@@ -71,11 +72,33 @@ func TestDriveDeleteDryRunFolderIncludesTaskCheckParams(t *testing.T) {
 	if got.API[0].Method != "DELETE" {
 		t.Fatalf("first method = %q, want DELETE", got.API[0].Method)
 	}
-	if got.API[0].Params["type"] != "folder" {
+	if got.API[0].Params["type"] != "docx" {
 		t.Fatalf("delete params = %#v", got.API[0].Params)
+	}
+	if got.API[0].Params["async"] != true {
+		t.Fatalf("delete params = %#v, want async=true", got.API[0].Params)
 	}
 	if got.API[1].Params["task_id"] != "<task_id>" {
 		t.Fatalf("task check params = %#v", got.API[1].Params)
+	}
+}
+
+func TestDriveDeleteScopesIncludeTaskCheckReadScope(t *testing.T) {
+	t.Parallel()
+
+	wantScopes := map[string]bool{
+		"space:document:delete":         false,
+		"drive:drive.metadata:readonly": false,
+	}
+	for _, scope := range DriveDelete.Scopes {
+		if _, ok := wantScopes[scope]; ok {
+			wantScopes[scope] = true
+		}
+	}
+	for scope, seen := range wantScopes {
+		if !seen {
+			t.Fatalf("DriveDelete.Scopes missing %q: %#v", scope, DriveDelete.Scopes)
+		}
 	}
 }
 
@@ -103,6 +126,63 @@ func TestDriveDeleteFileSuccess(t *testing.T) {
 		URL:    "/open-apis/drive/v1/files/file_token_test",
 		Body: map[string]interface{}{
 			"code": 0,
+			"data": map[string]interface{}{"task_id": "task_file_123"},
+		},
+		OnMatch: func(req *http.Request) {
+			query := req.URL.Query()
+			if got := query.Get("type"); got != "file" {
+				t.Errorf("delete query type=%q, want file", got)
+			}
+			if got := query.Get("async"); got != "true" {
+				t.Errorf("delete query async=%q, want true", got)
+			}
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/files/task_check",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"status": "success"},
+		},
+		OnMatch: func(req *http.Request) {
+			if got := req.URL.Query().Get("task_id"); got != "task_file_123" {
+				t.Errorf("task_check task_id=%q, want task_file_123", got)
+			}
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveDelete, []string{
+		"+delete",
+		"--file-token", "file_token_test",
+		"--type", "file",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"task_id": "task_file_123"`)) {
+		t.Fatalf("stdout missing task_id: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"deleted": true`)) {
+		t.Fatalf("stdout missing deleted=true: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": true`)) {
+		t.Fatalf("stdout missing ready=true: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"file_token": "file_token_test"`)) {
+		t.Fatalf("stdout missing file token: %s", stdout.String())
+	}
+}
+
+func TestDriveDeleteWithoutTaskIDFallsBackToSyncSuccess(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/file_token_test",
+		Body: map[string]interface{}{
+			"code": 0,
 			"data": map[string]interface{}{},
 		},
 	})
@@ -117,23 +197,33 @@ func TestDriveDeleteFileSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"deleted": true`)) {
-		t.Fatalf("stdout missing deleted=true: %s", stdout.String())
+	for _, needle := range []string{
+		`"deleted": true`,
+		`"file_token": "file_token_test"`,
+		`"type": "file"`,
+	} {
+		if !bytes.Contains(stdout.Bytes(), []byte(needle)) {
+			t.Fatalf("stdout missing %q: %s", needle, stdout.String())
+		}
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"file_token": "file_token_test"`)) {
-		t.Fatalf("stdout missing file token: %s", stdout.String())
+	if bytes.Contains(stdout.Bytes(), []byte(`"task_id"`)) {
+		t.Fatalf("stdout should not include task_id for sync success fallback: %s", stdout.String())
 	}
 }
 
-func TestDriveDeleteFolderTaskCheckOutcomes(t *testing.T) {
+func TestDriveDeleteTaskCheckOutcomes(t *testing.T) {
 	tests := []struct {
 		name            string
+		fileType        string
+		fileToken       string
 		taskCheckBody   map[string]interface{}
 		wantErrContains string
 		wantStdout      []string
 	}{
 		{
-			name: "success",
+			name:      "docx success",
+			fileType:  "docx",
+			fileToken: "docx_src",
 			taskCheckBody: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{"status": "success"},
@@ -145,7 +235,9 @@ func TestDriveDeleteFolderTaskCheckOutcomes(t *testing.T) {
 			},
 		},
 		{
-			name: "timeout",
+			name:      "folder timeout",
+			fileType:  "folder",
+			fileToken: "fld_src",
 			taskCheckBody: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{"status": "process"},
@@ -157,15 +249,19 @@ func TestDriveDeleteFolderTaskCheckOutcomes(t *testing.T) {
 			},
 		},
 		{
-			name: "failed",
+			name:      "folder failed",
+			fileType:  "folder",
+			fileToken: "fld_src",
 			taskCheckBody: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{"status": "fail"},
 			},
-			wantErrContains: "folder task failed",
+			wantErrContains: "drive task failed",
 		},
 		{
-			name: "task_check error",
+			name:      "docx task_check error",
+			fileType:  "docx",
+			fileToken: "docx_src",
 			taskCheckBody: map[string]interface{}{
 				"code": 1061001,
 				"msg":  "internal error",
@@ -179,7 +275,7 @@ func TestDriveDeleteFolderTaskCheckOutcomes(t *testing.T) {
 			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 			reg.Register(&httpmock.Stub{
 				Method: "DELETE",
-				URL:    "/open-apis/drive/v1/files/fld_src",
+				URL:    "/open-apis/drive/v1/files/" + tt.fileToken,
 				Body: map[string]interface{}{
 					"code": 0,
 					"data": map[string]interface{}{"task_id": "task_123"},
@@ -195,8 +291,8 @@ func TestDriveDeleteFolderTaskCheckOutcomes(t *testing.T) {
 
 			err := mountAndRunDrive(t, DriveDelete, []string{
 				"+delete",
-				"--file-token", "fld_src",
-				"--type", "folder",
+				"--file-token", tt.fileToken,
+				"--type", tt.fileType,
 				"--yes",
 				"--as", "bot",
 			}, f, stdout)
@@ -220,5 +316,68 @@ func TestDriveDeleteFolderTaskCheckOutcomes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDriveDeleteTimedOutTaskCanBeResumedWithTaskResult(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/fld_token_test",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"task_id": "task_resume_123"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/files/task_check",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"status": "process"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/files/task_check",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"status": "success"},
+		},
+	})
+
+	withSingleDriveTaskCheckPoll(t)
+
+	err := mountAndRunDrive(t, DriveDelete, []string{
+		"+delete",
+		"--file-token", "fld_token_test",
+		"--type", "folder",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected delete error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": false`)) {
+		t.Fatalf("stdout missing ready=false: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"next_command": "lark-cli drive +task_result --scenario task_check --task-id task_resume_123 --as bot"`)) {
+		t.Fatalf("stdout missing next_command: %s", stdout.String())
+	}
+
+	err = mountAndRunDrive(t, DriveTaskResult, []string{
+		"+task_result",
+		"--scenario", "task_check",
+		"--task-id", "task_resume_123",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected task_result error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"task_id": "task_resume_123"`)) {
+		t.Fatalf("task_result stdout missing task_id: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": true`)) {
+		t.Fatalf("task_result stdout missing ready=true: %s", stdout.String())
 	}
 }

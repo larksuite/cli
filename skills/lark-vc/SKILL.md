@@ -56,7 +56,7 @@ lark-cli vc +search --query "站会" --start <start_time> --end <end_time>
 
 - **视频会议（Meeting）**：飞书视频会议实例，通过 meeting_id 标识。已结束的会议支持通过关键词、时间段、参会人、组织者、会议室等条件搜索（见 `+search`）。
 - **会议纪要（Note）**：视频会议结束后生成的结构化文档，通过 `note_id` 标识，包含纪要文档（总结、待办）和逐字稿文档。`note_display_type` 区分**普通纪要（`normal`）**和 **unified 纪要**；已知 `note_id` 的直查与 unified 原始记录请用 [lark-note](../lark-note/SKILL.md)。
-- **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，支持视频/音频的转写，包含总结、待办、章节和文字记录，通过 minute_token 标识。
+- **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，支持视频/音频的转写，包含总结、待办、章节和文字记录，通过 minute_token 标识。妙记带有**原始会议录制视频**，会后**不会自动授权给参会人**，需管理员授权或参会人主动申请；而智能纪要及其逐字稿会后自动授权给参会人。
 - **纪要文档（MainDoc）**：AI 智能纪要的主文档，包含 AI 生成的总结和待办，对应 `note_doc_token`。
 - **用户会议纪要（MeetingNotes）**：用户主动绑定到日程的纪要文档，对应 `meeting_note`。需先通过 [`calendar +meeting`](../lark-calendar/references/lark-calendar-meeting.md) 由 `event_id` 获取。
 - **逐字稿（VerbatimDoc）**：会议的逐句文字记录，包含说话人和时间戳。
@@ -65,11 +65,14 @@ lark-cli vc +search --query "站会" --start <start_time> --end <end_time>
 
 | 用户意图 | 必须读取的产物 | 禁止 |
 |---------|-------------|------|
-| 提炼/总结/重新总结/整理会议内容/回顾会议 | 为降低 token 消耗，非必须不得获取 AI 纪要。必须使用原始对话记录（按下方逐字稿路由取得）或妙记文字记录（Transcript），基于原始对话独立分析 | 禁止直接搬运 AI 纪要（`note_doc_token`）的总结作为最终输出 |
-| 查看待办/章节 | AI 纪要（`note_doc_token`）或妙记产物 — AI 待办更友好（含提出人和负责人），章节按话题划分更结构化 | — |
+| 提炼/总结/重新总结/整理会议内容/回顾会议 | 为降低 token 消耗，非必须不得获取 AI 纪要。必须使用原始对话记录（按下方逐字稿路由取得），基于原始对话独立分析。两类产物都存在且用户未指定时，默认用智能纪要的逐字稿；用户明确要妙记时才用妙记文字记录（Transcript） | 禁止直接搬运 AI 纪要（`note_doc_token`）的总结作为最终输出 |
+| 查看待办/章节 | 默认 AI 纪要（`note_doc_token`）；仅存在妙记或用户明确要妙记时用妙记产物 — AI 待办更友好（含提出人和负责人），章节按话题划分更结构化 | — |
 | 查看纪要链接/文档地址 | 仅返回文档链接，无需读取内容 | — |
 | 直接看 AI 总结结果 | AI 纪要（`note_doc_token`） | — |
 | 谁说了什么/完整发言记录 | 原始对话记录（按下方逐字稿路由取得） | — |
+
+> **智能纪要 vs 妙记的选择规则**（总结/待办/逐字稿等重复产物通用）：只存在一类 → 用存在的那类；两类都存在且用户明确指定（如"看妙记逐字稿"）→ **语义指向哪个走哪个，不要改道**；两类都存在但用户未指定 → **默认智能纪要及其逐字稿**（会后自动授权给参会人，访问门槛低于含原始录制视频、需申请授权的妙记）。完整说明见 [`references/vc-domain-boundaries.md`](references/vc-domain-boundaries.md) 的「产物选择决策」。
+
 
 > **逐字稿路由**：先用 `vc +detail` 拿到 `note_id`，再 [`note +detail`](../lark-note/SKILL.md) 看 `note_display_type`，**不要只看 `verbatim_doc_token` 是否为空**。具体路由以 [lark-note](../lark-note/SKILL.md) 的 `note_display_type` 规则为准。
 >

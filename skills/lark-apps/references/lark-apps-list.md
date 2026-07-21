@@ -34,4 +34,4 @@ lark-cli apps +list --page-token "<cursor>"
 
 多候选时展示名称、app_id、updated_at 让用户确认。用户描述里已经有 `app_xxx` 或妙搭链接时，直接提取，不再 `+list`。
 
-把 `+list` 当定位工具和发布态快照工具，不要把 `is_published` 当部署完成证明。需要证明“最新内容已上线”时，使用对应发布命令的完成状态：全栈看 `+release-get` 的 `finished`，HTML 看 `+html-publish` 的成功返回。
+把 `+list` 当定位工具和发布态快照工具，不要把 `is_published` 当部署完成证明。需要证明“最新内容已上线”时，使用对应发布命令的完成状态：看 `+release-get` 的 `finished`。

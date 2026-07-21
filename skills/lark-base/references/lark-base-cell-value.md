@@ -16,15 +16,20 @@
 
 ## 2. 各类型 CellValue
 
-### 2.1 text / phone / url
+### 2.1 text
 
-用字符串。URL 字段也传 URL 字符串；普通文本里可以保留 Markdown 风格链接文本，平台会按字段类型处理。
+text 字段的 `style.type` 影响单元格检查逻辑：
+`type=plain` 传 Markdown 格式的字符串。
+`type=url` 传一个带 title 的 Markdown 格式链接，或单独传一个链接。
+`type=phone` 传合法电话号码。
+`type=email` 传合法邮箱字符串。
 
 ```json
 {
-    "标题": "Hello",
+    "标题": "Hello, [lark-cli](https://github.com/larksuite/cli)",
+    "官网": "[官网](https://example.com)",
     "联系电话": "1380000000000",
-    "官网": "https://example.com"
+    "邮箱": "owner@example.com"
 }
 ```
 

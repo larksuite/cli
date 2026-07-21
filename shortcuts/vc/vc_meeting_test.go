@@ -608,9 +608,18 @@ func TestMeetingListActive_DryRun_UserIdentity(t *testing.T) {
 	}
 }
 
-func TestMeetingListActive_ScopeMatchesEventReadPermission(t *testing.T) {
-	if len(VCMeetingListActive.Scopes) != 1 || VCMeetingListActive.Scopes[0] != "vc:meeting.meetingevent:read" {
-		t.Fatalf("scopes = %#v, want [vc:meeting.meetingevent:read]", VCMeetingListActive.Scopes)
+func TestMeetingListActive_UsesUserScopePreflightAndBotScopeHint(t *testing.T) {
+	if got := VCMeetingListActive.ScopesForIdentity("user"); len(got) != 1 || got[0] != meetingQueryUserScope {
+		t.Fatalf("ScopesForIdentity(user) = %v, want [%s]", got, meetingQueryUserScope)
+	}
+	if got := VCMeetingListActive.ScopesForIdentity("bot"); len(got) != 0 {
+		t.Fatalf("ScopesForIdentity(bot) = %v, want no bot preflight scopes", got)
+	}
+	if got := VCMeetingListActive.DeclaredScopesForIdentity("user"); len(got) != 1 || got[0] != meetingQueryUserScope {
+		t.Fatalf("DeclaredScopesForIdentity(user) = %v, want [%s]", got, meetingQueryUserScope)
+	}
+	if got := VCMeetingListActive.DeclaredScopesForIdentity("bot"); len(got) != 1 || got[0] != meetingQueryBotScope {
+		t.Fatalf("DeclaredScopesForIdentity(bot) = %v, want [%s]", got, meetingQueryBotScope)
 	}
 }
 

@@ -20,16 +20,20 @@
 
 若缺少任一条件，使用 `drive +search`、`drive +inspect` 或只读 API 收集候选并回复待确认清单；启发式规则（打开时间、标题模式、owner、文件类型等）只能作为候选筛选依据，不能升级为删除确认。执行 `drive +delete` 时必须使用解析后的 `--file-token` 和 `--type`。
 
+## 批量删除建议
+
+批量删除文件或文件夹时，建议逐个串行处理，不要并发执行删除命令，并发删除可能触发服务端加锁或冲突，导致部分删除失败；这类失败通常需要等待后对单个失败项重试。
+
 ## 命令
 
 ```bash
-# 删除普通文件
+# 删除普通文件（异步操作，会自动有限轮询任务状态）
 lark-cli drive +delete \
   --file-token <FILE_TOKEN> \
   --type file \
   --yes
 
-# 删除在线文档
+# 删除在线文档（异步操作，会自动有限轮询任务状态）
 lark-cli drive +delete \
   --file-token <DOCX_TOKEN> \
   --type docx \
@@ -52,22 +56,30 @@ lark-cli drive +delete \
 
 ## 行为说明
 
-- **普通文件删除**：同步操作，成功时直接返回 `deleted=true`
-- **文件夹删除**：异步操作，接口返回 `task_id`，shortcut 会先做有限轮询；如果在轮询窗口内完成，则直接返回成功结果
-- **轮询超时不是失败**：文件夹删除内置最多轮询 30 次、每次间隔 2 秒；如果轮询结束任务仍未完成，会返回 `task_id`、`status`、`ready=false`、`timed_out=true` 和 `next_command`
-- **继续查询**：当看到 `next_command` 时，改用 `lark-cli drive +task_result --scenario task_check --task-id <TASK_ID>` 继续查询
-- **状态值**：`task_check` 的服务端状态通常是 `success`、`fail`、`process`
+- **删除可能需要等待**：删除操作在服务端可能异步处理，shortcut 会在本次命令内自动做有限次数的结果轮询
+- **已完成则停止**：如果返回 `deleted=true`，且没有返回 `next_command`，说明删除已经完成，不需要再调用 `drive +task_result`
+- **未完成再续查**：如果超过内置轮询次数仍未完成，会返回 `ready=false`、`timed_out=true`、`task_id` 和 `next_command`；此时按 `next_command` 继续查询删除结果
+- **task_id 不是成功条件**：`task_id` 只是续查凭据。没有 `task_id` 但返回 `deleted=true` 时，也表示删除已完成
+- **失败处理**：如果返回 `failed=true` 或 `status=fail`，按错误信息和 `task_id` 报告删除失败；不要重复删除同一资源
+
+## 常见错误处理
+
+| 错误码 | 含义 | 建议处理 |
+|--------|------|----------|
+| `1061007` | 文件已删除 | 视为目标已不可用，无需重试删除 |
+| `99991400` | 命中接口限频 | 等待一段时间后重试；批量删除时保持串行并降低频率 |
+| `99991679` | 缺失 scope | 按错误里的 `missing_scopes`、`hint` 申请/授权所需 scope 后重试 |
 
 ## 推荐续跑方式
 
 ```bash
-# 第一步：先直接删除文件夹
+# 第一步：先直接删除资源
 lark-cli drive +delete \
-  --file-token <FOLDER_TOKEN> \
-  --type folder \
+  --file-token <FILE_OR_FOLDER_TOKEN> \
+  --type <TYPE> \
   --yes
 
-# 如果返回 ready=false / timed_out=true，再继续查
+# 只有返回 ready=false / timed_out=true 或 next_command 时，才需要继续查
 lark-cli drive +task_result \
   --scenario task_check \
   --task-id <TASK_ID>

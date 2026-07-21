@@ -76,4 +76,4 @@ CLI 提供三种互斥的 scope 表达方式：
 ## 不在本 skill 范围
 
 - OpenAPI spec 全量导出、实时日志 tail、Webhook 消费、多鉴权方式：本期不支持。
-- 身份选择、权限不足处理（`missing_scopes`→`console_url`）、exit-10 审批、通用"禁输出密钥"红线、高风险操作通用框架：见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不在此重复。
+- 身份选择、权限不足处理（`missing_scopes`→`console_url`）、exit-10 审批、通用"禁输出密钥"红线、高风险操作通用框架：见 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)，不在此重复。

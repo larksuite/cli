@@ -17,6 +17,7 @@ import (
 
 // TestDocs_UpdateWorkflow tests the create, update, and verify lifecycle.
 func TestDocs_UpdateWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)

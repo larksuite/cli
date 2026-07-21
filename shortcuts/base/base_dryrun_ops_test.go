@@ -117,6 +117,14 @@ func TestDryRunRecordOps(t *testing.T) {
 	)
 	assertDryRunContains(t, dryRunRecordList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records", "offset=0", "limit=200", "view_id=viw_1", "field_id=Name", "field_id=Age")
 
+	listFieldNamesAliasRT := newBaseTestRuntimeWithSlices(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
+		map[string][]string{"field-names": {"Name", "Age"}},
+		nil,
+		map[string]int{"limit": 20},
+	)
+	assertDryRunContains(t, dryRunRecordList(ctx, listFieldNamesAliasRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records", "limit=20", "field_id=Name", "field_id=Age")
+
 	filteredListRT := newBaseTestRuntimeWithArrays(
 		map[string]string{
 			"base-token":  "app_x",

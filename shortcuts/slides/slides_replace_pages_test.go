@@ -42,7 +42,7 @@ func TestReplacePagesCreatesBeforeThenDeletesOld(t *testing.T) {
 		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"slide_id": "new2", "revision_id": 11},
+			"data": map[string]interface{}{"slide_id": "new2", "revision_id": 11, "issues": "slide schema issue"},
 		},
 		OnMatch: func(req *http.Request) {
 			requestOrder = append(requestOrder, req.Method)
@@ -122,6 +122,9 @@ func TestReplacePagesCreatesBeforeThenDeletesOld(t *testing.T) {
 	first, _ := results[0].(map[string]interface{})
 	if first["old_slide_id"] != "old2" || first["new_slide_id"] != "new2" || first["status"] != "replaced" {
 		t.Fatalf("result = %#v", first)
+	}
+	if first["issues"] != "slide schema issue" {
+		t.Fatalf("result.issues = %v, want slide schema issue", first["issues"])
 	}
 }
 

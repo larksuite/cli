@@ -7,7 +7,7 @@
 ## Required Flow
 
 1. 记录创建或编辑返回的 `xml_presentation_id`，以及已知的 `slide_id` / `revision_id`。
-2. 用 `xml_presentations.get` 回读全文 XML。
+2. 用 `slides +xml-get` 回读全文 XML 到本地文件。
 3. 检查实际页数是否符合计划或用户要求。
 4. 检查每页 `<data>` 内是否有预期主要元素。
 5. 检查没有明显空白页、破损页、缺失标题或缺失主视觉。
@@ -19,13 +19,15 @@
 回读命令：
 
 ```bash
-lark-cli slides xml_presentations get --as user \
-  --params '{"xml_presentation_id":"YOUR_ID"}'
+lark-cli slides +xml-get --as user \
+  --presentation "YOUR_ID" \
+  --output .lark-slides/plan/<deck-or-task-id>/readback.xml \
+  --json
 ```
 
 ## Automated XML Text Overlap Lint
 
-回读 XML 保存到本地文件后，优先运行 XML 语法和文本重叠静态检查：
+`slides +xml-get` 保存 XML 到本地文件后，优先运行 XML 语法和文本重叠静态检查：
 
 ```bash
 python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation.xml>
@@ -42,7 +44,42 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 | code | 含义 | 处理方式 |
 |------|------|----------|
 | `xml_not_well_formed` | XML 语法错误或文本未转义 | 修复标签闭合、属性引号、`&` / `<` / `>` 转义 |
+| `sml_prefixed_tag` | SML 元素使用了命名空间前缀，如 `<ns0:slide>` 或 `<sml:shape>` | 使用 `<slide xmlns="http://www.larkoffice.com/sml/2.0">` 的默认命名空间，或使用无前缀标签 |
+| `sxsd_unsupported_tag` | 使用了 SXSD 不支持的标签 | 按 lint `hint` 替换为受支持标签；常见如 `textbox -> <shape type="text">`、`image -> <img>` |
+| `sxsd_unsupported_attr` | 支持的标签上使用了不支持的属性 | 按 lint `hint` 改为支持的属性；常见如 `x -> topLeftX`、`fontColor -> color` |
+| `iconpark_unsupported_icon_type` | `<icon>` 使用了 `iconpark-index.json` 中不存在的 `iconType` | 按 lint `hint` 改为名单内的 `iconType`，或先用 `scripts/iconpark_tool.py` 搜索 |
+| `icon_missing_fill_color` | 视觉规范要求 `<icon>` 设置 `<fill><fillColor color="..."/></fill>`，避免图标不可见 | 给 `<icon>` 添加显式非透明填充色，例如 `rgba(37, 99, 235, 1)` |
+| `icon_transparent_fill_color` | `<icon>` 的 `fillColor` 是透明色，不满足视觉可见性要求 | 改成与背景有足够对比的非透明颜色 |
 | `bbox_overlap` | 文本元素的估算绘制区域明显重叠 | 拉开文本坐标、缩小文本框/字号，或改成明确的分栏/分组结构 |
+
+## Screenshot QA
+
+获取页面截图后，必须做视觉验收；不要只凭 XML 回读或静态 lint 结论声称截图验收通过。验收时假设页面存在问题，主动寻找并报告所有风险，包括轻微问题。
+
+```text
+请逐页目视检查这些幻灯片截图。先假设存在问题，并尽量找出它们。
+
+重点检查：
+- 元素重叠：文字与形状、图片或图表互相遮挡，线条穿过文字，卡片或标签堆叠。
+- 文本溢出或被裁切：靠近页面边缘、文本框边界或卡片边界处被截断。
+- 装饰元素位置错误：分割线、强调线或标签底板按单行文字布置，但标题或正文换行后压住文字或距离异常。
+- 来源标注、页脚或页码与上方内容碰撞。
+- 元素距离过近：相邻元素间距明显不足，卡片或分区几乎贴在一起；按 960x540 画布估算，小于约 15 px 的间隔通常要标记。
+- 间距不均：局部留白过大，另一处过于拥挤。
+- 页面边距不足：主体内容贴近幻灯片边缘；按 960x540 画布估算，小于约 30 px 的外边距通常要标记。
+- 列、卡片、图标或同类元素没有稳定对齐。
+- 图片或图表渲染异常：空白、变形、低清、关键内容不可读或预期图形缺失。
+- 文本对比度不足，例如浅灰文字放在米色或浅色背景上。
+- 图标对比度不足，例如深色图标放在深色背景上，且没有浅色圆形或底板承托。
+- 文本框过窄，导致不必要的频繁换行。
+- 残留占位符、模板默认文字或未替换内容。
+
+对每一页分别列出发现的问题或可疑区域，即使只是轻微问题也要记录。
+
+报告所有发现的问题，包括轻微问题。
+```
+
+必须根据问题严重度决定是否修复：空白页、破图、文字遮挡、明显裁切、低对比不可读、占位符残留等必须先修复再交付；轻微间距或对齐问题如果不修复，最终验证记录要说明已知风险。
 
 ## Page Count And Structure
 
@@ -76,14 +113,6 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 - 大量形状坐标完全相同，导致主体内容重叠。
 - 渐变背景回退成空白或白底，导致文字不可读。
 
-## Whiteboard Elements
-
-`slide.get` 回读 XML 时，`<whiteboard>` 块只返回位置属性（`topLeftX`、`topLeftY`、`width`、`height`），SVG / Mermaid 内容**不随 XML 返回**。
-
-- whiteboard 验证只能核对坐标是否越界：`topLeftX + width ≤ 960`，`topLeftY + height ≤ 540`。
-- SVG 和 Mermaid 内容的正确性无法通过回读 XML 验证，需要人工视觉验收。
-- 不要在验证记录中声称 whiteboard 内容已验证，除非用户确认了视觉效果。
-
 ## Layout And Overflow Risk
 
 优先修复这些明显风险：
@@ -101,7 +130,7 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 
 ```text
 验证记录：
-- 回读：已执行 xml_presentations.get，实际页数 N / 预期 N。
+- 回读：已执行 slides +xml-get，实际页数 N / 预期 N。
 - 关键页：架构解释 / Self-Attention / 对比或演进 / 总结页均存在。
 - 结构：检查了主要 shape/img/table/chart 元素，无明显空白页或破损页。
 - 布局：检查了标题层级、主视觉、重叠/越界/文本溢出风险。
