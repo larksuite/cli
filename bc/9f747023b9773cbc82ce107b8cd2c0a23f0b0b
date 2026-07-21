@@ -1,0 +1,44 @@
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_4fecb5635a7790::t_7782ce717a0d48 647,666
+  s_cbf2315abb9643::t_884d53df4b385d 216-218
+  s_4fecb5635a7790::t_6272ac2edabad0 198,700
+  s_cbf2315abb9643::t_89b39f04872c99 219,732-772,795-810,823-826,836-837,841-844,853-906,915-917,919-921,956-992,994-996,1384
+  s_4fecb5635a7790::t_be136b980329ba 204
+  s_cbf2315abb9643::t_ad68cf14f8216c 220-222
+  s_4fecb5635a7790::t_a27939141ce5d5 687-688,695,697
+  s_4fecb5635a7790::t_87056182bbcc41 205,214-215,682
+  s_cbf2315abb9643::t_08c7e8b7c28978 729-731
+  s_4fecb5635a7790::t_9538ca380b0307 728
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_cbf2315abb9643::t_ed149d4ab1eb3c 995-1000
+  s_cbf2315abb9643::t_0d2391ec8c0cd8 992-993
+  s_cbf2315abb9643::t_9d0e385b84c3da 1003-1005
+  s_cbf2315abb9643::t_d0f7f54d8a7bed 565-732,994,1001-1002
+  s_4fecb5635a7790::t_be86bccf3fd47d 1006
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bc9f747023b9773cbc82ce107b8cd2c0a23f0b0b",
+  "prompts": {},
+  "sessions": {
+    "s_4fecb5635a7790": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f831c-9f1a-73c3-89c7-44c748b48b79",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_cbf2315abb9643": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f82a5-34e7-77e2-9adf-3ea9efea3f46",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
