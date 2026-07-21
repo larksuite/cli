@@ -39,6 +39,12 @@ func runCreateShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buffer, a
 	return parent.Execute()
 }
 
+func runCreateShortcutWithStdin(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buffer, stdin string, args []string) error {
+	t.Helper()
+	f.IOStreams.In = strings.NewReader(stdin)
+	return runCreateShortcut(t, f, stdout, args)
+}
+
 const (
 	validCreateSimpleJSON     = `{"text":"test objective","mention":["ou_123"]}`
 	validCreateRichTextJSON   = `{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"test content"}}]}}]}`
@@ -181,6 +187,66 @@ func TestCreateValidate_RejectCycleIDForKeyResult(t *testing.T) {
 	var ve *errs.ValidationError
 	if !errors.As(err, &ve) || ve.Param != "--cycle-id" {
 		t.Fatalf("expected param --cycle-id, got: %v", err)
+	}
+}
+
+func TestCreateValidate_RejectNotesForKeyResult(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
+	err := runCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--level", "key-result",
+		"--objective-id", "456",
+		"--content", validCreateSimpleJSON,
+		"--notes", `{"text":"objective only notes"}`,
+	})
+	if err == nil {
+		t.Fatal("expected notes rejection for key-result")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--notes" {
+		t.Fatalf("expected param --notes, got: %v", err)
+	}
+}
+
+func TestCreateValidate_RejectCategoryIDForKeyResult(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
+	err := runCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--level", "key-result",
+		"--objective-id", "456",
+		"--content", validCreateSimpleJSON,
+		"--category-id", "123",
+	})
+	if err == nil {
+		t.Fatal("expected category-id rejection for key-result")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--category-id" {
+		t.Fatalf("expected param --category-id, got: %v", err)
+	}
+}
+
+func TestCreateValidate_ContentAndNotesCannotBothReadStdin(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
+	err := runCreateShortcutWithStdin(t, f, stdout, `{"text":"stdin content"}`, []string{
+		"+create",
+		"--level", "objective",
+		"--cycle-id", "123",
+		"--content", "-",
+		"--notes", "-",
+	})
+	if err == nil {
+		t.Fatal("expected duplicate stdin error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--notes" {
+		t.Fatalf("expected param --notes, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "stdin (-) can only be used by one flag") {
+		t.Fatalf("expected duplicate stdin error, got: %v", err)
 	}
 }
 
@@ -448,6 +514,49 @@ func TestCreateDryRun_Objective(t *testing.T) {
 	}
 	if got := gjson.Get(output, "data.api.0.body.content.blocks.0.paragraph.elements.1.mention.user_id").String(); got != "ou_123" {
 		t.Fatalf("dry-run mention user_id = %q, want ou_123; output: %s", got, output)
+	}
+}
+
+func TestCreateDryRun_ObjectiveWithNotes(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
+	err := runCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--level", "objective",
+		"--cycle-id", "123",
+		"--content", validCreateSimpleJSON,
+		"--notes", `{"text":"objective notes","mention":["ou_note"]}`,
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := stdout.String()
+	if got := gjson.Get(output, "data.api.0.body.notes.blocks.0.paragraph.elements.0.text_run.text").String(); got != "objective notes" {
+		t.Fatalf("dry-run notes text = %q, want objective notes; output: %s", got, output)
+	}
+	if got := gjson.Get(output, "data.api.0.body.notes.blocks.0.paragraph.elements.1.mention.user_id").String(); got != "ou_note" {
+		t.Fatalf("dry-run notes mention user_id = %q, want ou_note; output: %s", got, output)
+	}
+}
+
+func TestCreateDryRun_ObjectiveWithCategoryID(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, createTestConfig(t))
+	err := runCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--level", "objective",
+		"--cycle-id", "123",
+		"--content", validCreateSimpleJSON,
+		"--category-id", "7249339036661170180",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := stdout.String()
+	if got := gjson.Get(output, "data.api.0.body.category_id").String(); got != "7249339036661170180" {
+		t.Fatalf("dry-run category_id = %q, want 7249339036661170180; output: %s", got, output)
 	}
 }
 

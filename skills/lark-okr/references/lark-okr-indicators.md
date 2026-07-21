@@ -40,11 +40,11 @@ lark-cli okr objective.indicators list --objective-id "<目标ID>" [flags]
 ```bash
 # 获取目标的量化指标
 lark-cli okr objective.indicators list \
-  --objective-id 7652569715131075772
+  --objective-id 7000000000000000001
 
 # 指定用户 ID 类型
 lark-cli okr objective.indicators list \
-  --objective-id 7652569715131075772 \
+  --objective-id 7000000000000000001 \
   --user-id-type "user_id"
 ```
 
@@ -59,6 +59,63 @@ lark-cli okr objective.indicators list \
 ### 返回
 
 返回 `indicator` 字段，包含该目标的量化指标详情。
+
+示例返回值:
+有进度时:
+```json 
+{
+   "ok": true,
+   "identity": "user",
+   "data": {
+      "indicator": {
+         "create_time": "1782835200000",    // 创建时间
+         "current_value": 60,               // 当前值
+         "current_value_calculate_type": 0, // 当前值计算方式 0(手动更新)|2(按KR计算)|3(按拆解计算)。 仅当此处为 0 时，允许使用 patch API 更新当前值
+         "entity_id": "7000000000000000001",// 指标挂载的 Objective/KR id
+         "entity_type": 2,                  // 指标挂载在 Objective还是KR 上 2(Objective)|3(KR)
+         "id": "7000000000000000002",       // 指标本身的 ID
+         "indicator_status": 0,             // 指标状态 -1(未定义)|0(正常)|1(有风险)|2(延期)
+         "owner": {                         // 指标归属的用户
+            "owner_type": "user",
+            "user_id": "ou_xxx"
+         },
+         "start_value": 0,                  // 起始值, 默认0
+         "status_calculate_type": 0,        // 状态计算方式
+         "target_value": 100,               // 目标值, 默认 100
+         "unit": {                          // 指标单位，默认是公共的百分比
+            "unit_type": 0,                 // 单位类型 0(公共)|1(自定义)
+            "unit_value": "PERCENT"         // 单位名
+         },
+         "update_time": "1782835200000"     // 更新时间
+      }
+   }
+}
+```
+默认初始进度:
+```json 
+{
+   "ok": true,
+   "identity": "user",
+   "data": {
+      "indicator": {
+         "create_time": "1782835200000",
+         "entity_id": "7000000000000000001",
+         "entity_type": 2,
+         "id": "7000000000000000002",
+         "indicator_status": -1,
+         "owner": {
+            "owner_type": "user",
+            "user_id": "ou_xxx"
+         },
+         "status_calculate_type": 0,
+         "update_time": "1782835200000"
+      }
+   }
+}
+```
+
+默认初始进度不携带 start_value/current_value/target_value/unit 等信息，若直接设置当前值，则使用百分比作为默认单位。
+由于默认单位为百分比，当一定要计算数值时，可以视作 0%，但是向用户汇报默认初始进度时，应当明确对应的 O/KR 未设置进度这一点，以和真正的 0% 区别开。
 
 ---
 
@@ -187,12 +244,7 @@ lark-cli okr indicators patch \
    ```bash
    lark-cli okr indicators patch \
      --indicator-id "ind-123" \
-     --data '{
-       "current_value": 65.0,
-       "current_value_calculate_type": 0,
-       "indicator_status": 1,
-       "status_calculate_type": 0
-     }'
+     --data '{"current_value":65.0,"current_value_calculate_type":0,"indicator_status":1,"status_calculate_type":0}'
    ```
 
 4. **验证更新结果**
@@ -210,10 +262,7 @@ lark-cli okr key_result.indicators list --key-result-id 7652569715131075780
 # 2. 更新目标值和单位
 lark-cli okr indicators patch \
   --indicator-id 7652569715131075781 \
-  --data '{
-    "target_value": 500,
-    "unit": {"unit_type": 0, "unit_value": "YUAN"}
-  }'
+  --data '{"target_value":500,"unit":{"unit_type":0,"unit_value":"YUAN"}}'
 ```
 
 ## 参考

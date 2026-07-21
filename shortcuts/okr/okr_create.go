@@ -24,6 +24,8 @@ type createParams struct {
 	ObjectiveID string
 	Style       string
 	Content     *ContentBlock
+	Notes       *ContentBlock
+	CategoryID  string
 	UserIDType  string
 }
 
@@ -36,7 +38,9 @@ func (createContentMultipleJSONValuesError) Error() string {
 var errCreateContentMultipleJSONValues createContentMultipleJSONValuesError
 
 type okrCreateRequestBody struct {
-	Content *ContentBlock `json:"content"`
+	Content    *ContentBlock `json:"content"`
+	Notes      *ContentBlock `json:"notes,omitempty"`
+	CategoryID string        `json:"category_id,omitempty"`
 }
 
 type okrCreateObjectiveQuery struct {
@@ -68,12 +72,12 @@ type okrCreateKeyResultOutput struct {
 	KeyResultID string `json:"key_result_id"`
 }
 
-func decodeCreateContentStrict(contentStr string, target interface{}, message string) error {
-	dec := json.NewDecoder(bytes.NewReader([]byte(contentStr)))
+func decodeCreateContentStrict(inputStr string, target interface{}, param, message string) error {
+	dec := json.NewDecoder(bytes.NewReader([]byte(inputStr)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(target); err != nil {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, message, err).
-			WithParam("--content").
+			WithParam(param).
 			WithCause(err)
 	}
 	var trailing interface{}
@@ -82,16 +86,68 @@ func decodeCreateContentStrict(contentStr string, target interface{}, message st
 			err = errCreateContentMultipleJSONValues
 		}
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, message, err).
-			WithParam("--content").
+			WithParam(param).
 			WithCause(err)
 	}
 	return nil
 }
 
+func parseCreateContentValue(inputStr, param, style string) (*ContentBlock, error) {
+	if style == "simple" {
+		var sp SemiPlainContent
+		if err := decodeCreateContentStrict(inputStr, &sp, param, fmt.Sprintf("%s must be valid semi-plain JSON: {\"text\":\"...\",\"mention\":[\"...\"]}: %%s", param)); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(sp.Text) == "" {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s text is required and cannot be empty", param).WithParam(param)
+		}
+		for i, mention := range sp.Mention {
+			if strings.TrimSpace(mention) == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s mention[%d] cannot be empty", param, i).WithParam(param)
+			}
+		}
+		if len(sp.Docs) > 0 || len(sp.Images) > 0 {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s docs and images are not supported in simple style input; use richtext style or remove these fields", param).WithParam(param)
+		}
+		return sp.ToContentBlock(), nil
+	}
+
+	var cb ContentBlock
+	if err := decodeCreateContentStrict(inputStr, &cb, param, fmt.Sprintf("%s must be valid ContentBlock JSON: %%s", param)); err != nil {
+		return nil, err
+	}
+	if len(cb.Blocks) == 0 {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s must contain at least one block", param).WithParam(param)
+	}
+
+	hasNonEmptyParagraph := false
+	for _, block := range cb.Blocks {
+		if block.Paragraph != nil && len(block.Paragraph.Elements) > 0 {
+			hasNonEmptyParagraph = true
+			break
+		}
+		if block.Gallery != nil && len(block.Gallery.Images) > 0 {
+			hasNonEmptyParagraph = true
+			break
+		}
+	}
+	if !hasNonEmptyParagraph {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s cannot be empty", param).WithParam(param)
+	}
+	return &cb, nil
+}
+
 func projectCreateRequestBody(body okrCreateRequestBody) map[string]interface{} {
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"content": body.Content,
 	}
+	if body.Notes != nil {
+		result["notes"] = body.Notes
+	}
+	if body.CategoryID != "" {
+		result["category_id"] = body.CategoryID
+	}
+	return result
 }
 
 func projectCreateObjectiveQuery(query okrCreateObjectiveQuery) map[string]interface{} {
@@ -131,6 +187,7 @@ func parseCreateParams(runtime *common.RuntimeContext) (*createParams, error) {
 		CycleID:     runtime.Str("cycle-id"),
 		ObjectiveID: runtime.Str("objective-id"),
 		Style:       runtime.Str("style"),
+		CategoryID:  runtime.Str("category-id"),
 		UserIDType:  runtime.Str("user-id-type"),
 	}
 
@@ -141,51 +198,36 @@ func parseCreateParams(runtime *common.RuntimeContext) (*createParams, error) {
 	if err := common.RejectDangerousCharsTyped("--content", contentStr); err != nil {
 		return nil, err
 	}
-
-	if p.Style == "simple" {
-		var sp SemiPlainContent
-		if err := decodeCreateContentStrict(contentStr, &sp, "--content must be valid semi-plain JSON: {\"text\":\"...\",\"mention\":[\"...\"]}: %s"); err != nil {
-			return nil, err
-		}
-		if strings.TrimSpace(sp.Text) == "" {
-			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content text is required and cannot be empty").WithParam("--content")
-		}
-		for i, mention := range sp.Mention {
-			if strings.TrimSpace(mention) == "" {
-				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content mention[%d] cannot be empty", i).WithParam("--content")
-			}
-		}
-		if len(sp.Docs) > 0 || len(sp.Images) > 0 {
-			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content docs and images are not supported in simple style input; use richtext style or remove these fields").WithParam("--content")
-		}
-		p.Content = sp.ToContentBlock()
-		return p, nil
-	}
-
-	var cb ContentBlock
-	if err := decodeCreateContentStrict(contentStr, &cb, "--content must be valid ContentBlock JSON: %s"); err != nil {
+	content, err := parseCreateContentValue(contentStr, "--content", p.Style)
+	if err != nil {
 		return nil, err
 	}
-	if len(cb.Blocks) == 0 {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must contain at least one block").WithParam("--content")
-	}
+	p.Content = content
 
-	hasNonEmptyParagraph := false
-	for _, block := range cb.Blocks {
-		if block.Paragraph != nil && len(block.Paragraph.Elements) > 0 {
-			hasNonEmptyParagraph = true
-			break
+	if notesStr := runtime.Str("notes"); notesStr != "" {
+		if p.Level != "objective" {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--notes is only supported when --level=objective").WithParam("--notes")
 		}
-		if block.Gallery != nil && len(block.Gallery.Images) > 0 {
-			hasNonEmptyParagraph = true
-			break
+		if err := common.RejectDangerousCharsTyped("--notes", notesStr); err != nil {
+			return nil, err
+		}
+		notes, err := parseCreateContentValue(notesStr, "--notes", p.Style)
+		if err != nil {
+			return nil, err
+		}
+		p.Notes = notes
+	}
+	if p.CategoryID != "" {
+		if p.Level != "objective" {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--category-id is only supported when --level=objective").WithParam("--category-id")
+		}
+		if err := common.RejectDangerousCharsTyped("--category-id", p.CategoryID); err != nil {
+			return nil, err
+		}
+		if id, err := strconv.ParseInt(p.CategoryID, 10, 64); err != nil || id <= 0 {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--category-id must be a positive int64").WithParam("--category-id")
 		}
 	}
-	if !hasNonEmptyParagraph {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content cannot be empty").WithParam("--content")
-	}
-
-	p.Content = &cb
 	return p, nil
 }
 
@@ -204,6 +246,8 @@ var OKRCreate = common.Shortcut{
 		{Name: "objective-id", Desc: "objective ID (required for level=key-result)"},
 		{Name: "style", Default: "simple", Desc: "input style for content: simple (semi-plain text JSON) | richtext (ContentBlock JSON)", Enum: []string{"simple", "richtext"}},
 		{Name: "content", Desc: "content: semi-plain JSON {\"text\":\"...\",\"mention\":[\"...\"]} (simple) or ContentBlock JSON (richtext)", Required: true, Input: []string{common.File, common.Stdin}},
+		{Name: "notes", Desc: "objective notes: semi-plain JSON {\"text\":\"...\",\"mention\":[\"...\"]} (simple) or ContentBlock JSON (richtext)", Input: []string{common.File, common.Stdin}},
+		{Name: "category-id", Desc: "objective category ID; use only when classification is requested or the tenant requires categories"},
 		{Name: "user-id-type", Default: "open_id", Desc: "user ID type: open_id | union_id | user_id"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -264,7 +308,7 @@ var OKRCreate = common.Shortcut{
 				Desc(fmt.Sprintf("Dry-run skipped: %s", err.Error()))
 		}
 
-		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content})
+		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content, Notes: p.Notes, CategoryID: p.CategoryID})
 
 		if p.Level == "objective" {
 			params := projectCreateObjectiveQuery(okrCreateObjectiveQuery{
@@ -296,7 +340,7 @@ var OKRCreate = common.Shortcut{
 			return err
 		}
 
-		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content})
+		body := projectCreateRequestBody(okrCreateRequestBody{Content: p.Content, Notes: p.Notes, CategoryID: p.CategoryID})
 
 		if p.Level == "objective" {
 			queryParams := projectCreateObjectiveQuery(okrCreateObjectiveQuery{
