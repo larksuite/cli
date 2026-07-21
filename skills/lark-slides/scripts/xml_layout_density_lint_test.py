@@ -86,6 +86,100 @@ class XmlLayoutDensityLintTest(unittest.TestCase):
         self.assertEqual(issue["elements"], ["trend-card", "trend-title", "trend-copy"])
         self.assertEqual(set(issue), {"level", "code", "schema_version", "target", "rule", "measurement", "elements"})
 
+    def test_lint_xml_warns_for_sparse_short_cards(self) -> None:
+        result = xml_layout_density_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="card-1" type="rect" topLeftX="60" topLeftY="180" width="400" height="105"/>
+                <shape id="text-1" type="text" topLeftX="80" topLeftY="220" width="360" height="30">
+                  <content fontSize="14"><p>期待认识大家</p></content>
+                </shape>
+                <shape id="card-2" type="rect" topLeftX="490" topLeftY="180" width="400" height="105"/>
+                <shape id="text-2" type="text" topLeftX="510" topLeftY="220" width="360" height="30">
+                  <content fontSize="14"><p>化学一起讨论</p></content>
+                </shape>
+                <shape id="card-3" type="rect" topLeftX="60" topLeftY="310" width="400" height="105"/>
+                <shape id="text-3" type="text" topLeftX="80" topLeftY="350" width="360" height="30">
+                  <content fontSize="14"><p>吉他随时交流</p></content>
+                </shape>
+                <shape id="card-4" type="rect" topLeftX="490" topLeftY="310" width="400" height="105"/>
+                <shape id="text-4" type="text" topLeftX="510" topLeftY="350" width="360" height="30">
+                  <content fontSize="14"><p>共度美好四年</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        container_issues = [
+            issue for issue in result["slides"][0]["issues"] if issue["code"] == "sparse_container_content"
+        ]
+        self.assertEqual(
+            [issue["target"]["container_id"] for issue in container_issues],
+            ["card-1", "card-2", "card-3", "card-4"],
+        )
+        self.assertTrue(all(issue["target"]["bbox"]["height"] == 105 for issue in container_issues))
+        self.assertTrue(all(issue["measurement"]["content_coverage_ratio"] < 0.15 for issue in container_issues))
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][0]["issues"]],
+            [
+                "sparse_container_content",
+                "sparse_container_content",
+                "sparse_container_content",
+                "sparse_container_content",
+                "sparse_slide_content",
+            ],
+        )
+
+    def test_lint_xml_warns_when_whole_slide_has_too_little_effective_content(self) -> None:
+        result = xml_layout_density_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="background" type="rect" topLeftX="0" topLeftY="0" width="960" height="540"/>
+                <shape id="text-1" type="text" topLeftX="60" topLeftY="80" width="200" height="30">
+                  <content fontSize="14"><p>One short line</p></content>
+                </shape>
+                <shape id="text-2" type="text" topLeftX="500" topLeftY="180" width="200" height="30">
+                  <content fontSize="14"><p>Another line</p></content>
+                </shape>
+                <shape id="text-3" type="text" topLeftX="60" topLeftY="310" width="200" height="30">
+                  <content fontSize="14"><p>Third line</p></content>
+                </shape>
+                <shape id="text-4" type="text" topLeftX="500" topLeftY="410" width="200" height="30">
+                  <content fontSize="14"><p>Fourth line</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        issues = [issue for issue in result["slides"][0]["issues"] if issue["code"] == "sparse_slide_content"]
+        self.assertEqual(len(issues), 1)
+        issue = issues[0]
+        self.assertEqual(issue["target"]["bbox"], {"x": 0, "y": 0, "width": 960, "height": 540})
+        self.assertEqual(issue["rule"]["threshold"], 0.035)
+        self.assertLess(issue["measurement"]["content_coverage_ratio"], 0.035)
+        self.assertEqual(issue["measurement"]["content_element_count"], 4)
+        self.assertNotIn("background", issue["elements"])
+
+    def test_lint_xml_ignores_isolated_short_layout_bar(self) -> None:
+        result = xml_layout_density_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="summary-bar" type="rect" topLeftX="52" topLeftY="82" width="856" height="105"/>
+                <shape id="summary" type="text" topLeftX="72" topLeftY="115" width="816" height="30">
+                  <content fontSize="14"><p>One concise summary</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["slides"][0]["issues"], [])
+
     def test_lint_xml_counts_rect_own_content_as_visible_content(self) -> None:
         result = xml_layout_density_lint.lint_xml(
             """
