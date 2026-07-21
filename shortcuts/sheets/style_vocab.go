@@ -90,9 +90,11 @@ var cellStyleAliases = []struct{ alias, canonical string }{
 	{"vertical_align", "vertical_alignment"},
 	{"valign", "vertical_alignment"},
 	// wrap family: word_wrap is the sole wrap concept, no ambiguity. 07-20
-	// eval: wrap_text alone produced an 88-issue retry loop on --styles.
+	// eval: wrap_text alone produced an 88-issue retry loop on --styles;
+	// wrap_strategy (the Google Sheets API word) followed on 07-21.
 	{"wrap_text", "word_wrap"},
 	{"text_wrap", "word_wrap"},
+	{"wrap_strategy", "word_wrap"},
 }
 
 // cellStyleEnumFields sources the enum vocabulary for enum-bearing
@@ -413,20 +415,24 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		delete(in, key)
 	}
 	for _, side := range []string{"top", "bottom", "left", "right"} {
-		key := "border_" + side
-		if v, has := in[key]; has {
-			if err := setSide(side, v, key); err != nil {
-				return err
-			}
-			delete(in, key)
-		}
-		for attr := range attrs {
-			key := "border_" + side + "_" + attr
+		// Both word orders appear in the wild: border_bottom (07-20 eval) and
+		// bottom_border (07-21), same for the flattened attribute triples.
+		for _, key := range []string{"border_" + side, side + "_border"} {
 			if v, has := in[key]; has {
-				if err := setSideAttr(side, attr, v, key); err != nil {
+				if err := setSide(side, v, key); err != nil {
 					return err
 				}
 				delete(in, key)
+			}
+		}
+		for attr := range attrs {
+			for _, key := range []string{"border_" + side + "_" + attr, side + "_border_" + attr} {
+				if v, has := in[key]; has {
+					if err := setSideAttr(side, attr, v, key); err != nil {
+						return err
+					}
+					delete(in, key)
+				}
 			}
 		}
 	}

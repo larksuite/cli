@@ -163,6 +163,16 @@ var stylesPriorCorpus = []struct {
 	{name: "full-form all-shorthand medium in style slot",
 		fields: map[string]interface{}{"border_styles": map[string]interface{}{"all": map[string]interface{}{"style": "medium"}}},
 		check:  wantBorder("bottom", "weight", "medium")},
+	// side-first word order + Google Sheets wrap word (07-21 evening batch)
+	{name: "side-first bottom_border object",
+		fields: map[string]interface{}{"bottom_border": map[string]interface{}{"style": "solid"}},
+		check:  wantBorder("bottom", "style", "solid")},
+	{name: "side-first bottom_border_style scalar",
+		fields: map[string]interface{}{"bottom_border_style": "solid"},
+		check:  wantBorder("bottom", "style", "solid")},
+	{name: "wrap_strategy aliases to word_wrap",
+		fields: map[string]interface{}{"wrap_strategy": "auto-wrap"},
+		check:  wantStyle("word_wrap", "auto-wrap")},
 	// prescriptions (ambiguous / unsupported / typo)
 	{name: "fore_color prescribed", fields: map[string]interface{}{"fore_color": "#F00"}, wantErr: "ambiguous"},
 	{name: "indent rejected not ignored", fields: map[string]interface{}{"indent": float64(2)}, wantErr: "not a supported style field"},
