@@ -109,8 +109,6 @@ func FormatValue(w io.Writer, data interface{}, format Format) {
 		legacyStderrf("ndjson marshal error: %v\n", err)
 	case isOutputMarshalError(err):
 		legacyStderrf("json marshal error: %v\n", err)
-	case format == FormatCSV:
-		legacyStderrf("csv write error: %v\n", err)
 	}
 }
 
@@ -161,11 +159,8 @@ func NewPaginatedFormatter(w io.Writer, format Format) *PaginatedFormatter {
 // FormatPage formats one page of items.
 func (pf *PaginatedFormatter) FormatPage(data interface{}) {
 	err := pf.WritePage(data)
-	switch {
-	case isOutputMarshalError(err) && (pf.Format == FormatJSON || pf.Format == FormatNDJSON):
+	if isOutputMarshalError(err) && (pf.Format == FormatJSON || pf.Format == FormatNDJSON) {
 		legacyStderrf("ndjson marshal error: %v\n", err)
-	case err != nil && pf.Format == FormatCSV:
-		legacyStderrf("csv write error: %v\n", err)
 	}
 }
 

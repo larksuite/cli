@@ -11,12 +11,10 @@ import (
 
 // FormatAsCSV formats data as CSV (with header) and writes it to w.
 func FormatAsCSV(w io.Writer, data interface{}) {
-	if err := WriteCSV(w, data); err != nil {
-		if isOutputMarshalError(err) {
-			legacyStderrf("json marshal error: %v\n", err)
-		} else {
-			legacyStderrf("csv write error: %v\n", err)
-		}
+	// Match the other legacy wrappers: surface only a marshal failure (as the
+	// JSON fallback historically did); plain write failures stay swallowed.
+	if err := WriteCSV(w, data); isOutputMarshalError(err) {
+		legacyStderrf("json marshal error: %v\n", err)
 	}
 }
 
@@ -28,12 +26,8 @@ func WriteCSV(w io.Writer, data interface{}) error {
 // FormatAsCSVPaginated formats data as CSV with pagination awareness.
 // When isFirstPage is true, outputs the header row; otherwise only data rows.
 func FormatAsCSVPaginated(w io.Writer, data interface{}, isFirstPage bool) {
-	if err := WriteCSVPaginated(w, data, isFirstPage); err != nil {
-		if isOutputMarshalError(err) {
-			legacyStderrf("json marshal error: %v\n", err)
-		} else {
-			legacyStderrf("csv write error: %v\n", err)
-		}
+	if err := WriteCSVPaginated(w, data, isFirstPage); isOutputMarshalError(err) {
+		legacyStderrf("json marshal error: %v\n", err)
 	}
 }
 
