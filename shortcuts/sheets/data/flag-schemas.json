@@ -648,6 +648,35 @@
             }
           }
         }
+      },
+      "writes": {
+        "type": "array",
+        "description": "多区域写入项数组（最多 100 项），整批单次原子提交；支持跨 sheet。",
+        "items": {
+          "type": "object",
+          "required": [
+            "range",
+            "cells"
+          ],
+          "properties": {
+            "sheet_id": {
+              "type": "string",
+              "description": "目标子表 reference_id；与 sheet_name 二选一，必须写在每一项里（不认顶层 sheet 定位）。"
+            },
+            "sheet_name": {
+              "type": "string",
+              "description": "目标子表名；与 sheet_id 二选一，必须写在每一项里。"
+            },
+            "range": {
+              "type": "string",
+              "description": "A1 矩形范围，行列维度必须与 cells 严格一致（同 --range）。"
+            },
+            "cells": {
+              "type": "array",
+              "description": "二维单元格数组，结构同 --cells（value / formula / cell_styles / border_styles 等，见 set_cell_range#/properties/cells）。"
+            }
+          }
+        }
       }
     },
     "+cells-set-style": {

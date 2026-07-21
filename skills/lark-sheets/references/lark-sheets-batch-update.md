@@ -14,7 +14,7 @@
 
 写入。把**跨类型、有顺序依赖**的多个写入操作合并为一次请求按序执行（如插列 → 写表头 → 回填数据）。注意：不支持嵌套 `+batch-update`。
 
-**先分流再动手（按操作组合选入口）**：美化收尾（样式 / 合并 / 行高列宽 / 冻结的任意组合）→ 一次 `+styles-put`（声明式规格，见 `lark-sheets-styles-put`），不要拼 `--operations` 子操作数组；**同一个写操作**打多个区域 → 用该命令自身的复数形态（`+cells-batch-clear` / `+dim-delete --ranges` / resize 的 map 形态等）；只有跨类型的原子操作链才用本命令。
+**先分流再动手（按操作组合选入口）**：美化收尾（样式 / 合并 / 行高列宽 / 冻结的任意组合）→ 一次 `+styles-put`（声明式规格，见 `lark-sheets-styles-put`），不要拼 `--operations` 子操作数组；**同一个写操作**打多个区域 → 用该命令自身的复数形态（`+cells-set --writes` / `+cells-batch-clear` / `+dim-delete --ranges` / resize 的 map 形态等）；只有跨类型的原子操作链才用本命令。
 
 **不可放进 `--operations` 的写 shortcut**（`shortcut` 枚举不含它们，强行写入会被校验拒）：`+cells-set-image`（需本地上传图片）、`+styles-put` / `+dropdown-update` / `+dropdown-delete` / `+cells-batch-clear`（自身已是批量入口，不可再嵌套）、`+dim-move`。这些操作需在 `+batch-update` 之外单独调用。
 

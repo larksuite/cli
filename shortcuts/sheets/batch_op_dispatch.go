@@ -87,7 +87,14 @@ func objDeleteTranslate(spec objectCRUDSpec) batchTranslateFn {
 // flag error is identical too (locked by TestBatchOp_ErrorEquivalence).
 var batchOpDispatch = map[string]batchOpMapping{
 	// ─── 单元格内容 ──────────────────────────────────────────────────
-	"+cells-set":       {"set_cell_range", cellsSetInput},
+	"+cells-set": {"set_cell_range", func(fv flagView, token, sid, sname string) (map[string]interface{}, error) {
+		// The --writes plural form expands into its own atomic batch and
+		// cannot nest; sub-ops carry one range+cells each.
+		if fv.Changed("writes") {
+			return nil, sheetsValidationForFlag("writes", `"writes" is not supported inside +batch-update (it expands into its own atomic batch); call +cells-set --writes standalone, or give each sub-op a single range + cells`)
+		}
+		return cellsSetInput(fv, token, sid, sname)
+	}},
 	"+cells-set-style": {"set_cell_range", cellsSetStyleInput},
 	"+cells-clear":     {"clear_cell_range", cellsClearInput},
 	"+cells-replace":   {"replace_data", replaceInput},

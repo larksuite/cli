@@ -89,6 +89,19 @@
 
 ⚠️ **逐行写入公式是常见低效写法**：对每一行单独调用 `+cells-set` 写公式（如 26 次）既慢又易错，且不会自动平移公式引用。正确做法是 1 次模板写入 + 1 次 `--copy-to-range`（公式引用自动平移）。
 
+💡 **多个不连续区域写入（批量修公式的正解）**：散布多处（可跨 sheet）的值 / 公式写入，用 `--writes` 一次原子交付——每项 `{sheet_name, range, cells}`（sheet 定位必须写在每项里），不要为此拼 `+batch-update` 的 `--operations`，也不要逐区域多次调用（非原子）：
+
+```bash
+lark-cli sheets +cells-set --url "..." --writes - <<'JSON'
+[
+  {"sheet_name":"明细","range":"D5","cells":[[{"formula":"=IFERROR(C5/B5,0)"}]]},
+  {"sheet_name":"汇总","range":"B3","cells":[[{"formula":"=SUM(明细!C:C)"}]]}
+]
+JSON
+```
+
+范围级统一样式不在 `--writes` 里做（cells 逐格 `cell_styles` 仅用于逐格差异化），写完接 `+styles-put`。
+
 💡 **写入公式前先按迁移规则改写**：如果公式来自 Excel 或包含数组场景，先读取并遵循 `lark-sheets-formula-translation` 的规则完成改写，再把最终公式写入 `formula` 字段。
 
 💡 **内容与样式分离写入（推荐）**：当需要同时写入内容和样式时，`cells` 中每个单元格都带上 `cell_styles` / `border_styles` 会导致入参非常冗长。由于同一区域的样式通常高度重复（如整列统一背景色、统一边框），推荐拆成两步：
@@ -259,8 +272,9 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--range` | string | required | 写入区域（A1 格式） |
-| `--cells` | string + File + Stdin（复合 JSON） | required | JSON：2D 数组 `[[{cell},...],...]`，维度与 `--range` 完全一致；每个 cell 可含 `value` / `formula` / `cell_styles` / `note` / `rich_text`（含 `type="embed-image"` 单元格嵌图）等，完整字段跑 `--print-schema` |
+| `--range` | string | xor | 写入区域（A1 格式）。与 `--writes` 二选一（单区域用 --range+--cells，多区域用 --writes） |
+| `--cells` | string + File + Stdin（复合 JSON） | xor | JSON：2D 数组 `[[{cell},...],...]`，维度与 `--range` 完全一致；每个 cell 可含 `value` / `formula` / `cell_styles` / `note` / `rich_text`（含 `type="embed-image"` 单元格嵌图）等，完整字段跑 `--print-schema` |
+| `--writes` | string + File + Stdin（复合 JSON） | xor | 多区域写入 JSON 数组（最多 100 项），每项 `{sheet_name\|sheet_id, range, cells}`——**sheet 定位必须写在每项里**（与 +batch-update 子操作、+styles-put 项同惯例，不认顶层 --sheet-name），cells 结构同 `--cells`（二维数组，可逐格带 cell_styles/border_styles）。整批展开为**单次原子批量提交**，支持跨 sheet；典型场景：批量修复散布多处的公式、跨表同构写入——不要为此拼 +batch-update 的 --operations。与 `--range`+`--cells` 二选一；范围级统一样式不在此做，写完接 +styles-put |
 | `--allow-overwrite` | bool | optional | 允许覆盖非空 cell（默认 true）；设为 false 时遇非空 cell 报错 |
 | `--max-cells` | int | optional | 防爆，默认 50000（隐藏 flag：不在 `--help` 列出，但可正常传入） |
 | `--copy-to-range` | string | optional | 复制范围（A1 表示法）：把 --range 中 --cells 写入的内容（值/公式/样式，取决于实际传入字段）复制到该区域，公式引用自动平移（如 C2=B2 → C3=B3）。适合先写一行/一块模板再扩展填充整列/整区域（如 --range A1:G1 写模板、--copy-to-range A1:G100 填充 100 行）。支持整行 3:6、整列 C:E、到列尾 D3:D、到行尾 D3:3；支持英文逗号分隔多个目标区域，如 C1:D2,E5:F6 |
@@ -345,6 +359,16 @@ _【维度】行列数必须与 range 完全一致：'A1:C2'→[[_,_,_],[_,_,_]]
 - `rich_text` (array<object>?) — 富文本内容 each: { type: enum, text: string, style?: object, link?: string, mention_token?: string, …共 17 项 }
 - `multiple_values` (array<object>?) — 多值内容，用于支持多选的列表验证单元格 each: { value: oneOf, format?: string }
 - `data_validation` (object?) — 数据验证配置 { type: enum, items?: array<string>, range?: string, operator?: enum, values?: array<oneOf>, …共 9 项 }
+
+### `+cells-set` `--writes`
+
+_多区域写入项数组（最多 100 项），整批单次原子提交；支持跨 sheet_
+
+**数组项**（类型 object）：
+- `sheet_id` (string?) — 目标子表 reference_id；与 sheet_name 二选一，必须写在每一项里（不认顶层 sheet 定位）
+- `sheet_name` (string?) — 目标子表名；与 sheet_id 二选一，必须写在每一项里
+- `range` (string) — A1 矩形范围，行列维度必须与 cells 严格一致（同 --range）
+- `cells` (array) — 二维单元格数组，结构同 --cells（value / formula / cell_styles / border_styles 等，见 set_cell_…
 
 ### `+cells-set-style` `--border-styles`
 

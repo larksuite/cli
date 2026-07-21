@@ -95,6 +95,11 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"italic":    "use --font-style italic",
 		"underline": "use --font-line underline",
 	},
+	"+cells-set": {
+		// Predictable prior from +table-put --styles: models will try to
+		// attach range-level styling to a --writes call the same way.
+		"styles": `range-level styling goes through +styles-put (same {"styles":[...]} vocabulary); per-cell styles ride inside the cells objects as cell_styles`,
+	},
 	"+table-put": {
 		"start-cell": `anchor each sub-sheet via the "start_cell" field inside --sheets (e.g. {"sheets":[{"name":"Sheet1","start_cell":"B2",…}]}); to paste CSV at a cell use +csv-put --start-cell`,
 		"sheet-name": `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,

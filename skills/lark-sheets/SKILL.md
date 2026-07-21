@@ -54,7 +54,7 @@ metadata:
 | 写纯文本值（整块 CSV 平铺；列里没有需字面保真的编号 / 点分日期） | `+csv-put`（定位用 `--start-cell` 左上角锚点格，也接受 `--range` 别名） | `lark-sheets-write-cells` | 把含点分日期(`12.10`)/编号(`001`)的列裸灌 `+csv-put`——会被数值化（`12.10`→`12.1`、`001`→`1`），改用 `+table-put` 声明 `dtypes:object` |
 | 写带类型的数据到**已有**表（列里有数字 / 金额 / 百分比 / 日期等**量值**——不看当下要不要排序求和，量值一律走这里） | `+table-put --sheets '{"sheets":[{"name":…,"columns":[…],"dtypes":{…},"formats":{…},"data":[[…]]}]}'`（不存在的 sheet 名自动建子表；同时美化加 `--styles` 一步带样式，详见 write-cells） | `lark-sheets-write-cells` | 在本地把数字拼成 `"$1,234"` / `"30.5%"` 字符串再 `+csv-put`（落成文本、丢计算能力，见下方 ⚠️） |
 | **新建**电子表格并写带类型的数据（类型保真需求同上，但目标表还不存在） | `+workbook-create --sheets`（协议与 `+table-put` 同构、一步建表 + typed 写入，无需先建空表再 `+table-put`；date / number 不丢；`--styles` 同样可在建表同一步带全套样式，详见 workbook） | `lark-sheets-workbook` | 用 `--values` 灌日期 / 数字（会落成文本、丢类型） |
-| 写公式 / 富写入（样式 · 批注 · 图片 · 富文本），或需精确矩形定位的值 | `+cells-set`（定位用 `--range`；批注 / 图片 / 富文本只能用它，公式也可；**公式落表后继续 `+formula-verify` 收尾**） | `lark-sheets-write-cells` | — |
+| 写公式 / 富写入（样式 · 批注 · 图片 · 富文本），或需精确矩形定位的值 | `+cells-set`（单区域 `--range`+`--cells`；**散布多处 / 跨表用 `--writes` 一次原子交付**，每项自带 sheet_name；公式落表后继续 `+formula-verify` 收尾） | `lark-sheets-write-cells` | — |
 | 插图：图片**绑定到某条记录**、随行走（凭证 / 证件照 / 商品图 / 头像 / 二维码 / 每行配图） | `+cells-set-image`（单格 `--range`，嵌入单元格内） | `lark-sheets-write-cells` | — |
 | 插图：**自由摆放、不绑数据**的装饰 / 标识（logo / 水印 / 封面大图 / banner） | `+float-image-create`（浮动图片，自由定位 + 尺寸 + 层级） | `lark-sheets-float-image` | — |
 | 查找 / 替换文本 | `+cells-search`（找，关键字用 `--find`）、`+cells-replace`（替换） | `lark-sheets-search-replace` | `+cells-find`、`+find`、`--query` |
