@@ -9,16 +9,18 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/beevik/etree"
+
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// SlidesXMLGet fetches the full XML presentation content. When --output is
-// provided it writes to a local file; otherwise it returns the XML in the
-// standard JSON envelope. Use --slide-id or --slide-number to fetch one page,
-// and use --raw for direct XML stdout.
+// SlidesXMLGet fetches the full XML presentation content, reindented for
+// readability. When --output is provided it writes to a local file;
+// otherwise it returns the XML in the standard JSON envelope. Use --slide-id
+// or --slide-number to fetch one page, and use --raw for direct XML stdout.
 var SlidesXMLGet = common.Shortcut{
 	Service:     "slides",
 	Command:     "+xml-get",
@@ -183,6 +185,10 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 		if content == "" {
 			return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "slides xml get returned empty slide.content")
 		}
+		content, err = prettyPrintXML(content)
+		if err != nil {
+			return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "reformat slide.content: %v", err).WithCause(err)
+		}
 		slideOut := map[string]interface{}{
 			"content": content,
 		}
@@ -231,6 +237,10 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 	content := common.GetString(presentation, "content")
 	if content == "" {
 		return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "slides xml get returned empty xml_presentation.content")
+	}
+	content, err = prettyPrintXML(content)
+	if err != nil {
+		return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "reformat xml_presentation.content: %v", err).WithCause(err)
 	}
 	presentationOut := map[string]interface{}{
 		"content": content,
@@ -288,4 +298,18 @@ func outputSlidesXMLGetContent(runtime *common.RuntimeContext, content string, o
 	}
 	runtime.Out(fileOut, nil)
 	return nil
+}
+
+// prettyPrintXML reindents xmlContent so nested elements each sit on their
+// own line, for readability across stdout, --output files, and the JSON
+// envelope alike. There is no flag to disable this: the server returns XML
+// as a single unbroken line, and this command has no other reason to exist
+// than to hand a human something they can read.
+func prettyPrintXML(xmlContent string) (string, error) {
+	doc := etree.NewDocument()
+	if err := doc.ReadFromString(xmlContent); err != nil {
+		return "", err
+	}
+	doc.Indent(2)
+	return doc.WriteToString()
 }

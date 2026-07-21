@@ -23,6 +23,10 @@ func TestSlidesXMLGetWritesContentToFileAndSuppressesXML(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
+	wantXML, err := prettyPrintXML(xml)
+	if err != nil {
+		t.Fatalf("prettyPrintXML(xml): %v", err)
+	}
 	var capturedQuery url.Values
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
@@ -43,7 +47,7 @@ func TestSlidesXMLGetWritesContentToFileAndSuppressesXML(t *testing.T) {
 		},
 	})
 
-	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--output", "readback.xml",
@@ -60,10 +64,10 @@ func TestSlidesXMLGetWritesContentToFileAndSuppressesXML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read saved XML: %v", err)
 	}
-	if string(got) != xml {
-		t.Fatalf("saved XML = %q, want %q", got, xml)
+	if string(got) != wantXML {
+		t.Fatalf("saved XML = %q, want %q", got, wantXML)
 	}
-	if strings.Contains(stdout.String(), xml) {
+	if strings.Contains(stdout.String(), wantXML) {
 		t.Fatalf("stdout leaked full XML content: %s", stdout.String())
 	}
 	if got := capturedQuery.Get("revision_id"); got != "7" {
@@ -80,8 +84,8 @@ func TestSlidesXMLGetWritesContentToFileAndSuppressesXML(t *testing.T) {
 	if data["revision_id"] != float64(7) {
 		t.Fatalf("revision_id = %v, want 7", data["revision_id"])
 	}
-	if data["size"] != float64(len(xml)) {
-		t.Fatalf("size = %v, want %d", data["size"], len(xml))
+	if data["size"] != float64(len(wantXML)) {
+		t.Fatalf("size = %v, want %d", data["size"], len(wantXML))
 	}
 	gotPath, _ := data["path"].(string)
 	if !filepath.IsAbs(gotPath) {
@@ -97,6 +101,10 @@ func TestSlidesXMLGetReturnsContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
+	wantXML, err := prettyPrintXML(xml)
+	if err != nil {
+		t.Fatalf("prettyPrintXML(xml): %v", err)
+	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -111,7 +119,7 @@ func TestSlidesXMLGetReturnsContentEnvelopeWhenOutputOmitted(t *testing.T) {
 		},
 	})
 
-	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--as", "user",
@@ -121,8 +129,8 @@ func TestSlidesXMLGetReturnsContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	}
 	data := decodeShortcutData(t, stdout)
 	presentation := data["xml_presentation"].(map[string]interface{})
-	if got := presentation["content"]; got != xml {
-		t.Fatalf("content = %q, want %q", got, xml)
+	if got := presentation["content"]; got != wantXML {
+		t.Fatalf("content = %q, want %q", got, wantXML)
 	}
 	if got := data["xml_presentation_id"]; got != "pres_abc" {
 		t.Fatalf("xml_presentation_id = %v, want pres_abc", got)
@@ -137,6 +145,11 @@ func TestSlidesXMLGetJqFiltersContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
+	wantXML, err := prettyPrintXML(xml)
+	if err != nil {
+		t.Fatalf("prettyPrintXML(xml): %v", err)
+	}
+	wantXML = strings.TrimSpace(wantXML)
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -151,7 +164,7 @@ func TestSlidesXMLGetJqFiltersContentEnvelopeWhenOutputOmitted(t *testing.T) {
 		},
 	})
 
-	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--jq", ".data.xml_presentation.content",
@@ -160,8 +173,8 @@ func TestSlidesXMLGetJqFiltersContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := strings.TrimSpace(stdout.String()); got != xml {
-		t.Fatalf("stdout = %q, want XML content %q", got, xml)
+	if got := strings.TrimSpace(stdout.String()); got != wantXML {
+		t.Fatalf("stdout = %q, want XML content %q", got, wantXML)
 	}
 }
 
@@ -170,6 +183,10 @@ func TestSlidesXMLGetPrintsRawContentWhenRaw(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
+	wantXML, err := prettyPrintXML(xml)
+	if err != nil {
+		t.Fatalf("prettyPrintXML(xml): %v", err)
+	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -184,7 +201,7 @@ func TestSlidesXMLGetPrintsRawContentWhenRaw(t *testing.T) {
 		},
 	})
 
-	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--raw",
@@ -193,8 +210,8 @@ func TestSlidesXMLGetPrintsRawContentWhenRaw(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := stdout.String(); got != xml {
-		t.Fatalf("stdout = %q, want raw XML %q", got, xml)
+	if got := stdout.String(); got != wantXML {
+		t.Fatalf("stdout = %q, want raw XML %q", got, wantXML)
 	}
 }
 
@@ -203,6 +220,10 @@ func TestSlidesXMLGetFetchesSingleSlideByIDToFile(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<slide id="slide_1"><data><shape id="a"/></data></slide>`
+	wantXML, err := prettyPrintXML(xml)
+	if err != nil {
+		t.Fatalf("prettyPrintXML(xml): %v", err)
+	}
 	var capturedQuery url.Values
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
@@ -223,7 +244,7 @@ func TestSlidesXMLGetFetchesSingleSlideByIDToFile(t *testing.T) {
 		},
 	})
 
-	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--slide-id", "slide_1",
@@ -244,8 +265,8 @@ func TestSlidesXMLGetFetchesSingleSlideByIDToFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read saved slide XML: %v", err)
 	}
-	if string(got) != xml {
-		t.Fatalf("saved XML = %q, want %q", got, xml)
+	if string(got) != wantXML {
+		t.Fatalf("saved XML = %q, want %q", got, wantXML)
 	}
 	data := decodeShortcutData(t, stdout)
 	if data["scope"] != "slide" {
@@ -264,6 +285,10 @@ func TestSlidesXMLGetFetchesSingleSlideByNumberEnvelope(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	xml := `<slide id="slide_2"><data><shape id="b"/></data></slide>`
+	wantXML, err := prettyPrintXML(xml)
+	if err != nil {
+		t.Fatalf("prettyPrintXML(xml): %v", err)
+	}
 	var capturedQuery url.Values
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
@@ -284,7 +309,7 @@ func TestSlidesXMLGetFetchesSingleSlideByNumberEnvelope(t *testing.T) {
 		},
 	})
 
-	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+	err = runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
 		"--slide-number", "2",
@@ -304,8 +329,8 @@ func TestSlidesXMLGetFetchesSingleSlideByNumberEnvelope(t *testing.T) {
 		t.Fatalf("slide_number = %v, want 2", data["slide_number"])
 	}
 	slide := data["slide"].(map[string]interface{})
-	if slide["content"] != xml {
-		t.Fatalf("content = %q, want %q", slide["content"], xml)
+	if slide["content"] != wantXML {
+		t.Fatalf("content = %q, want %q", slide["content"], wantXML)
 	}
 	if slide["slide_id"] != "slide_2" {
 		t.Fatalf("slide.slide_id = %v, want slide_2", slide["slide_id"])
@@ -513,5 +538,32 @@ func TestSlidesXMLGetRejectsRemoveAttrIDForSingleSlide(t *testing.T) {
 	}
 	if validationErr.Param != "--remove-attr-id" {
 		t.Fatalf("param = %q, want --remove-attr-id", validationErr.Param)
+	}
+}
+
+func TestPrettyPrintXML(t *testing.T) {
+	input := `<presentation id="p1" xmlns="http://www.larkoffice.com/sml/2.0" width="960"><slide id="s1"><style><fill id="f1"><fillColor color="rgba(0,0,0,1)"/></fill></style><data/></slide></presentation>`
+
+	got, err := prettyPrintXML(input)
+	if err != nil {
+		t.Fatalf("prettyPrintXML: %v", err)
+	}
+	if !strings.Contains(got, "\n") {
+		t.Fatalf("expected reindented output with newlines, got %q", got)
+	}
+	if n := strings.Count(got, `xmlns="http://www.larkoffice.com/sml/2.0"`); n != 1 {
+		t.Fatalf("expected the xmlns declaration to appear exactly once, got %d occurrences in %q", n, got)
+	}
+	if !strings.Contains(got, "<data/>") {
+		t.Fatalf("expected empty <data/> to stay self-closing, got %q", got)
+	}
+	if !strings.Contains(got, `<fillColor color="rgba(0,0,0,1)"/>`) {
+		t.Fatalf("expected attributes to be preserved on their element, got %q", got)
+	}
+}
+
+func TestPrettyPrintXMLRejectsMalformedInput(t *testing.T) {
+	if _, err := prettyPrintXML(`<presentation><slide></presentation>`); err == nil {
+		t.Fatal("expected an error for malformed XML, got nil")
 	}
 }
