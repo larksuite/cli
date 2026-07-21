@@ -195,18 +195,29 @@ def strip_xml_paragraphs(value: str) -> str:
     return strip_xml(value, preserve_line_breaks=True)
 
 
-def extract_text_paragraphs(value: str) -> list[dict[str, str | None]]:
+def extract_text_paragraphs(value: str, default_font_size: int | float) -> list[dict[str, Any]]:
     paragraphs = []
     for attrs, body in re.findall(r"<p\b([^>]*)>([\s\S]*?)</p\s*>", value):
         paragraphs.append(
             {
                 "text": strip_xml(body, preserve_line_breaks=True),
+                "fontSize": extract_max_span_font_size(body, default_font_size),
+                "textAlign": extract_attribute(attrs, "textAlign"),
                 "lineSpacing": extract_attribute(attrs, "lineSpacing"),
                 "beforeLineSpacing": extract_attribute(attrs, "beforeLineSpacing"),
                 "afterLineSpacing": extract_attribute(attrs, "afterLineSpacing"),
             }
         )
     return paragraphs
+
+
+def extract_max_span_font_size(value: str, default_font_size: int | float) -> int | float:
+    font_sizes = [
+        font_size
+        for attrs in re.findall(r"<span\b([^>]*)>", value)
+        if (font_size := extract_numeric_attribute(attrs, "fontSize")) is not None
+    ]
+    return max([default_font_size, *font_sizes])
 
 
 def extract_tag_attributes(value: str, tag: str) -> str:
@@ -633,6 +644,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
         width = extract_numeric_attribute(attrs, "width")
         height = extract_numeric_attribute(attrs, "height")
         rotation = extract_numeric_attribute(attrs, "rotation") or 0
+        alpha = extract_numeric_attribute(attrs, "alpha")
         table_layouts: dict[str, dict[str, Any] | None] = {}
         if kind == "table":
             width, table_layouts["width"] = resolve_table_dimension(
@@ -651,6 +663,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "width": width,
                 "height": height,
                 "rotation": rotation,
+                "alpha": alpha if alpha is not None else 1,
                 "order": len(elements),
             }
             if kind == "table":
@@ -670,16 +683,20 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                     {
                         "textType": extract_attribute(content_attrs, "textType"),
                         "textAlign": extract_attribute(content_attrs, "textAlign"),
+                        "verticalAlign": extract_attribute(content_attrs, "verticalAlign") or "middle",
+                        "vert": extract_attribute(attrs, "vert") or "horz",
                         "autoFit": extract_attribute(content_attrs, "autoFit"),
                         "wrap": extract_attribute(content_attrs, "wrap"),
                         "lineSpacing": extract_attribute(content_attrs, "lineSpacing"),
                         "beforeLineSpacing": extract_attribute(content_attrs, "beforeLineSpacing"),
                         "afterLineSpacing": extract_attribute(content_attrs, "afterLineSpacing"),
                         "paddingTop": extract_numeric_attribute(content_attrs, "paddingTop") or 0,
+                        "paddingRight": extract_numeric_attribute(content_attrs, "paddingRight") or 0,
                         "paddingBottom": extract_numeric_attribute(content_attrs, "paddingBottom") or 0,
+                        "paddingLeft": extract_numeric_attribute(content_attrs, "paddingLeft") or 0,
                         "fontSize": font_size if font_size is not None else 16,
                         "text": strip_xml_paragraphs(content),
-                        "paragraphs": extract_text_paragraphs(content),
+                        "paragraphs": extract_text_paragraphs(content, font_size if font_size is not None else 16),
                     }
                 )
             elements.append(element)
@@ -705,6 +722,40 @@ def is_whiteboard_element(element: dict[str, Any]) -> bool:
 
 def has_text_content(element: dict[str, Any]) -> bool:
     return bool(element.get("text"))
+
+
+def is_vertical_text(element: dict[str, Any]) -> bool:
+    return element.get("vert") in {"vert", "vert270", "word-art-vert", "word-art-vert-rtl", "ea-vert"}
+
+
+def detect_image_text_occlusions(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    text_elements = [element for element in elements if is_text_element(element) and has_text_content(element)]
+    image_elements = [element for element in elements if element["kind"] == "img" and element["alpha"] > 0]
+    for text_element in text_elements:
+        for image_element in image_elements:
+            if image_element["order"] <= text_element["order"]:
+                continue
+            if is_vertical_text(text_element):
+                if intersects(image_element, text_element):
+                    issues.append({
+                        "level": "info",
+                        "code": "image_may_cover_vertical_text",
+                        "elements": [image_element["id"], text_element["id"]],
+                        "message": f'image {image_element["id"]} may cover vertical text shape {text_element["id"]}',
+                        "hint": "Inspect the rendered slide because vertical text layout is not statically modeled.",
+                    })
+                continue
+            text_visual_bbox = estimate_text_visual_bbox(text_element)
+            if text_visual_bbox is not None and intersects(image_element, text_visual_bbox):
+                issues.append({
+                    "level": "error",
+                    "code": "image_covers_text",
+                    "elements": [image_element["id"], text_element["id"]],
+                    "message": f'image {image_element["id"]} covers text shape {text_element["id"]}',
+                    "hint": "Move the image before the text shape in XML order, or adjust the image and text shape coordinates or dimensions.",
+                })
+    return issues
 
 
 def is_decorative_text(element: dict[str, Any]) -> bool:
@@ -849,13 +900,30 @@ def estimate_text_visual_bbox(element: dict[str, Any]) -> dict[str, int | float]
     if not is_text_element(element) or not has_text_content(element) or is_decorative_text(element):
         return None
 
+    padding_left = element.get("paddingLeft", 0)
+    padding_right = element.get("paddingRight", 0)
+    padding_top = element.get("paddingTop", 0)
+    padding_bottom = element.get("paddingBottom", 0)
+    content_width = max(element["width"] - padding_left - padding_right, 0)
+    content_height = max(element["height"] - padding_top - padding_bottom, 0)
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
     line_count = estimate_text_line_count(element)
-    visual_width = min(element["width"], max(1, estimate_text_max_line_width(element)))
-    visual_height = min(element["height"], max(1, line_count * font_size * 1.2))
+    estimated_width = max(1, estimate_text_max_line_width(element))
+    visual_width = estimated_width if element.get("wrap") in {"false", "0"} else min(content_width, estimated_width)
+    visual_height = min(content_height, max(1, line_count * font_size * 1.2))
+    x = element["x"] + padding_left
+    if element.get("textAlign") == "center":
+        x += (content_width - visual_width) / 2
+    elif element.get("textAlign") == "right":
+        x += content_width - visual_width
+    y = element["y"] + padding_top
+    if element.get("verticalAlign") == "middle":
+        y += (content_height - visual_height) / 2
+    elif element.get("verticalAlign") == "bottom":
+        y += content_height - visual_height
     return {
-        "x": element["x"],
-        "y": element["y"],
+        "x": x,
+        "y": y,
         "width": visual_width,
         "height": visual_height,
     }
@@ -944,6 +1012,10 @@ def should_flag_horizontal_text_overflow(left: dict[str, Any], right: dict[str, 
 
     source, target = sorted([left, right], key=lambda element: element["x"])
     if source["x"] == target["x"]:
+        return False
+    wrap_enabled = source.get("wrap") not in {"false", "0"}
+    has_horizontal_gap = source["x"] + source["width"] <= target["x"]
+    if wrap_enabled and has_horizontal_gap:
         return False
     if source.get("autoFit") == "normal-auto-fit":
         return False
@@ -1244,6 +1316,7 @@ def lint_slide(
         *detect_elements_out_of_canvas(elements, slide_width, slide_height),
         *detect_table_layout_size_mismatches(elements),
         *detect_text_may_overflow_shapes(elements),
+        *detect_image_text_occlusions(elements),
     ]
 
     for index, left in enumerate(elements):
