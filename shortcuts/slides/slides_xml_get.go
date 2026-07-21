@@ -185,10 +185,7 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 		if content == "" {
 			return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "slides xml get returned empty slide.content")
 		}
-		content, err = prettyPrintXML(content)
-		if err != nil {
-			return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "reformat slide.content: %v", err).WithCause(err)
-		}
+		content = prettyPrintXMLOrOriginal(content)
 		slideOut := map[string]interface{}{
 			"content": content,
 		}
@@ -238,10 +235,7 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 	if content == "" {
 		return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "slides xml get returned empty xml_presentation.content")
 	}
-	content, err = prettyPrintXML(content)
-	if err != nil {
-		return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "reformat xml_presentation.content: %v", err).WithCause(err)
-	}
+	content = prettyPrintXMLOrOriginal(content)
 	presentationOut := map[string]interface{}{
 		"content": content,
 	}
@@ -352,6 +346,17 @@ func prettyPrintXML(xmlContent string) (string, error) {
 	return out, nil
 }
 
+// prettyPrintXMLOrOriginal keeps xml-get best-effort: if the server returns
+// content that is not strictly valid XML, callers still receive the original
+// content instead of losing the previously available read path.
+func prettyPrintXMLOrOriginal(xmlContent string) string {
+	out, err := prettyPrintXML(xmlContent)
+	if err != nil {
+		return xmlContent
+	}
+	return out
+}
+
 // reindentStructural inserts newline+indent whitespace between an element's
 // direct children so each nested element sits on its own line, recursing
 // only into children that are not textBearingTags. Existing whitespace-only
@@ -359,7 +364,11 @@ func prettyPrintXML(xmlContent string) (string, error) {
 // dropped before reinserting it at the correct depth; non-whitespace CharData
 // is never touched, and text-bearing subtrees are never entered at all.
 func reindentStructural(e *etree.Element, depth int) {
-	if textBearingTags[e.Tag] {
+	// A node without element children has no nested structure to reindent.
+	// Leaving the whole leaf untouched also preserves whitespace-only xs:string
+	// and simple-content values such as <title> and <chartField>, including
+	// adjacent plain-text and CDATA nodes.
+	if textBearingTags[e.Tag] || !hasElementChild(e) {
 		return
 	}
 
@@ -388,6 +397,15 @@ func reindentStructural(e *etree.Element, depth int) {
 	if !lastIsCharData {
 		e.AddChild(etree.NewCharData(closeIndent))
 	}
+}
+
+func hasElementChild(e *etree.Element) bool {
+	for _, child := range e.Child {
+		if _, ok := child.(*etree.Element); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // isAllWhitespace reports whether s is non-empty and consists only of XML

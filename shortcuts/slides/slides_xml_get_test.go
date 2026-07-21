@@ -593,6 +593,52 @@ func TestPrettyPrintXMLPreservesEscapedWhitespaceAsSoleLeafContent(t *testing.T)
 	}
 }
 
+func TestPrettyPrintXMLPreservesTextOnlyLeafWhitespace(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "title literal space",
+			input: `<presentation><title> </title><slide/></presentation>`,
+			want:  "<presentation>\n  <title> </title>\n  <slide/>\n</presentation>\n",
+		},
+		{
+			name:  "title escaped space",
+			input: `<presentation><title>&#32;</title><slide/></presentation>`,
+			want:  "<presentation>\n  <title> </title>\n  <slide/>\n</presentation>\n",
+		},
+		{
+			name:  "title whitespace CDATA",
+			input: `<presentation><title><![CDATA[   ]]></title><slide/></presentation>`,
+			want:  "<presentation>\n  <title><![CDATA[   ]]></title>\n  <slide/>\n</presentation>\n",
+		},
+		{
+			name:  "chart field literal space",
+			input: `<chartData><chartField name="x"> </chartField></chartData>`,
+			want:  "<chartData>\n  <chartField name=\"x\"> </chartField>\n</chartData>\n",
+		},
+		{
+			name:  "title adjacent text and CDATA",
+			input: `<presentation><title> <![CDATA[ ]]></title><slide/></presentation>`,
+			want:  "<presentation>\n  <title> <![CDATA[ ]]></title>\n  <slide/>\n</presentation>\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := prettyPrintXML(tt.input)
+			if err != nil {
+				t.Fatalf("prettyPrintXML(%q): %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Fatalf("prettyPrintXML(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestPrettyPrintXMLPreservesEscapedSpaceBetweenInlineSiblings is the
 // critical case: &#32; sitting as a bare sibling text node directly between
 // two inline elements, not wrapped in its own tag -- the literal reading of
@@ -657,11 +703,8 @@ func TestPrettyPrintXMLIdempotent(t *testing.T) {
 	}
 }
 
-// TestSlidesXMLGetSurfacesReformatErrorForPresentation exercises the
-// prettyPrintXML error branch through the full command path (previously
-// uncovered: Codecov flagged both reformat error branches in
-// fetchSlidesXMLGetContent as missing patch coverage).
-func TestSlidesXMLGetSurfacesReformatErrorForPresentation(t *testing.T) {
+func TestSlidesXMLGetFallsBackToOriginalPresentationWhenReformatFails(t *testing.T) {
+	content := "<presentation><title>\x0b</title><slide/></presentation>"
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -670,7 +713,7 @@ func TestSlidesXMLGetSurfacesReformatErrorForPresentation(t *testing.T) {
 			"code": 0,
 			"data": map[string]interface{}{
 				"xml_presentation": map[string]interface{}{
-					"content": `<presentation><slide></presentation>`,
+					"content": content,
 				},
 			},
 		},
@@ -679,30 +722,19 @@ func TestSlidesXMLGetSurfacesReformatErrorForPresentation(t *testing.T) {
 	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
 		"+xml-get",
 		"--presentation", "pres_abc",
+		"--raw",
 		"--as", "user",
 	})
-	if err == nil {
-		t.Fatal("expected a reformat error, got nil")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	var internalErr *errs.InternalError
-	if !errors.As(err, &internalErr) {
-		t.Fatalf("expected *errs.InternalError, got %T %v", err, err)
-	}
-	if internalErr.Category != errs.CategoryInternal {
-		t.Fatalf("category = %q, want %q", internalErr.Category, errs.CategoryInternal)
-	}
-	if internalErr.Subtype != errs.SubtypeInvalidResponse {
-		t.Fatalf("subtype = %q, want %q", internalErr.Subtype, errs.SubtypeInvalidResponse)
-	}
-	if internalErr.Cause == nil {
-		t.Fatal("expected the underlying XML parse error to be preserved as Cause")
-	}
-	if !strings.Contains(internalErr.Message, "xml_presentation.content") {
-		t.Fatalf("message = %q, want it to mention xml_presentation.content", internalErr.Message)
+	if got := stdout.String(); got != content {
+		t.Fatalf("stdout = %q, want original content %q", got, content)
 	}
 }
 
-func TestSlidesXMLGetSurfacesReformatErrorForSlide(t *testing.T) {
+func TestSlidesXMLGetFallsBackToOriginalSlideWhenReformatFails(t *testing.T) {
+	content := `<slide><data></slide>`
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -712,7 +744,7 @@ func TestSlidesXMLGetSurfacesReformatErrorForSlide(t *testing.T) {
 			"data": map[string]interface{}{
 				"slide": map[string]interface{}{
 					"slide_id": "slide_1",
-					"content":  `<slide><data></slide>`,
+					"content":  content,
 				},
 			},
 		},
@@ -724,17 +756,15 @@ func TestSlidesXMLGetSurfacesReformatErrorForSlide(t *testing.T) {
 		"--slide-id", "slide_1",
 		"--as", "user",
 	})
-	if err == nil {
-		t.Fatal("expected a reformat error, got nil")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	var internalErr *errs.InternalError
-	if !errors.As(err, &internalErr) {
-		t.Fatalf("expected *errs.InternalError, got %T %v", err, err)
+	data := decodeShortcutData(t, stdout)
+	slide, _ := data["slide"].(map[string]interface{})
+	if slide == nil {
+		t.Fatalf("missing slide: %#v", data)
 	}
-	if internalErr.Subtype != errs.SubtypeInvalidResponse {
-		t.Fatalf("subtype = %q, want %q", internalErr.Subtype, errs.SubtypeInvalidResponse)
-	}
-	if !strings.Contains(internalErr.Message, "slide.content") {
-		t.Fatalf("message = %q, want it to mention slide.content", internalErr.Message)
+	if got, _ := slide["content"].(string); got != content {
+		t.Fatalf("slide.content = %q, want original content %q", got, content)
 	}
 }
