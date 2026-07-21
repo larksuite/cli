@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.74] - 2026-07-21
+
+### Features
+
+- **slides**: add history rollback shortcuts (#1714)
+- **base**: support per-record batch updates (#1889)
+
+### Bug Fixes
+
+- preserve slides schema issues
+- allow jq examples in quality gate dry-runs
+- **im**: warn when flag pagination is truncated (#1906)
+- **slides**: warn on text shape overflow
+- **slides**: exempt chart roundtrip attributes from lint
+- **slides**: detect image text occlusion
+- **slides**: clarify xml-text-overlap-lint error for positional argument (#1986)
+
+### Documentation
+
+- clarify drive upload overwrite guidance (#1982)
+
+### Tests
+
+- isolate unit tests from user state (#1883)
+
+### Refactoring
+
+- converge success output through a single Emitter that owns the write (#1899)
+
 ## [v1.0.73] - 2026-07-20
 
 ### Features
@@ -1579,6 +1608,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.74]: https://github.com/larksuite/cli/releases/tag/v1.0.74
 [v1.0.73]: https://github.com/larksuite/cli/releases/tag/v1.0.73
 [v1.0.72]: https://github.com/larksuite/cli/releases/tag/v1.0.72
 [v1.0.71]: https://github.com/larksuite/cli/releases/tag/v1.0.71
