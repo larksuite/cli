@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -144,7 +145,7 @@ func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) 
 		for _, m := range spec.payload.CellMerges {
 			appendVisual(spec.name, workbookCreateStyleOp{Kind: "cell_merge", Range: m.Range, MergeType: m.MergeType})
 		}
-		for _, cs := range spec.payload.CellStyles {
+		for _, cs := range coalesceStyleStamps(spec.payload.CellStyles) {
 			rows, cols, err := rangeDimensions(cs.Range)
 			if err != nil {
 				return nil, sheetsValidationForFlag("styles", "cell_styles range %q: %v", cs.Range, err)
@@ -183,10 +184,81 @@ func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) 
 	}
 	if len(ops) > maxBatchOperations {
 		return nil, sheetsValidationForFlag("styles",
-			"--styles expands to %d operations, over the %d cap; merge adjacent same-style ranges first, then split the spec into several +styles-put calls",
+			"--styles expands to %d operations even after merging adjacent same-style ranges, over the %d cap; split the spec into several +styles-put calls — and for alternating-row banding or value-dependent coloring use +cond-format-create instead of per-row stamps",
 			len(ops), maxBatchOperations)
 	}
 	return ops, nil
+}
+
+// coalesceStyleStamps merges cell_styles entries that carry the IDENTICAL
+// style into larger rectangles: same column span + contiguous/overlapping
+// rows fuse vertically, same row span + contiguous columns fuse
+// horizontally, iterated to a fixpoint. Models routinely emit one entry per
+// row (07-21 rerun: specs expanding to 184/203/861 operations against the
+// 100-op cap); a declarative spec describes intent, so execution shape is
+// the CLI's to optimize. Entries with unparsable ranges pass through
+// untouched (the per-op validation reports them with proper context).
+func coalesceStyleStamps(ops []workbookCreateCellStyleOp) []workbookCreateCellStyleOp {
+	if len(ops) < 2 {
+		return ops
+	}
+	type rect struct{ c1, r1, c2, r2 int }
+	type group struct {
+		style map[string]interface{}
+		rects []rect
+	}
+	var order []string
+	groups := map[string]*group{}
+	out := make([]workbookCreateCellStyleOp, 0, len(ops))
+	for _, op := range ops {
+		c1, r1, c2, r2, err := workbookCreateStyleRangeBounds(op.Range)
+		key, jerr := json.Marshal(op.Style) // map keys marshal sorted → canonical
+		if err != nil || jerr != nil {
+			out = append(out, op)
+			continue
+		}
+		g, ok := groups[string(key)]
+		if !ok {
+			g = &group{style: op.Style}
+			groups[string(key)] = g
+			order = append(order, string(key))
+		}
+		g.rects = append(g.rects, rect{c1, r1, c2, r2})
+	}
+	for _, key := range order {
+		g := groups[key]
+		rects := g.rects
+		for changed := true; changed; {
+			changed = false
+			for i := 0; i < len(rects) && !changed; i++ {
+				for j := i + 1; j < len(rects); j++ {
+					a, b := rects[i], rects[j]
+					var merged rect
+					switch {
+					case a.c1 == b.c1 && a.c2 == b.c2 && b.r1 <= a.r2+1 && a.r1 <= b.r2+1:
+						merged = rect{a.c1, min(a.r1, b.r1), a.c2, max(a.r2, b.r2)}
+					case a.r1 == b.r1 && a.r2 == b.r2 && b.c1 <= a.c2+1 && a.c1 <= b.c2+1:
+						merged = rect{min(a.c1, b.c1), a.r1, max(a.c2, b.c2), a.r2}
+					default:
+						continue
+					}
+					rects[i] = merged
+					rects = append(rects[:j], rects[j+1:]...)
+					changed = true
+					break
+				}
+			}
+		}
+		for _, rc := range rects {
+			out = append(out, workbookCreateCellStyleOp{
+				Range: fmt.Sprintf("%s%d:%s%d",
+					columnIndexToLetter(rc.c1), rc.r1+1,
+					columnIndexToLetter(rc.c2), rc.r2+1),
+				Style: g.style,
+			})
+		}
+	}
+	return out
 }
 
 // stripSheetPrefix drops an optional "Sheet!"-style prefix from an A1 range:

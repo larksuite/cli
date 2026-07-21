@@ -1446,7 +1446,7 @@ func normalizeWorkbookCreateStyleObject(in map[string]interface{}, path string) 
 			}
 			out["border_styles"] = m
 		case "value", "formula", "rich_text", "multiple_values", "note", "data_validation":
-			return nil, common.ValidationErrorf("%s is for styles only; put content in --values or use --sheets for typed cell objects", path)
+			return nil, common.ValidationErrorf("%s.%s is a content field — a styles spec carries no cell content; write values/formulas via +cells-set or +table-put", path, k)
 		default:
 			if !workbookCreateCellStyleField(k) {
 				return nil, common.ValidationErrorf("%s.%s is not a supported style field", path, k)

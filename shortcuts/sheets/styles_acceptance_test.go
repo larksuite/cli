@@ -115,7 +115,7 @@ func TestStylesAcceptance_VocabularyParity(t *testing.T) {
 var stylesPriorCorpus = []struct {
 	name    string
 	fields  map[string]interface{}
-	wantErr string                                     // "" = must be accepted
+	wantErr string                                    // "" = must be accepted
 	check   func(proto map[string]interface{}) string // "" = ok, else failure detail
 }{
 	// border family (07-20: largest cluster)
@@ -155,6 +155,14 @@ var stylesPriorCorpus = []struct {
 	{name: "valign shorthand", fields: map[string]interface{}{"valign": "top"}, check: wantStyle("vertical_alignment", "top")},
 	{name: "CSS center for vertical", fields: map[string]interface{}{"vertical_alignment": "center"}, check: wantStyle("vertical_alignment", "middle")},
 	{name: "casing normalized", fields: map[string]interface{}{"font_weight": "BOLD"}, check: wantStyle("font_weight", "bold")},
+	// weight vocabulary in the FULL nested form's style slot (07-21 rerun:
+	// the dominant residual — 8 tasks wrote border_styles.<side>.style:"thin")
+	{name: "full-form thin in style slot",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "thin"}}},
+		check:  wantBorder("top", "weight", "thin")},
+	{name: "full-form all-shorthand medium in style slot",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"all": map[string]interface{}{"style": "medium"}}},
+		check:  wantBorder("bottom", "weight", "medium")},
 	// prescriptions (ambiguous / unsupported / typo)
 	{name: "fore_color prescribed", fields: map[string]interface{}{"fore_color": "#F00"}, wantErr: "ambiguous"},
 	{name: "indent rejected not ignored", fields: map[string]interface{}{"indent": float64(2)}, wantErr: "not a supported style field"},
@@ -203,6 +211,106 @@ func TestStylesAcceptance_PriorCorpus(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestStylesPut_CoalescesSameStyleRanges pins the declarative-spec
+// optimization: per-row entries with the identical style fuse into one
+// rectangle, so row-by-row specs (07-21 rerun: 184/203/861-op expansions
+// against the 100-op cap) no longer hit the cap.
+func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
+	t.Parallel()
+
+	t.Run("150 same-style rows fuse into one stamp", func(t *testing.T) {
+		t.Parallel()
+		entries := make([]interface{}, 0, 150)
+		for r := 1; r <= 150; r++ {
+			entries = append(entries, map[string]interface{}{
+				"range": fmt.Sprintf("A%d:F%d", r, r), "font_weight": "bold",
+			})
+		}
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": entries}},
+		}), testToken)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(ops) != 1 {
+			t.Fatalf("got %d ops, want 1 fused stamp", len(ops))
+		}
+		input := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+		if input["range"] != "A1:F150" {
+			t.Fatalf("range = %v, want A1:F150", input["range"])
+		}
+	})
+
+	t.Run("different styles stay separate", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": []interface{}{
+				map[string]interface{}{"range": "A1:F1", "font_weight": "bold"},
+				map[string]interface{}{"range": "A2:F2", "background_color": "#EEEEEE"},
+			}}},
+		}), testToken)
+		if err != nil || len(ops) != 2 {
+			t.Fatalf("ops=%d err=%v, want 2", len(ops), err)
+		}
+	})
+
+	t.Run("horizontal fuse with same rows", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": []interface{}{
+				map[string]interface{}{"range": "A1:C5", "font_weight": "bold"},
+				map[string]interface{}{"range": "D1:F5", "font_weight": "bold"},
+			}}},
+		}), testToken)
+		if err != nil || len(ops) != 1 {
+			t.Fatalf("ops=%d err=%v, want 1", len(ops), err)
+		}
+		input := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+		if input["range"] != "A1:F5" {
+			t.Fatalf("range = %v, want A1:F5", input["range"])
+		}
+	})
+}
+
+// TestTypedCellsHabitualKeys pins the typed --cells cell-object fixes
+// (recurring server-side 900015206 across 07-20/07-21 reruns).
+func TestTypedCellsHabitualKeys(t *testing.T) {
+	t.Parallel()
+
+	t.Run("style object rewrites to cell_styles through batch", func(t *testing.T) {
+		t.Parallel()
+		translated, err := translateBatchOp(subOp("+cells-set", map[string]interface{}{
+			"sheet_name": "S1", "range": "A1",
+			"cells": []interface{}{[]interface{}{map[string]interface{}{
+				"value": "x", "style": map[string]interface{}{"font_weight": "bold"},
+			}}},
+		}), testToken, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := translated["input"].(map[string]interface{})
+		cell := input["cells"].([]interface{})[0].([]interface{})[0].(map[string]interface{})
+		cs, _ := cell["cell_styles"].(map[string]interface{})
+		if cs == nil || cs["font_weight"] != "bold" {
+			t.Fatalf("cell = %v, want cell_styles.font_weight bold", cell)
+		}
+		if _, has := cell["style"]; has {
+			t.Fatalf("style key must be renamed, got %v", cell)
+		}
+	})
+
+	t.Run("type key gets a prescription", func(t *testing.T) {
+		t.Parallel()
+		_, err := translateBatchOp(subOp("+cells-set", map[string]interface{}{
+			"sheet_name": "S1", "range": "A1",
+			"cells": []interface{}{[]interface{}{map[string]interface{}{
+				"value": "x", "type": "text",
+			}}},
+		}), testToken, 0)
+		requireValidation(t, err, "not a cell field")
+	})
 }
 
 // TestStylesAcceptance_ResizeAndMergeCorpus extends the corpus to the

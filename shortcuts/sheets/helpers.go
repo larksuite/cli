@@ -709,6 +709,20 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 			if !ok {
 				continue
 			}
+			// cells[][].style is the habitual spelling of cell_styles (recurring
+			// server-side 900015206 in eval traces) — rewrite when unambiguous.
+			if styleObj, isObj := cell["style"].(map[string]interface{}); isObj {
+				if _, has := cell["cell_styles"]; has {
+					return common.ValidationErrorf("%s[%d][%d].style conflicts with cell_styles; pass only cell_styles", path, r, c)
+				}
+				cell["cell_styles"] = styleObj
+				delete(cell, "style")
+			}
+			// cells[][].type is not a cell field; the value type is whatever the
+			// JSON value is. Reject with the fix instead of a server round trip.
+			if _, has := cell["type"]; has {
+				return common.ValidationErrorf("%s[%d][%d].type is not a cell field — the value type is inferred from the JSON value; control display format via cell_styles.number_format", path, r, c)
+			}
 			if bs, ok := cell["border_styles"].(map[string]interface{}); ok {
 				expandBorderAllShorthand(bs)
 			}
@@ -735,16 +749,34 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 // Applied on both the typed --cells path and the --styles path, so batch
 // sub-ops get the same rewrite as standalone calls.
 func expandBorderAllShorthand(border map[string]interface{}) {
-	all, ok := border["all"]
-	if !ok {
-		return
+	if all, ok := border["all"]; ok {
+		for _, side := range []string{"top", "bottom", "left", "right"} {
+			if _, exists := border[side]; !exists {
+				border[side] = all
+			}
+		}
+		delete(border, "all")
 	}
-	for _, side := range []string{"top", "bottom", "left", "right"} {
-		if _, exists := border[side]; !exists {
-			border[side] = all
+	// Weight vocabulary in the style slot ("thin"/"medium"/"thick" are the
+	// habitual Excel words; the largest residual styles cluster in the 07-21
+	// rerun wrote them into border_styles.<side>.style of the FULL nested
+	// form). A thin border always means a thin solid line: move the word to
+	// weight and default style to solid. Only when weight is absent — an
+	// explicit conflicting weight keeps the enum error path.
+	for _, raw := range border {
+		side, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		s, _ := side["style"].(string)
+		switch strings.ToLower(s) {
+		case "thin", "medium", "thick":
+			if _, hasWeight := side["weight"]; !hasWeight {
+				side["weight"] = strings.ToLower(s)
+				side["style"] = "solid"
+			}
 		}
 	}
-	delete(border, "all")
 }
 
 // borderStylesFromFlag parses --border-styles as a JSON object (top/bottom/
