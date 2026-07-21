@@ -39,6 +39,34 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 - 当前工具只检查 XML well-formed 和文本元素之间的明显重叠；它不检查越界、文本高度不足、图文压盖、表格/图表压盖或底部拥挤。
 - 该工具不能替代页数核对、关键内容核对或真实视觉验收。
 
+## Automated Layout Density Lint
+
+在 XML 结构检查通过后、截图视觉验收前，可运行布局密度静态检查：
+
+```bash
+python3 skills/lark-slides/scripts/xml_layout_density_lint.py --input <presentation.xml>
+```
+
+它的用途是找出大型 `rect` 容器内的可见内容面积偏小的候选区域，常见于大卡片只放少量文字、空图片占位卡、单字符伪主视觉或目录卡内容过空。
+
+调用顺序：
+
+```text
+slides +xml-get 回读 XML
+→ xml_text_overlap_lint.py 检查 XML / 重叠等结构风险
+→ xml_layout_density_lint.py 输出内容覆盖率事实
+→ 截图 QA 判断留白是否有意设计
+```
+
+`xml_layout_density_lint.py` 的 warning 只陈述可复算的几何事实：
+
+- `target`：页码、容器 ID、坐标和尺寸；
+- `rule`：阈值与比较条件；
+- `measurement`：容器面积、可见内容面积、覆盖率和参与元素数量；
+- `elements`：容器及参与计算的 XML 元素 ID。
+
+当 `measurement.content_coverage_ratio < rule.threshold` 时输出 `code = sparse_container_content`。这只是静态几何命中，不自动说明页面难看、留白错误或必须修改；必须结合同页截图进行视觉判断。
+
 常见 code 的处理方向：
 
 | code | 含义 | 处理方式 |
