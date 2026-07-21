@@ -135,7 +135,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | Shortcut | 说明 |
 |----------|----------|
 | [`+search`](references/lark-drive-search.md) | 搜索文档、Wiki、表格、文件夹等云空间对象；支持 `--edited-since`、`--created-by-me`、`--mine`、`--doc-types` 等扁平 flag；区分 original creator 与 owner 语义。 |
-| [`+upload`](references/lark-drive-upload.md) | 上传本地文件到 Drive 文件夹或 wiki 节点。 |
+| [`+upload`](references/lark-drive-upload.md) | 上传本地文件到 Drive 文件夹或 wiki 节点；修改/重写/更新已有文件时优先覆盖上传，而不是直接上传一个新文件。 |
 | [`+create-folder`](references/lark-drive-create-folder.md) | 新建 Drive 文件夹，支持父文件夹与 bot 创建后自动授权。 |
 | [`+download`](references/lark-drive-download.md) | 下载 Drive 文件到本地。 |
 | [`+preview`](references/lark-drive-preview.md) | 查看或下载文件的 PDF / HTML / 文本 / 图片等预览产物。 |
