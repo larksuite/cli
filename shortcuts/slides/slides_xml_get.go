@@ -19,11 +19,11 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// SlidesXMLGet fetches the full XML presentation content, reindented for
-// readability. When --output is provided it writes to a local file;
-// otherwise it returns the XML in the standard JSON envelope. Use --slide-id
-// or --slide-number to fetch one page, and use --raw for formatted XML stdout
-// without the JSON envelope.
+// SlidesXMLGet fetches the full XML presentation content. When --output is
+// provided it writes reindented XML to a local file, and --raw prints
+// reindented XML to stdout; otherwise it returns the server's original
+// content unmodified in the standard JSON envelope. Use --slide-id or
+// --slide-number to fetch one page.
 var SlidesXMLGet = common.Shortcut{
 	Service:     "slides",
 	Command:     "+xml-get",
@@ -35,7 +35,7 @@ var SlidesXMLGet = common.Shortcut{
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
-		{Name: "output", Desc: "local XML output path; must be a relative path within the current directory; existing file is overwritten; omit to return XML in the JSON envelope"},
+		{Name: "output", Desc: "local XML output path; the saved file is formatted for readability; must be a relative path within the current directory; existing file is overwritten; omit to return the server's original XML in the JSON envelope"},
 		{Name: "raw", Type: "bool", Desc: "print formatted XML to stdout without the JSON envelope; incompatible with --output and --jq"},
 		{Name: "slide-id", Desc: "slide page identifier; omit both slide selectors to fetch full presentation XML"},
 		{Name: "slide-number", Type: "int", Desc: "1-based slide page number; omit both slide selectors to fetch full presentation XML"},
@@ -113,7 +113,7 @@ var SlidesXMLGet = common.Shortcut{
 		}
 		dry.GET(path).Params(params)
 		if outputPath := strings.TrimSpace(runtime.Str("output")); outputPath != "" {
-			return dry.Set("output", outputPath).Set("stdout_content", "suppressed; XML content is saved to --output during execution")
+			return dry.Set("output", outputPath).Set("stdout_content", "suppressed; formatted XML content is saved to --output during execution")
 		}
 		if runtime.Bool("raw") {
 			return dry.Set("output", "<stdout>").Set("stdout_content", "formatted XML content is printed to stdout during execution")
@@ -188,7 +188,6 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 		if content == "" {
 			return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "slides xml get returned empty slide.content")
 		}
-		content, prettyPrinted := prettyPrintXMLOrOriginal(runtime, content)
 		slideOut := map[string]interface{}{
 			"content": content,
 		}
@@ -206,7 +205,6 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 			"xml_presentation_id": presentationID,
 			"scope":               "slide",
 			"slide":               slideOut,
-			"pretty_printed":      prettyPrinted,
 		}
 		if actualSlideID != "" {
 			out["slide_id"] = actualSlideID
@@ -239,7 +237,6 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 	if content == "" {
 		return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "slides xml get returned empty xml_presentation.content")
 	}
-	content, prettyPrinted := prettyPrintXMLOrOriginal(runtime, content)
 	presentationOut := map[string]interface{}{
 		"content": content,
 	}
@@ -247,7 +244,6 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 		"xml_presentation_id": presentationID,
 		"scope":               "presentation",
 		"xml_presentation":    presentationOut,
-		"pretty_printed":      prettyPrinted,
 	}
 	if revisionID := common.GetFloat(presentation, "revision_id"); revisionID > 0 {
 		out["revision_id"] = int(revisionID)
@@ -259,22 +255,31 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 	return content, out, nil
 }
 
+// outputSlidesXMLGetContent routes the fetched XML to its output surface.
+// Only the text surfaces are reindented: --raw stdout and --output files are
+// read directly by humans and line tools. The JSON envelope carries the
+// server content verbatim instead -- inside a JSON string every newline is
+// escaped to \n, so formatting there buys no readability and only inflates
+// the payload, while passthrough keeps that read path byte-exact without
+// even parsing the content.
 func outputSlidesXMLGetContent(runtime *common.RuntimeContext, content string, outputPath string, out map[string]interface{}) error {
 	if outputPath == "" {
 		if !runtime.Bool("raw") {
 			runtime.OutFormatRaw(out, nil, nil)
 			return nil
 		}
-		if _, err := fmt.Fprint(runtime.IO().Out, content); err != nil {
+		formatted, _ := prettyPrintXMLOrOriginal(runtime, content)
+		if _, err := fmt.Fprint(runtime.IO().Out, formatted); err != nil {
 			return errs.NewInternalError(errs.SubtypeFileIO, "write XML content to stdout: %v", err).WithCause(err)
 		}
 		return nil
 	}
 
+	formatted, prettyPrinted := prettyPrintXMLOrOriginal(runtime, content)
 	result, err := runtime.FileIO().Save(outputPath, fileio.SaveOptions{
 		ContentType:   "application/xml",
-		ContentLength: int64(len(content)),
-	}, bytes.NewReader([]byte(content)))
+		ContentLength: int64(len(formatted)),
+	}, bytes.NewReader([]byte(formatted)))
 	if err != nil {
 		return common.WrapSaveErrorTyped(err)
 	}
@@ -289,8 +294,9 @@ func outputSlidesXMLGetContent(runtime *common.RuntimeContext, content string, o
 		"path":                resolvedPath,
 		"size":                result.Size(),
 		"content_saved":       true,
+		"pretty_printed":      prettyPrinted,
 	}
-	for _, key := range []string{"revision_id", "remove_attr_id", "slide_id", "slide_number", "pretty_printed"} {
+	for _, key := range []string{"revision_id", "remove_attr_id", "slide_id", "slide_number"} {
 		if value, ok := out[key]; ok {
 			fileOut[key] = value
 		}
@@ -321,11 +327,10 @@ var textBearingTags = map[string]bool{
 }
 
 // prettyPrintXML reindents xmlContent so structural elements (presentation,
-// slide, shape, style, ...) each sit on their own line, for readability
-// across stdout, --output files, and the JSON envelope alike. There is no
-// flag to disable this: the server returns XML as a single unbroken line,
-// and this command has no other reason to exist than to hand a human
-// something they can read.
+// slide, shape, style, ...) each sit on their own line. The server returns
+// XML as a single unbroken line, and this is what makes the --raw and
+// --output text surfaces readable; the JSON envelope path never calls it
+// (see outputSlidesXMLGetContent).
 //
 // Reindentation never enters a textBearingTags element. XML whitespace
 // character references are masked before parsing and restored after
@@ -358,7 +363,8 @@ func prettyPrintXML(xmlContent string) (string, error) {
 // prettyPrintXMLOrOriginal keeps xml-get best-effort: if the server returns
 // content that is not strictly valid XML, callers still receive the original
 // content and a warning on stderr instead of losing the read path. The bool
-// reports whether pretty-printing succeeded for JSON and file metadata.
+// reports whether pretty-printing succeeded, surfaced as pretty_printed in
+// --output file metadata.
 func prettyPrintXMLOrOriginal(runtime *common.RuntimeContext, xmlContent string) (string, bool) {
 	out, err := prettyPrintXML(xmlContent)
 	if err != nil {

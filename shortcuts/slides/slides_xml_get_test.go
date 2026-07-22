@@ -103,10 +103,12 @@ func TestSlidesXMLGetReturnsContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 
-	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
-	// Golden value computed independently of prettyPrintXML; see the comment
-	// in TestSlidesXMLGetWritesContentToFileAndSuppressesXML.
-	wantXML := "<presentation>\n  <slide id=\"s1\">\n    <shape id=\"a\">hello</shape>\n  </slide>\n</presentation>\n"
+	// The JSON envelope carries the server content verbatim: no reindentation
+	// and no parse/reserialize cycle. Reintroducing the in-repo formatter
+	// would fail this by inserting indentation; the &#32; reference
+	// additionally guards against a plain unmasked XML round trip, which
+	// would decode it to a literal space.
+	xml := `<presentation><slide id="s1"><shape id="a"><content><p><span>Hello</span>&#32;<strong>World</strong></p></content></shape></slide></presentation>`
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -131,14 +133,14 @@ func TestSlidesXMLGetReturnsContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	}
 	data := decodeShortcutData(t, stdout)
 	presentation := data["xml_presentation"].(map[string]interface{})
-	if got := presentation["content"]; got != wantXML {
-		t.Fatalf("content = %q, want %q", got, wantXML)
+	if got := presentation["content"]; got != xml {
+		t.Fatalf("content = %q, want the server content verbatim %q", got, xml)
 	}
 	if got := data["xml_presentation_id"]; got != "pres_abc" {
 		t.Fatalf("xml_presentation_id = %v, want pres_abc", got)
 	}
-	if data["pretty_printed"] != true {
-		t.Fatalf("pretty_printed = %v, want true", data["pretty_printed"])
+	if _, ok := data["pretty_printed"]; ok {
+		t.Fatalf("pretty_printed should not appear in the envelope: %#v", data)
 	}
 	if strings.Contains(stdout.String(), "content_saved") {
 		t.Fatalf("stdout should not contain file metadata: %s", stdout.String())
@@ -149,11 +151,9 @@ func TestSlidesXMLGetJqFiltersContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 
+	// --jq extracts fields from the envelope, and the envelope carries the
+	// server content verbatim, so the filter yields the single-line original.
 	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
-	// Golden value (already trimmed, matching the --jq output path) computed
-	// independently of prettyPrintXML; see the comment in
-	// TestSlidesXMLGetWritesContentToFileAndSuppressesXML.
-	wantXML := "<presentation>\n  <slide id=\"s1\">\n    <shape id=\"a\">hello</shape>\n  </slide>\n</presentation>"
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -177,8 +177,8 @@ func TestSlidesXMLGetJqFiltersContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := strings.TrimSpace(stdout.String()); got != wantXML {
-		t.Fatalf("stdout = %q, want XML content %q", got, wantXML)
+	if got := strings.TrimSpace(stdout.String()); got != xml {
+		t.Fatalf("stdout = %q, want the server content verbatim %q", got, xml)
 	}
 }
 
@@ -299,10 +299,9 @@ func TestSlidesXMLGetFetchesSingleSlideByNumberEnvelope(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 
+	// The slide envelope carries the server content verbatim, like the
+	// presentation envelope.
 	xml := `<slide id="slide_2"><data><shape id="b"/></data></slide>`
-	// Golden value computed independently of prettyPrintXML; see the comment
-	// in TestSlidesXMLGetWritesContentToFileAndSuppressesXML.
-	wantXML := "<slide id=\"slide_2\">\n  <data>\n    <shape id=\"b\"/>\n  </data>\n</slide>\n"
 	var capturedQuery url.Values
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
@@ -343,11 +342,14 @@ func TestSlidesXMLGetFetchesSingleSlideByNumberEnvelope(t *testing.T) {
 		t.Fatalf("slide_number = %v, want 2", data["slide_number"])
 	}
 	slide := data["slide"].(map[string]interface{})
-	if slide["content"] != wantXML {
-		t.Fatalf("content = %q, want %q", slide["content"], wantXML)
+	if slide["content"] != xml {
+		t.Fatalf("content = %q, want the server content verbatim %q", slide["content"], xml)
 	}
 	if slide["slide_id"] != "slide_2" {
 		t.Fatalf("slide.slide_id = %v, want slide_2", slide["slide_id"])
+	}
+	if _, ok := data["pretty_printed"]; ok {
+		t.Fatalf("pretty_printed should not appear in the envelope: %#v", data)
 	}
 }
 
@@ -760,7 +762,11 @@ func TestSlidesXMLGetFallsBackToOriginalPresentationWhenReformatFails(t *testing
 	}
 }
 
-func TestSlidesXMLGetFallsBackToOriginalSlideWhenReformatFails(t *testing.T) {
+// TestSlidesXMLGetEnvelopePassesThroughMalformedSlideContent pins the
+// envelope contract: the content is never parsed, so even malformed XML
+// flows through byte for byte with no fallback warning and no
+// pretty_printed field.
+func TestSlidesXMLGetEnvelopePassesThroughMalformedSlideContent(t *testing.T) {
 	content := `<slide><data></slide>`
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
@@ -792,13 +798,56 @@ func TestSlidesXMLGetFallsBackToOriginalSlideWhenReformatFails(t *testing.T) {
 		t.Fatalf("missing slide: %#v", data)
 	}
 	if got, _ := slide["content"].(string); got != content {
-		t.Fatalf("slide.content = %q, want original content %q", got, content)
+		t.Fatalf("slide.content = %q, want the server content verbatim %q", got, content)
 	}
-	if data["pretty_printed"] != false {
-		t.Fatalf("pretty_printed = %v, want false", data["pretty_printed"])
+	if _, ok := data["pretty_printed"]; ok {
+		t.Fatalf("pretty_printed should not appear in the envelope: %#v", data)
 	}
-	if got := stderr.String(); !strings.Contains(got, "warning: XML pretty-print skipped; returning original server content:") {
-		t.Fatalf("stderr = %q, want explicit pretty-print fallback warning", got)
+	if got := stderr.String(); got != "" {
+		t.Fatalf("stderr = %q, want empty: the envelope path must not parse the content", got)
+	}
+}
+
+// TestSlidesXMLGetEnvelopePassesThroughMalformedPresentationContent mirrors
+// the slide-scope passthrough test for the presentation-scope fetch branch,
+// which is a separate code path.
+func TestSlidesXMLGetEnvelopePassesThroughMalformedPresentationContent(t *testing.T) {
+	content := `<presentation><slide></presentation>`
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{
+					"content": content,
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get",
+		"--presentation", "pres_abc",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeShortcutData(t, stdout)
+	presentation, _ := data["xml_presentation"].(map[string]interface{})
+	if presentation == nil {
+		t.Fatalf("missing xml_presentation: %#v", data)
+	}
+	if got, _ := presentation["content"].(string); got != content {
+		t.Fatalf("content = %q, want the server content verbatim %q", got, content)
+	}
+	if _, ok := data["pretty_printed"]; ok {
+		t.Fatalf("pretty_printed should not appear in the envelope: %#v", data)
+	}
+	if got := stderr.String(); got != "" {
+		t.Fatalf("stderr = %q, want empty: the envelope path must not parse the content", got)
 	}
 }
 
