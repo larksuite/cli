@@ -41,7 +41,7 @@
 
 ### 内容限制
 
-- HTML 总长度上限为 900000 字符。不要内联大图片、Base64、字体、长 JSON/CSV 或大量 mock 数据。
+- HTML 总长度上限为 500KB。不要内联大图片、Base64、字体、长 JSON/CSV 或大量 mock 数据。
 
 ## OKR block
 
