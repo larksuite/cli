@@ -637,9 +637,10 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </slide>
             """
         )
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertEqual(result["summary"]["warning_count"], 1)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["summary"]["warning_count"], 0)
         self.assertEqual(result["slides"][0]["issues"][0]["code"], "text_may_overflow_shape")
+        self.assertEqual(result["slides"][0]["issues"][0]["level"], "error")
         self.assertEqual(result["slides"][0]["issues"][0]["elements"], ["source"])
 
     def test_lint_xml_reports_text_out_of_canvas_and_warns_for_text_height(self) -> None:
@@ -660,8 +661,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         issue = result["slides"][0]["issues"][0]
-        self.assertEqual(result["summary"]["error_count"], 1)
-        self.assertEqual(result["summary"]["warning_count"], 1)
+        self.assertEqual(result["summary"]["error_count"], 2)
+        self.assertEqual(result["summary"]["warning_count"], 0)
         self.assertEqual(issue["code"], "shape_out_of_canvas")
         self.assertEqual(issue["overflow"], {"left": 0, "top": 0, "right": 160, "bottom": 40})
 
@@ -690,9 +691,10 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         issues = result["slides"][0]["issues"]
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertEqual(result["summary"]["warning_count"], 1)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["summary"]["warning_count"], 0)
         self.assertEqual(issues[0]["code"], "text_may_overflow_shape")
+        self.assertEqual(issues[0]["level"], "error")
         self.assertEqual(issues[0]["elements"], ["overflowing"])
         self.assertEqual(issues[0]["line_count"], 4)
         self.assertEqual(issues[0]["estimated_height"], 110)
@@ -716,9 +718,38 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         )
         issue = result["slides"][0]["issues"][0]
         self.assertEqual(result["summary"]["warning_count"], 1)
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(issue["level"], "warning")
         self.assertEqual(issue["line_height"], 20)
         self.assertEqual(issue["estimated_height"], 60)
         self.assertEqual(issue["overflow"], 10)
+
+    def test_lint_xml_text_may_overflow_shape_upgrades_to_error_above_threshold(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="just-warning" type="text" topLeftX="80" topLeftY="80" width="360" height="50">
+                  <content fontSize="20" lineSpacing="fixed:20">
+                    <p>第一段</p><p>第二段</p><p>第三段</p>
+                  </content>
+                </shape>
+                <shape id="error-overflow" type="text" topLeftX="80" topLeftY="200" width="360" height="30">
+                  <content fontSize="20" lineSpacing="fixed:20">
+                    <p>第一段</p><p>第二段</p><p>第三段</p>
+                  </content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issues = {issue["elements"][0]: issue for issue in result["slides"][0]["issues"]}
+        self.assertEqual(issues["just-warning"]["level"], "warning")
+        self.assertEqual(issues["just-warning"]["overflow"], 10)
+        self.assertEqual(issues["error-overflow"]["level"], "error")
+        self.assertEqual(issues["error-overflow"]["overflow"], 30)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["summary"]["warning_count"], 1)
 
     def test_lint_xml_uses_paragraph_spacing_overrides_for_text_height_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(

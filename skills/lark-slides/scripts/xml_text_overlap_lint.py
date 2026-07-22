@@ -888,7 +888,7 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
 
         issues.append(
             {
-                "level": "warning",
+                "level": "error" if overflow > 10 else "warning",
                 "code": "text_may_overflow_shape",
                 "elements": [element["id"]],
                 "line_count": line_count,
