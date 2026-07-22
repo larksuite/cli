@@ -25,49 +25,32 @@ lark-cli slides +xml-get --as user \
   --json
 ```
 
-## Automated XML Text Overlap Lint
+## Automated XML Layout Lint
 
-`slides +xml-get` 保存 XML 到本地文件后，优先运行 XML 语法和文本重叠静态检查：
-
-先取得当前已加载 `lark-slides/SKILL.md` 的父目录，记为 `<lark-slides-skill-dir>`；不要猜测全局安装路径。下面命令中的脚本路径相对于该目录。
+`slides +xml-get` 保存 XML 后，只运行统一版式准出入口。先取得当前已加载 `lark-slides/SKILL.md` 的父目录，记为 `<lark-slides-skill-dir>`；不要猜测全局安装路径。
 
 ```bash
 python3 "<lark-slides-skill-dir>/scripts/xml_text_overlap_lint.py" --input <presentation.xml>
 ```
 
-通过标准：
+它一次检查 XML/SXSD 合法性、元素越界、文本重叠、空白页、文本高度风险、整页内容稀疏和大卡片内容覆盖率。大卡片自身 `<content>` 的估算文本面积与卡片内平级元素一起参与覆盖率并集计算。
 
-- `summary.error_count == 0`。任何 error 都必须先修复再交付。
-- 当前工具只检查 XML well-formed 和文本元素之间的明显重叠；它不检查越界、文本高度不足、图文压盖、表格/图表压盖或底部拥挤。
-- 该工具不能替代页数核对、关键内容核对或真实视觉验收。
+准出规则：
 
-## Automated Layout Density Lint
+- `summary.error_count > 0` 或 `summary.release_ready == false`：阻断创建、替换或交付，必须先修复。
+- `summary.warning_count > 0`：静态检查不直接阻断，但 `summary.screenshot_review_required == true`，必须复核对应页面截图。
+- `slides[].status` 为 `blocked`、`needs_screenshot_review` 或 `passed`，可直接决定逐页后续动作。
+- CLI 在存在 `error` 时退出码为 1；只有 `warning` 时仍输出 JSON 并退出 0，供截图复核链路继续执行。
 
-在 XML 结构检查通过后、截图视觉验收前，可运行布局密度静态检查：
+每条 `error` / `warning` 都包含：
 
-```bash
-python3 "<lark-slides-skill-dir>/scripts/xml_layout_density_lint.py" --input <presentation.xml>
-```
+- `element_ids`：相关 XML 元素 ID；
+- `rule`：规则 ID、名称、阈值和比较关系；
+- `measurement`：越界量、交叠面积、覆盖率等实测值；
+- `related_objects`：相关对象的类型与坐标框；
+- `target`、`message`、`hint`：页码、语义说明和处理建议。
 
-它的用途是找出大型 `rect` 容器内的可见内容面积偏小的候选区域，常见于大卡片只放少量文字、空图片占位卡、单字符伪主视觉或目录卡内容过空。
-
-调用顺序：
-
-```text
-slides +xml-get 回读 XML
-→ xml_text_overlap_lint.py 检查 XML / 重叠等结构风险
-→ xml_layout_density_lint.py 输出内容覆盖率事实
-→ 截图 QA 判断留白是否有意设计
-```
-
-`xml_layout_density_lint.py` 的 warning 只陈述可复算的几何事实：
-
-- `target`：页码、容器 ID、坐标和尺寸；
-- `rule`：阈值与比较条件；
-- `measurement`：容器面积、可见内容面积、覆盖率和参与元素数量；
-- `elements`：容器及参与计算的 XML 元素 ID。
-
-当 `measurement.content_coverage_ratio < rule.threshold` 时输出 `code = sparse_container_content`。这只是静态几何命中，不自动说明页面难看、留白错误或必须修改；必须结合同页截图进行视觉判断。
+当 `sparse_container_content.measurement.content_coverage_ratio < rule.threshold` 时，需要结合同页截图判断留白是否有意设计；不要仅凭 warning 自动扩充内容。
 
 常见 code 的处理方向：
 
@@ -81,6 +64,10 @@ slides +xml-get 回读 XML
 | `icon_missing_fill_color` | 视觉规范要求 `<icon>` 设置 `<fill><fillColor color="..."/></fill>`，避免图标不可见 | 给 `<icon>` 添加显式非透明填充色，例如 `rgba(37, 99, 235, 1)` |
 | `icon_transparent_fill_color` | `<icon>` 的 `fillColor` 是透明色，不满足视觉可见性要求 | 改成与背景有足够对比的非透明颜色 |
 | `bbox_overlap` | 文本元素的估算绘制区域明显重叠 | 拉开文本坐标、缩小文本框/字号，或改成明确的分栏/分组结构 |
+| `*_out_of_canvas` | 元素边界超出页面画布 | 根据 `measurement.overflow` 移回画布或缩小尺寸 |
+| `blank_slide` | 页面没有画布内可见内容 | 补充主体内容；仅有空背景或空形状不能准出 |
+| `sparse_container_content` | 大卡片内容覆盖率低于阈值 | 按元素 ID 定位卡片，结合截图判断是否补充或放大内容 |
+| `sparse_slide_content` | 全页有效内容覆盖率偏低 | 复核截图，确认是否为有意留白 |
 
 ## Screenshot QA
 

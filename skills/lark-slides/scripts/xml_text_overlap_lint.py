@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Lark Technologies Pte. Ltd.
 # SPDX-License-Identifier: MIT
+"""Validate Slides XML structure and page layout through one release gate."""
 
 from __future__ import annotations
 
@@ -48,12 +49,12 @@ _SXSD_TAG_ATTRIBUTES_CACHE: dict[str, set[str]] | None = None
 _ICONPARK_ICON_TYPES_CACHE: set[str] | None = None
 
 
-class XmlTextOverlapLintError(Exception):
+class XmlLayoutLintError(Exception):
     pass
 
 
 def fail(message: str) -> None:
-    raise XmlTextOverlapLintError(message)
+    raise XmlLayoutLintError(message)
 
 
 def read_file(file_path: str | Path) -> str:
@@ -1194,12 +1195,7 @@ def detect_elements_out_of_canvas(
     elements: list[dict[str, Any]], slide_width: int | float, slide_height: int | float
 ) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    for element in (
-        element
-        for element in elements
-        if element["kind"] in {"table", "chart"}
-        or (element["kind"] == "shape" and element["type"] == "text")
-    ):
+    for element in elements:
         bbox = element_canvas_bbox(element)
         overflow = {
             "left": max(-bbox["x"], 0),
@@ -1336,62 +1332,717 @@ def lint_slide(
     return {"slide_number": slide_number, "element_count": len(elements), "issues": issues}
 
 
-def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
-    root, xml_error = parse_xml_root(xml)
-    if xml_error:
-        return {
-            "file": source_path,
-            "slide_size": {"width": 960, "height": 540},
-            "summary": {"slide_count": 0, "error_count": 1, "warning_count": 0, "info_count": 0},
-            "issues": [xml_error],
-            "slides": [],
-        }
 
-    namespace_issues = validate_sml_tag_prefixes(xml)
-    sxsd_issues = validate_sxsd_tag_attributes(root) if root is not None else []
-    iconpark_issues = validate_iconpark_icon_types(root) if root is not None else []
-    top_level_issues = [*namespace_issues, *sxsd_issues, *iconpark_issues]
-    if namespace_issues:
-        error_count = sum(1 for issue in top_level_issues if issue["level"] == "error")
-        warning_count = sum(1 for issue in top_level_issues if issue["level"] == "warning")
-        info_count = sum(1 for issue in top_level_issues if issue["level"] == "info")
-        return {
-            "file": source_path,
-            "slide_size": {"width": 960, "height": 540},
-            "summary": {
-                "slide_count": 0,
-                "error_count": error_count,
-                "warning_count": warning_count,
-                "info_count": info_count,
-            },
-            "issues": top_level_issues,
-            "slides": [],
-        }
-    presentation = parse_presentation(xml)
-    slides = [
-        lint_slide(slide_xml, index + 1, presentation["width"], presentation["height"])
-        for index, slide_xml in enumerate(presentation["slides"])
+MIN_CONTAINER_WIDTH = 140
+MIN_CONTAINER_HEIGHT = 160
+MIN_SHORT_CARD_HEIGHT = 80
+MIN_CONTAINER_AREA = 20_000
+MIN_CONTENT_COVERAGE_RATIO = 0.15
+MIN_SLIDE_CONTENT_COVERAGE_RATIO = 0.035
+MIN_SLIDE_CONTENT_ELEMENT_COUNT = 4
+SHORT_CARD_SIZE_TOLERANCE_RATIO = 0.10
+MIN_SIMILAR_SHORT_CARD_COUNT = 2
+LARGE_VISUAL_CHILD_RATIO = 0.35
+LAYOUT_PANEL_SPAN_RATIO = 0.90
+IMAGE_OVERLAY_MATCH_RATIO = 0.90
+DENSITY_CONTAINMENT_TOLERANCE = 8
+
+
+def clipped_bbox(element: dict[str, Any], container: dict[str, Any]) -> dict[str, int | float] | None:
+    left = max(element["x"], container["x"])
+    top = max(element["y"], container["y"])
+    right = min(element["x"] + element["width"], container["x"] + container["width"])
+    bottom = min(element["y"] + element["height"], container["y"] + container["height"])
+    if right <= left or bottom <= top:
+        return None
+    return {"x": left, "y": top, "width": right - left, "height": bottom - top}
+
+
+def rectangle_union_area(rectangles: list[dict[str, int | float]]) -> int | float:
+    x_coordinates = sorted({coordinate for rect in rectangles for coordinate in (rect["x"], rect["x"] + rect["width"])})
+    area = 0
+    for left, right in zip(x_coordinates, x_coordinates[1:]):
+        intervals = sorted(
+            (rect["y"], rect["y"] + rect["height"])
+            for rect in rectangles
+            if rect["x"] < right and rect["x"] + rect["width"] > left
+        )
+        covered_height = 0
+        interval_end: int | float | None = None
+        for top, bottom in intervals:
+            if interval_end is None:
+                covered_height += bottom - top
+                interval_end = bottom
+            elif bottom > interval_end:
+                covered_height += bottom - max(top, interval_end)
+                interval_end = bottom
+        area += (right - left) * covered_height
+    return area
+
+
+def has_similar_short_card_peer(element: dict[str, Any], elements: list[dict[str, Any]]) -> bool:
+    return sum(
+        other["kind"] == "shape"
+        and other["type"] == "rect"
+        and other["width"] >= MIN_CONTAINER_WIDTH
+        and other["height"] >= MIN_SHORT_CARD_HEIGHT
+        and element_area(other) >= MIN_CONTAINER_AREA
+        and abs(other["width"] - element["width"]) / max(other["width"], element["width"])
+        <= SHORT_CARD_SIZE_TOLERANCE_RATIO
+        and abs(other["height"] - element["height"]) / max(other["height"], element["height"])
+        <= SHORT_CARD_SIZE_TOLERANCE_RATIO
+        for other in elements
+    ) >= MIN_SIMILAR_SHORT_CARD_COUNT
+
+
+def is_layout_container(
+    element: dict[str, Any],
+    slide_width: int | float,
+    slide_height: int | float,
+    elements: list[dict[str, Any]] | None = None,
+) -> bool:
+    has_supported_height = element["height"] >= MIN_CONTAINER_HEIGHT or (
+        elements is not None
+        and element["height"] >= MIN_SHORT_CARD_HEIGHT
+        and has_similar_short_card_peer(element, elements)
+    )
+    return (
+        element["kind"] == "shape"
+        and element["type"] == "rect"
+        and element["width"] >= MIN_CONTAINER_WIDTH
+        and has_supported_height
+        and element_area(element) >= MIN_CONTAINER_AREA
+        and not (
+            element["x"] <= 2
+            and element["y"] <= 2
+            and element["width"] >= slide_width - 4
+            and element["height"] >= slide_height - 4
+        )
+    )
+
+
+def is_edge_spanning_layout_panel(
+    element: dict[str, Any], slide_width: int | float, slide_height: int | float
+) -> bool:
+    touches_horizontal_edge = element["x"] <= 2 or element["x"] + element["width"] >= slide_width - 2
+    touches_vertical_edge = element["y"] <= 2 or element["y"] + element["height"] >= slide_height - 2
+    return (touches_horizontal_edge and element["height"] >= slide_height * LAYOUT_PANEL_SPAN_RATIO) or (
+        touches_vertical_edge and element["width"] >= slide_width * LAYOUT_PANEL_SPAN_RATIO
+    )
+
+
+def has_matching_image_overlay(container: dict[str, Any], elements: list[dict[str, Any]]) -> bool:
+    container_area = element_area(container)
+    return any(
+        element["kind"] == "img"
+        and intersection_area(container, element)
+        / max(1, min(container_area, element_area(element)))
+        >= IMAGE_OVERLAY_MATCH_RATIO
+        for element in elements
+    )
+
+
+def is_nested_in_layout_panel(
+    container: dict[str, Any], elements: list[dict[str, Any]], slide_width: int | float, slide_height: int | float
+) -> bool:
+    return any(
+        element is not container
+        and element["kind"] == "shape"
+        and element["type"] == "rect"
+        and is_edge_spanning_layout_panel(element, slide_width, slide_height)
+        and contains(element, container, tolerance=DENSITY_CONTAINMENT_TOLERANCE)
+        for element in elements
+    )
+
+
+def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
+    elements = extract_elements(slide_xml)
+    elements_by_id = {element["id"]: element for element in elements}
+    root = ET.fromstring(slide_xml)
+    for node in root.iter():
+        if xml_local_name(node.tag) != "shape":
+            continue
+        element = elements_by_id.get(node.attrib.get("id", ""))
+        if element is None:
+            continue
+        content_node = next(
+            (child for child in node if xml_local_name(child.tag) == "content"),
+            None,
+        )
+        paragraphs = (
+            [
+                " ".join("".join(paragraph.itertext()).split())
+                for paragraph in content_node.iter()
+                if xml_local_name(paragraph.tag) == "p"
+            ]
+            if content_node is not None
+            else []
+        )
+        raw_font_size = (
+            content_node.attrib.get("fontSize") if content_node is not None else None
+        ) or node.attrib.get("fontSize")
+        try:
+            base_font_size = float(raw_font_size or 16)
+        except ValueError:
+            base_font_size = 16.0
+        element.update(
+            {
+                "textType": content_node.attrib.get("textType") if content_node is not None else None,
+                "textAlign": content_node.attrib.get("textAlign") if content_node is not None else None,
+                "autoFit": content_node.attrib.get("autoFit") if content_node is not None else None,
+                "fontSize": base_font_size,
+                "text": "\n".join(paragraph for paragraph in paragraphs if paragraph),
+            }
+        )
+        if not has_text_content(element):
+            continue
+        declared_font_sizes = [
+            float(descendant.attrib["fontSize"])
+            for descendant in node.iter()
+            if descendant.attrib.get("fontSize") is not None
+        ]
+        if declared_font_sizes:
+            element["fontSize"] = max(declared_font_sizes)
+    for match in re.finditer(r"<icon\b([^>]*)>", slide_xml):
+        attrs = match.group(1)
+        x = extract_numeric_attribute(attrs, "topLeftX")
+        y = extract_numeric_attribute(attrs, "topLeftY")
+        width = extract_numeric_attribute(attrs, "width")
+        height = extract_numeric_attribute(attrs, "height")
+        if any(value is None for value in (x, y, width, height)):
+            continue
+        elements.append(
+            {
+                "id": extract_attribute(attrs, "id") or f"icon-{len(elements) + 1}",
+                "kind": "icon",
+                "type": "icon",
+                "x": x,
+                "y": y,
+                "width": width,
+                "height": height,
+                "rotation": extract_numeric_attribute(attrs, "rotation") or 0,
+                "order": len(elements),
+            }
+        )
+    return elements
+
+
+def visual_bbox(element: dict[str, Any], container: dict[str, Any]) -> dict[str, int | float] | None:
+    if is_text_element(element):
+        estimated = estimate_text_visual_bbox(element)
+        return clipped_bbox(estimated, container) if estimated else None
+    return clipped_bbox(element, container)
+
+
+def own_text_visual_bbox(container: dict[str, Any]) -> dict[str, int | float] | None:
+    if container["kind"] != "shape" or not has_text_content(container):
+        return None
+    text_proxy = {**container, "type": "text"}
+    estimated = estimate_text_visual_bbox(text_proxy)
+    return clipped_bbox(estimated, container) if estimated else None
+
+
+def slide_content_visual_bbox(
+    element: dict[str, Any], slide_bbox: dict[str, int | float]
+) -> dict[str, int | float] | None:
+    if is_text_element(element):
+        estimated = estimate_text_visual_bbox(element)
+        return clipped_bbox(estimated, slide_bbox) if estimated else None
+    if element["kind"] == "shape" and has_text_content(element):
+        estimated = own_text_visual_bbox(element)
+        return clipped_bbox(estimated, slide_bbox) if estimated else None
+    if element["kind"] in {"img", "chart", "table", "whiteboard", "icon"}:
+        return clipped_bbox(element, slide_bbox)
+    return None
+
+
+def is_large_visual_child(element: dict[str, Any], container: dict[str, Any]) -> bool:
+    if element["kind"] not in {"img", "chart", "table", "whiteboard"}:
+        return False
+    return element_area(element) / element_area(container) >= LARGE_VISUAL_CHILD_RATIO
+
+
+def detect_sparse_container_content(
+    elements: list[dict[str, Any]], slide_number: int, slide_width: int | float, slide_height: int | float
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for container in (
+        element for element in elements if is_layout_container(element, slide_width, slide_height, elements)
+    ):
+        if (
+            is_edge_spanning_layout_panel(container, slide_width, slide_height)
+            or is_nested_in_layout_panel(container, elements, slide_width, slide_height)
+            or has_matching_image_overlay(container, elements)
+        ):
+            continue
+        children = [
+            element
+            for element in elements
+            if element is not container
+            and contains(container, element, tolerance=DENSITY_CONTAINMENT_TOLERANCE)
+        ]
+        if any(is_large_visual_child(child, container) for child in children):
+            continue
+        own_text_bbox = own_text_visual_bbox(container)
+        rectangles = ([own_text_bbox] if own_text_bbox else []) + [
+            bbox for child in children if (bbox := visual_bbox(child, container)) is not None
+        ]
+        content_area = rectangle_union_area(rectangles) if rectangles else 0
+        coverage_ratio = content_area / element_area(container)
+        if coverage_ratio >= MIN_CONTENT_COVERAGE_RATIO:
+            continue
+        issues.append(
+            {
+                "level": "warning",
+                "code": "sparse_container_content",
+                "schema_version": "1.0",
+                "target": {
+                    "slide_number": slide_number,
+                    "container_id": container["id"],
+                    "container_type": container["type"],
+                    "bbox": {key: container[key] for key in ("x", "y", "width", "height")},
+                },
+                "rule": {
+                    "name": "large_container_visible_content_coverage",
+                    "threshold": MIN_CONTENT_COVERAGE_RATIO,
+                    "comparison": "content_coverage_ratio < threshold",
+                },
+                "measurement": {
+                    "container_area": element_area(container),
+                    "visible_content_area": round(content_area, 3),
+                    "content_coverage_ratio": round(coverage_ratio, 3),
+                    "content_element_count": len(children) + (1 if own_text_bbox else 0),
+                },
+                "elements": [container["id"], *[child["id"] for child in children]],
+            }
+        )
+    return issues
+
+
+def detect_sparse_slide_content(
+    elements: list[dict[str, Any]], slide_number: int, slide_width: int | float, slide_height: int | float
+) -> list[dict[str, Any]]:
+    slide_bbox = {"x": 0, "y": 0, "width": slide_width, "height": slide_height}
+    content = [
+        (element, bbox)
+        for element in elements
+        if (bbox := slide_content_visual_bbox(element, slide_bbox)) is not None
     ]
-    error_count = sum(1 for issue in top_level_issues if issue["level"] == "error")
-    error_count += sum(1 for slide in slides for issue in slide["issues"] if issue["level"] == "error")
-    warning_count = sum(1 for issue in top_level_issues if issue["level"] == "warning")
-    warning_count += sum(1 for slide in slides for issue in slide["issues"] if issue["level"] == "warning")
-    info_count = sum(1 for issue in top_level_issues if issue["level"] == "info")
-    info_count += sum(1 for slide in slides for issue in slide["issues"] if issue["level"] == "info")
-    result = {
+    if len(content) < MIN_SLIDE_CONTENT_ELEMENT_COUNT:
+        return []
+    content_area = rectangle_union_area([bbox for _, bbox in content])
+    slide_area = slide_width * slide_height
+    coverage_ratio = content_area / slide_area
+    if coverage_ratio >= MIN_SLIDE_CONTENT_COVERAGE_RATIO:
+        return []
+    return [
+        {
+            "level": "warning",
+            "code": "sparse_slide_content",
+            "schema_version": "1.0",
+            "target": {
+                "slide_number": slide_number,
+                "bbox": slide_bbox,
+            },
+            "rule": {
+                "name": "slide_visible_content_coverage",
+                "threshold": MIN_SLIDE_CONTENT_COVERAGE_RATIO,
+                "comparison": "content_coverage_ratio < threshold",
+            },
+            "measurement": {
+                "slide_area": slide_area,
+                "visible_content_area": round(content_area, 3),
+                "content_coverage_ratio": round(coverage_ratio, 3),
+                "content_element_count": len(content),
+            },
+            "elements": [element["id"] for element, _ in content],
+        }
+    ]
+
+
+def detect_blank_slide(
+    elements: list[dict[str, Any]],
+    slide_number: int,
+    slide_width: int | float,
+    slide_height: int | float,
+) -> list[dict[str, Any]]:
+    slide_bbox = {"x": 0, "y": 0, "width": slide_width, "height": slide_height}
+    visible_elements = [
+        element
+        for element in elements
+        if slide_content_visual_bbox(element, slide_bbox) is not None
+    ]
+    if visible_elements:
+        return []
+    return [
+        {
+            "level": "error",
+            "code": "blank_slide",
+            "schema_version": "2.0",
+            "target": {"slide_number": slide_number},
+            "rule": {
+                "name": "slide_has_visible_content",
+                "comparison": "visible_element_count == 0",
+            },
+            "measurement": {
+                "visible_element_count": 0,
+                "declared_element_count": len(elements),
+            },
+            "elements": [element["id"] for element in elements],
+            "message": "slide has no visible content beyond empty layout shapes",
+            "hint": "Add visible text, an image, a chart, a table, a whiteboard, or an icon before creating the slide.",
+        }
+    ]
+
+
+
+RULE_METADATA: dict[str, dict[str, Any]] = {
+    "xml_not_well_formed": {
+        "name": "xml_is_well_formed",
+        "comparison": "xml_parse_error == false",
+    },
+    "sml_prefixed_tag": {
+        "name": "sml_uses_default_namespace",
+        "comparison": "prefixed_sml_tag_count == 0",
+    },
+    "sxsd_unsupported_tag": {
+        "name": "tag_is_supported_by_slides_xml_schema",
+        "comparison": "unsupported_tag_count == 0",
+    },
+    "sxsd_unsupported_attr": {
+        "name": "attribute_is_supported_by_slides_xml_schema",
+        "comparison": "unsupported_attribute_count == 0",
+    },
+    "icon_missing_fill_color": {
+        "name": "icon_has_visible_fill_color",
+        "comparison": "fill_color_present == true",
+    },
+    "icon_transparent_fill_color": {
+        "name": "icon_has_visible_fill_color",
+        "comparison": "fill_alpha > 0",
+    },
+    "iconpark_unsupported_icon_type": {
+        "name": "iconpark_type_is_supported",
+        "comparison": "icon_type in iconpark_index",
+    },
+    "bbox_overlap": {
+        "name": "text_visual_bounds_do_not_overlap",
+        "comparison": "intersection_area == 0",
+    },
+    "text_may_overflow_shape": {
+        "name": "estimated_text_fits_declared_shape",
+        "comparison": "estimated_height <= available_height",
+    },
+    "whiteboard_external_overlap": {
+        "name": "whiteboard_does_not_cross_sibling_content",
+        "comparison": "external_overlap_count == 0",
+    },
+    "image_covers_text": {
+        "name": "image_does_not_cover_text",
+        "comparison": "intersection_area == 0",
+    },
+    "image_may_cover_vertical_text": {
+        "name": "image_vertical_text_occlusion_requires_review",
+        "comparison": "intersection_area == 0",
+    },
+    "table_resolved_size_mismatch": {
+        "name": "table_declared_size_matches_resolved_grid",
+        "comparison": "declared_size == resolved_size",
+    },
+    "blank_slide": {
+        "name": "slide_has_visible_content",
+        "comparison": "visible_element_count > 0",
+    },
+}
+
+
+def issue_rule(issue: dict[str, Any]) -> dict[str, Any]:
+    if issue.get("rule"):
+        return {**issue["rule"], "id": issue["code"]}
+    if issue["code"].endswith("_out_of_canvas"):
+        return {
+            "id": issue["code"],
+            "name": "element_stays_within_slide_canvas",
+            "comparison": "max(left, top, right, bottom overflow) == 0",
+        }
+    return {
+        "id": issue["code"],
+        **RULE_METADATA.get(
+            issue["code"],
+            {"name": issue["code"], "comparison": "violation_count == 0"},
+        ),
+    }
+
+
+def issue_measurement(
+    issue: dict[str, Any], elements_by_id: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    if issue.get("measurement") is not None:
+        return issue["measurement"]
+    if issue["code"] == "bbox_overlap" and len(issue.get("elements", [])) == 2:
+        left = elements_by_id.get(issue["elements"][0])
+        right = elements_by_id.get(issue["elements"][1])
+        if left and right:
+            width = intersection_width(left, right)
+            height = intersection_height(left, right)
+            return {
+                "intersection_width": round(width, 3),
+                "intersection_height": round(height, 3),
+                "intersection_area": round(width * height, 3),
+            }
+    if issue["code"].endswith("_out_of_canvas"):
+        return {
+            "canvas": issue.get("canvas"),
+            "bbox": issue.get("bbox"),
+            "overflow": issue.get("overflow"),
+        }
+    measurement_keys = (
+        "line",
+        "column",
+        "tag",
+        "attr",
+        "iconType",
+        "line_count",
+        "line_height",
+        "estimated_height",
+        "available_height",
+        "overflow",
+        "dimension",
+        "declared_size",
+        "resolved_size",
+        "resolved_sizes",
+        "overlaps",
+    )
+    measured = {key: issue[key] for key in measurement_keys if key in issue}
+    return measured or {"violation_count": 1}
+
+
+def related_object(element: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "element_id": element["id"],
+        "kind": element["kind"],
+        "type": element["type"],
+        "bbox": {key: element[key] for key in ("x", "y", "width", "height")},
+    }
+
+
+def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
+    elements: list[dict[str, Any]] = []
+    for match in re.finditer(r"<line\b([^>]*)>", slide_xml):
+        attrs = match.group(1)
+        start_x = extract_numeric_attribute(attrs, "startX")
+        start_y = extract_numeric_attribute(attrs, "startY")
+        end_x = extract_numeric_attribute(attrs, "endX")
+        end_y = extract_numeric_attribute(attrs, "endY")
+        if any(value is None for value in (start_x, start_y, end_x, end_y)):
+            continue
+        elements.append(
+            {
+                "id": extract_attribute(attrs, "id") or f"line-{len(elements) + 1}",
+                "kind": "line",
+                "type": "line",
+                "x": min(start_x, end_x),
+                "y": min(start_y, end_y),
+                "width": abs(end_x - start_x),
+                "height": abs(end_y - start_y),
+                "rotation": 0,
+                "order": len(elements),
+            }
+        )
+    return elements
+
+
+def normalize_issue(
+    issue: dict[str, Any],
+    slide_number: int | None,
+    elements_by_id: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    normalized = dict(issue)
+    if normalized.get("level") == "info":
+        normalized["level"] = "warning"
+    element_ids = list(dict.fromkeys(normalized.get("elements", [])))
+    normalized["schema_version"] = "2.0"
+    normalized["element_ids"] = element_ids
+    normalized["target"] = {
+        **({"slide_number": slide_number} if slide_number is not None else {}),
+        **normalized.get("target", {}),
+    }
+    normalized["rule"] = issue_rule(normalized)
+    normalized["measurement"] = issue_measurement(normalized, elements_by_id)
+    normalized["related_objects"] = [
+        related_object(elements_by_id[element_id])
+        for element_id in element_ids
+        if element_id in elements_by_id
+    ]
+    if normalized["code"] == "sparse_container_content":
+        ratio = normalized["measurement"]["content_coverage_ratio"]
+        threshold = normalized["rule"]["threshold"]
+        container_id = normalized["target"].get("container_id", "unknown")
+        normalized.setdefault(
+            "message",
+            f"large card {container_id} content coverage {ratio:.1%} is below {threshold:.1%}",
+        )
+        normalized.setdefault(
+            "hint",
+            "Review the rendered screenshot; add or enlarge meaningful content if the whitespace is not intentional.",
+        )
+    elif normalized["code"] == "sparse_slide_content":
+        ratio = normalized["measurement"]["content_coverage_ratio"]
+        threshold = normalized["rule"]["threshold"]
+        normalized.setdefault(
+            "message",
+            f"slide visible content coverage {ratio:.1%} is below {threshold:.1%}",
+        )
+        normalized.setdefault(
+            "hint",
+            "Review the rendered screenshot to decide whether the page is intentionally sparse.",
+        )
+    else:
+        normalized.setdefault("message", normalized["code"].replace("_", " "))
+    return normalized
+
+
+def slide_status(errors: list[dict[str, Any]], warnings: list[dict[str, Any]]) -> str:
+    if errors:
+        return "blocked"
+    if warnings:
+        return "needs_screenshot_review"
+    return "passed"
+
+
+def build_result(
+    source_path: str | None,
+    slide_size: dict[str, int | float],
+    top_level_issues: list[dict[str, Any]],
+    slides: list[dict[str, Any]],
+) -> dict[str, Any]:
+    document_errors = [issue for issue in top_level_issues if issue["level"] == "error"]
+    document_warnings = [issue for issue in top_level_issues if issue["level"] == "warning"]
+    error_count = len(document_errors) + sum(len(slide["errors"]) for slide in slides)
+    warning_count = len(document_warnings) + sum(len(slide["warnings"]) for slide in slides)
+    all_errors = document_errors + [issue for slide in slides for issue in slide["errors"]]
+    all_warnings = document_warnings + [issue for slide in slides for issue in slide["warnings"]]
+    status = slide_status(all_errors, all_warnings)
+    result: dict[str, Any] = {
+        "schema_version": "2.0",
+        "tool": "xml_text_overlap_lint",
         "file": source_path,
-        "slide_size": {"width": presentation["width"], "height": presentation["height"]},
+        "slide_size": slide_size,
         "summary": {
             "slide_count": len(slides),
             "error_count": error_count,
             "warning_count": warning_count,
-            "info_count": info_count,
+            "status": status,
+            "release_ready": error_count == 0,
+            "screenshot_review_required": warning_count > 0,
+        },
+        "document": {
+            "errors": document_errors,
+            "warnings": document_warnings,
         },
         "slides": slides,
     }
     if top_level_issues:
         result["issues"] = top_level_issues
     return result
+
+
+def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
+    root, xml_error = parse_xml_root(xml)
+    if xml_error:
+        issue = normalize_issue(xml_error, None, {})
+        return build_result(
+            source_path,
+            {"width": 960, "height": 540},
+            [issue],
+            [],
+        )
+    if root is None:
+        raise AssertionError("parse_xml_root must return a root or error")
+
+    namespace_issues = validate_sml_tag_prefixes(xml)
+    sxsd_issues = validate_sxsd_tag_attributes(root)
+    iconpark_issues = validate_iconpark_icon_types(root)
+    top_level_issues = [
+        normalize_issue(issue, None, {})
+        for issue in [*namespace_issues, *sxsd_issues, *iconpark_issues]
+    ]
+    if any(issue["level"] == "error" for issue in top_level_issues):
+        return build_result(
+            source_path,
+            {"width": 960, "height": 540},
+            top_level_issues,
+            [],
+        )
+
+    presentation = parse_presentation(xml)
+    slides: list[dict[str, Any]] = []
+    for index, slide_xml in enumerate(presentation["slides"]):
+        slide_number = index + 1
+        geometry = lint_slide(
+            slide_xml,
+            slide_number,
+            presentation["width"],
+            presentation["height"],
+        )
+        density_elements = extract_density_elements(slide_xml)
+        extra_elements = [
+            *[element for element in density_elements if element["kind"] == "icon"],
+            *extract_line_elements(slide_xml),
+        ]
+        elements_by_id = {
+            element["id"]: element for element in [*density_elements, *extra_elements]
+        }
+        extra_overflow_issues = detect_elements_out_of_canvas(
+            extra_elements,
+            presentation["width"],
+            presentation["height"],
+        )
+        raw_issues = [
+            *geometry["issues"],
+            *extra_overflow_issues,
+            *detect_blank_slide(
+                density_elements,
+                slide_number,
+                presentation["width"],
+                presentation["height"],
+            ),
+            *detect_sparse_container_content(
+                density_elements,
+                slide_number,
+                presentation["width"],
+                presentation["height"],
+            ),
+            *detect_sparse_slide_content(
+                density_elements,
+                slide_number,
+                presentation["width"],
+                presentation["height"],
+            ),
+        ]
+        issues = [
+            normalize_issue(issue, slide_number, elements_by_id)
+            for issue in raw_issues
+        ]
+        errors = [issue for issue in issues if issue["level"] == "error"]
+        warnings = [issue for issue in issues if issue["level"] == "warning"]
+        slides.append(
+            {
+                "slide_number": slide_number,
+                "status": slide_status(errors, warnings),
+                "element_count": len(elements_by_id),
+                "errors": errors,
+                "warnings": warnings,
+                "issues": issues,
+            }
+        )
+
+    return build_result(
+        source_path,
+        {"width": presentation["width"], "height": presentation["height"]},
+        top_level_issues,
+        slides,
+    )
 
 
 def print_usage() -> None:
@@ -1416,6 +2067,6 @@ def run_cli(argv: list[str] | None = None) -> None:
 if __name__ == "__main__":
     try:
         run_cli()
-    except XmlTextOverlapLintError as error:
+    except XmlLayoutLintError as error:
         print(f"xml-text-overlap-lint error: {error}", file=sys.stderr)
         raise SystemExit(1) from error
