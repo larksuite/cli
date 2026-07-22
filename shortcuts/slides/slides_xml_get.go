@@ -375,10 +375,10 @@ type maskedXMLCharacterReference struct {
 
 var numericXMLCharacterReferencePattern = regexp.MustCompile(`&#(?:[0-9]+|x[0-9A-Fa-f]+);`)
 
-// maskSMLWhitespaceCharacterReferences protects the schema-documented space
-// and tab references from etree's parse/write normalization. Each original
-// spelling is restored exactly, including decimal, hexadecimal, and
-// zero-padded forms. The placeholder prefix is chosen not to occur in the
+// maskSMLWhitespaceCharacterReferences protects XML whitespace character
+// references (space, tab, CR, and LF) from etree's parse/write normalization.
+// Each original spelling is restored exactly, including decimal, hexadecimal,
+// and zero-padded forms. The placeholder prefix is chosen not to occur in the
 // input, so restoring cannot rewrite user-authored content accidentally.
 func maskSMLWhitespaceCharacterReferences(xmlContent string) (string, []maskedXMLCharacterReference) {
 	placeholderPrefix := "LARKCLI_XML_WHITESPACE_REFERENCE_"
