@@ -125,9 +125,9 @@ Sub Agent 需要携带以下的最小上下文，以及后续的 [SVG 设计 Wor
 `../../lark-whiteboard/SKILL.md`](../../lark-whiteboard/SKILL.md) 编辑。
 
 ```bash
-lark-cli whiteboard +query \
+lark-cli whiteboard +export \
   --whiteboard-token "wbcnxxxxxxxx" \
-  --output_as image \
+  --output-type preview \
   --output ./preview.png
 ```
 

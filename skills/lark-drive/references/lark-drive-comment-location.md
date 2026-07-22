@@ -190,9 +190,9 @@ lark-cli base +record-list --base-token '<base_token>' --table-id '<table_id>' -
 - 若要定位画板内部节点，切到 `lark-whiteboard` 读取 raw 节点结构：
 
 ```bash
-lark-cli whiteboard +query \
+lark-cli whiteboard +export \
   --whiteboard-token '<whiteboard_token>' \
-  --output_as raw
+  --output-type raw
 ```
 
 - 如果 raw 节点中存在唯一匹配 `quote` 的文本节点，可定位到该节点；如果有多个相同文本节点，仍然是弱匹配，需要结合位置、样式、用户描述或人工确认。
