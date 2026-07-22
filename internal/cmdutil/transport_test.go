@@ -97,14 +97,22 @@ func TestRetryTransport_DefaultNoRetry(t *testing.T) {
 func TestBuildSDKTransport_IncludesRetryTransport(t *testing.T) {
 	transport := buildSDKTransport()
 
-	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → Base
-	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
+	// Chain: LogID → SecurityPolicy → EnvHeader → BuildHeader → UserAgent → Retry → Base
+	lid, ok := transport.(*LogIDTransport)
 	if !ok {
-		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
+		t.Fatalf("outer transport type = %T, want *LogIDTransport", transport)
 	}
-	bh, ok := sec.Base.(*BuildHeaderTransport)
+	sec, ok := lid.Base.(*internalauth.SecurityPolicyTransport)
 	if !ok {
-		t.Fatalf("layer after SecurityPolicy = %T, want *BuildHeaderTransport", sec.Base)
+		t.Fatalf("layer after LogID = %T, want *auth.SecurityPolicyTransport", lid.Base)
+	}
+	eh, ok := sec.Base.(*EnvHeaderTransport)
+	if !ok {
+		t.Fatalf("layer after SecurityPolicy = %T, want *EnvHeaderTransport", sec.Base)
+	}
+	bh, ok := eh.Base.(*BuildHeaderTransport)
+	if !ok {
+		t.Fatalf("layer after EnvHeader = %T, want *BuildHeaderTransport", eh.Base)
 	}
 	ua, ok := bh.Base.(*UserAgentTransport)
 	if !ok {
@@ -121,18 +129,26 @@ func TestBuildSDKTransport_WithExtension(t *testing.T) {
 
 	transport := buildSDKTransport()
 
-	// Chain: extensionMiddleware → SecurityPolicy → BuildHeader → UserAgent → Retry → Base
+	// Chain: extensionMiddleware → LogID → SecurityPolicy → EnvHeader → BuildHeader → UserAgent → Retry → Base
 	mid, ok := transport.(*extensionMiddleware)
 	if !ok {
 		t.Fatalf("outer transport type = %T, want *extensionMiddleware", transport)
 	}
-	sec, ok := mid.Base.(*internalauth.SecurityPolicyTransport)
+	lid, ok := mid.Base.(*LogIDTransport)
 	if !ok {
-		t.Fatalf("transport type = %T, want *auth.SecurityPolicyTransport", mid.Base)
+		t.Fatalf("transport type = %T, want *LogIDTransport", mid.Base)
 	}
-	bh, ok := sec.Base.(*BuildHeaderTransport)
+	sec, ok := lid.Base.(*internalauth.SecurityPolicyTransport)
 	if !ok {
-		t.Fatalf("layer after SecurityPolicy = %T, want *BuildHeaderTransport", sec.Base)
+		t.Fatalf("layer after LogID = %T, want *auth.SecurityPolicyTransport", lid.Base)
+	}
+	eh, ok := sec.Base.(*EnvHeaderTransport)
+	if !ok {
+		t.Fatalf("layer after SecurityPolicy = %T, want *EnvHeaderTransport", sec.Base)
+	}
+	bh, ok := eh.Base.(*BuildHeaderTransport)
+	if !ok {
+		t.Fatalf("layer after EnvHeader = %T, want *BuildHeaderTransport", eh.Base)
 	}
 	ua, ok := bh.Base.(*UserAgentTransport)
 	if !ok {
@@ -148,14 +164,22 @@ func TestBuildSDKTransport_WithoutExtension(t *testing.T) {
 
 	transport := buildSDKTransport()
 
-	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → Base
-	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
+	// Chain: LogID → SecurityPolicy → EnvHeader → BuildHeader → UserAgent → Retry → Base
+	lid, ok := transport.(*LogIDTransport)
 	if !ok {
-		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
+		t.Fatalf("outer transport type = %T, want *LogIDTransport", transport)
 	}
-	bh, ok := sec.Base.(*BuildHeaderTransport)
+	sec, ok := lid.Base.(*internalauth.SecurityPolicyTransport)
 	if !ok {
-		t.Fatalf("layer after SecurityPolicy = %T, want *BuildHeaderTransport", sec.Base)
+		t.Fatalf("layer after LogID = %T, want *auth.SecurityPolicyTransport", lid.Base)
+	}
+	eh, ok := sec.Base.(*EnvHeaderTransport)
+	if !ok {
+		t.Fatalf("layer after SecurityPolicy = %T, want *EnvHeaderTransport", sec.Base)
+	}
+	bh, ok := eh.Base.(*BuildHeaderTransport)
+	if !ok {
+		t.Fatalf("layer after EnvHeader = %T, want *BuildHeaderTransport", eh.Base)
 	}
 	ua, ok := bh.Base.(*UserAgentTransport)
 	if !ok {

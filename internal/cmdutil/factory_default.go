@@ -115,9 +115,12 @@ func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 		}
 
 		var rt http.RoundTripper = transport.Shared()
+		rt = &DebugHeaderTransport{Base: rt}
 		rt = &RetryTransport{Base: rt}
 		rt = &SecurityHeaderTransport{Base: rt}
+		rt = &EnvHeaderTransport{Base: rt}
 		rt = &auth.SecurityPolicyTransport{Base: rt} // Add our global response interceptor
+		rt = &LogIDTransport{Base: rt}
 		rt = wrapWithExtension(rt)
 		client := &http.Client{
 			Transport:     rt,
@@ -154,10 +157,13 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 
 func buildSDKTransport() http.RoundTripper {
 	var sdkTransport http.RoundTripper = transport.Shared()
+	sdkTransport = &DebugHeaderTransport{Base: sdkTransport}
 	sdkTransport = &RetryTransport{Base: sdkTransport}
 	sdkTransport = &UserAgentTransport{Base: sdkTransport}
 	sdkTransport = &BuildHeaderTransport{Base: sdkTransport}
+	sdkTransport = &EnvHeaderTransport{Base: sdkTransport}
 	sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
+	sdkTransport = &LogIDTransport{Base: sdkTransport}
 	return wrapWithExtension(sdkTransport)
 }
 

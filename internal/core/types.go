@@ -40,7 +40,11 @@ type Endpoints struct {
 
 // ResolveEndpoints resolves endpoint URLs for the brand, normalizing its
 // input so stored values with unusual casing still resolve correctly.
+// EndpointDomainEnv, when set, short-circuits brand resolution entirely.
 func ResolveEndpoints(brand LarkBrand) Endpoints {
+	if ep, ok := endpointOverride(); ok {
+		return ep
+	}
 	switch ParseBrand(string(brand)) {
 	case BrandLark:
 		return Endpoints{
