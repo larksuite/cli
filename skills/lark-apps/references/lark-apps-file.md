@@ -28,7 +28,7 @@
 ## 各命令
 
 ### +file-list
-列出应用文件，支持精确过滤：`--name`（文件名）、`--path`（远端路径）、`--type`（MIME 类型）、`--size-gt`/`--size-lt`（字节）、`--uploaded-since`/`--uploaded-until`（上传时间区间，时间格式见末尾）。分页 `--page-size`（默认 20）/ `--page-token`。列表每项给名称、路径、大小、类型、上传时间（pretty 表格即这 5 列）；上传者、下载地址（如有）仅在 JSON 输出里，单文件详情用 `+file-get`。
+列出应用文件，支持精确过滤：`--name`（文件名）、`--path`（远端路径）、`--type`（MIME 类型）、`--size-gt`/`--size-lt`（字节）、`--uploaded-since`/`--uploaded-until`（上传时间区间，时间格式见末尾）。分页 `--page-size`（默认 20，范围 1..200）/ `--page-token`。列表每项给名称、路径、大小、类型、上传时间（pretty 表格即这 5 列）；上传者、下载地址（如有）仅在 JSON 输出里，单文件详情用 `+file-get`。
 
 ```bash
 lark-cli apps +file-list --app-id app_xxx
