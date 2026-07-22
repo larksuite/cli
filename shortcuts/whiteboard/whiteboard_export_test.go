@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -211,6 +212,73 @@ func TestWhiteboardQuery_Validate_TypedErrors(t *testing.T) {
 	}
 }
 
+// TestWhiteboardExport_Validate verifies the canonical +export flag spelling
+// and output type names while legacy +query validation remains covered above.
+func TestWhiteboardExport_Validate(t *testing.T) {
+	ctx := context.Background()
+	chdirTemp(t)
+
+	tests := []struct {
+		name      string
+		flags     map[string]string
+		wantErr   bool
+		wantParam string
+	}{
+		{
+			name: "valid: preview with output",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "preview",
+				"output":           "output",
+			},
+		},
+		{
+			name: "valid: source without output",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "source",
+			},
+		},
+		{
+			name: "invalid: preview without output",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "preview",
+			},
+			wantErr:   true,
+			wantParam: "--output",
+		},
+		{
+			name: "invalid: bad output-type value",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"output-type":      "image",
+			},
+			wantErr:   true,
+			wantParam: "--output-type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := WhiteboardExport.Validate(ctx, newTestRuntime(tt.flags, nil))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("WhiteboardExport.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil {
+				return
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error is not *errs.ValidationError: %T", err)
+			}
+			if ve.Param != tt.wantParam {
+				t.Fatalf("Param = %q, want %q", ve.Param, tt.wantParam)
+			}
+		})
+	}
+}
+
 // TestExportWhiteboardPreview_HTTPError locks the download-path failure
 // behavior: a failed preview download surfaces as a typed errs.* envelope, not
 // a flat legacy error.
@@ -284,7 +352,7 @@ func TestWhiteboardQuery_DryRun(t *testing.T) {
 				"output":           "output.png",
 			},
 			wantMethod: "GET",
-			wantPath:   "/open-apis/board/v1/whiteboards/test-token-123/download_as_image",
+			wantPath:   "/open-apis/board/v1/whiteboards/test...-123/download_as_image",
 		},
 		{
 			name: "dry run code",
@@ -293,7 +361,7 @@ func TestWhiteboardQuery_DryRun(t *testing.T) {
 				"output_as":        "code",
 			},
 			wantMethod: "GET",
-			wantPath:   "/open-apis/board/v1/whiteboards/test-token-123/nodes",
+			wantPath:   "/open-apis/board/v1/whiteboards/test...-123/nodes",
 		},
 		{
 			name: "dry run raw",
@@ -302,7 +370,7 @@ func TestWhiteboardQuery_DryRun(t *testing.T) {
 				"output_as":        "raw",
 			},
 			wantMethod: "GET",
-			wantPath:   "/open-apis/board/v1/whiteboards/test-token-123/nodes",
+			wantPath:   "/open-apis/board/v1/whiteboards/test...-123/nodes",
 		},
 	}
 
@@ -312,6 +380,29 @@ func TestWhiteboardQuery_DryRun(t *testing.T) {
 			dryRun := WhiteboardQuery.DryRun(ctx, rt)
 			if dryRun == nil {
 				t.Fatalf("WhiteboardQuery.DryRun() returned nil")
+			}
+			var got struct {
+				API []struct {
+					Method string                 `json:"method"`
+					URL    string                 `json:"url"`
+					Body   map[string]interface{} `json:"body"`
+				} `json:"api"`
+			}
+			data, err := json.Marshal(dryRun)
+			if err != nil {
+				t.Fatalf("Marshal() error = %v", err)
+			}
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatalf("Unmarshal() error = %v; data=%s", err, string(data))
+			}
+			if len(got.API) != 1 {
+				t.Fatalf("api len = %d, want 1; data=%s", len(got.API), string(data))
+			}
+			if got.API[0].Method != tt.wantMethod {
+				t.Fatalf("method = %q, want %q; data=%s", got.API[0].Method, tt.wantMethod, string(data))
+			}
+			if got.API[0].URL != tt.wantPath {
+				t.Fatalf("url = %q, want %q; data=%s", got.API[0].URL, tt.wantPath, string(data))
 			}
 		})
 	}
@@ -390,6 +481,32 @@ func TestWhiteboardQuery_ShortcutRegistration(t *testing.T) {
 	}
 	if len(WhiteboardQuery.Flags) == 0 {
 		t.Errorf("WhiteboardQuery.Flags is empty, expected at least one flag")
+	}
+	if !WhiteboardQuery.Hidden {
+		t.Errorf("WhiteboardQuery should be hidden because +export is the canonical command")
+	}
+
+	// Verify WhiteboardExport is the visible canonical shortcut.
+	if WhiteboardExport.Command != "+export" {
+		t.Errorf("WhiteboardExport.Command = %q, want \"+export\"", WhiteboardExport.Command)
+	}
+	if WhiteboardExport.Service != "whiteboard" {
+		t.Errorf("WhiteboardExport.Service = %q, want \"whiteboard\"", WhiteboardExport.Service)
+	}
+	if WhiteboardExport.Hidden {
+		t.Errorf("WhiteboardExport should be visible")
+	}
+	if flag := shortcutFlag(WhiteboardExport, "output_as"); flag != nil {
+		t.Errorf("WhiteboardExport --output_as should not be registered; got %#v", *flag)
+	}
+	if flag := shortcutFlag(WhiteboardExport, "output-type"); flag == nil || flag.Hidden {
+		t.Errorf("WhiteboardExport --output-type should exist and be visible")
+	}
+	if flag := shortcutFlag(WhiteboardQuery, "output_as"); flag == nil || flag.Hidden {
+		t.Errorf("WhiteboardQuery --output_as should exist and remain visible on the hidden legacy command")
+	}
+	if flag := shortcutFlag(WhiteboardQuery, "output-type"); flag != nil {
+		t.Errorf("WhiteboardQuery --output-type should not be registered; got %#v", *flag)
 	}
 }
 
@@ -862,10 +979,11 @@ func TestExportWhiteboardPreview(t *testing.T) {
 
 	// Mock download preview image API response with RawBody
 	reg.Register(&httpmock.Stub{
-		Method:  "GET",
-		URL:     "/open-apis/board/v1/whiteboards/test-token-preview/download_as_image",
-		Status:  200,
-		RawBody: []byte("fake PNG image data"),
+		Method:      "GET",
+		URL:         "/open-apis/board/v1/whiteboards/test-token-preview/download_as_image",
+		Status:      200,
+		RawBody:     []byte("fake PNG image data"),
+		ContentType: "image/png",
 	})
 
 	args := []string{"+query", "--whiteboard-token", "test-token-preview", "--output_as", "image", "--output", "output", "--overwrite"}
@@ -880,6 +998,158 @@ func TestExportWhiteboardPreview(t *testing.T) {
 	}
 	if string(data) != "fake PNG image data" {
 		t.Fatalf("image content = %q, want %q", string(data), "fake PNG image data")
+	}
+}
+
+// TestExportWhiteboardPreview_UsesContentTypeExtension verifies preview image
+// downloads are saved according to the API response Content-Type rather than a
+// hard-coded PNG suffix.
+func TestExportWhiteboardPreview_UsesContentTypeExtension(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	chdirTemp(t)
+
+	reg.Register(&httpmock.Stub{
+		Method:      "GET",
+		URL:         "/open-apis/board/v1/whiteboards/test-token-preview-jpeg/download_as_image",
+		Status:      200,
+		RawBody:     []byte("fake JPEG image data"),
+		ContentType: "image/jpeg",
+	})
+
+	args := []string{"+export", "--whiteboard-token", "test-token-preview-jpeg", "--output-type", "preview", "--output", "output", "--overwrite"}
+	if err := runShortcut(t, WhiteboardExport, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	if _, err := os.Stat("output.png"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output.png should not exist when response Content-Type is image/jpeg, stat err=%v", err)
+	}
+	data, err := os.ReadFile("output.jpg")
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "fake JPEG image data" {
+		t.Fatalf("image content = %q, want %q", string(data), "fake JPEG image data")
+	}
+}
+
+func TestExportWhiteboardPreview_RejectsNonImageContentTypeWithoutSiblingOverwrite(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	chdirTemp(t)
+
+	if err := os.WriteFile("report.html", []byte("keep me"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	reg.Register(&httpmock.Stub{
+		Method:      "GET",
+		URL:         "/open-apis/board/v1/whiteboards/test-token-preview-html/download_as_image",
+		Status:      200,
+		RawBody:     []byte("<html>bad gateway</html>"),
+		ContentType: "text/html; charset=utf-8",
+	})
+
+	args := []string{"+export", "--whiteboard-token", "test-token-preview-html", "--output-type", "preview", "--output", "report.png", "--overwrite"}
+	err := runShortcut(t, WhiteboardExport, args, factory, stdout)
+	if err == nil {
+		t.Fatal("expected error for non-image preview response")
+	}
+	assertInvalidResponse(t, err)
+
+	data, readErr := os.ReadFile("report.html")
+	if readErr != nil {
+		t.Fatalf("ReadFile() error: %v", readErr)
+	}
+	if string(data) != "keep me" {
+		t.Fatalf("report.html was overwritten: %q", string(data))
+	}
+	if _, statErr := os.Stat("report.png"); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("report.png should not be written on invalid response, stat err=%v", statErr)
+	}
+}
+
+func TestExportWhiteboardPreview_IgnoresContentDispositionExtension(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	chdirTemp(t)
+
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/board/v1/whiteboards/test-token-preview-disposition/download_as_image",
+		Status:  200,
+		RawBody: []byte("fake JPEG image data"),
+		Headers: http.Header{
+			"Content-Type":        []string{"image/jpeg"},
+			"Content-Disposition": []string{`attachment; filename="payload.sh"`},
+		},
+	})
+
+	args := []string{"+export", "--whiteboard-token", "test-token-preview-disposition", "--output-type", "preview", "--output", "output", "--overwrite"}
+	if err := runShortcut(t, WhiteboardExport, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	if _, err := os.Stat("output.sh"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output.sh should not be created from Content-Disposition, stat err=%v", err)
+	}
+	data, err := os.ReadFile("output.jpg")
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "fake JPEG image data" {
+		t.Fatalf("image content = %q, want %q", string(data), "fake JPEG image data")
+	}
+}
+
+func TestExportWhiteboardPreview_RejectsMismatchedExplicitExtension(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	chdirTemp(t)
+
+	reg.Register(&httpmock.Stub{
+		Method:      "GET",
+		URL:         "/open-apis/board/v1/whiteboards/test-token-preview-mismatch/download_as_image",
+		Status:      200,
+		RawBody:     []byte("fake JPEG image data"),
+		ContentType: "image/jpeg",
+	})
+
+	args := []string{"+export", "--whiteboard-token", "test-token-preview-mismatch", "--output-type", "preview", "--output", "report.png", "--overwrite"}
+	err := runShortcut(t, WhiteboardExport, args, factory, stdout)
+	if err == nil {
+		t.Fatal("expected error for mismatched explicit extension")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error is not *errs.ValidationError: %T (%v)", err, err)
+	}
+	if ve.Subtype != errs.SubtypeFailedPrecondition || ve.Param != "--output" {
+		t.Fatalf("validation details = subtype %q param %q, want %q --output", ve.Subtype, ve.Param, errs.SubtypeFailedPrecondition)
+	}
+	if _, statErr := os.Stat("report.jpg"); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("report.jpg should not be created when explicit path mismatches, stat err=%v", statErr)
+	}
+}
+
+func TestExportWhiteboardPreview_AllowsMatchingExplicitExtension(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	chdirTemp(t)
+
+	reg.Register(&httpmock.Stub{
+		Method:      "GET",
+		URL:         "/open-apis/board/v1/whiteboards/test-token-preview-matching/download_as_image",
+		Status:      200,
+		RawBody:     []byte("fake JPEG image data"),
+		ContentType: "image/jpeg",
+	})
+
+	args := []string{"+export", "--whiteboard-token", "test-token-preview-matching", "--output-type", "preview", "--output", "report.jpeg", "--overwrite"}
+	if err := runShortcut(t, WhiteboardExport, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data, err := os.ReadFile("report.jpeg")
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "fake JPEG image data" {
+		t.Fatalf("image content = %q, want %q", string(data), "fake JPEG image data")
 	}
 }
 
@@ -1521,4 +1791,13 @@ func chdirTemp(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chdir(orig) })
+}
+
+func shortcutFlag(shortcut common.Shortcut, name string) *common.Flag {
+	for i := range shortcut.Flags {
+		if shortcut.Flags[i].Name == name {
+			return &shortcut.Flags[i]
+		}
+	}
+	return nil
 }

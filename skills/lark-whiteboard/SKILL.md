@@ -22,21 +22,22 @@ metadata:
 
 **身份**：画板操作默认使用 `--as user`。仅当需要以应用身份上传时使用 `--as bot`。
 
-| 用户需求                                    | 行动                                                                                            |
-|-----------------------------------------|-----------------------------------------------------------------------------------------------|
-| 查看画板内容 / 导出图片 / 导出 SVG 矢量图 | [`+query --output_as image/svg`](references/lark-whiteboard-query.md)                             |
-| 获取画板的 Mermaid/PlantUML 代码               | [`+query --output_as code`](references/lark-whiteboard-query.md)                              |
-| 检查画板是否由代码绘制                             | [`+query --output_as code`](references/lark-whiteboard-query.md)                              |
-| 仅微调节点文字/颜色                         | `+query --output_as raw` → 手动改 JSON → `+update --input_format raw`                            |
+| 用户需求                                    | 行动                                                                                                |
+|-----------------------------------------|---------------------------------------------------------------------------------------------------|
+| 查看画板内容 / 导出图片 | [`+export --output-type preview`](references/lark-whiteboard-export.md)                       |
+| 导出 SVG 矢量图 | [`+export --output-type svg`](references/lark-whiteboard-export.md)                       |
+| 获取画板的 Mermaid/PlantUML 代码               | [`+export --output-type source`](references/lark-whiteboard-export.md)                             |
+| 检查画板是否由代码绘制                             | [`+export --output-type source`](references/lark-whiteboard-export.md)                             |
+| 仅微调节点文字/颜色                         | `+export --output-type raw` → 手动改 JSON → `+update --input_format raw`                             |
 | 用户**已提供** Mermaid/PlantUML/SVG 代码，或明确指定用该格式 | 自己生成/使用代码 → [`+update --input_format mermaid/plantuml/svg`](references/lark-whiteboard-update.md) |
-| 新建/创作复杂图表（架构/流程/组织等）                    | → **[§ 创作 Workflow](references/lark-whiteboard-workflow.md#创作-workflow)**                     |
-| 修改/重绘已有画板                               | → **[§ 修改 Workflow](references/lark-whiteboard-workflow.md#修改-workflow)**                     |
+| 新建/创作复杂图表（架构/流程/组织等）                    | → **[§ 创作 Workflow](references/lark-whiteboard-workflow.md#创作-workflow)**                         |
+| 修改/重绘已有画板                               | → **[§ 修改 Workflow](references/lark-whiteboard-workflow.md#修改-workflow)**                         |
 
 ## Shortcuts
 
-| Shortcut | 说明 |
-|---|---|
-| [`+query`](references/lark-whiteboard-query.md) | 查询画板，导出为预览图片、SVG 矢量图、代码或原始节点结构。 |
+| Shortcut                                          | 说明 |
+|---------------------------------------------------|---|
+| [`+export`](references/lark-whiteboard-export.md) | 导出画板为预览图片、SVG 矢量图、代码或原始节点结构。 |
 | [`+update`](references/lark-whiteboard-update.md) | 更新画板，支持 PlantUML、Mermaid、SVG 或 OpenAPI 原生格式 |
 
 ---

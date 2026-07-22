@@ -251,6 +251,136 @@ func TestCreate_WithAttendees_Success(t *testing.T) {
 	}
 }
 
+func TestCreate_WithAttendees_AsBot_AddsBotSelf(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/bot/v3/info",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"bot": map[string]interface{}{
+				"open_id":  "ou_botself",
+				"app_name": "Test Bot",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id": "evt_bot",
+					"summary":  "Bot Sync",
+					"start_time": map[string]interface{}{
+						"timestamp": "1742515200",
+					},
+					"end_time": map[string]interface{}{
+						"timestamp": "1742518800",
+					},
+				},
+			},
+		},
+	})
+	attendeesStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_bot/attendees",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(attendeesStub)
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Bot Sync",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T01:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--attendee-ids", "ou_user1",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if attendeesStub.CapturedBody == nil {
+		t.Fatal("attendees API was not called")
+	}
+	if !bytes.Contains(attendeesStub.CapturedBody, []byte("ou_botself")) {
+		t.Fatalf("expected bot open_id ou_botself in attendees request, got: %s", attendeesStub.CapturedBody)
+	}
+	if !bytes.Contains(attendeesStub.CapturedBody, []byte("ou_user1")) {
+		t.Fatalf("expected requested attendee ou_user1 in attendees request, got: %s", attendeesStub.CapturedBody)
+	}
+}
+
+func TestCreate_WithAttendees_AsBot_BotInfoFails_ProceedsWithoutBot(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/bot/v3/info",
+		Body: map[string]interface{}{
+			"code": 99991663, "msg": "app ticket invalid",
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id": "evt_nobot",
+					"summary":  "Bot Sync",
+					"start_time": map[string]interface{}{
+						"timestamp": "1742515200",
+					},
+					"end_time": map[string]interface{}{
+						"timestamp": "1742518800",
+					},
+				},
+			},
+		},
+	})
+	attendeesStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_nobot/attendees",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(attendeesStub)
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Bot Sync",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T01:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--attendee-ids", "ou_user1",
+		"--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if attendeesStub.CapturedBody == nil {
+		t.Fatal("attendees API was not called")
+	}
+	if !bytes.Contains(attendeesStub.CapturedBody, []byte("ou_user1")) {
+		t.Fatalf("expected requested attendee ou_user1 in attendees request, got: %s", attendeesStub.CapturedBody)
+	}
+	if bytes.Contains(attendeesStub.CapturedBody, []byte("ou_botself")) {
+		t.Fatalf("bot open_id should be absent when /bot/v3/info fails, got: %s", attendeesStub.CapturedBody)
+	}
+}
+
 func TestCreate_WithAttendees_APIError_RollsBack(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 

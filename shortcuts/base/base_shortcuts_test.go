@@ -28,23 +28,16 @@ func newBaseTestRuntime(stringFlags map[string]string, boolFlags map[string]bool
 }
 
 func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlags map[string][]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
-	return newBaseTestRuntimeWithArraysAndSlices(stringFlags, stringArrayFlags, nil, boolFlags, intFlags)
-}
-
-func newBaseTestRuntimeWithSlices(stringFlags map[string]string, stringSliceFlags map[string][]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
-	return newBaseTestRuntimeWithArraysAndSlices(stringFlags, nil, stringSliceFlags, boolFlags, intFlags)
-}
-
-func newBaseTestRuntimeWithArraysAndSlices(stringFlags map[string]string, stringArrayFlags map[string][]string, stringSliceFlags map[string][]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "test"}
 	for name := range stringFlags {
 		cmd.Flags().String(name, "", "")
 	}
 	for name := range stringArrayFlags {
-		cmd.Flags().StringArray(name, nil, "")
-	}
-	for name := range stringSliceFlags {
-		cmd.Flags().StringSlice(name, nil, "")
+		if name == "field-names" {
+			cmd.Flags().StringSlice(name, nil, "")
+		} else {
+			cmd.Flags().StringArray(name, nil, "")
+		}
 	}
 	for name := range boolFlags {
 		cmd.Flags().Bool(name, false, "")
@@ -57,11 +50,6 @@ func newBaseTestRuntimeWithArraysAndSlices(stringFlags map[string]string, string
 		_ = cmd.Flags().Set(name, value)
 	}
 	for name, values := range stringArrayFlags {
-		for _, value := range values {
-			_ = cmd.Flags().Set(name, value)
-		}
-	}
-	for name, values := range stringSliceFlags {
 		for _, value := range values {
 			_ = cmd.Flags().Set(name, value)
 		}
@@ -477,6 +465,40 @@ func TestBaseLimitPageSizeAliasIsHidden(t *testing.T) {
 	}
 }
 
+func TestBaseRecordProjectionAliasesAreHidden(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+	}{
+		{name: "record list", shortcut: BaseRecordList},
+		{name: "record search", shortcut: BaseRecordSearch},
+		{name: "record get", shortcut: BaseRecordGet},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+
+			primary := cmd.Flags().Lookup("field-id")
+			if primary == nil || primary.Hidden {
+				t.Fatalf("public projection flag --field-id missing or hidden: %#v", primary)
+			}
+			help := cmd.Flags().FlagUsages()
+			for _, aliasName := range []string{"fields", "field-names"} {
+				alias := cmd.Flags().Lookup(aliasName)
+				if alias == nil || !alias.Hidden {
+					t.Fatalf("projection alias --%s should exist and be hidden: %#v", aliasName, alias)
+				}
+				if strings.Contains(help, "--"+aliasName) {
+					t.Fatalf("help should not include hidden --%s:\n%s", aliasName, help)
+				}
+			}
+		})
+	}
+}
+
 func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -823,6 +845,10 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"does not auto-upsert by business key",
 				"use +field-list to confirm real writable fields",
 				"do not write system fields, formula, lookup, or attachment fields",
+				"Sub-record/child-record path",
+				"set that link field to a parent record reference array",
+				`{"Parent Link":[{"id":"rec_xxx"}]}`,
+				"do not look for parent_record_id or a separate child-record API",
 				"CellValue happy path: text/phone/url",
 				"select -> \"Todo\"",
 				"multi-select -> [\"Tag A\",\"Tag B\"]",
@@ -973,11 +999,17 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 			t.Fatalf("flag help missing %q:\n%s", want, help)
 		}
 	}
+	if strings.Contains(help, "reformat-existing-records") {
+		t.Fatalf("+field-update must not expose a --reformat-existing-records flag:\n%s", help)
+	}
 
 	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
 	wantTips := []string{
 		`lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id "Status" --json '{"name":"Status","type":"text"}' --yes`,
 		`"type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]`,
+		`Example auto_number update: lark-cli base +field-update`,
+		`When --json.type is "auto_number", updating the numbering rules also reapplies them to existing numbers`,
+		"just submit the target field definition and do not add extra low-level parameters",
 		"full field-definition PUT semantics",
 		"Read the current field first with +field-get",
 		"Type conversion is allowlist-based",
@@ -989,6 +1021,9 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 		if !strings.Contains(tips, want) {
 			t.Fatalf("tips missing %q:\n%s", want, tips)
 		}
+	}
+	if strings.Contains(tips, "--reformat-existing-records") {
+		t.Fatalf("+field-update tips must not ask agents to pass --reformat-existing-records:\n%s", tips)
 	}
 }
 
@@ -1112,6 +1147,10 @@ func TestBaseFieldValidate(t *testing.T) {
 	if err := BaseFieldUpdate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "json": `{"name":"f1","type":"formula"}`}, map[string]bool{"i-have-read-guide": true}, nil)); err != nil {
 		t.Fatalf("formula update validate err=%v", err)
 	}
+	autoNumberJSON := `{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"incremental_number","length":4}]}}`
+	if err := BaseFieldUpdate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "json": autoNumberJSON}, nil, nil)); err != nil {
+		t.Fatalf("auto number update validate err=%v", err)
+	}
 }
 
 func TestBaseTableValidate(t *testing.T) {
@@ -1233,13 +1272,89 @@ func TestBaseRecordValidate(t *testing.T) {
 	)); err != nil {
 		t.Fatalf("record search json with sort-json validate err=%v", err)
 	}
-	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+	err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "keyword": "Bob"},
 		nil,
 		nil,
-	)); err == nil || !strings.Contains(err.Error(), "--json is mutually exclusive") {
-		t.Fatalf("err=%v", err)
+	))
+	assertInvalidArgumentValidation(t, err, "--json", []string{"--json", "--keyword"}, "mutually exclusive")
+	err = BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "fields": "Name"},
+		map[string][]string{"field-id": {"fld_name"}},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, err, "--json", []string{"--json", "--field-id", "--fields"}, "mutually exclusive")
+}
+
+func TestBaseRecordSearchProjectionLimit(t *testing.T) {
+	ctx := context.Background()
+	fields := make([]string, 51)
+	for i := range fields {
+		fields[i] = "Field " + strconv.Itoa(i+1)
 	}
+
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		map[string][]string{"search-field": {"Name"}, "field-id": fields[:50]},
+		nil,
+		nil,
+	)); err != nil {
+		t.Fatalf("50 projection fields should be accepted: %v", err)
+	}
+
+	err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		map[string][]string{"search-field": {"Name"}, "field-id": fields},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, err, "--field-id", []string{"--field-id"}, "maximum limit of 50")
+
+	body, marshalErr := json.Marshal(map[string]interface{}{
+		"keyword":       "Alice",
+		"search_fields": []string{"Name"},
+		"select_fields": fields,
+	})
+	if marshalErr != nil {
+		t.Fatalf("marshal search body: %v", marshalErr)
+	}
+	err = BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": string(body)},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "maximum limit of 50")
+}
+
+func TestRecordSearchJSONNullProjectionIsOmitted(t *testing.T) {
+	runtime := newBaseTestRuntime(map[string]string{
+		"json": `{"keyword":"Alice","search_fields":["Name"],"select_fields":null,"sort":{"sort_config":[{"field":"Updated","desc":true}]}}`,
+	}, nil, nil)
+	body, err := recordSearchJSONBody(runtime)
+	if err != nil {
+		t.Fatalf("recordSearchJSONBody() error = %v", err)
+	}
+	if _, exists := body["select_fields"]; exists {
+		t.Fatalf("select_fields:null must normalize to omitted, body=%#v", body)
+	}
+	if sortConfig, ok := body["sort"].([]interface{}); !ok || len(sortConfig) != 1 {
+		t.Fatalf("sort normalization must continue after omitting null select_fields, body=%#v", body)
+	}
+}
+
+func TestBaseRecordSearchJSONProjectionParamIgnoresFlagLikeFieldNames(t *testing.T) {
+	ctx := context.Background()
+	err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+		map[string]string{
+			"base-token": "b",
+			"table-id":   "tbl_1",
+			"json":       `{"keyword":"cost","search_fields":["Name"],"select_fields":["Cost--USD","Cost--USD"]}`,
+		},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "duplicate field id")
 }
 
 func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {

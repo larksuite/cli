@@ -81,6 +81,37 @@ func runShortcutWithAuthTypes(t *testing.T, shortcut common.Shortcut, authTypes 
 	return parent.ExecuteContext(context.Background())
 }
 
+func assertInvalidArgumentValidation(t *testing.T, err error, wantParam string, wantParams []string, messageContains string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected invalid-argument validation error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected invalid-argument validation problem, got %T %v", err, err)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T %v", err, err)
+	}
+	if validationErr.Param != wantParam {
+		t.Fatalf("param=%q, want %q", validationErr.Param, wantParam)
+	}
+	if wantParams != nil {
+		if len(validationErr.Params) != len(wantParams) {
+			t.Fatalf("params=%#v, want %v", validationErr.Params, wantParams)
+		}
+		for i, want := range wantParams {
+			if validationErr.Params[i].Name != want {
+				t.Fatalf("params=%#v, want %v", validationErr.Params, wantParams)
+			}
+		}
+	}
+	if messageContains != "" && !strings.Contains(err.Error(), messageContains) {
+		t.Fatalf("err=%v, want message containing %q", err, messageContains)
+	}
+}
+
 func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	stderr, _ := factory.IOStreams.ErrOut.(*bytes.Buffer)
@@ -818,8 +849,189 @@ func TestBaseFieldExecuteUpdate(t *testing.T) {
 	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `{"name":"Amount","type":"number"}`, "--yes"}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, `"updated": true`) || !strings.Contains(got, `"fld_x"`) {
-		t.Fatalf("stdout=%s", got)
+	got := stdout.String()
+	for _, want := range []string{`"updated": true`, `"fld_x"`, `"field_get_recommended": true`, `"next_step": "field_get"`, `"verification_hint"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestFieldUpdateResultAlwaysRecommendsReadback(t *testing.T) {
+	tests := []struct {
+		name         string
+		field        interface{}
+		submitted    map[string]interface{}
+		hintContains []string
+	}{
+		{
+			name:         "direct complex server type overrides simple submitted type",
+			field:        map[string]interface{}{"type": "auto_number"},
+			submitted:    map[string]interface{}{"type": "number"},
+			hintContains: []string{`submitted type "number"`, `server returned type "auto_number"`},
+		},
+		{
+			name:         "nested simple server type still recommends readback",
+			field:        map[string]interface{}{"field": map[string]interface{}{"type": "number"}},
+			submitted:    map[string]interface{}{"type": "auto_number"},
+			hintContains: []string{`submitted type "auto_number"`, `server returned type "number"`},
+		},
+		{
+			name:         "submitted simple type still recommends readback when response omits type",
+			field:        map[string]interface{}{"id": "fld_x"},
+			submitted:    map[string]interface{}{"type": "text"},
+			hintContains: []string{`type "text"`, "cannot determine the previous type"},
+		},
+		{
+			name:         "missing type is conservative",
+			field:        map[string]interface{}{"id": "fld_x"},
+			submitted:    map[string]interface{}{"name": "Amount"},
+			hintContains: []string{"unknown or uncommon field type", "+field-get"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fieldUpdateResult(map[string]interface{}{"field": tc.field, "updated": true}, tc.submitted)
+			if got["field_get_recommended"] != true || got["next_step"] != "field_get" {
+				t.Fatalf("result=%#v, want readback recommendation", got)
+			}
+			hint, _ := got["verification_hint"].(string)
+			for _, want := range tc.hintContains {
+				if !strings.Contains(hint, want) {
+					t.Fatalf("verification_hint=%q, want substring %q", hint, want)
+				}
+			}
+		})
+	}
+}
+
+func TestBaseFieldExecuteUpdateNoopReturnsAPIError(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
+		Body: map[string]interface{}{
+			"code": 800070003,
+			"msg":  "no operation produced",
+		},
+	})
+	err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `{"name":"Amount","type":"number"}`, "--yes"}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected the API no-op response to surface as an error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed API error, got %T %v", err, err)
+	}
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeUnknown || p.Code != 800070003 {
+		t.Fatalf("category/subtype/code=%s/%s/%d", p.Category, p.Subtype, p.Code)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected APIError, got %T %v", err, err)
+	}
+	if got := stdout.String(); strings.TrimSpace(got) != "" {
+		t.Fatalf("no success envelope should be emitted on a no-op API error:\n%s", got)
+	}
+}
+
+func TestBaseFieldExecuteUpdateAutoNumberUsesV3FieldJSON(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"field": map[string]interface{}{"id": "fld_x", "name": "编号", "type": "auto_number"},
+			},
+		},
+	}
+	reg.Register(stub)
+	jsonBody := `{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}`
+	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", jsonBody, "--yes"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	gotBody := string(stub.CapturedBody)
+	for _, want := range []string{
+		`"name":"编号"`,
+		`"type":"auto_number"`,
+		`"rules":[`,
+		`"date_format":"yyyyMM"`,
+		`"length":4`,
+	} {
+		if !strings.Contains(gotBody, want) {
+			t.Fatalf("request body missing %q:\n%s", want, gotBody)
+		}
+	}
+	for _, forbidden := range []string{"auto_serial", "reformat_existing_records", `"type":1005`} {
+		if strings.Contains(gotBody, forbidden) {
+			t.Fatalf("request body must not contain v1 field %q:\n%s", forbidden, gotBody)
+		}
+	}
+	got := stdout.String()
+	for _, want := range []string{`"updated": true`, `"fld_x"`, `"field_get_recommended": true`, `"next_step": "field_get"`, `"verification_hint"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, got)
+		}
+	}
+	for _, forbidden := range []string{`"reformat_existing_records"`} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("stdout must not expose %q:\n%s", forbidden, got)
+		}
+	}
+}
+
+func TestBaseFieldExecuteUpdateDoesNotRejectExtraJSONKeys(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "fld_x", "name": "编号", "type": "auto_number"},
+		},
+	}
+	reg.Register(stub)
+	// Unknown v3 keys are forwarded unchanged; the server remains the source of
+	// truth for whether a field-update property is supported.
+	jsonBody := `{"name":"编号","type":"auto_number","style":{"rules":[{"type":"incremental_number","length":4}]},"reformat_existing_records":true}`
+	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", jsonBody, "--yes"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if gotBody := string(stub.CapturedBody); !strings.Contains(gotBody, `"reformat_existing_records":true`) {
+		t.Fatalf("request body must preserve unknown v3 key:\n%s", gotBody)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"updated": true`) {
+		t.Fatalf("expected successful update, got: %s", got)
+	}
+}
+
+func TestBaseFieldValidateAllowsRatingMaxAboveLimit(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		runtime  *common.RuntimeContext
+	}{
+		{
+			name:     "create",
+			shortcut: BaseFieldCreate,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_x", "json": `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`}, nil, nil),
+		},
+		{
+			name:     "update",
+			shortcut: BaseFieldUpdate,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_x", "field-id": "fld_x", "json": `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`}, nil, nil),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.shortcut.Validate(ctx, tc.runtime); err != nil {
+				t.Fatalf("rating max above 10 should not be blocked by CLI validation: %v", err)
+			}
+		})
 	}
 }
 
@@ -1091,8 +1303,32 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		if err := runShortcut(t, BaseFieldCreate, []string{"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"name":"Status","type":"text"}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"created": true`) || !strings.Contains(got, `"fld_new"`) {
-			t.Fatalf("stdout=%s", got)
+		got := stdout.String()
+		for _, want := range []string{`"created": true`, `"fld_new"`, `"field_get_recommended": false`, `"next_step": "done"`, `"verification_hint"`} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("stdout missing %q:\n%s", want, got)
+			}
+		}
+	})
+
+	t.Run("create generated field recommends readback", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_auto", "name": "编号", "type": "auto_number"},
+			},
+		})
+		if err := runShortcut(t, BaseFieldCreate, []string{"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"name":"编号","type":"auto_number"}`}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		for _, want := range []string{`"created": true`, `"fld_auto"`, `"field_get_recommended": true`, `"next_step": "field_get"`, `"verification_hint"`} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("stdout missing %q:\n%s", want, got)
+			}
 		}
 	})
 
@@ -1139,8 +1375,55 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		if len(fields) != 2 {
 			t.Fatalf("fields len=%d output=%#v", len(fields), data)
 		}
+		if data["field_get_recommended"] != false || data["next_step"] != "done" || data["verification_hint"] == nil {
+			t.Fatalf("simple batch create must carry field_get_recommended:false + next_step:done + verification_hint: %#v", data)
+		}
 		if !strings.Contains(string(firstStub.CapturedBody), `"name":"A"`) || !strings.Contains(string(secondStub.CapturedBody), `"name":"B"`) {
 			t.Fatalf("unexpected request bodies: %s / %s", firstStub.CapturedBody, secondStub.CapturedBody)
+		}
+	})
+
+	t.Run("create array with generated field recommends readback", func(t *testing.T) {
+		oldDelay := fieldCreateBatchDelay
+		fieldCreateBatchDelay = 0
+		t.Cleanup(func() { fieldCreateBatchDelay = oldDelay })
+
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			BodyFilter: func(body []byte) bool {
+				return strings.Contains(string(body), `"name":"Title"`)
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_title", "name": "Title", "type": "text"},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			BodyFilter: func(body []byte) bool {
+				return strings.Contains(string(body), `"name":"编号"`)
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_no", "name": "编号", "type": "auto_number"},
+			},
+		})
+
+		if err := runShortcut(t, BaseFieldCreate, []string{"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `[{"name":"Title","type":"text"},{"name":"编号","type":"auto_number"}]`}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if data["created"] != true || data["total"] != float64(2) {
+			t.Fatalf("unexpected output: %#v", data)
+		}
+		if _, ok := data["fields"].([]interface{}); !ok {
+			t.Fatalf("batch create must keep fields array: %#v", data)
+		}
+		if data["field_get_recommended"] != true || data["next_step"] != "field_get" || data["verification_hint"] == nil {
+			t.Fatalf("batch with auto_number must recommend readback: %#v", data)
 		}
 	})
 
@@ -1314,6 +1597,32 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 		if got := stdout.String(); !strings.Contains(got, `"rec_alias"`) || !strings.Contains(got, `"Alice"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list field names alias preserves quoted commas and at-sign names", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "field_id=A%2CB&field_id=%40Owner&limit=1&offset=0",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"A,B", "@Owner"},
+					"record_id_list": []interface{}{"rec_alias_special"},
+					"data":           []interface{}{[]interface{}{"value-1", "value-2"}},
+					"total":          1,
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordList, []string{
+			"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1",
+			"--field-names", `"A,B",@Owner`, "--format", "json",
+		}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"rec_alias_special"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
@@ -1614,27 +1923,161 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("list legacy fields flag rejected", func(t *testing.T) {
-		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name"}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "unknown flag: --fields") {
+	t.Run("list fields alias accepts JSON array projection", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "field_id=Name&field_id=Age&limit=1&offset=0",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Name", "Age"},
+					"record_id_list": []interface{}{"rec_fields"},
+					"data":           []interface{}{[]interface{}{"Alice", 18}},
+					"total":          1,
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1", "--fields", `["Name","Age"]`, "--format", "json"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"rec_fields"`) || !strings.Contains(got, `"Alice"`) {
+			t.Fatalf("stdout=%s", got)
 		}
 	})
 
-	t.Run("list field ids and field names alias are mutually exclusive", func(t *testing.T) {
-		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "Name", "--field-names", "Age"}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "--field-id and --field-names are mutually exclusive") {
+	t.Run("list field names alias accepts repeated projection", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "field_id=Name&field_id=Age&limit=1&offset=0",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Name", "Age"},
+					"record_id_list": []interface{}{"rec_fields"},
+					"data":           []interface{}{[]interface{}{"Alice", 18}},
+					"total":          1,
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1", "--field-names", "Name", "--field-names", "Age", "--format", "json"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"rec_fields"`) || !strings.Contains(got, `"Alice"`) {
+			t.Fatalf("stdout=%s", got)
 		}
 	})
 
-	t.Run("list legacy fields flag rejected in dry-run", func(t *testing.T) {
+	t.Run("list projection aliases report only supplied ambiguous inputs", func(t *testing.T) {
+		baseArgs := []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x"}
+		cases := []struct {
+			name       string
+			args       []string
+			wantParam  string
+			wantParams []string
+		}{
+			{name: "canonical and fields alias", args: []string{"--field-id", "Name", "--fields", `["Age"]`}, wantParam: "--field-id", wantParams: []string{"--field-id", "--fields"}},
+			{name: "canonical and field names alias", args: []string{"--field-id", "Name", "--field-names", "Age"}, wantParam: "--field-id", wantParams: []string{"--field-id", "--field-names"}},
+			{name: "compatibility aliases", args: []string{"--fields", `["Name"]`, "--field-names", "Age"}, wantParam: "--fields", wantParams: []string{"--fields", "--field-names"}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				factory, stdout, _ := newExecuteFactory(t)
+				args := append(append([]string{}, baseArgs...), tc.args...)
+				err := runShortcut(t, BaseRecordList, args, factory, stdout)
+				assertInvalidArgumentValidation(t, err, tc.wantParam, tc.wantParams, "mutually exclusive")
+				var validationErr *errs.ValidationError
+				if !errors.As(err, &validationErr) || validationErr.Hint != "Use only --field-id for projection." {
+					t.Fatalf("hint=%q, want canonical projection guidance", validationErr.Hint)
+				}
+			})
+		}
+	})
+
+	t.Run("search json conflict reports each supplied projection parameter", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name", "--dry-run"}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "unknown flag: --fields") {
+		err := runShortcut(t, BaseRecordSearch, []string{
+			"+record-search", "--base-token", "app_x", "--table-id", "tbl_x",
+			"--json", `{"keyword":"Alice","search_fields":["Name"]}`,
+			"--field-names", "Age",
+		}, factory, stdout)
+		assertInvalidArgumentValidation(t, err, "--json", []string{"--json", "--field-names"}, "mutually exclusive")
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) || !strings.Contains(validationErr.Hint, "inside --json") {
+			t.Fatalf("hint=%q, want JSON-body guidance", validationErr.Hint)
+		}
+	})
+
+	t.Run("list canonical and alias projections reject duplicates consistently", func(t *testing.T) {
+		cases := []struct {
+			name  string
+			args  []string
+			param string
+		}{
+			{name: "canonical", args: []string{"--field-id", "Cost--USD", "--field-id", "Cost--USD"}, param: "--field-id"},
+			{name: "fields alias", args: []string{"--fields", `["Cost--USD","Cost--USD"]`}, param: "--fields"},
+			{name: "field names alias", args: []string{"--field-names", "Cost--USD", "--field-names", "Cost--USD"}, param: "--field-names"},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				factory, stdout, _ := newExecuteFactory(t)
+				args := append([]string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x"}, tc.args...)
+				err := runShortcut(t, BaseRecordList, args, factory, stdout)
+				assertInvalidArgumentValidation(t, err, tc.param, []string{tc.param}, "duplicate field id")
+			})
+		}
+	})
+
+	t.Run("search fields alias accepts JSON array projection", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		searchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Name", "Age"},
+					"record_id_list": []interface{}{"rec_search"},
+					"data":           []interface{}{[]interface{}{"Alice", 18}},
+				},
+			},
+		}
+		reg.Register(searchStub)
+		if err := runShortcut(t, BaseRecordSearch, []string{
+			"+record-search", "--base-token", "app_x", "--table-id", "tbl_x",
+			"--keyword", "Alice", "--search-field", "Name", "--fields", `["Name","Age"]`, "--format", "json",
+		}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
+		}
+		if body := string(searchStub.CapturedBody); !strings.Contains(body, `"select_fields":["Name","Age"]`) {
+			t.Fatalf("captured body=%s", body)
+		}
+	})
+
+	t.Run("get field names alias accepts repeated projection", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		batchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/batch_get",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_id_list": []interface{}{"rec_1"},
+					"fields":         []interface{}{"Name", "Age"},
+					"data":           []interface{}{[]interface{}{"Alice", 18}},
+				},
+			},
+		}
+		reg.Register(batchStub)
+		if err := runShortcut(t, BaseRecordGet, []string{
+			"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1",
+			"--field-names", "Name", "--field-names", "Age", "--format", "json",
+		}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if body := string(batchStub.CapturedBody); !strings.Contains(body, `"select_fields":["Name","Age"]`) {
+			t.Fatalf("request body=%s", body)
 		}
 	})
 

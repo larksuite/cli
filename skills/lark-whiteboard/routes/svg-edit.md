@@ -25,9 +25,9 @@ SVG 导出是**纯视觉快照**，再次导入后画板语义（思维导图层
 ### 1. 导出当前画板 SVG
 
 ```bash
-lark-cli whiteboard +query \
+lark-cli whiteboard +export \
   --whiteboard-token <TOKEN> \
-  --output_as svg \
+  --output-type svg \
   --output <dir>/original.svg \
   --as user
 ```
