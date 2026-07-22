@@ -327,10 +327,13 @@ var textBearingTags = map[string]bool{
 // and this command has no other reason to exist than to hand a human
 // something they can read.
 //
-// Reindentation never enters a textBearingTags element. Schema-documented
-// whitespace character references are masked before parsing and restored
-// after serialization, and CDATA sections are preserved rather than
-// collapsed into escaped text.
+// Reindentation never enters a textBearingTags element. XML whitespace
+// character references are masked before parsing and restored after
+// serialization, and CDATA sections are preserved rather than collapsed into
+// escaped text. This covers the schema-documented space/tab references as well
+// as CR/LF references: serializing a CR reference as a literal line ending
+// would make a later XML parse normalize it to LF and break read-modify-write
+// round trips.
 func prettyPrintXML(xmlContent string) (string, error) {
 	maskedContent, maskedReferences := maskSMLWhitespaceCharacterReferences(xmlContent)
 	doc := etree.NewDocument()
@@ -392,7 +395,12 @@ func maskSMLWhitespaceCharacterReferences(xmlContent string) (string, []maskedXM
 			digits = digits[1:]
 		}
 		value, err := strconv.ParseUint(digits, base, 32)
-		if err != nil || (value != ' ' && value != '\t') {
+		if err != nil {
+			return reference
+		}
+		switch value {
+		case ' ', '\t', '\r', '\n':
+		default:
 			return reference
 		}
 

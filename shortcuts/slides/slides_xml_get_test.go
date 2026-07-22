@@ -582,15 +582,13 @@ func TestPrettyPrintXMLRejectsMalformedInput(t *testing.T) {
 	}
 }
 
-// TestPrettyPrintXMLPreservesEscapedWhitespaceAsSoleLeafContent covers the
-// schema's documented escape idiom (slides_xml_schema_definition.xml, <p>
-// element docs): "需要保留空格时...请使用&#32;字符" / "需要使用制表符时...请使用&#9;字符".
-// etree normally decodes both into plain whitespace indistinguishable from
-// incidental formatting whitespace. The formatter must preserve their
-// lexical representation so later SML write operations can still distinguish
-// deliberate whitespace. See the mixed="true" content types
-// (p/strong/em/u/span/del/a/shadow/outline/chartTitle/chartSubTitle).
-func TestPrettyPrintXMLPreservesEscapedWhitespaceAsSoleLeafContent(t *testing.T) {
+// TestPrettyPrintXMLPreservesEscapedWhitespaceReferences covers the schema's
+// documented space/tab escape idiom (slides_xml_schema_definition.xml, <p>
+// element docs) and CR/LF references whose lexical form is needed to avoid
+// XML line-ending normalization on a later parse. etree normally decodes the
+// references into literal whitespace. The formatter must preserve their
+// lexical representation for safe read-modify-write workflows.
+func TestPrettyPrintXMLPreservesEscapedWhitespaceReferences(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
@@ -601,6 +599,10 @@ func TestPrettyPrintXMLPreservesEscapedWhitespaceAsSoleLeafContent(t *testing.T)
 		{"space in nested span", `<content><p><span>&#32;</span></p></content>`, "<content>\n  <p><span>&#32;</span></p>\n</content>\n"},
 		{"hex space", `<content><p>&#x20;</p></content>`, "<content>\n  <p>&#x20;</p>\n</content>\n"},
 		{"zero-padded tab", `<content><p>&#0009;</p></content>`, "<content>\n  <p>&#0009;</p>\n</content>\n"},
+		{"carriage return", `<content><p>A&#13;B</p></content>`, "<content>\n  <p>A&#13;B</p>\n</content>\n"},
+		{"line feed", `<content><p>A&#10;B</p></content>`, "<content>\n  <p>A&#10;B</p>\n</content>\n"},
+		{"hex carriage return", `<content><p>A&#xD;B</p></content>`, "<content>\n  <p>A&#xD;B</p>\n</content>\n"},
+		{"hex line feed", `<content><p>A&#xA;B</p></content>`, "<content>\n  <p>A&#xA;B</p>\n</content>\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -711,7 +713,7 @@ func TestPrettyPrintXMLSeparatesParagraphsWithoutTouchingTheirText(t *testing.T)
 }
 
 func TestPrettyPrintXMLIdempotent(t *testing.T) {
-	input := `<presentation><slide id="s1"><shape id="a"><content><p>A&#32;&#32;B&#9;C</p></content><style/></shape></slide></presentation>`
+	input := `<presentation><slide id="s1"><shape id="a"><content><p>A&#32;&#32;B&#9;C&#13;D&#10;E</p></content><style/></shape></slide></presentation>`
 	once, err := prettyPrintXML(input)
 	if err != nil {
 		t.Fatalf("prettyPrintXML (first pass): %v", err)
