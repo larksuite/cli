@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 var chartHexColorPattern = regexp.MustCompile(`^#?[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$`)
@@ -40,6 +41,7 @@ var ChartCreateBasic = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+chart-create-basic"),
+	PostMount:   configureChartSemanticCommand,
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetToken(runtime)
 		if err != nil {
@@ -92,6 +94,7 @@ var ChartConfigUpdate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+chart-config-update"),
+	PostMount:   configureChartSemanticCommand,
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetToken(runtime)
 		if err != nil {
@@ -144,17 +147,16 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 	if dataRange == "" {
 		return nil, sheetsValidationForFlag("data-range", "--data-range is required")
 	}
-	rows, cols, err := rangeDimensions(dataRange)
-	if err != nil || rows < 2 || cols < 2 {
-		return nil, sheetsValidationForFlag("data-range", "--data-range must be a rectangular range with at least 2 rows and 2 columns")
-	}
 	direction := rt.Str("data-direction")
 	if direction == "" {
 		direction = "column"
 	}
-	dimensionCount := cols
-	if direction == "row" {
-		dimensionCount = rows
+	dimensionCount, dataPointCount, err := validateBasicChartDataRanges(dataRange, direction)
+	if err != nil {
+		return nil, err
+	}
+	if dimensionCount < 2 || dataPointCount < 2 {
+		return nil, sheetsValidationForFlag("data-range", "--data-range must provide at least 2 data points and 2 dimensions")
 	}
 	if chartType == "combo" && dimensionCount < 3 {
 		return nil, sheetsValidationForFlag("data-range", "combo chart requires at least 3 rows or columns along --data-direction")
@@ -168,6 +170,9 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 		basic["data_direction"] = rt.Str("data-direction")
 	}
 	if err := validateChartColorFlags(rt); err != nil {
+		return nil, err
+	}
+	if err := validateChartSemanticEnums(rt); err != nil {
 		return nil, err
 	}
 	addChartSemanticConfig(rt, basic)
@@ -219,6 +224,9 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 	if err := validateChartColorFlags(rt); err != nil {
 		return nil, err
 	}
+	if err := validateChartSemanticEnums(rt); err != nil {
+		return nil, err
+	}
 	addChartSemanticConfig(rt, updates)
 	if len(updates) == 0 {
 		return nil, common.ValidationErrorf("at least one chart configuration flag is required")
@@ -236,6 +244,133 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 	return input, nil
 }
 
+type chartDataRange struct {
+	sheet              string
+	row, col           int
+	rowCount, colCount int
+}
+
+func validateBasicChartDataRanges(dataRange, direction string) (dimensionCount, dataPointCount int, err error) {
+	ranges, err := splitChartDataRanges(dataRange)
+	if err != nil {
+		return 0, 0, sheetsValidationForFlag("data-range", "invalid --data-range %q: %v", dataRange, err)
+	}
+	parsed := make([]chartDataRange, 0, len(ranges))
+	for _, value := range ranges {
+		item, parseErr := parseChartDataRange(value)
+		if parseErr != nil {
+			return 0, 0, sheetsValidationForFlag("data-range", "invalid --data-range item %q: %v", value, parseErr)
+		}
+		parsed = append(parsed, item)
+	}
+	first := parsed[0]
+	explicitSheet := ""
+	spans := make([][2]int, 0, len(parsed))
+	for _, item := range parsed {
+		if item.sheet != "" {
+			if explicitSheet != "" && item.sheet != explicitSheet {
+				return 0, 0, sheetsValidationForFlag("data-range", "all --data-range items must belong to the same sheet")
+			}
+			explicitSheet = item.sheet
+		}
+		if direction == "row" {
+			if item.col != first.col || item.colCount != first.colCount {
+				return 0, 0, sheetsValidationForFlag("data-range", "all --data-range items must cover the same columns for --data-direction row")
+			}
+			dimensionCount += item.rowCount
+			spans = append(spans, [2]int{item.row, item.row + item.rowCount})
+		} else {
+			if item.row != first.row || item.rowCount != first.rowCount {
+				return 0, 0, sheetsValidationForFlag("data-range", "all --data-range items must cover the same rows for --data-direction column")
+			}
+			dimensionCount += item.colCount
+			spans = append(spans, [2]int{item.col, item.col + item.colCount})
+		}
+	}
+	for i, current := range spans {
+		for j := 0; j < i; j++ {
+			if current[0] < spans[j][1] && spans[j][0] < current[1] {
+				return 0, 0, sheetsValidationForFlag("data-range", "--data-range items must not overlap")
+			}
+		}
+	}
+	if direction == "row" {
+		dataPointCount = first.colCount
+	} else {
+		dataPointCount = first.rowCount
+	}
+	return dimensionCount, dataPointCount, nil
+}
+
+func splitChartDataRanges(value string) ([]string, error) {
+	var ranges []string
+	start := 0
+	inQuote := false
+	for i := 0; i <= len(value); i++ {
+		if i < len(value) && value[i] == '\'' {
+			if inQuote && i+1 < len(value) && value[i+1] == '\'' {
+				i++
+			} else {
+				inQuote = !inQuote
+			}
+		}
+		if i == len(value) || (value[i] == ',' && !inQuote) {
+			part := strings.TrimSpace(value[start:i])
+			if part == "" {
+				return nil, common.ValidationErrorf("range list contains an empty item")
+			}
+			ranges = append(ranges, part)
+			start = i + 1
+		}
+	}
+	if inQuote {
+		return nil, common.ValidationErrorf("unterminated quoted sheet name")
+	}
+	return ranges, nil
+}
+
+func parseChartDataRange(value string) (chartDataRange, error) {
+	item := chartDataRange{}
+	ref := strings.TrimSpace(value)
+	if bang := strings.LastIndex(ref, "!"); bang >= 0 {
+		item.sheet = strings.TrimSpace(ref[:bang])
+		ref = strings.TrimSpace(ref[bang+1:])
+	}
+	parts := strings.SplitN(ref, ":", 2)
+	if len(parts) != 2 {
+		return item, common.ValidationErrorf("expected a rectangular A1 range such as A1:C10")
+	}
+	startCol, startRow, startOK := splitCellRef(parts[0])
+	endCol, endRow, endOK := splitCellRef(parts[1])
+	if !startOK || !endOK || endCol < startCol || endRow < startRow {
+		return item, common.ValidationErrorf("expected a rectangular A1 range such as A1:C10")
+	}
+	item.row, item.col = startRow, startCol
+	item.rowCount, item.colCount = endRow-startRow+1, endCol-startCol+1
+	return item, nil
+}
+
+func configureChartSemanticCommand(cmd *cobra.Command) {
+	if cmd.Flags().Lookup("stacked") == nil {
+		cmd.Flags().Bool("stacked", false, "compatibility alias for --stack normal")
+		_ = cmd.Flags().MarkHidden("stacked")
+	}
+	originalArgs := cmd.Args
+	cmd.Args = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 1 && cmd.Flags().Changed("smooth") && (args[0] == "true" || args[0] == "false") {
+			return cmd.Flags().Set("smooth", args[0])
+		}
+		return originalArgs(cmd, args)
+	}
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		message := err.Error()
+		if strings.Contains(message, "unknown flag: --stacked") {
+			return sheetsValidationForFlag("stacked", "--stacked is not supported; use --stack normal (or --stack percent for 100%% stacking)")
+		}
+		return err
+	})
+}
+
 func addChartSemanticConfig(rt flagView, out map[string]interface{}) {
 	for _, flag := range chartSemanticConfigFlags {
 		if !rt.Changed(flag) {
@@ -244,9 +379,14 @@ func addChartSemanticConfig(rt flagView, out map[string]interface{}) {
 		key := strings.ReplaceAll(flag, "-", "_")
 		if flag == "x-axis-label-angle" || flag == "y-axis-label-angle" {
 			out[key] = rt.Int(flag)
+		} else if flag == "data-labels" && rt.Str(flag) == "category_percentage" {
+			out[key] = "value_percentage"
 		} else {
 			out[key] = rt.Str(flag)
 		}
+	}
+	if rt.Changed("stacked") {
+		out["stack"] = "normal"
 	}
 	if rt.Changed("smooth") {
 		out["smooth"] = rt.Bool("smooth")
@@ -254,6 +394,16 @@ func addChartSemanticConfig(rt flagView, out map[string]interface{}) {
 	if rt.Changed("colors") {
 		out["colors"] = normalizedChartColors(rt)
 	}
+}
+
+func validateChartSemanticEnums(rt flagView) error {
+	if rt.Changed("stack") && rt.Changed("stacked") {
+		return common.ValidationErrorf("--stack and --stacked are mutually exclusive").WithParams(
+			sheetsInvalidParam("stack", "cannot be used with --stacked"),
+			sheetsInvalidParam("stacked", "cannot be used with --stack"),
+		)
+	}
+	return nil
 }
 
 func validateChartColorFlags(rt flagView) error {

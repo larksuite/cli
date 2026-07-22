@@ -70,6 +70,22 @@ func TestChartCreateBasic_ConfigAndPlacement(t *testing.T) {
 	}
 }
 
+func TestChartCreateBasic_MultipleAlignedRanges(t *testing.T) {
+	t.Parallel()
+	rangeValue := "'Data, 2026'!A1:A10,'Data, 2026'!K1:L10"
+	body := parseDryRunBody(t, ChartCreateBasic, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-type", "line",
+		"--data-range", rangeValue,
+	})
+	input := decodeToolInput(t, body, "manage_chart_object")
+	basic := input["basic_chart"].(map[string]interface{})
+	if basic["data_range"] != rangeValue {
+		t.Fatalf("basic_chart.data_range = %v, want %q", basic["data_range"], rangeValue)
+	}
+}
+
 func TestChartSemanticShortcuts_InBatchUpdate(t *testing.T) {
 	body := parseDryRunBody(t, BatchUpdate, []string{
 		"--url", testURL,
@@ -124,6 +140,55 @@ func TestChartConfigUpdate_PartialFields(t *testing.T) {
 	colors, _ := updates["colors"].([]interface{})
 	if len(colors) != 2 || colors[0] != "#112233" || colors[1] != "#445566" {
 		t.Errorf("config_updates.colors = %#v", updates["colors"])
+	}
+}
+
+func TestChartConfigUpdate_SpacedSmoothBool(t *testing.T) {
+	t.Parallel()
+	body := parseDryRunBody(t, ChartConfigUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--smooth", "false",
+	})
+	input := decodeToolInput(t, body, "manage_chart_object")
+	updates := input["config_updates"].(map[string]interface{})
+	if updates["smooth"] != false {
+		t.Fatalf("config_updates.smooth = %v, want false", updates["smooth"])
+	}
+}
+
+func TestChartSemanticShortcuts_CompatibleAliases(t *testing.T) {
+	t.Parallel()
+	body := parseDryRunBody(t, ChartConfigUpdate, []string{
+		"--url", testURL, "--sheet-id", testSheetID, "--chart-id", "chart-1", "--stacked",
+	})
+	updates := decodeToolInput(t, body, "manage_chart_object")["config_updates"].(map[string]interface{})
+	if updates["stack"] != "normal" {
+		t.Fatalf("--stacked normalized stack = %v, want normal", updates["stack"])
+	}
+	body = parseDryRunBody(t, ChartConfigUpdate, []string{
+		"--url", testURL, "--sheet-id", testSheetID, "--chart-id", "chart-1", "--data-labels", "category_percentage",
+	})
+	updates = decodeToolInput(t, body, "manage_chart_object")["config_updates"].(map[string]interface{})
+	if updates["data_labels"] != "value_percentage" {
+		t.Fatalf("data-labels normalized value = %v, want value_percentage", updates["data_labels"])
+	}
+}
+
+func TestChartSemanticShortcuts_CompatibleAliasesInBatch(t *testing.T) {
+	t.Parallel()
+	body := parseDryRunBody(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{"shortcut":"+chart-config-update","input":{"sheet_id":"sh1","chart_id":"chart-1","stacked":true,"data_labels":"category_percentage","smooth":false}}]`,
+		"--yes",
+	})
+	input := decodeToolInput(t, body, "batch_update")
+	ops := input["operations"].([]interface{})
+	chartInput := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+	updates := chartInput["config_updates"].(map[string]interface{})
+	if updates["stack"] != "normal" || updates["data_labels"] != "value_percentage" || updates["smooth"] != false {
+		t.Fatalf("batch config_updates = %#v", updates)
 	}
 }
 

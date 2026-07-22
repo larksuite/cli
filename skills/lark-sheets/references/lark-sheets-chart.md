@@ -140,7 +140,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--chart-type` | string | required | 图表类型（可选值：`column` / `bar` / `line` / `area` / `pie` / `scatter` / `combo` / `radar`） |
-| `--data-range` | string | required | 含表头的连续 A1 数据范围，至少 2 行 2 列；combo 在数据系列方向上至少 3 行或 3 列 |
+| `--data-range` | string | required | 含表头的一个连续 A1 范围，或逗号分隔的多个对齐范围；多范围保留为独立引用，不包含中间间隔列 |
 | `--data-direction` | string | optional | 数据系列方向；column 表示首列为类别，row 表示首行为类别（可选值：`column` / `row`）（默认 `column`） |
 | `--title` | string | optional | 图表标题 |
 | `--subtitle` | string | optional | 图表副标题 |
@@ -150,10 +150,11 @@ _公共四件套 · 系统：`--dry-run`_
 | `--secondary-y-axis-title` | string | optional | 右 Y 轴标题 |
 | `--x-axis-label-angle` | int | optional | X 轴标签旋转角度（可选值：`-90` / `-45` / `0` / `45` / `90`） |
 | `--y-axis-label-angle` | int | optional | 左 Y 轴标签旋转角度（可选值：`-90` / `-45` / `0` / `45` / `90`） |
-| `--data-labels` | string | optional | 数据标签内容；none 隐藏标签（可选值：`none` / `value` / `percentage` / `value_percentage` / `category` / `series`） |
+| `--data-labels` | string | optional | 数据标签内容；none 隐藏标签；兼容 category_percentage 并自动按 value_percentage 处理（可选值：`none` / `value` / `percentage` / `value_percentage` / `category_percentage` / `category` / `series`） |
 | `--data-label-position` | string | optional | 数据标签位置（可选值：`auto` / `top` / `bottom` / `left` / `right` / `center` / `inside` / `outside`） |
 | `--stack` | string | optional | 堆叠模式（可选值：`none` / `normal` / `percent`） |
-| `--smooth` | bool | optional | 是否使用平滑曲线；可显式传 false |
+| `--stacked` | bool | optional | 兼容别名；等价于 --stack normal（隐藏 flag：不在 `--help` 列出，但可正常传入） |
+| `--smooth` | bool | optional | 是否使用平滑曲线；支持 --smooth=false 和 --smooth false |
 | `--color-palette` | string | optional | 预设整图配色主题；与 --colors 互斥（可选值：`brandColorSeries@v2` / `rainbowColorSeries@v2` / `complementaryColorSeries@v2` / `converseColorSeries@v2` / `primaryColorSeries@v2` / `singleColorSeries-B-@v2` / `singleColorSeries-W-@v2` / `singleColorSeries-G-@v2` / `singleColorSeries-Y-@v2` / `singleColorSeries-O-@v2` / `singleColorSeries-R-@v2` / `singleColorSeries-D-@v2`） |
 | `--colors` | string_slice | optional | 自定义整图系列颜色，逗号分隔且至少 2 个十六进制色值；与 --color-palette 互斥 |
 | `--anchor-cell` | string | optional | 可选图表锚点单元格，如 F2；省略时放到数据范围右侧 |
@@ -175,10 +176,11 @@ _公共四件套 · 系统：`--dry-run`_
 | `--secondary-y-axis-title` | string | optional | 右 Y 轴标题 |
 | `--x-axis-label-angle` | int | optional | X 轴标签旋转角度（可选值：`-90` / `-45` / `0` / `45` / `90`） |
 | `--y-axis-label-angle` | int | optional | 左 Y 轴标签旋转角度（可选值：`-90` / `-45` / `0` / `45` / `90`） |
-| `--data-labels` | string | optional | 数据标签内容；none 隐藏标签（可选值：`none` / `value` / `percentage` / `value_percentage` / `category` / `series`） |
+| `--data-labels` | string | optional | 数据标签内容；none 隐藏标签；兼容 category_percentage 并自动按 value_percentage 处理（可选值：`none` / `value` / `percentage` / `value_percentage` / `category_percentage` / `category` / `series`） |
 | `--data-label-position` | string | optional | 数据标签位置（可选值：`auto` / `top` / `bottom` / `left` / `right` / `center` / `inside` / `outside`） |
 | `--stack` | string | optional | 堆叠模式（可选值：`none` / `normal` / `percent`） |
-| `--smooth` | bool | optional | 是否使用平滑曲线；可显式传 false |
+| `--stacked` | bool | optional | 兼容别名；等价于 --stack normal（隐藏 flag：不在 `--help` 列出，但可正常传入） |
+| `--smooth` | bool | optional | 是否使用平滑曲线；支持 --smooth=false 和 --smooth false |
 | `--color-palette` | string | optional | 预设整图配色主题；与 --colors 互斥（可选值：`brandColorSeries@v2` / `rainbowColorSeries@v2` / `complementaryColorSeries@v2` / `converseColorSeries@v2` / `primaryColorSeries@v2` / `singleColorSeries-B-@v2` / `singleColorSeries-W-@v2` / `singleColorSeries-G-@v2` / `singleColorSeries-Y-@v2` / `singleColorSeries-O-@v2` / `singleColorSeries-R-@v2` / `singleColorSeries-D-@v2`） |
 | `--colors` | string_slice | optional | 自定义整图系列颜色，逗号分隔且至少 2 个十六进制色值；与 --color-palette 互斥 |
 
@@ -231,7 +233,7 @@ _创建/更新的图表属性_
 
 ### `+chart-create-basic`
 
-首列自动作为维度，后续列作为数值系列。饼图只使用第二列数值；散点图以首列为 X、后续列为 Y；组合图以第二列为左轴柱，后续列为右轴折线。数据范围必须包含真实表头；如果是数据子集且表头在范围外，改用高级 `+chart-create` 的 detached 模式。
+首列自动作为维度，后续列作为数值系列。饼图只使用第二列数值；散点图以首列为 X、后续列为 Y；组合图以第二列为左轴柱，后续列为右轴折线。数据范围必须包含真实表头；如果类别列与数值列不连续，可以给 `--data-range` 传逗号分隔的多个对齐范围，例如 `"'Sheet1'!A1:A10,'Sheet1'!K1:L10"`。CLI 与服务端会保留为多个独立引用，不会把 B:J 的间隔列纳入图表。column 方向各范围必须覆盖相同行，row 方向必须覆盖相同列；如果数据子集的表头在范围外，改用高级 `+chart-create` 的 detached 模式。
 
 ```bash
 # 柱形图：默认放在数据范围右侧
@@ -281,7 +283,7 @@ lark-cli sheets +chart-list --url "..." --sheet-name "Sheet1"
 
 ### `+chart-config-update`
 
-只传需要改的字段。`--data-labels none` 会删除数据标签；`--legend-position hidden` 会隐藏图例；`--smooth=false` 可显式关闭平滑曲线。
+只传需要改的字段。`--data-labels none` 会删除数据标签；`--legend-position hidden` 会隐藏图例；`--smooth=false` 和 `--smooth false` 都可显式关闭平滑曲线。为减少参数重试，`--stacked` 自动按 `--stack normal` 处理，`--data-labels category_percentage` 自动按 `value_percentage` 处理；新调用仍优先使用规范参数。
 
 ```bash
 lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \

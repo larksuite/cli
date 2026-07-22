@@ -3302,7 +3302,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Contiguous A1 data range including headers; at least 2 rows and 2 columns, or 3 rows/columns along the data direction for combo"
+        "desc": "One contiguous A1 range including headers, or comma-separated aligned ranges preserved as independent refs without gap columns"
       },
       {
         "name": "data-direction",
@@ -3398,12 +3398,13 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Data label content; none removes labels",
+        "desc": "Data label content; none removes labels; category_percentage is normalized to value_percentage",
         "enum": [
           "none",
           "value",
           "percentage",
           "value_percentage",
+          "category_percentage",
           "category",
           "series"
         ]
@@ -3438,11 +3439,19 @@
         ]
       },
       {
+        "name": "stacked",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Compatibility alias for --stack normal",
+        "hidden": true
+      },
+      {
         "name": "smooth",
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Use smooth curves; false is accepted explicitly"
+        "desc": "Use smooth curves; accepts both --smooth=false and --smooth false"
       },
       {
         "name": "color-palette",
@@ -3622,12 +3631,13 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Data label content; none removes labels",
+        "desc": "Data label content; none removes labels; category_percentage is normalized to value_percentage",
         "enum": [
           "none",
           "value",
           "percentage",
           "value_percentage",
+          "category_percentage",
           "category",
           "series"
         ]
@@ -3662,11 +3672,19 @@
         ]
       },
       {
+        "name": "stacked",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Compatibility alias for --stack normal",
+        "hidden": true
+      },
+      {
         "name": "smooth",
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Use smooth curves; false is accepted explicitly"
+        "desc": "Use smooth curves; accepts both --smooth=false and --smooth false"
       },
       {
         "name": "color-palette",
