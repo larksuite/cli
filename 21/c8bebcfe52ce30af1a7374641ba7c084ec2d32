@@ -1,0 +1,21 @@
+cmd/event/subscription/subscription.go
+  s_4ab89e4687c0e0::t_e9c45ecf08cd77 34-36,46-47,53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "21c8bebcfe52ce30af1a7374641ba7c084ec2d32",
+  "prompts": {},
+  "sessions": {
+    "s_4ab89e4687c0e0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aefc7606bdfcfdd22",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
