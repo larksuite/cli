@@ -101,34 +101,44 @@ func ExtractItems(data interface{}) []interface{} {
 
 // FormatValue formats a single response and writes it to w.
 func FormatValue(w io.Writer, data interface{}, format Format) {
+	err := WriteFormatted(w, data, format)
+	switch {
+	case err == nil:
+		return
+	case isOutputMarshalError(err) && format == FormatNDJSON:
+		legacyStderrf("ndjson marshal error: %v\n", err)
+	case isOutputMarshalError(err):
+		legacyStderrf("json marshal error: %v\n", err)
+	}
+}
+
+// WriteFormatted formats a single response and returns marshal or write errors.
+func WriteFormatted(w io.Writer, data interface{}, format Format) error {
 	data = toGeneric(data)
 	switch format {
 	case FormatNDJSON:
 		items := ExtractItems(data)
 		if items != nil {
-			PrintNdjson(w, items)
-		} else {
-			PrintNdjson(w, data)
+			return WriteNDJSON(w, items)
 		}
+		return WriteNDJSON(w, data)
 
 	case FormatTable:
 		items := ExtractItems(data)
 		if items != nil {
-			FormatAsTable(w, items)
-		} else {
-			FormatAsTable(w, data)
+			return WriteTable(w, items)
 		}
+		return WriteTable(w, data)
 
 	case FormatCSV:
 		items := ExtractItems(data)
 		if items != nil {
-			FormatAsCSV(w, items)
-		} else {
-			FormatAsCSV(w, data)
+			return WriteCSV(w, items)
 		}
+		return WriteCSV(w, data)
 
 	default: // FormatJSON
-		PrintJson(w, data)
+		return WriteJSON(w, data)
 	}
 }
 
@@ -148,49 +158,63 @@ func NewPaginatedFormatter(w io.Writer, format Format) *PaginatedFormatter {
 
 // FormatPage formats one page of items.
 func (pf *PaginatedFormatter) FormatPage(data interface{}) {
-	switch pf.Format {
-	case FormatJSON, FormatNDJSON:
-		if arr, ok := data.([]interface{}); ok {
-			PrintNdjson(pf.W, arr)
-		} else {
-			PrintNdjson(pf.W, data)
-		}
-
-	case FormatTable:
-		pf.formatStructuredPage(data, func(w io.Writer, rows []map[string]string, cols []string, isFirst bool) {
-			widths := computeColumnWidths(rows, cols)
-			if isFirst {
-				writeHeader(w, cols, widths)
-			}
-			for _, row := range rows {
-				writeRow(w, row, cols, widths)
-			}
-		})
-
-	case FormatCSV:
-		pf.formatStructuredPage(data, func(w io.Writer, rows []map[string]string, cols []string, isFirst bool) {
-			writeCSVRows(w, rows, cols, isFirst)
-		})
+	err := pf.WritePage(data)
+	if isOutputMarshalError(err) && (pf.Format == FormatJSON || pf.Format == FormatNDJSON) {
+		legacyStderrf("ndjson marshal error: %v\n", err)
 	}
 }
 
+// WritePage formats one page of items and returns marshal or write errors.
+func (pf *PaginatedFormatter) WritePage(data interface{}) error {
+	switch pf.Format {
+	case FormatJSON, FormatNDJSON:
+		if arr, ok := data.([]interface{}); ok {
+			return WriteNDJSON(pf.W, arr)
+		}
+		return WriteNDJSON(pf.W, data)
+
+	case FormatTable:
+		return pf.formatStructuredPage(data, func(w io.Writer, rows []map[string]string, cols []string, isFirst bool) error {
+			widths := computeColumnWidths(rows, cols)
+			if isFirst {
+				if err := writeHeader(w, cols, widths); err != nil {
+					return err
+				}
+			}
+			for _, row := range rows {
+				if err := writeRow(w, row, cols, widths); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+
+	case FormatCSV:
+		return pf.formatStructuredPage(data, func(w io.Writer, rows []map[string]string, cols []string, isFirst bool) error {
+			return writeCSVRows(w, rows, cols, isFirst)
+		})
+	}
+	return nil
+}
+
 // formatStructuredPage handles column-locking logic shared by table and csv.
-func (pf *PaginatedFormatter) formatStructuredPage(data interface{}, emit func(io.Writer, []map[string]string, []string, bool)) {
+func (pf *PaginatedFormatter) formatStructuredPage(data interface{}, emit func(io.Writer, []map[string]string, []string, bool) error) error {
 	rows, pageCols, isList := prepareRows(data)
 	if len(rows) == 0 {
 		if pf.isFirstPage && isList {
-			fmt.Fprintln(pf.W, "(empty)")
+			_, err := fmt.Fprintln(pf.W, "(empty)")
+			return err
 		}
-		return
+		return nil
 	}
 
 	if pf.isFirstPage {
 		// Lock columns from first page
 		pf.cols = pageCols
 		pf.isFirstPage = false
-		emit(pf.W, rows, pf.cols, true)
+		return emit(pf.W, rows, pf.cols, true)
 	} else {
 		// Reuse first page's columns — missing keys become empty, extra keys ignored
-		emit(pf.W, rows, pf.cols, false)
+		return emit(pf.W, rows, pf.cols, false)
 	}
 }

@@ -44,6 +44,7 @@ func TestDocs_CreateAndFetchWorkflowAsBot(t *testing.T) {
 				"--doc", docToken,
 				"--doc-format", "markdown",
 			},
+			DefaultAs: defaultAs,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

@@ -41,6 +41,21 @@ func withAppsHint(err error, hint string) error {
 	return err
 }
 
+// validateRealAppID checks that --app-id is a real app ID (app_ prefix).
+// meta_token values are rejected with a hint to resolve via +get first.
+func validateRealAppID(appID string) error {
+	if !strings.HasPrefix(appID, "app_") {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			`--app-id must be an app_id starting with "app_".`,
+		).WithParam("--app-id").WithHint(
+			`If you have a meta_token or a /page/<token>/ link, first resolve it:
+lark-cli apps +get --app-id <meta_token> -q '.data.app.app_id'
+Then retry this command with the returned app_id.`,
+		)
+	}
+	return nil
+}
+
 // rejectOutputTraversal is a defense-in-depth pre-check on a user-supplied
 // --output path. The authoritative guard is the local FileIO layer
 // (validate.SafeOutputPath sandboxes every write to the cwd, resolving .. and

@@ -20,8 +20,9 @@ var BaseRecordList = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		recordListFieldRefFlag(),
-		recordListFieldNamesAliasFlag(),
+		recordProjectionFieldFlag("field ID or name to include; repeat to project only needed fields"),
+		recordProjectionAliasFlag("fields"),
+		recordProjectionAliasFlag("field-names"),
 		recordListViewRefFlag(),
 		recordFilterFlag(),
 		recordSortFlag(),
@@ -44,9 +45,6 @@ var BaseRecordList = common.Shortcut{
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateRecordListFieldAlias(runtime); err != nil {
-			return err
-		}
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err
 		}
@@ -61,6 +59,9 @@ var BaseRecordList = common.Shortcut{
 				return err
 			}
 		}
+		if _, err := recordProjectionFields(runtime); err != nil {
+			return err
+		}
 		return validateRecordQueryOptions(runtime)
 	},
 	DryRun: dryRunRecordList,
@@ -70,22 +71,6 @@ var BaseRecordList = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeRecordList(runtime)
 	},
-}
-
-func recordListFieldRefFlag() common.Flag {
-	flag := fieldRefFlag(false)
-	flag.Type = "string_array"
-	flag.Desc = "field ID or name to include; repeat to project only needed fields"
-	return flag
-}
-
-func recordListFieldNamesAliasFlag() common.Flag {
-	return common.Flag{
-		Name:   "field-names",
-		Type:   "string_slice",
-		Desc:   "hidden alias for --field-id; accepts comma-separated field names",
-		Hidden: true,
-	}
 }
 
 func recordListViewRefFlag() common.Flag {
@@ -101,11 +86,4 @@ func recordReadFormatFlag() common.Flag {
 		Enum:    []string{"markdown", "json"},
 		Desc:    "output format: markdown (default) | json",
 	}
-}
-
-func validateRecordListFieldAlias(runtime *common.RuntimeContext) error {
-	if runtime.Changed("field-id") && runtime.Changed("field-names") {
-		return baseFlagErrorf("--field-id and --field-names are mutually exclusive; use --field-id")
-	}
-	return nil
 }

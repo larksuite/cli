@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,7 @@ import (
 	qdiff "github.com/larksuite/cli/internal/qualitygate/diff"
 	"github.com/larksuite/cli/internal/qualitygate/manifest"
 	"github.com/larksuite/cli/internal/qualitygate/report"
+	"github.com/larksuite/cli/internal/testutil/gitcmd"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -600,7 +600,8 @@ func TestNormalizeDiagnosticFileHandlesAbsoluteRepo(t *testing.T) {
 
 func runGit(t *testing.T, repo string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-c", "core.hooksPath=/dev/null", "-C", repo}, args...)...)
+	commandArgs := append([]string{"-c", "core.hooksPath=/dev/null"}, args...)
+	cmd := gitcmd.Command(repo, commandArgs...)
 	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE=2026-06-17T00:00:00Z", "GIT_COMMITTER_DATE=2026-06-17T00:00:00Z")
 	out, err := cmd.CombinedOutput()
 	if err != nil {

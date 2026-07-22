@@ -4,7 +4,7 @@
 
 获取幻灯片页面截图并保存为本地图片文件。默认用于已存在 PPT 页面截图；传入 `--content` 时用于直接渲染单个 `<slide>` XML 片段预览。本 shortcut 会在 CLI 进程内解码并写入文件，stdout 只返回文件路径、大小、页面 ID 等元信息，避免把图片 Base64 输出给模型。
 
-注意：该截图能力受应用白名单限制，绝大多数应用不可用。若截图失败，记录错误即可；不要引导用户申请 `slides:presentation:screenshot` 权限。后续按 `validation-checklist.md` 走非截图验证，不要声称已完成截图验收。
+注意：该截图能力受应用白名单限制，绝大多数应用不可用。截图失败时不要引导用户申请 `slides:presentation:screenshot` 权限；记录错误后降级到 XML 读回、结构 lint、文本重叠检查等非截图检查路径。
 
 ## 命令
 

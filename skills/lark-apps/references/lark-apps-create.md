@@ -35,6 +35,5 @@ lark-cli apps +create --name "Demo" --app-type html --dry-run
 
 创建后按用户路径继续：
 
-- 发布现成 HTML/静态目录：读 [`lark-apps-html-publish.md`](lark-apps-html-publish.md)。
-- 本地全栈开发：读 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)。
+- 本地应用开发（含 html 和 full_stack）：读 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)。
 - 云端 Agent 生成/迭代：读 [`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md)。

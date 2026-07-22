@@ -64,11 +64,11 @@ lark-cli slides xml_presentation.slide delete --as user --params '{"xml_presenta
 
 ```json
 {
-  "ok": true,
-  "identity": "user",
+  "code": 0,
   "data": {
     "revision_id": 100
-  }
+  },
+  "msg": "success"
 }
 ```
 
@@ -121,5 +121,6 @@ done
 
 ## 相关命令
 
-- [slides +create](lark-slides-create.md) - 创建 PPT / 添加幻灯片页面
-- [slides +xml-get](lark-slides-xml-get.md) - 读取 PPT 内容并保存到本地文件
+- [slides +create](lark-slides-create.md) - 创建空白 PPT
+- [slides +xml-get](lark-slides-xml-presentations-get.md) - 读取 PPT 内容并保存到本地文件
+- [xml_presentation.slide create](lark-slides-xml-presentation-slide-create.md) - 添加幻灯片页面

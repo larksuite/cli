@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/testutil/gitcmd"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -110,18 +111,24 @@ func TestDefaultCloneDir(t *testing.T) {
 // --- pure-function tests ---
 
 func TestParseRepoURL(t *testing.T) {
-	url, err := parseRepoURLFromEnvelope(`{"ok":true,"data":{"repository_url":"http://u:t@h/app_x.git"}}`)
+	result, err := parseCredentialInitEnvelope(`{"ok":true,"data":{"repository_url":"http://u:t@h/app_x.git","commit_author_name":"Alice","commit_author_email":"alice@example.com"}}`)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if url != "http://u:t@h/app_x.git" {
-		t.Errorf("got %q", url)
+	if result.RepositoryURL != "http://u:t@h/app_x.git" {
+		t.Errorf("RepositoryURL got %q", result.RepositoryURL)
+	}
+	if result.CommitAuthorName != "Alice" {
+		t.Errorf("CommitAuthorName got %q", result.CommitAuthorName)
+	}
+	if result.CommitAuthorEmail != "alice@example.com" {
+		t.Errorf("CommitAuthorEmail got %q", result.CommitAuthorEmail)
 	}
 }
 
 func TestParseRepoURL_Errors(t *testing.T) {
 	for _, in := range []string{`not json`, `{"ok":false,"data":{}}`, `{"ok":true,"data":{}}`, `{"ok":true,"data":{"repository_url":""}}`} {
-		if _, err := parseRepoURLFromEnvelope(in); err == nil {
+		if _, err := parseCredentialInitEnvelope(in); err == nil {
 			t.Errorf("expected error for %q", in)
 		}
 	}
@@ -147,6 +154,22 @@ func withFakeRunner(t *testing.T, f *fakeCommandRunner) {
 	orig := initRunner
 	initRunner = f
 	t.Cleanup(func() { initRunner = orig })
+}
+
+func stubAppType(reg *httpmock.Registry, appID, appType string) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/" + appID,
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":   appID,
+					"app_type": appType,
+				},
+			},
+		},
+	})
 }
 
 func credInitOK(repoURL string) fakeCallResult {
@@ -313,7 +336,8 @@ func TestAppsInit_EmptyRepo_EndToEnd(t *testing.T) {
 		"git status":      {stdout: " M src/app.ts\n"}, // scaffold produced changes
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -354,7 +378,8 @@ func TestAppsInit_AlreadyInitialized_ShortCircuit(t *testing.T) {
 	}
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{"env-pull": envPullOK(filepath.Join(abs, ".env.local"))}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
@@ -423,7 +448,8 @@ func TestAppsInit_HappyPathCleanTree(t *testing.T) {
 		"git status":      {},           // clean tree after scaffold -> no commit/push
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 
 	err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout)
@@ -472,7 +498,8 @@ func TestAppsInit_DirtyTreeCommitPush(t *testing.T) {
 		"git status":      {stdout: " M file.txt"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 
 	err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout)
@@ -542,7 +569,8 @@ func TestAppsInit_CloneFailure(t *testing.T) {
 		"git clone":       {stderr: "fatal: unable to access 'http://u:t@h/r.git'", err: errors.New("exit 128")},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 
 	err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout)
@@ -616,7 +644,8 @@ func TestAppsInit_AsPassthrough(t *testing.T) {
 		"git status":      {},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 
 	// AppsInit.AuthTypes is ["user"], so the framework rejects --as bot. Use
@@ -722,7 +751,7 @@ func TestIsEmptyRepo(t *testing.T) {
 // newAppsExecuteFactoryWithStderr mirrors newAppsExecuteFactory but also returns
 // the stderr buffer, so tests can assert on the +init progress log lines that
 // initLogf writes to IO().ErrOut.
-func newAppsExecuteFactoryWithStderr(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
+func newAppsExecuteFactoryWithStderr(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -732,12 +761,12 @@ func newAppsExecuteFactoryWithStderr(t *testing.T) (*cmdutil.Factory, *bytes.Buf
 		Brand:      core.BrandFeishu,
 		UserOpenId: "ou_test",
 	}
-	factory, stdout, stderr, _ := cmdutil.TestFactory(t, cfg)
-	return factory, stdout, stderr
+	factory, stdout, stderr, reg := cmdutil.TestFactory(t, cfg)
+	return factory, stdout, stderr, reg
 }
 
 func TestAppsInit_Req1_Wording(t *testing.T) {
-	factory, stdout, _ := newAppsExecuteFactoryWithStderr(t)
+	factory, stdout, _, _ := newAppsExecuteFactoryWithStderr(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -766,7 +795,8 @@ func TestAppsInit_Req1_Wording(t *testing.T) {
 		"git status":      {},
 	}}
 	withFakeRunner(t, f)
-	factory2, stdout2, stderr2 := newAppsExecuteFactoryWithStderr(t)
+	factory2, stdout2, stderr2, reg2 := newAppsExecuteFactoryWithStderr(t)
+	stubAppType(reg2, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory2, stdout2); err != nil {
 		t.Fatalf("run err=%v", err)
@@ -829,7 +859,8 @@ func TestAppsInit_EmptyRepo_TwoCommits(t *testing.T) {
 		"git status":      {stdout: " A src/app.ts\n A .spark/meta.json\n A .agent/skills/steering/x.md\n"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -870,7 +901,8 @@ func TestAppsInit_EmptyRepo_AppCodeOnly_SingleCommit(t *testing.T) {
 		"git status":      {stdout: " A src/app.ts\n"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -890,7 +922,8 @@ func TestAppsInit_EmptyRepo_ConfigOnly_SingleCommit(t *testing.T) {
 		"git status":      {stdout: " A .spark/meta.json\n"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -910,7 +943,8 @@ func TestAppsInit_NonEmpty_SingleInitCommit(t *testing.T) {
 		"git status":      {stdout: " M file.txt\n M .spark/meta.json\n"},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -929,8 +963,7 @@ func TestAppsInit_NonEmpty_SingleInitCommit(t *testing.T) {
 // gitMust runs a git command in dir with a real binary, failing the test on error.
 func gitMust(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
+	cmd := gitcmd.Command(dir, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v in %s failed: %v\n%s", args, dir, err, out)
@@ -946,6 +979,7 @@ func TestCommitAndPushIfDirty_RealGit_IgnoredAgentDir(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+	gitcmd.SetSynchronousMaintenanceEnv(t)
 	// Bare remote so `git push origin sprint/default` succeeds.
 	remote := t.TempDir()
 	gitMust(t, remote, "init", "--bare", "-q", "--initial-branch", defaultInitBranch)
@@ -1067,6 +1101,7 @@ func TestCommitAndPushIfDirty_RealGit_NonEmptyUpgrade(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+	gitcmd.SetSynchronousMaintenanceEnv(t)
 	remote := t.TempDir()
 	gitMust(t, remote, "init", "--bare", "-q", "--initial-branch", defaultInitBranch)
 
@@ -1289,7 +1324,8 @@ func TestAppsInit_EnvPull_Success(t *testing.T) {
 		"env-pull":        envPullOK("/abs/app_x/.env.local"),
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1327,7 +1363,8 @@ func TestAppsInit_EnvPull_NonFatal(t *testing.T) {
 		},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	dir := relCloneDir(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("env-pull failure must be non-fatal, got: %v", err)
@@ -1366,7 +1403,8 @@ func TestAppsInit_AlreadyInitialized_RunsEnvPull(t *testing.T) {
 	envFile := filepath.Join(abs, ".env.local")
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{"env-pull": envPullOK(envFile)}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1413,7 +1451,8 @@ func TestAppsInit_AlreadyInitialized_EnvPullFailure_NonFatal(t *testing.T) {
 		},
 	}}
 	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubAppType(reg, "app_x", "FULL_STACK")
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("env-pull failure must be non-fatal, got: %v", err)
 	}
@@ -1705,13 +1744,15 @@ func TestScaffoldInitArgs_WithAppType(t *testing.T) {
 }
 
 func TestPolicyForAppType(t *testing.T) {
-	// modern_html decouples all control points: skip install, env-pull, skills sync.
-	if p := policyForAppType("modern_html"); !p.skipInstall || !p.skipEnvPull || !p.skipSkillsSync {
-		t.Errorf("modern_html policy = %+v, want all skip flags set", p)
+	// modern_html and html decouple all control points: skip install, env-pull, skills sync, app sync.
+	for _, at := range []string{"modern_html", "html"} {
+		if p := policyForAppType(at); !p.skipInstall || !p.skipEnvPull || !p.skipSkillsSync || !p.skipAppSync {
+			t.Errorf("%s policy = %+v, want all skip flags set", at, p)
+		}
 	}
 	// Unlisted types (including "") get the zero-value policy: everything runs.
 	for _, at := range []string{"full_stack", "", "backend"} {
-		if p := policyForAppType(at); p.skipInstall || p.skipEnvPull || p.skipSkillsSync {
+		if p := policyForAppType(at); p.skipInstall || p.skipEnvPull || p.skipSkillsSync || p.skipAppSync {
 			t.Errorf("policy for %q = %+v, want zero value", at, p)
 		}
 	}
@@ -1757,7 +1798,7 @@ func configSetValue(calls [][]string, key string) (string, bool) {
 func TestEnsureGitIdentity_SetsDefaultsWhenUnset(t *testing.T) {
 	f := &fakeCommandRunner{} // no "git config" result → `--get` returns empty stdout
 	withFakeRunner(t, f)
-	if err := ensureGitIdentity(context.Background(), "/repo"); err != nil {
+	if err := ensureGitIdentity(context.Background(), "/repo", "", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if v, ok := configSetValue(f.calls, "user.name"); !ok || v != defaultGitUserName {
@@ -1774,7 +1815,7 @@ func TestEnsureGitIdentity_RespectsExisting(t *testing.T) {
 		"git config": {stdout: "Existing Dev\n"},
 	}}
 	withFakeRunner(t, f)
-	if err := ensureGitIdentity(context.Background(), "/repo"); err != nil {
+	if err := ensureGitIdentity(context.Background(), "/repo", "", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if _, ok := configSetValue(f.calls, "user.name"); ok {
@@ -1790,7 +1831,7 @@ func TestEnsureGitIdentity_SetFailurePropagates(t *testing.T) {
 		"git config": {stderr: "boom", err: errors.New("exit 1")},
 	}}
 	withFakeRunner(t, f)
-	if err := ensureGitIdentity(context.Background(), "/repo"); err == nil {
+	if err := ensureGitIdentity(context.Background(), "/repo", "", ""); err == nil {
 		t.Error("expected error when git config set fails")
 	}
 }

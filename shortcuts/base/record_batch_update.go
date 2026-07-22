@@ -12,18 +12,19 @@ import (
 var BaseRecordBatchUpdate = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-batch-update",
-	Description: "Batch update records",
+	Description: "Batch update records with record-specific fields",
 	Risk:        "write",
 	Scopes:      []string{"base:record:update"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "json", Desc: `batch update JSON object, e.g. {"record_id_list":["rec_xxx"],"patch":{"Status":"Done"}}; same patch applies to all records`, Required: true},
+		{Name: "json", Desc: `batch update JSON object; update_records maps each record ID to its field map, e.g. {"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`, Required: true},
 	},
 	Tips: append([]string{
-		"Happy path fields: record_id_list is the target record IDs; patch is a field map applied unchanged to every target record.",
-		"Do not use +record-batch-update for per-row different values; call +record-upsert per record or use another supported flow.",
+		"Happy path field: update_records maps each record ID to its own field map.",
+		`Example: {"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}.`,
+		"The response contains only optional ignored_fields and does not check whether record IDs exist; read records back when confirmation is required.",
 		"Before writing, use +field-list to confirm real writable fields; do not write system fields, formula, lookup, or attachment fields as normal CellValue.",
 		"Batch update supports max 200 records per call; use the record-batch-update guide for command limits and edge cases.",
 	}, recordCellValueHappyPathTips...),

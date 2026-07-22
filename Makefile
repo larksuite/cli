@@ -23,7 +23,7 @@ PREFIX   ?= /usr/local
 TEST_GOARCH := $(or $(GOARCH),$(shell go env GOARCH))
 RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
-.PHONY: all build vet fmt-check script-test test unit-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks sidecar-test
+.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks sidecar-test
 
 all: test
 
@@ -57,6 +57,11 @@ script-test:
 unit-test: fetch_meta
 	go test $(RACE_FLAG) -gcflags="all=-N -l" -count=1 \
 		./cmd/... ./internal/... ./shortcuts/... ./extension/...
+
+live-skills-test: fetch_meta
+	LARKSUITE_CLI_RUN_LIVE_SKILLS_TESTS=1 \
+	go test -v -count=1 ./cmd/update \
+		-run '^TestUpdateCommand_(RealSkillsSyncRewritesState|SkillsSyncColdStart)$$'
 
 # examples-build keeps the shipped plugin-SDK examples compilable. If this
 # breaks, the plugin author guide's "go build ./..." path is broken.

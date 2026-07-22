@@ -101,6 +101,7 @@ func TestSelectRecommendedScope_Empty(t *testing.T) {
 }
 
 func TestComputeMinimumScopeSet(t *testing.T) {
+	ensureFreshRegistry(t)
 	minSet := ComputeMinimumScopeSet("user")
 	if len(minSet) == 0 {
 		if len(ListFromMetaProjects()) == 0 {

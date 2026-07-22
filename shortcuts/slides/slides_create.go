@@ -154,6 +154,9 @@ var SlidesCreate = common.Shortcut{
 		if revisionID := common.GetFloat(data, "revision_id"); revisionID > 0 {
 			result["revision_id"] = int(revisionID)
 		}
+		if issues, ok := data["issues"]; ok {
+			result["issues"] = issues
+		}
 
 		// Step 2: Add slides if provided
 		if slidesStr != "" {
@@ -182,6 +185,7 @@ var SlidesCreate = common.Shortcut{
 				)
 
 				var slideIDs []string
+				var slideIssues []map[string]interface{}
 				for i, slideXML := range slides {
 					slideData, err := runtime.CallAPITyped(
 						"POST",
@@ -194,13 +198,24 @@ var SlidesCreate = common.Shortcut{
 					if err != nil {
 						return appendSlidesProgressHint(err, fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
 					}
-					if sid := common.GetString(slideData, "slide_id"); sid != "" {
+					sid := common.GetString(slideData, "slide_id")
+					if sid != "" {
 						slideIDs = append(slideIDs, sid)
+					}
+					if issues, ok := slideData["issues"]; ok {
+						slideIssues = append(slideIssues, map[string]interface{}{
+							"slide_index": i + 1,
+							"slide_id":    sid,
+							"issues":      issues,
+						})
 					}
 				}
 
 				result["slide_ids"] = slideIDs
 				result["slides_added"] = len(slideIDs)
+				if len(slideIssues) > 0 {
+					result["slide_issues"] = slideIssues
+				}
 			}
 		}
 

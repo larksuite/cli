@@ -116,5 +116,4 @@ lark-cli apps +session-list --app-id app_xxx
 
 ## 不适用
 
-- 用户已有本地 HTML/dist，要马上发布 URL：读 [`lark-apps-html-publish.md`](lark-apps-html-publish.md)。
 - 用户要本地写代码、改仓库、跑 dev server：读 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)。

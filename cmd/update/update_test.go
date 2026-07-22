@@ -24,6 +24,8 @@ import (
 	"github.com/larksuite/cli/internal/skillscheck"
 )
 
+const runLiveSkillsTestsEnv = "LARKSUITE_CLI_RUN_LIVE_SKILLS_TESTS"
+
 // newTestFactory creates a test factory with minimal config.
 func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
@@ -31,13 +33,17 @@ func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffe
 	return f, stdout, stderr
 }
 
-// mockDetect sets up newUpdater to return an Updater with the given DetectResult.
+// mockDetect sets up newUpdater to return an Updater with the given DetectResult
+// and fully mocked skills operations. Tests that only care about install-method
+// detection must never fall through to the real npx skills CLI.
 func mockDetect(t *testing.T, result selfupdate.DetectResult) {
 	t.Helper()
 	origNew := newUpdater
 	newUpdater = func() *selfupdate.Updater {
 		u := selfupdate.New()
 		u.DetectOverride = func() selfupdate.DetectResult { return result }
+		u.SkillsIndexFetchOverride = successfulSkillsIndexFetch()
+		u.SkillsCommandOverride = successfulSkillsCommand()
 		return u
 	}
 	t.Cleanup(func() { newUpdater = origNew })
@@ -102,6 +108,18 @@ func successfulSkillsCommand() func(args ...string) *selfupdate.NpmResult {
 		}
 		return r
 	}
+}
+
+func mockSkillsSync(t *testing.T) {
+	t.Helper()
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.SkillsIndexFetchOverride = successfulSkillsIndexFetch()
+		u.SkillsCommandOverride = successfulSkillsCommand()
+		return u
+	}
+	t.Cleanup(func() { newUpdater = origNew })
 }
 
 func TestUpdatePnpm_JSON(t *testing.T) {
@@ -228,6 +246,9 @@ func TestNormalizeVersion(t *testing.T) {
 }
 
 func TestUpdateAlreadyUpToDate_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	mockSkillsSync(t)
+
 	f, stdout, _ := newTestFactory(t)
 
 	cmd := NewCmdUpdate(f)
@@ -256,6 +277,9 @@ func TestUpdateAlreadyUpToDate_JSON(t *testing.T) {
 }
 
 func TestUpdateAlreadyUpToDate_Human(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	mockSkillsSync(t)
+
 	f, _, stderr := newTestFactory(t)
 
 	cmd := NewCmdUpdate(f)
@@ -281,6 +305,7 @@ func TestUpdateAlreadyUpToDate_Human(t *testing.T) {
 }
 
 func TestUpdateManual_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
@@ -312,6 +337,7 @@ func TestUpdateManual_JSON(t *testing.T) {
 }
 
 func TestUpdateManual_Human(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, _, stderr := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{})
@@ -1161,6 +1187,7 @@ func TestRunSkillsAndState_DedupForceBypass(t *testing.T) {
 	}
 	called := false
 	updater := &selfupdate.Updater{
+		SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
 		SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
 			called = true
 			return successfulSkillsCommand()(args...)
@@ -1177,7 +1204,10 @@ func TestRunSkillsAndState_DedupForceBypass(t *testing.T) {
 
 func TestRunSkillsAndState_SuccessWritesState(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	updater := &selfupdate.Updater{SkillsCommandOverride: successfulSkillsCommand()}
+	updater := &selfupdate.Updater{
+		SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
+		SkillsCommandOverride:    successfulSkillsCommand(),
+	}
 	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
 	if got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with nil Err", got)
@@ -1197,6 +1227,7 @@ func TestRunSkillsAndState_FailureKeepsOldState(t *testing.T) {
 		t.Fatal(err)
 	}
 	updater := &selfupdate.Updater{
+		SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
 		SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
 			r := &selfupdate.NpmResult{}
 			r.Err = fmt.Errorf("npx failed")
@@ -1513,28 +1544,133 @@ func TestEmitSkillsTextHints_Success(t *testing.T) {
 	}
 }
 
-// TestUpdateCommand_RealSkillsSyncRewritesState is a live integration test that
-// verifies "lark-cli update" correctly triggers skills sync and rewrites the
-// state file. It calls the real npx skills CLI, so the test is skipped when
-// npx or the skills registry is unavailable (e.g. no network or fork PRs).
-func TestUpdateCommand_RealSkillsSyncRewritesState(t *testing.T) {
-	// Phase 1: Verify the real npx skills CLI is available; skip otherwise.
-	if _, err := exec.LookPath("npx"); err != nil {
-		t.Skipf("npx not found in PATH: %v", err)
+// liveSkillsIsolationEnv is the single source of truth for the user-state
+// directories a live skills test must redirect under the temporary home. It
+// covers the CLI's own config, the agent homes the skills CLI installs into,
+// the XDG dirs it derives paths from (XDG_STATE_HOME holds its global
+// .skill-lock.json), and the npm/npx overrides that take precedence over
+// HOME-derived defaults (both cases: npm reads npm_config_* case-insensitively).
+func liveSkillsIsolationEnv(home string) map[string]string {
+	return map[string]string{
+		"HOME":                     home,
+		"USERPROFILE":              home,
+		"APPDATA":                  filepath.Join(home, "AppData", "Roaming"),
+		"LOCALAPPDATA":             filepath.Join(home, "AppData", "Local"),
+		"XDG_CONFIG_HOME":          filepath.Join(home, ".config"),
+		"XDG_DATA_HOME":            filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME":           filepath.Join(home, ".local", "state"),
+		"CODEX_HOME":               filepath.Join(home, ".codex"),
+		"CLAUDE_CONFIG_DIR":        filepath.Join(home, ".claude"),
+		"LARKSUITE_CLI_CONFIG_DIR": filepath.Join(home, ".lark-cli"),
+		"npm_config_cache":         filepath.Join(home, ".npm-cache"),
+		"NPM_CONFIG_CACHE":         filepath.Join(home, ".npm-cache"),
+		"npm_config_prefix":        filepath.Join(home, ".npm-global"),
+		"NPM_CONFIG_PREFIX":        filepath.Join(home, ".npm-global"),
+		"npm_config_userconfig":    filepath.Join(home, ".npmrc"),
+		"NPM_CONFIG_USERCONFIG":    filepath.Join(home, ".npmrc"),
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+}
+
+func prepareLiveSkillsIntegration(t *testing.T) string {
+	t.Helper()
+	if os.Getenv(runLiveSkillsTestsEnv) != "1" {
+		t.Skipf("live skills integration test disabled; set %s=1 to run", runLiveSkillsTestsEnv)
+	}
+
+	home := t.TempDir()
+	for key, value := range liveSkillsIsolationEnv(home) {
+		t.Setenv(key, value)
+	}
+	return home
+}
+
+func TestPrepareLiveSkillsIntegration(t *testing.T) {
+	reachedAfterGate := false
+	t.Run("requires explicit opt-in", func(t *testing.T) {
+		t.Setenv(runLiveSkillsTestsEnv, "")
+		prepareLiveSkillsIntegration(t)
+		reachedAfterGate = true
+	})
+	if reachedAfterGate {
+		t.Fatal("prepareLiveSkillsIntegration continued without explicit opt-in")
+	}
+
+	t.Run("isolates user directories", func(t *testing.T) {
+		t.Setenv(runLiveSkillsTestsEnv, "1")
+		home := prepareLiveSkillsIntegration(t)
+		// Pin the isolation contract by key: removing a variable from
+		// liveSkillsIsolationEnv must fail this list, and every redirected
+		// value must live under the temporary home.
+		required := []string{
+			"HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+			"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
+			"CODEX_HOME", "CLAUDE_CONFIG_DIR", "LARKSUITE_CLI_CONFIG_DIR",
+			"npm_config_cache", "NPM_CONFIG_CACHE",
+			"npm_config_prefix", "NPM_CONFIG_PREFIX",
+			"npm_config_userconfig", "NPM_CONFIG_USERCONFIG",
+		}
+		env := liveSkillsIsolationEnv(home)
+		for _, key := range required {
+			expected, ok := env[key]
+			if !ok {
+				t.Errorf("liveSkillsIsolationEnv dropped required key %s", key)
+				continue
+			}
+			if !strings.HasPrefix(expected, home) {
+				t.Errorf("%s = %q escapes temporary home %q", key, expected, home)
+			}
+			if got := os.Getenv(key); got != expected {
+				t.Errorf("%s = %q, want %q", key, got, expected)
+			}
+		}
+	})
+}
+
+// seedLiveSkillsGlobal verifies the real npx skills CLI is reachable, installs
+// lark-calendar into the isolated global skills dir, and returns the parsed
+// global skills list. The caller opted in explicitly, so every missing
+// precondition is a hard failure — skipping would report "nothing verified"
+// as a green run.
+func seedLiveSkillsGlobal(t *testing.T) []string {
+	t.Helper()
+	if _, err := exec.LookPath("npx"); err != nil {
+		t.Fatalf("live skills tests opted in but npx not found in PATH: %v", err)
+	}
+	// Three sequential npx runs against a cold cache (the isolated home starts
+	// empty) can be slow; with Fatal-on-timeout semantics the budget errs on
+	// the generous side.
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn", "--list").Run(); err != nil {
-		t.Skipf("real skills CLI unavailable: %v", err)
+		t.Fatalf("live skills tests opted in but real skills CLI unavailable: %v", err)
+	}
+	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn", "-s", "lark-calendar", "-g", "-y").Run(); err != nil {
+		t.Fatalf("failed to seed isolated global skills: %v", err)
 	}
 	globalOut, err := exec.CommandContext(ctx, "npx", "-y", "skills", "ls", "-g").Output()
 	if err != nil {
-		t.Skipf("real global skills CLI unavailable: %v", err)
+		t.Fatalf("real global skills CLI unavailable: %v", err)
 	}
 	localSkills := skillscheck.ParseSkillsList(string(globalOut))
-	if err := ctx.Err(); err != nil {
-		t.Skipf("real skills CLI availability check timed out: %v", err)
+	if len(localSkills) == 0 {
+		t.Fatal("seeded lark-calendar but global skills list is empty")
 	}
+	if err := ctx.Err(); err != nil {
+		t.Fatalf("real skills CLI availability check timed out: %v", err)
+	}
+	return localSkills
+}
+
+// TestUpdateCommand_RealSkillsSyncRewritesState is a live integration test that
+// verifies "lark-cli update" correctly triggers skills sync and rewrites the
+// state file. It calls the real npx skills CLI and only runs with explicit
+// opt-in. All user directories are redirected to a temporary home.
+func TestUpdateCommand_RealSkillsSyncRewritesState(t *testing.T) {
+	prepareLiveSkillsIntegration(t)
+
+	// Phase 1: Verify the real npx skills CLI is available and seed the
+	// isolated global skills install.
+	localSkills := seedLiveSkillsGlobal(t)
 
 	// Phase 2: Seed a previous sync state simulating an upgrade from v1.0.19.
 	// lark-doc and lark-mail are recorded as skipped/deleted, meaning the user
@@ -1630,26 +1766,17 @@ func TestUpdateCommand_RealSkillsSyncRewritesState(t *testing.T) {
 // not exist (cold start), the update command installs all official skills and
 // writes a fresh state file. No skill should appear in SkippedDeletedSkills
 // because there is no previous state to preserve user deletions from.
-// This is a live integration test that calls the real npx skills CLI; it is
-// skipped when npx or the skills registry is unavailable.
+// This is a live integration test that calls the real npx skills CLI and only
+// runs with explicit opt-in. All user directories are redirected to a temporary
+// home.
 func TestUpdateCommand_SkillsSyncColdStart(t *testing.T) {
-	// Phase 1: Verify the real npx skills CLI is available; skip otherwise.
-	if _, err := exec.LookPath("npx"); err != nil {
-		t.Skipf("npx not found in PATH: %v", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer cancel()
-	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn", "--list").Run(); err != nil {
-		t.Skipf("real skills CLI unavailable: %v", err)
-	}
-	globalOut, err := exec.CommandContext(ctx, "npx", "-y", "skills", "ls", "-g").Output()
-	if err != nil {
-		t.Skipf("real global skills CLI unavailable: %v", err)
-	}
-	localSkills := skillscheck.ParseSkillsList(string(globalOut))
-	if err := ctx.Err(); err != nil {
-		t.Skipf("real skills CLI availability check timed out: %v", err)
-	}
+	prepareLiveSkillsIntegration(t)
+
+	// Phase 1: Verify the real npx skills CLI is available and seed one known
+	// official skill into the isolated global install. Cold start means no
+	// skills-state.json — locally installed skills may still exist, and seeding
+	// one keeps the Phase 4 per-skill assertions from running zero times.
+	localSkills := seedLiveSkillsGlobal(t)
 
 	// Phase 2: Use an isolated config dir with no pre-existing skills-state.json.
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())

@@ -5,15 +5,18 @@ package base
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 const maxRecordSelectionCount = 200
 const maxBatchGetSelectFieldCount = 100
+const maxRecordSearchSelectFieldCount = 50
 
 var recordCellValueHappyPathTips = []string{
 	`CellValue happy path: text/phone/url -> "text"; number/currency/percent/rating -> 12.5; select -> "Todo"; multi-select -> ["Tag A","Tag B"]; datetime -> "2026-03-24 10:00:00"; checkbox -> true/false.`,
@@ -46,7 +49,6 @@ func validateRecordSelection(runtime *common.RuntimeContext) error {
 
 func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, error) {
 	recordIDs := runtime.StrArray("record-id")
-	fieldIDs := runtime.StrArray("field-id")
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if len(recordIDs) > 0 && jsonRaw != "" {
 		return recordSelection{}, baseFlagErrorf("--record-id and --json are mutually exclusive")
@@ -69,7 +71,11 @@ func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, er
 		if err != nil {
 			return recordSelection{}, err
 		}
-		selectFields, err := resolveRecordGetSelectFields(fieldIDs, body)
+		projectionFields, err := recordProjectionFields(runtime)
+		if err != nil {
+			return recordSelection{}, err
+		}
+		selectFields, err := resolveRecordGetSelectFields(projectionFields, recordProjectionParam(runtime), body)
 		if err != nil {
 			return recordSelection{}, err
 		}
@@ -83,7 +89,11 @@ func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, er
 	if err != nil {
 		return recordSelection{}, err
 	}
-	selectFields, err := resolveRecordGetSelectFields(fieldIDs, nil)
+	projectionFields, err := recordProjectionFields(runtime)
+	if err != nil {
+		return recordSelection{}, err
+	}
+	selectFields, err := resolveRecordGetSelectFields(projectionFields, recordProjectionParam(runtime), nil)
 	if err != nil {
 		return recordSelection{}, err
 	}
@@ -104,20 +114,20 @@ func normalizeRecordIDs(values interface{}) ([]string, error) {
 	})
 }
 
-func resolveRecordGetSelectFields(flagFields []string, body map[string]interface{}) ([]string, error) {
+func resolveRecordGetSelectFields(flagFields []string, projectionParam string, body map[string]interface{}) ([]string, error) {
 	fromFlags, err := normalizeRecordGetSelectFields(flagFields)
 	if err != nil {
-		return nil, err
+		return nil, withValidationParam(err, projectionParam)
 	}
 	if body == nil {
 		return fromFlags, nil
 	}
 	rawJSONFields, ok := body["select_fields"]
-	if !ok {
+	if !ok || rawJSONFields == nil {
 		return fromFlags, nil
 	}
 	if len(fromFlags) > 0 {
-		return nil, baseFlagErrorf(`--field-id and --json field "select_fields" are mutually exclusive`)
+		return nil, baseFlagErrorf(`%s and --json field "select_fields" are mutually exclusive`, projectionParam)
 	}
 	items, ok := rawJSONFields.([]interface{})
 	if !ok {
@@ -128,18 +138,26 @@ func resolveRecordGetSelectFields(flagFields []string, body map[string]interface
 	}
 	normalized, err := normalizeRecordGetSelectFields(items)
 	if err != nil {
-		return nil, err
+		return nil, withValidationParam(err, "--json")
 	}
 	return normalized, nil
 }
 
 func normalizeRecordGetSelectFields(values interface{}) ([]string, error) {
+	return normalizeRecordSelectFields(values, maxBatchGetSelectFieldCount)
+}
+
+func normalizeRecordSearchSelectFields(values interface{}) ([]string, error) {
+	return normalizeRecordSelectFields(values, maxRecordSearchSelectFieldCount)
+}
+
+func normalizeRecordSelectFields(values interface{}, max int) ([]string, error) {
 	return normalizeStringList(values, stringListNormalizeOptions{
 		typeError:     "field selection must be a string array",
 		itemName:      "field selection item",
 		duplicateName: "field id",
 		limitName:     "field selection",
-		max:           maxBatchGetSelectFieldCount,
+		max:           max,
 		allowNil:      true,
 		allowEmpty:    true,
 	})
@@ -211,7 +229,11 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	params := url.Values{}
 	params.Set("offset", strconv.Itoa(offset))
 	params.Set("limit", strconv.Itoa(limit))
-	for _, field := range recordListFields(runtime) {
+	fields, err := recordProjectionFields(runtime)
+	if err != nil {
+		return common.NewDryRunAPI()
+	}
+	for _, field := range fields {
 		params.Add("field_id", field)
 	}
 	if viewID := runtime.Str("view-id"); viewID != "" {
@@ -375,11 +397,121 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 	return err
 }
 
-func recordListFields(runtime *common.RuntimeContext) []string {
-	if runtime.Changed("field-names") {
-		return runtime.StrSlice("field-names")
+func recordProjectionFieldFlag(desc string) common.Flag {
+	flag := fieldRefFlag(false)
+	flag.Type = "string_array"
+	flag.Desc = desc
+	return flag
+}
+
+func recordProjectionAliasFlag(name string) common.Flag {
+	flagType := "string_array"
+	if name == "field-names" {
+		// Preserve the original compatibility contract: --field-names uses
+		// pflag's CSV parser, including quoted commas, and treats @ literally.
+		flagType = "string_slice"
 	}
-	return runtime.StrArray("field-id")
+	return common.Flag{
+		Name:   name,
+		Type:   flagType,
+		Desc:   "hidden alias for --field-id projection",
+		Hidden: true,
+	}
+}
+
+func recordProjectionParam(runtime *common.RuntimeContext) string {
+	switch {
+	case runtime.Changed("fields"):
+		return "--fields"
+	case runtime.Changed("field-names"):
+		return "--field-names"
+	default:
+		return "--field-id"
+	}
+}
+
+func withValidationParam(err error, param string) error {
+	if err == nil || param == "" {
+		return err
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		return err
+	}
+	reason := validationErr.Error()
+	// The caller knows which input produced this validation error. Replace any
+	// params inferred from the rendered message: field values such as Cost--USD
+	// must not be mistaken for a --USD flag.
+	validationErr.Param = param
+	validationErr.Params = []errs.InvalidParam{{Name: param, Reason: reason}}
+	return err
+}
+
+func recordProjectionFields(runtime *common.RuntimeContext) ([]string, error) {
+	return recordProjectionFieldsWithLimit(runtime, maxBatchGetSelectFieldCount)
+}
+
+func recordSearchProjectionFields(runtime *common.RuntimeContext) ([]string, error) {
+	return recordProjectionFieldsWithLimit(runtime, maxRecordSearchSelectFieldCount)
+}
+
+func recordProjectionFieldsWithLimit(runtime *common.RuntimeContext, max int) ([]string, error) {
+	fieldIDs := runtime.StrArray("field-id")
+	fieldIDsSet := runtime.Changed("field-id")
+	fieldsSet := runtime.Changed("fields")
+	fieldNamesSet := runtime.Changed("field-names")
+	projectionParams := make([]string, 0, 3)
+	if fieldIDsSet {
+		projectionParams = append(projectionParams, "--field-id")
+	}
+	if fieldsSet {
+		projectionParams = append(projectionParams, "--fields")
+	}
+	if fieldNamesSet {
+		projectionParams = append(projectionParams, "--field-names")
+	}
+	if len(projectionParams) > 1 {
+		invalidParams := make([]errs.InvalidParam, 0, len(projectionParams))
+		for _, param := range projectionParams {
+			invalidParams = append(invalidParams, errs.InvalidParam{Name: param, Reason: "mutually exclusive"})
+		}
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s are mutually exclusive", strings.Join(projectionParams, " and ")).
+			WithParam(projectionParams[0]).
+			WithParams(invalidParams...).
+			WithHint("Use only --field-id for projection.")
+	}
+	if fieldsSet {
+		return recordProjectionAliasFields(runtime, "fields", max)
+	}
+	if fieldNamesSet {
+		return recordProjectionAliasFields(runtime, "field-names", max)
+	}
+	fields, err := normalizeRecordSelectFields(fieldIDs, max)
+	return fields, withValidationParam(err, "--field-id")
+}
+
+func recordProjectionAliasFields(runtime *common.RuntimeContext, flagName string, max int) ([]string, error) {
+	var fields []string
+	if flagName == "field-names" {
+		fields = runtime.StrSlice(flagName)
+	} else {
+		pc := newParseCtx(runtime)
+		values := runtime.StrArray(flagName)
+		fields = make([]string, 0, len(values))
+		for _, raw := range values {
+			parsed, err := parseStringListFlexible(pc, raw, flagName)
+			if err != nil {
+				return nil, withValidationParam(err, "--"+flagName)
+			}
+			fields = append(fields, parsed...)
+		}
+	}
+	if len(fields) == 0 {
+		err := baseFlagErrorf("--%s must include at least one field", flagName)
+		return nil, withValidationParam(err, "--"+flagName)
+	}
+	normalized, err := normalizeRecordSelectFields(fields, max)
+	return normalized, withValidationParam(err, "--"+flagName)
 }
 
 func executeRecordList(runtime *common.RuntimeContext) error {
@@ -392,7 +524,10 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	}
 	limit := getPaginationLimit(runtime)
 	params := map[string]interface{}{"offset": offset, "limit": limit}
-	fields := recordListFields(runtime)
+	fields, err := recordProjectionFields(runtime)
+	if err != nil {
+		return err
+	}
 	if len(fields) > 0 {
 		params["field_id"] = fields
 	}

@@ -352,6 +352,9 @@ func TestApiCmd_OutputAndPageAllConflict(t *testing.T) {
 }
 
 func TestApiCmd_BinaryResponse_AutoSave(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-bin", AppSecret: "test-secret-bin", Brand: core.BrandFeishu,
 	})
@@ -371,8 +374,33 @@ func TestApiCmd_BinaryResponse_AutoSave(t *testing.T) {
 	if !strings.Contains(stderr.String(), "binary response detected") {
 		t.Error("expected binary response hint in stderr")
 	}
-	if !strings.Contains(stdout.String(), "saved_path") {
-		t.Error("expected saved_path in output")
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout is not JSON: %v\nstdout:\n%s", err, stdout.String())
+	}
+	savedPath, _ := got["saved_path"].(string)
+	if savedPath == "" {
+		t.Fatalf("saved_path missing from output: %#v", got)
+	}
+	// The file must land inside the temporary cwd — this pins the isolation
+	// contract: rolling back TestChdir would leave download.bin in the repo.
+	wantDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotDir, err := filepath.EvalSymlinks(filepath.Dir(savedPath))
+	if err != nil {
+		t.Fatalf("saved_path %q dir not resolvable: %v", savedPath, err)
+	}
+	if gotDir != wantDir {
+		t.Errorf("saved_path %q is outside temp cwd %q", savedPath, wantDir)
+	}
+	content, err := os.ReadFile(savedPath)
+	if err != nil {
+		t.Fatalf("read saved file: %v", err)
+	}
+	if string(content) != "fake-binary-content" {
+		t.Errorf("saved file content = %q, want %q", content, "fake-binary-content")
 	}
 }
 

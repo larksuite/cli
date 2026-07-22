@@ -112,7 +112,7 @@ metadata:
 - 表名、字段名、视图名、workflow 配置中的名称必须来自真实返回；跨表场景还要读取目标表结构。
 - 删除、角色更新、字段更新等高风险操作遵循 CLI 的 confirmation gate；目标不明确时先用 get/list 消歧。
 - 批量写入单批最多 200 条；连续写同一表时串行执行，遇到 `1254291` 按短暂等待后重试处理。
-- `+record-batch-update` 是“同值批量更新”：同一份 patch 应用到全部 `record_id_list`，不要拿它做逐行不同值映射。
+- `+record-batch-update` 使用 `update_records`，按 `record_id -> fields` 映射逐条提交字段值。
 - select/multiselect 写入未知选项可能触发平台新增选项；不是要新增时，先用 `+field-list` 或 `+field-search-options` 确认可选值。
 
 ## 表单与视图细节

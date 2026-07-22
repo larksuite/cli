@@ -7,10 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	extcs "github.com/larksuite/cli/extension/contentsafety"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -71,7 +73,7 @@ func TestOut_ContentSafetyBlock(t *testing.T) {
 	extcs.Register(&csTestProvider{alert: alert})
 	defer extcs.Register(nil)
 
-	rctx, stdout, _ := newCSTestContext(t)
+	rctx, stdout, stderr := newCSTestContext(t)
 	rctx.Out(map[string]any{"msg": "hello"}, nil)
 
 	if stdout.Len() > 0 {
@@ -79,6 +81,16 @@ func TestOut_ContentSafetyBlock(t *testing.T) {
 	}
 	if rctx.outputErr == nil {
 		t.Error("block mode should set outputErr")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("block mode stderr = %q, want empty", stderr.String())
+	}
+	var safetyErr *errs.ContentSafetyError
+	if !errors.As(rctx.outputErr, &safetyErr) {
+		t.Fatalf("block mode output error = %T, want *errs.ContentSafetyError", rctx.outputErr)
+	}
+	if got := output.ExitCodeOf(rctx.outputErr); got != output.ExitContentSafety {
+		t.Fatalf("block mode exit code = %d, want %d", got, output.ExitContentSafety)
 	}
 }
 

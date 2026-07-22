@@ -5,6 +5,8 @@ package okr
 
 import (
 	"bytes"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -120,6 +123,27 @@ func TestCycleListValidate_StartAfterEndTimeRange(t *testing.T) {
 	}
 }
 
+func TestCycleListValidate_InvalidPageSize(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, cycleListTestConfig(t))
+	err := runCycleListShortcut(t, f, stdout, []string{
+		"+cycle-list",
+		"--user-id", "ou-123",
+		"--page-size", "101",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid --page-size")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected validation invalid_argument problem, got: %v", err)
+	}
+	validationErr, ok := err.(*errs.ValidationError)
+	if !ok || validationErr.Param != "--page-size" {
+		t.Fatalf("expected param --page-size, got: %v", err)
+	}
+}
+
 func TestCycleListValidate_ValidNoTimeRange(t *testing.T) {
 	t.Parallel()
 	f, stdout, _, reg := cmdutil.TestFactory(t, cycleListTestConfig(t))
@@ -214,6 +238,9 @@ func TestCycleListDryRun(t *testing.T) {
 	if !strings.Contains(output, "/open-apis/okr/v2/cycles") {
 		t.Fatalf("dry-run output should contain API path, got: %s", output)
 	}
+	if !strings.Contains(output, "\"page_size\": 100") {
+		t.Fatalf("dry-run output should contain default page_size=100, got: %s", output)
+	}
 }
 
 func TestCycleListDryRun_WithTimeRange(t *testing.T) {
@@ -231,6 +258,28 @@ func TestCycleListDryRun_WithTimeRange(t *testing.T) {
 	output := stdout.String()
 	if !strings.Contains(output, "/open-apis/okr/v2/cycles") {
 		t.Fatalf("dry-run output should contain API path, got: %s", output)
+	}
+}
+
+func TestCycleListDryRun_WithPagination(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, cycleListTestConfig(t))
+	err := runCycleListShortcut(t, f, stdout, []string{
+		"+cycle-list",
+		"--user-id", "ou-789",
+		"--page-size", "20",
+		"--page-token", "next-page",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "\"page_size\": 20") {
+		t.Fatalf("dry-run output should contain page_size=20, got: %s", output)
+	}
+	if !strings.Contains(output, "\"page_token\": \"next-page\"") {
+		t.Fatalf("dry-run output should contain page_token, got: %s", output)
 	}
 }
 
@@ -454,9 +503,11 @@ func TestCycleListExecute_WithCycles(t *testing.T) {
 	if len(cycles) != 2 {
 		t.Fatalf("cycles count = %d, want 2", len(cycles))
 	}
-	total, _ := data["total"].(float64)
-	if int(total) != 2 {
-		t.Fatalf("total = %v, want 2", total)
+	if _, ok := data["total"]; ok {
+		t.Fatal("total should not be present in response")
+	}
+	if hasMore, _ := data["has_more"].(bool); hasMore {
+		t.Fatalf("has_more = %v, want false", hasMore)
 	}
 
 	// Check current_active_cycles - should only contain cycle-active
@@ -555,10 +606,13 @@ func TestCycleListExecute_Pagination(t *testing.T) {
 	t.Parallel()
 	f, stdout, _, reg := cmdutil.TestFactory(t, cycleListTestConfig(t))
 
-	// First page
+	var gotQuery url.Values
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/okr/v2/cycles",
+		OnMatch: func(req *http.Request) {
+			gotQuery = req.URL.Query()
+		},
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
@@ -578,38 +632,31 @@ func TestCycleListExecute_Pagination(t *testing.T) {
 		},
 	})
 
-	// Second page
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/okr/v2/cycles",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": map[string]interface{}{
-				"items": []interface{}{
-					map[string]interface{}{
-						"id":           "cycle-p2",
-						"start_time":   "1738368000000",
-						"end_time":     "1743465600000",
-						"cycle_status": 1,
-						"owner":        map[string]interface{}{"owner_type": "user", "user_id": "ou-1"},
-					},
-				},
-			},
-		},
-	})
-
 	err := runCycleListShortcut(t, f, stdout, []string{
 		"+cycle-list",
 		"--user-id", "ou-123",
+		"--page-size", "1",
+		"--page-token", "start_page",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if got := gotQuery.Get("page_size"); got != "1" {
+		t.Fatalf("query page_size = %q, want 1", got)
+	}
+	if got := gotQuery.Get("page_token"); got != "start_page" {
+		t.Fatalf("query page_token = %q, want start_page", got)
+	}
 	data := decodeEnvelope(t, stdout)
 	cycles, _ := data["cycles"].([]interface{})
-	if len(cycles) != 2 {
-		t.Fatalf("cycles count = %d, want 2", len(cycles))
+	if len(cycles) != 1 {
+		t.Fatalf("cycles count = %d, want 1", len(cycles))
+	}
+	if hasMore, _ := data["has_more"].(bool); !hasMore {
+		t.Fatalf("has_more = %v, want true", hasMore)
+	}
+	if pageToken, _ := data["page_token"].(string); pageToken != "next_page" {
+		t.Fatalf("page_token = %q, want next_page", pageToken)
 	}
 }
 
