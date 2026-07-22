@@ -35,7 +35,7 @@ func TestBaseRecordBatchUpdatePerRecordWorkflow(t *testing.T) {
 			"base", "+record-batch-create",
 			"--base-token", baseToken,
 			"--table-id", tableID,
-			"--json", `{"fields":["Name","Status","Score"],"rows":[["alpha","Open",10],["beta","Open",15]]}`,
+			"--json", `{"create_records":[{"Name":"alpha","Status":"Open","Score":10},{"Name":"beta","Status":"Open","Score":15}]}`,
 		},
 		DefaultAs: "bot",
 	})

@@ -801,7 +801,8 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "record batch create json",
 			shortcut: BaseRecordBatchCreate,
 			wantHelp: []string{
-				`batch create JSON object, e.g. {"fields":["Name","Status"],"rows":[["Task A","Todo"],["Task B",null]]}; rows follow fields order`,
+				"create_records contains one field map per record",
+				`{"create_records":[{"Name":"Task A","Status":"Todo"},{"Name":"Task B","Score":20}]}`,
 			},
 		},
 		{
@@ -865,11 +866,11 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 			name:     "record batch create",
 			shortcut: BaseRecordBatchCreate,
 			wantTips: []string{
-				"Happy path fields: fields is the column order",
-				"rows is an array of row arrays",
-				"may use null for empty cells",
+				"Happy path field: create_records",
+				"create_records is an array of independent record field maps",
+				`{"create_records":[{"Name":"Task A","Status":"Todo"},{"Name":"Task B","Score":20}]}`,
 				"use +field-list to confirm real writable fields",
-				"Batch create supports max 200 rows per call",
+				"Batch create supports max 200 records per call",
 				"do not immediately +record-list the same table",
 				"CellValue happy path: text/phone/url",
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,

@@ -2435,16 +2435,14 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"fields":         []interface{}{"Name"},
 					"record_id_list": []interface{}{"rec_1", "rec_2"},
-					"data":           []interface{}{[]interface{}{"Alice"}, []interface{}{"Bob"}},
 				},
 			},
 		})
-		if err := runShortcut(t, BaseRecordBatchCreate, []string{"+record-batch-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"fields":["Name"],"rows":[["Alice"],["Bob"]]}`}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseRecordBatchCreate, []string{"+record-batch-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"create_records":[{"Name":"Alice"},{"Name":"Bob"}]}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) || !strings.Contains(got, `"Alice"`) {
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
