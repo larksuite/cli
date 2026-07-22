@@ -366,6 +366,7 @@ func createTestObjectives(t *testing.T, ctx context.Context, cycleID string, suf
 			"--cycle-id", cycleID,
 			"--input", string(inputJSON),
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err, "failed to create test objectives")
 	result.AssertExitCode(t, 0)
@@ -411,6 +412,7 @@ func cleanupLiveTest(t *testing.T, created []liveTestCreated) {
 					"--key-result-id", krID,
 					"--yes",
 				},
+				DefaultAs: "user",
 			})
 			clie2e.ReportCleanupFailure(t, fmt.Sprintf("delete KR %s", krID), result, err)
 			select {
@@ -426,6 +428,7 @@ func cleanupLiveTest(t *testing.T, created []liveTestCreated) {
 				"--objective-id", obj.ObjectiveID,
 				"--yes",
 			},
+			DefaultAs: "user",
 		})
 		clie2e.ReportCleanupFailure(t, fmt.Sprintf("delete objective %s", obj.ObjectiveID), result, err)
 		if i > 0 {
@@ -447,6 +450,7 @@ func createLiveObjective(t *testing.T, ctx context.Context, cycleID string, suff
 			"--cycle-id", cycleID,
 			"--content", fmt.Sprintf(`{"text":"E2E Single Objective %s","mention":["ou_test"]}`, suffix),
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err, "failed to create live objective")
 	result.AssertExitCode(t, 0)
@@ -466,6 +470,7 @@ func createLiveKeyResult(t *testing.T, ctx context.Context, objectiveID string, 
 			"--objective-id", objectiveID,
 			"--content", fmt.Sprintf(`{"text":"E2E Single KR %s","mention":["ou_test"]}`, suffix),
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err, "failed to create live key result")
 	result.AssertExitCode(t, 0)
@@ -499,6 +504,7 @@ func TestOKR_BatchCreateLive(t *testing.T) {
 			"okr", "+cycle-detail",
 			"--cycle-id", cycleID,
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
@@ -544,6 +550,7 @@ func TestOKR_CreateLive_Objective(t *testing.T) {
 			"okr", "+cycle-detail",
 			"--cycle-id", cycleID,
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
@@ -581,6 +588,7 @@ func TestOKR_CreateLive_KeyResultUnderExistingObjective(t *testing.T) {
 			"okr", "+cycle-detail",
 			"--cycle-id", cycleID,
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
@@ -640,6 +648,7 @@ func TestOKR_ReorderLive(t *testing.T) {
 			"--level", "objective",
 			"--ops", string(opsJSON),
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
@@ -650,6 +659,7 @@ func TestOKR_ReorderLive(t *testing.T) {
 			"okr", "+cycle-detail",
 			"--cycle-id", cycleID,
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
@@ -702,6 +712,7 @@ func TestOKR_WeightLive(t *testing.T) {
 			"--level", "objective",
 			"--weights", string(weightsJSON),
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
@@ -712,6 +723,7 @@ func TestOKR_WeightLive(t *testing.T) {
 			"okr", "+cycle-detail",
 			"--cycle-id", cycleID,
 		},
+		DefaultAs: "user",
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
