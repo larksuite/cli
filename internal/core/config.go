@@ -36,6 +36,14 @@ type AppUser struct {
 	UserName   string `json:"userName"`
 }
 
+// Auth methods for app credentials. An empty AppConfig.AuthMethod means the
+// default, client_secret.
+const (
+	AuthMethodClientSecret  = "client_secret"   // app_id + app_secret
+	authMethodPKJWTValue    = "private_key_jwt" // TEE-signed client_assertion; no app secret
+	AuthMethodPrivateKeyJWT = authMethodPKJWTValue
+)
+
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
 	Name       string      `json:"name,omitempty"`
@@ -46,6 +54,15 @@ type AppConfig struct {
 	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
 	StrictMode *StrictMode `json:"strictMode,omitempty"`
 	Users      []AppUser   `json:"users"`
+
+	// AuthMethod selects how tokens are minted. Empty == AuthMethodClientSecret
+	// (back-compat). AuthMethodPrivateKeyJWT uses a TEE-held key (see KeyRef) to
+	// sign client_assertion JWTs instead of sending an app secret.
+	AuthMethod string `json:"authMethod,omitempty"`
+	// KeyRef references the non-exportable signing key for private_key_jwt.
+	// Source is "tee" and ID is the backend key label; the actual key never
+	// leaves the secure backend, so this is a handle, not secret material.
+	KeyRef *SecretRef `json:"keyRef,omitempty"`
 }
 
 // ProfileName returns the display name for this app config.
@@ -161,7 +178,10 @@ type CliConfig struct {
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
-	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	AuthMethod          string // "" == client_secret; AuthMethodPrivateKeyJWT
+	KeyLabel            string // resolved TEE key handle for private_key_jwt
+	KeyProvider         string // empty == built-in signer; otherwise an explicit external signer route
 }
 
 // identityBotBit is the bit flag for bot identity in SupportedIdentities.
@@ -247,30 +267,66 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 			WithHint("available profiles: %s", formatProfileNames(raw.ProfileNames()))
 	}
 
-	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
-		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "appId and appSecret keychain key are out of sync").
-			WithHint("%s", err.Error()).
-			WithCause(err)
+	// Validate the auth method first so a malformed profile fails here rather
+	// than silently degrading to client_secret (unknown method) or failing later
+	// at token-signing. Empty stays empty — downstream treats it as client_secret
+	// (back-compat).
+	switch app.AuthMethod {
+	case "", AuthMethodClientSecret, AuthMethodPrivateKeyJWT:
+	default:
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "unknown authMethod %q", app.AuthMethod).
+			WithHint("supported: %s, %s (empty defaults to %s)", AuthMethodClientSecret, AuthMethodPrivateKeyJWT, AuthMethodClientSecret)
 	}
 
-	secret, err := ResolveSecretInput(app.AppSecret, kc)
-	if err != nil {
-		if errs.IsTyped(err) {
-			return nil, err
+	// private_key_jwt carries no secret: validate the key handle and skip secret
+	// resolution entirely, so a stale/broken AppSecret ref never produces a
+	// confusing secret-resolution error for an otherwise-valid pkjwt profile.
+	var secret string
+	if app.AuthMethod == AuthMethodPrivateKeyJWT {
+		if app.KeyRef == nil || app.KeyRef.Source != "tee" || app.KeyRef.ID == "" {
+			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "private_key_jwt requires a key handle (keyRef) but none is configured").
+				WithHint("re-run: lark-cli config init --new --private-key-jwt")
 		}
-		subtype := errs.SubtypeNotConfigured
-		if isMalformedConfigError(err) {
-			subtype = errs.SubtypeInvalidConfig
+		provider := strings.TrimSpace(app.KeyRef.Provider)
+		switch provider {
+		case "", KeylessProviderLarkSuite:
+		default:
+			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+				"unknown keyless signer provider %q", app.KeyRef.Provider).
+				WithHint("supported external provider: %s; omit provider to use the built-in signer", KeylessProviderLarkSuite)
 		}
-		return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
+	} else {
+		if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
+			return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "appId and appSecret keychain key are out of sync").
+				WithHint("%s", err.Error()).
+				WithCause(err)
+		}
+		var resolveErr error
+		secret, resolveErr = ResolveSecretInput(app.AppSecret, kc)
+		if resolveErr != nil {
+			if errs.IsTyped(resolveErr) {
+				return nil, resolveErr
+			}
+			subtype := errs.SubtypeNotConfigured
+			if isMalformedConfigError(resolveErr) {
+				subtype = errs.SubtypeInvalidConfig
+			}
+			return nil, errs.NewConfigError(subtype, "%s", resolveErr.Error()).WithCause(resolveErr)
+		}
 	}
+
 	cfg := &CliConfig{
 		ProfileName: app.ProfileName(),
 		AppID:       app.AppId,
 		AppSecret:   secret,
 		Brand:       ParseBrand(string(app.Brand)),
 		Lang:        app.Lang,
+		AuthMethod:  app.AuthMethod,
 		DefaultAs:   app.DefaultAs,
+	}
+	if app.KeyRef != nil {
+		cfg.KeyLabel = app.KeyRef.ID
+		cfg.KeyProvider = strings.TrimSpace(app.KeyRef.Provider)
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId

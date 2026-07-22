@@ -12,7 +12,12 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keylesshelper"
+	"github.com/larksuite/cli/internal/keylessprovider"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // FetchTAT performs a single HTTP POST to mint a tenant access token via the
@@ -99,4 +104,121 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		desc = result.Msg
 	}
 	return "", classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+}
+
+// FetchTATWithAssertion mints a tenant access token for a private_key_jwt app via
+// the RFC 7523 jwt-bearer grant: it signs a short-lived client_assertion with the
+// TEE-held key and posts it to the unified OAuth token endpoint, replacing the
+// app_secret entirely.
+//
+// The unified v2 token endpoint returns the minted token as access_token
+// (tenant_access_token is accepted as a fallback).
+func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) (string, error) {
+	return FetchTATWithAssertionForProvider(ctx, httpClient, brand, clientID, signer, "", keyLabel)
+}
+
+// FetchTATWithAssertionForProvider routes one app authentication by its
+// persisted keyRef.provider. Empty is the stable built-in signer route;
+// larksuite.keyless is resolved afresh for this operation; all other values
+// fail closed in keylessprovider.Resolve.
+func FetchTATWithAssertionForProvider(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, provider, keyLabel string) (string, error) {
+	var helper *keylesshelper.Command
+	var err error
+	if strings.TrimSpace(provider) != "" {
+		helper, err = keylessprovider.Resolve(ctx, provider)
+		if err != nil {
+			return "", err
+		}
+	}
+	return FetchTATWithAssertionWithHelper(ctx, httpClient, brand, clientID, signer, helper, keyLabel)
+}
+
+// FetchTATWithAssertionWithHelper is the single-resolution variant used when
+// the caller must make a preflight decision from the same helper snapshot.
+func FetchTATWithAssertionWithHelper(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, helper *keylesshelper.Command, keyLabel string) (string, error) {
+	if signer == nil && helper == nil {
+		return "", errs.NewConfigError(errs.SubtypeInvalidClient,
+			"profile uses private_key_jwt but no TEE key signer is available on this build").
+			WithHint("install a build with the platform key-signer extension, configure an external keyless signer, or reconfigure the app to use an app secret")
+	}
+	ep := core.ResolveEndpoints(brand)
+	endpoint := ep.Open + auth.PathOAuthTokenV2
+
+	assertionType, assertion, err := auth.SignClientAssertion(ctx, signer, helper, keyLabel, clientID, core.OpenAPIAudience(brand))
+	if err != nil {
+		return "", err
+	}
+
+	form := url.Values{}
+	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+	form.Set("client_id", clientID)
+	form.Set("client_assertion_type", assertionType)
+	form.Set("client_assertion", assertion)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("read token response: %w", err)
+	}
+
+	var result struct {
+		Code              int    `json:"code"`
+		Msg               string `json:"msg"`
+		Error             string `json:"error"`
+		ErrorDescription  string `json:"error_description"`
+		AccessToken       string `json:"access_token"`
+		TenantAccessToken string `json:"tenant_access_token"`
+	}
+	_ = json.Unmarshal(body, &result) // best-effort; error body may not be JSON
+
+	token := result.AccessToken
+	if token == "" {
+		token = result.TenantAccessToken
+	}
+	if resp.StatusCode == http.StatusOK && token != "" && result.Error == "" && result.Code == 0 {
+		return token, nil
+	}
+
+	// Surface the server's reason, preferring the OAuth `error` code (e.g.
+	// unauthorized_client) which is more diagnostic than the description alone.
+	detail := result.ErrorDescription
+	if detail == "" {
+		detail = result.Msg
+	}
+	if detail == "" {
+		detail = strings.TrimSpace(string(body))
+	}
+	if result.Error != "" {
+		return "", classifyAssertionError(result.Error, resp.StatusCode, detail)
+	}
+	return "", fmt.Errorf("token endpoint HTTP %d (code=%d): %s", resp.StatusCode, result.Code, detail)
+}
+
+// classifyAssertionError maps the OAuth token endpoint's `error` field to a
+// typed or untyped error. Only deterministic client-credential rejections get a
+// typed errs.ConfigError (so runProbePKJWT can tell "this key is not bound to
+// this app" apart from upstream noise); every other error (e.g.
+// temporarily_unavailable) stays untyped and is swallowed by the probe. detail
+// carries only the server's error_description / msg / body text — it never
+// echoes the client_assertion or private key (the assertion lives only in the
+// request form).
+func classifyAssertionError(oauthError string, httpStatus int, detail string) error {
+	switch oauthError {
+	case "invalid_client", "unauthorized_client", "invalid_grant":
+		return errs.NewConfigError(errs.SubtypeInvalidClient,
+			"token endpoint rejected the key (%s): %s", oauthError, detail)
+	default:
+		return fmt.Errorf("token endpoint HTTP %d (%s): %s", httpStatus, oauthError, detail)
+	}
 }

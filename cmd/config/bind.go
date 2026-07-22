@@ -4,12 +4,18 @@
 package config
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/charmbracelet/huh"
+	"github.com/gofrs/flock"
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
@@ -22,9 +28,14 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
+const bindCommitLockTimeout = 5 * time.Second
+
+var bindCommitMu sync.Mutex
+
 // BindOptions holds all inputs for config bind.
 type BindOptions struct {
 	Factory *cmdutil.Factory
+	Ctx     context.Context
 	Source  string
 	AppID   string
 	// Identity selects one of two presets — "bot-only" or "user-default" —
@@ -94,6 +105,7 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
   # Interactive (terminal user) — TUI prompts for everything:
   lark-cli config bind`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Ctx = cmd.Context()
 			opts.langExplicit = cmd.Flags().Changed("lang")
 			if runF != nil {
 				return runF(opts)
@@ -139,10 +151,11 @@ func configBindRun(opts *BindOptions) error {
 		return nil
 	}
 
-	appConfig, err := resolveAccount(opts, source)
+	result, err := resolveAccount(opts, source)
 	if err != nil {
 		return err
 	}
+	appConfig := result.AppConfig
 	opts.Brand = string(appConfig.Brand)
 
 	if err := resolveIdentity(opts); err != nil {
@@ -151,10 +164,20 @@ func configBindRun(opts *BindOptions) error {
 	if err := warnIdentityEscalation(opts, existing.ConfigBytes); err != nil {
 		return err
 	}
-	applyPreferences(appConfig, opts, priorLang(existing.ConfigBytes))
+	if err := validateBindResult(bindContext(opts), opts, result); err != nil {
+		return err
+	}
+	applyPreferences(appConfig, opts, priorLangForApp(existing.ConfigBytes, appConfig.AppId))
 	noticeUserDefaultRisk(opts)
 
-	return commitBinding(opts, appConfig, existing.ConfigBytes, source, targetConfigPath)
+	return commitBinding(opts, result, existing.ConfigBytes, source, targetConfigPath)
+}
+
+func bindContext(opts *BindOptions) context.Context {
+	if opts != nil && opts.Ctx != nil {
+		return opts.Ctx
+	}
+	return context.Background()
 }
 
 // existingBinding is the outcome of checking whether a workspace was already
@@ -239,9 +262,15 @@ func finalizeSource(opts *BindOptions) (string, error) {
 // notice on success so the caller still sees that a rebind happened.
 // See existingBinding for the returned fields.
 func reconcileExistingBinding(opts *BindOptions, source, configPath string) (existingBinding, error) {
-	oldConfigData, _ := vfs.ReadFile(configPath)
-	if oldConfigData == nil {
-		return existingBinding{}, nil
+	oldConfigData, err := vfs.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return existingBinding{}, nil
+		}
+		return existingBinding{}, errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"cannot read existing workspace config %s: %v", configPath, err).
+			WithHint("fix the file permissions or I/O error before binding").
+			WithCause(err)
 	}
 
 	if opts.IsTUI {
@@ -264,7 +293,7 @@ func reconcileExistingBinding(opts *BindOptions, source, configPath string) (exi
 // enumerate candidates, pick one via the shared decision layer, and build a
 // ready-to-persist AppConfig. Adding a new bind source only requires
 // implementing SourceBinder — none of the logic below needs to change.
-func resolveAccount(opts *BindOptions, source string) (*core.AppConfig, error) {
+func resolveAccount(opts *BindOptions, source string) (*BindResult, error) {
 	binder, err := newBinder(source, opts)
 	if err != nil {
 		return nil, err
@@ -278,7 +307,7 @@ func resolveAccount(opts *BindOptions, source string) (*core.AppConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return binder.Build(picked.AppID)
+	return binder.Build(bindContext(opts), *picked)
 }
 
 // resolveIdentity ensures opts.Identity is set before applyPreferences runs.
@@ -389,9 +418,20 @@ func applyPreferences(appConfig *core.AppConfig, opts *BindOptions, prior i18n.L
 // wrong profile's preference into a re-bind when the workspace holds multiple
 // named profiles and the active one disagrees with Apps[0].
 func priorLang(previousConfigBytes []byte) i18n.Lang {
+	return priorLangForApp(previousConfigBytes, "")
+}
+
+func priorLangForApp(previousConfigBytes []byte, appID string) i18n.Lang {
 	var multi core.MultiAppConfig
 	if json.Unmarshal(previousConfigBytes, &multi) != nil {
 		return ""
+	}
+	if appID != "" {
+		for i := range multi.Apps {
+			if multi.Apps[i].AppId == appID {
+				return multi.Apps[i].Lang
+			}
+		}
 	}
 	if app := multi.CurrentAppConfig(""); app != nil {
 		return app.Lang
@@ -400,12 +440,16 @@ func priorLang(previousConfigBytes []byte) i18n.Lang {
 }
 
 // commitBinding finalizes the bind: atomic write of the new workspace config,
-// best-effort cleanup of stale keychain entries from the previous binding (if
-// any), and a JSON success envelope. Cleanup runs only after the new config
-// is durably written — if anything fails earlier, the old workspace stays
-// usable.
-func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigBytes []byte, source, configPath string) error {
-	multi := &core.MultiAppConfig{Apps: []core.AppConfig{*appConfig}}
+// deferred provider-manifest commit for keyless binds, and a JSON success
+// envelope. The write and provider commit are serialized across CLI processes;
+// if the provider commit fails, the workspace write is rolled back before any
+// success output so an existing binding remains usable.
+func commitBinding(opts *BindOptions, result *BindResult, previousConfigBytes []byte, source, configPath string) error {
+	appConfig := result.AppConfig
+	multi, err := mergeBoundApp(appConfig, previousConfigBytes, opts.langExplicit)
+	if err != nil {
+		return err
+	}
 
 	if err := vfs.MkdirAll(core.GetConfigDir(), 0700); err != nil {
 		return errs.NewInternalError(errs.SubtypeFileIO, "failed to create workspace directory: %v", err).WithCause(err)
@@ -414,9 +458,38 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to marshal config: %v", err).WithCause(err)
 	}
-	if err := validate.AtomicWrite(configPath, append(data, '\n'), 0600); err != nil {
+	releaseCommitLock, err := acquireBindCommitLock(opts)
+	if err != nil {
+		return err
+	}
+	commitLockHeld := true
+	defer func() {
+		if commitLockHeld {
+			releaseCommitLock()
+		}
+	}()
+	if err := ensureBindingSnapshotUnchanged(configPath, previousConfigBytes); err != nil {
+		return err
+	}
+	newConfigBytes := append(data, '\n')
+	if err := validate.AtomicWrite(configPath, newConfigBytes, 0600); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to write config %s: %v", configPath, err).WithCause(err)
 	}
+	if result.commitProviderManifest != nil {
+		if err := result.commitProviderManifest(); err != nil {
+			rollbackErr := rollbackBindingConfig(configPath, previousConfigBytes, newConfigBytes)
+			if rollbackErr != nil {
+				return errs.NewInternalError(errs.SubtypeStorage,
+					"failed to persist keyless signer provider: %v; failed to restore workspace config: %v", err, rollbackErr).
+					WithCause(err)
+			}
+			return errs.NewInternalError(errs.SubtypeStorage,
+				"failed to persist keyless signer provider (workspace config restored): %v", err).
+				WithCause(err)
+		}
+	}
+	releaseCommitLock()
+	commitLockHeld = false
 
 	replaced := previousConfigBytes != nil
 	// uiMsg renders human-facing TUI text (stderr success banner). Follows
@@ -424,10 +497,6 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	// not influence the TUI language.
 	uiMsg := getBindMsg(opts.UILang)
 	display := sourceDisplayName(source)
-
-	if replaced {
-		cleanupKeychainFromData(opts.Factory.Keychain, previousConfigBytes, appConfig)
-	}
 
 	fmt.Fprintln(opts.Factory.IOStreams.ErrOut,
 		fmt.Sprintf(uiMsg.BindSuccessHeader, display)+"\n"+uiMsg.BindSuccessNotice)
@@ -468,6 +537,133 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	resultJSON, _ := json.Marshal(envelope)
 	fmt.Fprintln(opts.Factory.IOStreams.Out, string(resultJSON))
 	return nil
+}
+
+func acquireBindCommitLock(opts *BindOptions) (func(), error) {
+	bindCommitMu.Lock()
+	lockDir := filepath.Join(core.GetBaseConfigDir(), "locks")
+	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
+		bindCommitMu.Unlock()
+		return nil, errs.NewInternalError(errs.SubtypeStorage,
+			"failed to create bind lock directory: %v", err).WithCause(err)
+	}
+	fileLock := flock.New(filepath.Join(lockDir, "config-bind.lock"))
+	ctx, cancel := context.WithTimeout(bindContext(opts), bindCommitLockTimeout)
+	locked, err := fileLock.TryLockContext(ctx, 50*time.Millisecond)
+	cancel()
+	if err != nil || !locked {
+		bindCommitMu.Unlock()
+		if err == nil {
+			err = context.DeadlineExceeded
+		}
+		return nil, errs.NewInternalError(errs.SubtypeStorage,
+			"failed to acquire config bind lock: %v", err).WithCause(err)
+	}
+	return func() {
+		_ = fileLock.Unlock()
+		bindCommitMu.Unlock()
+	}, nil
+}
+
+func ensureBindingSnapshotUnchanged(configPath string, previousConfigBytes []byte) error {
+	current, err := vfs.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) && previousConfigBytes == nil {
+			return nil
+		}
+		return errs.NewInternalError(errs.SubtypeStorage,
+			"failed to recheck workspace config %s before binding: %v", configPath, err).WithCause(err)
+	}
+	if previousConfigBytes != nil && bytes.Equal(current, previousConfigBytes) {
+		return nil
+	}
+	return errs.NewConfigError(errs.SubtypeInvalidConfig,
+		"workspace config %s changed while the bind was being validated", configPath).
+		WithHint("retry config bind using the latest workspace state")
+}
+
+func rollbackBindingConfig(configPath string, previousConfigBytes, writtenConfigBytes []byte) error {
+	current, err := vfs.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) && previousConfigBytes == nil {
+			return nil
+		}
+		//nolint:forbidigo // intermediate rollback diagnostic; commitBinding wraps it into a typed storage error
+		return fmt.Errorf("recheck workspace config before rollback: %w", err)
+	}
+	if !bytes.Equal(current, writtenConfigBytes) {
+		//nolint:forbidigo // intermediate rollback diagnostic; commitBinding wraps it into a typed storage error
+		return fmt.Errorf("workspace config changed after the bind write; refusing to overwrite it during rollback")
+	}
+	if previousConfigBytes != nil {
+		return validate.AtomicWrite(configPath, previousConfigBytes, 0600)
+	}
+	if err := vfs.Remove(configPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// mergeBoundApp upserts by unique appId and activates the target while
+// preserving every non-target profile and root policy.
+func mergeBoundApp(incoming *core.AppConfig, previousBytes []byte, langExplicit bool) (*core.MultiAppConfig, error) {
+	if incoming == nil || strings.TrimSpace(incoming.AppId) == "" {
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "config bind produced an empty app")
+	}
+	if previousBytes == nil {
+		return &core.MultiAppConfig{Apps: []core.AppConfig{*incoming}, CurrentApp: incoming.ProfileName()}, nil
+	}
+
+	var multi core.MultiAppConfig
+	if err := json.Unmarshal(previousBytes, &multi); err != nil {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"cannot update malformed workspace config: %v", err).WithCause(err)
+	}
+	match := -1
+	for i := range multi.Apps {
+		if multi.Apps[i].AppId != incoming.AppId {
+			continue
+		}
+		if match >= 0 {
+			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+				"appId %s appears in multiple CLI profiles", incoming.AppId).
+				WithHint("remove the duplicate profile before binding")
+		}
+		match = i
+	}
+
+	oldActive := ""
+	if active := multi.CurrentAppConfig(""); active != nil {
+		oldActive = active.ProfileName()
+	}
+	if match >= 0 {
+		old := multi.Apps[match]
+		incoming.Name = old.Name
+		incoming.Users = old.Users
+		if !langExplicit {
+			incoming.Lang = old.Lang
+		}
+		multi.Apps[match] = *incoming
+	} else {
+		for i := range multi.Apps {
+			if multi.Apps[i].Name != "" && multi.Apps[i].Name == incoming.AppId {
+				return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+					"new appId %s conflicts with existing profile name", incoming.AppId).
+					WithHint("rename the existing profile before binding")
+			}
+		}
+		incoming.Name = ""
+		incoming.Users = []core.AppUser{}
+		multi.Apps = append(multi.Apps, *incoming)
+		match = len(multi.Apps) - 1
+	}
+
+	targetName := multi.Apps[match].ProfileName()
+	if oldActive != targetName {
+		multi.PreviousApp = oldActive
+		multi.CurrentApp = targetName
+	}
+	return &multi, nil
 }
 
 // cleanupKeychainFromData removes keychain entries referenced by a previous

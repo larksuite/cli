@@ -84,6 +84,21 @@ func saveWorkspace(t *testing.T) {
 	t.Cleanup(func() { core.SetCurrentWorkspace(orig) })
 }
 
+func TestReconcileExistingBinding_ReadFailureIsNotTreatedAsMissing(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.Mkdir(configPath, 0700); err != nil {
+		t.Fatal(err)
+	}
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	_, err := reconcileExistingBinding(&BindOptions{Factory: f}, "openclaw", configPath)
+	if err == nil || !strings.Contains(err.Error(), "cannot read existing workspace config") {
+		t.Fatalf("reconcileExistingBinding error = %v", err)
+	}
+	if info, statErr := os.Stat(configPath); statErr != nil || !info.IsDir() {
+		t.Fatalf("unreadable existing config was changed: info=%v error=%v", info, statErr)
+	}
+}
+
 // ── Command flag parsing tests (aligned with config_test.go pattern) ──
 
 func TestConfigBindCmd_FlagParsing(t *testing.T) {
@@ -1497,7 +1512,11 @@ func assertPresetApplied(t *testing.T, configPath string, wantStrict core.Strict
 	if len(multi.Apps) == 0 {
 		t.Fatalf("no apps in %s", configPath)
 	}
-	app := multi.Apps[0]
+	appPtr := multi.CurrentAppConfig("")
+	if appPtr == nil {
+		t.Fatalf("no current app in %s", configPath)
+	}
+	app := *appPtr
 	if app.StrictMode == nil || *app.StrictMode != wantStrict {
 		t.Errorf("StrictMode = %v, want %q", app.StrictMode, wantStrict)
 	}

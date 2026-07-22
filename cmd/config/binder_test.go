@@ -4,10 +4,12 @@
 package config
 
 import (
+	"context"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/larksuite/cli/internal/binding"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -20,10 +22,10 @@ type fakeBinder struct {
 	path string
 }
 
-func (b *fakeBinder) Name() string                                { return b.name }
-func (b *fakeBinder) ConfigPath() string                          { return b.path }
-func (b *fakeBinder) ListCandidates() ([]Candidate, error)        { return nil, nil }
-func (b *fakeBinder) Build(appID string) (*core.AppConfig, error) { return nil, nil }
+func (b *fakeBinder) Name() string                                          { return b.name }
+func (b *fakeBinder) ConfigPath() string                                    { return b.path }
+func (b *fakeBinder) ListCandidates() ([]Candidate, error)                  { return nil, nil }
+func (b *fakeBinder) Build(context.Context, Candidate) (*BindResult, error) { return nil, nil }
 
 // tuiUnreachable is a tuiPrompt that fails the test if called. It's the
 // guardrail that proves the non-TUI decision paths really do stay out of the
@@ -107,6 +109,20 @@ func TestSelectCandidate_AppIDFlag_NoMatch(t *testing.T) {
 	})
 }
 
+func TestSelectCandidate_AppIDFlag_RejectsDuplicateInheritedAppID(t *testing.T) {
+	b := &fakeBinder{name: "openclaw", path: "/tmp/openclaw.json"}
+	candidates := []Candidate{
+		{AppID: "cli_shared", Label: "work"},
+		{AppID: "cli_shared", Label: "personal"},
+	}
+	_, err := selectCandidate(b, candidates, "cli_shared", false, tuiUnreachable(t))
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
+		Type:    "validation",
+		Message: `--app-id "cli_shared" matches multiple accounts in openclaw.json`,
+		Hint:    "run 'lark-cli config bind' interactively to choose an account, or configure unique app IDs:\n  cli_shared (work)\n  cli_shared (personal)",
+	})
+}
+
 func TestSelectCandidate_MultiCandidate_NoFlag_NonTUI(t *testing.T) {
 	// Flag-mode with multiple candidates and no --app-id must produce a
 	// validation error and the candidate list, never an interactive prompt.
@@ -173,6 +189,27 @@ func TestSelectCandidate_AppIDFlag_WinsOverTUI(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertCandidate(t, got, Candidate{AppID: "cli_b"})
+}
+
+func TestOpenClawBuildUsesSelectedLabelWhenAppIDIsShared(t *testing.T) {
+	b := &openclawBinder{
+		cfg: &binding.OpenClawRoot{},
+		rawApps: []binding.CandidateApp{
+			{Label: "work", AppID: "cli_shared", AuthMethod: binding.AuthMethodPrivateKeyJWT, KeyRef: "work-key"},
+			{Label: "personal", AppID: "cli_shared", AuthMethod: binding.AuthMethodPrivateKeyJWT, KeyRef: "personal-key"},
+		},
+	}
+
+	result, err := b.Build(context.Background(), Candidate{AppID: "cli_shared", Label: "personal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AppConfig.KeyRef == nil || result.AppConfig.KeyRef.ID != "personal-key" {
+		t.Fatalf("keyRef = %#v, want personal-key", result.AppConfig.KeyRef)
+	}
+	if result.AppConfig.KeyRef.Provider != core.KeylessProviderLarkSuite {
+		t.Fatalf("provider = %q, want %q", result.AppConfig.KeyRef.Provider, core.KeylessProviderLarkSuite)
+	}
 }
 
 func TestResolveLarkChannelConfigPath_Default(t *testing.T) {

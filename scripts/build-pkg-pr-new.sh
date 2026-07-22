@@ -24,6 +24,10 @@ build_target() {
     ext=".exe"
   fi
 
+  # The platform key signers are compiled in by build constraint, no tags:
+  # darwin keychain (//go:build darwin) and linux/windows-amd64 TPM
+  # (//go:build linux || (windows && amd64)). windows/arm64 arch-excludes the TPM
+  # signer (go-ole has no arm64) and falls back to client_secret only.
   local output="$OUT_DIR/bin/lark-cli-${goos}-${goarch}${ext}"
   echo "Building ${goos}/${goarch} -> ${output}"
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "$output" ./main.go

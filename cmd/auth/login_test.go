@@ -716,6 +716,14 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	setupLoginConfigDir(t)
 	t.Setenv("HOME", t.TempDir())
 
+	originalResolve := resolveLoginClientAuth
+	resolveCalls := 0
+	resolveLoginClientAuth = func(_ context.Context, cfg *core.CliConfig) (larkauth.ClientAuth, error) {
+		resolveCalls++
+		return larkauth.ClientAuthFromConfig(cfg), nil
+	}
+	t.Cleanup(func() { resolveLoginClientAuth = originalResolve })
+
 	multi := &core.MultiAppConfig{
 		CurrentApp: "default",
 		Apps: []core.AppConfig{
@@ -778,6 +786,9 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("no-wait authLoginRun() error = %v", err)
 	}
+	if resolveCalls != 1 {
+		t.Fatalf("no-wait client auth preparations = %d, want 1", resolveCalls)
+	}
 	if got, err := loadLoginRequestedScope("device-code"); err != nil || got != "im:message:send" {
 		t.Fatalf("loadLoginRequestedScope() = (%q, %v), want requested scope", got, err)
 	}
@@ -792,6 +803,9 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("device-code authLoginRun() error = %v", err)
+	}
+	if resolveCalls != 2 {
+		t.Fatalf("split-flow client auth preparations = %d, want one per invocation", resolveCalls)
 	}
 	got := stderr.String()
 	for _, want := range []string{
@@ -847,7 +861,7 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, ca larkauth.ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
 		return &larkauth.DeviceFlowResult{OK: true, Token: nil}
 	}
 
@@ -884,9 +898,17 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 	keyring.MockInit()
 	setupLoginConfigDir(t)
 
+	originalResolve := resolveLoginClientAuth
+	resolveCalls := 0
+	resolveLoginClientAuth = func(_ context.Context, cfg *core.CliConfig) (larkauth.ClientAuth, error) {
+		resolveCalls++
+		return larkauth.ClientAuthFromConfig(cfg), nil
+	}
+	t.Cleanup(func() { resolveLoginClientAuth = originalResolve })
+
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, ca larkauth.ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
 		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}
 	}
 
@@ -918,6 +940,9 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for aborted authorization")
+	}
+	if resolveCalls != 1 {
+		t.Fatalf("blocking-flow client auth preparations = %d, want 1", resolveCalls)
 	}
 	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
 		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)

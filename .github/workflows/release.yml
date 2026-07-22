@@ -9,7 +9,11 @@ permissions:
   contents: read
 
 jobs:
+  # All platforms (incl. darwin keychain_signer) are CGO-free and cross-compiled
+  # on a single ubuntu runner in one goreleaser run (one checksums.txt). The
+  # darwin signer's runtime FFI is validated separately by the signer-test job.
   goreleaser:
+    needs: signer-test-macos
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -33,6 +37,21 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Validate the macOS keychain signer on real hardware. The release binaries are
+  # cross-compiled on ubuntu (CGO-free purego FFI), so this is the only step that
+  # needs a Mac — and it gates the release rather than producing it.
+  signer-test-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.23'
+      - name: Keychain signer round-trip (CGO-free purego FFI)
+        run: LARK_KEYCHAIN_IT=1 CGO_ENABLED=0 go test -tags keychain_signer -run Keychain -v ./internal/keysigner/
 
   publish-npm:
     needs: goreleaser

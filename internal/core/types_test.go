@@ -91,3 +91,12 @@ func TestResolveEndpoints_NormalizesBrand(t *testing.T) {
 		t.Errorf("ResolveEndpoints(unexpected).Open = %q, want the feishu default", got)
 	}
 }
+
+func TestOpenAPIAudience(t *testing.T) {
+	if got := OpenAPIAudience(BrandFeishu); got != "open.feishu.cn" {
+		t.Errorf("OpenAPIAudience(feishu) = %q, want open.feishu.cn", got)
+	}
+	if got := OpenAPIAudience(BrandLark); got != "open.larksuite.com" {
+		t.Errorf("OpenAPIAudience(lark) = %q, want open.larksuite.com", got)
+	}
+}

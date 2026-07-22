@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 
 	extcred "github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // classifyTATResponseCode wraps a deterministic (non-transient) failure from the
@@ -175,6 +176,18 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	if err != nil {
 		return nil, err
 	}
+
+	// private_key_jwt apps have no app secret: mint via the jwt-bearer grant
+	// using a TEE-signed client_assertion instead.
+	if acct.AuthMethod == core.AuthMethodPrivateKeyJWT {
+		signer := keysigner.Active()
+		token, err := FetchTATWithAssertionForProvider(ctx, httpClient, acct.Brand, acct.AppID, signer, acct.KeyProvider, acct.KeyLabel)
+		if err != nil {
+			return nil, err
+		}
+		return &TokenResult{Token: token}, nil
+	}
+
 	token, err := FetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret)
 	if err != nil {
 		return nil, err

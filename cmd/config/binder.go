@@ -4,6 +4,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,19 @@ type Candidate struct {
 	Label string
 }
 
+// BindResult carries the selected app. External signer configuration is the
+// logical provider on AppConfig.KeyRef; bind never persists executable paths.
+type BindResult struct {
+	AppConfig *core.AppConfig
+
+	// commitProviderManifest is populated only after a keyless bind probe has
+	// authenticated successfully. commitBinding runs it after the workspace
+	// config write and rolls that write back if the global provider index cannot
+	// be committed, so a failed bind never changes the signer used by existing
+	// applications.
+	commitProviderManifest func() error
+}
+
 // SourceBinder abstracts a bind source (openclaw / hermes / future sources).
 // Implementations only list candidates and build an AppConfig for a chosen
 // candidate — they stay out of mode (TUI vs flag) and orchestration concerns.
@@ -34,9 +48,9 @@ type SourceBinder interface {
 	// ListCandidates enumerates bindable accounts from the source config.
 	// An empty slice is valid (selectCandidate will turn it into a typed error).
 	ListCandidates() ([]Candidate, error)
-	// Build resolves secrets, persists to keychain, and returns a ready AppConfig
-	// for the chosen candidate AppID. Must be called after ListCandidates succeeds.
-	Build(appID string) (*core.AppConfig, error)
+	// Build resolves credentials and returns the app plus any signer command
+	// needed by the workspace. Must be called after ListCandidates succeeds.
+	Build(ctx context.Context, candidate Candidate) (*BindResult, error)
 }
 
 // newBinder constructs the SourceBinder for the given source name.
@@ -93,10 +107,20 @@ func selectCandidate(
 	}
 
 	if appIDFlag != "" {
+		var matches []Candidate
 		for i := range candidates {
 			if candidates[i].AppID == appIDFlag {
-				return &candidates[i], nil
+				matches = append(matches, candidates[i])
 			}
+		}
+		if len(matches) == 1 {
+			return &matches[0], nil
+		}
+		if len(matches) > 1 {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--app-id %q matches multiple accounts in %s", appIDFlag, cfgBase).
+				WithHint("run 'lark-cli config bind' interactively to choose an account, or configure unique app IDs:\n  %s", formatCandidates(matches)).
+				WithParam("--app-id")
 		}
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--app-id %q not found in %s", appIDFlag, cfgBase).
 			WithHint("available app IDs:\n  %s", formatCandidates(candidates)).
@@ -168,20 +192,48 @@ func (b *openclawBinder) ListCandidates() ([]Candidate, error) {
 	return result, nil
 }
 
-func (b *openclawBinder) Build(appID string) (*core.AppConfig, error) {
+func (b *openclawBinder) Build(_ context.Context, candidate Candidate) (*BindResult, error) {
 	if b.cfg == nil {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: Build called before ListCandidates")
 	}
 
 	var selected *binding.CandidateApp
 	for i := range b.rawApps {
-		if b.rawApps[i].AppID == appID {
+		if b.rawApps[i].AppID == candidate.AppID && b.rawApps[i].Label == candidate.Label {
 			selected = &b.rawApps[i]
 			break
 		}
 	}
 	if selected == nil {
-		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: appID %q not in candidates", appID)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError,
+			"internal: account %q (appID %q) not in candidates", candidate.Label, candidate.AppID)
+	}
+	if selected.AuthMethod != "" && selected.AuthMethod != "app_secret" && selected.AuthMethod != binding.AuthMethodPrivateKeyJWT {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "unknown authMethod %q for app %s in %s", selected.AuthMethod, selected.AppID, b.path).
+			WithHint("supported values are app_secret and private_key_jwt")
+	}
+
+	// openclaw-lark deliberately gives appSecret precedence when both shapes
+	// are present. Reproduce that behavior so bind never changes the effective
+	// credential type merely because authMethod was left stale.
+	if selected.AppSecret.IsZero() && selected.AuthMethod == binding.AuthMethodPrivateKeyJWT {
+		if strings.TrimSpace(selected.KeyRef) == "" {
+			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+				"private_key_jwt app %s in %s is missing keyRef", selected.AppID, b.path).
+				WithHint("re-run OpenClaw onboarding so the keyless account records its signer keyRef")
+		}
+		return &BindResult{
+			AppConfig: &core.AppConfig{
+				AppId:      selected.AppID,
+				Brand:      core.ParseBrand(selected.Brand),
+				AuthMethod: core.AuthMethodPrivateKeyJWT,
+				KeyRef: &core.SecretRef{
+					Source:   core.SecretSourceTEE,
+					Provider: core.KeylessProviderLarkSuite,
+					ID:       strings.TrimSpace(selected.KeyRef),
+				},
+			},
+		}, nil
 	}
 
 	if selected.AppSecret.IsZero() {
@@ -202,11 +254,11 @@ func (b *openclawBinder) Build(appID string) (*core.AppConfig, error) {
 			WithCause(err)
 	}
 
-	return &core.AppConfig{
+	return &BindResult{AppConfig: &core.AppConfig{
 		AppId:     selected.AppID,
 		AppSecret: stored,
 		Brand:     core.ParseBrand(selected.Brand),
-	}, nil
+	}}, nil
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -238,7 +290,8 @@ func (b *hermesBinder) ListCandidates() ([]Candidate, error) {
 	return []Candidate{{AppID: appID, Label: "default"}}, nil
 }
 
-func (b *hermesBinder) Build(appID string) (*core.AppConfig, error) {
+func (b *hermesBinder) Build(_ context.Context, candidate Candidate) (*BindResult, error) {
+	appID := candidate.AppID
 	if b.envMap == nil {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: Build called before ListCandidates")
 	}
@@ -258,11 +311,11 @@ func (b *hermesBinder) Build(appID string) (*core.AppConfig, error) {
 			WithCause(err)
 	}
 
-	return &core.AppConfig{
+	return &BindResult{AppConfig: &core.AppConfig{
 		AppId:     appID,
 		AppSecret: stored,
 		Brand:     core.ParseBrand(b.envMap["FEISHU_DOMAIN"]),
-	}, nil
+	}}, nil
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -295,7 +348,8 @@ func (b *larkChannelBinder) ListCandidates() ([]Candidate, error) {
 	return []Candidate{{AppID: cfg.Accounts.App.ID, Label: "default"}}, nil
 }
 
-func (b *larkChannelBinder) Build(appID string) (*core.AppConfig, error) {
+func (b *larkChannelBinder) Build(_ context.Context, candidate Candidate) (*BindResult, error) {
+	appID := candidate.AppID
 	if b.cfg == nil {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: Build called before ListCandidates")
 	}
@@ -323,11 +377,11 @@ func (b *larkChannelBinder) Build(appID string) (*core.AppConfig, error) {
 			WithCause(err)
 	}
 
-	return &core.AppConfig{
+	return &BindResult{AppConfig: &core.AppConfig{
 		AppId:     appID,
 		AppSecret: stored,
 		Brand:     core.ParseBrand(b.cfg.Accounts.App.Tenant),
-	}, nil
+	}}, nil
 }
 
 // ──────────────────────────────────────────────────────────────

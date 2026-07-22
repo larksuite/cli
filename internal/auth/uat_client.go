@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -33,11 +34,15 @@ func sanitizeID(id string) string {
 
 // UATCallOptions contains options for UAT API calls.
 type UATCallOptions struct {
-	UserOpenId string
-	AppId      string
-	AppSecret  string
-	Domain     core.LarkBrand
-	ErrOut     io.Writer // diagnostic/status output (caller injects f.IOStreams.ErrOut)
+	UserOpenId  string
+	AppId       string
+	AppSecret   string
+	Domain      core.LarkBrand
+	AuthMethod  string           // "" == client_secret; core.AuthMethodPrivateKeyJWT
+	KeyLabel    string           // TEE key handle for private_key_jwt
+	KeyProvider string           // empty == built-in signer; explicit external route otherwise
+	Signer      keysigner.Signer // active signer for private_key_jwt
+	ErrOut      io.Writer        // diagnostic/status output (caller injects f.IOStreams.ErrOut)
 }
 
 // UATStatus represents the status of a user access token.
@@ -57,11 +62,15 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 		errOut = os.Stderr
 	}
 	return UATCallOptions{
-		UserOpenId: cfg.UserOpenId,
-		AppId:      cfg.AppID,
-		AppSecret:  cfg.AppSecret,
-		Domain:     cfg.Brand,
-		ErrOut:     errOut,
+		UserOpenId:  cfg.UserOpenId,
+		AppId:       cfg.AppID,
+		AppSecret:   cfg.AppSecret,
+		Domain:      cfg.Brand,
+		AuthMethod:  cfg.AuthMethod,
+		KeyLabel:    cfg.KeyLabel,
+		KeyProvider: cfg.KeyProvider,
+		Signer:      keysigner.Active(),
+		ErrOut:      errOut,
 	}
 }
 
@@ -187,13 +196,31 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 	}
 
 	endpoints := ResolveOAuthEndpoints(opts.Domain)
+	clientAuth := ClientAuth{
+		AppID:       opts.AppId,
+		AppSecret:   opts.AppSecret,
+		AuthMethod:  opts.AuthMethod,
+		Signer:      opts.Signer,
+		KeyLabel:    opts.KeyLabel,
+		KeyProvider: opts.KeyProvider,
+	}
+	clientAuth, err := clientAuth.ResolveSigner(context.Background())
+	if err != nil {
+		return nil, err
+	}
 
 	callEndpoint := func() (map[string]interface{}, error) {
 		form := url.Values{}
 		form.Set("grant_type", "refresh_token")
 		form.Set("refresh_token", stored.RefreshToken)
 		form.Set("client_id", opts.AppId)
-		form.Set("client_secret", opts.AppSecret)
+		usedAssertion, caErr := clientAuth.applyClientAssertion(context.Background(), form, core.OpenAPIAudience(opts.Domain))
+		if caErr != nil {
+			return nil, caErr
+		}
+		if !usedAssertion {
+			form.Set("client_secret", opts.AppSecret)
+		}
 
 		req, err := http.NewRequest("POST", endpoints.Token, strings.NewReader(form.Encode()))
 		if err != nil {
