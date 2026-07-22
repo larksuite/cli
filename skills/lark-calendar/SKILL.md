@@ -52,6 +52,8 @@ lark-cli calendar +get --calendar-id <calendar_id> --event-id <event_id>
 
 仅返回基础字段（`event_id`/`summary`/`start`/`end` 等），需要详情请走 `+get`。
 
+身份范围：用户身份搜索当前用户有权访问的日历；应用身份搜索应用自身有权访问的日历（例如应用主日历及应用创建的日程），不会自动获得用户个人日历的访问权限。
+
 ```bash
 # query 按关键词 可选
 # start/end 按时间范围（ISO 8601 或 YYYY-MM-DD）可选
