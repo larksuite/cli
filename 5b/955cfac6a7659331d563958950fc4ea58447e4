@@ -1,0 +1,29 @@
+internal/event/bus/bus.go
+  s_e4a90dbc9e5d40::t_bfc6d475dd49bb 389-398,407-409
+internal/event/bus/hub.go
+  s_e4a90dbc9e5d40::t_96c73ca158e34e 472-496
+internal/event/bus/hub_observability_test.go
+  s_e4a90dbc9e5d40::t_80eff7c4a4e569 145-190
+internal/event/bus/status_query_test.go
+  s_e4a90dbc9e5d40::t_975a67d6c145cb 1-121
+internal/event/protocol/messages.go
+  s_e4a90dbc9e5d40::t_c215be1c6e5b45 28-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5b955cfac6a7659331d563958950fc4ea58447e4",
+  "prompts": {},
+  "sessions": {
+    "s_e4a90dbc9e5d40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac08ed03208d339e2",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
