@@ -1,9 +1,19 @@
 ---
 {
   "schema_version": "authorship/3.0.0",
-  "git_ai_version": "1.5.2",
+  "git_ai_version": "1.6.10",
   "base_commit_sha": "8ab419cfa9ac462add56a9a89d3d74001c93b54f",
   "prompts": {},
+  "sessions": {
+    "s_d2b29c2968a215": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a5f64b99206433f1c65a541",
+        "model": "openrouter-2o__dev"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
   "attestation_metadata": {},
   "remote_transcripts": {}
 }
