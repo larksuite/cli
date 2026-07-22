@@ -218,6 +218,7 @@ def extract_text_paragraphs(value: str, default_font_size: int | float) -> list[
                 "lineSpacing": extract_attribute(attrs, "lineSpacing"),
                 "beforeLineSpacing": extract_attribute(attrs, "beforeLineSpacing"),
                 "afterLineSpacing": extract_attribute(attrs, "afterLineSpacing"),
+                "letterSpacing": extract_numeric_attribute(attrs, "letterSpacing"),
             }
         )
     return paragraphs
@@ -705,6 +706,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                         "lineSpacing": extract_attribute(content_attrs, "lineSpacing"),
                         "beforeLineSpacing": extract_attribute(content_attrs, "beforeLineSpacing"),
                         "afterLineSpacing": extract_attribute(content_attrs, "afterLineSpacing"),
+                        "letterSpacing": extract_numeric_attribute(content_attrs, "letterSpacing"),
                         "paddingTop": extract_numeric_attribute(content_attrs, "paddingTop") or 0,
                         "paddingRight": extract_numeric_attribute(content_attrs, "paddingRight") or 0,
                         "paddingBottom": extract_numeric_attribute(content_attrs, "paddingBottom") or 0,
@@ -790,14 +792,27 @@ def estimate_character_width(character: str, font_size: int | float) -> int | fl
     return font_size * 0.55
 
 
-def estimate_text_width(text: str, font_size: int | float) -> int | float:
-    return sum(estimate_character_width(character, font_size) for character in text)
+def estimate_text_width(text: str, font_size: int | float, letter_spacing: int | float = 0) -> int | float:
+    base = sum(estimate_character_width(character, font_size) for character in text)
+    return base + max(len(text) - 1, 0) * letter_spacing
+
+
+def resolve_letter_spacing(element: dict[str, Any], paragraph: dict[str, Any] | None = None) -> int | float:
+    if paragraph is not None:
+        value = paragraph.get("letterSpacing")
+        if isinstance(value, (int, float)):
+            return value
+    value = element.get("letterSpacing")
+    return value if isinstance(value, (int, float)) else 0
 
 
 def estimate_text_max_line_width(element: dict[str, Any]) -> int | float:
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    letter_spacing = resolve_letter_spacing(element)
     paragraphs = [paragraph for paragraph in re.split(r"\n+", element["text"]) if paragraph]
-    return max([estimate_text_width(paragraph, font_size) for paragraph in paragraphs] or [1])
+    return max(
+        [estimate_text_width(paragraph, font_size, letter_spacing) for paragraph in paragraphs] or [1]
+    )
 
 
 def is_similar_text_overlay(left: dict[str, Any], right: dict[str, Any]) -> bool:
@@ -810,8 +825,11 @@ def is_similar_text_overlay(left: dict[str, Any], right: dict[str, Any]) -> bool
     return SequenceMatcher(None, left_text, right_text).ratio() >= 0.75
 
 
-def estimate_text_line_count_for_text(element: dict[str, Any], text: str) -> int:
+def estimate_text_line_count_for_text(
+    element: dict[str, Any], text: str, paragraph: dict[str, Any] | None = None
+) -> int:
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    letter_spacing = resolve_letter_spacing(element, paragraph)
     hard_lines = text.split("\n")
     if not text:
         return 0
@@ -820,7 +838,7 @@ def estimate_text_line_count_for_text(element: dict[str, Any], text: str) -> int
         if element.get("wrap") in {"false", "0"}:
             line_count += 1
             continue
-        logical_width = max(estimate_text_width(hard_line, font_size), 1)
+        logical_width = max(estimate_text_width(hard_line, font_size, letter_spacing), 1)
         line_count += max(1, math.ceil(logical_width / max(element["width"], 1)))
     return line_count
 
@@ -844,8 +862,6 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
     for element in elements:
         if not is_text_element(element) or not has_text_content(element):
             continue
-        if element.get("autoFit") in {"normal-auto-fit", "shape-auto-fit"}:
-            continue
 
         font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
         paragraphs = element.get("paragraphs") or [
@@ -860,7 +876,7 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
         estimated_height = 0.0
         line_heights: list[int | float] = []
         for paragraph in paragraphs:
-            paragraph_line_count = estimate_text_line_count_for_text(element, paragraph["text"])
+            paragraph_line_count = estimate_text_line_count_for_text(element, paragraph["text"], paragraph)
             if paragraph_line_count == 0:
                 continue
             line_height = estimate_text_line_height(element, paragraph["lineSpacing"] or element["lineSpacing"])
