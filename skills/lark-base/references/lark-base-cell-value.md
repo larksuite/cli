@@ -48,7 +48,7 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 
 ### 2.3 select（单选/多选）
 
-单选用选项名字符串；多选用选项名数组。select/multiselect 只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
+`select` 字段用 `multiple` 区分单选和多选：`multiple=false` 时传选项名字符串，`multiple=true` 时传选项名数组。只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
 
 ```json
 {

@@ -52,7 +52,7 @@ lark-cli base +record-batch-create --base-token <base_token> --table-id <table_i
 
 - 每个 `create_records` 元素都是独立的记录字段对象，只提交该记录需要写入的字段。
 - 单次最多 200 条，超出需分批写入。
-- select/multiselect 只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
+- `select` 字段（`multiple=false/true`）只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
 
 ## 参考
 
