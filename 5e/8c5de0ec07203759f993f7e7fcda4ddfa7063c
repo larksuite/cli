@@ -1,0 +1,43 @@
+cmd/event/consume.go
+  s_641fe47ebdcc1e::t_37c5f497af2c64 58-100
+cmd/event/event.go
+  s_641fe47ebdcc1e::t_7cc84633521a73 16-47
+cmd/event/status.go
+  s_641fe47ebdcc1e::t_22ed1f143fd310 39-68
+cmd/event/subscription/create.go
+  s_641fe47ebdcc1e::t_a88cf294fb9806 57,63-67,69-91
+cmd/event/subscription/delete.go
+  s_641fe47ebdcc1e::t_31190c1636d465 61-62,64-67,69-81
+cmd/event/subscription/get.go
+  s_641fe47ebdcc1e::t_8b7e9573ff68ce 38-39,41-57
+cmd/event/subscription/list.go
+  s_641fe47ebdcc1e::t_9926ffd98b8fb6 50,54-77
+cmd/event/subscription/reactivate.go
+  s_641fe47ebdcc1e::t_2c4058a096fee9 57,59-60,62-78
+cmd/event/subscription/renew.go
+  s_641fe47ebdcc1e::t_afa510225cb4a8 55,57-58,60-77
+cmd/event/subscription/update.go
+  s_641fe47ebdcc1e::t_1be89a8ef24813 71-72,74-78,80-95
+skills/lark-event/SKILL.md
+  s_641fe47ebdcc1e::t_9ad23ea27fe7c2 24,65-77,171
+skills/lark-event/references/refined-subscription.md
+  s_641fe47ebdcc1e::t_4012928ab8531b 1-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5e8c5de0ec07203759f993f7e7fcda4ddfa7063c",
+  "prompts": {},
+  "sessions": {
+    "s_641fe47ebdcc1e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acc338d5fe8eddf5f",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
