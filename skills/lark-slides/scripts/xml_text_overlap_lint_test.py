@@ -753,6 +753,114 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["summary"]["error_count"], 1)
         self.assertEqual(result["summary"]["warning_count"], 1)
 
+    def test_lint_xml_text_may_overflow_shape_downgrades_background_decoration_to_info(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="bg-deco" type="text" topLeftX="0" topLeftY="0" width="600" height="80" alpha="0.3">
+                  <content fontSize="120" lineSpacing="fixed:120"><p>2026</p></content>
+                </shape>
+                <shape id="foreground" type="text" topLeftX="40" topLeftY="20" width="400" height="60">
+                  <content fontSize="20" lineSpacing="fixed:24"><p>Annual Report</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issues = {
+            issue["elements"][0]: issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "text_may_overflow_shape"
+        }
+        self.assertEqual(issues["bg-deco"]["level"], "info")
+        self.assertIn("background decoration", issues["bg-deco"]["message"])
+
+    def test_lint_xml_text_may_overflow_shape_keeps_error_when_alpha_not_low(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="opaque-big" type="text" topLeftX="0" topLeftY="0" width="600" height="80" alpha="0.9">
+                  <content fontSize="120" lineSpacing="fixed:120"><p>2026</p></content>
+                </shape>
+                <shape id="foreground" type="text" topLeftX="40" topLeftY="20" width="400" height="60">
+                  <content fontSize="20" lineSpacing="fixed:24"><p>Annual Report</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "text_may_overflow_shape" and issue["elements"] == ["opaque-big"]
+        )
+        self.assertEqual(issue["level"], "error")
+
+    def test_lint_xml_text_may_overflow_shape_keeps_error_when_no_foreground_text(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="lonely-big" type="text" topLeftX="0" topLeftY="0" width="600" height="80" alpha="0.3">
+                  <content fontSize="120" lineSpacing="fixed:120"><p>2026</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "text_may_overflow_shape" and issue["elements"] == ["lonely-big"]
+        )
+        self.assertEqual(issue["level"], "error")
+
+    def test_lint_xml_text_may_overflow_shape_keeps_error_when_foreground_alpha_zero(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="bg-deco" type="text" topLeftX="0" topLeftY="0" width="600" height="80" alpha="0.3">
+                  <content fontSize="120" lineSpacing="fixed:120" autoFit="no-auto-fit"><p>2026</p></content>
+                </shape>
+                <shape id="transparent-foreground" type="text" topLeftX="40" topLeftY="20" width="400" height="60" alpha="0">
+                  <content fontSize="20" lineSpacing="fixed:24"><p>Annual Report</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "text_may_overflow_shape" and issue["elements"] == ["bg-deco"]
+        )
+        self.assertEqual(issue["level"], "error")
+
+    def test_lint_xml_text_may_overflow_shape_keeps_error_when_foreground_is_below_in_order(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="foreground" type="text" topLeftX="40" topLeftY="20" width="400" height="60">
+                  <content fontSize="20" lineSpacing="fixed:24"><p>Annual Report</p></content>
+                </shape>
+                <shape id="top-big" type="text" topLeftX="0" topLeftY="0" width="600" height="80" alpha="0.3">
+                  <content fontSize="120" lineSpacing="fixed:120"><p>2026</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "text_may_overflow_shape" and issue["elements"] == ["top-big"]
+        )
+        self.assertEqual(issue["level"], "error")
+
     def test_lint_xml_uses_paragraph_spacing_overrides_for_text_height_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """

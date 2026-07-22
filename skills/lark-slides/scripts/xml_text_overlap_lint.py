@@ -902,9 +902,21 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
         if overflow <= 0:
             continue
 
+        is_background = is_background_decorative_text(element, elements)
+        if is_background:
+            level = "info"
+        else:
+            level = "error" if overflow > 10 else "warning"
+        message = (
+            f'text shape {element["id"]} may overflow its own content box '
+            f'(estimated {estimated_height:g}px, available {available_height:g}px); '
+            'consider setting content wrap="true" autoFit="normal-auto-fit"'
+        )
+        if is_background:
+            message += " (likely background decoration: large font, low alpha, underneath other text)"
         issues.append(
             {
-                "level": "error" if overflow > 10 else "warning",
+                "level": level,
                 "code": "text_may_overflow_shape",
                 "elements": [element["id"]],
                 "line_count": line_count,
@@ -912,11 +924,7 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
                 "estimated_height": estimated_height,
                 "available_height": available_height,
                 "overflow": overflow,
-                "message": (
-                    f'text shape {element["id"]} may overflow its own content box '
-                    f'(estimated {estimated_height:g}px, available {available_height:g}px); '
-                    'consider setting content wrap="true" autoFit="normal-auto-fit"'
-                ),
+                "message": message,
                 "hint": (
                     "Increase shape.height, reduce the text, or set content wrap=\"true\" "
                     "autoFit=\"normal-auto-fit\". "
@@ -925,6 +933,30 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
             }
         )
     return issues
+
+
+def is_background_decorative_text(
+    element: dict[str, Any], elements: list[dict[str, Any]]
+) -> bool:
+    font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    if font_size <= 96:
+        return False
+    alpha = element.get("alpha", 1)
+    if not isinstance(alpha, (int, float)) or alpha >= 0.5:
+        return False
+    for other in elements:
+        if other is element:
+            continue
+        if not is_text_element(other) or not has_text_content(other):
+            continue
+        foreground_alpha = other.get("textAlpha", other.get("alpha", 1))
+        if not isinstance(foreground_alpha, (int, float)) or foreground_alpha <= 0:
+            continue
+        if other["order"] <= element["order"]:
+            continue
+        if intersects(element, other):
+            return True
+    return False
 
 
 def estimate_text_visual_bbox(element: dict[str, Any]) -> dict[str, int | float] | None:
