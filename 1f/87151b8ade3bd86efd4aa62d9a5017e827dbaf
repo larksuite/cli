@@ -1,0 +1,25 @@
+cmd/event/subscription/create.go
+  s_e4a90dbc9e5d40::t_1a24a386e2d821 244-253,260-264,270-272,275-278,281-285,287
+internal/event/reconcile.go
+  s_e4a90dbc9e5d40::t_506d4c8217b1b1 1-157
+internal/event/reconcile_test.go
+  s_e4a90dbc9e5d40::t_17a7a22eae35fb 1-237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1f87151b8ade3bd86efd4aa62d9a5017e827dbaf",
+  "prompts": {},
+  "sessions": {
+    "s_e4a90dbc9e5d40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac08ed03208d339e2",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
