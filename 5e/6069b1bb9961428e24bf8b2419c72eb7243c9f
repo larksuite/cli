@@ -1,0 +1,31 @@
+internal/event/bus/bus.go
+  s_d9a89e5c2d7d5c::t_38a0df41975d7f 174-178,269-275
+internal/event/bus/conn_test.go
+  s_d9a89e5c2d7d5c::t_89102954f12e55 165-188
+internal/event/bus/handle_hello_test.go
+  s_d9a89e5c2d7d5c::t_28508c6acb93b9 201-319
+internal/event/bus/hub.go
+  s_d9a89e5c2d7d5c::t_0c49101c3d199a 44-49,74-86,94-95,226-233,236-244,252,254-259,262,279-316,324-336
+internal/event/bus/hub_test.go
+  s_d9a89e5c2d7d5c::t_2872dcc5ec9fc1 7,9,101-352,478-483,495-503,507-516
+internal/event/dedup_test.go
+  s_d9a89e5c2d7d5c::t_fa7091b8dea316 135-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5e6069b1bb9961428e24bf8b2419c72eb7243c9f",
+  "prompts": {},
+  "sessions": {
+    "s_d9a89e5c2d7d5c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad2206bb79f420dcd",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
