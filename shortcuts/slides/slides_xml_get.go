@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/beevik/etree"
@@ -20,7 +22,8 @@ import (
 // SlidesXMLGet fetches the full XML presentation content, reindented for
 // readability. When --output is provided it writes to a local file;
 // otherwise it returns the XML in the standard JSON envelope. Use --slide-id
-// or --slide-number to fetch one page, and use --raw for direct XML stdout.
+// or --slide-number to fetch one page, and use --raw for formatted XML stdout
+// without the JSON envelope.
 var SlidesXMLGet = common.Shortcut{
 	Service:     "slides",
 	Command:     "+xml-get",
@@ -33,7 +36,7 @@ var SlidesXMLGet = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
 		{Name: "output", Desc: "local XML output path; must be a relative path within the current directory; existing file is overwritten; omit to return XML in the JSON envelope"},
-		{Name: "raw", Type: "bool", Desc: "print raw XML to stdout instead of the JSON envelope; incompatible with --output and --jq"},
+		{Name: "raw", Type: "bool", Desc: "print formatted XML to stdout without the JSON envelope; incompatible with --output and --jq"},
 		{Name: "slide-id", Desc: "slide page identifier; omit both slide selectors to fetch full presentation XML"},
 		{Name: "slide-number", Type: "int", Desc: "1-based slide page number; omit both slide selectors to fetch full presentation XML"},
 		{Name: "revision-id", Type: "int", Default: "-1", Desc: "presentation revision_id; -1 means latest"},
@@ -113,7 +116,7 @@ var SlidesXMLGet = common.Shortcut{
 			return dry.Set("output", outputPath).Set("stdout_content", "suppressed; XML content is saved to --output during execution")
 		}
 		if runtime.Bool("raw") {
-			return dry.Set("output", "<stdout>").Set("stdout_content", "raw XML content is printed to stdout during execution")
+			return dry.Set("output", "<stdout>").Set("stdout_content", "formatted XML content is printed to stdout during execution")
 		}
 		return dry.Set("output", "<stdout>").Set("stdout_content", "JSON envelope with XML content is printed to stdout during execution")
 	},
@@ -185,7 +188,7 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 		if content == "" {
 			return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "slides xml get returned empty slide.content")
 		}
-		content = prettyPrintXMLOrOriginal(content)
+		content, prettyPrinted := prettyPrintXMLOrOriginal(runtime, content)
 		slideOut := map[string]interface{}{
 			"content": content,
 		}
@@ -203,6 +206,7 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 			"xml_presentation_id": presentationID,
 			"scope":               "slide",
 			"slide":               slideOut,
+			"pretty_printed":      prettyPrinted,
 		}
 		if actualSlideID != "" {
 			out["slide_id"] = actualSlideID
@@ -235,7 +239,7 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 	if content == "" {
 		return "", nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "slides xml get returned empty xml_presentation.content")
 	}
-	content = prettyPrintXMLOrOriginal(content)
+	content, prettyPrinted := prettyPrintXMLOrOriginal(runtime, content)
 	presentationOut := map[string]interface{}{
 		"content": content,
 	}
@@ -243,6 +247,7 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 		"xml_presentation_id": presentationID,
 		"scope":               "presentation",
 		"xml_presentation":    presentationOut,
+		"pretty_printed":      prettyPrinted,
 	}
 	if revisionID := common.GetFloat(presentation, "revision_id"); revisionID > 0 {
 		out["revision_id"] = int(revisionID)
@@ -285,7 +290,7 @@ func outputSlidesXMLGetContent(runtime *common.RuntimeContext, content string, o
 		"size":                result.Size(),
 		"content_saved":       true,
 	}
-	for _, key := range []string{"revision_id", "remove_attr_id", "slide_id", "slide_number"} {
+	for _, key := range []string{"revision_id", "remove_attr_id", "slide_id", "slide_number", "pretty_printed"} {
 		if value, ok := out[key]; ok {
 			fileOut[key] = value
 		}
@@ -298,10 +303,9 @@ func outputSlidesXMLGetContent(runtime *common.RuntimeContext, content string, o
 // mixed (arbitrary text interleaved with inline markup): the <p> paragraph
 // container and its inline formatting children, plus chart title/subtitle.
 // See slides_xml_schema_definition.xml, <p> element docs: a deliberate space
-// or tab is represented via &#32;/&#9; character references, which after XML
-// parsing are byte-for-byte indistinguishable from incidental formatting
-// whitespace. reindentStructural never descends into these elements, so a
-// preserved &#32;/&#9; can never be mistaken for reformattable whitespace.
+// or tab is represented via &#32;/&#9; character references. Those references
+// are masked before XML parsing so etree cannot resolve away their lexical
+// representation, and reindentStructural never descends into these elements.
 var textBearingTags = map[string]bool{
 	"p":             true,
 	"strong":        true,
@@ -323,14 +327,15 @@ var textBearingTags = map[string]bool{
 // and this command has no other reason to exist than to hand a human
 // something they can read.
 //
-// Reindentation never enters a textBearingTags element: those subtrees are
-// serialized exactly as parsed, so any deliberately preserved whitespace
-// survives untouched. CDATA sections are also preserved rather than
+// Reindentation never enters a textBearingTags element. Schema-documented
+// whitespace character references are masked before parsing and restored
+// after serialization, and CDATA sections are preserved rather than
 // collapsed into escaped text.
 func prettyPrintXML(xmlContent string) (string, error) {
+	maskedContent, maskedReferences := maskSMLWhitespaceCharacterReferences(xmlContent)
 	doc := etree.NewDocument()
 	doc.ReadSettings.PreserveCData = true
-	if err := doc.ReadFromString(xmlContent); err != nil {
+	if err := doc.ReadFromString(maskedContent); err != nil {
 		return "", err
 	}
 	if root := doc.Root(); root != nil {
@@ -340,6 +345,7 @@ func prettyPrintXML(xmlContent string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	out = restoreSMLWhitespaceCharacterReferences(out, maskedReferences)
 	if !strings.HasSuffix(out, "\n") {
 		out += "\n"
 	}
@@ -348,13 +354,63 @@ func prettyPrintXML(xmlContent string) (string, error) {
 
 // prettyPrintXMLOrOriginal keeps xml-get best-effort: if the server returns
 // content that is not strictly valid XML, callers still receive the original
-// content instead of losing the previously available read path.
-func prettyPrintXMLOrOriginal(xmlContent string) string {
+// content and a warning on stderr instead of losing the read path. The bool
+// reports whether pretty-printing succeeded for JSON and file metadata.
+func prettyPrintXMLOrOriginal(runtime *common.RuntimeContext, xmlContent string) (string, bool) {
 	out, err := prettyPrintXML(xmlContent)
 	if err != nil {
-		return xmlContent
+		fmt.Fprintf(runtime.IO().ErrOut, "warning: XML pretty-print skipped; returning original server content: %v\n", err)
+		return xmlContent, false
 	}
-	return out
+	return out, true
+}
+
+type maskedXMLCharacterReference struct {
+	placeholder string
+	reference   string
+}
+
+var numericXMLCharacterReferencePattern = regexp.MustCompile(`&#(?:[0-9]+|x[0-9A-Fa-f]+);`)
+
+// maskSMLWhitespaceCharacterReferences protects the schema-documented space
+// and tab references from etree's parse/write normalization. Each original
+// spelling is restored exactly, including decimal, hexadecimal, and
+// zero-padded forms. The placeholder prefix is chosen not to occur in the
+// input, so restoring cannot rewrite user-authored content accidentally.
+func maskSMLWhitespaceCharacterReferences(xmlContent string) (string, []maskedXMLCharacterReference) {
+	placeholderPrefix := "LARKCLI_XML_WHITESPACE_REFERENCE_"
+	for strings.Contains(xmlContent, placeholderPrefix) {
+		placeholderPrefix += "_"
+	}
+
+	maskedReferences := make([]maskedXMLCharacterReference, 0)
+	maskedContent := numericXMLCharacterReferencePattern.ReplaceAllStringFunc(xmlContent, func(reference string) string {
+		digits := reference[2 : len(reference)-1]
+		base := 10
+		if strings.HasPrefix(digits, "x") {
+			base = 16
+			digits = digits[1:]
+		}
+		value, err := strconv.ParseUint(digits, base, 32)
+		if err != nil || (value != ' ' && value != '\t') {
+			return reference
+		}
+
+		placeholder := fmt.Sprintf("%s%d_", placeholderPrefix, len(maskedReferences))
+		maskedReferences = append(maskedReferences, maskedXMLCharacterReference{
+			placeholder: placeholder,
+			reference:   reference,
+		})
+		return placeholder
+	})
+	return maskedContent, maskedReferences
+}
+
+func restoreSMLWhitespaceCharacterReferences(xmlContent string, maskedReferences []maskedXMLCharacterReference) string {
+	for _, masked := range maskedReferences {
+		xmlContent = strings.ReplaceAll(xmlContent, masked.placeholder, masked.reference)
+	}
+	return xmlContent
 }
 
 // reindentStructural inserts newline+indent whitespace between an element's

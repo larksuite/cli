@@ -84,6 +84,9 @@ func TestSlidesXMLGetWritesContentToFileAndSuppressesXML(t *testing.T) {
 	if data["revision_id"] != float64(7) {
 		t.Fatalf("revision_id = %v, want 7", data["revision_id"])
 	}
+	if data["pretty_printed"] != true {
+		t.Fatalf("pretty_printed = %v, want true", data["pretty_printed"])
+	}
 	if data["size"] != float64(len(wantXML)) {
 		t.Fatalf("size = %v, want %d", data["size"], len(wantXML))
 	}
@@ -134,6 +137,9 @@ func TestSlidesXMLGetReturnsContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	if got := data["xml_presentation_id"]; got != "pres_abc" {
 		t.Fatalf("xml_presentation_id = %v, want pres_abc", got)
 	}
+	if data["pretty_printed"] != true {
+		t.Fatalf("pretty_printed = %v, want true", data["pretty_printed"])
+	}
 	if strings.Contains(stdout.String(), "content_saved") {
 		t.Fatalf("stdout should not contain file metadata: %s", stdout.String())
 	}
@@ -176,7 +182,7 @@ func TestSlidesXMLGetJqFiltersContentEnvelopeWhenOutputOmitted(t *testing.T) {
 	}
 }
 
-func TestSlidesXMLGetPrintsRawContentWhenRaw(t *testing.T) {
+func TestSlidesXMLGetPrintsFormattedContentWithoutEnvelopeWhenRaw(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 
@@ -208,8 +214,21 @@ func TestSlidesXMLGetPrintsRawContentWhenRaw(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := stdout.String(); got != wantXML {
-		t.Fatalf("stdout = %q, want raw XML %q", got, wantXML)
+		t.Fatalf("stdout = %q, want formatted XML %q", got, wantXML)
 	}
+}
+
+func TestSlidesXMLGetRawFlagDocumentsFormattedOutput(t *testing.T) {
+	for _, flag := range SlidesXMLGet.Flags {
+		if flag.Name != "raw" {
+			continue
+		}
+		if !strings.Contains(flag.Desc, "formatted XML") || strings.Contains(flag.Desc, "raw XML") {
+			t.Fatalf("--raw description = %q, want formatted XML without a raw-payload claim", flag.Desc)
+		}
+		return
+	}
+	t.Fatal("--raw flag not found")
 }
 
 func TestSlidesXMLGetFetchesSingleSlideByIDToFile(t *testing.T) {
@@ -566,9 +585,10 @@ func TestPrettyPrintXMLRejectsMalformedInput(t *testing.T) {
 // TestPrettyPrintXMLPreservesEscapedWhitespaceAsSoleLeafContent covers the
 // schema's documented escape idiom (slides_xml_schema_definition.xml, <p>
 // element docs): "需要保留空格时...请使用&#32;字符" / "需要使用制表符时...请使用&#9;字符".
-// Both decode to a plain whitespace character indistinguishable from
-// incidental formatting whitespace, so a naive reindent (etree's bare
-// Indent()) silently deletes them. See the mixed="true" content types
+// etree normally decodes both into plain whitespace indistinguishable from
+// incidental formatting whitespace. The formatter must preserve their
+// lexical representation so later SML write operations can still distinguish
+// deliberate whitespace. See the mixed="true" content types
 // (p/strong/em/u/span/del/a/shadow/outline/chartTitle/chartSubTitle).
 func TestPrettyPrintXMLPreservesEscapedWhitespaceAsSoleLeafContent(t *testing.T) {
 	tests := []struct {
@@ -576,9 +596,11 @@ func TestPrettyPrintXMLPreservesEscapedWhitespaceAsSoleLeafContent(t *testing.T)
 		input string
 		want  string
 	}{
-		{"space in p", `<content><p>&#32;</p></content>`, "<content>\n  <p> </p>\n</content>\n"},
-		{"tab in p", `<content><p>&#9;</p></content>`, "<content>\n  <p>\t</p>\n</content>\n"},
-		{"space in nested span", `<content><p><span>&#32;</span></p></content>`, "<content>\n  <p><span> </span></p>\n</content>\n"},
+		{"space in p", `<content><p>&#32;</p></content>`, "<content>\n  <p>&#32;</p>\n</content>\n"},
+		{"tab in p", `<content><p>&#9;</p></content>`, "<content>\n  <p>&#9;</p>\n</content>\n"},
+		{"space in nested span", `<content><p><span>&#32;</span></p></content>`, "<content>\n  <p><span>&#32;</span></p>\n</content>\n"},
+		{"hex space", `<content><p>&#x20;</p></content>`, "<content>\n  <p>&#x20;</p>\n</content>\n"},
+		{"zero-padded tab", `<content><p>&#0009;</p></content>`, "<content>\n  <p>&#0009;</p>\n</content>\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -607,7 +629,7 @@ func TestPrettyPrintXMLPreservesTextOnlyLeafWhitespace(t *testing.T) {
 		{
 			name:  "title escaped space",
 			input: `<presentation><title>&#32;</title><slide/></presentation>`,
-			want:  "<presentation>\n  <title> </title>\n  <slide/>\n</presentation>\n",
+			want:  "<presentation>\n  <title>&#32;</title>\n  <slide/>\n</presentation>\n",
 		},
 		{
 			name:  "title whitespace CDATA",
@@ -649,7 +671,7 @@ func TestPrettyPrintXMLPreservesTextOnlyLeafWhitespace(t *testing.T) {
 // here is one of several children of <p>, not the sole child of <span>.
 func TestPrettyPrintXMLPreservesEscapedSpaceBetweenInlineSiblings(t *testing.T) {
 	input := `<content><p><span>Hello</span>&#32;<strong>World</strong></p></content>`
-	want := "<content>\n  <p><span>Hello</span> <strong>World</strong></p>\n</content>\n"
+	want := "<content>\n  <p><span>Hello</span>&#32;<strong>World</strong></p>\n</content>\n"
 	got, err := prettyPrintXML(input)
 	if err != nil {
 		t.Fatalf("prettyPrintXML: %v", err)
@@ -689,7 +711,7 @@ func TestPrettyPrintXMLSeparatesParagraphsWithoutTouchingTheirText(t *testing.T)
 }
 
 func TestPrettyPrintXMLIdempotent(t *testing.T) {
-	input := `<presentation><slide id="s1"><shape id="a"><style/></shape></slide></presentation>`
+	input := `<presentation><slide id="s1"><shape id="a"><content><p>A&#32;&#32;B&#9;C</p></content><style/></shape></slide></presentation>`
 	once, err := prettyPrintXML(input)
 	if err != nil {
 		t.Fatalf("prettyPrintXML (first pass): %v", err)
@@ -705,7 +727,7 @@ func TestPrettyPrintXMLIdempotent(t *testing.T) {
 
 func TestSlidesXMLGetFallsBackToOriginalPresentationWhenReformatFails(t *testing.T) {
 	content := "<presentation><title>\x0b</title><slide/></presentation>"
-	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
@@ -731,11 +753,14 @@ func TestSlidesXMLGetFallsBackToOriginalPresentationWhenReformatFails(t *testing
 	if got := stdout.String(); got != content {
 		t.Fatalf("stdout = %q, want original content %q", got, content)
 	}
+	if got := stderr.String(); !strings.Contains(got, "warning: XML pretty-print skipped; returning original server content:") {
+		t.Fatalf("stderr = %q, want explicit pretty-print fallback warning", got)
+	}
 }
 
 func TestSlidesXMLGetFallsBackToOriginalSlideWhenReformatFails(t *testing.T) {
 	content := `<slide><data></slide>`
-	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide",
@@ -766,5 +791,55 @@ func TestSlidesXMLGetFallsBackToOriginalSlideWhenReformatFails(t *testing.T) {
 	}
 	if got, _ := slide["content"].(string); got != content {
 		t.Fatalf("slide.content = %q, want original content %q", got, content)
+	}
+	if data["pretty_printed"] != false {
+		t.Fatalf("pretty_printed = %v, want false", data["pretty_printed"])
+	}
+	if got := stderr.String(); !strings.Contains(got, "warning: XML pretty-print skipped; returning original server content:") {
+		t.Fatalf("stderr = %q, want explicit pretty-print fallback warning", got)
+	}
+}
+
+func TestSlidesXMLGetFileMetadataReportsPrettyPrintFallback(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	content := `<presentation><slide></presentation>`
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{
+					"content": content,
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get",
+		"--presentation", "pres_abc",
+		"--output", "fallback.xml",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "fallback.xml"))
+	if err != nil {
+		t.Fatalf("read fallback XML: %v", err)
+	}
+	if string(got) != content {
+		t.Fatalf("saved XML = %q, want original content %q", got, content)
+	}
+	data := decodeShortcutData(t, stdout)
+	if data["pretty_printed"] != false {
+		t.Fatalf("pretty_printed = %v, want false", data["pretty_printed"])
+	}
+	if got := stderr.String(); !strings.Contains(got, "warning: XML pretty-print skipped; returning original server content:") {
+		t.Fatalf("stderr = %q, want explicit pretty-print fallback warning", got)
 	}
 }
