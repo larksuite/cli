@@ -343,6 +343,26 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["summary"]["error_count"], 0)
         self.assertNotIn("issues", result)
 
+    def test_lint_xml_ignores_chart_parsed_values_roundtrip_tag(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <chart topLeftX="80" topLeftY="80" width="300" height="160">
+                  <chartData>
+                    <chartField>
+                      <chartParsedValues>Africa</chartParsedValues>
+                    </chartField>
+                  </chartData>
+                </chart>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertNotIn("issues", result)
+
     def test_lint_xml_limits_chart_roundtrip_attrs_to_matching_tags(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
