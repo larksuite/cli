@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -174,7 +175,10 @@ func recordSearchFlagBody(runtime *common.RuntimeContext) (map[string]interface{
 	if len(searchFields) > 0 {
 		body["search_fields"] = searchFields
 	}
-	selectFields := recordListFields(runtime)
+	selectFields, err := recordSearchProjectionFields(runtime)
+	if err != nil {
+		return nil, err
+	}
 	if len(selectFields) > 0 {
 		body["select_fields"] = selectFields
 	}
@@ -203,6 +207,19 @@ func recordSearchJSONBody(runtime *common.RuntimeContext) (map[string]interface{
 }
 
 func normalizeRecordSearchJSONBody(body map[string]interface{}) error {
+	if rawSelectFields, ok := body["select_fields"]; ok {
+		if rawSelectFields == nil {
+			delete(body, "select_fields")
+		} else {
+			selectFields, err := normalizeRecordSearchSelectFields(rawSelectFields)
+			if err != nil {
+				return withValidationParam(err, "--json")
+			}
+			if len(selectFields) > 0 {
+				body["select_fields"] = selectFields
+			}
+		}
+	}
 	if rawSort, ok := body["sort"]; ok {
 		if sortConfig, err := normalizeRecordSortValue(rawSort, "--json.sort"); err == nil {
 			body["sort"] = sortConfig
@@ -219,8 +236,20 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 	}
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if jsonRaw != "" {
-		if recordSearchHasJSONExclusiveFlagInputs(runtime) {
-			return baseFlagErrorf("--json is mutually exclusive with keyword/search/projection/pagination flags; put those fields inside --json, or omit --json")
+		if exclusiveParams := recordSearchJSONExclusiveFlagParams(runtime); len(exclusiveParams) > 0 {
+			allParams := append([]string{"--json"}, exclusiveParams...)
+			invalidParams := make([]errs.InvalidParam, 0, len(allParams))
+			for _, param := range allParams {
+				invalidParams = append(invalidParams, errs.InvalidParam{Name: param, Reason: "mutually exclusive"})
+			}
+			return errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"--json is mutually exclusive with %s",
+				strings.Join(exclusiveParams, " and "),
+			).
+				WithParam("--json").
+				WithParams(invalidParams...).
+				WithHint("Put keyword, search, projection, view, and pagination fields inside --json, or omit --json.")
 		}
 		_, err := recordSearchJSONBody(runtime)
 		return err
@@ -242,17 +271,31 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 			return err
 		}
 	}
+	if _, err := recordSearchProjectionFields(runtime); err != nil {
+		return err
+	}
 	return validateRecordQueryOptions(runtime)
 }
 
-func recordSearchHasJSONExclusiveFlagInputs(runtime *common.RuntimeContext) bool {
-	return strings.TrimSpace(runtime.Str("keyword")) != "" ||
-		len(runtime.StrArray("search-field")) > 0 ||
-		len(recordListFields(runtime)) > 0 ||
-		runtime.Str("view-id") != "" ||
-		runtime.Changed("offset") ||
-		runtime.Changed("limit") ||
-		runtime.Changed("page-size")
+func recordSearchJSONExclusiveFlagParams(runtime *common.RuntimeContext) []string {
+	names := []string{
+		"keyword",
+		"search-field",
+		"field-id",
+		"fields",
+		"field-names",
+		"view-id",
+		"offset",
+		"limit",
+		"page-size",
+	}
+	params := make([]string, 0, len(names))
+	for _, name := range names {
+		if runtime.Changed(name) {
+			params = append(params, "--"+name)
+		}
+	}
+	return params
 }
 
 func formatRecordQueryPriorityTip() string {

@@ -74,15 +74,18 @@ type appTypePolicy struct {
 	// skipSkillsSync skips the conditional `npx ... skills sync --local` step on
 	// the non-empty (`app sync`) scaffold path.
 	skipSkillsSync bool
+	// skipAppSync skips `npx ... app sync` on the non-empty repo path.
+	skipAppSync bool
 }
 
 // appTypePolicies maps an app_type to its +init control strategy. Types absent
 // from the map get the zero-value policy (install runs, env is pulled, skills
 // are synced).
 var appTypePolicies = map[string]appTypePolicy{
-	// modern_html is a static HTML site: no dependencies to install, no startup
-	// env vars to pull, and no steering skills to sync.
-	"modern_html": {skipInstall: true, skipEnvPull: true, skipSkillsSync: true},
+	// modern_html / html are static HTML sites: no dependencies to install,
+	// no startup env vars to pull, no steering skills to sync, and no app sync.
+	"modern_html": {skipInstall: true, skipEnvPull: true, skipSkillsSync: true, skipAppSync: true},
+	"html":        {skipInstall: true, skipEnvPull: true, skipSkillsSync: true, skipAppSync: true},
 }
 
 // policyForAppType returns the +init control strategy for appType. Unlisted
@@ -122,8 +125,12 @@ var AppsInit = common.Shortcut{
 		{Name: "source-path", Desc: "path to existing source files (e.g. HTML output from an agent) to incorporate into the initialized project"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if strings.TrimSpace(rctx.Str("app-id")) == "" {
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		if appID == "" {
 			return appsValidationParamError("--app-id", "--app-id is required")
+		}
+		if err := validateRealAppID(appID); err != nil {
+			return err
 		}
 		if sp := strings.TrimSpace(rctx.Str("source-path")); sp != "" {
 			if err := charcheck.RejectControlChars(sp, "--source-path"); err != nil {
@@ -334,11 +341,19 @@ func ensureMetaAppID(dir, appID string) error {
 // each is not already resolvable from local/global/system config, so a
 // developer's existing identity is never overwritten. Each key is handled
 // independently (a machine with only user.name set still gets a default email).
-func ensureGitIdentity(ctx context.Context, dir string) error {
-	if err := ensureGitConfigValue(ctx, dir, "user.name", defaultGitUserName); err != nil {
+func ensureGitIdentity(ctx context.Context, dir, authorName, authorEmail string) error {
+	name := strings.TrimSpace(authorName)
+	if name == "" {
+		name = defaultGitUserName
+	}
+	email := strings.TrimSpace(authorEmail)
+	if email == "" {
+		email = defaultGitUserEmail
+	}
+	if err := ensureGitConfigValue(ctx, dir, "user.name", name); err != nil {
 		return err
 	}
-	return ensureGitConfigValue(ctx, dir, "user.email", defaultGitUserEmail)
+	return ensureGitConfigValue(ctx, dir, "user.email", email)
 }
 
 // ensureGitConfigValue sets <key>=fallback in the repo-local git config when key
@@ -400,13 +415,16 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 		}
 		return scaffoldKindInit, nil
 	}
-	if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "app", "sync"); err != nil {
-		return "", appsExternalToolError(err, "npx app sync failed: %s", gitErr(stderr, err))
+	policy := policyForAppType(appType)
+	if !policy.skipAppSync {
+		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "app", "sync"); err != nil {
+			return "", appsExternalToolError(err, "npx app sync failed: %s", gitErr(stderr, err))
+		}
 	}
 	if err := ensureMetaAppID(dir, appID); err != nil {
 		return "", err
 	}
-	if !policyForAppType(appType).skipSkillsSync && !hasSteeringSkills(dir) {
+	if !policy.skipSkillsSync && !hasSteeringSkills(dir) {
 		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "skills", "sync", "--local"); err != nil {
 			return "", appsExternalToolError(err, "npx skills sync failed: %s", gitErr(stderr, err))
 		}
@@ -436,26 +454,38 @@ func scaffoldInitArgs(appType, appID, sourcePath string) []string {
 	return base
 }
 
-// parseRepoURLFromEnvelope extracts data.repository_url from a lark-cli JSON
-// envelope ({"ok":true,"data":{"repository_url":"..."}}). The field name
-// matches the contract emitted by `apps +git-credential-init`.
-func parseRepoURLFromEnvelope(stdout string) (string, error) {
+// credentialInitResult holds the fields parsed from +git-credential-init output.
+type credentialInitResult struct {
+	RepositoryURL     string
+	CommitAuthorName  string
+	CommitAuthorEmail string
+}
+
+// parseCredentialInitEnvelope extracts fields from a +git-credential-init JSON
+// envelope ({"ok":true,"data":{"repository_url":"...","commit_author_name":"...","commit_author_email":"..."}}).
+func parseCredentialInitEnvelope(stdout string) (credentialInitResult, error) {
 	var env struct {
 		OK   bool `json:"ok"`
 		Data struct {
-			RepositoryURL string `json:"repository_url"`
+			RepositoryURL     string `json:"repository_url"`
+			CommitAuthorName  string `json:"commit_author_name"`
+			CommitAuthorEmail string `json:"commit_author_email"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
-		return "", appsSubprocessEnvelopeError("could not parse +git-credential-init output as JSON: %v", err)
+		return credentialInitResult{}, appsSubprocessEnvelopeError("could not parse +git-credential-init output as JSON: %v", err)
 	}
 	if !env.OK {
-		return "", appsSubprocessEnvelopeError("+git-credential-init reported failure")
+		return credentialInitResult{}, appsSubprocessEnvelopeError("+git-credential-init reported failure")
 	}
 	if strings.TrimSpace(env.Data.RepositoryURL) == "" {
-		return "", appsSubprocessEnvelopeError("+git-credential-init returned no repository_url")
+		return credentialInitResult{}, appsSubprocessEnvelopeError("+git-credential-init returned no repository_url")
 	}
-	return env.Data.RepositoryURL, nil
+	return credentialInitResult{
+		RepositoryURL:     env.Data.RepositoryURL,
+		CommitAuthorName:  env.Data.CommitAuthorName,
+		CommitAuthorEmail: env.Data.CommitAuthorEmail,
+	}, nil
 }
 
 // parseEnvFileFromEnvelope extracts data.env_file from a `+env-pull` success
@@ -527,7 +557,10 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 		return err
 	}
 
-	appType := queryAppType(ctx, rctx, appID)
+	appType, err := queryAppType(ctx, rctx, appID)
+	if err != nil {
+		return err
+	}
 	policy := policyForAppType(appType)
 
 	// Already-initialized short-circuit: a dir containing .spark/meta.json is an
@@ -595,16 +628,16 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 	}
 
 	initLogf(rctx, "Issuing repository credentials for %s...", appID)
-	repoURL, err := issueCredentials(ctx, rctx, appID)
+	cred, err := issueCredentials(ctx, rctx, appID)
 	if err != nil {
 		return err
 	}
-	if err := validateRepoURLScheme(repoURL); err != nil {
+	if err := validateRepoURLScheme(cred.RepositoryURL); err != nil {
 		return err
 	}
 
 	initLogf(rctx, "Cloning into %s...", dir)
-	if _, stderr, err := initRunner.Run(ctx, "", "git", "clone", "--", repoURL, dir); err != nil {
+	if _, stderr, err := initRunner.Run(ctx, "", "git", "clone", "--", cred.RepositoryURL, dir); err != nil {
 		return appsExternalToolError(err, "git clone failed: %s", gitErr(stderr, err))
 	}
 	initLogf(rctx, "Checking out %s...", defaultInitBranch)
@@ -612,9 +645,10 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 		return appsExternalToolError(err, "git checkout %s failed: %s", defaultInitBranch, gitErr(stderr, err))
 	}
 
-	// Ensure a committer identity exists before the scaffold commit; only sets
-	// repo-local defaults when none is configured (existing identity is kept).
-	if err := ensureGitIdentity(ctx, dir); err != nil {
+	// Ensure a committer identity exists before the scaffold commit. Uses the
+	// author name/email from +git-credential-init when available; falls back
+	// to lark-cli-bot defaults when the server does not provide them.
+	if err := ensureGitIdentity(ctx, dir, cred.CommitAuthorName, cred.CommitAuthorEmail); err != nil {
 		return err
 	}
 
@@ -643,7 +677,7 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 
 	out := map[string]interface{}{
 		"app_id":         appID,
-		"repository_url": redactURLCredentials(repoURL),
+		"repository_url": redactURLCredentials(cred.RepositoryURL),
 		"branch":         defaultInitBranch,
 		"clone_path":     dir,
 		"scaffold":       scaffold,
@@ -721,10 +755,10 @@ func pullEnv(ctx context.Context, rctx *common.RuntimeContext, appID, dir string
 
 // issueCredentials runs `<self> apps +git-credential-init --app-id <id> --format json`
 // and returns the repo_url it reports. Forwards --as when set.
-func issueCredentials(ctx context.Context, rctx *common.RuntimeContext, appID string) (string, error) {
+func issueCredentials(ctx context.Context, rctx *common.RuntimeContext, appID string) (credentialInitResult, error) {
 	self, err := os.Executable()
 	if err != nil {
-		return "", errs.NewInternalError(errs.SubtypeUnknown, "cannot locate lark-cli executable: %v", err).WithCause(err)
+		return credentialInitResult{}, errs.NewInternalError(errs.SubtypeUnknown, "cannot locate lark-cli executable: %v", err).WithCause(err)
 	}
 	args := []string{"apps", "+git-credential-init", "--app-id", appID, "--format", "json"}
 	if as := strings.TrimSpace(rctx.Str("as")); as != "" {
@@ -732,11 +766,11 @@ func issueCredentials(ctx context.Context, rctx *common.RuntimeContext, appID st
 	}
 	stdout, stderr, err := initRunner.Run(ctx, "", self, args...)
 	if err != nil {
-		return "", appsExternalToolError(err, "apps +git-credential-init failed: %s", gitErr(stderr, err)).
+		return credentialInitResult{}, appsExternalToolError(err, "apps +git-credential-init failed: %s", gitErr(stderr, err)).
 			WithHint("ensure apps +git-credential-init is available and you are logged in").
 			WithCause(err)
 	}
-	return parseRepoURLFromEnvelope(stdout)
+	return parseCredentialInitEnvelope(stdout)
 }
 
 // commitAndPushIfDirty commits and pushes only when the working tree has

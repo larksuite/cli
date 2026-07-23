@@ -18,6 +18,21 @@ import (
 
 const cleanupTimeout = 30 * time.Second
 
+func runBaseDryRun(t *testing.T, wantExitCode int, args ...string) *clie2e.Result {
+	t.Helper()
+	setBaseDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	requestArgs := append([]string(nil), args...)
+	requestArgs = append(requestArgs, "--dry-run")
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: requestArgs, DefaultAs: "user"})
+	require.NoError(t, err)
+	result.AssertExitCode(t, wantExitCode)
+	return result
+}
+
 func reportCleanupFailure(parentT *testing.T, prefix string, result *clie2e.Result, err error) {
 	parentT.Helper()
 

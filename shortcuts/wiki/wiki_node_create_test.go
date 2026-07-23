@@ -635,7 +635,7 @@ func TestWikiNodeCreateBotAutoGrantSuccess(t *testing.T) {
 	if grant["user_open_id"] != "ou_current_user" {
 		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_current_user")
 	}
-	if grant["message"] != "Granted the current CLI user full_access (可管理权限) on the new wiki node." {
+	if grant["message"] != "Granted the current CLI user full_access on the new wiki node." {
 		t.Fatalf("permission_grant.message = %#v", grant["message"])
 	}
 

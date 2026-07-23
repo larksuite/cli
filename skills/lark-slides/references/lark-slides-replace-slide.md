@@ -1,7 +1,5 @@
 # slides +replace-slide（块级替换 / 插入）
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-
 对指定 slide 做块级替换或插入。编辑已有 PPT 的主路径——`slide_id` 不变、页序不动、只影响被指定的块。
 
 相比直接调 `xml_presentation.slide.replace`，这个 shortcut 的四个额外价值：
@@ -88,7 +86,6 @@ lark-cli slides +replace-slide --as user \
 | `<table>` | 表格 | 整表替换会**重建内部 td id**，旧 td block_id 立即失效 |
 | `<td>` | 单元格局部替换 | 只能 `block_replace`，不能 `block_insert`；`block_id` 必须是最新 `slide.get` 拿到的 td id |
 | `<chart>` | 图表（line/bar/column/pie/area/radar/combo） | 必须嵌 `<chartPlotArea>` + `<chartData>` + `<dim1>/<dim2>/<chartField>` |
-| `<whiteboard>` | 画板（SVG 或 Mermaid） | 内嵌 `<svg>` 或 `<mermaid>`；`slide.get` 返回结构不含内部数据，但可直接写完整新 XML 做 `block_replace` 覆盖；详见 [`lark-slides-whiteboard.md`](lark-slides-whiteboard.md) |
 
 **不可作为根元素**：
 

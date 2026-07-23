@@ -190,7 +190,7 @@ func TestSkipWithoutTenantAccessToken(t *testing.T) {
 		assert.True(t, ran)
 	})
 
-	t.Run("scopes shared tenant credentials to the requiring test", func(t *testing.T) {
+	t.Run("accepts shared tenant credentials without mutating standard env", func(t *testing.T) {
 		t.Setenv("TEST_BOT1_APP_ID", "shared-test-app")
 		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "shared-test-token")
 		t.Setenv("LARKSUITE_CLI_APP_ID", "")
@@ -198,8 +198,8 @@ func TestSkipWithoutTenantAccessToken(t *testing.T) {
 
 		ok := t.Run("inner", func(t *testing.T) {
 			SkipWithoutTenantAccessToken(t)
-			assert.Equal(t, "shared-test-app", os.Getenv("LARKSUITE_CLI_APP_ID"))
-			assert.Equal(t, "shared-test-token", os.Getenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN"))
+			assert.Empty(t, os.Getenv("LARKSUITE_CLI_APP_ID"))
+			assert.Empty(t, os.Getenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN"))
 		})
 		require.True(t, ok)
 		assert.Empty(t, os.Getenv("LARKSUITE_CLI_APP_ID"))
@@ -274,23 +274,63 @@ func TestRunCmd(t *testing.T) {
 		assert.Equal(t, "hello from stdin\n", result.Stdout)
 	})
 
-	t.Run("injects user token env only for user commands", func(t *testing.T) {
+	t.Run("injects shared credentials by requested identity", func(t *testing.T) {
 		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_APP_SECRET", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
 		t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "")
 		t.Setenv("TEST_BOT1_APP_ID", "cli_app_test")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "tat_test")
 		t.Setenv("TEST_USER_ACCESS_TOKEN", "uat_test")
 
-		env := buildCommandEnv(Request{DefaultAs: "user"})
+		env := buildCommandEnv(Request{DefaultAs: "bot"})
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
+		assert.Contains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=tat_test")
+		assert.NotContains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
+
+		env = buildCommandEnv(Request{DefaultAs: "user"})
 		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
 		assert.Contains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
-
-		env = buildCommandEnv(Request{DefaultAs: "bot"})
-		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
-		assert.NotContains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
+		assert.NotContains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=tat_test")
 
 		env = buildCommandEnv(Request{})
 		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
+		assert.NotContains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=tat_test")
 		assert.NotContains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
+	})
+
+	t.Run("preserves standard dry-run bot credentials", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_APP_ID", "dry-run-app")
+		t.Setenv("LARKSUITE_CLI_APP_SECRET", "dry-run-secret")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("TEST_BOT1_APP_ID", "shared-test-app")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "shared-test-token")
+
+		env := buildCommandEnv(Request{DefaultAs: "bot"})
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=dry-run-app")
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_SECRET=dry-run-secret")
+		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=shared-test-app")
+		assert.NotContains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=shared-test-token")
+	})
+
+	t.Run("request env overrides shared bot credentials", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_APP_ID", "")
+		t.Setenv("LARKSUITE_CLI_APP_SECRET", "")
+		t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
+		t.Setenv("TEST_BOT1_APP_ID", "shared-test-app")
+		t.Setenv("TEST_TENANT_ACCESS_TOKEN", "shared-test-token")
+
+		env := buildCommandEnv(Request{
+			DefaultAs: "bot",
+			Env: map[string]string{
+				"LARKSUITE_CLI_APP_ID":              "request-app",
+				"LARKSUITE_CLI_TENANT_ACCESS_TOKEN": "",
+			},
+		})
+		assert.Contains(t, env, "LARKSUITE_CLI_APP_ID=request-app")
+		assert.Contains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=")
+		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=shared-test-app")
+		assert.NotContains(t, env, "LARKSUITE_CLI_TENANT_ACCESS_TOKEN=shared-test-token")
 	})
 
 	t.Run("retries structured retryable service errors by default", func(t *testing.T) {

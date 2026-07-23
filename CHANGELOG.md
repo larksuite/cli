@@ -2,6 +2,92 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.75] - 2026-07-22
+
+### Features
+
+- add okr single create shortcut & skill text opti (#1941)
+- **calendar**: auto-add bot self as attendee and note user-only search (#1991)
+
+### Bug Fixes
+
+- **base**: improve table shortcut behavior & guidance (#1803)
+- issue#1935 & whiteboard shortcut reformat (#1980)
+- remove legacy shortcut (#1997)
+- **e2e**: inject shared credentials by identity (#1995)
+
+### Documentation
+
+- **skill**: describe html5 block xml usage (#1380)
+- clarify fetch metadata and user cites (#1981)
+- add topic move collector workflow (#1473)
+- update lark doc HTML size limit (#2001)
+- **base**: align record write schema guidance (#2000)
+
+### Tests
+
+- **e2e**: declare request identities explicitly (#2004)
+
+### Misc
+
+- harden npm release publishing (#1918)
+
+## [v1.0.74] - 2026-07-21
+
+### Features
+
+- **slides**: add history rollback shortcuts (#1714)
+- **base**: support per-record batch updates (#1889)
+
+### Bug Fixes
+
+- preserve slides schema issues
+- allow jq examples in quality gate dry-runs
+- **im**: warn when flag pagination is truncated (#1906)
+- **slides**: warn on text shape overflow
+- **slides**: exempt chart roundtrip attributes from lint
+- **slides**: detect image text occlusion
+- **slides**: clarify xml-text-overlap-lint error for positional argument (#1986)
+
+### Documentation
+
+- clarify drive upload overwrite guidance (#1982)
+
+### Tests
+
+- isolate unit tests from user state (#1883)
+
+### Refactoring
+
+- converge success output through a single Emitter that owns the write (#1899)
+
+## [v1.0.73] - 2026-07-20
+
+### Features
+
+- **apps**: design_html support, creative-design skill, unified TOS publish (#1901)
+
+### Bug Fixes
+
+- **slides**: detect visual elements outside canvas
+- reduce public content credential fixture false positives
+- standardize CLI shortcut text in English (#1942)
+
+### Documentation
+
+- **base**: reduce filter and update retry loops (#1879)
+- **vc**: default transcript routing to smart notes over minutes (#1961)
+- clarify local trigger automation (#1958)
+
+### Tests
+
+- synchronize temporary Git maintenance (#1946)
+
+### Misc
+
+- **slides**: update lark-slides skill to 0715 snapshot (#1933)
+- [codex] support bot menu events (#1765)
+
 ## [v1.0.72] - 2026-07-17
 
 ### Features
@@ -1552,6 +1638,9 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.75]: https://github.com/larksuite/cli/releases/tag/v1.0.75
+[v1.0.74]: https://github.com/larksuite/cli/releases/tag/v1.0.74
+[v1.0.73]: https://github.com/larksuite/cli/releases/tag/v1.0.73
 [v1.0.72]: https://github.com/larksuite/cli/releases/tag/v1.0.72
 [v1.0.71]: https://github.com/larksuite/cli/releases/tag/v1.0.71
 [v1.0.70]: https://github.com/larksuite/cli/releases/tag/v1.0.70

@@ -34,13 +34,26 @@ func writeFixture(t *testing.T, files fixtureRepo) string {
 
 func runGit(t *testing.T, root string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
+	commandArgs := []string{
+		"-c", "maintenance.autoDetach=false",
+		"-c", "gc.autoDetach=false",
+	}
+	commandArgs = append(commandArgs, args...)
+	cmd := exec.Command("git", commandArgs...)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func TestRunGitDisablesDetachedMaintenance(t *testing.T) {
+	for _, key := range []string{"maintenance.autoDetach", "gc.autoDetach"} {
+		if got := runGit(t, t.TempDir(), "config", "--get", "--type=bool", key); got != "false" {
+			t.Fatalf("%s = %q, want false", key, got)
+		}
+	}
 }
 
 func TestLoadSubtypeAllowlist_ExtractsTypedConstValues(t *testing.T) {

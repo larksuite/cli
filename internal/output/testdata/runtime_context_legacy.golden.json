@@ -1,0 +1,107 @@
+{
+  "cases": {
+    "csv": {
+      "stdout": "id,name\n1,Alice\n2,Bob\n",
+      "stderr": ""
+    },
+    "format_raw_json_preserves_html": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"html\": \"\u003cp\u003ea\u0026b\u003c/p\u003e\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "jq_invalid_expression": {
+      "stdout": "",
+      "stderr": "error: invalid jq expression: unexpected EOF\n",
+      "error": {
+        "go_type": "*errs.ValidationError",
+        "json": {
+          "type": "validation",
+          "subtype": "invalid_argument",
+          "message": "invalid jq expression: unexpected EOF"
+        },
+        "message": "invalid jq expression: unexpected EOF",
+        "exit_code": 2
+      }
+    },
+    "jq_safety_alert_without_stderr_warning": {
+      "stdout": "1\n",
+      "stderr": ""
+    },
+    "jq_scalar": {
+      "stdout": "Alice\n",
+      "stderr": ""
+    },
+    "json_object": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"enabled\": true,\n    \"id\": \"1\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "metadata": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": [\n    {\n      \"id\": \"1\"\n    }\n  ],\n  \"meta\": {\n    \"count\": 1,\n    \"rollback\": \"lark-cli fixture rollback\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "ndjson": {
+      "stdout": "{\"id\":\"1\"}\n{\"id\":\"2\"}\n",
+      "stderr": ""
+    },
+    "notice": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"id\": \"1\"\n  },\n  \"_notice\": {\n    \"update\": {\n      \"latest\": \"9.9.9\"\n    }\n  }\n}\n",
+      "stderr": ""
+    },
+    "partial_failure_ok_false": {
+      "stdout": "{\n  \"ok\": false,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"failed\": 1,\n    \"succeeded\": 1\n  }\n}\n",
+      "stderr": "",
+      "error": {
+        "go_type": "*output.PartialFailureError",
+        "json": {
+          "Code": 1
+        },
+        "message": "partial failure (exit 1)",
+        "exit_code": 1
+      }
+    },
+    "pretty": {
+      "stdout": "pretty:fixture\n",
+      "stderr": ""
+    },
+    "pretty_without_renderer": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"name\": \"Alice\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "raw_jq_complex": {
+      "stdout": "{\n  \"html\": \"\u003cp\u003ea\u0026b\u003c/p\u003e\"\n}\n",
+      "stderr": ""
+    },
+    "raw_json_preserves_html": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"html\": \"\u003cp\u003ea\u0026b\u003c/p\u003e\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "scanner_block": {
+      "stdout": "",
+      "stderr": "",
+      "error": {
+        "go_type": "*errs.ContentSafetyError",
+        "json": {
+          "type": "policy",
+          "subtype": "content_safety",
+          "message": "content safety violation detected (rules: fixture-rule)",
+          "rules": [
+            "fixture-rule"
+          ]
+        },
+        "message": "content safety violation detected (rules: fixture-rule)",
+        "exit_code": 6
+      }
+    },
+    "scanner_error_fails_open": {
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"id\": \"1\"\n  }\n}\n",
+      "stderr": "warning: content safety scan error: scanner unavailable\n"
+    },
+    "table_with_safety_warning": {
+      "stdout": "id  name \n──  ─────\n1   Alice\n",
+      "stderr": "warning: content safety alert from emitter-oracle (rules: fixture-rule)\n"
+    },
+    "unknown_format_data_envelope_notice": {
+      "stdout": "{\n  \"_notice\": {\n    \"skills\": {\n      \"current\": \"1.0.0\"\n    }\n  },\n  \"ok\": true,\n  \"value\": \"fixture\"\n}\n",
+      "stderr": "warning: unknown format \"yaml\", falling back to json\n"
+    }
+  }
+}

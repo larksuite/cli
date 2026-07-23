@@ -772,7 +772,7 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 
 	var inputs []commentReplyElementInput
 	if err := json.Unmarshal([]byte(raw), &inputs); err != nil {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '[{\"type\":\"text\",\"text\":\"文本信息\"}]'", err).WithParam("--content")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '[{\"type\":\"text\",\"text\":\"Example text\"}]'", err).WithParam("--content")
 	}
 	if len(inputs) == 0 {
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must contain at least one reply element").WithParam("--content")

@@ -27,16 +27,16 @@ lark-cli slides +xml-get --as user \
 
 ## Automated XML Text Overlap Lint
 
-提交前本地 XML 必须运行 XML 语法和文本重叠静态检查：
+`slides +xml-get` 保存 XML 到本地文件后，优先运行 XML 语法和文本重叠静态检查：
 
 ```bash
-python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation-or-slide.xml>
+python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation.xml>
 ```
 
 通过标准：
 
-- `summary.error_count == 0`。任何 error 都必须先修复再提交接口。
-- 当前工具检查 XML well-formed、SXSD tag/attr 支持情况、IconPark icon 类型和 icon 填充可见性、文本元素之间的明显重叠，以及 whiteboard 容器与外部 sibling 元素的可疑边界重叠；它不检查越界、文本高度不足、图文压盖、表格/图表压盖或底部拥挤。
+- `summary.error_count == 0`。任何 error 都必须先修复再交付。
+- 当前工具只检查 XML well-formed 和文本元素之间的明显重叠；它不检查越界、文本高度不足、图文压盖、表格/图表压盖或底部拥挤。
 - 该工具不能替代页数核对、关键内容核对或真实视觉验收。
 
 常见 code 的处理方向：
@@ -51,7 +51,35 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 | `icon_missing_fill_color` | 视觉规范要求 `<icon>` 设置 `<fill><fillColor color="..."/></fill>`，避免图标不可见 | 给 `<icon>` 添加显式非透明填充色，例如 `rgba(37, 99, 235, 1)` |
 | `icon_transparent_fill_color` | `<icon>` 的 `fillColor` 是透明色，不满足视觉可见性要求 | 改成与背景有足够对比的非透明颜色 |
 | `bbox_overlap` | 文本元素的估算绘制区域明显重叠 | 拉开文本坐标、缩小文本框/字号，或改成明确的分栏/分组结构 |
-| `whiteboard_external_overlap` | whiteboard 容器 bbox 与外部 sibling 元素跨边界重叠 | 按 lint `hint` 缩小或移动 whiteboard / 外部元素；若接受该风险，最终必须以截图 QA 或等价渲染视觉检查为准 |
+
+## Screenshot QA
+
+获取页面截图后，必须做视觉验收；不要只凭 XML 回读或静态 lint 结论声称截图验收通过。验收时假设页面存在问题，主动寻找并报告所有风险，包括轻微问题。
+
+```text
+请逐页目视检查这些幻灯片截图。先假设存在问题，并尽量找出它们。
+
+重点检查：
+- 元素重叠：文字与形状、图片或图表互相遮挡，线条穿过文字，卡片或标签堆叠。
+- 文本溢出或被裁切：靠近页面边缘、文本框边界或卡片边界处被截断。
+- 装饰元素位置错误：分割线、强调线或标签底板按单行文字布置，但标题或正文换行后压住文字或距离异常。
+- 来源标注、页脚或页码与上方内容碰撞。
+- 元素距离过近：相邻元素间距明显不足，卡片或分区几乎贴在一起；按 960x540 画布估算，小于约 15 px 的间隔通常要标记。
+- 间距不均：局部留白过大，另一处过于拥挤。
+- 页面边距不足：主体内容贴近幻灯片边缘；按 960x540 画布估算，小于约 30 px 的外边距通常要标记。
+- 列、卡片、图标或同类元素没有稳定对齐。
+- 图片或图表渲染异常：空白、变形、低清、关键内容不可读或预期图形缺失。
+- 文本对比度不足，例如浅灰文字放在米色或浅色背景上。
+- 图标对比度不足，例如深色图标放在深色背景上，且没有浅色圆形或底板承托。
+- 文本框过窄，导致不必要的频繁换行。
+- 残留占位符、模板默认文字或未替换内容。
+
+对每一页分别列出发现的问题或可疑区域，即使只是轻微问题也要记录。
+
+报告所有发现的问题，包括轻微问题。
+```
+
+必须根据问题严重度决定是否修复：空白页、破图、文字遮挡、明显裁切、低对比不可读、占位符残留等必须先修复再交付；轻微间距或对齐问题如果不修复，最终验证记录要说明已知风险。
 
 ## Page Count And Structure
 
@@ -84,14 +112,6 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 - 返回 XML 缺页、页序明显错误，或某页内容被 shell 截断。
 - 大量形状坐标完全相同，导致主体内容重叠。
 - 渐变背景回退成空白或白底，导致文字不可读。
-
-## Whiteboard Elements
-
-`slide.get` 回读 XML 时，`<whiteboard>` 块只返回位置属性（`topLeftX`、`topLeftY`、`width`、`height`），SVG / Mermaid 内容**不随 XML 返回**。
-
-- whiteboard 验证可以核对坐标是否越界：`topLeftX + width ≤ 960`，`topLeftY + height ≤ 540`；lint 还会报告 whiteboard 容器与外部 sibling 元素的可疑边界重叠。
-- SVG 和 Mermaid 内容的正确性无法通过回读 XML 验证，需要人工视觉验收。
-- 不要在验证记录中声称 whiteboard 内容已验证，除非用户确认了视觉效果。
 
 ## Layout And Overflow Risk
 

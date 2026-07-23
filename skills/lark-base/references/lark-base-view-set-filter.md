@@ -174,11 +174,13 @@ lark-cli base +view-set-filter \
 
 - 先读取当前筛选配置，理解现有 `logic` 和 `conditions` 的组合关系；只替换用户要求变更的条件，未提到的条件默认保留。
 - 优先传字段 id，不要依赖字段名。
+- 拿不准字段 type 或真实取值时，先用 `+field-list` / `+record-list` 确认，再按对应字段类型的 value 写法构造条件；别按字段名猜 type、凭印象猜枚举取值。
 - 需要清空全部筛选时，直接传 `{"conditions":[]}`。
 
 ## 7. 易错点
 
-- 不要再写旧对象风格：`{"field_name":...,"operator":...}`。
+- 本 tuple DSL 由 `+view-set-filter` 与 `+record-list` / `+record-search` 的 `--filter-json` 共用；不要写成 `+data-query` 的对象风格 `{"field_name":...,"operator":...}`（会报校验失败）。
+- 标量类字段（`text` / `number` / `datetime` 等）的 value 用标量、别包成数组（各类型详见 value 写法一节）。
 - `user` / `group_chat` / `link` 不要写成单个标量。
 - `empty` / `non_empty` 不要硬塞无意义的 value。
 - 日期条件稳定写法用 `ExactDate(...)` 或 `Today` / `Yesterday` / `Tomorrow`。

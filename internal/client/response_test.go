@@ -18,6 +18,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
@@ -236,6 +237,87 @@ func TestHandleResponse_JSON(t *testing.T) {
 	}
 	if data["id"] != "1" {
 		t.Fatalf("data.id = %v, want 1; output: %s", data["id"], out.String())
+	}
+}
+
+func TestHandleResponse_NonJSONFormatsEmitExactStructuredResponseBytes(t *testing.T) {
+	tests := []struct {
+		name   string
+		format output.Format
+		want   string
+	}{
+		{
+			name:   "ndjson",
+			format: output.FormatNDJSON,
+			want:   "{\"id\":\"1\",\"name\":\"Alice\"}\n{\"id\":\"2\",\"name\":\"Bob\"}\n",
+		},
+		{
+			name:   "table",
+			format: output.FormatTable,
+			want:   "id  name \n──  ─────\n1   Alice\n2   Bob  \n",
+		},
+		{
+			name:   "csv",
+			format: output.FormatCSV,
+			want:   "id,name\n1,Alice\n2,Bob\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+			reg := &httpmock.Registry{}
+			reg.Register(&httpmock.Stub{
+				Method: http.MethodGet,
+				URL:    "/open-apis/test/v1/items",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]interface{}{
+						"items": []interface{}{
+							map[string]interface{}{"id": "1", "name": "Alice"},
+							map[string]interface{}{"id": "2", "name": "Bob"},
+						},
+						"has_more": false,
+					},
+				},
+			})
+
+			httpResp, err := httpmock.NewClient(reg).Get("https://open.feishu.cn/open-apis/test/v1/items")
+			if err != nil {
+				t.Fatalf("fixture request failed: %v", err)
+			}
+			body, err := io.ReadAll(httpResp.Body)
+			_ = httpResp.Body.Close()
+			if err != nil {
+				t.Fatalf("read fixture response: %v", err)
+			}
+			resp := &larkcore.ApiResp{
+				StatusCode: httpResp.StatusCode,
+				Header:     httpResp.Header.Clone(),
+				RawBody:    body,
+			}
+
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+			err = HandleResponse(resp, ResponseOptions{
+				Format:      tt.format,
+				Identity:    core.AsBot,
+				Out:         &out,
+				ErrOut:      &errOut,
+				CommandPath: "lark-cli api GET",
+			})
+			if err != nil {
+				t.Fatalf("HandleResponse() error = %v, want nil", err)
+			}
+			if got := out.String(); got != tt.want {
+				t.Fatalf("stdout byte mismatch\ngot (%d bytes):\n%q\nwant (%d bytes):\n%q", len(got), got, len(tt.want), tt.want)
+			}
+			if got := errOut.String(); got != "" {
+				t.Fatalf("stderr bytes = %q, want empty", got)
+			}
+			reg.Verify(t)
+		})
 	}
 }
 

@@ -36,6 +36,7 @@ var CalendarUpdate = common.Shortcut{
 		{Name: "add-attendee-ids", Desc: "attendee IDs to add, comma-separated (supports user ou_, chat oc_, room omm_)"},
 		{Name: "remove-attendee-ids", Desc: "attendee IDs to remove, comma-separated (supports user ou_, chat oc_, room omm_)"},
 		{Name: "notify", Type: "bool", Default: "true", Desc: "send update notification to attendees"},
+		{Name: flagSkipRoomCheck, Type: "bool", Default: "false", Hidden: true, Desc: "skip meeting-room availability precheck (default checks rooms whenever a new room is added or the time/rrule of a room-attached event changes)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateCalendarUpdate(runtime)
@@ -219,6 +220,50 @@ func calendarUpdateAttendeesPath(calendarID, eventID string) string {
 	return calendarUpdateEventPath(calendarID, eventID) + "/attendees"
 }
 
+// runRoomAvailabilityPrecheck checks any room affected by this update (new
+// room attendees, or existing rooms when the time/rrule shifts) against the
+// server before the PATCH is issued. It returns nil to allow the update to
+// proceed and a typed error to block it. Called only when --skip-room-check
+// is false.
+func runRoomAvailabilityPrecheck(ctx context.Context, runtime *common.RuntimeContext, calendarID, eventID string, body map[string]interface{}) error {
+	timeChanged := runtime.Cmd.Flags().Changed("start") && runtime.Cmd.Flags().Changed("end")
+	rruleChanged := runtime.Cmd.Flags().Changed("rrule")
+
+	var newStartTs, newEndTs string
+	if timeChanged {
+		if m, _ := body["start_time"].(map[string]string); m != nil {
+			newStartTs = m["timestamp"]
+		}
+		if m, _ := body["end_time"].(map[string]string); m != nil {
+			newEndTs = m["timestamp"]
+		}
+	}
+
+	plan, err := resolveRoomCheckPlan(ctx, runtime, calendarID, eventID, newStartTs, newEndTs, timeChanged, rruleChanged)
+	if err != nil {
+		return err
+	}
+	if plan == nil {
+		return nil
+	}
+	results, err := callRoomAvailabilityCheck(runtime, buildRoomCheckBody(calendarID, eventID, plan))
+	if err != nil {
+		// Degrade gracefully: warn on stderr and let the update proceed so the
+		// pre-check API doesn't gate legitimate updates when it hiccups. For
+		// 190014 (invalid_parameters) surface the server-supplied field-level
+		// detail so agents can see why the precheck refused.
+		msg := unwrapCalendarAPIError(err)
+		if msg == "" {
+			msg = err.Error()
+		}
+		fmt.Fprintf(runtime.IO().ErrOut,
+			"[calendar +update] warning: room availability check failed (%s); proceeding with update — pass --%s to silence\n",
+			msg, flagSkipRoomCheck)
+		return nil
+	}
+	return blockOnUnavailableRooms(results, roomCheckPlanDurationSec(plan))
+}
+
 func dryRunCalendarUpdate(runtime *common.RuntimeContext) *common.DryRunAPI {
 	calendarID, eventID := calendarUpdateIDs(runtime)
 	displayCalendarID := calendarID
@@ -246,6 +291,33 @@ func dryRunCalendarUpdate(runtime *common.RuntimeContext) *common.DryRunAPI {
 		d.Desc("multi-step update: event fields, attendee removal, and attendee addition run in order when requested")
 	}
 	steps := 0
+
+	if !runtime.Bool(flagSkipRoomCheck) {
+		newRooms := collectAttendeeRoomIDs(runtime.Str("add-attendee-ids"))
+		timeChanged := runtime.Cmd.Flags().Changed("start") && runtime.Cmd.Flags().Changed("end")
+		rruleChanged := runtime.Cmd.Flags().Changed("rrule")
+		if len(newRooms) > 0 || timeChanged || rruleChanged {
+			steps++
+			desc := fmt.Sprintf("[%d] Pre-check meeting room availability (default; pass --%s to skip)", steps, flagSkipRoomCheck)
+			previewBody := map[string]interface{}{
+				"calendar_id":    displayCalendarID,
+				"event_id":       eventID,
+				"room_ids":       newRooms,
+				"start_timezone": "<inherited from event>",
+			}
+			if start, _ := body["start_time"].(map[string]string); start != nil {
+				previewBody["start_time"] = formatRoomCheckTime(start["timestamp"], time.Local)
+			}
+			if end, _ := body["end_time"].(map[string]string); end != nil {
+				previewBody["end_time"] = formatRoomCheckTime(end["timestamp"], time.Local)
+			}
+			if rrule, _ := body["recurrence"].(string); rrule != "" {
+				previewBody["event_rrule"] = rrule
+			}
+			d.POST(roomCheckPath).Desc(desc).Body(previewBody)
+		}
+	}
+
 	if hasEventFields {
 		steps++
 		d.PATCH("/open-apis/calendar/v4/calendars/:calendar_id/events/:event_id").
@@ -278,7 +350,7 @@ func dryRunCalendarUpdate(runtime *common.RuntimeContext) *common.DryRunAPI {
 	return d
 }
 
-func executeCalendarUpdate(_ context.Context, runtime *common.RuntimeContext) error {
+func executeCalendarUpdate(ctx context.Context, runtime *common.RuntimeContext) error {
 	calendarID, eventID := calendarUpdateIDs(runtime)
 	if eventID == "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --event-id").WithParam("--event-id")
@@ -287,6 +359,12 @@ func executeCalendarUpdate(_ context.Context, runtime *common.RuntimeContext) er
 	body, hasEventFields, err := buildCalendarUpdateEventData(runtime)
 	if err != nil {
 		return err
+	}
+
+	if !runtime.Bool(flagSkipRoomCheck) {
+		if err := runRoomAvailabilityPrecheck(ctx, runtime, calendarID, eventID, body); err != nil {
+			return err
+		}
 	}
 
 	completed := []string{}

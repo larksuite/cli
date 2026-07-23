@@ -14,5 +14,8 @@ func Shortcuts() []common.Shortcut {
 		SlidesReplacePages,
 		SlidesScreenshot,
 		SlidesXMLGet,
+		SlidesHistoryList,
+		SlidesHistoryRevert,
+		SlidesHistoryRevertStatus,
 	}
 }

@@ -55,7 +55,7 @@ lark-cli base +record-upsert --base-token <base_token> --table-id <table_id> --r
 ## 坑点
 
 - 有 `--record-id` 就一定更新；不传就一定创建，不会自动查重或按业务键 upsert。
-- select 写入未知选项时平台可能自动新增选项；如果不是要新增选项，先用 `+field-list` / `+field-search-options` 确认真实选项名。
+- `select` 字段只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
 - 这是写入操作，执行前必须确认目标表和字段。
 
 ## 参考

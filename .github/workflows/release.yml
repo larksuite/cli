@@ -9,7 +9,40 @@ permissions:
   contents: read
 
 jobs:
-  goreleaser:
+  preflight:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+
+      - name: Validate tag and commit
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          node scripts/release-preflight.js --tag "$TAG"
+          git fetch origin main
+          HEAD_SHA="$(git rev-parse --verify 'HEAD^{commit}')"
+          MAIN_SHA="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          TAG_SHA="$(git rev-parse --verify "refs/tags/${TAG}^{commit}")"
+          if [[ "$TAG_SHA" != "$HEAD_SHA" ]]; then
+            echo "Tag ${TAG} does not resolve to the checked-out HEAD commit." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$HEAD_SHA" "$MAIN_SHA"; then
+            echo "Tag ${TAG} does not point to a commit contained in origin/main." >&2
+            exit 1
+          fi
+
+  build-release:
+    needs: preflight
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -26,35 +59,79 @@ jobs:
         with:
           python-version: '3.x'
 
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Install pinned npm
+        run: npm install --global npm@11.16.0
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           version: '~> v2'
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Include release checksums
+        run: |
+          set -euo pipefail
+          test -s dist/checksums.txt
+          (cd dist && sha256sum --check checksums.txt)
+          cp dist/checksums.txt checksums.txt
+
+      - name: Collect release asset
+        run: |
+          set -euo pipefail
+          mkdir npm-publish-asset
+          cp dist/*.tar.gz dist/*.zip dist/checksums.txt npm-publish-asset/
+
+      - name: Upload release asset
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-publish-asset-${{ github.run_id }}
+          path: npm-publish-asset/
+          if-no-files-found: error
+          overwrite: true
 
   publish-npm:
-    needs: goreleaser
+    needs: build-release
     runs-on: ubuntu-22.04
+    environment: npm-production
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '20'
+          node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
-      - name: Download checksums from release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install pinned npm
+        run: npm install --global npm@11.16.0
+
+      - name: Download release asset
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: npm-publish-asset-${{ github.run_id }}
+          path: npm-publish-asset
+
+      - name: Verify npm publish asset
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          gh release download "${TAG}" --pattern checksums.txt --dir .
-          test -s checksums.txt || { echo "checksums.txt missing or empty for ${TAG}"; exit 1; }
+          (cd npm-publish-asset && sha256sum --check checksums.txt)
+          cp npm-publish-asset/checksums.txt checksums.txt
+          PACK_JSON="$(npm pack --ignore-scripts --json)"
+          PACK_FILE="$(node -e 'const p=JSON.parse(process.argv[1]); if(p.length!==1 || !p[0].filename) process.exit(1); process.stdout.write(p[0].filename)' "$PACK_JSON")"
+          test -s "$PACK_FILE"
+          tar -tzf "$PACK_FILE" | grep -qx 'package/checksums.txt'
+          rm "$PACK_FILE"
 
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public

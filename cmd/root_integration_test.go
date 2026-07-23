@@ -371,10 +371,11 @@ func TestIntegration_StrictModeUser_ProfileOverride_ShortcutExplicitBotReturnsEn
 
 func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnvelope(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
-	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
+	catalog := strictModeFixtureCatalog()
+	rootCmd := buildStrictModeIntegrationRootCmdWithCatalog(t, f, &catalog)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
-		"im", "chats", "get", "--params", `{"chat_id":"oc_test"}`, "--as", "user", "--dry-run",
+		"fixture", "things", "create", "--data", `{"name":"probe"}`, "--as", "user", "--dry-run",
 	})
 
 	if code != output.ExitValidation {

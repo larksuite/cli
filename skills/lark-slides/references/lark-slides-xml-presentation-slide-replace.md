@@ -173,13 +173,12 @@ lark-cli slides xml_presentation.slide replace --as user --params '{
 ## 注意事项
 
 1. **parts 原子事务**：任一条失败整批回滚，不会出现"前几条成功、后几条失败"的中间态。
-2. **block_id 的获取**：`slide.get` 返回的 XML 里每个块（shape、img、table、chart、whiteboard 等）会带 3 位 short element ID，用这个值填 `block_id` / `insert_before_block_id`。
+2. **block_id 的获取**：`slide.get` 返回的 XML 里每个块（shape、img、table、chart 等）会带 3 位 short element ID，用这个值填 `block_id` / `insert_before_block_id`。
 3. **`<img>` 必须用 file_token**：不能用外链 URL——先 [`slides +media-upload`](lark-slides-media-upload.md) 拿 token。
 4. **不能字段级 patch**：要改一个块的某个属性（比如只改 `topLeftX`），得写整块新 XML 走 `block_replace`；API 不支持"只改一个字段"。
 5. **`block_replace` 要求 `replacement` 根元素带 `id="<block_id>"`**：底层 API 的硬约束，缺失会返回 3350001。推荐走 shortcut [`+replace-slide`](lark-slides-replace-slide.md)——它会自动把 `id` 注入到 `replacement` 根元素上，用户写 XML 时不用自己加。
 6. **`<shape>` 必须有 `<content/>` 子元素**：SML 2.0 schema 要求，缺失同样触发 3350001。shortcut [`+replace-slide`](lark-slides-replace-slide.md) 会自动注入 `<content/>`，直接调底层 API 需要自己加。
-7. **`<whiteboard>` 返回结构不含内部数据**：`slide.get` 返回的 whiteboard 块只有外层标签和位置属性，SVG / Mermaid 内容不会随 XML 一起返回。但 `block_replace` 仍然可以强行覆盖——直接写入完整新 whiteboard XML 即可。
-8. **执行前必做**：`lark-cli schema slides.xml_presentation.slide.replace` 查看最新参数结构。
+7. **执行前必做**：`lark-cli schema slides.xml_presentation.slide.replace` 查看最新参数结构。
 
 ## 相关命令
 

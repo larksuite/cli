@@ -1,6 +1,6 @@
 # apps cache 域命令（应用运行时缓存调试）
 
-调试妙搭应用的运行时缓存：查看某个缓存 key 的内容、删除单个 key、清空某个环境的全部缓存。缓存是应用为了加速而临时存放的数据，删除或清空后，应用下次用到时会自动重新取最新数据。命令事实以 `lark-cli apps +<cmd> --help` 为准；认证、`--as user`、exit 码、`_notice` 等通用处理见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 与本域 [`SKILL.md`](../SKILL.md)。
+调试妙搭应用的运行时缓存：查看某个缓存 key 的内容、删除单个 key、清空某个环境的全部缓存。缓存是应用为了加速而临时存放的数据，删除或清空后，应用下次用到时会自动重新取最新数据。命令事实以 `lark-cli apps +<cmd> --help` 为准；认证、`--as user`、exit 码、`_notice` 等通用处理见 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 与本域 [`SKILL.md`](../SKILL.md)。
 
 ## 何时用
 
