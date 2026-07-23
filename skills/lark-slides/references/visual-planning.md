@@ -13,7 +13,7 @@
   - `medium`: title plus 2-4 concise bullets or labeled regions.
   - `high`: use a table, columns, grouped labels, or annotations. Do not use one long bullet box.
 - Do not create a deck where every content page is title plus bullets. For 4 or more pages, use at least 4 different layout structures when the content allows.
-- Keep safe outer margins around `40` px on standard content pages, and fill the content area densely with a card grid rather than leaving large empty space. Only go full-bleed for an intentional image or cover treatment.
+- Keep safe outer margins around `40` px on standard content pages. Only go full-bleed for an intentional image or cover treatment. How densely to fill the content area, and whether to use a card grid, is set by the selected design system.
 - Reserve vertical space for titles. A typical content title area is `y=36..90`; main content should usually start at `y>=110`.
 - Avoid crowding the bottom edge. Keep non-background content above `y=500` unless it is a footer.
 - Keep backgrounds consistent with the deck's `visual_system.background_strategy`. Normal content pages should use the same base background unless there is a clear page-role reason to change.
@@ -148,7 +148,7 @@ Purpose: show sequence, roadmap, history, or phases.
 
 Geometry:
 - Create a horizontal or vertical spine with 3-6 milestones.
-- Each milestone should have a dot/card/date label connected by a line or arrow.
+- Each milestone should have a dot/card/date label connected by a line or arrow. Cards should be of equal size.
 - Title is separate from the sequence. The sequence is the visual focus.
 
 Text:
@@ -172,7 +172,7 @@ Text:
 
 Purpose: explain components, dependencies, or system flow.
 
-Implementation: use `<shape>` + `<line>`.
+Implementation: use `<shape>` + `<line>`. Control position and size precisely and carefully.
 
 Geometry:
 - Main visual area should be a diagram, not prose.
@@ -188,16 +188,33 @@ Text:
 
 Purpose: show operational steps, workflow, or cause-effect path.
 
-Implementation: use `<shape>` + `<line>`.
+Implementation: use `<shape>` + `<line>`. Control position and size precisely and carefully.
 
 Geometry:
 - Use numbered steps connected by arrows or lines.
-- 3-5 steps is ideal for one slide. If there are more, group them into phases.
+- 3-5 steps is ideal for one slide. If there are more, group them into phases. Steps should be of equal size.
 - The flow direction must be visually obvious.
 
 Text:
 - Each step gets a verb-led label and one short descriptor at most.
 - Step labels should be parallel in length and grammar. If one step needs a long explanation, move the explanation to a side note or speaker notes.
+
+### `relationship-network`
+
+Purpose: show entities and the ties, relationships, or influence that connect them.
+
+Implementation: use `<shape>` + `<line>`. Use small `ellipse` dots as nodes, not large ones, and never put text inside them. Control position and size precisely and carefully.
+
+Geometry:
+- Main visual area should be a web of nodes and connectors, not prose.
+- Keep each node a small dot (a marker, not a container); do not size it to fit text inside. Small dots leave room for many nodes, so a dense, complex network still stays readable.
+- Spread nodes to fill the canvas evenly; minimize line crossings and avoid clusters.
+- Encode relationship types with line style (e.g. solid vs dashed) and emphasize key nodes with a distinct color or slightly larger dot. Add a legend to decode styles.
+
+Text:
+- Keep labels decoupled from nodes: put each name in its own text element beside the dot, never inside it and never on top of a connector.
+- Give each node a short name label (1-3 words). Relationship labels ride along their line and stay to 2-4 words; use them sparingly.
+- Keep labels from overlapping connectors or one another. Use one legend plus at most one short caption for explanation.
 
 ### `quote-highlight`
 
@@ -218,11 +235,10 @@ Purpose: close with decision, recommendation, or next action.
 Geometry:
 - Use one dominant closing statement or call to action.
 - Visual focus should be the recommendation or action, not decorative filler.
-- When using a full-bleed background image, add a semi-transparent scrim between the image and the text so the text stays legible; verify contrast.
+- Mirror the cover background but omit the image.
 
 Text:
 - Keep the final page easy to remember. Avoid recap overload.
-- Conclusion pages may mirror the cover background.
 
 ## Screenshot And Paper Figure Pages
 

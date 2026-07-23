@@ -6,15 +6,14 @@
 
 ## Required Flow
 
-1. 记录创建或编辑返回的 `xml_presentation_id`，以及已知的 `slide_id` / `revision_id`。
-2. 用 `slides +xml-get` 回读全文 XML 到本地文件。
-3. 检查实际页数是否符合计划或用户要求。
-4. 检查每页 `<data>` 内是否有预期主要元素。
-5. 检查没有明显空白页、破损页、缺失标题或缺失主视觉。
-6. 检查页面不是全部退化为标题加 bullet list。
-7. 检查视觉层级：标题、主视觉、支撑信息三者可区分。
-8. 检查明显溢出和布局风险：重叠、越界、底部拥挤、长文本框。
-9. 在最终回复中给出简短验证记录。
+1. 记录创建或编辑返回的 `xml_presentation_id`，以及已知的 `slide_id` / `revision_id`。`slide_id` 是 review 状态唯一关联键；页码仅可作为展示信息。
+2. 用 `slides +xml-get` 回读全文 XML 到本地文件，并以当前结果建立本次 review 的 `slide_ids` 页清单。首次新建且页集合未变时，可复用创建响应；增删页、整页替换或重排后必须刷新清单。
+3. 运行 XML 静态检查，检查实际页数、主要元素、空白/破损页、主视觉和布局风险。
+4. 先在 `.lark-slides/review/<deck-or-task-id>/visual-review.md` 为全部 `slide_ids` 建立记录，初始状态均为 `not_reviewed`；静态检查通过后再用 `slides +screenshot` 截图。每批最多 10 页，输出到 `.lark-slides/review/<deck-or-task-id>/screenshots/`。
+5. 实际打开每张截图，按下方 rubric 逐页标记 `pass` 或 `fix`；截图文件存在但未被查看时，状态必须保留为 `not_reviewed`。**关键页抽查只可作为排障/预览，不能缩小本次 review 页清单，也不能支持“全部通过”的结论。**
+6. `fix` 页用 `+replace-slide` 或对应写入操作修复后，重新回读并重新截图该页；不要沿用修复前的截图结论。
+7. 截图白名单或服务端限制导致无法获取图片时，记录错误和受影响页，完成其余 XML 静态检查，并将视觉状态标记为 `not_verified`。
+8. 在最终回复中给出简短验证记录，明确区分静态检查和真实视觉 review。
 
 回读命令：
 
@@ -25,32 +24,52 @@ lark-cli slides +xml-get --as user \
   --json
 ```
 
-## Automated XML Text Overlap Lint
+## Automated XML Layout Lint
 
-`slides +xml-get` 保存 XML 到本地文件后，优先运行 XML 语法和文本重叠静态检查：
+`slides +xml-get` 保存 XML 后，只运行统一版式准出入口；输入可以是单个 `<slide>` 或完整 `<presentation>`。先取得当前已加载 `lark-slides/SKILL.md` 的父目录，记为 `<lark-slides-skill-dir>`；不要猜测全局安装路径。
 
 ```bash
-python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation.xml>
+python3 "<lark-slides-skill-dir>/scripts/xml_text_overlap_lint.py" --input <presentation.xml>
 ```
 
-通过标准：
+它一次检查 XML/SXSD 合法性、元素越界、文本重叠、空白页、文本高度风险、整页内容稀疏和大卡片内容覆盖率。大卡片自身 `<content>` 的估算文本面积与卡片内平级元素一起参与覆盖率并集计算。
 
-- `summary.error_count == 0`。任何 error 都必须先修复再交付。
-- 当前工具只检查 XML well-formed 和文本元素之间的明显重叠；它不检查越界、文本高度不足、图文压盖、表格/图表压盖或底部拥挤。
+准出规则：
+
+- `summary.error_count > 0` 或 `summary.release_ready == false`：阻断创建、替换或交付，必须先修复。
+- `summary.warning_count > 0`：静态检查不直接阻断，但 `summary.screenshot_review_required == true`，必须复核对应页面截图。
+- `slides[].status` 为 `blocked`、`needs_screenshot_review` 或 `passed`，可直接决定逐页后续动作。
+- CLI 在存在 `error` 时退出码为 1；只有 `warning` 时仍输出 JSON 并退出 0，供截图复核链路继续执行。
 - 该工具不能替代页数核对、关键内容核对或真实视觉验收。
+
+每条 `error` / `warning` 都包含：
+
+- `element_ids`：相关 XML 元素 ID；
+- `rule`：规则 ID、名称、阈值和比较关系；
+- `measurement`：越界量、交叠面积、覆盖率等实测值；
+- `related_objects`：相关对象的类型与坐标框；
+- `target`、`message`、`hint`：页码、语义说明和处理建议。
+
+当 `sparse_container_content.measurement.content_coverage_ratio < rule.threshold` 时，需要结合同页截图判断留白是否有意设计；不要仅凭 warning 自动扩充内容。
 
 常见 code 的处理方向：
 
 | code | 含义 | 处理方式 |
 |------|------|----------|
 | `xml_not_well_formed` | XML 语法错误或文本未转义 | 修复标签闭合、属性引号、`&` / `<` / `>` 转义 |
-| `sml_prefixed_tag` | SML 元素使用了命名空间前缀，如 `<ns0:slide>` 或 `<sml:shape>` | 使用 `<slide xmlns="http://www.larkoffice.com/sml/2.0">` 的默认命名空间，或使用无前缀标签 |
-| `sxsd_unsupported_tag` | 使用了 SXSD 不支持的标签 | 按 lint `hint` 替换为受支持标签；常见如 `textbox -> <shape type="text">`、`image -> <img>` |
-| `sxsd_unsupported_attr` | 支持的标签上使用了不支持的属性 | 按 lint `hint` 改为支持的属性；常见如 `x -> topLeftX`、`fontColor -> color` |
-| `iconpark_unsupported_icon_type` | `<icon>` 使用了 `iconpark-index.json` 中不存在的 `iconType` | 按 lint `hint` 改为名单内的 `iconType`，或先用 `scripts/iconpark_tool.py` 搜索 |
-| `icon_missing_fill_color` | 视觉规范要求 `<icon>` 设置 `<fill><fillColor color="..."/></fill>`，避免图标不可见 | 给 `<icon>` 添加显式非透明填充色，例如 `rgba(37, 99, 235, 1)` |
-| `icon_transparent_fill_color` | `<icon>` 的 `fillColor` 是透明色，不满足视觉可见性要求 | 改成与背景有足够对比的非透明颜色 |
 | `bbox_overlap` | 文本元素的估算绘制区域明显重叠 | 拉开文本坐标、缩小文本框/字号，或改成明确的分栏/分组结构 |
+| `sml_prefixed_tag` | SML 标签用了命名空间前缀（如 `sml:`） | 去掉前缀，用规范标签名 |
+| `sxsd_unsupported_tag` | 使用了 schema 不支持的标签 | 对照 `slides_xml_schema_definition.xml` 换成受支持的标签 |
+| `sxsd_unsupported_attr` | 标签上有 schema 不支持的属性 | 删除该属性或改用受支持的属性 |
+| `<kind>_out_of_canvas`（如 `text_out_of_canvas`） | 元素超出 960×540 画布 | 移回画布内，或缩小其 width/height |
+| `text_may_overflow_shape` | 文本按字号/行距估算会超出自身文本框 | 增大 shape 高度、精简文字，或给 `<content>` 设 `wrap="true" autoFit="normal-auto-fit"` |
+| `table_resolved_size_mismatch` | `<table>` 声明的 width/height 与 `<col>`/`<tr>` 解析出的实际总尺寸不一致 | 调整 col/tr 或表格整体尺寸使两者匹配 |
+| `icon_missing_fill_color` | `<icon>` 未设置不透明 `fillColor` | 在 `<icon>` 内加 `<fill><fillColor color="rgba(R,G,B,1)"/></fill>` |
+| `icon_transparent_fill_color` | `<icon>` 的 `fillColor` 是透明色 | 改用不透明颜色 |
+| `iconpark_unsupported_icon_type` | 用了 IconPark 不支持的 `iconType` | 对照 `iconpark-index.json` 换成受支持的类型 |
+| `blank_slide` | 页面没有画布内可见内容 | 补充主体内容；仅有空背景或空形状不能准出 |
+| `sparse_container_content` | 大卡片内容覆盖率低于阈值 | 按元素 ID 定位卡片，结合截图判断是否补充或放大内容 |
+| `sparse_slide_content` | 全页有效内容覆盖率偏低 | 复核截图，确认是否为有意留白 |
 
 ## Screenshot QA
 
@@ -119,10 +138,41 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 
 - 正文或标签框高度不足，文本很可能被截断。
 - 多个主体元素在同一区域重叠，而不是有意叠加背景。
+- 标题、标签、关键数字或相邻文本虽未几何重叠，但视觉间距过近，显得粘连、像重叠或破坏层级。
 - 重要内容越过画布边界，或贴近底部超过 `y=500`。
 - 高密度页使用单个长 bullet list，没有分栏、表格或分组。
 - 标题、主视觉、正文的字号和颜色差异太弱，视觉层级不清。
 - 所有内容页都是同一套标题加 bullets 坐标。
+
+## Screenshot Visual Review
+
+截图 review 是静态 XML 检查之后的第二道门。它用服务端真实渲染结果发现 XML 无法可靠判断的问题，例如文字截断、图片裁切、图表压盖和弱对比。
+
+每页按以下检查项记录结论；页面含图表时，额外检查图表精确可读性：
+
+| 项目 | Pass 标准 | Fix 信号 |
+|---|---|---|
+| 可读性 | 标题、正文、标签和关键数字可读；对比度足够，文本层级之间有清楚的视觉间距 | 文字截断、字号过小、低对比、关键标签不可读，或相邻文字间距过近而视觉粘连 |
+| 布局 | 主体未被意外遮挡，页边距和底部留白合理 | 重叠、越界、图片裁切、元素贴边、底部拥挤，或文字虽未相交但视觉上像碰撞 |
+| 视觉层级 | 主结论、主视觉、支撑信息一眼可区分 | 所有元素同权重、主视觉过小、页面退化为文字堆叠 |
+| 内容完整性 | 无空白、破图、占位符或错误页序；图示表达与页面角色匹配 | 空白/破损页、缺失图片、遗留模板文案或与计划不符 |
+| 图表精确可读性（有图表时） | 若页面结论依赖精确比较、排序或阈值判断，读者可直接获得每个关键数据点的值：柱/线/饼图有直接数据标签，或有与图表一一对应的等价数据表/注释 | 只能靠坐标轴估读关键数值、缺少决定结论的数据标签、图例与系列无法对应；仅用于展示趋势且不承载精确结论的图表可不强制逐点标签 |
+
+图表检查先问“页面是否要求读者作精确判断”：
+
+- **需要**：比较群体得分、排名、是否达到阈值、预算/目标差异、需要从图中选方案。没有直接数值或等价数据表即为 `fix`。
+- **不需要**：只表达上升/下降趋势、定性分布或结构关系，且标题/正文已经明确结论；可不逐点展示数值，但仍须检查轴、图例、系列和关键标注是否可读。
+
+推荐把记录保存在 `.lark-slides/review/<deck-or-task-id>/visual-review.md`：
+
+```text
+| slide_id | screenshot | status | findings | action |
+|---|---|---|---|---|
+| p001 | screenshots/p001.png | pass | hierarchy and contrast clear | - |
+| p002 | screenshots/p002.png | fix | bottom labels are clipped | enlarge text box, then rescreenshot |
+```
+
+只有记录中的每个目标 `slide_id` 都是 `pass`，且记录数等于当前页清单数，才可写“已完成视觉 review”。截图不可用时沿用上文的 `not_verified` 状态，并说明原因。
 
 ## Verification Record
 
@@ -133,7 +183,8 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 - 回读：已执行 slides +xml-get，实际页数 N / 预期 N。
 - 关键页：架构解释 / Self-Attention / 对比或演进 / 总结页均存在。
 - 结构：检查了主要 shape/img/table/chart 元素，无明显空白页或破损页。
-- 布局：检查了标题层级、主视觉、重叠/越界/文本溢出风险。
+- 静态检查：xml_text_overlap_lint error_count=0；已检查标题层级、主视觉、重叠/越界/文本溢出风险。
+- 视觉 review：已查看 N/N 张服务端截图，全部 pass；或 `not_verified`（截图不可用，原因：...）。
 ```
 
 不要声称完成了人工视觉验收，除非确实打开或获取了可视化结果。仅从 XML 静态检查得出的结论，应表述为“静态检查未发现明显问题”。

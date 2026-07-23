@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<presentation xmlns="/sml/2.0" width="960" height="540">
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
   <title>原生图表 Chart Demo</title>
   <theme>
     <textStyles>
@@ -20,27 +20,27 @@
         <fill>
           <fillColor color="rgba(15, 30, 58, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 129, 54, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
-        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
-          <p>柱状图 · Column Chart</p>
+        <content textType="headline" fontSize="22" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>极简图表 · Minimal</p>
         </content>
       </shape>
       <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
-        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
-          <p>季度出货量对比 · GROUPED / STACKED / 100% STACKED</p>
+        <content textType="caption" fontSize="12" fontFamily="思源宋体" color="rgba(180, 192, 210, 1)">
+          <p>可按需省略图例 / 标题 / 数据标签 · NO LEGEND / NO TITLE / NO LABELS</p>
         </content>
       </shape>
       <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
-        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
-          <p>SECTION 01 / COLUMN</p>
+        <content textType="caption" fontSize="11" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 01 / MINIMAL</p>
         </content>
       </shape>
       <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
@@ -48,16 +48,209 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>① 柱状图 · 无图例无标题</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="42" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="column">
+            <chartExtra/>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartData>
+          <dim1>
+            <chartField name="季度">Q1,Q2,Q3,Q4</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="营收">52,48,55,68</chartField>
+          </dim2>
+        </chartData>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>② 折线图 · 无图例无标题</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="345" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="line">
+            <chartExtra/>
+          </chartPlot>
+          <chartAxes>
+            <chartAxis type="x">
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+            <chartAxis type="y" position="left">
+              <chartGridLine color="rgb(226, 232, 240)"/>
+              <chartLabel fontSize="9"/>
+            </chartAxis>
+          </chartAxes>
+        </chartPlotArea>
+        <chartData>
+          <dim1>
+            <chartField name="月份">1月,2月,3月,4月,5月</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="活跃用户">30,42,39,55,60</chartField>
+          </dim2>
+        </chartData>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <shape width="290" height="400" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
+          <p>③ 饼图 · 标签在饼上无图例</p>
+        </content>
+      </shape>
+      <chart width="270" height="350" topLeftX="648" topLeftY="132">
+        <chartPlotArea>
+          <chartPlot type="pie" yAxisPosition="right">
+            <chartExtra/>
+            <chartLabels position="inside" category="true" value="false" percentage="true" fontSize="10"/>
+          </chartPlot>
+        </chartPlotArea>
+        <chartData>
+          <dim1>
+            <chartField name="渠道">直营,分销,线上</chartField>
+          </dim1>
+          <dim2>
+            <chartField name="占比">45,30,25</chartField>
+          </dim2>
+        </chartData>
+        <chartStyle>
+          <chartBackground color="rgba(0, 0, 0, 0)"/>
+          <chartBorder color="rgb(222, 224, 227)" width="0"/>
+          <chartColorTheme>
+            <color value="rgb(28, 71, 120)"/>
+            <color value="rgb(240, 129, 54)"/>
+            <color value="rgb(56, 142, 60)"/>
+          </chartColorTheme>
+        </chartStyle>
+      </chart>
+      <line startX="32" startY="506" endX="928.0005580355405" endY="506">
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+      </line>
+      <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)">
+          <p>Source: Consulting Insights Research · 数据仅用于示意</p>
+        </content>
+      </shape>
+      <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>01 / 08</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(248, 249, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(15, 30, 58, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 129, 54, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
+        <content textType="headline" fontSize="22" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>柱状图 · Column Chart</p>
+        </content>
+      </shape>
+      <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源宋体" color="rgba(180, 192, 210, 1)">
+          <p>季度出货量对比 · GROUPED / STACKED / 100% STACKED</p>
+        </content>
+      </shape>
+      <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
+        <content textType="caption" fontSize="11" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 02 / COLUMN</p>
+        </content>
+      </shape>
+      <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(226, 232, 240, 1)" width="1"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(240, 244, 249, 1)"/>
+        </fill>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
+      </shape>
+      <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>① 分组柱状图 · Grouped</p>
         </content>
       </shape>
@@ -101,16 +294,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>② 堆叠柱状图 · Stacked</p>
         </content>
       </shape>
@@ -156,16 +349,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>③ 百分比堆叠 · 100% Stacked</p>
         </content>
       </shape>
@@ -219,13 +412,13 @@
         <border color="rgba(226, 232, 240, 1)" width="1"/>
       </line>
       <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)">
           <p>Source: Consulting Insights Research · 数据仅用于示意</p>
         </content>
       </shape>
       <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
-          <p>03 / 12</p>
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>02 / 08</p>
         </content>
       </shape>
     </data>
@@ -244,27 +437,27 @@
         <fill>
           <fillColor color="rgba(15, 30, 58, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 129, 54, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
-        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+        <content textType="headline" fontSize="22" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
           <p>折线图 · Line Chart</p>
         </content>
       </shape>
       <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
-        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+        <content textType="caption" fontSize="12" fontFamily="思源宋体" color="rgba(180, 192, 210, 1)">
           <p>用户规模趋势 · STRAIGHT / SMOOTH / STEP</p>
         </content>
       </shape>
       <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
-        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
-          <p>SECTION 02 / LINE</p>
+        <content textType="caption" fontSize="11" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 03 / LINE</p>
         </content>
       </shape>
       <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
@@ -272,16 +465,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>① 直线折线图 · Straight</p>
         </content>
       </shape>
@@ -325,16 +518,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>② 平滑折线图 · Smooth</p>
         </content>
       </shape>
@@ -380,16 +573,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>③ 阶梯折线图 · Step</p>
         </content>
       </shape>
@@ -434,13 +627,13 @@
         <border color="rgba(226, 232, 240, 1)" width="1"/>
       </line>
       <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)">
           <p>Source: Consulting Insights Research · 数据仅用于示意</p>
         </content>
       </shape>
       <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
-          <p>04 / 12</p>
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>03 / 08</p>
         </content>
       </shape>
     </data>
@@ -459,27 +652,27 @@
         <fill>
           <fillColor color="rgba(15, 30, 58, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 129, 54, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
-        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+        <content textType="headline" fontSize="22" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
           <p>饼图 · Pie Chart</p>
         </content>
       </shape>
       <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
-        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+        <content textType="caption" fontSize="12" fontFamily="思源宋体" color="rgba(180, 192, 210, 1)">
           <p>市场份额结构 · PIE / DONUT</p>
         </content>
       </shape>
       <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
-        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
-          <p>SECTION 03 / PIE</p>
+        <content textType="caption" fontSize="11" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 04 / PIE</p>
         </content>
       </shape>
       <shape width="440" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
@@ -487,16 +680,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="440" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="420" height="22" topLeftX="44" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>① 饼图 · Pie</p>
         </content>
       </shape>
@@ -504,7 +697,7 @@
         <chartPlotArea>
           <chartPlot type="pie" yAxisPosition="right">
             <chartExtra/>
-            <chartLabels position="outside" value="false" percentage="true" fontSize="10"/>
+            <chartLabels position="inside" value="false" percentage="true" fontSize="10"/>
           </chartPlot>
         </chartPlotArea>
         <chartLegend position="right" fontSize="10"/>
@@ -534,16 +727,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="440" height="32" topLeftX="488" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="420" height="22" topLeftX="500" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>② 环形图 · Donut</p>
         </content>
       </shape>
@@ -551,7 +744,7 @@
         <chartPlotArea>
           <chartPlot type="pie" yAxisPosition="right">
             <chartExtra/>
-            <chartLabels position="outside" category="true" value="false" percentage="true" fontSize="10"/>
+            <chartLabels position="inside" category="true" value="false" percentage="true" fontSize="10"/>
             <chartSeriesList>
               <chartSeries index="1">
                 <chartSectors innerRadius="0.55" offsetRadius="0" startAngle="0"/>
@@ -583,13 +776,13 @@
         <border color="rgba(226, 232, 240, 1)" width="1"/>
       </line>
       <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)">
           <p>Source: Consulting Insights Research · 数据仅用于示意</p>
         </content>
       </shape>
       <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
-          <p>05 / 12</p>
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>04 / 08</p>
         </content>
       </shape>
     </data>
@@ -608,27 +801,27 @@
         <fill>
           <fillColor color="rgba(15, 30, 58, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 129, 54, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
-        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+        <content textType="headline" fontSize="22" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
           <p>条形图 · Bar Chart</p>
         </content>
       </shape>
       <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
-        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+        <content textType="caption" fontSize="12" fontFamily="思源宋体" color="rgba(180, 192, 210, 1)">
           <p>横向排名对比 · GROUPED / STACKED / 100% STACKED</p>
         </content>
       </shape>
       <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
-        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
-          <p>SECTION 04 / BAR</p>
+        <content textType="caption" fontSize="11" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 05 / BAR</p>
         </content>
       </shape>
       <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
@@ -636,16 +829,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>① 分组条形图 · Grouped</p>
         </content>
       </shape>
@@ -689,16 +882,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>② 堆叠条形图 · Stacked</p>
         </content>
       </shape>
@@ -744,16 +937,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>③ 百分比堆叠 · 100% Stacked</p>
         </content>
       </shape>
@@ -807,13 +1000,13 @@
         <border color="rgba(226, 232, 240, 1)" width="1"/>
       </line>
       <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)">
           <p>Source: Consulting Insights Research · 数据仅用于示意</p>
         </content>
       </shape>
       <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
-          <p>06 / 12</p>
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>05 / 08</p>
         </content>
       </shape>
     </data>
@@ -832,27 +1025,27 @@
         <fill>
           <fillColor color="rgba(15, 30, 58, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 129, 54, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
-        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+        <content textType="headline" fontSize="22" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
           <p>面积图 · Area Chart</p>
         </content>
       </shape>
       <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
-        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+        <content textType="caption" fontSize="12" fontFamily="思源宋体" color="rgba(180, 192, 210, 1)">
           <p>体量与结构演进 · OVERLAY / STACKED / 100% STACKED</p>
         </content>
       </shape>
       <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
-        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
-          <p>SECTION 05 / AREA</p>
+        <content textType="caption" fontSize="11" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)" textAlign="right">
+          <p>SECTION 06 / AREA</p>
         </content>
       </shape>
       <shape width="290" height="400" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
@@ -860,16 +1053,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>① 重叠面积图 · Overlay</p>
         </content>
       </shape>
@@ -913,16 +1106,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>② 堆叠面积图 · Stacked</p>
         </content>
       </shape>
@@ -968,16 +1161,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>③ 百分比堆叠 · 100% Stacked</p>
         </content>
       </shape>
@@ -1023,13 +1216,13 @@
         <border color="rgba(226, 232, 240, 1)" width="1"/>
       </line>
       <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)">
           <p>Source: Consulting Insights Research · 数据仅用于示意</p>
         </content>
       </shape>
       <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
-          <p>07 / 12</p>
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>06 / 08</p>
         </content>
       </shape>
     </data>
@@ -1048,26 +1241,26 @@
         <fill>
           <fillColor color="rgba(15, 30, 58, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 129, 54, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
-        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+        <content textType="headline" fontSize="22" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
           <p>组合图 · Combo Chart</p>
         </content>
       </shape>
       <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
-        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+        <content textType="caption" fontSize="12" fontFamily="思源宋体" color="rgba(180, 192, 210, 1)">
           <p>营收规模 &amp; 增长率双轴视图 · COLUMN + LINE</p>
         </content>
       </shape>
       <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
-        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
+        <content textType="caption" fontSize="11" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)" textAlign="right">
           <p>SECTION 07 / COMBO</p>
         </content>
       </shape>
@@ -1076,16 +1269,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="576" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="560" height="22" topLeftX="44" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>八季度营收与同比增速</p>
         </content>
       </shape>
@@ -1137,26 +1330,26 @@
         <fill>
           <fillColor color="rgba(15, 30, 58, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="304" height="4" topLeftX="624" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 129, 54, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="264" height="26" topLeftX="644" topLeftY="118" type="text">
-        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(240, 129, 54, 1)" bold="true">
+        <content textType="caption" fontSize="12" fontFamily="思源宋体" color="rgba(240, 129, 54, 1)" bold="true">
           <p>KEY TAKEAWAY</p>
         </content>
       </shape>
       <shape width="264" height="90" topLeftX="644" topLeftY="146" type="text">
-        <content textType="headline" fontSize="18" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+        <content textType="headline" fontSize="18" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
           <p>营收连续 6 季度双位数增长</p>
         </content>
       </shape>
       <shape width="264" height="80" topLeftX="644" topLeftY="248" type="text">
-        <content fontSize="13" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)">
+        <content fontSize="13" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)">
           <p>24Q4 - 25Q4 期间同比增速稳定在 18-23%，营收规模从 245 亿扩张至 296 亿美元。</p>
         </content>
       </shape>
@@ -1164,12 +1357,12 @@
         <border color="rgba(240, 129, 54, 1)"/>
       </line>
       <shape width="264" height="26" topLeftX="644" topLeftY="360" type="text">
-        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(240, 129, 54, 1)" bold="true">
+        <content textType="caption" fontSize="11" fontFamily="思源宋体" color="rgba(240, 129, 54, 1)" bold="true">
           <p>WHAT TO WATCH</p>
         </content>
       </shape>
       <shape width="264" height="90" topLeftX="644" topLeftY="386" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)">
           <p>· 25Q4 增速首次微降 2pp</p>
           <p>· 高基数效应即将显现</p>
           <p>· 需关注亚太区库存周期</p>
@@ -1179,13 +1372,13 @@
         <border color="rgba(226, 232, 240, 1)" width="1"/>
       </line>
       <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)">
           <p>Source: Consulting Insights Research · 数据仅用于示意</p>
         </content>
       </shape>
       <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
-          <p>09 / 12</p>
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>07 / 08</p>
         </content>
       </shape>
     </data>
@@ -1204,26 +1397,26 @@
         <fill>
           <fillColor color="rgba(15, 30, 58, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="8" height="72" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 129, 54, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="700" height="30" topLeftX="32" topLeftY="14" type="text">
-        <content textType="headline" fontSize="22" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+        <content textType="headline" fontSize="22" fontFamily="思源宋体" color="rgba(255, 255, 255, 1)" bold="true">
           <p>雷达图 · Radar Chart</p>
         </content>
       </shape>
       <shape width="700" height="20" topLeftX="32" topLeftY="46" type="text">
-        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(180, 192, 210, 1)">
+        <content textType="caption" fontSize="12" fontFamily="思源宋体" color="rgba(180, 192, 210, 1)">
           <p>产品能力多维对比 · POLYGON / CIRCLE / OUTLINE</p>
         </content>
       </shape>
       <shape width="160" height="22" topLeftX="770" topLeftY="26" type="text">
-        <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(220, 228, 240, 1)" textAlign="right">
+        <content textType="caption" fontSize="11" fontFamily="思源宋体" color="rgba(220, 228, 240, 1)" textAlign="right">
           <p>SECTION 08 / RADAR</p>
         </content>
       </shape>
@@ -1232,16 +1425,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="32" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="44" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>① 多边形雷达 · Polygon</p>
         </content>
       </shape>
@@ -1288,16 +1481,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="335" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="347" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>② 圆形雷达 · Circle</p>
         </content>
       </shape>
@@ -1345,16 +1538,16 @@
           <fillColor color="rgba(255, 255, 255, 1)"/>
         </fill>
         <border color="rgba(226, 232, 240, 1)" width="1"/>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="290" height="32" topLeftX="638" topLeftY="92" presetHandlers="0" type="rect">
         <fill>
           <fillColor color="rgba(240, 244, 249, 1)"/>
         </fill>
-        <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+        <content fontSize="16" fontFamily="思源宋体" color="rgba(31, 35, 41, 1)"/>
       </shape>
       <shape width="270" height="22" topLeftX="650" topLeftY="98" type="text">
-        <content fontSize="12" fontFamily="思源黑体" color="rgba(15, 30, 58, 1)" bold="true">
+        <content fontSize="12" fontFamily="思源宋体" color="rgba(15, 30, 58, 1)" bold="true">
           <p>③ 无填充雷达 · Outline</p>
         </content>
       </shape>
@@ -1399,13 +1592,13 @@
         <border color="rgba(226, 232, 240, 1)" width="1"/>
       </line>
       <shape width="500" height="18" topLeftX="32" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)">
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)">
           <p>Source: Consulting Insights Research · 数据仅用于示意</p>
         </content>
       </shape>
       <shape width="128" height="18" topLeftX="800" topLeftY="512" type="text">
-        <content textType="caption" fontSize="10" fontFamily="思源黑体" color="rgba(148, 163, 184, 1)" textAlign="right">
-          <p>10 / 12</p>
+        <content textType="caption" fontSize="10" fontFamily="思源宋体" color="rgba(148, 163, 184, 1)" textAlign="right">
+          <p>08 / 08</p>
         </content>
       </shape>
     </data>

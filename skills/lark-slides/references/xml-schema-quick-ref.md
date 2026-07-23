@@ -246,7 +246,7 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 表格宽高设置：
 
 - 已设置的列宽和行高优先保留，未设置的列宽、行高会使用表格的目标总宽度、总高度分配剩余空间
-- **必须设置 `<table>` 的 `width` 和 `height` 固定表格大小，同时设置需要保留列宽或行高的 `<col>` 的 `width` 和 `<tr>` 的 `height`，其余自动分配。**
+- **`<table>` 必须设置 `width` 和 `height` 固定整体表格大小，行高列宽建议默认分配，只设置少数必要的 `<col>` 的 `width` 和 `<tr>` 的 `height`。**
 
 不同字号的行高参考：
 
@@ -365,8 +365,8 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
   <title>季度报告</title>
   <theme>
     <textStyles>
-      <title fontFamily="思源黑体" fontSize="54" fontColor="rgba(0, 0, 0, 1)"/>
-      <body fontFamily="思源黑体" fontSize="18" fontColor="rgba(43, 47, 54, 1)"/>
+      <title fontFamily="思源宋体" fontSize="54" fontColor="rgba(0, 0, 0, 1)"/>
+      <body fontFamily="思源宋体" fontSize="18" fontColor="rgba(43, 47, 54, 1)"/>
     </textStyles>
   </theme>
   <slide>

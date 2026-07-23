@@ -162,6 +162,7 @@ Use one of these `layout_type` values unless the user explicitly needs a custom 
 - `comparison`
 - `architecture-diagram`
 - `process-flow`
+- `relationship-network`
 - `quote-highlight`
 - `conclusion`
 

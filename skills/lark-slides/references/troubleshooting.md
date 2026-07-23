@@ -19,7 +19,7 @@
 2. 用 `slides +xml-get` 回读，确认是否已有部分页面写入。
 3. 检查失败页是否含未转义字符：`Q&A -> Q&amp;A`，文本 `<` / `>` 写成 `&lt;` / `&gt;`，属性 URL `a=1&b=2 -> a=1&amp;b=2`。
 4. 检查标签闭合、属性引号、`<content>` 结构，以及 `<slide>` 直接子元素。
-5. 页面空白、溢出、重叠或越界时，按 [validation-checklist.md](validation-checklist.md) 运行 XML 文本重叠检查，并人工核对越界、截断、图文压盖等视觉风险；工具当前只会报告 `xml_not_well_formed` / `bbox_overlap`。
+5. 页面空白、溢出、重叠或越界时，按 [validation-checklist.md](validation-checklist.md) 运行 `xml_text_overlap_lint.py`；先修复所有 `error`，再对 `warning` 指向的页面和元素做截图复核。
 6. 如果使用 `--slides '[...]'`，怀疑 shell 截断时直接切到两步创建：先 `slides +create`，再用 `xml_presentation.slide.create` 逐页添加。
 7. 局部问题用 `+replace-slide` 块级修正；整页结构要改时再用 `slide.delete` 旧页 + `slide.create` 新页。
 
@@ -27,7 +27,7 @@
 
 | 看到的问题 | 处理方式 |
 |-----------|----------|
-| 文字被截断 / 看不全 | 增大 shape 的 `width` 或 `height`，或减少文本量 |
+| 文字被截断 / 看不全 | 增大 shape 的 `width` 或 `height`，或减少文本量，或设置 `wrap="true" autoFit="normal-auto-fit"` 属性自动换行和缩排 |
 | 元素重叠 | 调整 `topLeftX` / `topLeftY`，拉开间距 |
 | 页面大面积空白 | 回读确认内容是否写入；若内容存在，再缩小间距或增加主体元素 |
 | 文字和背景色太接近 | 深色背景用浅色文字，浅色背景用深色文字 |
