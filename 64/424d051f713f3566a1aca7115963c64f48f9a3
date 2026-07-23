@@ -1,0 +1,37 @@
+cmd/event/bus.go
+  s_7e31c5476643fb::t_f70fcda915ea4f 50,72-74,76
+cmd/event/consume.go
+  s_7e31c5476643fb::t_3eb220bd07bffc 42,45,168,176,178,182-183,193,329,336,348-349,366,373-374,376-377,383,406,414
+cmd/event/consume_test.go
+  s_7e31c5476643fb::t_58275ac2b6fba7 247,263,265,299,303,438,483,485,489,492-494,512-513,565-566
+cmd/event/list.go
+  s_7e31c5476643fb::t_b7475241302e16 112
+cmd/event/list_test.go
+  s_7e31c5476643fb::t_a440d78609d76b 108,205
+cmd/event/schema.go
+  s_7e31c5476643fb::t_bd89a0aa40769e 206,215,217,239,248
+cmd/event/schema_test.go
+  s_7e31c5476643fb::t_296e6f8cd6f8fd 385,509
+cmd/event/status.go
+  s_7e31c5476643fb::t_76b78655497752 112,200,290,308,340,344-346,358-359,368,371,380-381,392,403,417,435,499,521,526,555,565,569-574,576,586,622,625,644,663,669,680,770,772-775,787
+cmd/event/status_refined_test.go
+  s_7e31c5476643fb::t_79b6b3fdb17dab 55,99-100,173,177,236,412,455-456,610,612,616,622,642,846,862,893-895
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "64424d051f713f3566a1aca7115963c64f48f9a3",
+  "prompts": {},
+  "sessions": {
+    "s_7e31c5476643fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-afa71a2f4621b1d53",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
