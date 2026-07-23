@@ -464,6 +464,34 @@ func TestBaseTableCopyDryRunWaitShowsSymbolicStatusStep(t *testing.T) {
 	}
 }
 
+func TestBaseTableCopyStatusDryRun(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	err := runShortcutWithAuthTypes(
+		t,
+		BaseTableCopyStatus,
+		BaseTableCopyStatus.AuthTypes,
+		[]string{"+table-copy-status", "--base-token", "app_x", "--task-id", "ct1.token", "--dry-run", "--as", "user"},
+		factory,
+		stdout,
+	)
+	if err != nil {
+		t.Fatalf("table copy status dry-run: %v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	api, _ := data["api"].([]interface{})
+	if len(api) != 1 {
+		t.Fatalf("api calls = %#v, want one status request", data["api"])
+	}
+	call, _ := api[0].(map[string]interface{})
+	body, _ := call["body"].(map[string]interface{})
+	if call["method"] != "POST" ||
+		call["url"] != "/open-apis/base/v3/bases/app_x/copy_table_state" ||
+		body["task_id"] != "ct1.token" {
+		t.Fatalf("status call = %#v", call)
+	}
+}
+
 func TestBaseTableCopyAllWaitsForSuccess(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	stderr := factory.IOStreams.ErrOut.(interface{ String() string })
@@ -936,6 +964,34 @@ func TestProjectTableCopySubmitRejectsOversizedTaskID(t *testing.T) {
 	}
 }
 
+func TestProjectTableCopySubmitRejectsInvalidResponseShape(t *testing.T) {
+	tests := []struct {
+		name string
+		data map[string]interface{}
+	}{
+		{
+			name: "missing table id",
+			data: map[string]interface{}{"state": tableCopyStateSuccess},
+		},
+		{
+			name: "invalid state",
+			data: map[string]interface{}{
+				"table": map[string]interface{}{"id": "tbl_target"},
+				"state": "done",
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := projectTableCopySubmit(test.data)
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+				t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
+			}
+		})
+	}
+}
+
 func TestProjectTableCopyStatusRejectsFailedWithoutInspectingLastErrorCode(t *testing.T) {
 	tests := []struct {
 		name string
@@ -946,6 +1002,34 @@ func TestProjectTableCopyStatusRejectsFailedWithoutInspectingLastErrorCode(t *te
 		{name: "malformed", data: map[string]interface{}{"table_id": "tbl_target", "state": "failed", "last_error_code": "ignore-me"}},
 	}
 
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := projectTableCopyStatus(test.data)
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+				t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
+			}
+		})
+	}
+}
+
+func TestProjectTableCopyStatusRejectsInvalidResponseShape(t *testing.T) {
+	tests := []struct {
+		name string
+		data map[string]interface{}
+	}{
+		{
+			name: "missing table id",
+			data: map[string]interface{}{"state": tableCopyStateSuccess},
+		},
+		{
+			name: "invalid state",
+			data: map[string]interface{}{
+				"table_id": "tbl_target",
+				"state":    "done",
+			},
+		},
+	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := projectTableCopyStatus(test.data)
@@ -999,6 +1083,29 @@ func TestTableCopyStatusErrorClassifiesTaskTokenCodes(t *testing.T) {
 	}
 	if validationErr.Hint != "Submit a new copy request." {
 		t.Fatalf("hint = %q", validationErr.Hint)
+	}
+}
+
+func TestTableCopyStatusErrorReclassifiesAndPreservesMetadata(t *testing.T) {
+	cause := errors.New("upstream task lookup")
+	upstream := errs.NewAPIError(errs.SubtypeUnknown, "invalid task").
+		WithCode(800010109).
+		WithHint("Submit a new copy request.").
+		WithLogID("log-id").
+		WithCause(cause)
+	err := tableCopyStatusError(upstream)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T %v, want validation error", err, err)
+	}
+	if validationErr.Code != 800010109 ||
+		validationErr.Param != "--task-id" ||
+		validationErr.Hint != "Submit a new copy request." ||
+		validationErr.LogID != "log-id" {
+		t.Fatalf("validation error = %#v", validationErr)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatal("reclassified error must preserve the original cause chain")
 	}
 }
 
