@@ -1,0 +1,49 @@
+cmd/event/status.go
+  s_6c912632128f0e::t_76fa602bd148a9 394-395,397-400,403,406-416,535-550,555-557,559-560,563-579,581-584,586-600,602-625,627-629,632-656
+cmd/event/status_refined_test.go
+  s_6c912632128f0e::t_256fbd59851686 11,28,34-40,48-52,491-605
+cmd/event/subscription/update.go
+  s_6c912632128f0e::t_60078113a5785b 132,166,197-205,207-209,219-237,264-283,285-290,294,324-329,333-338,347-350
+cmd/event/subscription/update_test.go
+  s_6c912632128f0e::t_6afe4e5131f69e 124-219,295-296,298,301-310,328,371,387-414
+internal/event/bus/bus.go
+  s_6c912632128f0e::t_9d1d1c611ef727 409-414
+internal/event/bus/conn.go
+  s_6c912632128f0e::t_bb16188d847dca 58-72,229-246
+internal/event/bus/conn_test.go
+  s_6c912632128f0e::t_b96fc4cd8b7d64 228-254
+internal/event/bus/handle_hello_test.go
+  s_6c912632128f0e::t_e7fcc3a53db3a7 160-236
+internal/event/bus/lifecycle.go
+  s_6c912632128f0e::t_08876dd0246382 517-535,537-543,545-556,559-574,576
+internal/event/bus/lifecycle_dispatch_test.go
+  s_6c912632128f0e::t_5ea7bb47fd31eb 619-622,624-628,640-721
+internal/event/consume/refined.go
+  s_6c912632128f0e::t_25543e5426b422 193,559-564,573
+internal/event/consume/refined_test.go
+  s_6c912632128f0e::t_495396130be351 360,392-394,408,442
+internal/event/protocol/messages.go
+  s_6c912632128f0e::t_1ee050ae04c114 101-108
+internal/event/source/feishu.go
+  s_6c912632128f0e::t_231866fec16676 123-140,400-414,548-576,594-599,601,607-612
+internal/event/source/feishu_test.go
+  s_6c912632128f0e::t_a008be10d9470b 7,10-12,420-476,629-664
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d15ebaf9cfadef6d15c811c7b0084de776f40f74",
+  "prompts": {},
+  "sessions": {
+    "s_6c912632128f0e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8af781961430e342",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
