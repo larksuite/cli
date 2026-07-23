@@ -1,0 +1,21 @@
+skills/lark-event/references/refined-subscription.md
+  s_7e31c5476643fb::t_7aba04efc19f3a 141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ba5512bbb2093e360121a390e405e5fcbf03baa6",
+  "prompts": {},
+  "sessions": {
+    "s_7e31c5476643fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-afa71a2f4621b1d53",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
