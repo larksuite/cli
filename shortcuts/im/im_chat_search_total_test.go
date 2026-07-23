@@ -22,6 +22,7 @@ func TestImChatSearchExecuteTotalContract(t *testing.T) {
 		{name: "missing"},
 		{name: "invalid", total: "unknown"},
 		{name: "zero", total: 0},
+		{name: "fractional truncates to zero", total: 0.5},
 		{name: "positive", total: 7, wantTotal: true, wantValue: 7},
 	}
 
@@ -79,6 +80,7 @@ func TestImChatSearchExecutePrettyTotal(t *testing.T) {
 	}{
 		{name: "missing uses displayed count", wantFooter: "1 chat(s) found"},
 		{name: "zero uses displayed count", total: 0, wantFooter: "1 chat(s) found"},
+		{name: "fractional uses displayed count", total: 0.5, wantFooter: "1 chat(s) found"},
 		{name: "positive uses server total", total: 7, wantFooter: "7 chat(s) found"},
 	}
 
