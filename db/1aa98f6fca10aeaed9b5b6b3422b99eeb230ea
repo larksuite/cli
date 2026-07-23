@@ -1,0 +1,31 @@
+internal/event/bus/bus.go
+  s_df60c64303abeb::t_890e75b859d051 74-85,103-106,132-134,159-165,273-277
+internal/event/bus/conn.go
+  s_df60c64303abeb::t_f093bc306881eb 109-120,386-403
+internal/event/bus/encrypt_key.go
+  s_df60c64303abeb::t_48e26cebec24db 1-407
+internal/event/bus/encrypt_key_test.go
+  s_df60c64303abeb::t_4dd3586a281668 1-408
+internal/event/source/feishu.go
+  s_df60c64303abeb::t_46ffefdc460dc7 55-66,178-184
+internal/event/source/feishu_test.go
+  s_df60c64303abeb::t_f2e5958002ad06 9,307-366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "db1aa98f6fca10aeaed9b5b6b3422b99eeb230ea",
+  "prompts": {},
+  "sessions": {
+    "s_df60c64303abeb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a28bbd99c2ff76d32",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
