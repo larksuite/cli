@@ -238,6 +238,56 @@ func TestConvertToIMMarkdownParagraphHeadingAndListItemEdges(t *testing.T) {
 	})
 }
 
+func TestConvertToIMMarkdownHeadingSeq(t *testing.T) {
+	t.Parallel()
+
+	// Multiple headings in one document share numbering state; advancing a
+	// shallower level resets the deeper counters (1., 1.1., 1.2., 2., 2.1.).
+	imCtx := imMarkdownContext{baseURL: "https://larkoffice.com"}
+	doc := strings.Join([]string{
+		`<h1 seq="auto" seq-level="auto">Section A</h1>`,
+		`<h2 seq="auto" seq-level="auto">Section A.1</h2>`,
+		`<h2 seq="auto" seq-level="auto">Section A.2</h2>`,
+		`<h1 seq="auto" seq-level="auto">Section B</h1>`,
+		`<h2 seq="auto" seq-level="auto">Section B.1</h2>`,
+	}, "\n")
+	want := strings.Join([]string{
+		`# 1. Section A`,
+		`## 1.1. Section A.1`,
+		`## 1.2. Section A.2`,
+		`# 2. Section B`,
+		`## 2.1. Section B.1`,
+	}, "\n")
+	if got := convertToIMMarkdown(doc, imCtx); got != want {
+		t.Fatalf("convertToIMMarkdown() = %q, want %q", got, want)
+	}
+
+	// Headings without seq, with explicit seq, and empty headings keep their
+	// existing (non-numbered or verbatim) behavior.
+	assertIMMarkdownCases(t, []imMarkdownCase{
+		{
+			name:  "heading without seq has no prefix",
+			input: `<h1>Plain</h1>`,
+			want:  `# Plain`,
+		},
+		{
+			name:  "explicit seq is used verbatim",
+			input: `<h2 seq="3">Custom</h2>`,
+			want:  `## 3. Custom`,
+		},
+		{
+			name:  "explicit seq keeps trailing dot",
+			input: `<h3 seq="2.">Custom</h3>`,
+			want:  `### 2. Custom`,
+		},
+		{
+			name:  "empty auto heading stays empty",
+			input: `<h1 seq="auto" seq-level="auto"> </h1>`,
+			want:  ``,
+		},
+	})
+}
+
 func TestConvertToIMMarkdownGridAndColumn(t *testing.T) {
 	t.Parallel()
 

@@ -8,6 +8,7 @@ import (
 	"html"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -15,6 +16,10 @@ import (
 type imMarkdownContext struct {
 	baseURL         string
 	blockquoteDepth int
+	// headingSeq tracks running counters for auto-numbered headings
+	// (seq="auto"). It is a shared pointer so sibling and nested headings
+	// resolve against the same numbering state during one conversion.
+	headingSeq *imMarkdownHeadingSeq
 }
 
 type imMarkdownHandleFunc func(segment, inner string, attrs map[string]string, imCtx imMarkdownContext) string
@@ -161,6 +166,9 @@ func imMarkdownBaseURLFromInput(raw string) (string, bool) {
 }
 
 func convertToIMMarkdown(content string, imCtx imMarkdownContext) string {
+	if imCtx.headingSeq == nil {
+		imCtx.headingSeq = &imMarkdownHeadingSeq{}
+	}
 	var out strings.Builder
 	for offset := 0; offset < len(content); {
 		// Scan only to the next XML-like opening tag. Plain Markdown text between
@@ -253,7 +261,7 @@ func handleIMMarkdownTitle(_ string, inner string, _ map[string]string, imCtx im
 }
 
 func handleIMMarkdownHeading(level int) imMarkdownHandleFunc {
-	return func(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	return func(_ string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
 		text := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
 		if text == "" {
 			return ""
@@ -262,8 +270,52 @@ func handleIMMarkdownHeading(level int) imMarkdownHandleFunc {
 		if markdownLevel > 6 {
 			markdownLevel = 6
 		}
-		return strings.Repeat("#", markdownLevel) + " " + text
+		prefix := resolveIMMarkdownHeadingSeq(attrs, markdownLevel, imCtx)
+		if prefix != "" {
+			prefix += " "
+		}
+		return strings.Repeat("#", markdownLevel) + " " + prefix + text
 	}
+}
+
+// imMarkdownHeadingSeq tracks running counters for auto-numbered headings so a
+// nested document renders as 1., 1.1., 1.2., 2., etc. It mirrors the
+// auto-numbering already applied to ordered list items, but heading counters
+// are scoped per depth: advancing a shallower level resets all deeper counters.
+type imMarkdownHeadingSeq struct {
+	counters [7]int // counters[1..6] are used; index 0 is unused
+}
+
+// resolveIMMarkdownHeadingSeq returns the numbering prefix for a heading, or ""
+// when no seq attribute is present (the heading is not auto-numbered). An
+// explicit seq value is used verbatim (mirroring list-item handling); seq="auto"
+// resolves against the running counter state for the heading's level.
+func resolveIMMarkdownHeadingSeq(attrs map[string]string, level int, imCtx imMarkdownContext) string {
+	seq := strings.TrimSpace(attrs["seq"])
+	if seq == "" {
+		return ""
+	}
+	if seq != "auto" {
+		return strings.TrimSuffix(seq, ".") + "."
+	}
+	if imCtx.headingSeq == nil {
+		return ""
+	}
+	if level < 1 {
+		level = 1
+	}
+	if level > 6 {
+		level = 6
+	}
+	imCtx.headingSeq.counters[level]++
+	for deeper := level + 1; deeper <= 6; deeper++ {
+		imCtx.headingSeq.counters[deeper] = 0
+	}
+	parts := make([]string, 0, level)
+	for l := 1; l <= level; l++ {
+		parts = append(parts, strconv.Itoa(imCtx.headingSeq.counters[l]))
+	}
+	return strings.Join(parts, ".") + "."
 }
 
 func handleIMMarkdownParagraph(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {

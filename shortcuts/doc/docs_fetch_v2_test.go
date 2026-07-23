@@ -755,11 +755,24 @@ func TestDocsFetchMarkdownDetailDowngradeWarnsInOutput(t *testing.T) {
 	}
 	data, _ := envelope["data"].(map[string]interface{})
 	warnings, _ := data["warnings"].([]interface{})
-	if len(warnings) != 1 {
-		t.Fatalf("warnings = %#v, want one downgrade warning", data["warnings"])
+	if len(warnings) != 2 {
+		t.Fatalf("warnings = %#v, want downgrade and heading-seq warnings", data["warnings"])
 	}
-	if got, _ := warnings[0].(string); !strings.Contains(got, "returning markdown output") || !strings.Contains(got, "ignoring the unsupported detail option") {
-		t.Fatalf("unexpected warning: %q", got)
+	gotDowngrade, gotHeading := false, false
+	for _, w := range warnings {
+		s, _ := w.(string)
+		if strings.Contains(s, "returning markdown output") && strings.Contains(s, "ignoring the unsupported detail option") {
+			gotDowngrade = true
+		}
+		if strings.Contains(s, "heading auto-numbering") {
+			gotHeading = true
+		}
+	}
+	if !gotDowngrade {
+		t.Fatalf("missing detail downgrade warning in: %#v", warnings)
+	}
+	if !gotHeading {
+		t.Fatalf("missing heading-seq warning in: %#v", warnings)
 	}
 }
 

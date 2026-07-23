@@ -77,6 +77,9 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" && runtime.Format == "pretty" {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
 	}
+	if warning := addFetchMarkdownHeadingSeqWarning(runtime, data); warning != "" && runtime.Format == "pretty" {
+		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
+	}
 	if isIMMarkdownFetch(runtime) {
 		applyFetchIMMarkdown(data, runtime.Str("doc"))
 	}
@@ -268,6 +271,21 @@ func addFetchDetailDowngradeWarning(runtime *common.RuntimeContext, data map[str
 		return ""
 	}
 	warning := fmt.Sprintf("--detail %s is only supported with --doc-format xml; returning %s output and ignoring the unsupported detail option", detail, format)
+	appendDocWarning(data, warning)
+	return warning
+}
+
+// addFetchMarkdownHeadingSeqWarning warns that heading auto-numbering
+// (seq/seq-level) cannot be preserved in plain --doc-format markdown output.
+// The server returns literal markdown and drops seq/seq-level server-side, so it
+// is unrecoverable locally; callers must re-fetch with --doc-format xml or
+// --doc-format im-markdown. This is a static format-level note: for plain
+// markdown we cannot detect whether the source document actually uses numbering.
+func addFetchMarkdownHeadingSeqWarning(runtime *common.RuntimeContext, data map[string]interface{}) string {
+	if strings.TrimSpace(runtime.Str("doc-format")) != "markdown" {
+		return ""
+	}
+	warning := "heading auto-numbering (seq/seq-level) is not represented in plain --doc-format markdown output; re-fetch with --doc-format xml or --doc-format im-markdown to preserve heading numbering"
 	appendDocWarning(data, warning)
 	return warning
 }
