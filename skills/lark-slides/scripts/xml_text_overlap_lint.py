@@ -1496,11 +1496,15 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
         )
         if not has_text_content(element):
             continue
-        declared_font_sizes = [
-            float(descendant.attrib["fontSize"])
-            for descendant in node.iter()
-            if descendant.attrib.get("fontSize") is not None
-        ]
+        declared_font_sizes = []
+        for descendant in node.iter():
+            raw_declared_font_size = descendant.attrib.get("fontSize")
+            if raw_declared_font_size is None:
+                continue
+            try:
+                declared_font_sizes.append(float(raw_declared_font_size))
+            except ValueError:
+                continue
         if declared_font_sizes:
             element["fontSize"] = max(declared_font_sizes)
     for match in re.finditer(r"<icon\b([^>]*)>", slide_xml):

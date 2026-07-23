@@ -216,7 +216,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         )
         self.assertEqual(result["summary"]["error_count"], 0)
 
-    def test_lint_xml_single_slide_uses_default_canvas_without_bounds_checks(self) -> None:
+    def test_lint_xml_single_slide_reports_out_of_canvas_and_blank_slide_errors(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
