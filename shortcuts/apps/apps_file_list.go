@@ -12,10 +12,23 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// maxFileListPageSize 是 file_list 分页上限，与后端 paas_storage checkMaxKeys 的 (0, 200] 契约对齐：
+// page_size > 200 服务端直接返回 ErrInvalidRequest("maxKeys not in range (0, 200]")。CLI 前置校验避免无谓往返。
+// 注：服务端对 page_size<=0 会兜底为默认值，但 CLI 默认已是 20、显式传 <1 属误用，故与其它 list 命令一致地按 [1, 200] 校验。
+const maxFileListPageSize = 200
+
+// validateFileListPageSize 前置校验 --page-size ∈ [1, maxFileListPageSize]，与后端 checkMaxKeys 的 (0, 200] 契约对齐。
+func validateFileListPageSize(n int) error {
+	if n < 1 || n > maxFileListPageSize {
+		return appsValidationParamError("--page-size", "--page-size must be between 1 and %d", maxFileListPageSize)
+	}
+	return nil
+}
+
 // AppsFileList lists files in a Miaoda app's storage (cursor pagination)。
 //
 // GET /apps/{app_id}/storage/file_list。过滤器：--name / --path / --type / --size-gt /
-// --size-lt / --uploaded-since / --uploaded-until（精确或区间），分页 --page-size/--page-token。
+// --size-lt / --uploaded-since / --uploaded-until（精确或区间），分页 --page-size(1..200)/--page-token。
 // file 域不分 dev/online，无 --env。
 //
 // pretty 渲染 5 列：file_name / path / size / type / uploaded_at；空结果打 "No files found."。
@@ -41,11 +54,15 @@ var AppsFileList = common.Shortcut{
 		{Name: "size-lt", Type: "int", Desc: "filter: size less than (bytes)"},
 		{Name: "uploaded-since", Desc: "filter: uploaded at or after; relative (7d/2h/30s) | date (2026-04-15) | datetime (2026-04-15T10:00:00) | ISO 8601 w/ TZ (bare date/datetime read in local timezone)"},
 		{Name: "uploaded-until", Desc: "filter: uploaded at or before; relative (7d/2h/30s) | date (2026-04-15) | datetime (2026-04-15T10:00:00) | ISO 8601 w/ TZ (bare date/datetime read in local timezone)"},
-		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
+		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1..200)"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		// page_size 前置校验：对齐后端 checkMaxKeys 的 (0, 200] 契约，避免 >200 触发服务端 ErrInvalidRequest。
+		if err := validateFileListPageSize(rctx.Int("page-size")); err != nil {
 			return err
 		}
 		// 设计原则三：<timestamp> 多格式 → 归一化为 RFC3339 UTC，回写到 flag 供 buildFileListParams 透传。
