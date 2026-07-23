@@ -1,0 +1,51 @@
+cmd/event/subscription/create.go
+  s_7e31c5476643fb::t_9336f8cc5e9305 23-24,31,38-39,41-45,48,51,53,137,139,146-147,155,165,219,224,237,248,266,270,272,280,315,319,331-332,336-337,345,351,356-357,364,368,416,432,436,438-440,443,446,476,504-505,509-510,518,528,545-546,563,637,658
+cmd/event/subscription/create_test.go
+  s_7e31c5476643fb::t_ee7b835a14ac87 79,238,583,623-624,665-666,669,745-746,774,812-813,851,889-891,938,944,958,993,1081,1147-1148,1185-1187,1190,1194,1223,1278-1279,1354,1411,1433,1481,1562,1583,1595
+cmd/event/subscription/delete.go
+  s_7e31c5476643fb::t_fddbb453a1f87f 25,34,41-44,48-49,172,174,182,187,198-199
+cmd/event/subscription/delete_test.go
+  s_7e31c5476643fb::t_e4272c9bed2bc9 52,150
+cmd/event/subscription/get.go
+  s_7e31c5476643fb::t_1dd7a2850b990c 30-31,121-123
+cmd/event/subscription/get_test.go
+  s_7e31c5476643fb::t_32fe855c853689 24,90,94,98
+cmd/event/subscription/list.go
+  s_7e31c5476643fb::t_05e119972fe624 26,33,42-43
+cmd/event/subscription/list_test.go
+  s_7e31c5476643fb::t_351817a7d0d5af 25,141,185
+cmd/event/subscription/reactivate.go
+  s_7e31c5476643fb::t_6b83dd30aeaa39 23,32,39,41,46,155
+cmd/event/subscription/reactivate_test.go
+  s_7e31c5476643fb::t_89602524509095 92,196,207,233,241
+cmd/event/subscription/renew.go
+  s_7e31c5476643fb::t_0bca19fc9688fb 23,32,38-40,47,155
+cmd/event/subscription/renew_test.go
+  s_7e31c5476643fb::t_53d456f66c8451 91,190,202
+cmd/event/subscription/subscription.go
+  s_7e31c5476643fb::t_3adb36a450098f 6,33-35,94,101,103,110,152-153,219-223,238-239,251,258,260,266,293-296,326,332,351-352,360,385,425
+cmd/event/subscription/subscription_test.go
+  s_7e31c5476643fb::t_5c43f921861894 60,181-182,219-220,312
+cmd/event/subscription/update.go
+  s_7e31c5476643fb::t_21ca6ff8aca78f 24,35,43-45,51,53,58,82-83,106,127,130,198,213,236-237,247,256,259,271,275,287-288,290
+cmd/event/subscription/update_test.go
+  s_7e31c5476643fb::t_b1eb184f50caad 71,207,253-254,325-327,367,370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6540dc6a7aad461b87109f2113f6b24e78062560",
+  "prompts": {},
+  "sessions": {
+    "s_7e31c5476643fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-afa71a2f4621b1d53",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
