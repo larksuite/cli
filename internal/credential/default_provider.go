@@ -59,22 +59,33 @@ func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) e
 	return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg).WithCode(code)
 }
 
+// WorkspaceConfigSource supplies the invocation's consistent workspace config
+// view. The interface is owned by this consumer so credential resolution does
+// not depend on a concrete cache implementation.
+type WorkspaceConfigSource interface {
+	MultiAppConfig() (*core.MultiAppConfig, error)
+}
+
 // DefaultAccountProvider resolves account from config.json via keychain.
 type DefaultAccountProvider struct {
 	keychain func() keychain.KeychainAccess
 	profile  string
+	config   WorkspaceConfigSource
 }
 
-func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string) *DefaultAccountProvider {
+func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string, config WorkspaceConfigSource) *DefaultAccountProvider {
 	if kc == nil {
 		kc = keychain.Default
 	}
-	return &DefaultAccountProvider{keychain: kc, profile: profile}
+	if config == nil {
+		config = core.NewConfigSnapshot()
+	}
+	return &DefaultAccountProvider{keychain: kc, profile: profile, config: config}
 }
 
 func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, error) {
-	// Load config once — used for both credentials and strict mode.
-	multi, err := core.LoadMultiAppConfig()
+	// The invocation snapshot is shared with runtime policy composition.
+	multi, err := p.config.MultiAppConfig()
 	if err != nil {
 		return nil, core.NotConfiguredError()
 	}

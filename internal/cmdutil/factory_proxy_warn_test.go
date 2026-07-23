@@ -73,7 +73,7 @@ func TestCachedLarkClientFunc_ProxyWarnGate(t *testing.T) {
 			// normalizeStreams copies the struct (out := *s), so the
 			// StderrIsTerminal field survives into f.IOStreams.
 			f := NewDefault(&IOStreams{ErrOut: io.Discard, StderrIsTerminal: tc.terminal}, InvocationContext{})
-			if _, err := cachedLarkClientFunc(f)(); err != nil {
+			if _, err := cachedLarkClientFunc(f, nil)(); err != nil {
 				t.Fatalf("lark client init: %v", err)
 			}
 

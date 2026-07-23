@@ -136,14 +136,22 @@ type CredentialProvider struct {
 	httpClient   func() (*http.Client, error)
 	warnOut      io.Writer
 
-	accountOnce    sync.Once
-	account        *Account
-	accountErr     error
-	selectedSource credentialSource
+	accountOnce sync.Once
+	resolution  accountResolution
+	accountErr  error
 
 	hintOnce sync.Once
 	hint     *IdentityHint
 	hintErr  error
+}
+
+// accountResolution records the result of one provider-selection decision.
+// Keeping account provenance beside the selected token source prevents later
+// consumers from trying to reconstruct provenance from config or environment.
+type accountResolution struct {
+	account          *Account
+	tokenSource      credentialSource
+	workspaceManaged bool
 }
 
 // NewCredentialProvider creates a CredentialProvider.
@@ -167,16 +175,16 @@ func (p *CredentialProvider) SetWarnOut(warnOut io.Writer) *CredentialProvider {
 // This is acceptable for CLI (single invocation per process) but not for long-running servers.
 func (p *CredentialProvider) ResolveAccount(ctx context.Context) (*Account, error) {
 	p.accountOnce.Do(func() {
-		p.account, p.accountErr = p.doResolveAccount(ctx)
+		p.resolution, p.accountErr = p.doResolveAccount(ctx)
 	})
-	return p.account, p.accountErr
+	return p.resolution.account, p.accountErr
 }
 
-func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, error) {
+func (p *CredentialProvider) doResolveAccount(ctx context.Context) (accountResolution, error) {
 	for _, prov := range p.providers {
 		acct, err := prov.ResolveAccount(ctx)
 		if err != nil {
-			return nil, err
+			return accountResolution{}, err
 		}
 		if acct != nil {
 			internal := convertAccount(acct)
@@ -191,19 +199,32 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 				internal.UserOpenId = ""
 				internal.UserName = ""
 			}
-			p.selectedSource = source
-			return internal, nil
+			return accountResolution{account: internal, tokenSource: source}, nil
 		}
 	}
 	if p.defaultAcct != nil {
 		acct, err := p.defaultAcct.ResolveAccount(ctx)
 		if err != nil {
-			return nil, err
+			return accountResolution{}, err
 		}
-		p.selectedSource = defaultTokenSource{resolver: p.defaultToken}
-		return acct, nil
+		return accountResolution{
+			account:          acct,
+			tokenSource:      defaultTokenSource{resolver: p.defaultToken},
+			workspaceManaged: true,
+		}, nil
 	}
-	return nil, core.NotConfiguredError()
+	return accountResolution{}, core.NotConfiguredError()
+}
+
+// ResolveAccountWithProvenance returns the account together with whether its
+// credentials are managed by workspace config/keychain. Both values come from
+// the same cached provider selection.
+func (p *CredentialProvider) ResolveAccountWithProvenance(ctx context.Context) (*Account, bool, error) {
+	acct, err := p.ResolveAccount(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	return acct, p.resolution.workspaceManaged, nil
 }
 
 // enrichUserInfo resolves user identity when extension provides a UAT.
@@ -239,8 +260,8 @@ func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account, 
 }
 
 func (p *CredentialProvider) selectedCredentialSource(ctx context.Context) (credentialSource, error) {
-	if p.selectedSource != nil {
-		return p.selectedSource, nil
+	if p.resolution.tokenSource != nil {
+		return p.resolution.tokenSource, nil
 	}
 	if p.defaultAcct == nil {
 		return nil, nil
@@ -248,10 +269,10 @@ func (p *CredentialProvider) selectedCredentialSource(ctx context.Context) (cred
 	if _, err := p.ResolveAccount(ctx); err != nil {
 		return nil, err
 	}
-	if p.selectedSource == nil {
+	if p.resolution.tokenSource == nil {
 		return nil, fmt.Errorf("credential provider resolved an account without selecting a token source")
 	}
-	return p.selectedSource, nil
+	return p.resolution.tokenSource, nil
 }
 
 func resolveTokenFromSource(ctx context.Context, source credentialSource, req TokenSpec) (*TokenResult, error) {

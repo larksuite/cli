@@ -22,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/riskcontrol"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
 	"github.com/larksuite/cli/internal/transport"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
@@ -33,7 +34,7 @@ import (
 //	Phase 1: HttpClient (no credential dependency)
 //	Phase 2: Credential (sole data source for account info)
 //	Phase 3: Config derived from Credential
-//	Phase 4: LarkClient derived from Credential
+//	Phase 4: LarkClient derived from Credential and workspace policy
 func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	streams = normalizeStreams(streams)
 	f := &Factory{
@@ -54,6 +55,7 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 
 	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
+	workspaceConfig := core.NewConfigSnapshot()
 
 	// Phase 1: HttpClient (no credential dependency)
 	f.HttpClient = cachedHttpClientFunc(f)
@@ -65,9 +67,10 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		Profile:    inv.Profile,
 		HttpClient: f.HttpClient,
 		ErrOut:     f.IOStreams.ErrOut,
+		Config:     workspaceConfig,
 	})
 
-	// Phase 3: Config derived from Credential via an explicit conversion boundary.
+	// Phase 3: Runtime config contains resolved account data only.
 	f.Config = sync.OnceValues(func() (*core.CliConfig, error) {
 		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
@@ -78,8 +81,9 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		return cfg, nil
 	})
 
-	// Phase 4: LarkClient from Credential (placeholder AppSecret)
-	f.LarkClient = cachedLarkClientFunc(f)
+	// Phase 4: LarkClient composes account provenance and workspace policy at
+	// the SDK transport boundary.
+	f.LarkClient = cachedLarkClientFunc(f, workspaceConfig)
 
 	return f
 }
@@ -128,9 +132,9 @@ func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 	})
 }
 
-func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
+func cachedLarkClientFunc(f *Factory, workspaceConfig workspaceConfigSource) func() (*lark.Client, error) {
 	return sync.OnceValues(func() (*lark.Client, error) {
-		acct, err := f.Credential.ResolveAccount(context.Background())
+		acct, workspaceManaged, err := f.Credential.ResolveAccountWithProvenance(context.Background())
 		if err != nil {
 			return nil, err
 		}
@@ -142,8 +146,15 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
+		hostSignalSource := resolveSDKHostSignalSource(workspaceManaged, workspaceConfig)
+		var sdkBase http.RoundTripper = transport.Shared()
+		// The innermost SDK boundary always strips reserved host-signal headers;
+		// a nil source makes it strip-only for external credential providers and
+		// workspace opt-out.
+		sdkBase = riskcontrol.NewTransport(sdkBase, hostSignalSource)
+		sdkTransport := wrapSDKTransport(sdkBase)
 		opts = append(opts, lark.WithHttpClient(&http.Client{
-			Transport:     buildSDKTransport(),
+			Transport:     sdkTransport,
 			CheckRedirect: safeRedirectPolicy,
 		}))
 		ep := core.ResolveEndpoints(acct.Brand)
@@ -152,9 +163,8 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 	})
 }
 
-func buildSDKTransport() http.RoundTripper {
-	var sdkTransport http.RoundTripper = transport.Shared()
-	sdkTransport = &RetryTransport{Base: sdkTransport}
+func wrapSDKTransport(next http.RoundTripper) http.RoundTripper {
+	var sdkTransport http.RoundTripper = &RetryTransport{Base: next}
 	sdkTransport = &UserAgentTransport{Base: sdkTransport}
 	sdkTransport = &BuildHeaderTransport{Base: sdkTransport}
 	sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
@@ -166,11 +176,12 @@ type credentialDeps struct {
 	Profile    string
 	HttpClient func() (*http.Client, error)
 	ErrOut     io.Writer
+	Config     workspaceConfigSource
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
 	providers := extcred.Providers()
-	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile)
+	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile, deps.Config)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
 	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
 	// happens before the command runs, so any plain-text warning written
