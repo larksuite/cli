@@ -266,7 +266,9 @@ func handleIMMarkdownHeading(level int) imMarkdownHandleFunc {
 		if text == "" {
 			return ""
 		}
-		markdownLevel := level
+		// Prefer the server-provided seq-level for the heading depth; fall
+		// back to the <hN> tag level when seq-level is absent or "auto".
+		markdownLevel := resolveIMMarkdownHeadingLevel(attrs, level)
 		if markdownLevel > 6 {
 			markdownLevel = 6
 		}
@@ -284,6 +286,18 @@ func handleIMMarkdownHeading(level int) imMarkdownHandleFunc {
 // are scoped per depth: advancing a shallower level resets all deeper counters.
 type imMarkdownHeadingSeq struct {
 	counters [7]int // counters[1..6] are used; index 0 is unused
+}
+
+// resolveIMMarkdownHeadingLevel returns the heading depth used for markdown
+// rendering and auto-numbering. It prefers an explicit server-provided
+// seq-level attribute (e.g. seq-level="2"); when seq-level is absent
+// or "auto", it falls back to the <hN> tag level. This preserves
+// the seq-level metadata the server attaches to headings (see issue #1781).
+func resolveIMMarkdownHeadingLevel(attrs map[string]string, tagLevel int) int {
+	if lvl, err := strconv.Atoi(strings.TrimSpace(attrs["seq-level"])); err == nil && lvl > 0 {
+		return lvl
+	}
+	return tagLevel
 }
 
 // resolveIMMarkdownHeadingSeq returns the numbering prefix for a heading, or ""

@@ -288,6 +288,32 @@ func TestConvertToIMMarkdownHeadingSeq(t *testing.T) {
 	})
 }
 
+func TestConvertToIMMarkdownHeadingSeqLevel(t *testing.T) {
+	t.Parallel()
+
+	// An explicit server-provided seq-level drives the heading depth and
+	// overrides the <hN> tag; when seq-level is absent it falls back
+	// to the tag level. These directly exercise the seq-level attribute
+	// (see issue #1781), independent of the auto-numbering counter.
+	assertIMMarkdownCases(t, []imMarkdownCase{
+		{
+			name:  "explicit seq-level overrides tag level (h1 -> 3)",
+			input: `<h1 seq="1" seq-level="3">Section</h1>`,
+			want:  `### 1. Section`,
+		},
+		{
+			name:  "explicit seq-level=2 on h1",
+			input: `<h1 seq="9" seq-level="2">Section</h1>`,
+			want:  `## 9. Section`,
+		},
+		{
+			name:  "seq-level absent falls back to tag level",
+			input: `<h1 seq="4">Section</h1>`,
+			want:  `# 4. Section`,
+		},
+	})
+}
+
 func TestConvertToIMMarkdownGridAndColumn(t *testing.T) {
 	t.Parallel()
 
