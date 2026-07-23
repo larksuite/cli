@@ -1924,6 +1924,54 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         codes = [issue["code"] for issue in result["slides"][0]["issues"]]
         self.assertIn("sparse_slide_content", codes)
 
+    def test_lint_xml_accepts_whitespace_around_attribute_equals_sign(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="visible" type="text" topLeftX = "80" topLeftY = "80" width = "300" height = "60">
+                  <content><p>hello</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["slides"][0]["element_count"], 1)
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertNotIn("blank_slide", codes)
+
+    def test_lint_xml_reports_blank_slide_for_full_canvas_background_only(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="background" type="rect" topLeftX="0" topLeftY="0" width="960" height="540">
+                  <fill><fillColor color="rgba(240, 235, 220, 1)"/></fill>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertIn("blank_slide", codes)
+
+    def test_has_similar_short_card_peer_ignores_invisible_peers(self) -> None:
+        visible_card = {"kind": "shape", "type": "rect", "x": 0, "y": 0, "width": 300, "height": 100}
+        ghost_1 = {
+            "kind": "shape", "type": "rect", "x": 400, "y": 0, "width": 300, "height": 100, "alpha": 0,
+        }
+        ghost_2 = {
+            "kind": "shape", "type": "rect", "x": 800, "y": 0, "width": 300, "height": 100, "alpha": 0,
+        }
+
+        self.assertFalse(
+            xml_text_overlap_lint.has_similar_short_card_peer(
+                visible_card, [visible_card, ghost_1, ghost_2]
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

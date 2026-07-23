@@ -87,7 +87,9 @@ def parse_args(argv: list[str]) -> dict[str, Any]:
 
 
 def extract_attribute(tag_source: str, name: str) -> str | None:
-    match = re.search(fr"{re.escape(name)}=(?:\"([^\"]+)\"|'([^']+)')", tag_source)
+    match = re.search(
+        fr"(?:^|\s){re.escape(name)}\s*=\s*(?:\"([^\"]+)\"|'([^']+)')", tag_source
+    )
     if not match:
         return None
     return match.group(1) if match.group(1) is not None else match.group(2)
@@ -1418,6 +1420,7 @@ def rectangle_union_area(rectangles: list[dict[str, int | float]]) -> int | floa
 def has_similar_short_card_peer(element: dict[str, Any], elements: list[dict[str, Any]]) -> bool:
     return sum(
         other is not element
+        and is_visually_rendered(other)
         and other["kind"] == "shape"
         and other["type"] == "rect"
         and other["width"] >= MIN_CONTAINER_WIDTH
@@ -1651,6 +1654,19 @@ def is_slide_content_present(
     # count here — deny-list only what's actually invisible (alpha<=0 or zero on-canvas area)
     # instead of maintaining an allow-list that silently treats unlisted kinds as blank.
     if not is_visually_rendered(element):
+        return False
+    if (
+        element["kind"] == "shape"
+        and element["type"] == "rect"
+        and not has_text_content(element)
+        and element["x"] <= 2
+        and element["y"] <= 2
+        and element["width"] >= slide_bbox["width"] - 4
+        and element["height"] >= slide_bbox["height"] - 4
+    ):
+        # A full-canvas plain rect is a background panel, not content -- same reasoning as
+        # is_layout_container's existing background exclusion. A slide with nothing else on it
+        # is still effectively blank.
         return False
     bbox = line_stroke_bbox(element) if element["kind"] == "line" else element
     return clipped_bbox(bbox, slide_bbox) is not None
