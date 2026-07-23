@@ -43,8 +43,15 @@ ROUNDTRIP_SXSD_ATTRS = {
     ("chart", "updated"),
     ("chartData", "isStaticData"),
 }
+# Slides readback echoes each chartField's CSV text as per-value <chartParsedValues> children;
+# it's server-emitted, absent from the write schema, and appears on virtually every chart-bearing
+# deck, so treating it as an unsupported tag would block per-slide linting document-wide.
+ROUNDTRIP_SXSD_TAGS = {"chartParsedValues"}
 DEFAULT_TABLE_COLUMN_WIDTH = 110
 DEFAULT_TABLE_ROW_HEIGHT = 37
+# Sub-pixel canvas overflow is floating-point rounding noise (e.g. rotated-bbox math), not a
+# visible defect; keep this well under 1px so real overflow is still always caught.
+CANVAS_OVERFLOW_TOLERANCE = 0.5
 _SXSD_TAG_ATTRIBUTES_CACHE: dict[str, set[str]] | None = None
 _ICONPARK_ICON_TYPES_CACHE: set[str] | None = None
 
@@ -375,6 +382,8 @@ def validate_sxsd_tag_attributes(root: ET.Element) -> list[dict[str, Any]]:
 
         tag_name = xml_local_name(element.tag)
         current_path = f"{path}/{tag_name}" if path else tag_name
+        if tag_name in ROUNDTRIP_SXSD_TAGS:
+            return
         if tag_name not in supported_tags:
             issues.append(
                 {
@@ -1217,7 +1226,9 @@ def detect_elements_out_of_canvas(
             "bottom": max(bbox["y"] + bbox["height"] - slide_height, 0),
         }
         overflow_details = [
-            f"{side} by {amount:g}px" for side, amount in overflow.items() if amount > 0
+            f"{side} by {amount:g}px"
+            for side, amount in overflow.items()
+            if amount > CANVAS_OVERFLOW_TOLERANCE
         ]
         if not overflow_details:
             continue
@@ -1348,7 +1359,12 @@ def lint_slide(
                 }
             )
 
-    return {"slide_number": slide_number, "element_count": len(elements), "issues": issues}
+    return {
+        "slide_number": slide_number,
+        "element_count": len(elements),
+        "elements": elements,
+        "issues": issues,
+    }
 
 
 
@@ -1401,7 +1417,8 @@ def rectangle_union_area(rectangles: list[dict[str, int | float]]) -> int | floa
 
 def has_similar_short_card_peer(element: dict[str, Any], elements: list[dict[str, Any]]) -> bool:
     return sum(
-        other["kind"] == "shape"
+        other is not element
+        and other["kind"] == "shape"
         and other["type"] == "rect"
         and other["width"] >= MIN_CONTAINER_WIDTH
         and other["height"] >= MIN_SHORT_CARD_HEIGHT
@@ -1573,6 +1590,9 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "order": len(elements),
             }
         )
+    for line_element in extract_line_elements(slide_xml):
+        line_element["order"] = len(elements)
+        elements.append(line_element)
     return elements
 
 
@@ -1608,9 +1628,32 @@ def slide_content_visual_bbox(
     if element["kind"] == "shape" and has_text_content(element):
         estimated = own_text_visual_bbox(element)
         return clipped_bbox(estimated, slide_bbox) if estimated else None
+    if element["kind"] == "line":
+        # a straight horizontal/vertical line has zero width or height in one axis; clipped_bbox
+        # treats zero-area rects as invisible, so pad to its rendered stroke thickness instead.
+        return clipped_bbox(line_stroke_bbox(element), slide_bbox)
     if element["kind"] in {"img", "chart", "table", "whiteboard", "icon", "polyline"}:
         return clipped_bbox(element, slide_bbox)
     return None
+
+
+def line_stroke_bbox(element: dict[str, Any]) -> dict[str, Any]:
+    return {**element, "width": max(element["width"], 1), "height": max(element["height"], 1)}
+
+
+def is_slide_content_present(
+    element: dict[str, Any], slide_bbox: dict[str, int | float]
+) -> bool:
+    # Deliberately permissive, unlike slide_content_visual_bbox: blank_slide is asking "is
+    # *anything* rendered here", not the richer "counts toward meaningful content density" bar
+    # that sparse_slide_content/sparse_container_content apply. A plain shape with no text (a
+    # decorative rect/ellipse/etc.), <undefined>, or any future SXSD data element should all
+    # count here — deny-list only what's actually invisible (alpha<=0 or zero on-canvas area)
+    # instead of maintaining an allow-list that silently treats unlisted kinds as blank.
+    if not is_visually_rendered(element):
+        return False
+    bbox = line_stroke_bbox(element) if element["kind"] == "line" else element
+    return clipped_bbox(bbox, slide_bbox) is not None
 
 
 def is_large_visual_child(element: dict[str, Any], container: dict[str, Any]) -> bool:
@@ -1654,7 +1697,6 @@ def detect_sparse_container_content(
             {
                 "level": "warning",
                 "code": "sparse_container_content",
-                "schema_version": "1.0",
                 "target": {
                     "slide_number": slide_number,
                     "container_id": container["id"],
@@ -1698,7 +1740,6 @@ def detect_sparse_slide_content(
         {
             "level": "warning",
             "code": "sparse_slide_content",
-            "schema_version": "1.0",
             "target": {
                 "slide_number": slide_number,
                 "bbox": slide_bbox,
@@ -1727,9 +1768,7 @@ def detect_blank_slide(
 ) -> list[dict[str, Any]]:
     slide_bbox = {"x": 0, "y": 0, "width": slide_width, "height": slide_height}
     visible_elements = [
-        element
-        for element in elements
-        if slide_content_visual_bbox(element, slide_bbox) is not None
+        element for element in elements if is_slide_content_present(element, slide_bbox)
     ]
     if visible_elements:
         return []
@@ -1897,6 +1936,7 @@ def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
         end_y = extract_numeric_attribute(attrs, "endY")
         if any(value is None for value in (start_x, start_y, end_x, end_y)):
             continue
+        line_alpha = extract_numeric_attribute(attrs, "alpha")
         elements.append(
             {
                 "id": extract_attribute(attrs, "id") or f"line-{len(elements) + 1}",
@@ -1907,6 +1947,7 @@ def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "width": abs(end_x - start_x),
                 "height": abs(end_y - start_y),
                 "rotation": 0,
+                "alpha": line_alpha if line_alpha is not None else 1,
                 "order": len(elements),
             }
         )
@@ -2051,12 +2092,15 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         )
         density_elements = extract_density_elements(slide_xml)
         extra_elements = [
-            *[element for element in density_elements if element["kind"] in {"icon", "polyline"}],
-            *extract_line_elements(slide_xml),
+            element for element in density_elements if element["kind"] in {"icon", "polyline", "line"}
         ]
         elements_by_id = {
             element["id"]: element for element in [*density_elements, *extra_elements]
         }
+        # geometry["elements"] are the exact objects should_flag_overlap/detect_elements_out_of_canvas
+        # decided with inside lint_slide; prefer them so measurement/related_objects stay consistent
+        # with whatever actually triggered the issue, instead of density_elements' separate re-parse.
+        elements_by_id.update({element["id"]: element for element in geometry["elements"]})
         extra_overflow_issues = detect_elements_out_of_canvas(
             extra_elements,
             presentation["width"],

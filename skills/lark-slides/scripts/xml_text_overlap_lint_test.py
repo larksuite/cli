@@ -1803,6 +1803,127 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
 
         self.assertEqual(result["slides"][0]["issues"], [])
 
+    def test_lint_xml_does_not_report_blank_slide_for_line_only_content(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <line id="l1" startX="100" startY="100" endX="800" endY="100"/>
+                <line id="l2" startX="100" startY="200" endX="800" endY="200"/>
+                <line id="l3" startX="100" startY="300" endX="800" endY="300"/>
+                <line id="l4" startX="100" startY="400" endX="800" endY="400"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 0)
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertNotIn("blank_slide", codes)
+
+    def test_lint_xml_reports_bbox_overlap_measurement_from_decision_time_visual_bbox(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="left" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                  <content fontSize="14"><p>overlap text <span fontSize="96">big</span></p></content>
+                </shape>
+                <shape id="right" type="text" topLeftX="80" topLeftY="80" width="300" height="80">
+                  <content fontSize="14"><p>other overlap text</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = result["slides"][0]["issues"][0]
+        self.assertEqual(issue["code"], "bbox_overlap")
+        # Must match the visual bbox that should_flag_overlap actually decided with (fontSize=14
+        # from extract_elements), not the fontSize=96 max-descendant value that
+        # extract_density_elements computes for the same "left" element id.
+        self.assertEqual(issue["measurement"]["intersection_width"], 117.04)
+        self.assertEqual(issue["measurement"]["intersection_height"], 6.8)
+        self.assertEqual(issue["measurement"]["intersection_area"], 795.872)
+
+    def test_has_similar_short_card_peer_excludes_the_element_itself(self) -> None:
+        card_a = {"kind": "shape", "type": "rect", "x": 0, "y": 0, "width": 300, "height": 100}
+        card_b = {"kind": "shape", "type": "rect", "x": 400, "y": 0, "width": 300, "height": 100}
+        card_c = {"kind": "shape", "type": "rect", "x": 0, "y": 200, "width": 300, "height": 100}
+
+        self.assertFalse(
+            xml_text_overlap_lint.has_similar_short_card_peer(card_a, [card_a, card_b])
+        )
+        self.assertTrue(
+            xml_text_overlap_lint.has_similar_short_card_peer(card_a, [card_a, card_b, card_c])
+        )
+
+    def test_lint_xml_reports_schema_version_2_for_sparse_issues(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="card" type="rect" topLeftX="60" topLeftY="140" width="220" height="184"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue for issue in result["slides"][0]["issues"] if issue["code"] == "sparse_container_content"
+        )
+        self.assertEqual(issue["schema_version"], "2.0")
+
+    def test_lint_xml_does_not_report_blank_slide_for_textless_decorative_shapes(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="deco1" type="ellipse" topLeftX="60" topLeftY="60" width="300" height="300">
+                  <fill><fillColor color="rgba(37, 99, 235, 1)"/></fill>
+                </shape>
+                <shape id="deco2" type="triangle" topLeftX="500" topLeftY="200" width="200" height="200">
+                  <fill><fillColor color="rgba(220, 38, 38, 1)"/></fill>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 0)
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertNotIn("blank_slide", codes)
+
+    def test_lint_xml_still_warns_for_sparse_slide_content_despite_full_bleed_background(self) -> None:
+        # A plain textless shape now counts as "not blank" (see the test above), but a
+        # full-bleed background rect must still NOT count toward sparse_slide_content's
+        # meaningful-content coverage ratio -- otherwise every slide with a background would
+        # trivially "pass" that density check.
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="background" type="rect" topLeftX="0" topLeftY="0" width="960" height="540"/>
+                <shape id="text-1" type="text" topLeftX="60" topLeftY="80" width="200" height="30">
+                  <content fontSize="14"><p>One short line</p></content>
+                </shape>
+                <shape id="text-2" type="text" topLeftX="500" topLeftY="180" width="200" height="30">
+                  <content fontSize="14"><p>Another line</p></content>
+                </shape>
+                <shape id="text-3" type="text" topLeftX="60" topLeftY="310" width="200" height="30">
+                  <content fontSize="14"><p>Third line</p></content>
+                </shape>
+                <shape id="text-4" type="text" topLeftX="500" topLeftY="410" width="200" height="30">
+                  <content fontSize="14"><p>Fourth line</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertIn("sparse_slide_content", codes)
+
 
 if __name__ == "__main__":
     unittest.main()
