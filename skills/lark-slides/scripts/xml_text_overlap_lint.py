@@ -1040,6 +1040,19 @@ def should_flag_horizontal_text_overflow(left: dict[str, Any], right: dict[str, 
     return vertical_overlap >= min_vertical_overlap
 
 
+def horizontal_text_overflow_measurement(left: dict[str, Any], right: dict[str, Any]) -> dict[str, int | float]:
+    source, target = sorted([left, right], key=lambda element: element["x"])
+    visual_width = estimate_text_max_line_width(source)
+    source_visual_bbox = {"x": source["x"], "y": source["y"], "width": visual_width, "height": source["height"]}
+    width = intersection_width(source_visual_bbox, target)
+    height = intersection_height(source_visual_bbox, target)
+    return {
+        "intersection_width": round(width, 3),
+        "intersection_height": round(height, 3),
+        "intersection_area": round(width * height, 3),
+    }
+
+
 def should_flag_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
     if is_text_element(left) and not has_text_content(left):
         return False
@@ -1167,9 +1180,6 @@ def detect_whiteboard_external_overlaps(
 
 def element_canvas_bbox(element: dict[str, Any]) -> dict[str, int | float]:
     bbox = {key: element[key] for key in ("x", "y", "width", "height")}
-    if element["kind"] != "chart" and not (element["kind"] == "shape" and element["type"] == "text"):
-        return bbox
-
     rotation = element["rotation"]
     if not isinstance(rotation, (int, float)) or not math.isfinite(rotation):
         rotation = 0
@@ -1326,6 +1336,12 @@ def lint_slide(
                     "code": "bbox_overlap",
                     "elements": [left["id"], right["id"]],
                     "message": f'{left["id"]} overlaps {right["id"]}',
+                    "hint": "Move or resize the elements so their visual bounds no longer intersect.",
+                    **(
+                        {"measurement": horizontal_text_overflow_measurement(left, right)}
+                        if horizontal_overflow
+                        else {}
+                    ),
                 }
             )
 
@@ -1435,6 +1451,7 @@ def has_matching_image_overlay(container: dict[str, Any], elements: list[dict[st
     container_area = element_area(container)
     return any(
         element["kind"] == "img"
+        and is_visually_rendered(element)
         and intersection_area(container, element)
         / max(1, min(container_area, element_area(element)))
         >= IMAGE_OVERLAY_MATCH_RATIO
@@ -1515,6 +1532,7 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
         height = extract_numeric_attribute(attrs, "height")
         if any(value is None for value in (x, y, width, height)):
             continue
+        icon_alpha = extract_numeric_attribute(attrs, "alpha")
         elements.append(
             {
                 "id": extract_attribute(attrs, "id") or f"icon-{len(elements) + 1}",
@@ -1525,13 +1543,20 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "width": width,
                 "height": height,
                 "rotation": extract_numeric_attribute(attrs, "rotation") or 0,
+                "alpha": icon_alpha if icon_alpha is not None else 1,
                 "order": len(elements),
             }
         )
     return elements
 
 
+def is_visually_rendered(element: dict[str, Any]) -> bool:
+    return element.get("alpha", 1) > 0
+
+
 def visual_bbox(element: dict[str, Any], container: dict[str, Any]) -> dict[str, int | float] | None:
+    if not is_visually_rendered(element):
+        return None
     if is_text_element(element):
         estimated = estimate_text_visual_bbox(element)
         return clipped_bbox(estimated, container) if estimated else None
@@ -1549,6 +1574,8 @@ def own_text_visual_bbox(container: dict[str, Any]) -> dict[str, int | float] | 
 def slide_content_visual_bbox(
     element: dict[str, Any], slide_bbox: dict[str, int | float]
 ) -> dict[str, int | float] | None:
+    if not is_visually_rendered(element):
+        return None
     if is_text_element(element):
         estimated = estimate_text_visual_bbox(element)
         return clipped_bbox(estimated, slide_bbox) if estimated else None
@@ -1562,6 +1589,8 @@ def slide_content_visual_bbox(
 
 def is_large_visual_child(element: dict[str, Any], container: dict[str, Any]) -> bool:
     if element["kind"] not in {"img", "chart", "table", "whiteboard"}:
+        return False
+    if not is_visually_rendered(element):
         return False
     return element_area(element) / element_area(container) >= LARGE_VISUAL_CHILD_RATIO
 
@@ -1903,6 +1932,9 @@ def normalize_issue(
         )
     else:
         normalized.setdefault("message", normalized["code"].replace("_", " "))
+    normalized.setdefault(
+        "hint", "Inspect the reported elements and adjust them to satisfy the rule comparison."
+    )
     return normalized
 
 

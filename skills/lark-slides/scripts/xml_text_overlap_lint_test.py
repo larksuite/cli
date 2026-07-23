@@ -616,8 +616,11 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         )
         self.assertEqual(result["summary"]["error_count"], 1)
         self.assertEqual(result["summary"]["warning_count"], 0)
-        self.assertEqual(result["slides"][0]["issues"][0]["code"], "bbox_overlap")
-        self.assertEqual(result["slides"][0]["issues"][0]["elements"], ["source", "target"])
+        issue = result["slides"][0]["issues"][0]
+        self.assertEqual(issue["code"], "bbox_overlap")
+        self.assertEqual(issue["elements"], ["source", "target"])
+        self.assertGreater(issue["measurement"]["intersection_area"], 0)
+        self.assertIsNotNone(issue.get("hint"))
 
     def test_lint_xml_allows_horizontal_text_with_default_wrap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -918,6 +921,27 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertAlmostEqual(issues_by_element["rotated-text"]["overflow"]["top"], 20.710678, places=5)
         self.assertEqual(issues_by_element["rotated-chart"]["code"], "chart_out_of_canvas")
         self.assertAlmostEqual(issues_by_element["rotated-chart"]["overflow"]["right"], 20.710678, places=5)
+
+    def test_lint_xml_uses_rotated_bounds_for_rect_and_image_canvas_validation(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <data>
+                  <shape id="rotated-rect" type="rect" topLeftX="0" topLeftY="0" width="100" height="100" rotation="45"/>
+                  <img id="rotated-image" topLeftX="860" topLeftY="200" width="100" height="100" rotation="45"/>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+        issues_by_element = {issue["elements"][0]: issue for issue in result["slides"][0]["issues"]}
+        self.assertEqual(result["summary"]["error_count"], 2)
+        self.assertEqual(issues_by_element["rotated-rect"]["code"], "shape_out_of_canvas")
+        self.assertAlmostEqual(issues_by_element["rotated-rect"]["overflow"]["left"], 20.710678, places=5)
+        self.assertAlmostEqual(issues_by_element["rotated-rect"]["overflow"]["top"], 20.710678, places=5)
+        self.assertEqual(issues_by_element["rotated-image"]["code"], "img_out_of_canvas")
+        self.assertAlmostEqual(issues_by_element["rotated-image"]["overflow"]["right"], 20.710678, places=5)
 
     def test_lint_xml_treats_non_finite_rotations_as_zero(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -1284,6 +1308,21 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         self.assertEqual(issue["measurement"]["visible_element_count"], 0)
         self.assertEqual(issue["related_objects"], [])
 
+    def test_lint_xml_blocks_blank_slide_with_only_transparent_image(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <img id="ghost" topLeftX="60" topLeftY="60" width="200" height="200" alpha="0"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 1)
+        issue = result["slides"][0]["errors"][0]
+        self.assertEqual(issue["code"], "blank_slide")
+
     def test_lint_xml_warns_when_large_container_is_mostly_empty(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -1563,6 +1602,26 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
 
         self.assertEqual(result["summary"]["warning_count"], 0)
 
+    def test_lint_xml_does_not_let_transparent_visual_child_suppress_sparse_warning(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="title" type="text" topLeftX="40" topLeftY="40" width="300" height="40">
+                  <content fontSize="20"><p>Section title</p></content>
+                </shape>
+                <shape id="chart-card" type="rect" topLeftX="500" topLeftY="135" width="410" height="300"/>
+                <chart id="chart" topLeftX="525" topLeftY="170" width="350" height="220" alpha="0"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue for issue in result["slides"][0]["issues"] if issue["code"] == "sparse_container_content"
+        )
+        self.assertEqual(issue["target"]["container_id"], "chart-card")
+
     def test_lint_xml_warns_for_small_empty_visual_placeholder_cards(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -1620,6 +1679,26 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
 
         self.assertEqual(result["summary"]["warning_count"], 0)
 
+    def test_lint_xml_does_not_let_transparent_image_overlay_suppress_sparse_warning(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="title" type="text" topLeftX="40" topLeftY="40" width="300" height="40">
+                  <content fontSize="20"><p>Section title</p></content>
+                </shape>
+                <shape id="card" type="rect" topLeftX="330" topLeftY="120" width="300" height="300"/>
+                <img id="ghost-overlay" topLeftX="330" topLeftY="120" width="300" height="300" alpha="0"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue for issue in result["slides"][0]["issues"] if issue["code"] == "sparse_container_content"
+        )
+        self.assertEqual(issue["target"]["container_id"], "card")
+
     def test_lint_xml_allows_edge_spanning_layout_panel_and_nested_decoration(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -1649,6 +1728,29 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         )
 
         self.assertEqual(result["summary"]["warning_count"], 0)
+
+    def test_lint_xml_does_not_count_transparent_icon_as_visible_content(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="title" type="text" topLeftX="40" topLeftY="40" width="300" height="40">
+                  <content fontSize="20"><p>Section title</p></content>
+                </shape>
+                <shape id="card" type="rect" topLeftX="80" topLeftY="140" width="320" height="240"/>
+                <icon id="visual" iconType="iconpark/Safe/shield.svg" topLeftX="100" topLeftY="160" width="180" height="180" alpha="0">
+                  <fill><fillColor color="rgba(37, 99, 235, 1)"/></fill>
+                </icon>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue for issue in result["slides"][0]["issues"] if issue["code"] == "sparse_container_content"
+        )
+        self.assertEqual(issue["target"]["container_id"], "card")
+        self.assertEqual(issue["measurement"]["content_coverage_ratio"], 0)
 
     def test_lint_xml_warns_when_coverage_is_below_global_threshold(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
