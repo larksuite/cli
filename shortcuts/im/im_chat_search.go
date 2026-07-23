@@ -200,11 +200,7 @@ var ImChatSearch = common.Shortcut{
 				}
 				moreHint += ")"
 			}
-			displayedTotal := len(items)
-			if hasPositiveTotal {
-				displayedTotal = int(total)
-			}
-			fmt.Fprintf(w, "\n%d chat(s) found%s\n", displayedTotal, moreHint)
+			fmt.Fprintf(w, "\n%d chat(s) found%s\n", int(total), moreHint)
 			if mfOut.Meta.Hint != "" {
 				fmt.Fprintln(w, mfOut.Meta.Hint)
 			}
