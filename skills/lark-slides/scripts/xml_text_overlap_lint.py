@@ -80,8 +80,10 @@ def parse_args(argv: list[str]) -> dict[str, Any]:
 
 
 def extract_attribute(tag_source: str, name: str) -> str | None:
-    match = re.search(fr'{re.escape(name)}="([^"]+)"', tag_source)
-    return match.group(1) if match else None
+    match = re.search(fr"{re.escape(name)}=(?:\"([^\"]+)\"|'([^']+)')", tag_source)
+    if not match:
+        return None
+    return match.group(1) if match.group(1) is not None else match.group(2)
 
 
 def extract_numeric_attribute(tag_source: str, name: str) -> int | float | None:
@@ -633,8 +635,9 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
 
     for match in re.finditer(r"<(shape|img|table|chart|whiteboard)\b([^>]*)>", slide_xml):
         kind, attrs = match.group(1), match.group(2)
+        is_self_closing = attrs.rstrip().endswith("/")
         content = ""
-        if kind in {"shape", "table"}:
+        if kind in {"shape", "table"} and not is_self_closing:
             close_index = slide_xml.find(f"</{kind}>", match.end())
             if close_index != -1:
                 content = slide_xml[match.end() : close_index]
@@ -1425,6 +1428,7 @@ def is_layout_container(
     return (
         element["kind"] == "shape"
         and element["type"] == "rect"
+        and is_visually_rendered(element)
         and element["width"] >= MIN_CONTAINER_WIDTH
         and has_supported_height
         and element_area(element) >= MIN_CONTAINER_AREA
@@ -1452,9 +1456,7 @@ def has_matching_image_overlay(container: dict[str, Any], elements: list[dict[st
     return any(
         element["kind"] == "img"
         and is_visually_rendered(element)
-        and intersection_area(container, element)
-        / max(1, min(container_area, element_area(element)))
-        >= IMAGE_OVERLAY_MATCH_RATIO
+        and intersection_area(container, element) / max(1, container_area) >= IMAGE_OVERLAY_MATCH_RATIO
         for element in elements
     )
 
@@ -1466,6 +1468,7 @@ def is_nested_in_layout_panel(
         element is not container
         and element["kind"] == "shape"
         and element["type"] == "rect"
+        and is_visually_rendered(element)
         and is_edge_spanning_layout_panel(element, slide_width, slide_height)
         and contains(element, container, tolerance=DENSITY_CONTAINMENT_TOLERANCE)
         for element in elements
@@ -1547,6 +1550,29 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "order": len(elements),
             }
         )
+    for match in re.finditer(r"<polyline\b([^>]*)>", slide_xml):
+        attrs = match.group(1)
+        x = extract_numeric_attribute(attrs, "topLeftX")
+        y = extract_numeric_attribute(attrs, "topLeftY")
+        width = extract_numeric_attribute(attrs, "width")
+        height = extract_numeric_attribute(attrs, "height")
+        if any(value is None for value in (x, y, width, height)):
+            continue
+        polyline_alpha = extract_numeric_attribute(attrs, "alpha")
+        elements.append(
+            {
+                "id": extract_attribute(attrs, "id") or f"polyline-{len(elements) + 1}",
+                "kind": "polyline",
+                "type": "polyline",
+                "x": x,
+                "y": y,
+                "width": width,
+                "height": height,
+                "rotation": extract_numeric_attribute(attrs, "rotation") or 0,
+                "alpha": polyline_alpha if polyline_alpha is not None else 1,
+                "order": len(elements),
+            }
+        )
     return elements
 
 
@@ -1582,7 +1608,7 @@ def slide_content_visual_bbox(
     if element["kind"] == "shape" and has_text_content(element):
         estimated = own_text_visual_bbox(element)
         return clipped_bbox(estimated, slide_bbox) if estimated else None
-    if element["kind"] in {"img", "chart", "table", "whiteboard", "icon"}:
+    if element["kind"] in {"img", "chart", "table", "whiteboard", "icon", "polyline"}:
         return clipped_bbox(element, slide_bbox)
     return None
 
@@ -1816,8 +1842,10 @@ def issue_measurement(
         left = elements_by_id.get(issue["elements"][0])
         right = elements_by_id.get(issue["elements"][1])
         if left and right:
-            width = intersection_width(left, right)
-            height = intersection_height(left, right)
+            left_box = (estimate_text_visual_bbox(left) if is_text_element(left) else None) or left
+            right_box = (estimate_text_visual_bbox(right) if is_text_element(right) else None) or right
+            width = intersection_width(left_box, right_box)
+            height = intersection_height(left_box, right_box)
             return {
                 "intersection_width": round(width, 3),
                 "intersection_height": round(height, 3),
@@ -2023,7 +2051,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         )
         density_elements = extract_density_elements(slide_xml)
         extra_elements = [
-            *[element for element in density_elements if element["kind"] == "icon"],
+            *[element for element in density_elements if element["kind"] in {"icon", "polyline"}],
             *extract_line_elements(slide_xml),
         ]
         elements_by_id = {
