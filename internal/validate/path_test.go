@@ -211,6 +211,18 @@ func TestSafeLocalFlagPath(t *testing.T) {
 	}
 }
 
+func TestLocalInputPath_AllowsLocalPathsAndRejectsUnsafeCharacters(t *testing.T) {
+	for _, path := range []string{"/tmp/report.pdf", "../report.pdf"} {
+		got, err := LocalInputPath(path)
+		if err != nil || got != path {
+			t.Fatalf("LocalInputPath(%q) = %q, %v; want unchanged path", path, got, err)
+		}
+	}
+	if _, err := LocalInputPath("report\n.pdf"); err == nil {
+		t.Fatal("LocalInputPath() unexpectedly accepted a control character")
+	}
+}
+
 func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 	// GIVEN: a real temp file (absolute path under os.TempDir())
 	f, err := os.CreateTemp("", "upload-test-*.bin")
