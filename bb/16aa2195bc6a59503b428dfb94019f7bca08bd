@@ -1,0 +1,23 @@
+internal/event/encrypt_key.go
+  s_15571e5f8ca9c9::t_d05c15c78a68c4 1-76
+internal/event/encrypt_key_test.go
+  s_15571e5f8ca9c9::t_8439438665108d 1-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bb16aa2195bc6a59503b428dfb94019f7bca08bd",
+  "prompts": {},
+  "sessions": {
+    "s_15571e5f8ca9c9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a80344ce46ce24cea",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
