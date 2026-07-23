@@ -452,6 +452,12 @@ func (ctx *RuntimeContext) callRaw(method, url string, params map[string]interfa
 // Auth resolution is delegated to APIClient.DoSDKRequest to avoid duplicating
 // the identity → token logic across the generic and shortcut API paths.
 func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+	return ctx.DoAPIWithContext(ctx.ctx, req, opts...)
+}
+
+// DoAPIWithContext executes a raw Lark SDK request using callCtx for request
+// cancellation and deadlines while preserving the shortcut's resolved identity.
+func (ctx *RuntimeContext) DoAPIWithContext(callCtx context.Context, req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
 		return nil, err
@@ -459,7 +465,7 @@ func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestO
 	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
 		opts = append(opts, optFn)
 	}
-	return ac.DoSDKRequest(ctx.ctx, req, ctx.As(), opts...)
+	return ac.DoSDKRequest(callCtx, req, ctx.As(), opts...)
 }
 
 // DoAPIAsBot executes a raw Lark SDK request using bot identity (tenant access token),
