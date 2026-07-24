@@ -49,6 +49,7 @@ lark-cli docs +update --doc "文档URL或token" --command append --content '<p>�
 - 用户明确要操作思维笔记时；已有**思维笔记**，走 [思维笔记链路](references/lark-doc-mindnote.md)；新建**思维笔记**，走 [lark-doc-whiteboard](references/lark-doc-whiteboard.md)
 - 拿到 spreadsheet URL/token 后 → 切到 `lark-sheets` 做对象内部操作
 - 用户需要统计文档的**总字数 / 总字符数**（word count / character count）时，先读取 [`lark-doc-word-stat.md`](references/lark-doc-word-stat.md)，并按其中流程调用 [`scripts/doc_word_stat.py`](scripts/doc_word_stat.py)；统计口径以该脚本为准，不要改用其他方式自行计算。
+- 文档包含数学公式时，先按所选格式读取对应公式规则：XML 使用 `<latex>...</latex>`，**禁止**把 `$...$`、`$$...$$`、`\(...\)` 或 `\[...\]` 原样写入 XML；Markdown 才使用 `$...$`。含 `$` 或反斜杠的内容优先通过相对 `@file` 传入，避免 Shell 改写公式。详见 [`lark-doc-xml.md`](references/lark-doc-xml.md#公式) / [`lark-doc-md.md`](references/lark-doc-md.md#数学公式)。
 - 用户说"给文档加评论""查看评论""回复评论""给评论加/删除表情 reaction" → 切到 `lark-drive` 处理
 - 文档内容中出现嵌入的 `<sheet>`、`<bitable>` 或 `<cite file-type="sheets|bitable">` 标签时 → **必须主动提取 token 并切到对应技能下钻读取内部数据**，不能只呈现标签本身
 

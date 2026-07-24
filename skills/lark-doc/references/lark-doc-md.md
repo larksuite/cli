@@ -2,6 +2,23 @@
 
 `docs +fetch` / `docs +create` / `docs +update` 使用 `--doc-format markdown` 时适用；fetch 的 `--doc-format im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用，不作为 create/update 写入格式。
 
+## 数学公式
+
+Markdown 模式使用 `$...$` 写公式。不要使用代码反引号包裹公式，否则只会显示源码。
+
+```markdown
+行内公式：$E = mc^2$
+
+独立成段的公式：
+
+$\int_0^1 x^2\,dx = \frac{1}{3}$
+```
+
+- 只有命令显式使用 `--doc-format markdown` 时才依赖 `$...$` 解析；默认 XML 模式应改写为 `<latex>...</latex>`。
+- 字面量美元符号写成 `\$`，例如 `价格 \$100`。
+- 含 `$` 或反斜杠的内容优先保存到当前工作目录下的 `.md` 文件，再使用相对 `--content @formula.md` 传入，避免 Shell 展开或吞掉字符。
+- 写入后用 `docs +fetch --doc-format xml --detail full` 回读目标内容，确认公式已成为 `<latex>...</latex>` 节点。
+
 ## 转义规则
 
 > **⚠️ 当文本中包含以下字符且不想触发 Markdown 语法时**，需用 `\` 前缀转义。转义分为**无条件转义**（行内任意位置生效）和**位置敏感转义**（仅特定位置才需要）两类。

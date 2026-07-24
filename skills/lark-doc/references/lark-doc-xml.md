@@ -36,6 +36,28 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 - `align` — `"left"`|`"center"`|`"right"`（适用于 p / h1-h9 / li / checkbox）
 - 有序列表项用 `seq="auto"` 自动编号
 
+## 公式
+
+XML 模式只把 `<latex>...</latex>` 转换为飞书公式节点。Markdown / LaTeX 定界符 `$...$`、`$$...$$`、`\(...\)`、`\[...\]` 在 XML 模式下都是普通文本，原样写入会在文档中显示源码而不是渲染后的公式。
+
+- 行内公式：`<p>质能方程为 <latex>E = mc^2</latex>。</p>`
+- 独立公式：将 `<latex>` 放在单独段落中，例如 `<p><latex>\int_0^1 x^2\,dx = \frac{1}{3}</latex></p>`
+- 只写 LaTeX 表达式本体，不要把 `$`、`$$`、`\(`、`\)`、`\[`、`\]` 包进 `<latex>`。
+- 公式正文仍属于 XML 文本。LaTeX 中的 `&`、`<`、`>` 必须分别写成 `&amp;`、`&lt;`、`&gt;`。
+- 不要把公式放进 `<pre>` 或 `<code>`；代码块只会显示公式源码。
+- 内容含反斜杠时，优先把完整 XML 保存到当前工作目录下的文件，并通过相对路径传入：`--content @formula.xml`。不要使用绝对 `@file` 路径。
+
+常见定界符转换：
+
+| 输入形式 | XML 写法 |
+|-|-|
+| `$E = mc^2$` | `<latex>E = mc^2</latex>` |
+| `$$\sum_{i=1}^{n} i$$` | `<p><latex>\sum_{i=1}^{n} i</latex></p>` |
+| `\(\alpha + \beta\)` | `<latex>\alpha + \beta</latex>` |
+| `\[\frac{a}{b}\]` | `<p><latex>\frac{a}{b}</latex></p>` |
+
+写入后用 `docs +fetch --doc-format xml --detail full` 回读目标内容，确认返回的是 `<latex>...</latex>` 节点，而不是带定界符的普通文本。
+
 # 三、资源块
 
 文档中可嵌入外部资源块（属于容器标签的特殊形式），需要额外语法创建：
