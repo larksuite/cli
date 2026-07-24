@@ -80,36 +80,28 @@ func stripRestrictedHeaders(header http.Header) {
 	}
 }
 
-// HasAccessToken reports whether an SDK request already carries a Bearer access
-// token. It deliberately excludes app credentials used to bootstrap token
-// exchange and token headers owned by non-SDK clients.
-func HasAccessToken(header http.Header) bool {
-	if header == nil {
-		return false
-	}
-	authorization := strings.TrimSpace(header.Get("Authorization"))
-	if len(authorization) > len("Bearer ") && strings.EqualFold(authorization[:len("Bearer ")], "Bearer ") {
-		return strings.TrimSpace(authorization[len("Bearer "):]) != ""
-	}
-	return false
-}
-
 type origin struct {
 	scheme string
 	host   string
 	port   string
 }
 
-var officialOpenAPIOrigins = [...]origin{
-	openAPIOrigin(core.BrandFeishu),
-	openAPIOrigin(core.BrandLark),
+var officialFeishuOrigins = [...]origin{
+	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).Open),
+	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).Open),
+	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).Accounts),
+	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).Accounts),
+	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).AppLink),
+	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).AppLink),
+	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).MCP),
+	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).MCP),
 }
 
 func (t *Transport) routeAllowsSignals(req *http.Request) bool {
 	if req == nil || req.URL == nil {
 		return false
 	}
-	return HasAccessToken(req.Header) && isOfficialOpenAPIOrigin(originOf(req.URL))
+	return isOfficialFeishuOrigin(originOf(req.URL))
 }
 
 func originOf(value *url.URL) origin {
@@ -129,19 +121,19 @@ func originOf(value *url.URL) origin {
 	return origin{scheme: scheme, host: strings.ToLower(value.Hostname()), port: port}
 }
 
-func openAPIOrigin(brand core.LarkBrand) origin {
-	endpoint, err := url.Parse(core.ResolveEndpoints(brand).Open)
+func apiOrigin(brand core.LarkBrand, endpointURL string) origin {
+	endpoint, err := url.Parse(endpointURL)
 	if err != nil {
 		return origin{}
 	}
 	return originOf(endpoint)
 }
 
-func isOfficialOpenAPIOrigin(candidate origin) bool {
+func isOfficialFeishuOrigin(candidate origin) bool {
 	if candidate.scheme != "https" || candidate.port != "443" {
 		return false
 	}
-	for _, official := range officialOpenAPIOrigins {
+	for _, official := range officialFeishuOrigins {
 		if candidate == official {
 			return true
 		}

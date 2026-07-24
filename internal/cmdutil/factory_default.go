@@ -58,7 +58,7 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	workspaceConfig := core.NewConfigSnapshot()
 
 	// Phase 1: HttpClient (no credential dependency)
-	f.HttpClient = cachedHttpClientFunc(f)
+	f.HttpClient = cachedHttpClientFunc(f, workspaceConfig)
 
 	// Phase 2: Credential (sole data source)
 	// Keychain is read via closure so callers can replace f.Keychain after construction.
@@ -112,13 +112,21 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 // .StderrIsTerminal field, which tests set directly.
 var warnIfProxied = transport.WarnIfProxied
 
-func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
+func cachedHttpClientFunc(f *Factory, workspaceConfig workspaceConfigSource) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
+		_, workspaceManaged, err := f.Credential.ResolveAccountWithProvenance(context.Background())
+		if err != nil {
+			return nil, err
+		}
+
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
 
+		hostSignalSource := resolveSDKHostSignalSource(workspaceManaged, workspaceConfig)
+
 		var rt http.RoundTripper = transport.Shared()
+		rt = riskcontrol.NewTransport(rt, hostSignalSource)
 		rt = &RetryTransport{Base: rt}
 		rt = &SecurityHeaderTransport{Base: rt}
 		rt = &auth.SecurityPolicyTransport{Base: rt} // Add our global response interceptor
