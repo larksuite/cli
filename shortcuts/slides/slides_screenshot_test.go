@@ -186,6 +186,7 @@ func TestSlidesScreenshotListBySlideNumber(t *testing.T) {
 }
 
 func TestSlidesScreenshotListBySlideIDCSV(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 
@@ -244,6 +245,7 @@ func TestSlidesScreenshotListBySlideIDCSV(t *testing.T) {
 }
 
 func TestSlidesScreenshotListBySlideIDCSVDeduplicatesAndTrims(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 
@@ -295,6 +297,7 @@ func TestSlidesScreenshotListBySlideIDCSVDeduplicatesAndTrims(t *testing.T) {
 }
 
 func TestSlidesScreenshotListRejectsMoreThanTenSlideIDsCSV(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
@@ -518,6 +521,7 @@ func TestSlidesScreenshotRenderRejectsSlideSelectors(t *testing.T) {
 }
 
 func TestSlidesScreenshotRenderRejectsSlideNumberSelector(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 
 	// Exercises the --slide-number-only side of the --content conflict check
