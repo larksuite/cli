@@ -81,6 +81,7 @@ type calendarEvent struct {
 	OrganizerCalendarID string                    `json:"organizer_calendar_id,omitempty"`
 	Summary             string                    `json:"summary,omitempty"`
 	Description         string                    `json:"description,omitempty"`
+	DescriptionRich     string                    `json:"description_rich,omitempty"`
 	StartTime           *calendarEventTime        `json:"start_time,omitempty"`
 	EndTime             *calendarEventTime        `json:"end_time,omitempty"`
 	VChat               *calendarEventVChat       `json:"vchat,omitempty"`
@@ -169,7 +170,7 @@ func buildCalendarEventOutput(event *calendarEvent) (map[string]interface{}, err
 	if status, _ := out["status"].(string); status != "cancelled" {
 		delete(out, "status")
 	}
-
+	backfillDescriptionRich(out)
 	return out, nil
 }
 

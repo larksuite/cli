@@ -988,8 +988,13 @@ func TestUpdate_PatchEventOnly(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
 		t.Fatalf("unmarshal captured patch body: %v", err)
 	}
-	if body["summary"] != "Updated Meeting" || body["description"] != "Updated description" {
+	// The deprecated, hidden --description folds into description_rich; the CLI
+	// never sends the plain description field (mutually exclusive downstream).
+	if body["summary"] != "Updated Meeting" || body["description_rich"] != "Updated description" {
 		t.Fatalf("unexpected patch body: %#v", body)
+	}
+	if _, ok := body["description"]; ok {
+		t.Fatalf("plain description must not be sent, got: %#v", body)
 	}
 	if body["need_notification"] != false {
 		t.Fatalf("need_notification = %#v, want false", body["need_notification"])
@@ -1361,6 +1366,63 @@ func TestAgenda_Success(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "evt_a1") {
 		t.Errorf("stdout should contain event_id, got: %s", stdout.String())
+	}
+}
+
+func TestAgenda_UnifiesDescriptionRich(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"event_id":         "evt_rich",
+						"summary":          "Rich",
+						"status":           "confirmed",
+						"description":      "[测试]\n友情提醒",
+						"description_rich": "友情提醒",
+						"start_time":       map[string]interface{}{"timestamp": "1742515200"},
+						"end_time":         map[string]interface{}{"timestamp": "1742518800"},
+					},
+					map[string]interface{}{
+						"event_id":    "evt_plain",
+						"summary":     "Plain",
+						"status":      "confirmed",
+						"description": "just text",
+						"start_time":  map[string]interface{}{"timestamp": "1742515200"},
+						"end_time":    map[string]interface{}{"timestamp": "1742518800"},
+					},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21",
+		"--end", "2025-03-21",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// Read keeps both fields: description (plain) and description_rich (rich).
+	if !strings.Contains(out, "\"description\": \"[测试]\\n友情提醒\"") {
+		t.Errorf("expected plain description retained, got: %s", out)
+	}
+	if !strings.Contains(out, "\"description_rich\": \"友情提醒\"") {
+		t.Errorf("expected rich description surfaced, got: %s", out)
+	}
+	if !strings.Contains(out, "\"description\": \"just text\"") {
+		t.Errorf("expected plain description retained for plain-only event, got: %s", out)
+	}
+	if !strings.Contains(out, "\"description_rich\": \"just text\"") {
+		t.Errorf("expected description_rich backfilled from plain, got: %s", out)
 	}
 }
 
@@ -3373,6 +3435,72 @@ func TestGet_Success_FlattensAndConvertsTimes(t *testing.T) {
 	if !strings.Contains(out, "\"create_time\": \"2020-10-12T") {
 		t.Errorf("expected RFC3339 create_time, got: %s", out)
 	}
+}
+
+func TestGet_UnifiesDescriptionRich(t *testing.T) {
+	// Read keeps both description (plain) and description_rich (rich).
+	t.Run("rich present", func(t *testing.T) {
+		f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_rich",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "success",
+				"data": map[string]interface{}{
+					"event": map[string]interface{}{
+						"event_id":         "evt_rich",
+						"summary":          "Rich",
+						"description":      "[表格]",
+						"description_rich": "| a | b |\n| --- | --- |\n| c | d |",
+						"start_time":       map[string]interface{}{"timestamp": "1742515200", "timezone": "Asia/Shanghai"},
+						"end_time":         map[string]interface{}{"timestamp": "1742518800", "timezone": "Asia/Shanghai"},
+					},
+				},
+			},
+		})
+		if err := mountAndRun(t, CalendarGet, []string{"+get", "--calendar-id", "cal_test123", "--event-id", "evt_rich", "--as", "bot"}, f, stdout); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		out := stdout.String()
+		if !strings.Contains(out, "\"description\": \"[表格]\"") {
+			t.Errorf("expected plain description retained, got: %s", out)
+		}
+		if !strings.Contains(out, "\"description_rich\":") {
+			t.Errorf("expected description_rich in output, got: %s", out)
+		}
+	})
+
+	// When only a plain description exists, description_rich is backfilled from it
+	// and the plain description is still returned.
+	t.Run("only plain backfills rich", func(t *testing.T) {
+		f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_plain",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "success",
+				"data": map[string]interface{}{
+					"event": map[string]interface{}{
+						"event_id":    "evt_plain",
+						"summary":     "Plain",
+						"description": "just text",
+						"start_time":  map[string]interface{}{"timestamp": "1742515200", "timezone": "Asia/Shanghai"},
+						"end_time":    map[string]interface{}{"timestamp": "1742518800", "timezone": "Asia/Shanghai"},
+					},
+				},
+			},
+		})
+		if err := mountAndRun(t, CalendarGet, []string{"+get", "--calendar-id", "cal_test123", "--event-id", "evt_plain", "--as", "bot"}, f, stdout); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		out := stdout.String()
+		if !strings.Contains(out, "\"description\": \"just text\"") {
+			t.Errorf("expected plain description retained, got: %s", out)
+		}
+		if !strings.Contains(out, "\"description_rich\": \"just text\"") {
+			t.Errorf("expected description_rich backfilled from plain, got: %s", out)
+		}
+	})
 }
 
 func TestGet_CancelledStatus_PreservesStatus(t *testing.T) {
