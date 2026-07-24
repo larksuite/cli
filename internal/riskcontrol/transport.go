@@ -91,10 +91,6 @@ var officialFeishuOrigins = [...]origin{
 	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).Open),
 	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).Accounts),
 	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).Accounts),
-	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).AppLink),
-	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).AppLink),
-	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).MCP),
-	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).MCP),
 }
 
 func (t *Transport) routeAllowsSignals(req *http.Request) bool {
