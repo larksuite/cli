@@ -67,7 +67,6 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		Profile:    inv.Profile,
 		HttpClient: f.HttpClient,
 		ErrOut:     f.IOStreams.ErrOut,
-		Config:     workspaceConfig,
 	})
 
 	// Phase 3: Runtime config contains resolved account data only.
@@ -81,8 +80,8 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		return cfg, nil
 	})
 
-	// Phase 4: LarkClient composes account provenance and workspace policy at
-	// the SDK transport boundary.
+	// Phase 4: LarkClient composes account data and workspace policy at the SDK
+	// transport boundary.
 	f.LarkClient = cachedLarkClientFunc(f, workspaceConfig)
 
 	return f
@@ -114,16 +113,11 @@ var warnIfProxied = transport.WarnIfProxied
 
 func cachedHttpClientFunc(f *Factory, workspaceConfig workspaceConfigSource) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
-		providerName, err := f.Credential.ActiveExtensionProviderName(context.Background())
-		if err != nil {
-			return nil, err
-		}
-
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
 
-		hostSignalSource := resolveSDKHostSignalSource(providerName == "", workspaceConfig)
+		hostSignalSource := resolveSDKHostSignalSource(workspaceConfig)
 
 		var rt http.RoundTripper = transport.Shared()
 		rt = riskcontrol.NewTransport(rt, hostSignalSource)
@@ -142,7 +136,7 @@ func cachedHttpClientFunc(f *Factory, workspaceConfig workspaceConfigSource) fun
 
 func cachedLarkClientFunc(f *Factory, workspaceConfig workspaceConfigSource) func() (*lark.Client, error) {
 	return sync.OnceValues(func() (*lark.Client, error) {
-		acct, workspaceManaged, err := f.Credential.ResolveAccountWithProvenance(context.Background())
+		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
 			return nil, err
 		}
@@ -154,11 +148,11 @@ func cachedLarkClientFunc(f *Factory, workspaceConfig workspaceConfigSource) fun
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
-		hostSignalSource := resolveSDKHostSignalSource(workspaceManaged, workspaceConfig)
+		hostSignalSource := resolveSDKHostSignalSource(workspaceConfig)
 		var sdkBase http.RoundTripper = transport.Shared()
 		// The innermost SDK boundary always strips reserved host-signal headers;
-		// a nil source makes it strip-only for external credential providers and
-		// workspace opt-out.
+		// a nil source makes it strip-only when workspace policy disables signal
+		// collection.
 		sdkBase = riskcontrol.NewTransport(sdkBase, hostSignalSource)
 		sdkTransport := wrapSDKTransport(sdkBase)
 		opts = append(opts, lark.WithHttpClient(&http.Client{
@@ -184,12 +178,11 @@ type credentialDeps struct {
 	Profile    string
 	HttpClient func() (*http.Client, error)
 	ErrOut     io.Writer
-	Config     workspaceConfigSource
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
 	providers := extcred.Providers()
-	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile, deps.Config)
+	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
 	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
 	// happens before the command runs, so any plain-text warning written

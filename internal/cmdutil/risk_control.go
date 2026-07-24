@@ -12,12 +12,10 @@ type workspaceConfigSource interface {
 	MultiAppConfig() (*core.MultiAppConfig, error)
 }
 
-// resolveSDKHostSignalSource composes credential provenance with workspace
-// policy at the SDK transport boundary. Credential resolution decides whether
-// the source is eligible; workspace config only opts an eligible source in or
-// out.
-func resolveSDKHostSignalSource(workspaceManaged bool, config workspaceConfigSource) riskcontrol.Source {
-	if !workspaceManaged || config == nil {
+// resolveSDKHostSignalSource applies workspace policy at the SDK transport
+// boundary.
+func resolveSDKHostSignalSource(config workspaceConfigSource) riskcontrol.Source {
+	if config == nil {
 		return nil
 	}
 	workspace, configErr := config.MultiAppConfig()

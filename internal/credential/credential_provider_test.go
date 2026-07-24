@@ -70,10 +70,6 @@ func TestCredentialProvider_AccountFromExtension(t *testing.T) {
 	if acct.AppID != "ext_app" {
 		t.Errorf("expected ext_app, got %s", acct.AppID)
 	}
-	_, workspaceManaged, err := cp.ResolveAccountWithProvenance(context.Background())
-	if err != nil || workspaceManaged {
-		t.Errorf("ResolveAccountWithProvenance() workspaceManaged = %t, %v; want false, nil", workspaceManaged, err)
-	}
 }
 
 func TestCredentialProvider_AccountFallsToDefault(t *testing.T) {
@@ -88,10 +84,6 @@ func TestCredentialProvider_AccountFallsToDefault(t *testing.T) {
 	}
 	if acct.AppID != "default_app" {
 		t.Errorf("expected default_app, got %s", acct.AppID)
-	}
-	_, workspaceManaged, err := cp.ResolveAccountWithProvenance(context.Background())
-	if err != nil || !workspaceManaged {
-		t.Errorf("ResolveAccountWithProvenance() workspaceManaged = %t, %v; want true, nil", workspaceManaged, err)
 	}
 }
 
