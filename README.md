@@ -285,13 +285,10 @@ To reduce these risks, the tool enables default security protections at multiple
 
 We recommend using the Lark/Feishu bot integrated with this tool as a private conversational assistant. Do not add it to group chats or allow other users to interact with it, to avoid abuse of permissions or data leakage.
 
-To help prevent access token theft and misuse, the CLI sends a minimal set of risk-control signals when making OpenAPI requests to exact official Feishu/Lark HTTPS domains. This protection is enabled by default.
-
-The risk-control signals include:
+To reduce the security risks associated with access token theft, the CLI sends a minimal set of risk-control signals with OpenAPI requests made to exact official Feishu/Lark HTTPS domains. These signals are used to help identify anomalous API activity. This protection is enabled by default. The information sent is limited to:
 
 - Operating system type: macOS, Windows, or Linux
-- Hardware product model on macOS and Windows, for example, `Mac17,9`
-- CPU/process architecture, for example, `x86_64` or `arm64`
+- Device hardware model: for example, Mac17,9
 
 To disable this protection for the current workspace, run:
 
