@@ -753,7 +753,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             "第一行\n第二行\n第三行",
         )
 
-    def test_lint_xml_blocks_template_style_bleed_outside_canvas(self) -> None:
+    def test_lint_xml_allows_template_style_images_outside_canvas(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
@@ -771,9 +771,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </presentation>
             """
         )
-        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["summary"]["error_count"], 0)
         self.assertEqual(result["summary"]["warning_count"], 0)
-        self.assertEqual(result["slides"][0]["errors"][0]["code"], "img_out_of_canvas")
 
     def test_extract_elements_preserves_supported_element_geometry_order_and_text_metadata(self) -> None:
         elements = xml_text_overlap_lint.extract_elements(
@@ -807,7 +806,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(elements[1]["fontSize"], 28)
         self.assertEqual(elements[1]["text"], "Growth & scale\nFocused execution")
 
-    def test_lint_xml_blocks_small_out_of_bounds_images(self) -> None:
+    def test_lint_xml_ignores_small_out_of_bounds_images(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
@@ -819,10 +818,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </presentation>
             """
         )
-        self.assertEqual(result["summary"]["error_count"], 1)
-        self.assertEqual(result["slides"][0]["errors"][0]["code"], "img_out_of_canvas")
+        self.assertEqual(result["summary"]["error_count"], 0)
 
-    def test_lint_xml_blocks_out_of_canvas_images(self) -> None:
+    def test_lint_xml_ignores_out_of_canvas_images(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
@@ -835,13 +833,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </presentation>
             """
         )
-        self.assertEqual(result["summary"]["error_count"], 2)
-        self.assertEqual(
-            [issue["code"] for issue in result["slides"][0]["errors"]],
-            ["img_out_of_canvas", "img_out_of_canvas"],
-        )
+        self.assertEqual(result["summary"]["error_count"], 0)
 
-    def test_lint_xml_blocks_full_bleed_images_outside_canvas(self) -> None:
+    def test_lint_xml_ignores_full_bleed_images_outside_canvas(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
@@ -853,10 +847,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </presentation>
             """
         )
-        self.assertEqual(result["summary"]["error_count"], 1)
-        self.assertEqual(result["slides"][0]["errors"][0]["code"], "img_out_of_canvas")
+        self.assertEqual(result["summary"]["error_count"], 0)
 
-    def test_lint_xml_reports_text_and_chart_out_of_canvas(self) -> None:
+    def test_lint_xml_reports_text_and_chart_but_not_image_out_of_canvas(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
@@ -871,17 +864,16 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         issues = result["slides"][0]["issues"]
-        self.assertEqual(result["summary"]["error_count"], 3)
+        self.assertEqual(result["summary"]["error_count"], 2)
         self.assertEqual(
             [(issue["code"], issue["elements"], issue["overflow"]) for issue in issues],
             [
                 ("shape_out_of_canvas", ["outside-shape"], {"left": 10, "top": 0, "right": 0, "bottom": 0}),
-                ("img_out_of_canvas", ["outside-img"], {"left": 0, "top": 20, "right": 0, "bottom": 0}),
                 ("chart_out_of_canvas", ["outside-chart"], {"left": 0, "top": 0, "right": 40, "bottom": 0}),
             ],
         )
 
-    def test_lint_xml_reports_line_out_of_canvas_with_structured_geometry(self) -> None:
+    def test_lint_xml_ignores_line_out_of_canvas(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
@@ -895,11 +887,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
 
-        issue = result["slides"][0]["errors"][0]
-        self.assertEqual(issue["code"], "line_out_of_canvas")
-        self.assertEqual(issue["element_ids"], ["connector"])
-        self.assertEqual(issue["measurement"]["overflow"]["right"], 20)
-        self.assertEqual(issue["related_objects"][0]["kind"], "line")
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["slides"][0]["issues"], [])
 
     def test_lint_xml_uses_rotated_text_and_chart_bounds_for_canvas_validation(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -922,13 +911,13 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(issues_by_element["rotated-chart"]["code"], "chart_out_of_canvas")
         self.assertAlmostEqual(issues_by_element["rotated-chart"]["overflow"]["right"], 20.710678, places=5)
 
-    def test_lint_xml_uses_rotated_bounds_for_rect_and_image_canvas_validation(self) -> None:
+    def test_lint_xml_uses_declared_bounds_for_rect_and_ignores_images(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
               <slide xmlns="http://www.larkoffice.com/sml/2.0">
                 <data>
-                  <shape id="rotated-rect" type="rect" topLeftX="0" topLeftY="0" width="100" height="100" rotation="45"/>
+                  <shape id="rotated-rect" type="rect" topLeftX="900" topLeftY="0" width="100" height="100" rotation="45"/>
                   <img id="rotated-image" topLeftX="860" topLeftY="200" width="100" height="100" rotation="45"/>
                 </data>
               </slide>
@@ -936,12 +925,54 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         issues_by_element = {issue["elements"][0]: issue for issue in result["slides"][0]["issues"]}
-        self.assertEqual(result["summary"]["error_count"], 2)
+        self.assertEqual(result["summary"]["error_count"], 1)
         self.assertEqual(issues_by_element["rotated-rect"]["code"], "shape_out_of_canvas")
-        self.assertAlmostEqual(issues_by_element["rotated-rect"]["overflow"]["left"], 20.710678, places=5)
-        self.assertAlmostEqual(issues_by_element["rotated-rect"]["overflow"]["top"], 20.710678, places=5)
-        self.assertEqual(issues_by_element["rotated-image"]["code"], "img_out_of_canvas")
-        self.assertAlmostEqual(issues_by_element["rotated-image"]["overflow"]["right"], 20.710678, places=5)
+        self.assertEqual(issues_by_element["rotated-rect"]["overflow"], {"left": 0, "top": 0, "right": 40, "bottom": 0})
+        self.assertNotIn("rotated-image", issues_by_element)
+
+    def test_detect_elements_out_of_canvas_limits_detection_to_whitelist(self) -> None:
+        issues = xml_text_overlap_lint.detect_elements_out_of_canvas(
+            [
+                {"id": "table", "kind": "table", "x": 95, "y": 0, "width": 10, "height": 10, "rotation": 45},
+                {"id": "chart", "kind": "chart", "x": 95, "y": 0, "width": 10, "height": 10, "rotation": 0},
+                {
+                    "id": "text",
+                    "kind": "shape",
+                    "type": "text",
+                    "x": 95,
+                    "y": 0,
+                    "width": 10,
+                    "height": 10,
+                    "rotation": 0,
+                },
+                {
+                    "id": "rect",
+                    "kind": "shape",
+                    "type": "rect",
+                    "x": 95,
+                    "y": 0,
+                    "width": 10,
+                    "height": 10,
+                    "rotation": 45,
+                },
+                {"id": "image", "kind": "img", "x": 95, "y": 0, "width": 10, "height": 10, "rotation": 0},
+                {
+                    "id": "ellipse",
+                    "kind": "shape",
+                    "type": "ellipse",
+                    "x": 95,
+                    "y": 0,
+                    "width": 10,
+                    "height": 10,
+                    "rotation": 0,
+                },
+            ],
+            100,
+            100,
+        )
+
+        self.assertEqual([issue["elements"] for issue in issues], [["table"], ["chart"], ["text"], ["rect"]])
+        self.assertEqual(issues[-1]["bbox"], {"x": 95, "y": 0, "width": 10, "height": 10})
 
     def test_lint_xml_treats_non_finite_rotations_as_zero(self) -> None:
         result = xml_text_overlap_lint.lint_xml(

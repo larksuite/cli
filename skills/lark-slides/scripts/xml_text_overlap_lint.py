@@ -1194,6 +1194,8 @@ def detect_whiteboard_external_overlaps(
 
 def element_canvas_bbox(element: dict[str, Any]) -> dict[str, int | float]:
     bbox = {key: element[key] for key in ("x", "y", "width", "height")}
+    if element["kind"] != "chart" and not (element["kind"] == "shape" and element["type"] == "text"):
+        return bbox
     rotation = element["rotation"]
     if not isinstance(rotation, (int, float)) or not math.isfinite(rotation):
         rotation = 0
@@ -1219,7 +1221,12 @@ def detect_elements_out_of_canvas(
     elements: list[dict[str, Any]], slide_width: int | float, slide_height: int | float
 ) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    for element in elements:
+    for element in (
+        element
+        for element in elements
+        if element["kind"] in {"table", "chart"}
+        or (element["kind"] == "shape" and element["type"] in {"rect", "text"})
+    ):
         bbox = element_canvas_bbox(element)
         overflow = {
             "left": max(-bbox["x"], 0),
