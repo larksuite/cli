@@ -1,0 +1,40 @@
+cmd/event/consume.go
+  s_030627b40677b7::t_264f1282ea3310 110-121,145,362-373,447-453
+cmd/event/consume_test.go
+  s_030627b40677b7::t_35a562735d1ec0 551-558,562-564,567,569-571
+cmd/event/subscription/create.go
+  s_030627b40677b7::t_83f11925020096 75-79,116,174-180,241-251
+internal/event/bus/encrypt_key.go
+  s_030627b40677b7::t_f808d9ee7492da 127-131,186-187,192-195,198,222-228,240-241
+internal/event/bus/encrypt_key_test.go
+  s_030627b40677b7::t_80f451245b9a0a 113-121,157-160,167-168,170-171,173-174,176-177,250,254,266,270,279,281,315,321,373-374,377
+internal/event/bus/handle_hello_test.go
+  s_030627b40677b7::t_7b977d6c9b6354 69-71,73-74,79-80,103-104,109-110,165-190
+skills/lark-event/SKILL.md
+  s_030627b40677b7::t_a5fa341834959d 76
+skills/lark-event/references/refined-subscription.md
+  s_030627b40677b7::t_2a3dceeac6f3f2 111,117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3189324c455c71a9ddc30330a3969354b48458e8",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_030627b40677b7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abe701c71fd001b66",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
