@@ -1,0 +1,23 @@
+shortcuts/slides/slides_screenshot.go
+  s_eb2d1db3a7c34d::t_4b99112ed2bdfc 40
+shortcuts/slides/slides_screenshot_test.go
+  s_eb2d1db3a7c34d::t_2082d9bead707e 11,21-23,25-26,30-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8f916dd5619a5f5493cd9735c7c71c166873d5cb",
+  "prompts": {},
+  "sessions": {
+    "s_eb2d1db3a7c34d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9240-6f5f-7633-ac13-c740a991ca0f",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
