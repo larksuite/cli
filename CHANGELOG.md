@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.77] - 2026-07-24
+
+### Features
+
+- introducing official card icon (#1973)
+- **apps**: validate +file-list --page-size against server (0, 200] range (#2007)
+- **apps**: support absolute and relative upload paths (#2005)
+- **slides**: fill xml-schema-quick-ref gaps that forced XSD fallback (#2026)
+- **slides**: add layout density lint for sparse/empty containers (#2022)
+- add risk-control protection (#1910)
+
+### Bug Fixes
+
+- **slides**: normalize presentation flag aliases (#2032)
+- **base**: classify +form-submit as high-risk-write (#1969)
+- **slides**: declare screenshot scope
+- **slides**: support CSV multi-value for --slide-id in screenshot (#2047)
+
+### Documentation
+
+- **skill**: clarify scope handling for query expansion (#2030)
+- **base**: clarify complete and partial updates (#1993)
+- **skills**: clarify callout child rules (#2048)
+
+### Misc
+
+- fix/task id handling (#2023)
+- fix/task search pagination (#2041)
+
 ## [v1.0.75] - 2026-07-22
 
 ### Features
@@ -1638,6 +1667,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.77]: https://github.com/larksuite/cli/releases/tag/v1.0.77
 [v1.0.75]: https://github.com/larksuite/cli/releases/tag/v1.0.75
 [v1.0.74]: https://github.com/larksuite/cli/releases/tag/v1.0.74
 [v1.0.73]: https://github.com/larksuite/cli/releases/tag/v1.0.73
