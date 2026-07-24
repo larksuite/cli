@@ -27,6 +27,7 @@ metadata:
 - 禁止使用 emoji 图标，任何位置都不能出现。
 - 字号必须显式设置 `<content>` 的 `fontSize` 属性，不要依赖 `textType` 的默认字号兜底，这些兜底值明显偏大。
 - 大数字、字号大或字数多的 `<content>` 必须设置 `wrap="true" autoFit="normal-auto-fit"` 属性自动换行和缩排，避免文字溢出。
+- 所有本地文件路径参数（`--output`、`--file`、`--output-dir`、`@./path` 占位符等）必须用当前工作目录（CWD）内的相对路径，禁止绝对路径（`/home/...`、`/tmp/...` 会被拒 `unsafe file path`）。
 - 文字颜色必须用 `<content>` 的 `color` 属性而不是 `fontColor` 属性。
 - 文字行间距必须设置 `<content>` 的 `lineSpacing="multiple:xx"` 或 `lineSpacing="fixed:xx"` 而不是 `lineSpacing="xx"`。
 - 图片必须用 `<img>` 而不是 `<image>`。

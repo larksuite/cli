@@ -99,15 +99,12 @@ lark-cli slides +create --as user --title "图测试" --slides '[
 
 行为：
 
-- 路径相对于**当前工作目录**（CWD）解析；**必须是 CWD 内的相对路径**（如 `./pic.png`、`./assets/x.png`）
+- `@` 路径相对 CWD 解析，用 CWD 内相对路径（如 `./pic.png`、`./assets/x.png`；相对路径规则见 SKILL 权威经验）
 - 同一份图被多次引用时**只上传一次**（按路径去重）
 - `src` 不以 `@` 开头的会原样保留，但**只允许写 `slides +media-upload` 拿到的 `file_token`**；**禁止写 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，外链 src 通常显示破图。要用网图必须先下载到 CWD 内、再走上传流程
 - 单张图片最大 20 MB（slides upload API 不支持分片上传）
 - 校验阶段就会检查所有占位符文件存在及大小；缺文件或超限直接报错，不会创建空白 PPT 占位
 - 创空白 PPT → 上传所有图 → 替换 token → 逐页创建 slide，按这个顺序执行
-
-> [!IMPORTANT]
-> **路径必须在 CWD 内**：`@/abs/path/x.png` 或 `@../up/x.png` 这种会被 CLI 拒绝（报 `unsafe file path`）。如果素材在别的目录，先 `cd` 过去再执行。
 
 ### 给已有 PPT 加带图新页
 
