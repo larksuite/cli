@@ -36,7 +36,7 @@ func readWindowsDeviceModel(readRegistryModel func(string) (string, error)) stri
 		if err != nil {
 			continue
 		}
-		if model = normalizeModel(model); model != "" {
+		if model = normalizeDeviceModel(model); model != "" {
 			return model
 		}
 	}

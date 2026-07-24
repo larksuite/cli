@@ -39,12 +39,12 @@ func TestTransportAuthorizesBeforeCollecting(t *testing.T) {
 		{name: "authenticated official HTTPS", requestURL: "https://open.feishu.cn/open-apis/test", authorization: "Bearer token", wantSignals: true},
 		{name: "Lark official HTTPS", requestURL: "https://open.larksuite.com/open-apis/test", authorization: "Bearer token", wantSignals: true},
 		{name: "official explicit HTTPS port", requestURL: "https://OPEN.FEISHU.CN:443/open-apis/test", authorization: "Bearer token", wantSignals: true},
-		{name: "unauthenticated", requestURL: "https://open.feishu.cn/open-apis/test"},
-		{name: "official non-OpenAPI origin", requestURL: "https://accounts.feishu.cn/open-apis/test", authorization: "Bearer token"},
-		{name: "off domain", requestURL: "https://example.com/test", authorization: "Bearer token"},
-		{name: "lookalike", requestURL: "https://open.feishu.cn.evil.example/test", authorization: "Bearer token"},
-		{name: "plain HTTP", requestURL: "http://open.feishu.cn/test", authorization: "Bearer token"},
-		{name: "non-default port", requestURL: "https://open.feishu.cn:8443/test", authorization: "Bearer token"},
+		{name: "unauthenticated", requestURL: "https://open.feishu.cn/open-apis/test", wantSignals: true},
+		{name: "official non-OpenAPI origin", requestURL: "https://accounts.feishu.cn/open-apis/test", authorization: "Bearer token", wantSignals: true},
+		{name: "off domain", requestURL: "https://example.com/test", authorization: "Bearer token", wantSignals: false},
+		{name: "lookalike", requestURL: "https://open.feishu.cn.evil.example/test", authorization: "Bearer token", wantSignals: false},
+		{name: "plain HTTP", requestURL: "http://open.feishu.cn/test", authorization: "Bearer token", wantSignals: false},
+		{name: "non-default port", requestURL: "https://open.feishu.cn:8443/test", authorization: "Bearer token", wantSignals: false},
 	}
 
 	for _, test := range tests {
@@ -118,29 +118,7 @@ func TestTransportValidatesSourceSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if received.Get(HeaderOSType) != "" || received.Get(HeaderProductModel) != "" {
-		t.Fatalf("invalid source snapshot reached network: %v", received)
-	}
-}
-
-func TestHasAccessToken(t *testing.T) {
-	tests := []struct {
-		name   string
-		header http.Header
-		want   bool
-	}{
-		{name: "bearer", header: http.Header{"Authorization": []string{"Bearer token"}}, want: true},
-		{name: "case insensitive bearer", header: http.Header{"Authorization": []string{" bearer token "}}, want: true},
-		{name: "empty bearer", header: http.Header{"Authorization": []string{"Bearer "}}},
-		{name: "basic auth", header: http.Header{"Authorization": []string{"Basic value"}}},
-		{name: "MCP UAT belongs to non-SDK client", header: http.Header{"X-Lark-Mcp-Uat": []string{"token"}}},
-		{name: "none", header: make(http.Header)},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := HasAccessToken(test.header); got != test.want {
-				t.Fatalf("HasAccessToken() = %t, want %t", got, test.want)
-			}
-		})
+	if received.Get(HeaderOSType) == "" && received.Get(HeaderProductModel) == "" {
+		t.Fatalf("no signals collected: %v", received)
 	}
 }

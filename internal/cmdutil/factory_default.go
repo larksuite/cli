@@ -114,7 +114,7 @@ var warnIfProxied = transport.WarnIfProxied
 
 func cachedHttpClientFunc(f *Factory, workspaceConfig workspaceConfigSource) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
-		_, workspaceManaged, err := f.Credential.ResolveAccountWithProvenance(context.Background())
+		providerName, err := f.Credential.ActiveExtensionProviderName(context.Background())
 		if err != nil {
 			return nil, err
 		}
@@ -123,7 +123,7 @@ func cachedHttpClientFunc(f *Factory, workspaceConfig workspaceConfigSource) fun
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
 
-		hostSignalSource := resolveSDKHostSignalSource(workspaceManaged, workspaceConfig)
+		hostSignalSource := resolveSDKHostSignalSource(providerName == "", workspaceConfig)
 
 		var rt http.RoundTripper = transport.Shared()
 		rt = riskcontrol.NewTransport(rt, hostSignalSource)
