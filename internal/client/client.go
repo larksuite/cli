@@ -212,6 +212,9 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		cancel()
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
 		return nil, errs.NewNetworkError(classifyNetworkSubtype(err), "stream request failed: %s", err).WithCause(err)
 	}
 	resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}

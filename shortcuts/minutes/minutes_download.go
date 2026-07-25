@@ -145,13 +145,8 @@ var MinutesDownload = common.Shortcut{
 		seen := make(map[string]int)
 		usedNames := make(map[string]bool)
 
-		// Clone the factory client for download use. We clone the struct (not the
-		// pointer) to avoid mutating the shared singleton's Timeout. The original
-		// transport chain is preserved so security headers and test mocks still work.
-		// SSRF protection: ValidateDownloadSourceURL (URL-level) + CheckRedirect
-		// (redirect-level). Transport-level IP check is intentionally omitted because
-		// download URLs originate from the trusted Lark API, not user input.
-		baseClient, err := runtime.Factory.HttpClient()
+		// Clone the external client so timeout changes stay local.
+		baseClient, err := runtime.Factory.ExternalHTTPClient()
 		if err != nil {
 			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to get HTTP client: %s", err).WithCause(err)
 		}

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package transport owns how the CLI assembles its outbound HTTP transport: the
-// shared base RoundTripper (Shared/Fallback/NewHTTPClient), the LARK_CLI_NO_PROXY
+// shared base RoundTripper (Shared/Fallback and the HTTP client constructors), the LARK_CLI_NO_PROXY
 // direct-egress clone, and the ~/.lark-cli/proxy_config.json proxy-plugin mode.
 //
 // Proxy-plugin mode forces all outbound HTTP(S) requests through a fixed loopback

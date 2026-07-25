@@ -8,6 +8,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	exttransport "github.com/larksuite/cli/extension/transport"
 )
 
 // Shared returns the base http.RoundTripper for all CLI HTTP clients.
@@ -55,19 +57,27 @@ func Fallback() *http.Transport {
 	return noProxyTransport()
 }
 
-// NewHTTPClient returns an *http.Client whose Transport is the shared,
-// proxy-plugin-aware base (see Shared). Prefer this over a bare &http.Client{}
-// for outbound requests: a bare client falls back to http.DefaultTransport and
-// therefore silently bypasses proxy plugin mode (fixed proxy + trusted CA, or
-// fail-closed), creating an audit blind spot.
+// NewHTTPClient returns a policy-routed client over the shared proxy-aware
+// transport. Known platform endpoints use the platform request class; all
+// other URLs use the external request class. Existing unscoped transport
+// providers continue to apply to both classes.
 //
 // A zero timeout means no client-level timeout (callers relying on context
 // deadlines pass 0).
 func NewHTTPClient(timeout time.Duration) *http.Client {
+	base := Shared()
 	return &http.Client{
-		Transport: Shared(),
+		Transport: NewHTTPPolicyRouter(base, base),
 		Timeout:   timeout,
 	}
+}
+
+// NewExternalHTTPClient returns a client for user-provided, pre-signed, CDN,
+// package-registry, and other non-platform URLs. It forces the external policy
+// while preserving the shared proxy configuration and the historical behavior
+// of unscoped transport providers. A zero timeout means no client-level timeout.
+func NewExternalHTTPClient(timeout time.Duration) *http.Client {
+	return ClientForRequestClass(NewHTTPClient(timeout), exttransport.RequestClassExternal)
 }
 
 // noProxyTransport is a proxy-disabled clone of http.DefaultTransport, lazily

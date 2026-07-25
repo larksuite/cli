@@ -199,7 +199,7 @@ func startURLDownload(ctx context.Context, runtime *common.RuntimeContext, rawUR
 			WithCause(err)
 	}
 
-	httpClient, err := runtime.Factory.HttpClient()
+	httpClient, err := runtime.Factory.ExternalHTTPClient()
 	if err != nil {
 		return nil, "", errs.NewInternalError(errs.SubtypeSDKError, "http client: %v", err).WithCause(err)
 	}

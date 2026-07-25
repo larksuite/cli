@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	internaltransport "github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -393,6 +395,36 @@ func TestDownloadAttachmentContent_NoAuthorizationHeader(t *testing.T) {
 	}
 	if string(data) != "attachment data" {
 		t.Errorf("unexpected content: %q", data)
+	}
+}
+
+func TestDownloadAttachmentContentUsesExternalRequestClass(t *testing.T) {
+	platform := signatureRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusBadGateway,
+			Header:     make(http.Header),
+			Body:       http.NoBody,
+			Request:    req,
+		}, nil
+	})
+	external := signatureRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("attachment data")),
+			Request:    req,
+		}, nil
+	})
+	rt := newDownloadRuntime(t, &http.Client{
+		Transport: internaltransport.NewHTTPPolicyRouter(platform, external),
+	})
+
+	data, err := downloadAttachmentContent(rt, "https://open.feishu.cn/presigned/file")
+	if err != nil {
+		t.Fatalf("downloadAttachmentContent() error = %v, want external route", err)
+	}
+	if got := string(data); got != "attachment data" {
+		t.Fatalf("downloadAttachmentContent() = %q, want external payload", got)
 	}
 }
 

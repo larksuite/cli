@@ -62,10 +62,7 @@ func httpClient() *http.Client {
 	if DefaultClient != nil {
 		return DefaultClient
 	}
-	return &http.Client{
-		Timeout:   fetchTimeout,
-		Transport: transport.Shared(),
-	}
+	return transport.NewExternalHTTPClient(fetchTimeout)
 }
 
 // updateState is persisted to disk for caching.

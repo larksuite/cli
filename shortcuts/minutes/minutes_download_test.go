@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	internaltransport "github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -29,6 +31,12 @@ import (
 // ---------------------------------------------------------------------------
 
 var warmOnce sync.Once
+
+type minutesRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f minutesRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func warmTokenCache(t *testing.T) {
 	t.Helper()
@@ -213,6 +221,52 @@ func TestDownload_ServerFilenameTraversalStaysInOutputDir(t *testing.T) {
 	}
 	if _, err := os.Stat("minutes/evil.mp4"); err == nil {
 		t.Error("file escaped per-token subdir into parent: minutes/evil.mp4 exists")
+	}
+}
+
+func TestDownloadUsesExternalRequestClass(t *testing.T) {
+	chdir(t, t.TempDir())
+
+	const downloadURL = "https://open.feishu.cn/presigned/download"
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(mediaStub("tok001", downloadURL))
+
+	platform := minutesRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusBadGateway,
+			Header:     make(http.Header),
+			Body:       http.NoBody,
+			Request:    req,
+		}, nil
+	})
+	external := minutesRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		payload := []byte("media")
+		return &http.Response{
+			StatusCode:    http.StatusOK,
+			Header:        http.Header{"Content-Type": []string{"video/mp4"}},
+			Body:          io.NopCloser(bytes.NewReader(payload)),
+			ContentLength: int64(len(payload)),
+			Request:       req,
+		}, nil
+	})
+	f.HttpClient = func() (*http.Client, error) {
+		return &http.Client{
+			Transport: internaltransport.NewHTTPPolicyRouter(platform, external),
+		}, nil
+	}
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001", "--output", "out.mp4", "--as", "bot",
+	}, f, nil)
+	if err != nil {
+		t.Fatalf("MinutesDownload error = %v, want external route", err)
+	}
+	data, err := os.ReadFile("out.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); got != "media" {
+		t.Fatalf("downloaded content = %q, want external payload", got)
 	}
 }
 
@@ -742,7 +796,7 @@ func TestDownload_TypedErr_NetworkTransport_HttpError(t *testing.T) {
 		Command:   "+probe-dl",
 		AuthTypes: []string{"bot"},
 		Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-			client, err := rctx.Factory.HttpClient()
+			client, err := rctx.Factory.ExternalHTTPClient()
 			if err != nil {
 				return err
 			}
@@ -845,7 +899,7 @@ func TestDownload_TypedErr_OverwriteProtection(t *testing.T) {
 		Command:   "+probe-overwrite",
 		AuthTypes: []string{"bot"},
 		Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-			client, err := rctx.Factory.HttpClient()
+			client, err := rctx.Factory.ExternalHTTPClient()
 			if err != nil {
 				return err
 			}

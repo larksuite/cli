@@ -3,7 +3,10 @@
 
 package core
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
 
 // LarkBrand represents the Lark platform brand.
 // "feishu" targets China-mainland, "lark" targets international.
@@ -62,4 +65,40 @@ func ResolveEndpoints(brand LarkBrand) Endpoints {
 // ResolveOpenBaseURL returns the Open API base URL for the given brand.
 func ResolveOpenBaseURL(brand LarkBrand) string {
 	return ResolveEndpoints(brand).Open
+}
+
+var platformEndpointHosts = func() map[string]struct{} {
+	hosts := make(map[string]struct{})
+	for _, brand := range []LarkBrand{BrandFeishu, BrandLark} {
+		endpoints := ResolveEndpoints(brand)
+		for _, rawURL := range []string{endpoints.Open, endpoints.Accounts, endpoints.MCP, endpoints.AppLink} {
+			parsed, err := url.Parse(rawURL)
+			if err == nil && parsed.Hostname() != "" {
+				hosts[strings.ToLower(parsed.Hostname())] = struct{}{}
+			}
+		}
+	}
+	return hosts
+}()
+
+// IsPlatformEndpointHost reports whether hostname exactly matches one of the
+// endpoint hosts produced by ResolveEndpoints. It intentionally does not use a
+// suffix match: lookalike external domains must never enter the platform
+// transport extension.
+func IsPlatformEndpointHost(hostname string) bool {
+	_, ok := platformEndpointHosts[strings.ToLower(hostname)]
+	return ok
+}
+
+// IsPlatformEndpointURL reports whether candidate uses a secure origin for a
+// configured platform endpoint. Non-TLS and non-standard-port lookalikes are
+// excluded even when their hostname matches.
+func IsPlatformEndpointURL(candidate *url.URL) bool {
+	if candidate == nil || !strings.EqualFold(candidate.Scheme, "https") {
+		return false
+	}
+	if port := candidate.Port(); port != "" && port != "443" {
+		return false
+	}
+	return IsPlatformEndpointHost(candidate.Hostname())
 }

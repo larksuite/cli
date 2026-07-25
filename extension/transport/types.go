@@ -15,6 +15,27 @@ type Provider interface {
 	ResolveInterceptor(ctx context.Context) Interceptor
 }
 
+// RequestClass describes the trust boundary of an outbound HTTP request.
+// Platform requests target endpoints owned by the CLI's endpoint resolver;
+// external requests target user-provided, pre-signed, CDN, registry, or other
+// non-platform URLs. Redirect targets are classified again from each hop's
+// logical URL; rewriting a host in an interceptor does not add that host to
+// the platform endpoint catalog.
+type RequestClass string
+
+const (
+	RequestClassPlatform RequestClass = "platform"
+	RequestClassExternal RequestClass = "external"
+)
+
+// ScopedProvider optionally limits a Provider to selected request classes.
+// Providers that do not implement this interface retain the original
+// behavior and apply to every request class.
+type ScopedProvider interface {
+	Provider
+	SupportsRequestClass(RequestClass) bool
+}
+
 // Interceptor defines network-layer customization via a pre/post hook pair.
 // The built-in transport chain always executes between PreRoundTrip and the
 // returned post function, and cannot be skipped or overridden by the extension.
