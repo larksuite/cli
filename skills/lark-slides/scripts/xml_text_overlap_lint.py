@@ -56,6 +56,10 @@ SINGLE_LINE_METRIC_WIDTH_RATIO = 1.18
 CENTERED_SHORT_LABEL_WIDTH_RATIO = 1.12
 HEADLINE_NEAR_FIT_WIDTH_RATIO = 1.04
 DENSE_BODY_LINE_SPACING_MAX_MULTIPLE = 1.6
+GHOST_TEXT_MIN_FONT_SIZE = 96
+GHOST_TEXT_MAX_ALPHA = 0.5
+GHOST_TEXT_FAINT_MIN_FONT_SIZE = 36
+GHOST_TEXT_FAINT_MAX_ALPHA = 0.35
 # Sub-pixel canvas overflow is floating-point rounding noise (e.g. rotated-bbox math), not a
 # visible defect; keep this well under 1px so real overflow is still always caught.
 CANVAS_OVERFLOW_TOLERANCE = 0.5
@@ -116,6 +120,33 @@ def extract_numeric_attribute(tag_source: str, name: str) -> int | float | None:
 def extract_bool_attribute(tag_source: str, name: str) -> bool:
     value = extract_attribute(tag_source, name)
     return value in {"true", "1", "yes"}
+
+
+def extract_color_alpha(color: str | None) -> int | float | None:
+    if color is None:
+        return None
+    normalized = re.sub(r"\s+", "", color).lower()
+    if normalized == "transparent":
+        return 0
+    rgba_match = re.fullmatch(
+        r"rgba\([^,]+,[^,]+,[^,]+,([+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))\)",
+        normalized,
+    )
+    if rgba_match is None:
+        return None
+    try:
+        alpha = float(rgba_match.group(1))
+    except ValueError:
+        return None
+    return int(alpha) if alpha.is_integer() else alpha
+
+
+def effective_text_alpha(shape_alpha: int | float | None, text_color: str | None) -> int | float:
+    base_alpha = shape_alpha if isinstance(shape_alpha, (int, float)) else 1
+    color_alpha = extract_color_alpha(text_color)
+    if not isinstance(color_alpha, (int, float)):
+        return base_alpha
+    return base_alpha * color_alpha
 
 
 def detect_inline_style_presence(content_xml: str, style_tags: set[str]) -> bool:
@@ -722,6 +753,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                 if font_size is None:
                     font_size = extract_numeric_attribute(attrs, "fontSize")
                 font_family = extract_attribute(content_attrs, "fontFamily") or extract_attribute(attrs, "fontFamily")
+                text_color = extract_attribute(content_attrs, "color") or extract_attribute(attrs, "color")
                 bold = (
                     extract_bool_attribute(content_attrs, "bold")
                     or extract_bool_attribute(attrs, "bold")
@@ -752,6 +784,8 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                         "paddingLeft": extract_numeric_attribute(content_attrs, "paddingLeft") or 0,
                         "fontSize": font_size if font_size is not None else 16,
                         "fontFamily": font_family or "",
+                        "color": text_color,
+                        "textAlpha": effective_text_alpha(alpha, text_color),
                         "bold": bold,
                         "italic": italic,
                         "text": strip_xml_paragraphs(content),
@@ -789,7 +823,11 @@ def is_vertical_text(element: dict[str, Any]) -> bool:
 
 def detect_image_text_occlusions(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    text_elements = [element for element in elements if is_text_element(element) and has_text_content(element)]
+    text_elements = [
+        element
+        for element in elements
+        if is_text_element(element) and has_text_content(element) and not is_ghost_text(element)
+    ]
     image_elements = [element for element in elements if element["kind"] == "img" and element["alpha"] > 0]
     for text_element in text_elements:
         for image_element in image_elements:
@@ -1107,11 +1145,7 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
 def is_background_decorative_text(
     element: dict[str, Any], elements: list[dict[str, Any]]
 ) -> bool:
-    font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
-    if font_size <= 96:
-        return False
-    alpha = element.get("alpha", 1)
-    if not isinstance(alpha, (int, float)) or alpha >= 0.5:
+    if not is_ghost_text(element):
         return False
     for other in elements:
         if other is element:
@@ -1126,6 +1160,18 @@ def is_background_decorative_text(
         if intersects(element, other):
             return True
     return False
+
+
+def is_ghost_text(element: dict[str, Any]) -> bool:
+    if not is_text_element(element) or not has_text_content(element):
+        return False
+    font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    text_alpha = element.get("textAlpha", element.get("alpha", 1))
+    if not isinstance(text_alpha, (int, float)):
+        return False
+    if font_size > GHOST_TEXT_MIN_FONT_SIZE and text_alpha < GHOST_TEXT_MAX_ALPHA:
+        return True
+    return font_size >= GHOST_TEXT_FAINT_MIN_FONT_SIZE and text_alpha < GHOST_TEXT_FAINT_MAX_ALPHA
 
 
 def estimate_text_visual_bbox(element: dict[str, Any]) -> dict[str, int | float] | None:
@@ -1239,6 +1285,8 @@ def should_flag_horizontal_text_overflow(left: dict[str, Any], right: dict[str, 
         return False
     if not (has_text_content(left) and has_text_content(right)):
         return False
+    if is_ghost_text(left) or is_ghost_text(right):
+        return False
     if is_template_text_stack(left, right) or is_similar_text_overlay(left, right):
         return False
 
@@ -1293,6 +1341,8 @@ def should_flag_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
         return False
     if is_text_element(right) and not has_text_content(right):
         return False
+    if is_ghost_text(left) or is_ghost_text(right):
+        return False
     if is_template_text_stack(left, right):
         return False
     if is_text_element(left) and is_text_element(right):
@@ -1338,6 +1388,8 @@ def should_report_whiteboard_overlap(
     slide_height: int | float,
 ) -> dict[str, Any] | None:
     if other is whiteboard or not intersects(whiteboard, other):
+        return None
+    if is_ghost_text(other):
         return None
     if contains(whiteboard, other):
         return None
@@ -1448,6 +1500,8 @@ def detect_elements_out_of_canvas(
         if element["kind"] in {"table", "chart"}
         or (element["kind"] == "shape" and element["type"] in {"rect", "text"})
     ):
+        if is_ghost_text(element):
+            continue
         bbox = element_canvas_bbox(element)
         overflow = {
             "left": max(-bbox["x"], 0),

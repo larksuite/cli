@@ -1026,6 +1026,153 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["slides"][0]["infos"], [issues["bg-deco"]])
         self.assertIn("background decoration", issues["bg-deco"]["message"])
 
+    def test_lint_xml_allows_shape_alpha_ghost_text_out_of_canvas_and_overlap(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="ghost-number" type="text" topLeftX="-60" topLeftY="30" width="360" height="180" alpha="0.2">
+                  <content fontSize="160" lineSpacing="fixed:160" wrap="false"><p>01</p></content>
+                </shape>
+                <shape id="title" type="text" topLeftX="80" topLeftY="80" width="360" height="80">
+                  <content fontSize="30" lineSpacing="fixed:36"><p>Annual Review</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertNotIn("shape_out_of_canvas", codes)
+        self.assertNotIn("bbox_overlap", codes)
+
+    def test_lint_xml_allows_content_color_alpha_ghost_text_out_of_canvas_and_overlap(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="ghost-year" type="text" topLeftX="760" topLeftY="20" width="260" height="160">
+                  <content fontSize="140" color="rgba(0,0,0,0.2)" lineSpacing="fixed:140" wrap="false"><p>2026</p></content>
+                </shape>
+                <shape id="headline" type="text" topLeftX="700" topLeftY="70" width="220" height="80">
+                  <content fontSize="28" lineSpacing="fixed:34"><p>Forecast</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertNotIn("shape_out_of_canvas", codes)
+        self.assertNotIn("bbox_overlap", codes)
+
+    def test_lint_xml_allows_faint_medium_ghost_text_out_of_canvas_and_overlap(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="medium-ghost" type="text" topLeftX="820" topLeftY="300" width="270" height="72" alpha="0.32">
+                  <content fontSize="40" lineSpacing="fixed:40" wrap="false"><p>OFF EDGE</p></content>
+                </shape>
+                <shape id="caption" type="text" topLeftX="760" topLeftY="315" width="180" height="36">
+                  <content fontSize="16" lineSpacing="fixed:20"><p>Readable caption</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertNotIn("shape_out_of_canvas", codes)
+        self.assertNotIn("bbox_overlap", codes)
+
+    def test_lint_xml_allows_ghost_text_image_overlap(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="ghost-label" type="text" topLeftX="100" topLeftY="40" width="560" height="160" alpha="0.2">
+                  <content fontSize="120" lineSpacing="fixed:120" wrap="false"><p>2026</p></content>
+                </shape>
+                <img id="photo" src="token" topLeftX="160" topLeftY="70" width="260" height="160"/>
+                <shape id="title" type="text" topLeftX="610" topLeftY="95" width="320" height="60">
+                  <content fontSize="28" lineSpacing="fixed:34"><p>Annual Review</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertNotIn("image_covers_text", codes)
+        self.assertNotIn("bbox_overlap", codes)
+
+    def test_lint_slide_allows_ghost_text_whiteboard_overlap(self) -> None:
+        result = xml_text_overlap_lint.lint_slide(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <whiteboard id="board" topLeftX="180" topLeftY="70" width="420" height="300"/>
+                <shape id="ghost-label" type="text" topLeftX="100" topLeftY="40" width="560" height="160" alpha="0.2">
+                  <content fontSize="120" lineSpacing="fixed:120" wrap="false"><p>2026</p></content>
+                </shape>
+                <shape id="title" type="text" topLeftX="610" topLeftY="95" width="220" height="60">
+                  <content fontSize="28" lineSpacing="fixed:34"><p>Annual Review</p></content>
+                </shape>
+              </data>
+            </slide>
+            """,
+            1,
+        )
+        codes = [issue["code"] for issue in result["issues"]]
+        self.assertNotIn("whiteboard_external_overlap", codes)
+
+    def test_lint_xml_allows_faint_ghost_text_without_area_threshold(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="small-ghost" type="text" topLeftX="940" topLeftY="300" width="40" height="40" alpha="0.32">
+                  <content fontSize="36" lineSpacing="fixed:36" wrap="false"><p>土</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["slides"][0]["issues"], [])
+
+    def test_lint_xml_keeps_out_of_canvas_error_for_medium_text_without_faint_alpha(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="medium-not-ghost" type="text" topLeftX="820" topLeftY="300" width="270" height="72" alpha="0.36">
+                  <content fontSize="54" lineSpacing="fixed:54" wrap="false"><p>OFF EDGE</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["slides"][0]["issues"][0]["code"], "shape_out_of_canvas")
+        self.assertEqual(result["slides"][0]["issues"][0]["elements"], ["medium-not-ghost"])
+
+    def test_lint_xml_keeps_out_of_canvas_error_for_half_alpha_large_text(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="half-alpha" type="text" topLeftX="760" topLeftY="20" width="260" height="160">
+                  <content fontSize="140" color="rgba(0,0,0,0.5)" lineSpacing="fixed:140" wrap="false"><p>2026</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["slides"][0]["issues"][0]["code"], "shape_out_of_canvas")
+        self.assertEqual(result["slides"][0]["issues"][0]["elements"], ["half-alpha"])
+
     def test_lint_xml_text_may_overflow_shape_keeps_error_when_alpha_not_low(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
