@@ -1578,7 +1578,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
             "id": "sparse_container_content",
         })
         self.assertEqual(issue["measurement"]["container_area"], 151700)
-        self.assertEqual(issue["measurement"]["content_coverage_ratio"], 0.032)
+        self.assertEqual(issue["measurement"]["content_coverage_ratio"], 0.03)
         self.assertEqual(issue["elements"], ["trend-card", "trend-title", "trend-copy"])
         self.assertEqual(issue["element_ids"], ["trend-card", "trend-title", "trend-copy"])
         self.assertEqual(
@@ -2063,9 +2063,9 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         # Must match the visual bbox that should_flag_overlap actually decided with (fontSize=14
         # from extract_elements), not the fontSize=96 max-descendant value that
         # extract_density_elements computes for the same "left" element id.
-        self.assertEqual(issue["measurement"]["intersection_width"], 117.04)
+        self.assertEqual(issue["measurement"]["intersection_width"], 109.2)
         self.assertEqual(issue["measurement"]["intersection_height"], 6.8)
-        self.assertEqual(issue["measurement"]["intersection_area"], 795.872)
+        self.assertEqual(issue["measurement"]["intersection_area"], 742.56)
 
     def test_has_similar_short_card_peer_excludes_the_element_itself(self) -> None:
         card_a = {"kind": "shape", "type": "rect", "x": 0, "y": 0, "width": 300, "height": 100}

@@ -106,6 +106,25 @@ def extract_numeric_attribute(tag_source: str, name: str) -> int | float | None:
     return int(value) if value.is_integer() else value
 
 
+def extract_bool_attribute(tag_source: str, name: str) -> bool:
+    value = extract_attribute(tag_source, name)
+    return value in {"true", "1", "yes"}
+
+
+def detect_inline_style_presence(content_xml: str, style_tags: set[str]) -> bool:
+    for tag_name in style_tags:
+        if re.search(fr"<{re.escape(tag_name)}\b[\s>]", content_xml) is not None:
+            return True
+    return False
+
+
+def detect_any_span_bool_attribute(content_xml: str, attr_name: str) -> bool:
+    for attrs in re.findall(r"<span\b([^>]*)>", content_xml):
+        if extract_bool_attribute(attrs, attr_name):
+            return True
+    return False
+
+
 def sum_sizes(sizes: list[int | float]) -> int | float:
     return sum(sizes)
 
@@ -695,6 +714,19 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                 font_size = extract_numeric_attribute(content_attrs, "fontSize")
                 if font_size is None:
                     font_size = extract_numeric_attribute(attrs, "fontSize")
+                font_family = extract_attribute(content_attrs, "fontFamily") or extract_attribute(attrs, "fontFamily")
+                bold = (
+                    extract_bool_attribute(content_attrs, "bold")
+                    or extract_bool_attribute(attrs, "bold")
+                    or detect_inline_style_presence(content, {"strong", "b"})
+                    or detect_any_span_bool_attribute(content, "bold")
+                )
+                italic = (
+                    extract_bool_attribute(content_attrs, "italic")
+                    or extract_bool_attribute(attrs, "italic")
+                    or detect_inline_style_presence(content, {"i", "em"})
+                    or detect_any_span_bool_attribute(content, "italic")
+                )
                 element.update(
                     {
                         "textType": extract_attribute(content_attrs, "textType"),
@@ -712,6 +744,9 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                         "paddingBottom": extract_numeric_attribute(content_attrs, "paddingBottom") or 0,
                         "paddingLeft": extract_numeric_attribute(content_attrs, "paddingLeft") or 0,
                         "fontSize": font_size if font_size is not None else 16,
+                        "fontFamily": font_family or "",
+                        "bold": bold,
+                        "italic": italic,
                         "text": strip_xml_paragraphs(content),
                         "paragraphs": extract_text_paragraphs(content, font_size if font_size is not None else 16),
                     }
@@ -784,16 +819,60 @@ def normalize_text_for_overlap(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
-def estimate_character_width(character: str, font_size: int | float) -> int | float:
+SERIF_FONT_PATTERNS = {
+    "serif", "song", "songti", "simsun", "ming", "mincho",
+    "georgia", "times", "caslon", "garamond", "sourcehan-serif",
+    "source han serif", "思源宋体", "宋体", "明体",
+}
+
+
+def classify_font_family(font_family: str | None) -> str:
+    if not font_family:
+        return "sans"
+    family_lower = font_family.lower()
+    for pattern in SERIF_FONT_PATTERNS:
+        if pattern in family_lower:
+            return "serif"
+    return "sans"
+
+
+_FONT_CATEGORY_MULTIPLIERS: dict[str, dict[str, float]] = {
+    "sans": {"upper": 0.57, "lower": 0.51, "digit": 0.58, "punct": 0.50},
+    "serif": {"upper": 0.57, "lower": 0.53, "digit": 0.58, "punct": 0.50},
+}
+
+
+def estimate_character_width(
+    character: str,
+    font_size: int | float,
+    bold: bool = False,
+    font_family: str | None = None,
+) -> int | float:
+    bold_multiplier = 1.05 if bold else 1.0
     if character.isspace():
-        return font_size * 0.33
-    if unicodedata.east_asian_width(character) in {"F", "W"}:
-        return font_size
-    return font_size * 0.55
+        return font_size * 0.33 * bold_multiplier
+    ea_width = unicodedata.east_asian_width(character)
+    if ea_width in {"F", "W"}:
+        return font_size * bold_multiplier
+    category = classify_font_family(font_family)
+    coeffs = _FONT_CATEGORY_MULTIPLIERS[category]
+    if character.isupper():
+        return font_size * coeffs["upper"] * bold_multiplier
+    if character.islower():
+        return font_size * coeffs["lower"] * bold_multiplier
+    if character.isdigit():
+        return font_size * coeffs["digit"] * bold_multiplier
+    return font_size * coeffs["punct"] * bold_multiplier
 
 
-def estimate_text_width(text: str, font_size: int | float, letter_spacing: int | float = 0) -> int | float:
-    base = sum(estimate_character_width(character, font_size) for character in text)
+def estimate_text_width(
+    text: str,
+    font_size: int | float,
+    letter_spacing: int | float = 0,
+    bold: bool = False,
+    font_family: str | None = None,
+) -> int | float:
+    base = sum(estimate_character_width(character, font_size, bold, font_family) for character in text)
     return base + max(len(text) - 1, 0) * letter_spacing
 
 
@@ -808,10 +887,13 @@ def resolve_letter_spacing(element: dict[str, Any], paragraph: dict[str, Any] | 
 
 def estimate_text_max_line_width(element: dict[str, Any]) -> int | float:
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    bold = element.get("bold", False)
+    font_family = element.get("fontFamily", "")
     letter_spacing = resolve_letter_spacing(element)
     paragraphs = [paragraph for paragraph in re.split(r"\n+", element["text"]) if paragraph]
     return max(
-        [estimate_text_width(paragraph, font_size, letter_spacing) for paragraph in paragraphs] or [1]
+        [estimate_text_width(paragraph, font_size, letter_spacing, bold, font_family) for paragraph in paragraphs]
+        or [1]
     )
 
 
@@ -829,7 +911,10 @@ def estimate_text_line_count_for_text(
     element: dict[str, Any], text: str, paragraph: dict[str, Any] | None = None
 ) -> int:
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    bold = element.get("bold", False)
+    font_family = element.get("fontFamily", "")
     letter_spacing = resolve_letter_spacing(element, paragraph)
+    available_width = max(element["width"] - element.get("paddingLeft", 0) - element.get("paddingRight", 0), 1)
     hard_lines = text.split("\n")
     if not text:
         return 0
@@ -838,8 +923,8 @@ def estimate_text_line_count_for_text(
         if element.get("wrap") in {"false", "0"}:
             line_count += 1
             continue
-        logical_width = max(estimate_text_width(hard_line, font_size, letter_spacing), 1)
-        line_count += max(1, math.ceil(logical_width / max(element["width"], 1)))
+        logical_width = max(estimate_text_width(hard_line, font_size, letter_spacing, bold, font_family), 1)
+        line_count += max(1, math.ceil(logical_width / available_width))
     return line_count
 
 
@@ -1086,13 +1171,16 @@ def should_flag_horizontal_text_overflow(left: dict[str, Any], right: dict[str, 
         return False
 
     font_size = source["fontSize"] if isinstance(source["fontSize"], (int, float)) else 16
+    padding_left = source.get("paddingLeft", 0)
+    padding_right = source.get("paddingRight", 0)
+    available_width = max(source["width"] - padding_left - padding_right, 1)
     visual_width = estimate_text_max_line_width(source)
-    overflow_width = visual_width - source["width"]
-    min_overflow = max(font_size * 1.5, source["width"] * 0.08)
+    overflow_width = visual_width - available_width
+    min_overflow = max(font_size * 1.5, available_width * 0.08)
     if overflow_width < min_overflow:
         return False
 
-    intrusion_width = source["x"] + visual_width - target["x"]
+    intrusion_width = source["x"] + padding_left + visual_width - target["x"]
     min_intrusion = max(font_size * 1.5, target["width"] * 0.08)
     if intrusion_width < min_intrusion:
         return False
@@ -1104,8 +1192,9 @@ def should_flag_horizontal_text_overflow(left: dict[str, Any], right: dict[str, 
 
 def horizontal_text_overflow_measurement(left: dict[str, Any], right: dict[str, Any]) -> dict[str, int | float]:
     source, target = sorted([left, right], key=lambda element: element["x"])
+    padding_left = source.get("paddingLeft", 0)
     visual_width = estimate_text_max_line_width(source)
-    source_visual_bbox = {"x": source["x"], "y": source["y"], "width": visual_width, "height": source["height"]}
+    source_visual_bbox = {"x": source["x"] + padding_left, "y": source["y"], "width": visual_width, "height": source["height"]}
     width = intersection_width(source_visual_bbox, target)
     height = intersection_height(source_visual_bbox, target)
     return {
