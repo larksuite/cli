@@ -3,6 +3,8 @@
 
 package envvars
 
+import "os"
+
 const (
 	CliAppID             = "LARKSUITE_CLI_APP_ID"
 	CliAppSecret         = "LARKSUITE_CLI_APP_SECRET"
@@ -26,3 +28,18 @@ const (
 	CliProxyAddress = "LARKSUITE_CLI_PROXY_ADDRESS"
 	CliCAPath       = "LARKSUITE_CLI_CA_PATH"
 )
+
+// HasEnvCredentials reports whether any of the environment variables that feed
+// the env credential provider (app id/secret or an access token) are set. It
+// lets callers such as `doctor` distinguish "nothing configured at all" from
+// "credentials supplied via environment but no config.json on disk", so the
+// user isn't told to run `config init` when env credentials are the intended
+// setup.
+func HasEnvCredentials() bool {
+	for _, key := range []string{CliAppID, CliAppSecret, CliUserAccessToken, CliTenantAccessToken} {
+		if os.Getenv(key) != "" {
+			return true
+		}
+	}
+	return false
+}

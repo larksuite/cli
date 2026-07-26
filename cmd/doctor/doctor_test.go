@@ -144,6 +144,47 @@ func TestDoctorRun_SplitsBotAndMissingUserIdentity(t *testing.T) {
 	assertCheck(t, got.Checks, "identity_ready", "pass")
 }
 
+// With no config.json on disk but env credentials present, doctor must not
+// dead-end at the config_file check with a "run config init" hint. It should
+// skip that check and proceed to resolve the account from the environment.
+func TestDoctorRun_EnvCredentials_NoConfigFile_SkipsConfigCheck(t *testing.T) {
+	// Point config at an empty dir so LoadMultiAppConfig hits os.ErrNotExist,
+	// and supply credentials via the environment instead.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_APP_ID", "cli_env")
+	t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "t-env-token")
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "cli_env", Brand: core.BrandFeishu,
+	})
+	// Overall pass/fail depends on identity verification, which isn't the focus
+	// here; we only assert that step 1 no longer dead-ends the run.
+	_ = doctorRun(&DoctorOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Offline: true,
+	})
+
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\n%s", err, stdout.String())
+	}
+
+	cfgCheck := findCheck(t, got.Checks, "config_file")
+	if cfgCheck.Status != "skip" {
+		t.Fatalf("config_file status = %q, want skip; check = %#v", cfgCheck.Status, cfgCheck)
+	}
+	// It must not hand back the "run config init" style hint that would send an
+	// env-only user in circles.
+	if strings.Contains(cfgCheck.Hint, "config init") {
+		t.Fatalf("config_file hint should not suggest config init for env credentials, got %q", cfgCheck.Hint)
+	}
+	// Doctor must have proceeded past step 1 to the identity checks.
+	findCheck(t, got.Checks, "app_resolved")
+}
+
 func assertCheck(t *testing.T, checks []checkResult, name, status string) {
 	t.Helper()
 	if got := findCheck(t, checks, name); got.Status != status {
