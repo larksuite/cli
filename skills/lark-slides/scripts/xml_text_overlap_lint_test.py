@@ -794,6 +794,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             if issue["code"] == "text_may_overflow_shape"
         }
         self.assertEqual(issues["bg-deco"]["level"], "info")
+        self.assertEqual(result["summary"]["warning_count"], 0)
+        self.assertEqual(result["summary"]["info_count"], 1)
+        self.assertEqual(result["slides"][0]["infos"], [issues["bg-deco"]])
         self.assertIn("background decoration", issues["bg-deco"]["message"])
 
     def test_lint_xml_text_may_overflow_shape_keeps_error_when_alpha_not_low(self) -> None:
@@ -1328,8 +1331,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         )
         issues_by_dimension = {issue["dimension"]: issue for issue in result["slides"][0]["issues"]}
         self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertEqual(result["summary"]["warning_count"], 2)
-        self.assertEqual(issues_by_dimension["width"]["level"], "warning")
+        self.assertEqual(result["summary"]["warning_count"], 0)
+        self.assertEqual(result["summary"]["info_count"], 2)
+        self.assertEqual(issues_by_dimension["width"]["level"], "info")
         self.assertEqual(issues_by_dimension["width"]["code"], "table_resolved_size_mismatch")
         self.assertEqual(issues_by_dimension["width"]["resolved_sizes"], [100, 100, 50])
         self.assertEqual(issues_by_dimension["width"]["resolved_size"], 250)
@@ -1422,7 +1426,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         }
         script_path = Path(xml_text_overlap_lint.__file__).resolve()
         with tempfile.TemporaryDirectory() as temp_dir:
-            for name, (table_xml, expected_warning_count) in cases.items():
+            for name, (table_xml, expected_info_count) in cases.items():
                 with self.subTest(case=name):
                     input_path = Path(temp_dir) / f"{name}.xml"
                     input_path.write_text(
@@ -1442,9 +1446,10 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                     result = json.loads(completed.stdout)
                     self.assertEqual(completed.returncode, 0, completed.stderr)
                     self.assertEqual(result["summary"]["error_count"], 0)
-                    self.assertEqual(result["summary"]["warning_count"], expected_warning_count)
+                    self.assertEqual(result["summary"]["warning_count"], 0)
+                    self.assertEqual(result["summary"]["info_count"], expected_info_count)
                     self.assertTrue(
-                        all(issue["level"] == "warning" for issue in result["slides"][0]["issues"]),
+                        all(issue["level"] == "info" for issue in result["slides"][0]["issues"]),
                         result["slides"][0]["issues"],
                     )
 
@@ -1489,8 +1494,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         issue = next(issue for issue in result["slides"][0]["issues"] if issue["code"] == "image_may_cover_vertical_text")
-        self.assertEqual(issue["level"], "warning")
+        self.assertEqual(issue["level"], "info")
         self.assertEqual(result["summary"]["error_count"], 0)
+        self.assertEqual(result["summary"]["info_count"], 1)
 
 
 class XmlTextOverlapLintDensityTest(unittest.TestCase):

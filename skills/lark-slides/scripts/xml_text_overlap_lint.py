@@ -2120,8 +2120,6 @@ def normalize_issue(
     elements_by_id: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     normalized = dict(issue)
-    if normalized.get("level") == "info":
-        normalized["level"] = "warning"
     element_ids = list(dict.fromkeys(normalized.get("elements", [])))
     normalized["schema_version"] = "2.0"
     normalized["element_ids"] = element_ids
@@ -2183,8 +2181,10 @@ def build_result(
 ) -> dict[str, Any]:
     document_errors = [issue for issue in top_level_issues if issue["level"] == "error"]
     document_warnings = [issue for issue in top_level_issues if issue["level"] == "warning"]
+    document_infos = [issue for issue in top_level_issues if issue["level"] == "info"]
     error_count = len(document_errors) + sum(len(slide["errors"]) for slide in slides)
     warning_count = len(document_warnings) + sum(len(slide["warnings"]) for slide in slides)
+    info_count = len(document_infos) + sum(len(slide["infos"]) for slide in slides)
     all_errors = document_errors + [issue for slide in slides for issue in slide["errors"]]
     all_warnings = document_warnings + [issue for slide in slides for issue in slide["warnings"]]
     status = slide_status(all_errors, all_warnings)
@@ -2197,6 +2197,7 @@ def build_result(
             "slide_count": len(slides),
             "error_count": error_count,
             "warning_count": warning_count,
+            "info_count": info_count,
             "status": status,
             "release_ready": error_count == 0,
             "screenshot_review_required": warning_count > 0,
@@ -2204,6 +2205,7 @@ def build_result(
         "document": {
             "errors": document_errors,
             "warnings": document_warnings,
+            "infos": document_infos,
         },
         "slides": slides,
     }
@@ -2294,6 +2296,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         ]
         errors = [issue for issue in issues if issue["level"] == "error"]
         warnings = [issue for issue in issues if issue["level"] == "warning"]
+        infos = [issue for issue in issues if issue["level"] == "info"]
         slides.append(
             {
                 "slide_number": slide_number,
@@ -2301,6 +2304,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
                 "element_count": len(elements_by_id),
                 "errors": errors,
                 "warnings": warnings,
+                "infos": infos,
                 "issues": issues,
             }
         )
