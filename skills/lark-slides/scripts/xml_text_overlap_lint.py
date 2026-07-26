@@ -49,6 +49,13 @@ ROUNDTRIP_SXSD_ATTRS = {
 ROUNDTRIP_SXSD_TAGS = {"chartParsedValues"}
 DEFAULT_TABLE_COLUMN_WIDTH = 110
 DEFAULT_TABLE_ROW_HEIGHT = 37
+DEFAULT_TEXT_LINE_SPACING_MULTIPLE = 1.5
+TEXT_WRAP_WIDTH_TOLERANCE_PX = 1.0
+TEXT_HEIGHT_OVERFLOW_TOLERANCE_PX = 0.5
+SINGLE_LINE_METRIC_WIDTH_RATIO = 1.18
+CENTERED_SHORT_LABEL_WIDTH_RATIO = 1.12
+HEADLINE_NEAR_FIT_WIDTH_RATIO = 1.04
+DENSE_BODY_LINE_SPACING_MAX_MULTIPLE = 1.6
 # Sub-pixel canvas overflow is floating-point rounding noise (e.g. rotated-bbox math), not a
 # visible defect; keep this well under 1px so real overflow is still always caught.
 CANVAS_OVERFLOW_TOLERANCE = 0.5
@@ -820,17 +827,24 @@ def normalize_text_for_overlap(text: str) -> str:
 
 
 SERIF_FONT_PATTERNS = {
-    "serif", "song", "songti", "simsun", "ming", "mincho",
+    "song", "songti", "simsun", "ming", "mincho",
     "georgia", "times", "caslon", "garamond", "sourcehan-serif",
     "source han serif", "思源宋体", "宋体", "明体",
 }
+
+SANS_EXPLICIT_MARKERS = {"sans", "sans-serif", "sans serif", "sourcehan-sans", "source han sans", "思源黑体", "黑体",
+                         "helvetica", "arial", "inter", "roboto", "verdana", "tahoma", "calibri", "open sans"}
 
 
 def classify_font_family(font_family: str | None) -> str:
     if not font_family:
         return "sans"
     family_lower = font_family.lower()
-    for pattern in SERIF_FONT_PATTERNS:
+    for marker in SANS_EXPLICIT_MARKERS:
+        if marker in family_lower:
+            return "sans"
+    serif_keywords = SERIF_FONT_PATTERNS | {"serif"}
+    for pattern in serif_keywords:
         if pattern in family_lower:
             return "serif"
     return "sans"
@@ -885,6 +899,52 @@ def resolve_letter_spacing(element: dict[str, Any], paragraph: dict[str, Any] | 
     return value if isinstance(value, (int, float)) else 0
 
 
+def text_wrap_width_tolerance() -> int | float:
+    return TEXT_WRAP_WIDTH_TOLERANCE_PX
+
+
+def text_height_overflow_tolerance() -> int | float:
+    return TEXT_HEIGHT_OVERFLOW_TOLERANCE_PX
+
+
+def has_explicit_height_auto_fit(element: dict[str, Any]) -> bool:
+    return element.get("autoFit") in {"normal-auto-fit", "shape-auto-fit"}
+
+
+def is_short_metric_text(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text)
+    if not compact or len(compact) > 16 or re.search(r"\d", compact) is None:
+        return False
+    if re.fullmatch(r"[+\-–—]?[0-9,.，]+[\u4e00-\u9fffA-Za-z]{1,4}", compact):
+        return True
+    if re.search(r"[,.，+\-–—/%％]", compact) is None:
+        return False
+    return re.fullmatch(r"[+\-–—]?[0-9A-Za-z,.，/%％\-–—\u4e00-\u9fff]+", compact) is not None
+
+
+def is_single_line_visual_candidate(
+    element: dict[str, Any],
+    paragraph: dict[str, Any] | None,
+    text: str,
+    logical_width: int | float,
+    effective_width: int | float,
+) -> bool:
+    if "\n" in text or logical_width <= effective_width:
+        return False
+    if is_short_metric_text(text):
+        return logical_width <= effective_width * SINGLE_LINE_METRIC_WIDTH_RATIO
+
+    text_align = (paragraph or {}).get("textAlign") or element.get("textAlign")
+    compact_len = len(re.sub(r"\s+", "", text))
+    if text_align == "center" and compact_len <= 32:
+        return logical_width <= effective_width * CENTERED_SHORT_LABEL_WIDTH_RATIO
+
+    font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    if element.get("textType") in {"headline", "title"} and font_size <= 30 and compact_len <= 40:
+        return logical_width <= effective_width * HEADLINE_NEAR_FIT_WIDTH_RATIO
+    return False
+
+
 def estimate_text_max_line_width(element: dict[str, Any]) -> int | float:
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
     bold = element.get("bold", False)
@@ -924,7 +984,11 @@ def estimate_text_line_count_for_text(
             line_count += 1
             continue
         logical_width = max(estimate_text_width(hard_line, font_size, letter_spacing, bold, font_family), 1)
-        line_count += max(1, math.ceil(logical_width / available_width))
+        effective_width = available_width + text_wrap_width_tolerance()
+        if is_single_line_visual_candidate(element, paragraph, hard_line, logical_width, effective_width):
+            line_count += 1
+            continue
+        line_count += max(1, math.ceil(logical_width / effective_width))
     return line_count
 
 
@@ -934,7 +998,8 @@ def estimate_text_line_count(element: dict[str, Any]) -> int:
 
 def estimate_text_line_height(element: dict[str, Any], line_spacing: str | None = None) -> int | float | None:
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
-    line_spacing = line_spacing or "multiple:1.5"
+    if line_spacing is None:
+        return font_size * DEFAULT_TEXT_LINE_SPACING_MULTIPLE
     match = re.fullmatch(r"(multiple|fixed):([0-9]+(?:\.[0-9]+)?)", line_spacing)
     if match is None:
         return None
@@ -942,10 +1007,27 @@ def estimate_text_line_height(element: dict[str, Any], line_spacing: str | None 
     return font_size * float(value) if spacing_type == "multiple" else float(value)
 
 
+def adjust_dense_body_line_height(
+    element: dict[str, Any],
+    line_spacing: str | None,
+    line_height: int | float,
+    paragraph_count: int,
+) -> int | float:
+    font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    if paragraph_count < 4 or font_size > 14 or not line_spacing:
+        return line_height
+    match = re.fullmatch(r"multiple:([0-9]+(?:\.[0-9]+)?)", line_spacing)
+    if match is None:
+        return line_height
+    return min(line_height, font_size * min(float(match.group(1)), DENSE_BODY_LINE_SPACING_MAX_MULTIPLE))
+
+
 def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     for element in elements:
         if not is_text_element(element) or not has_text_content(element):
+            continue
+        if has_explicit_height_auto_fit(element):
             continue
 
         font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
@@ -964,7 +1046,8 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
             paragraph_line_count = estimate_text_line_count_for_text(element, paragraph["text"], paragraph)
             if paragraph_line_count == 0:
                 continue
-            line_height = estimate_text_line_height(element, paragraph["lineSpacing"] or element["lineSpacing"])
+            resolved_line_spacing = paragraph["lineSpacing"] or element["lineSpacing"]
+            line_height = estimate_text_line_height(element, resolved_line_spacing)
             before_spacing = estimate_text_line_height(
                 element, paragraph["beforeLineSpacing"] or element["beforeLineSpacing"] or "fixed:0"
             )
@@ -974,6 +1057,7 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
             if line_height is None or before_spacing is None or after_spacing is None:
                 line_count = 0
                 break
+            line_height = adjust_dense_body_line_height(element, resolved_line_spacing, line_height, len(paragraphs))
             first_line_height = font_size if line_count == 0 else line_height
             line_count += paragraph_line_count
             line_heights.append(line_height)
@@ -984,7 +1068,7 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
             continue
         available_height = max(element["height"] - element["paddingTop"] - element["paddingBottom"], 0)
         overflow = estimated_height - available_height
-        if overflow <= 0:
+        if overflow <= text_height_overflow_tolerance():
             continue
 
         is_background = is_background_decorative_text(element, elements)
