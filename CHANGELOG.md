@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.78] - 2026-07-27
+
+### Features
+
+- event description support rich text (#1975)
+
+### Bug Fixes
+
+- **slides**: restrict canvas overflow checks
+- **slides**: upgrade text overflow to error above 10px threshold
+- **slides**: detect letterSpacing-driven text overflow
+- **slides**: downgrade background-decoration text overflow to info
+- **slides**: allow chartParsedValues roundtrip tag
+- refine character width estimation for lark-slides text lint
+- **slides**: preserve info lint severity
+- **slides**: text may over flow shape
+- exempt ghost text from slides lint
+
 ## [v1.0.77] - 2026-07-24
 
 ### Features
@@ -1667,6 +1685,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.78]: https://github.com/larksuite/cli/releases/tag/v1.0.78
 [v1.0.77]: https://github.com/larksuite/cli/releases/tag/v1.0.77
 [v1.0.75]: https://github.com/larksuite/cli/releases/tag/v1.0.75
 [v1.0.74]: https://github.com/larksuite/cli/releases/tag/v1.0.74
