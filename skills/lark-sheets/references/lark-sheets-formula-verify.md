@@ -70,7 +70,7 @@
 
 ## AI 公式校验（`--ai-only`）
 
-飞书表格支持一批 **AI 公式**（`AI_WRITE` / `AI_CLASSIFY` / `AI_SENTIMENT` / `AI_EXTRACT` / `AI_POLISH` / `AI_SUMMARY` / `AI_TRANSLATE`，写法与清单见 `lark-sheets-formula-translation`）。AI 公式的写入与普通公式一致（复用 `+cells-set` / `set_cell_range`，无需特殊接口），但**计算是异步的**：写入后要等 AI 算完才有结果。普通的 `+formula-verify` 只扫本地单元格值（7 类 Excel 错误），看不到 AI 公式的计算状态。
+飞书表格提供一个统一的 **`AI` 公式**（`=AI(prompt, [range])`，用自然语言驱动翻译 / 分类 / 情感分析 / 信息提取 / 总结 / 润色等，写法与清单见 `lark-sheets-formula-translation`）。AI 公式的写入与普通公式一致（复用 `+cells-set` / `set_cell_range`，无需特殊接口），但**计算是异步的**：写入后要等 AI 算完才有结果。普通的 `+formula-verify` 只扫本地单元格值（7 类 Excel 错误），看不到 AI 公式的计算状态。
 
 `--ai-only` 让 `+formula-verify` 只校验 AI 公式、跳过普通公式的 Excel 错误扫描，专用于「写完 AI 公式后确认是否都算完」：
 
