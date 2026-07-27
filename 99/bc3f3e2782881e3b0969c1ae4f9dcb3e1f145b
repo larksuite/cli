@@ -1,0 +1,44 @@
+internal/event/model/api_client.go
+  s_827f4000caeaab::t_643d1ae1faecd6 1-14
+internal/event/model/canonical_target.go
+  s_827f4000caeaab::t_10919705008896 1-58
+internal/event/model/canonical_target_test.go
+  s_827f4000caeaab::t_71747ccf332346 1-48
+internal/event/model/doc.go
+  s_827f4000caeaab::t_32991adf85b8ac 1-8
+internal/event/model/owner_ref.go
+  s_827f4000caeaab::t_4d36ce31414b04 1-19
+internal/event/model/owner_ref_test.go
+  s_827f4000caeaab::t_4c0d1896d0d887 1-23
+internal/event/model/raw_event.go
+  s_827f4000caeaab::t_28f8fee01a1a89 1-48
+internal/event/model/remote_subscription_id.go
+  s_827f4000caeaab::t_6fc9f9a7e70b96 1-33
+internal/event/model/remote_subscription_id_test.go
+  s_827f4000caeaab::t_ee09331e9b9261 1-39
+internal/event/types.go
+  s_827f4000caeaab::t_637cca200e507c 12,21-24,26-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "99bc3f3e2782881e3b0969c1ae4f9dcb3e1f145b",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_827f4000caeaab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3eb4e58684abc73c",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
