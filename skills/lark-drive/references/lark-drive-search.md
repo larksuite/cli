@@ -35,7 +35,7 @@
 
 | 用户说 | 命令 |
 |---|---|
-| 标题含某词且正文含某词，限定文件夹内最多 N 个结果 | `lark-cli drive +search --query "标题词 正文词" --folder-tokens <FOLDER_TOKEN>` |
+| 标题含某词且正文含某词，限定文件夹内最多 N 个结果（N 为最终输出上限；按上文规则分页筛选，勿作为 `--page-size`） | `lark-cli drive +search --query "标题词 正文词" --folder-tokens <FOLDER_TOKEN>` |
 | 我这月创建的所有文档，按类型分类统计 | `lark-cli drive +search --query "" --created-by-me --created-since "<YYYY-MM-DD>" --created-until "<YYYY-MM-DD>"` |
 | 最近半年我编辑过的文档，看看哪些最近更新过 | `lark-cli drive +search --query "" --edited-since 6m --sort edit_time` |
 | 最近一个月我编辑过的文档 | `lark-cli drive +search --query "" --edited-since 1m` |
