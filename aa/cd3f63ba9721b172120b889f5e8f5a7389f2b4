@@ -1,0 +1,26 @@
+internal/event/app/subscription.go
+  s_b00651da495495::t_2240f6d0aa1ee5 11-12,130-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "aacd3f63ba9721b172120b889f5e8f5a7389f2b4",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_b00651da495495": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a77ce59c6e7e8ad31",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
