@@ -1,0 +1,30 @@
+cmd/event/consume.go
+  s_5a55b1c4254c31::t_4a12650619ccd3 28,597-610,625
+internal/event/consume/refined.go
+  s_5a55b1c4254c31::t_fff215ccdb5bdb 23,96-104,177-185
+internal/event/consume/refined_test.go
+  s_5a55b1c4254c31::t_91195131ab9550 1302-1309,1312,1314,1316-1317,1325-1330,1363-1364,1366-1367,1372,1374,1381-1388,1391-1396,1398-1400,1402-1407,1409-1411,1413-1417,1419-1420,1423-1433
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "62091eaf93586e57ab2604f10e12e5b7260e5715",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_5a55b1c4254c31": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a97c9338b66eab17a",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
