@@ -158,7 +158,7 @@ func TestCreate_UploadsLocalDescriptionImage(t *testing.T) {
 		"--start", "2025-03-21T00:00:00+08:00",
 		"--end", "2025-03-21T01:00:00+08:00",
 		"--calendar-id", "cal_test123",
-		"--description-rich", "![pic](./pic.png)",
+		"--description", "![pic](./pic.png)",
 		"--as", "bot",
 	}, f, stdout)
 	if runErr != nil {
@@ -233,7 +233,7 @@ func TestCreate_LocalImageCarriesDimensions(t *testing.T) {
 		"--start", "2025-03-21T00:00:00+08:00",
 		"--end", "2025-03-21T01:00:00+08:00",
 		"--calendar-id", "cal_test123",
-		"--description-rich", "![pic](./pic.png)",
+		"--description", "![pic](./pic.png)",
 		"--as", "bot",
 	}, f, stdout)
 	if runErr != nil {
@@ -253,7 +253,7 @@ func TestCreate_LocalImageCarriesDimensions(t *testing.T) {
 }
 
 // TestCreate_LocalImageAbsolutePathRejected verifies an out-of-cwd absolute path
-// yields a typed --description-rich validation error before any API call.
+// yields a typed --description validation error before any API call.
 func TestCreate_LocalImageAbsolutePathRejected(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 
@@ -263,7 +263,7 @@ func TestCreate_LocalImageAbsolutePathRejected(t *testing.T) {
 		"--start", "2025-03-21T00:00:00+08:00",
 		"--end", "2025-03-21T01:00:00+08:00",
 		"--calendar-id", "cal_test123",
-		"--description-rich", "![p](/etc/hosts)",
+		"--description", "![p](/etc/hosts)",
 		"--as", "bot",
 	}, f, stdout)
 	if runErr == nil {
@@ -273,7 +273,7 @@ func TestCreate_LocalImageAbsolutePathRejected(t *testing.T) {
 	if !errors.As(runErr, &ve) {
 		t.Fatalf("expected *errs.ValidationError, got %T: %v", runErr, runErr)
 	}
-	if ve.Param != "--description-rich" {
-		t.Errorf("param = %q, want --description-rich", ve.Param)
+	if ve.Param != "--description" {
+		t.Errorf("param = %q, want --description", ve.Param)
 	}
 }

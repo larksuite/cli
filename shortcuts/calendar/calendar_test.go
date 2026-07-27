@@ -988,8 +988,9 @@ func TestUpdate_PatchEventOnly(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
 		t.Fatalf("unmarshal captured patch body: %v", err)
 	}
-	// The deprecated, hidden --description folds into description_rich; the CLI
-	// never sends the plain description field (mutually exclusive downstream).
+	// --description is the unified field, treated as rich text and sent as
+	// description_rich; the CLI never sends the plain description field
+	// (mutually exclusive downstream).
 	if body["summary"] != "Updated Meeting" || body["description_rich"] != "Updated description" {
 		t.Fatalf("unexpected patch body: %#v", body)
 	}
@@ -1411,18 +1412,17 @@ func TestAgenda_UnifiesDescriptionRich(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	// Read keeps both fields: description (plain) and description_rich (rich).
-	if !strings.Contains(out, "\"description\": \"[测试]\\n友情提醒\"") {
-		t.Errorf("expected plain description retained, got: %s", out)
-	}
-	if !strings.Contains(out, "\"description_rich\": \"友情提醒\"") {
-		t.Errorf("expected rich description surfaced, got: %s", out)
+	// Read exposes a single unified description field: it carries the rich
+	// (Markdown) value when present, and the plain text otherwise. The internal
+	// description_rich key is never surfaced.
+	if !strings.Contains(out, "\"description\": \"友情提醒\"") {
+		t.Errorf("expected rich value surfaced under description, got: %s", out)
 	}
 	if !strings.Contains(out, "\"description\": \"just text\"") {
-		t.Errorf("expected plain description retained for plain-only event, got: %s", out)
+		t.Errorf("expected plain description surfaced for plain-only event, got: %s", out)
 	}
-	if !strings.Contains(out, "\"description_rich\": \"just text\"") {
-		t.Errorf("expected description_rich backfilled from plain, got: %s", out)
+	if strings.Contains(out, "description_rich") {
+		t.Errorf("description_rich must not appear in output, got: %s", out)
 	}
 }
 
@@ -3438,7 +3438,8 @@ func TestGet_Success_FlattensAndConvertsTimes(t *testing.T) {
 }
 
 func TestGet_UnifiesDescriptionRich(t *testing.T) {
-	// Read keeps both description (plain) and description_rich (rich).
+	// Read exposes a single unified description field carrying the rich value
+	// when present, and the plain text otherwise; description_rich is dropped.
 	t.Run("rich present", func(t *testing.T) {
 		f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 		reg.Register(&httpmock.Stub{
@@ -3462,17 +3463,16 @@ func TestGet_UnifiesDescriptionRich(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		out := stdout.String()
-		if !strings.Contains(out, "\"description\": \"[表格]\"") {
-			t.Errorf("expected plain description retained, got: %s", out)
+		if !strings.Contains(out, "| a | b |") {
+			t.Errorf("expected rich value surfaced under description, got: %s", out)
 		}
-		if !strings.Contains(out, "\"description_rich\":") {
-			t.Errorf("expected description_rich in output, got: %s", out)
+		if strings.Contains(out, "description_rich") {
+			t.Errorf("description_rich must not appear in output, got: %s", out)
 		}
 	})
 
-	// When only a plain description exists, description_rich is backfilled from it
-	// and the plain description is still returned.
-	t.Run("only plain backfills rich", func(t *testing.T) {
+	// When only a plain description exists, it is surfaced under description.
+	t.Run("only plain surfaces under description", func(t *testing.T) {
 		f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
@@ -3495,10 +3495,10 @@ func TestGet_UnifiesDescriptionRich(t *testing.T) {
 		}
 		out := stdout.String()
 		if !strings.Contains(out, "\"description\": \"just text\"") {
-			t.Errorf("expected plain description retained, got: %s", out)
+			t.Errorf("expected plain description surfaced, got: %s", out)
 		}
-		if !strings.Contains(out, "\"description_rich\": \"just text\"") {
-			t.Errorf("expected description_rich backfilled from plain, got: %s", out)
+		if strings.Contains(out, "description_rich") {
+			t.Errorf("description_rich must not appear in output, got: %s", out)
 		}
 	})
 }

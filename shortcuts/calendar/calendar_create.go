@@ -32,8 +32,8 @@ func buildEventData(runtime *common.RuntimeContext, startTs, endTs string) map[s
 	if rrule := runtime.Str("rrule"); rrule != "" {
 		eventData["recurrence"] = rrule
 	}
-	if descriptionRich := descriptionRichToSend(runtime); descriptionRich != "" {
-		eventData["description_rich"] = descriptionRich
+	if description := descriptionToSend(runtime); description != "" {
+		eventData["description_rich"] = description
 	}
 	return eventData
 }
@@ -120,8 +120,7 @@ var CalendarCreate = common.Shortcut{
 		{Name: "summary", Desc: "event title"},
 		{Name: "start", Desc: "start time (ISO 8601)", Required: true},
 		{Name: "end", Desc: "end time (ISO 8601)", Required: true},
-		{Name: "description", Desc: "deprecated: plain-text description; use --description-rich (Markdown) instead", Hidden: true},
-		{Name: "description-rich", Desc: "event description as Markdown (@file or - for stdin); the unified description field. Supports bold/italic/underline/strikethrough, links, headings (`#`..`###`), blockquotes (`>`), ordered/unordered lists, horizontal rules (`---`), GFM tables, and images (`![name](url)`; a remote URL is used as-is, and a local image path relative to and inside the current working directory is auto-uploaded to Lark drive and rendered inline — absolute/out-of-cwd paths are rejected). A Lark doc URL (bare or as a Markdown link) is auto-resolved to an inline doc-mention chip showing its title. Inside a GFM table cell, stack multiple lines with `<br>`; each line may itself be an ordered/unordered list item, image or styled text (e.g. `1. a<br>2. b`, `- x<br>- y`, `![p](url)<br>**bold**`).", Input: []string{common.File, common.Stdin}},
+		{Name: "description", Desc: "event description as Markdown (@file or - for stdin); the unified description field. Supports bold/italic/underline/strikethrough, links, headings (`#`..`###`), blockquotes (`>`), ordered/unordered lists, horizontal rules (`---`), GFM tables, and images (`![name](url)`; a remote URL is used as-is, and a local image path relative to and inside the current working directory is auto-uploaded to Lark drive and rendered inline — absolute/out-of-cwd paths are rejected). A Lark doc URL (bare or as a Markdown link) is auto-resolved to an inline doc-mention chip showing its title. Inside a GFM table cell, stack multiple lines with `<br>`; each line may itself be an ordered/unordered list item, image or styled text (e.g. `1. a<br>2. b`, `- x<br>- y`, `![p](url)<br>**bold**`).", Input: []string{common.File, common.Stdin}},
 		{Name: "attendee-ids", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_, room omm_)"},
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
 		{Name: "rrule", Desc: "recurrence rule (rfc5545)"},
@@ -234,7 +233,7 @@ var CalendarCreate = common.Shortcut{
 		if err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
-		if err := resolveDescriptionRichImages(runtime, calendarId); err != nil {
+		if err := resolveDescriptionImages(runtime, calendarId); err != nil {
 			return err
 		}
 

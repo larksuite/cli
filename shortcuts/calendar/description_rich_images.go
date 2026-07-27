@@ -27,8 +27,8 @@ const calendarMediaParentType = "calendar"
 
 var markdownImageRe = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]*)\)`)
 
-func resolveDescriptionRichImages(runtime *common.RuntimeContext, calendarID string) error {
-	md := runtime.Str("description-rich")
+func resolveDescriptionImages(runtime *common.RuntimeContext, calendarID string) error {
+	md := runtime.Str("description")
 	if md == "" || !strings.Contains(md, "![") {
 		return nil
 	}
@@ -37,8 +37,8 @@ func resolveDescriptionRichImages(runtime *common.RuntimeContext, calendarID str
 		return err
 	}
 	if changed {
-		if err := runtime.Cmd.Flags().Set("description-rich", rewritten); err != nil {
-			return errs.NewInternalError(errs.SubtypeUnknown, "failed to update --description-rich after image upload: %v", err).WithCause(err)
+		if err := runtime.Cmd.Flags().Set("description", rewritten); err != nil {
+			return errs.NewInternalError(errs.SubtypeUnknown, "failed to update --description after image upload: %v", err).WithCause(err)
 		}
 	}
 	return nil
@@ -85,8 +85,8 @@ func resolveLocalImage(runtime *common.RuntimeContext, calendarID, src, alt stri
 	safePath, err := validate.SafeInputPath(localPath)
 	if err != nil {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--description-rich image %q could not be read: %v", src, err).
-			WithParam("--description-rich").
+			"--description image %q could not be read: %v", src, err).
+			WithParam("--description").
 			WithHint("reference local images by a path inside the current working directory (e.g. ./images/pic.png; cd there first), or use an already-uploaded Lark image URL").
 			WithCause(err)
 	}

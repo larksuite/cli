@@ -28,8 +28,8 @@
 
 | 步骤 | 命令 | 说明 |
 |------|------|------|
-| 1 | `lark-cli calendar +update --event-id <原重复日程ID> --summary ... --description-rich ...` | 更新原重复性日程的标题/描述等 |
-| 2 | `lark-cli calendar +update --event-id <例外ID> --summary ... --description-rich ...` （逐个） | 同步更新例外日程的对应字段 |
+| 1 | `lark-cli calendar +update --event-id <原重复日程ID> --summary ... --description ...` | 更新原重复性日程的标题/描述等 |
+| 2 | `lark-cli calendar +update --event-id <例外ID> --summary ... --description ...` （逐个） | 同步更新例外日程的对应字段 |
 
 > 理由：例外已脱离原重复性日程独立存在，不会自动继承原日程的更新。
 

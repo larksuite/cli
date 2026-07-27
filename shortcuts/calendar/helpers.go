@@ -30,20 +30,23 @@ func resolveStartEnd(runtime *common.RuntimeContext) (string, string) {
 	return startInput, endInput
 }
 
-func backfillDescriptionRich(event map[string]interface{}) {
+func collapseDescription(event map[string]interface{}) {
 	if event == nil {
 		return
 	}
-	if descRich, _ := event["description_rich"].(string); descRich == "" {
-		if desc, _ := event["description"].(string); desc != "" {
-			event["description_rich"] = desc
-		}
+	rich, _ := event["description_rich"].(string)
+	plain, _ := event["description"].(string)
+	delete(event, "description_rich")
+	switch {
+	case rich != "":
+		event["description"] = rich
+	case plain != "":
+		event["description"] = plain
+	default:
+		delete(event, "description")
 	}
 }
-func descriptionRichToSend(runtime *common.RuntimeContext) string {
-	if v := runtime.Str("description-rich"); v != "" {
-		return v
-	}
+func descriptionToSend(runtime *common.RuntimeContext) string {
 	return runtime.Str("description")
 }
 

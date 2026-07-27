@@ -170,7 +170,7 @@ func buildCalendarEventOutput(event *calendarEvent) (map[string]interface{}, err
 	if status, _ := out["status"].(string); status != "cancelled" {
 		delete(out, "status")
 	}
-	backfillDescriptionRich(out)
+	collapseDescription(out)
 	return out, nil
 }
 
