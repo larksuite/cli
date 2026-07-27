@@ -8,7 +8,7 @@
 
 The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Slides, Calendar, Mail, Tasks, Meetings, Markdown, and more, with 200+ commands and 26 AI Agent [Skills](./skills/).
 
-[Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
+[Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Enterprise](#personal-or-enterprise) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
 
 ## Why lark-cli?
 
@@ -19,6 +19,15 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 - **Up and Running in 3 Minutes** — One-click app creation, interactive login, from install to first API call in just 3 steps
 - **Secure & Controllable** — Input injection protection, terminal output sanitization, OS-native keychain credential storage
 - **Three-Layer Architecture** — Shortcuts (human & AI friendly) → API Commands (platform-synced) → Raw API (full coverage), choose the right granularity
+
+## Personal or Enterprise?
+
+| You are... | Recommended path |
+| ---------- | ---------------- |
+| **An individual developer** — using lark-cli in your terminal or with your own AI Agent | Follow the [Quick Start](#installation--quick-start) below |
+| **Enterprise IT / ISV** — embedding lark-cli into your own Agent or platform, with centralized credentials (database / Vault / config center), unified audit logging, and a restricted command surface | Read [Embed lark-cli in your Agent](https://open.larksuite.com/document/mcp_open_tools/feishu-cli/embed-feishu-cli-in-agent) and the [`extension/`](./extension/) packages — extend via a wrapper `main`, no need to modify CLI source |
+
+> 💡 **For AI Agents:** append `.md` to any Open Platform doc URL to fetch it as raw Markdown, e.g. [`embed-feishu-cli-in-agent.md`](https://open.larksuite.com/document/mcp_open_tools/feishu-cli/embed-feishu-cli-in-agent.md).
 
 ## Features
 
