@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/transport"
@@ -87,23 +88,34 @@ func doctorRun(opts *DoctorOptions) error {
 	// ── 1. Config file ──
 	_, err := core.LoadMultiAppConfig()
 	if err != nil {
-		// For "config not present" cases, prefer the workspace-aware
-		// NotConfiguredError message + hint (e.g. "openclaw context
-		// detected but lark-cli is not bound to it" → bind --help) over
-		// the OS-level "open ... no such file or directory".
-		// For other errors (parse, perms), keep the raw error so the
-		// underlying problem is still visible.
-		msg, hint := err.Error(), ""
-		if errors.Is(err, os.ErrNotExist) {
-			var cfgErr *errs.ConfigError
-			if errors.As(core.NotConfiguredError(), &cfgErr) {
-				msg, hint = cfgErr.Message, cfgErr.Hint
+		// Credentials can also come from environment variables (the env
+		// credential provider), in which case there is legitimately no
+		// config.json on disk. Don't dead-end with a "run config init"
+		// hint here: skip the disk check and let step 2 resolve the account
+		// through the credential provider, which either succeeds from env
+		// or surfaces an actionable reason (e.g. "APP_ID is missing").
+		if errors.Is(err, os.ErrNotExist) && envvars.HasEnvCredentials() {
+			checks = append(checks, skip("config_file", "no config.json on disk; using environment credentials"))
+		} else {
+			// For "config not present" cases, prefer the workspace-aware
+			// NotConfiguredError message + hint (e.g. "openclaw context
+			// detected but lark-cli is not bound to it" → bind --help) over
+			// the OS-level "open ... no such file or directory".
+			// For other errors (parse, perms), keep the raw error so the
+			// underlying problem is still visible.
+			msg, hint := err.Error(), ""
+			if errors.Is(err, os.ErrNotExist) {
+				var cfgErr *errs.ConfigError
+				if errors.As(core.NotConfiguredError(), &cfgErr) {
+					msg, hint = cfgErr.Message, cfgErr.Hint
+				}
 			}
+			checks = append(checks, fail("config_file", msg, hint))
+			return finishDoctor(f, checks)
 		}
-		checks = append(checks, fail("config_file", msg, hint))
-		return finishDoctor(f, checks)
+	} else {
+		checks = append(checks, pass("config_file", "config.json found"))
 	}
-	checks = append(checks, pass("config_file", "config.json found"))
 
 	// ── 2. App resolved ──
 	cfg, err := f.Config()
