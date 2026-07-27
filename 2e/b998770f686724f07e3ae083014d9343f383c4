@@ -1,0 +1,26 @@
+internal/event/consume/refined.go
+  s_2939604c6d03d0::t_b4e6278432a95b 24,28-33,35-42,95-98,109-110,140-142,145-155,157,159,266-273,275-276,377-392,446,448-453,455,469-480,545,548-549
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2eb998770f686724f07e3ae083014d9343f383c4",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_2939604c6d03d0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abf4109ded0bb79a8",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
