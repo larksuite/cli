@@ -42,7 +42,7 @@ Risk / Structure: `R2` / `S2`
 - 当前身份无法枚举到的不可见文档的完整发现；只能处理已发现目标，或用户显式提供的 URL / token。
 - 未按范围确认的批量写入。
 
-不要声称已完成协作者列表验证：当前 CLI surface 没有 `permission.members list` shortcut。
+协作者列表读取只覆盖当前目标的直接协作者/授权成员：可使用 `drive +member-list` 。
 
 ## Progressive Load Map
 
@@ -96,6 +96,7 @@ Risk / Structure: `R2` / `S2`
 | `DISCOVER_TARGETS` | `drive files list` | 递归发现 Drive folder 下当前身份可见的文件和子文件夹 |
 | `FACT_READ` | `drive metas batch_query` | 读取 title、URL、owner 和 secure-label metadata |
 | `FACT_READ` | `drive permission.public get` | 读取支持类型的文档公共访问和协作权限设置，包括链接分享、对外分享、协作者管理、复制内容、创建副本、打印、下载和评论 |
+| `FACT_READ` | `drive +member-list` | 读取用户显式要求的单目标直接协作者/授权成员列表；不代表完整继承链或历史权限审计 |
 | `FACT_READ` | `drive file.statistics get` | 在用户要求活跃度、闲置暴露、生命周期或访问复核时读取文件访问统计 |
 | `FACT_READ` | `drive file.view_records list` | 在用户要求最近访问人、访问复核或低活跃证据时读取访问记录 |
 | `EXEC_CONFIRM` | `drive +secure-label-list` | 提议 label update 前解析可用 secure-label IDs |
@@ -194,7 +195,7 @@ Drive folder 发现：
 - `drive permission.members create` 可创建协作者权限，但当前 workflow 不做协作者 grant / update / revoke；未来需要单独定义授权对象解析、最小权限、确认模板和验证方式。
 - backup owner、部门 / 项目负责人绑定没有当前 workflow 可执行写入面；如用户要落地为 owner 转移，必须先给出明确目标和新 owner，并走本 workflow 的 owner-transfer 确认。
 - `wiki +member-list` 可作为 Wiki space 成员治理的读侧事实来源；当前 workflow 只治理文档 / 节点 / 文件夹下可发现文档的权限，不做 space member governance。
-- 当前 CLI 没有 `permission.members list`、完整继承链、DLP 扫描、AI 索引状态、审计日志和跨平台权限事实。遇到这些需求必须记录为 `unsupported_checks` 或建议新增独立 workflow。
+- `drive +member-list` 可读取单目标直接协作者/授权成员；当前 CLI 仍没有完整继承链、DLP 扫描、AI 索引状态、审计日志和跨平台权限事实。遇到这些需求必须记录为 `unsupported_checks` 或建议新增独立 workflow。
 
 ## 输出策略
 
