@@ -1,0 +1,80 @@
+tests_e2e/application/2026_07_07_application_slash_command_test.go
+  s_c59ce324356a06::t_97f1916ab47725 1-585
+tests_e2e/application/helpers_test.go
+  s_d7ab4db9cd26ef::t_9638d486eea1d1 1-158
+tests_e2e/event/2026_07_21_oapi_event_subscribe_test.go
+  s_b4ab0ee8cbc5f8::t_b27ee9c785630b 1-385
+tests_e2e/event/helpers_test.go
+  s_b4ab0ee8cbc5f8::t_d632ca5dad9b6c 1-155
+tests_skill_eval/application/2026_07_07_application_slash_command_evals.yaml
+  s_b56aad789b8a3f::t_e530922e6115c1 1-29
+tests_skill_eval/event/2026_07_21_oapi_event_subscribe_evals.yaml
+  s_3dff073db4802a::t_1a619ef6ba477e 1-37
+tests_skill_eval/setup/application_setup.yaml
+  s_e8d79c0b919f56::t_67a00440c2fe8e 1-19
+tests_skill_eval/setup/event_setup.yaml
+  s_3dff073db4802a::t_9ab923beb6612d 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "eab060dfe986e8bcf3d8d20e3b3e1370d8c27ebe",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_3dff073db4802a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad577f7cac205a215",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    },
+    "s_b4ab0ee8cbc5f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aab5206c6ab903da4",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    },
+    "s_b56aad789b8a3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae1764f2ae0c1501a",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    },
+    "s_c59ce324356a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-af8e38eb766c8a7f3",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    },
+    "s_d7ab4db9cd26ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a5434e4a641393787",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    },
+    "s_e8d79c0b919f56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a39a4058fbaa74521",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
