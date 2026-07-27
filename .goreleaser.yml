@@ -5,7 +5,8 @@ before:
     - python3 scripts/fetch_meta.py
 
 builds:
-  - binary: lark-cli
+  - id: lark-cli
+    binary: lark-cli
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -19,11 +20,26 @@ builds:
       - arm64
       - riscv64
 
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - lark-cli
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY_PATH }}"
+        wait: true
+        timeout: 20m
+
 archives:
   - name_template: "lark-cli-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - README.md
       - LICENSE
