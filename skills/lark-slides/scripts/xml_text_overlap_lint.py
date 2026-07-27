@@ -60,6 +60,13 @@ GHOST_TEXT_MIN_FONT_SIZE = 96
 GHOST_TEXT_MAX_ALPHA = 0.5
 GHOST_TEXT_FAINT_MIN_FONT_SIZE = 36
 GHOST_TEXT_FAINT_MAX_ALPHA = 0.35
+# A <line> crossing text glyphs is a legibility defect (see line_crosses_text_glyphs). We erode the
+# glyph box by this margin before testing intersection so a line that only skims a glyph edge or the
+# padding-only text frame -- but does not actually cut through the letterforms -- is not flagged.
+LINE_TEXT_GRAZE_MIN_PX = 2.0
+LINE_TEXT_GRAZE_FONT_RATIO = 0.12
+# A line whose effective stroke alpha is below this is not visibly rendered, so it cannot occlude text.
+LINE_MIN_VISIBLE_ALPHA = 0.08
 # Sub-pixel canvas overflow is floating-point rounding noise (e.g. rotated-bbox math), not a
 # visible defect; keep this well under 1px so real overflow is still always caught.
 CANVAS_OVERFLOW_TOLERANCE = 0.5
@@ -1609,6 +1616,93 @@ def detect_table_layout_size_mismatches(elements: list[dict[str, Any]]) -> list[
     return issues
 
 
+def segment_intersects_rect(
+    x1: float, y1: float, x2: float, y2: float, rect: dict[str, int | float]
+) -> bool:
+    """True when segment (x1,y1)-(x2,y2) enters the axis-aligned rect (Liang-Barsky clip)."""
+    left = rect["x"]
+    top = rect["y"]
+    right = rect["x"] + rect["width"]
+    bottom = rect["y"] + rect["height"]
+    if right <= left or bottom <= top:
+        return False
+    dx = x2 - x1
+    dy = y2 - y1
+    if dx == 0 and dy == 0:
+        return left <= x1 <= right and top <= y1 <= bottom
+    t_enter, t_exit = 0.0, 1.0
+    for delta, distance in ((-dx, x1 - left), (dx, right - x1), (-dy, y1 - top), (dy, bottom - y1)):
+        if delta == 0:
+            if distance < 0:
+                return False
+            continue
+        t = distance / delta
+        if delta < 0:
+            t_enter = max(t_enter, t)
+        else:
+            t_exit = min(t_exit, t)
+        if t_enter > t_exit:
+            return False
+    return True
+
+
+def line_text_graze_margin(text_element: dict[str, Any]) -> float:
+    font_size = text_element["fontSize"] if isinstance(text_element.get("fontSize"), (int, float)) else 16
+    return max(font_size * LINE_TEXT_GRAZE_FONT_RATIO, LINE_TEXT_GRAZE_MIN_PX)
+
+
+def erode_rect(rect: dict[str, int | float], margin: float) -> dict[str, int | float] | None:
+    width = rect["width"] - 2 * margin
+    height = rect["height"] - 2 * margin
+    if width <= 0 or height <= 0:
+        return None
+    return {"x": rect["x"] + margin, "y": rect["y"] + margin, "width": width, "height": height}
+
+
+def line_crosses_text(line: dict[str, Any], text_element: dict[str, Any]) -> bool:
+    if not is_visually_rendered(line) or line.get("alpha", 1) < LINE_MIN_VISIBLE_ALPHA:
+        return False
+    if not is_text_element(text_element) or not has_text_content(text_element):
+        return False
+    if is_ghost_text(text_element) or is_decorative_text(text_element):
+        return False
+    glyph_bbox = estimate_text_visual_bbox(text_element)
+    if glyph_bbox is None:
+        return False
+    # Erode the glyph box so a line skimming the letter edge or only clipping the padding-only text
+    # frame is exempt; only a line that actually cuts through the letterforms is a crossing.
+    target = erode_rect(glyph_bbox, line_text_graze_margin(text_element))
+    if target is None:
+        return False
+    return segment_intersects_rect(
+        line["startX"], line["startY"], line["endX"], line["endY"], target
+    )
+
+
+def detect_line_text_crossings(
+    slide_xml: str, elements: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    lines = extract_line_elements(slide_xml)
+    if not lines:
+        return []
+    text_elements = [element for element in elements if is_text_element(element)]
+    issues: list[dict[str, Any]] = []
+    for line in lines:
+        for text_element in text_elements:
+            if not line_crosses_text(line, text_element):
+                continue
+            issues.append(
+                {
+                    "level": "error",
+                    "code": "bbox_overlap",
+                    "elements": [line["id"], text_element["id"]],
+                    "message": f'line {line["id"]} crosses text {text_element["id"]}',
+                    "hint": "Move the line off the text glyphs so it no longer cuts through the letterforms.",
+                }
+            )
+    return issues
+
+
 def lint_slide(
     slide_xml: str, slide_number: int, slide_width: int | float = 960, slide_height: int | float = 540
 ) -> dict[str, Any]:
@@ -1619,6 +1713,7 @@ def lint_slide(
         *detect_table_layout_size_mismatches(elements),
         *detect_text_may_overflow_shapes(elements),
         *detect_image_text_occlusions(elements),
+        *detect_line_text_crossings(slide_xml, elements),
     ]
 
     for index, left in enumerate(elements):
@@ -2224,7 +2319,7 @@ def related_object(element: dict[str, Any]) -> dict[str, Any]:
 
 def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
-    for match in re.finditer(r"<line\b([^>]*)>", slide_xml):
+    for match in re.finditer(r"<line\b([^>]*?)(/?)>", slide_xml):
         attrs = match.group(1)
         start_x = extract_numeric_attribute(attrs, "startX")
         start_y = extract_numeric_attribute(attrs, "startY")
@@ -2233,6 +2328,15 @@ def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
         if any(value is None for value in (start_x, start_y, end_x, end_y)):
             continue
         line_alpha = extract_numeric_attribute(attrs, "alpha")
+        base_alpha = line_alpha if line_alpha is not None else 1
+        border_alpha = 1
+        if match.group(2) != "/":
+            close_index = slide_xml.find("</line>", match.end())
+            body = slide_xml[match.end() : close_index] if close_index != -1 else ""
+            border_attrs = extract_tag_attributes(body, "border")
+            color_alpha = extract_color_alpha(extract_attribute(border_attrs, "color"))
+            if isinstance(color_alpha, (int, float)):
+                border_alpha = color_alpha
         elements.append(
             {
                 "id": extract_attribute(attrs, "id") or f"line-{len(elements) + 1}",
@@ -2242,8 +2346,12 @@ def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "y": min(start_y, end_y),
                 "width": abs(end_x - start_x),
                 "height": abs(end_y - start_y),
+                "startX": start_x,
+                "startY": start_y,
+                "endX": end_x,
+                "endY": end_y,
                 "rotation": 0,
-                "alpha": line_alpha if line_alpha is not None else 1,
+                "alpha": base_alpha * border_alpha,
                 "order": len(elements),
             }
         )
