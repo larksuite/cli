@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -17,22 +18,18 @@ import (
 )
 
 func TestSlidesScreenshotDeclaredScopes(t *testing.T) {
-	if got := SlidesScreenshot.ScopesForIdentity("user"); len(got) != 0 {
-		t.Fatalf("user preflight scopes = %#v, want empty", got)
+	base := []string{"slides:presentation:screenshot"}
+	if got := SlidesScreenshot.ScopesForIdentity("user"); !reflect.DeepEqual(got, base) {
+		t.Fatalf("user preflight scopes = %#v, want %#v", got, base)
 	}
-	if got := SlidesScreenshot.ScopesForIdentity("bot"); len(got) != 0 {
-		t.Fatalf("bot preflight scopes = %#v, want empty", got)
+	if got := SlidesScreenshot.ScopesForIdentity("bot"); !reflect.DeepEqual(got, base) {
+		t.Fatalf("bot preflight scopes = %#v, want %#v", got, base)
 	}
 
 	got := SlidesScreenshot.DeclaredScopesForIdentity("user")
-	want := []string{"wiki:node:read"}
-	if len(got) != len(want) || got[0] != want[0] {
+	want := []string{"slides:presentation:screenshot", "wiki:node:read"}
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("declared scopes = %#v, want %#v", got, want)
-	}
-	for _, scope := range got {
-		if scope == "slides:presentation:screenshot" {
-			t.Fatalf("declared scopes must not advertise screenshot scope: %#v", got)
-		}
 	}
 }
 
@@ -185,6 +182,139 @@ func TestSlidesScreenshotListBySlideNumber(t *testing.T) {
 	path := filepath.Join(dir, defaultSlidesScreenshotDir, "pres_abc_p002.png")
 	if _, err := os.ReadFile(path); err != nil {
 		t.Fatalf("read screenshot without slide_id: %v", err)
+	}
+}
+
+func TestSlidesScreenshotListBySlideIDCSV(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_images": []map[string]interface{}{
+					{
+						"slide_id": "slide_1",
+						"format":   1,
+						"data":     base64.StdEncoding.EncodeToString([]byte("png-bytes-1")),
+					},
+					{
+						"slide_id": "slide_2",
+						"format":   1,
+						"data":     base64.StdEncoding.EncodeToString([]byte("png-bytes-2")),
+					},
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-id", "slide_1,slide_2",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var body struct {
+		SlideIDs []string `json:"slide_ids"`
+	}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	if len(body.SlideIDs) != 2 || body.SlideIDs[0] != "slide_1" || body.SlideIDs[1] != "slide_2" {
+		t.Fatalf("slide_ids = %#v, want [slide_1 slide_2]", body.SlideIDs)
+	}
+
+	path1 := filepath.Join(dir, defaultSlidesScreenshotDir, "pres_abc_slide_1.png")
+	if _, err := os.ReadFile(path1); err != nil {
+		t.Fatalf("read first CSV slide screenshot: %v", err)
+	}
+	path2 := filepath.Join(dir, defaultSlidesScreenshotDir, "pres_abc_slide_2.png")
+	if _, err := os.ReadFile(path2); err != nil {
+		t.Fatalf("read second CSV slide screenshot: %v", err)
+	}
+}
+
+func TestSlidesScreenshotListBySlideIDCSVDeduplicatesAndTrims(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_images": []map[string]interface{}{
+					{
+						"slide_id": "slide_1",
+						"format":   1,
+						"data":     base64.StdEncoding.EncodeToString([]byte("png-bytes-1")),
+					},
+					{
+						"slide_id": "slide_2",
+						"format":   1,
+						"data":     base64.StdEncoding.EncodeToString([]byte("png-bytes-2")),
+					},
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	// CSV with a duplicate and blank segments should normalize the same way
+	// normalizeSlideIDs already does for repeated --slide-id flags.
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-id", "slide_1, slide_2,slide_1,",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var body struct {
+		SlideIDs []string `json:"slide_ids"`
+	}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	if len(body.SlideIDs) != 2 || body.SlideIDs[0] != "slide_1" || body.SlideIDs[1] != "slide_2" {
+		t.Fatalf("slide_ids = %#v, want deduplicated [slide_1 slide_2]", body.SlideIDs)
+	}
+}
+
+func TestSlidesScreenshotListRejectsMoreThanTenSlideIDsCSV(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-id", "s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %v, want typed validation error", err)
+	}
+	if problem.Hint != "request at most 10 pages at a time" {
+		t.Fatalf("hint = %q, want max 10 pages guidance", problem.Hint)
 	}
 }
 
@@ -380,6 +510,27 @@ func TestSlidesScreenshotRenderRejectsSlideSelectors(t *testing.T) {
 		"+screenshot",
 		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 		"--slide-id", "slide_1",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "--content cannot be used with --slide-id or --slide-number") {
+		t.Fatalf("error = %v, want content/slide selector conflict", err)
+	}
+}
+
+func TestSlidesScreenshotRenderRejectsSlideNumberSelector(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+
+	// Exercises the --slide-number-only side of the --content conflict check
+	// (TestSlidesScreenshotRenderRejectsSlideSelectors above only covers the
+	// --slide-id side of that same `||` condition).
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--slide-number", "1",
 		"--as", "user",
 	})
 	if err == nil {

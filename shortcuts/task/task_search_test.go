@@ -37,8 +37,11 @@ func TestBuildTaskSearchBody(t *testing.T) {
 			check: func(t *testing.T, body map[string]interface{}) {
 				filter := body["filter"].(map[string]interface{})
 				dueTime := filter["due_time"].(map[string]interface{})
-				if body["query"] != "release" || body["page_token"] != "pt_123" {
+				if body["query"] != "release" {
 					t.Fatalf("unexpected body: %#v", body)
+				}
+				if _, present := body["page_token"]; present {
+					t.Fatalf("body unexpectedly contains page_token: %#v", body)
 				}
 				if len(filter["creator_ids"].([]string)) != 2 || filter["is_completed"] != true {
 					t.Fatalf("unexpected filter: %#v", filter)
@@ -104,9 +107,10 @@ func TestBuildTaskSearchBody(t *testing.T) {
 
 func TestSearchTask_DryRun(t *testing.T) {
 	tests := []struct {
-		name      string
-		setup     func(*cobra.Command)
-		wantParts []string
+		name          string
+		setup         func(*cobra.Command)
+		wantPageToken string
+		wantParts     []string
 	}{
 		{
 			name: "valid dry run",
@@ -114,7 +118,8 @@ func TestSearchTask_DryRun(t *testing.T) {
 				_ = cmd.Flags().Set("query", "demo")
 				_ = cmd.Flags().Set("page-token", "pt_demo")
 			},
-			wantParts: []string{"POST /open-apis/task/v2/tasks/search", `"query":"demo"`},
+			wantPageToken: "pt_demo",
+			wantParts:     []string{`"query":"demo"`},
 		},
 		{
 			name: "dry run error on invalid due",
@@ -143,7 +148,11 @@ func TestSearchTask_DryRun(t *testing.T) {
 					t.Fatalf("Validate() error = %v", err)
 				}
 			}
-			out := SearchTask.DryRun(nil, runtime).Format()
+			preview := SearchTask.DryRun(nil, runtime)
+			if tt.wantPageToken != "" {
+				assertSearchDryRunPageToken(t, preview, tt.wantPageToken)
+			}
+			out := preview.Format()
 			for _, want := range tt.wantParts {
 				if !strings.Contains(out, want) {
 					t.Fatalf("dry run output missing %q: %s", want, out)

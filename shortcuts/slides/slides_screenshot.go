@@ -37,15 +37,13 @@ var SlidesScreenshot = common.Shortcut{
 	Command:     "+screenshot",
 	Description: "Save up to 10 slide screenshots to local files without printing Base64 image data",
 	Risk:        "read",
-	Scopes:      []string{},
-	// The screenshot API is allowlist-gated for only a few apps, so do not
-	// advertise/preflight its scope. Let the API fail and let callers degrade.
+	Scopes:      []string{"slides:presentation:screenshot"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides; list mode only"},
-		{Name: "slide-id", Type: "string_array", Desc: "slide page identifier (repeat for multiple slides; max 10 pages per request)"},
+		{Name: "slide-id", Type: "string_slice", Desc: "slide page identifier (repeat or comma-separated for multiple slides; max 10 pages per request)"},
 		{Name: "slide-number", Type: "int_array", Desc: "slide page number (repeat for multiple slides; max 10 pages per request)"},
 		{Name: "content", Desc: "slide XML content to render directly instead of fetching existing slides", Input: []string{common.File, common.Stdin}},
 		{Name: "output-dir", Default: defaultSlidesScreenshotDir, Desc: "relative directory for saved screenshots"},
@@ -57,7 +55,7 @@ var SlidesScreenshot = common.Shortcut{
 			if strings.TrimSpace(runtime.Str("content")) == "" {
 				return slidesScreenshotFlagErrorf("--content cannot be empty")
 			}
-			if len(normalizeSlideIDs(runtime.StrArray("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0 {
+			if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0 {
 				return slidesScreenshotFlagErrorf("--content cannot be used with --slide-id or --slide-number")
 			}
 			if runtime.Changed("presentation") {
@@ -73,7 +71,7 @@ var SlidesScreenshot = common.Shortcut{
 					return err
 				}
 			}
-			slideIDs := normalizeSlideIDs(runtime.StrArray("slide-id"))
+			slideIDs := normalizeSlideIDs(runtime.StrSlice("slide-id"))
 			slideNumbers, err := normalizeSlideNumbers(runtime.IntArray("slide-number"))
 			if err != nil {
 				return err
@@ -98,7 +96,7 @@ var SlidesScreenshot = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		slideIDs := normalizeSlideIDs(runtime.StrArray("slide-id"))
+		slideIDs := normalizeSlideIDs(runtime.StrSlice("slide-id"))
 		slideNumbers, err := normalizeSlideNumbers(runtime.IntArray("slide-number"))
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
@@ -148,7 +146,7 @@ var SlidesScreenshot = common.Shortcut{
 			return err
 		}
 
-		slideIDs := normalizeSlideIDs(runtime.StrArray("slide-id"))
+		slideIDs := normalizeSlideIDs(runtime.StrSlice("slide-id"))
 		slideNumbers, err := normalizeSlideNumbers(runtime.IntArray("slide-number"))
 		if err != nil {
 			return err
@@ -200,7 +198,7 @@ func dryRunRenderScreenshot(runtime *common.RuntimeContext) *common.DryRunAPI {
 	if strings.TrimSpace(content) == "" {
 		return common.NewDryRunAPI().Set("error", "--content cannot be empty")
 	}
-	if len(normalizeSlideIDs(runtime.StrArray("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0 {
+	if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0 {
 		return common.NewDryRunAPI().Set("error", "--content cannot be used with --slide-id or --slide-number")
 	}
 	if runtime.Changed("presentation") {
@@ -219,7 +217,7 @@ func executeRenderScreenshot(runtime *common.RuntimeContext) error {
 	if strings.TrimSpace(content) == "" {
 		return slidesScreenshotFlagErrorf("--content cannot be empty")
 	}
-	if len(normalizeSlideIDs(runtime.StrArray("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0 {
+	if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0 {
 		return slidesScreenshotFlagErrorf("--content cannot be used with --slide-id or --slide-number")
 	}
 	if runtime.Changed("presentation") {
