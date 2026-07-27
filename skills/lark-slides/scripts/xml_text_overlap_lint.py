@@ -1500,8 +1500,6 @@ def detect_elements_out_of_canvas(
         if element["kind"] in {"table", "chart"}
         or (element["kind"] == "shape" and element["type"] in {"rect", "text"})
     ):
-        if is_ghost_text(element):
-            continue
         bbox = element_canvas_bbox(element)
         overflow = {
             "left": max(-bbox["x"], 0),

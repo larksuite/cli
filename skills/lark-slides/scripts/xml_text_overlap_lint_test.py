@@ -1026,7 +1026,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["slides"][0]["infos"], [issues["bg-deco"]])
         self.assertIn("background decoration", issues["bg-deco"]["message"])
 
-    def test_lint_xml_allows_shape_alpha_ghost_text_out_of_canvas_and_overlap(self) -> None:
+    def test_lint_xml_reports_shape_alpha_ghost_text_out_of_canvas_but_allows_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
@@ -1042,11 +1042,11 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         codes = [issue["code"] for issue in result["slides"][0]["issues"]]
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertNotIn("shape_out_of_canvas", codes)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertIn("shape_out_of_canvas", codes)
         self.assertNotIn("bbox_overlap", codes)
 
-    def test_lint_xml_allows_content_color_alpha_ghost_text_out_of_canvas_and_overlap(self) -> None:
+    def test_lint_xml_reports_content_color_alpha_ghost_text_out_of_canvas_but_allows_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
@@ -1062,11 +1062,11 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         codes = [issue["code"] for issue in result["slides"][0]["issues"]]
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertNotIn("shape_out_of_canvas", codes)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertIn("shape_out_of_canvas", codes)
         self.assertNotIn("bbox_overlap", codes)
 
-    def test_lint_xml_allows_faint_medium_ghost_text_out_of_canvas_and_overlap(self) -> None:
+    def test_lint_xml_reports_faint_medium_ghost_text_out_of_canvas_but_allows_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
@@ -1082,8 +1082,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         codes = [issue["code"] for issue in result["slides"][0]["issues"]]
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertNotIn("shape_out_of_canvas", codes)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertIn("shape_out_of_canvas", codes)
         self.assertNotIn("bbox_overlap", codes)
 
     def test_lint_xml_allows_ghost_text_image_overlap(self) -> None:
@@ -1126,7 +1126,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         codes = [issue["code"] for issue in result["issues"]]
         self.assertNotIn("whiteboard_external_overlap", codes)
 
-    def test_lint_xml_allows_faint_ghost_text_without_area_threshold(self) -> None:
+    def test_lint_xml_reports_faint_ghost_text_out_of_canvas_without_area_threshold(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
@@ -1138,8 +1138,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </slide>
             """
         )
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertEqual(result["slides"][0]["issues"], [])
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["slides"][0]["issues"][0]["code"], "shape_out_of_canvas")
 
     def test_lint_xml_keeps_out_of_canvas_error_for_medium_text_without_faint_alpha(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
