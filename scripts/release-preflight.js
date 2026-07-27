@@ -5,10 +5,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const STABLE_VERSION_PATTERN = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+const RELEASE_VERSION_PATTERN = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta\.(0|[1-9][0-9]*))?$/;
 
-function isStableVersion(value) {
-  return typeof value === "string" && STABLE_VERSION_PATTERN.test(value);
+function releaseChannelOf(value) {
+  if (typeof value !== "string" || !RELEASE_VERSION_PATTERN.test(value)) {
+    return null;
+  }
+  return value.includes("-beta.") ? "beta" : "stable";
 }
 
 function releaseError(message, observed, hint) {
@@ -31,11 +34,11 @@ function validateReleasePreflight(packageJson, packageLockJson, tag) {
     ["package-lock.json.version", lockVersion],
     ['package-lock.json.packages[""].version', lockRootVersion],
   ]) {
-    if (!isStableVersion(value)) {
+    if (!releaseChannelOf(value)) {
       return releaseError(
-        `${field} must be a stable release version in X.Y.Z form`,
+        `${field} must be a Stable or Beta release version`,
         observed,
-        "Use the same stable X.Y.Z version in all package fields; prerelease and build metadata are not allowed for production releases.",
+        "Use the same stable X.Y.Z or beta X.Y.Z-beta.N version in all package fields; other prerelease labels and build metadata are not allowed.",
       );
     }
   }
@@ -48,14 +51,15 @@ function validateReleasePreflight(packageJson, packageLockJson, tag) {
     );
   }
 
+  const releaseChannel = releaseChannelOf(packageVersion);
   if (tag === undefined) {
-    return { ok: true, data: observed };
+    return { ok: true, data: { ...observed, releaseChannel } };
   }
-  if (typeof tag !== "string" || !tag.startsWith("v") || !isStableVersion(tag.slice(1))) {
+  if (typeof tag !== "string" || !tag.startsWith("v") || !releaseChannelOf(tag.slice(1))) {
     return releaseError(
-      "--tag must use the stable release form vX.Y.Z",
+      "--tag must use a Stable or Beta release form",
       { ...observed, tag },
-      `Use --tag v${packageVersion}; prerelease and build metadata are not allowed for production releases.`,
+      `Use --tag v${packageVersion}; valid forms are vX.Y.Z and vX.Y.Z-beta.N.`,
     );
   }
 
@@ -67,7 +71,7 @@ function validateReleasePreflight(packageJson, packageLockJson, tag) {
       `Use --tag v${packageVersion}.`,
     );
   }
-  return { ok: true, data: { ...observed, tagVersion } };
+  return { ok: true, data: { ...observed, tagVersion, releaseChannel } };
 }
 
 function writeResult(result) {
@@ -82,7 +86,7 @@ function main() {
     tag = args[1];
   } else if (args.length !== 0) {
     writeResult(releaseError(
-      "Expected no arguments or --tag vX.Y.Z",
+      "Expected no arguments or --tag vX.Y.Z[-beta.N]",
       { arguments: args },
       "Run release:check without arguments or pass exactly one --tag value.",
     ));
