@@ -1,0 +1,34 @@
+cmd/event/subscription/create.go
+  s_cc8d90f2020ee2::t_31f1d11fffb53d 54-55
+cmd/event/subscription/subscription.go
+  s_cc8d90f2020ee2::t_65596a8e2b1144 46-48,51-56,58,63,67-69,71-73,81,113,117,341,344,347,350,364-365,374,376-377,437-443
+cmd/event/subscription/update.go
+  s_cc8d90f2020ee2::t_353d445a382d14 7-9,14-15,18-20,23-34,37-38,40-41,45-55,57-61,66-98,100,104-107,109-113,119,123-143,145-174,177-182,184-375,382-383
+cmd/event/subscription/update_test.go
+  s_cc8d90f2020ee2::t_3d5cce5d11e559 7,9,12,18,23-25,28-34,45,47-49,51-205,213-402,406-414,419,429-430,434-439,471-539,543-549
+skills/lark-event/references/refined-subscription.md
+  s_cc8d90f2020ee2::t_d2983486b25b8b 59,85,90-92,94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1a3317876bcbaa5535d23201a26cd1c495ccb867",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_cc8d90f2020ee2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abdd4bf7a0cdc6661",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
