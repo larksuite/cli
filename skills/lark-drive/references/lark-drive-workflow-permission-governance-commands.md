@@ -15,6 +15,8 @@
 lark-cli drive +inspect --url '<url>' --as user --format json
 ```
 
+`drive +inspect` 不支持 Drive folder。`/drive/folder/<folder_token>` 直接解析为 `type=folder` + `token=<folder_token>`；需要读取文件夹自身权限设置时使用 `drive +permission-get-setting --token '<folder_token>' --type folder`。
+
 `/wiki/space/<space_id>` URL 是 Wiki space 范围，不要用 `drive +inspect` 当作单文档解析；直接提取 `space_id` 后进入 `DISCOVER_TARGETS`。
 
 ## 目标发现
@@ -61,12 +63,28 @@ lark-cli drive metas batch_query \
   --as user --format json
 ```
 
-读取 public permission：
+读取权限设置：
 
 ```bash
-lark-cli drive permission.public get \
-  --params '{"token":"<token>","type":"<type>"}' \
+lark-cli drive +permission-get-setting \
+  --token '<url-or-token>' --type '<type>' \
   --as user --format json
+```
+
+裸 folder token 必须显式传 `--type folder`：
+
+```bash
+lark-cli drive +permission-get-setting \
+  --token '<folder_token>' --type folder \
+  --as user --format json
+```
+
+通过 URL 读取权限设置时可以省略 `--type`：
+
+```bash
+lark-cli drive +permission-get-setting \
+  --token '<url>' \
+  --as user --format json # replace $LARK_DRIVE_URL before running
 ```
 
 按需读取直接协作者/授权成员列表：

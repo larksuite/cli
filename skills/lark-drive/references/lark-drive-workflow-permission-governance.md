@@ -38,7 +38,7 @@ Risk / Structure: `R2` / `S2`
 - 目录组织、迁移、归档或清理；这类需求应使用知识整理 workflow。
 - 内容审查、过期内容判断或知识质量评分。
 - backup owner 补充、部门 / 项目负责人绑定、协作者创建 / 撤销、成员列表审计；本 workflow 只支持把 owner 转移给每个目标明确指定的新 owner，不建模 backup owner 或负责人绑定关系。
-- 文件夹自身公开权限审计或修复。`drive permission.public get` / `patch` 不支持 `type=folder`；必须记录到 `unsupported_checks`，然后继续读取文件夹下其他支持的文档事实。
+- 文件夹自身公开权限审计或修复。文件夹自身权限设置可以用 `drive +permission-get-setting` 读取；写入是否支持必须以运行时 schema 和明确需求为准，不能猜测执行 `patch type=folder`。
 - 当前身份无法枚举到的不可见文档的完整发现；只能处理已发现目标，或用户显式提供的 URL / token。
 - 未按范围确认的批量写入。
 
@@ -53,7 +53,7 @@ Risk / Structure: `R2` / `S2`
 | `PARSE_INTENT` | 本文件、[`lark-drive-workflow.md`](lark-drive-workflow.md)、[`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) |
 | `TARGET_INSPECT` | [`lark-drive-inspect.md`](lark-drive-inspect.md) |
 | `DISCOVER_TARGETS` | 容器范围时读取 [`../../lark-wiki/references/lark-wiki-node-list.md`](../../lark-wiki/references/lark-wiki-node-list.md) 或 [`lark-drive-files-list.md`](lark-drive-files-list.md) |
-| `FACT_READ` | `lark-cli schema drive.metas.batch_query`；涉及公开权限时再读取 `lark-cli schema drive.permission.public.get`；涉及活跃度、访问复核或生命周期判断时再读取 `lark-cli schema drive.file.statistics.get` 和 `lark-cli schema drive.file.view_records.list` |
+| `FACT_READ` | `lark-cli schema drive.metas.batch_query`；涉及权限设置读取时使用 `drive +permission-get-setting`；涉及活跃度、访问复核或生命周期判断时再读取 `lark-cli schema drive.file.statistics.get` 和 `lark-cli schema drive.file.view_records.list` |
 | `RISK_ASSESS` | 本文件的 `Risk Classification` |
 | `EXEC_CONFIRM` | 只为用户选择的动作读取 [`lark-drive-apply-permission.md`](lark-drive-apply-permission.md)、[`lark-drive-secure-label.md`](lark-drive-secure-label.md)，或 `lark-cli schema drive.permission.public.patch` / `lark-cli schema drive.permission.members.transfer_owner`；需要确认模板时读取 [`lark-drive-workflow-permission-governance-outputs.md`](lark-drive-workflow-permission-governance-outputs.md) |
 | `EXECUTE` | 复用 `EXEC_CONFIRM` 已加载且已确认的写命令上下文 |
@@ -76,9 +76,9 @@ Risk / Structure: `R2` / `S2`
 | State | Protocol Step | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
 |-------|---------------|---------------|--------------------|---------------|------------|
 | `PARSE_INTENT` | `route` / `scope` | 解析 intent、target scope、desired policy，以及只读审计、单目标公开性判断、权限申请、owner 转移还是修复模式；单目标公开性判断设置 `intent=public_exposure_check`、`target_scope=single_resource` | 范围确认；如果缺少目标、新 owner 或期望动作，只问一个澄清问题 | 缺少 target / new owner / action，或容器范围需要用户确认时为 `true` | `TARGET_INSPECT` |
-| `TARGET_INSPECT` | `scope` | 解析单资源、明确列表、Wiki space / node、Drive folder；保留原始 URL、scope type、canonical token/type | 目标范围表，包含 scope、title/type/token status | 除非解析失败，否则为 `false` | `DISCOVER_TARGETS` or `FACT_READ` |
+| `TARGET_INSPECT` | `scope` | 解析单资源、明确列表、Wiki space / node、Drive folder；Drive folder 直接从 URL 路径或显式 `type=folder` 解析，不调用 `drive +inspect`；保留原始 URL、scope type、canonical token/type | 目标范围表，包含 scope、title/type/token status | 除非解析失败，否则为 `false` | `DISCOVER_TARGETS` or `FACT_READ` |
 | `DISCOVER_TARGETS` | `scope` / `read` | 对 Wiki space / node 或 Drive folder 递归只读枚举，归一化为 `discovered_targets`；记录 `discovery_blockers` | 发现进度和覆盖摘要；不展示内部 cursor/token，除非用户要求 | 除非发现范围无法确认或全部被阻断，否则为 `false` | `FACT_READ` |
-| `FACT_READ` | `read` | 对直接目标或 `discovered_targets` 执行 `drive metas batch_query`；对支持的非 folder 目标执行 `drive permission.public get`；当 `intent=public_exposure_check` 且 `target_scope=single_resource` 时，可复用 `drive +inspect` 返回的 title / URL / type，只补读文档公共访问和协作权限设置；在用户要求活跃度 / 访问复核 / 生命周期判断时读取访问统计和访问记录 | 权限事实摘要、coverage summary、activity facts 和 unsupported checks | 除非所有目标都被 auth 阻断，否则为 `false` | `RISK_ASSESS` |
+| `FACT_READ` | `read` | 对直接目标或 `discovered_targets` 执行 `drive metas batch_query`；对支持的文件、文件夹或云文档目标执行 `drive +permission-get-setting` 读取自身权限设置；当 `intent=public_exposure_check` 且 `target_scope=single_resource` 时，可复用 `drive +inspect` 返回的 title / URL / type，只补读目标公共访问和协作权限设置；在用户要求活跃度 / 访问复核 / 生命周期判断时读取访问统计和访问记录 | 权限事实摘要、coverage summary、activity facts 和 unsupported checks | 除非所有目标都被 auth 阻断，否则为 `false` | `RISK_ASSESS` |
 | `RISK_ASSESS` | `assess/plan` | 对每个可审计目标生成 `per_target_permission_assessment` 并分类证据；如用户提供 policy，则对照 policy；`public_exposure_check + single_resource` 只渲染单目标结论，不生成 `risk_id`；owner 转移路径生成 `owner_transfer_candidates` / `owner_transfer_plan`；治理路径构建可定位风险清单、访问复核清单、dry-run 整改计划或候选修复计划，完整清单必须生成稳定 `risk_id` | 带 priority、URL、risk_id、owner、sec_label 的 findings、confidence、review items、建议动作和下一步 CTA；单目标公开性判断只输出结论和关键字段 | 治理路径为 `true`，单目标公开性判断为 `false` | `EXEC_CONFIRM` or `DONE` |
 | `EXEC_CONFIRM` | `confirm` | 展示准确写入范围、command family、target count、risk、verification method | 确认请求 | `true` | `EXECUTE` or `DONE` |
 | `EXECUTE` | `execute` | 只执行 `Command Map` 中已确认的写入 | 进度 / 结果摘要 | 除非被阻断，否则为 `false` | `VERIFY` |
@@ -91,22 +91,23 @@ Risk / Structure: `R2` / `S2`
 
 | State | Allowed Command Families | Purpose |
 |-------|--------------------------|---------|
-| `TARGET_INSPECT` | `drive +inspect` | 解析 URL、type、canonical token、title 和 wiki unwrap data |
+| `TARGET_INSPECT` | `drive +inspect` | 解析非 folder URL、type、canonical token、title 和 wiki unwrap data；Drive folder 不支持 `+inspect`，必须从 URL 路径或显式 `type=folder` 直接解析 |
 | `DISCOVER_TARGETS` | `wiki +node-list` | 递归发现 Wiki space / node 下当前身份可见的节点 |
 | `DISCOVER_TARGETS` | `drive files list` | 递归发现 Drive folder 下当前身份可见的文件和子文件夹 |
 | `FACT_READ` | `drive metas batch_query` | 读取 title、URL、owner 和 secure-label metadata |
 | `FACT_READ` | `drive permission.public get` | 读取支持类型的文档公共访问和协作权限设置，包括链接分享、对外分享、协作者管理、复制内容、创建副本、打印、下载和评论 |
 | `FACT_READ` | `drive +member-list` | 读取用户显式要求的单目标直接协作者/授权成员列表；不代表完整继承链或历史权限审计 |
+| `FACT_READ` | `drive +permission-get-setting` | 读取支持类型的文件、文件夹或云文档自身权限设置，包括公开访问、分享、协作者管理、安全与评论 |
 | `FACT_READ` | `drive file.statistics get` | 在用户要求活跃度、闲置暴露、生命周期或访问复核时读取文件访问统计 |
 | `FACT_READ` | `drive file.view_records list` | 在用户要求最近访问人、访问复核或低活跃证据时读取访问记录 |
 | `EXEC_CONFIRM` | `drive +secure-label-list` | 提议 label update 前解析可用 secure-label IDs |
-| `EXEC_CONFIRM` | `drive permission.members auth` | 文档公共访问和协作权限设置修改前检查 `action=manage_public` |
+| `EXEC_CONFIRM` | `drive permission.members auth` | 目标公共访问和协作权限设置修改前检查 `action=manage_public` |
 | `EXEC_CONFIRM` | `lark-cli schema drive.permission.members.transfer_owner` | owner 转移前读取当前字段、支持类型和高风险写入门禁 |
 | `EXECUTE` | `drive +apply-permission` | 向 owner 提交 view/edit access request；只允许单目标、小列表或已明确确认的候选列表逐个执行 |
 | `EXECUTE` | `drive permission.public patch` | 修改已确认的 public/link settings；必须传 `--yes` |
 | `EXECUTE` | `drive permission.members transfer_owner` | 转移已确认目标的 owner；必须传 `--yes` |
 | `EXECUTE` | `drive +secure-label-update` | 设置已确认的 secure-label ID |
-| `VERIFY` | `drive metas batch_query`, `drive permission.public get` | 验证支持的 metadata，包括 owner、secure-label 和文档公共访问与协作权限设置变更；权限申请只能表述为已发起 |
+| `VERIFY` | `drive metas batch_query`, `drive +permission-get-setting` | 验证支持的 metadata，包括 owner、secure-label 和目标公共访问与协作权限设置变更；权限申请只能表述为已发起 |
 
 ## Command Patterns
 
@@ -120,9 +121,9 @@ Risk / Structure: `R2` / `S2`
 
 1. "所有文档"只表示当前身份在确认范围内可枚举到的文档。不可见、无权限、API 不返回或工具预算不足的部分必须进入 `discovery_blockers` 或 `unsupported_checks`。
 2. 发现阶段必须生成稳定 `path`。不要只保存 title；同名文档必须能通过 path 或 token 区分。
-3. 只把 `drive.permission.public.get` 当前 schema 支持的类型加入公开权限可审计目标。已知支持包括 `doc`、`sheet`、`file`、`wiki`、`bitable`、`docx`、`mindnote`、`minutes`、`slides`；未来新增类型以运行时 schema 为准。
+3. 权限设置读取使用 `drive +permission-get-setting`，目标类型包括 `doc`、`sheet`、`file`、`wiki`、`bitable`、`docx`、`mindnote`、`minutes`、`slides`、`folder`；未来新增类型以 shortcut 和 OpenAPI 元数据为准。
 4. `minutes` 只能作为 `partial_public_permission` 目标：可读取 / 修改公开权限和 owner 转移能力以运行时 schema 为准，但 `drive metas batch_query` 当前不支持 `minutes`，URL、owner、密级等 metadata 可能进入 `unsupported_checks`。
-5. `folder` 只作为递归容器，不执行 `permission.public get` / `patch`。如果用户明确要求 owner 转移且 schema 支持 `folder`，必须按 owner-transfer 写入规则单独确认。`shortcut`、`catalog` 或缺少 stable token/type 的条目必须记录为 unsupported，除非后续 API 明确解析出支持目标。
+5. `folder` 作为递归容器时先枚举子资源；如用户明确要查询文件夹自身权限设置，可对该文件夹单独执行 `drive +permission-get-setting --token <folder_token> --type folder`。不要执行 raw `permission.public patch type=folder`，除非 schema 和需求都明确支持。`shortcut`、`catalog` 或缺少 stable token/type 的条目必须记录为 unsupported，除非后续 API 明确解析出支持目标。
 6. 对大范围目标输出进度时，只展示已扫描容器数、已发现目标数、已审计目标数、剩余队列或 blocker；不要默认展示内部 page token / cursor。
 
 Wiki space / node 发现：
@@ -134,7 +135,7 @@ Wiki space / node 发现：
 
 Drive folder 发现：
 
-1. `/drive/folder/<folder_token>` 解析为 `target_scope=drive_folder`。文件夹自身公开权限不支持；继续枚举其子文档。
+1. `/drive/folder/<folder_token>` 解析为 `target_scope=drive_folder`。默认继续枚举其子文档；只有用户明确要求文件夹自身权限设置时，才额外调用 `drive +permission-get-setting --token <folder_token> --type folder` 读取该文件夹自身设置。
 2. 按 [`lark-drive-files-list.md`](lark-drive-files-list.md) 递归处理 `data.files`、`has_more` 和 `next_page_token`。不要把第一页数量当作完整范围。
 3. 只对返回项中的 `folder` 继续递归；对子文档按 `type + token` 归一化为 `discovered_targets`。
 4. 如果某个目录分页失败、无 continuation token、权限不足或 API 报错，只阻断该目录分支，并在 `discovery_blockers` 中记录；继续处理其他可枚举分支。
@@ -142,11 +143,11 @@ Drive folder 发现：
 ## Fact Read Rules
 
 1. `drive metas batch_query` 单次最多 200 个 `request_docs`；当 `targets` 或 `discovered_targets` 超过 200 个时，必须分批读取并合并结果。
-2. `drive permission.public get` 没有批量读取接口；对支持目标逐个读取。单个目标失败时记录 `unsupported_checks` 或 `partial`，不要阻断其他目标。
+2. `drive +permission-get-setting` 没有批量读取接口；对支持目标逐个读取。单个目标失败时记录 `unsupported_checks` 或 `partial`，不要阻断其他目标。
 3. 对 Wiki 发现目标，公开权限读取优先使用 `type=wiki` + `node_token`；metadata 可使用 `obj_type` + `obj_token` 补充 title、owner、URL 和 `sec_label_name`。
 4. 当 intent 是 `list_permission_settings` 时，只输出权限设置清单和覆盖限制，不主动生成修复计划。
 5. 单目标、多目标明确列表和容器发现目标都必须复用同一套逐目标事实读取与语义归一逻辑；差异只体现在目标来源、coverage summary 和输出聚合。
-6. `permission_public` 用户可见含义是“文档公共访问和协作权限设置”，语义以官方 OpenAPI 字段说明为准，同时兼容当前 CLI schema 返回的字段：优先使用 `external_access_entity`，缺失时才用 `external_access` boolean 映射为 `open` / `closed`；`manage_collaborator_entity`、`copy_entity`、`lock_switch` 等字段缺失时标记为 unknown，不要伪造；未识别字段保留在 raw evidence / partial note 中。
+6. `permission_public` 用户可见含义是“目标公共访问和协作权限设置”，语义以官方 OpenAPI 字段说明为准，同时兼容当前 CLI schema 返回的字段：优先使用 `external_access_entity`，缺失时才用 `external_access` boolean 映射为 `open` / `closed`；`manage_collaborator_entity`、`copy_entity`、`lock_switch` 等字段缺失时标记为 unknown，不要伪造；未识别字段保留在 raw evidence / partial note 中。
 7. `drive file.statistics get` 和 `drive file.view_records list` 只在用户要求最近访问、活跃度、闲置暴露、访问复核，或用户提供的 policy 明确依赖活跃度时执行；不要为普通权限审计默认读取访问记录。
 8. 访问统计 / 访问记录当前只对 `doc`、`docx`、`sheet`、`bitable`、`mindnote`、`wiki`、`file` 作为支持类型处理。其他类型必须进入 `unsupported_checks`，不能推断活跃度。
 9. `view_records` 是访问证据，不是权限列表。没有返回访问记录只能表述为“未获得最近访问证据”或“低活跃候选”，不能表述为“无人有权限”。
@@ -163,17 +164,17 @@ Drive folder 发现：
 - `PolicyReview`：复制、创建副本、打印、下载、评论等依赖 policy 的设置；没有明确 policy 时不要称为高风险。
 - `Unknown`：读取失败、已删除、无权限、API 不支持、协作者名单 / 继承链 / DLP / AI 索引 / 审计日志未覆盖。
 
-每个可审计目标都必须先归一化为 `per_target_permission_assessment`，再按 [`lark-drive-workflow-permission-governance-outputs.md`](lark-drive-workflow-permission-governance-outputs.md) 的 `Semantic Rendering` 渲染。`public_exposure_check` 只是 `target_count=1` 的轻量渲染模式；它和多目标、容器诊断复用同一套语义字段与风险分类。该判断只覆盖当前文档公共访问和协作权限设置，不审计协作者名单、历史权限变更、完整继承链或审计日志。
+每个可审计目标都必须先归一化为 `per_target_permission_assessment`，再按 [`lark-drive-workflow-permission-governance-outputs.md`](lark-drive-workflow-permission-governance-outputs.md) 的 `Semantic Rendering` 渲染。`public_exposure_check` 只是 `target_count=1` 的轻量渲染模式；它和多目标、容器诊断复用同一套语义字段与风险分类。该判断只覆盖当前目标公共访问和协作权限设置，不审计协作者名单、历史权限变更、完整继承链或审计日志。
 
 `AI 检索暴露候选风险` 只是基于权限和标签的代理标签。除非另有工具明确返回索引状态，否则不要声称某个文档已经被 Agent、Copilot 或 RAG 索引。
 
 ## 写入规则
 
-- 文档公共访问和协作权限设置修改（`drive permission.public patch`）属于高风险写入。请求确认前，必须展示 target title、token、current setting、desired setting 和准确 field changes。
+- 目标公共访问和协作权限设置修改（`drive permission.public patch`）属于高风险写入。请求确认前，必须展示 target title、token、current setting、desired setting 和准确 field changes。
 - 如果 `manage_public_auth.auth_result=false`，禁止 patch。告诉用户需要具备 manage-public 权限的用户，或由 owner 操作。
-- `drive permission.public get` 只用于 `drive +inspect` 或 `DISCOVER_TARGETS` 可解析且运行时 schema 支持的目标类型；类型集合不要硬编码，执行时以 `lark-cli schema drive.permission.public.get` 为准。
+- 权限设置读取使用 `drive +permission-get-setting`；裸 token 必须传 `--type`，URL 可以自动推断。写入仍使用 `drive permission.public patch`，只 patch 已解析且 schema 明确支持的类型和字段，不要把读取支持的 `folder` 自动外推为可写入。
 - 不要 patch 已解析类型不支持的字段。对于 wiki 目标，必须省略 schema 明确标注为 wiki 不支持的字段。
-- 不要在同一个写入确认中合并密级标签更新和文档公共访问与协作权限设置修改；必须分别确认。
+- 不要在同一个写入确认中合并密级标签更新和目标公共访问与协作权限设置修改；必须分别确认。
 - `drive +apply-permission` 默认不批量执行；每次调用都会向 owner 发送通知。
 - `permission_request_candidates` 可以来自用户直接提供的目标、明确列表或容器发现目标；只要能构造 token、type、权限类型和申请理由，就可以进入候选。不要因为目标不在 `discovered_targets` 中而拒绝单目标 / 小列表权限申请。
 - 容器范围内的"统一申请权限"必须先产出 `permission_request_candidates`。未展示候选目标、数量、权限类型和 owner 通知影响前，禁止调用 `drive +apply-permission`。
@@ -183,8 +184,8 @@ Drive folder 发现：
 - 批量 owner 转移必须逐个顺序执行；失败项进入结果清单，不要重复执行已成功目标。`remove_old_owner=true` 或 `old_owner_perm` 降权必须单独在确认中高亮。
 - 用户要求“生成整改方案 / dry-run / 先看看会改什么”时，只生成 `remediation_plan`，不执行任何写命令。dry-run 必须包含 target count、field changes、跳过原因、验证方式和有限回滚范围。
 - 用户基于完整风险清单选择对象时，必须先解析 `risk_id`、风险分组、URL 或 artifact 中 `selected=true` 的行，生成 `selected_risk_items`。无法匹配到当前 `risk_manifest` 的选择必须要求用户重新确认或重新读取清单。
-- 针对 `selected_risk_items` 生成 dry-run 前，必须重新读取所选目标的 `drive permission.public get`；如果当前设置和清单快照不同，标记为 `changed_since_report` 并跳过或要求用户确认更新后的计划。
-- 执行 `drive permission.public patch` 前，必须把当前 `public_permission_facts` 中会被改动的字段保存为 `public_permission_snapshots`。该快照只用于文档公共访问和协作权限设置字段的有限回滚说明，不覆盖协作者、owner、继承权限或密级标签。
+- 针对 `selected_risk_items` 生成 dry-run 前，必须重新读取所选目标的 `drive +permission-get-setting`；如果当前设置和清单快照不同，标记为 `changed_since_report` 并跳过或要求用户确认更新后的计划。
+- 执行 `drive permission.public patch` 前，必须把当前 `public_permission_facts` 中会被改动的字段保存为 `public_permission_snapshots`。该快照只用于目标公共访问和协作权限设置字段的有限回滚说明，不覆盖协作者、owner、继承权限或密级标签。
 - 如果用户要求批量收紧权限，必须按风险分层和目标顺序逐个执行；失败项进入结果清单，不要因为单个失败而重复执行已成功目标。
 - 遇到 secure-label downgrade error `1063013` 时，停止重试，并告诉用户需要在文档 UI 中完成审批。
 
