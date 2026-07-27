@@ -1,0 +1,26 @@
+cmd/event/golden_test.go
+  s_72bdd74b2cb7c6::t_24bd6d1a5b526d 1-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "87f1c1bbba31e324a062e82036971dae2671dbaf",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_72bdd74b2cb7c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1f6fb9e18a1b082f",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
