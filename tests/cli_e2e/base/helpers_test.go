@@ -181,12 +181,38 @@ func createRole(t *testing.T, ctx context.Context, baseToken string, body string
 	result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 		Args:      []string{"base", "+role-create", "--base-token", baseToken, "--json", body},
 		DefaultAs: "bot",
-	}, clie2e.RetryOptions{})
+	}, clie2e.RetryOptions{Attempts: 1})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, true)
 
-	return gjson.Get(result.Stdout, "data.role_id").String()
+	roleID := createdRoleID(result.Stdout)
+	require.NotEmpty(t, roleID, "role create must return role_id; stdout:\n%s", result.Stdout)
+	return roleID
+}
+
+func createdRoleID(stdout string) string {
+	for _, path := range []string{
+		"data.role_id",
+		"data.data.role_id",
+	} {
+		if roleID := gjson.Get(stdout, path).String(); roleID != "" {
+			return roleID
+		}
+	}
+
+	for _, path := range []string{"data.data", "data"} {
+		payload := gjson.Get(stdout, path).String()
+		if !gjson.Valid(payload) {
+			continue
+		}
+		for _, innerPath := range []string{"role_id", "data.role_id"} {
+			if roleID := gjson.Get(payload, innerPath).String(); roleID != "" {
+				return roleID
+			}
+		}
+	}
+	return ""
 }
 
 func findBaseTableByID(t *testing.T, ctx context.Context, baseToken string, tableID string) gjson.Result {
