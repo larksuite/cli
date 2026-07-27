@@ -287,7 +287,8 @@ func TestParseTriageFilterRejectsInvalidShorthands(t *testing.T) {
 		{name: "unknown kv", raw: "unknown=value", wantSubstr: "--print-filter-schema"},
 		{name: "invalid bool", raw: "is_unread=maybe", wantSubstr: "must be true or false"},
 		{name: "invalid alias", raw: "not-json", wantSubstr: "JSON, key=value, is_read, or is_unread"},
-		{name: "conflicting read status", raw: `{"is_read":true,"is_unread":true}`, wantSubstr: "conflicting read-status filter"},
+		{name: "comma-separated kv", raw: "folder=INBOX,is_unread=true", wantSubstr: "comma-separated key=value filters are not supported"},
+		{name: "conflicting read status", raw: `{"is_read":true,"is_unread":true}`, wantSubstr: "is_read=true conflicts with is_unread=true"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -295,10 +296,24 @@ func TestParseTriageFilterRejectsInvalidShorthands(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected error for %q", tt.raw)
 			}
+			assertTriageFilterValidationError(t, err, "--filter")
 			if !strings.Contains(err.Error(), tt.wantSubstr) {
 				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantSubstr)
 			}
 		})
+	}
+}
+
+func TestParseTriageFilterConflictMessageIsDeterministic(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		_, err := parseTriageFilter(`{"is_read":true,"is_unread":true}`)
+		if err == nil {
+			t.Fatal("expected conflict error")
+		}
+		assertTriageFilterValidationError(t, err, "--filter")
+		if got, want := err.Error(), "is_read=true conflicts with is_unread=true"; !strings.Contains(got, want) {
+			t.Fatalf("error = %q, want substring %q", got, want)
+		}
 	}
 }
 
@@ -319,11 +334,12 @@ func TestBuildTriageFilterMergesIndependentFlags(t *testing.T) {
 
 func TestBuildTriageFilterRejectsIndependentFlagConflicts(t *testing.T) {
 	tests := []struct {
-		name   string
-		values map[string]string
+		name      string
+		values    map[string]string
+		wantParam string
 	}{
-		{name: "folder conflict", values: map[string]string{"filter": "folder=SENT", "folder": "INBOX"}},
-		{name: "read status conflict", values: map[string]string{"filter": "is_unread", "is-read": "true"}},
+		{name: "folder conflict", values: map[string]string{"filter": "folder=SENT", "folder": "INBOX"}, wantParam: "--folder"},
+		{name: "read status conflict", values: map[string]string{"filter": "is_unread", "is-read": "true"}, wantParam: "--filter"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -331,10 +347,32 @@ func TestBuildTriageFilterRejectsIndependentFlagConflicts(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected conflict error")
 			}
+			assertTriageFilterValidationError(t, err, tt.wantParam)
 			if !strings.Contains(err.Error(), "conflict") {
 				t.Fatalf("expected conflict error, got %v", err)
 			}
 		})
+	}
+}
+
+func assertTriageFilterValidationError(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Param != wantParam {
+		t.Fatalf("param = %q, want %s", validationErr.Param, wantParam)
 	}
 }
 
@@ -1849,6 +1887,39 @@ func TestMailTriageTableOutputPreservesMailboxContext(t *testing.T) {
 				t.Fatalf("stderr should contain mail +message tip, got:\n%s", errOut)
 			}
 		})
+	}
+}
+
+func TestMailTriageNextPageHintPreservesIndependentFilterFlags(t *testing.T) {
+	f, stdout, stderr, reg := mailShortcutTestFactory(t)
+	defer reg.Verify(t)
+
+	registerMailTriageListStub(reg, "me", []string{"msg_001"}, true, "next_page_token")
+	registerMailTriageBatchStub(reg, "me", []map[string]interface{}{
+		mailTriageBatchMessage("msg_001", "Table message"),
+	})
+
+	if err := runMountedMailShortcut(t, MailTriage, []string{
+		"+triage",
+		"--max", "1",
+		"--filter", "is_unread",
+		"--folder-id", "DRAFT",
+		"--is-unread=true",
+	}, f, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	errOut := stderr.String()
+	for _, want := range []string{
+		"next page: mail +triage",
+		"--filter 'is_unread'",
+		"--folder-id 'DRAFT'",
+		"--is-unread='true'",
+		"--page-token 'list:next_page_token'",
+	} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("stderr should contain %q, got:\n%s", want, errOut)
+		}
 	}
 }
 

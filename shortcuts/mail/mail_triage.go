@@ -333,6 +333,7 @@ var MailTriage = common.Shortcut{
 				if filterStr := runtime.Str("filter"); filterStr != "" {
 					hint.WriteString(" --filter " + shellQuote(filterStr))
 				}
+				appendTriagePaginationFilterFlags(&hint, runtime)
 				hint.WriteString(" --page-token " + shellQuote(nextPageToken))
 				fmt.Fprintln(runtime.IO().ErrOut, hint.String())
 			}
@@ -456,7 +457,8 @@ func parseTriageFilterJSON(raw string) (triageFilter, error) {
 	}
 
 	var filter triageFilter
-	for key, value := range fields {
+	for _, key := range triageFilterJSONFieldOrder(fields) {
+		value := fields[key]
 		switch key {
 		case "folder":
 			if err := json.Unmarshal(value, &filter.Folder); err != nil {
@@ -541,6 +543,9 @@ func parseTriageFilterToken(raw string) (triageFilter, error) {
 			return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: %q is not valid JSON, key=value, is_read, or is_unread. Run --print-filter-schema to see supported fields", raw)
 		}
 	}
+	if strings.Contains(raw, ",") {
+		return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: comma-separated key=value filters are not supported; pass a JSON object for multiple fields")
+	}
 
 	key, value, _ := strings.Cut(raw, "=")
 	key = strings.TrimSpace(key)
@@ -582,6 +587,40 @@ func parseTriageFilterToken(raw string) (triageFilter, error) {
 		return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: unknown key %q. Run --print-filter-schema to see supported fields", key)
 	}
 	return filter, nil
+}
+
+func triageFilterJSONFieldOrder(fields map[string]json.RawMessage) []string {
+	preferred := []string{
+		"folder",
+		"folder_id",
+		"label",
+		"label_id",
+		"from",
+		"to",
+		"cc",
+		"bcc",
+		"subject",
+		"has_attachment",
+		"is_unread",
+		"is_read",
+		"time_range",
+	}
+	keys := make([]string, 0, len(fields))
+	seen := make(map[string]bool, len(fields))
+	for _, key := range preferred {
+		if _, ok := fields[key]; ok {
+			keys = append(keys, key)
+			seen[key] = true
+		}
+	}
+	var unknown []string
+	for key := range fields {
+		if !seen[key] {
+			unknown = append(unknown, key)
+		}
+	}
+	sort.Strings(unknown)
+	return append(keys, unknown...)
 }
 
 func parseTriageBoolKV(key, value string) (bool, error) {
@@ -649,6 +688,21 @@ func buildTriageFilter(runtime *common.RuntimeContext) (triageFilter, error) {
 		}
 	}
 	return filter, nil
+}
+
+func appendTriagePaginationFilterFlags(hint *strings.Builder, runtime *common.RuntimeContext) {
+	if runtime.Changed("folder") {
+		hint.WriteString(" --folder " + shellQuote(runtime.Str("folder")))
+	}
+	if runtime.Changed("folder-id") {
+		hint.WriteString(" --folder-id " + shellQuote(runtime.Str("folder-id")))
+	}
+	if runtime.Changed("is-unread") {
+		hint.WriteString(" --is-unread=" + shellQuote(fmt.Sprintf("%t", runtime.Bool("is-unread"))))
+	}
+	if runtime.Changed("is-read") {
+		hint.WriteString(" --is-read=" + shellQuote(fmt.Sprintf("%t", runtime.Bool("is-read"))))
+	}
 }
 
 func triageFilterUnknownFieldHint(msg string) string {
