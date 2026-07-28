@@ -8,27 +8,52 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   preflight:
     runs-on: ubuntu-22.04
     permissions:
       contents: read
+    outputs:
+      source_sha: ${{ steps.validate.outputs.source_sha }}
+      version: ${{ steps.validate.outputs.version }}
+      channel: ${{ steps.validate.outputs.channel }}
+      prerelease: ${{ steps.validate.outputs.prerelease }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.14.0'
 
-      - name: Validate tag and commit
+      - name: Validate protected release tag
+        id: validate
         env:
+          REF_PROTECTED: ${{ github.ref_protected }}
+          REPOSITORY: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          node scripts/release-preflight.js --tag "$TAG"
-          git fetch origin main
+
+          if [[ "$REPOSITORY" != "larksuite/cli" ]]; then
+            echo "Release tags are accepted only from larksuite/cli." >&2
+            exit 1
+          fi
+          if [[ "$REF_PROTECTED" != "true" ]]; then
+            echo "Release tag ${TAG} must be protected by a repository ruleset." >&2
+            exit 1
+          fi
+
+          preflight_file="${RUNNER_TEMP}/release-preflight.json"
+          node scripts/release-preflight.js --tag "$TAG" > "$preflight_file"
+
+          git fetch --no-tags origin main
           HEAD_SHA="$(git rev-parse --verify 'HEAD^{commit}')"
           MAIN_SHA="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
           TAG_SHA="$(git rev-parse --verify "refs/tags/${TAG}^{commit}")"
@@ -41,15 +66,45 @@ jobs:
             exit 1
           fi
 
-  build-release:
+          node - "$preflight_file" "$HEAD_SHA" "$GITHUB_OUTPUT" <<'NODE'
+          const fs = require("node:fs");
+          const [preflightFile, sourceSha, outputFile] = process.argv.slice(2);
+          const result = JSON.parse(fs.readFileSync(preflightFile, "utf8"));
+          if (
+            result?.ok !== true
+            || typeof result.data?.tagVersion !== "string"
+            || !["stable", "beta"].includes(result.data?.releaseChannel)
+          ) {
+            throw new Error("release-preflight.js returned an invalid success payload");
+          }
+          const channel = result.data.releaseChannel;
+          fs.appendFileSync(
+            outputFile,
+            [
+              `source_sha=${sourceSha}`,
+              `version=${result.data.tagVersion}`,
+              `channel=${channel}`,
+              `prerelease=${channel === "beta"}`,
+              "",
+            ].join("\n"),
+          );
+          NODE
+
+  build-sign-notarize:
     needs: preflight
     runs-on: ubuntu-22.04
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.upload_candidate.outputs.artifact-id }}
+      artifact-digest: ${{ steps.upload_candidate.outputs.artifact-digest }}
+      manifest-sha256: ${{ steps.candidate_metadata.outputs.manifest-sha256 }}
+      artifact-name: ${{ steps.candidate_metadata.outputs.artifact-name }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
@@ -68,70 +123,145 @@ jobs:
       - name: Install pinned npm
         run: npm install --global npm@11.16.0
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
-        with:
-          version: '~> v2'
-          args: release --clean
+      - name: Prepare Apple notarization key
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Include release checksums
+          MACOS_NOTARY_ISSUER_ID: ${{ vars.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ vars.MACOS_NOTARY_KEY_ID }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_TEAM_ID: ${{ vars.MACOS_TEAM_ID }}
         run: |
           set -euo pipefail
+          set +x
+          for name in \
+            MACOS_SIGN_P12 \
+            MACOS_SIGN_PASSWORD \
+            MACOS_NOTARY_KEY \
+            MACOS_TEAM_ID \
+            MACOS_NOTARY_KEY_ID \
+            MACOS_NOTARY_ISSUER_ID
+          do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Required Apple release input ${name} is not configured." >&2
+              exit 1
+            fi
+          done
+
+          umask 077
+          notary_key="$(mktemp "${RUNNER_TEMP}/macos-notary-key.XXXXXX")"
+          cleanup() {
+            rm -f -- "$notary_key"
+          }
+          trap cleanup EXIT
+          printf '%s' "$MACOS_NOTARY_KEY" > "$notary_key"
+          chmod 0600 "$notary_key"
+          printf 'MACOS_NOTARY_KEY_PATH=%s\n' "$notary_key" >> "$GITHUB_ENV"
+          trap - EXIT
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: v2.17.1
+          args: release --clean --skip=publish
+        env:
+          MACOS_NOTARY_ISSUER_ID: ${{ vars.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ vars.MACOS_NOTARY_KEY_ID }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+
+      - name: Build and verify release candidate
+        id: candidate_metadata
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+
           test -s dist/checksums.txt
-          (cd dist && sha256sum --check checksums.txt)
+          (
+            cd dist
+            sha256sum --check checksums.txt
+          )
+
+          shopt -s nullglob
+          tarballs=(dist/*.tar.gz)
+          zip_archives=(dist/*.zip)
+          if (( ${#tarballs[@]} == 0 )); then
+            echo "GoReleaser did not produce any .tar.gz archives." >&2
+            exit 1
+          fi
+          if (( ${#zip_archives[@]} == 0 )); then
+            echo "GoReleaser did not produce any .zip archives." >&2
+            exit 1
+          fi
+
+          mkdir release-candidate
+          cp "${tarballs[@]}" "${zip_archives[@]}" dist/checksums.txt release-candidate/
           cp dist/checksums.txt checksums.txt
+          (
+            cd release-candidate
+            sha256sum --check checksums.txt
+          )
 
-      - name: Collect release asset
-        run: |
-          set -euo pipefail
-          mkdir npm-publish-asset
-          cp dist/*.tar.gz dist/*.zip dist/checksums.txt npm-publish-asset/
+          pack_json="$(npm pack --ignore-scripts --json --pack-destination release-candidate)"
+          npm_package="$(
+            node -e '
+              const result = JSON.parse(process.argv[1]);
+              if (
+                !Array.isArray(result)
+                || result.length !== 1
+                || typeof result[0]?.filename !== "string"
+                || result[0].filename.length === 0
+              ) {
+                throw new Error("npm pack must return exactly one filename");
+              }
+              process.stdout.write(result[0].filename);
+            ' "$pack_json"
+          )"
+          if [[ "$npm_package" == */* || "$npm_package" == *\\* ]]; then
+            echo "npm pack returned a filename containing path separators." >&2
+            exit 1
+          fi
+          test -s "release-candidate/${npm_package}"
 
-      - name: Upload release asset
+          node scripts/release-candidate.js create \
+            --directory release-candidate \
+            --manifest release-candidate/candidate-manifest.json \
+            --source-sha "$SOURCE_SHA" \
+            --version "$VERSION" \
+            --channel "$CHANNEL" \
+            --npm-package "$npm_package"
+          node scripts/release-candidate.js verify \
+            --directory release-candidate \
+            --manifest release-candidate/candidate-manifest.json \
+            --scope artifact \
+            --source-sha "$SOURCE_SHA" \
+            --version "$VERSION" \
+            --channel "$CHANNEL"
+
+          manifest_sha256="$(sha256sum release-candidate/candidate-manifest.json | cut -d' ' -f1)"
+          artifact_name="release-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          {
+            printf 'manifest-sha256=%s\n' "$manifest_sha256"
+            printf 'artifact-name=%s\n' "$artifact_name"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload release candidate
+        id: upload_candidate
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: npm-publish-asset-${{ github.run_id }}
-          path: npm-publish-asset/
+          name: ${{ steps.candidate_metadata.outputs.artifact-name }}
+          path: release-candidate/
           if-no-files-found: error
-          overwrite: true
+          compression-level: 0
 
-  publish-npm:
-    needs: build-release
-    runs-on: ubuntu-22.04
-    environment: npm-production
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '22.14.0'
-          registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false
-
-      - name: Install pinned npm
-        run: npm install --global npm@11.16.0
-
-      - name: Download release asset
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: npm-publish-asset-${{ github.run_id }}
-          path: npm-publish-asset
-
-      - name: Verify npm publish asset
+      - name: Clean up Apple notarization key
+        if: ${{ always() }}
         run: |
           set -euo pipefail
-          (cd npm-publish-asset && sha256sum --check checksums.txt)
-          cp npm-publish-asset/checksums.txt checksums.txt
-          PACK_JSON="$(npm pack --ignore-scripts --json)"
-          PACK_FILE="$(node -e 'const p=JSON.parse(process.argv[1]); if(p.length!==1 || !p[0].filename) process.exit(1); process.stdout.write(p[0].filename)' "$PACK_JSON")"
-          test -s "$PACK_FILE"
-          tar -tzf "$PACK_FILE" | grep -qx 'package/checksums.txt'
-          rm "$PACK_FILE"
-
-      - name: Publish to npm
-        run: npm publish --access public
+          set +x
+          if [[ -n "${MACOS_NOTARY_KEY_PATH:-}" ]]; then
+            rm -f -- "$MACOS_NOTARY_KEY_PATH"
+          fi

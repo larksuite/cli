@@ -37,6 +37,7 @@ notarize:
 
 archives:
   - name_template: "lark-cli-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
