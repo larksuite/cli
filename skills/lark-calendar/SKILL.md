@@ -16,14 +16,16 @@ metadata:
 
 ## 身份
 
-日程操作默认使用 `--as user`（查看和管理当前用户的日程）。`--as bot` 只能访问 bot 自己的（空）日历，会拿到空结果——不要用 bot 身份查用户日程。
+按**日程归属**选身份：
+
+- 查看/管理登录用户本人的日程 → `--as user`（默认，绝大多数场景）。
+- 查看/管理 bot 自己创建/拥有的日程 → `--as bot` 
 
 ```bash
-# BAD — bot 身份查用户日程，返回空列表
-lark-cli calendar +agenda --as bot
-
-# GOOD — user 身份查日程
+# 用户本人日程 → user
 lark-cli calendar +agenda --as user
+# bot 自建或参与的日程 → bot
+lark-cli calendar +agenda --as bot
 ```
 
 ## Shortcuts
