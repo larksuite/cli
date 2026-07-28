@@ -111,18 +111,25 @@ func TestBase_RoleWorkflow(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
-		getResult, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"base", "+role-get", "--base-token", baseToken, "--role-id", roleID},
-			DefaultAs: "bot",
-		})
-		require.NoError(t, err)
-		getResult.AssertExitCode(t, 0)
-		getResult.AssertStdoutStatus(t, true)
+		err = clie2e.WaitForCondition(ctx, clie2e.WaitOptions{
+			Timeout:  30 * time.Second,
+			Interval: 3 * time.Second,
+		}, func() (bool, error) {
+			getResult, getErr := clie2e.RunCmd(ctx, clie2e.Request{
+				Args:      []string{"base", "+role-get", "--base-token", baseToken, "--role-id", roleID},
+				DefaultAs: "bot",
+			})
+			if getErr != nil {
+				return false, getErr
+			}
+			if getResult.ExitCode != 0 {
+				return false, getResult.RunErr
+			}
 
-		rolePayload := gjson.Get(getResult.Stdout, "data.data").String()
-		require.NotEmpty(t, rolePayload, "stdout:\n%s", getResult.Stdout)
-		require.True(t, gjson.Valid(rolePayload), "stdout:\n%s", getResult.Stdout)
-		assert.Equal(t, updatedRoleName, gjson.Get(rolePayload, "role_name").String())
+			rolePayload := gjson.Get(getResult.Stdout, "data.data").String()
+			return gjson.Valid(rolePayload) && gjson.Get(rolePayload, "role_name").String() == updatedRoleName, nil
+		})
+		require.NoError(t, err, "role name should converge to %q", updatedRoleName)
 	})
 
 }
