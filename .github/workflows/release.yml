@@ -325,7 +325,6 @@ jobs:
       contents: write
     outputs:
       release-id: ${{ steps.release.outputs.release-id }}
-      already-published: ${{ steps.release.outputs.already-published }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -819,12 +818,305 @@ jobs:
 
           fs.appendFileSync(
             GITHUB_OUTPUT,
-            `release-id=${release.id}\nalready-published=${alreadyPublished}\n`,
+            `release-id=${release.id}\n`,
           );
           })().catch((error) => {
             console.error(error);
             process.exitCode = 1;
           });
+          NODE
+
+  publish-github:
+    needs:
+      - preflight
+      - build-sign-notarize
+      - create-draft-release
+      - verify-macos
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      release-id: ${{ steps.publish.outputs.release-id }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Download exact release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ needs.build-sign-notarize.outputs.artifact-id }}
+          path: release-candidate
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Revalidate candidate provenance
+        env:
+          ARTIFACT_DIGEST: ${{ needs.build-sign-notarize.outputs.artifact-digest }}
+          ARTIFACT_ID: ${{ needs.build-sign-notarize.outputs.artifact-id }}
+          ARTIFACT_NAME: ${{ needs.build-sign-notarize.outputs.artifact-name }}
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_SHA256: ${{ needs.build-sign-notarize.outputs.manifest-sha256 }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async () => {
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const { verifyCandidateManifest } = require("./scripts/release-candidate");
+          const env = process.env;
+          if (!/^[1-9][0-9]*$/.test(env.ARTIFACT_ID || "")) throw new Error("artifact-id is invalid");
+          for (const name of ["ARTIFACT_DIGEST", "MANIFEST_SHA256"]) {
+            if (!/^[0-9a-fA-F]{64}$/.test(env[name] || "")) throw new Error(`${name} is invalid`);
+          }
+          if (!/^[0-9a-fA-F]{40}$/.test(env.SOURCE_SHA || "")) throw new Error("source SHA is invalid");
+          const response = await fetch(
+            `https://api.github.com/repos/${env.REPOSITORY}/actions/artifacts/${env.ARTIFACT_ID}`,
+            { headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${env.GH_TOKEN}`, "User-Agent": "lark-cli-release-workflow", "X-GitHub-Api-Version": "2022-11-28" } },
+          );
+          const text = await response.text();
+          if (response.status !== 200) throw new Error(`artifact lookup failed: HTTP ${response.status}`);
+          let artifact; try { artifact = JSON.parse(text); } catch { throw new Error("artifact lookup returned invalid JSON"); }
+          if (artifact?.id !== Number(env.ARTIFACT_ID) || artifact.name !== env.ARTIFACT_NAME || artifact.expired !== false || String(artifact.workflow_run?.id) !== env.RUN_ID || artifact.workflow_run?.head_sha?.toLowerCase() !== env.SOURCE_SHA.toLowerCase() || artifact.digest !== `sha256:${env.ARTIFACT_DIGEST.toLowerCase()}`) throw new Error("artifact provenance does not match build outputs");
+          const manifestPath = "release-candidate/candidate-manifest.json";
+          const manifestBytes = fs.readFileSync(manifestPath);
+          if (crypto.createHash("sha256").update(manifestBytes).digest("hex") !== env.MANIFEST_SHA256.toLowerCase()) throw new Error("candidate manifest SHA-256 does not match build output");
+          verifyCandidateManifest("release-candidate", JSON.parse(manifestBytes), { sourceSha: env.SOURCE_SHA, version: env.VERSION, channel: env.CHANNEL }, "artifact");
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
+          NODE
+
+      - name: Validate npm state and publish verified GitHub Release
+        id: publish
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+          RELEASE_ID: ${{ needs.create-draft-release.outputs.release-id }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async () => {
+          const childProcess = require("node:child_process");
+          const fs = require("node:fs");
+          const os = require("node:os");
+          const path = require("node:path");
+          const { evaluateNpmState, verifyCandidateManifest } = require("./scripts/release-candidate");
+          const env = process.env;
+          const sourceSha = (env.SOURCE_SHA || "").toLowerCase();
+          const expectedPrerelease = env.PRERELEASE === "true";
+          const releaseID = Number(env.RELEASE_ID);
+          if (!/^[0-9a-f]{40}$/.test(sourceSha) || !Number.isSafeInteger(releaseID) || releaseID <= 0 || !["stable", "beta"].includes(env.CHANNEL) || (env.PRERELEASE !== "true" && env.PRERELEASE !== "false")) throw new Error("invalid protected release metadata");
+          const apiRoot = `https://api.github.com/repos/${env.REPOSITORY}`;
+          async function request(url, options = {}, statuses = [200]) {
+            const response = await fetch(url, { ...options, headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${env.GH_TOKEN}`, "User-Agent": "lark-cli-release-workflow", "X-GitHub-Api-Version": "2022-11-28", ...(options.headers || {}) } });
+            const bytes = Buffer.from(await response.arrayBuffer());
+            if (!statuses.includes(response.status)) throw new Error(`GitHub API request failed with HTTP ${response.status}: ${bytes.toString("utf8", 0, Math.min(bytes.length, 500))}`);
+            return { response, bytes };
+          }
+          async function api(pathname, options, statuses) {
+            const result = await request(`${apiRoot}${pathname}`, options, statuses);
+            try { return JSON.parse(result.bytes.toString("utf8")); } catch { throw new Error("GitHub API returned invalid JSON"); }
+          }
+          async function resolveTag() {
+            const ref = await api(`/git/ref/tags/${encodeURIComponent(env.TAG)}`);
+            if (ref?.ref !== `refs/tags/${env.TAG}`) throw new Error("remote tag lookup did not return the exact tag");
+            let object = ref.object; const visited = new Set();
+            for (let depth = 0; depth < 8; depth += 1) {
+              if (!object || !/^[0-9a-fA-F]{40}$/.test(object.sha)) throw new Error("remote tag object is malformed");
+              const sha = object.sha.toLowerCase();
+              if (object.type === "commit") { if (sha !== sourceSha) throw new Error("remote tag source SHA changed"); return; }
+              if (object.type !== "tag" || visited.has(sha)) throw new Error("remote tag object chain is invalid");
+              visited.add(sha); object = (await api(`/git/tags/${sha}`)).object;
+            }
+            throw new Error("remote tag object chain is too deep");
+          }
+          function assertRelease(release, expectedDraft) {
+            if (!release || release.id !== releaseID || release.tag_name !== env.TAG || release.target_commitish?.toLowerCase() !== sourceSha || release.draft !== expectedDraft || release.prerelease !== expectedPrerelease || !Array.isArray(release.assets)) throw new Error("GitHub Release ID, tag, source, state, or type changed");
+            return release;
+          }
+          async function verifyRelease(expectedDraft) {
+            await resolveTag();
+            const release = assertRelease(await api(`/releases/${releaseID}`), expectedDraft);
+            const manifest = JSON.parse(fs.readFileSync("release-candidate/candidate-manifest.json", "utf8"));
+            const expected = manifest.releaseAssets?.map((asset) => asset.name).sort();
+            const actual = release.assets.map((asset) => asset?.name).sort();
+            if (!Array.isArray(expected) || expected.length !== actual.length || expected.some((name, index) => name !== actual[index])) throw new Error("release assets do not exactly match candidate manifest");
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-public-release-"));
+            try {
+              for (const asset of release.assets) {
+                if (!Number.isSafeInteger(asset?.id) || asset.id <= 0 || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.state !== "uploaded" || typeof asset.name !== "string" || path.basename(asset.name) !== asset.name) throw new Error("release asset metadata is invalid");
+                const downloaded = await request(`${apiRoot}/releases/assets/${asset.id}`, { headers: { Accept: "application/octet-stream" } });
+                if (downloaded.bytes.length !== asset.size) throw new Error(`release asset size changed: ${asset.name}`);
+                fs.writeFileSync(path.join(directory, asset.name), downloaded.bytes, { flag: "wx", mode: 0o600 });
+              }
+              verifyCandidateManifest(directory, manifest, { sourceSha, version: env.VERSION, channel: env.CHANNEL }, "release");
+            } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+            return release;
+          }
+          function npmView(args, absentAllowed) {
+            const result = childProcess.spawnSync("npm", ["view", ...args, "--json"], { encoding: "utf8" });
+            if (result.status === 0) { try { return { present: true, value: JSON.parse(result.stdout) }; } catch { throw new Error("npm view returned malformed JSON"); } }
+            if (absentAllowed && /(?:E404|\b404\b)/.test(`${result.stderr}\n${result.stdout}`)) return { present: false };
+            throw new Error(`npm view failed: ${String(result.stderr).slice(0, 500)}`);
+          }
+          const manifest = JSON.parse(fs.readFileSync("release-candidate/candidate-manifest.json", "utf8"));
+          const versionState = npmView([`@larksuite/cli@${env.VERSION}`, "dist.integrity"], true);
+          const tagsState = npmView(["@larksuite/cli", "dist-tags"], false);
+          if (!tagsState.value || typeof tagsState.value !== "object" || Array.isArray(tagsState.value)) throw new Error("npm dist-tags must be an object");
+          const npmState = { versionPresent: versionState.present, distTags: tagsState.value };
+          if (versionState.present) npmState.publishedIntegrity = versionState.value;
+          const evaluated = evaluateNpmState({ version: env.VERSION, channel: env.CHANNEL, integrity: manifest.npmPackage?.integrity }, npmState);
+          await verifyRelease(true).catch(async (error) => {
+            if (!/state, or type changed/.test(error.message)) throw error;
+            return verifyRelease(false);
+          });
+          const beforePublic = await verifyRelease(true).catch(async (error) => {
+            if (!/state, or type changed/.test(error.message)) throw error;
+            return verifyRelease(false);
+          });
+          if (beforePublic.draft) {
+            await resolveTag();
+            const current = assertRelease(await api(`/releases/${releaseID}`), true);
+            if (current.draft !== true) throw new Error("Draft Release changed before publication");
+            const updated = await api(`/releases/${releaseID}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: false, prerelease: expectedPrerelease }) });
+            assertRelease(updated, false);
+          }
+          await verifyRelease(false);
+          fs.appendFileSync(env.GITHUB_OUTPUT, `release-id=${releaseID}\nnpm-package=${manifest.npmPackage.name}\ndist-tag=${evaluated.distTag}\n`);
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
+          NODE
+
+      - name: Install the candidate through the public Release
+        env:
+          NPM_PACKAGE: ${{ steps.publish.outputs.npm-package }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm_tgz="$PWD/release-candidate/$NPM_PACKAGE"
+          install_prefix="$(mktemp -d "${RUNNER_TEMP}/lark-cli-global-prefix.XXXXXX")"
+          npm_cache="$(mktemp -d "${RUNNER_TEMP}/lark-cli-npm-cache.XXXXXX")"
+          cleanup() { rm -rf -- "$install_prefix" "$npm_cache"; }
+          trap cleanup EXIT
+          node - "$npm_tgz" "$VERSION" <<'NODE'
+          const childProcess = require("node:child_process");
+          const [tgz, version] = process.argv.slice(2);
+          const packageJson = JSON.parse(childProcess.execFileSync("tar", ["-xOzf", tgz, "package/package.json"], { encoding: "utf8" }));
+          const install = childProcess.execFileSync("tar", ["-xOzf", tgz, "package/scripts/install.js"], { encoding: "utf8" });
+          if (packageJson.version !== version || !install.includes("releases/download/v${version}/${resolvedArchiveName}")) throw new Error("candidate install.js does not target the public full-version Release asset");
+          NODE
+          npm install --global --prefix "$install_prefix" --cache "$npm_cache" --ignore-scripts=false "$npm_tgz"
+          version_output="$("$install_prefix/bin/lark-cli" --version)"
+          VERSION="$VERSION" VERSION_OUTPUT="$version_output" node <<'NODE'
+          const tokens = process.env.VERSION_OUTPUT.split(/\s+/).filter(Boolean);
+          if (!tokens.includes(process.env.VERSION)) throw new Error("installed lark-cli did not report the exact full version");
+          NODE
+
+  publish-npm:
+    needs:
+      - preflight
+      - build-sign-notarize
+      - publish-github
+    runs-on: ubuntu-22.04
+    environment: npm-production
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Download exact release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ needs.build-sign-notarize.outputs.artifact-id }}
+          path: release-candidate
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Revalidate candidate, public Release, and publish npm
+        env:
+          ARTIFACT_DIGEST: ${{ needs.build-sign-notarize.outputs.artifact-digest }}
+          ARTIFACT_ID: ${{ needs.build-sign-notarize.outputs.artifact-id }}
+          ARTIFACT_NAME: ${{ needs.build-sign-notarize.outputs.artifact-name }}
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_SHA256: ${{ needs.build-sign-notarize.outputs.manifest-sha256 }}
+          RELEASE_ID: ${{ needs.publish-github.outputs.release-id }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async () => {
+          const childProcess = require("node:child_process");
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const os = require("node:os");
+          const path = require("node:path");
+          const { evaluateNpmState, verifyCandidateManifest } = require("./scripts/release-candidate");
+          const env = process.env;
+          const sourceSha = (env.SOURCE_SHA || "").toLowerCase(); const releaseID = Number(env.RELEASE_ID);
+          if (!/^[1-9][0-9]*$/.test(env.ARTIFACT_ID || "") || !/^[0-9a-f]{40}$/.test(sourceSha) || !Number.isSafeInteger(releaseID) || releaseID <= 0) throw new Error("invalid release provenance metadata");
+          for (const name of ["ARTIFACT_DIGEST", "MANIFEST_SHA256"]) if (!/^[0-9a-fA-F]{64}$/.test(env[name] || "")) throw new Error(`${name} is invalid`);
+          const artifactResponse = await fetch(`https://api.github.com/repos/${env.REPOSITORY}/actions/artifacts/${env.ARTIFACT_ID}`, { headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${env.GH_TOKEN}`, "User-Agent": "lark-cli-release-workflow", "X-GitHub-Api-Version": "2022-11-28" } });
+          if (artifactResponse.status !== 200) throw new Error(`artifact lookup failed: HTTP ${artifactResponse.status}`);
+          const artifact = await artifactResponse.json();
+          if (artifact?.id !== Number(env.ARTIFACT_ID) || artifact.name !== env.ARTIFACT_NAME || artifact.expired !== false || String(artifact.workflow_run?.id) !== env.RUN_ID || artifact.workflow_run?.head_sha?.toLowerCase() !== sourceSha || artifact.digest !== `sha256:${env.ARTIFACT_DIGEST.toLowerCase()}`) throw new Error("artifact provenance does not match build outputs");
+          const manifestPath = "release-candidate/candidate-manifest.json";
+          const manifestBytes = fs.readFileSync(manifestPath); if (crypto.createHash("sha256").update(manifestBytes).digest("hex") !== env.MANIFEST_SHA256.toLowerCase()) throw new Error("candidate manifest SHA-256 does not match build output");
+          const manifest = JSON.parse(manifestBytes); verifyCandidateManifest("release-candidate", manifest, { sourceSha, version: env.VERSION, channel: env.CHANNEL }, "artifact");
+          const apiRoot = `https://api.github.com/repos/${env.REPOSITORY}`;
+          async function request(url, options = {}, statuses = [200]) { const response = await fetch(url, { ...options, headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${env.GH_TOKEN}`, "User-Agent": "lark-cli-release-workflow", "X-GitHub-Api-Version": "2022-11-28", ...(options.headers || {}) } }); const bytes = Buffer.from(await response.arrayBuffer()); if (!statuses.includes(response.status)) throw new Error(`GitHub API request failed: HTTP ${response.status}`); return { response, bytes }; }
+          async function api(pathname) { const result = await request(`${apiRoot}${pathname}`); try { return JSON.parse(result.bytes.toString("utf8")); } catch { throw new Error("GitHub API returned invalid JSON"); } }
+          const ref = await api(`/git/ref/tags/${encodeURIComponent(env.TAG)}`); let object = ref?.ref === `refs/tags/${env.TAG}` ? ref.object : null; const visited = new Set();
+          for (let depth = 0; depth < 8; depth += 1) { if (!object || !/^[0-9a-fA-F]{40}$/.test(object.sha)) throw new Error("remote tag object is malformed"); const sha = object.sha.toLowerCase(); if (object.type === "commit") { if (sha !== sourceSha) throw new Error("remote tag source SHA changed"); break; } if (object.type !== "tag" || visited.has(sha)) throw new Error("remote tag object chain is invalid"); visited.add(sha); object = (await api(`/git/tags/${sha}`)).object; if (depth === 7) throw new Error("remote tag object chain is too deep"); }
+          const release = await api(`/releases/${releaseID}`);
+          if (release?.id !== releaseID || release.tag_name !== env.TAG || release.target_commitish?.toLowerCase() !== sourceSha || release.draft !== false || release.prerelease !== (env.CHANNEL === "beta") || !Array.isArray(release.assets)) throw new Error("public Release state does not match the protected candidate");
+          const expectedNames = manifest.releaseAssets.map((asset) => asset.name).sort(); const actualNames = release.assets.map((asset) => asset?.name).sort(); if (expectedNames.length !== actualNames.length || expectedNames.some((name, index) => name !== actualNames[index])) throw new Error("public Release assets do not exactly match candidate manifest");
+          const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lark-cli-npm-release-"));
+          try { for (const asset of release.assets) { if (!Number.isSafeInteger(asset?.id) || asset.id <= 0 || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.state !== "uploaded" || typeof asset.name !== "string" || path.basename(asset.name) !== asset.name) throw new Error("public Release asset metadata is invalid"); const downloaded = await request(`${apiRoot}/releases/assets/${asset.id}`, { headers: { Accept: "application/octet-stream" } }); if (downloaded.bytes.length !== asset.size) throw new Error(`public Release asset size changed: ${asset.name}`); fs.writeFileSync(path.join(directory, asset.name), downloaded.bytes, { flag: "wx", mode: 0o600 }); } verifyCandidateManifest(directory, manifest, { sourceSha, version: env.VERSION, channel: env.CHANNEL }, "release"); } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+          function npmView(args, absentAllowed) { const result = childProcess.spawnSync("npm", ["view", ...args, "--json"], { encoding: "utf8" }); if (result.status === 0) { try { return { present: true, value: JSON.parse(result.stdout) }; } catch { throw new Error("npm view returned malformed JSON"); } } if (absentAllowed && /(?:E404|\b404\b)/.test(`${result.stderr}\n${result.stdout}`)) return { present: false }; throw new Error(`npm view failed: ${String(result.stderr).slice(0, 500)}`); }
+          function readNpmState() { const version = npmView([`@larksuite/cli@${env.VERSION}`, "dist.integrity"], true); const tags = npmView(["@larksuite/cli", "dist-tags"], false); if (!tags.value || typeof tags.value !== "object" || Array.isArray(tags.value)) throw new Error("npm dist-tags must be an object"); const state = { versionPresent: version.present, distTags: tags.value }; if (version.present) state.publishedIntegrity = version.value; return state; }
+          const target = { version: env.VERSION, channel: env.CHANNEL, integrity: manifest.npmPackage.integrity };
+          const before = evaluateNpmState(target, readNpmState());
+          fs.writeFileSync(path.join(env.RUNNER_TEMP, "npm-state-before.json"), JSON.stringify(before));
+          if (before.action === "publish") {
+            const tgz = path.resolve("release-candidate", manifest.npmPackage.name);
+            childProcess.execFileSync("npm", ["publish", tgz, "--access", "public", "--provenance", "--tag", before.distTag], { stdio: "inherit" });
+          }
+          const afterState = readNpmState();
+          const after = evaluateNpmState(target, afterState);
+          if (before.action === "publish" && afterState.distTags?.[before.distTag] !== env.VERSION) throw new Error("npm publish did not set the target dist-tag to the target version");
+          if (before.action === "reuse" && after.action !== "reuse") throw new Error("idempotent npm state changed unexpectedly");
+          fs.writeFileSync(path.join(env.RUNNER_TEMP, "npm-state-after.json"), JSON.stringify(after));
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
           NODE
 
   verify-macos:
