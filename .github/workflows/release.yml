@@ -120,9 +120,6 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
-      - name: Install pinned npm
-        run: npm install --global npm@11.16.0
-
       - name: Prepare Apple notarization key
         env:
           MACOS_NOTARY_ISSUER_ID: ${{ vars.MACOS_NOTARY_ISSUER_ID }}
@@ -170,6 +167,23 @@ jobs:
           MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
           MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
 
+      - name: Clean up Apple notarization key
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          set +x
+          if [[ -n "${MACOS_NOTARY_KEY_PATH:-}" ]]; then
+            rm -f -- "$MACOS_NOTARY_KEY_PATH"
+            if [[ -e "$MACOS_NOTARY_KEY_PATH" || -L "$MACOS_NOTARY_KEY_PATH" ]]; then
+              echo "Apple notarization key cleanup failed." >&2
+              exit 1
+            fi
+          fi
+          printf 'MACOS_NOTARY_KEY_PATH=\n' >> "$GITHUB_ENV"
+
+      - name: Install pinned npm
+        run: npm install --global npm@11.16.0
+
       - name: Build and verify release candidate
         id: candidate_metadata
         env:
@@ -207,24 +221,68 @@ jobs:
 
           pack_json="$(npm pack --ignore-scripts --json --pack-destination release-candidate)"
           npm_package="$(
-            node -e '
-              const result = JSON.parse(process.argv[1]);
-              if (
-                !Array.isArray(result)
-                || result.length !== 1
-                || typeof result[0]?.filename !== "string"
-                || result[0].filename.length === 0
-              ) {
-                throw new Error("npm pack must return exactly one filename");
-              }
-              process.stdout.write(result[0].filename);
-            ' "$pack_json"
+            node - "$pack_json" "$VERSION" <<'NODE'
+          const path = require("node:path");
+          const [packJson, expectedVersion] = process.argv.slice(2);
+          const result = JSON.parse(packJson);
+          if (!Array.isArray(result) || result.length !== 1) {
+            throw new Error("npm pack must return exactly one package");
+          }
+          const pack = result[0];
+          if (
+            pack === null
+            || typeof pack !== "object"
+            || Array.isArray(pack)
+            || pack.name !== "@larksuite/cli"
+            || pack.version !== expectedVersion
+          ) {
+            throw new Error("npm pack returned unexpected package identity or version");
+          }
+          if (
+            typeof pack.filename !== "string"
+            || pack.filename.length === 0
+            || pack.filename === "."
+            || pack.filename === ".."
+            || pack.filename.includes("/")
+            || pack.filename.includes("\\")
+            || path.basename(pack.filename) !== pack.filename
+            || !pack.filename.endsWith(".tgz")
+          ) {
+            throw new Error("npm pack returned an unsafe filename");
+          }
+          process.stdout.write(pack.filename);
+          NODE
           )"
-          if [[ "$npm_package" == */* || "$npm_package" == *\\* ]]; then
-            echo "npm pack returned a filename containing path separators." >&2
+          npm_tgz="release-candidate/${npm_package}"
+          node - "$npm_tgz" <<'NODE'
+          const fs = require("node:fs");
+          const target = process.argv[2];
+          const stat = fs.lstatSync(target);
+          if (stat.isSymbolicLink() || !stat.isFile() || stat.size === 0) {
+            throw new Error("npm pack filename must identify one nonempty regular file");
+          }
+          NODE
+
+          checksum_entries="$(
+            tar -tzf "$npm_tgz" \
+              | awk '$0 == "package/checksums.txt" { count++ } END { print count + 0 }'
+          )"
+          if [[ "$checksum_entries" != "1" ]]; then
+            echo "npm package must contain exactly one package/checksums.txt entry." >&2
             exit 1
           fi
-          test -s "release-candidate/${npm_package}"
+          packed_checksums="$(mktemp "${RUNNER_TEMP}/packed-checksums.XXXXXX")"
+          cleanup_packed_checksums() {
+            rm -f -- "$packed_checksums"
+          }
+          trap cleanup_packed_checksums EXIT
+          tar -xOzf "$npm_tgz" package/checksums.txt > "$packed_checksums"
+          if ! cmp --silent checksums.txt "$packed_checksums"; then
+            echo "npm package checksums.txt does not match GoReleaser checksums." >&2
+            exit 1
+          fi
+          cleanup_packed_checksums
+          trap - EXIT
 
           node scripts/release-candidate.js create \
             --directory release-candidate \
@@ -256,12 +314,3 @@ jobs:
           path: release-candidate/
           if-no-files-found: error
           compression-level: 0
-
-      - name: Clean up Apple notarization key
-        if: ${{ always() }}
-        run: |
-          set -euo pipefail
-          set +x
-          if [[ -n "${MACOS_NOTARY_KEY_PATH:-}" ]]; then
-            rm -f -- "$MACOS_NOTARY_KEY_PATH"
-          fi
