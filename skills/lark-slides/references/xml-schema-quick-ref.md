@@ -321,6 +321,36 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 
 `<chart>` 直接子元素必须有 `<chartPlotArea>`（绘图区）和 `<chartData>`（数据）；`<chartTitle>`、`<chartSubTitle>`、`<chartStyle>`、`<chartLegend>`、`<chartTooltip>` 可选，如果想不展示标题、副标题、图例或悬浮提示，省略相应元素标签即可。
 
+`<chartStyle>` 常用子元素：
+
+- `<chartBackground>`：`color` 省略时由渲染端决定默认背景；需要完全透明请显式写 `color="rgba(0, 0, 0, 0)"`
+- `<chartBorder>`：无边框可写 `width="0"`，或直接不写 `<chartBorder>` 元素
+
+#### 图表渐变 `<fillGradient>` / `<strokeGradient>`
+
+图表支持渐变填充/描边，`<fillGradient>` 用于面积、柱子、数据点、扇区填充，`<strokeGradient>` 用于线条、数据点边框、柱子边框。渐变只能挂在系列级或单元素级，不要挂在 `<chartPlot>` 全局层。
+
+可挂载位置：
+
+- 系列级：`<chartBars>` / `<chartPoints>` 支持 `<fillGradient>` 与 `<strokeGradient>`；`<chartLine>` 只支持 `<strokeGradient>`；`<chartArea>` / `<chartSectors>` 只支持 `<fillGradient>`
+- 单元素级：`<chartBar index="...">` / `<chartPoint index="...">` / `<chartSector index="...">` 只支持 `<fillGradient>`
+- 全局级：`<chartPlot>` 下的 `<chartLines>` / `<chartAreas>` / `<chartBars>` / `<chartPoints>` 不支持渐变
+
+结构要点：`type` 必填，可为 `linear` 或 `radial`；`linear` 用 `x0` / `y0` / `x1` / `y1`，`radial` 用 `r0` / `r1`；`<stops>` 至少包含 2 个 `<stop>`，`offset` 与 `opacity` 取值均为 `[0, 1]`。
+
+```xml
+<chartSeries index="1">
+  <chartBars>
+    <fillGradient type="linear" x0="0" y0="0" x1="0" y1="1">
+      <stops>
+        <stop offset="0" color="rgb(28, 71, 120)"/>
+        <stop offset="1" color="rgb(28, 71, 120)" opacity="0.3"/>
+      </stops>
+    </fillGradient>
+  </chartBars>
+</chartSeries>
+```
+
 隐藏 `<chart>` 的图例只能通过不写或删除 `<chartLegend>` 实现，`<chartLegend>` 不支持 `position="none"`。
 
 详细用法见 [slides_xml_schema_definition.xml](slides_xml_schema_definition.xml)。
