@@ -1,0 +1,129 @@
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_723fffcbfe2232::t_42525d47ae3cef 890-901,904,912,923-941 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a60f9d49206433f1c65ac24","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[890,901]},{"Single":904},{"Single":912},{"Range":[923,941]}]}]}
+  s_723fffcbfe2232::t_f2bffe1ebdfdb3 942-943
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_723fffcbfe2232::t_573ca333ecf6bc 755-840 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a60fa399206433f1c65ac47","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[755,840]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ae0b5dacba1941cbc2ecf27c1a36ee3163632bf1",
+  "prompts": {},
+  "sessions": {
+    "s_723fffcbfe2232": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a60f1cd9206433f1c65abc7",
+        "model": "openrouter-2o__dev"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "skills/lark-slides/scripts/xml_text_overlap_lint.py": [
+      {
+        "hash": "s_723fffcbfe2232::t_42525d47ae3cef",
+        "line_ranges": [
+          {
+            "Range": [
+              890,
+              901
+            ]
+          },
+          {
+            "Single": 904
+          },
+          {
+            "Single": 912
+          },
+          {
+            "Range": [
+              923,
+              941
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a60f9d49206433f1c65ac24",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  890,
+                  901
+                ]
+              },
+              {
+                "Single": 904
+              },
+              {
+                "Single": 912
+              },
+              {
+                "Range": [
+                  923,
+                  941
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "skills/lark-slides/scripts/xml_text_overlap_lint_test.py": [
+      {
+        "hash": "s_723fffcbfe2232::t_573ca333ecf6bc",
+        "line_ranges": [
+          {
+            "Range": [
+              755,
+              840
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a60fa399206433f1c65ac47",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  755,
+                  840
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_723fffcbfe2232": {
+      "tool": "trae",
+      "conversation_id": "6a60f1cd9206433f1c65abc7",
+      "session_id": "6a60f1cd9206433f1c65abc7",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_723fffcbfe2232::t_42525d47ae3cef": {
+      "tool": "trae",
+      "conversation_id": "6a60f1cd9206433f1c65abc7",
+      "session_id": "6a60f1cd9206433f1c65abc7",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_723fffcbfe2232::t_573ca333ecf6bc": {
+      "tool": "trae",
+      "conversation_id": "6a60f1cd9206433f1c65abc7",
+      "session_id": "6a60f1cd9206433f1c65abc7",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}

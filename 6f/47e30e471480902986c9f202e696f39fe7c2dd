@@ -1,0 +1,27 @@
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_d2b29c2968a215::t_9c150706a86393 663-664
+  s_d2b29c2968a215::t_87c7aa4642e50d 693-694,696
+  s_d2b29c2968a215::t_54c10d05e70ac6 720-721,726-751
+  s_d2b29c2968a215::t_f4b090d144b9b3 639-640,642
+  s_d2b29c2968a215::t_06384ea5c8262d 752
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_d2b29c2968a215::t_bb2429b939511a 876
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6f47e30e471480902986c9f202e696f39fe7c2dd",
+  "prompts": {},
+  "sessions": {
+    "s_d2b29c2968a215": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a5f64b99206433f1c65a541",
+        "model": "openrouter-2o__dev"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

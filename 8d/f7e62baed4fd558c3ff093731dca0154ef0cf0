@@ -1,0 +1,35 @@
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_d95d3218bd9c6e::t_9629a1a99b1a32 1523-1524
+  s_d95d3218bd9c6e::t_e91b56af1ce03f 9
+  s_d95d3218bd9c6e::t_1b2eb5b6fb82c8 1494-1498,1501,1511-1513,1522
+  s_d95d3218bd9c6e::t_35d75c50b88508 1514-1516,1519-1521
+  s_fba840cd4dcf35::t_81d9bde184eaa9 1116-1148,1517-1518,1528-1529,1531-1540
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_fba840cd4dcf35::t_c586690883e6a7 566-604
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8df7e62baed4fd558c3ff093731dca0154ef0cf0",
+  "prompts": {},
+  "sessions": {
+    "s_d95d3218bd9c6e": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a61c6af9206433f1c65aeaf",
+        "model": "openrouter-3o__dev"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_fba840cd4dcf35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8dfa-c4f3-7850-b847-58f1eee21e98",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
