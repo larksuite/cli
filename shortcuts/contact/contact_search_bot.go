@@ -133,17 +133,8 @@ func validateBotSearch(runtime *common.RuntimeContext) error {
 			WithParam("--query")
 	}
 
-	if runtime.Cmd.Flags().Changed("chat-ids") {
-		raw := strings.TrimSpace(runtime.Str("chat-ids"))
-		chatIDs := common.SplitCSV(raw)
-		if len(chatIDs) == 0 {
-			return common.ValidationErrorf("--chat-ids: no valid chat_id parsed from %q (separate entries with ',')", raw).
-				WithParam("--chat-ids")
-		}
-		if len(chatIDs) > maxBotSearchChatIDs {
-			return common.ValidationErrorf("--chat-ids: must be at most %d entries", maxBotSearchChatIDs).
-				WithParam("--chat-ids")
-		}
+	if _, err := parseBotSearchChatIDs(runtime); err != nil {
+		return err
 	}
 
 	// Agents passing =false almost always mean "do not filter", but the API
@@ -165,18 +156,40 @@ func botSearchPagination(runtime *common.RuntimeContext) (int, string) {
 	return runtime.Int("page-size"), runtime.Str("page-token")
 }
 
+func parseBotSearchChatIDs(runtime *common.RuntimeContext) ([]string, error) {
+	if !runtime.Cmd.Flags().Changed("chat-ids") {
+		return nil, nil
+	}
+	raw := strings.TrimSpace(runtime.Str("chat-ids"))
+	chatIDs := common.SplitCSV(raw)
+	if len(chatIDs) == 0 {
+		return nil, common.ValidationErrorf("--chat-ids: no valid chat_id parsed from %q (separate entries with ',')", raw).
+			WithParam("--chat-ids")
+	}
+	if len(chatIDs) > maxBotSearchChatIDs {
+		return nil, common.ValidationErrorf("--chat-ids: must be at most %d entries", maxBotSearchChatIDs).
+			WithParam("--chat-ids")
+	}
+	for i, chatID := range chatIDs {
+		normalized, err := common.ValidateChatIDTyped("--chat-ids", chatID)
+		if err != nil {
+			return nil, err
+		}
+		chatIDs[i] = normalized
+	}
+	return chatIDs, nil
+}
+
 func buildBotSearchBody(runtime *common.RuntimeContext) (*botSearchAPIRequest, error) {
 	req := &botSearchAPIRequest{Query: strings.TrimSpace(runtime.Str("query"))}
 	filter := &botSearchAPIFilter{}
 	hasFilter := false
 
-	if runtime.Cmd.Flags().Changed("chat-ids") {
-		raw := strings.TrimSpace(runtime.Str("chat-ids"))
-		chatIDs := common.SplitCSV(raw)
-		if len(chatIDs) == 0 {
-			return nil, common.ValidationErrorf("--chat-ids: no valid chat_id parsed from %q (separate entries with ',')", raw).
-				WithParam("--chat-ids")
-		}
+	chatIDs, err := parseBotSearchChatIDs(runtime)
+	if err != nil {
+		return nil, err
+	}
+	if len(chatIDs) > 0 {
 		filter.ChatIDs = chatIDs
 		hasFilter = true
 	}

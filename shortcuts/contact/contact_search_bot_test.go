@@ -99,6 +99,12 @@ func TestValidateBotSearchErrors(t *testing.T) {
 			wantMessage: "--chat-ids: must be at most 100 entries",
 		},
 		{
+			name:        "invalid chat id",
+			flags:       map[string]string{"query": "x", "chat-ids": "bad"},
+			wantParam:   "--chat-ids",
+			wantMessage: "invalid chat ID format, should start with 'oc_' (e.g., oc_abc123)",
+		},
+		{
 			name:        "has chatted false",
 			flags:       map[string]string{"query": "x", "has-chatted": "false"},
 			wantParam:   "--has-chatted",
@@ -205,6 +211,7 @@ func TestBuildBotSearchBody(t *testing.T) {
 	}{
 		{name: "query only", flags: map[string]string{"query": "x"}, wantJSON: `{"query":"x"}`},
 		{name: "chat ids", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"]}}`},
+		{name: "chat id URL normalized", flags: map[string]string{"query": "x", "chat-ids": "https://example.feishu.cn/foo/oc_a,oc_b"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"]}}`},
 		{name: "has chatted", flags: map[string]string{"query": "x", "has-chatted": "true"}, wantJSON: `{"query":"x","filter":{"has_chatter":true}}`},
 		{name: "all fields", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b", "has-chatted": "true"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"],"has_chatter":true}}`},
 	}

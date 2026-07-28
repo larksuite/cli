@@ -63,7 +63,7 @@ lark-cli contact +search-bot --query '助手' --page-token cursor_xxx --format j
 
 ## 注意事项
 
-- **41050 / Permission denied** 受当前身份的可见范围限制(这些命令都可能遇到)。换 bot 身份或让管理员调整可见范围,细节见 [`lark-shared`](../lark-shared/SKILL.md)。
+- **41050 / Permission denied** 按命令处理:`+search-user` 只支持 user 身份,重新授权 `contact:user:search`;`+search-bot` 只支持 user 身份,重新授权 `search:bot`;`+get-user` 同时支持 user 和 bot,可改用具备对应通讯录权限的身份。身份与授权细节见 [`lark-shared`](../lark-shared/SKILL.md)。
 - **跨租户用户**(`is_cross_tenant=true`)多数业务字段为空字符串,这是飞书可见性规则,下游做空值兜底。
 - **ID 类型**:默认 `open_id`。`+get-user` 可改 `--user-id-type union_id|user_id`;`+search-user` 只接受 `open_id`。
 
