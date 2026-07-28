@@ -9,13 +9,16 @@
 ## 命令骨架
 
 - 必填：`--name`、`--app-type`。
-- app type 语义取值为 `html` / `full_stack`；CLI 会把输入归一成小写后校验。
+- app type 语义取值为 `html` / `frontend` / `full_stack`；CLI 会把输入归一成小写后校验。
 - 可选：`--description`、`--icon-url`。
 
 ## 示例
 
 ```bash
 lark-cli apps +create --name "客户调研问卷" --app-type html
+
+lark-cli apps +create --name "JSON 格式化工具" --app-type frontend \
+  --description "纯前端交互工具，无需数据库"
 
 lark-cli apps +create --name "审批系统" --app-type full_stack \
   --description "部门审批系统，支持登录、提交申请、多级审批"
@@ -35,5 +38,5 @@ lark-cli apps +create --name "Demo" --app-type html --dry-run
 
 创建后按用户路径继续：
 
-- 本地应用开发（含 html 和 full_stack）：读 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)。
+- 本地应用开发（含 html / frontend / full_stack）：读 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)。
 - 云端 Agent 生成/迭代：读 [`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md)。
