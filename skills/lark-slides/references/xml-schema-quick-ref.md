@@ -129,6 +129,15 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 - `<a>`
 - `<shadow>`
 - `<outline>`
+- `<formula>`
+
+公式写法：
+
+```xml
+<p>公式：<formula><latex><![CDATA[ E = mc^2 ]]></latex></formula></p>
+```
+
+`<formula>` 是内联元素；当前只支持一个 `<latex>` 子元素。LaTeX 内容必须放在 `CDATA` 中，且 `CDATA` 内不要写 XML 转义；宏只使用服务端支持范围内的写法，优先用基础运算符、`\frac`、`\sqrt`、`matrix`。
 
 示例：
 
