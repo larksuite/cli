@@ -187,7 +187,7 @@ func TestAppsCreate_RequiresAppType(t *testing.T) {
 }
 
 // TestAppsCreate_RejectsInvalidAppType pins that --app-type is a strict
-// lowercase enum (html / full_stack). Unknown values and legacy uppercase are
+// lowercase enum (html / frontend / full_stack). Unknown values and legacy uppercase are
 // both rejected by the flag's Enum — the CLI does not normalize case; legacy
 // uppercase compatibility is a server-side concern, not surfaced by the client.
 func TestAppsCreate_RejectsInvalidAppType(t *testing.T) {

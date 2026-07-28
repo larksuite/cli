@@ -8,7 +8,7 @@
 - Live coverage: file and role workflows are fixture-gated and skipped by default CI. File upload covers absolute-path upload, metadata readback, and cleanup; role workflows cover role lifecycle and member mutations with cleanup.
 
 ## Summary
-- `TestAppsCreateDryRun`: happy path with `--app-type html`, all-fields shape, rejection paths (missing name, missing app-type, invalid app-type, legacy uppercase `HTML`). `--app-type` is a strict lowercase enum (`html`/`full_stack`); the CLI does not normalize case — legacy uppercase compatibility is a server concern.
+- `TestAppsCreateDryRun`: happy path with `--app-type html`, all-fields shape, rejection paths (missing name, missing app-type, invalid app-type, legacy uppercase `HTML`). `--app-type` is a strict lowercase enum (`html`/`frontend`/`full_stack`); the CLI does not normalize case — legacy uppercase compatibility is a server concern.
 - `TestAppsUpdateDryRun`: partial-field PATCH semantics; `--app-id` and at-least-one-field validation.
 - `TestAppsListDryRun`: default `page_size=20`; empty `--page-token` omitted; negative size passed through to server (no client-side bound check); `--keyword`/`--ownership`/`--app-type` pass-through + empty-omission; invalid `--ownership` and legacy uppercase `--app-type` enum rejection.
 - `TestAppsAccessScopeSetDryRun`: CLI input `specific`/`public`/`tenant` -> server enum `Range`/`All`/`Tenant`; `apply_config.approvers` shape; four mutex rejection paths.
@@ -31,9 +31,9 @@ Blocked: General app create live E2E is intentionally not implemented yet. Apps 
 
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
-| ✓ | apps +create | shortcut | apps_create_dryrun_test.go::TestAppsCreateDryRun | `--name`, `--app-type` (required, case-sensitive, `html`/`full_stack`), `--description`, `--icon-url` | live blocked: no +delete to clean up |
+| ✓ | apps +create | shortcut | apps_create_dryrun_test.go::TestAppsCreateDryRun | `--name`, `--app-type` (required, case-sensitive, `html`/`frontend`/`full_stack`), `--description`, `--icon-url` | live blocked: no +delete to clean up |
 | ✓ | apps +update | shortcut | apps_update_dryrun_test.go::TestAppsUpdateDryRun | `--app-id`; at least one of `--name`/`--description` | live blocked: no +delete |
-| ✓ | apps +list | shortcut | apps_list_dryrun_test.go::TestAppsListDryRun | `--keyword`; `--ownership` (enum all/mine/shared); `--app-type` (enum html/full_stack); `--page-size` default 20; `--page-token` cursor | live blocked: needs tenant fixtures |
+| ✓ | apps +list | shortcut | apps_list_dryrun_test.go::TestAppsListDryRun | `--keyword`; `--ownership` (enum all/mine/shared); `--app-type` (enum html/frontend/full_stack); `--page-size` default 20; `--page-token` cursor | live blocked: needs tenant fixtures |
 | ✓ | apps +access-scope-set | shortcut | apps_access_scope_set_dryrun_test.go::TestAppsAccessScopeSetDryRun | `--scope specific/public/tenant`; `--targets` JSON; `--apply-enabled --approver`; `--require-login` | live blocked: needs real open_ids |
 | ✓ | apps +access-scope-get | shortcut | apps_access_scope_get_dryrun_test.go::TestAppsAccessScopeGetDryRun | `--app-id` | live blocked: depends on +access-scope-set state |
 | ✓ | apps +html-publish | shortcut | apps_html_publish_dryrun_test.go::TestAppsHTMLPublishDryRun | `--app-id`, `--path` (file or directory containing `index.html`) | live blocked: real upload has side effects; no rollback API |
