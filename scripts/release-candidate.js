@@ -5,6 +5,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { isDeepStrictEqual } = require("node:util");
 
 const MANIFEST_NAME = "candidate-manifest.json";
 const RELEASE_VERSION_PATTERN =
@@ -376,6 +377,16 @@ function verifyCandidateManifest(directory, manifest, expectedMetadata, scope) {
     expectedNames,
     actualNames,
   );
+  if (scope === "artifact") {
+    const inDirectoryManifest = readManifest(
+      filePath(directory, MANIFEST_NAME, "candidate manifest"),
+    );
+    if (!isDeepStrictEqual(inDirectoryManifest, manifest)) {
+      fail(
+        "in-directory candidate manifest does not match the manifest supplied for verification",
+      );
+    }
+  }
 
   for (const asset of validated.releaseAssets) {
     const actual = sha256File(assertRegularFile(directory, asset.name, "release asset"));
@@ -611,20 +622,29 @@ function main() {
       "--version",
       "--channel",
     ]);
-    const manifest = readManifest(path.resolve(options["--manifest"]));
+    const directory = path.resolve(options["--directory"]);
+    const manifestPath = path.resolve(options["--manifest"]);
+    const scope = options["--scope"];
+    if (scope === "artifact" && manifestPath !== path.join(directory, MANIFEST_NAME)) {
+      fail(
+        `--manifest must be ${path.join(directory, MANIFEST_NAME)} `
+        + "inside --directory for artifact scope",
+      );
+    }
+    const manifest = readManifest(manifestPath);
     verifyCandidateManifest(
-      path.resolve(options["--directory"]),
+      directory,
       manifest,
       {
         sourceSha: options["--source-sha"],
         version: options["--version"],
         channel: options["--channel"],
       },
-      options["--scope"],
+      scope,
     );
     writeSuccess({
       ok: true,
-      scope: options["--scope"],
+      scope,
       version: manifest.version,
       channel: manifest.channel,
       sourceSha: normalizeSourceSha(manifest.sourceSha),

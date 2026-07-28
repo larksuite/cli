@@ -207,6 +207,7 @@ describe("candidate manifest", () => {
       "npm package\n",
     );
     manifest.npmPackage.integrity = sha512Integrity("different npm package");
+    writeManifest(candidate.directory, manifest);
     assert.throws(
       () => verifyCandidateManifest(
         candidate.directory,
@@ -367,6 +368,24 @@ describe("candidate manifest", () => {
       /artifact file set does not match.*unexpected: unexpected/,
     );
   });
+
+  it("rejects an artifact manifest object that differs from the in-directory manifest", () => {
+    const candidate = writeCandidate();
+    const manifest = createCandidateManifest(candidate.directory, candidate.metadata);
+    const tamperedManifest = clone(manifest);
+    tamperedManifest.sourceSha = "0".repeat(40);
+    writeManifest(candidate.directory, tamperedManifest);
+
+    assert.throws(
+      () => verifyCandidateManifest(
+        candidate.directory,
+        manifest,
+        candidate.metadata,
+        "artifact",
+      ),
+      /in-directory candidate manifest does not match/,
+    );
+  });
 });
 
 describe("evaluateNpmState", () => {
@@ -523,5 +542,68 @@ describe("CLI", () => {
         message: "command must be create or verify",
       },
     });
+  });
+
+  it("rejects an external artifact manifest that could mask a tampered candidate manifest", () => {
+    const candidate = writeCandidate();
+    const script = path.join(__dirname, "release-candidate.js");
+    const manifest = createCandidateManifest(candidate.directory, candidate.metadata);
+    const externalDirectory = tempDirectory();
+    const externalManifestPath = path.join(externalDirectory, "candidate-manifest.json");
+    fs.writeFileSync(externalManifestPath, `${JSON.stringify(manifest)}\n`);
+    const tamperedManifest = clone(manifest);
+    tamperedManifest.sourceSha = "0".repeat(40);
+    writeManifest(candidate.directory, tamperedManifest);
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        script,
+        "verify",
+        "--directory", candidate.directory,
+        "--manifest", externalManifestPath,
+        "--scope", "artifact",
+        "--source-sha", SOURCE_SHA,
+        "--version", candidate.metadata.version,
+        "--channel", candidate.metadata.channel,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.match(
+      JSON.parse(result.stderr).error.message,
+      /--manifest must be .*candidate-manifest\.json inside --directory for artifact scope/,
+    );
+  });
+
+  it("allows release scope to verify assets with an external manifest", () => {
+    const candidate = writeCandidate();
+    const script = path.join(__dirname, "release-candidate.js");
+    const manifest = createCandidateManifest(candidate.directory, candidate.metadata);
+    const releaseDirectory = copyReleaseAssets(candidate.directory, manifest);
+    const externalDirectory = tempDirectory();
+    const externalManifestPath = path.join(externalDirectory, "candidate-manifest.json");
+    fs.writeFileSync(externalManifestPath, `${JSON.stringify(manifest)}\n`);
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        script,
+        "verify",
+        "--directory", releaseDirectory,
+        "--manifest", externalManifestPath,
+        "--scope", "release",
+        "--source-sha", SOURCE_SHA,
+        "--version", candidate.metadata.version,
+        "--channel", candidate.metadata.channel,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.equal(JSON.parse(result.stdout).scope, "release");
   });
 });
