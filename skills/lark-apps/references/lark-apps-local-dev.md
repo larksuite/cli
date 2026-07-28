@@ -1,6 +1,6 @@
 # lark-apps 本地开发
 
-适用：用户要把妙搭应用（full_stack、frontend 或 html）源码拉到本地，用本地 code agent/IDE 开发、调试数据库，再发布。
+适用：用户要把妙搭应用（full_stack、frontend 或 html）源码拉到本地，用本地 code agent/IDE 开发、再发布。其中调试数据库仅 full_stack 适用（frontend / html 无数据库）。
 
 ## 新建 vs 已有应用
 
@@ -58,6 +58,8 @@ git add <本次开发的文件>
 git commit -m "feat: ..."
 git push origin sprint/default
 lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
+# 发布是异步的：用 +release-get 轮询到 status=finished 才算部署完成、拿到 online_url
+lark-cli apps +release-get --as user --app-id app_xxx --release-id <上一步返回的 release_id>
 ```
 
 ### html

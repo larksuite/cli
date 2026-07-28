@@ -9,7 +9,7 @@
 ## 命令骨架
 
 - 必填：`--name`、`--app-type`。
-- app type 语义取值为 `html` / `frontend` / `full_stack`；CLI 会把输入归一成小写后校验。
+- app type 取值为小写 `html` / `frontend` / `full_stack`；框架按枚举精确校验（不做大小写归一），非法值直接报错。
 - 可选：`--description`、`--icon-url`。
 
 ## 示例
