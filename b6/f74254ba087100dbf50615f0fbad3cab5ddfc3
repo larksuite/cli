@@ -1,0 +1,23 @@
+cmd/event/subscription/create.go
+  s_93ed8ad92b2e2d::t_64e4fd420b967d 214-215,234,238,250,261,263,265,342,344,347,349,356,367,380,382,389,391,393,405,415,422,427,513,531,545,549-550,553,557,559,561,563,579,593,599-600
+cmd/event/subscription/update.go
+  s_93ed8ad92b2e2d::t_0ddb8f571dd1e8 17,210-211,228,243,246,262,286,304,337,342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b6f74254ba087100dbf50615f0fbad3cab5ddfc3",
+  "prompts": {},
+  "sessions": {
+    "s_93ed8ad92b2e2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8e662c8-75c2-41f2-9275-23506be32fd9",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
