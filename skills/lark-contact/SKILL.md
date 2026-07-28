@@ -18,7 +18,7 @@ metadata:
 | 按名称搜索当前用户可见的机器人 | `+search-bot --query <关键词>` | 不支持 |
 | 已知 open_id 取他人资料 | `+search-user --user-ids <id>` | [`+get-user --user-id <id>`](references/lark-contact-get-user.md) |
 | 查看自己 | `+get-user` 或 `+search-user --user-ids me` | 不支持 |
-| 查同事的个人状态 / 签名 | `user_profiles batch_query` | 不支持 |
+| 查同事的个人状态 / 签名 | [`lark-openapi-explorer`](../lark-openapi-explorer/SKILL.md) | 不支持 |
 
 已知 open_id 只是想发消息 / 排日程,不必经过 contact —— 直接 [`lark-im`](../lark-im/SKILL.md) / [`lark-calendar`](../lark-calendar/SKILL.md)。
 
@@ -31,15 +31,7 @@ lark-cli contact +search-user --query "张三" --has-chatted --as user
 lark-cli im +messages-send --user-id ou_xxx --text "Hi!"
 ```
 
-批量查同事的个人状态 / 个性签名(先用 schema 看参数)。
-
-```bash
-lark-cli schema contact.user_profiles.batch_query
-lark-cli contact user_profiles batch_query \
-  --params '{"user_id_type":"open_id"}' \
-  --data '{"user_ids":["ou_xxx","ou_yyy"],"query_option":{"include_personal_status":true,"include_description":true}}' \
-  --as user
-```
+批量查同事的个人状态 / 个性签名时,当前命令清单没有对应的内置 contact 命令,交给 [`lark-openapi-explorer`](../lark-openapi-explorer/SKILL.md) 查找原生 OpenAPI。
 
 搜索命中多条且后续操作有副作用(发消息、邀请会议等),把候选列给用户挑;不要擅自选第一条。
 
@@ -66,6 +58,8 @@ lark-cli contact +search-bot --query '助手' --has-chatted --as user
 lark-cli contact +search-bot --query '助手' --format json --as user
 lark-cli contact +search-bot --query '助手' --page-token cursor_xxx --format json --as user
 ```
+
+`--format pretty` 使用六列摘要;`table`、`csv` 和 `ndjson` 与 `+search-user` 一样使用完整结果字段。
 
 ## 注意事项
 

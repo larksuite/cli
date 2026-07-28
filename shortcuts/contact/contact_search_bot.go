@@ -24,6 +24,7 @@ const botSearchURL = "/open-apis/bot/v4/bot/search"
 const (
 	maxBotSearchQueryChars = 50
 	maxBotSearchChatIDs    = 100
+	maxBotSearchPageSize   = 50
 )
 
 var botDisplayInfoHighlightRE = regexp.MustCompile(`<h>(.*?)</h>`)
@@ -90,7 +91,7 @@ var ContactSearchBot = common.Shortcut{
 		{Name: "query", Desc: "search keyword, required (≤ 50 characters)"},
 		{Name: "chat-ids", Desc: "narrow --query to bots in these chats (CSV of chat_id; ≤ 100)"},
 		{Name: "has-chatted", Type: "bool", Desc: "narrow --query to bots you've chatted with (omit to disable; =false rejected)"},
-		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request"},
+		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-50"},
 		{Name: "page-token", Desc: "pagination token from a previous response"},
 	},
 	Tips: []string{
@@ -107,8 +108,9 @@ var ContactSearchBot = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		params := map[string]interface{}{"page_size": runtime.Int("page-size")}
-		if pageToken := runtime.Str("page-token"); pageToken != "" {
+		pageSize, pageToken := botSearchPagination(runtime)
+		params := map[string]interface{}{"page_size": pageSize}
+		if pageToken != "" {
 			params["page_token"] = pageToken
 		}
 		return common.NewDryRunAPI().POST(botSearchURL).Params(params).Body(body)
@@ -151,10 +153,16 @@ func validateBotSearch(runtime *common.RuntimeContext) error {
 			WithParam("--has-chatted")
 	}
 
-	if runtime.Int("page-size") < 1 {
-		return common.ValidationErrorf("--page-size: must be at least 1").WithParam("--page-size")
+	if n := runtime.Int("page-size"); n < 1 || n > maxBotSearchPageSize {
+		return common.ValidationErrorf("--page-size: must be between 1 and %d", maxBotSearchPageSize).
+			WithParam("--page-size")
 	}
 	return nil
+}
+
+func botSearchPagination(runtime *common.RuntimeContext) (int, string) {
+	// Page tokens are opaque server values; preserve them verbatim.
+	return runtime.Int("page-size"), runtime.Str("page-token")
 }
 
 func buildBotSearchBody(runtime *common.RuntimeContext) (*botSearchAPIRequest, error) {
@@ -189,10 +197,11 @@ func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error
 		return err
 	}
 
+	pageSize, pageToken := botSearchPagination(runtime)
 	queryParams := larkcore.QueryParams{
-		"page_size": []string{strconv.Itoa(runtime.Int("page-size"))},
+		"page_size": []string{strconv.Itoa(pageSize)},
 	}
-	if pageToken := runtime.Str("page-token"); pageToken != "" {
+	if pageToken != "" {
 		queryParams["page_token"] = []string{pageToken}
 	}
 
@@ -222,12 +231,6 @@ func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error
 		PageToken: respData.PageToken,
 		Notice:    respData.Notice,
 	}
-	requestedFormat := runtime.Format
-	if requestedFormat == "table" {
-		// The framework's generic table formatter would flatten searchBotResponse
-		// and bypass the command's frozen six-column renderer.
-		runtime.Format = "pretty"
-	}
 	runtime.OutFormat(out, &output.Meta{Count: len(bots)}, func(w io.Writer) {
 		if len(bots) == 0 {
 			fmt.Fprintln(w, "No bots found.")
@@ -235,8 +238,7 @@ func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error
 		}
 		output.PrintTable(w, prettyBotRows(bots))
 	})
-	runtime.Format = requestedFormat
-	if respData.HasMore && isHumanReadableFormat(requestedFormat) {
+	if respData.HasMore && isHumanReadableFormat(runtime.Format) {
 		fmt.Fprintln(runtime.IO().ErrOut,
 			"\nhint: more matches exist; use --format json to read page_token, then pass --page-token to continue")
 	}

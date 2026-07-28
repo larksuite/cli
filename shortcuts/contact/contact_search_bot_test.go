@@ -108,7 +108,13 @@ func TestValidateBotSearchErrors(t *testing.T) {
 			name:        "page size below one",
 			flags:       map[string]string{"query": "x", "page-size": "0"},
 			wantParam:   "--page-size",
-			wantMessage: "--page-size: must be at least 1",
+			wantMessage: "--page-size: must be between 1 and 50",
+		},
+		{
+			name:        "page size over 50",
+			flags:       map[string]string{"query": "x", "page-size": "51"},
+			wantParam:   "--page-size",
+			wantMessage: "--page-size: must be between 1 and 50",
 		},
 		{
 			name:        "chat ids without query",
@@ -149,6 +155,7 @@ func TestValidateBotSearchPassingCases(t *testing.T) {
 		{name: "query and chat ids", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b"}},
 		{name: "query and has chatted", flags: map[string]string{"query": "x", "has-chatted": "true"}},
 		{name: "all filters", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b", "has-chatted": "true"}},
+		{name: "page size upper boundary", flags: map[string]string{"query": "x", "page-size": "50"}},
 	}
 
 	for _, tt := range tests {
@@ -394,8 +401,51 @@ func TestBotSearchIntegrationEmptyPageTokenOmitted(t *testing.T) {
 	}
 }
 
-func TestBotSearchHumanReadableOutputAndPaginationHint(t *testing.T) {
-	for _, format := range []string{"pretty", "table"} {
+func TestBotSearchPrettyOutputAndPaginationHint(t *testing.T) {
+	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
+
+	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "助手", "--format", "pretty", "--as", "user"}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	for _, column := range []string{"name", "description", "has_chatted", "is_agent", "enable_join_group", "open_id"} {
+		if !strings.Contains(stdout.String(), column) {
+			t.Errorf("pretty output missing %q: %s", column, stdout.String())
+		}
+	}
+	for _, genericField := range []string{"bots", "has_more", "page_token", "notice", "tenant_id", "p2p_chat_id", "match_segments"} {
+		if strings.Contains(stdout.String(), genericField) {
+			t.Errorf("pretty output exposed %q: %s", genericField, stdout.String())
+		}
+	}
+	wantHint := "\nhint: more matches exist; use --format json to read page_token, then pass --page-token to continue\n"
+	if stderr.String() != wantHint {
+		t.Fatalf("pretty stderr: got %q, want %q", stderr.String(), wantHint)
+	}
+}
+
+func TestBotSearchTableUsesGenericFormatterLikeSearchUser(t *testing.T) {
+	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
+
+	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "助手", "--format", "table", "--as", "user"}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	for _, field := range []string{"open_id", "tenant_id", "p2p_chat_id", "match_segments"} {
+		if !strings.Contains(stdout.String(), field) {
+			t.Errorf("table output missing %q: %s", field, stdout.String())
+		}
+	}
+	wantHint := "\nhint: more matches exist; use --format json to read page_token, then pass --page-token to continue\n"
+	if stderr.String() != wantHint {
+		t.Fatalf("table stderr: got %q, want %q", stderr.String(), wantHint)
+	}
+}
+
+func TestBotSearchCSVAndNDJSONExposeFullFieldsWithoutPaginationHint(t *testing.T) {
+	for _, format := range []string{"csv", "ndjson"} {
 		t.Run(format, func(t *testing.T) {
 			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
 			registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
@@ -404,19 +454,13 @@ func TestBotSearchHumanReadableOutputAndPaginationHint(t *testing.T) {
 			if err != nil {
 				t.Fatalf("execute: %v", err)
 			}
-			for _, column := range []string{"name", "description", "has_chatted", "is_agent", "enable_join_group", "open_id"} {
-				if !strings.Contains(stdout.String(), column) {
-					t.Errorf("%s output missing %q: %s", format, column, stdout.String())
+			for _, field := range []string{"open_id", "tenant_id", "p2p_chat_id", "match_segments"} {
+				if !strings.Contains(stdout.String(), field) {
+					t.Errorf("%s output missing %q: %s", format, field, stdout.String())
 				}
 			}
-			for _, genericField := range []string{"bots", "has_more", "page_token", "notice", "tenant_id", "p2p_chat_id", "match_segments"} {
-				if strings.Contains(stdout.String(), genericField) {
-					t.Errorf("%s output used the generic formatter and exposed %q: %s", format, genericField, stdout.String())
-				}
-			}
-			wantHint := "\nhint: more matches exist; use --format json to read page_token, then pass --page-token to continue\n"
-			if stderr.String() != wantHint {
-				t.Fatalf("%s stderr: got %q, want %q", format, stderr.String(), wantHint)
+			if stderr.Len() != 0 {
+				t.Fatalf("%s stderr: got %q, want empty", format, stderr.String())
 			}
 		})
 	}
