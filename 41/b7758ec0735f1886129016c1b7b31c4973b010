@@ -1,0 +1,26 @@
+internal/event/dedup.go
+  s_f93ed82103c88f::t_16921d20c085be 37-47,53,55,57,60,62,65,72-80,104-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "41b7758ec0735f1886129016c1b7b31c4973b010",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_f93ed82103c88f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad9d7eab5ddc5e389",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
