@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
 	"strings"
@@ -22,69 +23,15 @@ import (
 	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/suggest"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/internal/update"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-const rootLong = `lark-cli — Lark/Feishu CLI tool.
-
-AGENT QUICKSTART (driving this as an agent? start here):
-    Browse commands:  lark-cli <domain> --help            # +shortcuts (preferred) and raw API resources
-    Inspect a call:   lark-cli schema <service>.<resource>.<method>   # params, types, scopes, examples
-    Prefer a +shortcut over the raw API resource when one matches the task.
-    Risk: each command's --help shows read | write | high-risk-write;
-          high-risk-write needs --yes, only after the user confirms.
-    On any API call: --jq <expr> filters JSON output, --dry-run previews the request (runs nothing).
-
-EXAMPLES (one per command style, in order of preference):
-    lark-cli calendar +agenda                                       # +shortcut — a high-level task, prefer these
-    lark-cli mail user_mailbox.messages list --user-mailbox-id me   # typed command for one API method
-    lark-cli schema mail.user_mailbox.messages.list                 # inspect a method's params before calling
-    lark-cli api GET /open-apis/calendar/v4/calendars               # raw escape hatch — any endpoint by HTTP path`
-
-// rootUsageTemplate is cobra's default usage template with two root-only
-// additions gated on {{if not .HasParent}}: a curated multi-form Usage synopsis
-// (replacing cobra's generic "[flags] / [command]") and a human skills-setup
-// footer. Subcommands render the stock template unchanged. The rest is verbatim
-// cobra so the command groups and flags are untouched.
-const rootUsageTemplate = `{{if .HasParent}}Usage:{{if .Runnable}}
-  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
-  {{.CommandPath}} [command]{{end}}{{else}}Usage:
-  lark-cli <command> [subcommand] [method] [flags]
-  lark-cli api <method> <path> [--params <json>] [--data <json>]
-  lark-cli schema <service.resource.method>{{end}}{{if gt (len .Aliases) 0}}
-
-Aliases:
-  {{.NameAndAliases}}{{end}}{{if .HasExample}}
-
-Examples:
-{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
-
-Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
-
-{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
-
-Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
-
-Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
-
-Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
-
-Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
-  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
-
-Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}{{if not .HasParent}}
-
-Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — https://github.com/larksuite/cli#agent-skills{{end}}
-`
 
 // Execute runs the root command and returns the process exit code.
 // rawInvocationArgs holds os.Args[1:] captured at Execute() entry. cobra's
@@ -95,25 +42,69 @@ Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — https://
 var rawInvocationArgs []string
 
 func Execute() int {
+	return executeWithOptions(nil)
+}
+
+// ExecuteWithOptions is the standard entrypoint for wrapper distributions that
+// need host-level Build options such as ConcealRestrictedCommands. Execute
+// intentionally keeps its original non-variadic signature for source
+// compatibility with callers that store it as a func() int value.
+func ExecuteWithOptions(opts ...BuildOption) int {
+	return executeWithOptions(opts)
+}
+
+func executeWithOptions(opts []BuildOption) int {
 	rawInvocationArgs = os.Args[1:]
-	inv, err := BootstrapInvocationContext(os.Args[1:])
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
+	inv, bootstrapErr := BootstrapInvocationContext(os.Args[1:])
+	cfg := &buildConfig{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(cfg)
+		}
+	}
+	deferProfileError := cfg.presentation.enabled &&
+		isDeferredBootstrapProfileError(bootstrapErr)
+	if bootstrapErr != nil && !deferProfileError {
+		fmt.Fprintln(os.Stderr, "Error:", bootstrapErr)
 		return 1
+	}
+	if cfg.streams == nil {
+		WithIO(os.Stdin, os.Stdout, os.Stderr)(cfg)
+	}
+	if !cfg.hideProfileSet {
+		HideProfile(isSingleAppMode())(cfg)
+	}
+	if !cfg.startupBrandSet {
+		WithStartupBrand(ResolveStartupBrand(inv.Profile))(cfg)
 	}
 	configureFlagCompletions(os.Args)
 
 	ctx := context.Background()
-	f, rootCmd, reg := buildInternal(
-		ctx, inv,
-		WithIO(os.Stdin, os.Stdout, os.Stderr),
-		HideProfile(isSingleAppMode()),
-		WithStartupBrand(ResolveStartupBrand(inv.Profile)),
-	)
+	if deferProfileError {
+		cfg.deferStartup = true
+	}
+	runtime, rootCmd, reg := buildInternalWithConfig(ctx, inv, cfg)
+	f := runtime.Factory
+
+	if deferProfileError {
+		if runtime.surface.CanReference(surface.CommandProfile) {
+			// The completed distribution still ships --profile. Replay the
+			// exact pre-Build legacy failure and do not emit Startup, notices,
+			// or Shutdown for an invocation that never passed bootstrap.
+			fmt.Fprintln(os.Stderr, "Error:", bootstrapErr)
+			return 1
+		}
+		if reg != nil {
+			if err := emitStartup(ctx, reg); err != nil {
+				installPluginLifecycleErrorGuard(rootCmd, err)
+				reg = nil
+			}
+		}
+	}
 
 	// --- Notices (non-blocking) ---
 	if !isCompletionCommand(os.Args) {
-		setupNotices()
+		setupNotices(runtime.surface)
 	}
 
 	runErr := rootCmd.Execute()
@@ -127,69 +118,98 @@ func Execute() int {
 	}
 
 	if runErr != nil {
-		return handleRootError(f, runErr)
+		return handleRootError(f, runErr, runtime.recovery)
 	}
 	return 0
 }
+
+// isDeferredBootstrapProfileError identifies the one bootstrap parse failure
+// an explicitly concealed distribution may need the completed tree to render.
+// Default and legacy builds never defer it.
+func isDeferredBootstrapProfileError(err error) bool {
+	return err != nil && err.Error() == "flag needs an argument: --profile"
+}
+
+// Notice provider seams keep the "concealed update means no cache, network, or
+// skills-state access" contract directly testable. Production always uses the
+// concrete implementations below.
+var (
+	checkCachedUpdate     = update.CheckCached
+	refreshUpdateCache    = update.RefreshCache
+	initializeSkillsCheck = skillscheck.Init
+)
 
 // setupNotices wires both the binary update notice and the skills
 // staleness notice into output.PendingNotice as a composed function.
 // Each provider populates an independent key under _notice; either
 // or both may be present in any given envelope.
-func setupNotices() {
-	// Binary update — synchronous cache check + async refresh
-	if info := update.CheckCached(build.Version); info != nil {
-		update.SetPending(info)
-	}
-	ver := build.Version
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Fprintf(os.Stderr, "update check panic: %v\n", r)
+func setupNotices(plan *surface.Plan) {
+	if plan.CanReference(surface.CommandUpdate) {
+		// Binary update — synchronous cache check + async refresh.
+		if info := checkCachedUpdate(build.Version); info != nil {
+			update.SetPending(info)
+		}
+		ver := build.Version
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Fprintf(os.Stderr, "update check panic: %v\n", r)
+				}
+			}()
+			refreshUpdateCache(ver)
+			if update.GetPending() == nil {
+				if info := checkCachedUpdate(ver); info != nil {
+					update.SetPending(info)
+				}
 			}
 		}()
-		update.RefreshCache(ver)
-		if update.GetPending() == nil {
-			if info := update.CheckCached(ver); info != nil {
-				update.SetPending(info)
-			}
-		}
-	}()
 
-	// Skills check — synchronous, local-only (no network, no goroutine).
-	skillscheck.Init(build.Version)
+		// Skills drift has only one recovery action: lark-cli update. Do not
+		// even inspect local drift state when that action is absent.
+		initializeSkillsCheck(build.Version)
+	}
 
-	// Composed notice provider — emits keys only when each pending is set.
-	output.PendingNotice = composePendingNotice
+	// Capture this build's immutable plan; never consult another Build's state.
+	output.PendingNotice = func() map[string]interface{} {
+		return composePendingNotice(plan)
+	}
 }
 
 // composePendingNotice merges all process-level pending notices (available
 // update, skills/binary drift, deprecated-command alias) into the map surfaced
 // as the JSON "_notice" envelope field. Returns nil when nothing is pending.
 // Extracted from Execute so the composition is unit-testable.
-func composePendingNotice() map[string]interface{} {
+func composePendingNotice(plan *surface.Plan) map[string]interface{} {
 	notice := map[string]interface{}{}
-	if info := update.GetPending(); info != nil {
-		notice["update"] = map[string]interface{}{
-			"current": info.Current,
-			"latest":  info.Latest,
-			"message": info.Message(),
-			"command": "lark-cli update",
+	canUpdate := plan.CanReference(surface.CommandUpdate)
+	// Update and skills-drift notices have no recovery path of their own:
+	// both exist solely to steer the caller to `lark-cli update`.
+	if canUpdate {
+		if info := update.GetPending(); info != nil {
+			notice["update"] = map[string]interface{}{
+				"current": info.Current,
+				"latest":  info.Latest,
+				"message": info.Message(),
+				"command": "lark-cli update",
+			}
 		}
-	}
-	if stale := skillscheck.GetPending(); stale != nil {
-		notice["skills"] = map[string]interface{}{
-			"current": stale.Current,
-			"target":  stale.Target,
-			"message": stale.Message(),
-			"command": "lark-cli update",
+		if stale := skillscheck.GetPending(); stale != nil {
+			notice["skills"] = map[string]interface{}{
+				"current": stale.Current,
+				"target":  stale.Target,
+				"message": stale.Message(),
+				"command": "lark-cli update",
+			}
 		}
 	}
 	if dep := deprecation.GetPending(); dep != nil {
 		entry := map[string]interface{}{
 			"command": dep.Command,
-			"message": dep.Message(),
-			"action":  "lark-cli update",
+			"message": dep.MessageWithoutUpdateAction(),
+		}
+		if canUpdate {
+			entry["message"] = dep.Message()
+			entry["action"] = "lark-cli update"
 		}
 		if dep.Replacement != "" {
 			entry["replacement"] = dep.Replacement
@@ -246,15 +266,22 @@ func configureFlagCompletions(args []string) {
 //     argument validation): typed as an invalid_argument envelope (exit 2),
 //     matching the explicit flag/subcommand guards. Flag parse errors are
 //     already typed upstream by the root FlagErrorFunc.
-func handleRootError(f *cmdutil.Factory, err error) int {
+func handleRootError(
+	f *cmdutil.Factory,
+	err error,
+	projector *recovery.Projector,
+) int {
 	errOut := f.IOStreams.ErrOut
+	renderedErr := err
 
 	// When the typed error is a need_user_authorization signal, fold in the
 	// current command's declared scopes as a Hint so the user/AI sees the
 	// concrete scope(s) to re-auth with. The hint is computed on the fly from
-	// local shortcut/service metadata — it never depends on server state.
+	// local shortcut/service metadata. Both semantic recovery filtering and
+	// dynamic enrichment operate on a concrete clone, never the producer's
+	// reusable error value.
 	if !errs.IsRaw(err) {
-		applyNeedAuthorizationHint(f, err)
+		renderedErr = newRootErrorPresenter(f, projector).Present(err)
 	}
 
 	// Staged dispatch: capture the typed exit code BEFORE attempting the
@@ -265,7 +292,7 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 	// WriteTypedErrorEnvelope still returns false when err carries no
 	// Problem; in that case we fall through to the signal / plain-text paths.
 	typedExit := output.ExitCodeOf(err)
-	if output.WriteTypedErrorEnvelope(errOut, err, string(f.ResolvedIdentity)) {
+	if output.WriteTypedErrorEnvelope(errOut, renderedErr, string(f.ResolvedIdentity)) {
 		return typedExit
 	}
 
@@ -558,15 +585,10 @@ const (
 	groupManagement = "cli-management"
 )
 
-// groupRootCommands classifies root's direct children into the help groups,
-// called once after all commands are registered. Unclassified commands fall to
-// cobra's "Additional Commands" section.
-func groupRootCommands(root *cobra.Command) {
-	root.AddGroup(
-		&cobra.Group{ID: groupDomains, Title: "Lark domains:"},
-		&cobra.Group{ID: groupTooling, Title: "Agent tooling:"},
-		&cobra.Group{ID: groupManagement, Title: "CLI management:"},
-	)
+// classifyRootCommands assigns root children to help groups after registration.
+// Group definitions are attached separately, after optional distribution
+// projection, so a concealed build can omit a now-empty heading.
+func classifyRootCommands(root *cobra.Command) {
 	tooling := map[string]bool{"api": true, "schema": true, "skills": true}
 	management := map[string]bool{"auth": true, "config": true, "profile": true, "doctor": true, "update": true}
 	for _, c := range root.Commands() {
@@ -582,6 +604,46 @@ func groupRootCommands(root *cobra.Command) {
 			c.GroupID = groupDomains
 		}
 	}
+}
+
+// finalizeRootCommandGroups attaches Cobra group definitions once. A group is
+// omitted only when this build's surface plan concealed all its children.
+// Hidden legacy/YAML commands remain referenceable and therefore keep the
+// historical (possibly empty) heading.
+func finalizeRootCommandGroups(root *cobra.Command, plan *surface.Plan) {
+	if root == nil || len(root.Groups()) != 0 {
+		return
+	}
+	groups := []*cobra.Group{
+		{ID: groupDomains, Title: "Lark domains:"},
+		{ID: groupTooling, Title: "Agent tooling:"},
+		{ID: groupManagement, Title: "CLI management:"},
+	}
+	for _, group := range groups {
+		if plan != nil && !rootGroupHasReferenceableChild(root, group.ID, plan) {
+			// Cobra validates that every non-empty child GroupID has a
+			// matching definition before dispatch, including hidden children.
+			// If presentation removes an entire group, clear those now-hidden
+			// assignments as well as omitting the heading.
+			for _, child := range root.Commands() {
+				if child.GroupID == group.ID {
+					child.GroupID = ""
+				}
+			}
+			continue
+		}
+		root.AddGroup(group)
+	}
+}
+
+func rootGroupHasReferenceableChild(root *cobra.Command, groupID string, plan *surface.Plan) bool {
+	for _, child := range root.Commands() {
+		if child.GroupID == groupID &&
+			plan.CanReference(surface.CommandID(cmdpolicy.CanonicalPath(child))) {
+			return true
+		}
+	}
+	return false
 }
 
 // isLarkDomain reports whether a root child is a Lark domain (service-sourced or
@@ -603,6 +665,15 @@ func isLarkDomain(c *cobra.Command) bool {
 func flagDidYouMean(c *cobra.Command, ferr error) error {
 	name, isUnknown := unknownFlagName(ferr)
 	if !isUnknown {
+		// A policy-gated flag invoked bare ("flag needs an argument")
+		// never reaches its rejecting Value; it still presents as
+		// unregistered, exactly like a set one.
+		if gated, ok := gatedFlagFromNeedsArg(c, ferr); ok {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"unknown flag %q for %q", "--"+gated, c.CommandPath()).
+				WithParams(errs.InvalidParam{Name: "--" + gated, Reason: "unknown flag"}).
+				WithHint("run `%s --help` to see valid flags", c.CommandPath())
+		}
 		validationErr := errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", ferr.Error()).
 			WithHint("run `%s --help` for valid flags", c.CommandPath())
 		if attribution, ok := flagalias.InvalidValueAttributionOf(ferr); ok {
@@ -630,6 +701,25 @@ func flagDidYouMean(c *cobra.Command, ferr error) error {
 		"unknown flag %q for %q", "--"+name, c.CommandPath()).
 		WithParams(errs.InvalidParam{Name: "--" + name, Reason: "unknown flag", Suggestions: suggestions}).
 		WithHint("%s", hint)
+}
+
+// gatedFlagFromNeedsArg reports whether ferr is pflag's "flag needs an
+// argument: --name" for a policy-gated flag on this command's flag set.
+func gatedFlagFromNeedsArg(c *cobra.Command, ferr error) (string, bool) {
+	const p = "flag needs an argument: --"
+	msg := ferr.Error()
+	i := strings.Index(msg, p)
+	if i < 0 {
+		return "", false
+	}
+	name := msg[i+len(p):]
+	if j := strings.IndexAny(name, " \t"); j >= 0 {
+		name = name[:j]
+	}
+	if fl := c.Root().PersistentFlags().Lookup(name); isPolicyGatedFlag(fl) {
+		return name, true
+	}
+	return "", false
 }
 
 // unknownFlagName extracts the offending long-flag name from cobra's flag-parse
@@ -668,16 +758,59 @@ func visibleFlagNames(c *cobra.Command) []string {
 	return names
 }
 
+// installHelpCommand upgrades Cobra's default help command so that
+// `lark-cli help <plugin-restricted-cmd>` returns a typed error (exit 2)
+// instead of printing an envelope and exiting 0 — cobra's stock help
+// command has no error channel.
+func installHelpCommand(root *cobra.Command) {
+	root.InitDefaultHelpCmd()
+	helpCmd := findByPath(root, "help")
+	if helpCmd == nil {
+		return
+	}
+	helpCmd.Run = nil
+	helpCmd.RunE = func(c *cobra.Command, args []string) error {
+		target, _, err := root.Find(args)
+		if err != nil || target == nil {
+			c.Printf("Unknown help topic %#q\n", args)
+			return root.Usage()
+		}
+		if msg, ok := unavailableHelpMessage(target); ok {
+			return errs.NewValidationError(errs.SubtypeCommandUnavailable, "%s", msg)
+		}
+		target.SetContext(c.Context())
+		target.InitDefaultHelpFlag()
+		target.InitDefaultVersionFlag()
+		return target.Help()
+	}
+	// help attaches after policy evaluation (framework meta command, never
+	// policy-evaluated). No risk annotation: it would render a "Risk:"
+	// line that stock cobra help output does not carry.
+	cmdutil.DisableAuthCheck(helpCmd)
+}
+
 // installTipsHelpFunc wraps the default help function to append a TIPS section
 // when a command has tips set via cmdutil.SetTips. It also force-shows global
 // flags that are normally hidden in single-app mode (currently --profile)
 // when rendering the root command's own help, so users discovering the CLI
 // still see them at `lark-cli --help`.
-func installTipsHelpFunc(root *cobra.Command) {
+//
+// skillContent is read lazily at help-render time (not captured up front) so
+// the domain-guide pointer reflects the resolved skill tree -- the same
+// f.SkillContent that `skills list`/`read` serve -- even though plugin skill
+// customization is applied after this help func is installed.
+func installTipsHelpFunc(
+	root *cobra.Command,
+	skillContent func() fs.FS,
+	skillReferences func() *skillref.Resolver,
+	projector *recovery.Projector,
+) {
 	defaultHelp := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		if cmd == root {
-			if f := root.PersistentFlags().Lookup("profile"); f != nil && f.Hidden {
+			// Force-show flags hidden by single-app mode; never a
+			// policy-retired one.
+			if f := root.PersistentFlags().Lookup("profile"); f != nil && f.Hidden && !isPolicyGatedFlag(f) {
 				f.Hidden = false
 				defer func() { f.Hidden = true }()
 			}
@@ -685,15 +818,22 @@ func installTipsHelpFunc(root *cobra.Command) {
 		// Domain and method commands compose their agent guidance into Long lazily
 		// here (shortcuts attach after service registration); both skip the generic
 		// bottom-of-help append below.
-		if service.PrepareDomainHelp(cmd, embeddedSkillContent) {
+		var refs *skillref.Resolver
+		if skillReferences != nil {
+			refs = skillReferences()
+		}
+		content := skillContent()
+		if service.PrepareDomainHelpWithReferences(cmd, content, refs) {
 			defaultHelp(cmd, args)
 			return
 		}
-		if service.PrepareMethodHelp(cmd, embeddedSkillContent) {
+		if service.PrepareMethodHelpWithProjection(cmd, content, refs, func() bool {
+			return projector.CanReference(recovery.TargetSchema)
+		}) {
 			defaultHelp(cmd, args)
 			return
 		}
-		if service.PrepareShortcutHelp(cmd, embeddedSkillContent) {
+		if service.PrepareShortcutHelpWithReferences(cmd, content, refs) {
 			defaultHelp(cmd, args)
 			return
 		}

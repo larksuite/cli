@@ -147,8 +147,9 @@ func TestSlidesCreateBotSkippedWithoutCurrentUser(t *testing.T) {
 	if grant["status"] != common.PermissionGrantSkipped {
 		t.Fatalf("permission_grant.status = %v, want %q", grant["status"], common.PermissionGrantSkipped)
 	}
-	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "auth login") {
-		t.Fatalf("hint = %#v, want string containing 'auth login'", grant["hint"])
+	if hint, ok := grant["hint"].(string); !ok ||
+		!strings.Contains(hint, "auth login") {
+		t.Fatalf("hint = %#v, want actionable default authorization recovery", grant["hint"])
 	}
 }
 

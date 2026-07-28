@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"testing/fstest"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/vfs"
@@ -28,6 +29,10 @@ func TestBuild_ExternalAPI(t *testing.T) {
 	// Exercise SetDefaultFS both directions. Passing nil restores the OS FS.
 	SetDefaultFS(vfs.OsFs{})
 	SetDefaultFS(nil)
+	SetEmbeddedAffordanceContent(fstest.MapFS{
+		"docs.md": {Data: []byte("# docs\n")},
+	})
+	t.Cleanup(func() { SetEmbeddedAffordanceContent(nil) })
 
 	var in, out, errOut bytes.Buffer
 	rootCmd := Build(

@@ -164,10 +164,6 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 				svc.Aliases = append(svc.Aliases, alias)
 			}
 		}
-		if service == "docs" {
-			doc.ConfigureServiceHelp(svc)
-		}
-
 		for _, shortcut := range shortcuts {
 			shortcut.MountWithContext(ctx, svc, f)
 		}

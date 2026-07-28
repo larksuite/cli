@@ -32,10 +32,6 @@ func TestValidateDocsV2OnlyRejectsChangedLegacyFlags(t *testing.T) {
 		"the old v1 interface has been shut down",
 		"legacy v1 flag(s) --mode are no longer supported",
 		"--mode -> use --command",
-		"lark-cli skills read lark-doc references/lark-doc-update.md",
-		"lark-cli skills read lark-doc references/lark-doc-xml.md",
-		"lark-cli skills read lark-doc references/lark-doc-md.md",
-		"MUST NOT grep/open local SKILL.md files",
 		"lark-cli docs +update --help",
 	} {
 		if !strings.Contains(err.Error(), want) {

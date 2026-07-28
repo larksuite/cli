@@ -20,6 +20,8 @@ import (
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 )
 
 type noopConfigKeychain struct{}
@@ -563,4 +565,60 @@ func TestPrintLangPreferenceConfirmation(t *testing.T) {
 			t.Errorf("stderr = %q, want empty when --lang is empty", got)
 		}
 	})
+}
+
+// The "no active profile" producer annotates its profile/list recovery target.
+// Rendering against one build's surface filters a clone without mutating the
+// value another command tree may render.
+func TestConfigShowRun_ProfileHintUsesBuildLocalSurface(t *testing.T) {
+	multi := &core.MultiAppConfig{
+		CurrentApp: "missing",
+		Apps: []core.AppConfig{{
+			Name:      "default",
+			AppId:     "app-default",
+			AppSecret: core.PlainSecret("secret-default"),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	source := configShowRun(&ConfigShowOptions{Factory: f})
+	var original *errs.ConfigError
+	if !errors.As(source, &original) {
+		t.Fatalf("expected *errs.ConfigError, got %T %v", source, source)
+	}
+	if original.Subtype != errs.SubtypeNotConfigured {
+		t.Fatalf("subtype = %q, want not_configured", original.Subtype)
+	}
+	if !strings.Contains(original.Hint, "lark-cli profile list") {
+		t.Fatalf("producer hint = %q, want profile list", original.Hint)
+	}
+
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandProfileList: surface.CommandConcealed,
+	})
+	var concealed *errs.ConfigError
+	if rendered := recovery.Render(source, plan); !errors.As(rendered, &concealed) {
+		t.Fatalf("rendered error = %T, want *errs.ConfigError", rendered)
+	}
+	if concealed == original {
+		t.Fatal("Render must clone the typed error")
+	}
+	if strings.Contains(concealed.Hint, "profile list") ||
+		!strings.Contains(concealed.Hint, "select or configure an available profile") {
+		t.Errorf("concealed hint = %q, want target-free profile recovery", concealed.Hint)
+	}
+
+	var visible *errs.ConfigError
+	if !errors.As(recovery.Render(source, nil), &visible) ||
+		!strings.Contains(visible.Hint, "lark-cli profile list") {
+		t.Errorf("visible render must keep profile list, got %+v", visible)
+	}
+	if !strings.Contains(original.Hint, "lark-cli profile list") {
+		t.Errorf("concealed render mutated source hint: %q", original.Hint)
+	}
 }

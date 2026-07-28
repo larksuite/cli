@@ -54,7 +54,7 @@ func docsLegacyFlagDefinitions(flags []docsLegacyFlag) []common.Flag {
 	for _, flag := range flags {
 		out = append(out, common.Flag{
 			Name:   flag.Name,
-			Desc:   "deprecated compatibility flag; run `lark-cli skills read lark-doc` for the current CLI skill",
+			Desc:   "deprecated compatibility flag; run the corresponding docs command with --help for the current interface",
 			Hidden: true,
 		})
 	}
@@ -85,15 +85,13 @@ func validateDocsV2Only(runtime *common.RuntimeContext, shortcut string, legacyF
 }
 
 func docsV2OnlyError(shortcut, detail, param string) error {
+	helpCommand := "lark-cli docs " + shortcut + " --help"
 	err := errs.NewValidationError(
 		errs.SubtypeInvalidArgument,
-		"docs %s is v2-only; %s. Run `%s` for the current schema and examples. AI agents MUST read `%s` (XML) or `%s` (Markdown) and follow the latest format rules there. MUST NOT grep/open local SKILL.md files to discover this guidance; use `lark-cli skills read ...` so content stays version-matched with this CLI. Run `%s` for the latest command flags",
+		"docs %s is v2-only; %s. Run `%s` for the latest command flags",
 		shortcut,
 		detail,
-		docsSkillReadCommandForShortcut(shortcut),
-		docsXMLSkillReadCommand,
-		docsMDSkillReadCommand,
-		docsHelpCommandForShortcut(shortcut),
+		helpCommand,
 	)
 	if param != "" {
 		err = err.WithParam(param)

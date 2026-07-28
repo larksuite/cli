@@ -803,11 +803,14 @@ func enhancePermissionError(err error, requiredScopes []string) error {
 	if !errors.As(err, &permErr) {
 		return err
 	}
-	scopeDisplay := strings.Join(requiredScopes, ", ")
-	scopeArg := strings.Join(requiredScopes, " ")
-	permErr.Hint = fmt.Sprintf(
-		"this command requires scope(s): %s\nrun `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
-		scopeDisplay, scopeArg)
+	permErr.WithMissingScopes(requiredScopes...)
+	if permErr.Identity == "" {
+		permErr.WithIdentity(string(core.AsUser))
+	}
+	// Discard any generic classifier hint now that this shortcut has supplied
+	// the authoritative scope facts. The root presenter will rebuild recovery
+	// from those facts for its own command surface.
+	permErr.Hint = ""
 	return err
 }
 
@@ -996,8 +999,7 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 	return errs.NewPermissionError(errs.SubtypeMissingScope,
 		"missing required scope(s): %s", strings.Join(missing, ", ")).
 		WithIdentity(string(as)).
-		WithMissingScopes(missing...).
-		WithHint("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " "))
+		WithMissingScopes(missing...)
 }
 
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {

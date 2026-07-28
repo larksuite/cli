@@ -13,6 +13,7 @@ import (
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // CheckOptions holds all inputs for auth check.
@@ -24,6 +25,14 @@ type CheckOptions struct {
 
 // NewCmdAuthCheck creates the auth check subcommand.
 func NewCmdAuthCheck(f *cmdutil.Factory, runF func(*CheckOptions) error) *cobra.Command {
+	return newCmdAuthCheck(f, runF, nil)
+}
+
+func newCmdAuthCheck(
+	f *cmdutil.Factory,
+	runF func(*CheckOptions) error,
+	projector *recovery.Projector,
+) *cobra.Command {
 	opts := &CheckOptions{Factory: f}
 
 	cmd := &cobra.Command{
@@ -33,7 +42,7 @@ func NewCmdAuthCheck(f *cmdutil.Factory, runF func(*CheckOptions) error) *cobra.
 			if runF != nil {
 				return runF(opts)
 			}
-			return authCheckRun(opts)
+			return authCheckRunWithRecovery(opts, projector)
 		},
 	}
 
@@ -46,6 +55,10 @@ func NewCmdAuthCheck(f *cmdutil.Factory, runF func(*CheckOptions) error) *cobra.
 }
 
 func authCheckRun(opts *CheckOptions) error {
+	return authCheckRunWithRecovery(opts, nil)
+}
+
+func authCheckRunWithRecovery(opts *CheckOptions, projector *recovery.Projector) error {
 	f := opts.Factory
 
 	required := strings.Fields(opts.Scope)
@@ -82,7 +95,7 @@ func authCheckRun(opts *CheckOptions) error {
 
 	ok := len(missing) == 0
 	result := map[string]interface{}{"ok": ok, "granted": granted, "missing": missing}
-	if len(missing) > 0 {
+	if len(missing) > 0 && projector.CanReference(recovery.TargetAuthLogin) {
 		result["suggestion"] = fmt.Sprintf(`lark-cli auth login --scope "%s"`, strings.Join(missing, " "))
 	}
 	output.PrintJson(f.IOStreams.Out, result)

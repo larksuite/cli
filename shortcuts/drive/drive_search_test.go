@@ -18,6 +18,8 @@ import (
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 )
 
 // TestDriveSearchExecutePassesThroughNotice verifies drive +search preserves notices.
@@ -53,6 +55,28 @@ func TestDriveSearchExecutePassesThroughNotice(t *testing.T) {
 	data, _ := env["data"].(map[string]interface{})
 	if got, _ := data["notice"].(string); got != notice {
 		t.Fatalf("data.notice = %q, want %q; data=%#v", got, notice, data)
+	}
+}
+
+func TestMissingDriveSearchUserErrorProjectsOnlyAuthorizationCommand(t *testing.T) {
+	source := missingDriveSearchUserError("--mine")
+	sourceProblem, _ := errs.ProblemOf(source)
+	const visible = "--mine requires a logged-in user open_id, but none is configured; run `lark-cli auth login` or set user open_id in config"
+	if sourceProblem.Message != visible {
+		t.Fatalf("default message = %q, want byte-compatible %q", sourceProblem.Message, visible)
+	}
+
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	rendered := recovery.Render(source, plan)
+	renderedProblem, _ := errs.ProblemOf(rendered)
+	if strings.Contains(renderedProblem.Message, "auth login") ||
+		renderedProblem.Message != "--mine requires a logged-in user open_id, but none is configured; set user open_id in config" {
+		t.Fatalf("concealed message = %q", renderedProblem.Message)
+	}
+	if sourceProblem.Message != visible {
+		t.Fatalf("projection mutated source message: %q", sourceProblem.Message)
 	}
 }
 

@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,25 +27,6 @@ func newRegisterTestFactory(t *testing.T) *cmdutil.Factory {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	return f
-}
-
-func newRegisterTestProgramWithTipsHelp() *cobra.Command {
-	program := &cobra.Command{Use: "root"}
-	defaultHelp := program.HelpFunc()
-	program.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		defaultHelp(cmd, args)
-		tips := cmdutil.GetTips(cmd)
-		if len(tips) == 0 {
-			return
-		}
-		out := cmd.OutOrStdout()
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Tips:")
-		for _, tip := range tips {
-			fmt.Fprintf(out, "    • %s\n", tip)
-		}
-	})
-	return program
 }
 
 func TestAllShortcutsScopesNotNil(t *testing.T) {
@@ -185,13 +165,10 @@ func TestRegisterShortcutsMountsDocsHistoryCommands(t *testing.T) {
 		if cmd.Flags().Lookup("api-version") != nil {
 			t.Fatalf("docs %s should not expose --api-version", name)
 		}
-		if !strings.Contains(cmd.Long, "lark-cli skills read lark-doc references/lark-doc-history.md") {
-			t.Fatalf("docs %s help missing history skill guidance:\n%s", name, cmd.Long)
-		}
 	}
 }
 
-func TestRegisterShortcutsDocsHelpAddsSkillReadGuidance(t *testing.T) {
+func TestRegisterShortcutsDocsDomainHasNoBusinessOwnedSkillPresentation(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	RegisterShortcuts(program, newRegisterTestFactory(t))
 
@@ -205,9 +182,11 @@ func TestRegisterShortcutsDocsHelpAddsSkillReadGuidance(t *testing.T) {
 	if docsCmd.Flags().Lookup("api-version") != nil {
 		t.Fatal("docs command should not expose service-level --api-version")
 	}
-
-	if !strings.Contains(docsCmd.Long, "Document and content operations.") {
-		t.Fatalf("docs long help missing default description:\n%s", docsCmd.Long)
+	if docsCmd.Short != "Document and content operations" {
+		t.Fatalf("docs short help = %q, want registry description", docsCmd.Short)
+	}
+	if strings.Contains(docsCmd.Long, "skills read") {
+		t.Fatalf("docs business command should not own skill presentation:\n%s", docsCmd.Long)
 	}
 
 	for _, child := range docsCmd.Commands() {
@@ -215,48 +194,14 @@ func TestRegisterShortcutsDocsHelpAddsSkillReadGuidance(t *testing.T) {
 			t.Fatal("docs +get-skill should not be mounted")
 		}
 	}
-
-	var defaultHelp bytes.Buffer
-	docsCmd.SetOut(&defaultHelp)
-	if err := docsCmd.Help(); err != nil {
-		t.Fatalf("docs help failed: %v", err)
-	}
-	for _, want := range []string{
-		"Start here (required for AI agents):",
-		"lark-cli skills read lark-doc",
-		"AI agents MUST read the matching embedded skill",
-		"Do not skip this step",
-		"MUST NOT grep/open local SKILL.md files",
-	} {
-		if !strings.Contains(defaultHelp.String(), want) {
-			t.Fatalf("docs default help missing %q:\n%s", want, defaultHelp.String())
-		}
-	}
-	if startIdx, usageIdx := strings.Index(defaultHelp.String(), "Start here (required for AI agents):"), strings.Index(defaultHelp.String(), "Usage:"); startIdx < 0 || usageIdx < 0 || startIdx > usageIdx {
-		t.Fatalf("docs help should show Start here before Usage:\n%s", defaultHelp.String())
-	}
-	for _, unwanted := range []string{
-		"Tips:",
-		"+get-skill",
-		"Docs shortcuts are v2-only",
-		"Docs v1 is deprecated and will be removed soon",
-		"lark-cli update",
-		"upgrade skills",
-		"Use --api-version v2 for the latest API",
-	} {
-		if strings.Contains(defaultHelp.String(), unwanted) {
-			t.Fatalf("docs help should not include %q:\n%s", unwanted, defaultHelp.String())
-		}
-	}
 }
 
-func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
+func TestRegisterShortcutsDocsShortcutSurfaceIsV2Only(t *testing.T) {
 	tests := []struct {
 		name         string
 		shortcut     string
 		shortcutHelp string
 		visibleFlag  string
-		skillCommand string
 		hiddenFlags  []string
 		contentHelp  []string
 		unwanted     []string
@@ -266,18 +211,10 @@ func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
 			shortcut:     "+create",
 			shortcutHelp: "Create a Lark document",
 			visibleFlag:  "--content",
-			skillCommand: "lark-cli skills read lark-doc references/lark-doc-create.md",
 			hiddenFlags:  []string{"api-version", "markdown", "folder-token", "wiki-node", "wiki-space"},
 			contentHelp: []string{
 				"--title",
-				"AI agents MUST read",
-				"lark-cli skills read lark-doc references/lark-doc-xml.md",
-				"before writing any --content payload",
-				"when using --doc-format markdown, also read",
-				"lark-cli skills read lark-doc references/lark-doc-md.md",
-				"Follow the latest rules",
-				"MUST NOT grep/open local SKILL.md files",
-				"use --help for the latest command flags",
+				"document body; XML by default or Markdown when --doc-format markdown",
 			},
 			unwanted: []string{"--api-version", "--markdown", "--folder-token", "--wiki-node", "--wiki-space"},
 		},
@@ -286,7 +223,6 @@ func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
 			shortcut:     "+fetch",
 			shortcutHelp: "Fetch Lark document content",
 			visibleFlag:  "read scope",
-			skillCommand: "lark-cli skills read lark-doc references/lark-doc-fetch.md",
 			hiddenFlags:  []string{"api-version", "offset", "limit"},
 			unwanted:     []string{"--api-version", "--offset", "--limit"},
 		},
@@ -295,17 +231,9 @@ func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
 			shortcut:     "+update",
 			shortcutHelp: "Update a Lark document",
 			visibleFlag:  "--command",
-			skillCommand: "lark-cli skills read lark-doc references/lark-doc-update.md",
 			hiddenFlags:  []string{"api-version", "mode", "markdown", "selection-with-ellipsis", "selection-by-title", "new-title"},
 			contentHelp: []string{
-				"AI agents MUST read",
-				"lark-cli skills read lark-doc references/lark-doc-xml.md",
-				"before writing any --content payload",
-				"when using --doc-format markdown, also read",
-				"lark-cli skills read lark-doc references/lark-doc-md.md",
-				"Follow the latest rules",
-				"MUST NOT grep/open local SKILL.md files",
-				"use --help for the latest command flags",
+				"replacement or inserted content; XML by default or Markdown when --doc-format markdown",
 			},
 			unwanted: []string{"--api-version", "--mode", "--markdown", "--selection-with-ellipsis", "--selection-by-title", "--new-title"},
 		},
@@ -313,7 +241,7 @@ func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			program := newRegisterTestProgramWithTipsHelp()
+			program := &cobra.Command{Use: "root"}
 			RegisterShortcuts(program, newRegisterTestFactory(t))
 
 			cmd, _, err := program.Find([]string{"docs", tt.shortcut})
@@ -342,11 +270,6 @@ func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
 			for _, want := range []string{
 				tt.shortcutHelp,
 				tt.visibleFlag,
-				"Start here (required for AI agents):",
-				"AI agents MUST read the matching embedded skill",
-				"Do not skip this step",
-				"MUST NOT grep/open local SKILL.md files",
-				tt.skillCommand,
 			} {
 				if !strings.Contains(out.String(), want) {
 					t.Fatalf("docs %s help missing %q:\n%s", tt.shortcut, want, out.String())
@@ -357,10 +280,13 @@ func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
 					t.Fatalf("docs %s content help missing %q:\n%s", tt.shortcut, want, out.String())
 				}
 			}
-			if startIdx, usageIdx := strings.Index(out.String(), "Start here (required for AI agents):"), strings.Index(out.String(), "Usage:"); startIdx < 0 || usageIdx < 0 || startIdx > usageIdx {
-				t.Fatalf("docs %s help should show Start here before Usage:\n%s", tt.shortcut, out.String())
-			}
-			for _, unwanted := range []string{"Tips:", "+get-skill", "Docs shortcuts are v2-only"} {
+			for _, unwanted := range []string{
+				"Tips:",
+				"+get-skill",
+				"Docs shortcuts are v2-only",
+				"Start here (required for AI agents):",
+				"lark-cli skills read",
+			} {
 				if strings.Contains(out.String(), unwanted) {
 					t.Fatalf("docs %s help should not include %q:\n%s", tt.shortcut, unwanted, out.String())
 				}
