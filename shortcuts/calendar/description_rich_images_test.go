@@ -68,7 +68,7 @@ func TestBuildCalendarImagePreviewURL(t *testing.T) {
 		brand    core.LarkBrand
 		hostFrag string
 	}{
-		{core.BrandFeishu, "larkoffice"},
+		{core.BrandFeishu, "feishu.cn"},
 		{core.BrandLark, "larksuite"},
 	} {
 		raw := buildCalendarImagePreviewURL(tc.brand, "boxcnTOKEN123", 416, 306, 142568)
