@@ -29,7 +29,7 @@ lark-cli slides +screenshot --as user \
 | `--slide-id` | list 模式至少提供 `--slide-id` / `--slide-number` 之一 | 页面 short ID；多页截图时重复传入，或用逗号分隔一次传多个（如 `--slide-id slide_1,slide_2`）；一次最多 10 页（`--slide-id` + `--slide-number` 合计小于等于 10） |
 | `--slide-number` | list 模式至少提供 `--slide-id` / `--slide-number` 之一 | 页面页号；多页截图时重复传入，或用逗号分隔一次传多个（如 `--slide-number 1,2,3`）；一次最多 10 页（`--slide-id` + `--slide-number` 合计小于等于 10） |
 | `--content` | render 模式必需 | 要直接渲染的 `<slide>` XML 片段；支持直接传值、`@file`、`-` stdin。传入后不能同时传 `--slide-id` / `--slide-number` |
-| `--output-dir` | 否 | 输出目录（CWD 内相对路径），默认 `.lark-slides/screenshots` |
+| `--output-dir` | 否 | 输出目录，默认 `.lark-slides/screenshots`；必须是当前目录内的相对路径 |
 | `--output-name` | 否 | render 模式的输出文件名 stem；未指定时优先用返回的 `slide_id`，否则用 `rendered-slide`。若目标文件已存在，会自动追加递增后缀避免覆盖 |
 
 ## 示例
