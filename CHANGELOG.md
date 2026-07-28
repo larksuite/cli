@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.79] - 2026-07-28
+
+### Features
+
+- **slides**: update xsd (#2067)
+
+### Bug Fixes
+
+- **ci**: validate static workflow identity (#2015)
+- **sheets**: recognize OFL0X local office tokens (#2063)
+
+### Documentation
+
+- **calendar**: clarify identity selection by event ownership (#2071)
+- **slides**: add formula inline element syntax to quick-ref (#2077)
+
 ## [v1.0.78] - 2026-07-27
 
 ### Features
@@ -1685,6 +1701,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.79]: https://github.com/larksuite/cli/releases/tag/v1.0.79
 [v1.0.78]: https://github.com/larksuite/cli/releases/tag/v1.0.78
 [v1.0.77]: https://github.com/larksuite/cli/releases/tag/v1.0.77
 [v1.0.75]: https://github.com/larksuite/cli/releases/tag/v1.0.75
