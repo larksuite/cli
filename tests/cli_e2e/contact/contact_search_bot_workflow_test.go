@@ -29,7 +29,9 @@ func TestContactSearchBotWorkflowAsUser(t *testing.T) {
 	bots := gjson.Get(result.Stdout, "data.bots")
 	require.True(t, bots.IsArray(), "data.bots must be an array; stdout:\n%s", result.Stdout)
 	require.True(t, gjson.Get(result.Stdout, "data.has_more").Exists(), "data.has_more must be present; stdout:\n%s", result.Stdout)
-	for _, bot := range bots.Array() {
+	botItems := bots.Array()
+	require.NotEmpty(t, botItems, "data.bots must contain at least one bot; stdout:\n%s", result.Stdout)
+	for _, bot := range botItems {
 		require.NotEmpty(t, bot.Get("open_id").String(), "every bot must carry open_id; stdout:\n%s", result.Stdout)
 	}
 }
