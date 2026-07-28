@@ -114,13 +114,13 @@ func TestValidateBotSearchErrors(t *testing.T) {
 			name:        "page size below one",
 			flags:       map[string]string{"query": "x", "page-size": "0"},
 			wantParam:   "--page-size",
-			wantMessage: "--page-size: must be between 1 and 50",
+			wantMessage: "--page-size: must be between 1 and 30",
 		},
 		{
-			name:        "page size over 50",
-			flags:       map[string]string{"query": "x", "page-size": "51"},
+			name:        "page size over 30",
+			flags:       map[string]string{"query": "x", "page-size": "31"},
 			wantParam:   "--page-size",
-			wantMessage: "--page-size: must be between 1 and 50",
+			wantMessage: "--page-size: must be between 1 and 30",
 		},
 		{
 			name:        "chat ids without query",
@@ -161,7 +161,7 @@ func TestValidateBotSearchPassingCases(t *testing.T) {
 		{name: "query and chat ids", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b"}},
 		{name: "query and has chatted", flags: map[string]string{"query": "x", "has-chatted": "true"}},
 		{name: "all filters", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b", "has-chatted": "true"}},
-		{name: "page size upper boundary", flags: map[string]string{"query": "x", "page-size": "50"}},
+		{name: "page size upper boundary", flags: map[string]string{"query": "x", "page-size": "30"}},
 	}
 
 	for _, tt := range tests {

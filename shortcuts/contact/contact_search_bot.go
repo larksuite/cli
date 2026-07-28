@@ -24,7 +24,7 @@ const botSearchURL = "/open-apis/bot/v4/bot/search"
 const (
 	maxBotSearchQueryChars = 50
 	maxBotSearchChatIDs    = 100
-	maxBotSearchPageSize   = 50
+	maxBotSearchPageSize   = 30
 )
 
 var botDisplayInfoHighlightRE = regexp.MustCompile(`<h>(.*?)</h>`)
@@ -91,7 +91,7 @@ var ContactSearchBot = common.Shortcut{
 		{Name: "query", Desc: "search keyword, required (≤ 50 characters)"},
 		{Name: "chat-ids", Desc: "narrow --query to bots in these chats (CSV of chat_id; ≤ 100)"},
 		{Name: "has-chatted", Type: "bool", Desc: "narrow --query to bots you've chatted with (omit to disable; =false rejected)"},
-		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-50"},
+		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-30"},
 		{Name: "page-token", Desc: "pagination token from a previous response"},
 	},
 	Tips: []string{
