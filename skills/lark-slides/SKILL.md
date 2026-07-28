@@ -89,8 +89,6 @@ metadata:
 | 使用图标 | 禁止盲猜 iconType，必须先检索 IconPark，再写 `<icon iconType="...">`，图标必须填充颜色并和背景有足够对比，禁止使用 emoji 图标 | `iconpark_tool.py search → resolve`、`iconpark.md` |
 | 创建失败、空白页、3350001、布局异常 | 先回读状态，再按排障清单修复，不假设原操作原子成功 | `troubleshooting.md`、`validation-checklist.md` |
 
-**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，认证、权限和全局参数均以 lark-shared 为准。**
-
 **CRITICAL — 查看或回滚历史版本前，MUST 先读取 [`lark-slides-history.md`](references/lark-slides-history.md)。回滚接口只接受 `history_version_id`，不要把 `revision_id` 直接传给 `+history-revert`。**
 
 **CRITICAL — 生成任何 XML 之前，MUST 先用 Read 工具读取 [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md)，禁止凭记忆猜测 XML 结构。**
@@ -141,7 +139,7 @@ lark-cli auth login --domain slides
 - [asset-planning.md](references/asset-planning.md)（新建 / 大幅改写）
 - [validation-checklist.md](references/validation-checklist.md)（创建 / 大幅改写后）
 
-调用命令前再读：
+调用相关命令前必须读取相关的文档以了解命令的使用方式：
 
 - 创建：[`lark-slides-create.md`](references/lark-slides-create.md)
 - 阅读：[`lark-slides-xml-presentations-get.md`](references/lark-slides-xml-presentations-get.md)
@@ -149,8 +147,6 @@ lark-cli auth login --domain slides
 - 历史版本：[`lark-slides-history.md`](references/lark-slides-history.md)
 - 截图：[`lark-slides-screenshot.md`](references/lark-slides-screenshot.md)
 - 图片：[`lark-slides-media-upload.md`](references/lark-slides-media-upload.md)
-
-按需再读：
 - 图表：[`slides_chart_demo.xml`](references/slides_chart_demo.xml)
 - 图标：[`iconpark.md`](references/iconpark.md)、[`scripts/iconpark_tool.py`](scripts/iconpark_tool.py)
 - 排障：[`troubleshooting.md`](references/troubleshooting.md)
@@ -225,7 +221,7 @@ Step 3: 按 slide_plan.json 生成 XML → 创建
   - 创建方式按“创建方式选择”判断；图片、复杂 XML、转义和 3350001 排查按 lark-slides-create.md、media-upload.md、troubleshooting.md 执行
 
 Step 4: 审查 & 交付
-  - 创建完成后，必须用 `slides +xml-get` 读取全文 XML，并按 validation-checklist.md 做显式验证记录，包括 XML 文本重叠检查
+  - 创建完成后，必须用 `slides +xml-get --presentation <xml_presentation_id>` 读取全文 XML，并按 validation-checklist.md 做显式验证记录，包括 XML 文本重叠检查
   - 失败或部分成功按 troubleshooting.md 处理；局部问题优先用 `+replace-slide` 修正
   - 没问题 → 交付：使用 NotifyHuman 工具交付 PPT 链接
 ```
