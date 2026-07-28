@@ -60,11 +60,10 @@ var MailTriage = common.Shortcut{
 		{Name: "max", Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
 		{Name: "page-size", Type: "int", Desc: "alias for --max"},
 		{Name: "page-token", Desc: "pagination token from a previous response to fetch the next page"},
-		{Name: "filter", Desc: `exact-match condition filter (JSON, key=value, or read-status alias is_read/is_unread). Narrow results by folder, label, sender, recipient, etc. Run --print-filter-schema to see all fields. Example: {"folder":"INBOX","from":["alice@example.com"]}`},
+		{Name: "filter", Desc: `exact-match condition filter (JSON, key=value, or unread alias is_unread/is_read=false). Narrow results by folder, label, sender, recipient, etc. Run --print-filter-schema to see all fields. Example: {"folder":"INBOX","from":["alice@example.com"]}`},
 		{Name: "folder", Desc: "folder name or system folder ID filter (merged with --filter)"},
 		{Name: "folder-id", Desc: "explicit folder ID filter (merged with --filter; takes priority over --folder)"},
 		{Name: "is-unread", Type: "bool", Desc: "filter unread messages (merged with --filter)"},
-		{Name: "is-read", Type: "bool", Desc: "filter read messages (merged with --filter; alias for is_unread=false)"},
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
 		{Name: "query", Desc: `full-text keyword search across from/to/subject/body (max 50 chars). Example: "budget report"`},
 		{Name: "labels", Type: "bool", Desc: "include label IDs in output"},
@@ -404,7 +403,7 @@ func printTriageFilterSchema(runtime *common.RuntimeContext) {
 			},
 			"is_unread": map[string]string{
 				"type":    "bool",
-				"desc":    "Filter by read status. is_read is accepted as a compatibility input alias and normalized to is_unread. On list path only is_unread=true is supported; is_unread=false uses the search path.",
+				"desc":    "Filter unread messages. is_read=false is accepted as a compatibility input alias and normalized to is_unread=true. is_unread=false and alias is_read are ignored. Read-message filtering with is_read=true is not supported.",
 				"example": "true",
 			},
 			"time_range": map[string]string{
@@ -424,7 +423,7 @@ func printTriageFilterSchema(runtime *common.RuntimeContext) {
 			`{"folder":"INBOX"}`,
 			`folder=INBOX`,
 			`is_unread`,
-			`is_read`,
+			`{"is_read":false}`,
 			`{"folder":"INBOX","from":["alice@example.com"]}`,
 			`{"label":"FLAGGED","is_unread":true}`,
 			`{"folder":"SENT","time_range":{"start_time":"2026-03-01T00:00:00+08:00"}}`,
@@ -507,7 +506,7 @@ func parseTriageFilterJSON(raw string) (triageFilter, error) {
 			if err := json.Unmarshal(value, &boolValue); err != nil {
 				return triageFilter{}, mailValidationParamError("--filter", "invalid --filter.is_unread: %s", err)
 			}
-			if err := mergeTriageReadStatus(&filter, boolValue, "is_unread"); err != nil {
+			if err := mergeTriageUnreadFilter(&filter, boolValue, "is_unread"); err != nil {
 				return triageFilter{}, err
 			}
 		case "is_read":
@@ -515,7 +514,7 @@ func parseTriageFilterJSON(raw string) (triageFilter, error) {
 			if err := json.Unmarshal(value, &boolValue); err != nil {
 				return triageFilter{}, mailValidationParamError("--filter", "invalid --filter.is_read: %s", err)
 			}
-			if err := mergeTriageReadStatus(&filter, !boolValue, "is_read"); err != nil {
+			if err := mergeTriageUnreadFilter(&filter, !boolValue, "is_read"); err != nil {
 				return triageFilter{}, err
 			}
 		case "time_range":
@@ -538,7 +537,7 @@ func parseTriageFilterToken(raw string) (triageFilter, error) {
 		case "is_unread":
 			return triageFilter{IsUnread: boolPtrValue(true)}, nil
 		case "is_read":
-			return triageFilter{IsUnread: boolPtrValue(false)}, nil
+			return triageFilter{}, nil
 		default:
 			return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: %q is not valid JSON, key=value, is_read, or is_unread. Run --print-filter-schema to see supported fields", raw)
 		}
@@ -573,13 +572,17 @@ func parseTriageFilterToken(raw string) (triageFilter, error) {
 		if err != nil {
 			return triageFilter{}, err
 		}
-		filter.IsUnread = &boolValue
+		if err := mergeTriageUnreadFilter(&filter, boolValue, "is_unread"); err != nil {
+			return triageFilter{}, err
+		}
 	case "is_read":
 		boolValue, err := parseTriageBoolKV(key, value)
 		if err != nil {
 			return triageFilter{}, err
 		}
-		filter.IsUnread = boolPtrValue(!boolValue)
+		if err := mergeTriageUnreadFilter(&filter, !boolValue, "is_read"); err != nil {
+			return triageFilter{}, err
+		}
 	default:
 		if hint := triageFilterUnknownFieldHint(`json: unknown field "` + key + `"`); hint != "" {
 			return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: %s", hint)
@@ -644,13 +647,12 @@ func mergeTriageStringFilter(current *string, canonical, value string) error {
 	return nil
 }
 
-func mergeTriageReadStatus(filter *triageFilter, isUnread bool, source string) error {
-	if filter.IsUnread != nil && *filter.IsUnread != isUnread {
-		sourceValue := isUnread
-		if source == "is_read" {
-			sourceValue = !isUnread
+func mergeTriageUnreadFilter(filter *triageFilter, isUnread bool, source string) error {
+	if !isUnread {
+		if source == "is_unread" {
+			return nil
 		}
-		return mailValidationParamError("--filter", "conflicting read-status filter: %s=%v conflicts with is_unread=%v", source, sourceValue, *filter.IsUnread)
+		return mailValidationParamError("--filter", "read-message filtering is not supported by mail +triage; use is_unread=true or is_read=false to filter unread messages")
 	}
 	filter.IsUnread = &isUnread
 	return nil
@@ -677,13 +679,7 @@ func buildTriageFilter(runtime *common.RuntimeContext) (triageFilter, error) {
 	}
 	if runtime.Changed("is-unread") {
 		value := runtime.Bool("is-unread")
-		if err := mergeTriageReadStatus(&filter, value, "is_unread"); err != nil {
-			return triageFilter{}, err
-		}
-	}
-	if runtime.Changed("is-read") {
-		value := !runtime.Bool("is-read")
-		if err := mergeTriageReadStatus(&filter, value, "is_read"); err != nil {
+		if err := mergeTriageUnreadFilter(&filter, value, "is_unread"); err != nil {
 			return triageFilter{}, err
 		}
 	}
@@ -699,9 +695,6 @@ func appendTriagePaginationFilterFlags(hint *strings.Builder, runtime *common.Ru
 	}
 	if runtime.Changed("is-unread") {
 		hint.WriteString(" --is-unread=" + shellQuote(fmt.Sprintf("%t", runtime.Bool("is-unread"))))
-	}
-	if runtime.Changed("is-read") {
-		hint.WriteString(" --is-read=" + shellQuote(fmt.Sprintf("%t", runtime.Bool("is-read"))))
 	}
 }
 
@@ -720,7 +713,7 @@ func triageFilterUnknownFieldHint(msg string) string {
 		"after":       "time_range.start_time",
 		"before":      "time_range.end_time",
 	}
-	const validFields = "folder, folder_id, label, label_id, is_unread, is_read, from, to, cc, bcc, subject, has_attachment, time_range. Run --print-filter-schema to see supported fields"
+	const validFields = "folder, folder_id, label, label_id, is_unread, is_read(false only), from, to, cc, bcc, subject, has_attachment, time_range. Run --print-filter-schema to see supported fields"
 	const timeRangeExample = ` Example: {"time_range":{"start_time":"2026-03-10T00:00:00+08:00","end_time":"2026-03-17T23:59:59+08:00"}}`
 	if suggestion, ok := suggestions[field]; ok {
 		msg := fmt.Sprintf("unknown field %q; did you mean %q? Valid fields: %s", field, suggestion, validFields)
@@ -734,9 +727,6 @@ func triageFilterUnknownFieldHint(msg string) string {
 
 func usesTriageSearchPath(query string, filter triageFilter) bool {
 	if strings.TrimSpace(query) != "" || len(triageQueryFilterFields(filter)) > 0 {
-		return true
-	}
-	if filter.IsUnread != nil && !*filter.IsUnread {
 		return true
 	}
 	// System labels (important/flagged/other and their aliases) can appear in either

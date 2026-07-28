@@ -228,16 +228,15 @@ func TestParseTriageFilterNormalizesReadStatusInputs(t *testing.T) {
 	tests := []struct {
 		name string
 		raw  string
-		want bool
+		want *bool
 	}{
-		{name: "json is_read false means unread", raw: `{"is_read":false}`, want: true},
-		{name: "json is_unread true means unread", raw: `{"is_unread":true}`, want: true},
-		{name: "alias is_unread means unread", raw: `is_unread`, want: true},
-		{name: "kv is_read false means unread", raw: `is_read=false`, want: true},
-		{name: "json is_read true means read", raw: `{"is_read":true}`, want: false},
-		{name: "json is_unread false means read", raw: `{"is_unread":false}`, want: false},
-		{name: "alias is_read means read", raw: `is_read`, want: false},
-		{name: "kv is_unread false means read", raw: `is_unread=false`, want: false},
+		{name: "json is_read false means unread", raw: `{"is_read":false}`, want: boolPtr(true)},
+		{name: "json is_unread true means unread", raw: `{"is_unread":true}`, want: boolPtr(true)},
+		{name: "alias is_unread means unread", raw: `is_unread`, want: boolPtr(true)},
+		{name: "kv is_read false means unread", raw: `is_read=false`, want: boolPtr(true)},
+		{name: "json is_unread false is ignored", raw: `{"is_unread":false}`, want: nil},
+		{name: "kv is_unread false is ignored", raw: `is_unread=false`, want: nil},
+		{name: "alias is_read is ignored", raw: `is_read`, want: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -245,8 +244,29 @@ func TestParseTriageFilterNormalizesReadStatusInputs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseTriageFilter(%q) error = %v", tt.raw, err)
 			}
-			if got.IsUnread == nil || *got.IsUnread != tt.want {
+			if (got.IsUnread == nil) != (tt.want == nil) {
 				t.Fatalf("is_unread = %v, want %v", got.IsUnread, tt.want)
+			}
+			if got.IsUnread != nil && *got.IsUnread != *tt.want {
+				t.Fatalf("is_unread = %v, want %v", *got.IsUnread, *tt.want)
+			}
+		})
+	}
+}
+
+func TestParseTriageFilterRejectsReadStatusInputs(t *testing.T) {
+	tests := []string{
+		`{"is_read":true}`,
+	}
+	for _, raw := range tests {
+		t.Run(raw, func(t *testing.T) {
+			_, err := parseTriageFilter(raw)
+			if err == nil {
+				t.Fatalf("expected error for %q", raw)
+			}
+			assertTriageFilterValidationError(t, err, "--filter")
+			if !strings.Contains(err.Error(), "read-message filtering is not supported") {
+				t.Fatalf("error %q does not explain unsupported read filtering", err.Error())
 			}
 		})
 	}
@@ -288,7 +308,6 @@ func TestParseTriageFilterRejectsInvalidShorthands(t *testing.T) {
 		{name: "invalid bool", raw: "is_unread=maybe", wantSubstr: "must be true or false"},
 		{name: "invalid alias", raw: "not-json", wantSubstr: "JSON, key=value, is_read, or is_unread"},
 		{name: "comma-separated kv", raw: "folder=INBOX,is_unread=true", wantSubstr: "comma-separated key=value filters are not supported"},
-		{name: "conflicting read status", raw: `{"is_read":true,"is_unread":true}`, wantSubstr: "is_read=true conflicts with is_unread=true"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -304,15 +323,15 @@ func TestParseTriageFilterRejectsInvalidShorthands(t *testing.T) {
 	}
 }
 
-func TestParseTriageFilterConflictMessageIsDeterministic(t *testing.T) {
+func TestParseTriageFilterReadStatusErrorIsDeterministic(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		_, err := parseTriageFilter(`{"is_read":true,"is_unread":true}`)
 		if err == nil {
-			t.Fatal("expected conflict error")
+			t.Fatal("expected error")
 		}
 		assertTriageFilterValidationError(t, err, "--filter")
-		if got, want := err.Error(), "is_read=true conflicts with is_unread=true"; !strings.Contains(got, want) {
-			t.Fatalf("error = %q, want substring %q", got, want)
+		if !strings.Contains(err.Error(), "read-message filtering is not supported") {
+			t.Fatalf("error %q does not explain unsupported read filtering", err.Error())
 		}
 	}
 }
@@ -339,7 +358,6 @@ func TestBuildTriageFilterRejectsIndependentFlagConflicts(t *testing.T) {
 		wantParam string
 	}{
 		{name: "folder conflict", values: map[string]string{"filter": "folder=SENT", "folder": "INBOX"}, wantParam: "--folder"},
-		{name: "read status conflict", values: map[string]string{"filter": "is_unread", "is-read": "true"}, wantParam: "--filter"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -461,35 +479,20 @@ func TestMailTriageDryRunListPathCapsPageSizeAtAPILimit(t *testing.T) {
 	}
 }
 
-func TestMailTriageDryRunNormalizesReadStatusToSearchFilter(t *testing.T) {
+func TestMailTriageDryRunRejectsReadStatusFilter(t *testing.T) {
 	runtime := runtimeForMailTriageTest(t, map[string]string{
-		"filter": "is_read",
+		"filter": `{"is_read":true}`,
 		"folder": "INBOX",
 	})
 
-	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
-	if len(apis) != 1 {
-		t.Fatalf("expected search-only dry-run api, got %d", len(apis))
+	dry := MailTriage.DryRun(context.Background(), runtime)
+	b, _ := json.Marshal(dry)
+	s := string(b)
+	if !strings.Contains(s, "filter_error") {
+		t.Fatalf("expected filter_error for read filtering, got %s", s)
 	}
-	if apis[0].URL != mailboxPath("me", "search") || apis[0].Method != "POST" {
-		t.Fatalf("unexpected dry-run api: %+v", apis[0])
-	}
-	body, ok := apis[0].Body.(map[string]interface{})
-	if !ok {
-		t.Fatalf("body type = %T", apis[0].Body)
-	}
-	filterBody, ok := body["filter"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("filter body missing: %#v", body)
-	}
-	if got, ok := filterBody["is_unread"].(bool); !ok || got {
-		t.Fatalf("is_unread = %#v, want false", filterBody["is_unread"])
-	}
-	if _, ok := filterBody["is_read"]; ok {
-		t.Fatalf("is_read should not be present in normalized filter: %#v", filterBody)
-	}
-	if got := firstString(filterBody["folder"]); got != "inbox" {
-		t.Fatalf("folder = %#v, want inbox", filterBody["folder"])
+	if !strings.Contains(s, "read-message filtering is not supported") {
+		t.Fatalf("dry-run output %q does not explain unsupported read filtering", s)
 	}
 }
 
@@ -1235,7 +1238,7 @@ func TestBuildSearchParamsAllFilterFields(t *testing.T) {
 		BCC:           []string{"bcc@d.com"},
 		Subject:       "report",
 		HasAttachment: boolPtr(true),
-		IsUnread:      boolPtr(false),
+		IsUnread:      boolPtr(true),
 	}
 	resolved, _ := resolveSearchFilter(rt, "me", f, true)
 	_, body, err := buildSearchParams(rt, "me", "keyword", resolved, 10, "tok", true)
@@ -1249,7 +1252,7 @@ func TestBuildSearchParamsAllFilterFields(t *testing.T) {
 	if fb["has_attachment"] != true {
 		t.Fatalf("has_attachment mismatch: %v", fb["has_attachment"])
 	}
-	if fb["is_unread"] != false {
+	if fb["is_unread"] != true {
 		t.Fatalf("is_unread mismatch: %v", fb["is_unread"])
 	}
 	if body["query"] != "keyword" {
