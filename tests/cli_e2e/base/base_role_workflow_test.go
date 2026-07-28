@@ -111,11 +111,15 @@ func TestBase_RoleWorkflow(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
-		err = clie2e.WaitForCondition(ctx, clie2e.WaitOptions{
-			Timeout:  30 * time.Second,
+		pollTimeout := 30 * time.Second
+		pollCtx, pollCancel := context.WithTimeout(ctx, pollTimeout)
+		defer pollCancel()
+
+		err = clie2e.WaitForCondition(pollCtx, clie2e.WaitOptions{
+			Timeout:  pollTimeout,
 			Interval: 3 * time.Second,
 		}, func() (bool, error) {
-			getResult, getErr := clie2e.RunCmd(ctx, clie2e.Request{
+			getResult, getErr := clie2e.RunCmd(pollCtx, clie2e.Request{
 				Args:      []string{"base", "+role-get", "--base-token", baseToken, "--role-id", roleID},
 				DefaultAs: "bot",
 			})
