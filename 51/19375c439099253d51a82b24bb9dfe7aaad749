@@ -1,0 +1,25 @@
+cmd/event/subscription/local.go
+  s_74858b26bfd0e0::t_4ba89e9d6bbbfe 42-69
+cmd/event/subscription/update.go
+  s_74858b26bfd0e0::t_77c68e06c97a64 268-275
+cmd/event/subscription/update_test.go
+  s_74858b26bfd0e0::t_7ff2124263cfde 641-764
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5119375c439099253d51a82b24bb9dfe7aaad749",
+  "prompts": {},
+  "sessions": {
+    "s_74858b26bfd0e0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8040e34bf7a1b8d5",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
