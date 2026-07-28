@@ -27,7 +27,7 @@ metadata:
 - 禁止使用 emoji 图标，任何位置都不能出现。
 - 字号必须显式设置 `<content>` 的 `fontSize` 属性，不要依赖 `textType` 的默认字号兜底，这些兜底值明显偏大。
 - 大数字、字号大或字数多的 `<content>` 必须设置 `wrap="true" autoFit="normal-auto-fit"` 属性自动换行和缩排，避免文字溢出。
-- 使用任何 slides 命令前先确认参数，不要凭记忆或按别的命令类比猜：shortcut（`+verb`）跑 `lark-cli slides +<verb> --help`，原生 API 跑 `lark-cli schema slides.<resource>.<method>`（schema 不覆盖 shortcut）。参数名、必填项、路径要求（如本地路径须为 CWD 内相对路径）一律以 `--help` / `schema` 输出为准。
+- 使用任何 `lark-cli slides` 命令前必须先确认参数，不要凭记忆或按别的命令类比猜：shortcut（`+verb`）跑 `lark-cli slides +<verb> --help`，原生 API 跑 `lark-cli schema slides.<resource>.<method>`（schema 不覆盖 shortcut）。必须完整读取 `--help` / `schema` 的输出（不要用 `head` / `sed` 截断，只看前几行会漏掉参数和取值要求）；参数名、必填项、格式一律以完整输出为准。
 - 文字颜色必须用 `<content>` 的 `color` 属性而不是 `fontColor` 属性。
 - 文字行间距必须设置 `<content>` 的 `lineSpacing="multiple:xx"` 或 `lineSpacing="fixed:xx"` 而不是 `lineSpacing="xx"`。
 - 图片必须用 `<img>` 而不是 `<image>`。
