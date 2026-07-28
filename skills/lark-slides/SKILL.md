@@ -89,6 +89,8 @@ metadata:
 | 使用图标 | 禁止盲猜 iconType，必须先检索 IconPark，再写 `<icon iconType="...">`，图标必须填充颜色并和背景有足够对比，禁止使用 emoji 图标 | `iconpark_tool.py search → resolve`、`iconpark.md` |
 | 创建失败、空白页、3350001、布局异常 | 先回读状态，再按排障清单修复，不假设原操作原子成功 | `troubleshooting.md`、`validation-checklist.md` |
 
+**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，认证、权限和全局参数均以 lark-shared 为准。**
+
 **CRITICAL — 查看或回滚历史版本前，MUST 先读取 [`lark-slides-history.md`](references/lark-slides-history.md)。回滚接口只接受 `history_version_id`，不要把 `revision_id` 直接传给 `+history-revert`。**
 
 **CRITICAL — 生成任何 XML 之前，MUST 先用 Read 工具读取 [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md)，禁止凭记忆猜测 XML 结构。**
