@@ -78,18 +78,26 @@ describe("parseReleaseVersion", () => {
     assert.deepEqual(parseReleaseVersion("1.2.3"), {
       version: "1.2.3",
       channel: "stable",
-      major: 1,
-      minor: 2,
-      patch: 3,
+      major: "1",
+      minor: "2",
+      patch: "3",
       beta: null,
     });
     assert.deepEqual(parseReleaseVersion("1.2.3-beta.4"), {
       version: "1.2.3-beta.4",
       channel: "beta",
-      major: 1,
-      minor: 2,
-      patch: 3,
-      beta: 4,
+      major: "1",
+      minor: "2",
+      patch: "3",
+      beta: "4",
+    });
+    assert.deepEqual(parseReleaseVersion("9007199254740993.9007199254740995.0"), {
+      version: "9007199254740993.9007199254740995.0",
+      channel: "stable",
+      major: "9007199254740993",
+      minor: "9007199254740995",
+      patch: "0",
+      beta: null,
     });
   });
 
@@ -264,6 +272,35 @@ describe("candidate manifest", () => {
     }
   });
 
+  it("rejects symlinked candidate directories and candidate manifests", () => {
+    const candidate = writeCandidate();
+    const linkParent = tempDirectory();
+    const directoryLink = path.join(linkParent, "candidate-link");
+    fs.symlinkSync(candidate.directory, directoryLink, "dir");
+    assert.throws(
+      () => createCandidateManifest(directoryLink, candidate.metadata),
+      /candidate directory.*symlink/,
+    );
+
+    const manifest = createCandidateManifest(candidate.directory, candidate.metadata);
+    const externalDirectory = tempDirectory();
+    const externalManifest = path.join(externalDirectory, "manifest.json");
+    fs.writeFileSync(externalManifest, `${JSON.stringify(manifest)}\n`);
+    fs.symlinkSync(
+      externalManifest,
+      path.join(candidate.directory, "candidate-manifest.json"),
+    );
+    assert.throws(
+      () => verifyCandidateManifest(
+        candidate.directory,
+        manifest,
+        candidate.metadata,
+        "artifact",
+      ),
+      /candidate-manifest\.json must be a regular file/,
+    );
+  });
+
   it("rejects path traversal and duplicate manifest entries", () => {
     const candidate = writeCandidate();
     const manifest = createCandidateManifest(candidate.directory, candidate.metadata);
@@ -386,47 +423,116 @@ describe("candidate manifest", () => {
       /in-directory candidate manifest does not match/,
     );
   });
+
+  it("rejects candidate-manifest.json as a release asset entry", () => {
+    const candidate = writeCandidate();
+    const manifest = createCandidateManifest(candidate.directory, candidate.metadata);
+    const releaseDirectory = copyReleaseAssets(candidate.directory, manifest);
+    const injectedManifest = clone(manifest);
+    const injectedContent = "not an authoritative manifest\n";
+    injectedManifest.releaseAssets.unshift({
+      name: "candidate-manifest.json",
+      sha256: sha256(injectedContent),
+    });
+    fs.writeFileSync(
+      path.join(releaseDirectory, "candidate-manifest.json"),
+      injectedContent,
+    );
+
+    assert.throws(
+      () => verifyCandidateManifest(
+        releaseDirectory,
+        injectedManifest,
+        candidate.metadata,
+        "release",
+      ),
+      /candidate-manifest\.json is reserved/,
+    );
+  });
 });
 
 describe("evaluateNpmState", () => {
   it("publishes stable and beta versions to their fixed dist-tags", () => {
+    const stableIntegrity = sha512Integrity("stable package");
+    const betaIntegrity = sha512Integrity("beta package");
     assert.deepEqual(
       evaluateNpmState(
-        { version: "1.2.3", channel: "stable", integrity: "sha512-YQ==" },
+        { version: "1.2.3", channel: "stable", integrity: stableIntegrity },
         { distTags: { latest: "1.2.2", beta: "1.3.0-beta.1" } },
       ),
       { distTag: "latest", action: "publish" },
     );
     assert.deepEqual(
       evaluateNpmState(
-        { version: "1.3.0-beta.2", channel: "beta", integrity: "sha512-Yg==" },
+        { version: "1.3.0-beta.2", channel: "beta", integrity: betaIntegrity },
         { distTags: { latest: "1.2.3", beta: "1.3.0-beta.1" } },
       ),
       { distTag: "beta", action: "publish" },
     );
   });
 
-  it("reuses the same published version with identical integrity", () => {
-    assert.deepEqual(
-      evaluateNpmState(
-        { version: "1.2.3", channel: "stable", integrity: "sha512-YQ==" },
-        {
+  it("reuses a published stable version only when latest is equal or higher", () => {
+    const integrity = sha512Integrity("stable package");
+    const target = { version: "1.2.3", channel: "stable", integrity };
+    for (const distTags of [undefined, { latest: "1.2.2" }]) {
+      assert.throws(
+        () => evaluateNpmState(target, {
           versionPresent: true,
-          publishedIntegrity: "sha512-YQ==",
-          distTags: { latest: "1.2.3" },
-        },
-      ),
-      { distTag: "latest", action: "reuse" },
-    );
+          publishedIntegrity: integrity,
+          ...(distTags === undefined ? {} : { distTags }),
+        }),
+        /cannot reuse.*dist-tag latest (is missing|is behind)/,
+      );
+    }
+    for (const latest of ["1.2.3", "1.2.4"]) {
+      assert.deepEqual(
+        evaluateNpmState(target, {
+          versionPresent: true,
+          publishedIntegrity: integrity,
+          distTags: { latest },
+        }),
+        { distTag: "latest", action: "reuse" },
+      );
+    }
+  });
+
+  it("reuses a published beta version only when beta is equal or higher", () => {
+    const integrity = sha512Integrity("beta package");
+    const target = { version: "2.0.0-beta.3", channel: "beta", integrity };
+    for (const distTags of [undefined, { beta: "2.0.0-beta.2" }]) {
+      assert.throws(
+        () => evaluateNpmState(target, {
+          versionPresent: true,
+          publishedIntegrity: integrity,
+          ...(distTags === undefined ? {} : { distTags }),
+        }),
+        /cannot reuse.*dist-tag beta (is missing|is behind)/,
+      );
+    }
+    for (const beta of ["2.0.0-beta.3", "2.0.0-beta.4"]) {
+      assert.deepEqual(
+        evaluateNpmState(target, {
+          versionPresent: true,
+          publishedIntegrity: integrity,
+          distTags: { beta },
+        }),
+        { distTag: "beta", action: "reuse" },
+      );
+    }
   });
 
   it("rejects same npm version with different or missing integrity", () => {
-    const target = { version: "1.2.3", channel: "stable", integrity: "sha512-YQ==" };
+    const target = {
+      version: "1.2.3",
+      channel: "stable",
+      integrity: sha512Integrity("target package"),
+    };
 
     assert.throws(
       () => evaluateNpmState(target, {
         versionPresent: true,
-        publishedIntegrity: "sha512-Yg==",
+        publishedIntegrity: sha512Integrity("different package"),
+        distTags: { latest: "1.2.3" },
       }),
       /different integrity/,
     );
@@ -436,24 +542,58 @@ describe("evaluateNpmState", () => {
     );
   });
 
+  it("validates every observed publishedIntegrity property", () => {
+    const target = {
+      version: "1.2.3",
+      channel: "stable",
+      integrity: sha512Integrity("target package"),
+    };
+    for (const publishedIntegrity of [
+      undefined,
+      null,
+      42,
+      "",
+      "sha256-YQ==",
+      "sha512-YQ==",
+    ]) {
+      assert.throws(
+        () => evaluateNpmState(target, {
+          versionPresent: false,
+          publishedIntegrity,
+          distTags: { latest: "1.2.2" },
+        }),
+        /observed\.publishedIntegrity must contain one canonical SHA-512 digest/,
+      );
+    }
+    assert.throws(
+      () => evaluateNpmState(target, {
+        versionPresent: false,
+        publishedIntegrity: sha512Integrity("unexpected package"),
+        distTags: { latest: "1.2.2" },
+      }),
+      /version is absent but integrity is present/,
+    );
+  });
+
   it("does not move latest or beta backwards or overwrite an absent equal version", () => {
+    const integrity = sha512Integrity("target package");
     assert.throws(
       () => evaluateNpmState(
-        { version: "1.2.3", channel: "stable", integrity: "sha512-YQ==" },
+        { version: "1.2.3", channel: "stable", integrity },
         { distTags: { latest: "1.2.4" } },
       ),
       /must not move backwards/,
     );
     assert.throws(
       () => evaluateNpmState(
-        { version: "1.2.3-beta.2", channel: "beta", integrity: "sha512-YQ==" },
+        { version: "1.2.3-beta.2", channel: "beta", integrity },
         { distTags: { beta: "1.2.3-beta.3" } },
       ),
       /must not move backwards/,
     );
     assert.throws(
       () => evaluateNpmState(
-        { version: "1.2.3", channel: "stable", integrity: "sha512-YQ==" },
+        { version: "1.2.3", channel: "stable", integrity },
         { distTags: { latest: "1.2.3" } },
       ),
       /already points to target version.*registry reports that version absent/,
@@ -461,7 +601,11 @@ describe("evaluateNpmState", () => {
   });
 
   it("rejects malformed and cross-channel dist-tags", () => {
-    const target = { version: "1.2.3", channel: "stable", integrity: "sha512-YQ==" };
+    const target = {
+      version: "1.2.3",
+      channel: "stable",
+      integrity: sha512Integrity("target package"),
+    };
     for (const distTags of [
       { latest: "1.2.3-beta.1" },
       { beta: "1.2.3" },

@@ -58,10 +58,10 @@ function parseReleaseVersion(version) {
   return {
     version,
     channel: match[4] === undefined ? "stable" : "beta",
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-    beta: match[4] === undefined ? null : Number(match[4]),
+    major: match[1],
+    minor: match[2],
+    patch: match[3],
+    beta: match[4] === undefined ? null : match[4],
   };
 }
 
@@ -226,11 +226,11 @@ function validateSha256(value, label) {
 
 function validateIntegrity(value, label) {
   if (typeof value !== "string" || !value.startsWith("sha512-") || value.length === 7) {
-    fail(`${label} must be a sha512 SRI string`);
+    fail(`${label} must contain one canonical SHA-512 digest`);
   }
   const encoded = value.slice(7);
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
-    fail(`${label} must be a sha512 SRI string`);
+    fail(`${label} must contain one canonical SHA-512 digest`);
   }
   const decoded = Buffer.from(encoded, "base64");
   if (decoded.length !== 64 || decoded.toString("base64") !== encoded) {
@@ -270,6 +270,9 @@ function validateManifest(manifest) {
     const label = `manifest.releaseAssets[${index}]`;
     assertExactKeys(asset, ["name", "sha256"], label);
     assertSafeFilename(asset.name, `${label}.name`);
+    if (asset.name === MANIFEST_NAME) {
+      fail(`${MANIFEST_NAME} is reserved and must not appear in releaseAssets`);
+    }
     if (seen.has(asset.name)) {
       fail(`manifest contains duplicate release asset: ${asset.name}`);
     }
@@ -456,12 +459,6 @@ function validateObservedDistTags(distTags) {
   return distTags;
 }
 
-function assertNpmIntegrity(value, label) {
-  if (typeof value !== "string" || !value.startsWith("sha512-") || value.length === 7) {
-    fail(`${label} must be a non-empty sha512 integrity string`);
-  }
-}
-
 function evaluateNpmState(target, observed) {
   assertExactKeys(target, ["version", "channel", "integrity"], "target");
   assertObject(observed, "observed");
@@ -469,7 +466,7 @@ function evaluateNpmState(target, observed) {
     fail("target.version must be a string");
   }
   validateChannel(target.version, target.channel, "target");
-  assertNpmIntegrity(target.integrity, "target.integrity");
+  validateIntegrity(target.integrity, "target.integrity");
   if (hasOwn(observed, "versionPresent") && typeof observed.versionPresent !== "boolean") {
     fail("observed.versionPresent must be a boolean");
   }
@@ -481,11 +478,12 @@ function evaluateNpmState(target, observed) {
     fail("observed.publishedVersion must equal target.version when provided");
   }
 
+  const hasPublishedIntegrity = hasOwn(observed, "publishedIntegrity");
+  if (hasPublishedIntegrity) {
+    validateIntegrity(observed.publishedIntegrity, "observed.publishedIntegrity");
+  }
   const distTags = validateObservedDistTags(observed.distTags);
   const distTag = target.channel === "stable" ? "latest" : "beta";
-  const hasPublishedIntegrity =
-    typeof observed.publishedIntegrity === "string"
-    && observed.publishedIntegrity.length > 0;
   const versionPresent =
     observed.versionPresent === true
     || observed.publishedVersion === target.version
@@ -498,9 +496,20 @@ function evaluateNpmState(target, observed) {
     if (!hasPublishedIntegrity) {
       fail(`npm version ${target.version} is present but published integrity is missing`);
     }
-    assertNpmIntegrity(observed.publishedIntegrity, "observed.publishedIntegrity");
     if (observed.publishedIntegrity !== target.integrity) {
       fail(`npm version ${target.version} already exists with different integrity`);
+    }
+    if (!hasOwn(distTags, distTag)) {
+      fail(
+        `cannot reuse npm version ${target.version}: `
+        + `dist-tag ${distTag} is missing; repair registry state manually`,
+      );
+    }
+    if (compareReleaseVersions(distTags[distTag], target.version) < 0) {
+      fail(
+        `cannot reuse npm version ${target.version}: dist-tag ${distTag} is behind `
+        + `(${distTags[distTag]} < ${target.version}); repair registry state manually`,
+      );
     }
     return { distTag, action: "reuse" };
   }
