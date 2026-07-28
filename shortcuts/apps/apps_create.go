@@ -13,7 +13,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const createHint = "verify --app-type is html or full_stack and --name is non-empty; if this is a permission error, confirm your account can create apps"
+const createHint = "verify --app-type is html, frontend or full_stack and --name is non-empty; if this is a permission error, confirm your account can create apps"
 
 // AppsCreate creates a new app.
 var AppsCreate = common.Shortcut{
@@ -23,6 +23,7 @@ var AppsCreate = common.Shortcut{
 	Risk:        "write",
 	Tips: []string{
 		`Example: lark-cli apps +create --name "审批系统" --app-type full_stack`,
+		`Example: lark-cli apps +create --name "工具页" --app-type frontend --description "纯前端工具"`,
 		`Example: lark-cli apps +create --name "活动页" --app-type html --description "活动报名"`,
 	},
 	Scopes:    []string{"spark:app:write"},
@@ -30,7 +31,7 @@ var AppsCreate = common.Shortcut{
 	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "name", Desc: "app display name", Required: true},
-		{Name: "app-type", Desc: "app type", Required: true, Enum: []string{"html", "full_stack"}},
+		{Name: "app-type", Desc: "app type", Required: true, Enum: []string{"html", "frontend", "full_stack"}},
 		{Name: "description", Desc: "app description"},
 		{Name: "icon-url", Desc: "app icon URL (server uses default if omitted)"},
 	},
@@ -59,7 +60,7 @@ var AppsCreate = common.Shortcut{
 }
 
 func buildAppsCreateBody(rctx *common.RuntimeContext) map[string]interface{} {
-	// --app-type is constrained to the lowercase enum (html / full_stack) by the
+	// --app-type is constrained to the lowercase enum (html / frontend / full_stack) by the
 	// flag's Enum, so send it through verbatim. Legacy uppercase compatibility is
 	// a server concern and is intentionally not surfaced by the CLI.
 	agent := envvars.AgentName()

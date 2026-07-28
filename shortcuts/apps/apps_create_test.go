@@ -363,3 +363,18 @@ func TestAppsCreate_AgentEnvVarNotSet(t *testing.T) {
 		t.Fatalf("source_agent should not be present when env var is unset: %v", sent)
 	}
 }
+
+// TestAppsCreate_AcceptsFrontend pins that --app-type frontend is a valid
+// enum value and flows through to the request body as "frontend" verbatim.
+func TestAppsCreate_AcceptsFrontend(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsCreate,
+		[]string{"+create", "--name", "Demo", "--app-type", "frontend", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("frontend dry-run err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"app_type": "frontend"`) {
+		t.Fatalf("expected app_type frontend in body, got %s", got)
+	}
+}
