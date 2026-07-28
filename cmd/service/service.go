@@ -7,98 +7,129 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // RegisterServiceCommands registers all service commands from from_meta specs.
 func RegisterServiceCommands(parent *cobra.Command, f *cmdutil.Factory) {
-	for _, project := range registry.ListFromMetaProjects() {
-		spec := registry.LoadFromMeta(project)
-		if spec == nil {
+	RegisterServiceCommandsWithContext(context.Background(), parent, f)
+}
+
+func RegisterServiceCommandsWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
+	RegisterServiceCommandsFromCatalog(ctx, parent, f, registry.RuntimeCatalog())
+}
+
+func RegisterServiceCommandsFromCatalog(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory, catalog apicatalog.Catalog) {
+	// Drive the service list from the same navigation catalog the method walk
+	// uses, so registration is catalog-sourced end to end. Kept as a per-service
+	// loop rather than a flat WalkMethods(nil) drive precisely so a service with
+	// no methods still gets its bare command (WalkMethods yields one ref per
+	// method, so empty services would vanish).
+	for _, svc := range catalog.Services() {
+		if svc.Name == "" || svc.ServicePath == "" {
 			continue
 		}
-		specName := registry.GetStrFromMap(spec, "name")
-		servicePath := registry.GetStrFromMap(spec, "servicePath")
-		if specName == "" || servicePath == "" {
-			continue
-		}
-		resources, _ := spec["resources"].(map[string]interface{})
-		if resources == nil {
-			continue
-		}
-		registerService(parent, spec, resources, f)
+		registerServiceWithContext(ctx, parent, svc, f)
 	}
 }
 
-func registerService(parent *cobra.Command, spec map[string]interface{}, resources map[string]interface{}, f *cmdutil.Factory) {
-	specName := registry.GetStrFromMap(spec, "name")
-	specDesc := registry.GetServiceDescription(specName, "en")
-	if specDesc == "" {
-		specDesc = registry.GetStrFromMap(spec, "description")
+func registerService(parent *cobra.Command, svc meta.Service, f *cmdutil.Factory) {
+	registerServiceWithContext(context.Background(), parent, svc, f)
+}
+
+func registerServiceWithContext(ctx context.Context, parent *cobra.Command, svc meta.Service, f *cmdutil.Factory) {
+	svcCmd := ensureChildCommand(parent, svc.Name, serviceShort(svc))
+
+	// Build the service's subtree from the catalog's method walk
+	// (apicatalog.ServiceMethods recurses nested resources), so the command tree
+	// is sourced from the same navigation Module as schema/scope rather than a
+	// hand-rolled resource/method walk. Each ref's ResourcePath becomes the
+	// resource-command chain — one level for a flat dotted resource like
+	// "chat.members", deeper for genuinely nested resources. A service with no
+	// methods keeps its bare command (svcCmd is created above regardless).
+	refs := apicatalog.ServiceMethods(svc, nil)
+
+	// Collect each resource's verbs up front so resourceShort can summarize a
+	// resource as its verb list from the first ensureChildCommand call.
+	verbs := map[string][]string{}
+	for _, ref := range refs {
+		key := strings.Join(ref.ResourcePath, ".")
+		verbs[key] = append(verbs[key], ref.Method.Name)
 	}
 
-	// Find existing service command or create one
-	var svc *cobra.Command
+	for _, ref := range refs {
+		resCmd := svcCmd
+		var path []string
+		for _, seg := range ref.ResourcePath {
+			path = append(path, seg)
+			resCmd = ensureChildCommand(resCmd, seg, resourceShort(seg, verbs[strings.Join(path, ".")]))
+		}
+		resCmd.AddCommand(buildMethodCommand(ctx, f, newMethodCommandSpec(ref), nil, parent.PersistentFlags()))
+	}
+}
+
+// resourceShort summarizes a resource as its sorted verb list, or the
+// "<name> operations" placeholder for an intermediate group with no methods.
+func resourceShort(seg string, verbs []string) string {
+	if len(verbs) == 0 {
+		return seg + " operations"
+	}
+	sorted := append([]string(nil), verbs...)
+	sort.Strings(sorted)
+	return strings.Join(sorted, ", ")
+}
+
+// serviceShort is the service command's help summary: the localized description
+// from the registry, falling back to the metadata's own description.
+func serviceShort(svc meta.Service) string {
+	if d := registry.GetServiceDescription(svc.Name, "en"); d != "" {
+		return d
+	}
+	return svc.Description
+}
+
+// ensureChildCommand returns the child of parent named name, creating it (with
+// short) when absent — so re-registration merges into an existing command tree
+// instead of duplicating a level.
+func ensureChildCommand(parent *cobra.Command, name, short string) *cobra.Command {
 	for _, c := range parent.Commands() {
-		if c.Name() == specName {
-			svc = c
-			break
+		if c.Name() == name {
+			cmdmeta.SetSource(c, cmdmeta.SourceService, true)
+			return c
 		}
 	}
-	if svc == nil {
-		svc = &cobra.Command{
-			Use:   specName,
-			Short: specDesc,
-		}
-		parent.AddCommand(svc)
-	}
-
-	for resName, resource := range resources {
-		resMap, _ := resource.(map[string]interface{})
-		if resMap == nil {
-			continue
-		}
-		registerResource(svc, spec, resName, resMap, f)
-	}
-}
-
-func registerResource(parent *cobra.Command, spec map[string]interface{}, name string, resource map[string]interface{}, f *cmdutil.Factory) {
-	res := &cobra.Command{
-		Use:   name,
-		Short: name + " operations",
-	}
-	parent.AddCommand(res)
-
-	methods, _ := resource["methods"].(map[string]interface{})
-	for methodName, method := range methods {
-		methodMap, _ := method.(map[string]interface{})
-		if methodMap == nil {
-			continue
-		}
-		registerMethod(res, spec, methodMap, methodName, name, f)
-	}
+	cmd := &cobra.Command{Use: name, Short: short}
+	cmdmeta.SetSource(cmd, cmdmeta.SourceService, true)
+	parent.AddCommand(cmd)
+	return cmd
 }
 
 // ServiceMethodOptions holds all inputs for a dynamically registered service method command.
 type ServiceMethodOptions struct {
-	Factory    *cmdutil.Factory
-	Cmd        *cobra.Command
-	Ctx        context.Context
-	Spec       map[string]interface{}
-	Method     map[string]interface{}
-	SchemaPath string
+	Factory     *cmdutil.Factory
+	Cmd         *cobra.Command
+	Ctx         context.Context
+	ServicePath string
+	Method      meta.Method
+	SchemaPath  string
 
 	// Flags
 	Params     string
@@ -113,36 +144,126 @@ type ServiceMethodOptions struct {
 	DryRun     bool
 	File       string   // --file flag value
 	FileFields []string // auto-detected file field names from metadata
+
+	// binder owns the generated typed param flags — registration and the
+	// --params overlay — replacing the raw paramFlags side-channel.
+	binder *paramFlagBinder
 }
 
-// detectFileFields delegates to the shared cmdutil.DetectFileFields helper.
-func detectFileFields(method map[string]interface{}) []string {
-	return cmdutil.DetectFileFields(method)
-}
-
-func registerMethod(parent *cobra.Command, spec map[string]interface{}, method map[string]interface{}, name string, resName string, f *cmdutil.Factory) {
-	parent.AddCommand(NewCmdServiceMethod(f, spec, method, name, resName, nil))
+// detectFileFields returns the request-body file-upload field names.
+func detectFileFields(m meta.Method) []string {
+	files := m.Files()
+	if len(files) == 0 {
+		return nil
+	}
+	names := make([]string, len(files))
+	for i, f := range files {
+		names[i] = f.Name
+	}
+	return names
 }
 
 // NewCmdServiceMethod creates a command for a dynamically registered service method.
-func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
-	desc := registry.GetStrFromMap(method, "description")
-	httpMethod := registry.GetStrFromMap(method, "httpMethod")
-	specName := registry.GetStrFromMap(spec, "name")
-	schemaPath := fmt.Sprintf("%s.%s.%s", specName, resName, name)
+func NewCmdServiceMethod(f *cmdutil.Factory, svc meta.Service, m meta.Method, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
+	return NewCmdServiceMethodWithContext(context.Background(), f, svc, m, name, resName, runF)
+}
 
+// NewCmdServiceMethodWithContext builds the command for one service method from
+// its (service, resource, method) coordinates, deriving the methodCommandSpec
+// via an apicatalog.MethodRef so direct callers and the catalog-driven
+// registration assemble the command identically.
+func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, svc meta.Service, m meta.Method, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
+	m.Name = name
+	ref := apicatalog.MethodRef{Service: svc, ResourcePath: []string{resName}, Method: m}
+	// No root in scope here; persistent-flag collisions don't apply to a
+	// standalone command, and local/standard-flag collisions are still caught.
+	return buildMethodCommand(ctx, f, newMethodCommandSpec(ref), runF, nil)
+}
+
+// methodCommandSpec is the static description of one generated service method
+// command, read off an apicatalog.MethodRef — the single place command
+// construction gets the method's facts (schema path, HTTP base path, risk,
+// identities, params, file fields, request-body support), so the cobra command
+// is assembled from a typed spec rather than recomputing paths/flags inline.
+type methodCommandSpec struct {
+	method      meta.Method
+	schemaPath  string       // "service.resource.method", for the --help hint
+	servicePath string       // service HTTP base path
+	risk        string       // RiskRead | RiskWrite | RiskHighRiskWrite
+	restricts   bool         // method declares accessTokens (identity-restricted)
+	identities  []string     // permitted --as values; empty when unrestricted
+	params      []meta.Field // path/query params -> typed flags
+	fileFields  []string     // request-body file-upload field names
+	// acceptsBody is whether the HTTP method allows a request body at all (so
+	// --data is offered as a raw escape hatch). declaresBody is whether the
+	// metadata documents body fields (data or file). They differ for e.g. a POST
+	// with no documented requestBody: --data still works, but help must not imply
+	// the API declares a body.
+	acceptsBody  bool
+	declaresBody bool
+	paginates    bool   // method accepts a page_token param (so --page-all is meaningful)
+	serviceName  string // owning service name (e.g. "approval"), for the lazy affordance lookup
+}
+
+// methodPaginates reports whether a method takes a page_token param, the signal
+// that makes the --page-all/--page-limit/--page-delay flags meaningful.
+func methodPaginates(m meta.Method) bool {
+	for _, f := range m.Params() {
+		if f.Name == "page_token" {
+			return true
+		}
+	}
+	return false
+}
+
+func newMethodCommandSpec(ref apicatalog.MethodRef) methodCommandSpec {
+	m := ref.Method
+	return methodCommandSpec{
+		method:       m,
+		schemaPath:   ref.SchemaPath(),
+		servicePath:  ref.Service.ServicePath,
+		serviceName:  ref.Service.Name,
+		risk:         m.Risk,
+		restricts:    m.RestrictsIdentity(),
+		identities:   m.Identities(),
+		params:       m.Params(),
+		fileFields:   detectFileFields(m),
+		acceptsBody:  methodTakesBody(m.HTTPMethod),
+		declaresBody: len(m.Data()) > 0 || len(m.Files()) > 0,
+		paginates:    methodPaginates(m),
+	}
+}
+
+// methodTakesBody reports whether the HTTP method allows a request body, i.e.
+// whether --data applies (as a raw escape hatch even when no body is declared).
+func methodTakesBody(httpMethod string) bool {
+	switch httpMethod {
+	case "POST", "PUT", "PATCH", "DELETE":
+		return true
+	}
+	return false
+}
+
+// buildMethodCommand assembles the cobra command for a service method from its
+// static spec: the standard flags, the conditional --data/--file/--yes flags,
+// the generated typed param flags (via paramFlagBinder), and the risk/identity
+// policy annotations.
+func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodCommandSpec, runF func(*ServiceMethodOptions) error, reserved *pflag.FlagSet) *cobra.Command {
+	m := spec.method
 	opts := &ServiceMethodOptions{
-		Factory:    f,
-		Spec:       spec,
-		Method:     method,
-		SchemaPath: schemaPath,
+		Factory:     f,
+		ServicePath: spec.servicePath,
+		Method:      m,
+		SchemaPath:  spec.schemaPath,
+		FileFields:  spec.fileFields,
 	}
 	var asStr string
 
 	cmd := &cobra.Command{
-		Use:   name,
-		Short: desc,
-		Long:  fmt.Sprintf("%s\n\nView parameter definitions before calling:\n  lark-cli schema %s", desc, schemaPath),
+		Use:   m.Name,
+		Short: m.Description,
+		// Long is assembled below, once the binder knows which params got no
+		// typed flag.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Cmd = cmd
 			opts.Ctx = cmd.Context()
@@ -153,41 +274,89 @@ func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}
 			return serviceMethodRun(opts)
 		},
 	}
+	cmdmeta.SetSource(cmd, cmdmeta.SourceService, true)
 
-	cmd.Flags().StringVar(&opts.Params, "params", "", "URL/query parameters JSON (supports - for stdin)")
-	switch httpMethod {
-	case "POST", "PUT", "PATCH", "DELETE":
-		cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin)")
+	cmd.Flags().StringVar(&opts.Params, "params", "", "Raw URL/query params JSON. Supports - and @file.")
+	if spec.acceptsBody {
+		dataUsage := "JSON request body. Supports - and @file."
+		if !spec.declaresBody {
+			// POST/etc. with no documented body fields: --data is a raw escape
+			// hatch, not a declared body — say so rather than imply structure.
+			dataUsage = "Raw JSON request body (no documented fields; see schema). Supports - and @file."
+		}
+		cmd.Flags().StringVar(&opts.Data, "data", "", dataUsage)
 	}
-	cmd.Flags().StringVar(&asStr, "as", "auto", "identity type: user | bot | auto (default)")
+	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr)
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.PageDelay, "page-delay", 200, "delay in ms between pages")
-	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
-	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
-	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
-
-	// Conditionally register --file for methods with file-type fields.
-	fileFields := detectFileFields(method)
-	opts.FileFields = fileFields
-	if len(fileFields) > 0 {
-		switch httpMethod {
-		case "POST", "PUT", "PATCH", "DELETE":
-			cmd.Flags().StringVar(&opts.File, "file", "", "file to upload ([field=]path, supports - for stdin)")
+	// Keep the pagination flags registered (a harmless no-op if passed) but hide
+	// them from help on non-paginating commands, so help doesn't imply a
+	// get/write can paginate.
+	if !spec.paginates {
+		for _, name := range []string{"page-all", "page-limit", "page-delay"} {
+			_ = cmd.Flags().MarkHidden(name)
 		}
 	}
-
-	_ = cmd.RegisterFlagCompletionFunc("as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{"user", "bot"}, cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
+	cmd.Flags().Bool("json", false, "shorthand for --format json")
+	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
+	if spec.risk == cmdutil.RiskHighRiskWrite {
+		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
+	}
+	// --file only for body methods that actually declare file-type fields.
+	if len(spec.fileFields) > 0 && spec.acceptsBody {
+		cmd.Flags().StringVar(&opts.File, "file", "", "File upload [field=]path. Supports - and stdin.")
+	}
+	cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "ndjson", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	cmdutil.SetTips(cmd, registry.GetStrSliceFromMap(method, "tips"))
-	if tokens, ok := method["accessTokens"].([]interface{}); ok && len(tokens) > 0 {
-		cmdutil.SetSupportedIdentities(cmd, cmdutil.AccessTokensToIdentities(tokens))
+	// Registered last so the collision guard sees the standard flags above.
+	opts.binder = newParamFlagBinder(cmd, spec.params, reserved)
+	// Build-time Long; the agent guidance is added lazily by PrepareMethodHelp
+	// (setMethodHelpData records the coordinates it needs).
+	paramsOnly := opts.binder.paramsOnlyHelp()
+	cmd.Long = methodLong(m.Description, spec.schemaPath, paramsOnly)
+	setMethodHelpData(cmd, spec.serviceName, m.ID, spec.schemaPath, paramsOnly)
+
+	// Group flags for the grouped --help renderer (typed param flags are grouped
+	// as API Parameters by the binder). tagFlagGroup is a no-op for flags not
+	// registered above (e.g. --data/--file/--yes only exist for some methods).
+	// --data sits under Request Body only when the metadata documents body
+	// fields; otherwise it's a raw escape hatch, grouped with --params so help
+	// doesn't imply a declared body the API doesn't have.
+	if fl := cmd.Flags().Lookup("data"); fl != nil {
+		if spec.declaresBody {
+			annotate(fl, flagGroupAnnotation, []string{groupBody})
+		} else {
+			annotate(fl, flagGroupAnnotation, []string{groupRaw})
+		}
+	}
+	tagFlagGroup(cmd.Flags(), "file", groupBody)
+	if fl := cmd.Flags().Lookup("params"); fl != nil {
+		annotate(fl, flagGroupAnnotation, []string{groupRaw})
+		// Keep the precedence rule on the flag's own one line (not a multi-line
+		// note that breaks the one-entry-per-flag rhythm an agent parses). Only
+		// meaningful when typed flags exist to override.
+		if len(spec.params) > 0 {
+			fl.Usage = "Raw URL/query params JSON. Supports - and @file. If both set, typed flags override matching keys in --params."
+		}
+	}
+	for _, name := range []string{"as", "dry-run", "page-all", "page-limit", "page-delay", "yes"} {
+		tagFlagGroup(cmd.Flags(), name, groupExecution)
+	}
+	for _, name := range []string{"output", "format", "jq"} {
+		tagFlagGroup(cmd.Flags(), name, groupOutput)
+	}
+	applyGroupedUsage(cmd)
+
+	cmdutil.SetTips(cmd, m.Tips)
+	cmdutil.SetRisk(cmd, spec.risk)
+	if spec.restricts {
+		cmdutil.SetSupportedIdentities(cmd, spec.identities)
 	}
 
 	return cmd
@@ -202,14 +371,14 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	}
 
 	// Check if this API method supports the resolved identity.
-	if tokens, ok := opts.Method["accessTokens"].([]interface{}); ok && len(tokens) > 0 {
-		if err := f.CheckIdentity(opts.As, cmdutil.AccessTokensToIdentities(tokens)); err != nil {
+	if opts.Method.RestrictsIdentity() {
+		if err := f.CheckIdentity(opts.As, opts.Method.Identities()); err != nil {
 			return err
 		}
 	}
 
 	if opts.PageAll && opts.Output != "" {
-		return output.ErrValidation("--output and --page-all are mutually exclusive")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output and --page-all are mutually exclusive").WithParam("--output")
 	}
 	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
 		return err
@@ -219,12 +388,10 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if err != nil {
 		return err
 	}
-	// Identity info is now included in the JSON envelope; skip stderr printing.
-	// cmdutil.PrintIdentity(f.IOStreams.ErrOut, opts.As, config, f.IdentityAutoDetected)
+	// Identity is not printed to stderr here: it is part of the JSON envelope.
 
-	scopes, _ := opts.Method["scopes"].([]interface{})
 	if !opts.As.IsBot() {
-		if err := checkServiceScopes(opts.Ctx, f.Credential, opts.As, config, opts.Method, scopes); err != nil {
+		if err := checkServiceScopes(opts.Ctx, f.Credential, opts.As, config, opts.Method); err != nil {
 			return err
 		}
 	}
@@ -236,9 +403,15 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 	if opts.DryRun {
 		if fileMeta != nil {
-			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+			return cmdutil.PrintDryRunWithFile(request, config, serviceDryRunOutputOptions(f, opts), *fileMeta)
 		}
-		return serviceDryRun(f, request, config, opts.Format)
+		return serviceDryRun(f, request, config, opts)
+	}
+
+	if opts.Method.Risk == cmdutil.RiskHighRiskWrite {
+		if yes, _ := opts.Cmd.Flags().GetBool("yes"); !yes {
+			return cmdutil.RequireConfirmation(opts.SchemaPath)
+		}
 	}
 
 	ac, err := f.NewAPIClientWithConfig(config)
@@ -252,30 +425,36 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		fmt.Fprintf(f.IOStreams.ErrOut, "warning: unknown format %q, falling back to json\n", opts.Format)
 	}
 
-	checkErr := scopeAwareChecker(scopes, opts.As.IsBot())
+	// Scope-insufficient (99991679) and all other Lark API codes route through
+	// errclass.BuildAPIError via ac.CheckResponse, producing *errs.PermissionError
+	// with MissingScopes / Identity / ConsoleURL populated from the response.
+	checkErr := ac.CheckResponse
 
 	if opts.PageAll {
-		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut,
-			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
+		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
+			opts.SchemaPath, client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
 
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
-		return output.ErrNetwork("API call failed: %s", err)
+		return err
 	}
 	return client.HandleResponse(resp, client.ResponseOptions{
-		OutputPath: opts.Output,
-		Format:     format,
-		JqExpr:     opts.JqExpr,
-		Out:        out,
-		ErrOut:     f.IOStreams.ErrOut,
-		FileIO:     f.ResolveFileIO(opts.Ctx),
-		CheckError: checkErr,
+		OutputPath:       opts.Output,
+		Format:           format,
+		JqExpr:           opts.JqExpr,
+		Out:              out,
+		ErrOut:           f.IOStreams.ErrOut,
+		FileIO:           f.ResolveFileIO(opts.Ctx),
+		CommandPath:      opts.Cmd.CommandPath(),
+		Identity:         opts.As,
+		CheckError:       checkErr,
+		TransformSuccess: serviceSuccessTransformer(opts.SchemaPath),
 	})
 }
 
 // checkServiceScopes pre-checks user scopes before making the API call.
-func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider, identity core.Identity, config *core.CliConfig, method map[string]interface{}, scopes []interface{}) error {
+func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider, identity core.Identity, config *core.CliConfig, method meta.Method) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -284,25 +463,15 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 		return nil //nolint:nilerr // skip scope check when token resolution fails or has no scopes
 	}
 
-	requiredScopes, hasRequired := method["requiredScopes"].([]interface{})
-
-	if hasRequired && len(requiredScopes) > 0 {
+	if len(method.RequiredScopes) > 0 {
 		// Strict: ALL requiredScopes must be present
-		required := make([]string, 0, len(requiredScopes))
-		for _, s := range requiredScopes {
-			if str, ok := s.(string); ok {
-				required = append(required, str)
-			}
-		}
-		if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
-			return output.ErrWithHint(output.ExitAuth, "missing_scope",
-				fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-				fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
+		if missing := auth.MissingScopes(result.Scopes, method.RequiredScopes); len(missing) > 0 {
+			return newPreflightMissingScopeError(string(config.Brand), config.AppID, string(identity), missing)
 		}
 		return nil
 	}
 
-	if len(scopes) == 0 {
+	if len(method.Scopes) == 0 {
 		return nil
 	}
 
@@ -311,86 +480,136 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 	for _, s := range strings.Fields(result.Scopes) {
 		grantedSet[s] = true
 	}
-	for _, s := range scopes {
-		if str, ok := s.(string); ok && grantedSet[str] {
+	for _, s := range method.Scopes {
+		if grantedSet[s] {
 			return nil
 		}
 	}
-	recommended := registry.SelectRecommendedScope(scopes, "user")
-	return output.ErrWithHint(output.ExitAPI, "permission",
-		fmt.Sprintf("insufficient permissions (required scope: %s)", recommended),
-		fmt.Sprintf(`run `+"`"+`lark-cli auth login --scope "%s"`+"`"+` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.`, recommended))
+	recommended := registry.SelectRecommendedScopeFromStrings(method.Scopes, "user")
+	return newPreflightMissingScopeError(string(config.Brand), config.AppID, string(identity), []string{recommended})
+}
+
+// newPreflightMissingScopeError constructs a PermissionError for the local
+// pre-flight scope check that converges byte-for-byte with the dispatcher's
+// BuildAPIError path. Uses the canonical helpers in internal/errclass so
+// Hint and Message stay in lock-step with the server-response classifier.
+// ConsoleURL is deliberately omitted: the dispatcher only sets it for
+// SubtypeAppScopeNotApplied (bot-perspective dev-action recovery), and this
+// pre-flight path is user-perspective SubtypeMissingScope whose recovery is
+// `lark-cli auth login --scope ...`, not a console deep-link.
+func newPreflightMissingScopeError(brand, appID, identity string, missing []string) *errs.PermissionError {
+	consoleURL := errclass.ConsoleURL(brand, appID, missing)
+	return errs.NewPermissionError(errs.SubtypeMissingScope,
+		"%s", errclass.CanonicalPermissionMessage(errs.SubtypeMissingScope, appID, missing, "")).
+		WithHint("%s", errclass.PermissionHint(missing, identity, errs.SubtypeMissingScope, consoleURL)).
+		WithMissingScopes(missing...).
+		WithIdentity(identity)
+}
+
+// unusableParamValue reports whether a provided path/query parameter value
+// cannot form a usable request value: nil or an empty string. A key's presence
+// in params is the intent signal — a typed flag is overlaid only when
+// explicitly Changed, and a --params JSON key is deliberately written — so
+// false and 0 are real values and must not be conflated with "unset"
+// (reflect.IsZero would drop an explicit --with-deleted=false or --foo 0).
+// Only nil/"" stay treated as missing: that keeps the friendly pre-flight
+// error when a required param is fed an empty placeholder, and never emits a
+// declared param as an empty path segment or query value. Undeclared keys are
+// not judged by this rule — they pass through verbatim as the raw escape hatch.
+func unusableParamValue(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+	s, ok := v.(string)
+	return ok && s == ""
+}
+
+// missingParamHint is the recovery hint for a missing required parameter. It
+// names both input paths — the typed flag when the binder registered one, and
+// the --params fallback — plus the schema pointer. A params-only field gets
+// only the --params form: a flag with its kebab name exists but belongs to
+// something else (e.g. the output --format), and the hint must not steer
+// there. Asking the binder, not cmd.Flags(), is what tells those apart.
+func missingParamHint(opts *ServiceMethodOptions, f meta.Field) string {
+	paramsForm := fmt.Sprintf("--params '{%q: \"<value>\"}'", f.Name)
+	if opts.binder.hasTypedFlag(f.Name) {
+		return fmt.Sprintf("set --%s <value> (or %s); see: lark-cli schema %s", f.FlagName(), paramsForm, opts.SchemaPath)
+	}
+	return fmt.Sprintf("set %s; see: lark-cli schema %s", paramsForm, opts.SchemaPath)
 }
 
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
 // When dryRun is true and a file is provided, file reading is skipped and
 // FileUploadMeta is returned instead so the caller can render dry-run output.
 func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
-	spec := opts.Spec
 	method := opts.Method
-	schemaPath := opts.SchemaPath
-	httpMethod := registry.GetStrFromMap(method, "httpMethod")
+	httpMethod := method.HTTPMethod
 
 	// stdin is an io.Reader consumed at most once. Only one of --params/--data
 	// may use "-" (stdin); the conflict check below prevents silent data loss.
 	stdin := opts.Factory.IOStreams.In
+	fileIO := opts.Factory.ResolveFileIO(opts.Ctx)
 
 	// Validate --file mutual exclusions.
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
 		return client.RawApiRequest{}, nil, err
 	}
 	if opts.Params == "-" && opts.Data == "-" {
-		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+		return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--params and --data cannot both read from stdin (-)").WithParam("--params")
 	}
-	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin)
+	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin, fileIO)
 	if err != nil {
 		return client.RawApiRequest{}, nil, err
 	}
+	opts.binder.overlay(opts.Cmd, params)
 
-	url := registry.GetStrFromMap(spec, "servicePath") + "/" + registry.GetStrFromMap(method, "path")
+	url := opts.ServicePath + "/" + method.Path
 
-	parameters, _ := method["parameters"].(map[string]interface{})
-	for name, param := range parameters {
-		p, _ := param.(map[string]interface{})
-		if registry.GetStrFromMap(p, "location") != "path" {
+	specs := method.Params()
+	for _, s := range specs {
+		if s.Location != "path" {
 			continue
 		}
-		val, ok := params[name]
-		if !ok || util.IsEmptyValue(val) {
-			return client.RawApiRequest{}, nil, output.ErrWithHint(output.ExitValidation, "validation",
-				fmt.Sprintf("missing required path parameter: %s", name),
-				fmt.Sprintf("lark-cli schema %s", schemaPath))
+		val, ok := params[s.Name]
+		if !ok || unusableParamValue(val) {
+			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"missing required path parameter: %s", s.Name).
+				WithHint("%s", missingParamHint(opts, s)).
+				WithParam(s.Name)
 		}
 		valStr := fmt.Sprintf("%v", val)
-		if err := validate.ResourceName(valStr, name); err != nil {
-			return client.RawApiRequest{}, nil, output.ErrValidation("%s", err)
+		if err := validate.ResourceName(valStr, s.Name); err != nil {
+			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam(s.Name).WithCause(err)
 		}
-		url = strings.Replace(url, "{"+name+"}", validate.EncodePathSegment(valStr), 1)
-		delete(params, name)
+		url = strings.Replace(url, "{"+s.Name+"}", validate.EncodePathSegment(valStr), 1)
+		delete(params, s.Name)
 	}
 
 	queryParams := map[string]interface{}{}
-	for name, param := range parameters {
-		p, _ := param.(map[string]interface{})
-		if registry.GetStrFromMap(p, "location") != "query" {
+	for _, s := range specs {
+		if s.Location != "query" {
 			continue
 		}
-		value, exists := params[name]
-		required, _ := p["required"].(bool)
-		isPaginationParam := opts.PageAll && (name == "page_token" || name == "page_size")
-		if required && !isPaginationParam && (!exists || util.IsEmptyValue(value)) {
-			return client.RawApiRequest{}, nil, output.ErrWithHint(output.ExitValidation, "validation",
-				fmt.Sprintf("missing required query parameter: %s", name),
-				fmt.Sprintf("lark-cli schema %s", schemaPath))
+		value, exists := params[s.Name]
+		isPaginationParam := opts.PageAll && (s.Name == "page_token" || s.Name == "page_size")
+		if s.Required && !isPaginationParam && (!exists || unusableParamValue(value)) {
+			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"missing required query parameter: %s", s.Name).
+				WithHint("%s", missingParamHint(opts, s)).
+				WithParam(s.Name)
 		}
-		if exists && !util.IsEmptyValue(value) {
-			queryParams[name] = value
+		if exists && !unusableParamValue(value) {
+			queryParams[s.Name] = value
 		}
+		// This loop owns declared query params: consume the key so the
+		// passthrough below can't resurrect a value the gate dropped (an
+		// unusable "" would otherwise be sent as an empty query value).
+		delete(params, s.Name)
 	}
+	// Whatever remains is undeclared — the raw escape hatch for params the
+	// metadata doesn't (yet) describe; passed through verbatim, no filtering.
 	for name, value := range params {
-		if _, ok := queryParams[name]; !ok {
-			queryParams[name] = value
-		}
+		queryParams[name] = value
 	}
 
 	request := client.RawApiRequest{
@@ -411,12 +630,12 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		// Parse --data as form fields.
 		var dataFields any
 		if opts.Data != "" {
-			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin, fileIO)
 			if err != nil {
 				return client.RawApiRequest{}, nil, err
 			}
 			if _, ok := dataFields.(map[string]any); !ok {
-				return client.RawApiRequest{}, nil, output.ErrValidation("--data must be a JSON object when used with --file")
+				return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be a JSON object when used with --file").WithParam("--data")
 			}
 		}
 
@@ -427,7 +646,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		}
 
 		fd, err := cmdutil.BuildFormdata(
-			opts.Factory.ResolveFileIO(opts.Ctx),
+			fileIO,
 			fieldName, filePath, isStdin, stdin, dataFields,
 		)
 		if err != nil {
@@ -436,7 +655,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		request.Data = fd
 		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
 	} else {
-		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin)
+		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin, fileIO)
 		if err != nil {
 			return client.RawApiRequest{}, nil, err
 		}
@@ -449,71 +668,96 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	return request, nil, nil
 }
 
-func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
-	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
+func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *ServiceMethodOptions) error {
+	return cmdutil.PrintDryRun(request, config, serviceDryRunOutputOptions(f, opts))
 }
 
-// scopeAwareChecker returns an error checker that enriches scope-related errors with login hints.
-func scopeAwareChecker(scopes []interface{}, isBotMode bool) func(interface{}) error {
-	return func(result interface{}) error {
-		resultMap, ok := result.(map[string]interface{})
-		if !ok || resultMap == nil {
-			return nil
-		}
-		code, _ := util.ToFloat64(resultMap["code"])
-		if code == 0 {
-			return nil
-		}
-		larkCode := int(code)
-		msg := registry.GetStrFromMap(resultMap, "msg")
-
-		if larkCode == output.LarkErrUserScopeInsufficient && len(scopes) > 0 {
-			identity := "user"
-			if isBotMode {
-				identity = "tenant"
-			}
-			recommended := registry.SelectRecommendedScope(scopes, identity)
-			return output.ErrWithHint(output.ExitAPI, "permission",
-				fmt.Sprintf("insufficient permissions: [%d] %s", larkCode, msg),
-				fmt.Sprintf(`run `+"`"+`lark-cli auth login --scope "%s"`+"`"+` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.`, recommended))
-		}
-
-		return output.ErrAPI(larkCode, fmt.Sprintf("API error: [%d] %s", larkCode, msg), resultMap["error"])
+func serviceDryRunOutputOptions(f *cmdutil.Factory, opts *ServiceMethodOptions) cmdutil.DryRunOutputOptions {
+	return cmdutil.DryRunOutputOptions{
+		Format:      opts.Format,
+		JqExpr:      opts.JqExpr,
+		CommandPath: opts.Cmd.CommandPath(),
+		Identity:    opts.As,
+		Out:         f.IOStreams.Out,
+		ErrOut:      f.IOStreams.ErrOut,
 	}
 }
 
-func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}) error) error {
+func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath, schemaPath string, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
+	if pagOpts.Identity == "" {
+		pagOpts.Identity = request.As
+	}
+	transform := serviceSuccessTransformer(schemaPath)
 	// When jq is set, always aggregate all pages then filter.
 	if jqExpr != "" {
-		return client.PaginateWithJq(ctx, ac, request, jqExpr, out, pagOpts, checkErr)
+		result, err := ac.PaginateAll(ctx, request, pagOpts)
+		if err != nil {
+			return err
+		}
+		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
+			output.FormatValue(out, result, output.FormatJSON)
+			return apiErr
+		}
+		if transform != nil {
+			result = transform(result)
+		}
+		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+			CommandPath: commandPath,
+			Identity:    string(pagOpts.Identity),
+			JqExpr:      jqExpr,
+			Out:         out,
+			ErrOut:      errOut,
+		})
 	}
 
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
-		pf := output.NewPaginatedFormatter(out, format)
-		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) {
-			pf.FormatPage(items)
+		emitter := output.NewEmitter(output.EmitterConfig{
+			Out:            out,
+			ErrOut:         errOut,
+			CommandPath:    commandPath,
+			Identity:       string(pagOpts.Identity),
+			NoticeProvider: output.GetNotice,
+		})
+		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) error {
+			// Streaming formats intentionally emit each page after that page has
+			// passed safety scanning. A later page may still fail, so callers
+			// must use the exit code to distinguish complete vs partial output.
+			return emitter.StreamPage(items, output.StreamOptions{Format: format.String()})
 		}, pagOpts)
 		if err != nil {
-			return output.ErrNetwork("API call failed: %s", err)
+			return err
 		}
-		if apiErr := checkErr(result); apiErr != nil {
+		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
 			return apiErr
 		}
 		if !hasItems {
 			fmt.Fprintf(errOut, "warning: this API does not return a list, format %q is not supported, falling back to json\n", format)
-			output.FormatValue(out, result, output.FormatJSON)
+			return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+				CommandPath: commandPath,
+				Identity:    string(pagOpts.Identity),
+				Out:         out,
+				ErrOut:      errOut,
+			})
 		}
 		return nil
 	default:
 		result, err := ac.PaginateAll(ctx, request, pagOpts)
 		if err != nil {
-			return output.ErrNetwork("API call failed: %s", err)
+			return err
 		}
-		if apiErr := checkErr(result); apiErr != nil {
+		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
+			output.FormatValue(out, result, output.FormatJSON)
 			return apiErr
 		}
-		output.FormatValue(out, result, format)
-		return nil
+		if transform != nil {
+			result = transform(result)
+		}
+		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+			CommandPath: commandPath,
+			Identity:    string(pagOpts.Identity),
+			Out:         out,
+			ErrOut:      errOut,
+		})
 	}
 }

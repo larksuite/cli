@@ -4,14 +4,24 @@
 package service
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"mime"
+	"mime/multipart"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
+	extcs "github.com/larksuite/cli/extension/contentsafety"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -21,14 +31,14 @@ var testConfig = &core.CliConfig{
 	AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 }
 
-func driveSpec() map[string]interface{} {
-	return map[string]interface{}{
+func driveSpec() meta.Service {
+	return meta.ServiceFromMap(map[string]interface{}{
 		"name":        "drive",
 		"servicePath": "/open-apis/drive/v1",
-	}
+	})
 }
 
-func driveMethod(httpMethod string, params map[string]interface{}) map[string]interface{} {
+func driveMethod(httpMethod string, params map[string]interface{}) meta.Method {
 	m := map[string]interface{}{
 		"path":       "files/{file_token}/copy",
 		"httpMethod": httpMethod,
@@ -42,7 +52,7 @@ func driveMethod(httpMethod string, params map[string]interface{}) map[string]in
 			},
 		}
 	}
-	return m
+	return meta.FromMap(m)
 }
 
 // ── registerService ──
@@ -50,23 +60,23 @@ func driveMethod(httpMethod string, params map[string]interface{}) map[string]in
 func TestRegisterService(t *testing.T) {
 	parent := &cobra.Command{Use: "root"}
 	f := &cmdutil.Factory{}
-	spec := map[string]interface{}{
+	base := meta.ServiceFromMap(map[string]interface{}{
 		"name":        "base",
 		"description": "Base API",
 		"servicePath": "/open-apis/base/v3",
-	}
-	resources := map[string]interface{}{
-		"tables": map[string]interface{}{
-			"methods": map[string]interface{}{
-				"list": map[string]interface{}{
-					"description": "List tables",
-					"httpMethod":  "GET",
+		"resources": map[string]interface{}{
+			"tables": map[string]interface{}{
+				"methods": map[string]interface{}{
+					"list": map[string]interface{}{
+						"description": "List tables",
+						"httpMethod":  "GET",
+					},
 				},
 			},
 		},
-	}
+	})
 
-	registerService(parent, spec, resources, f)
+	registerService(parent, base, f)
 
 	// service command exists
 	svc, _, err := parent.Find([]string{"base"})
@@ -91,18 +101,18 @@ func TestRegisterService_MergesExistingCommand(t *testing.T) {
 	parent.AddCommand(existing)
 
 	f := &cmdutil.Factory{}
-	spec := map[string]interface{}{
+	svc := meta.ServiceFromMap(map[string]interface{}{
 		"name": "base", "description": "Base API", "servicePath": "/open-apis/base/v3",
-	}
-	resources := map[string]interface{}{
-		"tables": map[string]interface{}{
-			"methods": map[string]interface{}{
-				"list": map[string]interface{}{"description": "List", "httpMethod": "GET"},
+		"resources": map[string]interface{}{
+			"tables": map[string]interface{}{
+				"methods": map[string]interface{}{
+					"list": map[string]interface{}{"description": "List", "httpMethod": "GET"},
+				},
 			},
 		},
-	}
+	})
 
-	registerService(parent, spec, resources, f)
+	registerService(parent, svc, f)
 
 	// Should reuse existing, not duplicate
 	count := 0
@@ -121,12 +131,107 @@ func TestRegisterService_MergesExistingCommand(t *testing.T) {
 	}
 }
 
+func TestRegisterService_MailSenderOverlayCommands(t *testing.T) {
+	parent := &cobra.Command{Use: "lark-cli"}
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+
+	RegisterServiceCommands(parent, f)
+
+	for _, path := range [][]string{
+		{"mail", "user_mailbox.allow_senders", "list"},
+		{"mail", "user_mailbox.allow_senders", "batch_create"},
+		{"mail", "user_mailbox.allow_senders", "batch_remove"},
+		{"mail", "user_mailbox.blocked_senders", "list"},
+		{"mail", "user_mailbox.blocked_senders", "batch_create"},
+		{"mail", "user_mailbox.blocked_senders", "batch_remove"},
+	} {
+		cmd, _, err := parent.Find(path)
+		if err != nil || cmd == nil || cmd.Name() != path[len(path)-1] {
+			t.Fatalf("expected command %v, got cmd=%v err=%v", path, cmd, err)
+		}
+	}
+
+	list, _, err := parent.Find([]string{"mail", "user_mailbox.allow_senders", "list"})
+	if err != nil {
+		t.Fatalf("find allow_senders list: %v", err)
+	}
+	for _, flag := range []string{"query", "page-size", "page-token"} {
+		if list.Flags().Lookup(flag) == nil {
+			t.Fatalf("list missing --%s flag", flag)
+		}
+	}
+	batchCreate, _, err := parent.Find([]string{"mail", "user_mailbox.blocked_senders", "batch_create"})
+	if err != nil {
+		t.Fatalf("find blocked_senders batch_create: %v", err)
+	}
+	if batchCreate.Flags().Lookup("data") == nil {
+		t.Fatal("batch_create missing --data flag")
+	}
+}
+
+func TestMailSenderOverlayScopes(t *testing.T) {
+	svc, ok := registry.ServiceTyped("mail")
+	if !ok {
+		t.Fatal("mail service missing")
+	}
+
+	for _, tt := range []struct {
+		resource string
+		method   string
+		scope    string
+		risk     string
+	}{
+		{"user_mailbox.allow_senders", "list", "mail:user_mailbox.message:readonly", core.RiskRead},
+		{"user_mailbox.blocked_senders", "list", "mail:user_mailbox.message:readonly", core.RiskRead},
+		{"user_mailbox.allow_senders", "batch_create", "mail:user_mailbox.message:modify", core.RiskWrite},
+		{"user_mailbox.allow_senders", "batch_remove", "mail:user_mailbox.message:modify", core.RiskWrite},
+		{"user_mailbox.blocked_senders", "batch_create", "mail:user_mailbox.message:modify", core.RiskWrite},
+		{"user_mailbox.blocked_senders", "batch_remove", "mail:user_mailbox.message:modify", core.RiskWrite},
+	} {
+		res, ok := svc.Resource(tt.resource)
+		if !ok {
+			t.Fatalf("%s resource missing", tt.resource)
+		}
+		method, ok := res.Method(tt.method)
+		if !ok {
+			t.Fatalf("%s.%s method missing", tt.resource, tt.method)
+		}
+		if method.Risk != tt.risk {
+			t.Fatalf("%s.%s risk = %q, want %q", tt.resource, tt.method, method.Risk, tt.risk)
+		}
+		if len(method.RequiredScopes) != 1 || method.RequiredScopes[0] != tt.scope {
+			t.Fatalf("%s.%s requiredScopes = %v, want [%s]", tt.resource, tt.method, method.RequiredScopes, tt.scope)
+		}
+		if len(method.AccessTokens) != 1 || method.AccessTokens[0] != meta.TokenUser {
+			t.Fatalf("%s.%s accessTokens = %v, want [user]", tt.resource, tt.method, method.AccessTokens)
+		}
+	}
+}
+
+func TestNewCmdServiceMethod_StrictModeHidesAsFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu, SupportedIdentities: 2,
+	})
+
+	cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("GET", nil), "copy", "files", nil)
+	flag := cmd.Flags().Lookup("as")
+	if flag == nil {
+		t.Fatal("expected --as flag to be registered")
+	}
+	if !flag.Hidden {
+		t.Fatal("expected --as flag to be hidden in strict mode")
+	}
+	if got := flag.DefValue; got != "bot" {
+		t.Fatalf("default value = %q, want %q", got, "bot")
+	}
+}
+
 // ── NewCmdServiceMethod flags ──
 
 func TestNewCmdServiceMethod_GETHasNoDataFlag(t *testing.T) {
 	f := &cmdutil.Factory{}
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files", nil)
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files", nil)
 
 	if cmd.Flags().Lookup("data") != nil {
 		t.Error("GET method should not have --data flag")
@@ -142,7 +247,7 @@ func TestNewCmdServiceMethod_GETHasNoDataFlag(t *testing.T) {
 func TestNewCmdServiceMethod_POSTHasDataFlag(t *testing.T) {
 	f := &cmdutil.Factory{}
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "POST"}, "create", "files", nil)
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "POST"}), "create", "files", nil)
 
 	if cmd.Flags().Lookup("data") == nil {
 		t.Error("POST method should have --data flag")
@@ -154,7 +259,7 @@ func TestNewCmdServiceMethod_RunFCallback(t *testing.T) {
 
 	var captured *ServiceMethodOptions
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files",
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files",
 		func(opts *ServiceMethodOptions) error {
 			captured = opts
 			return nil
@@ -197,11 +302,133 @@ func TestServiceMethod_DryRun_PathParam(t *testing.T) {
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if !strings.Contains(stdout.String(), tt.wantInURL) {
-				t.Errorf("expected URL containing %q, got:\n%s", tt.wantInURL, stdout.String())
+			var got map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			if got["ok"] != true || got["dry_run"] != true {
+				t.Fatalf("unexpected dry-run envelope: %#v", got)
+			}
+			data := got["data"].(map[string]interface{})
+			api := data["api"].([]interface{})
+			call := api[0].(map[string]interface{})
+			if call["url"] != tt.wantInURL {
+				t.Errorf("url = %q, want %q\nstdout:\n%s", call["url"], tt.wantInURL, stdout.String())
 			}
 		})
 	}
+}
+
+func TestServiceMethod_DryRunWithJq(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("GET", nil), "get", "files", nil)
+	cmd.SetArgs([]string{
+		"--params", `{"file_token":"boxcn123abc"}`,
+		"--dry-run",
+		"--jq", ".data.api[0].url",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "/open-apis/drive/v1/files/boxcn123abc/copy"; got != want {
+		t.Fatalf("jq output = %q, want %q", got, want)
+	}
+}
+
+func TestMailSenderCommands_DryRunRequestShape(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantURL    string
+		wantParams map[string]interface{}
+		wantBody   map[string]interface{}
+	}{
+		{
+			name: "allow list",
+			args: []string{
+				"mail", "user_mailbox.allow_senders", "list",
+				"--as", "user",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--query", "example",
+				"--page-size", "20",
+				"--page-token", "next",
+				"--dry-run",
+			},
+			wantURL: "/open-apis/mail/v1/user_mailboxes/me/allow_senders",
+			wantParams: map[string]interface{}{
+				"query":      "example",
+				"page_size":  float64(20),
+				"page_token": "next",
+			},
+		},
+		{
+			name: "blocked batch create",
+			args: []string{
+				"mail", "user_mailbox.blocked_senders", "batch_create",
+				"--as", "user",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", `{"addresses":["a@example.com","b.example"]}`,
+				"--dry-run",
+			},
+			wantURL: "/open-apis/mail/v1/user_mailboxes/me/blocked_senders/batch_create",
+			wantBody: map[string]interface{}{
+				"addresses": []interface{}{"a@example.com", "b.example"},
+			},
+		},
+		{
+			name: "allow batch remove",
+			args: []string{
+				"mail", "user_mailbox.allow_senders", "batch_remove",
+				"--as", "user",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", `{"addresses":["a@example.com"]}`,
+				"--dry-run",
+			},
+			wantURL: "/open-apis/mail/v1/user_mailboxes/me/allow_senders/batch_remove",
+			wantBody: map[string]interface{}{
+				"addresses": []interface{}{"a@example.com"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+			root := &cobra.Command{Use: "lark-cli"}
+			RegisterServiceCommands(root, f)
+			root.SetArgs(tt.args)
+
+			if err := root.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			var got map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			data := got["data"].(map[string]interface{})
+			api := data["api"].([]interface{})
+			call := api[0].(map[string]interface{})
+			if call["url"] != tt.wantURL {
+				t.Fatalf("url = %q, want %q\nstdout:\n%s", call["url"], tt.wantURL, stdout.String())
+			}
+			if tt.wantParams != nil {
+				if !mapsEqual(call["params"].(map[string]interface{}), tt.wantParams) {
+					t.Fatalf("params = %#v, want %#v", call["params"], tt.wantParams)
+				}
+			}
+			if tt.wantBody != nil {
+				if !mapsEqual(call["body"].(map[string]interface{}), tt.wantBody) {
+					t.Fatalf("body = %#v, want %#v", call["body"], tt.wantBody)
+				}
+			}
+		})
+	}
+}
+
+func mapsEqual(a, b map[string]interface{}) bool {
+	ab, _ := json.Marshal(a)
+	bb, _ := json.Marshal(b)
+	return bytes.Equal(ab, bb)
 }
 
 func TestServiceMethod_PathParamRejectsTraversal(t *testing.T) {
@@ -251,15 +478,15 @@ func TestServiceMethod_MissingPathParam(t *testing.T) {
 }
 
 func TestServiceMethod_MissingRequiredQueryParam(t *testing.T) {
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{
+	})
+	method := meta.FromMap(map[string]interface{}{
 		"path": "items", "httpMethod": "GET",
 		"parameters": map[string]interface{}{
 			"q": map[string]interface{}{"location": "query", "required": true},
 		},
-	}
+	})
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--params", `{}`, "--dry-run"})
@@ -274,15 +501,15 @@ func TestServiceMethod_MissingRequiredQueryParam(t *testing.T) {
 }
 
 func TestServiceMethod_PaginationParamSkippedWithPageAll(t *testing.T) {
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{
+	})
+	method := meta.FromMap(map[string]interface{}{
 		"path": "items", "httpMethod": "GET",
 		"parameters": map[string]interface{}{
 			"page_size": map[string]interface{}{"location": "query", "required": true},
 		},
-	}
+	})
 	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--params", `{}`, "--page-all", "--dry-run"})
@@ -291,17 +518,21 @@ func TestServiceMethod_PaginationParamSkippedWithPageAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error with --page-all skipping page_size, got: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "Dry Run") {
-		t.Error("expected dry-run output")
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if got["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", got["dry_run"])
 	}
 }
 
 func TestServiceMethod_InvalidParamsJSON(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--params", "{bad", "--dry-run"})
 
@@ -316,10 +547,10 @@ func TestServiceMethod_InvalidParamsJSON(t *testing.T) {
 
 func TestServiceMethod_InvalidDataJSON(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "POST", "parameters": map[string]interface{}{}}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "POST", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "create", "items", nil)
 	cmd.SetArgs([]string{"--data", "{bad", "--dry-run"})
 
@@ -334,10 +565,10 @@ func TestServiceMethod_InvalidDataJSON(t *testing.T) {
 
 func TestServiceMethod_ParamsAndDataBothStdinConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "POST", "parameters": map[string]interface{}{}}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "POST", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "create", "items", nil)
 	cmd.SetArgs([]string{"--params", "-", "--data", "-", "--dry-run"})
 
@@ -352,10 +583,10 @@ func TestServiceMethod_ParamsAndDataBothStdinConflict(t *testing.T) {
 
 func TestServiceMethod_OutputAndPageAllConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--page-all", "--output", "file.bin", "--as", "bot"})
 
@@ -381,49 +612,156 @@ func TestServiceMethod_BotMode_Success(t *testing.T) {
 		},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "success") {
-		t.Errorf("expected 'success' in output, got:\n%s", stdout.String())
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	if got["ok"] != true || got["identity"] != "bot" {
+		t.Fatalf("unexpected envelope: %#v", got)
+	}
+	if _, hasCode := got["code"]; hasCode {
+		t.Fatalf("success envelope leaked outer code: %s", stdout.String())
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if !ok || data["result"] != "success" {
+		t.Fatalf("data = %#v, want result=success", got["data"])
 	}
 }
 
-func TestServiceMethod_BotMode_APIError(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-err", AppSecret: "test-secret-err", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		URL:  "/open-apis/svc/v1/items",
-		Body: map[string]interface{}{"code": 40003, "msg": "invalid token"},
-	})
-
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
-	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
-	cmd.SetArgs([]string{"--as", "bot"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected API error")
+func TestMailSenderCommands_ProjectSuccessOutput(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		stub       *httpmock.Stub
+		wantData   map[string]interface{}
+		forbidKeys []string
+	}{
+		{
+			name: "list",
+			args: []string{
+				"mail", "user_mailbox.allow_senders", "list",
+				"--as", "user",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--query", "sender",
+			},
+			stub: &httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/mail/v1/user_mailboxes/me/allow_senders",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]interface{}{
+						"items": []interface{}{
+							map[string]interface{}{"address": "sender@example.com", "id": "should-not-leak", "created_time": "0"},
+						},
+						"next_page_token": "next",
+						"has_more":        true,
+					},
+				},
+			},
+			wantData: map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"address": "sender@example.com"},
+				},
+				"next_page_token": "next",
+			},
+			forbidKeys: []string{"id", "created_time", "has_more"},
+		},
+		{
+			name: "batch_create",
+			args: []string{
+				"mail", "user_mailbox.blocked_senders", "batch_create",
+				"--as", "user",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", `{"addresses":["sender@example.com","sender@example.com"]}`,
+			},
+			stub: &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/mail/v1/user_mailboxes/me/blocked_senders/batch_create",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]interface{}{
+						"submitted_count":    1,
+						"deduplicated_count": 1,
+						"created_count":      1,
+						"filtered_count":     0,
+						"failed_items":       []interface{}{map[string]interface{}{"address": "bad"}},
+					},
+				},
+			},
+			wantData: map[string]interface{}{
+				"submitted_count":    float64(1),
+				"deduplicated_count": float64(1),
+			},
+			forbidKeys: []string{"created_count", "deleted_count", "filtered_count", "failed_items"},
+		},
+		{
+			name: "batch_remove",
+			args: []string{
+				"mail", "user_mailbox.allow_senders", "batch_remove",
+				"--as", "user",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", `{"addresses":["sender@example.com"]}`,
+			},
+			stub: &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/mail/v1/user_mailboxes/me/allow_senders/batch_remove",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]interface{}{
+						"submitted_count":    1,
+						"deduplicated_count": 0,
+						"deleted_count":      1,
+						"failed_items":       []interface{}{},
+					},
+				},
+			},
+			wantData: map[string]interface{}{
+				"submitted_count":    float64(1),
+				"deduplicated_count": float64(0),
+			},
+			forbidKeys: []string{"created_count", "deleted_count", "filtered_count", "failed_items"},
+		},
 	}
-	var exitErr *output.ExitError
-	if !isExitError(err, &exitErr) {
-		t.Fatalf("expected ExitError, got: %T %v", err, err)
-	}
-	if exitErr.Code != output.ExitAPI {
-		t.Errorf("expected ExitAPI code, got %d", exitErr.Code)
-	}
-	// stdout must be empty on API error — error details belong in stderr envelope only.
-	// This guards against re-introducing duplicate output (see commit 86215a10).
-	if stdout.Len() > 0 {
-		t.Errorf("expected no stdout on API error, got: %s", stdout.String())
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, testConfig)
+			reg.Register(tt.stub)
+			root := &cobra.Command{Use: "lark-cli"}
+			RegisterServiceCommands(root, f)
+			root.SetArgs(tt.args)
+
+			if err := root.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			var got map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			data, ok := got["data"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("data = %#v, want object", got["data"])
+			}
+			if !mapsEqual(data, tt.wantData) {
+				t.Fatalf("data = %#v, want %#v\nstdout:\n%s", data, tt.wantData, stdout.String())
+			}
+			for _, key := range tt.forbidKeys {
+				if strings.Contains(stdout.String(), `"`+key+`"`) {
+					t.Fatalf("stdout leaked %s:\n%s", key, stdout.String())
+				}
+			}
+		})
 	}
 }
 
@@ -443,16 +781,320 @@ func TestServiceMethod_BotMode_PageAll_JSON(t *testing.T) {
 		},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--page-all"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), `"id"`) {
-		t.Errorf("expected items in output, got:\n%s", stdout.String())
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if got["ok"] != true || got["identity"] != "bot" || !ok {
+		t.Fatalf("unexpected envelope: %#v", got)
+	}
+	if _, hasCode := got["code"]; hasCode {
+		t.Fatalf("success envelope leaked outer code: %s", stdout.String())
+	}
+	items, ok := data["items"].([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("data.items = %#v, want one item", data["items"])
+	}
+}
+
+type serviceContentSafetyProvider struct {
+	called bool
+	path   string
+	data   interface{}
+	match  string
+}
+
+func (p *serviceContentSafetyProvider) Name() string { return "service-test" }
+
+func (p *serviceContentSafetyProvider) Scan(_ context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	p.called = true
+	p.path = req.Path
+	p.data = req.Data
+	if p.match != "" {
+		b, _ := json.Marshal(req.Data)
+		if !strings.Contains(string(b), p.match) {
+			return nil, nil
+		}
+	}
+	return &extcs.Alert{Provider: "service-test", MatchedRules: []string{"pagination"}}, nil
+}
+
+func TestServiceMethod_PageAll_DefaultJSONRunsContentSafety(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
+	provider := &serviceContentSafetyProvider{}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-safety", AppSecret: "test-secret-service-safety", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "1"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(NewCmdServiceMethod(f, spec, method, "list", "items", nil))
+	root.SetArgs([]string{"list", "--as", "bot", "--page-all"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !provider.called {
+		t.Fatal("expected content safety provider to scan paginated output")
+	}
+	if provider.path != "list" {
+		t.Fatalf("scan path = %q, want list", provider.path)
+	}
+	data, ok := provider.data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("scanned data type = %T, want map", provider.data)
+	}
+	if _, hasCode := data["code"]; hasCode {
+		t.Fatalf("scanned data should be business data only, got %#v", data)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	alert, ok := got["_content_safety_alert"].(map[string]interface{})
+	if !ok || alert["provider"] != "service-test" {
+		t.Fatalf("missing content safety alert in envelope: %#v", got)
+	}
+}
+
+func TestServiceMethod_PageAll_StreamFormatRunsContentSafety(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
+	provider := &serviceContentSafetyProvider{}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-stream-safety", AppSecret: "test-secret-service-stream-safety", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "1"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(NewCmdServiceMethod(f, spec, method, "list", "items", nil))
+	root.SetArgs([]string{"list", "--as", "bot", "--page-all", "--format", "ndjson"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !provider.called {
+		t.Fatal("expected content safety provider to scan streamed paginated output")
+	}
+	if provider.path != "list" {
+		t.Fatalf("scan path = %q, want list", provider.path)
+	}
+	items, ok := provider.data.([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("scanned data = %#v, want one streamed item", provider.data)
+	}
+	if !strings.Contains(stderr.String(), "warning: content safety alert from service-test") {
+		t.Fatalf("expected content safety warning on stderr, got: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"id":"1"`) {
+		t.Fatalf("expected streamed ndjson output, got: %s", stdout.String())
+	}
+}
+
+func TestServiceMethod_PageAll_StreamFormatBlockSkipsBlockedPage(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "block")
+	provider := &serviceContentSafetyProvider{match: "blocked"}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-stream-block", AppSecret: "test-secret-service-stream-block", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "safe-page"}},
+				"has_more":   true,
+				"page_token": "next",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "blocked-page"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(NewCmdServiceMethod(f, spec, method, "list", "items", nil))
+	root.SetArgs([]string{"list", "--as", "bot", "--page-all", "--format", "ndjson"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected content safety block error")
+	}
+	var safetyErr *errs.ContentSafetyError
+	if !errors.As(err, &safetyErr) {
+		t.Fatalf("expected ContentSafetyError, got %T: %v", err, err)
+	}
+	if safetyErr.Category != errs.CategoryPolicy || safetyErr.Subtype != errs.SubtypeContentSafety {
+		t.Fatalf("problem = %s/%s, want %s/%s", safetyErr.Category, safetyErr.Subtype, errs.CategoryPolicy, errs.SubtypeContentSafety)
+	}
+	if len(safetyErr.Rules) != 1 || safetyErr.Rules[0] != "pagination" {
+		t.Fatalf("rules = %v, want [pagination]", safetyErr.Rules)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "safe-page") {
+		t.Fatalf("expected earlier safe page to remain streamed, got: %s", out)
+	}
+	if strings.Contains(out, "blocked-page") {
+		t.Fatalf("blocked page was written before safety block: %s", out)
+	}
+}
+
+func TestServiceMethod_BusinessErrorReturnsTypedErrorWithoutSuccessEnvelope(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-err", AppSecret: "test-secret-service-err", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 230027, "msg": "user not authorized",
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code")
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected PermissionError, got %T: %v", err, err)
+	}
+	if strings.Contains(stdout.String(), `"ok": true`) || strings.Contains(stdout.String(), `"ok":true`) {
+		t.Fatalf("unexpected success envelope on error path: %s", stdout.String())
+	}
+}
+
+func TestServiceMethod_PageAll_DefaultBusinessErrorOutputsRawResponse(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-pageall-err", AppSecret: "test-secret-service-pageall-err", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 230027, "msg": "user not authorized",
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--page-all"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code")
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	if !strings.Contains(stdout.String(), "230027") || !strings.Contains(stdout.String(), "user not authorized") {
+		t.Fatalf("expected raw error response on stdout, got: %s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), `"ok": true`) || strings.Contains(stdout.String(), `"ok":true`) {
+		t.Fatalf("unexpected success envelope on error path: %s", stdout.String())
+	}
+}
+
+func TestServiceMethod_PageAll_StreamBusinessErrorDoesNotDumpJSON(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-pageall-stream-err", AppSecret: "test-secret-service-pageall-stream-err", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "safe-page"}},
+				"has_more":   true,
+				"page_token": "next",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 230027,
+			"msg":  "user not authorized",
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--page-all", "--format", "ndjson"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code")
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	out := stdout.String()
+	if !strings.Contains(out, "safe-page") {
+		t.Fatalf("expected earlier successful page to remain streamed, got: %s", out)
+	}
+	if strings.Contains(out, "230027") || strings.Contains(out, "user not authorized") {
+		t.Fatalf("streaming stdout should not contain raw error JSON, got: %s", out)
+	}
+	if strings.Contains(out, "\n  \"code\"") {
+		t.Fatalf("streaming stdout should not contain indented JSON error dump, got: %s", out)
 	}
 }
 
@@ -466,8 +1108,8 @@ func TestServiceMethod_UnknownFormat_Warning(t *testing.T) {
 		Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--format", "unknown"})
 
@@ -486,7 +1128,7 @@ func TestNewCmdServiceMethod_JqFlag(t *testing.T) {
 
 	var captured *ServiceMethodOptions
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files",
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files",
 		func(opts *ServiceMethodOptions) error {
 			captured = opts
 			return nil
@@ -508,7 +1150,7 @@ func TestNewCmdServiceMethod_JqShortForm(t *testing.T) {
 
 	var captured *ServiceMethodOptions
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files",
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files",
 		func(opts *ServiceMethodOptions) error {
 			captured = opts
 			return nil
@@ -524,10 +1166,10 @@ func TestNewCmdServiceMethod_JqShortForm(t *testing.T) {
 
 func TestServiceMethod_JqAndOutputConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--jq", ".data", "--output", "file.bin", "--as", "bot"})
 
@@ -558,8 +1200,8 @@ func TestServiceMethod_JqFilter_AppliesExpression(t *testing.T) {
 		},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--jq", ".data.items[].name"})
 
@@ -577,10 +1219,10 @@ func TestServiceMethod_JqFilter_AppliesExpression(t *testing.T) {
 
 func TestServiceMethod_JqAndFormatConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--jq", ".data", "--format", "ndjson", "--as", "bot"})
 
@@ -595,10 +1237,10 @@ func TestServiceMethod_JqAndFormatConflict(t *testing.T) {
 
 func TestServiceMethod_JqInvalidExpression(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--jq", "invalid[", "--as", "bot"})
 
@@ -627,8 +1269,8 @@ func TestServiceMethod_PageAll_WithJq(t *testing.T) {
 		},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--page-all", "--jq", ".data.items[].id"})
 
@@ -644,77 +1286,55 @@ func TestServiceMethod_PageAll_WithJq(t *testing.T) {
 	}
 }
 
-// ── scopeAwareChecker ──
+func TestServiceMethod_PageAll_WithJqBusinessErrorOutputsRawResponse(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-spjq-err", AppSecret: "test-secret-spjq-err", Brand: core.BrandFeishu,
+	})
 
-func TestScopeAwareChecker_Success(t *testing.T) {
-	checker := scopeAwareChecker(nil, false)
-	err := checker(map[string]interface{}{"code": 0.0, "msg": "ok"})
-	if err != nil {
-		t.Errorf("expected nil error for code=0, got: %v", err)
-	}
-}
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 230027, "msg": "user not authorized",
+		},
+	})
 
-func TestScopeAwareChecker_NonMapResult(t *testing.T) {
-	checker := scopeAwareChecker(nil, false)
-	err := checker("not a map")
-	if err != nil {
-		t.Errorf("expected nil for non-map result, got: %v", err)
-	}
-}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--page-all", "--jq", ".data.items[].id"})
 
-func TestScopeAwareChecker_APIError(t *testing.T) {
-	checker := scopeAwareChecker(nil, false)
-	err := checker(map[string]interface{}{"code": 40003.0, "msg": "bad request"})
+	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for non-zero code")
 	}
-	if !strings.Contains(err.Error(), "API error: [40003]") {
-		t.Errorf("unexpected error: %v", err)
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected PermissionError, got %T: %v", err, err)
+	}
+	if !strings.Contains(stdout.String(), "230027") || !strings.Contains(stdout.String(), "user not authorized") {
+		t.Fatalf("expected raw error response on stdout, got: %s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), `"ok": true`) || strings.Contains(stdout.String(), `"ok":true`) {
+		t.Fatalf("unexpected success envelope on error path: %s", stdout.String())
 	}
 }
 
-func TestScopeAwareChecker_ScopeError_UserMode(t *testing.T) {
-	scopes := []interface{}{"calendar:read"}
-	checker := scopeAwareChecker(scopes, false)
-	err := checker(map[string]interface{}{
-		"code": float64(output.LarkErrUserScopeInsufficient),
-		"msg":  "scope insufficient",
-	})
-	if err == nil {
-		t.Fatal("expected permission error")
+func requireProblem(t *testing.T, err error, category errs.Category, subtype errs.Subtype, code int) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
 	}
-	var exitErr *output.ExitError
-	if !isExitError(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %T", err)
-	}
-	if exitErr.Detail.Type != "permission" {
-		t.Errorf("expected type=permission, got %s", exitErr.Detail.Type)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "auth login") {
-		t.Errorf("expected auth login hint, got %s", exitErr.Detail.Hint)
-	}
-}
-
-func TestScopeAwareChecker_ScopeError_BotMode(t *testing.T) {
-	scopes := []interface{}{"calendar:read"}
-	checker := scopeAwareChecker(scopes, true)
-	err := checker(map[string]interface{}{
-		"code": float64(output.LarkErrUserScopeInsufficient),
-		"msg":  "scope insufficient",
-	})
-	if err == nil {
-		t.Fatal("expected permission error")
-	}
-	// Bot mode should still include the scope hint
-	if !strings.Contains(err.Error(), "insufficient permissions") {
-		t.Errorf("unexpected error: %v", err)
+	if p.Category != category || p.Subtype != subtype || p.Code != code {
+		t.Fatalf("problem = %s/%s/%d, want %s/%s/%d", p.Category, p.Subtype, p.Code, category, subtype, code)
 	}
 }
 
 // ── file upload ──
 
-func imImageMethod() map[string]interface{} {
-	return map[string]interface{}{
+func imImageMethod() meta.Method {
+	return meta.FromMap(map[string]interface{}{
 		"path":       "images",
 		"httpMethod": "POST",
 		"requestBody": map[string]interface{}{
@@ -728,14 +1348,14 @@ func imImageMethod() map[string]interface{} {
 			},
 		},
 		"accessTokens": []interface{}{"user", "tenant"},
-	}
+	})
 }
 
-func imSpec() map[string]interface{} {
-	return map[string]interface{}{
+func imSpec() meta.Service {
+	return meta.ServiceFromMap(map[string]interface{}{
 		"name":        "im",
 		"servicePath": "/open-apis/im/v1",
-	}
+	})
 }
 
 func TestServiceMethod_FileFlagRegistered(t *testing.T) {
@@ -767,7 +1387,7 @@ func TestServiceMethod_FileFlagNotRegisteredForGET(t *testing.T) {
 		},
 	}
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	cmd := NewCmdServiceMethod(f, imSpec(), getMethod, "get", "images", nil)
+	cmd := NewCmdServiceMethod(f, imSpec(), meta.FromMap(getMethod), "get", "images", nil)
 	flag := cmd.Flags().Lookup("file")
 	if flag != nil {
 		t.Fatal("expected --file flag NOT to be registered for GET method")
@@ -794,11 +1414,23 @@ func TestServiceMethod_FileUpload_DryRun(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "image") {
-		t.Errorf("expected dry-run output to mention file field, got: %s", out)
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "Dry Run") {
-		t.Errorf("expected dry-run header, got: %s", out)
+	if env["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", env["dry_run"])
+	}
+	data := env["data"].(map[string]interface{})
+	api := data["api"].([]interface{})
+	call := api[0].(map[string]interface{})
+	body := call["body"].(map[string]interface{})
+	file := body["file"].(map[string]interface{})
+	if file["field"] != "image" || file["path"] != tmpFile {
+		t.Fatalf("unexpected file dry-run body: %#v", body)
+	}
+	if strings.Contains(out, "=== Dry Run ===") {
+		t.Fatalf("stdout should not contain dry-run banner: %s", out)
 	}
 }
 
@@ -835,7 +1467,7 @@ func TestDetectFileFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := detectFileFields(tt.method)
+			got := detectFileFields(meta.FromMap(tt.method))
 			if len(got) != len(tt.want) {
 				t.Errorf("detectFileFields() = %v, want %v", got, tt.want)
 				return
@@ -849,12 +1481,78 @@ func TestDetectFileFields(t *testing.T) {
 	}
 }
 
-// ── helpers ──
-
-func isExitError(err error, target **output.ExitError) bool {
-	ee, ok := err.(*output.ExitError)
-	if ok && target != nil {
-		*target = ee
+// parseMultipartFilenames drives one service-method --file upload through the
+// mock transport and returns a map of field name -> part filename parsed from
+// the captured multipart body. Mirrors cmd/api's helper of the same name
+// (inlined here rather than shared, since the two live in different packages)
+// to give BuildFormdata's shared local-file fix a second real entry-point
+// covering it.
+func parseMultipartFilenames(t *testing.T, stub *httpmock.Stub) map[string]string {
+	t.Helper()
+	ct := stub.CapturedHeaders.Get("Content-Type")
+	mediaType, params, err := mime.ParseMediaType(ct)
+	if err != nil {
+		t.Fatalf("parse Content-Type %q: %v", ct, err)
 	}
-	return ok
+	if !strings.HasPrefix(mediaType, "multipart/") {
+		t.Fatalf("Content-Type = %q, want multipart/*", mediaType)
+	}
+	filenames := map[string]string{}
+	mr := multipart.NewReader(bytes.NewReader(stub.CapturedBody), params["boundary"])
+	for {
+		part, err := mr.NextPart()
+		if err != nil {
+			break
+		}
+		if fn := part.FileName(); fn != "" {
+			filenames[part.FormName()] = fn
+		}
+	}
+	return filenames
+}
+
+func TestServiceMethod_FileUpload_PreservesFilename(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("fake-image"), 0600); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	stub := &httpmock.Stub{
+		URL:  "/open-apis/im/v1/images",
+		Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{"image_key": "img_xxx"}},
+	}
+	reg.Register(stub)
+
+	cmd := NewCmdServiceMethod(f, imSpec(), imImageMethod(), "create", "images", nil)
+	cmd.SetArgs([]string{"--file", "photo.jpg", "--data", `{"image_type":"message"}`, "--as", "bot"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	filenames := parseMultipartFilenames(t, stub)
+	if got := filenames["image"]; got != "photo.jpg" {
+		t.Fatalf("part filename for field %q = %q, want %q", "image", got, "photo.jpg")
+	}
+}
+
+func TestServiceMethod_JsonFlag_Accepted(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+
+	var captured *ServiceMethodOptions
+	cmd := NewCmdServiceMethod(f, driveSpec(),
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files",
+		func(opts *ServiceMethodOptions) error {
+			captured = opts
+			return nil
+		})
+	cmd.SetArgs([]string{"--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("--json should be accepted without error, got: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("expected runF to be called")
+	}
 }

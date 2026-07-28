@@ -14,7 +14,9 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 )
@@ -23,14 +25,44 @@ import (
 
 // ResponseOptions configures how HandleResponse routes a raw API response.
 type ResponseOptions struct {
-	OutputPath string        // --output flag; "" = auto-detect
-	Format     output.Format // output format for JSON responses
-	JqExpr     string        // if set, apply jq filter instead of Format
-	Out        io.Writer     // stdout
-	ErrOut     io.Writer     // stderr
-	FileIO     fileio.FileIO // file transfer abstraction; required when saving files (--output or binary response)
-	// CheckError is called on parsed JSON results. Nil defaults to CheckLarkResponse.
-	CheckError func(interface{}) error
+	OutputPath  string        // --output flag; "" = auto-detect
+	Format      output.Format // output format for JSON responses
+	JqExpr      string        // if set, apply jq filter instead of Format
+	Out         io.Writer     // stdout
+	ErrOut      io.Writer     // stderr
+	FileIO      fileio.FileIO // file transfer abstraction; required when saving files (--output or binary response)
+	CommandPath string        // raw cobra CommandPath() for content safety scanning
+	// Identity is forwarded to CheckError (default or caller-supplied) so the
+	// classifier can populate identity-aware fields (e.g. PermissionError.Identity).
+	// Defaults to core.AsUser when empty.
+	Identity core.Identity
+	// CheckError is called on parsed JSON results. Nil defaults to (*APIClient).CheckResponse
+	// with the Identity field (or AsUser when unset).
+	CheckError func(result interface{}, identity core.Identity) error
+	// TransformSuccess, when set, rewrites a successful parsed JSON response
+	// before it is emitted. It runs after CheckError so business errors still
+	// see the raw API payload.
+	TransformSuccess func(result interface{}) interface{}
+}
+
+// httpStatusError classifies an HTTP error response by status when the body
+// carries no usable business error: 5xx → NetworkError (server tier), 404 →
+// APIError/not_found, any other 4xx → APIError/unknown. Used wherever a
+// status >= 400 must not be swallowed — a non-JSON body, an unparseable body,
+// or a JSON body whose business code is 0.
+func httpStatusError(status int, rawBody []byte) error {
+	body := util.TruncateStrWithEllipsis(strings.TrimSpace(string(rawBody)), 500)
+	if status >= 500 {
+		return errs.NewNetworkError(errs.SubtypeNetworkServer,
+			"HTTP %d: %s", status, body).
+			WithCode(status)
+	}
+	subtype := errs.SubtypeUnknown
+	if status == 404 {
+		subtype = errs.SubtypeNotFound
+	}
+	return errs.NewAPIError(subtype, "HTTP %d: %s", status, body).
+		WithCode(status)
 }
 
 // HandleResponse routes a raw *larkcore.ApiResp to the appropriate output:
@@ -39,40 +71,89 @@ type ResponseOptions struct {
 //  3. If Content-Type is non-JSON and no --output, auto-save binary to file.
 func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	ct := resp.Header.Get("Content-Type")
+	identity := opts.Identity
+	if identity == "" {
+		identity = core.AsUser
+	}
 	check := opts.CheckError
 	if check == nil {
-		check = CheckLarkResponse
+		// Default check routes through BuildAPIError, producing typed
+		// *errs.PermissionError / AuthenticationError / etc. A zero-value
+		// *APIClient is safe here because BuildAPIError gracefully degrades
+		// identity-aware fields (ConsoleURL etc.) when AppID is empty.
+		check = func(r interface{}, id core.Identity) error {
+			return (&APIClient{}).CheckResponse(r, id)
+		}
 	}
 
-	// Non-JSON error responses (e.g. 404 text/plain from gateway): return error directly
-	// instead of falling through to the binary-save path.
+	// Non-JSON error responses (e.g. 404 text/plain from gateway): return error
+	// directly instead of falling through to the binary-save path.
 	if resp.StatusCode >= 400 && !IsJSONContentType(ct) && ct != "" {
-		body := util.TruncateStrWithEllipsis(strings.TrimSpace(string(resp.RawBody)), 500)
-		return output.Errorf(httpExitCode(resp.StatusCode), "http_error", "HTTP %d: %s", resp.StatusCode, body)
+		return httpStatusError(resp.StatusCode, resp.RawBody)
 	}
 
 	// JSON responses: always check for business errors before saving.
 	if IsJSONContentType(ct) || ct == "" {
 		result, err := ParseJSONResponse(resp)
 		if err != nil {
+			// An unparseable / empty body on an HTTP error (common with a
+			// missing Content-Type) must be classified by status, not reported
+			// as an internal decode failure, matching the non-JSON branch above.
+			if resp.StatusCode >= 400 {
+				return httpStatusError(resp.StatusCode, resp.RawBody)
+			}
 			return WrapJSONResponseParseError(err, resp.RawBody)
 		}
-		if apiErr := check(result); apiErr != nil {
+		if apiErr := check(result, identity); apiErr != nil {
 			return apiErr
 		}
+		// CheckResponse treats business code 0 as success, so a 4xx/5xx whose
+		// JSON body omits a non-zero code would otherwise be served as a
+		// successful result. Classify by HTTP status so it is never swallowed.
+		if resp.StatusCode >= 400 {
+			return httpStatusError(resp.StatusCode, resp.RawBody)
+		}
+		if opts.TransformSuccess != nil {
+			result = opts.TransformSuccess(result)
+		}
 		if opts.OutputPath != "" {
+			// File downloads keep the existing raw-response scan path because the
+			// saved payload is the API response body, not the success envelope.
+			scanResult := output.ScanForSafety(opts.CommandPath, result, opts.ErrOut)
+			if scanResult.Blocked {
+				return scanResult.BlockErr
+			}
+			if scanResult.Alert != nil {
+				output.WriteAlertWarning(opts.ErrOut, scanResult.Alert)
+			}
 			return saveAndPrint(opts.FileIO, resp, opts.OutputPath, opts.Out)
 		}
-		if opts.JqExpr != "" {
-			return output.JqFilter(opts.Out, result, opts.JqExpr)
+
+		if opts.JqExpr != "" || opts.Format == output.FormatJSON {
+			return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+				CommandPath: opts.CommandPath,
+				Identity:    string(identity),
+				JqExpr:      opts.JqExpr,
+				Out:         opts.Out,
+				ErrOut:      opts.ErrOut,
+			})
 		}
-		output.FormatValue(opts.Out, result, opts.Format)
-		return nil
+
+		emitter := output.NewEmitter(output.EmitterConfig{
+			Out:            opts.Out,
+			ErrOut:         opts.ErrOut,
+			CommandPath:    opts.CommandPath,
+			Identity:       string(identity),
+			NoticeProvider: output.GetNotice,
+		})
+		return emitter.Success(result, output.EmitOptions{Format: opts.Format.String()})
 	}
 
 	// Non-JSON (binary) responses.
 	if opts.JqExpr != "" {
-		return output.ErrValidation("--jq requires a JSON response (got Content-Type: %s)", ct)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--jq requires a JSON response (got Content-Type: %s)", ct).
+			WithParam("--jq")
 	}
 	if opts.OutputPath != "" {
 		return saveAndPrint(opts.FileIO, resp, opts.OutputPath, opts.Out)
@@ -81,7 +162,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	// No --output: auto-save with derived filename.
 	meta, err := SaveResponse(opts.FileIO, resp, ResolveFilename(resp))
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "file_error", "%s", err)
+		return classifySaveErr(err)
 	}
 	fmt.Fprintf(opts.ErrOut, "binary response detected (Content-Type: %s), saved to file\n", ct)
 	output.PrintJson(opts.Out, meta)
@@ -91,10 +172,21 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 func saveAndPrint(fio fileio.FileIO, resp *larkcore.ApiResp, path string, w io.Writer) error {
 	meta, err := SaveResponse(fio, resp, path)
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "file_error", "%s", err)
+		return classifySaveErr(err)
 	}
 	output.PrintJson(w, meta)
 	return nil
+}
+
+// classifySaveErr routes a SaveResponse error to the right typed shape.
+// Path-validation failures are caller-induced (an unsafe --output path),
+// so they surface as ValidationError on --output. Mkdir / write failures
+// are local I/O issues classified as InternalError with SubtypeFileIO.
+func classifySaveErr(err error) error {
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--output")
+	}
+	return errs.NewInternalError(errs.SubtypeFileIO, "save response: %v", err).WithCause(err)
 }
 
 // ── JSON helpers ──
@@ -130,13 +222,13 @@ func SaveResponse(fio fileio.FileIO, resp *larkcore.ApiResp, outputPath string) 
 		var we *fileio.WriteError
 		switch {
 		case errors.Is(err, fileio.ErrPathValidation):
-			return nil, fmt.Errorf("unsafe output path: %s", err)
+			return nil, fmt.Errorf("unsafe output path: %w", err)
 		case errors.As(err, &me):
-			return nil, fmt.Errorf("create directory: %s", err)
+			return nil, fmt.Errorf("create directory: %w", err)
 		case errors.As(err, &we):
-			return nil, fmt.Errorf("cannot write file: %s", err)
+			return nil, fmt.Errorf("cannot write file: %w", err)
 		default:
-			return nil, fmt.Errorf("cannot write file: %s", err)
+			return nil, fmt.Errorf("cannot write file: %w", err)
 		}
 	}
 
@@ -194,13 +286,4 @@ func mimeToExt(ct string) string {
 	default:
 		return ".bin"
 	}
-}
-
-// httpExitCode maps HTTP status ranges to CLI exit codes:
-// 5xx → ExitNetwork (server error), 4xx → ExitAPI (client error).
-func httpExitCode(status int) int {
-	if status >= 500 {
-		return output.ExitNetwork
-	}
-	return output.ExitAPI
 }
