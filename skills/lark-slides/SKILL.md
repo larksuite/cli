@@ -149,6 +149,8 @@ lark-cli auth login --domain slides
 - 历史版本：[`lark-slides-history.md`](references/lark-slides-history.md)
 - 截图：[`lark-slides-screenshot.md`](references/lark-slides-screenshot.md)
 - 图片：[`lark-slides-media-upload.md`](references/lark-slides-media-upload.md)
+
+按需再读：
 - 图表：[`slides_chart_demo.xml`](references/slides_chart_demo.xml)
 - 图标：[`iconpark.md`](references/iconpark.md)、[`scripts/iconpark_tool.py`](scripts/iconpark_tool.py)
 - 排障：[`troubleshooting.md`](references/troubleshooting.md)
