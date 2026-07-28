@@ -35,7 +35,7 @@ var AppsList = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "keyword", Desc: "fuzzy match on app name"},
 		{Name: "ownership", Desc: "ownership filter: all (created by me + shared with me) | mine | shared", Enum: []string{"all", "mine", "shared"}},
-		{Name: "app-type", Desc: "app type filter (html or full_stack)", Enum: []string{"html", "full_stack"}},
+		{Name: "app-type", Desc: "app type filter (html, frontend or full_stack)", Enum: []string{"html", "frontend", "full_stack"}},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
 	},
