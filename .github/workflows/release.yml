@@ -277,6 +277,7 @@ jobs:
   publish-npm:
     needs: [preflight, build-sign-notarize, publish-github]
     runs-on: ubuntu-22.04
+    environment: npm-production
     permissions:
       contents: read
       id-token: write
@@ -336,3 +337,46 @@ jobs:
           else
             npm publish "$tgz" --access public --provenance --tag "$dist_tag"
           fi
+
+  retry-guidance:
+    needs: [preflight, build-sign-notarize, create-draft-release, verify-macos, publish-github, publish-npm]
+    if: ${{ always() && (needs.preflight.result == 'failure' || needs.build-sign-notarize.result == 'failure' || needs.create-draft-release.result == 'failure' || needs.verify-macos.result == 'failure' || needs.publish-github.result == 'failure' || needs.publish-npm.result == 'failure') }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Write retry guidance
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          BUILD_RESULT: ${{ needs.build-sign-notarize.result }}
+          DRAFT_RESULT: ${{ needs.create-draft-release.result }}
+          VERIFY_RESULT: ${{ needs.verify-macos.result }}
+          GITHUB_RESULT: ${{ needs.publish-github.result }}
+          NPM_RESULT: ${{ needs.publish-npm.result }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Release retry guidance"
+            echo
+            echo "This job only records recovery guidance; it does not retry or publish anything."
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "| preflight | ${PREFLIGHT_RESULT} |"
+            echo "| build-sign-notarize | ${BUILD_RESULT} |"
+            echo "| create-draft-release | ${DRAFT_RESULT} |"
+            echo "| verify-macos | ${VERIFY_RESULT} |"
+            echo "| publish-github | ${GITHUB_RESULT} |"
+            echo "| publish-npm | ${NPM_RESULT} |"
+            cat <<'EOF'
+
+            Select the recovery action from the failed-step diagnosis:
+
+            - **preflight:** network or fetch failure → retry preflight. Version/tag validation failure → correct it, then create a new tag.
+            - **build-sign-notarize:** transient build/service failure → retry build. Code or release configuration issue → correct it, then create a new tag.
+            - **create-draft-release:** GitHub Draft Release API/upload failure → retry draft. Release-candidate inconsistency → retry build.
+            - **verify-macos:** runner or network failure → retry only the failed matrix child. Checksum, signing, notarization, or runtime failure → retry build.
+            - **publish-github:** GitHub publish network failure → retry GitHub publish. Install issue → retry build. Tag/assets inconsistency → stop and publish a new version.
+            - **publish-npm:** network failure or uncertain publish outcome → retry npm only after verifying whether that version already exists. Integrity mismatch → publish a new version.
+            EOF
+          } >> "$GITHUB_STEP_SUMMARY"

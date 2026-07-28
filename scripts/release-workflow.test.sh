@@ -39,7 +39,7 @@ def action_references(value)
 end
 
 jobs = workflow.fetch("jobs")
-expected_jobs = %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm]
+expected_jobs = %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
 expect_equal(jobs.keys.sort, expected_jobs.sort, "release jobs")
 
 expect_equal(workflow.fetch("concurrency"), {
@@ -54,6 +54,7 @@ expected_needs = {
   "verify-macos" => %w[preflight create-draft-release],
   "publish-github" => %w[preflight create-draft-release verify-macos],
   "publish-npm" => %w[preflight build-sign-notarize publish-github],
+  "retry-guidance" => %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm],
 }
 expected_needs.each do |job_name, needs|
   expect_equal(jobs.fetch(job_name)["needs"], needs, "#{job_name} dependencies")
@@ -66,10 +67,23 @@ expected_permissions = {
   "verify-macos" => { "contents" => "write" },
   "publish-github" => { "contents" => "write" },
   "publish-npm" => { "contents" => "read", "id-token" => "write" },
+  "retry-guidance" => { "contents" => "read" },
 }
 expected_permissions.each do |job_name, permissions|
   expect_equal(jobs.fetch(job_name)["permissions"], permissions, "#{job_name} permissions")
 end
+expect_equal(jobs.fetch("publish-npm").fetch("environment"), "npm-production", "npm publish environment")
+
+retry_guidance = jobs.fetch("retry-guidance")
+retry_condition = "${{ always() && (needs.preflight.result == 'failure' || needs.build-sign-notarize.result == 'failure' || needs.create-draft-release.result == 'failure' || needs.verify-macos.result == 'failure' || needs.publish-github.result == 'failure' || needs.publish-npm.result == 'failure') }}"
+expect_equal(retry_guidance.fetch("if"), retry_condition, "retry guidance failure condition")
+expect_equal(retry_guidance.fetch("runs-on"), "ubuntu-22.04", "retry guidance runner")
+
+retry_steps = retry_guidance.fetch("steps")
+expect_equal(retry_steps.length, 1, "number of retry guidance steps")
+retry_step = retry_steps.first
+expect_equal(retry_step.fetch("name"), "Write retry guidance", "retry guidance step name")
+fail("retry guidance must write to the GitHub step summary") unless retry_step.fetch("run").include?("GITHUB_STEP_SUMMARY")
 
 signing_references = %w[
   secrets.MACOS_SIGN_P12
