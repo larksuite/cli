@@ -48,16 +48,28 @@ jobs:
           head_sha="$(git rev-parse --verify 'HEAD^{commit}')"
           tag_sha="$(git rev-parse --verify "refs/tags/${TAG}^{commit}")"
           [[ "$tag_sha" == "$head_sha" ]] || { echo "Tag ${TAG} does not resolve to checked-out HEAD." >&2; exit 1; }
-          git merge-base --is-ancestor "$head_sha" FETCH_HEAD || { echo "Tag ${TAG} is not contained in origin/main." >&2; exit 1; }
+          main_sha="$(git rev-parse FETCH_HEAD)"
+          source_in_main=false
+          if git merge-base --is-ancestor "$head_sha" "$main_sha"; then
+            source_in_main=true
+          fi
 
-          node - "$preflight_file" "$head_sha" "$GITHUB_OUTPUT" <<'NODE'
+          node - "$preflight_file" "$head_sha" "$main_sha" "$source_in_main" "$GITHUB_OUTPUT" <<'NODE'
           const fs = require("node:fs");
-          const [file, sourceSha, output] = process.argv.slice(2);
+          const { validateReleaseSourcePolicy } = require("./scripts/release-preflight");
+          const [file, sourceSha, mainSha, sourceInMain, output] = process.argv.slice(2);
           const result = JSON.parse(fs.readFileSync(file, "utf8"));
           if (result?.ok !== true || !["stable", "beta"].includes(result.data?.releaseChannel)) {
             throw new Error("release preflight returned an invalid success payload");
           }
           const channel = result.data.releaseChannel;
+          const sourcePolicy = validateReleaseSourcePolicy(channel, sourceSha, mainSha, sourceInMain === "true");
+          if (!sourcePolicy.ok) {
+            throw new Error(sourcePolicy.error.message);
+          }
+          if (sourcePolicy.data.warning) {
+            console.log(`::warning title=Unexpected beta source::${sourcePolicy.data.warning}`);
+          }
           fs.appendFileSync(output, `source_sha=${sourceSha}\nversion=${result.data.tagVersion}\nchannel=${channel}\nprerelease=${channel === "beta"}\n`);
           NODE
 

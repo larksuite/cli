@@ -4,7 +4,7 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { validateReleasePreflight } = require("./release-preflight");
+const { validateReleasePreflight, validateReleaseSourcePolicy } = require("./release-preflight");
 
 function metadata(version = "1.2.3") {
   return {
@@ -135,5 +135,38 @@ describe("validateReleasePreflight", () => {
     for (const tag of ["v1.2.3-beta.1", "v1.2.3"]) {
       assertRejected(validateReleasePreflight(packageJson, packageLockJson, tag));
     }
+  });
+});
+
+describe("validateReleaseSourcePolicy", () => {
+  const mainSha = "a".repeat(40);
+  const betaSha = "b".repeat(40);
+
+  it("accepts a stable release commit contained in main", () => {
+    assert.deepEqual(
+      validateReleaseSourcePolicy("stable", betaSha, mainSha, true),
+      { ok: true, data: { warning: null } },
+    );
+  });
+
+  it("rejects a stable release commit outside main", () => {
+    const result = validateReleaseSourcePolicy("stable", betaSha, mainSha, false);
+
+    assertRejected(result);
+    assert.match(result.error.message, /contained in origin\/main/);
+  });
+
+  it("accepts a beta release from a separate branch without a warning", () => {
+    assert.deepEqual(
+      validateReleaseSourcePolicy("beta", betaSha, mainSha, false),
+      { ok: true, data: { warning: null } },
+    );
+  });
+
+  it("warns but accepts a beta release tag pointing to the current main head", () => {
+    const result = validateReleaseSourcePolicy("beta", mainSha, mainSha, true);
+
+    assert.equal(result.ok, true);
+    assert.match(result.data.warning, /unintended beta version was merged into main/);
   });
 });

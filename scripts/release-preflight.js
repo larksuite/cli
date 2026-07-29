@@ -18,6 +18,34 @@ function releaseError(message, observed, hint) {
   return { ok: false, error: { type: "release_preflight", message, observed, hint } };
 }
 
+function validateReleaseSourcePolicy(releaseChannel, sourceSha, mainSha, sourceInMain) {
+  const observed = { releaseChannel, sourceSha, mainSha, sourceInMain };
+
+  if (releaseChannel === "stable") {
+    if (!sourceInMain) {
+      return releaseError(
+        "Stable release tag must be contained in origin/main",
+        observed,
+        "Create the stable release tag from a commit that is already contained in origin/main.",
+      );
+    }
+    return { ok: true, data: { warning: null } };
+  }
+
+  if (releaseChannel === "beta") {
+    const warning = sourceSha === mainSha
+      ? "Beta release tag points to the current origin/main HEAD; check whether an unintended beta version was merged into main."
+      : null;
+    return { ok: true, data: { warning } };
+  }
+
+  return releaseError(
+    "Release channel must be stable or beta",
+    observed,
+    "Use a validated stable or beta package version before applying the source policy.",
+  );
+}
+
 function validateReleasePreflight(packageJson, packageLockJson, tag) {
   const packageVersion = packageJson?.version;
   const lockVersion = packageLockJson?.version;
@@ -107,6 +135,6 @@ function main() {
   }
 }
 
-module.exports = { validateReleasePreflight };
+module.exports = { validateReleasePreflight, validateReleaseSourcePolicy };
 
 if (require.main === module) main();
