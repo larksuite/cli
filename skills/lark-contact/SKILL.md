@@ -1,7 +1,7 @@
 ---
 name: lark-contact
 version: 1.0.0
-description: "飞书 / Lark 通讯录:按姓名 / 邮箱解析成 open_id,或按 open_id 反查姓名 / 部门 / 邮箱 / 联系方式 / 个人状态 / 签名,以及按关键词搜索当前用户可见的机器人。当用户提到某人姓名要下一步发消息 / 排日程,或拿到 open_id 想查具体信息,或需要查找机器人 open_id 时使用。不负责部门树遍历、按部门列员工、组织架构图,这类需求走原生 OpenAPI。"
+description: "飞书 / Lark 通讯录:按姓名 / 邮箱解析成 open_id,或按 open_id 反查姓名 / 部门 / 邮箱 / 联系方式 / 个人状态 / 签名,以及按关键词搜索当前用户可见的机器人。当用户提到某人姓名要下一步发消息 / 排日程。不负责部门树遍历、按部门列员工、组织架构图,这类需求走原生 OpenAPI。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -24,13 +24,9 @@ metadata:
 
 ### 名字没说清是人还是机器人
 
-用户给的名字常常不表明类型。「把 reviewDuck 拉进群」里的 reviewDuck 很可能是机器人,但也可能是同事昵称 —— **不要猜,搜两边**:
-
-- `+search-user` 搜不到时,**退化到 `+search-bot` 再搜一次**,不要直接回「找不到这个人」
+用户给的名字常常不表明类型。「把 reviewDuck 拉进群」里的 reviewDuck 很可能是机器人,但也可能是同事昵称。
 - 名字有明显的工具色彩(英文驼峰、含 bot / 助手 / 机器人 / assistant 等)时,反过来先搜机器人更快
-- 两边都空才是真没有
-
-注意机器人**拉不进群**:入群需要应用的 `cli_` app_id,`+search-bot` 只给 `ou_` open_id,细节见 [`lark-contact-search-bot.md`](references/lark-contact-search-bot.md)。
+- 不确定的话两边都搜一下
 
 ## 典型场景
 
@@ -55,21 +51,18 @@ lark-cli contact user_profiles batch_query \
 
 ## 搜索机器人
 
-`+search-bot` 使用 user 身份按关键词搜索当前用户可见的机器人,返回 `ou_` 开头的机器人 open_id。参数细节、输入归一化规则和输出结构见 [`lark-contact-search-bot.md`](references/lark-contact-search-bot.md)。
+`+search-bot` 使用 user 身份按关键词搜索当前用户可见的机器人,返回 `ou_` 开头的机器人 open_id。参数细节等见 [`lark-contact-search-bot.md`](references/lark-contact-search-bot.md)。
 
 ```bash
 lark-cli contact +search-bot --query '会议助手' --as user
 lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' --as user
 ```
 
-`enable_join_group=true` 只表示该机器人允许被拉进群聊,**不代表你能用这里的 `open_id` 把它拉进群**。把机器人加入群聊需要应用的 `cli_` 开头 app_id,本命令不返回;
-
 ## 注意事项
 
 - **41050 / Permission denied** 受当前身份的可见范围限制(两条命令都可能遇到)。换 bot 身份或让管理员调整可见范围,细节见 [`lark-shared`](../lark-shared/SKILL.md)。
 - **跨租户用户**(`is_cross_tenant=true`)多数业务字段为空字符串,这是飞书可见性规则,下游做空值兜底。
 - **ID 类型**:默认 `open_id`。`+get-user` 可改 `--user-id-type union_id|user_id`;`+search-user`和 `+search-bot` 只接受 `open_id`。
-- **`+search-bot` 的权限**:只支持 user 身份,缺权限时重新授权 `search:bot`。
 
 ## 不在本 skill 范围
 
