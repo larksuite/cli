@@ -107,7 +107,7 @@ func TestValidateBotSearchErrors(t *testing.T) {
 		{
 			name:        "keyword missing",
 			wantParams:  []string{"--query", "--queries"},
-			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
+			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted shape a keyword search but cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
 		},
 		{
 			name:        "query over 50 characters",
@@ -178,13 +178,13 @@ func TestValidateBotSearchErrors(t *testing.T) {
 			name:        "chat ids without a keyword",
 			flags:       map[string]string{"chat-ids": "oc_a"},
 			wantParams:  []string{"--query", "--queries"},
-			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
+			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted shape a keyword search but cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
 		},
 		{
 			name:        "has chatted without a keyword",
 			flags:       map[string]string{"has-chatted": "true"},
 			wantParams:  []string{"--query", "--queries"},
-			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
+			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted shape a keyword search but cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
 		},
 	}
 
@@ -506,7 +506,7 @@ func TestBotSearchPrettyOutputAndPaginationHint(t *testing.T) {
 			t.Errorf("pretty output exposed %q: %s", genericField, stdout.String())
 		}
 	}
-	wantHint := "\nhint: more matches exist; narrow the search (e.g. add --chat-ids, --has-chatted, or a more specific --query)\n"
+	wantHint := "\nhint: more matches exist; narrow with --has-chatted or a more specific --query\n"
 	if stderr.String() != wantHint {
 		t.Fatalf("pretty stderr: got %q, want %q", stderr.String(), wantHint)
 	}
@@ -525,7 +525,7 @@ func TestBotSearchTableUsesGenericFormatterLikeSearchUser(t *testing.T) {
 			t.Errorf("table output missing %q: %s", field, stdout.String())
 		}
 	}
-	wantHint := "\nhint: more matches exist; narrow the search (e.g. add --chat-ids, --has-chatted, or a more specific --query)\n"
+	wantHint := "\nhint: more matches exist; narrow with --has-chatted or a more specific --query\n"
 	if stderr.String() != wantHint {
 		t.Fatalf("table stderr: got %q, want %q", stderr.String(), wantHint)
 	}

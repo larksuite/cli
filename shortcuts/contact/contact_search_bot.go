@@ -85,24 +85,25 @@ type searchBotResponse struct {
 var ContactSearchBot = common.Shortcut{
 	Service:     "contact",
 	Command:     "+search-bot",
-	Description: "Search bots (apps) visible to the calling user by keyword, optionally narrowed by chat or chat history (requires --as user)",
+	Description: "Search bots (apps) by keyword — across the tenant, or inside specific chats (requires --as user)",
 	Risk:        "read",
 	Scopes:      []string{"search:bot"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search keyword (≤ 50 characters); required unless --queries is given"},
-		{Name: "chat-ids", Desc: "narrow a keyword search to bots in these chats (CSV of chat_id; ≤ 100)"},
+		{Name: "chat-ids", Desc: "search inside these chats instead of the tenant-wide set; surfaces bots --query alone cannot find (CSV of chat_id; ≤ 100)"},
 		{Name: "has-chatted", Type: "bool", Desc: "narrow a keyword search to bots you've chatted with (omit to disable; =false rejected)"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-30"},
 		{Name: "queries", Desc: "comma-separated keywords searched in parallel; output is a flat bots[] with matched_query plus a queries[] sidecar"},
 	},
 	Tips: []string{
 		"Keyword search: lark-cli contact +search-bot --query '会议助手' --as user",
-		"Narrow to bots in a chat: lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user",
+		"Search inside a chat: lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user",
 		"Narrow to bots you've chatted with: lark-cli contact +search-bot --query '助手' --has-chatted --as user",
 		"Multi-name fanout: lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' --as user",
-		"a keyword is required — pass --query or --queries; --chat-ids and --has-chatted only narrow it, and a filter-only request comes back empty rather than as an error.",
-		"on has_more=true narrow the search (add --chat-ids or --has-chatted, or use a more specific --query) — there is no pagination.",
+		"A bot inside a chat can be invisible to a plain --query: pass --chat-ids <chat_id> to search that chat instead. Verified: a keyword returning nothing tenant-wide returned the chat's bot once the chat was named.",
+		"a keyword is required — pass --query or --queries; neither --chat-ids nor --has-chatted can enumerate on its own, and a filter-only request comes back empty rather than as an error.",
+		"on has_more=true narrow the search with --has-chatted or a more specific --query — there is no pagination.",
 		"enable_join_group=true only means the bot is allowed into chats. Adding it needs the app's cli_ app_id, which this command does not return: the ou_ open_id here is rejected by the chat-member APIs and there is no open_id → app_id lookup. Do not claim a bot was added on the strength of this flag.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -150,7 +151,7 @@ func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error
 // requirement. Naming only --query would tell an agent that --queries is not a
 // way out, which it is.
 func botSearchKeywordRequiredError() error {
-	return common.ValidationErrorf("specify --query or --queries: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API answers a filter-only request with an empty list)").
+	return common.ValidationErrorf("specify --query or --queries: --chat-ids and --has-chatted shape a keyword search but cannot enumerate bots on their own (the API answers a filter-only request with an empty list)").
 		WithParams(
 			errs.InvalidParam{Name: "--query", Reason: "required unless --queries is given"},
 			errs.InvalidParam{Name: "--queries", Reason: "required unless --query is given"},
@@ -330,7 +331,7 @@ func executeBotSearchSingle(ctx context.Context, runtime *common.RuntimeContext)
 	})
 	if respData.HasMore && isHumanReadableFormat(runtime.Format) {
 		fmt.Fprintln(runtime.IO().ErrOut,
-			"\nhint: more matches exist; narrow the search (e.g. add --chat-ids, --has-chatted, or a more specific --query)")
+			"\nhint: more matches exist; narrow with --has-chatted or a more specific --query")
 	}
 	return nil
 }
