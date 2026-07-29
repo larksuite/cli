@@ -109,14 +109,15 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 	var got struct {
 		API []struct {
 			Desc string                 `json:"desc"`
+			URL  string                 `json:"url"`
 			Body map[string]interface{} `json:"body"`
 		} `json:"api"`
 	}
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 4 {
-		t.Fatalf("expected 4 API calls, got %d", len(got.API))
+	if len(got.API) != 5 {
+		t.Fatalf("expected 5 API calls, got %d", len(got.API))
 	}
 	wantDesc := "After the import result returns the final cloud document target in bot mode, the CLI will also try to grant the current CLI user full_access on it."
 	if got.API[len(got.API)-1].Desc != wantDesc {
@@ -132,7 +133,11 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 		t.Fatalf("upload file_name = %q, want %q", uploadName, "base-import.xlsx")
 	}
 
-	importName, _ := got.API[2].Body["file_name"].(string)
+	if got.API[2].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[2].URL)
+	}
+
+	importName, _ := got.API[3].Body["file_name"].(string)
 	if importName != "base-import" {
 		t.Fatalf("import task file_name = %q, want %q", importName, "base-import")
 	}
@@ -186,8 +191,8 @@ func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 5 {
-		t.Fatalf("expected 5 API calls, got %d", len(got.API))
+	if len(got.API) != 6 {
+		t.Fatalf("expected 6 API calls, got %d", len(got.API))
 	}
 	if got.API[0].URL != "/open-apis/drive/v1/medias/upload_prepare" {
 		t.Fatalf("dry-run first URL = %q, want upload_prepare", got.API[0].URL)
@@ -197,6 +202,9 @@ func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
 	}
 	if got.API[2].URL != "/open-apis/drive/v1/medias/upload_finish" {
 		t.Fatalf("dry-run third URL = %q, want upload_finish", got.API[2].URL)
+	}
+	if got.API[3].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[3].URL)
 	}
 }
 
@@ -475,12 +483,16 @@ func TestDriveImportDryRunWithTargetToken(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 3 {
-		t.Fatalf("expected 3 API calls, got %d", len(got.API))
+	if len(got.API) != 4 {
+		t.Fatalf("expected 4 API calls, got %d", len(got.API))
 	}
 
-	// The import task body (API[1]) should contain target_token in point
-	importTaskBody := got.API[1].Body
+	if got.API[1].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[1].URL)
+	}
+
+	// The import task body (API[2]) should contain target_token in point.
+	importTaskBody := got.API[2].Body
 	point, ok := importTaskBody["point"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("point = %#v, want map", importTaskBody["point"])

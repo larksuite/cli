@@ -288,3 +288,18 @@ func TestDoAPIJSONTyped_NonZeroCode(t *testing.T) {
 		t.Errorf("LogID = %q, want lz", p.LogID)
 	}
 }
+
+func TestRuntimeContextMarkFileEventReported(t *testing.T) {
+	rt := &RuntimeContext{}
+	if !rt.MarkFileEventReported() {
+		t.Fatal("first mark should report")
+	}
+	if rt.MarkFileEventReported() {
+		t.Fatal("second mark should be skipped")
+	}
+
+	var nilRT *RuntimeContext
+	if nilRT.MarkFileEventReported() {
+		t.Fatal("nil receiver should not report")
+	}
+}

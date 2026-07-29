@@ -40,6 +40,7 @@ func TestDriveUploadDryRun_WikiTarget(t *testing.T) {
 	assert.Contains(t, output, "parent_node")
 	assert.Contains(t, output, "wikcnDryRunUploadTarget")
 	assert.Contains(t, output, `"parent_type": "wiki"`)
+	assertDriveUploadReportDryRun(t, result.Stdout, "wiki")
 }
 
 func TestDriveUploadDryRun_WithFileToken(t *testing.T) {
@@ -67,6 +68,7 @@ func TestDriveUploadDryRun_WithFileToken(t *testing.T) {
 	assert.Contains(t, output, `"with_url": true`)
 	assert.Contains(t, output, `"parent_node": "fldDryRunUploadTarget"`)
 	assert.Equal(t, "boxcnDryRunOverwriteTarget", clie2e.DryRunGet(output, "api.0.body.file_token").String())
+	assertDriveUploadReportDryRun(t, result.Stdout, "explorer")
 }
 
 func TestDriveUploadDryRunRejectsEmptyWikiToken(t *testing.T) {
@@ -95,4 +97,31 @@ func setDriveDryRunConfigEnv(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_APP_ID", "drive_dryrun_test")
 	t.Setenv("LARKSUITE_CLI_APP_SECRET", "drive_dryrun_secret")
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+}
+
+func assertDriveUploadReportDryRun(t *testing.T, out, mountPoint string) {
+	t.Helper()
+	if got := clie2e.DryRunGet(out, "api.1.method").String(); got != "POST" {
+		t.Fatalf("data.api.1.method = %q, want POST\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("data.api.1.url = %q, want report_file_event\nstdout:\n%s", got, out)
+	}
+	checks := map[string]string{
+		"api.1.body.file_scene":         "lark-cli",
+		"api.1.body.scene":              "upload",
+		"api.1.body.operation":          "upload",
+		"api.1.body.tags.api_path":      "/open-apis/drive/v1/files/upload_all",
+		"api.1.body.tags.command":       "drive +upload",
+		"api.1.body.tags.upload_mode":   "singlepart",
+		"api.1.body.tags.resource_type": "file",
+		"api.1.body.tags.status":        "success",
+		"api.1.body.tags.mount_point":   mountPoint,
+		"api.1.body.tags.file_token":    "<file_token from upload response>",
+	}
+	for path, want := range checks {
+		if got := clie2e.DryRunGet(out, path).String(); got != want {
+			t.Fatalf("data.%s = %q, want %q\nstdout:\n%s", path, got, want, out)
+		}
+	}
 }

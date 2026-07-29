@@ -14,12 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSheets_WorkbookImportDryRun pins the +workbook-import dry-run shape: a
-// two-step plan that uploads the local file (drive media upload) and creates
-// an import task with the doc type pinned to "sheet". This is the new shortcut
-// added in this branch — distinct from generic drive +import because it
-// hard-codes type=sheet and uses --name instead of --file-name. AGENTS.md
-// requires a dry-run E2E to lock the request shape before a live run.
+// TestSheets_WorkbookImportDryRun pins the +workbook-import dry-run shape:
+// upload the local file, best-effort report the upload, create an import task,
+// and poll it with the doc type pinned to "sheet". The shortcut is distinct
+// from generic drive +import because it hard-codes type=sheet and uses --name
+// instead of --file-name.
 func TestSheets_WorkbookImportDryRun(t *testing.T) {
 	setSheetsDryRunEnv(t)
 
@@ -56,18 +55,29 @@ func TestSheets_WorkbookImportDryRun(t *testing.T) {
 	require.Equal(t, "ccm_import_open", clie2e.DryRunGet(out, "api.0.body.parent_type").String(),
 		"stdout:\n%s", out)
 
-	// api.1 — create import task. type=sheet is the wrapper's whole reason for
+	// api.1 — report the completed upload using the workbook-import command
+	// identity while retaining the shared drive import mount point.
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.1.method").String(), "stdout:\n%s", out)
+	require.Equal(t, "/open-apis/drive/v1/lark_cli_file_event/report",
+		clie2e.DryRunGet(out, "api.1.url").String(), "stdout:\n%s", out)
+	require.Equal(t, "lark-cli", clie2e.DryRunGet(out, "api.1.body.file_scene").String(), "stdout:\n%s", out)
+	require.Equal(t, "sheets +workbook-import", clie2e.DryRunGet(out, "api.1.body.tags.command").String(),
+		"stdout:\n%s", out)
+	require.Equal(t, "ccm_import_open", clie2e.DryRunGet(out, "api.1.body.tags.mount_point").String(),
+		"stdout:\n%s", out)
+
+	// api.2 — create import task. type=sheet is the wrapper's whole reason for
 	// existing (drive +import would require --doc-type sheet explicitly);
 	// --name reaches the wire as file_name; file_extension is sniffed from
 	// the local file (.csv).
-	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.1.method").String(), "stdout:\n%s", out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.2.method").String(), "stdout:\n%s", out)
 	require.Equal(t, "/open-apis/drive/v1/import_tasks",
-		clie2e.DryRunGet(out, "api.1.url").String(), "stdout:\n%s", out)
-	require.Equal(t, "sheet", clie2e.DryRunGet(out, "api.1.body.type").String(),
+		clie2e.DryRunGet(out, "api.2.url").String(), "stdout:\n%s", out)
+	require.Equal(t, "sheet", clie2e.DryRunGet(out, "api.2.body.type").String(),
 		"workbook-import must hard-code type=sheet; stdout:\n%s", out)
-	require.Equal(t, "imported", clie2e.DryRunGet(out, "api.1.body.file_name").String(),
+	require.Equal(t, "imported", clie2e.DryRunGet(out, "api.2.body.file_name").String(),
 		"--name should reach file_name; stdout:\n%s", out)
-	require.Equal(t, "csv", clie2e.DryRunGet(out, "api.1.body.file_extension").String(),
+	require.Equal(t, "csv", clie2e.DryRunGet(out, "api.2.body.file_extension").String(),
 		"file_extension sniffed from .csv; stdout:\n%s", out)
 	// The import task must consume the upload step's result: the dry-run plan
 	// carries the <file_token> placeholder standing in for api.0's returned

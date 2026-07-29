@@ -64,7 +64,10 @@ func TestDrive_UploadWorkflow(t *testing.T) {
 			args = append(args, "--file-token", fileToken)
 		}
 
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		uploadCtx, uploadCancel := context.WithTimeout(ctx, 45*time.Second)
+		defer uploadCancel()
+
+		result, err := clie2e.RunCmd(uploadCtx, clie2e.Request{
 			Args:      args,
 			WorkDir:   workDir,
 			DefaultAs: "bot",
@@ -72,6 +75,11 @@ func TestDrive_UploadWorkflow(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
+		for _, reportOnlyField := range []string{"data.file_scene", "data.scene", "data.operation"} {
+			if gjson.Get(result.Stdout, reportOnlyField).Exists() {
+				t.Fatalf("report-only field %q leaked into upload stdout:\n%s", reportOnlyField, result.Stdout)
+			}
+		}
 
 		gotToken := gjson.Get(result.Stdout, "data.file_token").String()
 		require.NotEmpty(t, gotToken, "uploaded file should have a token, stdout:\n%s", result.Stdout)

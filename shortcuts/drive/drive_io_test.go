@@ -1141,8 +1141,8 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 2 {
-		t.Fatalf("expected 2 API calls, got %d", len(got.API))
+	if len(got.API) != 3 {
+		t.Fatalf("expected 3 API calls, got %d", len(got.API))
 	}
 	if got.API[0].Body["parent_type"] != driveUploadParentTypeWiki {
 		t.Fatalf("parent_type = %#v, want %q", got.API[0].Body["parent_type"], driveUploadParentTypeWiki)
@@ -1150,11 +1150,14 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	if got.API[0].Body["parent_node"] != "wikcn_dryrun_upload_target" {
 		t.Fatalf("parent_node = %#v, want %q", got.API[0].Body["parent_node"], "wikcn_dryrun_upload_target")
 	}
-	if got.API[1].URL != "/open-apis/drive/v1/metas/batch_query" {
-		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[1].URL)
+	if got.API[1].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[1].URL)
 	}
-	if got.API[1].Body["with_url"] != true {
-		t.Fatalf("metadata with_url = %#v, want true", got.API[1].Body["with_url"])
+	if got.API[2].URL != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[2].URL)
+	}
+	if got.API[2].Body["with_url"] != true {
+		t.Fatalf("metadata with_url = %#v, want true", got.API[2].Body["with_url"])
 	}
 	wantPostUploadNote := "After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new file."
 	if got.PostUploadNote != wantPostUploadNote {
@@ -1242,17 +1245,20 @@ func TestDriveUploadDryRunIncludesFileToken(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 2 {
-		t.Fatalf("expected 2 API calls, got %d", len(got.API))
+	if len(got.API) != 3 {
+		t.Fatalf("expected 3 API calls, got %d", len(got.API))
 	}
 	if got.API[0].Body["file_token"] != "boxcn_dryrun_overwrite" {
 		t.Fatalf("file_token = %#v, want %q", got.API[0].Body["file_token"], "boxcn_dryrun_overwrite")
 	}
-	if got.API[1].URL != "/open-apis/drive/v1/metas/batch_query" {
-		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[1].URL)
+	if got.API[1].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[1].URL)
 	}
-	if got.API[1].Body["with_url"] != true {
-		t.Fatalf("metadata with_url = %#v, want true", got.API[1].Body["with_url"])
+	if got.API[2].URL != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[2].URL)
+	}
+	if got.API[2].Body["with_url"] != true {
+		t.Fatalf("metadata with_url = %#v, want true", got.API[2].Body["with_url"])
 	}
 }
 
@@ -1296,8 +1302,8 @@ func TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 2 {
-		t.Fatalf("expected 2 API calls, got %d", len(got.API))
+	if len(got.API) != 3 {
+		t.Fatalf("expected 3 API calls, got %d", len(got.API))
 	}
 	if got.API[0].Body["file_token"] != "boxcn_dryrun_overwrite" {
 		t.Fatalf("file_token = %#v, want %q", got.API[0].Body["file_token"], "boxcn_dryrun_overwrite")
@@ -2538,4 +2544,253 @@ func decodeDriveMultipartBody(t *testing.T, stub *httpmock.Stub) capturedDriveMu
 		body.Fields[part.FormName()] = buf.String()
 	}
 	return body
+}
+
+const driveReportFileEventPath = "/open-apis/drive/v1/lark_cli_file_event/report"
+
+// testDriveCapacityExpansionURL is a placeholder capacity-expansion URL used in
+// tests. It intentionally uses example.com so no internal endpoint is embedded
+// in the repository.
+const testDriveCapacityExpansionURL = "https://example.com/space/upload/pay/prepare"
+
+func registerDriveReportStub(t *testing.T, reg *httpmock.Registry) *httpmock.Stub {
+	t.Helper()
+	return registerDriveReportStubWithMsg(t, reg, "")
+}
+
+// registerDriveReportStubWithMsg registers a report_file_event stub returning
+// code 0 and, when msg is non-empty, carrying it as data.msg.
+func registerDriveReportStubWithMsg(t *testing.T, reg *httpmock.Registry, msg string) *httpmock.Stub {
+	t.Helper()
+	body := map[string]interface{}{"code": 0, "data": map[string]interface{}{}}
+	if msg != "" {
+		body["msg"] = "success"
+		body["data"] = map[string]interface{}{"msg": msg}
+	}
+	stub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      driveReportFileEventPath,
+		Body:     body,
+		Reusable: true,
+	}
+	reg.Register(stub)
+	return stub
+}
+
+func decodeDriveReportTags(t *testing.T, stub *httpmock.Stub) map[string]interface{} {
+	t.Helper()
+	if len(stub.CapturedBodies) != 1 {
+		t.Fatalf("report call count = %d, want 1", len(stub.CapturedBodies))
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBodies[0], &body); err != nil {
+		t.Fatalf("decode report body: %v", err)
+	}
+	if got := body["file_scene"]; got != "lark-cli" {
+		t.Fatalf("file_scene = %v, want lark-cli", got)
+	}
+	if got := body["scene"]; got != "upload" {
+		t.Fatalf("scene = %v, want upload", got)
+	}
+	if _, ok := body["user_id"]; ok {
+		t.Fatalf("user_id must be omitted, got %v", body["user_id"])
+	}
+	if _, ok := body["tenant_id"]; ok {
+		t.Fatalf("tenant_id must be omitted, got %v", body["tenant_id"])
+	}
+	tags, ok := body["tags"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("tags = %#v, want object", body["tags"])
+	}
+	return tags
+}
+
+func TestDriveUploadSmallFileReportFileEventOnSuccess(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-report-small-ok", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+	reportStub := registerDriveReportStub(t, reg)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "file_report_ok"},
+		},
+	})
+
+	withDriveWorkingDir(t, t.TempDir())
+	if err := os.WriteFile("small.bin", make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "small.bin", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected upload to succeed, got error: %v", err)
+	}
+
+	tags := decodeDriveReportTags(t, reportStub)
+	if got := tags["status"]; got != "success" {
+		t.Fatalf("tags.status = %v, want success", got)
+	}
+	if got := tags["api_path"]; got != "/open-apis/drive/v1/files/upload_all" {
+		t.Fatalf("tags.api_path = %v", got)
+	}
+	if got := tags["upload_mode"]; got != "singlepart" {
+		t.Fatalf("tags.upload_mode = %v, want singlepart", got)
+	}
+	if got := tags["resource_type"]; got != "file" {
+		t.Fatalf("tags.resource_type = %v, want file", got)
+	}
+	if got := tags["mount_point"]; got != driveUploadParentTypeExplorer {
+		t.Fatalf("tags.mount_point = %v, want %s", got, driveUploadParentTypeExplorer)
+	}
+	if got := tags["file_token"]; got != "file_report_ok" {
+		t.Fatalf("tags.file_token = %v, want file_report_ok", got)
+	}
+}
+
+func TestDriveUploadSmallFileReportFileEventOnError(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-report-small-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+	reportStub := registerDriveReportStubWithMsg(t, reg, testDriveCapacityExpansionURL)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body:   map[string]interface{}{"code": 1061101, "msg": "tenant capacity exceeded"},
+	})
+
+	withDriveWorkingDir(t, t.TempDir())
+	if err := os.WriteFile("small.bin", make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "small.bin", "--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if p.Code != 1061101 {
+		t.Fatalf("code = %d, want original 1061101", p.Code)
+	}
+	if !strings.Contains(p.Hint, testDriveCapacityExpansionURL) {
+		t.Fatalf("hint = %q, want capacity expansion URL", p.Hint)
+	}
+
+	tags := decodeDriveReportTags(t, reportStub)
+	if got := tags["status"]; got != "error" {
+		t.Fatalf("tags.status = %v, want error", got)
+	}
+	if got := tags["code"]; got != "1061101" {
+		t.Fatalf("tags.code = %v, want 1061101", got)
+	}
+}
+
+func TestDriveUploadLargeFileReportFileEventOnPrepareError(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-report-large-prepare-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+	reportStub := registerDriveReportStubWithMsg(t, reg, testDriveCapacityExpansionURL)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_prepare",
+		Body:   map[string]interface{}{"code": 1061101, "msg": "tenant capacity exceeded"},
+	})
+
+	origDir, _ := os.Getwd()
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error: %v", err)
+	}
+	defer os.Chdir(origDir)
+
+	fh, err := os.Create("large.bin")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	err = mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "large.bin", "--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != 1061101 {
+		t.Fatalf("expected typed api error code 1061101, got %T (%v)", err, err)
+	}
+	if !strings.Contains(p.Hint, testDriveCapacityExpansionURL) {
+		t.Fatalf("hint = %q, want capacity expansion URL", p.Hint)
+	}
+
+	tags := decodeDriveReportTags(t, reportStub)
+	if got := tags["status"]; got != "error" {
+		t.Fatalf("tags.status = %v, want error", got)
+	}
+	if got := tags["upload_mode"]; got != "multipart" {
+		t.Fatalf("tags.upload_mode = %v, want multipart", got)
+	}
+	if got := tags["api_path"]; got != "/open-apis/drive/v1/files/upload_prepare" {
+		t.Fatalf("tags.api_path = %v, want upload_prepare", got)
+	}
+}
+
+func TestDriveUploadReportFileEventFailureKeepsUploadError(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-report-keeps-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+	reg.Register(&httpmock.Stub{
+		Method:   "POST",
+		URL:      driveReportFileEventPath,
+		Body:     map[string]interface{}{"code": 500, "msg": "report rejected"},
+		Reusable: true,
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body:   map[string]interface{}{"code": 1001, "msg": "quota exceeded"},
+	})
+
+	withDriveWorkingDir(t, t.TempDir())
+	if err := os.WriteFile("small.bin", make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "small.bin", "--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if p.Code != 1001 {
+		t.Fatalf("code = %d, want original upload code 1001", p.Code)
+	}
+	if !strings.Contains(err.Error(), "quota exceeded") {
+		t.Fatalf("error lost original message: %v", err)
+	}
 }

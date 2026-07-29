@@ -105,6 +105,7 @@ func PlanImportDryRun(runtime *common.RuntimeContext, p ImportParams) *common.Dr
 
 	appendDriveImportFolderTokenWikiCheckDryRun(dry, spec)
 	appendDriveImportUploadDryRun(dry, spec, fileSize)
+	appendDriveImportUploadReportDryRun(dry, runtime, fileSize)
 
 	dry.POST("/open-apis/drive/v1/import_tasks").
 		Desc("[2] Create import task").
@@ -257,6 +258,22 @@ func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, 
 			"extra":       extra,
 			"file":        "@" + spec.FilePath,
 		})
+}
+
+func appendDriveImportUploadReportDryRun(dry *common.DryRunAPI, runtime *common.RuntimeContext, fileSize int64) {
+	apiPath := "/open-apis/drive/v1/medias/upload_all"
+	uploadMode := "singlepart"
+	if fileSize > common.MaxDriveMediaUploadSinglePartSize {
+		apiPath = "/open-apis/drive/v1/medias/upload_finish"
+		uploadMode = "multipart"
+	}
+	common.AppendUploadFileEventDryRun(dry, runtime, common.LarkCLIFileEventMeta{
+		APIPath:      apiPath,
+		UploadMode:   uploadMode,
+		ResourceType: "media",
+		ParentType:   "ccm_import_open",
+		FileToken:    "<file_token from upload response>",
+	})
 }
 
 // normalizeDriveImportKindForURL maps the server's import "type" field to a

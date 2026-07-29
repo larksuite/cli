@@ -40,18 +40,21 @@ type RuntimeContext struct {
 	Config         *core.CliConfig
 	Cmd            *cobra.Command
 	Format         string
-	JqExpr         string                            // --jq expression; empty = no filter
-	outputErrOnce  sync.Once                         // guards first-error capture in Out()/OutFormat()
-	outputErr      error                             // deferred error from jq filtering; written at most once
-	botOnly        bool                              // set by framework for bot-only shortcuts
-	resolvedAs     core.Identity                     // effective identity resolved by framework
-	declaredScopes []string                          // shortcut-declared scopes for the resolved identity
-	Factory        *cmdutil.Factory                  // injected by framework
-	apiClientFunc  func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
-	botInfoFunc    func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
-	larkSDK        *lark.Client                      // eagerly initialized in mountDeclarative
-	stdinConsumed  bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
-	inputResolved  map[string]bool                   // flags whose value was replaced by @file / stdin content in resolveInputFlags; see InputResolvedFromSource
+	JqExpr         string        // --jq expression; empty = no filter
+	outputErrOnce  sync.Once     // guards first-error capture in Out()/OutFormat()
+	outputErr      error         // deferred error from jq filtering; written at most once
+	botOnly        bool          // set by framework for bot-only shortcuts
+	resolvedAs     core.Identity // effective identity resolved by framework
+	declaredScopes []string      // shortcut-declared scopes for the resolved identity
+	// fileEventReportOnce guards best-effort upload file-event reporting so it is
+	// emitted at most once per command run (see MarkFileEventReported).
+	fileEventReportOnce sync.Once
+	Factory             *cmdutil.Factory                  // injected by framework
+	apiClientFunc       func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
+	botInfoFunc         func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
+	larkSDK             *lark.Client                      // eagerly initialized in mountDeclarative
+	stdinConsumed       bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
+	inputResolved       map[string]bool                   // flags whose value was replaced by @file / stdin content in resolveInputFlags; see InputResolvedFromSource
 }
 
 // ── Identity ──
@@ -89,6 +92,20 @@ func (ctx *RuntimeContext) PresentError(err error) error {
 // IsBot returns true if current identity is bot.
 func (ctx *RuntimeContext) IsBot() bool {
 	return ctx.As().IsBot()
+}
+
+// MarkFileEventReported returns true only on the first successful mark within
+// this RuntimeContext. Upload file-event reporting is best-effort and should
+// happen at most once per command execution.
+func (ctx *RuntimeContext) MarkFileEventReported() bool {
+	if ctx == nil {
+		return false
+	}
+	report := false
+	ctx.fileEventReportOnce.Do(func() {
+		report = true
+	})
+	return report
 }
 
 // Command returns the shortcut command name as cobra knows it (e.g.
@@ -473,12 +490,16 @@ func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestO
 
 // DoAPIWithContext executes a raw Lark SDK request using callCtx for request
 // cancellation and deadlines while preserving the shortcut's resolved identity.
+// A nil callCtx falls back to the RuntimeContext's command-wide context.
 func (ctx *RuntimeContext) DoAPIWithContext(callCtx context.Context, req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+	if callCtx == nil {
+		callCtx = ctx.ctx
+	}
 	ac, err := ctx.getAPIClient()
 	if err != nil {
 		return nil, err
 	}
-	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
+	if optFn := cmdutil.ShortcutHeaderOpts(callCtx); optFn != nil {
 		opts = append(opts, optFn)
 	}
 	return ac.DoSDKRequest(callCtx, req, ctx.As(), opts...)
