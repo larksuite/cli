@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import re
@@ -15,6 +16,8 @@ import xml.etree.ElementTree as ET
 from difflib import SequenceMatcher, get_close_matches
 from pathlib import Path
 from typing import Any
+
+import sxsd_validator
 
 
 XS_NS = "{http://www.w3.org/2001/XMLSchema}"
@@ -44,8 +47,7 @@ ROUNDTRIP_SXSD_ATTRS = {
     ("chartData", "isStaticData"),
 }
 # Slides readback echoes each chartField's CSV text as per-value <chartParsedValues> children;
-# it's server-emitted, absent from the write schema, and appears on virtually every chart-bearing
-# deck, so treating it as an unsupported tag would block per-slide linting document-wide.
+# it is server-emitted and absent from the write schema, so it must not block page linting.
 ROUNDTRIP_SXSD_TAGS = {"chartParsedValues"}
 DEFAULT_TABLE_COLUMN_WIDTH = 110
 DEFAULT_TABLE_ROW_HEIGHT = 37
@@ -303,77 +305,13 @@ def xml_namespace(tag: str) -> str | None:
     return tag.split("}", 1)[0] + "}" if tag.startswith("{") else None
 
 
-def strip_xsd_prefix(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return value.rsplit(":", 1)[-1]
-
-
-def iter_direct_xsd_children(element: ET.Element, local_name: str) -> list[ET.Element]:
-    return [child for child in element if child.tag == f"{XS_NS}{local_name}"]
-
-
 def load_sxsd_tag_attributes() -> dict[str, set[str]]:
     global _SXSD_TAG_ATTRIBUTES_CACHE
     if _SXSD_TAG_ATTRIBUTES_CACHE is not None:
         return _SXSD_TAG_ATTRIBUTES_CACHE
 
-    schema_root = ET.parse(SXSD_SCHEMA_PATH).getroot()
-    named_complex_types = {
-        complex_type.attrib["name"]: complex_type
-        for complex_type in schema_root.findall(f"{XS_NS}complexType")
-        if complex_type.attrib.get("name")
-    }
-    resolving: set[str] = set()
-
-    def attributes_for_complex_type(complex_type: ET.Element) -> set[str]:
-        attrs: set[str] = {
-            attribute.attrib["name"]
-            for attribute in iter_direct_xsd_children(complex_type, "attribute")
-            if attribute.attrib.get("name")
-        }
-        for content_name in ("simpleContent", "complexContent"):
-            for complex_content in iter_direct_xsd_children(complex_type, content_name):
-                for extension in iter_direct_xsd_children(complex_content, "extension"):
-                    base_type = strip_xsd_prefix(extension.attrib.get("base"))
-                    if base_type:
-                        attrs.update(attributes_for_type(base_type))
-                    attrs.update(
-                        attribute.attrib["name"]
-                        for attribute in iter_direct_xsd_children(extension, "attribute")
-                        if attribute.attrib.get("name")
-                    )
-        return attrs
-
-    def attributes_for_type(type_name: str) -> set[str]:
-        if type_name in resolving:
-            return set()
-        complex_type = named_complex_types.get(type_name)
-        if complex_type is None:
-            return set()
-        resolving.add(type_name)
-        try:
-            return attributes_for_complex_type(complex_type)
-        finally:
-            resolving.remove(type_name)
-
-    tag_attributes: dict[str, set[str]] = {}
-    for element in schema_root.iter(f"{XS_NS}element"):
-        tag_name = element.attrib.get("name")
-        if not tag_name:
-            continue
-
-        attrs: set[str] = set()
-        type_name = strip_xsd_prefix(element.attrib.get("type"))
-        if type_name:
-            attrs.update(attributes_for_type(type_name))
-        for complex_type in iter_direct_xsd_children(element, "complexType"):
-            attrs.update(attributes_for_complex_type(complex_type))
-
-        tag_attributes.setdefault(tag_name, set()).update(attrs)
-
-    _SXSD_TAG_ATTRIBUTES_CACHE = tag_attributes
-    return tag_attributes
+    _SXSD_TAG_ATTRIBUTES_CACHE = sxsd_validator.load_tag_attributes(SXSD_SCHEMA_PATH)
+    return _SXSD_TAG_ATTRIBUTES_CACHE
 
 
 def load_iconpark_icon_types() -> set[str]:
@@ -410,13 +348,19 @@ def build_sxsd_tag_hint(tag_name: str, supported_tags: set[str]) -> str:
     return "Unsupported SXSD tag. Use only tags defined in slides_xml_schema_definition.xml."
 
 
-def build_sxsd_attr_hint(tag_name: str, attr_name: str, allowed_attrs: set[str]) -> str:
+def suggest_sxsd_attrs(attr_name: str, allowed_attrs: set[str]) -> list[str]:
     alias = SXSD_ATTR_ALIASES.get(attr_name)
     if alias and alias in allowed_attrs:
-        return f'Use "{alias}" on <{tag_name}> instead of "{attr_name}".'
-    close_matches = get_close_matches(attr_name, sorted(allowed_attrs), n=3, cutoff=0.68)
-    if close_matches:
-        return "Unsupported SXSD attribute. Did you mean " + ", ".join(f'"{match}"' for match in close_matches) + "?"
+        return [alias]
+    return get_close_matches(attr_name, sorted(allowed_attrs), n=3, cutoff=0.68)
+
+
+def build_sxsd_attr_hint(tag_name: str, attr_name: str, allowed_attrs: set[str]) -> str:
+    suggestions = suggest_sxsd_attrs(attr_name, allowed_attrs)
+    if suggestions:
+        if SXSD_ATTR_ALIASES.get(attr_name) == suggestions[0]:
+            return f'Use "{suggestions[0]}" on <{tag_name}> instead of "{attr_name}".'
+        return "Unsupported SXSD attribute. Did you mean " + ", ".join(f'"{match}"' for match in suggestions) + "?"
     allowed_summary = ", ".join(sorted(allowed_attrs)[:8])
     if len(allowed_attrs) > 8:
         allowed_summary += ", ..."
@@ -431,10 +375,29 @@ def should_skip_sxsd_attribute(tag_name: str, attr_name: str) -> bool:
     return attr_name in SERVER_FILLED_SXSD_ATTRS or (tag_name, attr_name) in ROUNDTRIP_SXSD_ATTRS
 
 
-def validate_sxsd_tag_attributes(root: ET.Element) -> list[dict[str, Any]]:
+def without_server_filled_sxsd_fields(root: ET.Element) -> ET.Element:
+    sanitized_root = copy.deepcopy(root)
+
+    def sanitize(element: ET.Element) -> None:
+        tag_name = xml_local_name(element.tag)
+        for raw_attr_name in list(element.attrib):
+            if should_skip_sxsd_attribute(tag_name, xml_local_name(raw_attr_name)):
+                del element.attrib[raw_attr_name]
+        for child in list(element):
+            if xml_local_name(child.tag) in ROUNDTRIP_SXSD_TAGS:
+                element.remove(child)
+                continue
+            sanitize(child)
+
+    sanitize(sanitized_root)
+    return sanitized_root
+
+
+def validate_sxsd_document(xml: str, root: ET.Element) -> list[dict[str, Any]]:
     tag_attributes = load_sxsd_tag_attributes()
     supported_tags = set(tag_attributes)
     issues: list[dict[str, Any]] = []
+    suggested_attr_candidates: dict[tuple[str, str], list[set[str]]] = {}
 
     def visit(element: ET.Element, ancestors: list[str], path: str) -> None:
         if should_skip_sxsd_subtree(element, ancestors):
@@ -466,6 +429,11 @@ def validate_sxsd_tag_attributes(root: ET.Element) -> list[dict[str, Any]]:
                     continue
                 if attr_name in allowed_attrs:
                     continue
+                suggestions = suggest_sxsd_attrs(attr_name, allowed_attrs)
+                if suggestions:
+                    suggested_attr_candidates.setdefault((current_path, tag_name), []).append(
+                        set(suggestions)
+                    )
                 issues.append(
                     {
                         "level": "error",
@@ -482,6 +450,76 @@ def validate_sxsd_tag_attributes(root: ET.Element) -> list[dict[str, Any]]:
             visit(child, [*ancestors, tag_name], current_path)
 
     visit(root, [], "")
+    existing = {
+        (issue.get("code"), issue.get("path"), issue.get("tag"), issue.get("attr"))
+        for issue in issues
+    }
+    unsupported_tag_locations = {
+        (issue.get("path"), issue.get("tag"))
+        for issue in issues
+        if issue.get("code") == "sxsd_unsupported_tag"
+    }
+    schema_issues = _validate_sxsd_schema_constraints(xml, root)
+    missing_attrs_by_location: dict[tuple[str, str], set[str]] = {}
+    for schema_issue in schema_issues:
+        if schema_issue.get("code") != "sxsd_missing_required_attr":
+            continue
+        location = (schema_issue.get("path"), schema_issue.get("tag"))
+        missing_attrs_by_location.setdefault(location, set()).add(schema_issue.get("attr"))
+
+    suggested_attrs: set[tuple[str, str, str]] = set()
+    for location, candidate_groups in suggested_attr_candidates.items():
+        missing_attrs = missing_attrs_by_location.get(location, set())
+        for candidates in candidate_groups:
+            matching_missing_attrs = candidates & missing_attrs
+            if len(matching_missing_attrs) == 1:
+                suggested_attrs.add((*location, next(iter(matching_missing_attrs))))
+
+    for schema_issue in schema_issues:
+        if schema_issue.get("code") == "sxsd_unexpected_child" and (
+            schema_issue.get("path"),
+            schema_issue.get("tag"),
+        ) in unsupported_tag_locations:
+            continue
+        if schema_issue.get("code") == "sxsd_missing_required_attr" and (
+            schema_issue.get("path"),
+            schema_issue.get("tag"),
+            schema_issue.get("attr"),
+        ) in suggested_attrs:
+            continue
+        key = (
+            schema_issue.get("code"),
+            schema_issue.get("path"),
+            schema_issue.get("tag"),
+            schema_issue.get("attr"),
+        )
+        if key not in existing:
+            issues.append(schema_issue)
+    return issues
+
+
+def _validate_sxsd_schema_constraints(xml: str, root: ET.Element) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    if re.match(r"^\s*<\?xml\b", xml):
+        issues.append(
+            {
+                "level": "error",
+                "code": "sxsd_unsupported_declaration",
+                "path": xml_local_name(root.tag),
+                "tag": xml_local_name(root.tag),
+                "expected": "SXSD document without an XML declaration",
+                "actual": "<?xml ...?>",
+                "message": "XML declarations are not supported by the Slides SXSD write format",
+                "hint": "Remove the <?xml ...?> declaration and keep the SXSD root element.",
+            }
+        )
+
+    issues.extend(
+        sxsd_validator.validate_sxsd(
+            without_server_filled_sxsd_fields(root),
+            SXSD_SCHEMA_PATH,
+        )
+    )
     return issues
 
 
@@ -685,18 +723,39 @@ def validate_xml_well_formed(xml: str) -> dict[str, Any] | None:
     return xml_error
 
 
-def parse_presentation(xml: str) -> dict[str, Any]:
-    presentation_match = re.search(r"<presentation\b([^>]*)>", xml)
-    if presentation_match:
-        return {
-            "width": int(float(extract_attribute(presentation_match.group(1), "width") or 960)),
-            "height": int(float(extract_attribute(presentation_match.group(1), "height") or 540)),
-            "slides": re.findall(r"<slide\b[\s\S]*?</slide>", xml),
+def serialize_slide_for_layout(slide_root: ET.Element) -> str:
+    slide_copy = copy.deepcopy(slide_root)
+    for element in slide_copy.iter():
+        if not isinstance(element.tag, str):
+            continue
+        element.tag = xml_local_name(element.tag)
+        attributes = {
+            xml_local_name(attribute_name): value
+            for attribute_name, value in element.attrib.items()
         }
-    slide_match = re.findall(r"<slide\b[\s\S]*?</slide>", xml)
-    if slide_match:
-        return {"width": 960, "height": 540, "slides": slide_match}
-    fail("input must contain a <presentation> or <slide> root")
+        element.attrib.clear()
+        element.attrib.update(attributes)
+    return ET.tostring(slide_copy, encoding="unicode")
+
+
+def parse_presentation(root: ET.Element) -> dict[str, Any]:
+    root_name = xml_local_name(root.tag)
+    if root_name == "slide":
+        slide_roots = [root]
+        width = 960
+        height = 540
+    elif root_name == "presentation":
+        slide_roots = [child for child in root if xml_local_name(child.tag) == "slide"]
+        width = int(float(root.attrib.get("width", 960)))
+        height = int(float(root.attrib.get("height", 540)))
+    else:
+        fail("input must contain a <presentation> or <slide> root")
+    return {
+        "width": width,
+        "height": height,
+        "slides": [serialize_slide_for_layout(slide_root) for slide_root in slide_roots],
+        "slide_roots": slide_roots,
+    }
 
 
 def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
@@ -2311,6 +2370,21 @@ def slide_status(errors: list[dict[str, Any]], warnings: list[dict[str, Any]]) -
     return "passed"
 
 
+def is_slide_scoped_sxsd_issue(issue: dict[str, Any], root_name: str) -> bool:
+    if issue.get("code") == "sxsd_unsupported_declaration":
+        return False
+    if root_name == "slide":
+        return True
+    path = issue.get("path")
+    if not isinstance(path, str):
+        return False
+    if path.startswith("presentation/slide/"):
+        return True
+    return path == "presentation/slide" and (
+        issue.get("attr") is not None or issue.get("code") == "sxsd_invalid_namespace"
+    )
+
+
 def build_result(
     source_path: str | None,
     slide_size: dict[str, int | float],
@@ -2366,11 +2440,20 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         raise AssertionError("parse_xml_root must return a root or error")
 
     namespace_issues = validate_sml_tag_prefixes(xml)
-    sxsd_issues = validate_sxsd_tag_attributes(root)
+    root_name = xml_local_name(root.tag)
+    sxsd_issues = validate_sxsd_document(xml, root)
     iconpark_issues = validate_iconpark_icon_types(root)
     top_level_issues = [
         normalize_issue(issue, None, {})
-        for issue in [*namespace_issues, *sxsd_issues, *iconpark_issues]
+        for issue in [
+            *namespace_issues,
+            *[
+                issue
+                for issue in sxsd_issues
+                if not is_slide_scoped_sxsd_issue(issue, root_name)
+            ],
+            *iconpark_issues,
+        ]
     ]
     if any(issue["level"] == "error" for issue in top_level_issues):
         return build_result(
@@ -2380,10 +2463,36 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             [],
         )
 
-    presentation = parse_presentation(xml)
+    presentation = parse_presentation(root)
+    slide_roots = presentation["slide_roots"]
     slides: list[dict[str, Any]] = []
     for index, slide_xml in enumerate(presentation["slides"]):
         slide_number = index + 1
+        slide_root = slide_roots[index]
+        slide_sxsd_issues = [
+            normalize_issue(issue, slide_number, {})
+            for issue in validate_sxsd_document(slide_xml, slide_root)
+        ]
+        slide_sxsd_errors = [
+            issue for issue in slide_sxsd_issues if issue["level"] == "error"
+        ]
+        if slide_sxsd_errors:
+            slide_sxsd_warnings = [
+                issue for issue in slide_sxsd_issues if issue["level"] == "warning"
+            ]
+            slides.append(
+                {
+                    "slide_number": slide_number,
+                    "status": slide_status(slide_sxsd_errors, slide_sxsd_warnings),
+                    "element_count": 0,
+                    "errors": slide_sxsd_errors,
+                    "warnings": slide_sxsd_warnings,
+                    "infos": [],
+                    "issues": slide_sxsd_issues,
+                }
+            )
+            continue
+
         geometry = lint_slide(
             slide_xml,
             slide_number,
@@ -2429,8 +2538,11 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             ),
         ]
         issues = [
-            normalize_issue(issue, slide_number, elements_by_id)
-            for issue in raw_issues
+            *slide_sxsd_issues,
+            *[
+                normalize_issue(issue, slide_number, elements_by_id)
+                for issue in raw_issues
+            ],
         ]
         errors = [issue for issue in issues if issue["level"] == "error"]
         warnings = [issue for issue in issues if issue["level"] == "warning"]
