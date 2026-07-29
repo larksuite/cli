@@ -16,16 +16,18 @@ func TestAgentName_EmptyWhenEnvUnset(t *testing.T) {
 }
 
 func TestAgentName_ReturnsCleanValue(t *testing.T) {
-	t.Setenv(CliAgentName, "claude-code")
-	if got := AgentName(); got != "claude-code" {
-		t.Fatalf("AgentName() = %q, want %q", got, "claude-code")
+	const agentName = "sample-agent"
+	t.Setenv(CliAgentName, agentName)
+	if got := AgentName(); got != agentName {
+		t.Fatalf("AgentName() = %q, want %q", got, agentName)
 	}
 }
 
 func TestAgentName_TrimsWhitespace(t *testing.T) {
-	t.Setenv(CliAgentName, "  cursor  ")
-	if got := AgentName(); got != "cursor" {
-		t.Fatalf("AgentName() = %q, want %q (whitespace trimmed)", got, "cursor")
+	const agentName = "sample-agent"
+	t.Setenv(CliAgentName, "  "+agentName+"  ")
+	if got := AgentName(); got != agentName {
+		t.Fatalf("AgentName() = %q, want %q (whitespace trimmed)", got, agentName)
 	}
 }
 

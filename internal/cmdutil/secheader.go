@@ -26,6 +26,7 @@ const (
 	HeaderShortcut    = "X-Cli-Shortcut"
 	HeaderExecutionId = "X-Cli-Execution-Id"
 	HeaderAgentTrace  = "X-Agent-Trace"
+	HeaderAgentName   = "X-Agent-Name"
 
 	SourceValue = "lark-cli"
 
@@ -54,6 +55,9 @@ func BaseSecurityHeaders() http.Header {
 	h.Set(HeaderUserAgent, UserAgentValue())
 	if v := envvars.AgentTrace(); v != "" {
 		h.Set(HeaderAgentTrace, v)
+	}
+	if v := envvars.AgentName(); v != "" {
+		h.Set(HeaderAgentName, v)
 	}
 	return h
 }

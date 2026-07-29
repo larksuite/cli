@@ -263,8 +263,33 @@ func TestBaseSecurityHeaders_AllRequiredHeaders(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// HeaderAgentTrace injection (via BaseSecurityHeaders)
+// Agent headers injected via BaseSecurityHeaders
 // ---------------------------------------------------------------------------
+
+func TestBaseSecurityHeaders_NoAgentNameHeaderWhenEnvUnset(t *testing.T) {
+	t.Setenv(envvars.CliAgentName, "")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentName); v != "" {
+		t.Fatalf("BaseSecurityHeaders() included %s = %q, want absent when env unset", HeaderAgentName, v)
+	}
+}
+
+func TestBaseSecurityHeaders_IncludesAgentNameHeaderWhenEnvSet(t *testing.T) {
+	const agentName = "sample-agent"
+	t.Setenv(envvars.CliAgentName, agentName)
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentName); v != agentName {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want %q", HeaderAgentName, v, agentName)
+	}
+}
+
+func TestBaseSecurityHeaders_NoAgentNameHeaderWhenEnvInvalid(t *testing.T) {
+	t.Setenv(envvars.CliAgentName, "agent\r\nX-Evil: attack")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentName); v != "" {
+		t.Fatalf("BaseSecurityHeaders() included %s = %q, want absent for invalid input", HeaderAgentName, v)
+	}
+}
 
 func TestBaseSecurityHeaders_NoAgentTraceHeaderWhenEnvUnset(t *testing.T) {
 	t.Setenv(envvars.CliAgentTrace, "")
