@@ -87,7 +87,7 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--range` | string | xor | 要删除的行/列闭区间；行用 1-based 数字如 `3:7` 或单行 `5`，列用字母如 `C:F` 或单列 `C`。与 `--ranges` 二选一 |
-| `--ranges` | string + File + Stdin（简单 JSON） | xor | 要删除的多个行/列区间 JSON 数组（最多 100 个，如 `["5:5","8:8","11:13"]` 或 `["C:C","F:G"]`），全行或全列不可混用，区间不可重叠；与 `--range` 二选一。CLI 按位置**从大到小逆序**合成一次原子批量删除——正序删除会因前面的行/列被删导致后续索引前移错位，逆序由 CLI 代劳，无需自行排序 |
+| `--ranges` | string + File + Stdin（简单 JSON） | xor | 要删除的多个行/列区间 JSON 数组（最多 100 个，如 `["5:5","8:8","11:13"]` 或 `["C:C","F:G"]`），全行或全列不可混用，区间不可重叠；与 `--range` 二选一。CLI 按位置**从大到小逆序**合成一次批量删除（fail-fast、不回滚）——正序删除会因前面的行/列被删导致后续索引前移错位，逆序由 CLI 代劳，无需自行排序 |
 
 ### `+dim-hide`
 
@@ -170,7 +170,7 @@ lark-cli sheets +dim-delete --url "..." --sheet-id "$SID" --range "5:7" --yes
 # 删除 D-F 列
 lark-cli sheets +dim-delete --url "..." --sheet-id "$SID" --range "D:F" --yes
 
-# 删除多个散布区间（如按查重结果删行）：--ranges 一次原子交付。
+# 删除多个散布区间（如按查重结果删行）：--ranges 一次批量交付（fail-fast、不回滚，CLI 逆序保索引）。
 # CLI 自动按位置从大到小逆序执行——正序会因前面的行被删导致后续索引前移错位；
 # 无需自行排序，也不要为此拼 +batch-update 的子操作数组
 lark-cli sheets +dim-delete --url "..." --sheet-id "$SID" --ranges '["5:5","8:8","11:13"]' --yes
@@ -198,7 +198,7 @@ lark-cli sheets +dim-move --url "..." --sheet-id "$SID" --source-range "C:F" --t
 
 > ⚠️ 这两条 shortcut 来自 `lark-sheets-range-operations` 的 `+rows-resize / +cols-resize` tool（分组在"工作表"是为了发现性）。详细参数和示例在 `lark-sheets-range-operations.md`。
 >
-> 常规写法：行高走 `--range` + `--height <px>`、列宽走 `--range` + `--width <px>`，无需再传 `--type`（等价于 `--type pixel`）；多行 / 多列不同尺寸用 map 形态 `--heights` / `--widths`（如 `--widths '{"A":100,"C:E":120}'`）一次原子完成，不要拆多次调用或走 `+batch-update`。`--type standard` / `--type auto` 用于非像素模式，不能与像素 flag 同给。`+cols-resize.--type` 不接受 `auto`（列宽不支持自动适应）。⚠️ 单位是像素（不是 Excel 字符单位 / 磅）。
+> 常规写法：行高走 `--range` + `--height <px>`、列宽走 `--range` + `--width <px>`，无需再传 `--type`（等价于 `--type pixel`）；多行 / 多列不同尺寸用 map 形态 `--heights` / `--widths`（如 `--widths '{"A":100,"C:E":120}'`）一次调用完成，不要拆多次调用或走 `+batch-update`。`--type standard` / `--type auto` 用于非像素模式，不能与像素 flag 同给。`+cols-resize.--type` 不接受 `auto`（列宽不支持自动适应）。⚠️ 单位是像素（不是 Excel 字符单位 / 磅）。
 
 ### `+dim-freeze`
 

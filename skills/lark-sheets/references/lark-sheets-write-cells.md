@@ -89,7 +89,7 @@
 
 ⚠️ **逐行写入公式是常见低效写法**：对每一行单独调用 `+cells-set` 写公式（如 26 次）既慢又易错，且不会自动平移公式引用。正确做法是 1 次模板写入 + 1 次 `--copy-to-range`（公式引用自动平移）。
 
-💡 **多个不连续区域写入（批量修公式的正解）**：散布多处（可跨 sheet）的值 / 公式写入，用 `--writes` 一次原子交付——每项 `{sheet_name, range, cells}`（sheet 定位必须写在每项里），不要为此拼 `+batch-update` 的 `--operations`，也不要逐区域多次调用（非原子）：
+💡 **多个不连续区域写入（批量修公式的正解）**：散布多处（可跨 sheet）的值 / 公式写入，用 `--writes` 一次批量交付（fail-fast、不回滚）——每项 `{sheet_name, range, cells}`（sheet 定位必须写在每项里），不要为此拼 `+batch-update` 的 `--operations`，也不要逐区域多次调用（多次往返、中途失败难恢复）：
 
 ```bash
 lark-cli sheets +cells-set --url "..." --writes - <<'JSON'
@@ -274,7 +274,7 @@ _公共四件套 · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--range` | string | xor | 写入区域（A1 格式）。与 `--writes` 二选一（单区域用 --range+--cells，多区域用 --writes） |
 | `--cells` | string + File + Stdin（复合 JSON） | xor | JSON：2D 数组 `[[{cell},...],...]`，维度与 `--range` 完全一致；每个 cell 可含 `value` / `formula` / `cell_styles` / `note` / `rich_text`（含 `type="embed-image"` 单元格嵌图）等，完整字段跑 `--print-schema` |
-| `--writes` | string + File + Stdin（复合 JSON） | xor | 多区域写入 JSON 数组（最多 100 项），每项 `{sheet_name\|sheet_id, range, cells}`——**sheet 定位必须写在每项里**（与 +batch-update 子操作、+styles-put 项同惯例，不认顶层 --sheet-name），cells 结构同 `--cells`（二维数组，可逐格带 cell_styles/border_styles）。整批展开为**单次原子批量提交**，支持跨 sheet；典型场景：批量修复散布多处的公式、跨表同构写入——不要为此拼 +batch-update 的 --operations。与 `--range`+`--cells` 二选一；范围级统一样式不在此做，写完接 +styles-put |
+| `--writes` | string + File + Stdin（复合 JSON） | xor | 多区域写入 JSON 数组（最多 100 项），每项 `{sheet_name\|sheet_id, range, cells}`——**sheet 定位必须写在每项里**（与 +batch-update 子操作、+styles-put 项同惯例，不认顶层 --sheet-name），cells 结构同 `--cells`（二维数组，可逐格带 cell_styles/border_styles）。整批展开为**单次批量提交**（fail-fast、不回滚），支持跨 sheet；典型场景：批量修复散布多处的公式、跨表同构写入——不要为此拼 +batch-update 的 --operations。与 `--range`+`--cells` 二选一；范围级统一样式不在此做，写完接 +styles-put |
 | `--allow-overwrite` | bool | optional | 允许覆盖非空 cell（默认 true）；设为 false 时遇非空 cell 报错 |
 | `--max-cells` | int | optional | 防爆，默认 50000（隐藏 flag：不在 `--help` 列出，但可正常传入） |
 | `--copy-to-range` | string | optional | 复制范围（A1 表示法）：把 --range 中 --cells 写入的内容（值/公式/样式，取决于实际传入字段）复制到该区域，公式引用自动平移（如 C2=B2 → C3=B3）。适合先写一行/一块模板再扩展填充整列/整区域（如 --range A1:G1 写模板、--copy-to-range A1:G100 填充 100 行）。支持整行 3:6、整列 C:E、到列尾 D3:D、到行尾 D3:3；支持英文逗号分隔多个目标区域，如 C1:D2,E5:F6 |
@@ -362,7 +362,7 @@ _【维度】行列数必须与 range 完全一致：'A1:C2'→[[_,_,_],[_,_,_]]
 
 ### `+cells-set` `--writes`
 
-_多区域写入项数组（最多 100 项），整批单次原子提交；支持跨 sheet_
+_多区域写入项数组（最多 100 项），整批单次批量提交（fail-fast、不回滚）；支持跨 sheet_
 
 **数组项**（类型 object）：
 - `sheet_id` (string?) — 目标子表 reference_id；与 sheet_name 二选一，必须写在每一项里（不认顶层 sheet 定位）
@@ -425,8 +425,8 @@ _一个或多个子表的 typed 数据，每个数组元素写入一张子表；
 |---------|--------|--------|
 | 只改**已有 cell 的样式**，不动 value/formula | `+cells-set-style` | `+cells-set`（会触发不必要的值写入） |
 | 把**单张图片嵌入**到某个 cell | `+cells-set-image` | `+cells-set`（参数更繁琐） |
-| **插行/列 + 写入** 这种多步组合，且要原子 | `+batch-update`（见 lark-sheets-batch-update） | 多次独立 `+cells-set`（非原子；插入会扰动后续 range） |
-| 在**多个不连续 range** 上应用同一组样式 | `+styles-put`（cell_styles 多项即多区域，见 lark-sheets-styles-put） | 多次 `+cells-set-style`（非原子） |
+| **插行/列 + 写入** 这种多步组合，且要一次交付 | `+batch-update`（见 lark-sheets-batch-update） | 多次独立 `+cells-set`（插入会扰动后续调用的 range） |
+| 在**多个不连续 range** 上应用同一组样式 | `+styles-put`（cell_styles 多项即多区域，见 lark-sheets-styles-put） | 多次 `+cells-set-style`（多次往返） |
 
 ### `+cells-set`
 
@@ -447,7 +447,7 @@ lark-cli sheets +cells-set --spreadsheet-token shtXXX --sheet-id "$SID" \
 
 > 中间想跳过的 cell 用空对象 `{}` 占位（底层语义为"保留原值不变"），`--cells` 维度仍须与 `--range` 完全一致。例：`--range A1:A5 --cells '[[{"value":1}],[{}],[{}],[{}],[{"value":5}]]'` 只写 A1 和 A5。
 >
-> 跨多个不连续区域散点写入（如 `D2` + `F7` + `J15`）不属于 `+cells-set` 的能力范围——请用 `+batch-update` 把多次 `+cells-set` 打包成单次原子请求。
+> 跨多个不连续区域散点写入（如 `D2` + `F7` + `J15`）不属于 `+cells-set` 的能力范围——请用 `+batch-update` 把多次 `+cells-set` 打包成单次批量请求（fail-fast、不回滚）。
 
 ### `+cells-set-style`
 

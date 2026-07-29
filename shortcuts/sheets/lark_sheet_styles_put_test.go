@@ -110,6 +110,46 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 		}), testToken)
 		requireValidation(t, err, "at least one dimension")
 	})
+
+	t.Run("range prefixed with another sheet rejected", func(t *testing.T) {
+		// Silently stripping "Detail!" would retarget the styles onto Summary.
+		t.Parallel()
+		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":        "Summary",
+				"cell_styles": []interface{}{map[string]interface{}{"range": "Detail!A1:D1", "font_weight": "bold"}},
+			}},
+		}), testToken)
+		ve := requireValidation(t, err, `names sheet "Detail" but the item targets "Summary"`)
+		if !strings.Contains(ve.Message, "cell_styles") {
+			t.Fatalf("message %q should locate the offending section", ve.Message)
+		}
+	})
+
+	t.Run("range prefixed with the item's own sheet passes", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":        "Summary",
+				"cell_styles": []interface{}{map[string]interface{}{"range": "'Summary'!A1:D1", "font_weight": "bold"}},
+			}},
+		}), testToken)
+		if err != nil || len(ops) == 0 {
+			t.Fatalf("ops=%d err=%v (matching prefix must stay accepted)", len(ops), err)
+		}
+	})
+
+	t.Run("unknown item key rejected with did-you-mean", func(t *testing.T) {
+		t.Parallel()
+		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":        "S1",
+				"cell_styles": []interface{}{map[string]interface{}{"range": "A1", "font_weight": "bold"}},
+				"freezee":     map[string]interface{}{"rows": float64(1)},
+			}},
+		}), testToken)
+		requireValidation(t, err, `unknown key "freezee" — did you mean "freeze"`)
+	})
 }
 
 // TestStylesPayloadVocabularyForgiveness pins the 07-20 rerun fixes: the

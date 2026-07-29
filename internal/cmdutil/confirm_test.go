@@ -122,18 +122,28 @@ func TestRetryCommandWithYes(t *testing.T) {
 		got := retryCommandWithYes([]string{
 			"/usr/local/bin/lark-cli", "sheets", "+cells-clear",
 			"--url", "https://x.feishu.cn/sheets/tok",
-			"--range", "A1:B2", "--sheet-name", "第 1 班",
+			"--range", "A$1:B$2", "--sheet-id", "sh1",
 		})
-		want := `lark-cli sheets +cells-clear --url https://x.feishu.cn/sheets/tok --range A1:B2 --sheet-name '第 1 班' --yes`
+		want := `lark-cli sheets +cells-clear --url https://x.feishu.cn/sheets/tok --range 'A$1:B$2' --sheet-id sh1 --yes`
 		if got != want {
 			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 
-	t.Run("single quotes inside args survive", func(t *testing.T) {
-		got := retryCommandWithYes([]string{"lark-cli", "x", "--title", "it's"})
-		if !strings.Contains(got, `'it'\''s'`) {
-			t.Errorf("got %q", got)
+	t.Run("free-form values omit the retry line", func(t *testing.T) {
+		// Values shaped like content rather than locators (whitespace, quotes,
+		// braces, non-ASCII) can carry passwords, PII or business data — the
+		// line is suppressed wholesale, not redacted.
+		for _, args := range [][]string{
+			{"lark-cli", "apps", "+db-execute", "--sql", "UPDATE users SET pw='x'"},
+			{"lark-cli", "base", "+form-submit", "--json", `{"phone":"13800138000"}`},
+			{"lark-cli", "sheets", "+cells-clear", "--sheet-name", "第 1 班"},
+			{"lark-cli", "x", "--title", "it's"},
+			{"lark-cli", "x", "--note=" + strings.Repeat("a", 200)},
+		} {
+			if got := retryCommandWithYes(args); got != "" {
+				t.Errorf("argv %v must not render a retry line, got %q", args, got)
+			}
 		}
 	})
 

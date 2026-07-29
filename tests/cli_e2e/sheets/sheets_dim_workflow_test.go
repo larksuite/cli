@@ -119,6 +119,43 @@ func TestSheets_DimShortcutsWorkflow(t *testing.T) {
 			"deleting column B must restore the original layout; stdout:\n%s", out)
 	})
 
+	t.Run("dim-insert inherit-style after also lands before position", func(t *testing.T) {
+		// `after` was the regression direction: the side flag only picks which
+		// neighbour's style is copied, never the landing side. A mapping
+		// regression would put the blank after B instead.
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"sheets", "+dim-insert",
+				"--spreadsheet-token", spreadsheetToken,
+				"--sheet-id", sheetID,
+				"--position", "B",
+				"--count", "1",
+				"--inherit-style", "after",
+			},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+
+		out := readRow1(t, "A1:D1")
+		assert.Contains(t, out, "r1c1,,r1c2,r1c3",
+			"inherit-style=after must still land the blank before position B; stdout:\n%s", out)
+
+		cleanup, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"sheets", "+dim-delete",
+				"--spreadsheet-token", spreadsheetToken,
+				"--sheet-id", sheetID,
+				"--range", "B",
+			},
+			DefaultAs: "bot",
+			Yes:       true,
+		})
+		require.NoError(t, err)
+		cleanup.AssertExitCode(t, 0)
+	})
+
 	t.Run("dim-delete --ranges deletes scattered rows atomically", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{

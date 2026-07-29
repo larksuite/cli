@@ -17,7 +17,7 @@ func TestFlattenToolErrorMsg(t *testing.T) {
 	t.Run("batch failures flatten to one line", func(t *testing.T) {
 		t.Parallel()
 		msg := `{"error":"{\"message\":\"batch_update: 0 succeeded, 1 failed\",\"succeeded\":0,\"failed\":1,\"failures\":[{\"index\":0,\"tool_name\":\"manage_chart_object\",\"error\":\"invalid snapshot.data.dim1.serie.index: 0, must be >= 1 (index is 1-based)\",\"errorType\":\"param_error\"}]}","errorType":"param_error","data":{"total":2,"succeeded":0,"failed":1}}`
-		got := flattenToolErrorMsg(msg)
+		got := flattenToolErrorMsg(msg, false)
 		for _, want := range []string{
 			"batch_update: 0 succeeded, 1 failed",
 			"operations[0] (manage_chart_object): invalid snapshot.data.dim1.serie.index",
@@ -33,7 +33,7 @@ func TestFlattenToolErrorMsg(t *testing.T) {
 
 	t.Run("plain-string inner error unwraps", func(t *testing.T) {
 		t.Parallel()
-		got := flattenToolErrorMsg(`{"error":"sheet \"s\" not found","errorType":"param_error"}`)
+		got := flattenToolErrorMsg(`{"error":"sheet \"s\" not found","errorType":"param_error"}`, false)
 		if got != `sheet "s" not found` {
 			t.Errorf("got %q", got)
 		}
@@ -42,7 +42,7 @@ func TestFlattenToolErrorMsg(t *testing.T) {
 	t.Run("non-JSON msg passes through", func(t *testing.T) {
 		t.Parallel()
 		msg := `cell at row 0, col 1 is inside a merged region (top-left: A1)`
-		if got := flattenToolErrorMsg(msg); got != msg {
+		if got := flattenToolErrorMsg(msg, false); got != msg {
 			t.Errorf("got %q", got)
 		}
 	})
@@ -50,7 +50,7 @@ func TestFlattenToolErrorMsg(t *testing.T) {
 	t.Run("JSON without error field passes through", func(t *testing.T) {
 		t.Parallel()
 		msg := `{"detail":"x"}`
-		if got := flattenToolErrorMsg(msg); got != msg {
+		if got := flattenToolErrorMsg(msg, false); got != msg {
 			t.Errorf("got %q", got)
 		}
 	})

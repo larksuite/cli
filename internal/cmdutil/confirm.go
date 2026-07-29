@@ -26,8 +26,11 @@ import (
 // as its own token or bundled onto a flag as --flag=-, whose piped data a
 // bare re-run would not reproduce), when any argument is a credential-bearing
 // flag (echoing its value would copy the secret from the process table into
-// the error envelope and every log that captures it), or when the rendered
-// command would be unreasonably long to echo back.
+// the error envelope and every log that captures it), when any value is
+// shaped like free-form content rather than a locator (whitespace, quotes,
+// braces, non-ASCII, over-long — inline --sql / --json payloads can carry
+// passwords or PII that no flag-name check would catch), or when the
+// rendered command would be unreasonably long to echo back.
 func RequireConfirmation(action string) error {
 	return requireConfirmationFor(action, os.Args)
 }
@@ -58,7 +61,7 @@ func retryCommandWithYes(args []string) string {
 	parts := make([]string, 0, len(args)+1)
 	parts = append(parts, filepath.Base(args[0]))
 	for _, a := range args[1:] {
-		if argReadsStdin(a) || argCarriesSecret(a) {
+		if argReadsStdin(a) || argCarriesSecret(a) || !argEchoSafe(a) {
 			return ""
 		}
 		parts = append(parts, shellQuoteArg(a))
@@ -108,6 +111,43 @@ func argCarriesSecret(a string) bool {
 		}
 	}
 	return false
+}
+
+// echoSafeMaxLen bounds a single echoed argument: identifiers, tokens, ranges
+// and paths fit comfortably; free-form payloads rarely do.
+const echoSafeMaxLen = 128
+
+// argEchoSafe reports whether an argument may be echoed back verbatim in the
+// retry line. Locator-shaped values (URLs, tokens, ranges, ids, enums,
+// numbers, paths) pass; anything shaped like free-form content — whitespace,
+// quotes, braces/brackets, non-ASCII, or over-long — suppresses the line.
+// High-risk commands also take payload flags (--sql, --json, inline
+// operations JSON) whose values can carry passwords, PII or business data;
+// name-based secret detection alone cannot catch those, so the value shape
+// is the gate. Flag names themselves (--flag / --flag=value: the name part)
+// are trusted; for bundled flags only the value part is judged.
+func argEchoSafe(a string) bool {
+	v := a
+	if strings.HasPrefix(a, "-") {
+		i := strings.IndexByte(a, '=')
+		if i < 0 {
+			return true // bare flag token, no value to leak
+		}
+		v = a[i+1:]
+	}
+	if len(v) > echoSafeMaxLen {
+		return false
+	}
+	for _, r := range v {
+		if r < 0x21 || r > 0x7e { // control, space, or non-ASCII
+			return false
+		}
+		switch r {
+		case '"', '\'', '{', '}', '[', ']', '`', '\\', ';':
+			return false
+		}
+	}
+	return true
 }
 
 // shellQuoteArg single-quotes an argument when it contains any character a

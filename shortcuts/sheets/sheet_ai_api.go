@@ -84,7 +84,10 @@ func callTool(
 	code, _ := util.ToFloat64(envelope["code"])
 	if code != 0 {
 		msg, _ := envelope["msg"].(string)
-		return nil, errs.NewAPIError(errs.SubtypeServerError, "tool %q failed: [%d] %s", toolName, int(code), flattenToolErrorMsg(msg)).
+		// The recovery prescription depends on the execution mode the batch
+		// was sent with; non-batch tools simply lack the key (false).
+		continueOnError, _ := input["continue_on_error"].(bool)
+		return nil, errs.NewAPIError(errs.SubtypeServerError, "tool %q failed: [%d] %s", toolName, int(code), flattenToolErrorMsg(msg, continueOnError)).
 			WithCode(int(code))
 	}
 	data, _ := envelope["data"].(map[string]interface{})
@@ -109,7 +112,11 @@ func callTool(
 // aggregator) failing to extract the real cause from the double-escaped
 // form. Anything that doesn't match the nested shape passes through
 // untouched.
-func flattenToolErrorMsg(msg string) string {
+//
+// continueOnError is the execution mode the batch was sent with: it decides
+// the recovery prescription, because a single listed failure only implies
+// "nothing after it ran" under fail-fast.
+func flattenToolErrorMsg(msg string, continueOnError bool) string {
 	trimmed := strings.TrimSpace(msg)
 	if !strings.HasPrefix(trimmed, "{") {
 		return msg
@@ -144,13 +151,14 @@ func flattenToolErrorMsg(msg string) string {
 		out := detail.Message + " — " + strings.Join(parts, "; ")
 		// Partial failure is NOT rolled back server-side: the succeeded sub-ops
 		// stay applied. Spell out the recovery so agents don't resend the whole
-		// batch and double-apply the successes (observed in eval traces). With
-		// one failure (fail-fast) everything before it succeeded and nothing
-		// after it ran — resend from that index; with several (continue-on-error)
-		// only the listed failures need resending.
+		// batch and double-apply the successes (observed in eval traces). Only
+		// under fail-fast does a single failure mean nothing after it ran —
+		// resend from that index. Under continue-on-error the later operations
+		// already executed, so even a single listed failure must be resent
+		// alone; prescribing the tail there would double-apply the successes.
 		if strings.Contains(detail.Message, "succeeded") &&
 			!strings.Contains(detail.Message, " 0 succeeded") {
-			if len(detail.Failures) == 1 {
+			if !continueOnError && len(detail.Failures) == 1 {
 				out += fmt.Sprintf("; note: succeeded operations stay applied (no rollback) — fix the failure and resend only operations[%d:] onward, do not resend the whole batch", firstFailed)
 			} else {
 				out += "; note: succeeded operations stay applied (no rollback) — fix and resend only the failed operations listed above, do not resend the whole batch"

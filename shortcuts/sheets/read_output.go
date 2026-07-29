@@ -61,7 +61,9 @@ func emitReadResult(runtime *common.RuntimeContext, out interface{}) error {
 	}
 	b = append(b, '\n')
 	if _, err := runtime.FileIO().Save(path, fileio.SaveOptions{}, bytes.NewReader(b)); err != nil {
-		return err
+		// Typed mapping keeps an unsafe --output-path a validation error and
+		// write failures file_io — a raw Save error surfaces as internal/unknown.
+		return common.WrapSaveErrorTyped(err)
 	}
 	resolved, err := runtime.FileIO().ResolvePath(path)
 	if err != nil {

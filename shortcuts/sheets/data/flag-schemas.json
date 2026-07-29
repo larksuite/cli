@@ -68,7 +68,7 @@
                 "+float-image-update",
                 "+float-image-delete"
               ],
-              "description": "CLI shortcut 名（不是底层 MCP tool 名）。+dim-move 不在表中——它走 legacy v2 endpoint，无法批；+cells-set-image / +workbook-create 也不在——前者含多步图片上传，后者是新建工作簿，都不属于 atomic batch 范畴；所有读操作、fan-out wrapper（+batch-update 自身 / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete}）一律禁。"
+              "description": "CLI shortcut 名（不是底层 MCP tool 名）。+dim-move 不在表中——它走 legacy v2 endpoint，无法批；+cells-set-image / +workbook-create 也不在——前者含多步图片上传，后者是新建工作簿，都不属于 batch 范畴；所有读操作、fan-out wrapper（+batch-update 自身 / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete}）一律禁。"
             },
             "input": {
               "type": "object",
@@ -651,7 +651,7 @@
       },
       "writes": {
         "type": "array",
-        "description": "多区域写入项数组（最多 100 项），整批单次原子提交；支持跨 sheet。",
+        "description": "多区域写入项数组（最多 100 项），整批单次批量提交（fail-fast、不回滚）；支持跨 sheet。",
         "items": {
           "type": "object",
           "required": [

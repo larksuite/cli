@@ -893,7 +893,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Multiple row/column ranges to delete as a JSON array (up to 100 items, e.g. `[\"5:5\",\"8:8\",\"11:13\"]` or `[\"C:C\",\"F:G\"]`); rows and columns cannot be mixed, ranges must not overlap; XOR with `--range`. CLI sorts positions in DESCENDING order into one atomic batch delete — ascending deletion would shift later indexes as earlier rows/columns disappear; the CLI handles the ordering",
+        "desc": "Multiple row/column ranges to delete as a JSON array (up to 100 items, e.g. `[\"5:5\",\"8:8\",\"11:13\"]` or `[\"C:C\",\"F:G\"]`); rows and columns cannot be mixed, ranges must not overlap; XOR with `--range`. CLI sorts positions in DESCENDING order into one batched delete (fail-fast, no rollback) — ascending deletion would shift later indexes as earlier rows/columns disappear; the CLI handles the ordering",
         "input": [
           "file",
           "stdin"
@@ -1762,7 +1762,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Multi-region write as a JSON array (up to 100 items), each `{sheet_name|sheet_id, range, cells}` — the sheet selector LIVES IN EACH ITEM (same convention as +batch-update sub-ops and +styles-put items; the top-level --sheet-name is rejected). cells has the same shape as `--cells` (2D array; per-cell cell_styles/border_styles allowed). The whole array goes out as ONE atomic batched request, cross-sheet supported; typical use: fixing formulas scattered across ranges/sheets — do not assemble a +batch-update operations array for this. XOR with `--range`+`--cells`; range-level uniform styling stays with +styles-put afterwards",
+        "desc": "Multi-region write as a JSON array (up to 100 items), each `{sheet_name|sheet_id, range, cells}` — the sheet selector LIVES IN EACH ITEM (same convention as +batch-update sub-ops and +styles-put items; the top-level --sheet-name is rejected). cells has the same shape as `--cells` (2D array; per-cell cell_styles/border_styles allowed). The whole array goes out as ONE batched request (fail-fast, no rollback), cross-sheet supported; typical use: fixing formulas scattered across ranges/sheets — do not assemble a +batch-update operations array for this. XOR with `--range`+`--cells`; range-level uniform styling stays with +styles-put afterwards",
         "input": [
           "file",
           "stdin"
@@ -2456,7 +2456,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Per-row height map — set different heights for many rows in one atomic call. Keys: single row (`\"1\"`) or closed range (`\"2:20\"`); values: pixel height (e.g. 30 / 50), `\"auto\"` (fit content) or `\"standard\"` (reset to default). Units are pixels, NOT points. Mutually exclusive with `--range` / `--height` / `--type`",
+        "desc": "Per-row height map — set different heights for many rows in one batched call (fail-fast, no rollback). Keys: single row (`\"1\"`) or closed range (`\"2:20\"`); values: pixel height (e.g. 30 / 50), `\"auto\"` (fit content) or `\"standard\"` (reset to default). Units are pixels, NOT points. Mutually exclusive with `--range` / `--height` / `--type`",
         "input": [
           "file",
           "stdin"
@@ -2534,7 +2534,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Per-column width map — set different widths for many columns in one atomic call. Keys: single column (`\"A\"`) or closed range (`\"C:E\"`); values: pixel width (e.g. 80 / 120 / 200) or `\"standard\"` (reset to default). Units are pixels, NOT Excel character units (px ≈ chars × 8 + 16). Mutually exclusive with `--range` / `--width` / `--type`",
+        "desc": "Per-column width map — set different widths for many columns in one batched call (fail-fast, no rollback). Keys: single column (`\"A\"`) or closed range (`\"C:E\"`); values: pixel width (e.g. 80 / 120 / 200) or `\"standard\"` (reset to default). Units are pixels, NOT Excel character units (px ≈ chars × 8 + 16). Mutually exclusive with `--range` / `--width` / `--type`",
         "input": [
           "file",
           "stdin"
@@ -2859,7 +2859,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Visual spec JSON applied to an EXISTING spreadsheet: top-level `{styles:[...]}`, one item per target sheet (`name` is the real sheet name), each giving at least one of `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze`. The vocabulary is identical to `--styles` on `+workbook-create` / `+table-put` (cell_styles = A1 range + flat style fields, borders via the `border` shorthand {style,weight,color} applied to all four sides — border_styles only for per-side differences; row/col sizes = row/column range + size in px — type only for standard/auto; merges = cell range; freeze = `{rows:N, cols:N}`). The whole spec expands into one atomic batched request; ranges may target any region of the sheet",
+        "desc": "Visual spec JSON applied to an EXISTING spreadsheet: top-level `{styles:[...]}`, one item per target sheet (`name` is the real sheet name), each giving at least one of `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze`. The vocabulary is identical to `--styles` on `+workbook-create` / `+table-put` (cell_styles = A1 range + flat style fields, borders via the `border` shorthand {style,weight,color} applied to all four sides — border_styles only for per-side differences; row/col sizes = row/column range + size in px — type only for standard/auto; merges = cell range; freeze = `{rows:N, cols:N}`). The whole spec expands into one batched request (fail-fast, no rollback: applied sub-operations stay); ranges may target any region of the sheet",
         "input": [
           "file",
           "stdin"

@@ -125,6 +125,10 @@ func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) 
 			probs = append(probs, itemProbs...)
 			continue
 		}
+		if prefixProbs := stylesPutRangePrefixProbs(path, name, payload); len(prefixProbs) > 0 {
+			probs = append(probs, prefixProbs...)
+			continue
+		}
 		specs = append(specs, sheetSpec{name: name, payload: payload})
 	}
 	if err := joinStyleValidationErrors(probs); err != nil {
@@ -259,6 +263,41 @@ func coalesceStyleStamps(ops []workbookCreateCellStyleOp) []workbookCreateCellSt
 		}
 	}
 	return out
+}
+
+// stylesPutRangePrefixProbs rejects ranges whose "Sheet!" prefix names a
+// different sheet than the item they sit in: stripSheetPrefix would silently
+// retarget the operation onto the item's sheet (name "Summary" +
+// range "Detail!A1:D1" applying to Summary). A prefix matching the item's
+// own name is redundant but harmless — it passes and is stripped downstream.
+func stylesPutRangePrefixProbs(path, name string, payload *workbookCreateStylePayload) []error {
+	var probs []error
+	check := func(section, rangeStr string) {
+		idx := strings.Index(rangeStr, "!")
+		if idx < 0 {
+			return
+		}
+		prefix := strings.Trim(strings.TrimSpace(rangeStr[:idx]), "'")
+		if prefix == name {
+			return
+		}
+		probs = append(probs, common.ValidationErrorf(
+			"%s.%s range %q names sheet %q but the item targets %q — drop the prefix, or move the entry into the item for %q",
+			path, section, rangeStr, prefix, name, prefix))
+	}
+	for _, cs := range payload.CellStyles {
+		check("cell_styles", cs.Range)
+	}
+	for _, rs := range payload.RowSizes {
+		check("row_sizes", rs.Range)
+	}
+	for _, csz := range payload.ColSizes {
+		check("col_sizes", csz.Range)
+	}
+	for _, m := range payload.CellMerges {
+		check("cell_merges", m.Range)
+	}
+	return probs
 }
 
 // stripSheetPrefix drops an optional "Sheet!"-style prefix from an A1 range:

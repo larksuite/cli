@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -1059,9 +1060,37 @@ func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, er
 // slice: eval traces show agents fixing --styles errors one round trip per
 // error (border side, then row_sizes.type, then size…) because only the
 // first was ever reported.
+// workbookCreateStyleItemKeys is the full top-level vocabulary of one
+// --styles item, shared by the three carriers (+workbook-create /
+// +table-put / +styles-put).
+var workbookCreateStyleItemKeys = []string{"name", "cell_styles", "row_sizes", "col_sizes", "cell_merges", "freeze"}
+
 func parseWorkbookCreateStyleItem(item map[string]interface{}, path string) (*workbookCreateStylePayload, []error) {
 	payload := &workbookCreateStylePayload{}
 	var probs []error
+	// Reject unknown top-level keys first: a typo like "freezee" would
+	// otherwise be silently dropped while the rest of the item applies.
+	var unknown []string
+	for k := range item {
+		known := false
+		for _, lk := range workbookCreateStyleItemKeys {
+			if k == lk {
+				known = true
+				break
+			}
+		}
+		if !known {
+			unknown = append(unknown, k)
+		}
+	}
+	sort.Strings(unknown)
+	for _, k := range unknown {
+		msg := fmt.Sprintf("%s has unknown key %q", path, k)
+		if match := suggest.Closest(strings.ToLower(k), workbookCreateStyleItemKeys, 1); len(match) > 0 {
+			msg += fmt.Sprintf(" — did you mean %q?", match[0])
+		}
+		probs = append(probs, common.ValidationErrorf("%s", msg))
+	}
 	if raw, ok := item["cell_styles"]; ok {
 		var errsHere []error
 		payload.CellStyles, errsHere = parseWorkbookCreateCellStyleOps(raw, path+".cell_styles")
