@@ -548,7 +548,12 @@ func TestBotSearchTableUsesGenericFormatterLikeSearchUser(t *testing.T) {
 	}
 }
 
-func TestBotSearchCSVAndNDJSONExposeFullFieldsWithoutPaginationHint(t *testing.T) {
+// The old name and assertion here pinned a bug: csv and ndjson were the two
+// formats that carried neither has_more in stdout nor a hint on stderr, so a
+// machine caller read a truncated result as the whole answer. stdout stays
+// data-only; the truncation signal belongs on stderr for every format whose
+// stdout has no envelope.
+func TestBotSearchCSVAndNDJSONCarryFullFieldsAndSignalTruncation(t *testing.T) {
 	for _, format := range []string{"csv", "ndjson"} {
 		t.Run(format, func(t *testing.T) {
 			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
@@ -563,13 +568,15 @@ func TestBotSearchCSVAndNDJSONExposeFullFieldsWithoutPaginationHint(t *testing.T
 					t.Errorf("%s output missing %q: %s", format, field, stdout.String())
 				}
 			}
-			// Machine formats get no pagination hint, but the notice still has to
-			// reach the caller somewhere, and stdout must stay data-only.
-			if strings.Contains(stderr.String(), "hint: more matches exist") {
-				t.Fatalf("%s must not emit the pagination hint: %q", format, stderr.String())
+			// stdout must stay data-only, so both the notice and the truncation
+			// signal have to arrive on stderr.
+			for _, want := range []string{"notice: The query is too long", "hint: more matches exist"} {
+				if !strings.Contains(stderr.String(), want) {
+					t.Fatalf("%s dropped %q from stderr: %q", format, want, stderr.String())
+				}
 			}
-			if !strings.Contains(stderr.String(), "notice: The query is too long") {
-				t.Fatalf("%s dropped the notice: %q", format, stderr.String())
+			if strings.Contains(stdout.String(), "more matches exist") {
+				t.Fatalf("%s stdout must stay data-only: %s", format, stdout.String())
 			}
 		})
 	}
@@ -667,6 +674,33 @@ func TestBotSearchNoticeReachesCallerInEveryFormat(t *testing.T) {
 			// stdout stays pipe-clean: the notice must not be mixed into the rows.
 			if format == "csv" && strings.Contains(stdout.String(), "notice") {
 				t.Fatalf("csv stdout must stay data-only: %s", stdout.String())
+			}
+		})
+	}
+}
+
+// has_more is the server saying "this is not the whole answer". Only the json
+// envelope carries it, so every other format has to say so on stderr or a machine
+// caller silently treats a truncated result as complete.
+func TestBotSearchTruncationReachesCallerInEveryFormat(t *testing.T) {
+	for _, format := range []string{"json", "ndjson", "csv", "table", "pretty"} {
+		t.Run(format, func(t *testing.T) {
+			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+			registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor"))
+			if err := mountAndRun(t, ContactSearchBot, []string{
+				"+search-bot", "--query", "甲乙", "--format", format, "--as", "user",
+			}, factory, stdout); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if format == "json" {
+				if !strings.Contains(stdout.String(), `"has_more": true`) {
+					t.Fatalf("json must carry has_more in the envelope: %s", stdout.String())
+				}
+				return
+			}
+			if !strings.Contains(stderr.String(), "more matches exist") {
+				t.Fatalf("%s left the caller unable to learn the result was truncated\nstdout:\n%s\nstderr:\n%s",
+					format, stdout.String(), stderr.String())
 			}
 		})
 	}

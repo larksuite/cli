@@ -291,14 +291,14 @@ func buildBotSearchBody(runtime *common.RuntimeContext) (*botSearchAPIRequest, e
 	return req, nil
 }
 
-// botSearchStdoutCarriesNotice reports whether the chosen format puts the
-// server's notice into stdout. Only the json envelope does; pretty, table, csv
-// and ndjson all render rows only, so a notice ("results are incomplete", "the
-// query was truncated") would vanish and the caller would read a partial result
-// as a complete one. For those formats the notice goes to stderr, which keeps
-// stdout pipe-clean. A --jq expression can still project the notice away, but
-// that is the caller's explicit choice.
-func botSearchStdoutCarriesNotice(format string) bool {
+// botSearchStdoutCarriesEnvelope reports whether the chosen format puts the
+// response envelope — notice, has_more, and in fanout mode queries[] — into
+// stdout. Only json does; pretty, table, csv and ndjson render rows only, so
+// every piece of "this result is not the whole answer" metadata would vanish and
+// the caller would read a truncated result as a complete one. For those formats
+// the metadata goes to stderr, which keeps stdout pipe-clean. A --jq expression
+// can still project it away, but that is the caller's explicit choice.
+func botSearchStdoutCarriesEnvelope(format string) bool {
 	return format == "json" || format == ""
 }
 
@@ -340,10 +340,10 @@ func executeBotSearchSingle(ctx context.Context, runtime *common.RuntimeContext)
 		}
 		output.PrintTable(w, prettyBotRows(bots))
 	})
-	if respData.Notice != "" && !botSearchStdoutCarriesNotice(runtime.Format) {
+	if respData.Notice != "" && !botSearchStdoutCarriesEnvelope(runtime.Format) {
 		fmt.Fprintf(runtime.IO().ErrOut, "\nnotice: %s\n", respData.Notice)
 	}
-	if respData.HasMore && isHumanReadableFormat(runtime.Format) {
+	if respData.HasMore && !botSearchStdoutCarriesEnvelope(runtime.Format) {
 		fmt.Fprintln(runtime.IO().ErrOut,
 			"\nhint: more matches exist; narrow with --has-chatted or a more specific --query")
 	}

@@ -108,12 +108,14 @@ lark-cli contact +search-bot --query '会议助手' \
 
 和 `+search-user` 一致:没有 `--page-token`,输出也不给 `page_token`。`has_more=true` 时用 `--has-chatted` 或更具体的关键词收窄,而不是翻页 —— 注意 `--chat-ids` 起不到收窄作用。
 
+`has_more` 只在 `json` 的信封里;其余格式会在 **stderr** 输出一行 `hint: more matches exist; ...`。所以用 `csv` / `ndjson` 做管道时不读 stderr,就无法察觉结果被截断。
+
 ## 注意事项
 
 - **`enable_join_group=true` 不等于你能把它拉进群。** 加机器人进群需要应用的 `cli_` 开头 app_id,本命令不返回;拿这里的 `ou_` open_id 去调加群接口,服务端会把它放进 `invalid_id_list`,而且没有 open_id → app_id 的查询接口。看到这个字段为真时不要声称已加入成功。
-- **`meta_data.chat_id` 的官方文档写错了。** 文档说是"机器人所属的群聊 ID",实际是**调用者与该机器人的单聊会话**。本命令按后者投影成 `p2p_chat_id`。
+- **`meta_data.chat_id` 与官方文档的说法不符。** 文档写的是"机器人所属的群聊 ID",实测是**调用者与该机器人的单聊会话**,所以本命令投影成 `p2p_chat_id`。两条可自行复核的依据:把返回的 chat_id 传给 `lark-cli api GET /open-apis/im/v1/chats/<chat_id>`,`chat_mode` 是 `p2p`;以及通过 `--chat-ids` 指定某群搜到的机器人,其 `meta_data.chat_id` 是**空的**,并不等于那个群。若你在别的租户观察到相反结果,以实测为准并回来更正这一条。
 - **ID 类型只出 `open_id`。** 接口本身支持 `user_id_type`(实测 `union_id` 会返回 `on_...`),但本命令有固定输出结构,字段名会随之说谎,所以不暴露该参数;确实要 union_id / user_id 时走 `lark-cli api` 直调。
-- **`notice` 一定会到达调用方,但位置随格式变。** 服务端用它说明本次搜索的额外情况(如结果不全、query 被截断)。`json` 放在信封的 `data.notice`;其余格式的 stdout 只有数据行,所以 notice 写到 **stderr**(`notice: ...`),保证 stdout 仍可直接进管道。扇出模式下逐词的 notice 和失败原因同样会逐行写 stderr(`notice: "词" — ...` / `failed: "词" — ...`)。
+- **`notice` 和 `has_more` 一定会到达调用方,但位置随格式变。** 服务端用它说明本次搜索的额外情况(如结果不全、query 被截断)。`json` 放在信封里(`data.notice` / `data.has_more`);其余格式的 stdout 只有数据行,所以这两样都写到 **stderr**,保证 stdout 仍可直接进管道。扇出模式下逐词的 notice、失败原因和 has_more 同样逐行写 stderr(`notice: "词" — ...` / `failed: "词" — ...` / `has_more: "词" — ...`)。
 
 ## 输出字段 contract
 
@@ -156,12 +158,12 @@ lark-cli contact +search-bot --query '会议助手' \
 
 ### 各 `--format` 的差异
 
-| format | stdout | notice / 逐词失败 | 分页提示 | 扇出计数 |
-|---|---|---|---|---|
-| `json` | 完整信封,含 `notice` 与 `queries[]` | 在 stdout 信封里 | 无 | 无 |
-| `ndjson` | 每行一条记录,无信封 | 写 stderr | 无 | 无 |
-| `csv` | 完整结果字段 | 写 stderr | 无 | 写 stderr |
-| `table` | 完整结果字段 | 写 stderr | 写 stderr | 写 stderr |
-| `pretty` | 摘要表:单关键词 6 列;`--queries` 模式多一列 `matched_query`,共 7 列 | 写 stderr | 写 stderr | 写 stderr |
+| format | stdout | notice / has_more / 逐词失败 | 扇出计数 |
+|---|---|---|---|
+| `json` | 完整信封,含 `notice`、`has_more`、`queries[]` | 在 stdout 信封里 | 无 |
+| `ndjson` | 每行一条记录,无信封 | 写 stderr | 无 |
+| `csv` | 完整结果字段 | 写 stderr | 写 stderr |
+| `table` | 完整结果字段 | 写 stderr | 写 stderr |
+| `pretty` | 摘要表:单关键词 6 列;`--queries` 模式多一列 `matched_query`,共 7 列 | 写 stderr | 写 stderr |
 
-**stdout 在任何格式下都只有数据**,提示类信息一律走 stderr,所以管道安全。扇出计数那行形如 `2 queries, 3 total bots; 1 failed, 0 with has_more`。
+**stdout 在任何格式下都只有数据**,"结果不完整"这类元信息一律走 stderr,所以管道安全 —— 但也意味着**用非 json 格式做管道时必须同时读 stderr**,否则会把截断结果当完整结果。扇出计数那行形如 `2 queries, 3 total bots; 1 failed, 0 with has_more`。
