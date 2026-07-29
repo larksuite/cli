@@ -17,6 +17,11 @@ from typing import Any
 
 XS_NS = "{http://www.w3.org/2001/XMLSchema}"
 SML_NAMESPACE = "http://www.larkoffice.com/sml/2.0"
+SML_READBACK_NAMESPACE = "/sml/2.0"
+SML_HTTPS_READBACK_NAMESPACE = "https://www.larkoffice.com/sml/2.0"
+ACCEPTED_SML_NAMESPACES = frozenset(
+    (SML_NAMESPACE, SML_READBACK_NAMESPACE, SML_HTTPS_READBACK_NAMESPACE)
+)
 
 
 def local_name(value: str) -> str:
@@ -748,7 +753,11 @@ def validate_sxsd(root: ET.Element, schema_path: Path) -> list[dict[str, Any]]:
         path = f"{parent_path}/{tag}" if parent_path else tag
         namespace = element_namespace(element.tag)
         is_bare_slide_fragment = not parent_path and tag == "slide" and namespace is None
-        if not parent_path and namespace != SML_NAMESPACE and not is_bare_slide_fragment:
+        if (
+            not parent_path
+            and namespace not in ACCEPTED_SML_NAMESPACES
+            and not is_bare_slide_fragment
+        ):
             issues.append(
                 issue(
                     "sxsd_invalid_namespace",
