@@ -24,11 +24,14 @@ lark-cli contact +search-user --user-ids "ou_3a8b****6a7b,me" --as user
 ```
 
 ## +search-bot
-Find bots (apps) by keyword. Each match returns the bot's open_id plus p2p_chat_id / has_chatted so you can tell whether a conversation with it already exists. A keyword is mandatory — neither filter can list bots on its own. `--chat-ids` is not a narrowing filter: it searches inside those chats instead of the tenant-wide set, and surfaces bots a plain `--query` cannot find.
+Search bots (apps) by keyword. Pass `--query` or `--queries`; use `--chat-ids` to search within specific chats.
 
 ### Avoid when
 - Looking for a person rather than a bot → use [[+search-user]]
 - Running as a bot — this shortcut is user-only
+
+### Tips
+- `has_more=true` means the search is incomplete; narrow the keyword or filters instead of paginating
 
 ### Examples
 
@@ -40,6 +43,11 @@ lark-cli contact +search-bot --query "会议助手" --as user
 **Search inside one chat**
 ```bash
 lark-cli contact +search-bot --query "助手" --chat-ids "oc_3a8b****6a7b" --as user
+```
+
+**Find bots you've chatted with**
+```bash
+lark-cli contact +search-bot --query "助手" --has-chatted --as user
 ```
 
 **Resolve several bot names in one call**

@@ -62,7 +62,7 @@ lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' 
 
 - **41050 / Permission denied** 受当前身份的可见范围限制(两条命令都可能遇到)。换 bot 身份或让管理员调整可见范围,细节见 [`lark-shared`](../lark-shared/SKILL.md)。
 - **跨租户用户**(`is_cross_tenant=true`)多数业务字段为空字符串,这是飞书可见性规则,下游做空值兜底。
-- **ID 类型**:默认 `open_id`。`+get-user` 可改 `--user-id-type union_id|user_id`;`+search-user`和 `+search-bot` 只接受 `open_id`。
+- **ID 类型**:`+get-user` 可通过 `--user-id-type` 使用 `open_id`、`union_id` 或 `user_id`;`+search-user` 使用用户 open_id;`+search-bot` 不支持按 ID 查询,它按关键词搜索并返回机器人 open_id。
 
 ## 不在本 skill 范围
 
