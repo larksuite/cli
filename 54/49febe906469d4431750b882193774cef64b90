@@ -1,0 +1,21 @@
+events/vc/note_generated.go
+  s_a970d663e373b1::t_e8436627b235ed 44-45,56-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5449febe906469d4431750b882193774cef64b90",
+  "prompts": {},
+  "sessions": {
+    "s_a970d663e373b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a7cf743148a3d2095",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
