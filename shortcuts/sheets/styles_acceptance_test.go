@@ -80,7 +80,6 @@ func TestStylesAcceptance_VocabularyParity(t *testing.T) {
 		if df.Kind != "own" || df.Name == "range" {
 			continue
 		}
-		df := df
 		t.Run(df.Name, func(t *testing.T) {
 			t.Parallel()
 			field := strings.ReplaceAll(df.Name, "-", "_")
@@ -205,7 +204,6 @@ func wantBorder(side, attr, want string) func(map[string]interface{}) string {
 func TestStylesAcceptance_PriorCorpus(t *testing.T) {
 	t.Parallel()
 	for _, tc := range stylesPriorCorpus {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			proto, err := acceptStyleItem(t, tc.fields)

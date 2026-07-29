@@ -102,7 +102,6 @@ func TestSheetsFlagErrorFunc_TypoKeepsSuggestion(t *testing.T) {
 func TestSheetsFlagErrorFunc_BatchUpdateSheetLocator(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"sheet-id", "sheet-name", "sheet_id", "sheet_name"} {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			c := &cobra.Command{Use: "+batch-update"}

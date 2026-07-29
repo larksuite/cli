@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Lark Technologies Pte. Ltd.
+# SPDX-License-Identifier: MIT
 """Range and coordinate helpers for Lark Sheet scripts."""
 
 from __future__ import annotations
