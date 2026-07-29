@@ -4,6 +4,7 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -403,7 +404,7 @@ func printTriageFilterSchema(runtime *common.RuntimeContext) {
 			},
 			"is_unread": map[string]string{
 				"type":    "bool",
-				"desc":    "Filter unread messages. is_read=false is accepted as a compatibility input alias and normalized to is_unread=true. is_unread=false and alias is_read are ignored. Read-message filtering with is_read=true is not supported.",
+				"desc":    "Filter unread messages. Use is_unread=true or is_read=false. is_unread=false is ignored. Bare is_read and is_read=true are rejected.",
 				"example": "true",
 			},
 			"time_range": map[string]string{
@@ -518,9 +519,11 @@ func parseTriageFilterJSON(raw string) (triageFilter, error) {
 				return triageFilter{}, err
 			}
 		case "time_range":
-			if err := json.Unmarshal(value, &filter.TimeRange); err != nil {
-				return triageFilter{}, mailValidationParamError("--filter", "invalid --filter.time_range: %s", err)
+			timeRange, err := parseTriageTimeRange(value)
+			if err != nil {
+				return triageFilter{}, err
 			}
+			filter.TimeRange = timeRange
 		default:
 			if hint := triageFilterUnknownFieldHint(`json: unknown field "` + key + `"`); hint != "" {
 				return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: %s", hint)
@@ -531,13 +534,30 @@ func parseTriageFilterJSON(raw string) (triageFilter, error) {
 	return filter, nil
 }
 
+func parseTriageTimeRange(value json.RawMessage) (*triageTimeRange, error) {
+	var timeRange triageTimeRange
+	dec := json.NewDecoder(bytes.NewReader(value))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&timeRange); err != nil {
+		if hint := triageFilterUnknownFieldHint(err.Error()); hint != "" {
+			return nil, mailValidationParamError("--filter", "invalid --filter.time_range: %s", hint)
+		}
+		return nil, mailValidationParamError("--filter", "invalid --filter.time_range: %s", err)
+	}
+	var extra interface{}
+	if err := dec.Decode(&extra); err != io.EOF {
+		return nil, mailValidationParamError("--filter", "invalid --filter.time_range: multiple JSON values")
+	}
+	return &timeRange, nil
+}
+
 func parseTriageFilterToken(raw string) (triageFilter, error) {
 	if !strings.Contains(raw, "=") {
 		switch strings.ToLower(raw) {
 		case "is_unread":
 			return triageFilter{IsUnread: boolPtrValue(true)}, nil
 		case "is_read":
-			return triageFilter{}, nil
+			return triageFilter{}, unsupportedTriageReadFilterError()
 		default:
 			return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: %q is not valid JSON, key=value, is_read, or is_unread. Run --print-filter-schema to see supported fields", raw)
 		}
@@ -652,10 +672,14 @@ func mergeTriageUnreadFilter(filter *triageFilter, isUnread bool, source string)
 		if source == "is_unread" {
 			return nil
 		}
-		return mailValidationParamError("--filter", "read-message filtering is not supported by mail +triage; use is_unread=true or is_read=false to filter unread messages")
+		return unsupportedTriageReadFilterError()
 	}
 	filter.IsUnread = &isUnread
 	return nil
+}
+
+func unsupportedTriageReadFilterError() error {
+	return mailValidationParamError("--filter", "only is_unread=true or is_read=false queries are supported")
 }
 
 func boolPtrValue(v bool) *bool {
@@ -710,6 +734,8 @@ func triageFilterUnknownFieldHint(msg string) string {
 	suggestions := map[string]string{
 		"unread":      "is_unread",
 		"create_time": "time_range",
+		"start":       "time_range.start_time",
+		"end":         "time_range.end_time",
 		"after":       "time_range.start_time",
 		"before":      "time_range.end_time",
 	}

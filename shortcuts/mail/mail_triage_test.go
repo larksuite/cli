@@ -224,6 +224,17 @@ func TestParseTriageFilterUnknownFieldHintUnread(t *testing.T) {
 	}
 }
 
+func TestParseTriageFilterRejectsUnknownTimeRangeField(t *testing.T) {
+	_, err := parseTriageFilter(`{"time_range":{"start":"2026-01-01T00:00:00+08:00"}}`)
+	if err == nil {
+		t.Fatalf("expected error for unknown time_range field")
+	}
+	assertTriageFilterValidationError(t, err, "--filter")
+	if !strings.Contains(err.Error(), `did you mean "time_range.start_time"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestParseTriageFilterNormalizesReadStatusInputs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -236,7 +247,6 @@ func TestParseTriageFilterNormalizesReadStatusInputs(t *testing.T) {
 		{name: "kv is_read false means unread", raw: `is_read=false`, want: boolPtr(true)},
 		{name: "json is_unread false is ignored", raw: `{"is_unread":false}`, want: nil},
 		{name: "kv is_unread false is ignored", raw: `is_unread=false`, want: nil},
-		{name: "alias is_read is ignored", raw: `is_read`, want: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -257,6 +267,7 @@ func TestParseTriageFilterNormalizesReadStatusInputs(t *testing.T) {
 func TestParseTriageFilterRejectsReadStatusInputs(t *testing.T) {
 	tests := []string{
 		`{"is_read":true}`,
+		`is_read`,
 	}
 	for _, raw := range tests {
 		t.Run(raw, func(t *testing.T) {
@@ -265,8 +276,8 @@ func TestParseTriageFilterRejectsReadStatusInputs(t *testing.T) {
 				t.Fatalf("expected error for %q", raw)
 			}
 			assertTriageFilterValidationError(t, err, "--filter")
-			if !strings.Contains(err.Error(), "read-message filtering is not supported") {
-				t.Fatalf("error %q does not explain unsupported read filtering", err.Error())
+			if !strings.Contains(err.Error(), "only is_unread=true or is_read=false queries are supported") {
+				t.Fatalf("error %q does not explain supported unread filtering", err.Error())
 			}
 		})
 	}
@@ -330,8 +341,8 @@ func TestParseTriageFilterReadStatusErrorIsDeterministic(t *testing.T) {
 			t.Fatal("expected error")
 		}
 		assertTriageFilterValidationError(t, err, "--filter")
-		if !strings.Contains(err.Error(), "read-message filtering is not supported") {
-			t.Fatalf("error %q does not explain unsupported read filtering", err.Error())
+		if !strings.Contains(err.Error(), "only is_unread=true or is_read=false queries are supported") {
+			t.Fatalf("error %q does not explain supported unread filtering", err.Error())
 		}
 	}
 }
@@ -491,8 +502,8 @@ func TestMailTriageDryRunRejectsReadStatusFilter(t *testing.T) {
 	if !strings.Contains(s, "filter_error") {
 		t.Fatalf("expected filter_error for read filtering, got %s", s)
 	}
-	if !strings.Contains(s, "read-message filtering is not supported") {
-		t.Fatalf("dry-run output %q does not explain unsupported read filtering", s)
+	if !strings.Contains(s, "only is_unread=true or is_read=false queries are supported") {
+		t.Fatalf("dry-run output %q does not explain supported unread filtering", s)
 	}
 }
 
