@@ -115,10 +115,16 @@ expect_equal(macos.fetch("strategy").fetch("matrix").fetch("include"), [
   { "runner" => "macos-15", "arch" => "arm64" },
 ], "macOS verification matrix")
 expect_equal(macos.fetch("runs-on"), "${{ matrix.runner }}", "macOS matrix runner")
+macos_verify_step = macos.fetch("steps").find { |step| step["name"] == "Verify notarized macOS binary" }
+macos_verify_run = macos_verify_step&.fetch("run", nil)
+fail("verify-macos must explicitly identify the repository when downloading Draft Release assets") unless macos_verify_run&.include?('gh release download "$TAG" --repo "$GITHUB_REPOSITORY"')
+fail("verify-macos must verify notarization through codesign") unless macos_verify_run&.include?("--check-notarization -R='notarized'")
 
 npm_steps = jobs.fetch("publish-npm").fetch("steps")
 pinned_npm = npm_steps.find { |step| step["name"] == "Install pinned npm" }
 fail("publish-npm must install npm 11.16.0 for trusted publishing") unless pinned_npm&.fetch("run", nil) == "npm install --global npm@11.16.0"
+publish_step = npm_steps.find { |step| step["name"] == "Publish or verify npm package" }
+fail("publish-npm must explicitly pass the candidate tarball as a local path") unless publish_step&.fetch("run", nil).include?('npm publish "./$tgz"')
 
 action_references(workflow).each do |reference|
   fail("action is not pinned to a full commit SHA: #{reference}") unless reference.match?(%r{\A[^@]+@[0-9a-f]{40}\z})

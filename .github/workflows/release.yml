@@ -23,7 +23,7 @@ jobs:
       channel: ${{ steps.validate.outputs.channel }}
       prerelease: ${{ steps.validate.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -67,14 +67,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: '1.23'
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.x'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -141,7 +141,7 @@ jobs:
           NODE
 
       - name: Upload release candidate
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: release-candidate-${{ github.run_id }}
           path: release-candidate/
@@ -154,7 +154,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           fetch-depth: 0
@@ -232,7 +232,7 @@ jobs:
           archive="lark-cli-${VERSION}-darwin-${ARCH}.tar.gz"
           work="$(mktemp -d "${RUNNER_TEMP}/macos-release.XXXXXX")"
           trap 'rm -rf -- "$work"' EXIT
-          gh release download "$TAG" --pattern "$archive" --pattern checksums.txt --dir "$work"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$archive" --pattern checksums.txt --dir "$work"
           awk -v archive="$archive" '$2 == archive { print }' "$work/checksums.txt" > "$work/checksum.txt"
           [[ "$(wc -l < "$work/checksum.txt" | tr -d '[:space:]')" == "1" ]] || { echo "checksums.txt must contain exactly one entry for ${archive}." >&2; exit 1; }
           (cd "$work" && shasum -a 256 -c checksum.txt)
@@ -245,8 +245,7 @@ jobs:
           grep -Fxq "TeamIdentifier=${MACOS_TEAM_ID}" <<<"$details"
           grep -Fq 'flags=0x10000(runtime)' <<<"$details"
           grep -Eq '^Timestamp=.+' <<<"$details"
-          spctl --assess --type execute --verbose=4 "$binary" 2>&1 | tee "$work/spctl.txt"
-          grep -Fq 'source=Notarized Developer ID' "$work/spctl.txt"
+          codesign --verify --strict --verbose=4 --check-notarization -R='notarized' "$binary"
           "$binary" --version | grep -Fq "$VERSION"
 
   publish-github:
@@ -255,7 +254,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           fetch-depth: 0
@@ -282,7 +281,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           fetch-depth: 0
@@ -335,7 +334,7 @@ jobs:
             current="$(npm view @larksuite/cli "dist-tags.${dist_tag}" --json | tr -d '"[:space:]')"
             [[ "$current" == "$VERSION" ]] || { echo "Existing npm version is not assigned to ${dist_tag}; repair registry state manually." >&2; exit 1; }
           else
-            npm publish "$tgz" --access public --provenance --tag "$dist_tag"
+            npm publish "./$tgz" --access public --provenance --tag "$dist_tag"
           fi
 
   retry-guidance:
