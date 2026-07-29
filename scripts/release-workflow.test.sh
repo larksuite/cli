@@ -6,7 +6,7 @@ set -euo pipefail
 
 # This verifies the release workflow's declarative contract. The shell commands
 # inside individual steps are exercised by the beta release rehearsal instead.
-ruby -ryaml <<'RUBY'
+ruby -ropen3 -ryaml <<'RUBY'
 workflow = YAML.load_file(".github/workflows/release.yml")
 goreleaser = YAML.load_file(".goreleaser.yml")
 
@@ -39,6 +39,16 @@ def action_references(value)
 end
 
 jobs = workflow.fetch("jobs")
+jobs.each do |job_name, job|
+  job.fetch("steps", []).each do |step|
+    run = step["run"]
+    next unless run.is_a?(String)
+
+    _stdout, stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    fail("#{job_name}/#{step["name"]} has invalid bash syntax: #{stderr}") unless status.success?
+  end
+end
+
 expected_jobs = %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
 expect_equal(jobs.keys.sort, expected_jobs.sort, "release jobs")
 

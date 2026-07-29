@@ -379,15 +379,14 @@ jobs:
             echo "| verify-macos | ${VERIFY_RESULT} |"
             echo "| publish-github | ${GITHUB_RESULT} |"
             echo "| publish-npm | ${NPM_RESULT} |"
-            cat <<'EOF'
-
-            Select the recovery action from the failed-step diagnosis:
-
-            - **preflight:** network or fetch failure → retry preflight. Version/tag validation failure → correct it, then create a new tag.
-            - **build-sign-notarize:** transient build/service failure → retry build. Code or release configuration issue → correct it, then create a new tag.
-            - **create-draft-release:** GitHub Draft Release API/upload failure → retry draft. Release-candidate inconsistency → retry build.
-            - **verify-macos:** runner or network failure → retry only the failed matrix child. Checksum, signing, notarization, or runtime failure → retry build.
-            - **publish-github:** GitHub publish network failure → retry GitHub publish. Install issue → retry build. Tag/assets inconsistency → stop and publish a new version.
-            - **publish-npm:** network failure or uncertain publish outcome → retry npm only after verifying whether that version already exists. Integrity mismatch → publish a new version.
-            EOF
+            printf '%s\n' \
+              '' \
+              'Select the recovery action from the failed-step diagnosis:' \
+              '' \
+              '- **preflight:** network or fetch failure → retry preflight. Version/tag validation failure → correct it, then create a new tag.' \
+              '- **build-sign-notarize:** transient build/service failure → retry build. Code or release configuration issue → correct it, then create a new tag.' \
+              '- **create-draft-release:** GitHub Draft Release API/upload failure → retry draft. Release-candidate inconsistency → retry build.' \
+              '- **verify-macos:** runner or network failure → retry only the failed matrix child. Checksum, signing, notarization, or runtime failure → retry build.' \
+              '- **publish-github:** GitHub publish network failure → retry GitHub publish. Install issue → retry build. Tag/assets inconsistency → stop and publish a new version.' \
+              '- **publish-npm:** network failure or uncertain publish outcome → retry npm only after verifying whether that version already exists. Integrity mismatch → publish a new version.'
           } >> "$GITHUB_STEP_SUMMARY"
