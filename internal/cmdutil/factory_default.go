@@ -22,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/riskcontrol"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
 	"github.com/larksuite/cli/internal/transport"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
@@ -33,7 +34,7 @@ import (
 //	Phase 1: HttpClient (no credential dependency)
 //	Phase 2: Credential (sole data source for account info)
 //	Phase 3: Config derived from Credential
-//	Phase 4: LarkClient derived from Credential
+//	Phase 4: LarkClient derived from Credential and workspace policy
 func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	streams = normalizeStreams(streams)
 	f := &Factory{
@@ -54,9 +55,10 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 
 	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
+	workspaceConfig := core.NewConfigSnapshot()
 
 	// Phase 1: HttpClient (no credential dependency)
-	f.HttpClient = cachedHttpClientFunc(f)
+	f.HttpClient = cachedHttpClientFunc(f, workspaceConfig)
 
 	// Phase 2: Credential (sole data source)
 	// Keychain is read via closure so callers can replace f.Keychain after construction.
@@ -67,7 +69,7 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		ErrOut:     f.IOStreams.ErrOut,
 	})
 
-	// Phase 3: Config derived from Credential via an explicit conversion boundary.
+	// Phase 3: Runtime config contains resolved account data only.
 	f.Config = sync.OnceValues(func() (*core.CliConfig, error) {
 		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
@@ -78,8 +80,9 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		return cfg, nil
 	})
 
-	// Phase 4: LarkClient from Credential (placeholder AppSecret)
-	f.LarkClient = cachedLarkClientFunc(f)
+	// Phase 4: LarkClient composes account data and workspace policy at the SDK
+	// transport boundary.
+	f.LarkClient = cachedLarkClientFunc(f, workspaceConfig)
 
 	return f
 }
@@ -108,13 +111,16 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 // .StderrIsTerminal field, which tests set directly.
 var warnIfProxied = transport.WarnIfProxied
 
-func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
+func cachedHttpClientFunc(f *Factory, workspaceConfig workspaceConfigSource) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
 
+		hostSignalSource := resolveSDKHostSignalSource(workspaceConfig)
+
 		var rt http.RoundTripper = transport.Shared()
+		rt = riskcontrol.NewTransport(rt, hostSignalSource)
 		rt = &RetryTransport{Base: rt}
 		rt = &SecurityHeaderTransport{Base: rt}
 		rt = &auth.SecurityPolicyTransport{Base: rt} // Add our global response interceptor
@@ -128,7 +134,7 @@ func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 	})
 }
 
-func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
+func cachedLarkClientFunc(f *Factory, workspaceConfig workspaceConfigSource) func() (*lark.Client, error) {
 	return sync.OnceValues(func() (*lark.Client, error) {
 		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
@@ -142,8 +148,15 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
+		hostSignalSource := resolveSDKHostSignalSource(workspaceConfig)
+		var sdkBase http.RoundTripper = transport.Shared()
+		// The innermost SDK boundary always strips reserved host-signal headers;
+		// a nil source makes it strip-only when workspace policy disables signal
+		// collection.
+		sdkBase = riskcontrol.NewTransport(sdkBase, hostSignalSource)
+		sdkTransport := wrapSDKTransport(sdkBase)
 		opts = append(opts, lark.WithHttpClient(&http.Client{
-			Transport:     buildSDKTransport(),
+			Transport:     sdkTransport,
 			CheckRedirect: safeRedirectPolicy,
 		}))
 		ep := core.ResolveEndpoints(acct.Brand)
@@ -152,9 +165,8 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 	})
 }
 
-func buildSDKTransport() http.RoundTripper {
-	var sdkTransport http.RoundTripper = transport.Shared()
-	sdkTransport = &RetryTransport{Base: sdkTransport}
+func wrapSDKTransport(next http.RoundTripper) http.RoundTripper {
+	var sdkTransport http.RoundTripper = &RetryTransport{Base: next}
 	sdkTransport = &UserAgentTransport{Base: sdkTransport}
 	sdkTransport = &BuildHeaderTransport{Base: sdkTransport}
 	sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}

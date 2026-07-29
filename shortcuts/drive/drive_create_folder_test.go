@@ -90,6 +90,7 @@ func TestDriveCreateFolderDryRunIncludesCreateRequest(t *testing.T) {
 		API []struct {
 			Method string                 `json:"method"`
 			URL    string                 `json:"url"`
+			Desc   string                 `json:"desc"`
 			Body   map[string]interface{} `json:"body"`
 		} `json:"api"`
 	}
@@ -107,6 +108,10 @@ func TestDriveCreateFolderDryRunIncludesCreateRequest(t *testing.T) {
 	}
 	if got.API[0].Body["folder_token"] != "fld_parent" {
 		t.Fatalf("folder_token = %#v, want %q", got.API[0].Body["folder_token"], "fld_parent")
+	}
+	wantDesc := "After folder creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new folder."
+	if got.API[0].Desc != wantDesc {
+		t.Fatalf("desc = %q, want %q", got.API[0].Desc, wantDesc)
 	}
 }
 
@@ -178,7 +183,7 @@ func TestDriveCreateFolderBotAutoGrantSuccess(t *testing.T) {
 	if grant["user_open_id"] != "ou_current_user" {
 		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_current_user")
 	}
-	if grant["message"] != "Granted the current CLI user full_access (可管理权限) on the new folder." {
+	if grant["message"] != "Granted the current CLI user full_access on the new folder." {
 		t.Fatalf("permission_grant.message = %#v", grant["message"])
 	}
 

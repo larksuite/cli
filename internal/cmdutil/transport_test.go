@@ -15,6 +15,7 @@ import (
 
 	exttransport "github.com/larksuite/cli/extension/transport"
 	internalauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/riskcontrol"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -91,13 +92,13 @@ func TestRetryTransport_DefaultNoRetry(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// buildSDKTransport chain composition
+// wrapSDKTransport chain composition
 // ---------------------------------------------------------------------------
 
-func TestBuildSDKTransport_IncludesRetryTransport(t *testing.T) {
-	transport := buildSDKTransport()
+func TestWrapSDKTransport_IncludesRetryTransport(t *testing.T) {
+	transport := wrapSDKTransport(riskcontrol.NewTransport(http.DefaultTransport, nil))
 
-	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → Base
+	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → RiskControl → Base
 	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
 	if !ok {
 		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
@@ -110,18 +111,23 @@ func TestBuildSDKTransport_IncludesRetryTransport(t *testing.T) {
 	if !ok {
 		t.Fatalf("layer after BuildHeader = %T, want *UserAgentTransport", bh.Base)
 	}
-	if _, ok := ua.Base.(*RetryTransport); !ok {
+	retry, ok := ua.Base.(*RetryTransport)
+	if !ok {
 		t.Fatalf("inner transport type = %T, want *RetryTransport", ua.Base)
+	}
+	if _, ok := retry.Base.(*riskcontrol.Transport); !ok {
+		t.Fatalf("layer after Retry = %T, want *riskcontrol.Transport", retry.Base)
 	}
 }
 
-func TestBuildSDKTransport_WithExtension(t *testing.T) {
+func TestWrapSDKTransport_WithExtension(t *testing.T) {
+	previous := exttransport.GetProvider()
 	exttransport.Register(&stubTransportProvider{})
-	t.Cleanup(func() { exttransport.Register(nil) })
+	t.Cleanup(func() { exttransport.Register(previous) })
 
-	transport := buildSDKTransport()
+	transport := wrapSDKTransport(riskcontrol.NewTransport(http.DefaultTransport, nil))
 
-	// Chain: extensionMiddleware → SecurityPolicy → BuildHeader → UserAgent → Retry → Base
+	// Chain: extensionMiddleware → SecurityPolicy → BuildHeader → UserAgent → Retry → RiskControl → Base
 	mid, ok := transport.(*extensionMiddleware)
 	if !ok {
 		t.Fatalf("outer transport type = %T, want *extensionMiddleware", transport)
@@ -138,17 +144,23 @@ func TestBuildSDKTransport_WithExtension(t *testing.T) {
 	if !ok {
 		t.Fatalf("layer after BuildHeader = %T, want *UserAgentTransport", bh.Base)
 	}
-	if _, ok := ua.Base.(*RetryTransport); !ok {
+	retry, ok := ua.Base.(*RetryTransport)
+	if !ok {
 		t.Fatalf("innermost transport type = %T, want *RetryTransport", ua.Base)
+	}
+	if _, ok := retry.Base.(*riskcontrol.Transport); !ok {
+		t.Fatalf("layer after Retry = %T, want *riskcontrol.Transport", retry.Base)
 	}
 }
 
-func TestBuildSDKTransport_WithoutExtension(t *testing.T) {
+func TestWrapSDKTransport_WithoutExtension(t *testing.T) {
+	previous := exttransport.GetProvider()
 	exttransport.Register(nil)
+	t.Cleanup(func() { exttransport.Register(previous) })
 
-	transport := buildSDKTransport()
+	transport := wrapSDKTransport(riskcontrol.NewTransport(http.DefaultTransport, nil))
 
-	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → Base
+	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → RiskControl → Base
 	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
 	if !ok {
 		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
@@ -161,8 +173,12 @@ func TestBuildSDKTransport_WithoutExtension(t *testing.T) {
 	if !ok {
 		t.Fatalf("layer after BuildHeader = %T, want *UserAgentTransport", bh.Base)
 	}
-	if _, ok := ua.Base.(*RetryTransport); !ok {
+	retry, ok := ua.Base.(*RetryTransport)
+	if !ok {
 		t.Fatalf("inner transport type = %T, want *RetryTransport", ua.Base)
+	}
+	if _, ok := retry.Base.(*riskcontrol.Transport); !ok {
+		t.Fatalf("layer after Retry = %T, want *riskcontrol.Transport", retry.Base)
 	}
 }
 
@@ -261,6 +277,40 @@ func (buildTamperingInterceptor) PreRoundTrip(req *http.Request) func(*http.Resp
 	return nil
 }
 
+type riskHeaderTamperingInterceptor struct{}
+
+func (riskHeaderTamperingInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
+	req.Header.Set(riskcontrol.HeaderOSType, "extension-value")
+	req.Header.Set(riskcontrol.HeaderProductModel, "extension-value")
+	return nil
+}
+
+func TestWrapSDKTransport_StripsExtensionRiskHeaders(t *testing.T) {
+	previous := exttransport.GetProvider()
+	exttransport.Register(&stubTransportProvider{interceptor: riskHeaderTamperingInterceptor{}})
+	t.Cleanup(func() { exttransport.Register(previous) })
+
+	var received http.Header
+	network := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		received = req.Header.Clone()
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	req, err := http.NewRequest(http.MethodGet, "https://open.feishu.cn/open-apis/test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer token")
+
+	resp, err := wrapSDKTransport(riskcontrol.NewTransport(network, nil)).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if received.Get(riskcontrol.HeaderOSType) != "" || received.Get(riskcontrol.HeaderProductModel) != "" {
+		t.Fatalf("extension risk headers reached network: %v", received)
+	}
+}
+
 // TestBuildHeaderTransport_SDKChain_OverridesTamperedHeader verifies that the
 // X-Cli-Build header is force-written by BuildHeaderTransport in the SDK
 // transport chain, even when an extension tries to delete or spoof it. This
@@ -277,7 +327,7 @@ func TestBuildHeaderTransport_SDKChain_OverridesTamperedHeader(t *testing.T) {
 	exttransport.Register(&stubTransportProvider{interceptor: buildTamperingInterceptor{}})
 	t.Cleanup(func() { exttransport.Register(nil) })
 
-	// Replicate the SDK chain layering used by buildSDKTransport.
+	// Replicate the SDK chain layering used by wrapSDKTransport.
 	var base http.RoundTripper = http.DefaultTransport
 	base = &RetryTransport{Base: base}
 	base = &UserAgentTransport{Base: base}

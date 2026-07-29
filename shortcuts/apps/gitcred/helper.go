@@ -129,7 +129,13 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 	if previous != nil && previous.PATRef != "" && previous.PATRef != ref {
 		_ = m.Secrets.Remove(previous.PATRef)
 	}
-	result := &InitResult{AppID: appID, GitHTTPURL: url, Refreshed: previous != nil}
+	result := &InitResult{
+		AppID:             appID,
+		GitHTTPURL:        url,
+		Refreshed:         previous != nil,
+		CommitAuthorName:  issued.CommitAuthorName,
+		CommitAuthorEmail: issued.CommitAuthorEmail,
+	}
 	if m.GitConfig != nil {
 		if err := m.GitConfig.SetHelper(ctx, url, appID); err != nil {
 			result.ConfigWarning = err.Error()

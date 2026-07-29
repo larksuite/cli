@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/larksuite/cli/internal/charcheck"
 	"github.com/larksuite/cli/internal/vfs"
@@ -48,6 +49,32 @@ func SafeTempAbsInputPath(path string) (string, error) {
 	return resolved, nil
 }
 
+// LocalInputPath validates an input path in the process local filesystem
+// namespace. It intentionally does not impose cwd containment or canonicalize
+// the path: absolute paths, parent-relative paths, and symlink traversal retain
+// their normal OS semantics. Character validation remains mandatory because
+// paths are user-controlled and may appear in errors or progress output.
+func LocalInputPath(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("local input path must not be empty")
+	}
+	if strings.IndexFunc(path, unicode.IsControl) >= 0 {
+		return "", fmt.Errorf("local input path must not contain control characters")
+	}
+	if err := charcheck.RejectControlChars(path, "local input path"); err != nil {
+		return "", err
+	}
+	if err := validateLocalInputPlatform(path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func isWindowsNonLocalNamespace(path string) bool {
+	normalized := strings.ReplaceAll(path, "/", `\`)
+	return strings.HasPrefix(normalized, `\\`) || strings.HasPrefix(normalized, `\??\`)
+}
+
 // SafeLocalFlagPath validates a flag value as a local file path.
 // Empty values and http/https URLs are returned unchanged without validation.
 func SafeLocalFlagPath(flagName, value string) (string, error) {
@@ -55,7 +82,7 @@ func SafeLocalFlagPath(flagName, value string) (string, error) {
 		return value, nil
 	}
 	if _, err := SafeInputPath(value); err != nil {
-		return "", fmt.Errorf("%s: %v", flagName, err)
+		return "", fmt.Errorf("%s: %w", flagName, err)
 	}
 	return value, nil
 }

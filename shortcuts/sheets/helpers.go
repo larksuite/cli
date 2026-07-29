@@ -52,9 +52,10 @@ func sheetsInputStatError(flag string, err error) error {
 }
 
 // Drive media parent_type values for uploading an image into a spreadsheet.
-// Native spreadsheets use "sheet_image"; imported "office" spreadsheets carry a
-// synthetic token prefixed with "fake_office_" (being renamed to
-// "local_office_") and the backend requires "office_sheet_file" instead.
+// Native spreadsheets use "sheet_image"; imported "office" spreadsheets use a
+// legacy synthetic-token prefix or a 28-character token whose interleaved
+// product/region marker is "OFL0X". The backend requires
+// "office_sheet_file" for those imported spreadsheets.
 const (
 	sheetImageParentType      = "sheet_image"
 	officeSheetFileParentType = "office_sheet_file"
@@ -62,21 +63,38 @@ const (
 	localOfficePrefix         = "local_office_"
 )
 
-// officePrefixes are the synthetic token prefixes an imported "office"
-// spreadsheet may carry. The prefix is being renamed from "fake_office_" to
-// "local_office_"; accept either so image uploads keep working across the
-// rename.
+// officePrefixes are the legacy synthetic token prefixes an imported "office"
+// spreadsheet may carry.
 var officePrefixes = []string{fakeOfficePrefix, localOfficePrefix}
+
+func isOfficeSpreadsheet(spreadsheetToken string) bool {
+	for _, prefix := range officePrefixes {
+		if strings.HasPrefix(spreadsheetToken, prefix) {
+			return true
+		}
+	}
+	if len(spreadsheetToken) != 28 {
+		return false
+	}
+	// The five-character marker occupies positions 5, 10, 15, 20, and 25
+	// (1-based) in the interleaved token.
+	marker := []byte{
+		spreadsheetToken[4],
+		spreadsheetToken[9],
+		spreadsheetToken[14],
+		spreadsheetToken[19],
+		spreadsheetToken[24],
+	}
+	return string(marker) == "OFL0X"
+}
 
 // sheetMediaParentType returns the drive media parent_type to use when
 // uploading an image whose parent_node is spreadsheetToken. It is the single
 // place that maps a spreadsheet token to its parent_type so every image-upload
 // entry point (and its dry-run preview) stays consistent.
 func sheetMediaParentType(spreadsheetToken string) string {
-	for _, prefix := range officePrefixes {
-		if strings.HasPrefix(spreadsheetToken, prefix) {
-			return officeSheetFileParentType
-		}
+	if isOfficeSpreadsheet(spreadsheetToken) {
+		return officeSheetFileParentType
 	}
 	return sheetImageParentType
 }

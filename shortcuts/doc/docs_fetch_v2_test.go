@@ -443,7 +443,7 @@ func TestValidateReadModeFlagsAcceptsValidScopeOptions(t *testing.T) {
 			name: "keyword with keyword",
 			setFlags: map[string]string{
 				"scope":   "keyword",
-				"keyword": "bug|缺陷",
+				"keyword": "bug|error",
 			},
 		},
 		{

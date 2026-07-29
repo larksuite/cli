@@ -351,6 +351,56 @@ func TestSlidesCreateWithSlides(t *testing.T) {
 	}
 }
 
+func TestSlidesCreatePreservesSchemaIssues(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation_id": "pres_issues",
+				"issues":              "presentation schema issue",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_issues/slide",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_id": "slide_001",
+				"issues":   "slide schema issue",
+			},
+		},
+	})
+
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--slides", `["<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data/></slide>"]`,
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSlidesCreateEnvelope(t, stdout)
+	if data["issues"] != "presentation schema issue" {
+		t.Fatalf("issues = %v, want presentation schema issue", data["issues"])
+	}
+	slideIssues, ok := data["slide_issues"].([]interface{})
+	if !ok || len(slideIssues) != 1 {
+		t.Fatalf("slide_issues = %#v, want one entry", data["slide_issues"])
+	}
+	issue, _ := slideIssues[0].(map[string]interface{})
+	if issue["slide_index"] != float64(1) || issue["slide_id"] != "slide_001" || issue["issues"] != "slide schema issue" {
+		t.Fatalf("slide_issues[0] = %#v", issue)
+	}
+}
+
 // TestSlidesCreateWithSlidesPartialFailure verifies error reporting when a slide fails to create.
 func TestSlidesCreateWithSlidesPartialFailure(t *testing.T) {
 	t.Parallel()

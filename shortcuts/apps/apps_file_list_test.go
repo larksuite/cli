@@ -82,6 +82,34 @@ func TestAppsFileList_RequiresAppID(t *testing.T) {
 	}
 }
 
+// TestAppsFileList_PageSizeOutOfRange 验证 --page-size 超出 (0, 200] 契约时前置报 --page-size 校验错误，不发请求。
+func TestAppsFileList_PageSizeOutOfRange(t *testing.T) {
+	for _, ps := range []string{"0", "201", "500"} {
+		factory, stdout, _ := newAppsExecuteFactory(t)
+		err := runAppsShortcut(t, AppsFileList,
+			[]string{"+file-list", "--app-id", "app_x", "--page-size", ps, "--as", "user"}, factory, stdout)
+		var ve *errs.ValidationError
+		if !errors.As(err, &ve) {
+			t.Fatalf("page-size=%s: err = %T %v, want *errs.ValidationError", ps, err, err)
+		}
+		if ve.Param != "--page-size" {
+			t.Fatalf("page-size=%s: Param = %q, want --page-size", ps, ve.Param)
+		}
+	}
+}
+
+// TestAppsFileList_PageSizeBoundaryOK 验证边界值 1 与 200 通过校验（dry-run 不报错并把 page_size 下发）。
+func TestAppsFileList_PageSizeBoundaryOK(t *testing.T) {
+	for _, ps := range []string{"1", "200"} {
+		factory, stdout, _ := newAppsExecuteFactory(t)
+		if err := runAppsShortcut(t, AppsFileList,
+			[]string{"+file-list", "--app-id", "app_x", "--page-size", ps, "--dry-run", "--as", "user"},
+			factory, stdout); err != nil {
+			t.Fatalf("page-size=%s: dry-run err=%v", ps, err)
+		}
+	}
+}
+
 // 过滤器 + 分页全部进 query（size-gt/lt 走 int，uploaded_since/until 原样）。
 func TestAppsFileList_DryRunSendsFiltersAndPagination(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)

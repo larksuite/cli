@@ -87,16 +87,20 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 ## 返回重点
 
 - 返回 `field` 和 `created: true`。
+- 如果返回 `field_get_recommended:false` 且 `next_step:"done"`，表示本次是简单字段创建，通常不需要立刻执行 `+field-get`。
+- 如果返回 `field_get_recommended:true` 或 `next_step:"field_get"`，按 `verification_hint` 读回字段；`formula`、`lookup`、`link`、`auto_number` 等计算、关联或生成型字段更适合读回确认服务端最终结构。
 
 ## 工作流
 
 
 1. formula / lookup 字段必须先阅读对应指南；没读之前不要直接创建。
+2. 创建简单字段时，优先相信命令返回；只有用户要求精确核对额外属性，或返回建议读回时，才继续执行 `+field-get`。
 
 ## 坑点
 
 - ⚠️ 这是写入操作，执行前必须确认。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先读对应 guide，再创建。
+- ⚠️ 不要把“每次创建后都 `+field-get`”当作固定流程；按返回里的 `field_get_recommended` 和 `next_step` 决定是否读回。
 
 ## 参考
 

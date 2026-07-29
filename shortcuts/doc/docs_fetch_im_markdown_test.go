@@ -975,8 +975,8 @@ func TestConvertToIMMarkdownDocumentExpectedTagsAndEscaping(t *testing.T) {
 		"````Go\nfmt.Println(\"hi\")\n```\n````",
 		"`` `edge` `` $E=mc^2$ --- ![A \\[img\\]](https://example.com/i%281%29.png)",
 		"``report`v1`.pdf``",
-		"`任务``群聊卡片`",
-		"`多维表格``多维表格``OKR`",
+		"`Task``Chat card`",
+		"`Base``Base``OKR`",
 	}, "\n")
 
 	if got := convertToIMMarkdown(input, imCtx); got != want {

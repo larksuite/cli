@@ -25,19 +25,32 @@ lark-cli slides +xml-get --as user \
   --json
 ```
 
-## Automated XML Text Overlap Lint
+## Automated XML Layout Lint
 
-提交前本地 XML 必须运行 XML 语法和文本重叠静态检查：
+`slides +xml-get` 保存 XML 后，只运行统一版式准出入口。先取得当前已加载 `lark-slides/SKILL.md` 的父目录，记为 `<lark-slides-skill-dir>`；不要猜测全局安装路径。
 
 ```bash
-python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation-or-slide.xml>
+python3 "<lark-slides-skill-dir>/scripts/xml_text_overlap_lint.py" --input <presentation.xml>
 ```
 
-通过标准：
+它一次检查 XML/SXSD 合法性、元素越界、文本重叠、空白页、文本高度风险、整页内容稀疏和大卡片内容覆盖率。大卡片自身 `<content>` 的估算文本面积与卡片内平级元素一起参与覆盖率并集计算。
 
-- `summary.error_count == 0`。任何 error 都必须先修复再提交接口。
-- 当前工具检查 XML well-formed、SXSD tag/attr 支持情况、IconPark icon 类型和 icon 填充可见性、文本元素之间的明显重叠，以及 whiteboard 容器与外部 sibling 元素的可疑边界重叠；它不检查越界、文本高度不足、图文压盖、表格/图表压盖或底部拥挤。
-- 该工具不能替代页数核对、关键内容核对或真实视觉验收。
+准出规则：
+
+- `summary.error_count > 0` 或 `summary.release_ready == false`：阻断创建、替换或交付，必须先修复。
+- `summary.warning_count > 0`：静态检查不直接阻断，但 `summary.screenshot_review_required == true`，必须复核对应页面截图。
+- `slides[].status` 为 `blocked`、`needs_screenshot_review` 或 `passed`，可直接决定逐页后续动作。
+- CLI 在存在 `error` 时退出码为 1；只有 `warning` 时仍输出 JSON 并退出 0，供截图复核链路继续执行。
+
+每条 `error` / `warning` 都包含：
+
+- `element_ids`：相关 XML 元素 ID；
+- `rule`：规则 ID、名称、阈值和比较关系；
+- `measurement`：越界量、交叠面积、覆盖率等实测值；
+- `related_objects`：相关对象的类型与坐标框；
+- `target`、`message`、`hint`：页码、语义说明和处理建议。
+
+当 `sparse_container_content.measurement.content_coverage_ratio < rule.threshold` 时，需要结合同页截图判断留白是否有意设计；不要仅凭 warning 自动扩充内容。
 
 常见 code 的处理方向：
 
@@ -51,7 +64,39 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 | `icon_missing_fill_color` | 视觉规范要求 `<icon>` 设置 `<fill><fillColor color="..."/></fill>`，避免图标不可见 | 给 `<icon>` 添加显式非透明填充色，例如 `rgba(37, 99, 235, 1)` |
 | `icon_transparent_fill_color` | `<icon>` 的 `fillColor` 是透明色，不满足视觉可见性要求 | 改成与背景有足够对比的非透明颜色 |
 | `bbox_overlap` | 文本元素的估算绘制区域明显重叠 | 拉开文本坐标、缩小文本框/字号，或改成明确的分栏/分组结构 |
-| `whiteboard_external_overlap` | whiteboard 容器 bbox 与外部 sibling 元素跨边界重叠 | 按 lint `hint` 缩小或移动 whiteboard / 外部元素；若接受该风险，最终必须以截图 QA 或等价渲染视觉检查为准 |
+| `*_out_of_canvas` | 元素边界超出页面画布 | 根据 `measurement.overflow` 移回画布或缩小尺寸 |
+| `blank_slide` | 页面没有画布内可见内容 | 补充主体内容；仅有空背景或空形状不能准出 |
+| `sparse_container_content` | 大卡片内容覆盖率低于阈值 | 按元素 ID 定位卡片，结合截图判断是否补充或放大内容 |
+| `sparse_slide_content` | 全页有效内容覆盖率偏低 | 复核截图，确认是否为有意留白 |
+
+## Screenshot QA
+
+获取页面截图后，必须做视觉验收；不要只凭 XML 回读或静态 lint 结论声称截图验收通过。验收时假设页面存在问题，主动寻找并报告所有风险，包括轻微问题。
+
+```text
+请逐页目视检查这些幻灯片截图。先假设存在问题，并尽量找出它们。
+
+重点检查：
+- 元素重叠：文字与形状、图片或图表互相遮挡，线条穿过文字，卡片或标签堆叠。
+- 文本溢出或被裁切：靠近页面边缘、文本框边界或卡片边界处被截断。
+- 装饰元素位置错误：分割线、强调线或标签底板按单行文字布置，但标题或正文换行后压住文字或距离异常。
+- 来源标注、页脚或页码与上方内容碰撞。
+- 元素距离过近：相邻元素间距明显不足，卡片或分区几乎贴在一起；按 960x540 画布估算，小于约 15 px 的间隔通常要标记。
+- 间距不均：局部留白过大，另一处过于拥挤。
+- 页面边距不足：主体内容贴近幻灯片边缘；按 960x540 画布估算，小于约 30 px 的外边距通常要标记。
+- 列、卡片、图标或同类元素没有稳定对齐。
+- 图片或图表渲染异常：空白、变形、低清、关键内容不可读或预期图形缺失。
+- 文本对比度不足，例如浅灰文字放在米色或浅色背景上。
+- 图标对比度不足，例如深色图标放在深色背景上，且没有浅色圆形或底板承托。
+- 文本框过窄，导致不必要的频繁换行。
+- 残留占位符、模板默认文字或未替换内容。
+
+对每一页分别列出发现的问题或可疑区域，即使只是轻微问题也要记录。
+
+报告所有发现的问题，包括轻微问题。
+```
+
+必须根据问题严重度决定是否修复：空白页、破图、文字遮挡、明显裁切、低对比不可读、占位符残留等必须先修复再交付；轻微间距或对齐问题如果不修复，最终验证记录要说明已知风险。
 
 ## Page Count And Structure
 
@@ -84,14 +129,6 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 - 返回 XML 缺页、页序明显错误，或某页内容被 shell 截断。
 - 大量形状坐标完全相同，导致主体内容重叠。
 - 渐变背景回退成空白或白底，导致文字不可读。
-
-## Whiteboard Elements
-
-`slide.get` 回读 XML 时，`<whiteboard>` 块只返回位置属性（`topLeftX`、`topLeftY`、`width`、`height`），SVG / Mermaid 内容**不随 XML 返回**。
-
-- whiteboard 验证可以核对坐标是否越界：`topLeftX + width ≤ 960`，`topLeftY + height ≤ 540`；lint 还会报告 whiteboard 容器与外部 sibling 元素的可疑边界重叠。
-- SVG 和 Mermaid 内容的正确性无法通过回读 XML 验证，需要人工视觉验收。
-- 不要在验证记录中声称 whiteboard 内容已验证，除非用户确认了视觉效果。
 
 ## Layout And Overflow Risk
 

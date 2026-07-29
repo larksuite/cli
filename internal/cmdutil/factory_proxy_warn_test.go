@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	_ "github.com/larksuite/cli/extension/credential/env" // registers the env-backed account provider
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 )
 
@@ -36,13 +37,15 @@ var proxyWarnGateCases = []struct {
 // TestCachedHttpClientFunc_ProxyWarnGate verifies the http-client init path
 // invokes WarnIfProxied only when stderr is an interactive terminal.
 func TestCachedHttpClientFunc_ProxyWarnGate(t *testing.T) {
+	isEnabled := false
 	for _, tc := range proxyWarnGateCases {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := installProxyWarnSpy(t)
 
-			fn := cachedHttpClientFunc(&Factory{IOStreams: &IOStreams{
-				ErrOut: io.Discard, StderrIsTerminal: tc.terminal,
-			}})
+			f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "test-app"})
+			f.IOStreams.ErrOut = io.Discard
+			f.IOStreams.StderrIsTerminal = tc.terminal
+			fn := cachedHttpClientFunc(f, staticWorkspaceConfig{config: &core.MultiAppConfig{RiskControl: &isEnabled}})
 			if _, err := fn(); err != nil {
 				t.Fatalf("http client init: %v", err)
 			}
@@ -73,7 +76,7 @@ func TestCachedLarkClientFunc_ProxyWarnGate(t *testing.T) {
 			// normalizeStreams copies the struct (out := *s), so the
 			// StderrIsTerminal field survives into f.IOStreams.
 			f := NewDefault(&IOStreams{ErrOut: io.Discard, StderrIsTerminal: tc.terminal}, InvocationContext{})
-			if _, err := cachedLarkClientFunc(f)(); err != nil {
+			if _, err := cachedLarkClientFunc(f, nil)(); err != nil {
 				t.Fatalf("lark client init: %v", err)
 			}
 

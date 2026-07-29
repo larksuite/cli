@@ -26,7 +26,7 @@ var BaseFormSubmit = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-submit",
 	Description: "Submit a form (fill and submit form data)",
-	Risk:        "write",
+	Risk:        "high-risk-write",
 	Scopes:      []string{"base:form:update", "docs:document.media:upload"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,
@@ -39,6 +39,7 @@ var BaseFormSubmit = common.Shortcut{
 		`Example (no attachments): --share-token shrXXXX --json '{"fields":{"Service Rating":5,"Review":"Good service"}}'`,
 		`Example (with attachments): --share-token shrXXXX --base-token basXXX --json '{"fields":{"Service Rating":5},"attachments":{"Attachment":["./report.pdf"]}}'`,
 		`Cell values in "fields" follow lark-base-cell-value.md conventions; "attachments" maps field names to local file path arrays — the CLI uploads them in parallel and merges them into the submission.`,
+		baseHighRiskYesTip,
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateFormSubmit(runtime)

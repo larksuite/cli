@@ -250,6 +250,8 @@ var CalendarAgenda = common.Shortcut{
 					}
 				}
 
+				collapseDescription(e)
+
 				filtered = append(filtered, e)
 			}
 		}

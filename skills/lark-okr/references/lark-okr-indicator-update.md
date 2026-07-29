@@ -40,7 +40,9 @@ lark-cli okr +indicator-update \
 
 1. 使用 `+cycle-list` 和 `+cycle-detail` 获取目标 ID 或 KR ID。
 2. 如需查看当前指标值，使用 `objective.indicators list` 或 `key_result.indicators list` 查询。
-3. 执行 `+indicator-update` 指定层级、ID 和新值。
+  若当前量化指标没有 start_value/current_value/target_value/unit 这些字段，代表当前量化指标为未设置的默认初始进度。
+3. 执行 `+indicator-update` 指定层级、ID 和新值。 
+  使用 +indicator-update 为默认初始进度设置当前值会将该量化指标配置为默认的百分比模式。若用户不希望将指标设置为百分比，请使用原生 API 详细设置，参考 [lark-okr-indicators.md](lark-okr-indicators.md)
 4. 命令自动查询指标 ID 并更新当前值。
 
 ## 输出

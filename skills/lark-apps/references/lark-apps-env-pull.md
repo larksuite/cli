@@ -33,5 +33,5 @@ lark-cli apps +env-pull --app-id <app_id>
 ## 参考
 
 - [lark-apps](../SKILL.md) — 妙搭应用全部命令 + 心智模型
-- [lark-apps-local-dev](lark-apps-local-dev.md) — 本地全栈开发端到端流程
+- [lark-apps-local-dev](lark-apps-local-dev.md) — 本地应用开发端到端流程
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

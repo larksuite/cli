@@ -132,16 +132,14 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 			})
 		}
 
-		// Content safety scanning for non-JSON presentation formats.
-		scanResult := output.ScanForSafety(opts.CommandPath, result, opts.ErrOut)
-		if scanResult.Blocked {
-			return scanResult.BlockErr
-		}
-		if scanResult.Alert != nil {
-			output.WriteAlertWarning(opts.ErrOut, scanResult.Alert)
-		}
-		output.FormatValue(opts.Out, result, opts.Format)
-		return nil
+		emitter := output.NewEmitter(output.EmitterConfig{
+			Out:            opts.Out,
+			ErrOut:         opts.ErrOut,
+			CommandPath:    opts.CommandPath,
+			Identity:       string(identity),
+			NoticeProvider: output.GetNotice,
+		})
+		return emitter.Success(result, output.EmitOptions{Format: opts.Format.String()})
 	}
 
 	// Non-JSON (binary) responses.

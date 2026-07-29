@@ -50,10 +50,11 @@ func wrapBlockError(alert *extcs.Alert) error {
 
 // WriteAlertWarning writes a human-readable content-safety warning to w.
 // Used by non-JSON output paths (pretty, table, csv) in warn mode.
-func WriteAlertWarning(w io.Writer, alert *extcs.Alert) {
+func WriteAlertWarning(w io.Writer, alert *extcs.Alert) error {
 	if alert == nil {
-		return
+		return nil
 	}
-	fmt.Fprintf(w, "warning: content safety alert from %s (rules: %s)\n",
+	_, err := fmt.Fprintf(w, "warning: content safety alert from %s (rules: %s)\n",
 		alert.Provider, strings.Join(alert.MatchedRules, ", "))
+	return err
 }

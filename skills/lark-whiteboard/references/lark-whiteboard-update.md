@@ -16,7 +16,7 @@
 | 参数                   | 必填 | 说明                                         |
 |----------------------|----|--------------------------------------------|
 | `--whiteboard-token` | 是  | 画板 token，需要拥有画板的编辑权限                       |
-| `--idempotent-token` | 否  | 幂等 token，确保更新操作幂等，最小长度 10 个字符              |
+| `--idempotent-token` | 否  | 幂等 token，确保更新操作幂等；最少 10 个字符，建议使用时间戳 + 场景标识拼接（如 `1744800000-board-1`）。同一次逻辑更新只生成一次该 token，重试时须原样复用；切勿在每次重试时重新生成时间戳或幂等 key，否则会重复写入 |
 | `--overwrite`        | 否  | 覆盖更新，在更新前删除所有现有内容，默认为 false                |
 | `--source`           | 是  | 输入画板内容，支持使用 `@path` 从文件读取，或 `-` 从 stdin 读取 |
 | `--input_format`     | 否  | 输入格式：`raw`、`plantuml`、`mermaid`、`svg`，默认为 `raw`  |
@@ -75,7 +75,7 @@ whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](../SKIL
 
 ```bash
 # 使用 whiteboard-cli 生成 OpenAPI 格式并通过管道传递
-npx -y @larksuite/whiteboard-cli@^0.2.12 -i <产物文件> --to openapi --format json \
+npx -y @larksuite/whiteboard-cli@^0.2.13 -i <产物文件> --to openapi --format json \
   | lark-cli whiteboard +update \
     --whiteboard-token <画板Token> \
     --source - --input_format raw \
@@ -89,7 +89,7 @@ whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](../SKIL
 
 ```bash
 # 生成 OpenAPI 格式到文件
-npx -y @larksuite/whiteboard-cli@^0.2.12 -i <DSL 文件> --to openapi --format json -o ./temp.json
+npx -y @larksuite/whiteboard-cli@^0.2.13 -i <DSL 文件> --to openapi --format json -o ./temp.json
 
 # 从文件读取并更新
 lark-cli whiteboard +update \

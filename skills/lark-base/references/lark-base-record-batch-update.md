@@ -2,13 +2,13 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-批量更新记录（将同一份 `patch` 批量应用到一批 `record_id_list`）。
+通过 `update_records` 为每条记录提交字段值。
 
 ## 推荐命令
 
 ```bash
 lark-cli base +record-batch-update --base-token <base_token> --table-id <table_id> \
-  --json '{"record_id_list":["<record_id>"],"patch":{"状态":"完成"}}'
+  --json '{"update_records":{"<record_id_a>":{"状态":["完成"]},"<record_id_b>":{"分数":20}}}'
 
 lark-cli base +record-batch-update --base-token <base_token> --table-id <table_id> --json @batch-update.json
 ```
@@ -29,23 +29,25 @@ lark-cli base +record-batch-update --base-token <base_token> --table-id <table_i
 
 本节只说明 `+record-batch-update` 的外层 JSON 形状；CellValue 统一看 [lark-base-cell-value.md](lark-base-cell-value.md)。
 
-对象形态：`{"record_id_list":[...],"patch":{...}}`。
+对象形态：
+
+```json
+{"update_records":{"recA":{"状态":["完成"]},"recB":{"分数":20}}}
+```
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `record_id_list` | `string[]` | 是 | 要更新的记录 ID 列表（单次最多 200 条） |
-| `patch` | `Map<FieldNameOrID, CellValue>` | 是 | 字段更新对象；key 是字段名或字段 ID，value 是 `CellValue`；同一份 `patch` 会应用到 `record_id_list` 内所有记录 |
+| `update_records` | `Map<RecordID, Map<FieldNameOrID, CellValue>>` | 是 | record ID 到字段更新对象的映射（单次最多 200 条） |
 
 ## 返回重点
 
-返回 `record_id_list`、`update`，可选返回 `ignored_fields`；`update` 可能为空对象。
+成功响应只包含可选的 `ignored_fields`；没有忽略字段时 `data` 为空对象。请求不会预先校验 record ID 是否存在，因此需要确认实际写入结果时，应再用 `+record-get` 读回目标记录。
 
 ## 坑点
 
-- 这是“同值批量更新”：所有 `record_id_list` 都应用同一份 `patch`。
-- `record_id_list` 最大 200 条，超过会被接口校验拒绝。
+- 单次最多更新 200 条记录，超过会被接口校验拒绝。
 - 命令不会自动做字段/行映射转换，传什么就发什么。
-- 如果 `patch` 包含只读字段，返回里可能出现 `ignored_fields`；这些字段不会被更新。
+- 如果字段映射包含只读字段，返回里可能出现 `ignored_fields`；这些字段不会被更新。
 
 ## 参考
 

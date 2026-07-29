@@ -40,10 +40,11 @@ func TestAppsGitCredentialInitDryRun(t *testing.T) {
 	assert.Equal(t, "api-plus-local-setup", clie2e.DryRunGet(result.Stdout, "mode").String())
 	assert.Equal(t, "initialize_local_git_credential", clie2e.DryRunGet(result.Stdout, "action").String())
 	assert.True(t, strings.HasSuffix(clie2e.DryRunGet(result.Stdout, "metadata_file").String(), filepath.Join("spark", "app_xxx", "git.json")))
-	assert.Equal(t, int64(3), clie2e.DryRunGet(result.Stdout, "local_effects.#").Int())
+	assert.Equal(t, int64(4), clie2e.DryRunGet(result.Stdout, "local_effects.#").Int())
 	assert.Equal(t, "save the issued PAT in the local system credential store", clie2e.DryRunGet(result.Stdout, "local_effects.0").String())
 	assert.Equal(t, "write app-scoped git credential metadata", clie2e.DryRunGet(result.Stdout, "local_effects.1").String())
 	assert.Equal(t, "configure a URL-scoped Git credential helper in global git config when possible", clie2e.DryRunGet(result.Stdout, "local_effects.2").String())
+	assert.Equal(t, "return commit_author_name and commit_author_email for repo-local git identity", clie2e.DryRunGet(result.Stdout, "local_effects.3").String())
 }
 
 func TestAppsGitCredentialListDryRun(t *testing.T) {

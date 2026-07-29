@@ -9,19 +9,23 @@ Mark a task as completed.
 ```bash
 # Complete a task
 lark-cli task +complete --task-id "<task_guid>"
+
+# A task applink is accepted directly; the CLI extracts its guid query value
+lark-cli task +complete --task-id "https://applink.larksuite.com/client/todo/task?guid=<task_guid>"
 ```
 
 ## Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `--task-id <guid>` | Yes | The task GUID to complete. For Feishu task applinks, use the `guid` query parameter, not the `suite_entity_num` / display task ID like `t104121`. |
+| `--task-id <guid-or-applink>` | Yes | Task OpenAPI GUID or a task applink containing `guid=`. Display task IDs such as `t104121` / `suite_entity_num` are rejected. |
 
 ## Workflow
 
 1. Confirm the task to complete.
 2. Execute the command.
-3. Report success.
+3. Read `data.status`, `data.completed_at`, and `data.already_completed` from the result. `already_completed: true` means the shortcut observed an already-completed task and skipped the PATCH.
+4. Do not routinely call `task tasks get` when the result already reports `status: done` and a non-zero `completed_at`. Query details only if confirmation fields are absent or the user explicitly asks for a full verification.
 
 > [!CAUTION]
 > This is a **Write Operation** -- You must confirm the user's intent before executing.

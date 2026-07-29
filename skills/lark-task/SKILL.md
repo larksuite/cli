@@ -38,6 +38,13 @@ metadata:
 > Task OpenAPI 中用于更新/操作任务的 `guid` 是任务的全局唯一标识（GUID），不是客户端展示的任务编号（例如 `t104121` / `suite_entity_num`）。
 > 对于 Feishu 的任务 applink（例如 `.../client/todo/task?guid=...`），必须使用 URL query 里的 `guid` 参数作为 task guid。
 
+> **从任务清单定位并修改任务的最短路径**：
+> 1. 已知任务清单 GUID 时直接使用，不要先搜索；已知任务清单 applink 时，取 URL query 中的 `guid` 作为 `tasklist_guid`。
+> 2. 只有清单名称或关键词、没有 GUID/applink 时，才调用一次 `+tasklist-search` 解析目标清单。
+> 3. 按原生 API 规则先执行 `lark-cli schema task.tasklists.tasks`，再执行 `lark-cli task tasklists tasks --params '{"tasklist_guid":"<tasklist_guid>"}' --as user`。
+> 4. 从清单任务结果中取任务的 `guid`，直接传给 `+update` 或 `+complete`；禁止传客户端展示编号（例如 `t104121`）。这两个 shortcut 也可直接接收包含 `guid=` 的任务 applink。
+> 5. `+update` 返回 `updated_fields` 和每个任务的服务端 `confirmed` 字段；`+complete` 返回 `status`、`completed_at`、`already_completed`。这些字段已确认目标状态时，不要例行追加 `tasks get`；仅在服务端未返回所需字段或用户明确要求完整复核时再查询详情。
+
 | Shortcut | 说明 |
 |----------|------|
 | [`+create`](references/lark-task-create.md) | create a task |

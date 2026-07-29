@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -36,7 +37,10 @@ func dryRunFieldGet(_ context.Context, runtime *common.RuntimeContext) *common.D
 
 func dryRunFieldCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	bodies, _ := parseFieldCreateBodies(pc, runtime.Str("json"))
+	bodies, err := parseFieldCreateBodies(pc, runtime.Str("json"))
+	if err != nil {
+		return common.NewDryRunAPI().Desc(fmt.Sprintf("dry-run validation failed: %v", err))
+	}
 	dr := common.NewDryRunAPI().
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime))
@@ -48,7 +52,10 @@ func dryRunFieldCreate(_ context.Context, runtime *common.RuntimeContext) *commo
 
 func dryRunFieldUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
+	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	if err != nil {
+		return common.NewDryRunAPI().Desc(fmt.Sprintf("dry-run validation failed: %v", err))
+	}
 	return common.NewDryRunAPI().
 		PUT("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
 		Body(body).
@@ -166,10 +173,10 @@ func executeFieldCreate(runtime *common.RuntimeContext) error {
 		fields = append(fields, data)
 	}
 	if len(fields) == 1 {
-		runtime.Out(map[string]interface{}{"field": fields[0], "created": true}, nil)
+		runtime.Out(fieldCreateResult(map[string]interface{}{"field": fields[0], "created": true}, bodies[0]), nil)
 		return nil
 	}
-	runtime.Out(map[string]interface{}{"fields": fields, "created": true, "total": len(fields)}, nil)
+	runtime.Out(fieldCreateBatchResult(map[string]interface{}{"fields": fields, "created": true, "total": len(fields)}, bodies), nil)
 	return nil
 }
 
@@ -197,8 +204,99 @@ func executeFieldUpdate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	runtime.Out(map[string]interface{}{"field": data, "updated": true}, nil)
+	runtime.Out(fieldUpdateResult(map[string]interface{}{"field": data, "updated": true}, body), nil)
 	return nil
+}
+
+func fieldCreateResult(result map[string]interface{}, submitted map[string]interface{}) map[string]interface{} {
+	readbackRecommended, reason := fieldWriteReadbackRecommendation(submitted, "create")
+	return attachFieldReadbackRecommendation(result, readbackRecommended, reason)
+}
+
+// fieldCreateBatchResult attaches the same top-level readback contract to a
+// multi-field create. It recommends +field-get when any submitted field is a
+// computed/linked/generated (or unknown) type, so agents know when to verify
+// server state without breaking the existing fields/total structure.
+func fieldCreateBatchResult(result map[string]interface{}, submitted []map[string]interface{}) map[string]interface{} {
+	recommend := false
+	reason := "simple fields created successfully; use +field-get only when extra properties or explicit verification are needed"
+	for _, body := range submitted {
+		if rec, r := fieldWriteReadbackRecommendation(body, "create"); rec {
+			recommend = true
+			reason = r
+			break
+		}
+	}
+	return attachFieldReadbackRecommendation(result, recommend, reason)
+}
+
+func fieldUpdateResult(result map[string]interface{}, submitted map[string]interface{}) map[string]interface{} {
+	returnedType := normalizeFieldType(fieldResultType(result["field"]))
+	submittedType := normalizeFieldType(common.GetString(submitted, "type"))
+	readbackRecommended, reason := fieldUpdateReadbackRecommendation(returnedType, submittedType)
+	return attachFieldReadbackRecommendation(result, readbackRecommended, reason)
+}
+
+func fieldUpdateReadbackRecommendation(returnedType, submittedType string) (bool, string) {
+	if returnedType != "" && submittedType != "" && returnedType != submittedType {
+		return true, fmt.Sprintf("field update submitted type %q but the server returned type %q; run +field-get and verify record values before declaring completion", submittedType, returnedType)
+	}
+
+	fieldType := returnedType
+	if fieldType == "" {
+		fieldType = submittedType
+	}
+	if recommended, reason := fieldTypeReadbackRecommendation(fieldType, "update"); recommended {
+		return true, reason + "; sample record values when generated, computed, or converted values are in scope"
+	}
+	return true, fmt.Sprintf("field update request succeeded for type %q, but +field-update cannot determine the previous type; run +field-get and sample record values if the type changed before declaring completion", fieldType)
+}
+
+func attachFieldReadbackRecommendation(result map[string]interface{}, readbackRecommended bool, reason string) map[string]interface{} {
+	result["field_get_recommended"] = readbackRecommended
+	result["verification_hint"] = reason
+	if readbackRecommended {
+		result["next_step"] = "field_get"
+	} else {
+		result["next_step"] = "done"
+	}
+	return result
+}
+
+func fieldWriteReadbackRecommendation(submitted map[string]interface{}, operation string) (bool, string) {
+	fieldType := normalizeFieldType(common.GetString(submitted, "type"))
+	return fieldTypeReadbackRecommendation(fieldType, operation)
+}
+
+func fieldTypeReadbackRecommendation(fieldType, operation string) (bool, string) {
+	fieldType = normalizeFieldType(fieldType)
+	switch fieldType {
+	case "formula", "lookup", "auto_number", "link":
+		return true, fmt.Sprintf("computed, linked, or generated field %s should be verified with +field-get before declaring completion", operation)
+	case "text", "number", "select", "datetime", "checkbox", "user", "group_chat", "attachment", "location":
+		return false, fmt.Sprintf("simple field %s returned successfully; use +field-get only when extra properties or explicit verification are needed", operation)
+	default:
+		return true, "unknown or uncommon field type; run +field-get to avoid assuming the submitted JSON fully describes server state"
+	}
+}
+
+func normalizeFieldType(fieldType string) string {
+	return strings.ToLower(strings.TrimSpace(fieldType))
+}
+
+func fieldResultType(value interface{}) string {
+	field, ok := value.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	if fieldType := strings.ToLower(strings.TrimSpace(common.GetString(field, "type"))); fieldType != "" {
+		return fieldType
+	}
+	nested, ok := field["field"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(common.GetString(nested, "type")))
 }
 
 func executeFieldDelete(runtime *common.RuntimeContext) error {

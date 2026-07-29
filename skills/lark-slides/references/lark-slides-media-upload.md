@@ -1,8 +1,6 @@
 
 # slides +media-upload（上传本地图片到飞书幻灯片）
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-
 把本地图片上传到指定演示文稿的 drive 媒体库，返回 `file_token`。**返回的 token 作为 `<img src="...">` 的值塞进 slide XML 即可显示图片。**
 
 ## 命令
@@ -125,3 +123,4 @@ lark-cli slides +replace-slide --as user \
 
 - [+create](lark-slides-create.md) — 新建 PPT（支持 `@` 占位符自动上传图片）
 - [+replace-slide](lark-slides-replace-slide.md) — 给已有页加图 / 换图（`block_insert` / `block_replace`）
+- [xml_presentation.slide create](lark-slides-xml-presentation-slide-create.md) — 创建 slide 页面（拿到 file_token 后塞进 XML）

@@ -4,6 +4,7 @@
 package localfileio
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,6 +67,72 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 			// THEN: error matches expectation
 			if (err != nil) != tt.wantErr {
 				t.Errorf("SafeOutputPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLocalInputPath_AllowsLocalNamespaceWithoutRewriting(t *testing.T) {
+	for _, input := range []string{
+		"/tmp/report.pdf",
+		"../outside/report.pdf",
+		"./report.pdf",
+		"nested/../report.pdf",
+		`C:\Users\agent\report.pdf`,
+		"报告.pdf",
+	} {
+		t.Run(input, func(t *testing.T) {
+			got, err := LocalInputPath(input)
+			if err != nil {
+				t.Fatalf("LocalInputPath(%q) error = %v", input, err)
+			}
+			if got != input {
+				t.Fatalf("LocalInputPath(%q) = %q, want path preserved verbatim", input, got)
+			}
+		})
+	}
+}
+
+func TestWindowsNonLocalNamespace(t *testing.T) {
+	for _, input := range []string{
+		`\\server\share\report.pdf`,
+		`//server/share/report.pdf`,
+		`\\.\pipe\upload`,
+		`\\?\C:\Users\agent\report.pdf`,
+		`\\?\UNC\server\share\report.pdf`,
+		`\??\C:\Users\agent\report.pdf`,
+	} {
+		if !isWindowsNonLocalNamespace(input) {
+			t.Errorf("isWindowsNonLocalNamespace(%q) = false, want true", input)
+		}
+	}
+
+	for _, input := range []string{
+		`C:\Users\agent\report.pdf`,
+		`C:/Users/agent/report.pdf`,
+		`..\outside\report.pdf`,
+		`.\report.pdf`,
+	} {
+		if isWindowsNonLocalNamespace(input) {
+			t.Errorf("isWindowsNonLocalNamespace(%q) = true, want false", input)
+		}
+	}
+}
+
+func TestLocalInputPath_RejectsEmptyControlAndDangerousUnicode(t *testing.T) {
+	for _, input := range []string{
+		"",
+		"   ",
+		"file\x00.txt",
+		"file\tname.txt",
+		"file\nname.txt",
+		"file\rname.txt",
+		"file\u202Ename.txt",
+		"file\u200Bname.txt",
+	} {
+		t.Run(fmt.Sprintf("%q", input), func(t *testing.T) {
+			if _, err := LocalInputPath(input); err == nil {
+				t.Fatalf("LocalInputPath(%q) unexpectedly succeeded", input)
 			}
 		})
 	}

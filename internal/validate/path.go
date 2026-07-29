@@ -23,6 +23,13 @@ func SafeTempAbsInputPath(path string) (string, error) {
 	return localfileio.SafeTempAbsInputPath(path)
 }
 
+// LocalInputPath validates a local input path without restricting it to the
+// current working directory. It delegates to localfileio.LocalInputPath so
+// command validation and shared local-file readers use one policy.
+func LocalInputPath(path string) (string, error) {
+	return localfileio.LocalInputPath(path)
+}
+
 // SafeEnvDirPath validates an environment-provided application directory path.
 // Delegates to localfileio.SafeEnvDirPath.
 func SafeEnvDirPath(path, envName string) (string, error) {

@@ -6,7 +6,8 @@
 
 ## Core Rules
 
-- Every planned asset must include a fallback visual plan. The fallback can use native charts, tables, whiteboard diagrams, placeholder regions, or XML shapes, text, and arrows as appropriate.
+- `asset_need` is metadata only. It can guide page design.
+- Every planned asset must include a fallback visual plan. The fallback can use native charts, tables, placeholder regions, or XML shapes, text, and arrows as appropriate.
 - Asset needs must serve the page's `key_message` and `visual_focus`. Do not add decorative assets that do not clarify the page.
 - Prefer a few high-value asset plans over one asset on every page. For a 6-page technical or business deck, plan assets on at least 3 pages when the content allows.
 - If a real local asset already exists or the user provides one, it can be used through the normal media-upload workflow. Still keep `fallback_if_missing` in the plan.
@@ -42,7 +43,7 @@ For a page without a meaningful asset need, use:
 - `architecture_diagram`: system components, data flow, dependency map, or model structure.
 - `icon`: small semantic symbol for a concept, step, role, or status.
 - `logo`: brand, product, team, or customer mark.
-- `chart`: column, bar, line, area, radar, pie, doughnut/ring, or combo data visual. Note: `<chart>` does not support funnel or scatter — map those to `<whiteboard>` SVG at generation time.
+- `chart`: column, bar, line, area, radar, pie, doughnut/ring, or combo data visual. Note: `<chart>` does not support funnel or scatter.
 - `infographic`: composed visual explanation, usually combining labels, numbers, and simple shapes.
 - `screenshot`: product UI, terminal output, workflow state, or page capture.
 - `flow_diagram`: process, sequence, decision tree, or mechanism diagram.
@@ -66,7 +67,7 @@ Match asset type to slide role:
 For `asset_type: "chart"`:
 
 - If the visual is a supported standard data chart — column, bar, line, area, radar, pie, doughnut/ring, or combo — `fallback_if_missing` must still render as a native `<chart>`.
-- Do not imitate supported standard data visuals with manual drawing primitives or `<whiteboard>`.
+- Do not imitate supported standard data visuals with manual drawing primitives.
 - Choose the data source explicitly:
   - `user_provided`: when the user provides concrete values, tables, CSV, or metric lists, use those values and do not replace them with mock data.
   - `mock_placeholder`: when the user asks for a placeholder, template, example, or chart position to replace later, use mock data in a native `<chart>`.
@@ -129,7 +130,8 @@ Business comparison page:
 When generating XML:
 
 1. If an asset exists and the workflow supports it, place it in the planned visual region.
-2. If no asset exists, immediately render `fallback_if_missing` with the planned XML-native element type. Supported standard data visuals still use native `<chart>`; other fallbacks may use shapes, text, lines, arrows, tables, whiteboard diagrams, or placeholder panels.
+2. If no asset exists, immediately render `fallback_if_missing` with the planned generated close-enough image. Supported standard data visuals still use native `<chart>`; other fallbacks may use the image generation tool to create an approximate image.
 3. Size the fallback to satisfy `visual_focus`; it should be a real page element, not a tiny decoration.
 4. Keep text-density limits. Do not compensate for missing assets by adding long bullet text.
 5. After creation, fetch the presentation and verify asset pages are not blank and that each planned fallback is visible when no real asset was used.
+6. If the image generation tool is unavailable or fails, degrade to an XML-native fallback instead of leaving a blank: native `<chart>` for data, otherwise a simple in-card shape/text placeholder sized to fill `visual_focus`.

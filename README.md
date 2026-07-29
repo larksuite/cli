@@ -285,6 +285,29 @@ To reduce these risks, the tool enables default security protections at multiple
 
 We recommend using the Lark/Feishu bot integrated with this tool as a private conversational assistant. Do not add it to group chats or allow other users to interact with it, to avoid abuse of permissions or data leakage.
 
+To reduce the security risks associated with access token theft, the CLI sends a minimal set of risk-control signals with OpenAPI requests made to exact official Feishu/Lark HTTPS domains. These signals are used to help identify anomalous API activity. This protection is enabled by default. The information sent is limited to:
+
+- Operating system type: macOS, Windows, or Linux
+- Device hardware model: for example, Mac17,9
+
+To disable this protection for the current workspace, run:
+
+```bash
+lark-cli config risk-control off
+```
+
+To enable this protection for the current workspace, run:
+
+```bash
+lark-cli config risk-control on
+```
+
+To restore the default policy for the current workspace, run:
+
+```bash
+lark-cli config risk-control default
+```
+
 Please fully understand all usage risks. By using this tool, you are deemed to voluntarily assume all related responsibilities.
 
 ## Star History

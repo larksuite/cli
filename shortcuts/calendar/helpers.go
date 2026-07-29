@@ -30,6 +30,26 @@ func resolveStartEnd(runtime *common.RuntimeContext) (string, string) {
 	return startInput, endInput
 }
 
+func collapseDescription(event map[string]interface{}) {
+	if event == nil {
+		return
+	}
+	rich, _ := event["description_rich"].(string)
+	plain, _ := event["description"].(string)
+	delete(event, "description_rich")
+	switch {
+	case rich != "":
+		event["description"] = rich
+	case plain != "":
+		event["description"] = plain
+	default:
+		delete(event, "description")
+	}
+}
+func descriptionToSend(runtime *common.RuntimeContext) string {
+	return runtime.Str("description")
+}
+
 func hasExplicitBotFlag(cmd *cobra.Command) bool {
 	if cmd == nil {
 		return false

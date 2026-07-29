@@ -12,6 +12,12 @@ import (
 func TestShortcutsRegistration(t *testing.T) {
 	convey.Convey("Shortcuts() returns all commands", t, func() {
 		list := Shortcuts()
-		convey.So(len(list), convey.ShouldBeGreaterThan, 0)
+		commands := make([]string, 0, len(list))
+		for _, shortcut := range list {
+			commands = append(commands, shortcut.Command)
+		}
+		convey.So(commands, convey.ShouldContain, "+create")
+		convey.So(commands, convey.ShouldContain, "+batch-create")
+		convey.So(commands, convey.ShouldContain, "+patch")
 	})
 }

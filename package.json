@@ -1,12 +1,13 @@
 {
   "name": "@larksuite/cli",
-  "version": "1.0.72",
+  "version": "1.0.79",
   "description": "The official CLI for Lark/Feishu open platform",
   "bin": {
     "lark-cli": "scripts/run.js"
   },
   "scripts": {
-    "postinstall": "node scripts/install.js"
+    "postinstall": "node scripts/install.js",
+    "release:check": "node scripts/release-preflight.js"
   },
   "os": [
     "darwin",

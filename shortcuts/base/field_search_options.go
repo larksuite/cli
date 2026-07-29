@@ -27,7 +27,7 @@ var BaseFieldSearchOptions = common.Shortcut{
 	},
 	Tips: []string{
 		`Example: lark-cli base +field-search-options --base-token <base_token> --table-id <table_id> --field-id "Status" --keyword "Do"`,
-		"Use only for fields with options, such as select or multi-select fields.",
+		"Use only for select fields, whether multiple is false or true.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateLimitPageSizeAlias(runtime); err != nil {

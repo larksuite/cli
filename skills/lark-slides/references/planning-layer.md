@@ -12,7 +12,8 @@
 4. 写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`。
 5. 读取 `xml-schema-quick-ref.md`、`visual-planning.md` 和 `asset-planning.md`。
 6. 按 plan、visual planning 和 asset planning 规则逐页生成 XML，把 `layout_type`、`visual_focus`、`text_density` 转成具体页面几何和文本量约束，并把缺失素材转成可执行兜底视觉。
-7. 创建 PPT 后用 `slides +xml-get` 回读，核对页面数量、关键元素和 plan 到 XML 的对应关系。
+7. 创建 PPT 后用 `slides +xml-get` 回读，核对页面数量、关键元素和 plan 到 XML 的对应关系，空白 PPT 中没有 slide 元素。
+
 
 ## Plan Path
 
@@ -57,7 +58,7 @@ Exception:
   "theme_style": "Clean business style, light background, restrained blue accent, strong visual hierarchy.",
   "visual_system": {
     "background_strategy": "Content pages use one light base; cover and closing may use a related dark treatment with the same accent system.",
-    "motif": "A reusable left accent bar and consistent card/header treatments.",
+    "motif": "Consistent card style and numbered anchors.",
     "color_roles": {
       "primary": "Used for the dominant structural motif and about 60-70% of visual weight.",
       "secondary": "Used for grouped regions, comparison panels, or supporting categories.",
@@ -87,7 +88,7 @@ Exception:
         "asset_type": "logo",
         "purpose": "Signal product or team identity on the opening page.",
         "suggested_query": "product logo",
-        "fallback_if_missing": "Use a small text badge and abstract shape motif instead of a real logo."
+        "fallback_if_missing": "Create a close-enough image with the image generation tool instead of a real logo."
       },
       "text_density": "low",
       "speaker_intent": "Frame the decision and establish the deck's point of view."
@@ -137,7 +138,7 @@ Optional slide fields:
 }
 ```
 
-When `chart_contract.required == true`, XML generation must produce a `<chart>` element on that slide. A shape, line, polyline, or whiteboard approximation does not satisfy the plan.
+When `chart_contract.required == true`, XML generation must produce a `<chart>` element on that slide. A shape, line, or polyline approximation does not satisfy the plan.
 
 `data_source` must be one of:
 
@@ -181,7 +182,7 @@ Text density must be realistic for the planned geometry. If a page needs long ti
 Before generating XML, define a visual system that can survive the whole deck:
 
 - `background_strategy`: specify the default background for normal content pages, and which page roles may intentionally differ. Do not let pages drift through near-identical but inconsistent background colors.
-- `motif`: choose one or two reusable structural devices, such as a side bar, header rail, numbered node, card treatment, diagram lane, or section band. The motif should appear consistently enough that pages feel related.
+- `motif`: choose one reusable structural device, such as numbered node, card treatment, half-bleed image zone, headline, or footer. The motif should appear consistently enough that pages feel related.
 - `color_roles`: assign primary, secondary, and accent roles. The same color must not mean unrelated things across pages.
 - `cover_content_relationship`: if the cover uses a different dark or image-led treatment, state how it connects to content pages through shared colors, motifs, or geometry.
 - `closing_relationship`: if the closing page mirrors the cover, state that explicitly so it looks intentional rather than like a new theme.
@@ -203,22 +204,22 @@ Do not hard-code a page number just because a previous deck used that pattern. P
 
 ## Asset Planning
 
-`asset_need` is metadata. It can describe a desired figure, diagram, chart, icon, logo, screenshot, or fallback shape-based visual, but it must not require web search, local download, or media upload.
+`asset_need` is metadata. It can describe a desired figure, diagram, chart, icon, logo, screenshot, or fallback visual.
 
 Use an object for one planned asset, an array for multiple real needs, or `asset_type: "none"` when no asset is useful. Each planned asset must include:
 
 - `asset_type`: one of `paper_figure`, `architecture_diagram`, `icon`, `logo`, `chart`, `infographic`, `screenshot`, `flow_diagram`, or `none`.
 - `purpose`: why this asset helps the page's key message.
 - `suggested_query`: short future lookup hint only; do not execute it unless separately requested.
-- `fallback_if_missing`: concrete XML-native visual plan using shapes, labels, tables, whiteboard diagrams, or placeholder panels.
+- `fallback_if_missing`: a plan to create a close-enough image with the image generation tool, or a native `<chart>` for data.
 - `chart_contract`: when `asset_type` is `chart` and the visual is a supported standard data chart, set this optional slide-level field so generation is locked to native `<chart>`.
 
 For detailed rules and examples, read `asset-planning.md`.
 
 Good examples:
 
-- `{"asset_type":"architecture_diagram","purpose":"Explain component relationships.","suggested_query":"service architecture diagram","fallback_if_missing":"Draw a component diagram with grouped boxes, connector arrows, and short labels."}`
-- `{"asset_type":"logo","purpose":"Identify the customer context.","suggested_query":"customer logo","fallback_if_missing":"Use a text label in a small badge."}`
+- `{"asset_type":"architecture_diagram","purpose":"Explain component relationships.","suggested_query":"service architecture diagram","fallback_if_missing":"Render the component diagram with <shape> + <line>."}`
+- `{"asset_type":"logo","purpose":"Identify the customer context.","suggested_query":"customer logo","fallback_if_missing":"Create a close-enough image with the image generation tool instead of a real logo."}`
 - `{"asset_type":"chart","purpose":"Show adoption trend.","suggested_query":"monthly adoption trend chart","fallback_if_missing":"Render a native `<chart>` using the provided series when available; otherwise render a native `<chart>` with mock placeholder values and label it as 模拟数据，仅占位，待替换真实数据."}`
 
 ## XML Generation Contract
@@ -229,7 +230,7 @@ Before writing each slide XML, map the plan fields to concrete decisions:
 - `layout_type` determines the coordinate structure and element types. Use `visual-planning.md` for concrete layout rules.
 - `visual_focus` determines the largest visual region or emphasized object.
 - `text_density` caps visible text volume.
-- `asset_need` informs placeholder diagrams, icons, charts, screenshots, or shape-based fallback visuals only. Missing real assets must use `fallback_if_missing`, not blank regions.
+- `asset_need` informs placeholder diagrams, icons, charts, screenshots, or fallback visuals only. Missing real assets must use `fallback_if_missing`, not blank regions.
 - `chart_contract` locks supported standard data charts to native `<chart>` output. Manual approximations are allowed only when the planned chart type is unsupported by `<chart>` or when the visual is explicitly non-data/decorative.
 
 After creating the PPT, fetch the presentation and verify:

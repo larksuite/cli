@@ -34,5 +34,19 @@
 | 通知/铃铛 | `bell_outlined` | 定位 | `pin_outlined` |
 | 附件 | `attachment_outlined` | 审批 | `approval_outlined` |
 
+## 彩色图标（精确 token）
+
+彩色图标必须从下表按**完整字符串**选择，禁止根据名称规律自行拼接。彩色 token 自带颜色，不要再推导其他后缀或变体。
+
+| 含义 | token | 含义 | token |
+|---|---|---|---|
+| 日历 | `calendar_colorful` | 待办 | `todo_colorful` |
+| 投票 | `vote_colorful` | 飞书妙记 | `file-lark-minutes_colorful` |
+| 多维表格 | `wiki-bitable_colorful` | 表单 | `file-form_colorful` |
+| 飞书社区 | `larkcommunity_colorful` | 招聘 | `hirelogo_colorful` |
+| 飞书品牌 | `lark-logo_colorful` | Meego | `meego_colorful` |
+| AI | `myai_colorful` | aPaaS | `apaas_colorful` |
+| 审批 | `approval_colorful` | 通用 AI | `ai-common_colorful` |
+
 > token 必须与官方完全一致，否则图标不渲染。上表为常用项，全量（数百个，分系统/商务/沟通/用户/媒体/文档等类目）以官方图标库为准：
 > https://open.larkoffice.com/document/feishu-cards/enumerations-for-icons

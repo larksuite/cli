@@ -286,6 +286,29 @@ lark-cli schema im.messages.delete
 
 我们建议您将对接本工具的飞书机器人作为私人对话助手使用，请勿将其拉入群聊或允许其他用户与其交互，以避免权限被滥用或数据泄露。
 
+为降低访问令牌被盗用后的安全风险，CLI 在向飞书/Lark 官方 HTTPS 精确域名发起 OpenAPI 请求时，会随请求发送一组最小化的风控信号，用于辅助识别异常调用行为。该保护默认开启，发送的信息仅包括：
+
+- 操作系统类型：macOS、Windows 或 Linux
+- 设备的硬件产品型号：例如 Mac17,9
+
+如需让当前 workspace 退出该保护，可执行以下命令：
+
+```bash
+lark-cli config risk-control off
+```
+
+如需开启当前 workspace 的保护，可执行以下命令：
+
+```bash
+lark-cli config risk-control on
+```
+
+恢复当前 workspace 默认策略可执行：
+
+```bash
+lark-cli config risk-control default
+```
+
 请您充分知悉全部使用风险，使用本工具即视为您自愿承担相关所有责任。
 
 ## Star History

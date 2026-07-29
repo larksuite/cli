@@ -114,7 +114,7 @@ func PlanImportDryRun(runtime *common.RuntimeContext, p ImportParams) *common.Dr
 		Desc("[3] Poll import task result").
 		Set("ticket", "<ticket>")
 	if runtime.IsBot() {
-		dry.Desc("After the import result returns the final cloud document target in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on it.")
+		dry.Desc("After the import result returns the final cloud document target in bot mode, the CLI will also try to grant the current CLI user full_access on it.")
 	}
 
 	return dry
