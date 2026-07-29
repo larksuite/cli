@@ -61,10 +61,10 @@ var MailTriage = common.Shortcut{
 		{Name: "max", Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
 		{Name: "page-size", Type: "int", Desc: "alias for --max"},
 		{Name: "page-token", Desc: "pagination token from a previous response to fetch the next page"},
-		{Name: "filter", Desc: `exact-match condition filter (JSON, key=value, or unread alias is_unread/is_read=false). Narrow results by folder, label, sender, recipient, etc. Run --print-filter-schema to see all fields. Example: {"folder":"INBOX","from":["alice@example.com"]}`},
-		{Name: "folder", Desc: "folder name or system folder ID filter (merged with --filter)"},
-		{Name: "folder-id", Desc: "explicit folder ID filter (merged with --filter; takes priority over --folder)"},
-		{Name: "is-unread", Type: "bool", Desc: "filter unread messages (merged with --filter)"},
+		{Name: "filter", Desc: `exact-match condition filter (JSON or key=value). Narrow results by folder, label, sender, recipient, unread status, etc. Run --print-filter-schema to see all fields. Example: {"folder":"INBOX","from":["alice@example.com"]}`},
+		{Name: "folder", Desc: "folder name or system folder ID filter"},
+		{Name: "folder-id", Desc: "explicit folder ID filter"},
+		{Name: "is-unread", Type: "bool", Desc: "filter unread messages"},
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
 		{Name: "query", Desc: `full-text keyword search across from/to/subject/body (max 50 chars). Example: "budget report"`},
 		{Name: "labels", Type: "bool", Desc: "include label IDs in output"},
@@ -404,7 +404,7 @@ func printTriageFilterSchema(runtime *common.RuntimeContext) {
 			},
 			"is_unread": map[string]string{
 				"type":    "bool",
-				"desc":    "Filter unread messages. Use is_unread=true or is_read=false. is_unread=false is ignored. Bare is_read and is_read=true are rejected.",
+				"desc":    "Filter unread messages. Use is_unread=true.",
 				"example": "true",
 			},
 			"time_range": map[string]string{
