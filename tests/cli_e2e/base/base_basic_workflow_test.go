@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -40,7 +41,7 @@ func TestBase_BasicWorkflow(t *testing.T) {
 	})
 
 	tableName := "lark-cli-e2e-table-basic-" + clie2e.GenerateSuffix()
-	tableID, _, _ := createTableWithRetry(
+	tableID, _, primaryViewID := createTableWithRetry(
 		t,
 		parentT,
 		ctx,
@@ -49,6 +50,24 @@ func TestBase_BasicWorkflow(t *testing.T) {
 		`[{"name":"Name","type":"text"}]`,
 		`{"name":"Main","type":"grid"}`,
 	)
+
+	t.Run("resolve table URL as bot", func(t *testing.T) {
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"base", "+url-resolve",
+				"--url", fmt.Sprintf("https://example.larkoffice.com/base/%s?table=%s&view=%s", baseToken, tableID, primaryViewID),
+			},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+		assert.Equal(t, baseToken, gjson.Get(result.Stdout, "data.base_token").String(), "stdout:\n%s", result.Stdout)
+		assert.Equal(t, tableID, gjson.Get(result.Stdout, "data.block_id").String(), "stdout:\n%s", result.Stdout)
+		assert.Equal(t, "table", gjson.Get(result.Stdout, "data.block_type").String(), "stdout:\n%s", result.Stdout)
+		assert.Equal(t, tableID, gjson.Get(result.Stdout, "data.table_id").String(), "stdout:\n%s", result.Stdout)
+		assert.Equal(t, primaryViewID, gjson.Get(result.Stdout, "data.view_id").String(), "stdout:\n%s", result.Stdout)
+	})
 
 	t.Run("get table as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{

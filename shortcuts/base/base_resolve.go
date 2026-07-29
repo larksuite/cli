@@ -69,9 +69,23 @@ var BaseURLResolve = common.Shortcut{
 			}
 			return common.NewDryRunAPI().Set("url", raw).Set("resolution", "local")
 		case "wiki_url":
-			return common.NewDryRunAPI().
-				GET("/open-apis/wiki/v2/spaces/get_node").
+			dry := common.NewDryRunAPI()
+			selectedBlockID := strings.TrimSpace(parsed.Query().Get("table"))
+			if selectedBlockID == "" {
+				return dry.
+					GET("/open-apis/wiki/v2/spaces/get_node").
+					Params(map[string]interface{}{"token": firstPathSegmentAfter(parsed.Path, "/wiki/")})
+			}
+			dry.Desc("2-step: resolve the Wiki node to a Base, then identify the selected Base block")
+			dry.GET("/open-apis/wiki/v2/spaces/get_node").
+				Desc("[1] Resolve the Wiki node to its underlying Base").
 				Params(map[string]interface{}{"token": firstPathSegmentAfter(parsed.Path, "/wiki/")})
+			dry.POST("/open-apis/base/v3/bases/:base_token/blocks/list").
+				Desc("[2] List Base blocks and match selected_block_id").
+				Body(map[string]interface{}{})
+			return dry.
+				Set("base_token", "<obj_token from step 1>").
+				Set("selected_block_id", selectedBlockID)
 		case "record_share_url":
 			return common.NewDryRunAPI().
 				GET("/open-apis/base/v3/record_share/:record_share_token/meta").
@@ -181,7 +195,7 @@ func executeBaseURLResolve(runtime *common.RuntimeContext) error {
 	switch classifyBaseURL(parsed) {
 	case "base_url":
 		out := resolveBaseURL(parsed)
-		enrichBaseResolveHint(runtime, out)
+		enrichBaseResolveHint(runtime, out, resolveBaseURLSelection(parsed))
 		runtime.OutFormat(out, nil, nil)
 		return nil
 	case "wiki_url":
@@ -189,6 +203,9 @@ func executeBaseURLResolve(runtime *common.RuntimeContext) error {
 		if err != nil {
 			return err
 		}
+		selection := resolveBaseURLSelection(parsed)
+		applyBaseURLSelection(out, selection)
+		enrichBaseResolveHint(runtime, out, selection)
 		runtime.OutFormat(out, nil, nil)
 		return nil
 	case "record_share_url":
@@ -262,27 +279,48 @@ func classifyBaseURL(u *url.URL) string {
 }
 
 func resolveBaseURL(u *url.URL) map[string]interface{} {
-	query := u.Query()
 	out := map[string]interface{}{
 		"input_type":    "base_url",
 		"resource_type": "bitable",
 		"base_token":    firstPathSegmentAfter(u.Path, "/base/"),
 	}
-	if tableID := strings.TrimSpace(query.Get("table")); tableID != "" {
+	applyBaseURLSelection(out, resolveBaseURLSelection(u))
+	return out
+}
+
+type baseURLSelection struct {
+	blockID  string
+	viewID   string
+	recordID string
+}
+
+func resolveBaseURLSelection(u *url.URL) baseURLSelection {
+	query := u.Query()
+	return baseURLSelection{
+		blockID:  strings.TrimSpace(query.Get("table")),
+		viewID:   strings.TrimSpace(query.Get("view")),
+		recordID: strings.TrimSpace(query.Get("record")),
+	}
+}
+
+func applyBaseURLSelection(out map[string]interface{}, selection baseURLSelection) {
+	if selection.blockID != "" {
 		// The Base web UI historically uses the query key "table" for the
 		// currently selected top-level block. Its value can identify a table,
 		// dashboard, workflow, or another block type. Keep it neutral until the
 		// block directory confirms the resource type.
-		out["block_id"] = tableID
+		out["block_id"] = selection.blockID
 		out["selection_source"] = "url_query"
 	}
-	if viewID := strings.TrimSpace(query.Get("view")); viewID != "" {
-		out["view_id"] = viewID
+}
+
+func applyResolvedTableSelection(out map[string]interface{}, selection baseURLSelection) {
+	if selection.viewID != "" {
+		out["view_id"] = selection.viewID
 	}
-	if recordID := strings.TrimSpace(query.Get("record")); recordID != "" {
-		out["record_id"] = recordID
+	if selection.recordID != "" {
+		out["record_id"] = selection.recordID
 	}
-	return out
 }
 
 func resolveWikiBaseURL(runtime *common.RuntimeContext, u *url.URL) (map[string]interface{}, error) {
@@ -384,7 +422,7 @@ func executeBaseTitleResolve(runtime *common.RuntimeContext) error {
 	}
 }
 
-func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interface{}) {
+func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interface{}, selection baseURLSelection) {
 	baseToken := strings.TrimSpace(common.GetString(out, "base_token"))
 	selectedBlockID := strings.TrimSpace(common.GetString(out, "block_id"))
 	if baseToken == "" || selectedBlockID == "" {
@@ -399,6 +437,7 @@ func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interf
 		}
 		switch block.Type {
 		case "table":
+			applyResolvedTableSelection(out, selection)
 			enrichResolvedTable(runtime, out, baseToken, selectedBlockID)
 		case "dashboard":
 			out["dashboard_id"] = selectedBlockID
@@ -421,6 +460,7 @@ func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interf
 	// endpoint independently confirms that the selected ID is a table.
 	fields, total, err := listAllFields(runtime, baseToken, selectedBlockID, 0, 100)
 	if err == nil {
+		applyResolvedTableSelection(out, selection)
 		out["table_id"] = selectedBlockID
 		out["block_type"] = "table"
 		out["hint"] = resolveHint(selectedBlockID, map[string]interface{}{"fields": map[string]interface{}{"fields": fields, "total": total}})

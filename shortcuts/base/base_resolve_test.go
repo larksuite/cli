@@ -68,7 +68,7 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 	t.Run("unconfirmed selected block stays neutral", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
-			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=tbl123", "--as", "user",
+			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=tbl123&view=vew_stale&record=rec_stale", "--as", "user",
 		}, factory, stdout)
 		if err != nil {
 			t.Fatalf("err=%v", err)
@@ -79,6 +79,12 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 		}
 		if _, ok := data["table_id"]; ok {
 			t.Fatalf("unconfirmed block must not be reported as a table: %#v", data)
+		}
+		if _, ok := data["view_id"]; ok {
+			t.Fatalf("unconfirmed block must not expose table-only view_id: %#v", data)
+		}
+		if _, ok := data["record_id"]; ok {
+			t.Fatalf("unconfirmed block must not expose table-only record_id: %#v", data)
 		}
 		hint, _ := data["hint"].(map[string]interface{})
 		if !strings.Contains(hint["next_step"].(string), "+base-block-list") {
@@ -116,7 +122,7 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 		))
 
 		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
-			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=blk_dashboard", "--as", "user",
+			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=blk_dashboard&view=vew_stale&record=rec_stale", "--as", "user",
 		}, factory, stdout)
 		if err != nil {
 			t.Fatalf("err=%v", err)
@@ -128,6 +134,12 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 		if _, ok := data["table_id"]; ok {
 			t.Fatalf("dashboard must not be reported as table_id: %#v", data)
 		}
+		if _, ok := data["view_id"]; ok {
+			t.Fatalf("dashboard must not expose table-only view_id: %#v", data)
+		}
+		if _, ok := data["record_id"]; ok {
+			t.Fatalf("dashboard must not expose table-only record_id: %#v", data)
+		}
 		hint, _ := data["hint"].(map[string]interface{})
 		nextStep := hint["next_step"].(string)
 		if !strings.Contains(nextStep, "+dashboard-get") || !strings.Contains(nextStep, "+dashboard-list") || !strings.Contains(nextStep, "different dashboard than block_name") {
@@ -138,21 +150,27 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 	t.Run("workflow selected through table query key", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(baseBlockListResolveStub("bas123",
-			map[string]interface{}{"id": "blk_workflow", "type": "workflow", "name": "Notify"},
+			map[string]interface{}{"id": "wkf_notify", "type": "workflow", "name": "Notify"},
 		))
 
 		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
-			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=blk_workflow", "--as", "user",
+			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=wkf_notify&view=vew_stale&record=rec_stale", "--as", "user",
 		}, factory, stdout)
 		if err != nil {
 			t.Fatalf("err=%v", err)
 		}
 		data := decodeBaseEnvelope(t, stdout)
-		if data["block_id"] != "blk_workflow" || data["block_type"] != "workflow" || data["workflow_id"] != "blk_workflow" {
+		if data["block_id"] != "wkf_notify" || data["block_type"] != "workflow" || data["workflow_id"] != "wkf_notify" {
 			t.Fatalf("unexpected workflow coordinates: %#v", data)
 		}
 		if _, ok := data["table_id"]; ok {
 			t.Fatalf("workflow must not be reported as table_id: %#v", data)
+		}
+		if _, ok := data["view_id"]; ok {
+			t.Fatalf("workflow must not expose table-only view_id: %#v", data)
+		}
+		if _, ok := data["record_id"]; ok {
+			t.Fatalf("workflow must not expose table-only record_id: %#v", data)
 		}
 		hint, _ := data["hint"].(map[string]interface{})
 		if !strings.Contains(hint["next_step"].(string), "+workflow-get") {
@@ -182,20 +200,7 @@ func baseBlockListResolveStub(baseToken string, blocks ...map[string]interface{}
 func TestBaseURLResolveWikiURL(t *testing.T) {
 	t.Run("bitable", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/wiki/v2/spaces/get_node?token=wik123",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"node": map[string]interface{}{
-						"obj_type":  "bitable",
-						"obj_token": "bas123",
-						"title":     "Demo Base",
-					},
-				},
-			},
-		})
+		reg.Register(wikiBaseNodeStub("wik123", "bas123", "Demo Base"))
 
 		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
 			"+url-resolve", "--url", "https://example.larkoffice.com/wiki/wik123", "--as", "user",
@@ -206,6 +211,57 @@ func TestBaseURLResolveWikiURL(t *testing.T) {
 		data := decodeBaseEnvelope(t, stdout)
 		if data["input_type"] != "wiki_url" || data["base_token"] != "bas123" || data["title"] != "Demo Base" {
 			t.Fatalf("unexpected output: %#v", data)
+		}
+	})
+
+	t.Run("bitable with table coordinates", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(wikiBaseNodeStub("wik123", "bas123", "Demo Base"))
+		reg.Register(baseBlockListResolveStub("bas123",
+			map[string]interface{}{"id": "tbl123", "type": "table", "name": "Orders"},
+		))
+		reg.Register(fieldListStub("bas123", "tbl123"))
+
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve",
+			"--url", "https://example.larkoffice.com/wiki/wik123?table=tbl123&view=vew123&record=rec123",
+			"--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		data := decodeBaseEnvelope(t, stdout)
+		if data["input_type"] != "wiki_url" || data["base_token"] != "bas123" || data["block_id"] != "tbl123" || data["block_type"] != "table" || data["table_id"] != "tbl123" || data["view_id"] != "vew123" || data["record_id"] != "rec123" {
+			t.Fatalf("unexpected Wiki Base table coordinates: %#v", data)
+		}
+	})
+
+	t.Run("bitable with dashboard selection", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(wikiBaseNodeStub("wik123", "bas123", "Demo Base"))
+		reg.Register(baseBlockListResolveStub("bas123",
+			map[string]interface{}{"id": "blk_dashboard", "type": "dashboard", "name": "Sales"},
+		))
+
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve",
+			"--url", "https://example.larkoffice.com/wiki/wik123?table=blk_dashboard&view=vew_stale&record=rec_stale",
+			"--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		data := decodeBaseEnvelope(t, stdout)
+		if data["input_type"] != "wiki_url" || data["block_id"] != "blk_dashboard" || data["block_type"] != "dashboard" || data["dashboard_id"] != "blk_dashboard" {
+			t.Fatalf("unexpected Wiki Base dashboard coordinates: %#v", data)
+		}
+		if _, ok := data["view_id"]; ok {
+			t.Fatalf("dashboard must not expose table-only view_id: %#v", data)
+		}
+		if _, ok := data["record_id"]; ok {
+			t.Fatalf("dashboard must not expose table-only record_id: %#v", data)
 		}
 	})
 
@@ -229,6 +285,23 @@ func TestBaseURLResolveWikiURL(t *testing.T) {
 			t.Fatalf("err=%v, want non-Base validation error", err)
 		}
 	})
+}
+
+func wikiBaseNodeStub(wikiToken, baseToken, title string) *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node?token=" + wikiToken,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "bitable",
+					"obj_token": baseToken,
+					"title":     title,
+				},
+			},
+		},
+	}
 }
 
 func TestBaseURLResolveRecordShareURL(t *testing.T) {
