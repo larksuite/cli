@@ -3,13 +3,23 @@
 
 创建一个新的飞书幻灯片演示文稿，可选一步添加页面内容。
 
-- 禁止：从完整 <presentation> XML 解析/拆分/重序列化生成提交 payload。
-- 推荐：提交源直接就是单页 <slide> XML；+create --slides 只接受已经人工/程序直接生成的 slide 数组，不接受由
-      presentation 动态拆出来的数组。
+提交源必须是直接生成的单页 `<slide>` XML。禁止从完整 `<presentation>` XML 解析、拆分、重序列化出 slide 数组再提交。
 
-- 最稳：复杂 deck 默认空 deck + 单页 slide create，每次只提交一个 <slide>。
+本命令只从零创建演示文稿，不读取本地文件。要把已有 PPTX 变成 Slides，用 `drive +import --file <x.pptx> --type slides`，再在导入结果上编辑，流程见 [lark-slides-pptx-template-workflows.md](lark-slides-pptx-template-workflows.md)。
 
-- 注意：复杂 XML 不适合直接塞命令行，中文、引号、特殊字符较多时，直接拼接 --slides 容易发生 shell 转义或截断。建议将每页 XML 保存为独立文件，使用 `jq --rawfile` 组装 JSON 数组，避免手动处理 XML 引号和换行。
+## 创建方式选择
+
+| 场景 | 推荐方式 |
+|------|----------|
+| 简单 XML（1-3 页、结构简单、几乎无复杂中文和特殊字符） | `slides +create --slides '[...]'` 一步创建 |
+| 复杂 XML（多页、含中文、大段文本、复杂布局、嵌套引号、特殊字符较多） | **两步创建**：先 `slides +create` 创建空白 PPT，再用 [`xml_presentation.slide create`](lark-slides-xml-presentation-slide-create.md) 逐页添加 |
+| 已有 PPT 继续追加或插入页面 | 使用 [`xml_presentation.slide create`](lark-slides-xml-presentation-slide-create.md)，必要时配合 `before_slide_id` |
+
+> [!WARNING]
+> `--slides '[...]'` 的风险点主要在 shell 参数传递，而不是单纯页数。即使只有 1 页，只要 XML 足够复杂，也建议使用两步创建法。
+
+> [!IMPORTANT]
+> `slides +create --slides` 底层会逐页创建，不是原子操作。中途失败时先记录 `xml_presentation_id`，回读确认当前状态，再继续修复或追加。
 
 ## 命令
 
@@ -41,6 +51,19 @@ lark-cli slides +create --as user --title "项目汇报" \
 ```
 
 `--rawfile` 会把文件内容作为字符串读入 JSON，自动处理 XML 中的引号和换行；不要手动拼接带大量转义符的 JSON 字符串。
+
+### `--slides` 不接受的形态
+
+CLI 只把 `--slides` 的值当 JSON 文本解析，不会把它当文件路径去读。以下写法都会报
+`--slides invalid JSON, must be an array of XML strings`：
+
+| 错误写法 | 为什么不行 | 改成 |
+|----------|-----------|------|
+| `--slides @slides.json` | `@` 只在 XML 内部的 `<img src="@./path">` 上生效，不是 `--slides` 的文件语法 | `--slides "$(jq -n --rawfile ...)"` |
+| `--slides slides.xml` / `--slides ./deck.xml` | 值被当成 JSON 文本解析，不是路径 | 同上 |
+| `--slides "$(cat deck.xml)"` | 文件里是裸 XML，不是 JSON 字符串数组 | 同上；文件按页拆分后用 `--rawfile` 组装 |
+| `--slides '[{"type":"slide",...}]'` | 数组元素必须是 XML 字符串，不是对象 | `'["<slide ...>...</slide>"]'` |
+| 元素里的 XML 展开成多行 | JSON 字符串内部不允许裸换行 | 单页 XML 压成一行，或用 `--rawfile` 让 jq 转义 |
 
 ## 返回值
 
