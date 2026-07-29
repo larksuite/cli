@@ -18,7 +18,6 @@ const (
 	tableCopyStateInit    = "init"
 	tableCopyStateProcess = "process"
 	tableCopyStateSuccess = "success"
-	tableCopyStateUnknown = "unknown"
 )
 
 type tableCopyTable struct {
@@ -102,6 +101,17 @@ func executeTableCopyWithClock(ctx context.Context, runtime *common.RuntimeConte
 		tableCopyProgressf(runtime, "Table copy completed: success")
 		return nil
 	}
+	if submit.State == tableCopyStateSuccess {
+		runtime.Out(tableCopyOutput{
+			Table:     submit.Table,
+			Range:     rangeValue,
+			State:     submit.State,
+			Completed: true,
+			TaskID:    submit.TaskID,
+		}, nil)
+		tableCopyProgressf(runtime, "Table copy completed: success")
+		return nil
+	}
 	if submit.TaskID == "" {
 		return errs.NewInternalError(errs.SubtypeInvalidResponse, "all-range table copy response missing task_id")
 	}
@@ -147,7 +157,9 @@ func executeTableCopyWithClock(ctx context.Context, runtime *common.RuntimeConte
 			return tableCopyWaitError(pollErr)
 		}
 		if timedOut && status.State == "" {
-			status.State = tableCopyStateUnknown
+			// No status query completed before the deadline. The submit response
+			// is still the last known task state, so preserve it.
+			status.State = submit.State
 		}
 		out := tableCopyOutput{
 			Table:     submit.Table,

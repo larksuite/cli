@@ -268,6 +268,37 @@ func TestBaseTableCopySubmissionIsNeverRetried(t *testing.T) {
 	}
 }
 
+func TestBaseTableCopySubmissionAPIErrorReturnsWithoutStatusOrState(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_source/copy",
+		Body: map[string]interface{}{
+			"code": 800070111,
+			"msg":  "table copy rejected",
+		},
+	})
+
+	err := runShortcutWithAuthTypes(
+		t,
+		BaseTableCopy,
+		BaseTableCopy.AuthTypes,
+		[]string{"+table-copy", "--base-token", "app_x", "--table-id", "tbl_source", "--name", "Copy", "--range", "all", "--wait", "--as", "user"},
+		factory,
+		stdout,
+	)
+	if err == nil {
+		t.Fatal("expected submission API error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAPI || problem.Code != 800070111 {
+		t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("failed submission must not output task state: %s", stdout.String())
+	}
+}
+
 func TestBaseTableCopyAllWithoutWaitReturnsTaskAndNextCommand(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	copyStub := &httpmock.Stub{
@@ -492,6 +523,43 @@ func TestBaseTableCopyStatusDryRun(t *testing.T) {
 	}
 }
 
+func TestBaseTableCopyAllSubmitSuccessCompletesWithoutTaskOrStatusRequest(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_source/copy",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"table": map[string]interface{}{"id": "tbl_target", "name": "Copy"},
+				"state": tableCopyStateSuccess,
+			},
+		},
+	})
+
+	err := runShortcutWithAuthTypes(
+		t,
+		BaseTableCopy,
+		BaseTableCopy.AuthTypes,
+		[]string{"+table-copy", "--base-token", "app_x", "--table-id", "tbl_source", "--name", "Copy", "--range", "all", "--wait", "--timeout", "1s", "--as", "user"},
+		factory,
+		stdout,
+	)
+	if err != nil {
+		t.Fatalf("successful submission must complete immediately: %v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	if data["state"] != tableCopyStateSuccess || data["completed"] != true || data["range"] != tableCopyRangeAll {
+		t.Fatalf("submit success output = %#v", data)
+	}
+	for _, unexpected := range []string{"task_id", "timed_out", "next_action", "next_command"} {
+		if _, ok := data[unexpected]; ok {
+			t.Fatalf("submit success output must omit %s: %#v", unexpected, data)
+		}
+	}
+}
+
 func TestBaseTableCopyAllWaitsForSuccess(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	stderr := factory.IOStreams.ErrOut.(interface{ String() string })
@@ -615,41 +683,45 @@ func TestBaseTableCopyAllWaitTimeoutReturnsContinuation(t *testing.T) {
 	}
 }
 
-func TestBaseTableCopyAllWaitTimeoutBeforeFirstStatusReturnsUnknown(t *testing.T) {
-	factory, stdout, reg := newExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_source/copy",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"table":   map[string]interface{}{"id": "tbl_target", "name": "Copy"},
-				"task_id": "ct1.token",
-				"state":   "init",
-			},
-		},
-	})
+func TestBaseTableCopyAllWaitTimeoutBeforeFirstStatusReturnsSubmitState(t *testing.T) {
+	for _, submitState := range []string{tableCopyStateInit, tableCopyStateProcess} {
+		t.Run(submitState, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_source/copy",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"table":   map[string]interface{}{"id": "tbl_target", "name": "Copy"},
+						"task_id": "ct1.token",
+						"state":   submitState,
+					},
+				},
+			})
 
-	clock := &advancingTableCopyClock{now: time.Unix(0, 0)}
-	shortcut := BaseTableCopy
-	shortcut.Execute = func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return executeTableCopyWithClock(ctx, runtime, clock)
-	}
-	err := runShortcutWithAuthTypes(
-		t,
-		shortcut,
-		shortcut.AuthTypes,
-		[]string{"+table-copy", "--base-token", "app_x", "--table-id", "tbl_source", "--name", "Copy", "--range", "all", "--wait", "--timeout", "1s", "--as", "user"},
-		factory,
-		stdout,
-	)
-	if err != nil {
-		t.Fatalf("table copy early timeout: %v", err)
-	}
+			clock := &advancingTableCopyClock{now: time.Unix(0, 0)}
+			shortcut := BaseTableCopy
+			shortcut.Execute = func(ctx context.Context, runtime *common.RuntimeContext) error {
+				return executeTableCopyWithClock(ctx, runtime, clock)
+			}
+			err := runShortcutWithAuthTypes(
+				t,
+				shortcut,
+				shortcut.AuthTypes,
+				[]string{"+table-copy", "--base-token", "app_x", "--table-id", "tbl_source", "--name", "Copy", "--range", "all", "--wait", "--timeout", "1s", "--as", "user"},
+				factory,
+				stdout,
+			)
+			if err != nil {
+				t.Fatalf("table copy early timeout: %v", err)
+			}
 
-	data := decodeBaseEnvelope(t, stdout)
-	if data["state"] != tableCopyStateUnknown || data["timed_out"] != true || data["completed"] != false {
-		t.Fatalf("early timeout output = %#v", data)
+			data := decodeBaseEnvelope(t, stdout)
+			if data["state"] != submitState || data["timed_out"] != true || data["completed"] != false {
+				t.Fatalf("early timeout output = %#v", data)
+			}
+		})
 	}
 }
 
@@ -756,7 +828,82 @@ func TestBaseTableCopyWaitErrorEmitsRecoverableTaskOnProgressAndStdout(t *testin
 	if decodeErr := json.Unmarshal(stdout.Bytes(), &envelope); decodeErr != nil {
 		t.Fatalf("decode recovery stdout: %v\nraw=%s", decodeErr, stdout.String())
 	}
-	if envelope.OK || envelope.Data.TaskID != "ct1.token" || envelope.Data.NextAction != "poll_status" || !strings.Contains(envelope.Data.NextCommand, "ct1.token") {
+	if envelope.OK ||
+		envelope.Data.State != tableCopyStateInit ||
+		envelope.Data.Completed ||
+		envelope.Data.TaskID != "ct1.token" ||
+		envelope.Data.NextAction != "poll_status" ||
+		!strings.Contains(envelope.Data.NextCommand, "ct1.token") {
+		t.Fatalf("recovery envelope = %#v", envelope)
+	}
+}
+
+func TestBaseTableCopyWaitErrorPreservesLastSuccessfulStatus(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_source/copy",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"table":   map[string]interface{}{"id": "tbl_target", "name": "Copy"},
+				"task_id": "ct1.token",
+				"state":   tableCopyStateInit,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/copy_table_state",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"table_id": "tbl_target",
+				"state":    tableCopyStateProcess,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/copy_table_state",
+		Body: map[string]interface{}{
+			"code": 800070111,
+			"msg":  "table copy task failed",
+		},
+	})
+
+	clock := &advancingTableCopyClock{now: time.Unix(0, 0)}
+	shortcut := BaseTableCopy
+	shortcut.Execute = func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return executeTableCopyWithClock(ctx, runtime, clock)
+	}
+	err := runShortcutWithAuthTypes(
+		t,
+		shortcut,
+		shortcut.AuthTypes,
+		[]string{"+table-copy", "--base-token", "app_x", "--table-id", "tbl_source", "--name", "Copy", "--range", "all", "--wait", "--as", "user"},
+		factory,
+		stdout,
+	)
+	if err == nil {
+		t.Fatal("expected status error after process status")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Code != 800070111 {
+		t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
+	}
+
+	var envelope struct {
+		OK   bool            `json:"ok"`
+		Data tableCopyOutput `json:"data"`
+	}
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &envelope); decodeErr != nil {
+		t.Fatalf("decode recovery stdout: %v\nraw=%s", decodeErr, stdout.String())
+	}
+	if envelope.OK ||
+		envelope.Data.State != tableCopyStateProcess ||
+		envelope.Data.Completed ||
+		envelope.Data.TaskID != "ct1.token" {
 		t.Fatalf("recovery envelope = %#v", envelope)
 	}
 }
@@ -892,6 +1039,29 @@ func TestPollTableCopyRetriesTransientNetworkError(t *testing.T) {
 		},
 	)
 	if err != nil || timedOut || status.State != tableCopyStateSuccess {
+		t.Fatalf("status=%#v timedOut=%v err=%v", status, timedOut, err)
+	}
+	if fetches != 2 {
+		t.Fatalf("fetches=%d, want 2", fetches)
+	}
+}
+
+func TestPollTableCopyReturnsLastStatusWhenLaterRetryableErrorsReachDeadline(t *testing.T) {
+	clock := &advancingTableCopyClock{now: time.Unix(0, 0)}
+	fetches := 0
+	status, timedOut, err := pollTableCopy(
+		context.Background(),
+		10*time.Second,
+		clock,
+		func(context.Context) (tableCopyStatus, error) {
+			fetches++
+			if fetches == 1 {
+				return tableCopyStatus{TableID: "tbl_target", State: tableCopyStateProcess}, nil
+			}
+			return tableCopyStatus{}, errs.NewNetworkError(errs.SubtypeNetworkServer, "temporary server error")
+		},
+	)
+	if err != nil || !timedOut || status.State != tableCopyStateProcess {
 		t.Fatalf("status=%#v timedOut=%v err=%v", status, timedOut, err)
 	}
 	if fetches != 2 {
