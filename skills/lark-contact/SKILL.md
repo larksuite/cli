@@ -1,7 +1,7 @@
 ---
 name: lark-contact
 version: 1.0.0
-description: "飞书 / Lark 通讯录:按姓名 / 邮箱解析成 open_id,按 open_id 反查姓名 / 部门 / 邮箱 / 联系方式 / 个人状态 / 签名,以及按关键词搜索当前用户可见的机器人。当用户提到某人姓名要下一步发消息 / 排日程,拿到 open_id 想查具体信息,或需要查找机器人 open_id 时使用。不负责部门树遍历、按部门列员工、组织架构图,这类需求走原生 OpenAPI。"
+description: "飞书 / Lark 通讯录:按姓名 / 邮箱解析成 open_id,或按 open_id 反查姓名 / 部门 / 邮箱 / 联系方式 / 个人状态 / 签名,以及按关键词搜索当前用户可见的机器人。当用户提到某人姓名要下一步发消息 / 排日程,或拿到 open_id 想查具体信息,或需要查找机器人 open_id 时使用。不负责部门树遍历、按部门列员工、组织架构图,这类需求走原生 OpenAPI。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -15,10 +15,10 @@ metadata:
 | 想做什么 | user 身份 | bot 身份 |
 |---|---|---|
 | 按姓名 / 邮箱搜员工拿 open_id | [`+search-user`](references/lark-contact-search-user.md) | 不支持 |
-| 按名称搜索当前用户可见的机器人 | `+search-bot --query <关键词>` | 不支持 |
+| 按名称搜索当前用户可见的机器人 | [`+search-bot`](references/lark-contact-search-bot.md) | 不支持 |
 | 已知 open_id 取他人资料 | `+search-user --user-ids <id>` | [`+get-user --user-id <id>`](references/lark-contact-get-user.md) |
 | 查看自己 | `+get-user` 或 `+search-user --user-ids me` | 不支持 |
-| 查同事的个人状态 / 签名 | [`lark-openapi-explorer`](../lark-openapi-explorer/SKILL.md) | 不支持 |
+| 查同事的个人状态 / 签名 | `user_profiles batch_query` | 不支持 |
 
 已知 open_id 只是想发消息 / 排日程,不必经过 contact —— 直接 [`lark-im`](../lark-im/SKILL.md) / [`lark-calendar`](../lark-calendar/SKILL.md)。
 
@@ -31,46 +31,36 @@ lark-cli contact +search-user --query "张三" --has-chatted --as user
 lark-cli im +messages-send --user-id ou_xxx --text "Hi!"
 ```
 
-批量查同事的个人状态 / 个性签名时,当前命令清单没有对应的内置 contact 命令,交给 [`lark-openapi-explorer`](../lark-openapi-explorer/SKILL.md) 查找原生 OpenAPI。
+批量查同事的个人状态 / 个性签名(先用 schema 看参数)。
+
+```bash
+lark-cli schema contact.user_profiles.batch_query
+lark-cli contact user_profiles batch_query \
+  --params '{"user_id_type":"open_id"}' \
+  --data '{"user_ids":["ou_xxx","ou_yyy"],"query_option":{"include_personal_status":true,"include_description":true}}' \
+  --as user
+```
 
 搜索命中多条且后续操作有副作用(发消息、邀请会议等),把候选列给用户挑;不要擅自选第一条。
 
 ## 搜索机器人
 
-`+search-bot` 使用 user 身份按关键词搜索当前用户可见的机器人。返回的 `open_id` 是 `ou_` 开头的机器人 open_id,用于标识这个机器人(能不能用于某个下游接口取决于该接口接受的 ID 类型,见下文入群的例子)。`p2p_chat_id` 表示当前用户与机器人的单聊会话,`has_chatted` 表示是否存在该会话。
-
-按关键词搜索:
+`+search-bot` 使用 user 身份按关键词搜索当前用户可见的机器人,返回 `ou_` 开头的机器人 open_id。参数细节、输入归一化规则和输出结构见 [`lark-contact-search-bot.md`](references/lark-contact-search-bot.md)。
 
 ```bash
 lark-cli contact +search-bot --query '会议助手' --as user
-```
-
-`--chat-ids` 和 `--has-chatted` 只能缩小关键词搜索范围,每次调用都要给关键词(`--query` 或 `--queries`):
-
-```bash
-lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user
-lark-cli contact +search-bot --query '助手' --has-chatted --as user
-```
-
-一次要找多个机器人时用 `--queries`(和 `--query` 互斥),逗号分隔、并行搜、最多 20 个词:
-
-```bash
 lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' --as user
 ```
-
-输出是扁平的 `bots[]`,每行多一个 `matched_query` 说明是哪个词命中的;另有 `queries[]` 汇总逐词的 `has_more` 和 `notice`。`--chat-ids` / `--has-chatted` 会作用到每一个词上。个别词失败不影响其他词(全部失败才报错)。
-
-返回 `has_more=true` 表示还有更多命中,但和 `+search-user` 一样**没有分页**:收窄搜索条件(补 `--chat-ids` 或 `--has-chatted`,或换更具体的 `--query`),而不是翻页。
-
-`--format pretty` 使用六列摘要;`table`、`csv` 和 `ndjson` 与 `+search-user` 一样使用完整结果字段。
 
 `enable_join_group=true` 只表示该机器人允许被拉进群聊,**不代表你能用这里的 `open_id` 把它拉进群**。把机器人加入群聊需要应用的 `cli_` 开头 app_id,本命令不返回;直接用 `ou_` 开头的 open_id 调加群接口会被服务端放进 `invalid_id_list`,且没有 open_id 到 app_id 的查询接口。看到这个字段为真时,不要据此声称已把机器人加入群聊。
 
 ## 注意事项
 
-- **41050 / Permission denied** 按命令处理:`+search-user` 只支持 user 身份,重新授权 `contact:user:search`;`+search-bot` 只支持 user 身份,重新授权 `search:bot`;`+get-user` 同时支持 user 和 bot,可改用具备对应通讯录权限的身份。身份与授权细节见 [`lark-shared`](../lark-shared/SKILL.md)。
+- **41050 / Permission denied** 受当前身份的可见范围限制(两条命令都可能遇到)。换 bot 身份或让管理员调整可见范围,细节见 [`lark-shared`](../lark-shared/SKILL.md)。
 - **跨租户用户**(`is_cross_tenant=true`)多数业务字段为空字符串,这是飞书可见性规则,下游做空值兜底。
-- **ID 类型**:默认 `open_id`。`+get-user` 原样透传服务端响应,可改 `--user-id-type union_id|user_id`;`+search-user` 和 `+search-bot` 有固定的输出结构,一律只出 `open_id`,不接受切换(两个接口本身支持 `user_id_type`,但字段名会随之说谎,所以 CLI 不暴露;确实要 union_id / user_id 时走 `lark-cli api` 直调)。
+- **ID 类型**:默认 `open_id`。`+get-user` 可改 `--user-id-type union_id|user_id`;`+search-user` 只接受 `open_id`。
+- **`+search-bot` 的权限**:只支持 user 身份,缺权限时重新授权 `search:bot`。
+- **`+search-bot` 的 ID 类型**:和 `+search-user` 一样只出 `open_id`。接口本身支持 `user_id_type`,但输出结构的字段名会随之说谎,所以 CLI 不暴露;确实要 union_id / user_id 时走 `lark-cli api` 直调。
 
 ## 不在本 skill 范围
 
