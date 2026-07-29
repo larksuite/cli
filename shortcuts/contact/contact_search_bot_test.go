@@ -162,6 +162,11 @@ func TestValidateBotSearchPassingCases(t *testing.T) {
 		{name: "query and has chatted", flags: map[string]string{"query": "x", "has-chatted": "true"}},
 		{name: "all filters", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b", "has-chatted": "true"}},
 		{name: "page size upper boundary", flags: map[string]string{"query": "x", "page-size": "30"}},
+		// An explicitly blank string flag reads as "no filter", matching how
+		// +search-user treats --user-ids / --queries. Only a non-blank value that
+		// parses to zero entries is an error.
+		{name: "blank chat ids ignored", flags: map[string]string{"query": "x", "chat-ids": ""}},
+		{name: "whitespace chat ids ignored", flags: map[string]string{"query": "x", "chat-ids": "   "}},
 	}
 
 	for _, tt := range tests {
@@ -214,6 +219,8 @@ func TestBuildBotSearchBody(t *testing.T) {
 		{name: "chat id URL normalized", flags: map[string]string{"query": "x", "chat-ids": "https://example.feishu.cn/foo/oc_a,oc_b"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"]}}`},
 		{name: "has chatted", flags: map[string]string{"query": "x", "has-chatted": "true"}, wantJSON: `{"query":"x","filter":{"has_chatter":true}}`},
 		{name: "all fields", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b", "has-chatted": "true"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"],"has_chatter":true}}`},
+		// A blank --chat-ids must not materialize an empty filter object.
+		{name: "blank chat ids omit filter", flags: map[string]string{"query": "x", "chat-ids": "   "}, wantJSON: `{"query":"x"}`},
 	}
 
 	for _, tt := range tests {

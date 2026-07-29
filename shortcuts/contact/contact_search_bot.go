@@ -110,9 +110,10 @@ var ContactSearchBot = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		pageSize, pageToken := botSearchPagination(runtime)
-		params := map[string]interface{}{"page_size": pageSize}
-		if pageToken != "" {
+		params := map[string]interface{}{"page_size": runtime.Int("page-size")}
+		// Page tokens are opaque server values: pass them through verbatim, and
+		// never send an empty one.
+		if pageToken := runtime.Str("page-token"); pageToken != "" {
 			params["page_token"] = pageToken
 		}
 		return common.NewDryRunAPI().POST(botSearchURL).Params(params).Body(body)
@@ -153,16 +154,11 @@ func validateBotSearch(runtime *common.RuntimeContext) error {
 	return nil
 }
 
-func botSearchPagination(runtime *common.RuntimeContext) (int, string) {
-	// Page tokens are opaque server values; preserve them verbatim.
-	return runtime.Int("page-size"), runtime.Str("page-token")
-}
-
 func parseBotSearchChatIDs(runtime *common.RuntimeContext) ([]string, error) {
-	if !runtime.Cmd.Flags().Changed("chat-ids") {
+	raw := strings.TrimSpace(runtime.Str("chat-ids"))
+	if raw == "" {
 		return nil, nil
 	}
-	raw := strings.TrimSpace(runtime.Str("chat-ids"))
 	chatIDs := common.SplitCSV(raw)
 	if len(chatIDs) == 0 {
 		return nil, common.ValidationErrorf("--chat-ids: no valid chat_id parsed from %q (separate entries with ',')", raw).
@@ -212,11 +208,10 @@ func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error
 		return err
 	}
 
-	pageSize, pageToken := botSearchPagination(runtime)
 	queryParams := larkcore.QueryParams{
-		"page_size": []string{strconv.Itoa(pageSize)},
+		"page_size": []string{strconv.Itoa(runtime.Int("page-size"))},
 	}
-	if pageToken != "" {
+	if pageToken := runtime.Str("page-token"); pageToken != "" {
 		queryParams["page_token"] = []string{pageToken}
 	}
 
