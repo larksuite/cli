@@ -319,11 +319,16 @@ func TestParseBotDisplayInfo(t *testing.T) {
 		wantDescription string
 		wantSegments    []string
 	}{
-		{name: "single live match", raw: "<h>会议助手</h>\n推送未接会议消息提醒", openID: "ou_a", wantName: "会议助手", wantDescription: "推送未接会议消息提醒", wantSegments: []string{"会议助手"}},
-		{name: "multiple live matches", raw: "<h>会议</h>室<h>助手</h>\n你的专属会议室小管家", openID: "ou_b", wantName: "会议室助手", wantDescription: "你的专属会议室小管家", wantSegments: []string{"会议", "助手"}},
-		{name: "empty live description", raw: "尚磊的智能<h>助手</h>\n", openID: "ou_c", wantName: "尚磊的智能助手", wantSegments: []string{"助手"}},
-		{name: "mid-name live match", raw: "红黑榜小<h>助</h>手\n每天定时发送阻塞红黑榜Bug看板", openID: "ou_d", wantName: "红黑榜小助手", wantDescription: "每天定时发送阻塞红黑榜Bug看板", wantSegments: []string{"助"}},
-		{name: "no newline", raw: "会议助手", openID: "ou_e", wantName: "会议助手", wantSegments: []string{}},
+		// Whole name highlighted, description on line two.
+		{name: "whole name highlighted", raw: "<h>甲乙丙</h>\n一句话简介", openID: "ou_a", wantName: "甲乙丙", wantDescription: "一句话简介", wantSegments: []string{"甲乙丙"}},
+		// Two highlighted runs split by a plain character: stripping tags has to
+		// rejoin them into one name.
+		{name: "two highlighted runs", raw: "<h>甲乙</h>丁<h>丙</h>\n另一句简介", openID: "ou_b", wantName: "甲乙丁丙", wantDescription: "另一句简介", wantSegments: []string{"甲乙", "丙"}},
+		// Highlight at the end plus a trailing newline: line two exists but is empty.
+		{name: "trailing newline empty description", raw: "戊己的<h>庚辛</h>\n", openID: "ou_c", wantName: "戊己的庚辛", wantSegments: []string{"庚辛"}},
+		// Single highlighted character in the middle of the name.
+		{name: "mid-name highlight", raw: "壬癸<h>子</h>丑\n第二行简介", openID: "ou_d", wantName: "壬癸子丑", wantDescription: "第二行简介", wantSegments: []string{"子"}},
+		{name: "no newline", raw: "寅卯", openID: "ou_e", wantName: "寅卯", wantSegments: []string{}},
 		{name: "empty", raw: "", openID: "ou_f", wantName: "ou_f", wantSegments: []string{}},
 		{name: "fallback line", raw: "\n\n真名", openID: "ou_g", wantName: "真名", wantSegments: []string{}},
 		// A blank first line must not make the description echo the name back and
@@ -352,7 +357,7 @@ func TestProjectBotsMapsEveryField(t *testing.T) {
 	data := &botSearchAPIData{Items: []botSearchAPIItem{
 		{
 			ID:          "ou_with_chat",
-			DisplayInfo: "<h>会议助手</h>\n提醒助手",
+			DisplayInfo: "<h>甲乙丙</h>\n一句话简介",
 			MetaData: botSearchAPIMeta{
 				TenantID: "1", EnableJoinGroup: true, ChatID: "oc_p2p", IsAgent: true,
 			},
@@ -369,9 +374,9 @@ func TestProjectBotsMapsEveryField(t *testing.T) {
 		t.Fatalf("bots: got %d, want 2", len(bots))
 	}
 	first := bots[0]
-	if first.OpenID != "ou_with_chat" || first.Name != "会议助手" || first.Description != "提醒助手" ||
+	if first.OpenID != "ou_with_chat" || first.Name != "甲乙丙" || first.Description != "一句话简介" ||
 		first.P2PChatID != "oc_p2p" || !first.HasChatted || !first.EnableJoinGroup || !first.IsAgent || first.TenantID != "1" ||
-		fmt.Sprint(first.MatchSegments) != "[会议助手]" {
+		fmt.Sprint(first.MatchSegments) != "[甲乙丙]" {
 		t.Fatalf("first bot mapping: %+v", first)
 	}
 	second := bots[1]
@@ -417,7 +422,7 @@ func botSearchStub(url string, pageToken string) *httpmock.Stub {
 				"items": []interface{}{
 					map[string]interface{}{
 						"id":           "ou_bot",
-						"display_info": "<h>会议助手</h>\n推送未接会议消息提醒",
+						"display_info": "<h>甲乙丙</h>\n一句话简介",
 						"meta_data": map[string]interface{}{
 							"tenant_id": "1", "enable_join_group": true, "chat_id": "oc_p2p", "is_agent": false,
 						},
@@ -434,7 +439,7 @@ func TestBotSearchIntegrationRequestAndResponsePassThrough(t *testing.T) {
 	registry.Register(stub)
 
 	err := mountAndRun(t, ContactSearchBot, []string{
-		"+search-bot", "--query", "助手", "--chat-ids", "oc_a,oc_b", "--has-chatted",
+		"+search-bot", "--query", "甲乙", "--chat-ids", "oc_a,oc_b", "--has-chatted",
 		"--page-size", "25", "--format", "json", "--as", "user",
 	}, factory, stdout)
 	if err != nil {
@@ -445,7 +450,7 @@ func TestBotSearchIntegrationRequestAndResponsePassThrough(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &requestBody); err != nil {
 		t.Fatalf("request body: %v", err)
 	}
-	if requestBody["query"] != "助手" {
+	if requestBody["query"] != "甲乙" {
 		t.Fatalf("request query: got %v", requestBody["query"])
 	}
 	filter, ok := requestBody["filter"].(map[string]interface{})
@@ -474,7 +479,7 @@ func TestBotSearchIntegrationNeverSurfacesPageToken(t *testing.T) {
 	// +search-user, which decodes page_token and drops it.
 	registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
 
-	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "助手", "--format", "json", "--as", "user"}, factory, stdout)
+	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "甲乙", "--format", "json", "--as", "user"}, factory, stdout)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -492,7 +497,7 @@ func TestBotSearchPrettyOutputAndPaginationHint(t *testing.T) {
 	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
 	registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
 
-	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "助手", "--format", "pretty", "--as", "user"}, factory, stdout)
+	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "甲乙", "--format", "pretty", "--as", "user"}, factory, stdout)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -522,7 +527,7 @@ func TestBotSearchTableUsesGenericFormatterLikeSearchUser(t *testing.T) {
 	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
 	registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
 
-	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "助手", "--format", "table", "--as", "user"}, factory, stdout)
+	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "甲乙", "--format", "table", "--as", "user"}, factory, stdout)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -549,7 +554,7 @@ func TestBotSearchCSVAndNDJSONExposeFullFieldsWithoutPaginationHint(t *testing.T
 			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
 			registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
 
-			err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "助手", "--format", format, "--as", "user"}, factory, stdout)
+			err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "甲乙", "--format", format, "--as", "user"}, factory, stdout)
 			if err != nil {
 				t.Fatalf("execute: %v", err)
 			}
@@ -593,7 +598,7 @@ func TestBotSearchPrettyEmptyResult(t *testing.T) {
 func TestBotSearchDryRunMirrorsRequest(t *testing.T) {
 	factory, stdout, _, _ := cmdutil.TestFactory(t, botSearchDefaultConfig())
 	err := mountAndRun(t, ContactSearchBot, []string{
-		"+search-bot", "--query", "助手", "--chat-ids", "oc_a", "--has-chatted",
+		"+search-bot", "--query", "甲乙", "--chat-ids", "oc_a", "--has-chatted",
 		"--page-size", "25", "--dry-run", "--as", "user",
 	}, factory, stdout)
 	if err != nil {
@@ -619,7 +624,7 @@ func TestBotSearchDryRunMirrorsRequest(t *testing.T) {
 	if call.Method != "POST" || call.URL != botSearchURL || call.Params["page_size"] != float64(25) {
 		t.Fatalf("dry-run call: %+v", call)
 	}
-	if call.Body.Query != "助手" || call.Body.Filter == nil || fmt.Sprint(call.Body.Filter.ChatIDs) != "[oc_a]" || !call.Body.Filter.HasChatter {
+	if call.Body.Query != "甲乙" || call.Body.Filter == nil || fmt.Sprint(call.Body.Filter.ChatIDs) != "[oc_a]" || !call.Body.Filter.HasChatter {
 		t.Fatalf("dry-run body: %+v", call.Body)
 	}
 }
@@ -645,7 +650,7 @@ func TestBotSearchNoticeReachesCallerInEveryFormat(t *testing.T) {
 			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
 			registry.Register(botSearchStub(botSearchURL+"?page_size=20", ""))
 			if err := mountAndRun(t, ContactSearchBot, []string{
-				"+search-bot", "--query", "助手", "--format", format, "--as", "user",
+				"+search-bot", "--query", "甲乙", "--format", format, "--as", "user",
 			}, factory, stdout); err != nil {
 				t.Fatalf("execute: %v", err)
 			}
