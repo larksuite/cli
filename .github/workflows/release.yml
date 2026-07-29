@@ -48,8 +48,7 @@ jobs:
           head_sha="$(git rev-parse --verify 'HEAD^{commit}')"
           tag_sha="$(git rev-parse --verify "refs/tags/${TAG}^{commit}")"
           [[ "$tag_sha" == "$head_sha" ]] || { echo "Tag ${TAG} does not resolve to checked-out HEAD." >&2; exit 1; }
-          # Temporarily disabled for the v1.0.78-beta.14 release rehearsal.
-          # git merge-base --is-ancestor "$head_sha" FETCH_HEAD || { echo "Tag ${TAG} is not contained in origin/main." >&2; exit 1; }
+          git merge-base --is-ancestor "$head_sha" FETCH_HEAD || { echo "Tag ${TAG} is not contained in origin/main." >&2; exit 1; }
 
           node - "$preflight_file" "$head_sha" "$GITHUB_OUTPUT" <<'NODE'
           const fs = require("node:fs");
