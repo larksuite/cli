@@ -14,6 +14,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -94,11 +95,13 @@ var ContactSearchBot = common.Shortcut{
 		{Name: "chat-ids", Desc: "narrow --query to bots in these chats (CSV of chat_id; ≤ 100)"},
 		{Name: "has-chatted", Type: "bool", Desc: "narrow --query to bots you've chatted with (omit to disable; =false rejected)"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-30"},
+		{Name: "queries", Desc: "comma-separated keywords searched in parallel; output is a flat bots[] with matched_query plus a queries[] sidecar"},
 	},
 	Tips: []string{
 		"Keyword search: lark-cli contact +search-bot --query '会议助手' --as user",
 		"Narrow to bots in a chat: lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user",
 		"Narrow to bots you've chatted with: lark-cli contact +search-bot --query '助手' --has-chatted --as user",
+		"Multi-name fanout: lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' --as user",
 		"--query is required; --chat-ids and --has-chatted only narrow it — a filter-only request returns an empty list, not an error.",
 		"on has_more=true narrow the search (add --chat-ids or --has-chatted, or use a more specific --query) — there is no pagination.",
 		"enable_join_group=true only means the bot is allowed into chats. Adding it needs the app's cli_ app_id, which this command does not return: the ou_ open_id here is rejected by the chat-member APIs and there is no open_id → app_id lookup. Do not claim a bot was added on the strength of this flag.",
@@ -107,6 +110,23 @@ var ContactSearchBot = common.Shortcut{
 		return validateBotSearch(runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+		if raw := strings.TrimSpace(runtime.Str("queries")); raw != "" {
+			filter, err := buildBotFanoutFilter(runtime)
+			if err != nil {
+				return common.NewDryRunAPI().Set("error", err.Error())
+			}
+			api := common.NewDryRunAPI()
+			for _, q := range parseAndDedupQueries(raw) {
+				body := &botSearchAPIRequest{Query: q}
+				if filter != nil {
+					body.Filter = filter
+				}
+				api.POST(botSearchURL).
+					Params(map[string]interface{}{"page_size": runtime.Int("page-size")}).
+					Body(body)
+			}
+			return api
+		}
 		body, err := buildBotSearchBody(runtime)
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
@@ -119,19 +139,54 @@ var ContactSearchBot = common.Shortcut{
 	Execute: executeBotSearch,
 }
 
+// executeBotSearch dispatches to single-query or fanout mode.
+func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error {
+	if strings.TrimSpace(runtime.Str("queries")) != "" {
+		return executeBotSearchFanout(ctx, runtime)
+	}
+	return executeBotSearchSingle(ctx, runtime)
+}
+
 func botSearchQueryRequiredError() error {
 	return common.ValidationErrorf("--query is required: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API returns an empty list for filter-only requests)").
 		WithParam("--query")
 }
 
 func validateBotSearch(runtime *common.RuntimeContext) error {
+	queriesRaw := strings.TrimSpace(runtime.Str("queries"))
 	query := strings.TrimSpace(runtime.Str("query"))
-	if query == "" {
-		return botSearchQueryRequiredError()
-	}
-	if utf8.RuneCountInString(query) > maxBotSearchQueryChars {
-		return common.ValidationErrorf("--query: length must be between 1 and %d characters", maxBotSearchQueryChars).
-			WithParam("--query")
+
+	if queriesRaw != "" {
+		if query != "" {
+			return common.ValidationErrorf("--query and --queries are mutually exclusive").
+				WithParams(
+					errs.InvalidParam{Name: "--query", Reason: "mutually exclusive with --queries"},
+					errs.InvalidParam{Name: "--queries", Reason: "mutually exclusive with --query"},
+				)
+		}
+		queries := parseAndDedupQueries(queriesRaw)
+		if len(queries) == 0 {
+			return common.ValidationErrorf("--queries: no valid query parsed from %q (separate entries with ',')", queriesRaw).
+				WithParam("--queries")
+		}
+		if len(queries) > maxFanoutQueries {
+			return common.ValidationErrorf("--queries: must be at most %d entries (got %d)", maxFanoutQueries, len(queries)).
+				WithParam("--queries")
+		}
+		for _, q := range queries {
+			if utf8.RuneCountInString(q) > maxBotSearchQueryChars {
+				return common.ValidationErrorf("--queries: entry %q exceeds %d characters", q, maxBotSearchQueryChars).
+					WithParam("--queries")
+			}
+		}
+	} else {
+		if query == "" {
+			return botSearchQueryRequiredError()
+		}
+		if utf8.RuneCountInString(query) > maxBotSearchQueryChars {
+			return common.ValidationErrorf("--query: length must be between 1 and %d characters", maxBotSearchQueryChars).
+				WithParam("--query")
+		}
 	}
 
 	if _, err := parseBotSearchChatIDs(runtime); err != nil {
@@ -200,7 +255,7 @@ func buildBotSearchBody(runtime *common.RuntimeContext) (*botSearchAPIRequest, e
 	return req, nil
 }
 
-func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error {
+func executeBotSearchSingle(ctx context.Context, runtime *common.RuntimeContext) error {
 	body, err := buildBotSearchBody(runtime)
 	if err != nil {
 		return err

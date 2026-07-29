@@ -24,6 +24,7 @@ func newBotSearchTestCommand() *cobra.Command {
 	cmd.Flags().String("chat-ids", "", "")
 	cmd.Flags().Bool("has-chatted", false, "")
 	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().String("queries", "", "")
 	return cmd
 }
 

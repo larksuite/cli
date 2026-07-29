@@ -52,6 +52,14 @@ lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user
 lark-cli contact +search-bot --query '助手' --has-chatted --as user
 ```
 
+一次要找多个机器人时用 `--queries`(和 `--query` 互斥),逗号分隔、并行搜、最多 20 个词:
+
+```bash
+lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' --as user
+```
+
+输出是扁平的 `bots[]`,每行多一个 `matched_query` 说明是哪个词命中的;另有 `queries[]` 汇总逐词的 `has_more` 和 `notice`。`--chat-ids` / `--has-chatted` 会作用到每一个词上。个别词失败不影响其他词(全部失败才报错)。
+
 返回 `has_more=true` 表示还有更多命中,但和 `+search-user` 一样**没有分页**:收窄搜索条件(补 `--chat-ids` 或 `--has-chatted`,或换更具体的 `--query`),而不是翻页。
 
 `--format pretty` 使用六列摘要;`table`、`csv` 和 `ndjson` 与 `+search-user` 一样使用完整结果字段。
