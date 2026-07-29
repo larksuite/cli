@@ -22,6 +22,16 @@ metadata:
 
 已知 open_id 只是想发消息 / 排日程,不必经过 contact —— 直接 [`lark-im`](../lark-im/SKILL.md) / [`lark-calendar`](../lark-calendar/SKILL.md)。
 
+### 名字没说清是人还是机器人
+
+用户给的名字常常不表明类型。「把 reviewDuck 拉进群」里的 reviewDuck 很可能是机器人,但也可能是同事昵称 —— **不要猜,搜两边**:
+
+- `+search-user` 搜不到时,**退化到 `+search-bot` 再搜一次**,不要直接回「找不到这个人」
+- 名字有明显的工具色彩(英文驼峰、含 bot / 助手 / 机器人 / assistant 等)时,反过来先搜机器人更快
+- 两边都空才是真没有
+
+注意机器人**拉不进群**:入群需要应用的 `cli_` app_id,`+search-bot` 只给 `ou_` open_id,细节见 [`lark-contact-search-bot.md`](references/lark-contact-search-bot.md)。
+
 ## 典型场景
 
 找张三给他发消息:先搜,确认 open_id,再发:
