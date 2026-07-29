@@ -33,6 +33,18 @@ func TestResolvePermApplyTarget_BareTokenWithType(t *testing.T) {
 	}
 }
 
+func TestResolvePermApplyTarget_BareTokenWithAppsType(t *testing.T) {
+	t.Parallel()
+
+	token, docType, err := resolvePermApplyTarget("appBareToken", "apps")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if token != "appBareToken" || docType != "apps" {
+		t.Fatalf("got token=%q type=%q, want appBareToken/apps", token, docType)
+	}
+}
+
 func TestResolvePermApplyTarget_URLInference(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -64,6 +76,15 @@ func TestResolvePermApplyTarget_URLInference(t *testing.T) {
 				t.Fatalf("got (%q,%q), want (%q,%q)", token, docType, tt.wantTok, tt.wantType)
 			}
 		})
+	}
+}
+
+func TestResolvePermApplyTarget_RejectsMalformedPageURL(t *testing.T) {
+	t.Parallel()
+
+	token, docType, err := resolvePermApplyTarget("https://example.feishu.cn/page/?from=share", "")
+	if err == nil || !strings.Contains(err.Error(), "could not infer token") {
+		t.Fatalf("expected page token inference error, got token=%q type=%q error=%v", token, docType, err)
 	}
 }
 
@@ -144,6 +165,33 @@ func TestDriveApplyPermission_DryRunInfersTypeFromURL(t *testing.T) {
 		`"edit"`,
 		`"please"`,
 		`"shtTok"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dry-run output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestDriveApplyPermission_DryRunAcceptsAppsBareToken(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveApplyPermission, []string{
+		"+apply-permission",
+		"--token", "appBareToken",
+		"--type", "apps",
+		"--perm", "edit",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"/open-apis/drive/v1/permissions/appBareToken/members/apply",
+		`"apps"`,
+		`"edit"`,
+		`"appBareToken"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("dry-run output missing %q:\n%s", want, out)

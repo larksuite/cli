@@ -198,6 +198,120 @@ func TestResolveSecureLabelTarget_URLAndBareToken(t *testing.T) {
 	}
 }
 
+func TestResolveSecureLabelTarget_RejectsInvalidInputs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		raw         string
+		wantParam   string
+		wantMessage string
+	}{
+		{
+			name:        "empty token",
+			raw:         " \t ",
+			wantParam:   "--token",
+			wantMessage: "--token is required",
+		},
+		{
+			name:        "apps page URL is unsupported",
+			raw:         "https://example.feishu.cn/page/appMetaTok",
+			wantParam:   "--token",
+			wantMessage: "could not infer token from URL",
+		},
+		{
+			name:        "bare token requires type",
+			raw:         "doxBareTok",
+			wantParam:   "--type",
+			wantMessage: "--type is required when --token is a bare token",
+		},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			token, docType, err := resolveSecureLabelTarget(tt.raw, "")
+			if err == nil {
+				t.Fatal("resolve target error = nil, want validation error")
+			}
+			if token != "" || docType != "" {
+				t.Fatalf("token/type = %q/%q, want empty values", token, docType)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf(error) ok = false, error = %T %v", err, err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf(
+					"error category/subtype = %q/%q, want %q/%q",
+					problem.Category,
+					problem.Subtype,
+					errs.CategoryValidation,
+					errs.SubtypeInvalidArgument,
+				)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != tt.wantParam {
+				t.Fatalf("error param = %q, want %q", validationErr.Param, tt.wantParam)
+			}
+			if !strings.Contains(err.Error(), tt.wantMessage) {
+				t.Fatalf("error = %q, want message containing %q", err, tt.wantMessage)
+			}
+		})
+	}
+}
+
+func TestDriveSecureLabelUpdate_RejectsAppsTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		args        []string
+		wantMessage string
+	}{
+		{
+			name: "apps page URL",
+			args: []string{
+				"--token", "https://example.feishu.cn/page/appMetaTok",
+			},
+			wantMessage: "could not infer token from URL",
+		},
+		{
+			name: "explicit apps type",
+			args: []string{
+				"--token", "appBareTok",
+				"--type", "apps",
+			},
+			wantMessage: `invalid value "apps" for --type`,
+		},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+			args := append([]string{
+				"+secure-label-update",
+			}, tt.args...)
+			args = append(args,
+				"--label-id", "7217780879644737539",
+				"--dry-run", "--as", "user",
+			)
+			err := mountAndRunDrive(t, DriveSecureLabelUpdate, args, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), tt.wantMessage) {
+				t.Fatalf("error = %v, want message containing %q", err, tt.wantMessage)
+			}
+		})
+	}
+}
+
 func TestDriveSecureLabelUpdate_ExecuteSuccess(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	stub := &httpmock.Stub{
