@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.80] - 2026-07-29
+
+### Features
+
+- **drive**: add +member-list shortcut (#1795)
+- **drive**: add +permission-get-setting shortcut (#1738)
+- propagate invocation metadata (#2097)
+
+### Documentation
+
+- **slides**: 补齐 shortcut 参数说明，修正 +xml-get --output 必填标注 (#2088)
+- **slides**: +create 的参数下沉到 create.md，主 skill 只留路由 (#2096)
+
+### Tests
+
+- **e2e**: wait for base role update visibility (#2087)
+
+### Misc
+
+- Feat/detect line text overlap (#2069)
+
 ## [v1.0.79] - 2026-07-28
 
 ### Features
@@ -1701,6 +1722,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.80]: https://github.com/larksuite/cli/releases/tag/v1.0.80
 [v1.0.79]: https://github.com/larksuite/cli/releases/tag/v1.0.79
 [v1.0.78]: https://github.com/larksuite/cli/releases/tag/v1.0.78
 [v1.0.77]: https://github.com/larksuite/cli/releases/tag/v1.0.77
