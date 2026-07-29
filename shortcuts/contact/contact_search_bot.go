@@ -73,11 +73,13 @@ type searchBot struct {
 	MatchSegments   []string `json:"match_segments"`
 }
 
+// PageToken is decoded from the response but deliberately not surfaced, matching
+// searchUserResponse: neither search command paginates. Callers narrow the query
+// instead, so handing out a token that no flag accepts would only mislead.
 type searchBotResponse struct {
-	Bots      []searchBot `json:"bots"`
-	HasMore   bool        `json:"has_more"`
-	PageToken string      `json:"page_token,omitempty"`
-	Notice    string      `json:"notice,omitempty"`
+	Bots    []searchBot `json:"bots"`
+	HasMore bool        `json:"has_more"`
+	Notice  string      `json:"notice,omitempty"`
 }
 
 var ContactSearchBot = common.Shortcut{
@@ -92,14 +94,13 @@ var ContactSearchBot = common.Shortcut{
 		{Name: "chat-ids", Desc: "narrow --query to bots in these chats (CSV of chat_id; ≤ 100)"},
 		{Name: "has-chatted", Type: "bool", Desc: "narrow --query to bots you've chatted with (omit to disable; =false rejected)"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-30"},
-		{Name: "page-token", Desc: "pagination token from a previous response"},
 	},
 	Tips: []string{
 		"Keyword search: lark-cli contact +search-bot --query '会议助手' --as user",
 		"Narrow to bots in a chat: lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user",
 		"Narrow to bots you've chatted with: lark-cli contact +search-bot --query '助手' --has-chatted --as user",
 		"--query is required; --chat-ids and --has-chatted only narrow it — a filter-only request returns an empty list, not an error.",
-		"on has_more=true use --format json to read page_token, then pass --page-token to continue — there is no auto-pagination.",
+		"on has_more=true narrow the search (add --chat-ids or --has-chatted, or use a more specific --query) — there is no pagination.",
 		"enable_join_group=true only means the bot is allowed into chats. Adding it needs the app's cli_ app_id, which this command does not return: the ou_ open_id here is rejected by the chat-member APIs and there is no open_id → app_id lookup. Do not claim a bot was added on the strength of this flag.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -110,13 +111,10 @@ var ContactSearchBot = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		params := map[string]interface{}{"page_size": runtime.Int("page-size")}
-		// Page tokens are opaque server values: pass them through verbatim, and
-		// never send an empty one.
-		if pageToken := runtime.Str("page-token"); pageToken != "" {
-			params["page_token"] = pageToken
-		}
-		return common.NewDryRunAPI().POST(botSearchURL).Params(params).Body(body)
+		return common.NewDryRunAPI().
+			POST(botSearchURL).
+			Params(map[string]interface{}{"page_size": runtime.Int("page-size")}).
+			Body(body)
 	},
 	Execute: executeBotSearch,
 }
@@ -208,18 +206,11 @@ func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error
 		return err
 	}
 
-	queryParams := larkcore.QueryParams{
-		"page_size": []string{strconv.Itoa(runtime.Int("page-size"))},
-	}
-	if pageToken := runtime.Str("page-token"); pageToken != "" {
-		queryParams["page_token"] = []string{pageToken}
-	}
-
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod:  http.MethodPost,
 		ApiPath:     botSearchURL,
 		Body:        body,
-		QueryParams: queryParams,
+		QueryParams: larkcore.QueryParams{"page_size": []string{strconv.Itoa(runtime.Int("page-size"))}},
 	})
 	if err != nil {
 		return err
@@ -236,10 +227,9 @@ func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error
 
 	bots := projectBots(respData)
 	out := searchBotResponse{
-		Bots:      bots,
-		HasMore:   respData.HasMore,
-		PageToken: respData.PageToken,
-		Notice:    respData.Notice,
+		Bots:    bots,
+		HasMore: respData.HasMore,
+		Notice:  respData.Notice,
 	}
 	runtime.OutFormat(out, &output.Meta{Count: len(bots)}, func(w io.Writer) {
 		if len(bots) == 0 {
@@ -250,7 +240,7 @@ func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error
 	})
 	if respData.HasMore && isHumanReadableFormat(runtime.Format) {
 		fmt.Fprintln(runtime.IO().ErrOut,
-			"\nhint: more matches exist; use --format json to read page_token, then pass --page-token to continue")
+			"\nhint: more matches exist; narrow the search (e.g. add --chat-ids, --has-chatted, or a more specific --query)")
 	}
 	return nil
 }

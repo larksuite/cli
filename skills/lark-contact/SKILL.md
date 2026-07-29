@@ -52,12 +52,7 @@ lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user
 lark-cli contact +search-bot --query '助手' --has-chatted --as user
 ```
 
-返回 `has_more=true` 时,使用 JSON 格式读取 `page_token`,再传给下一次请求。该命令不会自动获取后续页面:
-
-```bash
-lark-cli contact +search-bot --query '助手' --format json --as user
-lark-cli contact +search-bot --query '助手' --page-token cursor_xxx --format json --as user
-```
+返回 `has_more=true` 表示还有更多命中,但和 `+search-user` 一样**没有分页**:收窄搜索条件(补 `--chat-ids` 或 `--has-chatted`,或换更具体的 `--query`),而不是翻页。
 
 `--format pretty` 使用六列摘要;`table`、`csv` 和 `ndjson` 与 `+search-user` 一样使用完整结果字段。
 

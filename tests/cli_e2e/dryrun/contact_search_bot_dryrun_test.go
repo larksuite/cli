@@ -28,7 +28,6 @@ func TestContactSearchBotDryRun(t *testing.T) {
 			"--chat-ids", "oc_a,oc_b",
 			"--has-chatted",
 			"--page-size", "25",
-			"--page-token", "cursor_in",
 			"--dry-run",
 		},
 		DefaultAs: "user",
@@ -40,7 +39,6 @@ func TestContactSearchBotDryRun(t *testing.T) {
 	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
 	require.Equal(t, "/open-apis/bot/v4/bot/search", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
 	require.Equal(t, int64(25), clie2e.DryRunGet(out, "api.0.params.page_size").Int(), "stdout:\n%s", out)
-	require.Equal(t, "cursor_in", clie2e.DryRunGet(out, "api.0.params.page_token").String(), "stdout:\n%s", out)
 	require.Equal(t, "助手", clie2e.DryRunGet(out, "api.0.body.query").String(), "stdout:\n%s", out)
 	require.Equal(t, []string{"oc_a", "oc_b"}, []string{
 		clie2e.DryRunGet(out, "api.0.body.filter.chat_ids.0").String(),

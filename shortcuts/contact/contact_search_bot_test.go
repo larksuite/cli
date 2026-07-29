@@ -24,7 +24,6 @@ func newBotSearchTestCommand() *cobra.Command {
 	cmd.Flags().String("chat-ids", "", "")
 	cmd.Flags().Bool("has-chatted", false, "")
 	cmd.Flags().Int("page-size", 20, "")
-	cmd.Flags().String("page-token", "", "")
 	return cmd
 }
 
@@ -363,12 +362,12 @@ func botSearchStub(url string, pageToken string) *httpmock.Stub {
 
 func TestBotSearchIntegrationRequestAndResponsePassThrough(t *testing.T) {
 	factory, stdout, _, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
-	stub := botSearchStub(botSearchURL+"?page_size=25&page_token=cursor_in", "cursor_out")
+	stub := botSearchStub(botSearchURL+"?page_size=25", "cursor_out")
 	registry.Register(stub)
 
 	err := mountAndRun(t, ContactSearchBot, []string{
 		"+search-bot", "--query", "助手", "--chat-ids", "oc_a,oc_b", "--has-chatted",
-		"--page-size", "25", "--page-token", "cursor_in", "--format", "json", "--as", "user",
+		"--page-size", "25", "--format", "json", "--as", "user",
 	}, factory, stdout)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -392,7 +391,7 @@ func TestBotSearchIntegrationRequestAndResponsePassThrough(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("response JSON: %v\n%s", err, stdout.String())
 	}
-	if envelope.Data.Notice != "The query is too long and has been truncated to the first 50 characters for search." || envelope.Data.PageToken != "cursor_out" || !envelope.Data.HasMore {
+	if envelope.Data.Notice != "The query is too long and has been truncated to the first 50 characters for search." || !envelope.Data.HasMore {
 		t.Fatalf("response pass-through: %+v", envelope.Data)
 	}
 	if len(envelope.Data.Bots) != 1 || envelope.Data.Bots[0].OpenID != "ou_bot" || envelope.Data.Bots[0].P2PChatID != "oc_p2p" {
@@ -401,9 +400,11 @@ func TestBotSearchIntegrationRequestAndResponsePassThrough(t *testing.T) {
 	registry.Verify(t)
 }
 
-func TestBotSearchIntegrationEmptyPageTokenOmitted(t *testing.T) {
+func TestBotSearchIntegrationNeverSurfacesPageToken(t *testing.T) {
 	factory, stdout, _, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
-	registry.Register(botSearchStub(botSearchURL+"?page_size=20", ""))
+	// The stub returns a token; the envelope must still not carry one, matching
+	// +search-user, which decodes page_token and drops it.
+	registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
 
 	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "助手", "--format", "json", "--as", "user"}, factory, stdout)
 	if err != nil {
@@ -415,7 +416,7 @@ func TestBotSearchIntegrationEmptyPageTokenOmitted(t *testing.T) {
 	}
 	data := envelope["data"].(map[string]interface{})
 	if _, ok := data["page_token"]; ok {
-		t.Fatalf("empty page_token must be omitted: %v", data)
+		t.Fatalf("page_token must never be surfaced: %v", data)
 	}
 }
 
@@ -432,12 +433,12 @@ func TestBotSearchPrettyOutputAndPaginationHint(t *testing.T) {
 			t.Errorf("pretty output missing %q: %s", column, stdout.String())
 		}
 	}
-	for _, genericField := range []string{"bots", "has_more", "page_token", "notice", "tenant_id", "p2p_chat_id", "match_segments"} {
+	for _, genericField := range []string{"bots", "has_more", "notice", "tenant_id", "p2p_chat_id", "match_segments"} {
 		if strings.Contains(stdout.String(), genericField) {
 			t.Errorf("pretty output exposed %q: %s", genericField, stdout.String())
 		}
 	}
-	wantHint := "\nhint: more matches exist; use --format json to read page_token, then pass --page-token to continue\n"
+	wantHint := "\nhint: more matches exist; narrow the search (e.g. add --chat-ids, --has-chatted, or a more specific --query)\n"
 	if stderr.String() != wantHint {
 		t.Fatalf("pretty stderr: got %q, want %q", stderr.String(), wantHint)
 	}
@@ -456,7 +457,7 @@ func TestBotSearchTableUsesGenericFormatterLikeSearchUser(t *testing.T) {
 			t.Errorf("table output missing %q: %s", field, stdout.String())
 		}
 	}
-	wantHint := "\nhint: more matches exist; use --format json to read page_token, then pass --page-token to continue\n"
+	wantHint := "\nhint: more matches exist; narrow the search (e.g. add --chat-ids, --has-chatted, or a more specific --query)\n"
 	if stderr.String() != wantHint {
 		t.Fatalf("table stderr: got %q, want %q", stderr.String(), wantHint)
 	}
@@ -508,7 +509,7 @@ func TestBotSearchDryRunMirrorsRequest(t *testing.T) {
 	factory, stdout, _, _ := cmdutil.TestFactory(t, botSearchDefaultConfig())
 	err := mountAndRun(t, ContactSearchBot, []string{
 		"+search-bot", "--query", "助手", "--chat-ids", "oc_a", "--has-chatted",
-		"--page-size", "25", "--page-token", " cursor ", "--dry-run", "--as", "user",
+		"--page-size", "25", "--dry-run", "--as", "user",
 	}, factory, stdout)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -530,7 +531,7 @@ func TestBotSearchDryRunMirrorsRequest(t *testing.T) {
 		t.Fatalf("api calls: got %d, want 1", len(envelope.Data.API))
 	}
 	call := envelope.Data.API[0]
-	if call.Method != "POST" || call.URL != botSearchURL || call.Params["page_size"] != float64(25) || call.Params["page_token"] != " cursor " {
+	if call.Method != "POST" || call.URL != botSearchURL || call.Params["page_size"] != float64(25) {
 		t.Fatalf("dry-run call: %+v", call)
 	}
 	if call.Body.Query != "助手" || call.Body.Filter == nil || fmt.Sprint(call.Body.Filter.ChatIDs) != "[oc_a]" || !call.Body.Filter.HasChatter {
