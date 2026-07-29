@@ -1,0 +1,21 @@
+internal/event/bus/hub.go
+  s_7a761561add367::t_5256669a8b8574 101-105,372-376,462-470,474
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d557c52db3e8c4ac51efd370c35536a4140aea81",
+  "prompts": {},
+  "sessions": {
+    "s_7a761561add367": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb5ceddd-7996-4e8a-b011-8055f0dcb6f1",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
