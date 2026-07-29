@@ -52,19 +52,6 @@ lark-cli slides +create --as user --title "项目汇报" \
 
 `--rawfile` 会把文件内容作为字符串读入 JSON，自动处理 XML 中的引号和换行；不要手动拼接带大量转义符的 JSON 字符串。
 
-### `--slides` 不接受的形态
-
-CLI 只把 `--slides` 的值当 JSON 文本解析，不会把它当文件路径去读。以下写法都会报
-`--slides invalid JSON, must be an array of XML strings`：
-
-| 错误写法 | 为什么不行 | 改成 |
-|----------|-----------|------|
-| `--slides @slides.json` | `@` 只在 XML 内部的 `<img src="@./path">` 上生效，不是 `--slides` 的文件语法 | `--slides "$(jq -n --rawfile ...)"` |
-| `--slides slides.xml` / `--slides ./deck.xml` | 值被当成 JSON 文本解析，不是路径 | 同上 |
-| `--slides "$(cat deck.xml)"` | 文件里是裸 XML，不是 JSON 字符串数组 | 同上；文件按页拆分后用 `--rawfile` 组装 |
-| `--slides '[{"type":"slide",...}]'` | 数组元素必须是 XML 字符串，不是对象 | `'["<slide ...>...</slide>"]'` |
-| 元素里的 XML 展开成多行 | JSON 字符串内部不允许裸换行 | 单页 XML 压成一行，或用 `--rawfile` 让 jq 转义 |
-
 ## 返回值
 
 工具成功执行后，返回一个 JSON 对象，包含以下字段：
