@@ -23,7 +23,7 @@ type drivePermissionGetSettingSpec struct {
 
 var drivePermissionGetSettingTypes = []string{
 	"doc", "sheet", "file", "wiki", "bitable", "docx",
-	"mindnote", "minutes", "slides", "folder",
+	"mindnote", "minutes", "slides", "folder", "apps",
 }
 
 var drivePermissionGetSettingURLPathToType = []struct {
@@ -41,6 +41,7 @@ var drivePermissionGetSettingURLPathToType = []struct {
 	{"/mindnotes/", "mindnote"},
 	{"/slides/", "slides"},
 	{"/minutes/", "minutes"},
+	{"/page/", "apps"},
 }
 
 func readDrivePermissionGetSettingSpec(runtime *common.RuntimeContext) (drivePermissionGetSettingSpec, error) {
@@ -68,7 +69,7 @@ func readDrivePermissionGetSettingSpec(runtime *common.RuntimeContext) (drivePer
 		if !ok {
 			return drivePermissionGetSettingSpec{}, errs.NewValidationError(
 				errs.SubtypeInvalidArgument,
-				"unsupported --token URL %q: pass a recognized Lark Drive document/folder URL or a bare token with --type",
+				"unsupported --token URL %q: pass a recognized Lark Drive resource URL or a bare token with --type",
 				rawToken,
 			).WithParam("--token")
 		}
@@ -166,8 +167,7 @@ func drivePermissionGetSettingPermissionPublic(data map[string]interface{}) (map
 	return permissionPublic, nil
 }
 
-// DrivePermissionGetSetting queries permission_public settings for a Drive
-// document, file, wiki node, or folder.
+// DrivePermissionGetSetting queries permission_public settings for a Drive resource.
 var DrivePermissionGetSetting = common.Shortcut{
 	Service:     "drive",
 	Command:     "+permission-get-setting",
@@ -177,7 +177,7 @@ var DrivePermissionGetSetting = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder)", Required: true},
+		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder/apps)", Required: true},
 		{Name: "type", Desc: "target type; auto-inferred from URL, required for bare tokens", Enum: drivePermissionGetSettingTypes},
 	},
 	Tips: []string{

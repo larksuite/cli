@@ -50,6 +50,27 @@ func TestDrive_MemberListDryRun(t *testing.T) {
 			wantType: "folder",
 		},
 		{
+			name: "apps page URL infers apps type",
+			args: []string{
+				"drive", "+member-list",
+				"--token", "https://example.feishu.cn/page/appMetaE2E/?from=share",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v1/permissions/appMetaE2E/members",
+			wantType: "apps",
+		},
+		{
+			name: "bare token with explicit apps type",
+			args: []string{
+				"drive", "+member-list",
+				"--token", "appBareMetaE2E",
+				"--type", "apps",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v1/permissions/appBareMetaE2E/members",
+			wantType: "apps",
+		},
+		{
 			name: "fields star is passed only when explicit",
 			args: []string{
 				"drive", "+member-list",

@@ -159,6 +159,45 @@ func TestDriveSecureLabelUpdate_DryRunInfersTypeFromURL(t *testing.T) {
 	}
 }
 
+func TestResolveSecureLabelTarget_URLAndBareToken(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		raw          string
+		explicitType string
+		wantToken    string
+		wantType     string
+	}{
+		{"wiki URL", "https://example.feishu.cn/wiki/wikTok", "", "wikTok", "wiki"},
+		{"docx URL", "https://example.feishu.cn/docx/doxTok", "", "doxTok", "docx"},
+		{"sheet URL", "https://example.feishu.cn/sheets/shtTok", "", "shtTok", "sheet"},
+		{"base URL", "https://example.feishu.cn/base/basTok", "", "basTok", "bitable"},
+		{"bitable URL", "https://example.feishu.cn/bitable/bitTok", "", "bitTok", "bitable"},
+		{"file URL", "https://example.feishu.cn/file/boxTok", "", "boxTok", "file"},
+		{"mindnote URL", "https://example.feishu.cn/mindnote/mndTok", "", "mndTok", "mindnote"},
+		{"slides URL", "https://example.feishu.cn/slides/sldTok", "", "sldTok", "slides"},
+		{"legacy doc URL", "https://example.feishu.cn/doc/docTok", "", "docTok", "doc"},
+		{"bare token with explicit type", "doxBareTok", "docx", "doxBareTok", "docx"},
+		{"explicit type overrides URL inference", "https://example.feishu.cn/docx/doxTok", "wiki", "doxTok", "wiki"},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			token, docType, err := resolveSecureLabelTarget(tt.raw, tt.explicitType)
+			if err != nil {
+				t.Fatalf("resolve target: %v", err)
+			}
+			if token != tt.wantToken || docType != tt.wantType {
+				t.Fatalf("token/type = %q/%q, want %q/%q", token, docType, tt.wantToken, tt.wantType)
+			}
+		})
+	}
+}
+
 func TestDriveSecureLabelUpdate_ExecuteSuccess(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	stub := &httpmock.Stub{

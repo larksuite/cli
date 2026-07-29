@@ -24,7 +24,7 @@ type driveMemberListSpec struct {
 
 var driveMemberListTypes = []string{
 	"doc", "sheet", "file", "wiki", "bitable", "docx",
-	"mindnote", "minutes", "slides", "folder",
+	"mindnote", "minutes", "slides", "folder", "apps",
 }
 
 var driveMemberListFields = []string{"name", "type", "avatar", "external_label"}
@@ -45,6 +45,7 @@ var driveMemberListURLPathToType = []struct {
 	{"/mindnotes/", "mindnote"},
 	{"/slides/", "slides"},
 	{"/minutes/", "minutes"},
+	{"/page/", "apps"},
 }
 
 func readDriveMemberListSpec(runtime *common.RuntimeContext) (driveMemberListSpec, error) {
@@ -88,7 +89,7 @@ func resolveDriveMemberListTarget(raw, explicitType string) (token, resourceType
 		if !ok {
 			return "", "", errs.NewValidationError(
 				errs.SubtypeInvalidArgument,
-				"unsupported --token URL %q: pass a recognized Lark Drive document/folder URL or a bare token with --type",
+				"unsupported --token URL %q: pass a recognized Lark Drive resource URL or a bare token with --type",
 				raw,
 			).WithParam("--token")
 		}
@@ -235,13 +236,13 @@ func (s driveMemberListSpec) params() map[string]interface{} {
 var DriveMemberList = common.Shortcut{
 	Service:     "drive",
 	Command:     "+member-list",
-	Description: "List collaborator/member permissions on a Drive document, file, folder, or wiki node",
+	Description: "List collaborator/member permissions on a Drive resource",
 	Risk:        "read",
 	Scopes:      []string{"docs:permission.member:retrieve"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder)", Required: true},
+		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder/apps)", Required: true},
 		{Name: "type", Desc: "target type; auto-inferred from URL, required for bare tokens"},
 		{Name: "fields", Desc: "optional collaborator fields to return: name,type,avatar,external_label or *"},
 		{Name: "perm-type", Desc: "wiki permission scope filter; one of container|single_page"},

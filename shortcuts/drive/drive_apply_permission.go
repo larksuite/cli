@@ -17,7 +17,7 @@ import (
 // endpoint accepts for its required `type` query parameter.
 var permApplyTypes = []string{
 	"doc", "sheet", "file", "wiki", "bitable", "docx",
-	"mindnote", "slides",
+	"mindnote", "slides", "apps",
 }
 
 // permApplyURLMarkers maps document URL path markers to the `type` value the
@@ -35,6 +35,7 @@ var permApplyURLMarkers = []struct {
 	{"/file/", "file"},
 	{"/mindnote/", "mindnote"},
 	{"/slides/", "slides"},
+	{"/page/", "apps"},
 	{"/doc/", "doc"},
 }
 
@@ -59,7 +60,7 @@ func resolvePermApplyTarget(raw, explicitType string) (token, docType string, er
 		}
 		if token == "" {
 			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"could not infer token from URL %q: supported paths are /docx/, /sheets/, /base/, /bitable/, /file/, /wiki/, /doc/, /mindnote/, /slides/. Pass a bare token with --type instead if the URL shape is unusual",
+				"could not infer token from URL %q: supported paths are /docx/, /sheets/, /base/, /bitable/, /file/, /wiki/, /doc/, /mindnote/, /slides/, /page/. Pass a bare token with --type instead if the URL shape is unusual",
 				raw,
 			).WithParam("--token")
 		}
@@ -88,12 +89,12 @@ func resolvePermApplyTarget(raw, explicitType string) (token, docType string, er
 var DriveApplyPermission = common.Shortcut{
 	Service:     "drive",
 	Command:     "+apply-permission",
-	Description: "Apply to the document owner for view or edit permission on a doc/sheet/file/wiki/bitable/docx/mindnote/slides",
+	Description: "Apply to the owner for view or edit permission on a Drive resource",
 	Risk:        "write",
 	Scopes:      []string{"docs:permission.member:apply"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
-		{Name: "token", Desc: "target token or document URL (docx/sheets/base/file/wiki/doc/mindnote/slides)", Required: true},
+		{Name: "token", Desc: "target token or URL (docx/sheets/base/file/wiki/doc/mindnote/slides/page)", Required: true},
 		{Name: "type", Desc: "target type; auto-inferred from URL when omitted", Enum: permApplyTypes},
 		{Name: "perm", Desc: "permission to request", Required: true, Enum: []string{"view", "edit"}},
 		{Name: "remark", Desc: "optional note shown on the request card sent to the owner"},
@@ -109,7 +110,7 @@ var DriveApplyPermission = common.Shortcut{
 		}
 		body := buildPermApplyBody(runtime)
 		return common.NewDryRunAPI().
-			Desc("Apply to document owner for access").
+			Desc("Apply to resource owner for access").
 			POST("/open-apis/drive/v1/permissions/:token/members/apply").
 			Params(map[string]interface{}{"type": docType}).
 			Body(body).

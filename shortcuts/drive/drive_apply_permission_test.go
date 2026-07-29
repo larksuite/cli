@@ -50,6 +50,7 @@ func TestResolvePermApplyTarget_URLInference(t *testing.T) {
 		{"legacy doc", "https://example.feishu.cn/doc/docTok333", "docTok333", "doc"},
 		{"mindnote", "https://example.feishu.cn/mindnote/mnTok444", "mnTok444", "mindnote"},
 		{"slides", "https://example.feishu.cn/slides/slTok666", "slTok666", "slides"},
+		{"apps page", "https://example.feishu.cn/page/appMetaTok/?from=share", "appMetaTok", "apps"},
 	}
 	for _, temp := range tests {
 		tt := temp

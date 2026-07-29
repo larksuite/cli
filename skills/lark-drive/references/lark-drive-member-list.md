@@ -23,8 +23,8 @@ lark-cli drive +member-list \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--token` | 是 | 裸 token 或完整 URL。URL 路径支持 `/folder/`、`/docx/`、`/doc/`、`/sheets/`、`/base/`、`/bitable/`、`/wiki/`、`/file/`、`/mindnotes/`、`/slides/`、`/minutes/`。 |
-| `--type` | 裸 token 必填 | 目标类型：`doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `minutes` / `slides` / `folder`。URL 可自动推断；如果同时传 URL 和冲突的 `--type`，CLI 会拒绝。 |
+| `--token` | 是 | 裸 token 或完整 URL。URL 路径支持 `/folder/`、`/docx/`、`/doc/`、`/sheets/`、`/base/`、`/bitable/`、`/wiki/`、`/file/`、`/mindnotes/`、`/slides/`、`/minutes/`、`/page/`。 |
+| `--type` | 裸 token 必填 | 目标类型：`doc` / `sheet` / `file` / `wiki` / `bitable` / `docx` / `mindnote` / `minutes` / `slides` / `folder` / `apps`。URL 可自动推断；如果同时传 URL 和冲突的 `--type`，CLI 会拒绝。 |
 | `--fields` | 否 | 默认不传。可取 `name` / `type` / `avatar` / `external_label`，支持逗号分隔；也可传 `*` 请求当前支持的所有附加字段。该参数只声明期望返回的字段，不授予字段级权限。 |
 | `--perm-type` | 否 | 仅 `--type wiki` 有效；取值 `container` / `single_page`。 |
 | `--dry-run` | 否 | 只打印请求，不调用 API。 |

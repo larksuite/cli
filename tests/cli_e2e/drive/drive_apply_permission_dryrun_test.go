@@ -109,6 +109,33 @@ func TestDrive_ApplyPermissionDryRun(t *testing.T) {
 			wantType: "slides",
 			wantPerm: "view",
 		},
+		{
+			name: "apps page URL infers apps type",
+			args: []string{
+				"drive", "+apply-permission",
+				"--token", "https://example.feishu.cn/page/appMetaE2E/?from=share",
+				"--perm", "view",
+				"--remark", "access request",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v1/permissions/appMetaE2E/members/apply",
+			wantType: "apps",
+			wantPerm: "view",
+			wantBody: map[string]string{"remark": "access request"},
+		},
+		{
+			name: "bare token with explicit apps type",
+			args: []string{
+				"drive", "+apply-permission",
+				"--token", "appBareMetaE2E",
+				"--type", "apps",
+				"--perm", "edit",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v1/permissions/appBareMetaE2E/members/apply",
+			wantType: "apps",
+			wantPerm: "edit",
+		},
 	}
 
 	for _, temp := range tests {

@@ -121,7 +121,7 @@ Risk / Structure: `R2` / `S2`
 
 1. "所有文档"只表示当前身份在确认范围内可枚举到的文档。不可见、无权限、API 不返回或工具预算不足的部分必须进入 `discovery_blockers` 或 `unsupported_checks`。
 2. 发现阶段必须生成稳定 `path`。不要只保存 title；同名文档必须能通过 path 或 token 区分。
-3. 权限设置读取使用 `drive +permission-get-setting`，目标类型包括 `doc`、`sheet`、`file`、`wiki`、`bitable`、`docx`、`mindnote`、`minutes`、`slides`、`folder`；未来新增类型以 shortcut 和 OpenAPI 元数据为准。
+3. 权限设置读取使用 `drive +permission-get-setting`，目标类型包括 `doc`、`sheet`、`file`、`wiki`、`bitable`、`docx`、`mindnote`、`minutes`、`slides`、`folder`、`apps`；未来新增类型以 shortcut 和 OpenAPI 元数据为准。
 4. `minutes` 只能作为 `partial_public_permission` 目标：可读取 / 修改公开权限和 owner 转移能力以运行时 schema 为准，但 `drive metas batch_query` 当前不支持 `minutes`，URL、owner、密级等 metadata 可能进入 `unsupported_checks`。
 5. `folder` 作为递归容器时先枚举子资源；如用户明确要查询文件夹自身权限设置，可对该文件夹单独执行 `drive +permission-get-setting --token <folder_token> --type folder`。不要执行 raw `permission.public patch type=folder`，除非 schema 和需求都明确支持。`shortcut`、`catalog` 或缺少 stable token/type 的条目必须记录为 unsupported，除非后续 API 明确解析出支持目标。
 6. 对大范围目标输出进度时，只展示已扫描容器数、已发现目标数、已审计目标数、剩余队列或 blocker；不要默认展示内部 page token / cursor。

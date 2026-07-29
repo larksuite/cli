@@ -104,6 +104,19 @@ func TestDrivePermissionGetSettingSpecResolvesTargets(t *testing.T) {
 			wantTok:  "wikTok",
 			wantType: "wiki",
 		},
+		{
+			name:     "apps page URL",
+			token:    "https://example.feishu.cn/page/appMetaTok/?from=share",
+			wantTok:  "appMetaTok",
+			wantType: "apps",
+		},
+		{
+			name:     "bare token with explicit apps type",
+			token:    "appBareMetaTok",
+			docType:  "apps",
+			wantTok:  "appBareMetaTok",
+			wantType: "apps",
+		},
 	}
 
 	for _, temp := range tests {

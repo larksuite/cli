@@ -57,6 +57,27 @@ func TestDrive_PermissionGetSettingDryRun(t *testing.T) {
 			wantURL:  "/open-apis/drive/v2/permissions/doxE2E001/public",
 			wantType: "docx",
 		},
+		{
+			name: "apps page URL infers apps type",
+			args: []string{
+				"drive", "+permission-get-setting",
+				"--token", "https://example.feishu.cn/page/appMetaE2E/?from=share",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v2/permissions/appMetaE2E/public",
+			wantType: "apps",
+		},
+		{
+			name: "bare token with explicit apps type",
+			args: []string{
+				"drive", "+permission-get-setting",
+				"--token", "appBareMetaE2E",
+				"--type", "apps",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v2/permissions/appBareMetaE2E/public",
+			wantType: "apps",
+		},
 	}
 
 	for _, temp := range tests {

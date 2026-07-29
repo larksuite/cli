@@ -25,7 +25,27 @@ const (
 	secureLabelOperationUpdate secureLabelOperation = "update"
 )
 
-var secureLabelTypes = permApplyTypes
+var secureLabelTypes = []string{
+	"doc", "sheet", "file", "wiki", "bitable", "docx",
+	"mindnote", "slides",
+}
+
+// secureLabelURLMarkers is intentionally independent from apply-permission:
+// the two endpoints accept different resource type contracts.
+var secureLabelURLMarkers = []struct {
+	Marker string
+	Type   string
+}{
+	{"/wiki/", "wiki"},
+	{"/docx/", "docx"},
+	{"/sheets/", "sheet"},
+	{"/base/", "bitable"},
+	{"/bitable/", "bitable"},
+	{"/file/", "file"},
+	{"/mindnote/", "mindnote"},
+	{"/slides/", "slides"},
+	{"/doc/", "doc"},
+}
 
 // DriveSecureLabelList lists secure labels available to the current user.
 var DriveSecureLabelList = common.Shortcut{
@@ -146,8 +166,46 @@ func buildSecureLabelListParams(runtime *common.RuntimeContext) map[string]inter
 	return params
 }
 
+// resolveSecureLabelTarget owns secure-label URL inference and type errors so
+// changes to another endpoint cannot widen this command's accepted resources.
 func resolveSecureLabelTarget(raw, explicitType string) (token, docType string, err error) {
-	return resolvePermApplyTarget(raw, explicitType)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--token is required").WithParam("--token")
+	}
+
+	if strings.Contains(raw, "://") {
+		for _, marker := range secureLabelURLMarkers {
+			if resolvedToken, ok := extractURLToken(raw, marker.Marker); ok {
+				token = resolvedToken
+				if explicitType == "" {
+					docType = marker.Type
+				}
+				break
+			}
+		}
+		if token == "" {
+			return "", "", errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"could not infer token from URL %q: supported paths are /docx/, /sheets/, /base/, /bitable/, /file/, /wiki/, /doc/, /mindnote/, /slides/. Pass a bare token with --type instead if the URL shape is unusual",
+				raw,
+			).WithParam("--token")
+		}
+	} else {
+		token = raw
+	}
+
+	if explicitType != "" {
+		docType = explicitType
+	}
+	if docType == "" {
+		return "", "", errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--type is required when --token is a bare token; accepted values: %s",
+			strings.Join(secureLabelTypes, ", "),
+		).WithParam("--type")
+	}
+	return token, docType, nil
 }
 
 // normalizeSecureLabelID trims a label id and rejects display names before the

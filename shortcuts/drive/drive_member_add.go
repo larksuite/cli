@@ -51,9 +51,10 @@ var driveMemberAddURLPathToType = []struct {
 	{"/mindnotes/", "mindnote"},
 	{"/slides/", "slides"},
 	{"/minutes/", "minutes"},
+	{"/page/", "apps"},
 }
 
-var driveMemberAddResourceTypes = []string{"docx", "doc", "sheet", "bitable", "file", "folder", "wiki", "mindnote", "slides", "minutes"}
+var driveMemberAddResourceTypes = []string{"docx", "doc", "sheet", "bitable", "file", "folder", "wiki", "mindnote", "slides", "minutes", "apps"}
 
 const driveMemberAddBatchLimit = 10
 
@@ -61,7 +62,7 @@ const driveMemberAddBatchLimit = 10
 var DriveMemberAdd = common.Shortcut{
 	Service:     "drive",
 	Command:     "+member-add",
-	Description: "Add a collaborator/member permission to a Drive document, file, folder, or wiki node",
+	Description: "Add a collaborator/member permission to a Drive resource",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"docs:permission.member:create"},
 	AuthTypes:   []string{"user", "bot"},
@@ -320,7 +321,7 @@ func parseDriveMemberAddResourceURLPath(path string) (token, resourceType string
 
 func isSupportedDriveMemberAddResourceType(resourceType string) bool {
 	switch resourceType {
-	case "docx", "doc", "sheet", "bitable", "file", "folder", "wiki", "mindnote", "slides", "minutes":
+	case "docx", "doc", "sheet", "bitable", "file", "folder", "wiki", "mindnote", "slides", "minutes", "apps":
 		return true
 	default:
 		return false
