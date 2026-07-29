@@ -5,7 +5,7 @@
 
 提交源必须是直接生成的单页 `<slide>` XML。禁止从完整 `<presentation>` XML 解析、拆分、重序列化出 slide 数组再提交。
 
-本命令只从零创建演示文稿，不读取本地文件。要把已有 PPTX 变成 Slides，用 `drive +import --file <x.pptx> --type slides`，再在导入结果上编辑，流程见 [lark-slides-pptx-template-workflows.md](lark-slides-pptx-template-workflows.md)。
+本命令只从零创建演示文稿，没有导入本地 PPT 文件的参数。要把已有 PPTX 变成 Slides，用 `drive +import --file <x.pptx> --type slides`，再在导入结果上编辑，流程见 [lark-slides-pptx-template-workflows.md](lark-slides-pptx-template-workflows.md)。
 
 ## 创建方式选择
 
@@ -17,7 +17,6 @@
 
 > [!WARNING]
 > `--slides '[...]'` 的风险点主要在 shell 参数传递，而不是单纯页数。即使只有 1 页，只要 XML 足够复杂，也建议使用两步创建法。
-
 > [!IMPORTANT]
 > `slides +create --slides` 底层会逐页创建，不是原子操作。中途失败时先记录 `xml_presentation_id`，回读确认当前状态，再继续修复或追加。
 
