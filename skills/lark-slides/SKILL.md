@@ -145,7 +145,7 @@ lark-cli auth login --domain slides
 
 调用相关命令前必须读取相关的文档以了解命令的使用方式：
 
-- 创建：[`lark-slides-create.md`](references/lark-slides-create.md)
+- 创建：[`lark-slides-create.md`](references/lark-slides-create.md)、[`lark-slides-xml-presentation-slide-create.md`](references/lark-slides-xml-presentation-slide-create.md)（逐页添加）
 - 阅读：[`lark-slides-xml-presentations-get.md`](references/lark-slides-xml-presentations-get.md)
 - 编辑：[`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)、[`lark-slides-replace-slide.md`](references/lark-slides-replace-slide.md)、[`lark-slides-replace-pages.md`](references/lark-slides-replace-pages.md)
 - 历史版本：[`lark-slides-history.md`](references/lark-slides-history.md)
@@ -208,7 +208,7 @@ Step 2: 生成大纲 → 写入 slide_plan.json
 Step 3: 按 slide_plan.json 生成 XML → 创建
   - 逐页消费 plan：key_message 定主结论，layout_type 定几何，visual_focus 定主视觉，text_density 定文本量
   - 缺少真实素材时必须用 `fallback_if_missing` 生成替代图片，不要留空
-  - 读 lark-slides-create.md，按其中的创建方式选择一步创建或两步创建，并据此构造 `slides +create`
+  - 读 lark-slides-create.md 定一步创建还是两步创建，并据此构造 `slides +create`；两步创建再读 lark-slides-xml-presentation-slide-create.md 逐页添加
   - 图片按 lark-slides-media-upload.md 处理；复杂 XML、转义和 3350001 排查按 troubleshooting.md 执行
 
 Step 4: 审查 & 交付
