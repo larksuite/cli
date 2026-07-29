@@ -52,15 +52,14 @@ lark-cli contact +search-bot --query '会议助手' --as user
 lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' --as user
 ```
 
-`enable_join_group=true` 只表示该机器人允许被拉进群聊,**不代表你能用这里的 `open_id` 把它拉进群**。把机器人加入群聊需要应用的 `cli_` 开头 app_id,本命令不返回;直接用 `ou_` 开头的 open_id 调加群接口会被服务端放进 `invalid_id_list`,且没有 open_id 到 app_id 的查询接口。看到这个字段为真时,不要据此声称已把机器人加入群聊。
+`enable_join_group=true` 只表示该机器人允许被拉进群聊,**不代表你能用这里的 `open_id` 把它拉进群**。把机器人加入群聊需要应用的 `cli_` 开头 app_id,本命令不返回;
 
 ## 注意事项
 
 - **41050 / Permission denied** 受当前身份的可见范围限制(两条命令都可能遇到)。换 bot 身份或让管理员调整可见范围,细节见 [`lark-shared`](../lark-shared/SKILL.md)。
 - **跨租户用户**(`is_cross_tenant=true`)多数业务字段为空字符串,这是飞书可见性规则,下游做空值兜底。
-- **ID 类型**:默认 `open_id`。`+get-user` 可改 `--user-id-type union_id|user_id`;`+search-user` 只接受 `open_id`。
+- **ID 类型**:默认 `open_id`。`+get-user` 可改 `--user-id-type union_id|user_id`;`+search-user`和 `+search-bot` 只接受 `open_id`。
 - **`+search-bot` 的权限**:只支持 user 身份,缺权限时重新授权 `search:bot`。
-- **`+search-bot` 的 ID 类型**:和 `+search-user` 一样只出 `open_id`。接口本身支持 `user_id_type`,但输出结构的字段名会随之说谎,所以 CLI 不暴露;确实要 union_id / user_id 时走 `lark-cli api` 直调。
 
 ## 不在本 skill 范围
 
