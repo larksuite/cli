@@ -26,9 +26,6 @@ lark-cli contact +search-user --user-ids "ou_3a8b****6a7b,me" --as user
 ## +search-bot
 Find bots (apps) the calling user can see, by keyword. Each match returns the bot's open_id plus p2p_chat_id / has_chatted so you can tell whether a conversation with it already exists. A keyword is mandatory — the filters narrow a search, they cannot list bots on their own.
 
-### Skills
-- lark-contact/SKILL.md
-
 ### Avoid when
 - Looking for a person rather than a bot → use [[+search-user]]
 - Running as a bot — this shortcut is user-only

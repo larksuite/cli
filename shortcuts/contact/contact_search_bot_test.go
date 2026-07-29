@@ -134,6 +134,15 @@ func TestValidateBotSearchErrors(t *testing.T) {
 			wantMessage: "invalid chat ID format, should start with 'oc_' (e.g., oc_abc123)",
 		},
 		{
+			// Order matters: the explicit =false is the caller's actual mistake, so it
+			// must win over the missing-keyword error rather than costing a second
+			// round trip. Matches which error +search-user reports first.
+			name:        "has chatted false without a keyword",
+			flags:       map[string]string{"has-chatted": "false"},
+			wantParam:   "--has-chatted",
+			wantMessage: "--has-chatted: pass the flag to enable the filter; omit it to disable filtering (=false is rejected to prevent silent wrong results)",
+		},
+		{
 			name:        "has chatted false",
 			flags:       map[string]string{"query": "x", "has-chatted": "false"},
 			wantParam:   "--has-chatted",

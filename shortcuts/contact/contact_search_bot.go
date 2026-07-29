@@ -91,8 +91,8 @@ var ContactSearchBot = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search keyword (≤ 50 characters); required unless --queries is given"},
-		{Name: "chat-ids", Desc: "narrow --query to bots in these chats (CSV of chat_id; ≤ 100)"},
-		{Name: "has-chatted", Type: "bool", Desc: "narrow --query to bots you've chatted with (omit to disable; =false rejected)"},
+		{Name: "chat-ids", Desc: "narrow a keyword search to bots in these chats (CSV of chat_id; ≤ 100)"},
+		{Name: "has-chatted", Type: "bool", Desc: "narrow a keyword search to bots you've chatted with (omit to disable; =false rejected)"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-30"},
 		{Name: "queries", Desc: "comma-separated keywords searched in parallel; output is a flat bots[] with matched_query plus a queries[] sidecar"},
 	},
@@ -158,6 +158,19 @@ func botSearchKeywordRequiredError() error {
 }
 
 func validateBotSearch(runtime *common.RuntimeContext) error {
+	// Checked before the keyword requirement: an explicit =false is wrong on its
+	// own terms, so reporting the missing keyword first would send the caller off
+	// to add a query and only then reveal the flag it actually has to drop.
+	// +search-user reaches the same error first because it counts a Changed bool
+	// as search input.
+	//
+	// Agents passing =false almost always mean "do not filter", but the API reads
+	// it as "must NOT match". A hard error prevents silent wrong results.
+	if runtime.Cmd.Flags().Changed("has-chatted") && !runtime.Bool("has-chatted") {
+		return common.ValidationErrorf("--has-chatted: pass the flag to enable the filter; omit it to disable filtering (=false is rejected to prevent silent wrong results)").
+			WithParam("--has-chatted")
+	}
+
 	queriesRaw := strings.TrimSpace(runtime.Str("queries"))
 	query := strings.TrimSpace(runtime.Str("query"))
 
@@ -196,13 +209,6 @@ func validateBotSearch(runtime *common.RuntimeContext) error {
 
 	if _, err := parseBotSearchChatIDs(runtime); err != nil {
 		return err
-	}
-
-	// Agents passing =false almost always mean "do not filter", but the API
-	// reads it as "must NOT match". A hard error prevents silent wrong results.
-	if runtime.Cmd.Flags().Changed("has-chatted") && !runtime.Bool("has-chatted") {
-		return common.ValidationErrorf("--has-chatted: pass the flag to enable the filter; omit it to disable filtering (=false is rejected to prevent silent wrong results)").
-			WithParam("--has-chatted")
 	}
 
 	if n := runtime.Int("page-size"); n < 1 || n > maxBotSearchPageSize {

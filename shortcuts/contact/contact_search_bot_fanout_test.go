@@ -4,6 +4,7 @@
 package contact
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -379,5 +380,82 @@ func TestBotFanoutAllQueriesFailingExitsNonZero(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("message must contain %q; got %v", want, err)
 		}
+	}
+}
+
+func TestBotFanoutPartialFailureKeepsNoticeAndSucceeds(t *testing.T) {
+	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+
+	broken := botSearchStub(botSearchURL, "")
+	broken.BodyFilter = func(b []byte) bool { return strings.Contains(string(b), `"日报"`) }
+	broken.Status = 500
+	broken.Body = map[string]interface{}{"reason": "boom"}
+	registry.Register(broken)
+
+	okStub := botSearchStub(botSearchURL, "")
+	okStub.Reusable = true
+	registry.Register(okStub)
+
+	err := mountAndRun(t, ContactSearchBot, []string{
+		"+search-bot", "--queries", "会议,日报", "--format", "csv", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("one failing query must not fail the batch: %v", err)
+	}
+
+	// The surviving query's notice must still reach the caller.
+	if !strings.Contains(stdout.String(), "会议") {
+		t.Errorf("surviving query's rows missing from stdout: %s", stdout.String())
+	}
+	// csv is in the summary format set, so the per-batch counters go to stderr.
+	if !strings.Contains(stderr.String(), "2 queries") || !strings.Contains(stderr.String(), "1 failed") {
+		t.Errorf("stderr summary must report the batch counters: %s", stderr.String())
+	}
+}
+
+func TestBotFanoutNDJSONKeepsStdoutClean(t *testing.T) {
+	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	stub := botSearchStub(botSearchURL, "")
+	stub.Reusable = true
+	registry.Register(stub)
+
+	err := mountAndRun(t, ContactSearchBot, []string{
+		"+search-bot", "--queries", "会议,日报", "--format", "ndjson", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	// ndjson is a machine format outside the summary set: every stdout line must
+	// parse, and the counters must not be mixed in.
+	for i, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var row map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			t.Fatalf("stdout line %d is not JSON: %q", i, line)
+		}
+	}
+	if strings.Contains(stderr.String(), "queries,") {
+		t.Errorf("ndjson must not emit the summary line: %s", stderr.String())
+	}
+}
+
+func TestBotFanoutCancelledContextFailsEveryQuery(t *testing.T) {
+	results := make([]botFanoutResult, 0, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i, q := range []string{"会议", "日报"} {
+		results = append(results, runOneBotQuery(ctx, nil, i, q, nil))
+	}
+	for _, r := range results {
+		if r.ErrMsg == "" {
+			t.Fatalf("a cancelled context must short-circuit before the request: %+v", r)
+		}
+	}
+	// The pre-check exists so queued workers never issue a request after cancel;
+	// reaching DoAPI with a nil runtime would panic instead.
+	if _, err := buildBotFanoutResponse([]string{"会议", "日报"}, results); err == nil {
+		t.Fatal("all queries cancelled must surface as an error")
 	}
 }

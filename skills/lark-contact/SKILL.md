@@ -45,7 +45,7 @@ lark-cli im +messages-send --user-id ou_xxx --text "Hi!"
 lark-cli contact +search-bot --query '会议助手' --as user
 ```
 
-`--chat-ids` 和 `--has-chatted` 只能缩小关键词搜索范围,每次调用仍须传入 `--query`:
+`--chat-ids` 和 `--has-chatted` 只能缩小关键词搜索范围,每次调用都要给关键词(`--query` 或 `--queries`):
 
 ```bash
 lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user
