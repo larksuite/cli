@@ -83,6 +83,11 @@ func cellsGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName str
 	if runtime.Bool("skip-hidden") {
 		input["skip_hidden"] = true
 	}
+	// Preserve omission so the tool can keep the legacy fallback where
+	// skip_filter inherits skip_hidden. An explicit false must still be sent.
+	if runtime.Changed("skip-filter") {
+		input["skip_filter"] = runtime.Bool("skip-filter")
+	}
 	// --cell-limit was removed from the CLI surface; --max-chars is the single
 	// read cap. Pin cell_limit very high so the tool's own default never binds
 	// before max_chars.

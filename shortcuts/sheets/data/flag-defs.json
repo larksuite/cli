@@ -1316,7 +1316,14 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Skip hidden rows and columns; default `false`"
+        "desc": "Skip hidden or collapsed rows and columns. Default `false`; when `--skip-filter` is omitted, filtered-out rows follow this value for backward compatibility"
+      },
+      {
+        "name": "skip-filter",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Skip filtered-out rows. When omitted, inherits `--skip-hidden`; explicitly set to `false` to keep filtered-out rows while skipping hidden rows and columns"
       },
       {
         "name": "dry-run",

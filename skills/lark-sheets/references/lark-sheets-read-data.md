@@ -105,7 +105,7 @@ detect 最多确认 10 个跨窗口合并锚点；超限会在 `warnings` 中说
 注意：
 
 - `+csv-get` 和 `+cells-get` 支持分页/截断，注意检查 `has_more` / `truncated` 标志；两者在处理返回数据之前都必须先读 `warning_message`（上游 schema 要求先读它再用其它字段，内含定位与截断续读提示），`+cells-get` 还要用每个 range 的 `actual_range` / `row_indices` / `col_indices` 判断真实位置
-- 隐藏行列默认包含在返回结果中（`--skip-hidden=false`），如需只看可见数据设为 `true`。读取原语本身不标注哪些行列被隐藏：若要识别隐藏区间（以决定是否过滤、或如何解读混入的隐藏数据），用 `+sheet-info --include hidden_rows,hidden_cols` 取隐藏行列集合，再结合 `+csv-get` / `+cells-get` 返回的 `row_indices` / `col_indices` 判断每行 / 每列是否隐藏
+- `+cells-get` 可独立控制隐藏与筛选：`--skip-hidden` 只控制隐藏或分组折叠的行列，`--skip-filter` 只控制被筛选掉的行。两者都为 `false` 时返回完整数据；仅 `--skip-filter=true` 时保留隐藏行列但跳过筛选行；仅 `--skip-hidden=true --skip-filter=false` 时跳过隐藏行列但保留筛选行；两者都为 `true` 时只返回同时可见且未被筛选掉的数据。为兼容旧调用，未显式传 `--skip-filter` 时会继承 `--skip-hidden`。读取原语本身不标注哪些行列被隐藏：若要识别隐藏区间，用 `+sheet-info --include hidden_rows,hidden_cols` 取隐藏行列集合，再结合 `+cells-get` 返回的 `row_indices` / `col_indices` 判断真实位置
 - 要判断单元格内容是否被行高列宽挤到显示不全（排版检查、调整行高列宽前），给 `+cells-get` 加 `--include truncation`：会按字号 / 自动换行 / 行高列宽估算并返回被截断单元格的 `isRowTruncated` / `isColTruncated`（未返回视为未截断）。有额外计算开销，仅需要时才开
 
 **常见配置错误（必须注意）**：
@@ -116,7 +116,7 @@ detect 最多确认 10 个跨窗口合并锚点；超限会在 `warnings` 中说
   - 数据量大或会进入上下文上限时，分批读 + 本地处理 + 分批回写，不要一口气拉全表到上下文。
 - **`+cells-get` 滥用**：当只需要数据值时，使用 `+csv-get`（token 开销约为 `+cells-get` 的 1/5）。只有确实需要公式、样式或批注时才用 `+cells-get`
 - **忽略分页标志**：读取返回 `has_more=true` 时，说明还有更多数据。如果任务需要完整数据，必须继续分页读取，不能只处理第一页就开始写入
-- **直接按 `+cells-get` 返回二维数组下标推导真实位置**：`ranges[n].cells[i][j]` 里的 `i/j` 只是返回数组下标，不等于真实表格行列。定位真实行号必须用 `ranges[n].row_indices[i]`，定位真实列字母必须用 `ranges[n].col_indices[j]`；若 `--skip-hidden=true`、请求范围越界被裁剪，或最后一行是部分返回，错误地自己数下标会立刻错位
+- **直接按 `+cells-get` 返回二维数组下标推导真实位置**：`ranges[n].cells[i][j]` 里的 `i/j` 只是返回数组下标，不等于真实表格行列。定位真实行号必须用 `ranges[n].row_indices[i]`，定位真实列字母必须用 `ranges[n].col_indices[j]`；若 `--skip-hidden=true`、`--skip-filter=true`、请求范围越界被裁剪，或最后一行是部分返回，错误地自己数下标会立刻错位
 - **CSV 行号计数错误**：`+csv-get` 返回的 CSV 遵循 RFC 4180 标准，被双引号 `"..."` 包裹的字段中的换行符属于**字段内容的一部分**（即单元格内换行），不代表新的一行。计算行号时必须按**逻辑记录**计数，而非按物理换行符 `\n` 计数
 - **手动数列确定列号**：禁止通过在 CSV 表头中手动数逗号/字段来确定目标列的列字母。当列数超过 10 时，手动计数极易产生 off-by-one 偏移（例如把 W 列误判为 X 列）。**必须使用 `col_indices`**：先在 CSV 表头中找到目标字段名是第 j 个字段（0-based），再用 `col_indices[j]` 获取该列的实际列字母
 - **用数据列的值推导行号（常被巧合掩盖）**：CSV 中常见"序号 / ID / 编号 / No."等形似行号的列，其值与实际表格行号**没有任何绑定关系**——序号可能跳号（1,2,3,5,6...）、可能从非 1 开始、可能有重复或被中途重置。此规则适用于**所有需要行号的下游操作**：合并单元格、区间写入/清空/格式化、插入/删除行、条件格式范围、筛选器范围、图表数据源、透视表范围、搜索替换范围等等——**凡是要把行号填进任何工具参数的场景，行号一律从 `annotated_csv` 中目标行开头的 `[row=N]` 前缀直接读取**，禁止用"序号=行号"、"表头占 1 行所以数据从第 2 行开始"、"第 N 个序号就在第 N+1 行"等心算，也禁止先心算再"事后核对"。**危险特征**：前几十行中序号恰好等于表格行号（典型成因：表头 +1 与一次跳号 -1 的偏移互相抵消形成巧合），模型一旦把这个巧合当作规律，会在后续所有行沿用；而中间再出现跳号时，从该行起整块区域全部错位，且错位不自查很难发现。**正确工作流**：①在 `annotated_csv` 里定位目标逻辑行（按字段内容匹配）；②直接读取该行开头的 `[row=N]` 前缀得到真实表格行号；③把这个行号填进下游工具参数。区间操作时，起始行用 start 行的 `[row=N]`、结束行用 end 行的 `[row=N]`。**自检**：动手前，在 `annotated_csv` 靠后位置再抽 1~2 行，核对 `[row=N]` 是否与首列"序号"一致——不一致（典型：`[row=57] 58,...`）即说明有跳号/隐藏行，更要严格从 `[row=N]` 取值，不要被序号列迷惑
@@ -165,7 +165,8 @@ _公共四件套 · 系统：`--dry-run`_
 | `--include` | string_slice | optional | 要返回的信息类别，逗号分隔多个。`truncation` 会额外按行高列宽 / 字号 / 自动换行估算每个单元格是否被截断显示，返回 `isRowTruncated` / `isColTruncated`（有额外计算开销，仅排版检查 / 调整行高列宽前才开）（可选值：`value` / `formula` / `style` / `comment` / `data_validation` / `truncation`） |
 | `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆）。要整表无截断直接用 --output-path 落盘（自动放开为无限）；仅当要让结果直接进上下文、又不落盘时才调小（如 25000），按 has_more 分页。 |
 | `--output-path` | string | optional | 把完整读取结果写入本地路径（如 `./out.json`），文件内容为 data 载荷的 JSON；stdout 只回一个含 output_path/字节数的确认信息。**一旦设置，字符上限默认放开为无限**（覆盖 --max-chars 默认），适合大表整表落盘再分析，避免 stdout 被 max_chars 截断。省略时按常规把结果打到 stdout。 |
-| `--skip-hidden` | bool | optional | 跳过隐藏行列，默认 `false` |
+| `--skip-hidden` | bool | optional | 跳过隐藏或分组折叠的行列。默认 `false`；未显式传 `--skip-filter` 时，筛选行也会随之跳过（兼容旧行为） |
+| `--skip-filter` | bool | optional | 跳过被筛选掉的行。未设置时继承 `--skip-hidden`；显式设为 `false` 可在跳过隐藏行列的同时保留筛选行 |
 
 ### `+dropdown-get`
 

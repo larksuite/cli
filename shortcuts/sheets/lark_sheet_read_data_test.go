@@ -35,6 +35,25 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
+			name:     "+cells-get skip filtered rows only",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--skip-filter"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"skip_filter": true,
+			},
+		},
+		{
+			name:     "+cells-get skip hidden but keep filtered rows",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--skip-hidden", "--skip-filter=false"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"skip_hidden": true,
+				"skip_filter": false,
+			},
+		},
+		{
 			// --include truncation toggles include_truncation_info so the tool
 			// estimates and returns per-cell isRowTruncated / isColTruncated.
 			name:     "+cells-get include=truncation",
@@ -115,6 +134,17 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			got := decodeToolInput(t, body, tt.toolName)
 			assertInputEquals(t, got, tt.wantInput)
 		})
+	}
+}
+
+func TestCellsGet_OmitsSkipFilterWhenUnset(t *testing.T) {
+	t.Parallel()
+	body := parseDryRunBody(t, CellsGet, []string{
+		"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2",
+	})
+	got := decodeToolInput(t, body, "get_cell_ranges")
+	if _, ok := got["skip_filter"]; ok {
+		t.Fatalf("skip_filter must be omitted when --skip-filter is unset: %#v", got)
 	}
 }
 
