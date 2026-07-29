@@ -449,6 +449,21 @@ func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interf
 			out["hint"] = map[string]interface{}{
 				"next_step": "use +workflow-get to inspect the resolved workflow",
 			}
+		case "folder":
+			out["hint"] = map[string]interface{}{
+				"next_step": fmt.Sprintf("use +base-block-list --base-token %s --parent-id %s to list this folder's direct children", baseToken, selectedBlockID),
+			}
+		case "docx":
+			if block.DocxToken != "" {
+				out["docx_token"] = block.DocxToken
+				out["hint"] = map[string]interface{}{
+					"next_step": fmt.Sprintf("use docs +fetch --doc %s to read this document", block.DocxToken),
+				}
+			} else {
+				out["hint"] = map[string]interface{}{
+					"next_step": "use +base-block-list --type docx and match block_id to retrieve this document's docx_token",
+				}
+			}
 		default:
 			out["hint"] = resolveUnknownBlockHint()
 		}
@@ -470,9 +485,10 @@ func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interf
 }
 
 type resolvedBaseBlock struct {
-	ID   string
-	Type string
-	Name string
+	ID        string
+	Type      string
+	Name      string
+	DocxToken string
 }
 
 func resolveSelectedBaseBlock(runtime *common.RuntimeContext, baseToken, selectedBlockID string) (resolvedBaseBlock, bool, error) {
@@ -486,9 +502,10 @@ func resolveSelectedBaseBlock(runtime *common.RuntimeContext, baseToken, selecte
 			continue
 		}
 		block := resolvedBaseBlock{
-			ID:   strings.TrimSpace(common.GetString(row, "id")),
-			Type: strings.TrimSpace(common.GetString(row, "type")),
-			Name: strings.TrimSpace(common.GetString(row, "name")),
+			ID:        strings.TrimSpace(common.GetString(row, "id")),
+			Type:      strings.TrimSpace(common.GetString(row, "type")),
+			Name:      strings.TrimSpace(common.GetString(row, "name")),
+			DocxToken: strings.TrimSpace(common.GetString(row, "docx_token")),
 		}
 		if block.ID == selectedBlockID {
 			return block, true, nil

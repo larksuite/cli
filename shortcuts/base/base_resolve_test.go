@@ -177,6 +177,58 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 			t.Fatalf("unexpected workflow hint: %#v", hint)
 		}
 	})
+
+	t.Run("folder selected through table query key", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(baseBlockListResolveStub("bas123",
+			map[string]interface{}{"id": "bfl_projects", "type": "folder", "name": "Projects"},
+		))
+
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=bfl_projects&view=vew_stale&record=rec_stale", "--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if data["block_id"] != "bfl_projects" || data["block_type"] != "folder" || data["block_name"] != "Projects" {
+			t.Fatalf("unexpected folder coordinates: %#v", data)
+		}
+		if _, ok := data["table_id"]; ok {
+			t.Fatalf("folder must not be reported as table_id: %#v", data)
+		}
+		hint, _ := data["hint"].(map[string]interface{})
+		nextStep := hint["next_step"].(string)
+		if !strings.Contains(nextStep, "+base-block-list --base-token bas123 --parent-id bfl_projects") || strings.Contains(nextStep, "determine whether") {
+			t.Fatalf("unexpected folder hint: %#v", hint)
+		}
+	})
+
+	t.Run("docx selected through table query key", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(baseBlockListResolveStub("bas123",
+			map[string]interface{}{"id": "blk_doc", "type": "docx", "name": "Spec", "docx_token": "docx123"},
+		))
+
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=blk_doc&view=vew_stale&record=rec_stale", "--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if data["block_id"] != "blk_doc" || data["block_type"] != "docx" || data["block_name"] != "Spec" || data["docx_token"] != "docx123" {
+			t.Fatalf("unexpected docx coordinates: %#v", data)
+		}
+		if _, ok := data["table_id"]; ok {
+			t.Fatalf("docx must not be reported as table_id: %#v", data)
+		}
+		hint, _ := data["hint"].(map[string]interface{})
+		nextStep := hint["next_step"].(string)
+		if !strings.Contains(nextStep, "docs +fetch --doc docx123") || strings.Contains(nextStep, "determine whether") {
+			t.Fatalf("unexpected docx hint: %#v", hint)
+		}
+	})
 }
 
 func baseBlockListResolveStub(baseToken string, blocks ...map[string]interface{}) *httpmock.Stub {
