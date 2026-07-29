@@ -1,0 +1,53 @@
+internal/event/adapter/lark/subscription/client.go
+  s_93ed8ad92b2e2d::t_b72a6c29826794 4
+internal/event/adapter/lark/subscription/client_test.go
+  s_93ed8ad92b2e2d::t_5149514dc511c2 4
+internal/event/adapter/lark/subscription/doc.go
+  s_93ed8ad92b2e2d::t_beab2bfd13b4c1 23
+internal/event/adapter/lark/subscription/filter_canonical_test.go
+  s_93ed8ad92b2e2d::t_2faa787d1b6dfb 4
+internal/event/adapter/lark/subscription/filter_sdk.go
+  s_93ed8ad92b2e2d::t_dc67eccf0c582f 4
+internal/event/adapter/lark/subscription/filter_sdk_test.go
+  s_93ed8ad92b2e2d::t_a70c300d3e3338 4
+internal/event/adapter/lark/subscription/gateway.go
+  s_93ed8ad92b2e2d::t_18ea89cf59e294 4
+internal/event/adapter/lark/subscription/gateway_test.go
+  s_93ed8ad92b2e2d::t_367a54197974db 4
+internal/event/adapter/lark/subscription/subscription.go
+  s_93ed8ad92b2e2d::t_9c3e6dbc4a96e3 4
+internal/event/adapter/lark/subscription/subscription_test.go
+  s_93ed8ad92b2e2d::t_dc2b3255ca6eaf 4
+internal/event/adapter/lark/websocket/feishu.go
+  s_93ed8ad92b2e2d::t_eabb09fa4b6062 4,27,453
+internal/event/adapter/lark/websocket/feishu_log_test.go
+  s_93ed8ad92b2e2d::t_19e150786601aa 4
+internal/event/adapter/lark/websocket/feishu_test.go
+  s_93ed8ad92b2e2d::t_0c78070ca17ebc 4,20,771
+internal/event/adapter/lark/websocket/sdk_log_patterns.go
+  s_93ed8ad92b2e2d::t_a7f4f9c169eb88 4
+internal/event/adapter/lark/websocket/sdk_log_patterns_test.go
+  s_93ed8ad92b2e2d::t_287498f2371542 4
+internal/event/adapter/lark/websocket/source.go
+  s_93ed8ad92b2e2d::t_f1d2a9f44ae234 6
+internal/event/adapter/lark/websocket/source_test.go
+  s_93ed8ad92b2e2d::t_d4f86e0801c513 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "080294ebc674bd2e4d4039a845658f5c94c06a43",
+  "prompts": {},
+  "sessions": {
+    "s_93ed8ad92b2e2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8e662c8-75c2-41f2-9275-23506be32fd9",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
