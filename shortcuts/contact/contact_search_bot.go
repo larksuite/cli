@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -27,8 +26,6 @@ const (
 	maxBotSearchChatIDs    = 100
 	maxBotSearchPageSize   = 30
 )
-
-var botDisplayInfoHighlightRE = regexp.MustCompile(`<h>(.*?)</h>`)
 
 type botSearchAPIRequest struct {
 	Query  string              `json:"query,omitempty"`
@@ -63,10 +60,12 @@ type botSearchAPIMeta struct {
 }
 
 type searchBot struct {
-	OpenID          string   `json:"open_id"`
-	Name            string   `json:"name"`
-	Description     string   `json:"description,omitempty"`
-	P2PChatID       string   `json:"p2p_chat_id,omitempty"`
+	OpenID      string `json:"open_id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// No omitempty: searchUser.P2PChatID always emits, and a sibling command that
+	// silently drops the key would force callers to special-case bot results.
+	P2PChatID       string   `json:"p2p_chat_id"`
 	HasChatted      bool     `json:"has_chatted"`
 	EnableJoinGroup bool     `json:"enable_join_group"`
 	IsAgent         bool     `json:"is_agent"`
@@ -91,7 +90,7 @@ var ContactSearchBot = common.Shortcut{
 	Scopes:      []string{"search:bot"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
-		{Name: "query", Desc: "search keyword, required (≤ 50 characters)"},
+		{Name: "query", Desc: "search keyword (≤ 50 characters); required unless --queries is given"},
 		{Name: "chat-ids", Desc: "narrow --query to bots in these chats (CSV of chat_id; ≤ 100)"},
 		{Name: "has-chatted", Type: "bool", Desc: "narrow --query to bots you've chatted with (omit to disable; =false rejected)"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "rows per request, 1-30"},
@@ -102,7 +101,7 @@ var ContactSearchBot = common.Shortcut{
 		"Narrow to bots in a chat: lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user",
 		"Narrow to bots you've chatted with: lark-cli contact +search-bot --query '助手' --has-chatted --as user",
 		"Multi-name fanout: lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' --as user",
-		"--query is required; --chat-ids and --has-chatted only narrow it — a filter-only request returns an empty list, not an error.",
+		"a keyword is required — pass --query or --queries; --chat-ids and --has-chatted only narrow it, and a filter-only request comes back empty rather than as an error.",
 		"on has_more=true narrow the search (add --chat-ids or --has-chatted, or use a more specific --query) — there is no pagination.",
 		"enable_join_group=true only means the bot is allowed into chats. Adding it needs the app's cli_ app_id, which this command does not return: the ou_ open_id here is rejected by the chat-member APIs and there is no open_id → app_id lookup. Do not claim a bot was added on the strength of this flag.",
 	},
@@ -147,9 +146,15 @@ func executeBotSearch(ctx context.Context, runtime *common.RuntimeContext) error
 	return executeBotSearchSingle(ctx, runtime)
 }
 
-func botSearchQueryRequiredError() error {
-	return common.ValidationErrorf("--query is required: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API returns an empty list for filter-only requests)").
-		WithParam("--query")
+// botSearchKeywordRequiredError names every flag that can satisfy the keyword
+// requirement. Naming only --query would tell an agent that --queries is not a
+// way out, which it is.
+func botSearchKeywordRequiredError() error {
+	return common.ValidationErrorf("specify --query or --queries: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API answers a filter-only request with an empty list)").
+		WithParams(
+			errs.InvalidParam{Name: "--query", Reason: "required unless --queries is given"},
+			errs.InvalidParam{Name: "--queries", Reason: "required unless --query is given"},
+		)
 }
 
 func validateBotSearch(runtime *common.RuntimeContext) error {
@@ -181,7 +186,7 @@ func validateBotSearch(runtime *common.RuntimeContext) error {
 		}
 	} else {
 		if query == "" {
-			return botSearchQueryRequiredError()
+			return botSearchKeywordRequiredError()
 		}
 		if utf8.RuneCountInString(query) > maxBotSearchQueryChars {
 			return common.ValidationErrorf("--query: length must be between 1 and %d characters", maxBotSearchQueryChars).
@@ -212,21 +217,34 @@ func parseBotSearchChatIDs(runtime *common.RuntimeContext) ([]string, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	chatIDs := common.SplitCSV(raw)
-	if len(chatIDs) == 0 {
+	parts := common.SplitCSV(raw)
+	if len(parts) == 0 {
 		return nil, common.ValidationErrorf("--chat-ids: no valid chat_id parsed from %q (separate entries with ',')", raw).
 			WithParam("--chat-ids")
+	}
+
+	// Normalize before deduping, then check the cap against the deduped list —
+	// the same order common.resolveOpenIDs uses for --user-ids. Doing it the other
+	// way would spend the server's 100-entry budget on duplicates, and would let
+	// 101 copies of one chat be rejected here while the sibling command accepts
+	// them. Normalization matters too: a chat URL and a bare chat_id can name the
+	// same chat.
+	seen := make(map[string]struct{}, len(parts))
+	chatIDs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		normalized, err := common.ValidateChatIDTyped("--chat-ids", part)
+		if err != nil {
+			return nil, err
+		}
+		if _, dup := seen[normalized]; dup {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		chatIDs = append(chatIDs, normalized)
 	}
 	if len(chatIDs) > maxBotSearchChatIDs {
 		return nil, common.ValidationErrorf("--chat-ids: must be at most %d entries", maxBotSearchChatIDs).
 			WithParam("--chat-ids")
-	}
-	for i, chatID := range chatIDs {
-		normalized, err := common.ValidateChatIDTyped("--chat-ids", chatID)
-		if err != nil {
-			return nil, err
-		}
-		chatIDs[i] = normalized
 	}
 	return chatIDs, nil
 }
@@ -340,7 +358,7 @@ func projectBots(data *botSearchAPIData) []searchBot {
 
 func parseBotDisplayInfo(raw, openID string) (name, description string, matchSegments []string) {
 	matchSegments = make([]string, 0)
-	for _, match := range botDisplayInfoHighlightRE.FindAllStringSubmatch(raw, -1) {
+	for _, match := range displayInfoHighlightRE.FindAllStringSubmatch(raw, -1) {
 		matchSegments = append(matchSegments, match[1])
 	}
 

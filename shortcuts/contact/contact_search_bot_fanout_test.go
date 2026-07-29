@@ -6,11 +6,15 @@ package contact
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -276,6 +280,104 @@ func TestBotFanoutMatchedQueryFidelityAndDedup(t *testing.T) {
 	for _, bot := range envelope.Data.Bots {
 		if bot.MatchedQuery != "会议" {
 			t.Fatalf("matched_query fidelity: %+v", bot)
+		}
+	}
+}
+
+func TestBotFanoutConcurrencyCap(t *testing.T) {
+	factory, stdout, _, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+
+	var inFlight, peak int32
+	stub := botSearchStub(botSearchURL+"?page_size=20", "")
+	stub.Reusable = true
+	stub.OnMatch = func(req *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		defer atomic.AddInt32(&inFlight, -1)
+		for {
+			p := atomic.LoadInt32(&peak)
+			if cur <= p || atomic.CompareAndSwapInt32(&peak, p, cur) {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	registry.Register(stub)
+
+	queries := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
+	err := mountAndRun(t, ContactSearchBot, []string{
+		"+search-bot", "--queries", strings.Join(queries, ","), "--format", "json", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if peak > fanoutConcurrency {
+		t.Errorf("concurrency peak = %d, want <= %d", peak, fanoutConcurrency)
+	}
+	if peak < 2 {
+		t.Errorf("concurrency peak = %d, want >= 2 so the test actually observes parallelism", peak)
+	}
+}
+
+func TestBotFanoutPanicIsContainedPerQuery(t *testing.T) {
+	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+
+	boom := botSearchStub(botSearchURL, "")
+	boom.BodyFilter = func(b []byte) bool { return strings.Contains(string(b), `"boom"`) }
+	boom.OnMatch = func(req *http.Request) { panic("synthetic test panic") }
+	registry.Register(boom)
+
+	ok := botSearchStub(botSearchURL, "")
+	ok.Reusable = true
+	registry.Register(ok)
+
+	err := mountAndRun(t, ContactSearchBot, []string{
+		"+search-bot", "--queries", "ok,boom,fine", "--format", "json", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("one panicking query must not bubble out of the batch; got %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("response JSON: %v\n%s", err, stdout.String())
+	}
+	queries := got["data"].(map[string]interface{})["queries"].([]interface{})
+	failed := queries[1].(map[string]interface{})
+	if msg, _ := failed["error"].(string); !strings.HasPrefix(msg, "internal error:") {
+		t.Errorf("queries[1].error: want an 'internal error:' prefix, got %q", failed["error"])
+	}
+	// A recovered panic must not dump a stack trace at the user.
+	for _, marker := range []string{"goroutine ", ".go:", "runtime."} {
+		if strings.Contains(stderr.String(), marker) {
+			t.Errorf("stderr leaked stack-trace marker %q: %s", marker, stderr.String())
+		}
+	}
+}
+
+func TestBotFanoutAllQueriesFailingExitsNonZero(t *testing.T) {
+	factory, stdout, _, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	registry.Register(&httpmock.Stub{
+		Method:   "POST",
+		URL:      botSearchURL,
+		Reusable: true,
+		Status:   500,
+		Body:     map[string]interface{}{"reason": "boom"},
+	})
+
+	err := mountAndRun(t, ContactSearchBot, []string{
+		"+search-bot", "--queries", "会议,日报", "--format", "json", "--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("every query failing must surface as a command error")
+	}
+	if _, ok := errs.ProblemOf(err); !ok {
+		t.Fatalf("expected a typed problem, got %T: %v", err, err)
+	}
+	// The first failure's upstream status and the all-failed mode must both survive,
+	// so a caller can classify instead of seeing a generic internal error.
+	for _, want := range []string{"500", "all 2 queries failed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message must contain %q; got %v", want, err)
 		}
 	}
 }

@@ -63,22 +63,51 @@ func assertBotSearchValidationProblem(t *testing.T, err error, wantParam string)
 	}
 }
 
+// assertBotSearchValidationParams covers the errors that name several flags via
+// WithParams; those leave the single Param empty on purpose, so an agent reading
+// the envelope sees every flag that could satisfy the requirement.
+func assertBotSearchValidationParams(t *testing.T, err error, wantParams []string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem: %+v ok=%v", problem, ok)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	got := make([]string, 0, len(validationErr.Params))
+	for _, p := range validationErr.Params {
+		if p.Reason == "" {
+			t.Errorf("param %q has no reason; agents read it to pick a recovery", p.Name)
+		}
+		got = append(got, p.Name)
+	}
+	if fmt.Sprint(got) != fmt.Sprint(wantParams) {
+		t.Fatalf("params: got %v, want %v", got, wantParams)
+	}
+}
+
 func TestValidateBotSearchErrors(t *testing.T) {
 	chatIDs := make([]string, 101)
 	for i := range chatIDs {
-		chatIDs[i] = fmt.Sprintf("chat_%03d", i)
+		chatIDs[i] = fmt.Sprintf("oc_%03d", i)
 	}
 
 	tests := []struct {
 		name        string
 		flags       map[string]string
 		wantParam   string
+		wantParams  []string // set instead of wantParam when the error names several flags
 		wantMessage string
 	}{
 		{
-			name:        "query missing",
-			wantParam:   "--query",
-			wantMessage: "--query is required: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API returns an empty list for filter-only requests)",
+			name:        "keyword missing",
+			wantParams:  []string{"--query", "--queries"},
+			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
 		},
 		{
 			name:        "query over 50 characters",
@@ -123,16 +152,16 @@ func TestValidateBotSearchErrors(t *testing.T) {
 			wantMessage: "--page-size: must be between 1 and 30",
 		},
 		{
-			name:        "chat ids without query",
+			name:        "chat ids without a keyword",
 			flags:       map[string]string{"chat-ids": "oc_a"},
-			wantParam:   "--query",
-			wantMessage: "--query is required: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API returns an empty list for filter-only requests)",
+			wantParams:  []string{"--query", "--queries"},
+			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
 		},
 		{
-			name:        "has chatted without query",
+			name:        "has chatted without a keyword",
 			flags:       map[string]string{"has-chatted": "true"},
-			wantParam:   "--query",
-			wantMessage: "--query is required: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API returns an empty list for filter-only requests)",
+			wantParams:  []string{"--query", "--queries"},
+			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted only narrow a keyword search, they cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
 		},
 	}
 
@@ -144,7 +173,11 @@ func TestValidateBotSearchErrors(t *testing.T) {
 			}
 			runtime := common.TestNewRuntimeContext(cmd, botSearchDefaultConfig())
 			err := validateBotSearch(runtime)
-			assertBotSearchValidationProblem(t, err, tt.wantParam)
+			if len(tt.wantParams) > 0 {
+				assertBotSearchValidationParams(t, err, tt.wantParams)
+			} else {
+				assertBotSearchValidationProblem(t, err, tt.wantParam)
+			}
 			if err.Error() != tt.wantMessage {
 				t.Fatalf("message: got %q, want %q", err.Error(), tt.wantMessage)
 			}
@@ -167,6 +200,11 @@ func TestValidateBotSearchPassingCases(t *testing.T) {
 		// parses to zero entries is an error.
 		{name: "blank chat ids ignored", flags: map[string]string{"query": "x", "chat-ids": ""}},
 		{name: "whitespace chat ids ignored", flags: map[string]string{"query": "x", "chat-ids": "   "}},
+		// Duplicates collapse before the cap is checked, so 101 copies of one chat
+		// is one entry — matching how --user-ids is resolved for +search-user.
+		{name: "duplicate chat ids collapse under the cap", flags: map[string]string{
+			"query": "x", "chat-ids": strings.TrimSuffix(strings.Repeat("oc_a,", 101), ","),
+		}},
 	}
 
 	for _, tt := range tests {
@@ -221,6 +259,10 @@ func TestBuildBotSearchBody(t *testing.T) {
 		{name: "all fields", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b", "has-chatted": "true"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"],"has_chatter":true}}`},
 		// A blank --chat-ids must not materialize an empty filter object.
 		{name: "blank chat ids omit filter", flags: map[string]string{"query": "x", "chat-ids": "   "}, wantJSON: `{"query":"x"}`},
+		// Deduped after normalization, so a repeated id and a URL naming the same
+		// chat both collapse into one entry instead of burning the server's quota.
+		{name: "duplicate chat ids deduped", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_a,oc_b"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"]}}`},
+		{name: "URL and bare id dedupe to one", flags: map[string]string{"query": "x", "chat-ids": "https://example.feishu.cn/foo/oc_a,oc_a"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a"]}}`},
 	}
 
 	for _, tt := range tests {
@@ -317,8 +359,10 @@ func TestProjectBotsMapsEveryField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal response: %v", err)
 	}
-	if strings.Contains(string(raw), `"p2p_chat_id":""`) {
-		t.Fatalf("empty p2p_chat_id must be omitted: %s", raw)
+	// searchUser emits p2p_chat_id unconditionally; the sibling command must keep
+	// the same key set so callers need no bot-specific presence check.
+	if !strings.Contains(string(raw), `"p2p_chat_id":""`) {
+		t.Fatalf("empty p2p_chat_id must still be emitted: %s", raw)
 	}
 }
 
