@@ -39,6 +39,9 @@ func TestChartPrintExample(t *testing.T) {
 		if !strings.Contains(ve.Message, "pie") {
 			t.Errorf("message should list available types, got %q", ve.Message)
 		}
+		if ve.Param != "--print-example" {
+			t.Errorf("Param = %q, want %q", ve.Param, "--print-example")
+		}
 	})
 }
 

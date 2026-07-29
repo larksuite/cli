@@ -82,9 +82,41 @@ func TestRequireConfirmation_JSONShape(t *testing.T) {
 	}
 }
 
+// TestRequireConfirmationFor pins the composed hint end to end for a fixed
+// argv — the retry line must ride behind the add-yes contract — and the plain
+// fallback when the argv suppresses the line.
+func TestRequireConfirmationFor(t *testing.T) {
+	t.Run("composed hint carries the full retry line", func(t *testing.T) {
+		err := requireConfirmationFor("sheets +cells-clear", []string{
+			"/usr/local/bin/lark-cli", "sheets", "+cells-clear", "--range", "A1:B2",
+		})
+		var cre *errs.ConfirmationRequiredError
+		if !errors.As(err, &cre) {
+			t.Fatalf("expected *errs.ConfirmationRequiredError, got %T", err)
+		}
+		want := "add --yes to confirm; re-run: lark-cli sheets +cells-clear --range A1:B2 --yes"
+		if cre.Hint != want {
+			t.Errorf("Hint = %q, want %q", cre.Hint, want)
+		}
+	})
+
+	t.Run("stdin argv falls back to the plain hint", func(t *testing.T) {
+		err := requireConfirmationFor("sheets +batch-update", []string{
+			"lark-cli", "sheets", "+batch-update", "--operations", "-",
+		})
+		var cre *errs.ConfirmationRequiredError
+		if !errors.As(err, &cre) {
+			t.Fatalf("expected *errs.ConfirmationRequiredError, got %T", err)
+		}
+		if cre.Hint != "add --yes to confirm" {
+			t.Errorf("Hint = %q, want the plain add-yes hint", cre.Hint)
+		}
+	})
+}
+
 // TestRetryCommandWithYes pins the retry-line contract: shell-safe quoting,
-// basename argv[0], and the two omission guards (stdin args, oversized
-// commands).
+// basename argv[0], and the omission guards (stdin args, credential-bearing
+// flags, oversized commands).
 func TestRetryCommandWithYes(t *testing.T) {
 	t.Run("quotes what needs quoting and appends --yes", func(t *testing.T) {
 		got := retryCommandWithYes([]string{
@@ -115,6 +147,25 @@ func TestRetryCommandWithYes(t *testing.T) {
 		// --flag=- reads stdin the same as --flag -; both must suppress the line.
 		if got := retryCommandWithYes([]string{"lark-cli", "sheets", "+cells-set", "--cells=-"}); got != "" {
 			t.Errorf("--flag=- stdin invocation must not render a retry line, got %q", got)
+		}
+	})
+
+	t.Run("credential-bearing flag omits the retry line", func(t *testing.T) {
+		for _, args := range [][]string{
+			{"lark-cli", "im", "+send", "--app-secret", "s3cr3t"},
+			{"lark-cli", "im", "+send", "--user-access-token=u-abc"},
+			{"lark-cli", "im", "+send", "--api_key", "k"},
+		} {
+			if got := retryCommandWithYes(args); got != "" {
+				t.Errorf("argv %v must not render a retry line, got %q", args, got)
+			}
+		}
+	})
+
+	t.Run("positional value mentioning token still renders", func(t *testing.T) {
+		got := retryCommandWithYes([]string{"lark-cli", "drive", "+delete", "--file-path", "token.json"})
+		if got != "lark-cli drive +delete --file-path token.json --yes" {
+			t.Errorf("non-flag token-ish value must not suppress the line, got %q", got)
 		}
 	})
 

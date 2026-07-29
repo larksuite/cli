@@ -125,6 +125,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--properties` | string + File + Stdin（复合 JSON） | required | 图表完整配置 JSON。顶层字段为 `position` / `offset` / `size` / `snapshot`（无顶层 `data`，也无再嵌一层 `properties`）；图表数据配置在 `snapshot.data` 下（含 `refs` / `headerMode` / `dim1` / `dim2`）；必须至少含 `snapshot.data.dim1.serie.index` 或 `dim2.series[].index` 之一，否则 server 拒。结构嵌套深，完整结构跑 `--print-schema --flag-name properties` |
+| `--print-example` | string | optional | 打印指定图表类型的最小可用 `--properties` 模板后直接退出（`area` / `bar` / `column` / `combo` / `line` / `pie` / `radar` / `scatter`）。纯本地执行，不需要 locator flag、不发网络请求；传入未知类型时列出全部可用类型 |
 
 ### `+chart-update`
 

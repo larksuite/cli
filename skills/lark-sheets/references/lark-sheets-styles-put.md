@@ -16,7 +16,7 @@
 - 每个子表项按固定顺序执行：`cell_merges` → `cell_styles` → `row_sizes` → `col_sizes` → `freeze`；样式盖章允许覆盖含合并区的区域（合并区限制只针对值写入，样式不受限）。
 - `row_sizes` / `col_sizes` 只需 `{range, size}`（px，即像素尺寸；`standard` / 行的 `auto` 才需显式 `type`）。尺寸键统一是 `size`。
 - 加边框用 `border` 简写：`{"style":"solid","color":"#DDDDDD"}` 应用到四边；只有分侧不同样式才用 `border_styles` 完整形态。
-- `freeze` 用 `{rows:N, cols:N}` 冻结前 N 行 / 列，0 或省略表示该维度不冻结。
+- `freeze` 用 `{rows:N, cols:N}` 冻结前 N 行 / 列，0 或省略表示该维度不冻结；rows / cols 至少一个要 > 0（全 0 的 freeze 是无效操作，会被校验拒绝）。
 
 **回读校验**：整份规格执行成功后按编辑准则抽样回读受影响区域（`+cells-get --include style` 或 `+sheet-info` 看合并 / 行高列宽 / 冻结），确认关键样式实际生效。
 
@@ -47,7 +47,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 - `cell_merges` (array<object>?) — 单元格合并操作数组；range 使用 A1 单元格范围，merge_type 默认 all each: { merge_type?: enum, range: string }
 - `cell_styles` (array<object>?) — 单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐 each: { background_color?: string, border?: object, border_styles?: object, font_color?: string, font_family?: string, …共 14 项 }
 - `col_sizes` (array<object>?) — 列宽操作数组；range 使用列范围如 A:C，给 size（px）即像素列宽（type 可省略）；type 为 standard 时不带 size each: { range: string, size?: number, type?: enum }
-- `freeze` (object?) — 冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结） { cols?: integer, rows?: integer }
+- `freeze` (object?) — 冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结；rows / cols 至少一个要 > 0，全 0 会被校… { cols?: integer, rows?: integer }
 - `name` (string) — 子表名
 - `row_sizes` (array<object>?) — 行高操作数组；range 使用行范围如 1:3，给 size（px）即像素行高（type 可省略）；type 为 standard/auto 时不带 size each: { range: string, size?: number, type?: enum }
 

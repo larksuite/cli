@@ -207,7 +207,9 @@ func sheetsFlagErrorFunc(c *cobra.Command, ferr error) error {
 	// prescription (--font-bold ranked --font-color/--font-line/--font-size
 	// while the fix is --font-weight), and a machine-readable suggestion that
 	// disagrees with the hint sends agents down the wrong retry.
-	if rx, ok := intuitiveFlagHints[c.Name()][name]; ok {
+	// The map is keyed hyphenated but the parse error reports the flag as
+	// typed, so --frozen_rows must hit the same entry as --frozen-rows.
+	if rx, ok := intuitiveFlagHints[c.Name()][strings.ReplaceAll(name, "_", "-")]; ok {
 		hint = rx
 		if list := inlineFlagList(valid); list != "" {
 			hint = rx + "; valid flags: " + list

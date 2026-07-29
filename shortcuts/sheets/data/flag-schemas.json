@@ -8033,7 +8033,7 @@
               "type": "array"
             },
             "freeze": {
-              "description": "冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结）。",
+              "description": "冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结；rows / cols 至少一个要 > 0，全 0 会被校验拒绝）。",
               "properties": {
                 "cols": {
                   "minimum": 0,
@@ -8421,7 +8421,7 @@
               "type": "array"
             },
             "freeze": {
-              "description": "冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结）。",
+              "description": "冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结；rows / cols 至少一个要 > 0，全 0 会被校验拒绝）。",
               "properties": {
                 "cols": {
                   "minimum": 0,
@@ -8809,7 +8809,7 @@
               "type": "array"
             },
             "freeze": {
-              "description": "冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结）。",
+              "description": "冻结行列：rows = 冻结前 N 行，cols = 冻结前 N 列（0 或省略 = 该维度不冻结；rows / cols 至少一个要 > 0，全 0 会被校验拒绝）。",
               "properties": {
                 "cols": {
                   "minimum": 0,

@@ -25,13 +25,17 @@ func readOutputPath(runtime *common.RuntimeContext) string {
 }
 
 // maxCharsInput resolves the max_chars value to send to the underlying read
-// tool. With --output-path set the cap is lifted (unbounded sentinel) so the
-// full result is written to the file; otherwise the --max-chars value binds.
-// The second return is false when nothing should be sent (max-chars <= 0), in
-// which case the tool's own default applies. Note the tool truncates at ~50000
-// even when max_chars is omitted, so callers that want an explicit cap should
-// pass a positive default.
+// tool. A cap the user set explicitly always binds — --output-path only lifts
+// the cap (unbounded sentinel) when --max-chars was left at its default, so
+// the whole result lands in the file without silently discarding a requested
+// limit. The second return is false when nothing should be sent
+// (max-chars <= 0), in which case the tool's own default applies. Note the
+// tool truncates at ~50000 even when max_chars is omitted, so callers that
+// want an explicit cap should pass a positive default.
 func maxCharsInput(runtime *common.RuntimeContext) (int, bool) {
+	if n := runtime.Int("max-chars"); n > 0 && runtime.Changed("max-chars") {
+		return n, true
+	}
 	if readOutputPath(runtime) != "" {
 		return unboundedReadLimit, true
 	}

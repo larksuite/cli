@@ -7,12 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // ResolveInput resolves special input conventions for a raw flag value:
@@ -87,7 +87,7 @@ func ResolveInput(raw string, stdin io.Reader, fileIO fileio.FileIO) (string, er
 func ReadInputFile(fileIO fileio.FileIO, path string) ([]byte, error) {
 	resolved, terr := validate.SafeTempAbsInputPath(path)
 	if terr == nil {
-		data, err := os.ReadFile(resolved) //nolint:forbidigo // resolved is confined to the system temp dir by SafeTempAbsInputPath
+		data, err := vfs.ReadFile(resolved)
 		if err != nil {
 			return nil, wrapInputFileError(path, err)
 		}

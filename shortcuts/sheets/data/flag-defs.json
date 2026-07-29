@@ -3349,6 +3349,13 @@
         ]
       },
       {
+        "name": "print-example",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Print a minimal ready-to-edit --properties template for a chart type (area|bar|column|combo|line|pie|radar|scatter) and exit. Purely local: no locator flags, no network; an unknown type lists the available ones"
+      },
+      {
         "name": "dry-run",
         "kind": "system",
         "type": "bool",

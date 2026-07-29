@@ -96,6 +96,8 @@ def parse_annotated_csv(
                 try:
                     row_num = int(row_indices[offset])
                 except (TypeError, ValueError):
+                    # Non-numeric row index: leave row_num as None so the
+                    # inferred fallback numbering below takes over.
                     pass
             if row_num is None:
                 row_numbers_inferred = True

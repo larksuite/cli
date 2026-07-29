@@ -209,6 +209,7 @@ var flagDefs = map[string]commandDef{
 			{Name: "sheet-id", Kind: "public", Type: "string", Required: "xor", Desc: "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"},
 			{Name: "sheet-name", Kind: "public", Type: "string", Required: "xor", Desc: "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"},
 			{Name: "properties", Kind: "own", Type: "string", Required: "required", Desc: "Full chart config JSON. Top-level keys: `position` / `offset` / `size` / `snapshot` (no top-level `data`, no extra nested `properties`); chart data config lives under `snapshot.data` (`refs` / `headerMode` / `dim1` / `dim2`); must include at least one of `snapshot.data.dim1.serie.index` or `dim2.series[].index`, otherwise the server rejects it. Deeply nested — run `--print-schema --flag-name properties` for the full structure.", Input: []string{"file", "stdin"}},
+			{Name: "print-example", Kind: "own", Type: "string", Required: "optional", Desc: "Print a minimal ready-to-edit --properties template for a chart type (area|bar|column|combo|line|pie|radar|scatter) and exit. Purely local: no locator flags, no network; an unknown type lists the available ones"},
 			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional", Desc: "Print the request template; no side effects"},
 		},
 	},

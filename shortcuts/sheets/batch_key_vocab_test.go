@@ -133,6 +133,29 @@ func TestBatchOp_HabitualKeysRewritten(t *testing.T) {
 		}), testToken, 0)
 		requireValidation(t, err, "split them into 2 sub-ops")
 	})
+
+	// A variant next to its canonical key must reject, not silently overwrite:
+	// keys iterate in sorted order, so the variant's rewrite would land after
+	// the canonical value was already accepted and clobber it.
+	t.Run("camelCase variant alongside canonical rejects", func(t *testing.T) {
+		t.Parallel()
+		_, err := translateBatchOp(subOp("+cells-clear", map[string]interface{}{
+			"sheetName":  "shadow",
+			"sheet_name": "S1",
+			"range":      "A1:B2",
+		}), testToken, 0)
+		requireValidation(t, err, "got both")
+	})
+
+	t.Run("ranges alongside range rejects", func(t *testing.T) {
+		t.Parallel()
+		_, err := translateBatchOp(subOp("+cells-clear", map[string]interface{}{
+			"sheet_name": "S1",
+			"range":      "A1:B2",
+			"ranges":     []interface{}{"C1:D2"},
+		}), testToken, 0)
+		requireValidation(t, err, "got both")
+	})
 }
 
 // TestBatchOperations_AggregatesValidationErrors pins the one-pass contract:

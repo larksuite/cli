@@ -113,19 +113,18 @@ func chartExampleTypes() []string {
 	return types
 }
 
-// withChartPrintExample wraps +chart-create's PostMount so the command grows
-// a --print-example flag that short-circuits execution and prints a minimal
-// ready-to-edit --properties template — purely local, no identity or
-// network. --properties' cobra-level required annotation is relaxed (the
-// input builder still enforces it on the real path, same trick as
-// +csv-put's --csv).
+// withChartPrintExample wraps +chart-create's PostMount so --print-example
+// short-circuits execution and prints a minimal ready-to-edit --properties
+// template — purely local, no identity or network. The flag itself is
+// declared in flag-defs.json like every other own flag (so it shows up in the
+// generated reference tables); only the interception lives here.
+// --properties' cobra-level required annotation is relaxed (the input builder
+// still enforces it on the real path, same trick as +csv-put's --csv).
 func withChartPrintExample(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) {
 	return func(cmd *cobra.Command) {
 		if prev != nil {
 			prev(cmd)
 		}
-		cmd.Flags().String("print-example", "",
-			"Print a minimal ready-to-edit --properties template for a chart type ("+strings.Join(chartExampleTypes(), "|")+") and exit")
 		// Only --properties carries a cobra-level required annotation (the
 		// locator flags are xor pairs, enforced later); the input builder
 		// still errors "--properties is required" on the real path.

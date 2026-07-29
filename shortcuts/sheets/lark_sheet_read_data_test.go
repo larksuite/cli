@@ -51,6 +51,34 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
+			// --output-path alone lifts the cap so the whole read lands in
+			// the file.
+			name:     "+cells-get output-path lifts max_chars",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--output-path", "out.json"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":  testToken,
+				"sheet_id":  testSheetID,
+				"ranges":    []interface{}{"A1:B2"},
+				"max_chars": float64(unboundedReadLimit),
+			},
+		},
+		{
+			// An explicit --max-chars survives --output-path instead of being
+			// silently replaced by the unbounded sentinel.
+			name:     "+cells-get explicit max-chars survives output-path",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--output-path", "out.json", "--max-chars", "12345"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":  testToken,
+				"sheet_id":  testSheetID,
+				"ranges":    []interface{}{"A1:B2"},
+				"max_chars": float64(12345),
+			},
+		},
+		{
 			// Canonical form: --sheet-id + bare --range. Aligned with
 			// +cells-get / +csv-get; before the e2e BUG-019 fix this
 			// shortcut was the odd one out (range-prefix required).

@@ -545,6 +545,14 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			wantHint: []string{"--dimension row --count N"},
 		},
 		{
+			// The parse error reports the flag as typed: the underscore
+			// spelling must hit the same curated entry as the hyphenated one.
+			command:  "+dim-freeze",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--frozen_rows", "2"},
+			wrong:    "--frozen_rows",
+			wantHint: []string{"--dimension row --count N"},
+		},
+		{
 			command:  "+cells-set-style",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--font-bold", "true"},
 			wrong:    "--font-bold",

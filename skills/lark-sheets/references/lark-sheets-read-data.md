@@ -91,6 +91,7 @@ detect 最多确认 10 个跨窗口合并锚点；超限会在 `warnings` 中说
 | `possible_multi_row_header` | 补读表头上下各 1-2 行；必要时 `+sheet-info --include merges` 核对跨列合并。 |
 | `hidden_rows_in_range` / `hidden_columns_in_range` | 写入前用 `+sheet-info --include hidden_rows,hidden_cols` 确认是覆盖还是跳过隐藏内容。 |
 | `data_range_has_gaps` | 不按连续 `data_range` 写；用 `summary.data_row_segments` 对每个实际读取行段单独读写。 |
+
 - `write_hints.safe_append_col` 只是候选追加列，不代表绝对安全。新增列或覆盖区域前，必须用 `+csv-get` / `+cells-get` / `+sheet-info` 核对该列为空、没有隐藏列/公式/样式/对象依赖，且符合用户要求的落点。
 
 ⚠️ **大数据优先落盘、别灌进上下文**：`+csv-get` / `+cells-get` 都受调用方 Bash / 终端的单命令 stdout 输出上限约束（常见默认约 30000 字符，超过会被截断或转存为文件）。纯值分析优先用 `+csv-get` 按 `--range` 行窗口（`A1:Z500` / `A501:Z1000` …）分批重定向到文件 + 本地脚本处理 + `+csv-put` 分批回写；若确实要让结果直接进上下文又不想触发转存，给任一命令把 `--max-chars`（默认 500000）调小到略低于该上限（如 `25000`），CLI 改为优雅截断 + `has_more` 分页。

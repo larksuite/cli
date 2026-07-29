@@ -24,12 +24,20 @@ import (
 // the exact line saves the reconstruction step. The retry line is omitted
 // (falling back to the plain hint) when any argument reads stdin (a bare "-",
 // as its own token or bundled onto a flag as --flag=-, whose piped data a
-// bare re-run would not reproduce) or when the rendered command would be
-// unreasonably long to echo back.
+// bare re-run would not reproduce), when any argument is a credential-bearing
+// flag (echoing its value would copy the secret from the process table into
+// the error envelope and every log that captures it), or when the rendered
+// command would be unreasonably long to echo back.
 func RequireConfirmation(action string) error {
+	return requireConfirmationFor(action, os.Args)
+}
+
+// requireConfirmationFor is RequireConfirmation with an injectable argv,
+// separated so tests can pin the composed hint deterministically.
+func requireConfirmationFor(action string, args []string) error {
 	err := errs.NewConfirmationRequiredError(errs.RiskHighRiskWrite, action,
 		"%s requires confirmation", action)
-	if retry := retryCommandWithYes(os.Args); retry != "" {
+	if retry := retryCommandWithYes(args); retry != "" {
 		return err.WithHint("add --yes to confirm; re-run: %s", retry)
 	}
 	return err.WithHint("add --yes to confirm")
@@ -50,7 +58,7 @@ func retryCommandWithYes(args []string) string {
 	parts := make([]string, 0, len(args)+1)
 	parts = append(parts, filepath.Base(args[0]))
 	for _, a := range args[1:] {
-		if argReadsStdin(a) {
+		if argReadsStdin(a) || argCarriesSecret(a) {
 			return ""
 		}
 		parts = append(parts, shellQuoteArg(a))
@@ -73,6 +81,29 @@ func argReadsStdin(a string) bool {
 	}
 	if strings.HasPrefix(a, "-") {
 		if i := strings.IndexByte(a, '='); i >= 0 && a[i+1:] == "-" {
+			return true
+		}
+	}
+	return false
+}
+
+// argCarriesSecret reports whether an argument is a credential-bearing flag
+// (--app-secret, --token, --password, --api-key and spelling variants). The
+// retry line is suppressed rather than redacted: a line with a masked value
+// would fail verbatim, so the honest fallback is the plain add-yes hint. Only
+// flag tokens are inspected — a positional value containing "token" (a file
+// named token.json, a sheet title) must not suppress the line.
+func argCarriesSecret(a string) bool {
+	if !strings.HasPrefix(a, "-") {
+		return false
+	}
+	name := strings.TrimLeft(a, "-")
+	if i := strings.IndexByte(name, '='); i >= 0 {
+		name = name[:i]
+	}
+	name = strings.ToLower(strings.ReplaceAll(name, "_", "-"))
+	for _, marker := range []string{"secret", "token", "password", "passwd", "api-key", "apikey", "access-key"} {
+		if strings.Contains(name, marker) {
 			return true
 		}
 	}

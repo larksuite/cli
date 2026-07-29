@@ -159,6 +159,12 @@ func absPathUnderTempDir(raw string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
+	// os.TempDir() is env-controlled (TMPDIR): a degenerate value like "/"
+	// would widen this narrow temp-dir exception into accepting nearly any
+	// absolute path, dissolving the relative-only invariant callers rely on.
+	if canonicalTmp == "" || filepath.Dir(canonicalTmp) == canonicalTmp {
+		return "", false
+	}
 	resolved, err := resolveNearestAncestor(filepath.Clean(raw))
 	if err != nil {
 		return "", false

@@ -399,7 +399,14 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 			continue
 		}
 		if kebab := camelToKebab(k); kebab != "" && vocab[kebab] {
-			input[strings.ReplaceAll(kebab, "-", "_")] = input[k]
+			target := strings.ReplaceAll(kebab, "-", "_")
+			if _, taken := input[target]; taken {
+				return fmt.Errorf("%s got both %q and %q — keep %q and drop the other", sc, k, target, target) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+			}
+			if _, taken := input[kebab]; taken && kebab != target {
+				return fmt.Errorf("%s got both %q and %q — keep %q and drop the other", sc, k, kebab, kebab) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+			}
+			input[target] = input[k]
 			delete(input, k)
 			continue
 		}
@@ -413,6 +420,9 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 			}
 		}
 		if strings.ToLower(hv) == "ranges" && vocab["range"] && !vocab["ranges"] {
+			if _, taken := input["range"]; taken {
+				return fmt.Errorf("%s got both %q and \"range\" — keep \"range\" and drop %q", sc, k, k) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+			}
 			if arr, isArr := input[k].([]interface{}); isArr {
 				if len(arr) == 1 {
 					if s, isStr := arr[0].(string); isStr {
