@@ -69,6 +69,8 @@ func TestDrive_ImportWorkflow(t *testing.T) {
 	}
 }
 
+// waitDriveImportReady polls an import task until it returns a document token or
+// the workflow timeout expires.
 func waitDriveImportReady(t *testing.T, ctx context.Context, ticket, fallbackType string) (string, string) {
 	t.Helper()
 	deadline := time.NewTimer(90 * time.Second)

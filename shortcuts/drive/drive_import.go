@@ -260,6 +260,8 @@ func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, 
 		})
 }
 
+// appendDriveImportUploadReportDryRun adds the best-effort upload report to an
+// import dry-run plan, matching the single-part or multipart upload path.
 func appendDriveImportUploadReportDryRun(dry *common.DryRunAPI, runtime *common.RuntimeContext, fileSize int64) {
 	apiPath := "/open-apis/drive/v1/medias/upload_all"
 	uploadMode := "singlepart"

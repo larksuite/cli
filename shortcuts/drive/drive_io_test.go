@@ -2553,6 +2553,7 @@ const driveReportFileEventPath = "/open-apis/drive/v1/lark_cli_file_event/report
 // in the repository.
 const testDriveCapacityExpansionURL = "https://example.com/space/upload/pay/prepare"
 
+// registerDriveReportStub registers a successful report_file_event stub.
 func registerDriveReportStub(t *testing.T, reg *httpmock.Registry) *httpmock.Stub {
 	t.Helper()
 	return registerDriveReportStubWithMsg(t, reg, "")
@@ -2577,6 +2578,7 @@ func registerDriveReportStubWithMsg(t *testing.T, reg *httpmock.Registry, msg st
 	return stub
 }
 
+// decodeDriveReportTags verifies one captured Drive report and returns its tags.
 func decodeDriveReportTags(t *testing.T, stub *httpmock.Stub) map[string]interface{} {
 	t.Helper()
 	if len(stub.CapturedBodies) != 1 {

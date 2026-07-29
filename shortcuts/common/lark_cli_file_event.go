@@ -111,6 +111,8 @@ func postUploadFileEvent(runtime *RuntimeContext, meta LarkCLIFileEventMeta) str
 	return postUploadFileEventWithTimeout(runtime, meta, uploadFileEventReportTimeout)
 }
 
+// postUploadFileEventWithTimeout sends the report within the supplied timeout
+// and returns a validated capacity-expansion URL from a successful response.
 func postUploadFileEventWithTimeout(runtime *RuntimeContext, meta LarkCLIFileEventMeta, timeout time.Duration) string {
 	reportCtx, cancel := context.WithTimeout(runtime.Ctx(), timeout)
 	defer cancel()
@@ -137,6 +139,8 @@ func postUploadFileEventWithTimeout(runtime *RuntimeContext, meta LarkCLIFileEve
 	return extractCapacityExpansionURL(envelope)
 }
 
+// extractCapacityExpansionURL returns the first valid capacity-expansion URL
+// carried by the report response, preferring data.msg over the top-level msg.
 func extractCapacityExpansionURL(envelope map[string]interface{}) string {
 	for _, candidate := range []string{
 		GetString(envelope, "data", "msg"),
@@ -149,6 +153,8 @@ func extractCapacityExpansionURL(envelope map[string]interface{}) string {
 	return ""
 }
 
+// sanitizeCapacityExpansionURL accepts absolute HTTP(S) URLs and rejects empty,
+// relative, or malformed report response values.
 func sanitizeCapacityExpansionURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

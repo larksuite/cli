@@ -99,6 +99,8 @@ func setDriveDryRunConfigEnv(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
 }
 
+// assertDriveUploadReportDryRun verifies the upload report request in a dry-run
+// plan for the expected Drive mount point.
 func assertDriveUploadReportDryRun(t *testing.T, out, mountPoint string) {
 	t.Helper()
 	if got := clie2e.DryRunGet(out, "api.1.method").String(); got != "POST" {

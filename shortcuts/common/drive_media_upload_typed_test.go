@@ -305,6 +305,7 @@ func TestUploadDriveMediaMultipartTypedFinishRequiresFileToken(t *testing.T) {
 	}
 }
 
+// registerDriveMediaReportStub registers a successful report_file_event stub.
 func registerDriveMediaReportStub(t *testing.T, reg *httpmock.Registry) *httpmock.Stub {
 	t.Helper()
 	return registerDriveMediaReportStubWithMsg(t, reg, "")
@@ -329,6 +330,8 @@ func registerDriveMediaReportStubWithMsg(t *testing.T, reg *httpmock.Registry, m
 	return stub
 }
 
+// assertSingleReport verifies one upload report with the expected status and
+// returns its decoded tags for additional assertions.
 func assertSingleReport(t *testing.T, reportStub *httpmock.Stub, wantStatus string) map[string]interface{} {
 	t.Helper()
 	if len(reportStub.CapturedBodies) != 1 {

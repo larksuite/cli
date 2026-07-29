@@ -20,6 +20,8 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
+// newUploadFileEventRuntime creates an isolated runtime and HTTP stub registry
+// for upload file-event reporting tests.
 func newUploadFileEventRuntime(t *testing.T) (*RuntimeContext, *httpmock.Registry) {
 	t.Helper()
 	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_x"}
@@ -33,6 +35,7 @@ func newUploadFileEventRuntime(t *testing.T) (*RuntimeContext, *httpmock.Registr
 // in the repository.
 const testCapacityExpansionURL = "https://example.com/space/upload/pay/prepare"
 
+// registerReportStub registers a report_file_event response with no message.
 func registerReportStub(t *testing.T, reg *httpmock.Registry, code int) *httpmock.Stub {
 	t.Helper()
 	return registerReportStubWithMsg(t, reg, code, "")
@@ -49,6 +52,7 @@ func registerReportStubWithMsg(t *testing.T, reg *httpmock.Registry, code int, m
 	})
 }
 
+// registerReportStubWithBody registers the supplied report_file_event response.
 func registerReportStubWithBody(t *testing.T, reg *httpmock.Registry, body map[string]interface{}) *httpmock.Stub {
 	t.Helper()
 	stub := &httpmock.Stub{
@@ -306,6 +310,8 @@ func TestReportUploadFileEventOnError_NilErrorIsNoop(t *testing.T) {
 
 type contextBlockingRoundTripper struct{}
 
+// RoundTrip blocks until the request context expires, allowing timeout behavior
+// to be tested without performing a network request.
 func (contextBlockingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	<-req.Context().Done()
 	return nil, req.Context().Err()
@@ -330,6 +336,7 @@ func TestPostUploadFileEventWithTimeout_BoundsBestEffortRequest(t *testing.T) {
 	}
 }
 
+// assertReportEnvelope verifies the fixed fields in an upload report body.
 func assertReportEnvelope(t *testing.T, body map[string]interface{}) {
 	t.Helper()
 	if got := body["file_scene"]; got != "lark-cli" {
@@ -343,6 +350,7 @@ func assertReportEnvelope(t *testing.T, body map[string]interface{}) {
 	}
 }
 
+// assertTagsObject returns the report tags as a generic JSON-style object.
 func assertTagsObject(t *testing.T, body map[string]interface{}) map[string]interface{} {
 	t.Helper()
 	switch tags := body["tags"].(type) {
