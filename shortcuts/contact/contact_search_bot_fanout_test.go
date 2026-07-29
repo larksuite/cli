@@ -559,3 +559,34 @@ func TestBotFanoutDryRunPreviewsOneRequestPerKeyword(t *testing.T) {
 		t.Errorf("previewed keywords: got %v, want [会议 日报]", seen)
 	}
 }
+
+// The summary counts how many queries failed but never says which or why, and
+// only json carries queries[].error. Without a per-query line on stderr an agent
+// reading csv sees "1 failed" and cannot recover the keyword or the reason.
+func TestBotFanoutFailedQueryIsNamedOnStderr(t *testing.T) {
+	for _, format := range []string{"csv", "table", "pretty", "ndjson"} {
+		t.Run(format, func(t *testing.T) {
+			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+			broken := botSearchStub(botSearchURL, "")
+			broken.BodyFilter = func(b []byte) bool { return strings.Contains(string(b), `"日报"`) }
+			broken.Status = 500
+			broken.Body = map[string]interface{}{"reason": "boom"}
+			registry.Register(broken)
+			okStub := botSearchStub(botSearchURL, "")
+			okStub.Reusable = true
+			registry.Register(okStub)
+
+			if err := mountAndRun(t, ContactSearchBot, []string{
+				"+search-bot", "--queries", "会议,日报", "--format", format, "--as", "user",
+			}, factory, stdout); err != nil {
+				t.Fatalf("one failing query must not fail the batch: %v", err)
+			}
+			for _, want := range []string{"日报", "500"} {
+				if !strings.Contains(stderr.String(), want) {
+					t.Fatalf("%s: stderr must name the failed query and its reason (missing %q)\nstderr:\n%s",
+						format, want, stderr.String())
+				}
+			}
+		})
+	}
+}

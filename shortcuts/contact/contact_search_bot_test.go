@@ -506,9 +506,15 @@ func TestBotSearchPrettyOutputAndPaginationHint(t *testing.T) {
 			t.Errorf("pretty output exposed %q: %s", genericField, stdout.String())
 		}
 	}
-	wantHint := "\nhint: more matches exist; narrow with --has-chatted or a more specific --query\n"
-	if stderr.String() != wantHint {
-		t.Fatalf("pretty stderr: got %q, want %q", stderr.String(), wantHint)
+	// pretty stdout carries rows only, so stderr has to carry both the server
+	// notice and the pagination hint.
+	for _, want := range []string{
+		"notice: The query is too long and has been truncated to the first 50 characters for search.",
+		"hint: more matches exist; narrow with --has-chatted or a more specific --query",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("pretty stderr missing %q: %q", want, stderr.String())
+		}
 	}
 }
 
@@ -525,9 +531,15 @@ func TestBotSearchTableUsesGenericFormatterLikeSearchUser(t *testing.T) {
 			t.Errorf("table output missing %q: %s", field, stdout.String())
 		}
 	}
-	wantHint := "\nhint: more matches exist; narrow with --has-chatted or a more specific --query\n"
-	if stderr.String() != wantHint {
-		t.Fatalf("table stderr: got %q, want %q", stderr.String(), wantHint)
+	// table stdout carries rows only, so stderr has to carry both the server
+	// notice and the pagination hint.
+	for _, want := range []string{
+		"notice: The query is too long and has been truncated to the first 50 characters for search.",
+		"hint: more matches exist; narrow with --has-chatted or a more specific --query",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("table stderr missing %q: %q", want, stderr.String())
+		}
 	}
 }
 
@@ -546,8 +558,13 @@ func TestBotSearchCSVAndNDJSONExposeFullFieldsWithoutPaginationHint(t *testing.T
 					t.Errorf("%s output missing %q: %s", format, field, stdout.String())
 				}
 			}
-			if stderr.Len() != 0 {
-				t.Fatalf("%s stderr: got %q, want empty", format, stderr.String())
+			// Machine formats get no pagination hint, but the notice still has to
+			// reach the caller somewhere, and stdout must stay data-only.
+			if strings.Contains(stderr.String(), "hint: more matches exist") {
+				t.Fatalf("%s must not emit the pagination hint: %q", format, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "notice: The query is too long") {
+				t.Fatalf("%s dropped the notice: %q", format, stderr.String())
 			}
 		})
 	}
@@ -615,5 +632,37 @@ func TestDecodeBotSearchAPIDataMarshalFailureTyped(t *testing.T) {
 	problem, ok := errs.ProblemOf(err)
 	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
 		t.Fatalf("problem: %+v, ok=%v", problem, ok)
+	}
+}
+
+// Only the json envelope carries data.notice. If the other formats dropped it
+// silently, a caller would read a truncated or incomplete result as a complete
+// one, so every non-json format has to surface it on stderr instead.
+func TestBotSearchNoticeReachesCallerInEveryFormat(t *testing.T) {
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+	for _, format := range []string{"json", "ndjson", "csv", "table", "pretty"} {
+		t.Run(format, func(t *testing.T) {
+			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+			registry.Register(botSearchStub(botSearchURL+"?page_size=20", ""))
+			if err := mountAndRun(t, ContactSearchBot, []string{
+				"+search-bot", "--query", "助手", "--format", format, "--as", "user",
+			}, factory, stdout); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if strings.Contains(stdout.String(), notice) {
+				if format != "json" {
+					t.Fatalf("%s should not carry the notice in stdout: %s", format, stdout.String())
+				}
+				return
+			}
+			if !strings.Contains(stderr.String(), notice) {
+				t.Fatalf("%s dropped the notice entirely\nstdout:\n%s\nstderr:\n%s",
+					format, stdout.String(), stderr.String())
+			}
+			// stdout stays pipe-clean: the notice must not be mixed into the rows.
+			if format == "csv" && strings.Contains(stdout.String(), "notice") {
+				t.Fatalf("csv stdout must stay data-only: %s", stdout.String())
+			}
+		})
 	}
 }

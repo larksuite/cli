@@ -198,6 +198,20 @@ func executeBotSearchFanout(ctx context.Context, runtime *common.RuntimeContext)
 		fmt.Fprintf(runtime.IO().ErrOut, "\n%d queries, %d total bots; %d failed, %d with has_more\n",
 			len(queries), len(resp.Bots), failed, hasMoreCount)
 	}
+	// The counts above say how many queries failed but not which, and only the
+	// json envelope carries queries[].error / queries[].notice. Without this an
+	// agent reading csv or a table sees "1 failed" with no way to learn the
+	// keyword or the reason, and a notice disappears entirely.
+	if !botSearchStdoutCarriesNotice(runtime.Format) {
+		for _, qs := range resp.Queries {
+			if qs.Error != "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "failed: %q — %s\n", qs.Query, qs.Error)
+			}
+			if qs.Notice != "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "notice: %q — %s\n", qs.Query, qs.Notice)
+			}
+		}
+	}
 	return nil
 }
 

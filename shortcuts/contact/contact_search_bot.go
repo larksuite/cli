@@ -291,6 +291,17 @@ func buildBotSearchBody(runtime *common.RuntimeContext) (*botSearchAPIRequest, e
 	return req, nil
 }
 
+// botSearchStdoutCarriesNotice reports whether the chosen format puts the
+// server's notice into stdout. Only the json envelope does; pretty, table, csv
+// and ndjson all render rows only, so a notice ("results are incomplete", "the
+// query was truncated") would vanish and the caller would read a partial result
+// as a complete one. For those formats the notice goes to stderr, which keeps
+// stdout pipe-clean. A --jq expression can still project the notice away, but
+// that is the caller's explicit choice.
+func botSearchStdoutCarriesNotice(format string) bool {
+	return format == "json" || format == ""
+}
+
 func executeBotSearchSingle(ctx context.Context, runtime *common.RuntimeContext) error {
 	body, err := buildBotSearchBody(runtime)
 	if err != nil {
@@ -329,6 +340,9 @@ func executeBotSearchSingle(ctx context.Context, runtime *common.RuntimeContext)
 		}
 		output.PrintTable(w, prettyBotRows(bots))
 	})
+	if respData.Notice != "" && !botSearchStdoutCarriesNotice(runtime.Format) {
+		fmt.Fprintf(runtime.IO().ErrOut, "\nnotice: %s\n", respData.Notice)
+	}
 	if respData.HasMore && isHumanReadableFormat(runtime.Format) {
 		fmt.Fprintln(runtime.IO().ErrOut,
 			"\nhint: more matches exist; narrow with --has-chatted or a more specific --query")
