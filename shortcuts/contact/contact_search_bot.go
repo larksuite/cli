@@ -157,22 +157,20 @@ func botSearchKeywordRequiredError() error {
 		)
 }
 
-func validateBotSearch(runtime *common.RuntimeContext) error {
-	// Checked before the keyword requirement: an explicit =false is wrong on its
-	// own terms, so reporting the missing keyword first would send the caller off
-	// to add a query and only then reveal the flag it actually has to drop.
-	// +search-user reaches the same error first because it counts a Changed bool
-	// as search input.
-	//
-	// Agents passing =false almost always mean "do not filter", but the API reads
-	// it as "must NOT match". A hard error prevents silent wrong results.
-	if runtime.Cmd.Flags().Changed("has-chatted") && !runtime.Bool("has-chatted") {
-		return common.ValidationErrorf("--has-chatted: pass the flag to enable the filter; omit it to disable filtering (=false is rejected to prevent silent wrong results)").
-			WithParam("--has-chatted")
-	}
+// botSearchHasChattedFalseError is raised from two places — with and without a
+// keyword — so the wording stays in one spot.
+//
+// Agents passing =false almost always mean "do not filter", but the API reads it
+// as "must NOT match". A hard error prevents silent wrong results.
+func botSearchHasChattedFalseError() error {
+	return common.ValidationErrorf("--has-chatted: pass the flag to enable the filter; omit it to disable filtering (=false is rejected to prevent silent wrong results)").
+		WithParam("--has-chatted")
+}
 
+func validateBotSearch(runtime *common.RuntimeContext) error {
 	queriesRaw := strings.TrimSpace(runtime.Str("queries"))
 	query := strings.TrimSpace(runtime.Str("query"))
+	explicitFalseHasChatted := runtime.Cmd.Flags().Changed("has-chatted") && !runtime.Bool("has-chatted")
 
 	if queriesRaw != "" {
 		if query != "" {
@@ -197,18 +195,31 @@ func validateBotSearch(runtime *common.RuntimeContext) error {
 					WithParam("--queries")
 			}
 		}
-	} else {
-		if query == "" {
-			return botSearchKeywordRequiredError()
+	} else if query == "" {
+		// No keyword at all. An explicit =false is the more specific mistake, so
+		// report it instead of sending the caller off to add a keyword only to hit
+		// this on the next attempt. +search-user lands here too: a Changed bool
+		// counts as search input for its "at least one" gate, so the =false check
+		// is what it reaches next.
+		//
+		// Scoped to the no-keyword case on purpose. Hoisting it above the keyword
+		// checks would let it mask the mutual-exclusion and length errors, which
+		// +search-user reports first when a keyword is present.
+		if explicitFalseHasChatted {
+			return botSearchHasChattedFalseError()
 		}
-		if utf8.RuneCountInString(query) > maxBotSearchQueryChars {
-			return common.ValidationErrorf("--query: length must be between 1 and %d characters", maxBotSearchQueryChars).
-				WithParam("--query")
-		}
+		return botSearchKeywordRequiredError()
+	} else if utf8.RuneCountInString(query) > maxBotSearchQueryChars {
+		return common.ValidationErrorf("--query: length must be between 1 and %d characters", maxBotSearchQueryChars).
+			WithParam("--query")
 	}
 
 	if _, err := parseBotSearchChatIDs(runtime); err != nil {
 		return err
+	}
+
+	if explicitFalseHasChatted {
+		return botSearchHasChattedFalseError()
 	}
 
 	if n := runtime.Int("page-size"); n < 1 || n > maxBotSearchPageSize {

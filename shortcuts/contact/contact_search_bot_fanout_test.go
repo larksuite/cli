@@ -384,7 +384,7 @@ func TestBotFanoutAllQueriesFailingExitsNonZero(t *testing.T) {
 }
 
 func TestBotFanoutPartialFailureKeepsNoticeAndSucceeds(t *testing.T) {
-	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	factory, stdout, _, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
 
 	broken := botSearchStub(botSearchURL, "")
 	broken.BodyFilter = func(b []byte) bool { return strings.Contains(string(b), `"日报"`) }
@@ -397,18 +397,61 @@ func TestBotFanoutPartialFailureKeepsNoticeAndSucceeds(t *testing.T) {
 	registry.Register(okStub)
 
 	err := mountAndRun(t, ContactSearchBot, []string{
-		"+search-bot", "--queries", "会议,日报", "--format", "csv", "--as", "user",
+		"+search-bot", "--queries", "会议,日报", "--format", "json", "--as", "user",
 	}, factory, stdout)
 	if err != nil {
 		t.Fatalf("one failing query must not fail the batch: %v", err)
 	}
 
-	// The surviving query's notice must still reach the caller.
-	if !strings.Contains(stdout.String(), "会议") {
-		t.Errorf("surviving query's rows missing from stdout: %s", stdout.String())
+	var envelope struct {
+		Data botFanoutResponse `json:"data"`
 	}
-	// csv is in the summary format set, so the per-batch counters go to stderr.
-	if !strings.Contains(stderr.String(), "2 queries") || !strings.Contains(stderr.String(), "1 failed") {
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("response JSON: %v\n%s", err, stdout.String())
+	}
+
+	const wantNotice = "The query is too long and has been truncated to the first 50 characters for search."
+	// Assert the notice itself, not just that some row survived: the surviving
+	// query's server remark has to reach the caller both at the top level and in
+	// its own sidecar entry.
+	if envelope.Data.Notice != wantNotice {
+		t.Errorf("top-level notice: got %q, want %q", envelope.Data.Notice, wantNotice)
+	}
+	if len(envelope.Data.Queries) != 2 {
+		t.Fatalf("both queries must be enumerated: %+v", envelope.Data.Queries)
+	}
+	if envelope.Data.Queries[0].Notice != wantNotice {
+		t.Errorf("surviving query notice: got %q, want %q", envelope.Data.Queries[0].Notice, wantNotice)
+	}
+	if envelope.Data.Queries[0].Error != "" {
+		t.Errorf("surviving query must carry no error: %q", envelope.Data.Queries[0].Error)
+	}
+	if !strings.Contains(envelope.Data.Queries[1].Error, "500") {
+		t.Errorf("failed query must carry the upstream status: %q", envelope.Data.Queries[1].Error)
+	}
+	// Only the surviving query contributes rows.
+	if len(envelope.Data.Bots) != 1 || envelope.Data.Bots[0].MatchedQuery != "会议" {
+		t.Fatalf("bots: %+v", envelope.Data.Bots)
+	}
+}
+
+func TestBotFanoutCSVCarriesMatchedQueryAndSummary(t *testing.T) {
+	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	stub := botSearchStub(botSearchURL, "")
+	stub.Reusable = true
+	registry.Register(stub)
+
+	err := mountAndRun(t, ContactSearchBot, []string{
+		"+search-bot", "--queries", "会议,日报", "--format", "csv", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "matched_query") {
+		t.Errorf("csv must expose matched_query so rows can be traced to a keyword: %s", stdout.String())
+	}
+	// csv is in the summary format set, so the batch counters belong on stderr.
+	if !strings.Contains(stderr.String(), "2 queries") || !strings.Contains(stderr.String(), "0 failed") {
 		t.Errorf("stderr summary must report the batch counters: %s", stderr.String())
 	}
 }
@@ -457,5 +500,62 @@ func TestBotFanoutCancelledContextFailsEveryQuery(t *testing.T) {
 	// reaching DoAPI with a nil runtime would panic instead.
 	if _, err := buildBotFanoutResponse([]string{"会议", "日报"}, results); err == nil {
 		t.Fatal("all queries cancelled must surface as an error")
+	}
+}
+
+func TestBotFanoutDryRunPreviewsOneRequestPerKeyword(t *testing.T) {
+	cmd := newBotSearchTestCommand()
+	setBotSearchFlag(t, cmd, "queries", "会议, 日报 ,会议")
+	setBotSearchFlag(t, cmd, "chat-ids", "oc_a")
+	setBotSearchFlag(t, cmd, "has-chatted", "true")
+	runtime := common.TestNewRuntimeContext(cmd, botSearchDefaultConfig())
+
+	raw, err := json.Marshal(ContactSearchBot.DryRun(context.Background(), runtime))
+	if err != nil {
+		t.Fatalf("marshal dry-run: %v", err)
+	}
+	var preview struct {
+		API []struct {
+			Method string                 `json:"method"`
+			URL    string                 `json:"url"`
+			Params map[string]interface{} `json:"params"`
+			Body   struct {
+				Query  string `json:"query"`
+				Filter *struct {
+					ChatIDs    []string `json:"chat_ids"`
+					HasChatter bool     `json:"has_chatter"`
+				} `json:"filter"`
+			} `json:"body"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(raw, &preview); err != nil {
+		t.Fatalf("decode dry-run: %v\n%s", err, raw)
+	}
+
+	// Deduped, so the repeated keyword previews once — the preview has to match
+	// the requests Execute would actually issue.
+	if len(preview.API) != 2 {
+		t.Fatalf("expected one previewed request per deduped keyword, got %d: %s", len(preview.API), raw)
+	}
+	seen := make([]string, 0, len(preview.API))
+	for i, call := range preview.API {
+		if call.Method != "POST" || call.URL != botSearchURL {
+			t.Errorf("api[%d]: got %s %s", i, call.Method, call.URL)
+		}
+		if call.Params["page_size"] != float64(20) {
+			t.Errorf("api[%d] page_size: %v", i, call.Params["page_size"])
+		}
+		if _, ok := call.Params["page_token"]; ok {
+			t.Errorf("api[%d] must not preview a page_token: %v", i, call.Params)
+		}
+		// The filter rides along with every keyword, not just the first.
+		if call.Body.Filter == nil || !call.Body.Filter.HasChatter ||
+			len(call.Body.Filter.ChatIDs) != 1 || call.Body.Filter.ChatIDs[0] != "oc_a" {
+			t.Errorf("api[%d] filter: %+v", i, call.Body.Filter)
+		}
+		seen = append(seen, call.Body.Query)
+	}
+	if fmt.Sprint(seen) != fmt.Sprint([]string{"会议", "日报"}) {
+		t.Errorf("previewed keywords: got %v, want [会议 日报]", seen)
 	}
 }

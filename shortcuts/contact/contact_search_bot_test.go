@@ -134,8 +134,22 @@ func TestValidateBotSearchErrors(t *testing.T) {
 			wantMessage: "invalid chat ID format, should start with 'oc_' (e.g., oc_abc123)",
 		},
 		{
-			// Order matters: the explicit =false is the caller's actual mistake, so it
-			// must win over the missing-keyword error rather than costing a second
+			// With a keyword present the keyword errors win, exactly as +search-user
+			// orders them; the =false check must not be hoisted above these.
+			name:        "mutually exclusive keywords outrank has chatted false",
+			flags:       map[string]string{"query": "x", "queries": "y", "has-chatted": "false"},
+			wantParams:  []string{"--query", "--queries"},
+			wantMessage: "--query and --queries are mutually exclusive",
+		},
+		{
+			name:        "query length outranks has chatted false",
+			flags:       map[string]string{"query": strings.Repeat("中", 51), "has-chatted": "false"},
+			wantParam:   "--query",
+			wantMessage: "--query: length must be between 1 and 50 characters",
+		},
+		{
+			// With no keyword at all the explicit =false is the more specific mistake,
+			// so it wins over the missing-keyword error rather than costing a second
 			// round trip. Matches which error +search-user reports first.
 			name:        "has chatted false without a keyword",
 			flags:       map[string]string{"has-chatted": "false"},
