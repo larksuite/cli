@@ -1,0 +1,34 @@
+cmd/event/subscription/update.go
+  h_a6070985e8bc1b 93,110
+cmd/event/event.go
+  h_a6070985e8bc1b 23,41
+cmd/event/subscription/get.go
+  h_a6070985e8bc1b 49-52
+cmd/event/subscription/subscription.go
+  h_a6070985e8bc1b 79-80
+cmd/event/subscription/create.go
+  h_a6070985e8bc1b 68,74-77,100,108
+cmd/event/subscription/reactivate.go
+  h_a6070985e8bc1b 56-57,73
+cmd/event/consume.go
+  h_a6070985e8bc1b 99-103,126
+cmd/event/subscription/renew.go
+  h_a6070985e8bc1b 55,76
+cmd/event/subscription/delete.go
+  h_a6070985e8bc1b 59-60,80
+cmd/event/status.go
+  h_a6070985e8bc1b 42-45,49-52,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "76d490559f0cc0b6cf22d97e5010549283ea45cb",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
