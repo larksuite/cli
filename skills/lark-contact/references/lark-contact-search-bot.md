@@ -73,5 +73,4 @@ lark-cli contact +search-bot --query '会议助手' \
 - `queries[]` 按去重后的输入顺序,每词一条 `{query, error?, has_more, notice?}`
 - 个别词失败**不影响其他词**,命令仍成功退出,原因在该词的 `error` 里;**全部失败才报错**,且首个失败的分类(HTTP 状态 / API code)会透传
 - `--chat-ids` / `--has-chatted` 作用到每一个词上
-- 并发上限 5
 
