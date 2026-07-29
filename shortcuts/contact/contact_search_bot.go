@@ -83,7 +83,7 @@ type searchBotResponse struct {
 var ContactSearchBot = common.Shortcut{
 	Service:     "contact",
 	Command:     "+search-bot",
-	Description: "Search bots (apps) visible to the calling user by keyword, chat, or chat history (requires --as user)",
+	Description: "Search bots (apps) visible to the calling user by keyword, optionally narrowed by chat or chat history (requires --as user)",
 	Risk:        "read",
 	Scopes:      []string{"search:bot"},
 	AuthTypes:   []string{"user"},
@@ -98,7 +98,9 @@ var ContactSearchBot = common.Shortcut{
 		"Keyword search: lark-cli contact +search-bot --query '会议助手' --as user",
 		"Narrow to bots in a chat: lark-cli contact +search-bot --query '助手' --chat-ids oc_xxx --as user",
 		"Narrow to bots you've chatted with: lark-cli contact +search-bot --query '助手' --has-chatted --as user",
-		"--query is required; --chat-ids and --has-chatted only narrow it. on has_more=true use --format json to read page_token, then pass --page-token to continue — there is no auto-pagination.",
+		"--query is required; --chat-ids and --has-chatted only narrow it — a filter-only request returns an empty list, not an error.",
+		"on has_more=true use --format json to read page_token, then pass --page-token to continue — there is no auto-pagination.",
+		"enable_join_group=true only means the bot is allowed into chats. Adding it needs the app's cli_ app_id, which this command does not return: the ou_ open_id here is rejected by the chat-member APIs and there is no open_id → app_id lookup. Do not claim a bot was added on the strength of this flag.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateBotSearch(runtime)
@@ -308,13 +310,23 @@ func parseBotDisplayInfo(raw, openID string) (name, description string, matchSeg
 		value = strings.ReplaceAll(value, "</h>", "")
 		return strings.TrimSpace(value)
 	}
+
+	// nameLine records which line the name came from, so the description is read
+	// from the line after it. Reading lines[1] unconditionally echoes the name
+	// back as its own description whenever line 0 is blank, and drops the real
+	// description with it.
+	nameLine := -1
 	if len(lines) > 0 {
-		name = stripTags(lines[0])
+		if candidate := stripTags(lines[0]); candidate != "" {
+			name = candidate
+			nameLine = 0
+		}
 	}
 	if name == "" {
-		for _, line := range lines {
+		for i, line := range lines {
 			if candidate := stripTags(line); candidate != "" {
 				name = candidate
+				nameLine = i
 				break
 			}
 		}
@@ -322,8 +334,8 @@ func parseBotDisplayInfo(raw, openID string) (name, description string, matchSeg
 	if name == "" {
 		name = openID
 	}
-	if len(lines) > 1 {
-		description = stripTags(lines[1])
+	if nameLine >= 0 && nameLine+1 < len(lines) {
+		description = stripTags(lines[nameLine+1])
 	}
 	return name, description, matchSegments
 }

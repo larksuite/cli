@@ -254,6 +254,10 @@ func TestParseBotDisplayInfo(t *testing.T) {
 		{name: "no newline", raw: "会议助手", openID: "ou_e", wantName: "会议助手", wantSegments: []string{}},
 		{name: "empty", raw: "", openID: "ou_f", wantName: "ou_f", wantSegments: []string{}},
 		{name: "fallback line", raw: "\n\n真名", openID: "ou_g", wantName: "真名", wantSegments: []string{}},
+		// A blank first line must not make the description echo the name back and
+		// swallow the real description on the line after it.
+		{name: "blank first line keeps description", raw: "\n真名\n简介", openID: "ou_h", wantName: "真名", wantDescription: "简介", wantSegments: []string{}},
+		{name: "blank first line without description", raw: "\n真名", openID: "ou_i", wantName: "真名", wantSegments: []string{}},
 	}
 
 	for _, tt := range tests {

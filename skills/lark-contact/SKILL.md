@@ -37,7 +37,7 @@ lark-cli im +messages-send --user-id ou_xxx --text "Hi!"
 
 ## 搜索机器人
 
-`+search-bot` 使用 user 身份按关键词搜索当前用户可见的机器人。返回的 `open_id` 是 `ou_` 开头的机器人 open_id,可用于后续操作。`p2p_chat_id` 表示当前用户与机器人的单聊会话,`has_chatted` 表示是否存在该会话。
+`+search-bot` 使用 user 身份按关键词搜索当前用户可见的机器人。返回的 `open_id` 是 `ou_` 开头的机器人 open_id,用于标识这个机器人(能不能用于某个下游接口取决于该接口接受的 ID 类型,见下文入群的例子)。`p2p_chat_id` 表示当前用户与机器人的单聊会话,`has_chatted` 表示是否存在该会话。
 
 按关键词搜索:
 
@@ -60,6 +60,8 @@ lark-cli contact +search-bot --query '助手' --page-token cursor_xxx --format j
 ```
 
 `--format pretty` 使用六列摘要;`table`、`csv` 和 `ndjson` 与 `+search-user` 一样使用完整结果字段。
+
+`enable_join_group=true` 只表示该机器人允许被拉进群聊,**不代表你能用这里的 `open_id` 把它拉进群**。把机器人加入群聊需要应用的 `cli_` 开头 app_id,本命令不返回;直接用 `ou_` 开头的 open_id 调加群接口会被服务端放进 `invalid_id_list`,且没有 open_id 到 app_id 的查询接口。看到这个字段为真时,不要据此声称已把机器人加入群聊。
 
 ## 注意事项
 
