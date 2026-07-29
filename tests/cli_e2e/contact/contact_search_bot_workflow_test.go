@@ -45,8 +45,8 @@ func TestContactSearchBotWorkflowAsUser(t *testing.T) {
 		require.NotEmpty(t, openID, "every bot must carry open_id; stdout:\n%s", result.Stdout)
 		require.True(t, strings.HasPrefix(openID, "ou_"),
 			"bot ids are open_ids; stdout:\n%s", result.Stdout)
-		require.True(t, bot.Get("p2p_chat_id").Exists(),
-			"p2p_chat_id must be present even when empty; stdout:\n%s", result.Stdout)
+		require.True(t, bot.Get("chat_id").Exists(),
+			"chat_id must be present even when empty; stdout:\n%s", result.Stdout)
 		require.True(t, bot.Get("match_segments").IsArray(),
 			"match_segments must be an array, never null; stdout:\n%s", result.Stdout)
 	}

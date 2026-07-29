@@ -6,6 +6,7 @@ package contact
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -109,6 +110,36 @@ func TestBotFanoutAssemblePartialFailureSucceeds(t *testing.T) {
 	}
 }
 
+func TestBotFanoutTerminalContextOverridesPartialSuccess(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantSubtype errs.Subtype
+	}{
+		{name: "cancelled", err: context.Canceled, wantSubtype: errs.SubtypeNetworkTransport},
+		{name: "deadline", err: context.DeadlineExceeded, wantSubtype: errs.SubtypeNetworkTimeout},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			results := []botFanoutResult{
+				{Index: 0, Query: "会议", Bots: []searchBot{{OpenID: "ou_a"}}},
+				botFanoutErrorResult(1, "日报", tt.err),
+			}
+			_, err := buildBotFanoutResponse([]string{"会议", "日报"}, results)
+			if err == nil {
+				t.Fatal("terminal context error must fail the batch after a partial success")
+			}
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("error must preserve %v as its cause: %v", tt.err, err)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != tt.wantSubtype {
+				t.Fatalf("problem: got %+v, want network/%s", problem, tt.wantSubtype)
+			}
+		})
+	}
+}
+
 func TestBotFanoutResponseHasNoTopLevelHasMore(t *testing.T) {
 	resp, err := buildBotFanoutResponse([]string{"会议"}, []botFanoutResult{{Index: 0, Query: "会议", HasMore: true}})
 	if err != nil {
@@ -148,7 +179,7 @@ func TestBotFanoutEmptyBotsSerializesAsArray(t *testing.T) {
 
 func TestPrettyBotFanoutRowsLeadWithMatchedQuery(t *testing.T) {
 	rows := prettyBotFanoutRows([]fanoutBot{{
-		searchBot:    searchBot{OpenID: "ou_a", Name: "会议助手", Description: strings.Repeat("长", 80), HasChatted: true},
+		searchBot:    searchBot{OpenID: "ou_a", Name: "会议助手", Description: strings.Repeat("长", 80)},
 		MatchedQuery: "会议",
 	}})
 	if len(rows) != 1 {
@@ -319,35 +350,35 @@ func TestBotFanoutConcurrencyCap(t *testing.T) {
 	}
 }
 
-func TestBotFanoutPanicIsContainedPerQuery(t *testing.T) {
+func TestBotFanoutPanicFailsBatch(t *testing.T) {
 	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	panicCause := errors.New("synthetic test panic")
 
 	boom := botSearchStub(botSearchURL, "")
 	boom.BodyFilter = func(b []byte) bool { return strings.Contains(string(b), `"boom"`) }
-	boom.OnMatch = func(req *http.Request) { panic("synthetic test panic") }
+	boom.OnMatch = func(req *http.Request) { panic(panicCause) }
 	registry.Register(boom)
 
-	ok := botSearchStub(botSearchURL, "")
-	ok.Reusable = true
-	registry.Register(ok)
+	okStub := botSearchStub(botSearchURL, "")
+	okStub.Reusable = true
+	registry.Register(okStub)
 
 	err := mountAndRun(t, ContactSearchBot, []string{
 		"+search-bot", "--queries", "ok,boom,fine", "--format", "json", "--as", "user",
 	}, factory, stdout)
-	if err != nil {
-		t.Fatalf("one panicking query must not bubble out of the batch; got %v", err)
+	if err == nil {
+		t.Fatal("a panicking query must fail the batch")
 	}
-
-	var got map[string]interface{}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
-		t.Fatalf("response JSON: %v\n%s", err, stdout.String())
+	if !errors.Is(err, panicCause) {
+		t.Fatalf("panic cause must be preserved: %v", err)
 	}
-	queries := got["data"].(map[string]interface{})["queries"].([]interface{})
-	failed := queries[1].(map[string]interface{})
-	if msg, _ := failed["error"].(string); !strings.HasPrefix(msg, "internal error:") {
-		t.Errorf("queries[1].error: want an 'internal error:' prefix, got %q", failed["error"])
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("problem: got %+v, want internal/%s", problem, errs.SubtypeUnknown)
 	}
-	// A recovered panic must not dump a stack trace at the user.
+	if stdout.Len() != 0 {
+		t.Fatalf("terminal failure must not write a success envelope: %s", stdout.String())
+	}
 	for _, marker := range []string{"goroutine ", ".go:", "runtime."} {
 		if strings.Contains(stderr.String(), marker) {
 			t.Errorf("stderr leaked stack-trace marker %q: %s", marker, stderr.String())
@@ -451,8 +482,11 @@ func TestBotFanoutCSVCarriesMatchedQueryAndSummary(t *testing.T) {
 		t.Errorf("csv must expose matched_query so rows can be traced to a keyword: %s", stdout.String())
 	}
 	// csv is in the summary format set, so the batch counters belong on stderr.
-	if !strings.Contains(stderr.String(), "2 queries") || !strings.Contains(stderr.String(), "0 failed") {
+	if !strings.Contains(stderr.String(), "2 queries, 2 total matches") || !strings.Contains(stderr.String(), "0 failed") {
 		t.Errorf("stderr summary must report the batch counters: %s", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "total bots") {
+		t.Errorf("summary must count matches rather than imply unique bots: %s", stderr.String())
 	}
 }
 
@@ -496,10 +530,16 @@ func TestBotFanoutCancelledContextFailsEveryQuery(t *testing.T) {
 			t.Fatalf("a cancelled context must short-circuit before the request: %+v", r)
 		}
 	}
-	// The pre-check exists so queued workers never issue a request after cancel;
-	// reaching DoAPI with a nil runtime would panic instead.
-	if _, err := buildBotFanoutResponse([]string{"会议", "日报"}, results); err == nil {
+	_, err := buildBotFanoutResponse([]string{"会议", "日报"}, results)
+	if err == nil {
 		t.Fatal("all queries cancelled must surface as an error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation cause must be preserved: %v", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport {
+		t.Fatalf("problem: got %+v, want network/%s", problem, errs.SubtypeNetworkTransport)
 	}
 }
 

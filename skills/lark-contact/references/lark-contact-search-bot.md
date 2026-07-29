@@ -2,13 +2,13 @@
 
 按关键词搜索当前用户可见的机器人。仅支持 user 身份,需要 `search:bot` 权限。
 
-- ✅ 已知机器人名字想找出它的 open_id
-- ✅ 一次解析多个名字(`--queries`)
+- ✅ 用关键词搜索机器人并获取 open_id
+- ✅ 一次搜索多个关键词(`--queries`)
 - ✅ 在指定群范围内搜索机器人(`--chat-ids`)
 
 ## 参数
 
-必须传 `--query` 或 `--queries`。`--chat-ids` 和 `--has-chatted` 只能用于筛选,不能单独使用。
+必须传 `--query` 或 `--queries`。`--chat-ids` 指定搜索范围,`--has-chatted` 筛选已聊过的机器人;两者都不能单独使用。
 
 | Flag | 说明 |
 |---|---|
@@ -29,10 +29,9 @@ lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' 
 | 字段 | 类型 | 说明 | 空值时 |
 |---|---|---|---|
 | `open_id` | string | 机器人 ID | 始终非空 |
-| `name` | string | 机器人名称 | 无名称时使用 `open_id` |
+| `name` | string | 机器人名称 | 空字符串 |
 | `description` | string | 机器人简介 | 字段省略 |
-| `p2p_chat_id` | string | 与机器人的单聊 ID | 空字符串 |
-| `has_chatted` | bool | 是否聊过天 | — |
+| `chat_id` | string | 与机器人的单聊 ID | 空字符串 |
 | `enable_join_group` | bool | 是否允许加入群聊 | — |
 | `is_agent` | bool | 是否是智能体 | — |
 | `tenant_id` | string | 租户标识 | 字段省略 |
@@ -40,11 +39,11 @@ lark-cli contact +search-bot --queries '会议助手,日报助手,审批助手' 
 
 ### 没有分页
 
-不支持分页。`has_more=true` 时应收窄关键词或搜索范围。
+不支持分页。`has_more=true` 时改用更具体的关键词,或调整搜索范围。
 
 ### 多条命中怎么选
 
-命中多个机器人时,结合 `description`、`has_chatted` 和 `is_agent` 判断。后续要发消息或拉群时,让用户确认目标,不要直接选择第一条。
+命中多个机器人时,结合 `description` 和 `is_agent` 判断。后续要发消息或拉群时,让用户确认目标,不要直接选择第一条。
 
 ```bash
 lark-cli contact +search-bot --query '会议助手' \

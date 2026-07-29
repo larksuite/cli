@@ -1,7 +1,7 @@
 ---
 name: lark-contact
 version: 1.0.0
-description: "飞书 / Lark 通讯录:按姓名 / 邮箱解析成 open_id,或按 open_id 反查姓名 / 部门 / 邮箱 / 联系方式 / 个人状态 / 签名,以及按关键词搜索当前用户可见的机器人。当用户提到某人姓名要下一步发消息 / 排日程。不负责部门树遍历、按部门列员工、组织架构图,这类需求走原生 OpenAPI。"
+description: "飞书 / Lark 通讯录:按姓名 / 邮箱解析成 open_id,或按 open_id 反查姓名 / 部门 / 邮箱 / 联系方式 / 个人状态 / 签名,以及按关键词搜索当前用户可见的机器人。当用户提到某人姓名要下一步发消息 / 排日程,或拿到 open_id 想查具体信息时使用。不负责部门树遍历、按部门列员工、组织架构图,这类需求走原生 OpenAPI。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -15,7 +15,7 @@ metadata:
 | 想做什么 | user 身份 | bot 身份 |
 |---|---|---|
 | 按姓名 / 邮箱搜员工拿 open_id | [`+search-user`](references/lark-contact-search-user.md) | 不支持 |
-| 按名称搜索当前用户可见的机器人 | [`+search-bot`](references/lark-contact-search-bot.md) | 不支持 |
+| 按关键词搜索当前用户可见的机器人 | [`+search-bot`](references/lark-contact-search-bot.md) | 不支持 |
 | 已知 open_id 取他人资料 | `+search-user --user-ids <id>` | [`+get-user --user-id <id>`](references/lark-contact-get-user.md) |
 | 查看自己 | `+get-user` 或 `+search-user --user-ids me` | 不支持 |
 | 查同事的个人状态 / 签名 | `user_profiles batch_query` | 不支持 |

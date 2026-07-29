@@ -314,32 +314,33 @@ func TestParseBotDisplayInfo(t *testing.T) {
 	tests := []struct {
 		name            string
 		raw             string
-		openID          string
 		wantName        string
 		wantDescription string
 		wantSegments    []string
 	}{
 		// Whole name highlighted, description on line two.
-		{name: "whole name highlighted", raw: "<h>甲乙丙</h>\n一句话简介", openID: "ou_a", wantName: "甲乙丙", wantDescription: "一句话简介", wantSegments: []string{"甲乙丙"}},
+		{name: "whole name highlighted", raw: "<h>甲乙丙</h>\n一句话简介", wantName: "甲乙丙", wantDescription: "一句话简介", wantSegments: []string{"甲乙丙"}},
 		// Two highlighted runs split by a plain character: stripping tags has to
 		// rejoin them into one name.
-		{name: "two highlighted runs", raw: "<h>甲乙</h>丁<h>丙</h>\n另一句简介", openID: "ou_b", wantName: "甲乙丁丙", wantDescription: "另一句简介", wantSegments: []string{"甲乙", "丙"}},
+		{name: "two highlighted runs", raw: "<h>甲乙</h>丁<h>丙</h>\n另一句简介", wantName: "甲乙丁丙", wantDescription: "另一句简介", wantSegments: []string{"甲乙", "丙"}},
 		// Highlight at the end plus a trailing newline: line two exists but is empty.
-		{name: "trailing newline empty description", raw: "戊己的<h>庚辛</h>\n", openID: "ou_c", wantName: "戊己的庚辛", wantSegments: []string{"庚辛"}},
+		{name: "trailing newline empty description", raw: "戊己的<h>庚辛</h>\n", wantName: "戊己的庚辛", wantSegments: []string{"庚辛"}},
 		// Single highlighted character in the middle of the name.
-		{name: "mid-name highlight", raw: "壬癸<h>子</h>丑\n第二行简介", openID: "ou_d", wantName: "壬癸子丑", wantDescription: "第二行简介", wantSegments: []string{"子"}},
-		{name: "no newline", raw: "寅卯", openID: "ou_e", wantName: "寅卯", wantSegments: []string{}},
-		{name: "empty", raw: "", openID: "ou_f", wantName: "ou_f", wantSegments: []string{}},
-		{name: "fallback line", raw: "\n\n真名", openID: "ou_g", wantName: "真名", wantSegments: []string{}},
+		{name: "mid-name highlight", raw: "壬癸<h>子</h>丑\n第二行简介", wantName: "壬癸子丑", wantDescription: "第二行简介", wantSegments: []string{"子"}},
+		{name: "no newline", raw: "寅卯", wantName: "寅卯", wantSegments: []string{}},
+		{name: "html entities", raw: "<h>Lark</h>部门成员&amp;仓库\n来自飞书&#22810;维表格", wantName: "Lark部门成员&仓库", wantDescription: "来自飞书多维表格", wantSegments: []string{"Lark"}},
+		{name: "html entity in highlight", raw: "名称<h>&amp;</h>工具", wantName: "名称&工具", wantSegments: []string{"&"}},
+		{name: "empty", raw: "", wantSegments: []string{}},
+		{name: "first non-empty line", raw: "\n\n真名", wantName: "真名", wantSegments: []string{}},
 		// A blank first line must not make the description echo the name back and
 		// swallow the real description on the line after it.
-		{name: "blank first line keeps description", raw: "\n真名\n简介", openID: "ou_h", wantName: "真名", wantDescription: "简介", wantSegments: []string{}},
-		{name: "blank first line without description", raw: "\n真名", openID: "ou_i", wantName: "真名", wantSegments: []string{}},
+		{name: "blank first line keeps description", raw: "\n真名\n简介", wantName: "真名", wantDescription: "简介", wantSegments: []string{}},
+		{name: "blank first line without description", raw: "\n真名", wantName: "真名", wantSegments: []string{}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			name, description, segments := parseBotDisplayInfo(tt.raw, tt.openID)
+			name, description, segments := parseBotDisplayInfo(tt.raw)
 			if name != tt.wantName || description != tt.wantDescription {
 				t.Fatalf("name/description: got %q/%q, want %q/%q", name, description, tt.wantName, tt.wantDescription)
 			}
@@ -364,7 +365,7 @@ func TestProjectBotsMapsEveryField(t *testing.T) {
 		},
 		{
 			ID:          "ou_without_chat",
-			DisplayInfo: "无会话机器人",
+			DisplayInfo: "",
 			MetaData:    botSearchAPIMeta{TenantID: "1"},
 		},
 	}}
@@ -375,22 +376,26 @@ func TestProjectBotsMapsEveryField(t *testing.T) {
 	}
 	first := bots[0]
 	if first.OpenID != "ou_with_chat" || first.Name != "甲乙丙" || first.Description != "一句话简介" ||
-		first.P2PChatID != "oc_p2p" || !first.HasChatted || !first.EnableJoinGroup || !first.IsAgent || first.TenantID != "1" ||
+		first.ChatID != "oc_p2p" || !first.EnableJoinGroup || !first.IsAgent || first.TenantID != "1" ||
 		fmt.Sprint(first.MatchSegments) != "[甲乙丙]" {
 		t.Fatalf("first bot mapping: %+v", first)
 	}
 	second := bots[1]
-	if second.P2PChatID != "" || second.HasChatted {
-		t.Fatalf("second bot chat fields: %+v", second)
+	if second.Name != "" || second.ChatID != "" {
+		t.Fatalf("empty source fields must stay empty: %+v", second)
 	}
 	raw, err := json.Marshal(searchBotResponse{Bots: bots})
 	if err != nil {
 		t.Fatalf("marshal response: %v", err)
 	}
-	// searchUser emits p2p_chat_id unconditionally; the sibling command must keep
-	// the same key set so callers need no bot-specific presence check.
-	if !strings.Contains(string(raw), `"p2p_chat_id":""`) {
-		t.Fatalf("empty p2p_chat_id must still be emitted: %s", raw)
+	if !strings.Contains(string(raw), `"chat_id":""`) {
+		t.Fatalf("empty chat_id must still be emitted: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"name":""`) {
+		t.Fatalf("empty name must not fall back to open_id: %s", raw)
+	}
+	if strings.Contains(string(raw), `"has_chatted"`) {
+		t.Fatalf("chat_id presence must not be exposed as a has_chatted signal: %s", raw)
 	}
 }
 
@@ -467,7 +472,7 @@ func TestBotSearchIntegrationRequestAndResponsePassThrough(t *testing.T) {
 	if envelope.Data.Notice != "The query is too long and has been truncated to the first 50 characters for search." || !envelope.Data.HasMore {
 		t.Fatalf("response pass-through: %+v", envelope.Data)
 	}
-	if len(envelope.Data.Bots) != 1 || envelope.Data.Bots[0].OpenID != "ou_bot" || envelope.Data.Bots[0].P2PChatID != "oc_p2p" {
+	if len(envelope.Data.Bots) != 1 || envelope.Data.Bots[0].OpenID != "ou_bot" || envelope.Data.Bots[0].ChatID != "oc_p2p" {
 		t.Fatalf("bots: %+v", envelope.Data.Bots)
 	}
 	registry.Verify(t)
@@ -501,12 +506,12 @@ func TestBotSearchPrettyOutputAndPaginationHint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	for _, column := range []string{"name", "description", "has_chatted", "is_agent", "enable_join_group", "open_id"} {
+	for _, column := range []string{"name", "description", "is_agent", "enable_join_group", "open_id"} {
 		if !strings.Contains(stdout.String(), column) {
 			t.Errorf("pretty output missing %q: %s", column, stdout.String())
 		}
 	}
-	for _, genericField := range []string{"bots", "has_more", "notice", "tenant_id", "p2p_chat_id", "match_segments"} {
+	for _, genericField := range []string{"bots", "has_more", "notice", "tenant_id", "chat_id", "match_segments"} {
 		if strings.Contains(stdout.String(), genericField) {
 			t.Errorf("pretty output exposed %q: %s", genericField, stdout.String())
 		}
@@ -531,7 +536,7 @@ func TestBotSearchTableUsesGenericFormatterLikeSearchUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	for _, field := range []string{"open_id", "tenant_id", "p2p_chat_id", "match_segments"} {
+	for _, field := range []string{"open_id", "tenant_id", "chat_id", "match_segments"} {
 		if !strings.Contains(stdout.String(), field) {
 			t.Errorf("table output missing %q: %s", field, stdout.String())
 		}
@@ -563,7 +568,7 @@ func TestBotSearchCSVAndNDJSONCarryFullFieldsAndSignalTruncation(t *testing.T) {
 			if err != nil {
 				t.Fatalf("execute: %v", err)
 			}
-			for _, field := range []string{"open_id", "tenant_id", "p2p_chat_id", "match_segments"} {
+			for _, field := range []string{"open_id", "tenant_id", "chat_id", "match_segments"} {
 				if !strings.Contains(stdout.String(), field) {
 					t.Errorf("%s output missing %q: %s", format, field, stdout.String())
 				}

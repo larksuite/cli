@@ -5,22 +5,21 @@ package contact
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"sync"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
-// Bot fanout mirrors the user fanout in contact_search_user_fanout.go: same
-// dedup, same concurrency cap, same per-query summary, same "fail only when every
-// query fails" rule. It reuses parseAndDedupQueries, querySummary,
-// isFanoutSummaryFormat and the contactFanout* error helpers rather than growing
-// a second set.
+// Bot fanout reuses the user fanout's query parsing, concurrency limit and
+// response summary types.
 
 type botFanoutResult struct {
 	Index   int
@@ -29,7 +28,7 @@ type botFanoutResult struct {
 	HasMore bool
 	Notice  string
 	ErrMsg  string // empty = success
-	Err     error  // original failure, kept for typed all-failed propagation
+	Err     error  // original failure, kept for typed propagation
 }
 
 // runOneBotQuery converts one fanout request into either bots or an error summary.
@@ -82,6 +81,48 @@ func botFanoutErrorResult(index int, query string, err error) botFanoutResult {
 	return botFanoutResult{Index: index, Query: query, ErrMsg: contactFanoutErrorSummary(err), Err: err}
 }
 
+func botFanoutContextError(err error) error {
+	subtype := errs.SubtypeNetworkTransport
+	message := "bot search fanout cancelled"
+	if errors.Is(err, context.DeadlineExceeded) {
+		subtype = errs.SubtypeNetworkTimeout
+		message = "bot search fanout deadline exceeded"
+	}
+	return errs.NewNetworkError(subtype, "%s", message).WithCause(err)
+}
+
+func botFanoutPanicError(query string, recovered any) error {
+	err := errs.NewInternalError(errs.SubtypeUnknown,
+		"bot search query %q panicked: %v", query, recovered)
+	if cause, ok := recovered.(error); ok {
+		return err.WithCause(cause)
+	}
+	return err
+}
+
+// Terminal failures invalidate the batch; API and network failures remain
+// eligible for partial-success reporting.
+func botFanoutTerminalError(results []botFanoutResult) error {
+	for _, result := range results {
+		if result.Err == nil {
+			continue
+		}
+		if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
+			return botFanoutContextError(result.Err)
+		}
+		problem, ok := errs.ProblemOf(result.Err)
+		if !ok {
+			return errs.NewInternalError(errs.SubtypeUnknown,
+				"bot search query %q failed with an unclassified error: %v", result.Query, result.Err).
+				WithCause(result.Err)
+		}
+		if problem.Category != errs.CategoryAPI && problem.Category != errs.CategoryNetwork {
+			return result.Err
+		}
+	}
+	return nil
+}
+
 type fanoutBot struct {
 	searchBot
 	MatchedQuery string `json:"matched_query"`
@@ -93,9 +134,13 @@ type botFanoutResponse struct {
 	Notice  string         `json:"notice,omitempty"`
 }
 
-// buildBotFanoutResponse flattens ordered fanout results and fails only when all
-// queries fail.
+// buildBotFanoutResponse flattens recoverable results in query order. Terminal
+// errors fail the batch even when another query succeeded.
 func buildBotFanoutResponse(queries []string, results []botFanoutResult) (*botFanoutResponse, error) {
+	if err := botFanoutTerminalError(results); err != nil {
+		return nil, err
+	}
+
 	indexed := make([]botFanoutResult, len(queries))
 	for _, r := range results {
 		indexed[r.Index] = r
@@ -151,18 +196,28 @@ func executeBotSearchFanout(ctx context.Context, runtime *common.RuntimeContext)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, fanoutConcurrency)
 
+schedule:
 	for i, q := range queries {
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			for j := i; j < len(queries); j++ {
+				results[j] = botFanoutErrorResult(j, queries[j], ctx.Err())
+			}
+			break schedule
+		}
 		wg.Add(1)
-		sem <- struct{}{}
 		go func(i int, q string) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			defer func() {
 				if r := recover(); r != nil {
+					err := botFanoutPanicError(q, r)
 					results[i] = botFanoutResult{
 						Index:  i,
 						Query:  q,
-						ErrMsg: fmt.Sprintf("internal error: %v", r),
+						ErrMsg: contactFanoutErrorSummary(err),
+						Err:    err,
 					}
 				}
 			}()
@@ -195,7 +250,7 @@ func executeBotSearchFanout(ctx context.Context, runtime *common.RuntimeContext)
 	})
 
 	if isFanoutSummaryFormat(runtime.Format) {
-		fmt.Fprintf(runtime.IO().ErrOut, "\n%d queries, %d total bots; %d failed, %d with has_more\n",
+		fmt.Fprintf(runtime.IO().ErrOut, "\n%d queries, %d total matches; %d failed, %d with has_more\n",
 			len(queries), len(resp.Bots), failed, hasMoreCount)
 	}
 	// The counts above say how many queries failed but not which, and only the
@@ -218,9 +273,7 @@ func executeBotSearchFanout(ctx context.Context, runtime *common.RuntimeContext)
 	return nil
 }
 
-// buildBotFanoutFilter reuses the single-search filter: --chat-ids and
-// --has-chatted narrow every query in the fanout, exactly as the bool filters do
-// for the user fanout.
+// buildBotFanoutFilter applies the same search scope and filter to every query.
 func buildBotFanoutFilter(runtime *common.RuntimeContext) (*botSearchAPIFilter, error) {
 	filter := &botSearchAPIFilter{}
 	hasFilter := false
@@ -251,7 +304,6 @@ func prettyBotFanoutRows(bots []fanoutBot) []map[string]interface{} {
 			"matched_query":     bot.MatchedQuery,
 			"name":              bot.Name,
 			"description":       common.TruncateStr(bot.Description, 50),
-			"has_chatted":       bot.HasChatted,
 			"is_agent":          bot.IsAgent,
 			"enable_join_group": bot.EnableJoinGroup,
 			"open_id":           bot.OpenID,

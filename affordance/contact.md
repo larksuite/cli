@@ -31,11 +31,11 @@ Search bots (apps) by keyword. Pass `--query` or `--queries`; use `--chat-ids` t
 - Running as a bot — this shortcut is user-only
 
 ### Tips
-- `has_more=true` means the search is incomplete; narrow the keyword or filters instead of paginating
+- `has_more=true` means the search is incomplete; refine the keyword or search scope instead of paginating
 
 ### Examples
 
-**Find a bot by name**
+**Find bots by keyword**
 ```bash
 lark-cli contact +search-bot --query "会议助手" --as user
 ```
@@ -50,7 +50,7 @@ lark-cli contact +search-bot --query "助手" --chat-ids "oc_3a8b****6a7b" --as 
 lark-cli contact +search-bot --query "助手" --has-chatted --as user
 ```
 
-**Resolve several bot names in one call**
+**Search several bot keywords in one call**
 ```bash
 lark-cli contact +search-bot --queries "会议助手,日报助手,审批助手" --as user
 ```

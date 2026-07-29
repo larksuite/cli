@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"strconv"
@@ -63,10 +64,8 @@ type searchBot struct {
 	OpenID      string `json:"open_id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	// No omitempty: searchUser.P2PChatID always emits, and a sibling command that
-	// silently drops the key would force callers to special-case bot results.
-	P2PChatID       string   `json:"p2p_chat_id"`
-	HasChatted      bool     `json:"has_chatted"`
+	// ChatID is the caller's P2P chat with the bot.
+	ChatID          string   `json:"chat_id"`
 	EnableJoinGroup bool     `json:"enable_join_group"`
 	IsAgent         bool     `json:"is_agent"`
 	TenantID        string   `json:"tenant_id,omitempty"`
@@ -359,16 +358,12 @@ func projectBots(data *botSearchAPIData) []searchBot {
 	bots := make([]searchBot, 0, len(data.Items))
 	for i := range data.Items {
 		item := &data.Items[i]
-		name, description, segments := parseBotDisplayInfo(item.DisplayInfo, item.ID)
-		// Despite the API documentation, meta_data.chat_id is the caller's p2p
-		// chat with the bot, not a group that contains the bot.
-		p2pChatID := item.MetaData.ChatID
+		name, description, segments := parseBotDisplayInfo(item.DisplayInfo)
 		bots = append(bots, searchBot{
 			OpenID:          item.ID,
 			Name:            name,
 			Description:     description,
-			P2PChatID:       p2pChatID,
-			HasChatted:      p2pChatID != "",
+			ChatID:          item.MetaData.ChatID,
 			EnableJoinGroup: item.MetaData.EnableJoinGroup,
 			IsAgent:         item.MetaData.IsAgent,
 			TenantID:        item.MetaData.TenantID,
@@ -378,17 +373,17 @@ func projectBots(data *botSearchAPIData) []searchBot {
 	return bots
 }
 
-func parseBotDisplayInfo(raw, openID string) (name, description string, matchSegments []string) {
+func parseBotDisplayInfo(raw string) (name, description string, matchSegments []string) {
 	matchSegments = make([]string, 0)
 	for _, match := range displayInfoHighlightRE.FindAllStringSubmatch(raw, -1) {
-		matchSegments = append(matchSegments, match[1])
+		matchSegments = append(matchSegments, html.UnescapeString(match[1]))
 	}
 
 	lines := strings.Split(raw, "\n")
 	stripTags := func(value string) string {
 		value = strings.ReplaceAll(value, "<h>", "")
 		value = strings.ReplaceAll(value, "</h>", "")
-		return strings.TrimSpace(value)
+		return strings.TrimSpace(html.UnescapeString(value))
 	}
 
 	// nameLine records which line the name came from, so the description is read
@@ -411,9 +406,6 @@ func parseBotDisplayInfo(raw, openID string) (name, description string, matchSeg
 			}
 		}
 	}
-	if name == "" {
-		name = openID
-	}
 	if nameLine >= 0 && nameLine+1 < len(lines) {
 		description = stripTags(lines[nameLine+1])
 	}
@@ -427,7 +419,6 @@ func prettyBotRows(bots []searchBot) []map[string]interface{} {
 		rows = append(rows, map[string]interface{}{
 			"name":              bot.Name,
 			"description":       common.TruncateStr(bot.Description, 50),
-			"has_chatted":       bot.HasChatted,
 			"is_agent":          bot.IsAgent,
 			"enable_join_group": bot.EnableJoinGroup,
 			"open_id":           bot.OpenID,
