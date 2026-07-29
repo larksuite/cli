@@ -17,6 +17,9 @@ import (
 func TestBaseURLResolveBaseURL(t *testing.T) {
 	t.Run("with coordinates", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(baseBlockListResolveStub("bas123",
+			map[string]interface{}{"id": "tbl123", "type": "table", "name": "Orders"},
+		))
 		reg.Register(fieldListStub("bas123", "tbl123"))
 		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
 			"+url-resolve",
@@ -31,7 +34,7 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 		if data["input_type"] != "base_url" || data["base_token"] != "bas123" {
 			t.Fatalf("unexpected output: %#v", data)
 		}
-		if data["table_id"] != "tbl123" || data["view_id"] != "vew123" || data["record_id"] != "rec123" {
+		if data["block_id"] != "tbl123" || data["selection_source"] != "url_query" || data["block_type"] != "table" || data["table_id"] != "tbl123" || data["view_id"] != "vew123" || data["record_id"] != "rec123" {
 			t.Fatalf("missing Base coordinates: %#v", data)
 		}
 		hint, _ := data["hint"].(map[string]interface{})
@@ -62,7 +65,7 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 		}
 	})
 
-	t.Run("field list enrichment failure still returns coordinates", func(t *testing.T) {
+	t.Run("unconfirmed selected block stays neutral", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
 			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=tbl123", "--as", "user",
@@ -71,17 +74,109 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 		data := decodeBaseEnvelope(t, stdout)
-		if data["base_token"] != "bas123" || data["table_id"] != "tbl123" {
+		if data["base_token"] != "bas123" || data["block_id"] != "tbl123" {
 			t.Fatalf("unexpected output: %#v", data)
 		}
+		if _, ok := data["table_id"]; ok {
+			t.Fatalf("unconfirmed block must not be reported as a table: %#v", data)
+		}
 		hint, _ := data["hint"].(map[string]interface{})
-		if hint["next_step"] != nextStepRecordList {
+		if !strings.Contains(hint["next_step"].(string), "+base-block-list") {
 			t.Fatalf("unexpected hint: %#v", hint)
 		}
 		if _, ok := hint["fields"]; ok {
 			t.Fatalf("fields should be omitted when enrichment fails: %#v", hint)
 		}
 	})
+
+	t.Run("field endpoint independently confirms table", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(fieldListStub("bas123", "tbl123"))
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=tbl123", "--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if data["block_id"] != "tbl123" || data["block_type"] != "table" || data["table_id"] != "tbl123" {
+			t.Fatalf("field fallback must confirm the table: %#v", data)
+		}
+		hint, _ := data["hint"].(map[string]interface{})
+		fields, _ := hint["fields"].(map[string]interface{})
+		if fields["total"] != float64(2) {
+			t.Fatalf("unexpected fallback fields: %#v", hint)
+		}
+	})
+
+	t.Run("dashboard selected through table query key", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(baseBlockListResolveStub("bas123",
+			map[string]interface{}{"id": "blk_dashboard", "type": "dashboard", "name": "Sales"},
+		))
+
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=blk_dashboard", "--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if data["block_id"] != "blk_dashboard" || data["selection_source"] != "url_query" || data["block_type"] != "dashboard" || data["dashboard_id"] != "blk_dashboard" || data["block_name"] != "Sales" {
+			t.Fatalf("unexpected dashboard coordinates: %#v", data)
+		}
+		if _, ok := data["table_id"]; ok {
+			t.Fatalf("dashboard must not be reported as table_id: %#v", data)
+		}
+		hint, _ := data["hint"].(map[string]interface{})
+		nextStep := hint["next_step"].(string)
+		if !strings.Contains(nextStep, "+dashboard-get") || !strings.Contains(nextStep, "+dashboard-list") || !strings.Contains(nextStep, "different dashboard than block_name") {
+			t.Fatalf("unexpected dashboard hint: %#v", hint)
+		}
+	})
+
+	t.Run("workflow selected through table query key", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(baseBlockListResolveStub("bas123",
+			map[string]interface{}{"id": "blk_workflow", "type": "workflow", "name": "Notify"},
+		))
+
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=blk_workflow", "--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if data["block_id"] != "blk_workflow" || data["block_type"] != "workflow" || data["workflow_id"] != "blk_workflow" {
+			t.Fatalf("unexpected workflow coordinates: %#v", data)
+		}
+		if _, ok := data["table_id"]; ok {
+			t.Fatalf("workflow must not be reported as table_id: %#v", data)
+		}
+		hint, _ := data["hint"].(map[string]interface{})
+		if !strings.Contains(hint["next_step"].(string), "+workflow-get") {
+			t.Fatalf("unexpected workflow hint: %#v", hint)
+		}
+	})
+}
+
+func baseBlockListResolveStub(baseToken string, blocks ...map[string]interface{}) *httpmock.Stub {
+	items := make([]interface{}, 0, len(blocks))
+	for _, block := range blocks {
+		items = append(items, block)
+	}
+	return &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/" + baseToken + "/blocks/list",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"blocks": items,
+				"total":  len(items),
+			},
+		},
+	}
 }
 
 func TestBaseURLResolveWikiURL(t *testing.T) {

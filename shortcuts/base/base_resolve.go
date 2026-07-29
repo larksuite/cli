@@ -29,6 +29,7 @@ var BaseURLResolve = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{},
 	ConditionalScopes: []string{
+		"base:block:read",
 		"base:field:read",
 		"base:record:read",
 		"wiki:node:retrieve",
@@ -40,7 +41,7 @@ var BaseURLResolve = common.Shortcut{
 		{Name: "query", Hidden: true, Desc: "Alias for --url; accepted to recover from AI routing mistakes"},
 	},
 	Tips: []string{
-		`Example: lark-cli base +url-resolve --url "https://example.larkoffice.com/base/<base_token>?table=<table_id>&view=<view_id>"`,
+		`Example: lark-cli base +url-resolve --url "https://example.larkoffice.com/base/<base_token>?table=<block_id>&view=<view_id>"`,
 		"Only URLs are accepted. For Base titles or keywords, use +title-resolve --title.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -57,6 +58,16 @@ var BaseURLResolve = common.Shortcut{
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
 		switch classifyBaseURL(parsed) {
+		case "base_url":
+			baseToken := firstPathSegmentAfter(parsed.Path, "/base/")
+			if selectedBlockID := strings.TrimSpace(parsed.Query().Get("table")); selectedBlockID != "" {
+				return common.NewDryRunAPI().
+					POST("/open-apis/base/v3/bases/:base_token/blocks/list").
+					Body(map[string]interface{}{}).
+					Set("base_token", baseToken).
+					Set("selected_block_id", selectedBlockID)
+			}
+			return common.NewDryRunAPI().Set("url", raw).Set("resolution", "local")
 		case "wiki_url":
 			return common.NewDryRunAPI().
 				GET("/open-apis/wiki/v2/spaces/get_node").
@@ -258,7 +269,12 @@ func resolveBaseURL(u *url.URL) map[string]interface{} {
 		"base_token":    firstPathSegmentAfter(u.Path, "/base/"),
 	}
 	if tableID := strings.TrimSpace(query.Get("table")); tableID != "" {
-		out["table_id"] = tableID
+		// The Base web UI historically uses the query key "table" for the
+		// currently selected top-level block. Its value can identify a table,
+		// dashboard, workflow, or another block type. Keep it neutral until the
+		// block directory confirms the resource type.
+		out["block_id"] = tableID
+		out["selection_source"] = "url_query"
 	}
 	if viewID := strings.TrimSpace(query.Get("view")); viewID != "" {
 		out["view_id"] = viewID
@@ -370,17 +386,91 @@ func executeBaseTitleResolve(runtime *common.RuntimeContext) error {
 
 func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interface{}) {
 	baseToken := strings.TrimSpace(common.GetString(out, "base_token"))
-	tableID := strings.TrimSpace(common.GetString(out, "table_id"))
-	if baseToken == "" || tableID == "" {
+	selectedBlockID := strings.TrimSpace(common.GetString(out, "block_id"))
+	if baseToken == "" || selectedBlockID == "" {
 		out["hint"] = resolveHint("", nil)
 		return
 	}
+
+	if block, found, err := resolveSelectedBaseBlock(runtime, baseToken, selectedBlockID); err == nil && found {
+		out["block_type"] = block.Type
+		if block.Name != "" {
+			out["block_name"] = block.Name
+		}
+		switch block.Type {
+		case "table":
+			enrichResolvedTable(runtime, out, baseToken, selectedBlockID)
+		case "dashboard":
+			out["dashboard_id"] = selectedBlockID
+			out["hint"] = map[string]interface{}{
+				"next_step": "this dashboard is only the block currently selected by the URL; if the user names a different dashboard than block_name, use +dashboard-list and match that name first, otherwise use +dashboard-get to inspect this dashboard",
+			}
+		case "workflow":
+			out["workflow_id"] = selectedBlockID
+			out["hint"] = map[string]interface{}{
+				"next_step": "use +workflow-get to inspect the resolved workflow",
+			}
+		default:
+			out["hint"] = resolveUnknownBlockHint()
+		}
+		return
+	}
+
+	// Directory lookup can be unavailable when the caller lacks block-read
+	// permission. Preserve compatibility for a real table only when the field
+	// endpoint independently confirms that the selected ID is a table.
+	fields, total, err := listAllFields(runtime, baseToken, selectedBlockID, 0, 100)
+	if err == nil {
+		out["table_id"] = selectedBlockID
+		out["block_type"] = "table"
+		out["hint"] = resolveHint(selectedBlockID, map[string]interface{}{"fields": map[string]interface{}{"fields": fields, "total": total}})
+		return
+	}
+	out["hint"] = resolveUnknownBlockHint()
+}
+
+type resolvedBaseBlock struct {
+	ID   string
+	Type string
+	Name string
+}
+
+func resolveSelectedBaseBlock(runtime *common.RuntimeContext, baseToken, selectedBlockID string) (resolvedBaseBlock, bool, error) {
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "blocks", "list"), nil, map[string]interface{}{})
+	if err != nil {
+		return resolvedBaseBlock{}, false, err
+	}
+	for _, item := range common.GetSlice(data, "blocks") {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		block := resolvedBaseBlock{
+			ID:   strings.TrimSpace(common.GetString(row, "id")),
+			Type: strings.TrimSpace(common.GetString(row, "type")),
+			Name: strings.TrimSpace(common.GetString(row, "name")),
+		}
+		if block.ID == selectedBlockID {
+			return block, true, nil
+		}
+	}
+	return resolvedBaseBlock{}, false, nil
+}
+
+func enrichResolvedTable(runtime *common.RuntimeContext, out map[string]interface{}, baseToken, tableID string) {
+	out["table_id"] = tableID
 	fields, total, err := listAllFields(runtime, baseToken, tableID, 0, 100)
 	if err != nil {
 		out["hint"] = resolveHint(tableID, nil)
 		return
 	}
 	out["hint"] = resolveHint(tableID, map[string]interface{}{"fields": map[string]interface{}{"fields": fields, "total": total}})
+}
+
+func resolveUnknownBlockHint() map[string]interface{} {
+	return map[string]interface{}{
+		"next_step": "use +base-block-list and match block_id to determine whether this is a table, dashboard, workflow, folder, or docx block",
+	}
 }
 
 func enrichRecordShareResolveHint(runtime *common.RuntimeContext, out map[string]interface{}) {
