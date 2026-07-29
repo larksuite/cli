@@ -5,6 +5,7 @@ package drive
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -154,14 +155,15 @@ func drivePermissionPublicV2Path(token string) string {
 	return fmt.Sprintf("/open-apis/drive/v2/permissions/%s/public", validate.EncodePathSegment(token))
 }
 
-func (s drivePermissionGetSettingSpec) output(runtime *common.RuntimeContext, data map[string]interface{}) map[string]interface{} {
-	permissionPublic := interface{}(data)
-	if nestedPermissionPublic := common.GetMap(data, "permission_public"); nestedPermissionPublic != nil {
-		permissionPublic = nestedPermissionPublic
+func drivePermissionGetSettingPermissionPublic(data map[string]interface{}) (map[string]interface{}, error) {
+	permissionPublic := common.GetMap(data, "permission_public")
+	if permissionPublic == nil {
+		return nil, errs.NewInternalError(
+			errs.SubtypeInvalidResponse,
+			"drive permission get response missing data.permission_public",
+		)
 	}
-	return map[string]interface{}{
-		"permission_public": permissionPublic,
-	}
+	return permissionPublic, nil
 }
 
 // DrivePermissionGetSetting queries permission_public settings for a Drive
@@ -175,7 +177,7 @@ var DrivePermissionGetSetting = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder)"},
+		{Name: "token", Desc: "target URL or bare token (doc/sheet/file/wiki/bitable/docx/mindnote/minutes/slides/folder)", Required: true},
 		{Name: "type", Desc: "target type; auto-inferred from URL, required for bare tokens", Enum: drivePermissionGetSettingTypes},
 	},
 	Tips: []string{
@@ -213,13 +215,26 @@ var DrivePermissionGetSetting = common.Shortcut{
 			return err
 		}
 
-		out := spec.output(runtime, data)
+		permissionPublic, err := drivePermissionGetSettingPermissionPublic(data)
+		if err != nil {
+			return err
+		}
+		permissionPublicPretty, err := json.MarshalIndent(permissionPublic, "", "  ")
+		if err != nil {
+			return errs.NewInternalError(
+				errs.SubtypeInvalidResponse,
+				"encode drive permission settings for pretty output",
+			).WithCause(err)
+		}
+
+		out := map[string]interface{}{"permission_public": permissionPublic}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "Type:  %s\n", spec.Type)
 			fmt.Fprintf(w, "Token: %s\n", spec.Token)
 			if url := spec.url(runtime); url != "" {
 				fmt.Fprintf(w, "URL:   %s\n", url)
 			}
+			fmt.Fprintf(w, "Permission settings:\n%s\n", permissionPublicPretty)
 		})
 		return nil
 	},

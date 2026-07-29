@@ -90,38 +90,23 @@ func TestDrive_PermissionGetSettingDryRun(t *testing.T) {
 }
 
 func TestDrive_PermissionGetSettingWorkflow(t *testing.T) {
-	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	docTitle := "lark-cli-e2e-drive-permission-get-setting-" + clie2e.GenerateSuffix()
-	createResult, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args: []string{
-			"docs", "+create",
-			"--doc-format", "markdown",
-			"--content", "# " + docTitle + "\n\nCreated by drive permission get setting workflow.",
-		},
-		DefaultAs: "bot",
-	})
-	require.NoError(t, err)
-	createResult.AssertExitCode(t, 0)
-	createResult.AssertStdoutStatus(t, true)
-
-	docToken := gjson.Get(createResult.Stdout, "data.document.document_id").String()
-	require.NotEmpty(t, docToken, "stdout:\n%s", createResult.Stdout)
-	parentT.Cleanup(func() {
-		cleanupCtx, cleanupCancel := clie2e.CleanupContext()
-		defer cleanupCancel()
-
-		deleteResult, deleteErr := DeleteDriveResourceAndVerify(cleanupCtx, docToken, "docx", "bot")
-		clie2e.ReportCleanupFailure(parentT, "delete doc "+docToken, deleteResult, deleteErr)
-	})
+	folderToken := CreateDriveFolder(
+		t,
+		t,
+		ctx,
+		"lark-cli-e2e-drive-permission-get-setting-"+clie2e.GenerateSuffix(),
+		"bot",
+		"",
+	)
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"drive", "+permission-get-setting",
-			"--token", docToken,
-			"--type", "docx",
+			"--token", folderToken,
+			"--type", "folder",
 			"--format", "json",
 		},
 		DefaultAs: "bot",

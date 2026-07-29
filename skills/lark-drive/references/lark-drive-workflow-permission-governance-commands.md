@@ -15,7 +15,7 @@
 lark-cli drive +inspect --url '<url>' --as user --format json
 ```
 
-`drive +inspect` 不支持 Drive folder。`/drive/folder/<folder_token>` 直接解析为 `type=folder` + `token=<folder_token>`；需要读取文件夹自身权限设置时使用 `drive +permission-get-setting --token '<folder_token>' --type folder`。
+`drive +inspect` 支持 Drive folder，并且是受支持 Drive URL 的统一解析入口。对文件夹自身权限设置，先通过 `+inspect` 解析 URL，或直接使用 `drive +permission-get-setting --token '<folder_url>'`；传 bare folder token 时必须显式传 `--type folder`。
 
 `/wiki/space/<space_id>` URL 是 Wiki space 范围，不要用 `drive +inspect` 当作单文档解析；直接提取 `space_id` 后进入 `DISCOVER_TARGETS`。
 

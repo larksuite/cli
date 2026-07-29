@@ -353,6 +353,74 @@ func TestDrivePermissionGetSettingExecutePreservesPermissionPublic(t *testing.T)
 	}
 }
 
+func TestDrivePermissionGetSettingExecuteRejectsMissingPermissionPublic(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v2/permissions/doxTok/public?type=docx",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"unexpected": "response"},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePermissionGetSetting, []string{
+		"+permission-get-setting",
+		"--token", "doxTok",
+		"--type", "docx",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected invalid response error, got nil")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("problem = %#v, want internal/invalid_response", problem)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout should be empty on invalid response, got %s", stdout.String())
+	}
+}
+
+func TestDrivePermissionGetSettingExecutePrettyFormatIncludesPermissionPublic(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v2/permissions/doxTok/public?type=docx",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"permission_public": map[string]interface{}{
+					"link_share_entity":   "closed",
+					"server_future_field": "preserved",
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePermissionGetSetting, []string{
+		"+permission-get-setting",
+		"--token", "doxTok",
+		"--type", "docx",
+		"--format", "pretty",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Permission settings:",
+		`"link_share_entity": "closed"`,
+		`"server_future_field": "preserved"`,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("pretty output missing %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
 func TestDrivePermissionGetSettingDeclaresScopeAndIdentities(t *testing.T) {
 	t.Parallel()
 
@@ -361,5 +429,10 @@ func TestDrivePermissionGetSettingDeclaresScopeAndIdentities(t *testing.T) {
 	}
 	if !reflect.DeepEqual(DrivePermissionGetSetting.AuthTypes, []string{"user", "bot"}) {
 		t.Fatalf("AuthTypes = %v, want [user bot]", DrivePermissionGetSetting.AuthTypes)
+	}
+	for _, flag := range DrivePermissionGetSetting.Flags {
+		if flag.Name == "token" && !flag.Required {
+			t.Fatal("--token must be declared required")
+		}
 	}
 }
