@@ -190,6 +190,8 @@ lark-cli contact +search-user --query <query> --as user
 lark-cli im +chat-search --query <query> --as user
 ```
 
+> 搜索用户接口不支持 bot 身份，必须用 `--as user`；搜到的 `ou_` open_id 用于日程参与人操作（如添加日程参与人）。
+
 ## 不在本 skill 范围
 
 - 查询过去的视频会议记录 → [lark-vc](../lark-vc/SKILL.md)

@@ -157,7 +157,7 @@ func localImagePath(src string) string {
 }
 
 func buildCalendarImagePreviewURL(brand core.LarkBrand, fileToken string, width, height int, size int64) string {
-	host := "internal-api-drive-stream.larkoffice.com"
+	host := "internal-api-drive-stream.feishu.cn"
 	if brand == core.BrandLark {
 		host = "internal-api-drive-stream.larksuite.com"
 	}

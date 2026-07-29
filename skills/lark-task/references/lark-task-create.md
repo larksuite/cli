@@ -24,6 +24,12 @@ lark-cli task +create \
 lark-cli task +create \
   --summary "Buy milk"
 
+# Create a milestone by passing an API field without a named flag
+lark-cli task +create \
+  --summary "Release v2.0" \
+  --due "2026-08-15" \
+  --data '{"is_milestone":true}'
+
 # Preview the API call without executing
 lark-cli task +create --summary "Test Task" --dry-run
 ```
@@ -39,7 +45,10 @@ lark-cli task +create --summary "Test Task" --dry-run
 | `--due <time>` | No | Due date. Supports ISO 8601, `YYYY-MM-DD`, relative time (e.g., `+2d`), or ms timestamp. `YYYY-MM-DD` and relative time will automatically set it as an all-day task. |
 | `--tasklist-id <id>` | No | The GUID of the tasklist, or a full AppLink URL (the CLI will automatically extract the `guid` parameter from the URL). |
 | `--idempotency-key <key>` | No | Client token to ensure idempotency of the request. |
+| `--data <json>` | No | JSON object merged into the task create request for API fields without dedicated flags, such as `{"is_milestone":true}`. Explicit named flags override same-named fields in this object. |
 | `--dry-run` | No | Preview the API call (JSON payload) without actually creating the task. |
+
+Use `lark-cli schema task.tasks.create` to confirm that an extra field is supported before passing it through `--data`. Prefer this shortcut over the raw `tasks create` command when `--data` can express the request. Do not assume that other shortcuts support `--data`; check each shortcut's `--help` output first.
 
 ## Workflow
 

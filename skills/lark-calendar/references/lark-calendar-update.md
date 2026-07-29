@@ -63,6 +63,7 @@ lark-cli calendar +update \
 - 只想增删参会人或会议室时，不需要同时传 `--summary`、`--start`、`--end` 等日程字段。
 - 只想修改标题、描述、时间或重复规则时，不需要同时传 `--add-attendee-ids` 或 `--remove-attendee-ids`。
 - 如需替换某个参与人、群组或会议室，使用 `--remove-attendee-ids <旧ID>` + `--add-attendee-ids <新ID>`。
+- bot 可作为合法参会人添加，无需剔除。
 - 会议室是 resource attendee，必须使用 `omm_` ID 添加到参会人列表，不能脱离日程单独预定。
 - 更新重复性日程时，必须先确定操作范围（仅此次/全部/此次及后续），然后按 [重复性日程操作规范](lark-calendar-recurring.md) 执行。
 - 当同一次命令组合多个动作时，执行顺序为“日程字段 -> 移除参会人 -> 添加参会人”。若中途失败，不会自动回滚已成功步骤；错误信息会说明已完成的步骤。

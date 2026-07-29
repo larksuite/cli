@@ -141,7 +141,7 @@ lark-cli auth login --domain slides
 - [asset-planning.md](references/asset-planning.md)（新建 / 大幅改写）
 - [validation-checklist.md](references/validation-checklist.md)（创建 / 大幅改写后）
 
-按需再读：
+调用相关命令前必须读取相关的文档以了解命令的使用方式：
 
 - 创建：[`lark-slides-create.md`](references/lark-slides-create.md)
 - 阅读：[`lark-slides-xml-presentations-get.md`](references/lark-slides-xml-presentations-get.md)
@@ -223,7 +223,7 @@ Step 3: 按 slide_plan.json 生成 XML → 创建
   - 创建方式按“创建方式选择”判断；图片、复杂 XML、转义和 3350001 排查按 lark-slides-create.md、media-upload.md、troubleshooting.md 执行
 
 Step 4: 审查 & 交付
-  - 创建完成后，必须用 `slides +xml-get` 读取全文 XML，并按 validation-checklist.md 做显式验证记录，包括 XML 文本重叠检查
+  - 创建完成后，必须用 `slides +xml-get --presentation <xml_presentation_id>` 读取全文 XML，并按 validation-checklist.md 做显式验证记录，包括 XML 文本重叠检查
   - 失败或部分成功按 troubleshooting.md 处理；局部问题优先用 `+replace-slide` 修正
   - 没问题 → 交付：使用 NotifyHuman 工具交付 PPT 链接
 ```
@@ -314,7 +314,8 @@ Shortcut 是对常用操作的高级封装（`lark-cli slides +<verb> [flags]`�
 | Shortcut | 说明 |
 |----------|------|
 | [`+create`](references/lark-slides-create.md) | 创建 PPT（可选 `--slides` 一步添加页面，支持 `<img src="@./local.png">` 占位符自动上传） |
-| [`+xml-get`](references/lark-slides-xml-presentations-get.md) | 读取全文 XML 并保存到本地文件，避免终端输出被截断 |
+| [`+xml-get`](references/lark-slides-xml-presentations-get.md) | 读取全文 XML，用 `--presentation` 指定演示文稿的 `xml_presentation_id`，用 `--output` 把 XML 存到本地文件（必须是 CWD 内的相对路径，如 `.lark-slides/plan/<deck>/readback.xml`） |
+| [`+screenshot`](references/lark-slides-screenshot.md) | 把幻灯片页面截图保存为本地图片，用 `--slide-number` 指定页号（从 1 开始，多页重复传入，一次最多 10 页），用 `--output-dir` 指定保存目录（必须是 CWD 内的相对路径，默认 `.lark-slides/screenshots`），失败时降级到 XML 回读等非截图检查 |
 | [`+media-upload`](references/lark-slides-media-upload.md) | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |
 | [`+replace-slide`](references/lark-slides-replace-slide.md) | 对已有幻灯片页面进行块级替换/插入（`block_replace` / `block_insert`），自动注入 id 和 `<content/>`，不改变页序 |
 | [`+replace-pages`](references/lark-slides-replace-pages.md) | 在原演示文稿内批量重建多个页面：先创建新页到旧页前，再删除旧页；适合已有 Slides 的多页大改，不新建链接 |
