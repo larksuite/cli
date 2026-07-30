@@ -70,7 +70,7 @@ metadata:
 | `/doc/` | `https://example.larksuite.com/doc/doccnxxxxxxxxx`     | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
 | `/wiki/` | `https://example.larksuite.com/wiki/wikcnxxxxxxxxx`    | `wiki_token` | 不能直接当底层 `file_token`；优先用 `drive +inspect` 解包获取 `obj_token` |
 | `/sheets/` | `https://example.larksuite.com/sheets/shtcnxxxxxxxxx`  | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
-| `/page/` | `https://example.feishu.cn/page/N1BWmMrqndT5ZcamAIBcnvDLnOf/` | apps token | URL 路径中的 token 直接使用，资源类型为 `apps` |
+| `/page/` | `https://example.feishu.cn/page/pagcnxxxxxxxx/`        | apps token | URL 路径中的 token 直接使用，资源类型为 `apps` |
 | `/drive/folder/` | `https://example.larksuite.com/drive/folder/fldcnxxxx` | `folder_token` | URL 路径中的 token 作为文件夹 token 使用 |
 
 ### Wiki 链接特殊处理
