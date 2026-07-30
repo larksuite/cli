@@ -43,11 +43,11 @@ esac
 
 ### 2. 读取真实状态
 
-唯一事实源是各 SKILL.md 的 frontmatter，**不是** `.active-profile`（后者仅是记录）。检测必须只匹配 frontmatter 块（第一个 `---` 到第二个 `---` 之间）内的字段——正文（如文档示例、代码块）里出现的同名文本不算：
+唯一事实源是各 SKILL.md 的 frontmatter，**不是** `.active-profile`（后者仅是记录）。检测必须只匹配 frontmatter 块（第一个 `---` 到第二个 `---` 之间）内的字段——正文（如文档示例、代码块）里出现的同名文本不算。判定标准严格为「frontmatter 内恰好一行该字段且取值为 true」：手工改坏的重复/冲突字段（如同时存在 true 和 false，YAML 解析器可能按 false 生效）不视为休眠——扫描会显示为激活，重跑第 5 步的休眠命令即可将其规范化为单行 true：
 
 ```bash
-# 只看 frontmatter 的休眠判断（后续步骤复用）
-is_disabled() { awk '/^---$/{c++;next} c==1 && /^disable-model-invocation:[[:space:]]*true[[:space:]]*$/{f=1} END{exit !f}' "$1"; }
+# 只看 frontmatter 的休眠判断（后续步骤复用）：恰好一行字段且值为 true
+is_disabled() { awk '/^---$/{c++;next} c==1 && /^disable-model-invocation:[[:space:]]*/{t++; if ($0 ~ /:[[:space:]]*true[[:space:]]*$/) n++} END{exit !(t==1 && n==1)}' "$1"; }
 
 for f in "$ROOT"/lark-*/SKILL.md; do
   n=$(basename "$(dirname "$f")")
