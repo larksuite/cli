@@ -139,11 +139,8 @@ lark-cli docs +fetch --doc Z1Fj...tnAc \
 
 返回中可能含 `<sheet>`、`<bitable>`、`<cite file-type="sheets|bitable">`。内部数据无法通过 `docs +fetch` 获取，提取 `token` 等属性后切到 [`lark-sheets`](../../lark-sheets/SKILL.md) / [`lark-base`](../../lark-base/SKILL.md) 下钻，详见 [SKILL.md 快速决策](../SKILL.md) 路由表。
 
-如果用户要求完整理解或深度审阅，正文之外还可能需要评论、关键图片/画板与嵌入数据；按 [`lark-doc-context.md`](lark-doc-context.md) 用一个任务意图编排已有只读能力，不要无条件展开全部资源。
-
 ## 参考
 
-- [lark-doc-context](lark-doc-context.md) — 按需补全文档评论、素材与嵌入数据
 - [lark-doc-create](lark-doc-create.md) — 创建文档
 - [lark-doc-update](lark-doc-update.md) — 更新文档
 - [lark-doc-media-preview](lark-doc-media-preview.md) — 预览素材
