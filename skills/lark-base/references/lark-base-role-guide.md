@@ -6,6 +6,7 @@ This guide is the entry point for Base advanced permissions and roles. Use it to
 
 | Goal | Command | Notes |
 |------|---------|-------|
+| Check advanced permission status | `+base-get` | Read `data.base.is_advanced`. There is no `+advperm-get` command. |
 | Enable advanced permissions | `+advperm-enable` | Required before creating or updating roles. Caller must be a Base admin. |
 | Disable advanced permissions | `+advperm-disable` | High-risk write. Disabling invalidates existing custom roles. |
 | Locate roles | `+role-list` | Returns role summaries. Use `+role-get` for full config. |
@@ -13,6 +14,16 @@ This guide is the entry point for Base advanced permissions and roles. Use it to
 | Create a custom role | `+role-create` | Supports `custom_role` only. Read [role-config.md](role-config.md) before constructing `--json`. |
 | Update a role | `+role-update` | Delta merge. Read current config first, then send only intended changes. |
 | Delete a role | `+role-delete` | Custom roles only. System roles cannot be deleted. |
+
+## Required order
+
+At the start of a role workflow, before the first `+role-list`, `+role-get`, `+role-create`, `+role-update`, or `+role-delete` call:
+
+1. Run `lark-cli base +base-get --base-token <base_token>` and inspect `data.base.is_advanced`.
+2. If `is_advanced` is `false`, run `+advperm-enable` before the role command. If the user did not authorize enabling advanced permissions, stop and explain the required precondition.
+3. Run the requested role commands only after `is_advanced` is `true` or `+advperm-enable` succeeds. Reuse that confirmed status for later role calls in the same workflow.
+
+Do not probe with `+advperm-get`: that command is not supported. Do not use an empty `+role-list` response to infer the advanced permission status; a disabled Base can also return an empty list.
 
 ## Safety boundaries
 
