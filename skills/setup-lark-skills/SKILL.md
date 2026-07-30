@@ -17,27 +17,41 @@ metadata:
 
 ### 1. 定位已安装的 skill 文件
 
-操作对象是用户机器上**已安装**的 skill 文件，安装路径因 harness 而异，先探测：
+操作对象是用户机器上**已安装**的 skill 文件，安装路径因 harness 而异。以下探测必须定位到**唯一**安装根目录才继续——找不到或有多个匹配时直接报错退出，不要在不确定的位置上执行后续命令：
 
 ```bash
 # 常见 harness 的 skill 安装目录
+hits=()
 for d in ~/.claude/skills ~/.agents/skills ~/.codex/skills ~/.cursor/skills; do
-  [ -f "$d/lark-im/SKILL.md" ] && echo "$d"
+  [ -f "$d/lark-im/SKILL.md" ] && hits+=("$d")
 done
-# 以上都找不到时兜底（范围较大，可能较慢）
-find ~ -maxdepth 5 -path '*skills/lark-im/SKILL.md' 2>/dev/null | head -5
+# 候选都找不到时兜底（范围较大，可能较慢）
+if [ ${#hits[@]} -eq 0 ]; then
+  while IFS= read -r f; do
+    hits+=("$(dirname "$(dirname "$f")")")
+  done < <(find ~ -maxdepth 5 -path '*skills/lark-im/SKILL.md' 2>/dev/null | head -5)
+fi
+case ${#hits[@]} in
+  0) echo "ERROR: 未找到已安装的 lark skills，请先安装" >&2; exit 1 ;;
+  1) export ROOT="${hits[0]}"; echo "ROOT=$ROOT" ;;
+  *) echo "ERROR: 发现多个安装位置，请手动指定 ROOT 后重试：" >&2
+     printf '  %s\n' "${hits[@]}" >&2; exit 1 ;;
+esac
 ```
 
 下文统一用 `$ROOT` 指代探测到的安装根目录。
 
 ### 2. 读取真实状态
 
-唯一事实源是各 SKILL.md 的 frontmatter，**不是** `.active-profile`（后者仅是记录）：
+唯一事实源是各 SKILL.md 的 frontmatter，**不是** `.active-profile`（后者仅是记录）。检测必须只匹配 frontmatter 块（第一个 `---` 到第二个 `---` 之间）内的字段——正文（如文档示例、代码块）里出现的同名文本不算：
 
 ```bash
+# 只看 frontmatter 的休眠判断（后续步骤复用）
+is_disabled() { awk '/^---$/{c++;next} c==1 && /^disable-model-invocation:[[:space:]]*true[[:space:]]*$/{f=1} END{exit !f}' "$1"; }
+
 for f in "$ROOT"/lark-*/SKILL.md; do
-  n=$(basename $(dirname "$f"))
-  if grep -q '^disable-model-invocation: true' "$f"; then echo "$n: 休眠"; else echo "$n: 激活"; fi
+  n=$(basename "$(dirname "$f")")
+  if is_disabled "$f"; then echo "$n: 休眠"; else echo "$n: 激活"; fi
 done
 ```
 
@@ -90,17 +104,29 @@ done
 
 ### 5. 执行休眠/激活（幂等）
 
-```bash
-# 休眠（幂等：不存在才插入；插在 name: 行之后，避开多行 description 陷阱）
-grep -q '^disable-model-invocation: true' "$ROOT/lark-<name>/SKILL.md" || \
-sed -i '' '/^name:/a\
-disable-model-invocation: true' "$ROOT/lark-<name>/SKILL.md"
+编辑同样只作用于 frontmatter 块——休眠只在 frontmatter 内插入，激活只删 frontmatter 内的匹配行，正文里的同名文本原样保留：
 
-# 激活（幂等：删除所有匹配行，跑多次无副作用）
-sed -i '' '/^disable-model-invocation: true$/d' "$ROOT/lark-<name>/SKILL.md"
+```bash
+f="$ROOT/lark-<name>/SKILL.md"
+
+# 休眠（幂等：frontmatter 内不存在才插入；插在 name: 行之后，避开多行 description 陷阱）
+is_disabled "$f" || {
+  awk '
+    /^---$/ { c++; print; next }
+    c==1 && /^name:/ && !d { print; print "disable-model-invocation: true"; d=1; next }
+    { print }
+  ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+}
+
+# 激活（幂等：只删 frontmatter 内的匹配行）
+awk '
+  /^---$/ { c++; print; next }
+  c==1 && /^disable-model-invocation:[[:space:]]*true[[:space:]]*$/ { next }
+  { print }
+' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 ```
 
-（以上 `sed -i ''` 是 macOS 语法；Linux 下改为 `sed -i`，去掉 `''`。）
+（awk 在 macOS / Linux 行为一致，无需区分平台。）
 
 ### 6. 写入配置记录
 
