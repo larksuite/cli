@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -417,6 +418,46 @@ func TestDryRunDashboardOps(t *testing.T) {
 	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks", "user_id_type=open_id")
 	assertDryRunContains(t, dryRunDashboardBlockUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1", "user_id_type=open_id")
 	assertDryRunContains(t, dryRunDashboardBlockDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1")
+}
+
+// TestDryRunDashboardBlockPositionAndNumberFormat asserts the shared body
+// builder surfaces the optional top-level position and data_config.number_format
+// in the dry-run request body, and that create DryRun matches the create Execute
+// body shape (isomorphism) for the same inputs.
+func TestDryRunDashboardBlockPositionAndNumberFormat(t *testing.T) {
+	ctx := context.Background()
+
+	rt := newBaseTestRuntime(
+		map[string]string{
+			"base-token":   "app_x",
+			"dashboard-id": "dash_1",
+			"block-id":     "blk_1",
+			"name":         "Revenue",
+			"type":         "statistics",
+			"data-config":  `{"table_name":"Orders","count_all":true,"number_format":{"formatName":"dollar_rounded","precision":2}}`,
+			"position":     `{"x":0,"y":0,"w":6,"h":4}`,
+		},
+		nil,
+		nil,
+	)
+
+	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt),
+		"POST /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks",
+		`"position"`, `"w":6`, `"number_format"`, `"dollar_rounded"`)
+	assertDryRunContains(t, dryRunDashboardBlockUpdate(ctx, rt),
+		"PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1",
+		`"position"`, `"w":6`)
+
+	// Isomorphism: DryRun body and Execute body must be built identically.
+	pc := newParseCtx(rt)
+	dryBody, _ := buildDashboardBlockBody(pc, rt, true, false)
+	execBody, err := buildDashboardBlockBody(pc, rt, true, true)
+	if err != nil {
+		t.Fatalf("execute body build err=%v", err)
+	}
+	if !reflect.DeepEqual(dryBody, execBody) {
+		t.Fatalf("dry-run and execute bodies diverge:\n dry=%v\nexec=%v", dryBody, execBody)
+	}
 }
 
 func TestDryRunViewOps(t *testing.T) {

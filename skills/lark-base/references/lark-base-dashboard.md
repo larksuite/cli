@@ -17,9 +17,30 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 | 创建/删除/改名称 | `+dashboard-create/delete/update` | 本页下方「仪表盘管理」 |
 | 在仪表盘里添加组件 | `+dashboard-block-create` | 先定位 dashboard、表和字段，再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 构造 `data_config` |
 | 修改组件 | `+dashboard-block-update` | 先读 block 现状，再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 决定替换哪些顶层 key |
+| 创建/更新时指定组件精确位置大小 | `+dashboard-block-create/update --position` | 本页下方「精确布局 --position vs +dashboard-arrange」 |
 | 查看仪表盘有哪些组件 | `+dashboard-get` 或 `+dashboard-block-list` | 本页下方「查看仪表盘」 |
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
 | 智能重排组件布局 | `+dashboard-arrange` | 用户明确要求重排，或本次会话新建仪表盘的收尾整理；无法指定 `x/y/w/h`、精确位置或尺寸 |
+
+## 精确布局 --position vs +dashboard-arrange
+
+创建/更新组件时可选 `--position`，用一个 12 列栅格坐标对象精确指定组件落点与大小：
+
+```bash
+lark-cli base +dashboard-block-create --base-token xxx --dashboard-id blk_xxx --name "总销售额" --type statistics --data-config '{"table_name":"订单表","count_all":true}' --position '{"x":0,"y":0,"w":6,"h":4}'
+```
+
+`--position` 字段：`x`/`y` 为左上角栅格坐标（>=0），`w` 为宽度（1..12，且 `x+w<=12`），`h` 为高度（>=1）。JSON key 固定为 `x`/`y`/`w`/`h`，与 `name`/`type`/`data_config` 平级挂在请求体顶层。
+
+> [!IMPORTANT]
+> - `--position` 只做 JSON 解析，**不做坐标取值校验**：越界、负值、重叠都原样透传，服务端也**不做碰撞检测**。需要不重叠布局时由调用方自行规划坐标。
+> - 不传 `--position`：create 时服务端自动装箱（找空位），update 时保持当前布局不变。
+> - `--position` 与 `+dashboard-arrange` 用途不同，别混用：
+
+| 能力 | 时机 | 效果 | 适用 |
+|------|------|------|------|
+| `--position`（create/update） | 建/改组件的同时 | 精确指定单个组件的 x/y/w/h，适合**复刻已有看板布局**或按业务排布 | 需要可控、可复现的坐标 |
+| `+dashboard-arrange` | 组件建好之后 | 服务端一键**智能重排**整个仪表盘，无法指定精确位置 | 只想一键美化、不在意具体落点 |
 
 ## 典型场景工作流
 

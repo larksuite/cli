@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -18,6 +19,71 @@ func dashboardIDFlag(required bool) common.Flag {
 // blockIDFlag returns a Flag for dashboard block ID.
 func blockIDFlag(required bool) common.Flag {
 	return common.Flag{Name: "block-id", Desc: "dashboard block ID", Required: required}
+}
+
+// buildDashboardBlockBody assembles the request body shared by the dashboard
+// block create and update commands. It is the single source of truth for body
+// shape so DryRun and Execute stay isomorphic across all call sites.
+//
+//   - includeType controls whether the block type is emitted (create only).
+//   - The optional top-level position object is parsed as JSON and passed
+//     through verbatim as a sibling of name/type/data_config; coordinate values
+//     are NOT validated (aligns with dws grid semantics).
+//   - When strict is true (Execute path) a malformed data-config/position fails
+//     the command; when false (DryRun preview) the offending field is skipped so
+//     the preview still renders, matching the existing dry-run behaviour.
+func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, includeType, strict bool) (map[string]interface{}, error) {
+	body := map[string]interface{}{}
+	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
+		body["name"] = name
+	}
+	if includeType {
+		if blockType := strings.TrimSpace(runtime.Str("type")); blockType != "" {
+			body["type"] = blockType
+		}
+	}
+	if raw := runtime.Str("data-config"); raw != "" {
+		parsed, err := parseJSONObject(pc, raw, "data-config")
+		if err != nil {
+			if strict {
+				return nil, err
+			}
+		} else {
+			body["data_config"] = parsed
+		}
+	}
+	if raw := strings.TrimSpace(runtime.Str("position")); raw != "" {
+		parsed, err := parseJSONObject(pc, raw, "position")
+		if err != nil {
+			if strict {
+				return nil, err
+			}
+		} else {
+			body["position"] = parsed
+		}
+	}
+	return body, nil
+}
+
+// validateDashboardBlockPosition parses the optional --position flag as a JSON
+// object to fail fast on malformed input. Coordinate values (x/y/w/h) are NOT
+// validated — they pass through verbatim, aligning with dws grid semantics and
+// leaving overlap handling to the server. Callers must skip this when
+// --no-validate is set so dry-run and execute stay consistent.
+func validateDashboardBlockPosition(pc *parseCtx, runtime *common.RuntimeContext) error {
+	raw := strings.TrimSpace(runtime.Str("position"))
+	if raw == "" {
+		return nil
+	}
+	pos, err := parseJSONObject(pc, raw, "position")
+	if err != nil {
+		return err
+	}
+	// Rewrite the flag with canonical JSON so the parsed shape is identical
+	// across Validate, DryRun and Execute.
+	b, _ := json.Marshal(pos)
+	_ = runtime.Cmd.Flags().Set("position", string(b))
+	return nil
 }
 
 // dryRunDashboardBase returns a base DryRunAPI with common dashboard parameters set.
@@ -111,18 +177,7 @@ func dryRunDashboardBlockGetData(_ context.Context, runtime *common.RuntimeConte
 // dryRunDashboardBlockCreate returns a DryRunAPI for creating a dashboard block.
 func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body := map[string]interface{}{}
-	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
-		body["name"] = name
-	}
-	if blockType := strings.TrimSpace(runtime.Str("type")); blockType != "" {
-		body["type"] = blockType
-	}
-	if raw := runtime.Str("data-config"); raw != "" {
-		if parsed, err := parseJSONObject(pc, raw, "data-config"); err == nil {
-			body["data_config"] = parsed
-		}
-	}
+	body, _ := buildDashboardBlockBody(pc, runtime, true, false)
 
 	params := map[string]interface{}{}
 	if userIDType := strings.TrimSpace(runtime.Str("user-id-type")); userIDType != "" {
@@ -137,15 +192,7 @@ func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContex
 // dryRunDashboardBlockUpdate returns a DryRunAPI for updating a dashboard block.
 func dryRunDashboardBlockUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body := map[string]interface{}{}
-	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
-		body["name"] = name
-	}
-	if raw := runtime.Str("data-config"); raw != "" {
-		if parsed, err := parseJSONObject(pc, raw, "data-config"); err == nil {
-			body["data_config"] = parsed
-		}
-	}
+	body, _ := buildDashboardBlockBody(pc, runtime, false, false)
 	params := map[string]interface{}{}
 	if userIDType := strings.TrimSpace(runtime.Str("user-id-type")); userIDType != "" {
 		params["user_id_type"] = userIDType
@@ -274,19 +321,9 @@ func executeDashboardBlockGetData(runtime *common.RuntimeContext) error {
 // executeDashboardBlockCreate creates a new dashboard block.
 func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	body := map[string]interface{}{}
-	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
-		body["name"] = name
-	}
-	if blockType := strings.TrimSpace(runtime.Str("type")); blockType != "" {
-		body["type"] = blockType
-	}
-	if raw := runtime.Str("data-config"); raw != "" {
-		parsed, err := parseJSONObject(pc, raw, "data-config")
-		if err != nil {
-			return err
-		}
-		body["data_config"] = parsed
+	body, err := buildDashboardBlockBody(pc, runtime, true, true)
+	if err != nil {
+		return err
 	}
 
 	params := map[string]interface{}{}
@@ -305,16 +342,9 @@ func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 // executeDashboardBlockUpdate updates an existing dashboard block.
 func executeDashboardBlockUpdate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	body := map[string]interface{}{}
-	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
-		body["name"] = name
-	}
-	if raw := runtime.Str("data-config"); raw != "" {
-		parsed, err := parseJSONObject(pc, raw, "data-config")
-		if err != nil {
-			return err
-		}
-		body["data_config"] = parsed
+	body, err := buildDashboardBlockBody(pc, runtime, false, true)
+	if err != nil {
+		return err
 	}
 	params := map[string]interface{}{}
 	if userIDType := strings.TrimSpace(runtime.Str("user-id-type")); userIDType != "" {

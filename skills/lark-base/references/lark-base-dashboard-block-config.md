@@ -372,6 +372,39 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 }
 ```
 
+### statistics 指标卡数值格式 number_format（可选）
+
+仅 `type: statistics` 的指标卡支持在 `data_config` 里加可选 `number_format`，控制数值展示精度与格式；不传时后端回退默认千分位整数（`digital`）。其它组件类型携带 `number_format` 会被静默忽略、不生效、不报错。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `number_format.formatName` | string | 否 | 数值格式名，取值见下表 |
+| `number_format.precision` | integer | 否 | 小数位数，取值 `0` 到 `9` 的整数（本地严格校验，`2.5` 之类非整数会被拒） |
+
+`formatName` 枚举与含义：
+
+| formatName | 含义 | 示例（precision=2） |
+|------------|------|--------------------|
+| `digital` | 千分位数字（默认） | `1,234.56` |
+| `digital_without_separator` | 无千分位数字 | `1234.56` |
+| `percentage_rounded` | 百分比 | `1,234.56%` |
+| `cyn_rounded` | 人民币金额 | `¥1,234.56` |
+| `dollar_rounded` | 美元金额 | `$1,234.56` |
+
+> 本地会校验 `formatName` 属于上述 5 个枚举、`precision` 为 0..9 整数；`--no-validate` 跳过本地校验，由后端裁决。
+
+指标卡（金额，保留 2 位小数）：
+
+```json
+{"table_name":"订单表","series":[{"field_name":"金额","rollup":"SUM"}],"number_format":{"formatName":"dollar_rounded","precision":2}}
+```
+
+更新时 `number_format` 支持子字段合并：只传 `precision` 会保留原有 `formatName`，例如把已有指标卡改成 0 位小数：
+
+```json
+{"number_format":{"precision":0}}
+```
+
 文本组件（Markdown 富文本）：
 
 ```json

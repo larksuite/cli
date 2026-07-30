@@ -25,21 +25,28 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		blockIDFlag(true),
 		{Name: "name", Desc: "new block name"},
 		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-config.md for the SSOT"},
+		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; x/y>=0, 1<=w<=12 and x+w<=12, h>=1; omit to leave layout unchanged`},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation and normalization; send data_config as-is"},
 	},
 	Tips: []string{
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"number_format":{"precision":0}}'`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --position '{"x":6,"y":0,"w":6,"h":4}'`,
 		"Read lark-base-dashboard-block-config.md as the SSOT for data_config templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
 		"Use +dashboard-block-get first to inspect the current data_config before replacing nested values.",
 		"Block type cannot be changed; delete and recreate the block to change chart type.",
 		"data_config update merges top-level keys, but each provided key is replaced as a whole.",
+		"--position is optional precise layout in a 12-col grid; omit it to leave the current layout unchanged. Coordinate values are not validated locally and overlaps are not server-checked. To re-tidy an existing dashboard use +dashboard-arrange instead.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pc := newParseCtx(runtime)
 		if runtime.Bool("no-validate") {
 			return nil
+		}
+		if err := validateDashboardBlockPosition(pc, runtime); err != nil {
+			return err
 		}
 		raw := runtime.Str("data-config")
 		if strings.TrimSpace(raw) == "" {
@@ -57,15 +64,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		pc := newParseCtx(runtime)
-		body := map[string]interface{}{}
-		if name := runtime.Str("name"); name != "" {
-			body["name"] = name
-		}
-		if raw := runtime.Str("data-config"); raw != "" {
-			if parsed, err := parseJSONObject(pc, raw, "data-config"); err == nil {
-				body["data_config"] = parsed
-			}
-		}
+		body, _ := buildDashboardBlockBody(pc, runtime, false, false)
 		params := map[string]interface{}{}
 		if uid := runtime.Str("user-id-type"); uid != "" {
 			params["user_id_type"] = uid

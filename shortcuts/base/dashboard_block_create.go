@@ -26,15 +26,19 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		{Name: "name", Desc: "block name", Required: true},
 		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|statistics(指标卡)|text(文本). Read lark-base-dashboard-block-config.md before creating.", Required: true},
 		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-config.md for the SSOT"},
+		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; x/y>=0, 1<=w<=12 and x+w<=12, h>=1; omit for server auto-layout`},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation and normalization; send data_config as-is"},
 	},
 	Tips: []string{
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}'`,
+		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Revenue" --type statistics --data-config '{"table_name":"Orders","series":[{"field_name":"Amount","rollup":"SUM"}],"number_format":{"formatName":"dollar_rounded","precision":2}}'`,
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Dashboard Note" --type text --data-config '{"text":"# Sales Dashboard"}'`,
+		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}' --position '{"x":0,"y":0,"w":6,"h":4}'`,
 		"Before creating data-backed blocks, use +table-list and +field-list to confirm real table and field names.",
 		"data_config uses table and field names, not table_id or field_id.",
 		"Read lark-base-dashboard-block-config.md as the SSOT for chart templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
+		"--position is optional precise layout in a 12-col grid; omit it to let the server auto-layout. Coordinate values are not validated locally and overlaps are not server-checked. To re-tidy an existing dashboard use +dashboard-arrange instead.",
 		"For funnel/stage charts backed by ordered helper data, set the intended group_by.sort in the initial create request; do not create first and then issue a second update just to fix sorting.",
 		"Record the returned block_id; block update/delete/get-data commands need it.",
 		"Create dashboard blocks sequentially; do not parallelize multiple block creates for the same dashboard.",
@@ -43,6 +47,9 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		pc := newParseCtx(runtime)
 		if runtime.Bool("no-validate") {
 			return nil
+		}
+		if err := validateDashboardBlockPosition(pc, runtime); err != nil {
+			return err
 		}
 		raw := runtime.Str("data-config")
 		if strings.TrimSpace(raw) == "" {
@@ -67,18 +74,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		pc := newParseCtx(runtime)
-		body := map[string]interface{}{}
-		if name := runtime.Str("name"); name != "" {
-			body["name"] = name
-		}
-		if t := runtime.Str("type"); t != "" {
-			body["type"] = t
-		}
-		if raw := runtime.Str("data-config"); raw != "" {
-			if parsed, err := parseJSONObject(pc, raw, "data-config"); err == nil {
-				body["data_config"] = parsed
-			}
-		}
+		body, _ := buildDashboardBlockBody(pc, runtime, true, false)
 		params := map[string]interface{}{}
 		if uid := runtime.Str("user-id-type"); uid != "" {
 			params["user_id_type"] = uid
