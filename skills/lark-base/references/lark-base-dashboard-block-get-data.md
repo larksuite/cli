@@ -63,7 +63,8 @@ lark-cli base +dashboard-block-get-data \
 # 先看仪表盘里有哪些组件
 lark-cli base +dashboard-block-list \
   --base-token bascn***************CtadY \
-  --dashboard-id blkxxxxxxxx
+  --dashboard-id blkxxxxxxxx \
+  --page-size 100
 
 # 再读取某个组件的最终计算结果
 lark-cli base +dashboard-block-get-data \
@@ -71,7 +72,7 @@ lark-cli base +dashboard-block-get-data \
   --block-id chtxxxxxxxx
 ```
 
-如果用户要读取多个组件，先通过 `+dashboard-block-list` 取得真实 ID，再在**一个 shell 工具调用**内串行执行。每条命令会依次输出一个完整 JSON envelope；不要把每个 block 拆成独立模型轮次。文本组件没有计算结果，应从列表中跳过。
+如果用户要读取多个组件，先通过 `+dashboard-block-list --page-size 100` 取得真实 ID；若返回 `has_more=true`，继续把本页返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`。收齐目标组件并跳过没有计算结果的文本组件后，再在**一个 shell 工具调用**内串行执行。每条命令会依次输出一个完整 JSON envelope；不要把每个 block 拆成独立模型轮次。
 
 ```bash
 block_ids=(cht_block_1 cht_block_2)

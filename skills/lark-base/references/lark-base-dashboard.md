@@ -186,7 +186,7 @@ lark-cli base +dashboard-block-get-data --base-token xxx --block-id chtxxxxxxxx
 # 最后：把获取到的现状信息整理好告诉用户
 ```
 
-需要读取多个组件的计算结果时，先用方式 B 获取真实 `block_id`，再按 [lark-base-dashboard-block-get-data.md](lark-base-dashboard-block-get-data.md) 的多组件范式，在一个 shell 工具调用内串行读取；不要把每个 block 拆成独立模型轮次。文本组件没有计算结果，应跳过。
+需要读取多个组件的计算结果时，先用方式 B 获取真实 `block_id`（使用 `--page-size 100`；若 `has_more=true`，继续把返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`），再按 [lark-base-dashboard-block-get-data.md](lark-base-dashboard-block-get-data.md) 的多组件范式，在一个 shell 工具调用内串行读取；不要把每个 block 拆成独立模型轮次。文本组件没有计算结果，应跳过。
 
 ## 组件类型选择
 

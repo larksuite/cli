@@ -133,7 +133,7 @@ metadata:
 - Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，仅在用户明确要求重排/美化、或对本次会话从零新建的仪表盘做收尾整理时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
 - Dashboard shortcut 不支持指定组件的 `x/y/w/h`、精确位置或尺寸，不能把 `+dashboard-arrange` 静默当作等价实现。用户只要求一般性重排/美化时可执行一次智能重排；用户要求精确结果时先说明限制并询问是否接受自适应布局，接受后才执行。不要探测 raw `lark-cli api`、源码或未公开布局参数。
 - 创建接口成功返回即表示写入成功；只有结果不确定时才额外执行一次 `+dashboard-get` 或 `+dashboard-block-list`。不要仅为确认创建而逐组件调用 `+dashboard-block-get-data`。
-- 用户要读取多个组件的计算结果时，先列出组件，再按 [lark-base-dashboard-block-get-data.md](references/lark-base-dashboard-block-get-data.md) 在一个 shell 工具调用内串行读取；不要把每个 block 拆成独立模型轮次。
+- 用户要读取多个组件的计算结果时，先完整列出组件（`+dashboard-block-list --page-size 100`；若 `has_more=true`，继续把返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`），再按 [lark-base-dashboard-block-get-data.md](references/lark-base-dashboard-block-get-data.md) 在一个 shell 工具调用内串行读取；不要把每个 block 拆成独立模型轮次。
 - Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
 - Role 的复杂点是权限 JSON。角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；`+role-create` 只支持自定义角色；`+role-update` 是 delta merge；角色 create/update 或解读完整配置时读权限 JSON SSOT [role-config.md](references/role-config.md)。`+role-delete` 只适用于自定义角色，系统角色不可删除；删除角色和关闭高级权限前必须确认目标和影响。
 
