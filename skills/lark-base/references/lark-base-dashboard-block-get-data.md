@@ -75,6 +75,8 @@ lark-cli base +dashboard-block-get-data \
 如果用户要读取多个组件，先通过 `+dashboard-block-list --page-size 100` 取得真实 ID；若返回 `has_more=true`，继续把本页返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`。收齐目标组件并跳过没有计算结果的文本组件后，再在**一个 shell 工具调用**内串行执行。每条命令会依次输出一个完整 JSON envelope；不要把每个 block 拆成独立模型轮次。
 
 ```bash
+set -euo pipefail
+
 block_ids=(cht_block_1 cht_block_2)
 for block_id in "${block_ids[@]}"; do
   lark-cli base +dashboard-block-get-data \
