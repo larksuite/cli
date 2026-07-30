@@ -71,6 +71,19 @@ lark-cli base +dashboard-block-get-data \
   --block-id chtxxxxxxxx
 ```
 
+如果用户要读取多个组件，先通过 `+dashboard-block-list` 取得真实 ID，再在**一个 shell 工具调用**内串行执行。每条命令会依次输出一个完整 JSON envelope；不要把每个 block 拆成独立模型轮次。文本组件没有计算结果，应从列表中跳过。
+
+```bash
+block_ids=(cht_block_1 cht_block_2)
+for block_id in "${block_ids[@]}"; do
+  lark-cli base +dashboard-block-get-data \
+    --base-token bascn***************CtadY \
+    --block-id "$block_id"
+done
+```
+
+数组中的 ID 必须逐字来自 `+dashboard-block-list` 返回，不要把名称或未经验证的用户文本作为 shell 代码执行。循环仍然是串行 API 调用，只减少模型往返，不裁剪任何组件结果。
+
 如果你需要先确认组件类型、名称或 `data_config`，请先执行：
 
 ```bash
