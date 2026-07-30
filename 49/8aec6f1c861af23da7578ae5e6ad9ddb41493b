@@ -1,0 +1,37 @@
+internal/event/binding/seed_publish_test.go
+  s_93ed8ad92b2e2d::t_364a4b82b19fc1 1-92
+internal/event/binding/store.go
+  s_93ed8ad92b2e2d::t_c9dfa71afde72c 42,50-64
+internal/event/binding/store_test.go
+  s_93ed8ad92b2e2d::t_01d7ebbd80d402 16,20,35,46-47,79,93,109,137
+internal/event/bus/hub.go
+  s_93ed8ad92b2e2d::t_0f0a69afe4bd0d 176-177,663-675,680-683,687-689,693
+internal/event/bus/status_coherence_test.go
+  s_93ed8ad92b2e2d::t_c23488745fa89a 1-107
+internal/event/model/filter.go
+  s_93ed8ad92b2e2d::t_3b3859a2e63169 161-197
+internal/event/model/remote_subscription.go
+  s_93ed8ad92b2e2d::t_efc52d3f53c6d3 56-92
+internal/event/subscription/plan.go
+  s_93ed8ad92b2e2d::t_d96a3986fedbb5 63-67,78-83,368-377,381,383
+internal/event/subscription/plan_immutable_test.go
+  s_93ed8ad92b2e2d::t_24c0ad510798e8 1-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "498aec6f1c861af23da7578ae5e6ad9ddb41493b",
+  "prompts": {},
+  "sessions": {
+    "s_93ed8ad92b2e2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8e662c8-75c2-41f2-9275-23506be32fd9",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
