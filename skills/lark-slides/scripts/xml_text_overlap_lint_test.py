@@ -723,6 +723,29 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["summary"]["error_count"], 0)
         self.assertNotIn("issues", result)
 
+    def test_lint_xml_rejects_chart_parsed_values_outside_chart_field(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="rect" topLeftX="80" topLeftY="80" width="300" height="160">
+                  <chartParsedValues>unexpected</chartParsedValues>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][0]["issues"]],
+            ["sxsd_unsupported_tag"],
+        )
+        self.assertEqual(
+            result["slides"][0]["issues"][0]["path"],
+            "slide/data/shape/chartParsedValues",
+        )
+
     def test_lint_xml_limits_chart_roundtrip_attrs_to_matching_tags(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -3086,6 +3109,68 @@ class SxsdSyntaxAttributeTest(SxsdSyntaxTestCase):
         issue = self.assert_issue(issues, "sxsd_invalid_scalar", attr="topLeftX")
         self.assertEqual(issue["actual"], "NaN")
 
+    def test_rejects_python_only_numeric_separator(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="rect" topLeftX="1_0" topLeftY="20" width="300" height="80"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_invalid_scalar", attr="topLeftX")
+
+    def test_accepts_xsd_double_lexical_forms(self) -> None:
+        for top_left_x in ("10", "-0.5", ".5", "1.", "1e2"):
+            with self.subTest(top_left_x=top_left_x):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="rect" topLeftX="{top_left_x}" topLeftY="20" width="300" height="80"/>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assertEqual(issues, [])
+
+    def test_accepts_bullet_char_length_boundaries(self) -> None:
+        for bullet_char in ("A", "12345678"):
+            with self.subTest(bullet_char=bullet_char):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                          <content bulletChar="{bullet_char}"><p>Text</p></content>
+                        </shape>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assertEqual(issues, [])
+
+    def test_rejects_bullet_char_outside_length_boundaries(self) -> None:
+        for bullet_char in ("", "123456789"):
+            with self.subTest(bullet_char=bullet_char):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                          <content bulletChar="{bullet_char}"><p>Text</p></content>
+                        </shape>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assert_issue(issues, "sxsd_value_out_of_range", attr="bulletChar")
+
     def test_rejects_zero_size_that_violates_xsd(self) -> None:
         issues = self.validate(
             f"""
@@ -3346,6 +3431,19 @@ class SxsdSyntaxStructureTest(SxsdSyntaxTestCase):
 
         self.assert_issue(issues, "sxsd_invalid_namespace", path="slide")
 
+    def test_rejects_descendant_outside_document_namespace(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data xmlns="">
+                <shape xmlns="{SML_NAMESPACE}" type="rect" topLeftX="10" topLeftY="20" width="300" height="80"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_invalid_namespace", path="slide/data")
+
     def test_rejects_unexpected_child_that_violates_xsd(self) -> None:
         issues = self.validate(
             f"""
@@ -3467,7 +3565,7 @@ class SxsdSchemaModelTest(unittest.TestCase):
 
         self.assertEqual([issue["code"] for issue in issues], ["sxsd_unsupported_pattern"])
         self.assertEqual(issues[0]["attr"], "value")
-        self.assertIn("unsupported", str(issues[0]["hint"]).lower())
+        self.assertIn("pattern interpreter", str(issues[0]["hint"]).lower())
 
     def test_standalone_slide_uses_slide_type_without_global_element(self) -> None:
         schema = f"""

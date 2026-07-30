@@ -48,7 +48,7 @@ ROUNDTRIP_SXSD_ATTRS = {
 }
 # Slides readback echoes each chartField's CSV text as per-value <chartParsedValues> children;
 # it is server-emitted and absent from the write schema, so it must not block page linting.
-ROUNDTRIP_SXSD_TAGS = {"chartParsedValues"}
+ROUNDTRIP_SXSD_TAGS = {("chartField", "chartParsedValues")}
 DEFAULT_TABLE_COLUMN_WIDTH = 110
 DEFAULT_TABLE_ROW_HEIGHT = 37
 DEFAULT_TEXT_LINE_SPACING_MULTIPLE = 1.5
@@ -375,6 +375,10 @@ def should_skip_sxsd_attribute(tag_name: str, attr_name: str) -> bool:
     return attr_name in SERVER_FILLED_SXSD_ATTRS or (tag_name, attr_name) in ROUNDTRIP_SXSD_ATTRS
 
 
+def should_skip_sxsd_tag(parent_name: str | None, tag_name: str) -> bool:
+    return (parent_name, tag_name) in ROUNDTRIP_SXSD_TAGS
+
+
 def without_server_filled_sxsd_fields(root: ET.Element) -> ET.Element:
     sanitized_root = copy.deepcopy(root)
 
@@ -384,7 +388,7 @@ def without_server_filled_sxsd_fields(root: ET.Element) -> ET.Element:
             if should_skip_sxsd_attribute(tag_name, xml_local_name(raw_attr_name)):
                 del element.attrib[raw_attr_name]
         for child in list(element):
-            if xml_local_name(child.tag) in ROUNDTRIP_SXSD_TAGS:
+            if should_skip_sxsd_tag(tag_name, xml_local_name(child.tag)):
                 element.remove(child)
                 continue
             sanitize(child)
@@ -405,7 +409,8 @@ def validate_sxsd_document(xml: str, root: ET.Element) -> list[dict[str, Any]]:
 
         tag_name = xml_local_name(element.tag)
         current_path = f"{path}/{tag_name}" if path else tag_name
-        if tag_name in ROUNDTRIP_SXSD_TAGS:
+        parent_name = ancestors[-1] if ancestors else None
+        if should_skip_sxsd_tag(parent_name, tag_name):
             return
         if tag_name not in supported_tags:
             issues.append(

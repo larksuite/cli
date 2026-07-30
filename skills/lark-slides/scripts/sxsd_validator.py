@@ -52,6 +52,7 @@ class SimpleTypeRule:
     enums: tuple[str, ...] = ()
     patterns: tuple[str, ...] = ()
     bounds: tuple[tuple[str, Decimal], ...] = ()
+    length_bounds: tuple[tuple[str, int], ...] = ()
     union_members: tuple[str, ...] = ()
 
 
@@ -128,17 +129,22 @@ def parse_simple_type(
         "maxExclusive",
     }
     bounds: list[tuple[str, Decimal]] = []
+    length_bounds: list[tuple[str, int]] = []
     for child in restriction:
         facet = local_name(child.tag)
-        if facet not in facet_names or "value" not in child.attrib:
+        if "value" not in child.attrib:
             continue
-        bounds.append((facet, Decimal(child.attrib["value"])))
+        if facet in facet_names:
+            bounds.append((facet, Decimal(child.attrib["value"])))
+        elif facet in {"minLength", "maxLength"}:
+            length_bounds.append((facet, int(child.attrib["value"])))
     return SimpleTypeRule(
         name=name,
         base=local_name(restriction.attrib.get("base", "string")),
         enums=tuple(child.attrib["value"] for child in direct_children(restriction, "enumeration")),
         patterns=tuple(child.attrib["value"] for child in direct_children(restriction, "pattern")),
         bounds=tuple(bounds),
+        length_bounds=tuple(length_bounds),
     )
 
 
@@ -445,8 +451,14 @@ def builtin_scalar_value(type_name: str, value: str) -> Decimal | str | bool:
             raise ArithmeticError("expected non-negative integer")
         return number
     if type_name in {"double", "decimal"}:
+        lexical_value = value.strip(" \t\n\r")
+        decimal_pattern = r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)"
+        double_pattern = decimal_pattern + r"(?:[eE][+-]?[0-9]+)?"
+        expected_pattern = double_pattern if type_name == "double" else decimal_pattern
+        if re.fullmatch(expected_pattern, lexical_value) is None:
+            raise ValueError(f"expected {type_name}")
         try:
-            number = Decimal(value)
+            number = Decimal(lexical_value)
         except InvalidOperation as error:
             raise ValueError(f"expected {type_name}") from error
         if not math.isfinite(float(number)):
@@ -587,6 +599,10 @@ def value_error_for_type(
         base_error = value_error_for_type(base_name, value, model, resolving)
         if base_error is not None:
             return base_error
+        for facet, bound in rule.length_bounds:
+            allowed = len(value) >= bound if facet == "minLength" else len(value) <= bound
+            if not allowed:
+                return "sxsd_value_out_of_range", f"{facet} {bound}"
         scalar = scalar_value_for_type(base_name, value, model)
         if isinstance(scalar, Decimal):
             for facet, bound in rule.bounds:
@@ -796,27 +812,44 @@ def validate_element_children(
 def validate_sxsd(root: ET.Element, schema_path: Path) -> list[dict[str, Any]]:
     model = load_schema_model(str(schema_path.resolve()))
     issues: list[dict[str, Any]] = []
+    root_name = local_name(root.tag)
+    document_namespace = element_namespace(root.tag)
+    is_bare_slide_fragment = root_name == "slide" and document_namespace is None
+    has_valid_document_namespace = (
+        document_namespace in ACCEPTED_SML_NAMESPACES or is_bare_slide_fragment
+    )
 
     def visit(element: ET.Element, parent_path: str, element_rule: ElementRule) -> None:
         tag = local_name(element.tag)
         path = f"{parent_path}/{tag}" if parent_path else tag
         namespace = element_namespace(element.tag)
-        is_bare_slide_fragment = not parent_path and tag == "slide" and namespace is None
-        if (
+        invalid_root_namespace = (
             not parent_path
             and namespace not in ACCEPTED_SML_NAMESPACES
             and not is_bare_slide_fragment
-        ):
+        )
+        invalid_descendant_namespace = (
+            bool(parent_path)
+            and has_valid_document_namespace
+            and namespace != document_namespace
+        )
+        if invalid_root_namespace or invalid_descendant_namespace:
+            expected_namespace = document_namespace if parent_path else SML_NAMESPACE
+            namespace_hint = (
+                "Keep SXSD descendants without xmlns in a bare <slide> readback fragment."
+                if expected_namespace is None
+                else f'Use xmlns="{expected_namespace}" for SXSD elements.'
+            )
             issues.append(
                 issue(
                     "sxsd_invalid_namespace",
                     path,
                     tag,
                     attr=None,
-                    expected=SML_NAMESPACE,
+                    expected=expected_namespace,
                     actual=namespace,
                     message=f"invalid SXSD namespace on <{tag}> at {path}",
-                    hint=f'Use xmlns="{SML_NAMESPACE}" for SXSD elements.',
+                    hint=namespace_hint,
                 )
             )
         issues.extend(validate_element_attributes(element, path, model, element_rule))
@@ -827,7 +860,6 @@ def validate_sxsd(root: ET.Element, schema_path: Path) -> list[dict[str, Any]]:
             if child_rule is not None:
                 visit(child, path, child_rule)
 
-    root_name = local_name(root.tag)
     if root_name not in {"presentation", "slide"}:
         issues.append(
             issue(
