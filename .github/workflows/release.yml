@@ -235,17 +235,39 @@ jobs:
             ' "$metadata" "$SOURCE_SHA" "$PRERELEASE"
             existing="$(mktemp -d "${RUNNER_TEMP}/draft-release.XXXXXX")"
             trap 'rm -f -- "$release_error"; rm -rf -- "$existing"' EXIT
-            asset_count="$(gh release view "$TAG" --json assets -q '.assets | length')"
-            if [[ "$asset_count" != "0" ]]; then
+            expected_names=("${release_assets[@]##*/}")
+            mapfile -t existing_names < <(gh release view "$TAG" --json assets -q '.assets[].name' | sort)
+            for name in "${existing_names[@]}"; do
+              printf '%s\n' "${expected_names[@]}" | grep -Fxq "$name" || {
+                echo "Draft Release contains unexpected asset ${name}." >&2
+                exit 1
+              }
+            done
+            if (( ${#existing_names[@]} > 0 )); then
               gh release download "$TAG" --dir "$existing"
-              cmp --silent release-candidate/checksums.txt "$existing/checksums.txt" || { echo "Draft Release checksums do not match the current candidate." >&2; exit 1; }
-              (cd "$existing" && sha256sum --check checksums.txt)
-              diff --brief \
-                <(printf '%s\n' "${release_assets[@]##*/}" | sort) \
-                <(gh release view "$TAG" --json assets -q '.assets[].name' | sort)
-              gh release edit "$TAG" --notes-file "$release_notes"
-              exit 0
+              for name in "${existing_names[@]}"; do
+                if [[ "$name" == "checksums.txt" ]]; then
+                  cmp --silent release-candidate/checksums.txt "$existing/$name" || { echo "Draft Release checksums do not match the current candidate." >&2; exit 1; }
+                  continue
+                fi
+                checksum_line="$(awk -v name="$name" '$2 == name { print }' release-candidate/checksums.txt)"
+                [[ "$(printf '%s\n' "$checksum_line" | sed '/^$/d' | wc -l | tr -d '[:space:]')" == "1" ]] || { echo "Candidate has no unique checksum for ${name}." >&2; exit 1; }
+                printf '%s\n' "$checksum_line" | (cd "$existing" && sha256sum --check -)
+              done
             fi
+            missing_assets=()
+            for asset in "${release_assets[@]}"; do
+              name="${asset##*/}"
+              printf '%s\n' "${existing_names[@]}" | grep -Fxq "$name" || missing_assets+=("$asset")
+            done
+            if (( ${#missing_assets[@]} > 0 )); then
+              gh release upload "$TAG" "${missing_assets[@]}"
+            fi
+            diff --brief \
+              <(printf '%s\n' "${expected_names[@]}" | sort) \
+              <(gh release view "$TAG" --json assets -q '.assets[].name' | sort)
+            gh release edit "$TAG" --notes-file "$release_notes"
+            exit 0
           else
             if ! grep -Eqi 'HTTP 404|release not found' "$release_error"; then
               cat "$release_error" >&2
@@ -357,6 +379,10 @@ jobs:
     needs: [preflight, build-sign-notarize, publish-github]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
+    concurrency:
+      group: npm-release-${{ needs.preflight.outputs.channel }}
+      queue: max
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
@@ -498,7 +524,7 @@ jobs:
               '' \
               '- **preflight:** network or fetch failure → retry preflight. Version/tag validation failure → correct it, then create a new tag.' \
               '- **build-sign-notarize:** transient build/service failure → retry build. Code or release configuration issue → correct it, then create a new tag.' \
-              '- **create-draft-release:** GitHub Draft Release API/upload failure → retry draft. Release-candidate inconsistency → retry build.' \
+              '- **create-draft-release:** GitHub Draft Release API/upload failure → retry draft; a partial Draft is verified and only missing assets are uploaded. Release-candidate inconsistency → retry build.' \
               '- **verify-macos:** runner or network failure → retry only the failed matrix child. Checksum, signing, notarization, or runtime failure → retry build.' \
               '- **publish-github:** GitHub publish network failure → retry GitHub publish. Install issue → retry build. Tag/assets inconsistency → stop and publish a new version.' \
               '- **publish-npm:** network failure or uncertain publish outcome → retry npm only after verifying whether that version already exists. Integrity mismatch → publish a new version.'

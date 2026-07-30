@@ -96,6 +96,11 @@ end
 
 expect_equal(jobs.fetch("build-sign-notarize").fetch("environment"), "npm-production", "signing approval environment")
 fail("publish-npm must not request a second Environment approval") if jobs.fetch("publish-npm").key?("environment")
+expect_equal(jobs.fetch("publish-npm").fetch("concurrency"), {
+  "group" => "npm-release-${{ needs.preflight.outputs.channel }}",
+  "queue" => "max",
+  "cancel-in-progress" => false,
+}, "npm publication concurrency")
 
 retry_guidance = jobs.fetch("retry-guidance")
 retry_condition = "${{ always() && (needs.preflight.result == 'failure' || needs.build-sign-notarize.result == 'failure' || needs.create-draft-release.result == 'failure' || needs.verify-macos.result == 'failure' || needs.publish-github.result == 'failure' || needs.publish-npm.result == 'failure') }}"
