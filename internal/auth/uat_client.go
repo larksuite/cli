@@ -4,17 +4,18 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -170,6 +171,51 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 	return doRefreshToken(httpClient, opts, stored)
 }
 
+const refreshMaxAttempts = 2
+
+type refreshRequest struct {
+	GrantType    string `json:"grant_type"`
+	RefreshToken string `json:"refresh_token"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+}
+
+// refreshResponse contains only fields documented by the OAuth token endpoint.
+// Pointers distinguish an omitted numeric field from a real zero value.
+type refreshResponse struct {
+	Code                  *int   `json:"code"`
+	AccessToken           string `json:"access_token"`
+	ExpiresIn             *int64 `json:"expires_in"`
+	RefreshToken          string `json:"refresh_token"`
+	RefreshTokenExpiresIn *int64 `json:"refresh_token_expires_in"`
+	TokenType             string `json:"token_type"`
+	Scope                 string `json:"scope"`
+	Error                 string `json:"error"`
+	ErrorDescription      string `json:"error_description"`
+}
+
+// refreshAction describes both retry behavior and local token disposition.
+type refreshAction uint8
+
+const (
+	// refreshSaveResponse saves a successful response.
+	refreshSaveResponse refreshAction = iota
+	// refreshRetryAndPreserve retries, preserving the stored token if retry fails.
+	refreshRetryAndPreserve
+	// refreshRetryAndClear retries, clearing the stored token if retry fails.
+	refreshRetryAndClear
+	// refreshStopAndPreserve stops without clearing the stored token.
+	refreshStopAndPreserve
+	// refreshStopAndClear stops and clears the stored token.
+	refreshStopAndClear
+)
+
+type refreshResult struct {
+	action   refreshAction
+	response refreshResponse
+	err      error
+}
+
 // doRefreshToken performs the actual HTTP request to refresh the token.
 func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
 	errOut := opts.ErrOut
@@ -177,8 +223,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		errOut = os.Stderr
 	}
 
-	now := time.Now().UnixMilli()
-	if now >= stored.RefreshExpiresAt {
+	if time.Now().UnixMilli() >= stored.RefreshExpiresAt {
 		fmt.Fprintf(errOut, "[lark-cli] uat-client: refresh_token expired for %s, clearing\n", opts.UserOpenId)
 		if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove expired token: %v\n", err)
@@ -186,132 +231,246 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		return nil, nil
 	}
 
-	endpoints := ResolveOAuthEndpoints(opts.Domain)
-
-	callEndpoint := func() (map[string]interface{}, error) {
-		form := url.Values{}
-		form.Set("grant_type", "refresh_token")
-		form.Set("refresh_token", stored.RefreshToken)
-		form.Set("client_id", opts.AppId)
-		form.Set("client_secret", opts.AppSecret)
-
-		req, err := http.NewRequest("POST", endpoints.Token, strings.NewReader(form.Encode()))
-		if err != nil {
-			return nil, err
+	endpoint := ResolveOAuthEndpoints(opts.Domain).Token
+	uncertain := false
+	for attempt := 1; attempt <= refreshMaxAttempts; attempt++ {
+		result := refreshOnce(httpClient, endpoint, opts, stored)
+		if result.action == refreshSaveResponse {
+			return saveRefreshResponse(opts, stored, result.response)
 		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			return nil, err
+		switch result.action {
+		case refreshRetryAndPreserve, refreshRetryAndClear:
+			if result.action == refreshRetryAndClear {
+				uncertain = true
+			}
+			if attempt < refreshMaxAttempts {
+				fmt.Fprintf(errOut,
+					"[lark-cli] [WARN] uat-client: refresh attempt %d/%d failed for %s: %v; retrying\n",
+					attempt, refreshMaxAttempts, opts.UserOpenId, result.err)
+				continue
+			}
+		case refreshStopAndPreserve, refreshStopAndClear:
+		default:
+			return nil, errs.NewInternalError(errs.SubtypeUnknown,
+				"unrecognized token refresh action %d", result.action)
 		}
-		defer resp.Body.Close()
-		logHTTPResponse(resp)
 
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("token refresh read error: %v", err)
+		clearToken := result.action == refreshStopAndClear ||
+			result.action == refreshRetryAndClear ||
+			(result.action == refreshRetryAndPreserve && uncertain)
+		if !clearToken {
+			fmt.Fprintf(errOut,
+				"[lark-cli] [WARN] uat-client: refresh failed for %s, preserving token: %v\n",
+				opts.UserOpenId, result.err)
+			return nil, result.err
 		}
-		var data map[string]interface{}
-		if err := json.Unmarshal(body, &data); err != nil {
-			return nil, fmt.Errorf("token refresh parse error: %w", err)
+
+		if problem, ok := errs.ProblemOf(result.err); ok {
+			problem.Retryable = false
 		}
-		return data, nil
+		if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
+			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
+			if _, ok := errs.ProblemOf(err); ok {
+				return nil, err
+			}
+			return nil, errs.NewInternalError(errs.SubtypeStorage,
+				"failed to remove refreshed user token for user %q: %v", opts.UserOpenId, err).
+				WithCause(err)
+		}
+		fmt.Fprintf(errOut,
+			"[lark-cli] [WARN] uat-client: refresh failed for %s, token cleared: %v\n",
+			opts.UserOpenId, result.err)
+		return nil, result.err
 	}
 
-	data, err := callEndpoint()
+	return nil, errs.NewInternalError(errs.SubtypeUnknown,
+		"token refresh exhausted attempts without a result")
+}
+
+func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, stored *StoredUAToken) refreshResult {
+	payload, err := json.Marshal(refreshRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: stored.RefreshToken,
+		ClientID:     opts.AppId,
+		ClientSecret: opts.AppSecret,
+	})
 	if err != nil {
-		return nil, err
-	}
-
-	code := getInt(data, "code", -1)
-	meta, metaOK := errclass.LookupCodeMeta(code)
-	if metaOK && meta.Category == errs.CategoryPolicy {
-		challengeUrl := getStr(data, "challenge_url")
-		cliHint := getStr(data, "cli_hint")
-		msg := getStr(data, "error_description")
-
-		return nil, &errs.SecurityPolicyError{
-			Problem: errs.Problem{
-				Category: errs.CategoryPolicy,
-				Subtype:  meta.Subtype,
-				Code:     code,
-				Message:  msg,
-				Hint:     cliHint,
-			},
-			ChallengeURL: challengeUrl,
+		return refreshResult{
+			action: refreshStopAndPreserve,
+			err: errs.NewInternalError(errs.SubtypeSDKError,
+				"failed to encode token refresh request: %v", err).
+				WithCause(err),
 		}
 	}
 
-	errStr := getStr(data, "error")
+	var wroteRequest atomic.Bool
+	trace := &httptrace.ClientTrace{
+		WroteRequest: func(httptrace.WroteRequestInfo) {
+			wroteRequest.Store(true)
+		},
+	}
+	ctx := httptrace.WithClientTrace(context.Background(), trace)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return refreshResult{
+			action: refreshStopAndPreserve,
+			err: errs.NewInternalError(errs.SubtypeSDKError,
+				"failed to create token refresh request: %v", err).
+				WithCause(err),
+		}
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 
-	if (code != -1 && code != 0) || errStr != "" {
-		// Retryable server error: retry once, then clear token on second failure.
-		if metaOK && meta.Category == errs.CategoryAuthentication && meta.Retryable {
-			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh transient error (code=%d) for %s, retrying once\n", code, opts.UserOpenId)
-			data, err = callEndpoint()
-			if err != nil {
-				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh retry network error for %s, clearing token\n", opts.UserOpenId)
-				if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
-					fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
-				}
-				return nil, nil
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		action := refreshRetryAndPreserve
+		if wroteRequest.Load() {
+			action = refreshRetryAndClear
+		}
+		return refreshResult{action: action, err: err}
+	}
+	defer resp.Body.Close()
+	logHTTPResponse(resp)
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return refreshResult{
+			action: refreshRetryAndClear,
+			err: errs.NewNetworkError(errs.SubtypeNetworkTransport,
+				"token refresh response read failed: %v", err).
+				WithRetryable().
+				WithCause(err),
+		}
+	}
+
+	var parsed refreshResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return refreshResult{
+			action: refreshRetryAndClear,
+			err: errs.NewInternalError(errs.SubtypeInvalidResponse,
+				"token refresh returned invalid JSON: %v", err).
+				WithRetryable().
+				WithCause(err),
+		}
+	}
+	if parsed.Code == nil {
+		return refreshResult{
+			action: refreshRetryAndClear,
+			err: errs.NewInternalError(errs.SubtypeInvalidResponse,
+				"token refresh response is missing required field code").
+				WithRetryable(),
+		}
+	}
+
+	code := *parsed.Code
+	if code != 0 {
+		if meta, ok := errclass.LookupCodeMeta(code); ok && meta.Category == errs.CategoryPolicy {
+			var policyFields struct {
+				ChallengeURL string `json:"challenge_url"`
+				CLIHint      string `json:"cli_hint"`
 			}
-			code = getInt(data, "code", -1)
-			errStr = getStr(data, "error")
-			if (code != -1 && code != 0) || errStr != "" {
-				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh failed after retry (code=%d) for %s, clearing token\n", code, opts.UserOpenId)
-				if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
-					fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
-				}
-				return nil, nil
+			_ = json.Unmarshal(body, &policyFields)
+			return refreshResult{
+				action: refreshStopAndPreserve,
+				err: &errs.SecurityPolicyError{
+					Problem: errs.Problem{
+						Category: errs.CategoryPolicy,
+						Subtype:  meta.Subtype,
+						Code:     code,
+						Message:  parsed.ErrorDescription,
+						Hint:     policyFields.CLIHint,
+					},
+					ChallengeURL: policyFields.ChallengeURL,
+				},
 			}
-			// Retry succeeded, fall through to parse token below.
+		}
+
+		message := parsed.ErrorDescription
+		if message == "" {
+			message = parsed.Error
+		}
+		// BuildAPIError accepts the common OpenAPI message key; OAuth names
+		// the same value error_description.
+		apiErr := errclass.BuildAPIError(map[string]any{
+			"code": code,
+			"msg":  message,
+		}, errclass.ClassifyContext{
+			Brand:    string(opts.Domain),
+			AppID:    opts.AppId,
+			Identity: "user",
+		})
+		if authErr, ok := apiErr.(*errs.AuthenticationError); ok {
+			authErr.UserOpenID = opts.UserOpenId
+		}
+		return refreshResult{action: refreshActionForCode(code), err: apiErr}
+	}
+
+	if parsed.RefreshToken == "" {
+		parsed.RefreshToken = stored.RefreshToken
+	}
+
+	if parsed.AccessToken == "" {
+		return refreshResult{
+			action: refreshStopAndPreserve,
+			err: errs.NewInternalError(errs.SubtypeInvalidResponse,
+				"token refresh response is missing required field access_token").
+				WithRetryable(),
+		}
+	}
+
+	if parsed.ExpiresIn == nil || *parsed.ExpiresIn <= 0 {
+		parsed.ExpiresIn = new(int64)
+		*parsed.ExpiresIn = 7200 // 2 hours
+	}
+
+	if parsed.RefreshTokenExpiresIn == nil || *parsed.RefreshTokenExpiresIn <= 0 {
+		parsed.RefreshTokenExpiresIn = new(int64)
+		if stored.RefreshExpiresAt <= 0 {
+			*parsed.RefreshTokenExpiresIn = 2592000 // 30 days
 		} else {
-			// All other errors: clear token, require re-authorization.
-			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh failed (code=%d), clearing token for %s\n", code, opts.UserOpenId)
-			if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
-				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
-			}
-			return nil, nil
+			now := time.Now().UnixMilli()
+			*parsed.RefreshTokenExpiresIn = (stored.RefreshExpiresAt - now) / 1000
 		}
 	}
 
-	accessToken := getStr(data, "access_token")
-	if accessToken == "" {
-		return nil, fmt.Errorf("Token refresh returned no access_token")
-	}
+	return refreshResult{action: refreshSaveResponse, response: parsed}
+}
 
-	refreshToken := getStr(data, "refresh_token")
-	if refreshToken == "" {
-		refreshToken = stored.RefreshToken
+func refreshActionForCode(code int) refreshAction {
+	meta, ok := errclass.LookupCodeMeta(code)
+	switch {
+	case !ok:
+		return refreshRetryAndClear
+	case meta.Category == errs.CategoryPolicy:
+		return refreshStopAndPreserve
+	case meta.Retryable:
+		return refreshRetryAndPreserve
+	default:
+		return refreshStopAndClear
 	}
+}
 
-	expiresIn := getInt(data, "expires_in", 7200)
-	refreshExpiresIn := getInt(data, "refresh_token_expires_in", 0)
-	refreshExpiresAt := stored.RefreshExpiresAt
-	if refreshExpiresIn > 0 {
-		refreshExpiresAt = now + int64(refreshExpiresIn)*1000
-	}
-
-	scope := getStr(data, "scope")
-	if scope == "" {
-		scope = stored.Scope
-	}
+func saveRefreshResponse(opts UATCallOptions, stored *StoredUAToken, response refreshResponse) (*StoredUAToken, error) {
+	now := time.Now().UnixMilli()
 
 	updated := &StoredUAToken{
 		UserOpenId:       stored.UserOpenId,
 		AppId:            opts.AppId,
-		AccessToken:      accessToken,
-		RefreshToken:     refreshToken,
-		ExpiresAt:        now + int64(expiresIn)*1000,
-		RefreshExpiresAt: refreshExpiresAt,
-		Scope:            scope,
+		AccessToken:      response.AccessToken,
+		RefreshToken:     response.RefreshToken,
+		ExpiresAt:        now + *response.ExpiresIn*1000,
+		RefreshExpiresAt: now + *response.RefreshTokenExpiresIn*1000,
+		Scope:            response.Scope,
 		GrantedAt:        stored.GrantedAt,
 	}
-
 	if err := SetStoredToken(updated); err != nil {
-		return nil, err
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
+		return nil, errs.NewInternalError(errs.SubtypeStorage,
+			"failed to store refreshed user token for user %q: %v", opts.UserOpenId, err).
+			WithCause(err)
 	}
 	return updated, nil
 }
