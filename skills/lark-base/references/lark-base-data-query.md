@@ -83,7 +83,7 @@ lark-cli base +data-query \
 
 用户通常会提供如下 URL：
 
-```
+```text
 https://example.feishu.cn/base/<base_token>?table=<block_id>
 ```
 
