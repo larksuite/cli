@@ -27,19 +27,22 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		{Name: "form-id", Desc: "form ID", Required: true},
 		{Name: "questions", Desc: `questions JSON array, max 10 items. Each item requires "title"(field title) and "type"(text/number/select/datetime/user/attachment/location). Optional fields: "description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown/1=vertical/2=horizontal,select only),"multiple"(bool,select/user),"options"([{"name":"opt","hue":"Blue"}],select only),"style"({"type":"plain/phone/url/email/barcode/rating","precision":2,"format":"yyyy/MM/dd","icon":"star","min":1,"max":5}),"visible_rule"(display condition; same shape as view filter {"logic":"and","conditions":[["前序题目","==","是"]]}, field references another question's title/id, empty/absent = always shown). E.g. '[{"type":"text","title":"Your name","required":true}]'`, Required: true},
 	},
+	Tips: []string{
+		"If the form may already contain questions and has not been checked, run +form-questions-list for the same --base-token, --table-id, and --form-id. A verified empty form can create directly.",
+		"Each new question creates a field in the form's table; question IDs are field IDs.",
+		"Unless the user explicitly requests a separate same-title question, update an existing title with +form-questions-update instead of creating a duplicate.",
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		api := common.NewDryRunAPI().
+		var questions []interface{}
+		if err := json.Unmarshal([]byte(runtime.Str("questions")), &questions); err != nil {
+			return common.NewDryRunAPI().Desc(fmt.Sprintf("dry-run validation failed: --questions must be a valid JSON array: %s", err))
+		}
+		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/questions").
 			Set("base_token", runtime.Str("base-token")).
 			Set("table_id", runtime.Str("table-id")).
-			Set("form_id", runtime.Str("form-id"))
-		// Transcribe the questions body verbatim so the preview shows exactly
-		// what would be sent (including optional fields like visible_rule).
-		var questions []interface{}
-		if err := json.Unmarshal([]byte(runtime.Str("questions")), &questions); err == nil {
-			api.Body(map[string]interface{}{"questions": questions})
-		}
-		return api
+			Set("form_id", runtime.Str("form-id")).
+			Body(map[string]interface{}{"questions": questions})
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		baseToken := runtime.Str("base-token")
