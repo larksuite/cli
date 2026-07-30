@@ -25,6 +25,8 @@ var BaseWorkflowEnable = common.Shortcut{
 		"workflow-id must start with wkf; do not pass a tbl table ID from the same URL.",
 		"Enable only changes workflow state; it does not modify steps.",
 		"New workflows are created disabled; enable after creation only when the user wants it active.",
+		"An explicit enable request requires calling this command even if list/get already reports enabled; then use +workflow-get to verify status.",
+		"If enable fails because workflow configuration is incomplete, do not change steps unless the user explicitly requested configuration changes; report the precondition.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {

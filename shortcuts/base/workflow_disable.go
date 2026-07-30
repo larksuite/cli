@@ -24,6 +24,7 @@ var BaseWorkflowDisable = common.Shortcut{
 	Tips: []string{
 		"workflow-id must start with wkf; do not pass a tbl table ID from the same URL.",
 		"Disable only changes workflow state; it does not delete the workflow or its steps.",
+		"An explicit disable request requires calling this command even if list/get already reports disabled; then use +workflow-get to verify status.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {

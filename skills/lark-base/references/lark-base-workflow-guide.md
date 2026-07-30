@@ -741,6 +741,23 @@
 
 ---
 
+## 修改、启停与验证闭环
+
+用户明确要求修改、启用或停用 workflow 时，采用同一套可审计闭环：
+
+1. 用 `+workflow-list` / `+workflow-get` 定位准确的 `workflow_id` 并读取现状。
+2. **始终执行用户要求的写命令。** 预读结果已经符合目标，不代表本次显式请求已完成；`+workflow-enable`、`+workflow-disable` 和保持相同目标值的 `+workflow-update` 都应按请求执行。不要把这条规则扩展到重复 `+workflow-create`。
+3. 写入成功后对同一个 `workflow_id` 执行 `+workflow-get`，逐项核对用户要求的状态或字段。不能只以 update/enable/disable 的成功回执作为最终证据。
+4. 回复时把关键返回值翻译回自然语言语义。例如 ReminderTrigger 的 `offset > 0` 表示提前、`offset < 0` 表示延后；写前和回读后都明确复述“提前/延后 N 个单位”，避免只报告裸数字。
+
+`+workflow-update` 是全量替换：从 get 结果构造完整定义，只改变用户授权修改的字段，保留其余 title、status、steps 和节点连线。如果回读字段被服务端丢弃、归一化为不同值或方向与需求不符，不要宣称完成；应返回可验证差异。
+
+`+workflow-enable` 只改变启停状态。若它因缺少接收者、Base App 或其他业务配置而返回前置条件失败，除非用户同时明确授权修改 workflow 配置，否则停止处理该 workflow，不要调用 `+workflow-update` 改 steps 绕过校验；继续启用其余目标，最后报告未启用项和所缺前置条件。
+
+每个 workflow 只有一个首节点 Trigger。多个彼此独立的事件源必须拆成多个 workflow，分别形成 `Trigger → ...Actions` 的连通链；创建后分别回读不同的 `workflow_id`，验证首节点类型、后续链路和启停状态。
+
+---
+
 ## 构造技巧
 
 ### Loop 构造要点
