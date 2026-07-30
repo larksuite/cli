@@ -4,12 +4,20 @@
 const assert = require("node:assert/strict");
 const { describe, it } = require("node:test");
 
-const { compareReleaseVersions, decideNpmPublish } = require("./release-publish-policy");
+const { compareReleaseVersions, decideNpmPublish, isNpmVersionMissing } = require("./release-publish-policy");
 
 describe("compareReleaseVersions", () => {
   it("orders beta versions before their stable release", () => {
     assert.equal(compareReleaseVersions("1.2.3-beta.4", "1.2.3"), -1);
     assert.equal(compareReleaseVersions("1.2.4-beta.0", "1.2.3"), 1);
+  });
+});
+
+describe("isNpmVersionMissing", () => {
+  it("accepts only npm's explicit not-found error", () => {
+    assert.equal(isNpmVersionMissing("npm error code E404\nnpm error 404 Not Found"), true);
+    assert.equal(isNpmVersionMissing("npm error code ETIMEDOUT"), false);
+    assert.equal(isNpmVersionMissing(""), false);
   });
 });
 

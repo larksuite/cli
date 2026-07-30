@@ -28,6 +28,10 @@ function compareReleaseVersions(left, right) {
   return a.beta < b.beta ? -1 : 1;
 }
 
+function isNpmVersionMissing(errorOutput) {
+  return typeof errorOutput === "string" && /(?:^|\s)E404(?:\s|$)/m.test(errorOutput);
+}
+
 function decideNpmPublish({ version, versionExists, integrityMatches, channelVersion }) {
   if (!parseReleaseVersion(version)) {
     throw new Error("version must be a stable or beta release version.");
@@ -52,4 +56,4 @@ function decideNpmPublish({ version, versionExists, integrityMatches, channelVer
   return { action: "verify" };
 }
 
-module.exports = { compareReleaseVersions, decideNpmPublish };
+module.exports = { compareReleaseVersions, decideNpmPublish, isNpmVersionMissing };

@@ -410,12 +410,26 @@ jobs:
           [[ "$CHANNEL" != "beta" ]] || dist_tag=beta
           version_exists=false
           integrity_matches=false
-          if npm view "@larksuite/cli@${VERSION}" version --json >/dev/null 2>&1; then
+          version_error="$(mktemp "${RUNNER_TEMP}/npm-version.XXXXXX")"
+          trap 'rm -f -- "$version_error"' EXIT
+          if npm view "@larksuite/cli@${VERSION}" version --json >/dev/null 2>"$version_error"; then
             version_exists=true
             published="$(npm view "@larksuite/cli@${VERSION}" dist.integrity --json | tr -d '"[:space:]')"
             [[ "$published" != "$integrity" ]] || integrity_matches=true
+          elif ! node - "$version_error" <<'NODE'
+          const fs = require("node:fs");
+          const { isNpmVersionMissing } = require("./scripts/release-publish-policy");
+          process.exit(isNpmVersionMissing(fs.readFileSync(process.argv[2], "utf8")) ? 0 : 1);
+          NODE
+          then
+            cat "$version_error" >&2
+            echo "Could not determine whether npm version ${VERSION} already exists." >&2
+            exit 1
           fi
-          current="$(npm view @larksuite/cli "dist-tags.${dist_tag}" --json 2>/dev/null | tr -d '"[:space:]' || true)"
+          if ! current="$(npm view @larksuite/cli "dist-tags.${dist_tag}" --json | tr -d '"[:space:]')"; then
+            echo "Could not determine the npm ${dist_tag} dist-tag." >&2
+            exit 1
+          fi
           [[ -n "$current" && "$current" != "null" ]] || current=null
           decision="$(node - "$VERSION" "$version_exists" "$integrity_matches" "$current" <<'NODE'
           const { decideNpmPublish } = require("./scripts/release-publish-policy");
