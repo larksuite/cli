@@ -525,3 +525,38 @@ func TestDriveListCommentsExecuteAppsPageURL(t *testing.T) {
 		t.Fatalf("count = %#v, want 1", got)
 	}
 }
+
+func TestDriveListCommentsOmittedItemsNormalized(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/files/docxResource/comments",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{"has_more": false, "page_token": ""},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveListComments, []string{
+		"+list-comments",
+		"--url", "https://example.larksuite.com/docx/docxResource",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := decodeJSONMap(t, stdout.String())
+	data := mustMapValue(t, out["data"], "data")
+	items, ok := data["items"].([]interface{})
+	if !ok {
+		t.Fatalf("items must be a JSON array even when the server omits it, got %#v", data["items"])
+	}
+	if len(items) != 0 {
+		t.Fatalf("len(items) = %d, want 0", len(items))
+	}
+	if got := data["count"]; got != float64(0) {
+		t.Fatalf("count = %#v, want 0", got)
+	}
+}

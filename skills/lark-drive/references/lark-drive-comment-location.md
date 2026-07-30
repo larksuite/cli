@@ -1,11 +1,12 @@
 # 文档评论定位字段
 
-当用户需要根据评论定位文档正文位置、对文档做 review、区分多处相同引用文本，或把评论落点映射到 `docs +fetch --detail with-ids` 的内容时，优先使用 `drive +list-comments --need-relation` 查询 docx 评论位置。
+当用户需要根据评论定位文档正文位置、对文档做 review、区分多处相同引用文本，或把评论落点映射到 `docs +fetch --detail with-ids` 的内容时，优先使用 `drive +list-comments --need-relation` 查询 docx 评论位置；已知评论 ID 时用 `drive +batch-query-comments --need-relation`。
 
 ## 适用范围
 
 - 当前只有 `file_type=docx` 支持通过 `need_relation=true` 查询评论的位置，并返回可用于定位正文 block 的 `relation`、`parent_type`、`parent_token` 等字段。
-- `drive +list-comments` 会在目标不是 docx 时静默忽略 `--need-relation`，避免把无效参数传给 OpenAPI。遇到 sheet、bitable、slides、普通文件等类型的评论时，不要承诺可以用 `need_relation` 精确定位正文位置，应退回普通评论字段、对应资源能力下钻或人工确认。
+- `drive +list-comments` 和 `drive +batch-query-comments` 都会在目标不是 docx 时静默忽略 `--need-relation`，避免把无效参数传给 OpenAPI。遇到 sheet、bitable、slides、普通文件等类型的评论时，不要承诺可以用 `need_relation` 精确定位正文位置，应退回普通评论字段、对应资源能力下钻或人工确认。
+- 注意参数位置差异：list 的 `need_relation` 在 query params，batch_query 的在请求 body（直接调 raw OpenAPI 时才需要关心；两个 shortcut 已各自处理）。
 
 ## 调用方式
 
@@ -21,20 +22,13 @@ lark-cli drive +list-comments --url '<docx_or_wiki_url>' --need-relation
 lark-cli drive +list-comments --token '<wiki_token>' --type wiki --need-relation
 ```
 
-只有在需要未被 shortcut 暴露的底层参数时，才直接调用 raw OpenAPI。此时把 `need_relation` 放在 query params：
+已知评论 ID 时，用 `drive +batch-query-comments --need-relation` 直接按 ID 取：
 
 ```bash
-lark-cli drive file.comments list \
-  --params '{"file_token":"<doc_token>","file_type":"docx","is_solved":false,"need_relation":true}'
+lark-cli drive +batch-query-comments --url '<docx_or_wiki_url>' --comment-ids '<comment_id>' --need-relation
 ```
 
-已知评论 ID 批量查询时，把 `need_relation` 放在请求体里：
-
-```bash
-lark-cli drive file.comments batch_query \
-  --params '{"file_token":"<doc_token>","file_type":"docx"}' \
-  --data '{"comment_ids":["<comment_id>"],"need_relation":true}'
-```
+只有在需要 shortcut 未暴露的底层参数时，才直接调 raw OpenAPI（两个 shortcut 已各自处理 `need_relation` 的位置差异：list 在 query params，batch_query 在请求 body）。
 
 同时获取文档内容，并要求返回 block id：
 
@@ -138,7 +132,7 @@ lark-cli docs +fetch --doc '<doc_token_or_url>' --detail with-ids
 ## 定位流程
 
 1. 确认目标是 `file_type=docx`；只有 docx 文档支持通过 `need_relation` 查询评论位置。
-2. 用 `drive +list-comments --need-relation` 获取评论；已知评论 ID 且需要批量查询时，可用 `drive file.comments batch_query` 并带 `need_relation=true`。raw `drive file.comments list` 仅作为低层参数兜底。
+2. 用 `drive +list-comments --need-relation` 获取评论；已知评论 ID 且需要批量查询时，用 `drive +batch-query-comments --need-relation`。原生 `drive file.comments list/batch_query` 仅在需要 shortcut 未暴露的底层参数时兜底。
 3. 用 `docs +fetch --detail with-ids` 获取文档内容。
 4. 对每条评论先看 `relation`：
    - 如果存在 `relation.relation`，解析这个 JSON 字符串。
