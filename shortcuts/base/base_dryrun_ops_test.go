@@ -458,6 +458,19 @@ func TestDryRunDashboardBlockPositionAndNumberFormat(t *testing.T) {
 	if !reflect.DeepEqual(dryBody, execBody) {
 		t.Fatalf("dry-run and execute bodies diverge:\n dry=%v\nexec=%v", dryBody, execBody)
 	}
+
+	// Same isomorphism must hold on the update path (includeType=false).
+	dryUpdate, _ := buildDashboardBlockBody(pc, rt, false, false)
+	execUpdate, err := buildDashboardBlockBody(pc, rt, false, true)
+	if err != nil {
+		t.Fatalf("update execute body build err=%v", err)
+	}
+	if !reflect.DeepEqual(dryUpdate, execUpdate) {
+		t.Fatalf("update dry-run and execute bodies diverge:\n dry=%v\nexec=%v", dryUpdate, execUpdate)
+	}
+	if _, hasType := dryUpdate["type"]; hasType {
+		t.Fatalf("update body must not carry type: %v", dryUpdate)
+	}
 }
 
 func TestDryRunViewOps(t *testing.T) {

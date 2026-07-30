@@ -269,6 +269,137 @@ func TestBaseDashboardBlockCreate_NumberFormatInvalidRejected(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockUpdate_NumberFormatInvalidRejected proves the update
+// command intercepts an illegal statistics number_format locally, symmetric with
+// create (FIX-1 / backend-design §4.5). Update has no --type flag, so this must
+// still fire without demanding table_name/series (which update intentionally
+// leaves to the server).
+func TestBaseDashboardBlockUpdate_NumberFormatInvalidRejected(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+		"--data-config", `{"number_format":{"formatName":"bogus","precision":2}}`,
+	}
+	err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout)
+	if err == nil {
+		t.Fatalf("expected validation error for bad formatName on update")
+	}
+	if !strings.Contains(err.Error(), "formatName") || !strings.Contains(err.Error(), "data_config 校验失败") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestBaseDashboardBlockUpdate_NumberFormatOnlyAllowed proves that a
+// number_format-only data_config (no table_name/series) passes update
+// validation — the update path must not run create's strong type checks.
+func TestBaseDashboardBlockUpdate_NumberFormatOnlyAllowed(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+	}
+	reg.Register(stub)
+	args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+		"--data-config", `{"number_format":{"precision":0}}`,
+	}
+	if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+		t.Fatalf("number_format-only update must pass validation, got err=%v", err)
+	}
+	body := decodeCapturedBody(t, stub.CapturedBody)
+	dc, _ := body["data_config"].(map[string]interface{})
+	nf, ok := dc["number_format"].(map[string]interface{})
+	if !ok || toInt(nf["precision"]) != 0 {
+		t.Fatalf("number_format not forwarded: body=%s", string(stub.CapturedBody))
+	}
+}
+
+// TestBaseDashboardBlockNoValidateBypass proves --no-validate lets an otherwise
+// illegal statistics number_format pass through untouched on BOTH create and
+// update paths (the light enum/precision check is skipped along with the rest of
+// data_config validation).
+func TestBaseDashboardBlockNoValidateBypass(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_new"}},
+		}
+		reg.Register(stub)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+			"--name", "N", "--type", "statistics",
+			"--data-config", `{"table_name":"T","count_all":true,"number_format":{"formatName":"bogus","precision":42}}`,
+			"--no-validate",
+		}
+		if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+			t.Fatalf("--no-validate must bypass number_format validation, got err=%v", err)
+		}
+		body := decodeCapturedBody(t, stub.CapturedBody)
+		dc, _ := body["data_config"].(map[string]interface{})
+		nf, ok := dc["number_format"].(map[string]interface{})
+		if !ok || nf["formatName"] != "bogus" || toInt(nf["precision"]) != 42 {
+			t.Fatalf("illegal number_format must pass through verbatim: body=%s", string(stub.CapturedBody))
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+		}
+		reg.Register(stub)
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+			"--data-config", `{"number_format":{"formatName":"bogus","precision":42}}`,
+			"--no-validate",
+		}
+		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("--no-validate must bypass number_format validation on update, got err=%v", err)
+		}
+		body := decodeCapturedBody(t, stub.CapturedBody)
+		dc, _ := body["data_config"].(map[string]interface{})
+		nf, ok := dc["number_format"].(map[string]interface{})
+		if !ok || nf["formatName"] != "bogus" || toInt(nf["precision"]) != 42 {
+			t.Fatalf("illegal number_format must pass through verbatim: body=%s", string(stub.CapturedBody))
+		}
+	})
+}
+
+// TestBaseDashboardBlockExecuteUpdate_PositionNumberFormatName proves a single
+// update call carrying position + number_format + name forwards all three into
+// the request body together.
+func TestBaseDashboardBlockExecuteUpdate_PositionNumberFormatName(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+	}
+	reg.Register(stub)
+	args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+		"--name", "Total Sales",
+		"--data-config", `{"number_format":{"formatName":"dollar_rounded","precision":2}}`,
+		"--position", `{"x":6,"y":0,"w":6,"h":4}`,
+	}
+	if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	body := decodeCapturedBody(t, stub.CapturedBody)
+	if body["name"] != "Total Sales" {
+		t.Fatalf("name missing/wrong: body=%s", string(stub.CapturedBody))
+	}
+	pos, ok := body["position"].(map[string]interface{})
+	if !ok || toInt(pos["x"]) != 6 || toInt(pos["w"]) != 6 {
+		t.Fatalf("position not forwarded: %v", pos)
+	}
+	dc, _ := body["data_config"].(map[string]interface{})
+	nf, ok := dc["number_format"].(map[string]interface{})
+	if !ok || nf["formatName"] != "dollar_rounded" || toInt(nf["precision"]) != 2 {
+		t.Fatalf("number_format not forwarded: %v", nf)
+	}
+}
+
 func decodeCapturedBody(t *testing.T, raw []byte) map[string]interface{} {
 	t.Helper()
 	var body map[string]interface{}
