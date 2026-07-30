@@ -61,7 +61,7 @@ expected_needs = {
   "preflight" => nil,
   "build-sign-notarize" => "preflight",
   "create-draft-release" => %w[preflight build-sign-notarize],
-  "verify-macos" => %w[preflight create-draft-release],
+  "verify-macos" => %w[preflight build-sign-notarize create-draft-release],
   "publish-github" => %w[preflight create-draft-release verify-macos],
   "publish-npm" => %w[preflight build-sign-notarize publish-github],
   "retry-guidance" => %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm],
@@ -74,7 +74,7 @@ expected_permissions = {
   "preflight" => { "contents" => "read" },
   "build-sign-notarize" => { "contents" => "read" },
   "create-draft-release" => { "contents" => "write" },
-  "verify-macos" => { "contents" => "write" },
+  "verify-macos" => { "contents" => "read" },
   "publish-github" => { "contents" => "write" },
   "publish-npm" => { "contents" => "read", "id-token" => "write" },
   "retry-guidance" => { "contents" => "read" },
@@ -82,7 +82,20 @@ expected_permissions = {
 expected_permissions.each do |job_name, permissions|
   expect_equal(jobs.fetch(job_name)["permissions"], permissions, "#{job_name} permissions")
 end
-expect_equal(jobs.fetch("publish-npm").fetch("environment"), "npm-production", "npm publish environment")
+
+expected_timeouts = {
+  "build-sign-notarize" => 45,
+  "create-draft-release" => 15,
+  "verify-macos" => 20,
+  "publish-github" => 15,
+  "publish-npm" => 15,
+}
+expected_timeouts.each do |job_name, timeout|
+  expect_equal(jobs.fetch(job_name)["timeout-minutes"], timeout, "#{job_name} timeout")
+end
+
+expect_equal(jobs.fetch("build-sign-notarize").fetch("environment"), "npm-production", "signing approval environment")
+fail("publish-npm must not request a second Environment approval") if jobs.fetch("publish-npm").key?("environment")
 
 retry_guidance = jobs.fetch("retry-guidance")
 retry_condition = "${{ always() && (needs.preflight.result == 'failure' || needs.build-sign-notarize.result == 'failure' || needs.create-draft-release.result == 'failure' || needs.verify-macos.result == 'failure' || needs.publish-github.result == 'failure' || needs.publish-npm.result == 'failure') }}"
@@ -127,8 +140,19 @@ expect_equal(macos.fetch("strategy").fetch("matrix").fetch("include"), [
 expect_equal(macos.fetch("runs-on"), "${{ matrix.runner }}", "macOS matrix runner")
 macos_verify_step = macos.fetch("steps").find { |step| step["name"] == "Verify notarized macOS binary" }
 macos_verify_run = macos_verify_step&.fetch("run", nil)
-fail("verify-macos must explicitly identify the repository when downloading Draft Release assets") unless macos_verify_run&.include?('gh release download "$TAG" --repo "$GITHUB_REPOSITORY"')
+macos_download_step = macos.fetch("steps").find { |step| step["name"] == "Download release candidate" }
+fail("verify-macos must download the build candidate artifact") unless macos_download_step&.fetch("uses", nil)&.start_with?("actions/download-artifact@")
+fail("verify-macos must not download mutable Draft Release assets") if macos_verify_run&.include?("gh release download")
 fail("verify-macos must verify notarization through codesign") unless macos_verify_run&.include?("--check-notarization -R='notarized'")
+
+draft_step = jobs.fetch("create-draft-release").fetch("steps").find { |step| step["name"] == "Create or reuse Draft Release" }
+draft_run = draft_step&.fetch("run", nil)
+fail("Draft Release creation must write generated release notes") unless draft_run&.include?("--notes-file")
+fail("Draft Release reuse must validate target commit and prerelease state") unless draft_run&.include?("targetCommitish") && draft_run.include?("isPrerelease")
+
+github_steps = jobs.fetch("publish-github").fetch("steps")
+github_check = github_steps.find { |step| step["name"] == "Verify Draft assets match the candidate" }
+fail("GitHub publication must verify Draft assets against the candidate") unless github_check&.fetch("run", nil)&.include?("release-candidate/checksums.txt")
 
 npm_steps = jobs.fetch("publish-npm").fetch("steps")
 pinned_npm = npm_steps.find { |step| step["name"] == "Install pinned npm" }
