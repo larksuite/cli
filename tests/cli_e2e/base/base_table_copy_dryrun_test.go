@@ -52,7 +52,7 @@ func TestBaseTableCopyDryRun(t *testing.T) {
 				"--timeout", "300s",
 				"--dry-run",
 			},
-			DefaultAs: "user",
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
@@ -73,7 +73,7 @@ func TestBaseTableCopyDryRun(t *testing.T) {
 				"--task-id", "ct1.token",
 				"--dry-run",
 			},
-			DefaultAs: "user",
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

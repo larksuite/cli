@@ -36,7 +36,7 @@ var BaseTableCopy = common.Shortcut{
 		{Name: "wait", Type: "bool", Desc: "wait for an all-range copy task to finish"},
 	},
 	Tips: []string{
-		`Example: lark-cli base +table-copy --base-token <base_token> --table-id "Tasks" --name "Tasks copy" --as user`,
+		`Example: lark-cli base +table-copy --base-token <base_token> --table-id "Tasks" --name "Tasks copy"`,
 		"table-id accepts a table ID or name in the current Base.",
 		"The default copies schema only; use --range all only when records must also be copied.",
 		"Use --wait with --range all to wait locally; otherwise continue with the returned next_command.",

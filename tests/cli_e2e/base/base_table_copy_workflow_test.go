@@ -20,7 +20,6 @@ func TestBaseTableCopyWorkflow(t *testing.T) {
 		t.Skip("set LARK_CLI_E2E_BASE_TABLE_COPY_READY=1 after the table-copy OpenAPI is deployed")
 	}
 	clie2e.SkipWithoutTenantAccessToken(t)
-	clie2e.SkipWithoutUserToken(t)
 
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
@@ -85,7 +84,7 @@ func TestBaseTableCopyWorkflow(t *testing.T) {
 				"--table-id", sourceTableID,
 				"--name", "Schema copy " + clie2e.GenerateSuffix(),
 			},
-			DefaultAs: "user",
+			DefaultAs: "bot",
 		})
 		require.NoError(t, runErr)
 		result.AssertExitCode(t, 0)
@@ -106,7 +105,7 @@ func TestBaseTableCopyWorkflow(t *testing.T) {
 				"--name", "Async copy " + clie2e.GenerateSuffix(),
 				"--range", "all",
 			},
-			DefaultAs: "user",
+			DefaultAs: "bot",
 		})
 		require.NoError(t, runErr)
 		result.AssertExitCode(t, 0)
@@ -126,7 +125,7 @@ func TestBaseTableCopyWorkflow(t *testing.T) {
 		}, func() (bool, error) {
 			status, statusErr := clie2e.RunCmd(ctx, clie2e.Request{
 				Args:      []string{"base", "+table-copy-status", "--base-token", baseToken, "--task-id", taskID},
-				DefaultAs: "user",
+				DefaultAs: "bot",
 			})
 			if statusErr != nil {
 				return false, statusErr
@@ -155,7 +154,7 @@ func TestBaseTableCopyWorkflow(t *testing.T) {
 				"--wait",
 				"--timeout", "2m",
 			},
-			DefaultAs: "user",
+			DefaultAs: "bot",
 		})
 		require.NoError(t, runErr)
 		result.AssertExitCode(t, 0)

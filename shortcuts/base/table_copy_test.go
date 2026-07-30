@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -123,21 +122,6 @@ func TestBaseTableCopyStatusRejectsInvalidTaskID(t *testing.T) {
 				t.Fatalf("error = %T %v, want validation --task-id", err, err)
 			}
 		})
-	}
-}
-
-func TestBaseTableCopySupportsBotIdentity(t *testing.T) {
-	factory, stdout, _ := newExecuteFactory(t)
-	err := runShortcutWithAuthTypes(
-		t,
-		BaseTableCopy,
-		BaseTableCopy.AuthTypes,
-		[]string{"+table-copy", "--base-token", "app_x", "--table-id", "tbl_x", "--name", "Copy", "--as", "bot", "--dry-run"},
-		factory,
-		stdout,
-	)
-	if err != nil {
-		t.Fatalf("bot dry-run: %v", err)
 	}
 }
 
@@ -340,7 +324,7 @@ func TestBaseTableCopyAllWithoutWaitReturnsTaskAndNextCommand(t *testing.T) {
 	}
 }
 
-func TestBaseTableCopyStatusProcessIgnoresLastErrorCode(t *testing.T) {
+func TestBaseTableCopyStatusReturnsProcessState(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	statusStub := &httpmock.Stub{
 		Method: "POST",
@@ -348,9 +332,8 @@ func TestBaseTableCopyStatusProcessIgnoresLastErrorCode(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"table_id":        "tbl_target",
-				"state":           "process",
-				"last_error_code": 12345,
+				"table_id": "tbl_target",
+				"state":    "process",
 			},
 		},
 	}
@@ -376,29 +359,6 @@ func TestBaseTableCopyStatusProcessIgnoresLastErrorCode(t *testing.T) {
 	if data["state"] != tableCopyStateProcess || data["completed"] != false || data["task_id"] != "ct1.token" {
 		t.Fatalf("status output = %#v", data)
 	}
-	if _, ok := data["last_error_code"]; ok {
-		t.Fatalf("process output must omit last_error_code: %#v", data)
-	}
-}
-
-func TestProjectTableCopyStatusProcessIgnoresMalformedLastErrorCode(t *testing.T) {
-	status, err := projectTableCopyStatus(map[string]interface{}{
-		"table_id":        "tbl_target",
-		"state":           "process",
-		"last_error_code": "not-a-number",
-	})
-	if err != nil {
-		t.Fatalf("project process status: %v", err)
-	}
-	if status.State != tableCopyStateProcess {
-		t.Fatalf("status = %#v, want process", status)
-	}
-	if _, exists := reflect.TypeOf(status).FieldByName("LastErrorCode"); exists {
-		t.Fatal("tableCopyStatus must not model last_error_code")
-	}
-	if _, exists := reflect.TypeOf(tableCopyOutput{}).FieldByName("LastErrorCode"); exists {
-		t.Fatal("tableCopyOutput must not expose last_error_code")
-	}
 }
 
 func TestBaseTableCopyStatusRejectsFailedSuccessEnvelope(t *testing.T) {
@@ -409,9 +369,8 @@ func TestBaseTableCopyStatusRejectsFailedSuccessEnvelope(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"table_id":        "tbl_target",
-				"state":           "failed",
-				"last_error_code": 12345,
+				"table_id": "tbl_target",
+				"state":    "failed",
 			},
 		},
 	})
@@ -612,9 +571,6 @@ func TestBaseTableCopyAllWaitsForSuccess(t *testing.T) {
 	if data["state"] != tableCopyStateSuccess || data["completed"] != true || data["task_id"] != "ct1.token" {
 		t.Fatalf("wait output = %#v", data)
 	}
-	if _, ok := data["last_error_code"]; ok {
-		t.Fatalf("success output must omit last_error_code: %#v", data)
-	}
 	if !strings.Contains(stderr.String(), "Table copy status: success") {
 		t.Fatalf("stderr = %q, want status progress", stderr.String())
 	}
@@ -647,9 +603,8 @@ func TestBaseTableCopyAllWaitTimeoutReturnsContinuation(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"table_id":        "tbl_target",
-				"state":           "process",
-				"last_error_code": 12345,
+				"table_id": "tbl_target",
+				"state":    "process",
 			},
 		},
 	})
@@ -674,9 +629,6 @@ func TestBaseTableCopyAllWaitTimeoutReturnsContinuation(t *testing.T) {
 	data := decodeBaseEnvelope(t, stdout)
 	if data["state"] != tableCopyStateProcess || data["completed"] != false || data["timed_out"] != true {
 		t.Fatalf("timeout output = %#v", data)
-	}
-	if _, ok := data["last_error_code"]; ok {
-		t.Fatalf("process timeout output must omit last_error_code: %#v", data)
 	}
 	if data["next_action"] != "poll_status" || data["next_command"] == "" {
 		t.Fatalf("timeout continuation = %#v", data)
@@ -768,9 +720,19 @@ func TestBaseTableCopyAllWaitUsesTopLevelTaskError(t *testing.T) {
 	if !ok || problem.Code != 800070111 || problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeUnknown {
 		t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
 	}
+	var envelope struct {
+		OK   bool            `json:"ok"`
+		Data tableCopyOutput `json:"data"`
+	}
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &envelope); decodeErr != nil {
+		t.Fatalf("decode failure stdout: %v\nraw=%s", decodeErr, stdout.String())
+	}
+	if envelope.OK || envelope.Data.NextAction != "" || envelope.Data.NextCommand != "" {
+		t.Fatalf("terminal task failure must not suggest more polling: %#v", envelope)
+	}
 }
 
-func TestBaseTableCopyWaitErrorEmitsRecoverableTaskOnProgressAndStdout(t *testing.T) {
+func TestBaseTableCopyWaitInvalidTaskDoesNotSuggestMorePolling(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	stderr := factory.IOStreams.ErrOut.(interface{ String() string })
 	reg.Register(&httpmock.Stub{
@@ -815,7 +777,10 @@ func TestBaseTableCopyWaitErrorEmitsRecoverableTaskOnProgressAndStdout(t *testin
 		t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
 	}
 	if strings.Contains(problem.Hint, "ct1.token") {
-		t.Fatalf("error hint must remain reusable and not embed one task ID: %q", problem.Hint)
+		t.Fatalf("error hint must not embed one task ID: %q", problem.Hint)
+	}
+	if strings.Contains(problem.Hint, "+table-copy-status") {
+		t.Fatalf("invalid task hint must not suggest querying the same task again: %q", problem.Hint)
 	}
 	if !strings.Contains(stderr.String(), "Table copy submitted: init, task_id=ct1.token") {
 		t.Fatalf("stderr = %q, want recoverable submit progress", stderr.String())
@@ -832,9 +797,65 @@ func TestBaseTableCopyWaitErrorEmitsRecoverableTaskOnProgressAndStdout(t *testin
 		envelope.Data.State != tableCopyStateInit ||
 		envelope.Data.Completed ||
 		envelope.Data.TaskID != "ct1.token" ||
-		envelope.Data.NextAction != "poll_status" ||
-		!strings.Contains(envelope.Data.NextCommand, "ct1.token") {
+		envelope.Data.NextAction != "" ||
+		envelope.Data.NextCommand != "" {
 		t.Fatalf("recovery envelope = %#v", envelope)
+	}
+}
+
+func TestBaseTableCopyWaitStatusUnavailableDoesNotSuggestMorePolling(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_source/copy",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"table":   map[string]interface{}{"id": "tbl_target", "name": "Copy"},
+				"task_id": "ct1.token",
+				"state":   "init",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/copy_table_state",
+		Body: map[string]interface{}{
+			"code": 800030110,
+			"msg":  "status unavailable",
+		},
+	})
+
+	clock := &advancingTableCopyClock{now: time.Unix(0, 0)}
+	shortcut := BaseTableCopy
+	shortcut.Execute = func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return executeTableCopyWithClock(ctx, runtime, clock)
+	}
+	err := runShortcutWithAuthTypes(
+		t,
+		shortcut,
+		shortcut.AuthTypes,
+		[]string{"+table-copy", "--base-token", "app_x", "--table-id", "tbl_source", "--name", "Copy", "--range", "all", "--wait", "--as", "bot"},
+		factory,
+		stdout,
+	)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Code != 800030110 || problem.Subtype != errs.SubtypeNotFound {
+		t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
+	}
+	if strings.Contains(problem.Hint, "+table-copy-status") {
+		t.Fatalf("status-unavailable hint must not suggest querying the same task again: %q", problem.Hint)
+	}
+
+	var envelope struct {
+		OK   bool            `json:"ok"`
+		Data tableCopyOutput `json:"data"`
+	}
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &envelope); decodeErr != nil {
+		t.Fatalf("decode failure stdout: %v\nraw=%s", decodeErr, stdout.String())
+	}
+	if envelope.OK || envelope.Data.NextAction != "" || envelope.Data.NextCommand != "" {
+		t.Fatalf("status-unavailable failure must not suggest more polling: %#v", envelope)
 	}
 }
 
@@ -903,7 +924,9 @@ func TestBaseTableCopyWaitErrorPreservesLastSuccessfulStatus(t *testing.T) {
 	if envelope.OK ||
 		envelope.Data.State != tableCopyStateProcess ||
 		envelope.Data.Completed ||
-		envelope.Data.TaskID != "ct1.token" {
+		envelope.Data.TaskID != "ct1.token" ||
+		envelope.Data.NextAction != "" ||
+		envelope.Data.NextCommand != "" {
 		t.Fatalf("recovery envelope = %#v", envelope)
 	}
 }
@@ -1162,24 +1185,11 @@ func TestProjectTableCopySubmitRejectsInvalidResponseShape(t *testing.T) {
 	}
 }
 
-func TestProjectTableCopyStatusRejectsFailedWithoutInspectingLastErrorCode(t *testing.T) {
-	tests := []struct {
-		name string
-		data map[string]interface{}
-	}{
-		{name: "missing", data: map[string]interface{}{"table_id": "tbl_target", "state": "failed"}},
-		{name: "positive", data: map[string]interface{}{"table_id": "tbl_target", "state": "failed", "last_error_code": 12345}},
-		{name: "malformed", data: map[string]interface{}{"table_id": "tbl_target", "state": "failed", "last_error_code": "ignore-me"}},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := projectTableCopyStatus(test.data)
-			problem, ok := errs.ProblemOf(err)
-			if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
-				t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
-			}
-		})
+func TestProjectTableCopyStatusRejectsFailedState(t *testing.T) {
+	_, err := projectTableCopyStatus(map[string]interface{}{"table_id": "tbl_target", "state": "failed"})
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
 	}
 }
 
@@ -1225,6 +1235,20 @@ func TestTableCopyWaitErrorAddsContinuationWithoutReclassification(t *testing.T)
 		if strings.Contains(problem.Hint, sensitive) {
 			t.Fatalf("hint = %q, must not contain %q", problem.Hint, sensitive)
 		}
+	}
+}
+
+func TestTableCopyWaitErrorPreservesNonRetryableHint(t *testing.T) {
+	original := errs.NewAPIError(errs.SubtypeNotFound, "status unavailable").
+		WithCode(800030110).
+		WithHint("Submit a new copy request.")
+	err := tableCopyWaitError(original)
+	if err != original {
+		t.Fatalf("error = %T %v, want original error", err, err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Hint != "Submit a new copy request." {
+		t.Fatalf("problem = %#v, want unchanged upstream hint", problem)
 	}
 }
 

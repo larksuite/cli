@@ -141,15 +141,18 @@ func executeTableCopyWithClock(ctx context.Context, runtime *common.RuntimeConte
 			if recoveryState == "" {
 				recoveryState = submit.State
 			}
-			recoveryErr := runtime.OutPartialFailure(tableCopyOutput{
-				Table:       submit.Table,
-				Range:       rangeValue,
-				State:       recoveryState,
-				Completed:   false,
-				TaskID:      submit.TaskID,
-				NextAction:  "poll_status",
-				NextCommand: tableCopyNextCommand(runtime, runtime.Str("base-token"), submit.TaskID),
-			}, nil)
+			recovery := tableCopyOutput{
+				Table:     submit.Table,
+				Range:     rangeValue,
+				State:     recoveryState,
+				Completed: false,
+				TaskID:    submit.TaskID,
+			}
+			if tableCopyWaitCanContinue(pollErr) {
+				recovery.NextAction = "poll_status"
+				recovery.NextCommand = tableCopyNextCommand(runtime, runtime.Str("base-token"), submit.TaskID)
+			}
+			recoveryErr := runtime.OutPartialFailure(recovery, nil)
 			var partialFailure *output.PartialFailureError
 			if !errors.As(recoveryErr, &partialFailure) {
 				return recoveryErr
@@ -207,7 +210,21 @@ func tableCopySubmissionError(err error) error {
 	return err
 }
 
+func tableCopyWaitCanContinue(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	return tableCopyPollErrorRetryable(err)
+}
+
 func tableCopyWaitError(err error) error {
+	if !tableCopyWaitCanContinue(err) {
+		if _, ok := errs.ProblemOf(err); ok {
+			return err
+		}
+		return errs.NewInternalError(errs.SubtypeUnknown, "table copy status polling failed: %v", err).WithCause(err)
+	}
+
 	hint := "The copy task was already submitted; do not submit it again. Read task_id from the submit output and continue with lark-cli base +table-copy-status using the same identity."
 	if errors.Is(err, context.Canceled) {
 		return errs.NewNetworkError(errs.SubtypeNetworkTransport, "table copy status polling was canceled").WithHint("%s", hint).WithCause(err)

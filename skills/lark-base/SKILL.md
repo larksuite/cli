@@ -92,7 +92,6 @@ metadata:
 ## 身份与权限降级
 
 - 默认显式使用 `--as user` 操作用户资源；只有用户明确要求应用身份时，才直接用 `--as bot`。
-- `+table-copy` 和 `+table-copy-status` 都支持 `--as user` / `--as bot`；异步状态查询必须沿用提交时解析出的同一身份，直接执行 stdout 返回的 `next_command`，不要擅自切换身份。
 - `+table-copy --wait` 提交成功后会在 stderr 打印完整 `task_id`；若进程被 Ctrl-C 终止，可用该 ID 和原身份执行 `+table-copy-status` 续查，不要重新提交复制。
 - user 身份报 scope/授权不足，或错误中包含 `missing_scopes` / `hint`，先转 `lark-shared` 做用户授权恢复，不要直接降级 bot。
 - user 身份报资源级无访问且无授权恢复提示时，才可用 `--as bot` 重试一次；bot 仍失败就停止重试并按权限错误处理。
