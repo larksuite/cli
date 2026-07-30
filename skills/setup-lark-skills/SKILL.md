@@ -104,26 +104,33 @@ done
 
 ### 5. 执行休眠/激活（幂等）
 
-编辑同样只作用于 frontmatter 块——休眠只在 frontmatter 内插入，激活只删 frontmatter 内的匹配行，正文里的同名文本原样保留：
+编辑同样只作用于 frontmatter 块——休眠只在 frontmatter 内生效（已有该字段则改写为 `true`，没有才插入），激活只删 frontmatter 内的该字段，正文里的同名文本原样保留。写入走「`cp -a` 克隆元数据 → awk 改写 → mv 替换」，保留原文件的权限/ACL；任一步失败都会清理临时文件并报错退出：
 
 ```bash
 f="$ROOT/lark-<name>/SKILL.md"
 
-# 休眠（幂等：frontmatter 内不存在才插入；插在 name: 行之后，避开多行 description 陷阱）
+# 休眠（幂等：frontmatter 内已有 disable-model-invocation 字段则改写为 true，
+# 没有则插在 name: 行之后，避开多行 description 陷阱；不会产生重复字段）
 is_disabled "$f" || {
+  cp -a "$f" "$f.tmp" &&
   awk '
     /^---$/ { c++; print; next }
+    c==1 && /^disable-model-invocation:[[:space:]]*/ { if (!d) { print "disable-model-invocation: true"; d=1 }; next }
     c==1 && /^name:/ && !d { print; print "disable-model-invocation: true"; d=1; next }
     { print }
-  ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-}
+  ' "$f" > "$f.tmp" &&
+  mv "$f.tmp" "$f"
+} || { rm -f "$f.tmp"; echo "ERROR: 休眠写入失败: $f" >&2; exit 1; }
 
-# 激活（幂等：只删 frontmatter 内的匹配行）
+# 激活（幂等：删除 frontmatter 内该字段的全部取值，正文同名文本保留）
+cp -a "$f" "$f.tmp" &&
 awk '
   /^---$/ { c++; print; next }
-  c==1 && /^disable-model-invocation:[[:space:]]*true[[:space:]]*$/ { next }
+  c==1 && /^disable-model-invocation:[[:space:]]*/ { next }
   { print }
-' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+' "$f" > "$f.tmp" &&
+mv "$f.tmp" "$f" ||
+{ rm -f "$f.tmp"; echo "ERROR: 激活写入失败: $f" >&2; exit 1; }
 ```
 
 （awk 在 macOS / Linux 行为一致，无需区分平台。）
