@@ -4,6 +4,7 @@
 package base
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -95,23 +96,39 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 		}
 	})
 
-	t.Run("field endpoint independently confirms table", func(t *testing.T) {
+	t.Run("field endpoint does not confirm untyped block", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(fieldListStub("bas123", "tbl123"))
+		fieldStub := fieldListStub("bas123", "tbl123")
+		fieldStub.Optional = true
+		fieldStub.OnMatch = func(_ *http.Request) {
+			t.Fatalf("field endpoint must not be used to infer selected block type")
+		}
+		reg.Register(fieldStub)
 		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
-			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=tbl123", "--as", "user",
+			"+url-resolve", "--url", "https://example.larkoffice.com/base/bas123?table=tbl123&view=vew_stale", "--as", "user",
 		}, factory, stdout)
 		if err != nil {
 			t.Fatalf("err=%v", err)
 		}
 		data := decodeBaseEnvelope(t, stdout)
-		if data["block_id"] != "tbl123" || data["block_type"] != "table" || data["table_id"] != "tbl123" {
-			t.Fatalf("field fallback must confirm the table: %#v", data)
+		if data["block_id"] != "tbl123" {
+			t.Fatalf("unexpected block coordinates: %#v", data)
+		}
+		if _, ok := data["block_type"]; ok {
+			t.Fatalf("field endpoint must not confirm block type without block directory: %#v", data)
+		}
+		if _, ok := data["table_id"]; ok {
+			t.Fatalf("field endpoint must not promote an untyped block to table_id: %#v", data)
+		}
+		if _, ok := data["view_id"]; ok {
+			t.Fatalf("untyped block must not expose table-only view_id: %#v", data)
 		}
 		hint, _ := data["hint"].(map[string]interface{})
-		fields, _ := hint["fields"].(map[string]interface{})
-		if fields["total"] != float64(2) {
-			t.Fatalf("unexpected fallback fields: %#v", hint)
+		if _, ok := hint["fields"]; ok {
+			t.Fatalf("fields should be omitted when block type is unconfirmed: %#v", hint)
+		}
+		if !strings.Contains(hint["next_step"].(string), "+base-block-list") {
+			t.Fatalf("unexpected hint: %#v", hint)
 		}
 	})
 

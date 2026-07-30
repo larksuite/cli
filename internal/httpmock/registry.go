@@ -38,6 +38,10 @@ type Stub struct {
 	// matches after the first hit. Each match appends to CapturedBodies.
 	Reusable bool
 
+	// Optional (optional): when true, Verify does not require this stub to be
+	// matched. Useful for negative assertions via OnMatch.
+	Optional bool
+
 	// CapturedHeaders records the request headers of the matched request.
 	// Populated after RoundTrip matches this stub.
 	CapturedHeaders http.Header
@@ -135,6 +139,9 @@ func (r *Registry) Verify(t testing.TB) {
 	defer r.mu.Unlock()
 	for _, s := range r.stubs {
 		if s.matched {
+			continue
+		}
+		if s.Optional {
 			continue
 		}
 		// Reusable stubs never set s.matched; treat any captured hit as a match.

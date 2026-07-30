@@ -470,17 +470,6 @@ func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interf
 		return
 	}
 
-	// Directory lookup can be unavailable when the caller lacks block-read
-	// permission. Preserve compatibility for a real table only when the field
-	// endpoint independently confirms that the selected ID is a table.
-	fields, total, err := listAllFields(runtime, baseToken, selectedBlockID, 0, 100)
-	if err == nil {
-		applyResolvedTableSelection(out, selection)
-		out["table_id"] = selectedBlockID
-		out["block_type"] = "table"
-		out["hint"] = resolveHint(selectedBlockID, map[string]interface{}{"fields": map[string]interface{}{"fields": fields, "total": total}})
-		return
-	}
 	out["hint"] = resolveUnknownBlockHint()
 }
 
