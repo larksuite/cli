@@ -22,6 +22,8 @@ var presentationFlagAliases = []string{
 func Shortcuts() []common.Shortcut {
 	all := []common.Shortcut{
 		SlidesCreate,
+		SlidesAddSlide,
+		SlidesDeleteSlide,
 		SlidesMediaUpload,
 		SlidesReplaceSlide,
 		SlidesReplacePages,

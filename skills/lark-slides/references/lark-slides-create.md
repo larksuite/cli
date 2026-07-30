@@ -12,8 +12,8 @@
 | 场景 | 推荐方式 |
 |------|----------|
 | 简单 XML（1-3 页、结构简单、几乎无复杂中文和特殊字符） | `slides +create --slides '[...]'` 一步创建 |
-| 复杂 XML（多页、含中文、大段文本、复杂布局、嵌套引号、特殊字符较多） | **两步创建**：先 `slides +create` 创建空白 PPT，再用 [`xml_presentation.slide create`](lark-slides-xml-presentation-slide-create.md) 逐页添加 |
-| 已有 PPT 继续追加或插入页面 | 使用 [`xml_presentation.slide create`](lark-slides-xml-presentation-slide-create.md)，必要时配合 `before_slide_id` |
+| 复杂 XML（多页、含中文、大段文本、复杂布局、嵌套引号、特殊字符较多） | **两步创建**：先 `slides +create` 创建空白 PPT，再用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加（`--slide @file` 可绕开 shell 转义） |
+| 已有 PPT 继续追加或插入页面 | 使用 [`+add-slide`](lark-slides-add-slide.md)，必要时配合 `--before-slide-id` |
 
 > [!WARNING]
 > `--slides '[...]'` 的风险点主要在 shell 参数传递，而不是单纯页数。即使只有 1 页，只要 XML 足够复杂，也建议使用两步创建法。
@@ -39,7 +39,7 @@ lark-cli slides +create --title "项目汇报" --as bot
 lark-cli slides +create --title "项目汇报" --slides '[...]' --dry-run
 ```
 
-复杂内容建议按页保存 XML，再用 `jq --rawfile` 组装 `--slides` 参数：
+用 `--slides` 一步创建时，按页保存 XML，再用 `jq --rawfile` 组装参数，不要手写转义：
 
 ```bash
 lark-cli slides +create --as user --title "项目汇报" \
@@ -65,9 +65,9 @@ lark-cli slides +create --as user --title "项目汇报" \
 - **`permission_grant`**（object，可选）：仅 `--as bot` 时返回，说明是否已自动为当前 CLI 用户授予可管理权限
 
 > [!IMPORTANT]
-> 不传 `--slides` 时，`slides +create` 只创建空白演示文稿。创建后需要使用 `xml_presentation.slide create` 逐页添加 slide 内容。
+> 不传 `--slides` 时，`slides +create` 只创建空白演示文稿。创建后用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加 slide 内容。
 >
-> 传了 `--slides` 时，CLI 先创建空白演示文稿，再逐页调用 `xml_presentation.slide create` 添加页面。如果某一页添加失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留。
+> 传了 `--slides` 时，CLI 先创建空白演示文稿，再逐页调用 slide 创建接口添加页面。如果某一页添加失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留。
 >
 > 如果演示文稿是**以应用身份（bot）创建**的，如 `lark-cli slides +create --as bot`，CLI 会**尝试为当前 CLI 用户自动授予该演示文稿的 `full_access`（可管理权限）**。
 >
@@ -83,7 +83,7 @@ lark-cli slides +create --as user --title "项目汇报" \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--title` | 否 | 演示文稿标题（不传则默认 "Untitled"） |
-| `--slides` | 否 | slide 内容 JSON 数组，每个元素是一个 `<slide>` XML 字符串（最多 10 个；超过 10 页请先用 `+create` 创建空白 PPT，再用 `xml_presentation.slide create` 逐页添加） |
+| `--slides` | 否 | slide 内容 JSON 数组，每个元素是一个 `<slide>` XML 字符串（最多 10 个；超过 10 页请先用 `+create` 创建空白 PPT，再用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加） |
 
 ## `--slides` 参数格式
 
@@ -118,21 +118,6 @@ lark-cli slides +create --as user --title "图测试" --slides '[
 > [!IMPORTANT]
 > **路径必须在 CWD 内**：`@/abs/path/x.png` 或 `@../up/x.png` 这种会被 CLI 拒绝（报 `unsafe file path`）。如果素材在别的目录，先 `cd` 过去再执行。
 
-### 给已有 PPT 加带图新页
-
-`+create --slides` 只在新建 PPT 时使用 `@` 占位符。给已有 PPT 加带图新页要分两步（CLI 没封装这个组合）：
-
-```bash
-# 1) 上传图片
-TOKEN=$(lark-cli slides +media-upload --as user \
-  --file ./pic.png --presentation $PRES_ID | jq -r .data.file_token)
-
-# 2) 用返回的 file_token 创建带图新页
-lark-cli slides xml_presentation.slide create --as user \
-  --params "{\"xml_presentation_id\":\"$PRES_ID\"}" \
-  --data "{\"slide\":{\"content\":\"<slide xmlns=\\\"http://www.larkoffice.com/sml/2.0\\\"><data><img src=\\\"$TOKEN\\\" topLeftX=\\\"100\\\" topLeftY=\\\"100\\\" width=\\\"200\\\" height=\\\"200\\\"/></data></slide>\"}}"
-```
-
 ## 创建后续步骤
 
 如果没有使用 `--slides`，`slides +create` 返回的 `xml_presentation_id` 用于后续操作：
@@ -141,14 +126,10 @@ lark-cli slides xml_presentation.slide create --as user \
 # 第 1 步：创建空白 PPT
 PRES_ID=$(lark-cli slides +create --title "项目汇报" | jq -r '.data.xml_presentation_id')
 
-# 第 2 步：添加页面（使用返回的 xml_presentation_id）
-lark-cli slides xml_presentation.slide create --as user \
-  --params "{\"xml_presentation_id\":\"$PRES_ID\"}" \
-  --data '{
-    "slide": {
-      "content": "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\">...</slide>"
-    }
-  }'
+# 第 2 步：逐页添加（--slide 支持 @file，复杂 XML 优先走文件）
+lark-cli slides +add-slide --as user \
+  --presentation "$PRES_ID" \
+  --slide @.lark-slides/plan/<deck>/page1.xml
 ```
 
 ## 常见错误
@@ -160,5 +141,5 @@ lark-cli slides xml_presentation.slide create --as user \
 
 ## 相关命令
 
-- [xml_presentation.slide create](lark-slides-xml-presentation-slide-create.md) — 添加幻灯片页面
+- [slides +add-slide](lark-slides-add-slide.md) — 追加/插入单页（两步创建的第二步）
 - [slides +xml-get](lark-slides-xml-presentations-get.md) — 读取 PPT 内容并保存到本地文件

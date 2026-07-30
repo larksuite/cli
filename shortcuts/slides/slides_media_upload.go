@@ -86,7 +86,7 @@ var SlidesMediaUpload = common.Shortcut{
 
 		stat, err := runtime.FileIO().Stat(filePath)
 		if err != nil {
-			return slidesInputStatError(err, "--file", "file not found")
+			return slidesInputStatError(err, "--file", filePath)
 		}
 		if !stat.Mode().IsRegular() {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "file must be a regular file: %s", filePath).WithParam("--file")
