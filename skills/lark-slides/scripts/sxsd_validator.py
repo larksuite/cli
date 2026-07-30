@@ -93,14 +93,30 @@ class SchemaModel:
     global_elements: dict[str, ElementRule]
 
 
-def parse_simple_type(element: ET.Element, fallback_name: str) -> SimpleTypeRule:
+def parse_simple_type(
+    element: ET.Element,
+    fallback_name: str,
+    simple_types: dict[str, SimpleTypeRule] | None = None,
+) -> SimpleTypeRule:
     name = element.attrib.get("name", fallback_name)
     restriction = first_direct_child(element, "restriction")
     union = first_direct_child(element, "union")
     if union is not None:
+        union_members = [
+            local_name(member) for member in union.attrib.get("memberTypes", "").split()
+        ]
+        for index, inline_simple in enumerate(direct_children(union, "simpleType"), start=1):
+            inline_name = f"__inline_union_member_{name}_{index}"
+            union_members.append(inline_name)
+            if simple_types is not None:
+                simple_types[inline_name] = parse_simple_type(
+                    inline_simple,
+                    inline_name,
+                    simple_types,
+                )
         return SimpleTypeRule(
             name=name,
-            union_members=tuple(local_name(member) for member in union.attrib.get("memberTypes", "").split()),
+            union_members=tuple(union_members),
         )
     if restriction is None:
         return SimpleTypeRule(name=name)
@@ -144,17 +160,18 @@ def parse_element_rule(element: ET.Element) -> ElementRule | None:
 @lru_cache(maxsize=4)
 def load_schema_model(schema_path: str) -> SchemaModel:
     root = ET.parse(schema_path).getroot()
-    simple_types = {
-        element.attrib["name"]: parse_simple_type(element, element.attrib["name"])
-        for element in direct_children(root, "simpleType")
-        if element.attrib.get("name")
-    }
+    simple_types: dict[str, SimpleTypeRule] = {}
+    for element in direct_children(root, "simpleType"):
+        name = element.attrib.get("name")
+        if not name:
+            continue
+        simple_types[name] = parse_simple_type(element, name, simple_types)
     for attribute in root.iter(f"{XS_NS}attribute"):
         inline_simple = first_direct_child(attribute, "simpleType")
         if inline_simple is None:
             continue
         inline_name = f"__inline_attribute_{attribute.attrib.get('name', 'anonymous')}_{id(attribute)}"
-        simple_types[inline_name] = parse_simple_type(inline_simple, inline_name)
+        simple_types[inline_name] = parse_simple_type(inline_simple, inline_name, simple_types)
     complex_types = {
         element.attrib["name"]: element
         for element in direct_children(root, "complexType")
@@ -537,6 +554,12 @@ def value_error_for_type(
             member_errors = [value_error_for_type(member, value, model, resolving) for member in rule.union_members]
             if any(error is None for error in member_errors):
                 return None
+            unsupported_error = next(
+                (error for error in member_errors if error and error[0] == "sxsd_unsupported_pattern"),
+                None,
+            )
+            if unsupported_error is not None:
+                return unsupported_error
             if any(error and error[0] == "sxsd_pattern_mismatch" for error in member_errors):
                 return "sxsd_pattern_mismatch", f"value matching one member of {type_name}"
             return member_errors[0]
@@ -544,8 +567,21 @@ def value_error_for_type(
         if rule.enums and value not in rule.enums:
             return "sxsd_invalid_enum", "one of: " + ", ".join(rule.enums)
 
-        if rule.patterns and not any(xsd_pattern_matches(pattern, value) for pattern in rule.patterns):
-            return "sxsd_pattern_mismatch", "value matching pattern " + " or ".join(rule.patterns)
+        if rule.patterns:
+            unsupported_patterns: list[str] = []
+            for pattern in rule.patterns:
+                try:
+                    if xsd_pattern_matches(pattern, value):
+                        break
+                except (ValueError, re.error) as error:
+                    unsupported_patterns.append(f"{pattern!r}: {error}")
+            else:
+                if unsupported_patterns:
+                    return (
+                        "sxsd_unsupported_pattern",
+                        "lint support for XSD pattern " + "; ".join(unsupported_patterns),
+                    )
+                return "sxsd_pattern_mismatch", "value matching pattern " + " or ".join(rule.patterns)
 
         base_name = rule.base or "string"
         base_error = value_error_for_type(base_name, value, model, resolving)
@@ -602,6 +638,19 @@ def validate_element_attributes(
         if validation_error is None:
             continue
         code, expected = validation_error
+        if code == "sxsd_unsupported_pattern":
+            message = (
+                f'unsupported SXSD pattern for attribute "{attr_name}" on <{tag}> at {path}'
+            )
+            hint = (
+                f"Extend the SXSD pattern interpreter for {attr_rule.type_name}; "
+                "do not treat this attribute value as validated."
+            )
+        else:
+            message = (
+                f'invalid SXSD value {value!r} for attribute "{attr_name}" on <{tag}> at {path}'
+            )
+            hint = f'Set attribute "{attr_name}" to a value valid for {attr_rule.type_name}.'
         issues.append(
             issue(
                 code,
@@ -610,8 +659,8 @@ def validate_element_attributes(
                 attr=attr_name,
                 expected=expected,
                 actual=value,
-                message=f'invalid SXSD value {value!r} for attribute "{attr_name}" on <{tag}> at {path}',
-                hint=f'Set attribute "{attr_name}" to a value valid for {attr_rule.type_name}.',
+                message=message,
+                hint=hint,
             )
         )
     return issues

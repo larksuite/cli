@@ -3193,6 +3193,40 @@ class SxsdSyntaxAttributeTest(SxsdSyntaxTestCase):
 
         self.assert_issue(issues, "sxsd_pattern_mismatch", attr="href")
 
+    def test_accepts_values_matching_inline_union_members(self) -> None:
+        for bullet_size in ("25%", "100%", "400%", "6", "14", "400"):
+            with self.subTest(bullet_size=bullet_size):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                          <content bulletSize="{bullet_size}"><p>Text</p></content>
+                        </shape>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assertEqual(issues, [])
+
+    def test_rejects_values_outside_inline_union_members(self) -> None:
+        for bullet_size in ("24%", "401%", "5", "401", "abc"):
+            with self.subTest(bullet_size=bullet_size):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                          <content bulletSize="{bullet_size}"><p>Text</p></content>
+                        </shape>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assert_issue(issues, "sxsd_pattern_mismatch", attr="bulletSize")
+
     def test_rejects_symbol_outside_python_word_semantics_in_href(self) -> None:
         issues = self.validate(
             f"""
@@ -3247,7 +3281,7 @@ class SxsdSyntaxAttributeTest(SxsdSyntaxTestCase):
         issues = self.validate(
             f"""
             <slide xmlns="{SML_NAMESPACE}">
-              <style><fill><fillColor color="rgb(1, 2,3)"/></fill></style>
+              <style><fill><fillColor color="rgb(1,\u00a02,3)"/></fill></style>
               <data/>
             </slide>
             """
@@ -3399,6 +3433,42 @@ class SxsdSyntaxStructureTest(SxsdSyntaxTestCase):
 
 
 class SxsdSchemaModelTest(unittest.TestCase):
+    def test_reports_unsupported_xsd_pattern_without_crashing(self) -> None:
+        schema = rf"""
+        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                   xmlns:sml="{SML_NAMESPACE}"
+                   targetNamespace="{SML_NAMESPACE}"
+                   elementFormDefault="qualified">
+          <xs:simpleType name="UnsupportedPatternType">
+            <xs:union>
+              <xs:simpleType>
+                <xs:restriction base="xs:string"><xs:pattern value="[\S]"/></xs:restriction>
+              </xs:simpleType>
+              <xs:simpleType>
+                <xs:restriction base="xs:string"><xs:pattern value="z+"/></xs:restriction>
+              </xs:simpleType>
+            </xs:union>
+          </xs:simpleType>
+          <xs:complexType name="SlideType">
+            <xs:attribute name="value" type="sml:UnsupportedPatternType"/>
+          </xs:complexType>
+        </xs:schema>
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            schema_path = Path(temp_dir) / "schema.xsd"
+            schema_path.write_text(schema, encoding="utf-8")
+            try:
+                issues = sxsd_validator.validate_sxsd(
+                    ET.fromstring(f'<slide xmlns="{SML_NAMESPACE}" value="A"/>'),
+                    schema_path,
+                )
+            except (ValueError, sxsd_validator.re.error) as error:
+                self.fail(f"SXSD pattern capability errors must be reported, not raised: {error}")
+
+        self.assertEqual([issue["code"] for issue in issues], ["sxsd_unsupported_pattern"])
+        self.assertEqual(issues[0]["attr"], "value")
+        self.assertIn("unsupported", str(issues[0]["hint"]).lower())
+
     def test_standalone_slide_uses_slide_type_without_global_element(self) -> None:
         schema = f"""
         <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
