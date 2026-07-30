@@ -494,12 +494,16 @@ func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
 	if raw == "" {
 		return nil
 	}
+	// Hints below use <path> placeholders instead of echoing the raw value
+	// into command-shaped text: the value is untrusted, and a hint like
+	// "--csv - < $(id).csv" hands an agent a copy-pasteable command that a
+	// POSIX shell would expand.
 	if fio := runtime.FileIO(); fio != nil {
 		info, err := fio.Stat(raw)
 		if err == nil && info != nil && !info.IsDir() {
 			return sheetsValidationForFlag("csv",
-				"--csv value %q is an existing file, not inline CSV; to read it use --csv @%s, or pass the literal text via stdin (--csv -)",
-				raw, raw,
+				"--csv value %q is an existing file, not inline CSV; to read it, pass the same path with an @ prefix (--csv @<path>), or pipe the literal text via stdin (--csv -)",
+				raw,
 			)
 		}
 	}
@@ -510,8 +514,7 @@ func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
 		"--csv value %q looks like a file path, not inline CSV, and no such file exists under the current directory",
 		raw,
 	).WithHint(
-		"to read a file: --csv @<path> (relative to the current directory; @ rejects absolute paths, so for one of those pipe the file in instead: --csv - < %s). To write this text into the cell verbatim, pass it on stdin the same way (--csv -); values arriving via stdin or @file skip this check",
-		raw,
+		"to read a file: --csv @<path> (relative to the current directory; @ rejects absolute paths — pipe such a file in via stdin instead: --csv - < <path>). To write this text into the cell verbatim, pass it on stdin the same way (--csv -); values arriving via stdin or @file skip this check",
 	)
 }
 

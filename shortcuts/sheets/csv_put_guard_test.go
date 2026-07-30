@@ -23,7 +23,9 @@ func newCSVGuardRuntime(csvVal string) *common.RuntimeContext {
 }
 
 // TestGuardCSVValueIsNotFilePath covers the existing-file tier: a bare --csv
-// value naming a real file is a forgotten "@", and the fix is inlined.
+// value naming a real file is a forgotten "@". The prescription names the fix
+// with a <path> placeholder — the untrusted value must not be spliced into
+// command-shaped text an agent would copy verbatim.
 func TestGuardCSVValueIsNotFilePath(t *testing.T) {
 	dir := t.TempDir()
 	cmdutil.TestChdir(t, dir)
@@ -33,8 +35,14 @@ func TestGuardCSVValueIsNotFilePath(t *testing.T) {
 
 	err := guardCSVValueIsNotFilePath(newCSVGuardRuntime("data.csv"))
 	ve := requireValidation(t, err, "existing file")
-	if !strings.Contains(ve.Message, "@data.csv") {
-		t.Errorf("message should suggest @data.csv, got: %q", ve.Message)
+	if !strings.Contains(ve.Message, `"data.csv"`) {
+		t.Errorf("message should name the offending value as data, got: %q", ve.Message)
+	}
+	if !strings.Contains(ve.Message, "--csv @<path>") {
+		t.Errorf("message should prescribe the @ form via placeholder, got: %q", ve.Message)
+	}
+	if strings.Contains(ve.Message, "@data.csv") {
+		t.Errorf("message must not splice the value into a command fragment, got: %q", ve.Message)
 	}
 	if ve.Param != "--csv" {
 		t.Errorf("param = %q, want --csv", ve.Param)
@@ -64,8 +72,14 @@ func TestGuardCSVValueIsNotFilePath_MissingButPathShaped(t *testing.T) {
 		if !strings.Contains(ve.Hint, "--csv @") || !strings.Contains(ve.Hint, "--csv - <") {
 			t.Errorf("value %q: hint should offer both @file and stdin, got: %q", v, ve.Hint)
 		}
-		if !strings.Contains(ve.Hint, v) {
-			t.Errorf("value %q: hint should echo the path in the stdin example, got: %q", v, ve.Hint)
+		// The untrusted value must never appear inside the command-shaped
+		// hint: "--csv - < $(id).csv" copied by an agent would expand in a
+		// POSIX shell. The value is only named as quoted data in the message.
+		if strings.Contains(ve.Hint, v) {
+			t.Errorf("value %q: hint must not splice the raw value into a command fragment, got: %q", v, ve.Hint)
+		}
+		if !strings.Contains(ve.Message, v) {
+			t.Errorf("value %q: message should still name the offending value, got: %q", v, ve.Message)
 		}
 	}
 }

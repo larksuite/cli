@@ -256,61 +256,10 @@ func TestSafeUploadPath_RejectsTempFileAbsolutePath(t *testing.T) {
 	_, err = SafeInputPath(tmpPath)
 
 	// THEN: the strict validator rejects it — uploads / drive sync rely on
-	// relative-only; temp-dir reads go through SafeTempAbsInputPath instead
+	// relative-only; out-of-tree content reaches flags via stdin ("-")
 	if err == nil {
 		t.Fatal("expected error for absolute temp path, got nil")
 	}
-}
-
-func TestSafeTempAbsInputPath(t *testing.T) {
-	t.Run("accepts a file under the temp dir", func(t *testing.T) {
-		f, err := os.CreateTemp("", "payload-*.json")
-		if err != nil {
-			t.Fatalf("CreateTemp: %v", err)
-		}
-		tmpPath := f.Name()
-		f.Close()
-		t.Cleanup(func() { os.Remove(tmpPath) })
-
-		resolved, err := SafeTempAbsInputPath(tmpPath)
-		if err != nil {
-			t.Fatalf("expected temp path accepted, got %v", err)
-		}
-		canonical, err := filepath.EvalSymlinks(tmpPath)
-		if err != nil {
-			t.Fatalf("EvalSymlinks: %v", err)
-		}
-		if resolved != canonical {
-			t.Fatalf("resolved = %q, want %q", resolved, canonical)
-		}
-	})
-
-	t.Run("rejects relative paths", func(t *testing.T) {
-		if _, err := SafeTempAbsInputPath("./ops.json"); err == nil {
-			t.Fatal("expected error for relative path, got nil")
-		}
-	})
-
-	t.Run("rejects absolute paths outside the temp dir", func(t *testing.T) {
-		if _, err := SafeTempAbsInputPath("/etc/passwd"); err == nil {
-			t.Fatal("expected error for non-temp absolute path, got nil")
-		}
-	})
-
-	t.Run("rejects a temp-dir symlink escaping outside", func(t *testing.T) {
-		dir, err := os.MkdirTemp("", "escape-*")
-		if err != nil {
-			t.Fatalf("MkdirTemp: %v", err)
-		}
-		t.Cleanup(func() { os.RemoveAll(dir) })
-		link := filepath.Join(dir, "escape.json")
-		if err := os.Symlink("/etc/passwd", link); err != nil {
-			t.Skipf("symlink not supported: %v", err)
-		}
-		if _, err := SafeTempAbsInputPath(link); err == nil {
-			t.Fatal("expected error for symlink escaping the temp dir, got nil")
-		}
-	})
 }
 
 func TestSafeUploadPath_RejectsNonTempAbsolutePath(t *testing.T) {

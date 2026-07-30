@@ -1301,7 +1301,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (auto-unlimited); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more.",
+        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more.",
         "default": "500000"
       },
       {
@@ -1417,7 +1417,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (auto-unlimited); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more.",
+        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more.",
         "default": "500000"
       },
       {
@@ -1494,7 +1494,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). The underlying tool truncates at ~50000 even when unset, so this is sent explicitly to raise it; for a full untruncated read use --output-path (auto-unlimited).",
+        "desc": "Max output chars per call; default 500000 (safety cap). The underlying tool truncates at ~50000 even when unset, so this is sent explicitly to raise it; for a full untruncated read use --output-path (cap auto-raises to a bounded 20M chars; explicit --max-chars overrides).",
         "default": "500000"
       },
       {

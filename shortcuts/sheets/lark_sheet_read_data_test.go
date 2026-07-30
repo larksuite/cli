@@ -51,9 +51,10 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			// --output-path alone lifts the cap so the whole read lands in
-			// the file.
-			name:     "+cells-get output-path lifts max_chars",
+			// --output-path alone raises the cap to the bounded file-offload
+			// default — NOT the unbounded sentinel; the read path is not
+			// streaming, so the cap is the OOM guard.
+			name:     "+cells-get output-path uses bounded offload cap",
 			sc:       CellsGet,
 			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--output-path", "out.json"},
 			toolName: "get_cell_ranges",
@@ -61,7 +62,7 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 				"excel_id":  testToken,
 				"sheet_id":  testSheetID,
 				"ranges":    []interface{}{"A1:B2"},
-				"max_chars": float64(unboundedReadLimit),
+				"max_chars": float64(outputPathReadLimit),
 			},
 		},
 		{

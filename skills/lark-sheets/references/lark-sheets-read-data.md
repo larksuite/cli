@@ -34,7 +34,7 @@
 
 ## 读表理解脚本（Agent 优先入口）
 
-当目标是"先理解表格内容 / 结构 / 子表边界"，优先使用 `scripts/lark_*.py` 这组只读脚本，再决定是否直接调用上述 shortcut。脚本是默认捷径，不是唯一入口：如果任务很小，或需要公式 / 样式 / 批注 / 精确原始值等脚本未覆盖的信息，可以直接用 CLI 做等价或更精细读取。
+当目标是"先理解表格内容 / 结构 / 子表边界"，且本地存在 `scripts/lark_*.py`（只随仓库版 skill 分发，二进制内嵌版不含 `scripts/`），可优先用这组只读脚本，再决定是否直接调用上述 shortcut。脚本是可选捷径，不是必经入口——脚本不可用时直接按下表右列的 CLI 等价路径执行：如果任务很小，或需要公式 / 样式 / 批注 / 精确原始值等脚本未覆盖的信息，可以直接用 CLI 做等价或更精细读取。
 
 | 脚本 | 底层 shortcut | 适用场景 |
 | --- | --- | --- |
@@ -163,7 +163,7 @@ _公共四件套 · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--range` | string | required | A1 范围，如 `A1:F10`（不带 sheet 前缀；用 `--sheet-id` / `--sheet-name` 指定 sheet） |
 | `--include` | string_slice | optional | 要返回的信息类别，逗号分隔多个。`truncation` 会额外按行高列宽 / 字号 / 自动换行估算每个单元格是否被截断显示，返回 `isRowTruncated` / `isColTruncated`（有额外计算开销，仅排版检查 / 调整行高列宽前才开）（可选值：`value` / `formula` / `style` / `comment` / `data_validation` / `truncation`） |
-| `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆）。要整表无截断直接用 --output-path 落盘（自动放开为无限）；仅当要让结果直接进上下文、又不落盘时才调小（如 25000），按 has_more 分页。 |
+| `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆）。要整表无截断直接用 --output-path 落盘（上限自动放宽到 2000 万字符——读取链路非流式，此上限是内存保护；更大就显式给 --max-chars）；仅当要让结果直接进上下文、又不落盘时才调小（如 25000），按 has_more 分页。 |
 | `--output-path` | string | optional | 把完整读取结果写入本地路径（如 `./out.json`），文件内容为 data 载荷的 JSON；stdout 只回一个含 output_path/字节数的确认信息。**一旦设置，字符上限默认放开为无限**（覆盖 --max-chars 默认），适合大表整表落盘再分析，避免 stdout 被 max_chars 截断。省略时按常规把结果打到 stdout。 |
 | `--skip-hidden` | bool | optional | 跳过隐藏行列，默认 `false` |
 
@@ -182,7 +182,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--range` | string | optional | A1 范围，如 `A1:F30`（不带 sheet 前缀；用 `--sheet-id` / `--sheet-name` 指定 sheet）。**可省略：缺省读取整个子表**（按表格实际边界裁剪，返回的 actual_range 标注实际读取范围）；大表配合 --max-chars / --output-path 控制体量 |
-| `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆）。要整表无截断直接用 --output-path 落盘（自动放开为无限）；仅当要让结果直接进上下文、又不落盘时才调小（如 25000），按 has_more 分页。 |
+| `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆）。要整表无截断直接用 --output-path 落盘（上限自动放宽到 2000 万字符——读取链路非流式，此上限是内存保护；更大就显式给 --max-chars）；仅当要让结果直接进上下文、又不落盘时才调小（如 25000），按 has_more 分页。 |
 | `--output-path` | string | optional | 把完整读取结果写入本地路径（如 `./out.json`），文件内容为 data 载荷的 JSON；stdout 只回一个含 output_path/字节数的确认信息。**一旦设置，字符上限默认放开为无限**（覆盖 --max-chars 默认），适合大表整表落盘再分析，避免 stdout 被 max_chars 截断。省略时按常规把结果打到 stdout。 |
 | `--include-row-prefix` | bool | optional | 是否在每行前加 `[row=N]` 前缀，默认 `true` |
 | `--skip-hidden` | bool | optional | 跳过隐藏行列，默认 `false` |

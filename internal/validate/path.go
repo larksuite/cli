@@ -17,12 +17,6 @@ func SafeInputPath(path string) (string, error) {
 	return localfileio.SafeInputPath(path)
 }
 
-// SafeTempAbsInputPath accepts an absolute read path only when it resolves
-// under the system temp dir. Delegates to localfileio.SafeTempAbsInputPath.
-func SafeTempAbsInputPath(path string) (string, error) {
-	return localfileio.SafeTempAbsInputPath(path)
-}
-
 // LocalInputPath validates a local input path without restricting it to the
 // current working directory. It delegates to localfileio.LocalInputPath so
 // command validation and shared local-file readers use one policy.

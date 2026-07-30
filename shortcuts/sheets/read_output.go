@@ -24,20 +24,30 @@ func readOutputPath(runtime *common.RuntimeContext) string {
 	return strings.TrimSpace(runtime.Str("output-path"))
 }
 
+// outputPathReadLimit is the max_chars default when --output-path is set and
+// --max-chars was left alone. Deliberately bounded: the read path is not
+// streaming — the HTTP body, the tool's output string, the decoded JSON tree
+// and the re-marshalled pretty JSON all coexist in memory before the file is
+// written, so an effectively-unlimited cap turns "offload to disk" into an
+// OOM vector in CLI/sidecar processes. 20M chars keeps the multi-copy peak
+// in the low hundreds of MB; a caller who really wants more states it via an
+// explicit --max-chars, which always wins.
+const outputPathReadLimit = 20_000_000
+
 // maxCharsInput resolves the max_chars value to send to the underlying read
-// tool. A cap the user set explicitly always binds — --output-path only lifts
-// the cap (unbounded sentinel) when --max-chars was left at its default, so
-// the whole result lands in the file without silently discarding a requested
-// limit. The second return is false when nothing should be sent
-// (max-chars <= 0), in which case the tool's own default applies. Note the
-// tool truncates at ~50000 even when max_chars is omitted, so callers that
-// want an explicit cap should pass a positive default.
+// tool. A cap the user set explicitly always binds — --output-path only
+// raises the default (to the bounded outputPathReadLimit) when --max-chars
+// was left alone, so a full read lands in the file without silently
+// discarding a requested limit. The second return is false when nothing
+// should be sent (max-chars <= 0), in which case the tool's own default
+// applies. Note the tool truncates at ~50000 even when max_chars is omitted,
+// so callers that want an explicit cap should pass a positive default.
 func maxCharsInput(runtime *common.RuntimeContext) (int, bool) {
 	if n := runtime.Int("max-chars"); n > 0 && runtime.Changed("max-chars") {
 		return n, true
 	}
 	if readOutputPath(runtime) != "" {
-		return unboundedReadLimit, true
+		return outputPathReadLimit, true
 	}
 	if n := runtime.Int("max-chars"); n > 0 {
 		return n, true

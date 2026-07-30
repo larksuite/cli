@@ -95,7 +95,7 @@ var BatchUpdate = common.Shortcut{
 		return nil
 	},
 	Tips: []string{
-		"high-risk-write: always pass --yes (or --dry-run to preview) — without it the call exits 10 asking for confirmation.",
+		"high-risk-write: preview with --dry-run, get the user's explicit consent, then re-run with --yes appended — do not pass --yes before the user has confirmed (without it the call exits 10 asking for confirmation).",
 		"Execution is fail-fast, NOT transactional: on \"N succeeded, M failed\" the succeeded sub-ops stay applied (no rollback) — fix the failure and resend ONLY the operations from the first failed index onward; resending the whole batch re-applies the succeeded ones. Pass --continue-on-error to keep going past failures instead.",
 		"Each sub-op is {shortcut, input}. Do NOT pass input.operation (implied by shortcut name) or input.excel_id / input.url (set at the +batch-update top level).",
 	},

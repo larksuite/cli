@@ -35,7 +35,7 @@ metadata:
 3. **读全再写**：批量填充 / 补齐 / 修正类任务先确认真实数据末行再写，只探前 N 行会漏写表尾（确定末行流程见 `lark-sheets-read-data`）。
 4. **公式优先于硬编码**：能用公式表达的计算（总计 / 占比 / 提取 / 查找）一律写公式而非静态值——**凡可由表内其它单元格推导的派生值默认用公式，即使用户没说"联动"**；写公式前先读 `lark-sheets-formula-translation`，**公式落表后收尾必跑 `+formula-verify` 直到 `status='success'`**。
 5. **续写 / 扩展继承样式**：续写、补齐、复制区块、新增行列时禁止只读值只写值，必须连带 `cell_styles` + `border_styles` + 合并 + 行高一起继承（清单见 `lark-sheets-write-cells`，四边框最易漏）。
-6. **多步写入分流**：美化收尾（样式 / 合并 / 行高列宽 / 冻结的任意组合）→ 一次 `+styles-put` 声明式规格交付（见 `lark-sheets-styles-put`）；**同一个写操作**打多个区域 → 用该命令自身的复数形态（`--ranges` / map 入参）；只有**跨类型、有顺序依赖的操作链**（如插列 → 写表头 → 回填数据）才用 `+batch-update`（high-risk-write，**调用必带 `--yes`**，fail-fast 不回滚；语义见 `lark-sheets-batch-update`）。
+6. **多步写入分流**：美化收尾（样式 / 合并 / 行高列宽 / 冻结的任意组合）→ 一次 `+styles-put` 声明式规格交付（见 `lark-sheets-styles-put`）；**同一个写操作**打多个区域 → 用该命令自身的复数形态（`--ranges` / map 入参）；只有**跨类型、有顺序依赖的操作链**（如插列 → 写表头 → 回填数据）才用 `+batch-update`（high-risk-write：按下方审批协议先获用户同意再带 `--yes`；fail-fast 不回滚，语义见 `lark-sheets-batch-update`）。
 7. **分组汇总用透视表**："按 X 统计 Y / 分组汇总 / 各类数量金额"用 `+pivot-{create|update|delete}`，禁止用 SUMIF / 本地脚本拼一张假透视表。
 8. **拆成可验证 checklist**：落地前把指令拆成所有"独立可验证子要点"，逐点 `assert` 全过才交付（多维排序每维一点、多目标每目标一点、范围类核起 / 末 / 边界）；只做第一个要点属违规。
 9. **全量处理前置断言条数**：翻译 / 打标 / 批量公式落地等逐条任务，先把预期条数硬编码再 `assert actual == expected`，禁止输出"已完成前 N 条，剩余继续"的半成品。
@@ -66,8 +66,8 @@ metadata:
 | 导入本地 xlsx/xls/csv 文件为飞书电子表格 | `+workbook-import --file ./x.xlsx`（仅要导成多维表格 bitable 时才用 `drive +import --type bitable`） | `lark-sheets-workbook` | `drive +import`（绕路）、本地读 .xlsx 再 `+workbook-create` 重灌（多此一举）、想并入**已有工作簿**却用它（import 只会另起新表，加子表走 `+sheet-copy` / `+sheet-create`） |
 | 参考某个**已有在线表**、把多份数据各作为一张子表**追加**进去 | 先 `+workbook-info` → `+sheet-copy` 复制模板子表（公式 / 合并 / 底色 / 列宽全继承）再 `+cells-*` 只改数据；无模板可继承时 `+sheet-create` + `+table-put --sheets/--styles` | `lark-sheets-workbook` | `+workbook-import` / `+workbook-create` 另起独立新表（这两条只产新表、不接受已有表定位） |
 | **已有**表美化收尾（样式 / 边框 / 合并 / 行高列宽 / 冻结的任意组合，单表或多表） | `+styles-put --styles '{"styles":[{"name":…,"cell_styles":[…],"cell_merges":[…],"row_sizes":[…],"col_sizes":[…],"freeze":{…}}]}'`（一份规格一次交付，词汇同 `+table-put --styles`） | `lark-sheets-styles-put` | 拼 `+batch-update` 的 `--operations` 子操作数组做美化、逐区域多次 `+cells-set-style` |
-| 清除内容 / 格式 | `+cells-clear --yes`（需确认；范围维度用 `--scope`，取值 content / formats / all） | `lark-sheets-range-operations` | `--type` |
-| 批量清除多区域 | `+cells-batch-clear --yes`（需确认；`--scope`） | `lark-sheets-batch-update` | `--target` |
+| 清除内容 / 格式 | `+cells-clear`（high-risk-write 需用户确认后带 `--yes`；范围维度用 `--scope`，取值 content / formats / all） | `lark-sheets-range-operations` | `--type` |
+| 批量清除多区域 | `+cells-batch-clear`（high-risk-write 需用户确认后带 `--yes`；`--scope`） | `lark-sheets-batch-update` | `--target` |
 | 调整列宽 / 行高 | `+cols-resize` / `+rows-resize`（行、列是两个独立命令；连同样式一起调时并入 `+styles-put` 的 `row_sizes` / `col_sizes`） | `lark-sheets-range-operations` | `--dimension`（无此 flag） |
 | 分组汇总 / 透视 | `+pivot-create`（默认不传落点 flag → 自动新建子表，零覆盖） | `lark-sheets-pivot-table` | 用 SUMIF / 本地脚本拼一张假透视表 |
 | 画图表 / 可视化（柱 / 折线 / 饼 / 条 / 散点 / 组合…） | `+chart-create`（先 `+chart-create --print-example <column\|bar\|line\|pie\|combo…>` 本地拿最小可用 `--properties` 模板，改 refs / index 即可用） | `lark-sheets-chart` | matplotlib / 本地画图再贴图（原生图表可交互、随数据更新） |
@@ -89,7 +89,7 @@ lark-cli sheets +cells-set-style --url <U> --sheet-name S1 --range A1:D1 --font-
 lark-cli sheets +styles-put --url <U> --styles - <<'JSON'
 {"styles":[{"name":"S1","cell_styles":[{"range":"A1:D1","font_weight":"bold","background_color":"#F0F0F0"}],"col_sizes":[{"range":"A:D","type":"pixel","size":120}],"freeze":{"rows":1}}]}
 JSON
-lark-cli sheets +batch-update --url <U> --yes --operations - <<'JSON'
+lark-cli sheets +batch-update --url <U> --yes --operations - <<'JSON'   # --yes：用户已确认（见 high-risk 审批协议）
 [{"shortcut":"+cells-set","input":{"sheet_name":"S1","range":"A1","cells":[[{"value":"x"}]]}}]
 JSON
 lark-cli sheets +dim-freeze --url <U> --sheet-name S1 --dimension row --count 2
@@ -127,7 +127,7 @@ lark-cli sheets +sheet-copy --url <U> --sheet-name 源表名 --title 副本名  
 ### 用脚本配合 CLI 时
 
 - **只读 stdout**：CLI 数据走 stdout、诊断走 stderr；解析 JSON 别 `2>&1`（警告混入会解析失败），用管道或单独重定向 stdout。
-- **读表理解优先用 `scripts/lark_*.py`**：`lark_inspect_workbook.py` / `lark_detect_subtables.py` / `lark_profile_table.py` 是只读脚本，用来把在线表格整理成结构摘要。它们不替代写入类 shortcut；确认目标区域后，写入仍按对应 reference 执行。
+- **读表理解优先用 `scripts/lark_*.py`（若可用）**：`lark_inspect_workbook.py` / `lark_detect_subtables.py` / `lark_profile_table.py` 是只读脚本，用来把在线表格整理成结构摘要。**可选增强，不是必经步骤**——`scripts/` 只随仓库版 skill 分发，二进制内嵌版没有这些文件；本地不存在时直接用 CLI 等价路径（对照表见 `lark-sheets-read-data`：`+workbook-info` / `+sheet-info` / 小窗口 `+csv-get`）。它们不替代写入类 shortcut；确认目标区域后，写入仍按对应 reference 执行。
 - **喂 CLI 的 CSV / JSON 用 UTF-8 无 BOM**；临时文件放系统临时目录、勿落项目目录。
 - **命令失败先读 stderr 再调整**，别原样重发。
 - **回写纯单元格值**：剥离 `值(V-Align: bottom)` 这类"值(样式)"串与残留引号再写；排序优先 `+range-sort` 原生工具，别"读出本地排完再整列写回"。
@@ -204,7 +204,9 @@ lark-cli sheets +csv-get --url "https://.../sheets/shtXXX" --sheet-name "<真实
 | `--print-schema` | bool | 否 | 本地打印复合 JSON flag 的 JSON Schema 并退出，不发起调用、不需要其它 required flag。搭配 `--flag-name` 指定查哪个 flag；省略时列出该 shortcut 可查询的 flag。仅对含复合 JSON flag 的 shortcut 有效。 |
 | `--flag-name` | string | 否 | 配合 `--print-schema`：flag 名不带 `--` 前缀（`cells` / `properties`）。**支持点分路径切片**：`--flag-name properties.snapshot.plotArea.axes` 只打印该子树，大 schema（chart 的 properties 约 1700 行）按需取，别整篇翻页。 |
 
-> ⚠️ **high-risk-write 命令清单（首次调用就带 `--yes`，别等 exit 10 再补；或先 `--dry-run` 预览）**：`+batch-update`、`+cells-clear`、`+cells-batch-clear`、`+sheet-delete`、`+dim-delete`、`+dropdown-delete`，以及各对象删除 `+chart-delete` / `+pivot-delete` / `+cond-format-delete` / `+filter-delete` / `+filter-view-delete` / `+sparkline-delete` / `+float-image-delete`。
+> ⚠️ **high-risk-write 命令清单（exit 10 强确认门禁）**：`+batch-update`、`+cells-clear`、`+cells-batch-clear`、`+sheet-delete`、`+dim-delete`、`+dropdown-delete`，以及各对象删除 `+chart-delete` / `+pivot-delete` / `+cond-format-delete` / `+filter-delete` / `+filter-view-delete` / `+sparkline-delete` / `+float-image-delete`。
+>
+> **审批协议**：先 `--dry-run` 预览、向用户展示将执行的操作与影响范围，**获得用户明确同意后**再在原命令追加 `--yes` 执行。未经用户同意不得带 `--yes`，也不得在 exit 10 后静默补 `--yes` 重试——那等于禁用门禁。完整协议见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 
 **Agent 使用提示**：写复合 JSON flag 前对结构不确定时，先 `--print-schema --flag-name <name>`（深层字段用点分路径切片）再构造 payload；图表直接 `+chart-create --print-example <type>` 拿最小可用模板改参。reference 的 `## Schemas` 段只给一层结构。
 
@@ -218,7 +220,7 @@ lark-cli sheets +csv-get --url "https://.../sheets/shtXXX" --sheet-name "<真实
 大 payload（`--operations` / `--cells` / `--sheets` / `--styles` / `--properties`…）、或含换行 / 引号 / `!` 等特殊字符时，优先 heredoc stdin（`-`）传入，避免命令行超长与 shell 转义问题：
 
 ```bash
-lark-cli sheets +batch-update --url "..." --yes --operations - <<'JSON'
+lark-cli sheets +batch-update --url "..." --yes --operations - <<'JSON'   # --yes：用户已确认（见 high-risk 审批协议）
 [{"shortcut":"+cells-set","input":{...}}]
 JSON
 ```
