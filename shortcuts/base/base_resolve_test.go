@@ -98,6 +98,9 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 
 	t.Run("field endpoint does not confirm untyped block", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(baseBlockListResolveStub("bas123",
+			map[string]interface{}{"id": "tbl_other", "type": "table", "name": "Other"},
+		))
 		fieldStub := fieldListStub("bas123", "tbl123")
 		fieldStub.Optional = true
 		fieldStub.OnMatch = func(_ *http.Request) {
