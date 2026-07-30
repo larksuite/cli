@@ -214,6 +214,12 @@ func tableCopyWaitCanContinue(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
+	if problem, ok := errs.ProblemOf(err); ok {
+		switch problem.Category {
+		case errs.CategoryAuthentication, errs.CategoryAuthorization:
+			return true
+		}
+	}
 	return tableCopyPollErrorRetryable(err)
 }
 

@@ -859,6 +859,99 @@ func TestBaseTableCopyWaitStatusUnavailableDoesNotSuggestMorePolling(t *testing.
 	}
 }
 
+func TestBaseTableCopyWaitAuthErrorsPreserveContinuation(t *testing.T) {
+	tests := []struct {
+		name         string
+		code         int
+		message      string
+		wantCategory errs.Category
+	}{
+		{
+			name:         "expired token",
+			code:         99991677,
+			message:      "access token expired",
+			wantCategory: errs.CategoryAuthentication,
+		},
+		{
+			name:         "missing scope",
+			code:         99991679,
+			message:      "missing scope",
+			wantCategory: errs.CategoryAuthorization,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_source/copy",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"table":   map[string]interface{}{"id": "tbl_target", "name": "Copy"},
+						"task_id": "ct1.token",
+						"state":   tableCopyStateInit,
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/base/v3/bases/app_x/copy_table_state",
+				Body: map[string]interface{}{
+					"code": tt.code,
+					"msg":  tt.message,
+				},
+			})
+
+			clock := &advancingTableCopyClock{now: time.Unix(0, 0)}
+			shortcut := BaseTableCopy
+			shortcut.Execute = func(ctx context.Context, runtime *common.RuntimeContext) error {
+				return executeTableCopyWithClock(ctx, runtime, clock)
+			}
+			err := runShortcutWithAuthTypes(
+				t,
+				shortcut,
+				shortcut.AuthTypes,
+				[]string{"+table-copy", "--base-token", "app_x", "--table-id", "tbl_source", "--name", "Copy", "--range", "all", "--wait", "--as", "user"},
+				factory,
+				stdout,
+			)
+			if err == nil {
+				t.Fatal("expected status error after successful submit")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Code != tt.code || problem.Category != tt.wantCategory {
+				t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
+			}
+			if !strings.Contains(problem.Hint, "already submitted") ||
+				!strings.Contains(problem.Hint, "+table-copy-status") {
+				t.Fatalf("error hint = %q, want same-task continuation guidance", problem.Hint)
+			}
+			if strings.Contains(problem.Hint, "ct1.token") {
+				t.Fatalf("error hint must not embed one task ID: %q", problem.Hint)
+			}
+
+			var envelope struct {
+				OK   bool            `json:"ok"`
+				Data tableCopyOutput `json:"data"`
+			}
+			if decodeErr := json.Unmarshal(stdout.Bytes(), &envelope); decodeErr != nil {
+				t.Fatalf("decode recovery stdout: %v\nraw=%s", decodeErr, stdout.String())
+			}
+			wantNext := "lark-cli base +table-copy-status --base-token app_x --task-id ct1.token --as user"
+			if envelope.OK ||
+				envelope.Data.State != tableCopyStateInit ||
+				envelope.Data.Completed ||
+				envelope.Data.TaskID != "ct1.token" ||
+				envelope.Data.NextAction != "poll_status" ||
+				envelope.Data.NextCommand != wantNext {
+				t.Fatalf("recovery envelope = %#v, want next_command %q", envelope, wantNext)
+			}
+		})
+	}
+}
+
 func TestBaseTableCopyWaitErrorPreservesLastSuccessfulStatus(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
