@@ -207,7 +207,7 @@ func parseBatchOperationsFlag(runtime *common.RuntimeContext) ([]interface{}, er
 var CellsBatchSetStyle = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cells-batch-set-style",
-	Description: "Apply one style block to many sheet-prefixed ranges in one atomic batch.",
+	Description: "Apply one style block to many sheet-prefixed ranges in one batch request (fail-fast, no rollback).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -320,7 +320,7 @@ func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[
 var CellsBatchClear = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cells-batch-clear",
-	Description: "Clear content/formats across many sheet-prefixed ranges in one atomic batch (irreversible).",
+	Description: "Clear content/formats across many sheet-prefixed ranges in one batch request (irreversible; fail-fast, no rollback).",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -396,7 +396,7 @@ func cellsBatchClearInput(runtime *common.RuntimeContext, token string) (map[str
 var DropdownUpdate = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dropdown-update",
-	Description: "Install or replace one dropdown across many sheet-prefixed ranges atomically.",
+	Description: "Install or replace one dropdown across many sheet-prefixed ranges in one batch request (fail-fast, no rollback).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -442,7 +442,7 @@ var DropdownUpdate = common.Shortcut{
 var DropdownDelete = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dropdown-delete",
-	Description: "Clear dropdowns from many sheet-prefixed ranges atomically (irreversible).",
+	Description: "Clear dropdowns from many sheet-prefixed ranges in one batch request (irreversible; fail-fast, no rollback).",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},

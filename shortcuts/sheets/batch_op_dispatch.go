@@ -91,7 +91,7 @@ var batchOpDispatch = map[string]batchOpMapping{
 		// The --writes plural form expands into its own atomic batch and
 		// cannot nest; sub-ops carry one range+cells each.
 		if fv.Changed("writes") {
-			return nil, sheetsValidationForFlag("writes", `"writes" is not supported inside +batch-update (it expands into its own atomic batch); call +cells-set --writes standalone, or give each sub-op a single range + cells`)
+			return nil, sheetsValidationForFlag("writes", `"writes" is not supported inside +batch-update (it expands into its own batch request); call +cells-set --writes standalone, or give each sub-op a single range + cells`)
 		}
 		return cellsSetInput(fv, token, sid, sname)
 	}},
@@ -115,7 +115,7 @@ var batchOpDispatch = map[string]batchOpMapping{
 		// The --ranges plural form expands into its own atomic batch and
 		// cannot nest; sub-ops carry one range each.
 		if fv.Changed("ranges") {
-			return nil, sheetsValidationForFlag("ranges", `"ranges" is not supported inside +batch-update (it expands into its own atomic batch); call +dim-delete --ranges standalone, or give each sub-op a single "range"`)
+			return nil, sheetsValidationForFlag("ranges", `"ranges" is not supported inside +batch-update (it expands into its own batch request); call +dim-delete --ranges standalone, or give each sub-op a single "range"`)
 		}
 		return dimRangeOpInput(fv, token, sid, sname, "delete")
 	}},

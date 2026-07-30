@@ -56,7 +56,7 @@ var CellsSet = common.Shortcut{
 	Tips: []string{
 		`Example: lark-cli sheets +cells-set --url <URL> --sheet-name Sheet1 --range A1:B1 --cells '[[{"value":"名称"},{"formula":"=SUM(B2:B9)"}]]'`,
 		`--cells is always a 2D array (rows × cells), even for one cell: [[{"value":…}]].`,
-		`Scattered regions (e.g. fixing formulas across ranges/sheets): --writes '[{"sheet_name":…,"range":…,"cells":[[…]]}, …]' — one atomic call, sheet selector inside each item.`,
+		`Scattered regions (e.g. fixing formulas across ranges/sheets): --writes '[{"sheet_name":…,"range":…,"cells":[[…]]}, …]' — one batch request (fail-fast, no rollback), sheet selector inside each item.`,
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Changed("writes") {

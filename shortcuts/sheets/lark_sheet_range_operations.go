@@ -242,7 +242,7 @@ func mergeInput(runtime flagView, token, sheetID, sheetName, op string, withMerg
 var RowsResize = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+rows-resize",
-	Description: "Resize rows in pixels: --range + --height <px> for one uniform height, --heights '{\"1\":50,\"2:20\":30,\"21\":\"auto\"}' for per-row heights in one atomic call, or --type standard/auto (--range is 1-based A1 like \"2:10\" or \"5\").",
+	Description: "Resize rows in pixels: --range + --height <px> for one uniform height, --heights '{\"1\":50,\"2:20\":30,\"21\":\"auto\"}' for per-row heights in one batch request, or --type standard/auto (--range is 1-based A1 like \"2:10\" or \"5\").",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -260,7 +260,7 @@ var RowsResize = common.Shortcut{
 var ColsResize = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cols-resize",
-	Description: "Resize columns in pixels (NOT Excel char units): --range + --width <px> for one uniform width, --widths '{\"A\":100,\"C:E\":120}' for per-column widths in one atomic call, or --type standard to reset (--range is column letters like \"A:E\" or \"C\"; no auto for cols).",
+	Description: "Resize columns in pixels (NOT Excel char units): --range + --width <px> for one uniform width, --widths '{\"A\":100,\"C:E\":120}' for per-column widths in one batch request, or --type standard to reset (--range is column letters like \"A:E\" or \"C\"; no auto for cols).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -268,7 +268,7 @@ var ColsResize = common.Shortcut{
 	Flags:       flagsFor("+cols-resize"),
 	Tips: []string{
 		"Example: lark-cli sheets +cols-resize --url <URL> --sheet-name Sheet1 --range A:C --width 120",
-		`Different widths per column in one atomic call: --widths '{"A":80,"C:E":120}'. Widths are pixels (px ≈ chars × 8 + 16), not Excel character units.`,
+		`Different widths per column in one batch request: --widths '{"A":80,"C:E":120}'. Widths are pixels (px ≈ chars × 8 + 16), not Excel character units.`,
 	},
 	Validate: validateViaResize("column"),
 	DryRun:   resizeDryRun("column"),
