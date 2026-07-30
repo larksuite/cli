@@ -393,12 +393,43 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 	}
 	sort.Strings(keys)
 	aliases := commandFlagAliases[sc]
+	// canonical tracks which raw key already claimed each logical key, so two
+	// spellings of the same flag (sheet-id / sheet_id / sheetId) can never both
+	// survive into the tool body — the flag view resolves hyphen↔underscore
+	// variants, so a leftover duplicate would be silently shadowed and could
+	// send the write to the wrong sheet.
+	canonical := map[string]string{}
+	claim := func(logical, raw string) error {
+		if prev, taken := canonical[logical]; taken {
+			if jsonEqual(input[prev], input[raw]) {
+				return nil // same value under two spellings: harmless
+			}
+			return fmt.Errorf("%s got conflicting values for %q under two spellings (%q and %q) — keep one", sc, strings.ReplaceAll(logical, "-", "_"), prev, raw) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+		}
+		canonical[logical] = raw
+		return nil
+	}
 	for _, k := range keys {
 		hv := strings.ReplaceAll(k, "_", "-")
 		if vocab[hv] {
+			if err := claim(hv, k); err != nil {
+				return err
+			}
+			// Normalize the surviving spelling to the underscore form the tool
+			// bodies use, so exactly one key reaches the flag view.
+			if target := strings.ReplaceAll(hv, "-", "_"); target != k {
+				if _, taken := input[target]; !taken {
+					input[target] = input[k]
+					delete(input, k)
+					canonical[hv] = target
+				}
+			}
 			continue
 		}
 		if kebab := camelToKebab(k); kebab != "" && vocab[kebab] {
+			if err := claim(kebab, k); err != nil {
+				return err
+			}
 			target := strings.ReplaceAll(kebab, "-", "_")
 			if _, taken := input[target]; taken {
 				return fmt.Errorf("%s got both %q and %q — keep %q and drop the other", sc, k, target, target) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
@@ -408,9 +439,13 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 			}
 			input[target] = input[k]
 			delete(input, k)
+			canonical[kebab] = target
 			continue
 		}
 		if target, ok := aliases[strings.ToLower(hv)]; ok && vocab[target] {
+			if err := claim(target, k); err != nil {
+				return err
+			}
 			if _, taken := input[target]; !taken {
 				if _, taken := input[strings.ReplaceAll(target, "-", "_")]; !taken {
 					input[target] = input[k]

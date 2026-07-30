@@ -305,3 +305,54 @@ func TestFlattenToolErrorMsg_PartialFailureRecovery(t *testing.T) {
 func jsonQuote(s string) string {
 	return `"` + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), `"`, `\"`) + `"`
 }
+
+// TestBatchOp_SpellingConflictRejected pins the uniqueness half of key
+// canonicalization: two accepted spellings of the same logical flag must not
+// both survive into the tool body. The flag view resolves hyphen↔underscore
+// variants, so a leftover duplicate is silently shadowed — with a sheet
+// selector that means the write lands on whichever spelling won, and the other
+// value disappears without a word.
+func TestBatchOp_SpellingConflictRejected(t *testing.T) {
+	t.Parallel()
+
+	t.Run("conflicting values reject", func(t *testing.T) {
+		t.Parallel()
+		_, err := translateBatchOp(subOp("+cells-clear", map[string]interface{}{
+			"sheet-id": "first",
+			"sheet_id": "second",
+			"range":    "A1:B2",
+		}), testToken, 0)
+		requireValidation(t, err, "conflicting values")
+	})
+
+	t.Run("identical values under two spellings pass and collapse to one key", func(t *testing.T) {
+		t.Parallel()
+		translated, err := translateBatchOp(subOp("+cells-clear", map[string]interface{}{
+			"sheet-id": "same",
+			"sheet_id": "same",
+			"range":    "A1:B2",
+		}), testToken, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := translated["input"].(map[string]interface{})
+		if input["sheet_id"] != "same" {
+			t.Fatalf("sheet_id = %v, want same", input["sheet_id"])
+		}
+	})
+
+	t.Run("hyphen spelling alone is normalized to the underscore form", func(t *testing.T) {
+		t.Parallel()
+		translated, err := translateBatchOp(subOp("+cells-clear", map[string]interface{}{
+			"sheet-name": "S1",
+			"range":      "A1:B2",
+		}), testToken, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := translated["input"].(map[string]interface{})
+		if input["sheet_name"] != "S1" {
+			t.Fatalf("sheet_name = %v, want S1 (hyphen spelling should canonicalize)", input["sheet_name"])
+		}
+	})
+}

@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -344,4 +345,78 @@ func TestPrintFlagSchema_DottedPathSlices(t *testing.T) {
 			t.Errorf("error should list available keys, got %v", err)
 		}
 	})
+}
+
+// TestStylesFieldTypesValidated pins the type half of style validation: the
+// --styles payloads skip the generic JSON-schema pass (their schema describes
+// the outer envelope), so scalar fields are type-checked against flag-defs
+// here. Without it, {"font_weight": true} reached the server as a boolean.
+func TestStylesFieldTypesValidated(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		field string
+		want  string
+	}{
+		{"boolean font_weight", `"font_weight":true`, "font_weight must be a string, got boolean"},
+		{"numeric background_color", `"background_color":123`, "background_color must be a string, got number"},
+		{"string font_size", `"font_size":"12"`, "font_size must be a number, got string"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+				"styles": []interface{}{map[string]interface{}{
+					"name":        "s",
+					"cell_styles": []interface{}{mustJSONMap(t, `{"range":"A1",`+tc.field+`}`)},
+				}},
+			}), testToken)
+			requireValidation(t, err, tc.want)
+		})
+	}
+
+	t.Run("well-typed fields still pass", func(t *testing.T) {
+		t.Parallel()
+		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":        "s",
+				"cell_styles": []interface{}{mustJSONMap(t, `{"range":"A1","font_weight":"bold","font_size":12,"background_color":"#FFFFFF"}`)},
+			}},
+		}), testToken)
+		if err != nil {
+			t.Fatalf("unexpected error for well-typed styles: %v", err)
+		}
+	})
+}
+
+// TestAggregatedStyleErrorsCarryTypedParam pins the error contract for the
+// aggregate path: an agent must be able to read which flag to fix from the
+// typed envelope, not by parsing the prose message.
+func TestAggregatedStyleErrorsCarryTypedParam(t *testing.T) {
+	t.Parallel()
+	_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+		"styles": []interface{}{map[string]interface{}{
+			"name": "s",
+			"cell_styles": []interface{}{
+				mustJSONMap(t, `{"range":"A1","font_weight":"heavy"}`),
+				mustJSONMap(t, `{"range":"B1"}`),
+			},
+		}},
+	}), testToken)
+	ve := requireValidation(t, err, "has 2 issues")
+	if ve.Param != "--styles" {
+		t.Errorf("Param = %q, want --styles", ve.Param)
+	}
+	if ve.Cause == nil {
+		t.Error("aggregate error should keep the first underlying error as Cause")
+	}
+}
+
+func mustJSONMap(t *testing.T, raw string) map[string]interface{} {
+	t.Helper()
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		t.Fatalf("bad test JSON %q: %v", raw, err)
+	}
+	return m
 }

@@ -1309,7 +1309,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap defaults to unlimited** (overriding the --max-chars default), so a large sheet can be dumped in full for later analysis without stdout being truncated by max_chars. Omit it to print to stdout as usual."
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Omit it to print to stdout as usual."
       },
       {
         "name": "skip-hidden",
@@ -1425,7 +1425,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap defaults to unlimited** (overriding the --max-chars default), so a large sheet can be dumped in full for later analysis without stdout being truncated by max_chars. Omit it to print to stdout as usual."
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Omit it to print to stdout as usual."
       },
       {
         "name": "include-row-prefix",
@@ -1502,7 +1502,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap defaults to unlimited** (overriding the --max-chars default), so a large sheet can be dumped in full for later analysis without stdout being truncated by max_chars. Omit it to print to stdout as usual."
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Omit it to print to stdout as usual."
       },
       {
         "name": "no-header",

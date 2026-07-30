@@ -55,10 +55,67 @@ func maxCharsInput(runtime *common.RuntimeContext) (int, bool) {
 	return 0, false
 }
 
+// maxCharsBudget returns the char cap that bounds a whole multi-sheet read
+// (0 when no cap is in play). Callers that read several sheets in one command
+// spend this budget across all of them rather than per sheet.
+func maxCharsBudget(runtime *common.RuntimeContext) int {
+	if n, ok := maxCharsInput(runtime); ok {
+		return n
+	}
+	return 0
+}
+
+// consumedChars approximates how much of the char budget the sheets read so
+// far have used, by the serialized size of what came back. The cap is a
+// server-side char count on the raw read, so this is an estimate — it is used
+// only to stop before the budget is blown, never to claim exact accounting.
+func consumedChars(sheets []interface{}) int {
+	if len(sheets) == 0 {
+		return 0
+	}
+	b, err := json.Marshal(sheets)
+	if err != nil {
+		return 0
+	}
+	return len(b)
+}
+
+// readResultTruncated reports whether a read payload carries any truncation
+// marker — either at the top level (budget exhausted before every sheet was
+// read) or on an individual sheet (the server clipped that sheet at max_chars).
+func readResultTruncated(out interface{}) bool {
+	m, ok := out.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if t, ok := m["truncated"].(bool); ok && t {
+		return true
+	}
+	if hm, ok := m["has_more"].(bool); ok && hm {
+		return true
+	}
+	sheets, ok := m["sheets"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, s := range sheets {
+		sm, ok := s.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if t, ok := sm["truncated"].(bool); ok && t {
+			return true
+		}
+	}
+	return false
+}
+
 // emitReadResult delivers a read shortcut's result. When --output-path is set it
 // writes the data payload to that path as pretty JSON and prints a small
-// confirmation envelope to stdout (path + byte count); otherwise it prints the
-// full result envelope to stdout as usual.
+// confirmation envelope to stdout; otherwise it prints the full result envelope
+// to stdout as usual. The receipt always states completeness: the char cap is
+// bounded, so "written to a file" does not by itself mean "the whole sheet is
+// in that file", and a caller must not have to re-open the file to find out.
 func emitReadResult(runtime *common.RuntimeContext, out interface{}) error {
 	path := readOutputPath(runtime)
 	if path == "" {
@@ -79,9 +136,16 @@ func emitReadResult(runtime *common.RuntimeContext, out interface{}) error {
 	if err != nil {
 		resolved = path
 	}
-	runtime.Out(map[string]interface{}{
+	receipt := map[string]interface{}{
 		"output_path":   resolved,
 		"bytes_written": len(b),
-	}, nil)
+		"complete":      true,
+	}
+	if readResultTruncated(out) {
+		receipt["complete"] = false
+		receipt["truncated"] = true
+		receipt["truncation_warning"] = "the read hit the char cap, so the file holds a partial result — inspect truncated / unread_sheets inside it, then re-read the missing part with --range or per --sheet-name, or raise --max-chars"
+	}
+	runtime.Out(receipt, nil)
 	return nil
 }

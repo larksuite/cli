@@ -274,6 +274,7 @@ def _risk_warnings(
     possible_multi_row_header: bool,
     header_row_not_first: bool,
     data_range_has_gaps: bool,
+    data_range_has_col_gaps: bool,
     hidden_rows: list[int],
     hidden_columns: list[str],
 ) -> list[str]:
@@ -297,11 +298,36 @@ def _risk_warnings(
         warnings.add("header_row_not_first")
     if data_range_has_gaps:
         warnings.add("data_range_has_gaps")
+    if data_range_has_col_gaps:
+        warnings.add("data_range_has_col_gaps")
     if hidden_rows:
         warnings.add("hidden_rows_in_range")
     if hidden_columns:
         warnings.add("hidden_columns_in_range")
     return sorted(warnings)
+
+
+def _col_segments(col_letters: list[str]) -> list[list[str]]:
+    """Group column letters into contiguous runs of real column indices.
+
+    With --skip-hidden the returned columns can be non-consecutive (A, C when B
+    is hidden). Reporting a single data_range across that gap would let a caller
+    write the hidden-column-free data back as if it were contiguous, shifting
+    every value right of the gap.
+    """
+    if not col_letters:
+        return []
+    indices = [col_to_index(col) for col in col_letters]
+    segments = []
+    start = previous = indices[0]
+    for current in indices[1:]:
+        if current == previous + 1:
+            previous = current
+            continue
+        segments.append([index_to_col(start), index_to_col(previous)])
+        start = previous = current
+    segments.append([index_to_col(start), index_to_col(previous)])
+    return segments
 
 
 def _row_segments(row_numbers: list[int]) -> list[list[int]]:
@@ -369,6 +395,8 @@ def profile_grid(
         data_row_numbers[0] != data_start or len(data_row_segments) > 1
     )
     data_rows = len(data_row_numbers)
+    data_col_segments = _col_segments(grid.col_letters)
+    data_range_has_col_gaps = len(data_col_segments) > 1
     hidden_rows = hidden_rows or []
     hidden_columns = hidden_columns or []
     possible_multi_row_header = _possible_multi_row_header(grid, header_row)
@@ -381,6 +409,7 @@ def profile_grid(
             "data_range": data_range,
             "data_rows": data_rows,
             "data_row_segments": data_row_segments,
+            "data_col_segments": data_col_segments,
             "column_count": len(columns),
             "special_rows_count": len(specials),
         },
@@ -388,6 +417,7 @@ def profile_grid(
         "header_row": header_row,
         "data_range": data_range,
         "data_row_segments": data_row_segments,
+        "data_col_segments": data_col_segments,
         "columns": columns,
         "field_map": _field_map(columns),
         "risk_warnings": _risk_warnings(
@@ -398,6 +428,7 @@ def profile_grid(
             possible_multi_row_header=possible_multi_row_header,
             header_row_not_first=header_row_not_first,
             data_range_has_gaps=data_range_has_gaps,
+            data_range_has_col_gaps=data_range_has_col_gaps,
             hidden_rows=hidden_rows,
             hidden_columns=hidden_columns,
         ),

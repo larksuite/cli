@@ -218,7 +218,8 @@ func joinWritesValidationErrors(probs []error) error {
 		suffix = fmt.Sprintf(" (+%d more)", len(msgs)-maxShown)
 		msgs = msgs[:maxShown]
 	}
-	return common.ValidationErrorf("--writes has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix)
+	return sheetsValidationForFlag("writes", "--writes has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix).
+		WithCause(probs[0])
 }
 
 func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {

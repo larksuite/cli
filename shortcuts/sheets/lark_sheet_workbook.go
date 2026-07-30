@@ -1181,7 +1181,8 @@ func joinStyleValidationErrors(probs []error) error {
 		suffix = fmt.Sprintf(" (+%d more)", len(msgs)-maxShown)
 		msgs = msgs[:maxShown]
 	}
-	return common.ValidationErrorf("--styles has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix)
+	return sheetsValidationForFlag("styles", "--styles has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix).
+		WithCause(probs[0])
 }
 
 func parseWorkbookCreateCellStyleOps(v interface{}, path string) ([]workbookCreateCellStyleOp, []error) {

@@ -228,6 +228,7 @@ def _raw_components(
     occupied: set[tuple[int, int]],
     *,
     adjacent_rows: dict[int, set[int]] | None = None,
+    adjacent_cols: dict[int, set[int]] | None = None,
 ) -> list[Component]:
     remaining = set(occupied)
     components = []
@@ -239,7 +240,11 @@ def _raw_components(
             row, col = queue.popleft()
             vertical_rows = adjacent_rows.get(row, set()) if adjacent_rows else {row - 1, row + 1}
             neighbors = [(neighbor_row, col) for neighbor_row in vertical_rows]
-            neighbors.extend(((row, col - 1), (row, col + 1)))
+            # Columns get the same treatment as rows: with --skip-hidden the
+            # returned columns can be non-consecutive (A, C when B is hidden),
+            # so col±1 would split visually adjacent data into two components.
+            horizontal_cols = adjacent_cols.get(col, set()) if adjacent_cols else {col - 1, col + 1}
+            neighbors.extend((row, neighbor_col) for neighbor_col in horizontal_cols)
             for neighbor in neighbors:
                 if neighbor in remaining:
                     remaining.remove(neighbor)
@@ -485,12 +490,22 @@ def detect_subtables(args) -> tuple[dict[str, Any], list[str]]:
         confirmed_external_merges=confirmed_external_merges,
     )
     adjacent_rows = None
+    adjacent_cols = None
     if args.skip_hidden:
         adjacent_rows = {}
         for previous, current in zip(grid.row_numbers, grid.row_numbers[1:]):
             adjacent_rows.setdefault(previous, set()).add(current)
             adjacent_rows.setdefault(current, set()).add(previous)
-    raw_components = _raw_components(occupied, adjacent_rows=adjacent_rows)
+        col_numbers = [col_to_index(col) for col in grid.col_letters]
+        adjacent_cols = {}
+        for previous, current in zip(col_numbers, col_numbers[1:]):
+            adjacent_cols.setdefault(previous, set()).add(current)
+            adjacent_cols.setdefault(current, set()).add(previous)
+    raw_components = _raw_components(
+        occupied,
+        adjacent_rows=adjacent_rows,
+        adjacent_cols=adjacent_cols,
+    )
     if len(raw_components) > args.max_merge_components:
         warnings.append(
             f"skipped gap-based component merging for {len(raw_components)} components "

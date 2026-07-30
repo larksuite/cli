@@ -385,3 +385,78 @@ func TestDimDeleteRangesOps(t *testing.T) {
 		requireValidation(t, err, "not supported inside +batch-update")
 	})
 }
+
+// TestCoalesceStyleStamps_PreservesLastWriteWins pins the ordering contract of
+// the stamp optimizer: style writes are field-wise last-write-wins, so two
+// same-style stamps may only be merged when nothing between them touches the
+// cells whose write would move earlier. Grouping globally by style content
+// (the original implementation) turned red → blue → red into red → blue and
+// silently changed the final color.
+func TestCoalesceStyleStamps_PreservesLastWriteWins(t *testing.T) {
+	t.Parallel()
+
+	red := map[string]interface{}{"background_color": "#FF0000"}
+	blue := map[string]interface{}{"background_color": "#0000FF"}
+	stamp := func(rng string, style map[string]interface{}) workbookCreateCellStyleOp {
+		return workbookCreateCellStyleOp{Range: rng, Style: style}
+	}
+	lastStyleFor := func(ops []workbookCreateCellStyleOp, rng string) map[string]interface{} {
+		var out map[string]interface{}
+		for _, op := range ops {
+			if op.Range == rng {
+				out = op.Style
+			}
+		}
+		return out
+	}
+
+	t.Run("same cell red blue red keeps red last", func(t *testing.T) {
+		t.Parallel()
+		got := coalesceStyleStamps([]workbookCreateCellStyleOp{
+			stamp("A1:A1", red), stamp("A1:A1", blue), stamp("A1:A1", red),
+		})
+		if last := lastStyleFor(got, "A1:A1"); last == nil || last["background_color"] != "#FF0000" {
+			t.Fatalf("final style for A1 = %v, want the trailing red; ops=%+v", last, got)
+		}
+	})
+
+	t.Run("intervening overlapping stamp blocks the merge", func(t *testing.T) {
+		t.Parallel()
+		// bold A1:B1, italic on B1, bold B1 again: merging the two bolds would
+		// hoist B1's bold ahead of the italic and lose the italic.
+		bold := map[string]interface{}{"font_weight": "bold"}
+		italic := map[string]interface{}{"font_style": "italic"}
+		got := coalesceStyleStamps([]workbookCreateCellStyleOp{
+			stamp("A1:A1", bold), stamp("A1:A1", italic), stamp("A1:A1", bold),
+		})
+		if len(got) != 3 {
+			t.Fatalf("overlapping intermediate stamp must prevent merging, got %d ops: %+v", len(got), got)
+		}
+	})
+
+	t.Run("adjacent same-style runs still coalesce", func(t *testing.T) {
+		t.Parallel()
+		bold := map[string]interface{}{"font_weight": "bold"}
+		got := coalesceStyleStamps([]workbookCreateCellStyleOp{
+			stamp("A1:A1", bold), stamp("A2:A2", bold), stamp("A3:A3", bold),
+		})
+		if len(got) != 1 || got[0].Range != "A1:A3" {
+			t.Fatalf("adjacent same-style stamps should merge into A1:A3, got %+v", got)
+		}
+	})
+
+	t.Run("disjoint intermediate stamp does not block the merge", func(t *testing.T) {
+		t.Parallel()
+		bold := map[string]interface{}{"font_weight": "bold"}
+		italic := map[string]interface{}{"font_style": "italic"}
+		got := coalesceStyleStamps([]workbookCreateCellStyleOp{
+			stamp("A1:A1", bold), stamp("Z9:Z9", italic), stamp("A2:A2", bold),
+		})
+		if len(got) != 2 {
+			t.Fatalf("disjoint intermediate stamp should still allow merging, got %+v", got)
+		}
+		if got[0].Range != "A1:A2" {
+			t.Fatalf("bold stamps should merge to A1:A2, got %+v", got)
+		}
+	})
+}

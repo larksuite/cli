@@ -1206,6 +1206,12 @@ var TableGet = common.Shortcut{
 		input := map[string]interface{}{
 			"excel_id": token, "ranges": []string{rng},
 			"include_styles": true, "value_render_option": "raw_value",
+			"cell_limit": unboundedReadLimit,
+		}
+		// Execute adds these caps too; echoing them here keeps dry-run and the
+		// real request the same shape, so validating one tells you about the other.
+		if n, ok := maxCharsInput(runtime); ok {
+			input["max_chars"] = n
 		}
 		sheetSelectorForToolInput(input,
 			strings.TrimSpace(runtime.Str("sheet-id")),
@@ -1229,14 +1235,37 @@ var TableGet = common.Shortcut{
 		noHeader := runtime.Bool("no-header")
 		userRange := strings.TrimSpace(runtime.Str("range"))
 		sheets := make([]interface{}, 0, len(targets))
-		for _, t := range targets {
-			spec, err := readSheetAsSpec(ctx, runtime, token, t, userRange, noHeader)
+		// The char cap is a memory guard, so it must bound the WHOLE read, not
+		// each sheet independently: a 30-sheet workbook would otherwise be
+		// allowed 30× the cap. Track what previous sheets consumed and hand the
+		// remainder to the next one; when it runs out, stop and name the sheets
+		// left unread instead of silently returning a short workbook.
+		budget := maxCharsBudget(runtime)
+		var unread []string
+		for i, t := range targets {
+			remaining := 0
+			if budget > 0 {
+				remaining = budget - consumedChars(sheets)
+				if remaining <= 0 {
+					for _, rest := range targets[i:] {
+						unread = append(unread, rest.name)
+					}
+					break
+				}
+			}
+			spec, err := readSheetAsSpec(ctx, runtime, token, t, userRange, noHeader, remaining)
 			if err != nil {
 				return err
 			}
 			sheets = append(sheets, spec)
 		}
-		return emitReadResult(runtime, map[string]interface{}{"sheets": sheets})
+		payload := map[string]interface{}{"sheets": sheets}
+		if len(unread) > 0 {
+			payload["truncated"] = true
+			payload["unread_sheets"] = unread
+			payload["truncation_warning"] = fmt.Sprintf("the %d-char read budget was exhausted before %d sheet(s) were read (%s); re-run per sheet with --sheet-name, or raise --max-chars", budget, len(unread), strings.Join(unread, ", "))
+		}
+		return emitReadResult(runtime, payload)
 	},
 	Tips: []string{
 		"Output is the same shape +table-put consumes — pipe it back in, or load sheets[].rows into a DataFrame keyed by columns[].name.",
@@ -1353,7 +1382,7 @@ func tableGetSheetMeta(r interface{}) (id, name string, rowCount, colCount int) 
 // a single `astype()` call covers every column); `formats` is emitted only for
 // columns whose source cells carry a non-empty number_format, since `astype`
 // ignores it and we'd rather not pollute the output.
-func readSheetAsSpec(ctx context.Context, runtime *common.RuntimeContext, token string, t tableGetSheet, userRange string, noHeader bool) (map[string]interface{}, error) {
+func readSheetAsSpec(ctx context.Context, runtime *common.RuntimeContext, token string, t tableGetSheet, userRange string, noHeader bool, charBudget int) (map[string]interface{}, error) {
 	emptySpec := func() map[string]interface{} {
 		return map[string]interface{}{
 			"name":    t.name,
@@ -1381,10 +1410,16 @@ func readSheetAsSpec(ctx context.Context, runtime *common.RuntimeContext, token 
 		"value_render_option": "raw_value",
 		"cell_limit":          unboundedReadLimit,
 	}
-	// --max-chars binds the char budget (default 500000); --output-path lifts it
-	// to unbounded. Without this the tool applied its own ~50000 default and
-	// silently dropped rows past it with no signal in the +table-get output.
+	// --max-chars binds the char budget (default 500000); --output-path raises
+	// it to the bounded offload default. Without this the tool applied its own
+	// ~50000 default and silently dropped rows past it with no signal in the
+	// +table-get output. charBudget > 0 caps this sheet by what the whole-
+	// workbook read has left, so a multi-sheet workbook cannot consume the
+	// per-sheet cap N times over.
 	if n, ok := maxCharsInput(runtime); ok {
+		if charBudget > 0 && charBudget < n {
+			n = charBudget
+		}
 		input["max_chars"] = n
 	}
 	sheetSelectorForToolInput(input, t.id, t.name)
@@ -1472,7 +1507,7 @@ func readSheetAsSpec(ctx context.Context, runtime *common.RuntimeContext, token 
 	// sheet — re-run with --output-path (unlimited) or a higher --max-chars.
 	if truncated {
 		spec["truncated"] = true
-		spec["truncation_warning"] = "Result truncated by max_chars; rows past the cap were not returned. Best: re-run with --output-path to dump the whole sheet in one lossless pass (no cap). Alternatively raise --max-chars, or continue-read the remaining rows by passing --range for them — but that needs --no-header and you must reattach the header row and reconcile per-chunk dtypes yourself (this chunk's types were inferred from the rows returned here)."
+		spec["truncation_warning"] = "Result truncated by max_chars; rows past the cap were not returned. Best: re-run with --output-path to dump the sheet to a file under the much larger offload cap. Alternatively raise --max-chars, or continue-read the remaining rows by passing --range for them — but that needs --no-header and you must reattach the header row and reconcile per-chunk dtypes yourself (this chunk's types were inferred from the rows returned here)."
 	}
 	return spec, nil
 }

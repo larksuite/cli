@@ -207,60 +207,89 @@ func coalesceStyleStamps(ops []workbookCreateCellStyleOp) []workbookCreateCellSt
 		return ops
 	}
 	type rect struct{ c1, r1, c2, r2 int }
-	type group struct {
-		style map[string]interface{}
-		rects []rect
+	type entry struct {
+		op     workbookCreateCellStyleOp
+		rc     rect
+		key    string
+		parsed bool
+		alive  bool
 	}
-	var order []string
-	groups := map[string]*group{}
-	out := make([]workbookCreateCellStyleOp, 0, len(ops))
-	for _, op := range ops {
+	entries := make([]entry, len(ops))
+	for i, op := range ops {
+		e := entry{op: op, alive: true}
 		c1, r1, c2, r2, err := workbookCreateStyleRangeBounds(op.Range)
 		key, jerr := json.Marshal(op.Style) // map keys marshal sorted → canonical
-		if err != nil || jerr != nil {
-			out = append(out, op)
+		if err == nil && jerr == nil {
+			e.rc, e.key, e.parsed = rect{c1, r1, c2, r2}, string(key), true
+		}
+		entries[i] = e
+	}
+	intersects := func(a, b rect) bool {
+		return a.c1 <= b.c2 && b.c1 <= a.c2 && a.r1 <= b.r2 && b.r1 <= a.r2
+	}
+	// union returns the rectangle covering exactly a ∪ b, and whether the two
+	// are mergeable at all: only same-column-span rows or same-row-span columns
+	// that touch or overlap, so the union introduces no cell outside a ∪ b.
+	union := func(a, b rect) (rect, bool) {
+		switch {
+		case a.c1 == b.c1 && a.c2 == b.c2 && b.r1 <= a.r2+1 && a.r1 <= b.r2+1:
+			return rect{a.c1, min(a.r1, b.r1), a.c2, max(a.r2, b.r2)}, true
+		case a.r1 == b.r1 && a.r2 == b.r2 && b.c1 <= a.c2+1 && a.c1 <= b.c2+1:
+			return rect{min(a.c1, b.c1), a.r1, max(a.c2, b.c2), a.r2}, true
+		}
+		return rect{}, false
+	}
+	// Merging op j (later) into op i (earlier) moves j's write forward to i's
+	// position, so it is only sound when nothing between them touches j's
+	// cells — otherwise that intermediate op, which j used to overwrite, would
+	// now land last and win. Style writes are field-wise last-write-wins
+	// (mergeWorkbookCreateStyle), so silently reordering same-style stamps
+	// around a differing one changes the final appearance.
+	for i := range entries {
+		if !entries[i].alive || !entries[i].parsed {
 			continue
 		}
-		g, ok := groups[string(key)]
-		if !ok {
-			g = &group{style: op.Style}
-			groups[string(key)] = g
-			order = append(order, string(key))
-		}
-		g.rects = append(g.rects, rect{c1, r1, c2, r2})
-	}
-	for _, key := range order {
-		g := groups[key]
-		rects := g.rects
-		for changed := true; changed; {
-			changed = false
-			for i := 0; i < len(rects) && !changed; i++ {
-				for j := i + 1; j < len(rects); j++ {
-					a, b := rects[i], rects[j]
-					var merged rect
-					switch {
-					case a.c1 == b.c1 && a.c2 == b.c2 && b.r1 <= a.r2+1 && a.r1 <= b.r2+1:
-						merged = rect{a.c1, min(a.r1, b.r1), a.c2, max(a.r2, b.r2)}
-					case a.r1 == b.r1 && a.r2 == b.r2 && b.c1 <= a.c2+1 && a.c1 <= b.c2+1:
-						merged = rect{min(a.c1, b.c1), a.r1, max(a.c2, b.c2), a.r2}
-					default:
-						continue
-					}
-					rects[i] = merged
-					rects = append(rects[:j], rects[j+1:]...)
-					changed = true
-					break
+		for j := i + 1; j < len(entries); j++ {
+			if !entries[j].alive || !entries[j].parsed || entries[j].key != entries[i].key {
+				continue
+			}
+			merged, ok := union(entries[i].rc, entries[j].rc)
+			if !ok {
+				continue
+			}
+			safe := true
+			for k := i + 1; k < j && safe; k++ {
+				if !entries[k].alive {
+					continue
+				}
+				// An unparsable range has unknown coverage: assume it collides.
+				if !entries[k].parsed || intersects(entries[k].rc, entries[j].rc) {
+					safe = false
 				}
 			}
+			if !safe {
+				continue
+			}
+			entries[i].rc = merged
+			entries[j].alive = false
+			j = i // rescan: the grown rectangle may now absorb earlier misses
 		}
-		for _, rc := range rects {
-			out = append(out, workbookCreateCellStyleOp{
-				Range: fmt.Sprintf("%s%d:%s%d",
-					columnIndexToLetter(rc.c1), rc.r1+1,
-					columnIndexToLetter(rc.c2), rc.r2+1),
-				Style: g.style,
-			})
+	}
+	out := make([]workbookCreateCellStyleOp, 0, len(ops))
+	for _, e := range entries {
+		if !e.alive {
+			continue
 		}
+		if !e.parsed {
+			out = append(out, e.op)
+			continue
+		}
+		out = append(out, workbookCreateCellStyleOp{
+			Range: fmt.Sprintf("%s%d:%s%d",
+				columnIndexToLetter(e.rc.c1), e.rc.r1+1,
+				columnIndexToLetter(e.rc.c2), e.rc.r2+1),
+			Style: e.op.Style,
+		})
 	}
 	return out
 }

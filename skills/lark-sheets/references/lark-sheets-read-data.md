@@ -91,6 +91,7 @@ detect 最多确认 10 个跨窗口合并锚点；超限会在 `warnings` 中说
 | `possible_multi_row_header` | 补读表头上下各 1-2 行；必要时 `+sheet-info --include merges` 核对跨列合并。 |
 | `hidden_rows_in_range` / `hidden_columns_in_range` | 写入前用 `+sheet-info --include hidden_rows,hidden_cols` 确认是覆盖还是跳过隐藏内容。 |
 | `data_range_has_gaps` | 不按连续 `data_range` 写；用 `summary.data_row_segments` 对每个实际读取行段单独读写。 |
+| `data_range_has_col_gaps` | 返回的列不连续（`--skip-hidden` 跳过了隐藏列）；不要把 `data_range` 当连续列区写回，按 `summary.data_col_segments` 分列段处理，否则缺口右侧的值会整体错位。 |
 
 - `write_hints.safe_append_col` 只是候选追加列，不代表绝对安全。新增列或覆盖区域前，必须用 `+csv-get` / `+cells-get` / `+sheet-info` 核对该列为空、没有隐藏列/公式/样式/对象依赖，且符合用户要求的落点。
 
@@ -196,7 +197,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | `--sheet-id` | string | optional | 只读该子表（按 id）；省略则读所有子表 |
 | `--sheet-name` | string | optional | 只读该子表（按名）；省略则读所有子表 |
 | `--range` | string | optional | 读取的 A1 范围；省略则读每个子表的完整 used range（会跨过表中部的整行空行 / 整列空列，不会被截断） |
-| `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆）。底层工具即使不传也有约 50000 的默认截断，故此处显式发送以放宽；要整表无截断请用 --output-path 落盘（自动放开为无限）。 |
+| `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆）。底层工具即使不传也有约 50000 的默认截断，故此处显式发送以放宽；要整表读取请用 --output-path 落盘（上限自动放宽到有界的 2000 万字符，非无限；回执 complete 字段说明是否完整）。 |
 | `--output-path` | string | optional | 把完整读取结果写入本地路径（如 `./out.json`），文件内容为 data 载荷的 JSON；stdout 只回一个含 output_path/字节数的确认信息。**一旦设置，字符上限默认放开为无限**（覆盖 --max-chars 默认），适合大表整表落盘再分析，避免 stdout 被 max_chars 截断。省略时按常规把结果打到 stdout。 |
 | `--no-header` | bool | optional | 把第一行当数据而非表头（列名取 col1/col2 …） |
 

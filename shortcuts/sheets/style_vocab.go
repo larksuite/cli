@@ -147,6 +147,40 @@ func cellStyleEnumFields() map[string][]string {
 	return out
 }
 
+// cellStyleScalarTypes maps each scalar cell-style field to the JSON type
+// flag-defs declares for it ("string" / "number"), derived from
+// +cells-set-style's own flags so the two never drift. Composite fields
+// (border / border_styles, whose values are objects) are excluded — they have
+// their own structural validation.
+func cellStyleScalarTypes() map[string]string {
+	defs, err := loadFlagDefs()
+	if err != nil {
+		return nil
+	}
+	spec, ok := defs["+cells-set-style"]
+	if !ok {
+		return nil
+	}
+	out := map[string]string{}
+	for _, df := range spec.Flags {
+		if df.Kind != "own" {
+			continue
+		}
+		name := strings.ReplaceAll(df.Name, "-", "_")
+		switch name {
+		case "range", "border_styles", "border":
+			continue // locator / composite: validated structurally elsewhere
+		}
+		switch df.Type {
+		case "string":
+			out[name] = "string"
+		case "float64", "int":
+			out[name] = "number"
+		}
+	}
+	return out
+}
+
 // normalizeCellStyleAliases renames known shorthand keys in a single
 // cell_styles map to their canonical equivalents, in place, so a model that
 // writes e.g. "horizontal_align" instead of "horizontal_alignment" still
@@ -184,6 +218,21 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 			style["word_wrap"] = "auto-wrap"
 		} else {
 			style["word_wrap"] = "overflow"
+		}
+	}
+	// Scalar style fields carry a declared type in flag-defs. --styles and the
+	// typed --cells payloads bypass the generic JSON-schema pass (their schema
+	// describes the outer envelope, not each cell_styles object), so assert the
+	// declared type here — otherwise {"font_weight": true} sails through
+	// normalization and reaches the server as a boolean.
+	for field, want := range cellStyleScalarTypes() {
+		raw, has := style[field]
+		if !has || raw == nil {
+			continue
+		}
+		if got := jsType(raw); got != want {
+			return common.ValidationErrorf("%s.%s must be a %s, got %s (%s)",
+				path, field, want, got, formatJSONValue(raw))
 		}
 	}
 	for field, enum := range cellStyleEnumFields() {
