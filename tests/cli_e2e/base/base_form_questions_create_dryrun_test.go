@@ -11,6 +11,7 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestBaseFormQuestionsCreateDryRun(t *testing.T) {
@@ -39,6 +40,33 @@ func TestBaseFormQuestionsCreateDryRun(t *testing.T) {
 	require.Equal(t, "text", clie2e.DryRunGet(out, "api.0.body.questions.0.type").String(), out)
 	require.Equal(t, "Risk", clie2e.DryRunGet(out, "api.0.body.questions.0.title").String(), out)
 	require.True(t, clie2e.DryRunGet(out, "api.0.body.questions.0.required").Bool(), out)
+}
+
+func TestBaseFormQuestionsCreateDryRunRejectsInvalidJSON(t *testing.T) {
+	setBaseDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"base", "+form-questions-create",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--form-id", "vew_x",
+			"--questions", "{",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+	require.Equal(t, "--questions", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "must be a valid JSON array")
+	require.Empty(t, result.Stdout)
 }
 
 func TestBaseFormQuestionsCreateHelpShowsExistingQuestionGuard(t *testing.T) {

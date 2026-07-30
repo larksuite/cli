@@ -32,11 +32,12 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		"Each new question creates a field in the form's table; question IDs are field IDs.",
 		"Unless the user explicitly requests a separate same-title question, update an existing title with +form-questions-update instead of creating a duplicate.",
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		_, err := parseFormQuestionsCreate(runtime.Str("questions"))
+		return err
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		var questions []interface{}
-		if err := json.Unmarshal([]byte(runtime.Str("questions")), &questions); err != nil {
-			return common.NewDryRunAPI().Desc(fmt.Sprintf("dry-run validation failed: --questions must be a valid JSON array: %s", err))
-		}
+		questions, _ := parseFormQuestionsCreate(runtime.Str("questions"))
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/questions").
 			Set("base_token", runtime.Str("base-token")).
@@ -50,9 +51,9 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		formId := runtime.Str("form-id")
 		questionsJSON := runtime.Str("questions")
 
-		var questions []interface{}
-		if err := json.Unmarshal([]byte(questionsJSON), &questions); err != nil {
-			return baseValidationErrorf("--questions must be a valid JSON array: %s", err)
+		questions, err := parseFormQuestionsCreate(questionsJSON)
+		if err != nil {
+			return err
 		}
 
 		data, err := baseV3Call(runtime, "POST",
@@ -80,4 +81,12 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+func parseFormQuestionsCreate(raw string) ([]interface{}, error) {
+	var questions []interface{}
+	if err := json.Unmarshal([]byte(raw), &questions); err != nil {
+		return nil, baseValidationErrorf("--questions must be a valid JSON array: %s", err)
+	}
+	return questions, nil
 }
