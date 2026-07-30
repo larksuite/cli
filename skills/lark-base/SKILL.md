@@ -64,8 +64,8 @@ metadata:
 | 公式字段 | `+field-create/update --json '{"type":"formula",...}'` | 必读 [formula-field-guide.md](references/formula-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
 | Lookup 字段 | `+field-create/update --json '{"type":"lookup",...}'` | 必读 [lookup-field-guide.md](references/lookup-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
 | 表单提交 | `+form-submit` | 先读 [lark-base-form-detail.md](references/lark-base-form-detail.md) 获取题目、filter 和附件所需 `base_token`；提交 JSON 读 [lark-base-form-submit.md](references/lark-base-form-submit.md) |
-| 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | 读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)；题目显隐条件 `visible_rule` 结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md) |
-| Base 内表单管理 | `+form-list/get/create/update/delete` / `+form-questions-list/delete` | 先用 `+table-list` 或 `+base-block-list` 取得真实 `table_id`；这些命令使用 `--base-token + --table-id`，删除前确认目标表单 |
+| 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | Base 内表单按 table 管理；先确定并复用真实 `table_id`。读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)；题目显隐条件 `visible_rule` 结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md) |
+| Base 内表单管理 | `+form-list/get/create/update/delete` / `+form-questions-list/delete` | 缺少或不确定归属时，先用 `+table-list` 或 `+base-block-list` 取得真实 `table_id`；这些命令使用 `--base-token + --table-id` 并在整个工作流中复用同一 `table_id`，删除前确认目标表单 |
 | 分享表单详情 | `+form-detail --share-token <share_token>` | 只接受表单分享链接里的 `share_token`，不要传 `--base-token` / `--form-id`；提交前读 [lark-base-form-detail.md](references/lark-base-form-detail.md) |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取图表计算结果用 `+dashboard-block-get-data` |
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
@@ -118,7 +118,9 @@ metadata:
 
 ## 表单与视图细节
 
-- Base 内表单 list/get/create/update/delete 和题目管理都属于具体数据表：先取得真实 `table_id`，再与 `base_token` 一起传入。`+form-detail` 是分享表单入口，标识域不同，只使用 `share_token`。
+- Base 内表单 list/get/create/update/delete 和题目管理都属于具体数据表：第一个管理命令前必须已有归属明确的真实 `table_id`；缺失或归属不明确时才用 `+table-list` 或 `+base-block-list` 定位，已有真实 ID 时直接复用。后续管理命令始终传同一 `base_token + table_id`。`+form-detail` 是分享表单入口，标识域不同，只使用 `share_token`。
+- 表单问题由数据表字段承载，question `id` 就是 `field_id`。创建问题前先 `+form-questions-list`；除非用户明确要求同名的独立问题，否则标题已存在时优先用 `+form-questions-update` 修改必填状态、标题或描述，不要先创建同名问题再删除旧问题。
+- `+form-questions-delete` 会删除承载问题的数据表字段。主字段问题不可删除；不要把主字段 ID 放入 `--question-ids`，需要修改时使用 `+form-questions-update`。
 - `+form-submit` 是高风险写操作，必须带 `--yes` 确认；调用前必须先跑 `+form-detail`，读取 `questions[].type`、`required`、`filter` 和附件场景需要的 `base_token`；不要填写被 filter 隐藏的问题。
 - `+form-questions-update` 是题目配置全量覆盖，不是 patch；未传字段会回落默认值，传空字符串 / `null` / 空数组会直接写入空或清空。更新前先 `+form-questions-list` 读取当前题目，把要保留的 `title` / `description` / `required` / `option_display_mode` / `visible_rule` 等字段带回请求。
 - 表单附件不要写进 `fields`，放在 `--json.attachments`；提交附件时必须同时传表单所属 Base 的 `--base-token`。
