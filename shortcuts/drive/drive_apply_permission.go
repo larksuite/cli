@@ -6,6 +6,7 @@ package drive
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -49,8 +50,16 @@ func resolvePermApplyTarget(raw, explicitType string) (token, docType string, er
 	}
 
 	if strings.Contains(raw, "://") {
+		parsed, parseErr := url.Parse(raw)
+		if parseErr != nil || parsed.Hostname() == "" {
+			return "", "", errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"--token URL is malformed: %q",
+				raw,
+			).WithParam("--token")
+		}
 		for _, m := range permApplyURLMarkers {
-			if tok, ok := extractURLToken(raw, m.Marker); ok {
+			if tok, ok := extractURLToken(parsed.Path, m.Marker); ok {
 				token = tok
 				if explicitType == "" {
 					docType = m.Type

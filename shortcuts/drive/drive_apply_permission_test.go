@@ -5,9 +5,11 @@ package drive
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 )
@@ -85,6 +87,50 @@ func TestResolvePermApplyTarget_RejectsMalformedPageURL(t *testing.T) {
 	token, docType, err := resolvePermApplyTarget("https://example.feishu.cn/page/?from=share", "")
 	if err == nil || !strings.Contains(err.Error(), "could not infer token") {
 		t.Fatalf("expected page token inference error, got token=%q type=%q error=%v", token, docType, err)
+	}
+}
+
+func TestResolvePermApplyTarget_RejectsAppsMarkerOutsidePath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{
+			name: "query",
+			raw:  "https://example.feishu.cn/share?redirect=/page/appMetaTok",
+		},
+		{
+			name: "fragment",
+			raw:  "https://example.feishu.cn/share#/page/appMetaTok",
+		},
+	}
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			token, docType, err := resolvePermApplyTarget(tt.raw, "")
+			if err == nil {
+				t.Fatalf("expected URL path inference error, got token=%q type=%q", token, docType)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf(error) ok = false, error = %T %v", err, err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("error category/subtype = %q/%q, want %q/%q",
+					problem.Category, problem.Subtype, errs.CategoryValidation, errs.SubtypeInvalidArgument)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--token" {
+				t.Fatalf("error param = %q, want %q", validationErr.Param, "--token")
+			}
+		})
 	}
 }
 
