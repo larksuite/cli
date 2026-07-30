@@ -6,6 +6,8 @@ Fetch the message list for a conversation. Supports both group chats and direct 
 
 By default the response carries a `reactions` block (counts + details from `im.reactions.batch_query`) on every message that has reactions, and `update_time` on messages that were actually edited. Thread replies expanded via auto-`thread_replies` participate in the same batched enrichment. Pass `--no-reactions` to skip the extra round-trip. Pass `--download-resources` to additionally download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block — off by default. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
 
+> When `+chat-messages-list` filters messages by time, it applies the time range to root messages only. Thread replies are not evaluated independently by their own timestamps. As a result, a new reply may be omitted if its root message falls outside the requested time range. To monitor new replies in real time, use `lark-cli event consume im.message.receive_v1 --as bot`. For a topic group (`chat_mode=topic`), use `lark-cli api GET /open-apis/im/v1/messages` to query messages by time; this API includes replies in time filtering and sorting.
+
 This skill maps to the shortcut: `lark-cli im +chat-messages-list` (internally calls `GET /open-apis/im/v1/messages`, and automatically resolves the p2p chat_id when needed).
 
 ## Commands
@@ -116,7 +118,7 @@ You can also fall back to the generic API:
 
 ```bash
 lark-cli api GET /open-apis/im/v1/messages \
-  --params 'container_id_type=chat&container_id=oc_xxx&page_size=50&page_token=<PAGE_TOKEN>'
+  --params '{"container_id_type":"chat","container_id":"oc_xxx","page_size":"50","page_token":"<PAGE_TOKEN>"}'
 ```
 
 ## Common Errors and Troubleshooting
