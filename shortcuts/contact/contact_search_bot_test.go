@@ -336,6 +336,18 @@ func TestParseBotDisplayInfo(t *testing.T) {
 		// swallow the real description on the line after it.
 		{name: "blank first line keeps description", raw: "\n真名\n简介", wantName: "真名", wantDescription: "简介", wantSegments: []string{}},
 		{name: "blank first line without description", raw: "\n真名", wantName: "真名", wantSegments: []string{}},
+		// A highlight with no text carries nothing; an empty match segment is junk
+		// in the envelope. Which line the name comes from is left unchanged.
+		{name: "empty highlight yields no segment", raw: "<h></h>\n简介", wantName: "简介", wantSegments: []string{}},
+		// The non-greedy pattern pairs a stray `<h>` with the next `</h>`, so the
+		// capture can carry a tag the name and description already dropped.
+		{name: "nested highlight", raw: "<h>甲<h>乙</h></h>\n简介", wantName: "甲乙", wantDescription: "简介", wantSegments: []string{"甲乙"}},
+		{name: "dangling open tag", raw: "<h><h>甲</h>\n简介", wantName: "甲", wantDescription: "简介", wantSegments: []string{"甲"}},
+		{name: "unclosed highlight", raw: "<h>甲乙\n简介", wantName: "甲乙", wantDescription: "简介", wantSegments: []string{}},
+		// A literal `<h>` in a name arrives escaped, so it must survive: tags are
+		// stripped before unescaping. Swapping that order eats the name's own text.
+		{name: "escaped angle brackets are name text", raw: "名称&lt;h&gt;工具\n简介", wantName: "名称<h>工具", wantDescription: "简介", wantSegments: []string{}},
+		{name: "escaped angle brackets inside a highlight", raw: "<h>名称&lt;h&gt;</h>工具\n简介", wantName: "名称<h>工具", wantDescription: "简介", wantSegments: []string{"名称<h>"}},
 	}
 
 	for _, tt := range tests {

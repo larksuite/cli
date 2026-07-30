@@ -26,6 +26,9 @@ lark-cli contact +search-user --user-ids "ou_3a8b****6a7b,me" --as user
 ## +search-bot
 Search bots (apps) by keyword. Pass `--query` or `--queries`; use `--chat-ids` to search within specific chats.
 
+### Skills
+- lark-contact/references/lark-contact-search-bot.md
+
 ### Avoid when
 - Looking for a person rather than a bot → use [[+search-user]]
 - Running as a bot — this shortcut is user-only

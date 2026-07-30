@@ -100,16 +100,13 @@ var ContactSearchBot = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		if raw := strings.TrimSpace(runtime.Str("queries")); raw != "" {
-			filter, err := buildBotFanoutFilter(runtime)
+			filter, err := buildBotSearchFilter(runtime)
 			if err != nil {
 				return common.NewDryRunAPI().Set("error", err.Error())
 			}
 			api := common.NewDryRunAPI()
 			for _, q := range parseAndDedupQueries(raw) {
-				body := &botSearchAPIRequest{Query: q}
-				if filter != nil {
-					body.Filter = filter
-				}
+				body := &botSearchAPIRequest{Query: q, Filter: filter}
 				api.POST(botSearchURL).
 					Params(map[string]interface{}{"page_size": runtime.Int("page-size")}).
 					Body(body)
@@ -256,8 +253,9 @@ func parseBotSearchChatIDs(runtime *common.RuntimeContext) ([]string, error) {
 	return chatIDs, nil
 }
 
-func buildBotSearchBody(runtime *common.RuntimeContext) (*botSearchAPIRequest, error) {
-	req := &botSearchAPIRequest{Query: strings.TrimSpace(runtime.Str("query"))}
+// buildBotSearchFilter reads the scope flags shared by single and fanout search.
+// A nil filter means "no scope": an empty filter object is not the same request.
+func buildBotSearchFilter(runtime *common.RuntimeContext) (*botSearchAPIFilter, error) {
 	filter := &botSearchAPIFilter{}
 	hasFilter := false
 
@@ -274,10 +272,21 @@ func buildBotSearchBody(runtime *common.RuntimeContext) (*botSearchAPIRequest, e
 		hasFilter = true
 	}
 
-	if hasFilter {
-		req.Filter = filter
+	if !hasFilter {
+		return nil, nil
 	}
-	return req, nil
+	return filter, nil
+}
+
+func buildBotSearchBody(runtime *common.RuntimeContext) (*botSearchAPIRequest, error) {
+	filter, err := buildBotSearchFilter(runtime)
+	if err != nil {
+		return nil, err
+	}
+	return &botSearchAPIRequest{
+		Query:  strings.TrimSpace(runtime.Str("query")),
+		Filter: filter,
+	}, nil
 }
 
 // botSearchStdoutCarriesEnvelope reports whether the chosen format puts the
@@ -373,17 +382,27 @@ func projectBots(data *botSearchAPIData) []searchBot {
 	return bots
 }
 
+func stripHighlightTags(value string) string {
+	value = strings.ReplaceAll(value, "<h>", "")
+	return strings.ReplaceAll(value, "</h>", "")
+}
+
 func parseBotDisplayInfo(raw string) (name, description string, matchSegments []string) {
 	matchSegments = make([]string, 0)
 	for _, match := range displayInfoHighlightRE.FindAllStringSubmatch(raw, -1) {
-		matchSegments = append(matchSegments, html.UnescapeString(match[1]))
+		// The capture can still carry a tag: the non-greedy pattern pairs a
+		// stray `<h>` with the next `</h>`. Strip it so a segment reads like the
+		// name and description it came from, and drop a highlight with no text.
+		segment := html.UnescapeString(stripHighlightTags(match[1]))
+		if strings.TrimSpace(segment) == "" {
+			continue
+		}
+		matchSegments = append(matchSegments, segment)
 	}
 
 	lines := strings.Split(raw, "\n")
 	stripTags := func(value string) string {
-		value = strings.ReplaceAll(value, "<h>", "")
-		value = strings.ReplaceAll(value, "</h>", "")
-		return strings.TrimSpace(html.UnescapeString(value))
+		return strings.TrimSpace(html.UnescapeString(stripHighlightTags(value)))
 	}
 
 	// nameLine records which line the name came from, so the description is read

@@ -187,7 +187,7 @@ func buildBotFanoutResponse(queries []string, results []botFanoutResult) (*botFa
 func executeBotSearchFanout(ctx context.Context, runtime *common.RuntimeContext) error {
 	queries := parseAndDedupQueries(runtime.Str("queries"))
 
-	filter, err := buildBotFanoutFilter(runtime)
+	filter, err := buildBotSearchFilter(runtime)
 	if err != nil {
 		return err
 	}
@@ -271,30 +271,6 @@ schedule:
 		}
 	}
 	return nil
-}
-
-// buildBotFanoutFilter applies the same search scope and filter to every query.
-func buildBotFanoutFilter(runtime *common.RuntimeContext) (*botSearchAPIFilter, error) {
-	filter := &botSearchAPIFilter{}
-	hasFilter := false
-
-	chatIDs, err := parseBotSearchChatIDs(runtime)
-	if err != nil {
-		return nil, err
-	}
-	if len(chatIDs) > 0 {
-		filter.ChatIDs = chatIDs
-		hasFilter = true
-	}
-	if runtime.Cmd.Flags().Changed("has-chatted") && runtime.Bool("has-chatted") {
-		filter.HasChatter = true
-		hasFilter = true
-	}
-
-	if !hasFilter {
-		return nil, nil
-	}
-	return filter, nil
 }
 
 func prettyBotFanoutRows(bots []fanoutBot) []map[string]interface{} {

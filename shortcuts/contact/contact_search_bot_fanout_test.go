@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -518,7 +519,58 @@ func TestBotFanoutNDJSONKeepsStdoutClean(t *testing.T) {
 	}
 }
 
-func TestBotFanoutCancelledContextFailsEveryQuery(t *testing.T) {
+// TestBotFanoutCancelledSchedulingFailsQueuedQueries drives the real command so
+// the scheduler inside executeBotSearchFanout — not just runOneBotQuery — sees
+// the cancellation. Queueing more keywords than fanoutConcurrency while every
+// worker is parked keeps all semaphore slots held, so the queued keywords can
+// only leave the loop through its ctx.Done() branch.
+func TestBotFanoutCancelledSchedulingFailsQueuedQueries(t *testing.T) {
+	factory, stdout, _, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	started := make(chan struct{})
+	var once sync.Once
+	stub := botSearchStub(botSearchURL+"?page_size=20", "")
+	stub.Reusable = true
+	stub.OnMatch = func(*http.Request) {
+		once.Do(func() { close(started) })
+		<-ctx.Done() // hold the slot so later keywords must queue on the semaphore
+	}
+	registry.Register(stub)
+
+	go func() {
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second): // never leave the workers parked
+		}
+		cancel()
+	}()
+
+	queries := make([]string, 0, fanoutConcurrency+3)
+	for i := 0; i < fanoutConcurrency+3; i++ {
+		queries = append(queries, fmt.Sprintf("q%d", i))
+	}
+
+	err := mountAndRunContext(t, ctx, ContactSearchBot, []string{
+		"+search-bot", "--queries", strings.Join(queries, ","), "--format", "json", "--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("a cancelled batch must surface as a command error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation cause must be preserved: %v", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport {
+		t.Fatalf("problem: got %+v, want network/%s", problem, errs.SubtypeNetworkTransport)
+	}
+}
+
+// TestBotFanoutCancelledContextShortCircuitsBeforeRequest pins the other half:
+// a queued worker must fail on the pre-check instead of issuing its request.
+func TestBotFanoutCancelledContextShortCircuitsBeforeRequest(t *testing.T) {
 	results := make([]botFanoutResult, 0, 2)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

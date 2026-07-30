@@ -551,6 +551,13 @@ func TestDecodeSearchUserAPIData_MarshalFailureTyped(t *testing.T) {
 // with the given args. Mirrors the pattern used in other shortcut packages.
 func mountAndRun(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
+	return mountAndRunContext(t, context.Background(), s, args, f, stdout)
+}
+
+// mountAndRunContext is mountAndRun with a caller-supplied context, so a test
+// can cancel the run the shortcut actually sees (runShortcut reads cmd.Context).
+func mountAndRunContext(t *testing.T, ctx context.Context, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
+	t.Helper()
 	parent := &cobra.Command{Use: "contact"}
 	s.Mount(parent, f)
 	parent.SetArgs(args)
@@ -559,7 +566,7 @@ func mountAndRun(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Fact
 	if stdout != nil {
 		stdout.Reset()
 	}
-	return parent.Execute()
+	return parent.ExecuteContext(ctx)
 }
 
 // searchUserStub returns a representative user search response with a notice.
