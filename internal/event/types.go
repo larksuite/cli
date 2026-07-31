@@ -8,8 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
-	"time"
 
+	"github.com/larksuite/cli/internal/event/model"
 	"github.com/larksuite/cli/internal/event/schemas"
 )
 
@@ -18,14 +18,9 @@ const (
 	MaxBufferSize     = 1000
 )
 
-// RawEvent: SourceTime is upstream create_time; Timestamp is local source observation time.
-type RawEvent struct {
-	EventID    string          `json:"event_id"`
-	EventType  string          `json:"event_type"`
-	SourceTime string          `json:"source_time,omitempty"`
-	Payload    json.RawMessage `json:"payload"`
-	Timestamp  time.Time       `json:"timestamp"`
-}
+// RawEvent is the canonical event fact carrier; see model.Event for the field
+// contracts. The alias keeps every existing reference compiling unchanged.
+type RawEvent = model.Event
 
 // APIClient: identity is opaque so business code can't bypass pre-flight checks.
 type APIClient interface {
