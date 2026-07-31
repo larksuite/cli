@@ -46,10 +46,18 @@ esac
 唯一事实源是各 SKILL.md 的 frontmatter，**不是** `.active-profile`（后者仅是记录）。检测必须只匹配 frontmatter 块（第一个 `---` 到第二个 `---` 之间）内的字段——正文（如文档示例、代码块）里出现的同名文本不算。判定标准严格为「frontmatter 内恰好一行该字段且取值为 true」：手工改坏的重复/冲突字段（如同时存在 true 和 false，YAML 解析器可能按 false 生效）不视为休眠——扫描会显示为激活，重跑第 5 步的休眠命令即可将其规范化为单行 true：
 
 ```bash
-# 只看 frontmatter 的休眠判断（后续步骤复用）：恰好一行字段且值为 true
-is_disabled() { awk '/^---$/{c++;next} c==1 && /^disable-model-invocation:[[:space:]]*/{t++; if ($0 ~ /:[[:space:]]*true[[:space:]]*$/) n++} END{exit !(t==1 && n==1)}' "$1"; }
+# 只看 frontmatter 的休眠判断（后续步骤复用）：恰好一行字段且值为 true。
+# 每行先去掉行尾 \r 再匹配（仓库 parser 明确支持 CRLF 文件），只读不写。
+is_disabled() { awk '{l=$0; sub(/\r$/,"",l)} l=="---"{c++;next} c==1 && l ~ /^disable-model-invocation:[[:space:]]*/{t++; if (l ~ /:[[:space:]]*true[[:space:]]*$/) n++} END{exit !(t==1 && n==1)}' "$1"; }
 
-for f in "$ROOT"/lark-*/SKILL.md; do
+# nullglob：部分安装时 glob 展开为空数组而不是残留字面 "*"；空集合直接报错退出
+shopt -s nullglob
+files=( "$ROOT"/lark-*/SKILL.md )
+if [ ${#files[@]} -eq 0 ]; then
+  echo "ERROR: $ROOT 下未找到任何 lark-*/SKILL.md（可能未完整安装），请先安装" >&2
+  exit 1
+fi
+for f in "${files[@]}"; do
   n=$(basename "$(dirname "$f")")
   if is_disabled "$f"; then echo "$n: 休眠"; else echo "$n: 激活"; fi
 done
@@ -110,30 +118,33 @@ done
 f="$ROOT/lark-<name>/SKILL.md"
 
 # 休眠（幂等：frontmatter 内已有 disable-model-invocation 字段则改写为 true，
-# 没有则插在 name: 行之后，避开多行 description 陷阱；不会产生重复字段）
+# 没有则插在 name: 行之后，避开多行 description 陷阱；不会产生重复字段。
+# 匹配用去掉行尾 \r 的副本，输出一律用原始行，新插入的行跟随该文件的行尾风格）
 is_disabled "$f" || {
   cp -a "$f" "$f.tmp" &&
   awk '
-    /^---$/ { c++; print; next }
-    c==1 && /^disable-model-invocation:[[:space:]]*/ { if (!d) { print "disable-model-invocation: true"; d=1 }; next }
-    c==1 && /^name:/ && !d { print; print "disable-model-invocation: true"; d=1; next }
+    { cr = (/\r$/ ? "\r" : ""); l = $0; sub(/\r$/, "", l) }
+    l == "---" { c++; print; next }
+    c==1 && l ~ /^disable-model-invocation:[[:space:]]*/ { if (!d) { print "disable-model-invocation: true" cr; d=1 }; next }
+    c==1 && l ~ /^name:/ && !d { print; print "disable-model-invocation: true" cr; d=1; next }
     { print }
   ' "$f" > "$f.tmp" &&
   mv "$f.tmp" "$f"
 } || { rm -f "$f.tmp"; echo "ERROR: 休眠写入失败: $f" >&2; exit 1; }
 
-# 激活（幂等：删除 frontmatter 内该字段的全部取值，正文同名文本保留）
+# 激活（幂等：删除 frontmatter 内该字段的全部取值，正文同名文本保留，原始行尾原样输出）
 cp -a "$f" "$f.tmp" &&
 awk '
-  /^---$/ { c++; print; next }
-  c==1 && /^disable-model-invocation:[[:space:]]*/ { next }
+  { l = $0; sub(/\r$/, "", l) }
+  l == "---" { c++; print; next }
+  c==1 && l ~ /^disable-model-invocation:[[:space:]]*/ { next }
   { print }
 ' "$f" > "$f.tmp" &&
 mv "$f.tmp" "$f" ||
 { rm -f "$f.tmp"; echo "ERROR: 激活写入失败: $f" >&2; exit 1; }
 ```
 
-（awk 在 macOS / Linux 行为一致，无需区分平台。）
+（awk 在 macOS / Linux 行为一致，无需区分平台；匹配前剥离行尾 `\r`，CRLF 格式的 SKILL.md 同样正确处理。）
 
 ### 6. 写入配置记录
 
