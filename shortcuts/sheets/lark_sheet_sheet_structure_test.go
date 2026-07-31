@@ -308,12 +308,15 @@ func TestDimInsertInheritStyleSideMapping(t *testing.T) {
 // TestDimInsertOmittedMatchesAfter pins the contract --inherit-style's flag
 // description states: omitting it is the same call as passing `after`.
 //
-// It used to hold only if the backend happened to default `side` to "before".
-// That is not something the docs can promise on the backend's behalf — and if
-// the default were "after", omitting the flag would insert AFTER --position,
-// silently breaking +dim-insert's "always inserts before --position" contract.
-// So the CLI sends `side` explicitly and this test locks the two bodies
-// together, byte for byte.
+// Verified live 07-31 rather than assumed: on a sheet with row2 red and row3
+// blue, inserting at --position 3 places the blank at row 3 in all four
+// spellings (omitted with no `side` field at all, omitted, `after`, `before`),
+// and the blank inherits the FOLLOWING row's blue under omitted/`after` and the
+// PRECEDING row's red under `before`. So the backend's own default for `side`
+// is "before" and the pre-existing behaviour was already correct; the CLI sends
+// the field explicitly only so the documented default stops depending on an
+// undocumented server-side one. This test locks the two bodies together, byte
+// for byte, so that stays true.
 func TestDimInsertOmittedMatchesAfter(t *testing.T) {
 	t.Parallel()
 

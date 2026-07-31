@@ -250,13 +250,14 @@ func dimInsertInput(runtime flagView, token, sheetID, sheetName string) (map[str
 	//            == insert-before-P) and anchor P-1 becomes the *preceding*
 	//            neighbour, so the blank copies it.
 	//
-	// The flag is documented as defaulting to `after`, so the omitted case takes
-	// the same branch instead of leaving `side` off the request: relying on the
-	// backend's own default would make "omit" and "--inherit-style after" agree
-	// only by coincidence, and if that default were `after` the insert would
-	// land AFTER --position — breaking the "always inserts before --position"
-	// contract silently. Sending it explicitly makes the documented default the
-	// real one. Pinned by TestDimInsertOmittedMatchesAfter.
+	// The flag documents `after` as its default, and the omitted case takes that
+	// branch rather than leaving `side` off the request. This is belt-and-braces,
+	// not a fix: the backend's own default IS `before`, verified live 07-31 on a
+	// 4-way sheet (omitted / after / before / no-side-at-all all place the blank
+	// at --position, and omitted inherits the FOLLOWING row's style exactly as
+	// `after` does). Sending it explicitly just stops the documented default from
+	// depending on an undocumented server-side one.
+	// Pinned by TestDimInsertOmittedMatchesAfter.
 	switch runtime.Str("inherit-style") {
 	case "before":
 		if prev, ok := a1PositionBefore(position); ok {
