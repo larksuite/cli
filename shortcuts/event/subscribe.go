@@ -87,10 +87,10 @@ var EventSubscribe = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{}, // no direct OAPI; scopes depend on subscribed event types
 	AuthTypes:   []string{"bot"},
-	// DEPRECATED(phase-2): event +subscribe — replaced by `event consume`.
-	// Phase 1 (here): kept executable so existing scripts keep working, but
-	// removed from --help/tab-completion so new users land on the replacement.
-	// Phase 2 removal: delete once downstream callers have migrated.
+	// Hidden: superseded by `event consume`. Kept executable so existing
+	// scripts keep working, but removed from --help/tab-completion so new
+	// users land on the replacement. Delete once downstream callers have
+	// migrated.
 	Hidden: true,
 	Flags: []common.Flag{
 		// Output destination — where events go
