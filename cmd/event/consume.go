@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/cmd/event/render"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/appmeta"
 	"github.com/larksuite/cli/internal/auth"
@@ -23,6 +24,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	eventlib "github.com/larksuite/cli/internal/event"
+	appconsume "github.com/larksuite/cli/internal/event/application/consume"
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/consume"
 	"github.com/larksuite/cli/internal/event/transport"
@@ -38,6 +40,7 @@ type consumeCmdOpts struct {
 
 	maxEvents int
 	timeout   time.Duration
+	dryRun    bool
 }
 
 func NewCmdConsume(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
@@ -67,6 +70,7 @@ Use 'event schema <EventKey>' for parameter details.`,
 	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress informational messages on stderr")
 	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (relative paths only; absolute paths and ~ are rejected to prevent path traversal)")
 	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop. Bounded runs ignore stdin EOF.")
+	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "Decide and preview the consume (identity, preconditions, side effects) without performing any of them, then exit")
 	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout'). Bounded runs ignore stdin EOF.")
 	cmd.Flags().String("as", "auto", "identity type: user | bot | auto (must match EventKey's declared AuthTypes)")
 	_ = cmd.RegisterFlagCompletionFunc("as", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -171,11 +175,31 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, snap *catalog.Snapshot, 
 		appVer:              appVer,
 		subscribedCallbacks: subscribedCallbacks,
 	}
-	if err := preflightEventTypes(pf); err != nil {
+
+	svc := &appconsume.Service{
+		Strategies: consumeStrategies,
+		Identity:   identityResolverFunc(func(context.Context, *catalog.Entry) (string, error) { return string(identity), nil }),
+		Preflight: preflightReaderFunc(func(ctx context.Context, _ *catalog.Entry, _ string) ([]appconsume.Precondition, error) {
+			return readPreconditions(ctx, pf, appVerErr), nil
+		}),
+	}
+	req := appconsume.Request{
+		EventKey:  eventKey,
+		Params:    paramMap,
+		JQExpr:    o.jqExpr,
+		OutputDir: outputDir,
+		DryRun:    o.dryRun,
+		MaxEvents: o.maxEvents,
+		Timeout:   o.timeout,
+		IsTTY:     f.IOStreams.IsTerminal,
+	}
+	decision, err := svc.Decide(cmd.Context(), entry, req, appconsume.ExecutionContext{API: runtime})
+	if err != nil {
 		return err
 	}
-	if err := preflightScopes(cmd.Context(), pf); err != nil {
-		return err
+
+	if o.dryRun {
+		return render.WriteDecisionJSON(f.IOStreams.Out, f.IOStreams.ErrOut, string(identity), decision.View())
 	}
 
 	ctx, cancel := context.WithCancel(cmd.Context())
@@ -206,24 +230,25 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, snap *catalog.Snapshot, 
 		watchStdinEOF(os.Stdin, cancel, errOut)
 	}
 
-	if err := consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
-		EventKey:        eventKey,
-		Def:             keyDef,
-		Params:          paramMap,
-		JQExpr:          o.jqExpr,
-		Quiet:           o.quiet,
-		OutputDir:       outputDir,
-		Runtime:         runtime,
-		Out:             f.IOStreams.Out,
-		ErrOut:          errOut,
-		RemoteAPIClient: botRuntime,
-		MaxEvents:       o.maxEvents,
-		Timeout:         o.timeout,
-		IsTTY:           f.IOStreams.IsTerminal,
-	}); err != nil {
-		return err
-	}
-	return nil
+	runner := streamRunnerFunc(func(ctx context.Context, prepare appconsume.PrepareFunc) error {
+		return consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
+			EventKey:        eventKey,
+			Def:             keyDef,
+			Params:          paramMap,
+			JQExpr:          o.jqExpr,
+			Quiet:           o.quiet,
+			OutputDir:       outputDir,
+			Runtime:         runtime,
+			Out:             f.IOStreams.Out,
+			ErrOut:          errOut,
+			RemoteAPIClient: botRuntime,
+			MaxEvents:       o.maxEvents,
+			Timeout:         o.timeout,
+			IsTTY:           f.IOStreams.IsTerminal,
+			Prepare:         prepare,
+		})
+	})
+	return svc.Execute(ctx, entry, decision, runner, appconsume.ExecutionContext{API: runtime})
 }
 
 // resolveIdentity resolves the session identity and enforces keyDef.AuthTypes as a whitelist.

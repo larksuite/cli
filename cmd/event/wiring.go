@@ -15,10 +15,9 @@ import (
 // subcommand reads. A compile failure is a defect in declarations built into
 // this binary — there is nothing to recover at runtime, so it panics.
 func compileCatalog() *catalog.Snapshot {
-	snap, err := catalog.Compile(events.All(), catalog.StrategyRefs{
-		catalog.StrategyNone,
-		catalog.StrategyLegacyPreConsume,
-	})
+	// The strategy registry that validates references is the same one that
+	// executes them, so "compiled" implies "resolvable at run time".
+	snap, err := catalog.Compile(events.All(), consumeStrategies)
 	if err != nil {
 		panic(fmt.Sprintf("event catalog failed to compile: %v", err))
 	}
