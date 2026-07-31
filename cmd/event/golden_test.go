@@ -36,7 +36,7 @@ func TestGolden_ListOutput(t *testing.T) {
 	for name, asJSON := range map[string]bool{"list_text": false, "list_json": true} {
 		t.Run(name, func(t *testing.T) {
 			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
-			if err := runList(f, snap, asJSON); err != nil {
+			if err := runList(f, snap, "", asJSON); err != nil {
 				t.Fatalf("runList: %v", err)
 			}
 			assertGolden(t, name, stdout.String())

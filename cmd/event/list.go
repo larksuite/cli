@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	eventlib "github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/catalog"
@@ -18,24 +19,33 @@ import (
 
 func NewCmdList(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 	var asJSON bool
+	var domain string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all available EventKeys",
-		Long:  "Show all registered EventKeys grouped by domain (first segment of the key). Use --json for machine-readable output.",
+		Long:  "Show all registered EventKeys grouped by domain (first segment of the key). Use --domain to keep one domain only, --json for machine-readable output.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList(f, snap, asJSON)
+			return runList(f, snap, domain, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the full EventKey list as JSON (for AI / scripts)")
+	cmd.Flags().StringVar(&domain, "domain", "", "Only list EventKeys of this domain (the key's first segment, e.g. im, vc)")
 	cmdutil.SetRisk(cmd, "read")
 	return cmd
 }
 
-func runList(f *cmdutil.Factory, snap *catalog.Snapshot, asJSON bool) error {
-	if asJSON {
-		return writeListJSON(f, snap)
+func runList(f *cmdutil.Factory, snap *catalog.Snapshot, domain string, asJSON bool) error {
+	entries, err := entriesForDomain(snap, domain)
+	if err != nil {
+		return err
 	}
-	all := snap.Definitions()
+	if asJSON {
+		return writeListJSON(f, entries)
+	}
+	all := make([]*eventlib.KeyDefinition, 0, len(entries))
+	for _, entry := range entries {
+		all = append(all, entry.Definition())
+	}
 
 	if len(all) == 0 {
 		// stderr so `event list | jq` doesn't ingest it as a row.
@@ -112,8 +122,29 @@ type listRow struct {
 	ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
 }
 
-func writeListJSON(f *cmdutil.Factory, snap *catalog.Snapshot) error {
-	entries := snap.Entries()
+// entriesForDomain filters at the snapshot query layer: without a domain the
+// full catalog comes back untouched; with one, rows are only removed, never
+// reshaped. An unknown domain is rejected with the valid set spelled out.
+func entriesForDomain(snap *catalog.Snapshot, domain string) ([]*catalog.Entry, error) {
+	if domain == "" {
+		return snap.Entries(), nil
+	}
+	var filtered []*catalog.Entry
+	for _, entry := range snap.Entries() {
+		if entry.Descriptor().Domain == domain {
+			filtered = append(filtered, entry)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"unknown domain: %s", domain).
+			WithParam("--domain").
+			WithHint("valid domains: %s", strings.Join(snap.Domains(), ", "))
+	}
+	return filtered, nil
+}
+
+func writeListJSON(f *cmdutil.Factory, entries []*catalog.Entry) error {
 	rows := make([]listRow, len(entries))
 	for i, entry := range entries {
 		rows[i] = listRow{
