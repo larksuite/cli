@@ -37,7 +37,7 @@ import (
 	"github.com/larksuite/cli/internal/event/bus"
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/consume"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/testutil"
 	"github.com/larksuite/cli/internal/event/transport"
 )

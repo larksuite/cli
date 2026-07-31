@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 const (

@@ -6,7 +6,7 @@ package source
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 // "disconnected to <url>" contains "connected to ws" — must use HasPrefix to avoid misclassifying as connect.

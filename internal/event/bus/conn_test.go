@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 func TestConn_SenderWritesEvents(t *testing.T) {

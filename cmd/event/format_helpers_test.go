@@ -12,7 +12,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/output"
 )
 

@@ -9,7 +9,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 const preShutdownAckTimeout = 2 * time.Second

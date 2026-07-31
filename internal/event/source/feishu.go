@@ -18,7 +18,7 @@ import (
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 const maxEventBodyBytes = 1 << 20 // bound per-subscriber sendCh memory under runaway payloads

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event/busdiscover"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 type fakeScanner struct {

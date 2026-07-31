@@ -17,7 +17,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	event "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/testutil"
 	"github.com/larksuite/cli/internal/event/transport"
 )
