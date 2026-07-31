@@ -3,7 +3,7 @@
 
 // Package source is a pluggable event source abstraction (separate package to keep
 // business registrations free of SDK transitive deps).
-package source
+package websocket
 
 // StatusNotifier surfaces source lifecycle states; detail is free-form
 // context. A function alias so implementations structurally satisfy the

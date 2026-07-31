@@ -285,7 +285,7 @@ var source = FeishuSource{Domain: "events.example.com"}
 `
 		got := evidenceHosts(scanTypedDomainEvidenceInPackage(
 			t,
-			"github.com/larksuite/cli/internal/event/source",
+			"github.com/larksuite/cli/internal/event/adapter/lark/websocket",
 			source,
 		))
 		want := []string{"api.example.com", "events.example.com"}

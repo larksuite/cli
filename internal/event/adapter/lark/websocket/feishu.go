@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package source
+package websocket
 
 import (
 	"context"
@@ -18,7 +18,6 @@ import (
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 const maxEventBodyBytes = 1 << 20 // bound per-subscriber sendCh memory under runaway payloads
@@ -51,7 +50,7 @@ func (s *FeishuSource) Start(ctx context.Context, eventTypes []string, emit func
 	}
 
 	if notify != nil {
-		notify(protocol.SourceStateConnecting, "")
+		notify(sourceStateConnecting, "")
 	}
 	cli := larkws.NewClient(s.AppID, s.AppSecret, opts...)
 
@@ -161,12 +160,22 @@ func (a *sdkLogger) tryNotify(msg, errDetail string) {
 		if m := reconnectAttemptRe.FindStringSubmatch(lower); len(m) == 2 {
 			detail = "attempt " + m[1]
 		}
-		a.notify(protocol.SourceStateReconnecting, detail)
+		a.notify(sourceStateReconnecting, detail)
 	case strings.HasPrefix(lower, sdkLogDisconnected):
-		a.notify(protocol.SourceStateDisconnected, errDetail)
+		a.notify(sourceStateDisconnected, errDetail)
 	case strings.HasPrefix(lower, sdkLogConnected):
-		a.notify(protocol.SourceStateConnected, "")
+		a.notify(sourceStateConnected, "")
 	}
 }
 
 var _ larkcore.Logger = (*sdkLogger)(nil)
+
+// Source lifecycle states as this adapter reports them. The values are the
+// wire vocabulary of the bus's source_status frames; a pinning test keeps
+// them equal to the IPC constants without importing the IPC package here.
+const (
+	sourceStateConnecting   = "connecting"
+	sourceStateConnected    = "connected"
+	sourceStateDisconnected = "disconnected"
+	sourceStateReconnecting = "reconnecting"
+)
