@@ -42,31 +42,51 @@ func TestBaseFormQuestionsCreateDryRun(t *testing.T) {
 	require.True(t, clie2e.DryRunGet(out, "api.0.body.questions.0.required").Bool(), out)
 }
 
-func TestBaseFormQuestionsCreateDryRunRejectsInvalidJSON(t *testing.T) {
+func TestBaseFormQuestionsCreateDryRunRejectsInvalidInput(t *testing.T) {
 	setBaseDryRunConfigEnv(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
+	tests := []struct {
+		name    string
+		input   string
+		message string
+	}{
+		{name: "malformed JSON", input: "{", message: "must be a valid JSON array"},
+		{name: "non-array JSON", input: "{}", message: "must be a valid JSON array"},
+		{name: "null", input: "null", message: "must be a non-null JSON array"},
+		{name: "non-object item", input: "[1]", message: "item 1 must be an object"},
+		{name: "missing title", input: `[{"type":"text"}]`, message: `item 1 must include a non-empty string "title"`},
+		{name: "blank title", input: `[{"title":" ","type":"text"}]`, message: `item 1 must include a non-empty string "title"`},
+		{name: "missing type", input: `[{"title":"Risk"}]`, message: `item 1 must include a non-empty string "type"`},
+		{name: "non-string type", input: `[{"title":"Risk","type":1}]`, message: `item 1 must include a non-empty string "type"`},
+		{name: "more than ten items", input: `[{},{},{},{},{},{},{},{},{},{},{}]`, message: "must contain at most 10 items"},
+	}
 
-	result, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args: []string{
-			"base", "+form-questions-create",
-			"--base-token", "app_x",
-			"--table-id", "tbl_x",
-			"--form-id", "vew_x",
-			"--questions", "{",
-			"--dry-run",
-		},
-		DefaultAs: "bot",
-	})
-	require.NoError(t, err)
-	result.AssertExitCode(t, 2)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
 
-	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
-	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
-	require.Equal(t, "--questions", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
-	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "must be a valid JSON array")
-	require.Empty(t, result.Stdout)
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"base", "+form-questions-create",
+					"--base-token", "app_x",
+					"--table-id", "tbl_x",
+					"--form-id", "vew_x",
+					"--questions", tt.input,
+					"--dry-run",
+				},
+				DefaultAs: "bot",
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 2)
+
+			require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+			require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+			require.Equal(t, "--questions", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+			require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), tt.message)
+			require.Empty(t, result.Stdout)
+		})
+	}
 }
 
 func TestBaseFormQuestionsCreateHelpShowsExistingQuestionGuard(t *testing.T) {

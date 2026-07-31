@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -87,6 +88,26 @@ func parseFormQuestionsCreate(raw string) ([]interface{}, error) {
 	var questions []interface{}
 	if err := json.Unmarshal([]byte(raw), &questions); err != nil {
 		return nil, baseValidationErrorf("--questions must be a valid JSON array: %s", err)
+	}
+	if questions == nil {
+		return nil, baseValidationErrorf("--questions must be a non-null JSON array")
+	}
+	if len(questions) > 10 {
+		return nil, baseValidationErrorf("--questions must contain at most 10 items")
+	}
+	for i, question := range questions {
+		item, ok := question.(map[string]interface{})
+		if !ok {
+			return nil, baseValidationErrorf("--questions item %d must be an object", i+1)
+		}
+		title, ok := item["title"].(string)
+		if !ok || strings.TrimSpace(title) == "" {
+			return nil, baseValidationErrorf("--questions item %d must include a non-empty string \"title\"", i+1)
+		}
+		questionType, ok := item["type"].(string)
+		if !ok || strings.TrimSpace(questionType) == "" {
+			return nil, baseValidationErrorf("--questions item %d must include a non-empty string \"type\"", i+1)
+		}
 	}
 	return questions, nil
 }
