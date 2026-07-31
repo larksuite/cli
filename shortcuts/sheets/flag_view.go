@@ -333,6 +333,12 @@ func (m *mapFlagView) normalizeAndValidateEnums() error {
 			m.raw[rawKey] = canonical
 			continue
 		}
+		// A retired value means "as if omitted" — delete the key so Changed()
+		// also reports it as absent, matching the standalone path.
+		if isRetiredEnumValue(m.command, df.Name, value) {
+			delete(m.raw, rawKey)
+			continue
+		}
 		message := fmt.Sprintf("invalid value %q for --%s, allowed: %s", value, df.Name, strings.Join(df.Enum, ", "))
 		if match := closestEnumValue(value, df.Enum); match != "" {
 			message += fmt.Sprintf("; did you mean %q?", match)

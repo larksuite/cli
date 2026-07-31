@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -384,6 +385,58 @@ func TestDimFreezeEquivalent(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRetiredEnumValueMatchesOmitted pins the back-compat contract for enum
+// values this CLI retired: --inherit-style none was valid AND the default
+// before the side mapping was corrected, so rejecting it would break existing
+// scripts and any agent carrying older docs. It must behave exactly as if the
+// flag were omitted — on the standalone path and inside +batch-update alike,
+// since +dim-insert is batchable and a divergence there would be invisible.
+func TestRetiredEnumValueMatchesOmitted(t *testing.T) {
+	t.Parallel()
+	base := []string{"--url", testURL, "--sheet-id", testSheetID, "--position", "3", "--count", "1"}
+	// Must be the registry copy: the retired-value rewrite lives in the
+	// PostMount ergonomics layer, which Shortcuts() installs and the raw
+	// exported var does not carry.
+	dimInsert := shortcutFromRegistry(t, "+dim-insert")
+
+	omitted := parseDryRunBody(t, dimInsert, base)
+	for _, val := range []string{"none", "NONE", "None"} {
+		got := parseDryRunBody(t, dimInsert, append(append([]string{}, base...), "--inherit-style", val))
+		if !reflect.DeepEqual(got, omitted) {
+			t.Fatalf("--inherit-style %s body = %v, want the omitted body %v", val, got, omitted)
+		}
+	}
+
+	t.Run("still rejects a genuinely invalid value", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+dim-insert"),
+			append(append([]string{}, base...), "--inherit-style", "banana", "--dry-run"))
+		requireValidation(t, err, `invalid value "banana"`)
+	})
+
+	t.Run("batch sub-op treats it the same", func(t *testing.T) {
+		t.Parallel()
+		sub := func(extra string) map[string]interface{} {
+			ops := `[{"shortcut":"+dim-insert","input":{"sheet-id":"sh1","position":3,"count":1` + extra + `}}]`
+			body := parseDryRunBody(t, shortcutFromRegistry(t, "+batch-update"), []string{"--url", testURL, "--operations", ops})
+			input, _ := body["input"].(string)
+			var decoded map[string]interface{}
+			if err := json.Unmarshal([]byte(input), &decoded); err != nil {
+				t.Fatalf("decode batch input: %v (raw=%s)", err, input)
+			}
+			opsOut, _ := decoded["operations"].([]interface{})
+			if len(opsOut) != 1 {
+				t.Fatalf("want 1 translated op, got %v", decoded["operations"])
+			}
+			first, _ := opsOut[0].(map[string]interface{})
+			return first
+		}
+		if got, want := sub(`,"inherit-style":"none"`), sub(""); !reflect.DeepEqual(got, want) {
+			t.Fatalf("batch sub-op with none = %v, want the omitted form %v", got, want)
+		}
+	})
 }
 
 // TestDimFreezeLegacyNote pins WHERE the phase-1 deprecation steer appears.

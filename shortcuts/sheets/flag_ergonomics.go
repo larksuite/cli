@@ -304,6 +304,41 @@ var enumAliases = map[string]string{
 	"clip": "word-clip",
 }
 
+// DEPRECATED(phase-2): enum values this CLI used to accept and now expresses
+// by omitting the flag. They are dropped from the published enum so the docs
+// and --help stop teaching them, but a caller that still passes one must not
+// hard-fail: the value was valid — for --inherit-style it was even the
+// DEFAULT — so existing scripts and any agent carrying older docs would break
+// on a spelling that never meant anything else.
+//
+// Semantics: a retired value is cleared, making the call identical to omitting
+// the flag (pinned by TestRetiredEnumValueMatchesOmitted). It is deliberately
+// silent — unlike --dimension/--count there is nothing for the caller to
+// migrate to, so a note would only be noise.
+//
+// Phase 2 removal: drop the entry here and let the normal enum error apply.
+var retiredEnumValues = map[string]map[string][]string{
+	// +dim-insert --inherit-style dropped "none" when the side mapping was
+	// corrected: no inheritance is what omitting the flag already means, so
+	// the value was pure redundancy.
+	"+dim-insert": {"inherit-style": {"none"}},
+}
+
+// isRetiredEnumValue reports whether val is a retired spelling for this
+// command's flag, i.e. one that should be cleared rather than rejected.
+func isRetiredEnumValue(command, flag, val string) bool {
+	byFlag, ok := retiredEnumValues[command]
+	if !ok {
+		return false
+	}
+	for _, retired := range byFlag[flag] {
+		if strings.EqualFold(retired, val) {
+			return true
+		}
+	}
+	return false
+}
+
 // canonicalEnumValue returns the enum entry an off-vocabulary value
 // unambiguously means — exact case-insensitive match first, then the
 // cross-vocabulary alias table. Unlike an edit-distance guess, the result
@@ -386,6 +421,10 @@ func chainEnumNormalization(cmd *cobra.Command) {
 			}
 			if canon := canonicalEnumValue(val, df.Enum); canon != "" {
 				c.Flags().Set(df.Name, canon)
+				continue
+			}
+			if isRetiredEnumValue(cmd.Name(), df.Name, val) {
+				c.Flags().Set(df.Name, "")
 				continue
 			}
 			verr := common.ValidationErrorf("invalid value %q for --%s, allowed: %s",
