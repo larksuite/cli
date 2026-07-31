@@ -154,7 +154,16 @@ func TestEmitReadResult_ReceiptStatesCompleteness(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			t.Chdir(dir)
+			// os.Chdir + Cleanup rather than t.Chdir: the latter is Go 1.24,
+			// and go.mod declares 1.23.0 (CI resolves its toolchain from it).
+			orig, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("getwd: %v", err)
+			}
+			if err := os.Chdir(dir); err != nil {
+				t.Fatalf("chdir: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(orig) })
 			stub := &httpmock.Stub{
 				Method: "POST",
 				URL:    "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",

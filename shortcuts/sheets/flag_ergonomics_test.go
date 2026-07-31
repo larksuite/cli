@@ -512,9 +512,9 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			wantHint: []string{"--position", "--count"},
 		},
 		{
-			command:  "+dim-freeze",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--frozen-rows", "2"},
-			wrong:    "--frozen-rows",
+			command: "+dim-freeze",
+			args:    []string{"--url", testURL, "--sheet-name", "s", "--frozen-rows", "2"},
+			wrong:   "--frozen-rows",
 			// Must prescribe the CURRENT spelling: --dimension/--count is
 			// retired and hidden from --help, so a hint naming it would point at
 			// a flag missing from the same error's valid-flags list.
@@ -546,8 +546,8 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			wantHint: []string{"--cells", "+workbook-create"},
 		},
 		{
-			command:  "+dim-freeze",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--frozen-row-count", "1"},
+			command:    "+dim-freeze",
+			args:       []string{"--url", testURL, "--sheet-name", "s", "--frozen-row-count", "1"},
 			wrong:      "--frozen-row-count",
 			wantHint:   []string{"--rows N"},
 			rejectHint: []string{"--dimension", "--count"},
@@ -555,8 +555,8 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 		{
 			// The parse error reports the flag as typed: the underscore
 			// spelling must hit the same curated entry as the hyphenated one.
-			command:  "+dim-freeze",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--frozen_rows", "2"},
+			command:    "+dim-freeze",
+			args:       []string{"--url", testURL, "--sheet-name", "s", "--frozen_rows", "2"},
 			wrong:      "--frozen_rows",
 			wantHint:   []string{"--rows N"},
 			rejectHint: []string{"--dimension", "--count"},
