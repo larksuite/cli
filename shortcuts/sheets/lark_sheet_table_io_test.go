@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1685,5 +1686,68 @@ func TestValidColumnType_AcceptsEmpty(t *testing.T) {
 	}
 	if validColumnType("float") {
 		t.Error(`validColumnType("float") = true, want false`)
+	}
+}
+
+// TestTableGet_CharBudgetSpansTheWholeWorkbook pins that --max-chars bounds the
+// WHOLE multi-sheet read, not each sheet independently.
+//
+// The cap is a memory guard on a non-streaming path, so letting every sheet
+// spend it in full would let a 30-sheet workbook pull 30x what the caller
+// allowed — quietly, since each individual request looks compliant. The clamp
+// that prevents it (charBudget in readSheetAsSpec) was unpinned: removing it
+// passed the entire suite, because the outer loop's exhaustion check is a
+// separate mechanism and keeps working.
+//
+// Asserted on the wire: sheet 2's request must ask for less than sheet 1's.
+func TestTableGet_CharBudgetSpansTheWholeWorkbook(t *testing.T) {
+	t.Parallel()
+
+	const budget = 40000
+	structure := toolOutputStub(testToken, "read", `{"sheets":[`+
+		`{"sheet_id":"sh1","sheet_name":"S1","row_count":50,"column_count":3,"index":0},`+
+		`{"sheet_id":"sh2","sheet_name":"S2","row_count":50,"column_count":3,"index":1}`+
+		`]}`)
+
+	// One reusable stub answers both the current-region probes and the cell
+	// reads; every captured body is inspected below.
+	payload := `{"current_region":"A1:B2","ranges":[{"cells":[` +
+		`[{"value":"col1"},{"value":"col2"}],` +
+		`[{"value":"a"},{"value":"b"}]` +
+		`]}]}`
+	reads := toolOutputStub(testToken, "read", payload)
+	reads.Reusable = true
+
+	out, err := runShortcutWithStubs(t, TableGet,
+		[]string{"--url", testURL, "--max-chars", strconv.Itoa(budget)}, structure, reads)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	var caps []int
+	for _, body := range reads.CapturedBodies {
+		var wire struct {
+			ToolName string `json:"tool_name"`
+			Input    string `json:"input"`
+		}
+		if json.Unmarshal(body, &wire) != nil || wire.ToolName != "get_cell_ranges" {
+			continue
+		}
+		var input struct {
+			MaxChars int `json:"max_chars"`
+		}
+		if json.Unmarshal([]byte(wire.Input), &input) != nil || input.MaxChars == 0 {
+			continue
+		}
+		caps = append(caps, input.MaxChars)
+	}
+	if len(caps) < 2 {
+		t.Fatalf("want a cell read per sheet, captured caps = %v", caps)
+	}
+	if caps[0] > budget {
+		t.Errorf("first sheet asked for max_chars=%d, over the %d budget", caps[0], budget)
+	}
+	if caps[1] >= caps[0] {
+		t.Errorf("second sheet asked for max_chars=%d, not reduced by what the first consumed (%d) — the budget is per-workbook, not per-sheet", caps[1], caps[0])
 	}
 }

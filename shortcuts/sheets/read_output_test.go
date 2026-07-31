@@ -4,7 +4,10 @@
 package sheets
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/larksuite/cli/extension/fileio"
@@ -114,4 +117,89 @@ func cellsGetToolInput(t *testing.T, extra []string) map[string]interface{} {
 	t.Helper()
 	args := append([]string{"--url", testURL, "--sheet-name", "S1", "--range", "A1:B2"}, extra...)
 	return decodeToolInput(t, parseDryRunBody(t, CellsGet, args), "get_cell_ranges")
+}
+
+// TestEmitReadResult_ReceiptStatesCompleteness drives a real --output-path read
+// end to end and checks the stdout receipt against the payload written to disk.
+//
+// The receipt is the ONLY completeness signal a caller gets on this path — the
+// data went to a file, stdout carries just the summary — and the skill docs
+// instruct agents to read `complete` before using the file. Nothing was pinning
+// it: hard-coding complete:true passed the whole suite, which is exactly the
+// failure that makes an agent analyze half a sheet believing it has all of it.
+//
+// Not parallel: t.Chdir scopes the relative --output-path to a temp dir.
+func TestEmitReadResult_ReceiptStatesCompleteness(t *testing.T) {
+	cases := []struct {
+		name         string
+		output       string
+		wantComplete bool
+	}{
+		{
+			name:         "clean read reports complete",
+			output:       `{"ranges":[{"range":"A1:B2","values":[["x","y"]]}]}`,
+			wantComplete: true,
+		},
+		{
+			name:         "per-range truncation flag reports incomplete",
+			output:       `{"ranges":[{"range":"A1:B2","truncated":true,"values":[["x","y"]]}]}`,
+			wantComplete: false,
+		},
+		{
+			name:         "top-level has_more reports incomplete",
+			output:       `{"has_more":true,"ranges":[{"range":"A1:B2","values":[["x","y"]]}]}`,
+			wantComplete: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			stub := &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "ok",
+					"data": map[string]interface{}{"output": tc.output},
+				},
+			}
+			stdout, err := runShortcutWithStubs(t, CellsGet, []string{
+				"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2",
+				"--output-path", "out.json", "--as", "user",
+			}, stub)
+			if err != nil {
+				t.Fatalf("read failed: %v", err)
+			}
+			receipt := decodeEnvelopeData(t, stdout)
+			if got := receipt["complete"]; got != tc.wantComplete {
+				t.Errorf("complete = %v, want %v (receipt=%v)", got, tc.wantComplete, receipt)
+			}
+			if !tc.wantComplete {
+				if receipt["truncated"] != true {
+					t.Errorf("an incomplete receipt must also set truncated:true, got %v", receipt)
+				}
+				if w, _ := receipt["truncation_warning"].(string); w == "" {
+					t.Error("an incomplete receipt must carry a truncation_warning telling the caller what to do")
+				}
+			} else if _, has := receipt["truncated"]; has {
+				t.Errorf("a complete receipt must not carry a truncation marker, got %v", receipt)
+			}
+
+			// The file must actually hold the payload, not the receipt.
+			written, readErr := os.ReadFile(filepath.Join(dir, "out.json"))
+			if readErr != nil {
+				t.Fatalf("output file not written: %v", readErr)
+			}
+			var payload map[string]interface{}
+			if err := json.Unmarshal(written, &payload); err != nil {
+				t.Fatalf("output file is not JSON: %v", err)
+			}
+			if _, has := payload["ranges"]; !has {
+				t.Errorf("file should hold the data payload, got %s", written)
+			}
+			if n, _ := receipt["bytes_written"].(float64); int(n) != len(written) {
+				t.Errorf("bytes_written = %v, file is %d bytes", receipt["bytes_written"], len(written))
+			}
+		})
+	}
 }

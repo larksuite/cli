@@ -282,6 +282,102 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 			t.Fatalf("range = %v, want A1:F5", input["range"])
 		}
 	})
+
+	// The cases above all pin that adjacent ranges DO fuse. The dangerous
+	// direction is the other one: coalescing rewrites a declarative spec into
+	// bigger rectangles, so a too-generous adjacency rule would paint cells the
+	// caller never named — silently, and only visible in the finished sheet.
+	// Widening the `+1` touch test in union() to `+2` passes every test above.
+	t.Run("a one-row gap is not fused across", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": []interface{}{
+				map[string]interface{}{"range": "A1:C1", "font_weight": "bold"},
+				map[string]interface{}{"range": "A3:C3", "font_weight": "bold"},
+			}}},
+		}), testToken)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(ops) != 2 {
+			t.Fatalf("ops=%d, want 2 — row 2 was never named and must not be styled", len(ops))
+		}
+	})
+
+	t.Run("a one-column gap is not fused across", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": []interface{}{
+				map[string]interface{}{"range": "A1:B5", "font_weight": "bold"},
+				map[string]interface{}{"range": "D1:E5", "font_weight": "bold"},
+			}}},
+		}), testToken)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(ops) != 2 {
+			t.Fatalf("ops=%d, want 2 — column C was never named and must not be styled", len(ops))
+		}
+	})
+
+	// The general property behind both: whatever coalescing does to the shape
+	// of the stamps, the SET of cells it covers must be exactly the set the
+	// caller named. Checked over a mix of touching, overlapping and separated
+	// rectangles so it constrains the merge rule rather than one example.
+	t.Run("coverage is preserved exactly", func(t *testing.T) {
+		t.Parallel()
+		inputs := []string{
+			"A1:C1", "A2:C2", // touching vertically -> may fuse
+			"E1:F2", "E3:F4", // touching vertically, different block
+			"A5:C5", // separated from A2:C2 by row 3-4 in columns A-C
+			"B2:D3", // overlaps the first block
+			"H10:H10",
+		}
+		entries := make([]interface{}, 0, len(inputs))
+		for _, r := range inputs {
+			entries = append(entries, map[string]interface{}{"range": r, "font_weight": "bold"})
+		}
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": entries}},
+		}), testToken)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := map[[2]int]bool{}
+		for _, r := range inputs {
+			addRangeCells(t, want, r)
+		}
+		got := map[[2]int]bool{}
+		for _, op := range ops {
+			input := op.(map[string]interface{})["input"].(map[string]interface{})
+			addRangeCells(t, got, input["range"].(string))
+		}
+		for cell := range want {
+			if !got[cell] {
+				t.Errorf("cell %v was named but no stamp covers it", cell)
+			}
+		}
+		for cell := range got {
+			if !want[cell] {
+				t.Errorf("cell %v is stamped but was never named by the caller", cell)
+			}
+		}
+	})
+}
+
+// addRangeCells records every (col,row) an A1 rectangle covers, so a test can
+// compare what a spec named against what the expanded stamps actually touch.
+func addRangeCells(t *testing.T, set map[[2]int]bool, rangeStr string) {
+	t.Helper()
+	c1, r1, c2, r2, err := workbookCreateStyleRangeBounds(rangeStr)
+	if err != nil {
+		t.Fatalf("bad range %q in test data: %v", rangeStr, err)
+	}
+	for c := c1; c <= c2; c++ {
+		for r := r1; r <= r2; r++ {
+			set[[2]int{c, r}] = true
+		}
+	}
 }
 
 // TestTypedCellsHabitualKeys pins the typed --cells cell-object fixes
