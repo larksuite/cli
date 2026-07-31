@@ -247,8 +247,12 @@ var CellsBatchSetStyle = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		// Phase-1 deprecation (docs already point at +styles-put): keep the
-		// command working, steer new usage to the superset in-band.
+		// DEPRECATED(phase-2): +cells-batch-set-style — replaced by +styles-put.
+		// Phase 1 (here): the command keeps working and is already retired from
+		// the skill docs via bundle.json doc_hidden_shortcuts in
+		// sheet-skill-spec; steer new usage to the superset in-band.
+		// Phase 2 removal: drop the shortcut from spec-tables + its
+		// doc_hidden_shortcuts entry, then this command and its input builder.
 		fmt.Fprintln(runtime.IO().ErrOut,
 			"note: +cells-batch-set-style is superseded by +styles-put (one spec covers styles + merges + row/col sizes + freeze); prefer +styles-put for new work")
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", input)
