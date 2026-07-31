@@ -5,10 +5,6 @@ package events_test
 
 import (
 	"testing"
-
-	event "github.com/larksuite/cli/internal/event"
-
-	_ "github.com/larksuite/cli/events"
 )
 
 // expectedKeys is the frozen catalog baseline. Adding, removing, or renaming
@@ -43,7 +39,7 @@ var expectedKeys = []string{
 }
 
 func TestRegisteredKeys_MatchFrozenBaseline(t *testing.T) {
-	all := event.ListAll()
+	all := compileRealCatalog(t).Definitions()
 	if len(all) == 0 {
 		t.Fatal("no EventKeys registered; the gate scanned nothing")
 	}

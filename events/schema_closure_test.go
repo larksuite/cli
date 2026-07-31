@@ -12,8 +12,6 @@ import (
 
 	event "github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/processing"
-
-	_ "github.com/larksuite/cli/events"
 )
 
 // closureAPIClient answers any API call with a benign error: a handler facing
@@ -35,7 +33,7 @@ func TestAllKeys_MalformedPayloadStaysSchemaClosed(t *testing.T) {
 	const wantProcessedKeys = 13
 
 	processed := 0
-	for _, def := range event.ListAll() {
+	for _, def := range compileRealCatalog(t).Definitions() {
 		if def.Process == nil {
 			continue
 		}

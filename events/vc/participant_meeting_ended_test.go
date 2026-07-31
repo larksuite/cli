@@ -6,7 +6,6 @@ package vc
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 	"time"
 
@@ -14,17 +13,10 @@ import (
 	"github.com/larksuite/cli/internal/event/processing"
 )
 
-func TestMain(m *testing.M) {
-	for _, k := range Keys() {
-		event.RegisterKey(k)
-	}
-	os.Exit(m.Run())
-}
-
 func TestVCKeys_ProcessedMeetingEndedRegistered(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeMeetingEnded)
+	def, ok := lookupCompiledDef(t, eventTypeMeetingEnded)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeMeetingEnded)
 	}
@@ -142,7 +134,7 @@ func TestProcessVCParticipantMeetingEnded_MalformedPayload(t *testing.T) {
 func TestVCParticipantMeetingEnded_PreConsumeSubscriptionLifecycle(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup("vc.meeting.participant_meeting_ended_v1")
+	def, ok := lookupCompiledDef(t, "vc.meeting.participant_meeting_ended_v1")
 	if !ok {
 		t.Fatal("vc.meeting.participant_meeting_ended_v1 should be registered via Keys()")
 	}

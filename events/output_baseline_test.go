@@ -16,8 +16,6 @@ import (
 	"time"
 
 	event "github.com/larksuite/cli/internal/event"
-
-	_ "github.com/larksuite/cli/events"
 )
 
 var updateBaseline = flag.Bool("update-baseline", false,
@@ -313,7 +311,7 @@ func TestProcessedOutputBaseline(t *testing.T) {
 	got := map[string]json.RawMessage{}
 	seenFixtures := map[string]bool{}
 
-	for _, def := range event.ListAll() {
+	for _, def := range compileRealCatalog(t).Definitions() {
 		if def.Process == nil {
 			continue
 		}

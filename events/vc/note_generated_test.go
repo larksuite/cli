@@ -16,7 +16,7 @@ import (
 func TestVCKeys_ProcessedNoteGeneratedRegistered(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeNoteGenerated)
+	def, ok := lookupCompiledDef(t, eventTypeNoteGenerated)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeNoteGenerated)
 	}
@@ -114,7 +114,7 @@ func TestProcessVCNoteGenerated(t *testing.T) {
 func TestVCNoteGenerated_PreConsumeSubscriptionLifecycle(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeNoteGenerated)
+	def, ok := lookupCompiledDef(t, eventTypeNoteGenerated)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeNoteGenerated)
 	}

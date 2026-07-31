@@ -6,7 +6,6 @@ package im
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 	"time"
 
@@ -14,15 +13,8 @@ import (
 	"github.com/larksuite/cli/internal/event/processing"
 )
 
-func TestMain(m *testing.M) {
-	for _, k := range Keys() {
-		event.RegisterKey(k)
-	}
-	os.Exit(m.Run())
-}
-
 func TestIMKeys_ProcessedReceiveRegistered(t *testing.T) {
-	def, ok := event.Lookup("im.message.receive_v1")
+	def, ok := lookupCompiledDef(t, "im.message.receive_v1")
 	if !ok {
 		t.Fatal("im.message.receive_v1 should be registered via Keys()")
 	}
@@ -54,7 +46,7 @@ func TestIMKeys_NativeEventsRegistered(t *testing.T) {
 		"im.chat.disbanded_v1",
 	}
 	for _, k := range want {
-		def, ok := event.Lookup(k)
+		def, ok := lookupCompiledDef(t, k)
 		if !ok {
 			t.Errorf("%s should be registered via Keys()", k)
 			continue

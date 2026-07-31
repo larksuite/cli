@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -36,17 +35,10 @@ func assertSubscriptionRequest(t *testing.T, gotBody any, wantEventType string) 
 	}
 }
 
-func TestMain(m *testing.M) {
-	for _, k := range Keys() {
-		event.RegisterKey(k)
-	}
-	os.Exit(m.Run())
-}
-
 func TestMinutesKeys_ProcessedMinuteGeneratedRegistered(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeMinuteGenerated)
+	def, ok := lookupCompiledDef(t, eventTypeMinuteGenerated)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeMinuteGenerated)
 	}
@@ -275,7 +267,7 @@ func TestProcessMinutesMinuteGenerated_EmptyTitleExhaustsRetries(t *testing.T) {
 func TestMinutesMinuteGenerated_PreConsumeSubscriptionLifecycle(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeMinuteGenerated)
+	def, ok := lookupCompiledDef(t, eventTypeMinuteGenerated)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeMinuteGenerated)
 	}

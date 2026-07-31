@@ -14,7 +14,7 @@ import (
 )
 
 func TestCardActionTriggerRegistered(t *testing.T) {
-	def, ok := event.Lookup("card.action.trigger")
+	def, ok := lookupCompiledDef(t, "card.action.trigger")
 	if !ok {
 		t.Fatal("card.action.trigger should be registered via Keys()")
 	}

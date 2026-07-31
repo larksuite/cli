@@ -25,7 +25,7 @@ func TestVCKeys_ProcessedMeetingLifecycleRegistered(t *testing.T) {
 		{eventTypeMeetingJoined, reflect.TypeOf(VCParticipantMeetingJoinedOutput{})},
 	} {
 		t.Run(tc.eventType, func(t *testing.T) {
-			def, ok := event.Lookup(tc.eventType)
+			def, ok := lookupCompiledDef(t, tc.eventType)
 			if !ok {
 				t.Fatalf("%s should be registered via Keys()", tc.eventType)
 			}
@@ -209,7 +209,7 @@ func TestVCParticipantMeetingLifecycle_PreConsumeSubscriptionLifecycle(t *testin
 
 	for _, eventType := range []string{eventTypeMeetingStarted, eventTypeMeetingJoined} {
 		t.Run(eventType, func(t *testing.T) {
-			def, ok := event.Lookup(eventType)
+			def, ok := lookupCompiledDef(t, eventType)
 			if !ok {
 				t.Fatalf("%s should be registered via Keys()", eventType)
 			}

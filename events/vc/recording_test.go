@@ -26,7 +26,7 @@ func TestVCKeys_RecordingEventsRegistered(t *testing.T) {
 		{eventTypeRecordingEnded},
 	} {
 		t.Run(tc.eventType, func(t *testing.T) {
-			def, ok := event.Lookup(tc.eventType)
+			def, ok := lookupCompiledDef(t, tc.eventType)
 			if !ok {
 				t.Fatalf("%s should be registered via Keys()", tc.eventType)
 			}
@@ -392,7 +392,7 @@ func TestVCRecording_PreConsumeSubscriptionLifecycle(t *testing.T) {
 		{eventTypeRecordingEnded},
 	} {
 		t.Run(tc.eventType, func(t *testing.T) {
-			def, ok := event.Lookup(tc.eventType)
+			def, ok := lookupCompiledDef(t, tc.eventType)
 			if !ok {
 				t.Fatalf("%s should be registered via Keys()", tc.eventType)
 			}
