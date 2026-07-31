@@ -65,10 +65,11 @@ func TestPublishPopulatesEventIDAndSourceTime(t *testing.T) {
 	h.RegisterAndIsFirst(c)
 
 	const eid = "test-event-id-123"
+	observed := time.UnixMilli(1234567890123)
 	h.Publish(&event.RawEvent{
 		EventID:   eid,
 		EventType: "t",
-		Timestamp: time.UnixMilli(1234567890123),
+		Timestamp: observed,
 	})
 
 	msg := <-c.SendCh()
@@ -76,8 +77,13 @@ func TestPublishPopulatesEventIDAndSourceTime(t *testing.T) {
 	if ev.EventID != eid {
 		t.Errorf("expected EventID %q, got %q", eid, ev.EventID)
 	}
-	if ev.SourceTime != "1234567890123" {
-		t.Errorf("expected SourceTime \"1234567890123\", got %q", ev.SourceTime)
+	// The upstream never sent create_time, so source_time must stay empty on
+	// the wire — the local arrival clock travels separately as observed_at.
+	if ev.SourceTime != "" {
+		t.Errorf("SourceTime must stay empty without upstream create_time, got %q", ev.SourceTime)
+	}
+	if want := observed.Format(time.RFC3339Nano); ev.ObservedAt != want {
+		t.Errorf("ObservedAt: got %q, want %q", ev.ObservedAt, want)
 	}
 }
 
@@ -106,7 +112,9 @@ func TestPublishSourceTimeTakesPrecedence(t *testing.T) {
 	}
 }
 
-func TestPublishSourceTimeFallback(t *testing.T) {
+// A missing upstream create_time is a fact worth preserving: substituting the
+// local clock would let a local observation masquerade as upstream intent.
+func TestPublishMissingSourceTimeStaysEmpty(t *testing.T) {
 	h := NewHub()
 	server, client := testNetPipe(t)
 	defer server.Close()
@@ -123,8 +131,8 @@ func TestPublishSourceTimeFallback(t *testing.T) {
 
 	msg := <-c.SendCh()
 	ev := msg.(*protocol.Event)
-	if ev.SourceTime != "42" {
-		t.Errorf("SourceTime fallback: got %q, want %q", ev.SourceTime, "42")
+	if ev.SourceTime != "" {
+		t.Errorf("SourceTime: got %q, want empty when upstream omitted create_time", ev.SourceTime)
 	}
 }
 
