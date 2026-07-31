@@ -83,6 +83,8 @@ func (s *FeishuSource) buildRawHandler(emit func(*event.RawEvent)) func(context.
 				EventID    string `json:"event_id"`
 				EventType  string `json:"event_type"`
 				CreateTime string `json:"create_time"`
+				AppID      string `json:"app_id"`
+				TenantKey  string `json:"tenant_key"`
 			} `json:"header"`
 		}
 		if err := json.Unmarshal(e.Body, &envelope); err != nil {
@@ -106,6 +108,8 @@ func (s *FeishuSource) buildRawHandler(emit func(*event.RawEvent)) func(context.
 			EventID:    envelope.Header.EventID,
 			EventType:  envelope.Header.EventType,
 			SourceTime: envelope.Header.CreateTime,
+			AppID:      envelope.Header.AppID,
+			TenantKey:  envelope.Header.TenantKey,
 			Payload:    json.RawMessage(e.Body),
 			Timestamp:  time.Now(),
 		})
