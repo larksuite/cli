@@ -14,8 +14,23 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/protocol"
 )
+
+// compileBusTestSnapshot compiles synthetic declarations into the snapshot a
+// bus under test serves, replacing the removed global registry.
+func compileBusTestSnapshot(t *testing.T, defs ...event.KeyDefinition) *catalog.Snapshot {
+	t.Helper()
+	snap, err := catalog.Compile(defs, catalog.StrategyRefs{
+		catalog.StrategyNone,
+		catalog.StrategyLegacyPreConsume,
+	})
+	if err != nil {
+		t.Fatalf("compile test catalog: %v", err)
+	}
+	return snap
+}
 
 // HelloAck write failure must unregister the conn from hub and bus before returning.
 func TestHandleHello_HelloAckWriteFailureUnregisters(t *testing.T) {
@@ -27,6 +42,7 @@ func TestHandleHello_HelloAckWriteFailureUnregisters(t *testing.T) {
 		conns:      make(map[*Conn]struct{}),
 		idleTimer:  time.NewTimer(30 * time.Second),
 		shutdownCh: make(chan struct{}, 1),
+		snapshot:   compileBusTestSnapshot(t),
 	}
 
 	server, client := net.Pipe()
@@ -78,6 +94,7 @@ func TestHandleHello_LegacyClient_FallsBackToEventKey(t *testing.T) {
 		conns:      make(map[*Conn]struct{}),
 		idleTimer:  time.NewTimer(30 * time.Second),
 		shutdownCh: make(chan struct{}, 1),
+		snapshot:   compileBusTestSnapshot(t),
 	}
 
 	server, client := net.Pipe()
@@ -143,6 +160,7 @@ func TestHandleHello_ModernClient_UsesSubscriptionID(t *testing.T) {
 		conns:      make(map[*Conn]struct{}),
 		idleTimer:  time.NewTimer(30 * time.Second),
 		shutdownCh: make(chan struct{}, 1),
+		snapshot:   compileBusTestSnapshot(t),
 	}
 
 	server, client := net.Pipe()
@@ -202,13 +220,12 @@ func TestHandleHello_ModernClient_UsesSubscriptionID(t *testing.T) {
 // the first consumer and rejects the second for the same SubscriptionID.
 func TestHandleHello_SingleConsumerRejectsSecond(t *testing.T) {
 	const key = "test.handlehello.exclusive"
-	event.RegisterKey(event.KeyDefinition{
+	snap := compileBusTestSnapshot(t, event.KeyDefinition{
 		Key:            key,
 		EventType:      key,
 		SingleConsumer: true,
 		Schema:         event.SchemaDef{Native: &event.SchemaSpec{Raw: []byte(`{"type":"object"}`)}},
 	})
-	defer event.UnregisterKeyForTest(key)
 
 	logger := log.New(io.Discard, "", 0)
 	hub := NewHub()
@@ -218,6 +235,7 @@ func TestHandleHello_SingleConsumerRejectsSecond(t *testing.T) {
 		conns:      make(map[*Conn]struct{}),
 		idleTimer:  time.NewTimer(30 * time.Second),
 		shutdownCh: make(chan struct{}, 1),
+		snapshot:   snap,
 	}
 
 	readAck := func(t *testing.T, pid int) *protocol.HelloAck {

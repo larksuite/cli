@@ -12,17 +12,18 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/output"
 )
 
-func NewCmdList(f *cmdutil.Factory) *cobra.Command {
+func NewCmdList(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all available EventKeys",
 		Long:  "Show all registered EventKeys grouped by domain (first segment of the key). Use --json for machine-readable output.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList(f, asJSON)
+			return runList(f, snap, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the full EventKey list as JSON (for AI / scripts)")
@@ -30,12 +31,11 @@ func NewCmdList(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func runList(f *cmdutil.Factory, asJSON bool) error {
-	all := eventlib.ListAll()
-
+func runList(f *cmdutil.Factory, snap *catalog.Snapshot, asJSON bool) error {
 	if asJSON {
-		return writeListJSON(f, all)
+		return writeListJSON(f, snap)
 	}
+	all := snap.Definitions()
 
 	if len(all) == 0 {
 		// stderr so `event list | jq` doesn't ingest it as a row.
@@ -112,14 +112,14 @@ type listRow struct {
 	ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
 }
 
-func writeListJSON(f *cmdutil.Factory, all []*eventlib.KeyDefinition) error {
-	rows := make([]listRow, len(all))
-	for i, def := range all {
-		resolved, _, err := resolveSchemaJSON(def)
-		if err != nil {
-			return err
+func writeListJSON(f *cmdutil.Factory, snap *catalog.Snapshot) error {
+	entries := snap.Entries()
+	rows := make([]listRow, len(entries))
+	for i, entry := range entries {
+		rows[i] = listRow{
+			KeyDefinition:  entry.Definition(),
+			ResolvedSchema: entry.Output().SchemaJSON,
 		}
-		rows[i] = listRow{KeyDefinition: def, ResolvedSchema: resolved}
 	}
 	output.PrintJson(f.IOStreams.Out, rows)
 	return nil

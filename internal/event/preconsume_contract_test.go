@@ -35,6 +35,7 @@ import (
 
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/bus"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/consume"
 	"github.com/larksuite/cli/internal/event/protocol"
 	"github.com/larksuite/cli/internal/event/source"
@@ -53,14 +54,14 @@ type preConsumeCounters struct {
 	cleanup atomic.Int64
 }
 
-// registerContractKey registers a synthetic EventKey whose PreConsume counts
-// setups. With withCleanup, PreConsume returns a closure that counts cleanups;
+// contractKey declares a synthetic EventKey whose PreConsume counts setups.
+// With withCleanup, PreConsume returns a closure that counts cleanups;
 // without, it returns (nil, nil) — modeling keys whose server-side
 // subscription is a durable relationship with deliberately no unsubscribe.
-func registerContractKey(t *testing.T, key string, withCleanup bool) *preConsumeCounters {
-	t.Helper()
+// Callers compile the declaration into the snapshot the bus and consumers use.
+func contractKey(key string, withCleanup bool) (event.KeyDefinition, *preConsumeCounters) {
 	c := &preConsumeCounters{}
-	event.RegisterKey(event.KeyDefinition{
+	def := event.KeyDefinition{
 		Key:       key,
 		EventType: key,
 		Schema:    integNativeSchema(),
@@ -74,15 +75,26 @@ func registerContractKey(t *testing.T, key string, withCleanup bool) *preConsume
 				return nil
 			}, nil
 		},
-	})
-	t.Cleanup(func() { event.UnregisterKeyForTest(key) })
-	return c
+	}
+	return def, c
+}
+
+// resolveDef pulls the canonical definition for a key out of a compiled
+// snapshot — what the CLI entry point hands consume.Run as Options.Def.
+func resolveDef(t *testing.T, snap *catalog.Snapshot, key string) *event.KeyDefinition {
+	t.Helper()
+	entry, ok := snap.Resolve(key)
+	if !ok {
+		t.Fatalf("compiled snapshot has no entry for %s", key)
+	}
+	return entry.Definition()
 }
 
 // startContractBus runs an in-process bus on a temp-dir socket with a mock
 // source (so no real upstream connection is attempted) and returns the fake
-// transport plus the unique app id consumers must use.
-func startContractBus(t *testing.T) (*testutil.FakeTransport, string) {
+// transport plus the unique app id consumers must use. snap is the compiled
+// catalog the bus serves.
+func startContractBus(t *testing.T, snap *catalog.Snapshot) (*testutil.FakeTransport, string) {
 	t.Helper()
 	source.ResetForTest()
 	source.Register(&mockIntegSource{})
@@ -99,7 +111,7 @@ func startContractBus(t *testing.T) (*testutil.FakeTransport, string) {
 	addr := filepath.Join(sockDir, "s")
 	tr := testutil.NewWrappedFake(transport.New(), addr)
 	logger := log.New(os.Stderr, "[contract-bus] ", log.LstdFlags)
-	b := bus.NewBus(appID, "test-secret", "", tr, logger)
+	b := bus.NewBus(appID, "test-secret", "", tr, logger, snap)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	runBus(t, b, ctx)
@@ -117,14 +129,15 @@ type contractConsumer struct {
 	done   chan error
 }
 
-func startContractConsumer(t *testing.T, tr transport.IPC, appID, key, name string) *contractConsumer {
+func startContractConsumer(t *testing.T, tr transport.IPC, appID string, def *event.KeyDefinition, name string) *contractConsumer {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	h := &contractConsumer{name: name, cancel: cancel, done: make(chan error, 1)}
 	go func() {
 		h.done <- consume.Run(ctx, tr, appID, "", "", consume.Options{
-			EventKey: key,
+			EventKey: def.Key,
+			Def:      def,
 			Params:   map[string]string{},
 			Quiet:    true,
 			Out:      io.Discard,
@@ -207,17 +220,19 @@ func waitForSubscriberCount(t *testing.T, tr transport.IPC, appID string, want i
 // depends on the server-side subscription. A then exits last and runs cleanup
 // exactly once.
 func TestPreConsumeContract_NonOwnerExitsFirst(t *testing.T) {
-	tr, appID := startContractBus(t)
 	const key = "contract.nonowner.v1"
-	counters := registerContractKey(t, key, true)
+	keyDef, counters := contractKey(key, true)
+	snap := compileTestSnapshot(t, keyDef)
+	def := resolveDef(t, snap, key)
+	tr, appID := startContractBus(t, snap)
 
-	a := startContractConsumer(t, tr, appID, key, "A")
+	a := startContractConsumer(t, tr, appID, def, "A")
 	waitForSubscriberCount(t, tr, appID, 1)
 	waitForState(t, "consumer A pre-consume setup", func() bool { return counters.setup.Load() == 1 })
 
 	// A is registered and set up, so B deterministically joins as non-first
 	// and never runs PreConsume (no duplicate server-side subscription).
-	b := startContractConsumer(t, tr, appID, key, "B")
+	b := startContractConsumer(t, tr, appID, def, "B")
 	waitForSubscriberCount(t, tr, appID, 2)
 
 	// B exits while A is still connected: not last for the key, no cleanup.
@@ -253,15 +268,17 @@ func TestPreConsumeContract_NonOwnerExitsFirst(t *testing.T) {
 // every EventKey — take it through design review first, then update this
 // baseline deliberately.
 func TestPreConsumeContract_OwnerExitsFirst(t *testing.T) {
-	tr, appID := startContractBus(t)
 	const key = "contract.owner.v1"
-	counters := registerContractKey(t, key, true)
+	keyDef, counters := contractKey(key, true)
+	snap := compileTestSnapshot(t, keyDef)
+	def := resolveDef(t, snap, key)
+	tr, appID := startContractBus(t, snap)
 
-	a := startContractConsumer(t, tr, appID, key, "A")
+	a := startContractConsumer(t, tr, appID, def, "A")
 	waitForSubscriberCount(t, tr, appID, 1)
 	waitForState(t, "consumer A pre-consume setup", func() bool { return counters.setup.Load() == 1 })
 
-	b := startContractConsumer(t, tr, appID, key, "B")
+	b := startContractConsumer(t, tr, appID, def, "B")
 	waitForSubscriberCount(t, tr, appID, 2)
 
 	// Owner exits first: B is still connected, so A must NOT run cleanup —
@@ -287,15 +304,17 @@ func TestPreConsumeContract_OwnerExitsFirst(t *testing.T) {
 // never unsubscribed. Regardless of exit order, cleanup count stays 0, and
 // setup re-runs each time a consumer becomes first for the key again.
 func TestPreConsumeContract_NoCleanupKey(t *testing.T) {
-	tr, appID := startContractBus(t)
 	const key = "contract.nocleanup.v1"
-	counters := registerContractKey(t, key, false)
+	keyDef, counters := contractKey(key, false)
+	snap := compileTestSnapshot(t, keyDef)
+	def := resolveDef(t, snap, key)
+	tr, appID := startContractBus(t, snap)
 
 	// Round 1: non-owner exits first.
-	a := startContractConsumer(t, tr, appID, key, "A")
+	a := startContractConsumer(t, tr, appID, def, "A")
 	waitForSubscriberCount(t, tr, appID, 1)
 	waitForState(t, "consumer A pre-consume setup", func() bool { return counters.setup.Load() == 1 })
-	b := startContractConsumer(t, tr, appID, key, "B")
+	b := startContractConsumer(t, tr, appID, def, "B")
 	waitForSubscriberCount(t, tr, appID, 2)
 	b.stop(t)
 	waitForSubscriberCount(t, tr, appID, 1)
@@ -304,10 +323,10 @@ func TestPreConsumeContract_NoCleanupKey(t *testing.T) {
 
 	// Round 2: owner exits first. The key's consumer count dropped to zero
 	// above, so C is first for the key again and setup runs a second time.
-	c := startContractConsumer(t, tr, appID, key, "C")
+	c := startContractConsumer(t, tr, appID, def, "C")
 	waitForSubscriberCount(t, tr, appID, 1)
 	waitForState(t, "consumer C pre-consume setup", func() bool { return counters.setup.Load() == 2 })
-	d := startContractConsumer(t, tr, appID, key, "D")
+	d := startContractConsumer(t, tr, appID, def, "D")
 	waitForSubscriberCount(t, tr, appID, 2)
 	c.stop(t)
 	waitForSubscriberCount(t, tr, appID, 1)

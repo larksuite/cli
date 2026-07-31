@@ -17,11 +17,12 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/bus"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/transport"
 )
 
 // NewCmdBus creates the hidden `event _bus` daemon subcommand, forked by the consume client; fork argv lives in consume/startup.go.
-func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
+func NewCmdBus(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 	var domain string
 
 	cmd := &cobra.Command{
@@ -44,7 +45,7 @@ func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			tr := transport.New()
-			b := bus.NewBus(cfg.AppID, cfg.AppSecret, domain, tr, logger)
+			b := bus.NewBus(cfg.AppID, cfg.AppSecret, domain, tr, logger, snap)
 
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()

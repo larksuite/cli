@@ -36,7 +36,7 @@ func TestCapabilityGate_RefusesLegacyBusBeforeAnySideEffect(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			const key = "test.evt_capability_gate"
 			var setupCalls atomic.Int64
-			event.RegisterKey(event.KeyDefinition{
+			def := compileDefForTest(t, event.KeyDefinition{
 				Key:       key,
 				EventType: key,
 				Schema:    event.SchemaDef{Custom: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
@@ -45,12 +45,12 @@ func TestCapabilityGate_RefusesLegacyBusBeforeAnySideEffect(t *testing.T) {
 					return nil, nil
 				},
 			})
-			defer event.UnregisterKeyForTest(key)
 
 			tr := startLegacyBusStub(t, rawAck)
 
 			err := Run(context.Background(), tr, "cap-gate-app", "", "", Options{
 				EventKey: key,
+				Def:      def,
 				Runtime:  &fakeRT{},
 				Quiet:    true,
 			})

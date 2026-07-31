@@ -22,7 +22,11 @@ import (
 )
 
 type Options struct {
-	EventKey        string
+	EventKey string
+	// Def is the resolved declaration for EventKey. The caller resolves it
+	// from the compiled catalog; this package validates and consumes it but
+	// never looks anything up itself.
+	Def             *event.KeyDefinition
 	Params          map[string]string
 	JQExpr          string
 	Quiet           bool
@@ -45,8 +49,8 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 		errOut = os.Stderr //nolint:forbidigo // library-caller fallback
 	}
 
-	keyDef, ok := event.Lookup(opts.EventKey)
-	if !ok {
+	keyDef := opts.Def
+	if keyDef == nil {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"unknown EventKey: %s", opts.EventKey).
 			WithHint("run `lark-cli event list` to see available keys")

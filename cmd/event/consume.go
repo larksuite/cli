@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/consume"
 	"github.com/larksuite/cli/internal/event/transport"
 	"github.com/larksuite/cli/internal/output"
@@ -39,7 +40,7 @@ type consumeCmdOpts struct {
 	timeout   time.Duration
 }
 
-func NewCmdConsume(f *cmdutil.Factory) *cobra.Command {
+func NewCmdConsume(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 	var o consumeCmdOpts
 
 	cmd := &cobra.Command{
@@ -57,7 +58,7 @@ Use 'event list' to see all available EventKeys.
 Use 'event schema <EventKey>' for parameter details.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConsume(cmd, f, args[0], o)
+			return runConsume(cmd, f, snap, args[0], o)
 		},
 	}
 
@@ -76,7 +77,7 @@ Use 'event schema <EventKey>' for parameter details.`,
 	return cmd
 }
 
-func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consumeCmdOpts) error {
+func runConsume(cmd *cobra.Command, f *cmdutil.Factory, snap *catalog.Snapshot, eventKey string, o consumeCmdOpts) error {
 	// Pipe-close (e.g. `... | head -n 1`) must reach the EPIPE error path in the loop, not SIGPIPE-kill.
 	ignoreBrokenPipe()
 
@@ -90,10 +91,11 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		return err
 	}
 
-	keyDef, ok := eventlib.Lookup(eventKey)
+	entry, ok := snap.Resolve(eventKey)
 	if !ok {
-		return unknownEventKeyErr(eventKey)
+		return unknownEventKeyErr(snap, eventKey)
 	}
+	keyDef := entry.Definition()
 
 	identity, err := resolveIdentity(cmd, f, keyDef)
 	if err != nil {
@@ -206,6 +208,7 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 
 	if err := consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
 		EventKey:        eventKey,
+		Def:             keyDef,
 		Params:          paramMap,
 		JQExpr:          o.jqExpr,
 		Quiet:           o.quiet,

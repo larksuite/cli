@@ -16,6 +16,7 @@ import (
 // definition) must either appear here deliberately or be tagged `json:"-"`.
 var renderedDeclarationFields = map[string]string{
 	"key":                     "stable identifier agents subscribe by",
+	"domain":                  "declared domain override; empty for every shipped key (filtering reads the derived descriptor value), so legacy output is byte-identical",
 	"display_name":            "human-readable name for pickers",
 	"description":             "what the event means",
 	"event_type":              "upstream event type behind this key",

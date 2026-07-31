@@ -11,8 +11,6 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-
-	_ "github.com/larksuite/cli/events"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite golden files instead of comparing")
@@ -29,15 +27,16 @@ var goldenSchemaKeys = map[string]string{
 }
 
 // The golden files pin stdout byte-for-byte. The output is deterministic:
-// ListAll sorts by key, encoding/json sorts object keys, and nothing on the
-// rendering path reads the clock or randomness. Regenerate with:
+// the snapshot keeps keys sorted, encoding/json sorts object keys, and nothing
+// on the rendering path reads the clock or randomness. Regenerate with:
 //
 //	go test ./cmd/event/ -run TestGolden -update
 func TestGolden_ListOutput(t *testing.T) {
+	snap := compileCatalog()
 	for name, asJSON := range map[string]bool{"list_text": false, "list_json": true} {
 		t.Run(name, func(t *testing.T) {
 			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
-			if err := runList(f, asJSON); err != nil {
+			if err := runList(f, snap, asJSON); err != nil {
 				t.Fatalf("runList: %v", err)
 			}
 			assertGolden(t, name, stdout.String())
@@ -46,11 +45,12 @@ func TestGolden_ListOutput(t *testing.T) {
 }
 
 func TestGolden_SchemaOutput(t *testing.T) {
+	snap := compileCatalog()
 	for name, key := range goldenSchemaKeys {
 		for suffix, asJSON := range map[string]bool{"_text": false, "_json": true} {
 			t.Run(name+suffix, func(t *testing.T) {
 				f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
-				if err := runSchema(f, key, asJSON); err != nil {
+				if err := runSchema(f, snap, key, asJSON); err != nil {
 					t.Fatalf("runSchema(%s): %v", key, err)
 				}
 				assertGolden(t, name+suffix, stdout.String())

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/protocol"
 	"github.com/larksuite/cli/internal/event/transport"
 )
@@ -27,12 +28,31 @@ func (f *fakeRT) CallAPI(_ context.Context, _, _ string, _ interface{}) (json.Ra
 	return nil, f.err
 }
 
+// compileDefForTest runs a synthetic declaration through catalog compilation
+// and returns the canonical definition — what the CLI entry point hands
+// Run as Options.Def.
+func compileDefForTest(t *testing.T, def event.KeyDefinition) *event.KeyDefinition {
+	t.Helper()
+	snap, err := catalog.Compile([]catalog.KeyDefinition{def}, catalog.StrategyRefs{
+		catalog.StrategyNone,
+		catalog.StrategyLegacyPreConsume,
+	})
+	if err != nil {
+		t.Fatalf("compile test declaration: %v", err)
+	}
+	entry, ok := snap.Resolve(def.Key)
+	if !ok {
+		t.Fatalf("compiled snapshot has no entry for %s", def.Key)
+	}
+	return entry.Definition()
+}
+
 func TestNormalizeParams_ErrorIsWrappedWithEventKey(t *testing.T) {
 	// Drives the real Run() path: NormalizeParams fails before EnsureBus, so no
 	// bus is contacted, yet the production error-wrapping is exercised — if Run()
 	// ever stops wrapping, this test fails.
 	const key = "test.evt_normalize_fail"
-	event.RegisterKey(event.KeyDefinition{
+	def := compileDefForTest(t, event.KeyDefinition{
 		Key:       key,
 		EventType: key,
 		Schema:    event.SchemaDef{Custom: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
@@ -40,10 +60,10 @@ func TestNormalizeParams_ErrorIsWrappedWithEventKey(t *testing.T) {
 			return errors.New("simulated normalize failure")
 		},
 	})
-	defer event.UnregisterKeyForTest(key)
 
 	err := Run(context.Background(), transport.New(), "app", "", "", Options{
 		EventKey: key,
+		Def:      def,
 		Runtime:  &fakeRT{},
 		Quiet:    true,
 	})
