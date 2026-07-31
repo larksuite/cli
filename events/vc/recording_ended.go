@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // VCRecordingEndedOutput is the flattened shape for vc.recording.recording_ended_v1.
@@ -38,7 +39,7 @@ type recordingEndedEvent struct {
 func processVCRecordingEnded(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	envelope, ok := parseRecordingEndedEnvelope(raw)
 	if !ok {
-		return raw.Payload, nil
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 	if !isRecordingEndedBeanEvent(envelope) {
 		return nil, nil

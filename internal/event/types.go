@@ -10,6 +10,7 @@ import (
 	"reflect"
 
 	"github.com/larksuite/cli/internal/event/model"
+	"github.com/larksuite/cli/internal/event/processing"
 	"github.com/larksuite/cli/internal/event/schemas"
 )
 
@@ -22,10 +23,10 @@ const (
 // contracts. The alias keeps every existing reference compiling unchanged.
 type RawEvent = model.Event
 
-// APIClient: identity is opaque so business code can't bypass pre-flight checks.
-type APIClient interface {
-	CallAPI(ctx context.Context, method, path string, body interface{}) (json.RawMessage, error)
-}
+// APIClient is the narrow API surface handed to domain hooks; see
+// processing.APIClient for the contract. The alias keeps existing references
+// compiling unchanged.
+type APIClient = processing.APIClient
 
 type ParamType string
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // CardActionTriggerOutput is the flattened shape for card.action.trigger.
@@ -64,7 +65,7 @@ func processCardAction(ctx context.Context, rt event.APIClient, raw *event.RawEv
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
 	actionValue := marshalToString(envelope.Event.Action.Value)

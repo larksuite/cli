@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // VCRecordingStartedOutput is the flattened shape for vc.recording.recording_started_v1.
@@ -38,7 +39,7 @@ type recordingStartedEvent struct {
 func processVCRecordingStarted(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	envelope, ok := parseRecordingStartedEnvelope(raw)
 	if !ok {
-		return raw.Payload, nil
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 	if !isRecordingStartedBeanEvent(envelope) {
 		return nil, nil

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // BotMenuOutput is the flattened shape for application.bot.menu_v6.
@@ -50,7 +51,7 @@ func processBotMenu(_ context.Context, _ event.APIClient, raw *event.RawEvent, _
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
 	menuTimestamp := timestampMillisString(envelope.Event.Timestamp)

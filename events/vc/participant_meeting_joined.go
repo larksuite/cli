@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // VCParticipantMeetingJoinedOutput is the flattened shape for vc.meeting.participant_meeting_joined_v1.
@@ -41,7 +42,7 @@ func processVCParticipantMeetingJoined(_ context.Context, _ event.APIClient, raw
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
 	meeting := envelope.Event.Meeting

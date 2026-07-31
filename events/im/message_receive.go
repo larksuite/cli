@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
 )
 
@@ -68,7 +69,7 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
 	msg := envelope.Event.Message

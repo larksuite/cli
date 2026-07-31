@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // VCRecordingTranscriptItemOutput is one flattened transcript item for recording events.
@@ -63,7 +64,7 @@ type recordingTranscriptGeneratedString string
 func processVCRecordingTranscriptGenerated(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	envelope, ok := parseRecordingTranscriptGeneratedEnvelope(raw)
 	if !ok {
-		return raw.Payload, nil
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 	if !isRecordingTranscriptGeneratedBeanEvent(envelope) {
 		return nil, nil

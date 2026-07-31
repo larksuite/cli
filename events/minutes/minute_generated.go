@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -50,7 +51,7 @@ func processMinutesMinuteGenerated(ctx context.Context, rt event.APIClient, raw 
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
 	out := &MinutesMinuteGeneratedOutput{

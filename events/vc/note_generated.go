@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -52,7 +53,7 @@ func processVCNoteGenerated(ctx context.Context, rt event.APIClient, raw *event.
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
 	out := &VCNoteGeneratedOutput{

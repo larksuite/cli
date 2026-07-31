@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 func TestMain(m *testing.M) {
@@ -130,11 +131,11 @@ func TestProcessVCParticipantMeetingEnded_MalformedPayload(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 	got, err := processVCParticipantMeetingEnded(context.Background(), nil, raw, nil)
-	if err != nil {
-		t.Fatalf("Process should swallow parse errors, got %v", err)
+	if !processing.IsDropMalformed(err) {
+		t.Fatalf("malformed payload must be dropped with a malformed marker, got err=%v", err)
 	}
-	if string(got) != "not json" {
-		t.Errorf("malformed fallback output = %q, want original bytes", string(got))
+	if got != nil {
+		t.Errorf("malformed payload must be dropped without output, got %q", string(got))
 	}
 }
 
