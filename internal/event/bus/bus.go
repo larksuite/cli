@@ -325,7 +325,7 @@ func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.H
 	}
 	b.mu.Unlock()
 
-	ack := protocol.NewHelloAck("v1", firstForKey)
+	ack := protocol.NewHelloAck("v1", firstForKey, protocol.CapabilityCanonicalMetadataV1)
 	// writeFrame shares writeMu with every other write; bc.Close on failure unwinds hub+bus registration via onClose.
 	if err := bc.writeFrame(ack); err != nil {
 		b.logger.Printf("WARN: hello_ack write to pid=%d key=%q failed: %v (rejecting connection)",

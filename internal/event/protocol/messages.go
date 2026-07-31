@@ -47,12 +47,22 @@ type Hello struct {
 	SubscriptionID string   `json:"subscription_id,omitempty"` // empty = fallback to EventKey on bus side
 }
 
+// CapabilityCanonicalMetadataV1 declares that every event frame this bus
+// publishes carries the full canonical metadata set (event id, source time,
+// tenant identity, observation time). Consumers that depend on those facts
+// verify the capability on the delivery connection's ack and refuse to attach
+// to a bus that cannot provide them.
+const CapabilityCanonicalMetadataV1 = "canonical_metadata_v1"
+
 type HelloAck struct {
 	Type         string `json:"type"`
 	BusVersion   string `json:"bus_version"`
 	FirstForKey  bool   `json:"first_for_key"`
 	Rejected     bool   `json:"rejected,omitempty"`
 	RejectReason string `json:"reject_reason,omitempty"`
+	// Capabilities is additive: an older bus simply never sends it, which is
+	// exactly the signal consumers use to reject the attach.
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 // Event: Seq is per-conn monotonic; gaps signal bus drop-oldest backpressure loss.
@@ -124,11 +134,12 @@ func NewHello(pid int, eventKey string, eventTypes []string, version string, sub
 	}
 }
 
-func NewHelloAck(busVersion string, firstForKey bool) *HelloAck {
+func NewHelloAck(busVersion string, firstForKey bool, capabilities ...string) *HelloAck {
 	return &HelloAck{
-		Type:        MsgTypeHelloAck,
-		BusVersion:  busVersion,
-		FirstForKey: firstForKey,
+		Type:         MsgTypeHelloAck,
+		BusVersion:   busVersion,
+		FirstForKey:  firstForKey,
+		Capabilities: capabilities,
 	}
 }
 

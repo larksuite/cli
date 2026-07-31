@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -106,6 +107,13 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 	if rejErr := rejectionError(ack, opts.EventKey); rejErr != nil {
 		return rejErr
 	}
+	// The capability check must run before any side effect (pre-consume setup,
+	// worker start): attaching to a bus that cannot deliver full canonical
+	// metadata would silently emit events with missing ids, times, and tenant
+	// identity instead of failing visibly.
+	if capErr := capabilityError(ack, opts.EventKey); capErr != nil {
+		return capErr
+	}
 
 	var cleanup func() error
 	if ack.FirstForKey && keyDef.PreConsume != nil {
@@ -184,6 +192,19 @@ func rejectionError(ack *protocol.HelloAck, eventKey string) error {
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
 		"cannot start consumer: %s", ack.RejectReason).
 		WithHint("EventKey %s allows only one consumer; run `lark-cli event status` to find the running one, then stop it before retrying", eventKey)
+}
+
+// capabilityError refuses to attach to a bus that does not advertise full
+// canonical event metadata. The check happens on the real delivery
+// connection's ack — not on a separate probe — so the bus that answered is
+// exactly the bus that would deliver.
+func capabilityError(ack *protocol.HelloAck, eventKey string) error {
+	if slices.Contains(ack.Capabilities, protocol.CapabilityCanonicalMetadataV1) {
+		return nil
+	}
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"the running local event bus does not support %s; it was started by an older CLI version", protocol.CapabilityCanonicalMetadataV1).
+		WithHint("stop the consumers still attached to the old bus, run `lark-cli event stop` (add --force to override active consumers at the cost of dropping them), then retry `lark-cli event consume %s`", eventKey)
 }
 
 func truncateDuration(d time.Duration) time.Duration {
