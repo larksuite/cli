@@ -231,6 +231,19 @@ func parseDryRunAPI(t *testing.T, sc common.Shortcut, args []string) []interface
 	return calls
 }
 
+// dryRunWarning returns the advisory text a dry-run surfaces under
+// data.warning_message, or "" when the shortcut emitted none.
+func dryRunWarning(t *testing.T, sc common.Shortcut, args []string) string {
+	t.Helper()
+	out, err := runShortcut(t, sc, append(args, "--dry-run"))
+	if err != nil {
+		t.Fatalf("dry-run failed: %v\noutput=%s", err, out)
+	}
+	data, _ := decodeDryRunRaw(t, out)["data"].(map[string]interface{})
+	warning, _ := data["warning_message"].(string)
+	return warning
+}
+
 func decodeDryRunRaw(t *testing.T, out string) map[string]interface{} {
 	t.Helper()
 	idx := strings.Index(out, "{")

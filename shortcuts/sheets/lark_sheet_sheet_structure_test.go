@@ -386,6 +386,53 @@ func TestDimFreezeEquivalent(t *testing.T) {
 	}
 }
 
+// TestDimFreezeLegacyNote pins WHERE the phase-1 deprecation steer appears.
+// The note used to fire only from the standalone Execute, which missed the two
+// paths that matter most: --dry-run (how agents preview before committing to a
+// spelling) and +batch-update (where two per-axis sub-ops both report success
+// while only the last axis stays frozen).
+func TestDimFreezeLegacyNote(t *testing.T) {
+	t.Parallel()
+
+	legacy := []string{"--url", testURL, "--sheet-id", testSheetID, "--dimension", "row", "--count", "2"}
+	modern := []string{"--url", testURL, "--sheet-id", testSheetID, "--rows", "2"}
+
+	t.Run("standalone dry-run carries the note", func(t *testing.T) {
+		t.Parallel()
+		warning := dryRunWarning(t, DimFreeze, legacy)
+		if !strings.Contains(warning, "equivalent to --rows 2") {
+			t.Fatalf("dry-run warning = %q, want the exact replacement", warning)
+		}
+	})
+
+	t.Run("modern form stays silent", func(t *testing.T) {
+		t.Parallel()
+		if w := dryRunWarning(t, DimFreeze, modern); w != "" {
+			t.Fatalf("modern form must not warn, got %q", w)
+		}
+	})
+
+	t.Run("batch sub-op carries the note with its index", func(t *testing.T) {
+		t.Parallel()
+		args := []string{"--url", testURL, "--operations",
+			`[{"shortcut":"+cells-clear","input":{"sheet-id":"sh1","range":"A1:B2"}},` +
+				`{"shortcut":"+dim-freeze","input":{"sheet-id":"sh1","dimension":"column","count":3}}]`}
+		warning := dryRunWarning(t, BatchUpdate, args)
+		if !strings.Contains(warning, "operations[1] (+dim-freeze)") || !strings.Contains(warning, "equivalent to --cols 3") {
+			t.Fatalf("batch warning = %q, want the indexed note with the replacement", warning)
+		}
+	})
+
+	t.Run("batch with only modern sub-ops stays silent", func(t *testing.T) {
+		t.Parallel()
+		args := []string{"--url", testURL, "--operations",
+			`[{"shortcut":"+dim-freeze","input":{"sheet-id":"sh1","rows":1,"cols":2}}]`}
+		if w := dryRunWarning(t, BatchUpdate, args); w != "" {
+			t.Fatalf("modern sub-op must not warn, got %q", w)
+		}
+	})
+}
+
 // TestDimFreeze_FormValidation pins the two request forms as mutually
 // exclusive, and pins that neither-form is a prescriptive error rather than a
 // silent no-op.

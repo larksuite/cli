@@ -70,8 +70,8 @@ var BatchUpdate = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		input, _ := batchUpdateInput(runtime, token)
 		dr := invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
-		if batchNeedsDimInsertBeforeStyleWarning(runtime) {
-			dr.Set("warning_message", dimInsertBeforeStyleWarning)
+		if warnings := batchWarnings(runtime); len(warnings) > 0 {
+			dr.Set("warning_message", strings.Join(warnings, "\n"))
 		}
 		return dr
 	},
@@ -84,8 +84,8 @@ var BatchUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if batchNeedsDimInsertBeforeStyleWarning(runtime) {
-			fmt.Fprintln(runtime.IO().ErrOut, dimInsertBeforeStyleWarning)
+		for _, w := range batchWarnings(runtime) {
+			fmt.Fprintln(runtime.IO().ErrOut, w)
 		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", input)
 		if err != nil {
@@ -140,6 +140,51 @@ func batchUpdateInput(runtime *common.RuntimeContext, token string) (map[string]
 // batchNeedsDimInsertBeforeStyleWarning reports whether any +dim-insert sub-op
 // requests --inherit-style before at the first row/column, where the
 // preceding-side style cannot be copied (no preceding row/column exists).
+// batchWarnings collects the advisory notes a batch surfaces before it runs,
+// in one place so DryRun and Execute cannot drift apart on which ones they
+// report.
+func batchWarnings(runtime *common.RuntimeContext) []string {
+	var out []string
+	if batchNeedsDimInsertBeforeStyleWarning(runtime) {
+		out = append(out, dimInsertBeforeStyleWarning)
+	}
+	return append(out, batchLegacyDimFreezeNotes(runtime)...)
+}
+
+// batchLegacyDimFreezeNotes steers +dim-freeze sub-ops still written in the
+// deprecated --dimension/--count form (see DEPRECATED(phase-2) on
+// dimFreezeLegacyNote). The standalone command prints that note from its own
+// DryRun/Execute, which a sub-op never reaches — yet the batch is where the
+// legacy form does the most damage: freeze is full-state replacement, so two
+// per-axis sub-ops both report success while only the last axis stays frozen,
+// and +styles-put (the other way to set both axes) is not batchable. The
+// wording comes from the shared helper, so it cannot drift from the standalone
+// one.
+func batchLegacyDimFreezeNotes(runtime *common.RuntimeContext) []string {
+	rawOps, err := parseBatchOperationsFlag(runtime)
+	if err != nil {
+		return nil // a malformed --operations is the translator's to report.
+	}
+	var notes []string
+	for i, raw := range rawOps {
+		op, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if sc, _ := op["shortcut"].(string); sc != "+dim-freeze" {
+			continue
+		}
+		input, _ := op["input"].(map[string]interface{})
+		if input == nil {
+			continue
+		}
+		if note := dimFreezeLegacyNote(newMapFlagViewForCommand("+dim-freeze", input)); note != "" {
+			notes = append(notes, fmt.Sprintf("operations[%d] (+dim-freeze): %s", i, note))
+		}
+	}
+	return notes
+}
+
 func batchNeedsDimInsertBeforeStyleWarning(runtime *common.RuntimeContext) bool {
 	rawOps, err := parseBatchOperationsFlag(runtime)
 	if err != nil {

@@ -461,7 +461,14 @@ var DimFreeze = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := dimFreezeInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+		dr := invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+		// Surface the deprecation steer during the preview too: agents dry-run
+		// before executing, so a note only on the execute path arrives after the
+		// spelling is already committed to.
+		if note := dimFreezeLegacyNote(runtime); note != "" {
+			dr.Set("warning_message", note)
+		}
+		return dr
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -476,22 +483,8 @@ var DimFreeze = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		// DEPRECATED(phase-2): +dim-freeze --dimension / --count — replaced by
-		// --rows / --cols. Phase 1 (here): the flags keep working, are retired
-		// from the skill docs via bundle.json doc_hidden_flags in
-		// sheet-skill-spec, and every use prints the exact replacement below.
-		// Phase 2 removal: drop both rows from spec-tables/flags.json + their
-		// doc_hidden_flags entry, then this block, dimFreezeEquivalent, and the
-		// legacy branch in dimFreezeInput.
-		//
-		// The pair is a strict subset of --rows/--cols — every
-		// --dimension/--count call has a byte-identical --rows/--cols spelling
-		// (TestDimFreezeEquivalent pins this) — and it is the form that reads as
-		// if it scoped to one axis when the backend replaces the whole state.
-		if runtime.Changed("dimension") || runtime.Changed("count") {
-			fmt.Fprintf(runtime.IO().ErrOut,
-				"note: --dimension/--count is superseded by --rows/--cols, which state both axes at once; this call is equivalent to %s\n",
-				dimFreezeEquivalent(runtime))
+		if note := dimFreezeLegacyNote(runtime); note != "" {
+			fmt.Fprintln(runtime.IO().ErrOut, note)
 		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		if err != nil {
@@ -500,6 +493,32 @@ var DimFreeze = common.Shortcut{
 		runtime.Out(out, nil)
 		return nil
 	},
+}
+
+// DEPRECATED(phase-2): +dim-freeze --dimension / --count — replaced by
+// --rows / --cols. Phase 1: the flags keep working, are retired from the skill
+// docs via bundle.json doc_hidden_flags in sheet-skill-spec and from --help via
+// their hidden mark, and every use is steered by dimFreezeLegacyNote.
+// Phase 2 removal: drop both rows from spec-tables/flags.json + their
+// doc_hidden_flags entry, then dimFreezeLegacyNote, dimFreezeEquivalent, their
+// call sites (this shortcut's DryRun/Execute and batchLegacyDimFreezeNotes) and
+// the legacy branch in dimFreezeInput.
+//
+// The pair is a strict subset of --rows/--cols — every --dimension/--count call
+// has a byte-identical --rows/--cols spelling (TestDimFreezeEquivalent pins
+// this) — and it is the form that reads as if it scoped to one axis when the
+// backend replaces the whole freeze state.
+//
+// dimFreezeLegacyNote returns "" for the modern form. It takes a flagView
+// rather than a RuntimeContext so +batch-update can render the identical
+// wording for a sub-op (see batchLegacyDimFreezeNotes).
+func dimFreezeLegacyNote(runtime flagView) string {
+	if !runtime.Changed("dimension") && !runtime.Changed("count") {
+		return ""
+	}
+	return fmt.Sprintf(
+		"note: --dimension/--count is superseded by --rows/--cols, which state both axes at once; this call is equivalent to %s",
+		dimFreezeEquivalent(runtime))
 }
 
 // dimFreezeEquivalent renders the --rows/--cols spelling of a legacy
