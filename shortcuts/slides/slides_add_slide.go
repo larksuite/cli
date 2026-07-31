@@ -47,7 +47,7 @@ var SlidesAddSlide = common.Shortcut{
 	ConditionalScopes: []string{"wiki:node:read", "docs:document.media:upload"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 		// The "(supports @file, - reads stdin ...)" suffix is appended from Input
 		// below, so spelling it out here too produced a doubled parenthetical.
 		{Name: "slide", Desc: "one complete <slide> XML document", Required: true, Input: []string{common.File, common.Stdin}},
@@ -71,10 +71,10 @@ var SlidesAddSlide = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		// validateCompleteSlideXML is shared with +replace-pages and reports the
-		// structural problem alone ("root element is <presentation>, want
-		// <slide>"). Re-tag it with the flag it came from so the caller sees
-		// which input to fix, and so agents can route on the typed Param.
+		// validateCompleteSlideXML reports the structural problem alone ("root
+		// element is <presentation>, want <slide>"). Re-tag it with the flag it
+		// came from so the caller sees which input to fix, and so agents can
+		// route on the typed Param.
 		if err := validateCompleteSlideXML(slideXML); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide is not a single complete <slide> document: %v", err).WithParam("--slide").WithCause(err)
 		}
