@@ -32,6 +32,7 @@ metadata:
 | `--max-events N` | Exit after N events. Default 0 = unlimited |
 | `--timeout D` | Exit after duration D (e.g. `30s`, `2m`). Default 0 = no timeout. Whichever of `--max-events` / `--timeout` fires first wins |
 | `--output-dir <dir>` | Write each event as a file (relative paths only; prevents traversal) |
+| `--dry-run` | Decide and preview the consume (identity, preconditions, side effects) without performing any of them, then exit 0. See "Dry-run preview" below |
 | `--quiet` | Suppress stderr diagnostics. **AI should not use this** — it silences the ready marker |
 | `--as user\|bot\|auto` | Identity for the session (see lark-shared) |
 
@@ -57,9 +58,45 @@ wait
 
 ## Call flow
 
-1. `lark-cli event list --json` → pick a legal key
+1. `lark-cli event list --json` → pick a legal key (`--domain <d>` narrows to one domain, e.g. `--domain vc`; unknown domains fail with the valid set listed in the hint)
 2. `lark-cli event schema <key> --json` → read `resolved_output_schema` + `jq_root_path` to determine field paths
-3. `lark-cli event consume <key> [--jq '<expr>']` → consume
+3. `lark-cli event consume <key> --dry-run` → optional: verify readiness and preview side effects before committing to a long-running process
+4. `lark-cli event consume <key> [--jq '<expr>']` → consume
+
+## Dry-run preview
+
+`event consume <key> --dry-run` performs only the read-only checks, then prints the consume decision on stdout as a standard envelope and exits 0 — no bus is started, no consumer registered, no server-side subscription touched, no files created.
+
+```json
+{
+  "ok": true,
+  "identity": "user",
+  "dry_run": true,
+  "data": {
+    "decision": {
+      "event_key": "vc.note.generated_v1",
+      "domain": "vc",
+      "identity": "user",
+      "status": "ready",
+      "params": {},
+      "scope": "vc.note.generated_v1",
+      "preconditions": [
+        {"name": "console_event_published", "status": "ok"},
+        {"name": "scopes_granted", "status": "ok"}
+      ],
+      "preparation": {
+        "strategy": "legacy_preconsume",
+        "condition": "first_consumer_for_scope",
+        "action": "register_event_delivery"
+      },
+      "would_read": ["local_bus_probe", "app_metadata_preflight"],
+      "would_write": ["start_or_reuse_local_bus", "register_consumer", "run_preparation_when_first", "open_event_stream"]
+    }
+  }
+}
+```
+
+Read `dry_run` at the envelope top level (not inside data). `data.decision.status` is `ready` / `unknown` / `blocked`: `unknown` means a weak read-only check could not answer (a real run would still proceed); `blocked` means a real run would refuse with the same error shown in the precondition detail. `would_write` lists the side effects a real run performs — `preparation.condition` = `first_consumer_for_scope` means the server-side subscription is registered only by the first consumer of that scope. Error paths behave exactly like a real run (unknown key → exit 2, auth failure → exit 3).
 
 ## Subprocess contract
 
@@ -94,7 +131,7 @@ Orchestrators should treat `reason: limit/timeout/signal` (all exit 0) as "busin
 
 ### Never `kill -9`
 
-**Avoid `kill -9` on consume processes**: for EventKeys with a **PreConsume hook** (those that register server-side subscriptions via OAPI), `kill -9` skips the OAPI unsubscribe and leaks server-side subscriptions (symptoms: "subscription already exists" on restart, duplicate event delivery). Prefer SIGTERM or closing stdin.
+**Avoid `kill -9` on consume processes** for EventKeys whose PreConsume registers a server-side subscription **and** unsubscribes on exit (minutes, vc, board keys): `kill -9` skips the OAPI unsubscribe and leaks the server-side subscription (symptoms: "subscription already exists" on restart, duplicate event delivery). Keys whose subscription is a durable relation with no cleanup (task, approval keys) do not leak this way, but SIGTERM or closing stdin remains the right shutdown for every key.
 
 ### One consume, one EventKey (multi-key = multi-shell)
 
