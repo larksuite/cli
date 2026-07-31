@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/internal/event/model"
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
@@ -28,7 +29,7 @@ func TestCheckLastForKey_IgnoresNonAckFrames(t *testing.T) {
 			errs <- err
 			return
 		}
-		evt := protocol.NewEvent("im.msg", "evt_1", "", 1, json.RawMessage(`{}`))
+		evt := protocol.NewEvent(&model.Event{EventType: "im.msg", EventID: "evt_1", Payload: json.RawMessage(`{}`)}, 1)
 		if err := protocol.Encode(server, evt); err != nil {
 			errs <- err
 			return

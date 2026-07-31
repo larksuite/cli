@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/larksuite/cli/internal/event/model"
 	"io"
 	"net"
 	"testing"
@@ -23,7 +24,7 @@ func TestConstructors_PinTypeField(t *testing.T) {
 	if got := NewHelloAck("v1", true); got.Type != MsgTypeHelloAck || !got.FirstForKey {
 		t.Errorf("NewHelloAck mismatch: %+v", got)
 	}
-	if got := NewEvent("im.msg", "e1", "", 7, json.RawMessage(`{}`)); got.Type != MsgTypeEvent || got.Seq != 7 {
+	if got := NewEvent(&model.Event{EventType: "im.msg", EventID: "e1", Payload: json.RawMessage(`{}`)}, 7); got.Type != MsgTypeEvent || got.Seq != 7 {
 		t.Errorf("NewEvent mismatch: %+v", got)
 	}
 	if got := NewPreShutdownCheck("k", ""); got.Type != MsgTypePreShutdownCheck || got.EventKey != "k" {

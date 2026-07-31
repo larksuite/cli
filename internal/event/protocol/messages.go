@@ -3,7 +3,12 @@
 
 package protocol
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/larksuite/cli/internal/event/model"
+)
 
 const (
 	MsgTypeHello            = "hello"
@@ -51,11 +56,19 @@ type HelloAck struct {
 }
 
 // Event: Seq is per-conn monotonic; gaps signal bus drop-oldest backpressure loss.
+// The frame carries every canonical fact the ingress parsed — consumers restore
+// them verbatim instead of re-deriving anything from the payload. All fields
+// beyond the original set are additive so older peers ignore them.
 type Event struct {
-	Type       string          `json:"type"`
-	EventType  string          `json:"event_type"`
-	EventID    string          `json:"event_id,omitempty"`
-	SourceTime string          `json:"source_time,omitempty"` // ms-precision unix timestamp, stringified
+	Type       string `json:"type"`
+	EventType  string `json:"event_type"`
+	EventID    string `json:"event_id,omitempty"`
+	SourceTime string `json:"source_time,omitempty"` // upstream create_time verbatim; empty when the upstream omitted it
+	AppID      string `json:"app_id,omitempty"`
+	TenantKey  string `json:"tenant_key,omitempty"`
+	// ObservedAt is the ingress observation clock in RFC3339Nano — a fixed
+	// string contract on the wire, not whatever time.Time happens to marshal to.
+	ObservedAt string          `json:"observed_at,omitempty"`
 	Seq        uint64          `json:"seq,omitempty"`
 	Payload    json.RawMessage `json:"payload"`
 }
@@ -130,14 +143,24 @@ func NewHelloAckRejected(busVersion, reason string) *HelloAck {
 	}
 }
 
-func NewEvent(eventType, eventID, sourceTime string, seq uint64, payload json.RawMessage) *Event {
+// NewEvent projects the canonical event onto the wire frame verbatim. It is
+// the only Event constructor on purpose: every fact travels or is visibly
+// absent — nothing is defaulted, substituted, or dropped here.
+func NewEvent(ev *model.Event, seq uint64) *Event {
+	observedAt := ""
+	if !ev.Timestamp.IsZero() {
+		observedAt = ev.Timestamp.Format(time.RFC3339Nano)
+	}
 	return &Event{
 		Type:       MsgTypeEvent,
-		EventType:  eventType,
-		EventID:    eventID,
-		SourceTime: sourceTime,
+		EventType:  ev.EventType,
+		EventID:    ev.EventID,
+		SourceTime: ev.SourceTime,
+		AppID:      ev.AppID,
+		TenantKey:  ev.TenantKey,
+		ObservedAt: observedAt,
 		Seq:        seq,
-		Payload:    payload,
+		Payload:    ev.Payload,
 	}
 }
 
