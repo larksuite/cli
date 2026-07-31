@@ -748,19 +748,49 @@ func TestStyleItemRangePrefixNormalization(t *testing.T) {
 		}
 	})
 
-	t.Run("unnamed item keeps its ranges untouched", func(t *testing.T) {
-		// +workbook-create's untyped initial fill has no sheet name to compare
-		// against, so there is nothing to validate a prefix as redundant.
+	t.Run("unnamed item still gets its prefixes stripped", func(t *testing.T) {
+		// +workbook-create --values' styles item needs no name (one sheet, not
+		// yet named), but stripping must not be conditional on having one: the
+		// section parsers feed ranges to parseA1Range, so a surviving prefix
+		// turns an unambiguous spec into a malformed-range error. With no name
+		// there is simply nothing to disagree with, so no mismatch is reported.
 		t.Parallel()
 		item := map[string]interface{}{
 			"cell_styles": []interface{}{map[string]interface{}{"range": "Sheet1!A1:D1", "font_weight": "bold"}},
+			"row_sizes":   []interface{}{map[string]interface{}{"range": "Sheet1!1:1", "size": float64(30)}},
 		}
 		payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]")
 		if len(probs) > 0 {
 			t.Fatalf("unexpected probs: %v", probs)
 		}
-		if payload.CellStyles[0].Range != "Sheet1!A1:D1" {
-			t.Fatalf("range = %q, want it left as written", payload.CellStyles[0].Range)
+		if payload.CellStyles[0].Range != "A1:D1" {
+			t.Fatalf("cell_styles range = %q, want the prefix stripped", payload.CellStyles[0].Range)
+		}
+		if payload.RowSizes[0].Range != "1:1" {
+			t.Fatalf("row_sizes range = %q, want the prefix stripped", payload.RowSizes[0].Range)
+		}
+	})
+
+	t.Run("all three carriers accept a prefixed row_sizes range", func(t *testing.T) {
+		// The regression this guards: prefix stripping used to live only on the
+		// named-item path, so +workbook-create --values (whose item carries no
+		// name) still failed on "Sheet1!2:3" while +table-put / +styles-put
+		// accepted it.
+		t.Parallel()
+		for _, name := range []string{"", "Sheet1"} {
+			item := map[string]interface{}{
+				"row_sizes": []interface{}{map[string]interface{}{"range": "Sheet1!2:3", "size": float64(30)}},
+			}
+			if name != "" {
+				item["name"] = name
+			}
+			payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]")
+			if len(probs) > 0 {
+				t.Fatalf("name=%q: unexpected probs: %v", name, probs)
+			}
+			if payload.RowSizes[0].Range != "2:3" {
+				t.Fatalf("name=%q: range = %q, want %q", name, payload.RowSizes[0].Range, "2:3")
+			}
 		}
 	})
 }

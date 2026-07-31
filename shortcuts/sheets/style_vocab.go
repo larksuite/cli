@@ -6,6 +6,7 @@ package sheets
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -41,6 +42,19 @@ import (
 //     flag-path style must be accepted on the payload paths) and the prior
 //     corpus (every observed model spelling either normalizes or
 //     prescribes). New eval finding → corpus row → fix HERE → locked.
+
+// sortedKeys returns a map's keys in sorted order, so any loop that can abort
+// with an error reports a deterministic one. Used throughout this file: the
+// acceptance layer is all map-shaped vocabulary, and "which of my three bad
+// fields did it complain about" must not change between runs.
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
 
 // ─── style flags (shared by +cells-set-style and +cells-batch-set-style) ─
 
@@ -225,7 +239,12 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 	// describes the outer envelope, not each cell_styles object), so assert the
 	// declared type here — otherwise {"font_weight": true} sails through
 	// normalization and reaches the server as a boolean.
-	for field, want := range cellStyleScalarTypes() {
+	// Both loops below can abort with an error, so they walk their vocabulary in
+	// sorted order: map iteration would let the same bad payload report a
+	// different field on every run.
+	scalarTypes := cellStyleScalarTypes()
+	for _, field := range sortedKeys(scalarTypes) {
+		want := scalarTypes[field]
 		raw, has := style[field]
 		if !has || raw == nil {
 			continue
@@ -235,7 +254,9 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 				path, field, want, got, formatJSONValue(raw))
 		}
 	}
-	for field, enum := range cellStyleEnumFields() {
+	enumFields := cellStyleEnumFields()
+	for _, field := range sortedKeys(enumFields) {
+		enum := enumFields[field]
 		raw, has := style[field]
 		if !has {
 			continue
@@ -448,7 +469,13 @@ func requireAnyStyleFlag(runtime flagView) error {
 // habitual Excel word) sets weight and defaults style to solid: a "thin
 // border" always means a thin solid line. Conflicts with an explicitly given
 // border_styles error out instead of picking a side.
+// Every walk over a set here goes through an ORDERED slice, never a map range:
+// each branch below can abort with an error, so map iteration order would
+// decide which of several bad fields gets reported and the same payload would
+// produce different messages run to run (same reason parseWorkbookCreateFreezeOp
+// sorts its keys).
 func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
+	attrNames := []string{"color", "style", "weight"}
 	sides := map[string]bool{"top": true, "bottom": true, "left": true, "right": true, "all": true}
 	attrs := map[string]bool{"style": true, "color": true, "weight": true}
 	borderWeights := map[string]bool{"thin": true, "medium": true, "thick": true}
@@ -482,11 +509,11 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		if !ok {
 			return common.ValidationErrorf("%s.%s must be an object like {\"style\":\"solid\",\"color\":\"#000000\"}", path, from)
 		}
-		for attr, av := range obj {
+		for _, attr := range sortedKeys(obj) {
 			if !attrs[attr] {
 				return common.ValidationErrorf("%s.%s.%s is not a border attribute (want style/weight/color)", path, from, attr)
 			}
-			if err := setSideAttr(side, attr, av, from); err != nil {
+			if err := setSideAttr(side, attr, obj[attr], from); err != nil {
 				return err
 			}
 		}
@@ -522,11 +549,11 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 			}
 		}
 		if sideKeyed {
-			for side, sv := range obj {
+			for _, side := range sortedKeys(obj) {
 				if !sides[side] {
 					return common.ValidationErrorf("%s.%s.%s is not a valid side (want top/bottom/left/right/all)", path, key, side)
 				}
-				if err := setSide(side, sv, key); err != nil {
+				if err := setSide(side, obj[side], key); err != nil {
 					return err
 				}
 			}
@@ -546,7 +573,7 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 				delete(in, key)
 			}
 		}
-		for attr := range attrs {
+		for _, attr := range attrNames {
 			for _, key := range []string{"border_" + side + "_" + attr, side + "_border_" + attr} {
 				if v, has := in[key]; has {
 					if err := setSideAttr(side, attr, v, key); err != nil {
@@ -557,7 +584,7 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 			}
 		}
 	}
-	for attr := range attrs {
+	for _, attr := range attrNames {
 		key := "border_" + attr
 		if v, has := in[key]; has {
 			if err := setAllScalar(attr, v, key); err != nil {

@@ -91,13 +91,17 @@ var intuitiveFlagHints = map[string]map[string]string{
 	"+dim-insert": {
 		"dimension": "+dim-insert infers rows vs columns from --position: a row number like 3 inserts rows, a column letter like C inserts columns; pair with --count N",
 	},
+	// Must prescribe --rows / --cols, never the retired --dimension/--count
+	// pair (DEPRECATED(phase-2) on dimFreezeLegacyNote): those flags are hidden
+	// from --help, so they do not even appear in the "valid flags" list printed
+	// beside this hint, and using them earns a second note steering back here.
 	"+dim-freeze": {
-		"frozen-rows":         "freeze the first N rows with --dimension row --count N",
-		"frozen-cols":         "freeze the first N columns with --dimension column --count N",
-		"frozen-columns":      "freeze the first N columns with --dimension column --count N",
-		"frozen-row-count":    "freeze the first N rows with --dimension row --count N",
-		"frozen-col-count":    "freeze the first N columns with --dimension column --count N",
-		"frozen-column-count": "freeze the first N columns with --dimension column --count N",
+		"frozen-rows":         "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state)",
+		"frozen-cols":         "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
+		"frozen-columns":      "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
+		"frozen-row-count":    "freeze the first N rows with --rows N (add --cols M to hold columns too — one call states the whole freeze state)",
+		"frozen-col-count":    "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
+		"frozen-column-count": "freeze the first N columns with --cols N (add --rows M to hold rows too — one call states the whole freeze state)",
 	},
 	"+cells-set-style": {
 		"bold":      "use --font-weight bold",

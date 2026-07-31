@@ -501,6 +501,9 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 		args     []string
 		wrong    string
 		wantHint []string
+		// rejectHint pins what a prescription must NOT name — used where the
+		// obvious wording would steer into a deprecated flag.
+		rejectHint []string
 	}{
 		{
 			command:  "+dim-insert",
@@ -512,7 +515,11 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			command:  "+dim-freeze",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--frozen-rows", "2"},
 			wrong:    "--frozen-rows",
-			wantHint: []string{"--dimension row --count N"},
+			// Must prescribe the CURRENT spelling: --dimension/--count is
+			// retired and hidden from --help, so a hint naming it would point at
+			// a flag missing from the same error's valid-flags list.
+			wantHint:   []string{"--rows N"},
+			rejectHint: []string{"--dimension", "--count"},
 		},
 		{
 			command:  "+cells-set-style",
@@ -541,16 +548,18 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 		{
 			command:  "+dim-freeze",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--frozen-row-count", "1"},
-			wrong:    "--frozen-row-count",
-			wantHint: []string{"--dimension row --count N"},
+			wrong:      "--frozen-row-count",
+			wantHint:   []string{"--rows N"},
+			rejectHint: []string{"--dimension", "--count"},
 		},
 		{
 			// The parse error reports the flag as typed: the underscore
 			// spelling must hit the same curated entry as the hyphenated one.
 			command:  "+dim-freeze",
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--frozen_rows", "2"},
-			wrong:    "--frozen_rows",
-			wantHint: []string{"--dimension row --count N"},
+			wrong:      "--frozen_rows",
+			wantHint:   []string{"--rows N"},
+			rejectHint: []string{"--dimension", "--count"},
 		},
 		{
 			command:  "+cells-set-style",
@@ -598,6 +607,14 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			for _, want := range tc.wantHint {
 				if !strings.Contains(ve.Hint, want) {
 					t.Errorf("hint should contain %q, got %q", want, ve.Hint)
+				}
+			}
+			// The valid-flags list is appended to the same Hint, so only the
+			// prescription itself is checked for banned wording.
+			prescription, _, _ := strings.Cut(ve.Hint, "; valid flags:")
+			for _, banned := range tc.rejectHint {
+				if strings.Contains(prescription, banned) {
+					t.Errorf("prescription must not steer to %q, got %q", banned, prescription)
 				}
 			}
 			// A curated prescription must not ship contradicting edit-distance

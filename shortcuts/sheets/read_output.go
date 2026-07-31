@@ -40,10 +40,17 @@ const outputPathReadLimit = 20_000_000
 // tool. A cap the user set explicitly always binds — --output-path only
 // raises the default (to the bounded outputPathReadLimit) when --max-chars
 // was left alone, so a full read lands in the file without silently
-// discarding a requested limit. The second return is false when nothing
-// should be sent (max-chars <= 0), in which case the tool's own default
-// applies. Note the tool truncates at ~50000 even when max_chars is omitted,
-// so callers that want an explicit cap should pass a positive default.
+// discarding a requested limit.
+//
+// --max-chars 0 (or negative) means "no cap of my own", and is deliberately
+// NOT passed through as "send nothing": omitting max_chars makes the tool
+// apply its own ~50000 fallback, i.e. a caller asking for no limit would get
+// the SMALLEST one — the opposite of the request, and silently. It resolves
+// to the same ceiling an unset flag would: the offload limit when writing to
+// a file, otherwise the flag's declared default.
+//
+// The second return is false only when there is no cap to send at all, which
+// today means the flag is absent from this shortcut.
 func maxCharsInput(runtime *common.RuntimeContext) (int, bool) {
 	if n := runtime.Int("max-chars"); n > 0 && runtime.Changed("max-chars") {
 		return n, true
@@ -51,11 +58,24 @@ func maxCharsInput(runtime *common.RuntimeContext) (int, bool) {
 	if readOutputPath(runtime) != "" {
 		return outputPathReadLimit, true
 	}
+	// The flag's own default (500000) — reached both when it is unset and when
+	// it was explicitly zeroed.
 	if n := runtime.Int("max-chars"); n > 0 {
 		return n, true
 	}
+	if runtime.Changed("max-chars") {
+		return maxCharsFallback, true
+	}
 	return 0, false
 }
+
+// maxCharsFallback is the ceiling used when a caller explicitly asks for no
+// cap (--max-chars 0) without redirecting to a file. It matches the flag's
+// declared default rather than the tool's much smaller omitted-value
+// fallback, and stays well inside the non-streaming read path's memory
+// budget (see outputPathReadLimit); a caller who wants more says so with a
+// positive --max-chars or --output-path.
+const maxCharsFallback = 500_000
 
 // maxCharsBudget returns the char cap that bounds a whole multi-sheet read
 // (0 when no cap is in play). Callers that read several sheets in one command

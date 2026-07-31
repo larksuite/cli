@@ -170,7 +170,12 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 		sheetName := strings.TrimSpace(fv.Str("sheet-name"))
 		input, err := cellsSetInput(fv, token, sheetID, sheetName)
 		if err != nil {
-			probs = append(probs, common.ValidationErrorf("--writes[%d]: %v", i, err))
+			// Prefix with the item index WITHOUT flattening: cellsSetInput's
+			// errors carry the domain's prescriptions in Hint (requireSheetSelector's
+			// "+workbook-info" pointer, for one) and "%v" would render only the
+			// message, silently costing exactly the guidance this path exists to
+			// deliver. joinWritesValidationErrors re-reads both fields.
+			probs = append(probs, prefixValidationIssue(fmt.Sprintf("--writes[%d]", i), err))
 			continue
 		}
 		if cells, ok := input["cells"].([]interface{}); ok {
@@ -205,21 +210,19 @@ func joinWritesValidationErrors(probs []error) error {
 		// Re-attribute to the outer flag even for a single issue: the inner
 		// error is scoped to a nested path and carries no Param, so an agent
 		// would have to parse prose to learn which flag to fix. Message text
-		// is preserved; only the typed attribution is added.
-		msg := probs[0].Error()
-		if p, ok := errs.ProblemOf(probs[0]); ok {
-			msg = p.Message
+		// is preserved; only the typed attribution is added — and the inner
+		// hint rides along, since a lone issue has the outer Hint slot free.
+		msg, hint := aggregatedIssueParts(probs[0])
+		verr := sheetsValidationForFlag("writes", "%s", msg).WithCause(probs[0])
+		if hint != "" {
+			verr = verr.WithHint("%s", hint)
 		}
-		return sheetsValidationForFlag("writes", "%s", msg).WithCause(probs[0])
+		return verr
 	}
 	const maxShown = 8
 	msgs := make([]string, 0, len(probs))
 	for _, e := range probs {
-		if p, ok := errs.ProblemOf(e); ok {
-			msgs = append(msgs, p.Message)
-			continue
-		}
-		msgs = append(msgs, e.Error())
+		msgs = append(msgs, aggregatedIssueText(e))
 	}
 	suffix := ""
 	if len(msgs) > maxShown {

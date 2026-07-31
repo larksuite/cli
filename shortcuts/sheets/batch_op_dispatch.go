@@ -446,13 +446,33 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 			if err := claim(target, k); err != nil {
 				return err
 			}
-			if _, taken := input[target]; !taken {
-				if _, taken := input[strings.ReplaceAll(target, "-", "_")]; !taken {
-					input[target] = input[k]
-					delete(input, k)
-					continue
-				}
+			underscored := strings.ReplaceAll(target, "-", "_")
+			_, hyphenTaken := input[target]
+			_, underscoreTaken := input[underscored]
+			if !hyphenTaken && !underscoreTaken {
+				input[target] = input[k]
+				delete(input, k)
+				continue
 			}
+			// The alias AND its target are both present. This key is recognized,
+			// so it must not fall through to the generic "unknown input key"
+			// below — the claim() conflict message never fires here either,
+			// because keys are walked in sorted order and the alias can sort
+			// before its target ("size" < "width"), so nothing has claimed the
+			// logical key yet. Name both spellings and the survivor.
+			taken := target
+			if underscoreTaken {
+				taken = underscored
+			}
+			if jsonEqual(input[k], input[taken]) {
+				delete(input, k) // same value under two names: drop the alias.
+				// Hand the logical key over to the surviving spelling, or the
+				// claim recorded above would still point at the deleted alias
+				// and make that spelling's own turn read as a conflict.
+				canonical[target] = taken
+				continue
+			}
+			return fmt.Errorf("%s got both %q and %q, which are two names for the same flag, with different values — keep %q", sc, k, taken, taken) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
 		}
 		if strings.ToLower(hv) == "ranges" && vocab["range"] && !vocab["ranges"] {
 			if _, taken := input["range"]; taken {
@@ -678,7 +698,11 @@ func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}
 	}
 	parts := make([]string, 0, len(shown))
 	for i, e := range shown {
-		parts = append(parts, fmt.Sprintf("%d) %s", i+1, e.Error()))
+		// aggregatedIssueText keeps each op's own hint (the "<shortcut> input
+		// keys: …" contract) inline: folding N errors leaves one Hint slot, so
+		// without this the multi-op error would carry LESS guidance than the
+		// single-op one it replaces.
+		parts = append(parts, fmt.Sprintf("%d) %s", i+1, aggregatedIssueText(e)))
 	}
 	msg := fmt.Sprintf("%d of %d operations failed validation: %s", len(opErrs), len(rawOps), strings.Join(parts, "; "))
 	if truncated {

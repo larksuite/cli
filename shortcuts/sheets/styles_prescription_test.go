@@ -480,3 +480,36 @@ func TestSingleIssueStillAttributesFlag(t *testing.T) {
 		t.Error("single-issue aggregate should keep the underlying error as Cause")
 	}
 }
+
+// TestAggregatedIssuesKeepPrescriptions pins that folding per-item failures
+// into one flag error does not drop the Hint the inner error carried. The
+// prescriptions this domain adds (requireSheetSelector's "+workbook-info"
+// pointer, for one) live in Hint, and a Problem has exactly one Hint slot —
+// so a lone issue must inherit it and a folded list must inline each one.
+func TestAggregatedIssuesKeepPrescriptions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("single --writes issue inherits the inner hint", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+			"--url", testURL,
+			"--writes", `[{"range":"A1","cells":[[{"value":1}]]}]`,
+		})
+		ve := requireValidation(t, err, "specify at least one of --sheet-id or --sheet-name")
+		if !strings.Contains(ve.Hint, "+workbook-info") {
+			t.Errorf("the inner prescription must survive the fold, got hint %q", ve.Hint)
+		}
+	})
+
+	t.Run("folded --writes issues inline each hint", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+			"--url", testURL,
+			"--writes", `[{"range":"A1","cells":[[{"value":1}]]},{"range":"B1","cells":[[{"value":2}]]}]`,
+		})
+		ve := requireValidation(t, err, "--writes has 2 issues")
+		if strings.Count(ve.Message, "+workbook-info") != 2 {
+			t.Errorf("each issue should carry its own prescription inline, got %q", ve.Message)
+		}
+	})
+}

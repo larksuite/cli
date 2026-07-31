@@ -590,6 +590,51 @@ func requireJSONObject(runtime flagView, name string) (map[string]interface{}, e
 	return m, nil
 }
 
+// ─── aggregated sub-error rendering ────────────────────────────────────
+//
+// Several flags collect per-item failures and fold them into ONE typed error
+// (--styles, --writes, --operations). A Problem carries a single Hint slot,
+// so the naive fold — taking only each inner error's Message — silently drops
+// the very prescriptions this domain adds (requireSheetSelector's
+// "+workbook-info" pointer, the batch key contract). These two helpers keep
+// them: a lone failure hands its Hint to the outer error's Hint field, and a
+// folded list inlines each hint next to its own message.
+
+// aggregatedIssueParts splits a collected sub-error into its message and its
+// hint ("" when it carries none), unwrapping the typed Problem so the message
+// is the bare text rather than the Error() rendering.
+func aggregatedIssueParts(err error) (msg, hint string) {
+	if p, ok := errs.ProblemOf(err); ok {
+		return p.Message, p.Hint
+	}
+	return err.Error(), ""
+}
+
+// aggregatedIssueText renders one collected sub-error for a folded, multi-issue
+// message, appending its hint in parentheses so a per-item prescription is not
+// lost to the single shared Hint slot.
+func aggregatedIssueText(err error) string {
+	msg, hint := aggregatedIssueParts(err)
+	if hint == "" {
+		return msg
+	}
+	return msg + " (" + hint + ")"
+}
+
+// prefixValidationIssue re-labels a collected sub-error with the path it was
+// found at ("--writes[2]"), keeping its Hint. Formatting the inner error into
+// a new message with "%v" would drop that hint on the floor — the collectors
+// only ever read Message and Hint, so the two must stay separate all the way
+// to the fold.
+func prefixValidationIssue(path string, err error) error {
+	msg, hint := aggregatedIssueParts(err)
+	out := common.ValidationErrorf("%s: %s", path, msg).WithCause(err)
+	if hint != "" {
+		out = out.WithHint("%s", hint)
+	}
+	return out
+}
+
 // requireJSONArray is parseJSONFlag + a type assertion to []interface{}.
 func requireJSONArray(runtime flagView, name string) ([]interface{}, error) {
 	v, err := parseJSONFlag(runtime, name)

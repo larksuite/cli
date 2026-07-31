@@ -148,7 +148,87 @@ func batchWarnings(runtime *common.RuntimeContext) []string {
 	if batchNeedsDimInsertBeforeStyleWarning(runtime) {
 		out = append(out, dimInsertBeforeStyleWarning)
 	}
+	out = append(out, batchCollidingDimFreezeNotes(runtime)...)
 	return append(out, batchLegacyDimFreezeNotes(runtime)...)
+}
+
+// batchCollidingDimFreezeNotes reports +dim-freeze sub-ops that target the SAME
+// sheet more than once. Freeze is full-state replacement, so each of them
+// discards the previous one and only the last survives — both still report
+// success, which is exactly why the mistake goes unnoticed. The CLI has already
+// walked the whole ops array by this point, so it can name the survivor and the
+// single sub-op that holds everything the caller clearly meant to hold.
+//
+// A batch cannot read current state, and +styles-put (the other combined-freeze
+// carrier) is not batchable, so folding into ONE sub-op is the only fix — hence
+// a note rather than a suggestion to reorder.
+func batchCollidingDimFreezeNotes(runtime *common.RuntimeContext) []string {
+	rawOps, err := parseBatchOperationsFlag(runtime)
+	if err != nil {
+		return nil // a malformed --operations is the translator's to report.
+	}
+	type freezeOp struct {
+		index      int
+		rows, cols int
+	}
+	// Keyed by the sub-op's sheet selector: freezes on different sheets are
+	// independent. Order of first appearance keeps the notes deterministic.
+	bySheet := map[string][]freezeOp{}
+	var order []string
+	for i, raw := range rawOps {
+		op, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if sc, _ := op["shortcut"].(string); sc != "+dim-freeze" {
+			continue
+		}
+		input, _ := op["input"].(map[string]interface{})
+		if input == nil {
+			continue
+		}
+		fv := newMapFlagViewForCommand("+dim-freeze", input)
+		rows, cols, ok := dimFreezeAxes(fv)
+		if !ok {
+			continue // an unusable sub-op is the translator's to report.
+		}
+		key := strings.TrimSpace(fv.Str("sheet-id")) + "\x00" + strings.TrimSpace(fv.Str("sheet-name"))
+		if _, seen := bySheet[key]; !seen {
+			order = append(order, key)
+		}
+		bySheet[key] = append(bySheet[key], freezeOp{index: i, rows: rows, cols: cols})
+	}
+
+	var notes []string
+	for _, key := range order {
+		ops := bySheet[key]
+		if len(ops) < 2 {
+			continue
+		}
+		indexes := make([]string, 0, len(ops))
+		// The combined state is what the caller almost certainly meant: keep the
+		// last positive value named for each axis. An axis nobody ever freezes
+		// stays 0, so a deliberate "unfreeze everything" batch still renders as
+		// --rows 0 --cols 0 rather than inventing a freeze.
+		combinedRows, combinedCols := 0, 0
+		for _, op := range ops {
+			indexes = append(indexes, fmt.Sprintf("operations[%d]", op.index))
+			if op.rows > 0 {
+				combinedRows = op.rows
+			}
+			if op.cols > 0 {
+				combinedCols = op.cols
+			}
+		}
+		last := ops[len(ops)-1]
+		notes = append(notes, fmt.Sprintf(
+			"warning: %s are all +dim-freeze on the same sheet — freeze replaces the WHOLE state, so each one discards the previous and only %s survives (ending at %s). They all report success. Replace them with ONE sub-op: %s",
+			strings.Join(indexes, ", "),
+			indexes[len(indexes)-1],
+			dimFreezeSpelling(last.rows, last.cols),
+			dimFreezeSpelling(combinedRows, combinedCols)))
+	}
+	return notes
 }
 
 // batchLegacyDimFreezeNotes steers +dim-freeze sub-ops still written in the

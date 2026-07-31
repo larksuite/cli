@@ -139,8 +139,17 @@ var DimInsert = common.Shortcut{
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := dimInsertInput(runtime, token, sheetID, sheetName)
 		dr := invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
-		if dimInsertNeedsBeforeStyleWarning(runtime) {
+		switch {
+		case dimInsertNeedsBeforeStyleWarning(runtime):
 			dr.Set("warning_message", dimInsertBeforeStyleWarning)
+		case dimInsertAnchorShifted(runtime, input):
+			// --inherit-style before anchors one unit earlier (see
+			// dimInsertInput), so the previewed body carries a position the
+			// caller never typed. Unexplained, that reads as an off-by-one bug in
+			// exactly the artifact people dry-run to check for off-by-one bugs.
+			dr.Set("warning_message", fmt.Sprintf(
+				"note: the previewed position is %q, not the %q you passed — this is not an off-by-one. --inherit-style before is emulated by anchoring one row/column earlier and inserting after it, which lands in the same place while copying the PRECEDING style. The row/column still appears at %q.",
+				input["position"], strings.TrimSpace(runtime.Str("position")), strings.TrimSpace(runtime.Str("position"))))
 		}
 		return dr
 	},
@@ -175,6 +184,16 @@ var DimInsert = common.Shortcut{
 // --position, just without style inheritance. (--inherit-style after has no
 // such edge — a plain before-insert always has a following row/column.)
 const dimInsertBeforeStyleWarning = "warning: --inherit-style before cannot copy the preceding row/column's style at the first row/column (no preceding row/column exists); inserting before --position without style inheritance. Copy styles separately if needed."
+
+// dimInsertAnchorShifted reports whether the built body carries an anchor
+// position different from the one the caller passed — true exactly when the
+// --inherit-style before emulation moved it back one unit. Compared against the
+// built input rather than recomputed, so the note can never claim a shift the
+// request does not have.
+func dimInsertAnchorShifted(runtime flagView, input map[string]interface{}) bool {
+	built, ok := input["position"].(string)
+	return ok && built != strings.TrimSpace(runtime.Str("position"))
+}
 
 func dimInsertNeedsBeforeStyleWarning(runtime flagView) bool {
 	if !runtime.Changed("inherit-style") || runtime.Str("inherit-style") != "before" {
@@ -230,9 +249,15 @@ func dimInsertInput(runtime flagView, token, sheetID, sheetName string) (map[str
 	//   before → side=after at P-1: the blank still lands at P (insert-after-(P-1)
 	//            == insert-before-P) and anchor P-1 becomes the *preceding*
 	//            neighbour, so the blank copies it.
+	//
+	// The flag is documented as defaulting to `after`, so the omitted case takes
+	// the same branch instead of leaving `side` off the request: relying on the
+	// backend's own default would make "omit" and "--inherit-style after" agree
+	// only by coincidence, and if that default were `after` the insert would
+	// land AFTER --position — breaking the "always inserts before --position"
+	// contract silently. Sending it explicitly makes the documented default the
+	// real one. Pinned by TestDimInsertOmittedMatchesAfter.
 	switch runtime.Str("inherit-style") {
-	case "after":
-		input["side"] = "before"
 	case "before":
 		if prev, ok := a1PositionBefore(position); ok {
 			input["side"] = "after"
@@ -240,6 +265,8 @@ func dimInsertInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		}
 		// First row/column: no preceding row/column exists, so fall back to a
 		// plain before-insert (dimInsertNeedsBeforeStyleWarning surfaces this).
+	default: // "after", and the omitted case it is the default for.
+		input["side"] = "before"
 	}
 	return input, nil
 }
@@ -525,14 +552,52 @@ func dimFreezeLegacyNote(runtime flagView) string {
 // --dimension/--count call, so the deprecation note carries the exact
 // replacement instead of a generic pointer.
 func dimFreezeEquivalent(runtime flagView) string {
-	count := runtime.Int("count")
-	if count == 0 {
-		return "--rows 0 --cols 0"
+	rows, cols, _ := dimFreezeAxes(runtime)
+	return dimFreezeSpelling(rows, cols)
+}
+
+// dimFreezeAxes maps either request form onto the (rows, cols) freeze state it
+// asks for. Pure mapping, no validation — dimFreezeInput validates first and
+// then calls this, so the request body, the deprecation note and the batch
+// collision note can never disagree about what a call means. ok is false when
+// the flags name no state at all, or when the legacy pair is half-given
+// (--count without --dimension); dimFreezeInput reports both.
+func dimFreezeAxes(runtime flagView) (rows, cols int, ok bool) {
+	pairForm := runtime.Changed("dimension") || runtime.Changed("count")
+	axisForm := runtime.Changed("rows") || runtime.Changed("cols")
+	switch {
+	case axisForm && !pairForm:
+		return runtime.Int("rows"), runtime.Int("cols"), true
+	case pairForm && !axisForm:
+		if !runtime.Changed("dimension") || !runtime.Changed("count") {
+			return 0, 0, false
+		}
+		// A zero count clears BOTH axes — it is the bare unfreeze operation,
+		// which carries no dimension.
+		if count := runtime.Int("count"); count > 0 {
+			if runtime.Str("dimension") == "row" {
+				return count, 0, true
+			}
+			return 0, count, true
+		}
+		return 0, 0, true
 	}
-	if runtime.Str("dimension") == "row" {
-		return fmt.Sprintf("--rows %d", count)
+	return 0, 0, false
+}
+
+// dimFreezeSpelling renders a freeze state as the --rows/--cols flags that
+// produce it. Single source of the replacement wording, shared by the
+// deprecation note and the batch collision note.
+func dimFreezeSpelling(rows, cols int) string {
+	switch {
+	case rows > 0 && cols > 0:
+		return fmt.Sprintf("--rows %d --cols %d", rows, cols)
+	case rows > 0:
+		return fmt.Sprintf("--rows %d", rows)
+	case cols > 0:
+		return fmt.Sprintf("--cols %d", cols)
 	}
-	return fmt.Sprintf("--cols %d", count)
+	return "--rows 0 --cols 0"
 }
 
 // dimFreezeInput builds the freeze body for both the standalone shortcut and
@@ -561,18 +626,19 @@ func dimFreezeInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		return nil, sheetsValidationForFlag("rows",
 			"give either --rows/--cols or --dimension/--count, not both — they are two ways to say the same thing; --rows/--cols is the one that can hold both axes at once")
 	case !pairForm && !axisForm:
+		// Prescribes only --rows/--cols: --dimension/--count is retired
+		// (DEPRECATED(phase-2)) and steering a caller into it here would earn
+		// them a deprecation note on the very next call.
 		return nil, sheetsValidationForFlag("rows",
-			"nothing to freeze: pass --rows N and/or --cols N (e.g. --rows 1 --cols 2 holds the header row and the first 2 columns), or the single-axis --dimension row --count 1")
+			"nothing to freeze: pass --rows N and/or --cols N — e.g. --rows 1 holds the header row, --rows 1 --cols 2 holds it plus the first 2 columns, --rows 0 --cols 0 unfreezes everything")
 	}
 
-	rows, cols := 0, 0
 	if axisForm {
 		for _, name := range []string{"rows", "cols"} {
 			if runtime.Changed(name) && runtime.Int(name) < 0 {
 				return nil, sheetsValidationForFlag(name, "--%s must be >= 0 (0 leaves that axis unfrozen)", name)
 			}
 		}
-		rows, cols = runtime.Int("rows"), runtime.Int("cols")
 	} else {
 		if !runtime.Changed("dimension") {
 			return nil, sheetsValidationForFlag("dimension", "--dimension is required alongside --count (or use --rows/--cols to set both axes at once)")
@@ -583,12 +649,10 @@ func dimFreezeInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		if runtime.Int("count") < 0 {
 			return nil, sheetsValidationForFlag("count", "--count must be >= 0")
 		}
-		if runtime.Str("dimension") == "row" {
-			rows = runtime.Int("count")
-		} else {
-			cols = runtime.Int("count")
-		}
 	}
+	// Validation done; the flags-to-state mapping is dimFreezeAxes', shared with
+	// the deprecation and collision notes so the three cannot disagree.
+	rows, cols, _ := dimFreezeAxes(runtime)
 
 	// An all-zero target is the bare "unfreeze" operation, which carries no
 	// dimension and clears everything — the same request the old --count 0

@@ -5,7 +5,6 @@ package localfileio
 
 import (
 	"fmt"
-
 	"path/filepath"
 	"strings"
 	"unicode"

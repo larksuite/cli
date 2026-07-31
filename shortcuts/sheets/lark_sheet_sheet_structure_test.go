@@ -265,10 +265,14 @@ func TestDimInsertInheritStyleSideMapping(t *testing.T) {
 			wantSideSet:  true,
 		},
 		{
-			name:         "default (flag omitted) omits side, backend inherits the following row/column",
+			// The flag documents `after` as its default, so omitting it must
+			// build the same body rather than leaving `side` to the backend's
+			// own default — see TestDimInsertOmittedMatchesAfter.
+			name:         "default (flag omitted) sends the same side as --inherit-style after",
 			position:     "D",
 			wantPosition: "D",
-			wantSideSet:  false,
+			wantSide:     "before",
+			wantSideSet:  true,
 		},
 	}
 
@@ -296,6 +300,33 @@ func TestDimInsertInheritStyleSideMapping(t *testing.T) {
 			}
 			if ok && gv != tc.wantSide {
 				t.Fatalf("side = %v, want %q", gv, tc.wantSide)
+			}
+		})
+	}
+}
+
+// TestDimInsertOmittedMatchesAfter pins the contract --inherit-style's flag
+// description states: omitting it is the same call as passing `after`.
+//
+// It used to hold only if the backend happened to default `side` to "before".
+// That is not something the docs can promise on the backend's behalf — and if
+// the default were "after", omitting the flag would insert AFTER --position,
+// silently breaking +dim-insert's "always inserts before --position" contract.
+// So the CLI sends `side` explicitly and this test locks the two bodies
+// together, byte for byte.
+func TestDimInsertOmittedMatchesAfter(t *testing.T) {
+	t.Parallel()
+
+	for _, position := range []string{"1", "3", "A", "D"} {
+		t.Run("position "+position, func(t *testing.T) {
+			t.Parallel()
+			base := []string{"--url", testURL, "--sheet-id", testSheetID, "--position", position, "--count", "1"}
+			omitted := decodeToolInput(t, parseDryRunBody(t, DimInsert, base), "modify_sheet_structure")
+			explicit := decodeToolInput(t,
+				parseDryRunBody(t, DimInsert, append(append([]string{}, base...), "--inherit-style", "after")),
+				"modify_sheet_structure")
+			if !reflect.DeepEqual(omitted, explicit) {
+				t.Fatalf("omitted --inherit-style built %#v, --inherit-style after built %#v; they must be identical", omitted, explicit)
 			}
 		})
 	}

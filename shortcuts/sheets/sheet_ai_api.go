@@ -87,7 +87,8 @@ func callTool(
 		// The recovery prescription depends on the execution mode the batch
 		// was sent with; non-batch tools simply lack the key (false).
 		continueOnError, _ := input["continue_on_error"].(bool)
-		return nil, errs.NewAPIError(errs.SubtypeServerError, "tool %q failed: [%d] %s", toolName, int(code), flattenToolErrorMsg(msg, continueOnError)).
+		flat := flattenToolErrorMsg(msg, continueOnError, callerAuthoredOperations(runtime.Command()))
+		return nil, errs.NewAPIError(errs.SubtypeServerError, "tool %q failed: [%d] %s", toolName, int(code), flat).
 			WithCode(int(code))
 	}
 	data, _ := envelope["data"].(map[string]interface{})
@@ -116,7 +117,17 @@ func callTool(
 // continueOnError is the execution mode the batch was sent with: it decides
 // the recovery prescription, because a single listed failure only implies
 // "nothing after it ran" under fail-fast.
-func flattenToolErrorMsg(msg string, continueOnError bool) string {
+//
+// callerAuthoredOps says whether the operations array the server indexes into
+// is the one the CALLER wrote. Only +batch-update's --operations is; every
+// other batch_update user (+styles-put, +cells-set --writes, +dim-delete
+// --ranges, the fan-out stampers) synthesizes the array client-side, and
+// +styles-put coalesces while +dim-delete deliberately re-sorts descending —
+// so "operations[3]" there names nothing the caller can find, and
+// "resend operations[3:]" is not a command they can issue. Those callers get
+// the per-op detail (still the best available description of what failed) plus
+// a generic no-rollback warning, never an index-based resend instruction.
+func flattenToolErrorMsg(msg string, continueOnError, callerAuthoredOps bool) string {
 	trimmed := strings.TrimSpace(msg)
 	if !strings.HasPrefix(trimmed, "{") {
 		return msg
@@ -158,9 +169,14 @@ func flattenToolErrorMsg(msg string, continueOnError bool) string {
 		// alone; prescribing the tail there would double-apply the successes.
 		if strings.Contains(detail.Message, "succeeded") &&
 			!strings.Contains(detail.Message, " 0 succeeded") {
-			if !continueOnError && len(detail.Failures) == 1 {
+			switch {
+			case !callerAuthoredOps:
+				// Client-side expansion: the indexes above are internal, so
+				// prescribe a read-back instead of an un-issuable resend.
+				out += "; note: this command expands into the operations above client-side, so their indexes are not something you can resend directly. Succeeded operations stay applied (no rollback) — read the affected area back (+sheet-info / +cells-get), then re-issue only the part that did not land"
+			case !continueOnError && len(detail.Failures) == 1:
 				out += fmt.Sprintf("; note: succeeded operations stay applied (no rollback) — fix the failure and resend only operations[%d:] onward, do not resend the whole batch", firstFailed)
-			} else {
+			default:
 				out += "; note: succeeded operations stay applied (no rollback) — fix and resend only the failed operations listed above, do not resend the whole batch"
 			}
 		}
@@ -168,6 +184,12 @@ func flattenToolErrorMsg(msg string, continueOnError bool) string {
 	}
 	return inner
 }
+
+// callerAuthoredOperations reports whether `command` is the one shortcut whose
+// batch_update operations array the caller wrote by hand. Everything else
+// synthesizes it, so server-reported operation indexes are internal detail
+// there (see flattenToolErrorMsg).
+func callerAuthoredOperations(command string) bool { return command == "+batch-update" }
 
 // invokeToolDryRun renders the One-OpenAPI request the shortcut would send.
 // The wire-format body (with input serialized to a JSON string) is preserved

@@ -275,7 +275,7 @@ func TestFlattenToolErrorMsg_PartialFailureRecovery(t *testing.T) {
 
 	t.Run("single failure prescribes resend-from-index", func(t *testing.T) {
 		t.Parallel()
-		msg := flattenToolErrorMsg(wrap(`{"message":"batch_update: 4 succeeded, 1 failed","failures":[{"index":4,"tool_name":"set_cell_range","error":"cells is required"}]}`), false)
+		msg := flattenToolErrorMsg(wrap(`{"message":"batch_update: 4 succeeded, 1 failed","failures":[{"index":4,"tool_name":"set_cell_range","error":"cells is required"}]}`), false, true)
 		for _, want := range []string{"operations[4] (set_cell_range)", "no rollback", "resend only operations[4:]"} {
 			if !strings.Contains(msg, want) {
 				t.Fatalf("msg %q missing %q", msg, want)
@@ -285,7 +285,7 @@ func TestFlattenToolErrorMsg_PartialFailureRecovery(t *testing.T) {
 
 	t.Run("multiple failures prescribe failed-only resend", func(t *testing.T) {
 		t.Parallel()
-		msg := flattenToolErrorMsg(wrap(`{"message":"batch_update: 3 succeeded, 2 failed","failures":[{"index":1,"tool_name":"set_cell_range","error":"e1"},{"index":3,"tool_name":"resize_range","error":"e2"}]}`), false)
+		msg := flattenToolErrorMsg(wrap(`{"message":"batch_update: 3 succeeded, 2 failed","failures":[{"index":1,"tool_name":"set_cell_range","error":"e1"},{"index":3,"tool_name":"resize_range","error":"e2"}]}`), false, true)
 		if !strings.Contains(msg, "resend only the failed operations") {
 			t.Fatalf("msg %q missing failed-only prescription", msg)
 		}
@@ -293,7 +293,7 @@ func TestFlattenToolErrorMsg_PartialFailureRecovery(t *testing.T) {
 
 	t.Run("zero succeeded gets no note", func(t *testing.T) {
 		t.Parallel()
-		msg := flattenToolErrorMsg(wrap(`{"message":"batch_update: 0 succeeded, 1 failed","failures":[{"index":0,"tool_name":"set_cell_range","error":"e"}]}`), false)
+		msg := flattenToolErrorMsg(wrap(`{"message":"batch_update: 0 succeeded, 1 failed","failures":[{"index":0,"tool_name":"set_cell_range","error":"e"}]}`), false, true)
 		if strings.Contains(msg, "no rollback") {
 			t.Fatalf("msg %q must not carry the note when nothing was applied", msg)
 		}

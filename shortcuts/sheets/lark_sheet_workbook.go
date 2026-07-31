@@ -924,7 +924,11 @@ type workbookCreateStylePayload struct {
 }
 
 // workbookCreateFreezeOp freezes the first Rows rows / Cols columns.
-// Zero means "leave that dimension alone".
+// Zero means "that axis ends up UNFROZEN", not "leave it alone": freeze is
+// full-state replacement server-side (see workbookCreateVisualOpInput's freeze
+// branch), so a declarative spec that omits an axis is stating it should not be
+// frozen. parseWorkbookCreateFreezeOp rejects an all-zero op, so at least one
+// axis is always positive here.
 type workbookCreateFreezeOp struct {
 	Rows int
 	Cols int
@@ -1092,11 +1096,15 @@ func parseWorkbookCreateStyleItem(item map[string]interface{}, path string) (*wo
 		probs = append(probs, common.ValidationErrorf("%s", msg))
 	}
 	// Normalize "Sheet!" range prefixes before the section parsers see them:
-	// every carrier names the target sheet on the item, so a prefix is at best
-	// redundant and at worst a silent retarget.
-	if name, _ := item["name"].(string); strings.TrimSpace(name) != "" {
-		probs = append(probs, normalizeStyleItemRangePrefixes(item, path, strings.TrimSpace(name))...)
-	}
+	// the target sheet is named by the item (or, on +workbook-create --values,
+	// by the single sheet being created), so a prefix is at best redundant and
+	// at worst a silent retarget. Stripping is unconditional — an item without
+	// a name (the --values path, where name is optional) must not be left with
+	// prefixed ranges the section parsers then reject as malformed. Only the
+	// "names a DIFFERENT sheet" report needs a name to compare against, so it
+	// is skipped when there is none.
+	name, _ := item["name"].(string)
+	probs = append(probs, normalizeStyleItemRangePrefixes(item, path, strings.TrimSpace(name))...)
 	if raw, ok := item["cell_styles"]; ok {
 		var errsHere []error
 		payload.CellStyles, errsHere = parseWorkbookCreateCellStyleOps(raw, path+".cell_styles")
@@ -1151,6 +1159,12 @@ var styleItemRangeSections = []string{"cell_styles", "row_sizes", "col_sizes", "
 // (name "Summary" + range "Detail!A1:D1" applying to Summary). It is stripped
 // anyway so the section parser reports the entry's own issues instead of piling
 // a redundant syntax error on top of the mismatch.
+//
+// name is "" on +workbook-create --values, whose single styles item needs no
+// name (the workbook has exactly one sheet, still unnamed at spec time). There
+// is then no sheet to disagree with, so ranges are stripped without the
+// mismatch report — stripping still has to happen, or the section parsers see
+// a prefixed range and reject it as malformed.
 func normalizeStyleItemRangePrefixes(item map[string]interface{}, path, name string) []error {
 	var probs []error
 	rewrite := func(section, rangeStr string) (string, bool) {
@@ -1159,7 +1173,7 @@ func normalizeStyleItemRangePrefixes(item map[string]interface{}, path, name str
 			return "", false
 		}
 		prefix := strings.Trim(strings.TrimSpace(rangeStr[:idx]), "'")
-		if prefix != name {
+		if name != "" && prefix != name {
 			probs = append(probs, common.ValidationErrorf(
 				"%s.%s range %q names sheet %q but the item targets %q — drop the prefix, or move the entry into the item for %q",
 				path, section, rangeStr, prefix, name, prefix))
@@ -1254,21 +1268,19 @@ func joinStyleValidationErrors(probs []error) error {
 		// Re-attribute to the outer flag even for a single issue: the inner
 		// error is scoped to a nested path and carries no Param, so an agent
 		// would have to parse prose to learn which flag to fix. Message text
-		// is preserved; only the typed attribution is added.
-		msg := probs[0].Error()
-		if p, ok := errs.ProblemOf(probs[0]); ok {
-			msg = p.Message
+		// is preserved; only the typed attribution is added — and the inner
+		// hint rides along, since a lone issue has the outer Hint slot free.
+		msg, hint := aggregatedIssueParts(probs[0])
+		verr := sheetsValidationForFlag("styles", "%s", msg).WithCause(probs[0])
+		if hint != "" {
+			verr = verr.WithHint("%s", hint)
 		}
-		return sheetsValidationForFlag("styles", "%s", msg).WithCause(probs[0])
+		return verr
 	}
 	const maxShown = 8
 	msgs := make([]string, 0, len(probs))
 	for _, e := range probs {
-		if p, ok := errs.ProblemOf(e); ok {
-			msgs = append(msgs, p.Message)
-			continue
-		}
-		msgs = append(msgs, e.Error())
+		msgs = append(msgs, aggregatedIssueText(e))
 	}
 	suffix := ""
 	if len(msgs) > maxShown {
@@ -1602,8 +1614,13 @@ func normalizeWorkbookCreateStyleObject(in map[string]interface{}, path string) 
 	return out, nil
 }
 
-// workbookCreateCellStyleFieldList is the canonical style vocabulary plus the
-// two border carriers, in display order for the unknown-field hint.
+// workbookCreateCellStyleFieldList is what a caller may WRITE in a cell_styles
+// item, in display order for the unknown-field hint — the canonical scalar
+// vocabulary (workbookCreateCellStyleField) plus the two border carriers.
+// "border" is the documented four-sides shorthand rather than a field the
+// switch above ever sees: foldBorderFamilyAliases folds it into border_styles
+// first. It belongs in this list because the list answers "what may I write",
+// not "what survives normalization".
 var workbookCreateCellStyleFieldList = []string{
 	"font_color", "font_family", "font_size", "font_weight", "font_style", "font_line",
 	"background_color", "horizontal_alignment", "vertical_alignment",
