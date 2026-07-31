@@ -22,7 +22,6 @@ import (
 	"github.com/larksuite/cli/internal/event/busdiscover"
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/source"
 	"github.com/larksuite/cli/internal/event/transport"
 	"github.com/larksuite/cli/internal/lockfile"
 )
@@ -54,10 +53,15 @@ type Bus struct {
 	// snapshot is the compiled catalog this daemon serves: it decides which
 	// upstream event types to subscribe and which keys are single-consumer.
 	snapshot *catalog.Snapshot
+
+	// sources are injected by the composition root; the daemon runs whatever
+	// it was handed and never constructs an ingress itself.
+	sources []Source
 }
 
-func NewBus(appID, appSecret, domain string, tr transport.IPC, logger *log.Logger, snap *catalog.Snapshot) *Bus {
+func NewBus(appID, appSecret, domain string, tr transport.IPC, logger *log.Logger, snap *catalog.Snapshot, sources ...Source) *Bus {
 	return &Bus{
+		sources:   sources,
 		appID:     appID,
 		appSecret: appSecret,
 		domain:    domain,
@@ -161,21 +165,15 @@ func shutdownConns(b *Bus) {
 	}
 }
 
-// startSources launches registered sources (or a default FeishuSource); any source exit triggers full bus shutdown.
+// startSources launches the injected sources; any source exit triggers full bus shutdown.
 func (b *Bus) startSources(ctx context.Context) {
-	sources := source.All()
-	if len(sources) == 0 {
-		sources = []source.Source{&source.FeishuSource{
-			AppID:     b.appID,
-			AppSecret: b.appSecret,
-			Domain:    b.domain,
-			Logger:    b.logger,
-		}}
+	if len(b.sources) == 0 {
+		b.logger.Printf("WARN: no event sources injected; the bus will idle until shutdown")
 	}
 	eventTypes := b.snapshot.EventTypes()
 	b.hub.SetLogger(b.logger)
-	for _, src := range sources {
-		go func(s source.Source) {
+	for _, src := range b.sources {
+		go func(s Source) {
 			b.logger.Printf("Starting source: %s", s.Name())
 			err := s.Start(ctx, eventTypes, func(raw *event.RawEvent) {
 				b.logger.Printf("Event received: type=%s id=%s", raw.EventType, raw.EventID)

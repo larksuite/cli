@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/bus"
 	"github.com/larksuite/cli/internal/event/catalog"
+	"github.com/larksuite/cli/internal/event/source"
 	"github.com/larksuite/cli/internal/event/transport"
 )
 
@@ -45,7 +46,13 @@ func NewCmdBus(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 			}
 
 			tr := transport.New()
-			b := bus.NewBus(cfg.AppID, cfg.AppSecret, domain, tr, logger, snap)
+			ingress := &source.FeishuSource{
+				AppID:     cfg.AppID,
+				AppSecret: cfg.AppSecret,
+				Domain:    domain,
+				Logger:    logger,
+			}
+			b := bus.NewBus(cfg.AppID, cfg.AppSecret, domain, tr, logger, snap, ingress)
 
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()

@@ -25,18 +25,6 @@ func (s *mockSource) Start(ctx context.Context, _ []string, emit func(*event.Raw
 	return nil
 }
 
-func TestRegister(t *testing.T) {
-	ResetForTest()
-
-	src := &mockSource{name: "test-source"}
-	Register(src)
-
-	sources := All()
-	if len(sources) != 1 || sources[0].Name() != "test-source" {
-		t.Errorf("unexpected sources: %v", sources)
-	}
-}
-
 func TestMockSource_EmitsEvents(t *testing.T) {
 	src := &mockSource{
 		name: "test",

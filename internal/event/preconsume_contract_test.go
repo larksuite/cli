@@ -38,7 +38,6 @@ import (
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/consume"
 	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/source"
 	"github.com/larksuite/cli/internal/event/testutil"
 	"github.com/larksuite/cli/internal/event/transport"
 )
@@ -96,8 +95,6 @@ func resolveDef(t *testing.T, snap *catalog.Snapshot, key string) *event.KeyDefi
 // catalog the bus serves.
 func startContractBus(t *testing.T, snap *catalog.Snapshot) (*testutil.FakeTransport, string) {
 	t.Helper()
-	source.ResetForTest()
-	source.Register(&mockIntegSource{})
 
 	appID := fmt.Sprintf("preconsume-contract-%d-%d", os.Getpid(), contractAppSeq.Add(1))
 	// Short-named temp dir instead of t.TempDir(): the long test names would
@@ -111,7 +108,7 @@ func startContractBus(t *testing.T, snap *catalog.Snapshot) (*testutil.FakeTrans
 	addr := filepath.Join(sockDir, "s")
 	tr := testutil.NewWrappedFake(transport.New(), addr)
 	logger := log.New(os.Stderr, "[contract-bus] ", log.LstdFlags)
-	b := bus.NewBus(appID, "test-secret", "", tr, logger, snap)
+	b := bus.NewBus(appID, "test-secret", "", tr, logger, snap, &mockIntegSource{})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	runBus(t, b, ctx)

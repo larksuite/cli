@@ -23,7 +23,6 @@ import (
 	"github.com/larksuite/cli/internal/event/bus"
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/source"
 	"github.com/larksuite/cli/internal/event/testutil"
 	"github.com/larksuite/cli/internal/event/transport"
 )
@@ -84,7 +83,7 @@ type mockIntegSource struct {
 
 func (s *mockIntegSource) Name() string { return "mock-integration" }
 
-func (s *mockIntegSource) Start(ctx context.Context, _ []string, emit func(*event.RawEvent), _ source.StatusNotifier) error {
+func (s *mockIntegSource) Start(ctx context.Context, _ []string, emit func(*event.RawEvent), _ func(state, detail string)) error {
 	s.mu.Lock()
 	s.emitFn = emit
 	s.mu.Unlock()
@@ -102,7 +101,6 @@ func (s *mockIntegSource) emit(e *event.RawEvent) {
 }
 
 func TestIntegration_BusToConsume(t *testing.T) {
-	source.ResetForTest()
 
 	snap := compileTestSnapshot(t, event.KeyDefinition{
 		Key:       "test.event.v1",
@@ -111,7 +109,6 @@ func TestIntegration_BusToConsume(t *testing.T) {
 	})
 
 	mockSrc := &mockIntegSource{}
-	source.Register(mockSrc)
 
 	dir := t.TempDir()
 	addr := filepath.Join(dir, "t.sock")
@@ -120,7 +117,7 @@ func TestIntegration_BusToConsume(t *testing.T) {
 	logger := log.New(os.Stderr, "[test-bus] ", log.LstdFlags)
 
 	testTr := testutil.NewWrappedFake(tr, addr)
-	b := bus.NewBus("test-app", "test-secret", "", testTr, logger, snap)
+	b := bus.NewBus("test-app", "test-secret", "", testTr, logger, snap, mockSrc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -199,7 +196,6 @@ func TestIntegration_BusToConsume(t *testing.T) {
 }
 
 func TestIntegration_MultipleConsumers(t *testing.T) {
-	source.ResetForTest()
 
 	snap := compileTestSnapshot(t, event.KeyDefinition{
 		Key:       "multi.event.v1",
@@ -208,7 +204,6 @@ func TestIntegration_MultipleConsumers(t *testing.T) {
 	})
 
 	mockSrc := &mockIntegSource{}
-	source.Register(mockSrc)
 
 	dir := t.TempDir()
 	addr := filepath.Join(dir, "m.sock")
@@ -216,7 +211,7 @@ func TestIntegration_MultipleConsumers(t *testing.T) {
 	logger := log.New(os.Stderr, "[test-multi] ", log.LstdFlags)
 
 	testTr := testutil.NewWrappedFake(tr, addr)
-	b := bus.NewBus("test-multi", "test-secret", "", testTr, logger, snap)
+	b := bus.NewBus("test-multi", "test-secret", "", testTr, logger, snap, mockSrc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -292,7 +287,6 @@ func TestIntegration_MultipleConsumers(t *testing.T) {
 }
 
 func TestIntegration_DedupFilter(t *testing.T) {
-	source.ResetForTest()
 
 	snap := compileTestSnapshot(t, event.KeyDefinition{
 		Key:       "dedup.event.v1",
@@ -301,7 +295,6 @@ func TestIntegration_DedupFilter(t *testing.T) {
 	})
 
 	mockSrc := &mockIntegSource{}
-	source.Register(mockSrc)
 
 	dir := t.TempDir()
 	addr := filepath.Join(dir, "d.sock")
@@ -309,7 +302,7 @@ func TestIntegration_DedupFilter(t *testing.T) {
 	logger := log.New(os.Stderr, "[test-dedup] ", log.LstdFlags)
 
 	testTr := testutil.NewWrappedFake(tr, addr)
-	b := bus.NewBus("test-dedup", "test-secret", "", testTr, logger, snap)
+	b := bus.NewBus("test-dedup", "test-secret", "", testTr, logger, snap, mockSrc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
