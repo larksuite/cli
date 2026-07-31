@@ -149,11 +149,14 @@ macos_download_step = macos.fetch("steps").find { |step| step["name"] == "Downlo
 fail("verify-macos must download the build candidate artifact") unless macos_download_step&.fetch("uses", nil)&.start_with?("actions/download-artifact@")
 fail("verify-macos must not download mutable Draft Release assets") if macos_verify_run&.include?("gh release download")
 fail("verify-macos must verify notarization through codesign") unless macos_verify_run&.include?("--check-notarization -R='notarized'")
+fail("verify-macos must detect hardened runtime in CodeDirectory metadata") unless macos_verify_run&.include?("^CodeDirectory .*flags=0x")
 
 draft_step = jobs.fetch("create-draft-release").fetch("steps").find { |step| step["name"] == "Create or reuse Draft Release" }
 draft_run = draft_step&.fetch("run", nil)
 fail("Draft Release creation must write generated release notes") unless draft_run&.include?("--notes-file")
 fail("Draft Release reuse must validate target commit and prerelease state") unless draft_run&.include?("targetCommitish") && draft_run.include?("isPrerelease")
+fail("Draft Release creation must target the validated source commit") unless draft_run&.include?("--target \"$SOURCE_SHA\"")
+fail("Draft Release creation must require the existing remote tag") unless draft_run&.include?("--verify-tag")
 
 github_steps = jobs.fetch("publish-github").fetch("steps")
 github_check = github_steps.find { |step| step["name"] == "Verify Draft assets match the candidate" }

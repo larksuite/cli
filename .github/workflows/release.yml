@@ -225,14 +225,17 @@ jobs:
           release_assets=(release-candidate/*.tar.gz release-candidate/*.zip release-candidate/checksums.txt)
           release_error="$(mktemp "${RUNNER_TEMP}/release-view.XXXXXX")"
           trap 'rm -f -- "$release_error"' EXIT
-          if metadata="$(gh release view "$TAG" --json isDraft,isPrerelease,targetCommitish 2>"$release_error")"; then
+          verify_release_metadata() {
             node -e '
               const [metadata, sourceSha, prerelease] = process.argv.slice(1);
               const release = JSON.parse(metadata);
               if (release.isDraft !== true || release.targetCommitish !== sourceSha || release.isPrerelease !== (prerelease === "true")) {
-                throw new Error("Existing Release metadata does not match this release candidate.");
+                throw new Error("Release metadata does not match this release candidate.");
               }
-            ' "$metadata" "$SOURCE_SHA" "$PRERELEASE"
+            ' "$1" "$SOURCE_SHA" "$PRERELEASE"
+          }
+          if metadata="$(gh release view "$TAG" --json isDraft,isPrerelease,targetCommitish 2>"$release_error")"; then
+            verify_release_metadata "$metadata"
             existing="$(mktemp -d "${RUNNER_TEMP}/draft-release.XXXXXX")"
             trap 'rm -f -- "$release_error"; rm -rf -- "$existing"' EXIT
             expected_names=("${release_assets[@]##*/}")
@@ -276,7 +279,8 @@ jobs:
             fi
             args=("$TAG" --target "$SOURCE_SHA" --title "$TAG" --draft)
             [[ "$PRERELEASE" != "true" ]] || args+=(--prerelease)
-            gh release create "${args[@]}" --notes-file "$release_notes"
+            gh release create "${args[@]}" --verify-tag --notes-file "$release_notes"
+            verify_release_metadata "$(gh release view "$TAG" --json isDraft,isPrerelease,targetCommitish)"
           fi
           gh release edit "$TAG" --notes-file "$release_notes"
           gh release upload "$TAG" "${release_assets[@]}"
@@ -325,7 +329,7 @@ jobs:
           details="$(codesign -dv --verbose=4 "$binary" 2>&1)"
           grep -Eq '^Authority=Developer ID Application: .+' <<<"$details"
           grep -Fxq "TeamIdentifier=${MACOS_TEAM_ID}" <<<"$details"
-          grep -Eq '^flags=0x[0-9A-Fa-f]+\(.*runtime.*\)' <<<"$details"
+          grep -Eq '^CodeDirectory .*flags=0x[0-9A-Fa-f]+[(][^)]*runtime[^)]*[)]' <<<"$details"
           grep -Eq '^Timestamp=.+' <<<"$details"
           codesign --verify --strict --verbose=4 --check-notarization -R='notarized' "$binary"
           "$binary" --version | grep -Fq "$VERSION"
