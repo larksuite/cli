@@ -1317,7 +1317,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more.",
+        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more. Passing 0 means \"no cap of my own\" and resolves to the same ceiling as leaving the flag alone (500000, or the offload limit with --output-path) — never down to the tool's smaller omitted-value fallback.",
         "default": "500000"
       },
       {
@@ -1433,7 +1433,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more.",
+        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more. Passing 0 means \"no cap of my own\" and resolves to the same ceiling as leaving the flag alone (500000, or the offload limit with --output-path) — never down to the tool's smaller omitted-value fallback.",
         "default": "500000"
       },
       {
@@ -1441,7 +1441,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Omit it to print to stdout as usual."
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Note the file is the data payload as JSON — on +csv-get too, where the CSV text sits in a field inside it — not a ready-to-use .csv; redirect stdout instead if you want a bare CSV file. Omit it to print to stdout as usual."
       },
       {
         "name": "include-row-prefix",
@@ -1510,7 +1510,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). The underlying tool truncates at ~50000 even when unset, so this is sent explicitly to raise it; for a full untruncated read use --output-path (cap auto-raises to a bounded 20M chars; explicit --max-chars overrides).",
+        "desc": "Max output chars per call; default 500000 (safety cap). The underlying tool truncates at ~50000 even when unset, so this is sent explicitly to raise it; for a full untruncated read use --output-path (cap auto-raises to a bounded 20M chars; explicit --max-chars overrides). Passing 0 means \"no cap of my own\" and resolves to the same ceiling as leaving the flag alone (500000, or the offload limit with --output-path) — never down to the tool's smaller omitted-value fallback.",
         "default": "500000"
       },
       {

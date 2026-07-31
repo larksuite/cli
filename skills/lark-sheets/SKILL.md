@@ -89,7 +89,7 @@ lark-cli sheets +cells-set-style --url <U> --sheet-name S1 --range A1:D1 --font-
 lark-cli sheets +styles-put --url <U> --styles - <<'JSON'
 {"styles":[{"name":"S1","cell_styles":[{"range":"A1:D1","font_weight":"bold","background_color":"#F0F0F0"}],"col_sizes":[{"range":"A:D","type":"pixel","size":120}],"freeze":{"rows":1}}]}
 JSON
-lark-cli sheets +batch-update --url <U> --yes --operations - <<'JSON'   # --yes：用户已确认（见 high-risk 审批协议）
+lark-cli sheets +batch-update --url <U> --dry-run --operations - <<'JSON'   # high-risk：先 --dry-run 给用户看，同意后原样重发并追加 --yes
 [{"shortcut":"+cells-set","input":{"sheet_name":"S1","range":"A1","cells":[[{"value":"x"}]]}}]
 JSON
 lark-cli sheets +dim-freeze --url <U> --sheet-name S1 --rows 1 --cols 2  # 一次给全；冻结是整份状态覆盖，没写的轴即为不冻结
@@ -220,7 +220,7 @@ lark-cli sheets +csv-get --url "https://.../sheets/shtXXX" --sheet-name "<真实
 大 payload（`--operations` / `--cells` / `--sheets` / `--styles` / `--properties`…）、或含换行 / 引号 / `!` 等特殊字符时，优先 heredoc stdin（`-`）传入，避免命令行超长与 shell 转义问题：
 
 ```bash
-lark-cli sheets +batch-update --url "..." --yes --operations - <<'JSON'   # --yes：用户已确认（见 high-risk 审批协议）
+lark-cli sheets +batch-update --url "..." --dry-run --operations - <<'JSON'   # high-risk：先 --dry-run，用户同意后再追加 --yes 重发
 [{"shortcut":"+cells-set","input":{...}}]
 JSON
 ```
