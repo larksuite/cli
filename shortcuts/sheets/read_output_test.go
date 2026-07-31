@@ -35,3 +35,35 @@ func TestReadOutputPath_UnsafePathIsTypedValidation(t *testing.T) {
 		t.Errorf("Cause = %v, want the fileio.ErrPathValidation chain preserved", ve.Cause)
 	}
 }
+
+// TestReadResultTruncated_AllLevels pins the completeness classifier: a
+// truncation marker at ANY level must be seen, or the --output-path receipt
+// claims complete:true over a clipped file and an agent analyzes half the
+// data believing it has all of it.
+func TestReadResultTruncated_AllLevels(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		out  interface{}
+		want bool
+	}{
+		{"top-level truncated", map[string]interface{}{"truncated": true}, true},
+		{"top-level has_more", map[string]interface{}{"has_more": true}, true},
+		{"ranges entry", map[string]interface{}{"ranges": []interface{}{map[string]interface{}{"truncated": true}}}, true},
+		{"sheets entry", map[string]interface{}{"sheets": []interface{}{map[string]interface{}{"truncated": true}}}, true},
+		{"nested ranges inside a sheet", map[string]interface{}{
+			"sheets": []interface{}{map[string]interface{}{
+				"ranges": []interface{}{map[string]interface{}{"truncated": true}},
+			}},
+		}, true},
+		{"clean payload", map[string]interface{}{"sheets": []interface{}{map[string]interface{}{"data": []interface{}{}}}}, false},
+		{"non-map payload", []interface{}{1, 2}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := readResultTruncated(tc.out); got != tc.want {
+				t.Errorf("readResultTruncated = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

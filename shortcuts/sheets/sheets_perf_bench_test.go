@@ -209,10 +209,10 @@ func TestTablePutCellBudgetIncludesStylePadding(t *testing.T) {
 // TestBatchStampAggregateCap covers the batch fan-out aggregate budget — the
 // per-range cap can't stop many ranges from summing past the matrix ceiling.
 func TestBatchStampAggregateCap(t *testing.T) {
-	if err := checkBatchStampBudget(maxStampMatrixCells); err != nil {
+	if err := checkBatchStampBudget("ranges", maxStampMatrixCells); err != nil {
 		t.Fatalf("aggregate == cap should pass, got: %v", err)
 	}
-	if err := checkBatchStampBudget(maxStampMatrixCells + 1); err == nil {
+	if err := checkBatchStampBudget("ranges", maxStampMatrixCells+1); err == nil {
 		t.Fatal("aggregate over cap should be rejected")
 	}
 }

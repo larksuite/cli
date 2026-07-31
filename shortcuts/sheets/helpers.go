@@ -472,6 +472,14 @@ func normalizeChartHexColors(v interface{}) interface{} {
 				t[k] = "#" + s
 				continue
 			}
+			// A color key can hold an ARRAY of colors (colorTheme, series
+			// palettes). Recursing without the key would lose the color
+			// context and leave bare hex strings unprefixed, so the server
+			// rejects a payload the schema itself allows.
+			if arr, ok := val.([]interface{}); ok && isColorKey(k) {
+				normalizeChartHexColorList(arr)
+				continue
+			}
 			normalizeChartHexColors(val)
 		}
 	case []interface{}:
@@ -482,8 +490,40 @@ func normalizeChartHexColors(v interface{}) interface{} {
 	return v
 }
 
+// normalizeChartHexColorList prefixes bare hex strings inside an array that
+// sits under a color key, and keeps descending for nested shapes.
+func normalizeChartHexColorList(arr []interface{}) {
+	for i, e := range arr {
+		if s, ok := e.(string); ok {
+			if isBareHexColor(s) {
+				arr[i] = "#" + s
+			}
+			continue
+		}
+		if nested, ok := e.([]interface{}); ok {
+			normalizeChartHexColorList(nested)
+			continue
+		}
+		normalizeChartHexColors(e)
+	}
+}
+
+// isColorKey reports whether a key names a color (or a list of colors). The
+// value gate is isBareHexColor — a strict 6/8-digit hex check — so matching a
+// key generously is safe: a non-hex value under a color-ish key is left alone.
+// Plural and color-prefixed forms matter because the chart schema uses
+// colorTheme / colorScale / colorGradient / highlight_colors, none of which
+// end in "color".
 func isColorKey(k string) bool {
-	return k == "color" || strings.HasSuffix(k, "_color") || strings.HasSuffix(k, "Color")
+	if k == "color" || k == "colors" {
+		return true
+	}
+	for _, suffix := range []string{"_color", "Color", "_colors", "Colors"} {
+		if strings.HasSuffix(k, suffix) {
+			return true
+		}
+	}
+	return strings.HasPrefix(k, "color") || strings.HasPrefix(k, "Color")
 }
 
 func isBareHexColor(s string) bool {

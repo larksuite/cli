@@ -1136,8 +1136,26 @@ func parseWorkbookCreateFreezeOp(raw interface{}, path string) (*workbookCreateF
 	if !ok {
 		return nil, common.ValidationErrorf("%s must be an object like {\"rows\":1} or {\"rows\":1,\"cols\":2}", path)
 	}
+	// "cols" and "columns" are aliases for the same field, so accepting both in
+	// one object would make the result depend on Go's randomized map iteration
+	// order — the same payload could freeze 1 column on one run and 2 on the
+	// next. Reject the conflict instead of silently picking a winner.
+	if _, hasCols := obj["cols"]; hasCols {
+		if _, hasColumns := obj["columns"]; hasColumns {
+			if !jsonEqual(obj["cols"], obj["columns"]) {
+				return nil, common.ValidationErrorf("%s got conflicting values for \"cols\" and \"columns\" (aliases of the same field) — keep one", path)
+			}
+		}
+	}
 	out := &workbookCreateFreezeOp{}
-	for k, v := range obj {
+	// Iterate deterministically so error reporting is stable across runs too.
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := obj[k]
 		n, isNum := v.(float64)
 		if !isNum || n != float64(int(n)) || n < 0 {
 			return nil, common.ValidationErrorf("%s.%s must be a non-negative integer", path, k)
@@ -1165,7 +1183,15 @@ func joinStyleValidationErrors(probs []error) error {
 	case 0:
 		return nil
 	case 1:
-		return probs[0]
+		// Re-attribute to the outer flag even for a single issue: the inner
+		// error is scoped to a nested path and carries no Param, so an agent
+		// would have to parse prose to learn which flag to fix. Message text
+		// is preserved; only the typed attribution is added.
+		msg := probs[0].Error()
+		if p, ok := errs.ProblemOf(probs[0]); ok {
+			msg = p.Message
+		}
+		return sheetsValidationForFlag("styles", "%s", msg).WithCause(probs[0])
 	}
 	const maxShown = 8
 	msgs := make([]string, 0, len(probs))

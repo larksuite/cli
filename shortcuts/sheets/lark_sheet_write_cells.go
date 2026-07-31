@@ -180,7 +180,7 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 				}
 			}
 		}
-		if err := checkBatchStampBudget(totalCells); err != nil {
+		if err := checkBatchStampBudget("writes", totalCells); err != nil {
 			return nil, err
 		}
 		ops = append(ops, map[string]interface{}{
@@ -202,7 +202,15 @@ func joinWritesValidationErrors(probs []error) error {
 	case 0:
 		return nil
 	case 1:
-		return probs[0]
+		// Re-attribute to the outer flag even for a single issue: the inner
+		// error is scoped to a nested path and carries no Param, so an agent
+		// would have to parse prose to learn which flag to fix. Message text
+		// is preserved; only the typed attribution is added.
+		msg := probs[0].Error()
+		if p, ok := errs.ProblemOf(probs[0]); ok {
+			msg = p.Message
+		}
+		return sheetsValidationForFlag("writes", "%s", msg).WithCause(probs[0])
 	}
 	const maxShown = 8
 	msgs := make([]string, 0, len(probs))

@@ -32,6 +32,18 @@ ROW_PREFIX_RE = re.compile(r"^\[row=(\d+)\]\s?(.*)$")
 MAX_EXTERNAL_MERGE_ANCHOR_CHECKS = 10
 
 
+def _inside_quoted_field(lines: list[str]) -> bool:
+    """True when the accumulated record has an unterminated quoted field.
+
+    RFC 4180 escapes a literal quote by doubling it, so both halves of a `""`
+    pair count and parity still tracks whether a field is left open. A record
+    that is still open must swallow the next physical line verbatim — even one
+    that looks like a `[row=N]` prefix, because inside quotes that text is
+    ordinary cell content, not a new record.
+    """
+    return sum(line.count('"') for line in lines) % 2 == 1
+
+
 @dataclass
 class CsvGrid:
     row_numbers: list[int]
@@ -59,12 +71,17 @@ def parse_annotated_csv(
     row_numbers_inferred = False
     has_authoritative_rows = isinstance(row_indices, list) and len(row_indices) > 0
 
-    if any(ROW_PREFIX_RE.match(line) for line in lines):
+    first_meaningful = next((line for line in lines if line.strip()), "")
+    if ROW_PREFIX_RE.match(first_meaningful):
         records = []
         current_lines: list[str] | None = None
         current_row_number: int | None = None
         for line in lines:
             match = ROW_PREFIX_RE.match(line)
+            if match and current_lines is not None and _inside_quoted_field(current_lines):
+                # Prefix-looking text inside an open quoted field is content.
+                current_lines.append(line)
+                continue
             if match:
                 if current_lines is not None and current_row_number is not None:
                     records.append("\n".join(current_lines))
@@ -115,7 +132,7 @@ def parse_annotated_csv(
 
     for row in values:
         row.extend([""] * (len(col_letters) - len(row)))
-    inferred = bool(values) and not any(ROW_PREFIX_RE.match(line) for line in lines) and (
+    inferred = bool(values) and not ROW_PREFIX_RE.match(first_meaningful) and (
         row_numbers_inferred or not has_authoritative_rows
     )
     return CsvGrid(

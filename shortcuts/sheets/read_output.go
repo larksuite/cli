@@ -16,8 +16,10 @@ import (
 //
 // Shared plumbing for +cells-get / +csv-get / +table-get behind the
 // --output-path flag: when a caller redirects a read to a file, the char cap
-// should default to unlimited so the whole sheet lands on disk instead of being
-// clipped by the stdout-oriented max_chars safety cap.
+// rises to a bounded offload default (see outputPathReadLimit) so a large
+// sheet lands on disk instead of being clipped by the stdout-oriented
+// max_chars safety cap — bounded, not unlimited, and the receipt states
+// whether the file is complete.
 
 // readOutputPath returns the trimmed --output-path flag value ("" when unset).
 func readOutputPath(runtime *common.RuntimeContext) string {
@@ -81,29 +83,45 @@ func consumedChars(sheets []interface{}) int {
 }
 
 // readResultTruncated reports whether a read payload carries any truncation
-// marker — either at the top level (budget exhausted before every sheet was
-// read) or on an individual sheet (the server clipped that sheet at max_chars).
+// marker, at any of the three levels a read result can carry one: the top
+// level (budget exhausted before every sheet was read), a per-range entry
+// (+cells-get / +csv-get return ranges[]), or a per-sheet entry (+table-get
+// returns sheets[]). Missing a level makes the receipt claim complete:true
+// over a clipped file, which is worse than no receipt at all — an agent would
+// analyze or write back half the data believing it had all of it.
 func readResultTruncated(out interface{}) bool {
 	m, ok := out.(map[string]interface{})
 	if !ok {
 		return false
 	}
-	if t, ok := m["truncated"].(bool); ok && t {
+	if truncationFlagSet(m) {
 		return true
 	}
-	if hm, ok := m["has_more"].(bool); ok && hm {
-		return true
-	}
-	sheets, ok := m["sheets"].([]interface{})
-	if !ok {
-		return false
-	}
-	for _, s := range sheets {
-		sm, ok := s.(map[string]interface{})
+	for _, key := range []string{"sheets", "ranges"} {
+		items, ok := m[key].([]interface{})
 		if !ok {
 			continue
 		}
-		if t, ok := sm["truncated"].(bool); ok && t {
+		for _, it := range items {
+			im, ok := it.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// A sheet entry can itself carry ranges[]; recurse so nesting
+			// cannot hide a marker.
+			if truncationFlagSet(im) || readResultTruncated(im) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// truncationFlagSet reports whether a single object carries a truncation
+// signal under any of the names the read tools use.
+func truncationFlagSet(m map[string]interface{}) bool {
+	for _, key := range []string{"truncated", "has_more", "is_truncated"} {
+		if v, ok := m[key].(bool); ok && v {
 			return true
 		}
 	}

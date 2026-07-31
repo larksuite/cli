@@ -64,3 +64,46 @@ func TestChartExampleTemplates_ValidateAgainstSchema(t *testing.T) {
 		})
 	}
 }
+
+// TestNormalizeChartHexColors_Arrays pins color normalization inside arrays:
+// the chart schema uses colorTheme / colorScale / highlight_colors, whose
+// values are LISTS of bare hex strings. Recursing without the key context
+// dropped the "#" prefix and the server rejected a payload its own schema
+// allows.
+func TestNormalizeChartHexColors_Arrays(t *testing.T) {
+	t.Parallel()
+	in := map[string]interface{}{
+		"colorTheme":       []interface{}{"4472C4", "ED7D31"},
+		"highlight_colors": []interface{}{"FF0000"},
+		"colorScale":       []interface{}{map[string]interface{}{"color": "70AD47"}},
+		"backgroundColor":  "4472C4",
+		"colorMode":        "auto",
+		"title":            []interface{}{"4472C4"},
+	}
+	raw, err := json.Marshal(normalizeChartHexColors(in))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	theme := got["colorTheme"].([]interface{})
+	if theme[0] != "#4472C4" || theme[1] != "#ED7D31" {
+		t.Errorf("colorTheme = %v, want both prefixed", theme)
+	}
+	if got["highlight_colors"].([]interface{})[0] != "#FF0000" {
+		t.Errorf("highlight_colors = %v", got["highlight_colors"])
+	}
+	if got["colorScale"].([]interface{})[0].(map[string]interface{})["color"] != "#70AD47" {
+		t.Errorf("colorScale = %v", got["colorScale"])
+	}
+	// Non-hex values under a color-ish key, and hex-looking values under a
+	// non-color key, must both be left alone.
+	if got["colorMode"] != "auto" {
+		t.Errorf("colorMode = %v, want untouched", got["colorMode"])
+	}
+	if got["title"].([]interface{})[0] != "4472C4" {
+		t.Errorf("title = %v, want untouched (not a color key)", got["title"])
+	}
+}

@@ -1430,7 +1430,15 @@ func readSheetAsSpec(ctx context.Context, runtime *common.RuntimeContext, token 
 	truncated := cellRangesTruncated(out)
 	grid := extractCellGrid(out)
 	if len(grid) == 0 {
-		return emptySpec(), nil
+		// An empty grid can itself be the result of clipping (the cap was spent
+		// before any row came back), so the truncation flag must survive here —
+		// dropping it reports a partial read as a complete empty sheet.
+		spec := emptySpec()
+		if truncated {
+			spec["truncated"] = true
+			spec["truncation_warning"] = "the read hit the char cap before any row was returned for this sheet; raise --max-chars or read a narrower --range"
+		}
+		return spec, nil
 	}
 
 	var headerRow []map[string]interface{}

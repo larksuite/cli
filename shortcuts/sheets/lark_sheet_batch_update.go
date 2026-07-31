@@ -292,7 +292,7 @@ func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[
 			return nil, err
 		}
 		totalCells += int64(rows) * int64(cols)
-		if err := checkBatchStampBudget(totalCells); err != nil {
+		if err := checkBatchStampBudget("ranges", totalCells); err != nil {
 			return nil, err
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
@@ -514,7 +514,7 @@ func dropdownBatchInput(runtime *common.RuntimeContext, token string, clear bool
 			return nil, err
 		}
 		totalCells += int64(rows) * int64(cols)
-		if err := checkBatchStampBudget(totalCells); err != nil {
+		if err := checkBatchStampBudget("ranges", totalCells); err != nil {
 			return nil, err
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
@@ -546,10 +546,10 @@ const maxBatchRanges = 100
 // cells matrix up front, so the SUM across ranges is the real peak-memory bound
 // — the per-range checkStampMatrixBudget alone can't stop many ranges from
 // summing past it. totalCells is int64 to stay overflow-safe.
-func checkBatchStampBudget(totalCells int64) error {
+func checkBatchStampBudget(flagName string, totalCells int64) error {
 	if totalCells > maxStampMatrixCells {
-		return sheetsValidationForFlag("ranges",
-			"ranges expand to %d cells total, over the %d-cell safety cap; reduce the number or size of ranges",
+		return sheetsValidationForFlag(flagName,
+			"the request expands to %d cells total, over the %d-cell safety cap; reduce the number or size of ranges",
 			totalCells, maxStampMatrixCells)
 	}
 	return nil

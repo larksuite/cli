@@ -420,3 +420,63 @@ func mustJSONMap(t *testing.T, raw string) map[string]interface{} {
 	}
 	return m
 }
+
+// TestFreezeAliasConflictRejected pins determinism: "cols" and "columns" are
+// aliases for one field, so accepting both would make the frozen column count
+// depend on Go's randomized map iteration order — the same payload could
+// freeze 1 column on one run and 2 on the next.
+func TestFreezeAliasConflictRejected(t *testing.T) {
+	t.Parallel()
+
+	t.Run("conflicting alias values reject every time", func(t *testing.T) {
+		t.Parallel()
+		for i := 0; i < 200; i++ {
+			_, err := parseWorkbookCreateFreezeOp(map[string]interface{}{
+				"cols": float64(1), "columns": float64(2),
+			}, "--styles.styles[0].freeze")
+			if err == nil {
+				t.Fatalf("iteration %d: conflicting cols/columns must be rejected", i)
+			}
+		}
+	})
+
+	t.Run("identical alias values pass", func(t *testing.T) {
+		t.Parallel()
+		got, err := parseWorkbookCreateFreezeOp(map[string]interface{}{
+			"cols": float64(2), "columns": float64(2),
+		}, "p")
+		if err != nil || got.Cols != 2 {
+			t.Fatalf("got=%+v err=%v, want Cols=2", got, err)
+		}
+	})
+
+	t.Run("either alias alone still works", func(t *testing.T) {
+		t.Parallel()
+		for _, key := range []string{"cols", "columns"} {
+			got, err := parseWorkbookCreateFreezeOp(map[string]interface{}{key: float64(3)}, "p")
+			if err != nil || got.Cols != 3 {
+				t.Fatalf("%s: got=%+v err=%v, want Cols=3", key, got, err)
+			}
+		}
+	})
+}
+
+// TestSingleIssueStillAttributesFlag pins that the aggregate entry points
+// attribute the outer flag even for ONE issue — an agent must read the flag
+// to fix from the typed envelope, not by parsing a nested path out of prose.
+func TestSingleIssueStillAttributesFlag(t *testing.T) {
+	t.Parallel()
+	_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+		"styles": []interface{}{map[string]interface{}{
+			"name":        "s",
+			"cell_styles": []interface{}{mustJSONMap(t, `{"range":"A1","font_weight":true}`)},
+		}},
+	}), testToken)
+	ve := requireValidation(t, err, "font_weight must be a string")
+	if ve.Param != "--styles" {
+		t.Errorf("Param = %q, want --styles even for a single issue", ve.Param)
+	}
+	if ve.Cause == nil {
+		t.Error("single-issue aggregate should keep the underlying error as Cause")
+	}
+}

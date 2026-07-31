@@ -158,7 +158,7 @@ func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) 
 				return nil, err
 			}
 			totalCells += int64(rows) * int64(cols)
-			if err := checkBatchStampBudget(totalCells); err != nil {
+			if err := checkBatchStampBudget("styles", totalCells); err != nil {
 				return nil, err
 			}
 			ops = append(ops, map[string]interface{}{
