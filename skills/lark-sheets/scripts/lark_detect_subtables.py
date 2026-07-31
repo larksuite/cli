@@ -94,6 +94,24 @@ def parse_annotated_csv(
             records.append("\n".join(current_lines))
             row_numbers.append(current_row_number)
 
+        # Cross-check against the row numbers the server itself reported.
+        # _inside_quoted_field decides whether a "[row=N]" line starts a new
+        # record or is content inside an open quoted field; when the payload's
+        # quoting is malformed (a lone unescaped quote in a cell), that call
+        # goes the wrong way and every following line is swallowed into the
+        # previous cell — the rows simply vanish, and everything downstream
+        # (data_range, last data row, column profiles) is quietly computed from
+        # a short grid. row_indices is authoritative and already in hand, so
+        # refuse rather than profile a grid that does not match it.
+        if has_authoritative_rows and row_numbers != [int(r) for r in row_indices]:
+            raise ValueError(
+                "annotated_csv did not parse into the rows the server reported "
+                f"(parsed {len(row_numbers)} rows {row_numbers[:5]}…, expected "
+                f"{len(row_indices)} rows {list(row_indices)[:5]}…) — most likely "
+                "an unbalanced quote in a cell. Re-read a narrower --range, or use "
+                "+cells-get for this region instead of the CSV path."
+            )
+
         for record in records:
             parsed = next(csv.reader([record]))
             values.append(parsed)

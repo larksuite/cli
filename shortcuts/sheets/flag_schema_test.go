@@ -204,3 +204,109 @@ func keysOf(m map[string]interface{}) []string {
 	}
 	return out
 }
+
+// TestPrintSchema_DottedPathSlicing covers --flag-name's dotted-path form,
+// which had no tests at all: disabling the implicit items/oneOf descent, or the
+// explicit "items" segment, broke nothing.
+//
+// The feature exists so agents can pull one subtree out of chart-create's
+// ~1,750-line properties schema instead of paging the whole dump (SKILL.md
+// points at it by name). A silent regression pushes them straight back to full
+// dumps, which is invisible in any output-correctness test.
+func TestPrintSchema_DottedPathSlicing(t *testing.T) {
+	t.Parallel()
+	print := printFlagSchemaFor("+chart-create")
+
+	decode := func(t *testing.T, raw []byte) map[string]interface{} {
+		t.Helper()
+		var node map[string]interface{}
+		if err := json.Unmarshal(raw, &node); err != nil {
+			t.Fatalf("schema slice is not a JSON object: %v", err)
+		}
+		return node
+	}
+	props := func(t *testing.T, node map[string]interface{}) map[string]interface{} {
+		t.Helper()
+		p, ok := node["properties"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("node has no properties: %v", node)
+		}
+		return p
+	}
+
+	t.Run("one segment walks into properties", func(t *testing.T) {
+		t.Parallel()
+		raw, err := print("properties.snapshot")
+		if err != nil {
+			t.Fatalf("slice failed: %v", err)
+		}
+		if _, has := props(t, decode(t, raw))["plotArea"]; !has {
+			t.Errorf("snapshot subtree should expose plotArea, got %s", raw)
+		}
+	})
+
+	t.Run("array levels are descended implicitly", func(t *testing.T) {
+		t.Parallel()
+		// data.refs is an array; naming the field must land on the ITEM shape,
+		// not force the caller to spell ".items".
+		raw, err := print("properties.snapshot.data.refs")
+		if err != nil {
+			t.Fatalf("slice failed: %v", err)
+		}
+		node := decode(t, raw)
+		if node["type"] != "array" {
+			t.Errorf("refs should still be the array node, got %v", node["type"])
+		}
+		deeper, err := print("properties.snapshot.data.refs.value")
+		if err != nil {
+			t.Fatalf("descending through array items failed: %v", err)
+		}
+		if len(deeper) == 0 {
+			t.Error("expected the item's value field")
+		}
+	})
+
+	t.Run("an explicit items segment also works", func(t *testing.T) {
+		t.Parallel()
+		if _, err := print("properties.snapshot.plotArea.axes.items"); err != nil {
+			t.Fatalf("explicit items segment failed: %v", err)
+		}
+	})
+
+	t.Run("a slice is strictly smaller than the whole flag schema", func(t *testing.T) {
+		t.Parallel()
+		full, err := print("properties")
+		if err != nil {
+			t.Fatalf("full dump failed: %v", err)
+		}
+		slice, err := print("properties.snapshot.plotArea.axes")
+		if err != nil {
+			t.Fatalf("slice failed: %v", err)
+		}
+		if len(slice) >= len(full) {
+			t.Errorf("slice is %d bytes vs %d for the full schema — slicing saves nothing", len(slice), len(full))
+		}
+	})
+
+	t.Run("a miss names the keys actually available", func(t *testing.T) {
+		t.Parallel()
+		_, err := print("properties.snapshot.nope")
+		if err == nil {
+			t.Fatal("want an error for an unknown segment")
+		}
+		ve := requireValidation(t, err, `no "nope" under properties.snapshot`)
+		if !strings.Contains(ve.Message, "plotArea") {
+			t.Errorf("the miss must list the reachable keys so the caller can retry without a full dump, got %q", ve.Message)
+		}
+		if ve.Param != "--flag-name" {
+			t.Errorf("param = %q, want --flag-name", ve.Param)
+		}
+	})
+
+	t.Run("the underscore spelling of the flag still resolves", func(t *testing.T) {
+		t.Parallel()
+		if _, err := printFlagSchemaFor("+cells-set-style")("border_styles"); err != nil {
+			t.Fatalf("underscore flag name should resolve to border-styles: %v", err)
+		}
+	})
+}

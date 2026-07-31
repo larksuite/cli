@@ -109,26 +109,40 @@ def inspect_workbook(args) -> tuple[dict[str, Any], list[str]]:
         end_col = index_to_col(max(1, preview_cols))
         preview_range = f"A1:{end_col}{args.preview_rows}"
 
-        layout = envelope_data(
-            run_sheets(
-                "+sheet-info",
-                url=args.url,
-                spreadsheet_token=args.spreadsheet_token,
-                **locator,
-                flags={"include": LAYOUT_INCLUDE},
-                timeout=args.timeout,
+        # Per-sheet, not fail-the-run: this is the first-step pre-flight, and
+        # one unreadable sheet (odd type, transient error, a locator that does
+        # not resolve) must not throw away the summaries already collected for
+        # every other sheet. The basic summary comes from +workbook-info and is
+        # already in hand, so a failure here degrades detail, not correctness —
+        # same call the sibling profile_table downgrades to a warning.
+        try:
+            layout = envelope_data(
+                run_sheets(
+                    "+sheet-info",
+                    url=args.url,
+                    spreadsheet_token=args.spreadsheet_token,
+                    **locator,
+                    flags={"include": LAYOUT_INCLUDE},
+                    timeout=args.timeout,
+                )
             )
-        )
-        preview = envelope_data(
-            run_sheets(
-                "+csv-get",
-                url=args.url,
-                spreadsheet_token=args.spreadsheet_token,
-                **locator,
-                flags={"range": preview_range, "max_chars": args.max_chars},
-                timeout=args.timeout,
+            preview = envelope_data(
+                run_sheets(
+                    "+csv-get",
+                    url=args.url,
+                    spreadsheet_token=args.spreadsheet_token,
+                    **locator,
+                    flags={"range": preview_range, "max_chars": args.max_chars},
+                    timeout=args.timeout,
+                )
             )
-        )
+        except LarkCliError as exc:
+            warnings.append(
+                f"{title or sid}: layout/preview unavailable ({exc}); "
+                "re-read this sheet on its own with --sheet-name, or use +sheet-info / +csv-get directly"
+            )
+            profiles.append(profile)
+            continue
         if preview.get("has_more"):
             warnings.append(f"{title or sid}: preview range {preview_range} was truncated")
 
