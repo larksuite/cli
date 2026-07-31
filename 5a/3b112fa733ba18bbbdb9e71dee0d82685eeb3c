@@ -1,0 +1,31 @@
+internal/event/catalog/canonicalize.go
+  s_5ed4643b7ed0ce::t_aeb1fcd64cfe37 1-71
+internal/event/catalog/definition.go
+  s_5ed4643b7ed0ce::t_a06fdc7f5a1a69 1-167
+internal/event/catalog/snapshot.go
+  s_5ed4643b7ed0ce::t_5bfbfccced4dfe 1-184
+internal/event/catalog/snapshot_test.go
+  s_5ed4643b7ed0ce::t_092f394270bdf3 1-184
+internal/event/catalog/strategy.go
+  s_5ed4643b7ed0ce::t_279a59e4bfbd98 4,6-20,23-34
+internal/event/types.go
+  s_5ed4643b7ed0ce::t_7bb172ee39d482 4-8,12,18-19,23,27,30-38,42-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5a3b112fa733ba18bbbdb9e71dee0d82685eeb3c",
+  "prompts": {},
+  "sessions": {
+    "s_5ed4643b7ed0ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2575c3b-b939-4af2-95f9-229f8a0dcd25",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
