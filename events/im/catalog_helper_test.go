@@ -4,11 +4,36 @@
 package im
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/catalog"
 )
+
+// fillCanonicalFromHeader copies the payload envelope header metadata onto
+// the RawEvent canonical fields. Process handlers read event_id and
+// create_time from the RawEvent, which the consume pipeline fills from the
+// envelope header before dispatch; tests that hand-build a RawEvent must
+// mirror that so both views agree.
+func fillCanonicalFromHeader(t *testing.T, raw *event.RawEvent) {
+	t.Helper()
+	var envelope struct {
+		Header struct {
+			EventID    string `json:"event_id"`
+			EventType  string `json:"event_type"`
+			CreateTime string `json:"create_time"`
+		} `json:"header"`
+	}
+	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
+		t.Fatalf("parse envelope header: %v", err)
+	}
+	raw.EventID = envelope.Header.EventID
+	if envelope.Header.EventType != "" {
+		raw.EventType = envelope.Header.EventType
+	}
+	raw.SourceTime = envelope.Header.CreateTime
+}
 
 // lookupCompiledDef compiles this domain's declarations and resolves one key,
 // exactly as the runtime catalog would for a consumer.

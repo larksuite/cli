@@ -33,11 +33,6 @@ type VCRecordingTranscriptGeneratedOutput struct {
 }
 
 type recordingTranscriptGeneratedEnvelope struct {
-	Header struct {
-		EventID    string `json:"event_id"`
-		EventType  string `json:"event_type"`
-		CreateTime string `json:"create_time"`
-	} `json:"header"`
 	Event recordingTranscriptGeneratedEvent `json:"event"`
 }
 
@@ -70,9 +65,9 @@ func processVCRecordingTranscriptGenerated(_ context.Context, _ event.APIClient,
 		return nil, nil
 	}
 	out := &VCRecordingTranscriptGeneratedOutput{
-		Type:            recordingTranscriptGeneratedEventType(envelope, raw),
-		EventID:         envelope.Header.EventID,
-		EventTime:       recordingTranscriptGeneratedEventTime(envelope.Header.CreateTime),
+		Type:            raw.EventType,
+		EventID:         raw.EventID,
+		EventTime:       recordingTranscriptGeneratedEventTime(raw.SourceTime),
 		UniqueKey:       envelope.Event.UniqueKey,
 		Source:          envelope.Event.Source,
 		TranscriptItems: recordingTranscriptItems(envelope.Event.TranscriptItems),
@@ -90,13 +85,6 @@ func parseRecordingTranscriptGeneratedEnvelope(raw *event.RawEvent) (*recordingT
 
 func isRecordingTranscriptGeneratedBeanEvent(envelope *recordingTranscriptGeneratedEnvelope) bool {
 	return envelope != nil && envelope.Event.Source == "recording_bean"
-}
-
-func recordingTranscriptGeneratedEventType(envelope *recordingTranscriptGeneratedEnvelope, raw *event.RawEvent) string {
-	if envelope != nil && envelope.Header.EventType != "" {
-		return envelope.Header.EventType
-	}
-	return raw.EventType
 }
 
 func recordingTranscriptGeneratedEventTime(raw string) string {

@@ -184,6 +184,7 @@ func runMeetingEnded(t *testing.T, payload string) VCParticipantMeetingEndedOutp
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processVCParticipantMeetingEnded(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

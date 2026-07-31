@@ -241,6 +241,7 @@ func runReceive(t *testing.T, payload string) ImMessageReceiveOutput {
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processImMessageReceive(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)
@@ -260,6 +261,7 @@ func runReceiveMap(t *testing.T, payload string) map[string]interface{} {
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processImMessageReceive(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

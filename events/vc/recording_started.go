@@ -23,11 +23,6 @@ type VCRecordingStartedOutput struct {
 }
 
 type recordingStartedEnvelope struct {
-	Header struct {
-		EventID    string `json:"event_id"`
-		EventType  string `json:"event_type"`
-		CreateTime string `json:"create_time"`
-	} `json:"header"`
 	Event recordingStartedEvent `json:"event"`
 }
 
@@ -45,9 +40,9 @@ func processVCRecordingStarted(_ context.Context, _ event.APIClient, raw *event.
 		return nil, nil
 	}
 	out := &VCRecordingStartedOutput{
-		Type:      recordingStartedEventType(envelope, raw),
-		EventID:   envelope.Header.EventID,
-		EventTime: recordingStartedEventTime(envelope.Header.CreateTime),
+		Type:      raw.EventType,
+		EventID:   raw.EventID,
+		EventTime: recordingStartedEventTime(raw.SourceTime),
 		UniqueKey: envelope.Event.UniqueKey,
 		Source:    envelope.Event.Source,
 	}
@@ -64,13 +59,6 @@ func parseRecordingStartedEnvelope(raw *event.RawEvent) (*recordingStartedEnvelo
 
 func isRecordingStartedBeanEvent(envelope *recordingStartedEnvelope) bool {
 	return envelope != nil && envelope.Event.Source == "recording_bean"
-}
-
-func recordingStartedEventType(envelope *recordingStartedEnvelope, raw *event.RawEvent) string {
-	if envelope != nil && envelope.Header.EventType != "" {
-		return envelope.Header.EventType
-	}
-	return raw.EventType
 }
 
 func recordingStartedEventTime(raw string) string {

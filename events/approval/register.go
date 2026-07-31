@@ -100,11 +100,6 @@ func processApprovalInstanceStatusChanged(_ context.Context, _ event.APIClient, 
 		return nil, nil
 	}
 	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-		} `json:"header"`
 		Event struct {
 			ApprovalCode string          `json:"approval_code"`
 			InstanceCode string          `json:"instance_code"`
@@ -119,18 +114,15 @@ func processApprovalInstanceStatusChanged(_ context.Context, _ event.APIClient, 
 	}
 
 	out := &ApprovalInstanceStatusChangedV4Output{
-		Type:         envelope.Header.EventType,
-		EventID:      envelope.Header.EventID,
-		Timestamp:    envelope.Header.CreateTime,
+		Type:         raw.EventType,
+		EventID:      raw.EventID,
+		Timestamp:    raw.SourceTime,
 		ApprovalCode: envelope.Event.ApprovalCode,
 		InstanceCode: envelope.Event.InstanceCode,
 		ExternalID:   envelope.Event.ExternalID,
 		Status:       envelope.Event.Status,
 		OperateTime:  envelope.Event.OperateTime,
 		StartUser:    envelope.Event.StartUser,
-	}
-	if out.Type == "" {
-		out.Type = raw.EventType
 	}
 	return json.Marshal(out)
 }
@@ -140,11 +132,6 @@ func processApprovalTaskStatusChanged(_ context.Context, _ event.APIClient, raw 
 		return nil, nil
 	}
 	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-		} `json:"header"`
 		Event struct {
 			ApprovalCode   string          `json:"approval_code"`
 			InstanceCode   string          `json:"instance_code"`
@@ -161,9 +148,9 @@ func processApprovalTaskStatusChanged(_ context.Context, _ event.APIClient, raw 
 	}
 
 	out := &ApprovalTaskStatusChangedV4Output{
-		Type:           envelope.Header.EventType,
-		EventID:        envelope.Header.EventID,
-		Timestamp:      envelope.Header.CreateTime,
+		Type:           raw.EventType,
+		EventID:        raw.EventID,
+		Timestamp:      raw.SourceTime,
 		ApprovalCode:   envelope.Event.ApprovalCode,
 		InstanceCode:   envelope.Event.InstanceCode,
 		TaskID:         envelope.Event.TaskID,
@@ -172,9 +159,6 @@ func processApprovalTaskStatusChanged(_ context.Context, _ event.APIClient, raw 
 		AssignedUser:   envelope.Event.AssignedUser,
 		Status:         envelope.Event.Status,
 		OperateTime:    envelope.Event.OperateTime,
-	}
-	if out.Type == "" {
-		out.Type = raw.EventType
 	}
 	return json.Marshal(out)
 }

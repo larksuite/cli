@@ -601,6 +601,30 @@ func TestProcessApprovalStatusChangedNilRaw(t *testing.T) {
 	}
 }
 
+// fillCanonicalFromHeader copies the payload envelope header metadata onto
+// the RawEvent canonical fields. Process handlers read event_id and
+// create_time from the RawEvent, which the consume pipeline fills from the
+// envelope header before dispatch; tests that hand-build a RawEvent must
+// mirror that so both views agree.
+func fillCanonicalFromHeader(t *testing.T, raw *event.RawEvent) {
+	t.Helper()
+	var envelope struct {
+		Header struct {
+			EventID    string `json:"event_id"`
+			EventType  string `json:"event_type"`
+			CreateTime string `json:"create_time"`
+		} `json:"header"`
+	}
+	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
+		t.Fatalf("parse envelope header: %v", err)
+	}
+	raw.EventID = envelope.Header.EventID
+	if envelope.Header.EventType != "" {
+		raw.EventType = envelope.Header.EventType
+	}
+	raw.SourceTime = envelope.Header.CreateTime
+}
+
 func runApprovalInstanceStatusChanged(t *testing.T, payload string) ApprovalInstanceStatusChangedV4Output {
 	t.Helper()
 	raw := &event.RawEvent{
@@ -608,6 +632,7 @@ func runApprovalInstanceStatusChanged(t *testing.T, payload string) ApprovalInst
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processApprovalInstanceStatusChanged(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process returned error: %v", err)
@@ -626,6 +651,7 @@ func runApprovalTaskStatusChanged(t *testing.T, payload string) ApprovalTaskStat
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processApprovalTaskStatusChanged(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process returned error: %v", err)

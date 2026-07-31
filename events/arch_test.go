@@ -121,27 +121,12 @@ var envelopeHeaderTags = map[string]bool{
 	"tenant_key":  true,
 }
 
-// headerReparseBaseline pins the residue that existed when this gate was
-// introduced, keyed by file (relative to events/) with the header metadata
-// tags each file re-parses. It is a ratchet, not an approval:
-//   - never add an entry — new code must read the kernel-decoded header;
-//   - deleting entries is always welcome, and once a file is cleaned the
-//     stale check below forces its entry out so the cleanup cannot regress
-//     unnoticed.
-var headerReparseBaseline = map[string][]string{
-	"application/menu.go":                  {"app_id", "create_time", "event_id", "event_type", "tenant_key"},
-	"approval/register.go":                 {"create_time", "event_id", "event_type"},
-	"im/card_action.go":                    {"create_time", "event_id", "event_type"},
-	"im/message_receive.go":                {"create_time", "event_id", "event_type"},
-	"minutes/minute_generated.go":          {"create_time", "event_id", "event_type"},
-	"vc/note_generated.go":                 {"create_time", "event_id", "event_type"},
-	"vc/participant_meeting_ended.go":      {"create_time", "event_id", "event_type"},
-	"vc/participant_meeting_joined.go":     {"create_time", "event_id", "event_type"},
-	"vc/participant_meeting_started.go":    {"create_time", "event_id", "event_type"},
-	"vc/recording_ended.go":                {"create_time", "event_id", "event_type"},
-	"vc/recording_started.go":              {"create_time", "event_id", "event_type"},
-	"vc/recording_transcript_generated.go": {"create_time", "event_id", "event_type"},
-}
+// headerReparseBaseline is the ratchet of pinned pre-existing residue, keyed
+// by file (relative to events/) with the header metadata tags it re-parses.
+// It is empty: every domain consumes the kernel-decoded header, so the gate
+// runs at zero tolerance. Never add an entry — new code must read the
+// kernel-decoded header instead of unmarshalling the envelope again.
+var headerReparseBaseline = map[string][]string{}
 
 type archHeaderReparse struct {
 	file  string // slash path relative to events/

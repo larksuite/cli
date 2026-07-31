@@ -322,10 +322,15 @@ func TestProcessedOutputBaseline(t *testing.T) {
 		seenFixtures[def.Key] = true
 
 		payload := buildBaselineEnvelope(t, def.EventType, fx)
+		// The canonical fields mirror the synthetic envelope header exactly,
+		// including any extra header fields, just as the consume pipeline
+		// guarantees for real events before Process runs.
 		raw := &event.RawEvent{
 			EventID:    baselineEventID,
 			EventType:  def.EventType,
 			SourceTime: baselineCreateTime,
+			AppID:      fx.extraHeader["app_id"],
+			TenantKey:  fx.extraHeader["tenant_key"],
 			Payload:    payload,
 			Timestamp:  time.Unix(1700000000, 0).UTC(),
 		}

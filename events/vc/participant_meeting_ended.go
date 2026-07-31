@@ -28,11 +28,6 @@ type VCParticipantMeetingEndedOutput struct {
 
 func processVCParticipantMeetingEnded(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-		} `json:"header"`
 		Event struct {
 			Meeting struct {
 				ID              string `json:"id"`
@@ -50,18 +45,15 @@ func processVCParticipantMeetingEnded(_ context.Context, _ event.APIClient, raw 
 
 	meeting := envelope.Event.Meeting
 	out := &VCParticipantMeetingEndedOutput{
-		Type:            envelope.Header.EventType,
-		EventID:         envelope.Header.EventID,
-		Timestamp:       envelope.Header.CreateTime,
+		Type:            raw.EventType,
+		EventID:         raw.EventID,
+		Timestamp:       raw.SourceTime,
 		MeetingID:       meeting.ID,
 		Topic:           meeting.Topic,
 		MeetingNo:       meeting.MeetingNo,
 		StartTime:       unixSecondsToLocalRFC3339(meeting.StartTime),
 		EndTime:         unixSecondsToLocalRFC3339(meeting.EndTime),
 		CalendarEventID: meeting.CalendarEventID,
-	}
-	if out.Type == "" {
-		out.Type = raw.EventType
 	}
 	return json.Marshal(out)
 }

@@ -36,11 +36,6 @@ type CardActionTriggerOutput struct {
 
 func processCardAction(ctx context.Context, rt event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-		} `json:"header"`
 		Event struct {
 			Operator struct {
 				OpenID string `json:"open_id"`
@@ -73,9 +68,9 @@ func processCardAction(ctx context.Context, rt event.APIClient, raw *event.RawEv
 	options := strings.Join(envelope.Event.Action.Options, ",")
 
 	out := &CardActionTriggerOutput{
-		Type:        envelope.Header.EventType,
-		EventID:     envelope.Header.EventID,
-		Timestamp:   envelope.Header.CreateTime,
+		Type:        raw.EventType,
+		EventID:     raw.EventID,
+		Timestamp:   raw.SourceTime,
 		OperatorID:  envelope.Event.Operator.OpenID,
 		MessageID:   envelope.Event.Context.OpenMessageID,
 		ChatID:      envelope.Event.Context.OpenChatID,

@@ -457,6 +457,7 @@ func runRecordingProcessRaw(t *testing.T, eventType string, process event.Proces
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := process(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

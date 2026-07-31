@@ -317,6 +317,7 @@ func runNoteGenerated(t *testing.T, rt event.APIClient, payload string) VCNoteGe
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processVCNoteGenerated(context.Background(), rt, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

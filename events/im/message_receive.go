@@ -41,11 +41,6 @@ type MentionOutput struct {
 
 func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-		} `json:"header"`
 		Event struct {
 			Message struct {
 				MessageID   string        `json:"message_id"`
@@ -83,14 +78,14 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 		})
 	}
 
-	timestamp := envelope.Header.CreateTime
+	timestamp := raw.SourceTime
 	if timestamp == "" {
 		timestamp = msg.CreateTime
 	}
 
 	out := &ImMessageReceiveOutput{
-		Type:        envelope.Header.EventType,
-		EventID:     envelope.Header.EventID,
+		Type:        raw.EventType,
+		EventID:     raw.EventID,
 		Timestamp:   timestamp,
 		ID:          msg.MessageID,
 		MessageID:   msg.MessageID,

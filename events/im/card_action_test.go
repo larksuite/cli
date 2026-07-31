@@ -416,6 +416,7 @@ func runCardAction(t *testing.T, payload string, rt event.APIClient) CardActionT
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processCardAction(context.Background(), rt, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

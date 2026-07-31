@@ -37,11 +37,6 @@ type MinutesMinuteGeneratedOutput struct {
 
 func processMinutesMinuteGenerated(ctx context.Context, rt event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-		} `json:"header"`
 		Event struct {
 			MinuteToken  string `json:"minute_token"`
 			MinuteSource struct {
@@ -55,13 +50,10 @@ func processMinutesMinuteGenerated(ctx context.Context, rt event.APIClient, raw 
 	}
 
 	out := &MinutesMinuteGeneratedOutput{
-		Type:        envelope.Header.EventType,
-		EventID:     envelope.Header.EventID,
-		Timestamp:   envelope.Header.CreateTime,
+		Type:        raw.EventType,
+		EventID:     raw.EventID,
+		Timestamp:   raw.SourceTime,
 		MinuteToken: envelope.Event.MinuteToken,
-	}
-	if out.Type == "" {
-		out.Type = raw.EventType
 	}
 	if src := envelope.Event.MinuteSource; src.SourceType != "" || src.SourceEntityID != "" {
 		out.MinuteSource = &MinutesMinuteSourceOutput{
