@@ -438,19 +438,23 @@ var DimUngroup = newDimGroupShortcut(
 	"+dim-ungroup", "Remove a row/column outline group.", "ungroup",
 )
 
-// DimFreeze freezes the first N rows or columns; --count 0 unfreezes that
-// dimension.
+// DimFreeze sets the sheet's freeze state. Freeze is full-state replacement
+// server-side (verified 07-31 live), so every call states the WHOLE state:
+// --rows/--cols name both axes at once, while the older --dimension/--count
+// pair can only name one and therefore unfreezes the other.
 var DimFreeze = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dim-freeze",
-	Description: "Freeze the first N rows or columns; --count 0 unfreezes the chosen dimension.",
+	Description: "Freeze the first N rows and/or columns; this sets the whole freeze state, so an axis you do not name ends up unfrozen.",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+dim-freeze"),
 	Tips: []string{
-		"Example: lark-cli sheets +dim-freeze --url <URL> --sheet-name Sheet1 --dimension row --count 2 (freezes the first 2 rows; --count 0 unfreezes)",
+		"Example: lark-cli sheets +dim-freeze --url <URL> --sheet-name Sheet1 --rows 1 --cols 2 (holds the header row and the first 2 columns in one call)",
+		"Freezing is not additive: --dimension row --count 1 followed by --dimension column --count 2 leaves ONLY the columns frozen. Pass --rows/--cols together instead of calling twice",
+		"To unfreeze one axis but keep the other, state the survivor: --rows 0 --cols 2. Bare --count 0 clears both",
 	},
 	Validate: validateViaInput(dimFreezeInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -472,6 +476,23 @@ var DimFreeze = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		// DEPRECATED(phase-2): +dim-freeze --dimension / --count — replaced by
+		// --rows / --cols. Phase 1 (here): the flags keep working, are retired
+		// from the skill docs via bundle.json doc_hidden_flags in
+		// sheet-skill-spec, and every use prints the exact replacement below.
+		// Phase 2 removal: drop both rows from spec-tables/flags.json + their
+		// doc_hidden_flags entry, then this block, dimFreezeEquivalent, and the
+		// legacy branch in dimFreezeInput.
+		//
+		// The pair is a strict subset of --rows/--cols — every
+		// --dimension/--count call has a byte-identical --rows/--cols spelling
+		// (TestDimFreezeEquivalent pins this) — and it is the form that reads as
+		// if it scoped to one axis when the backend replaces the whole state.
+		if runtime.Changed("dimension") || runtime.Changed("count") {
+			fmt.Fprintf(runtime.IO().ErrOut,
+				"note: --dimension/--count is superseded by --rows/--cols, which state both axes at once; this call is equivalent to %s\n",
+				dimFreezeEquivalent(runtime))
+		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		if err != nil {
 			return err
@@ -481,33 +502,88 @@ var DimFreeze = common.Shortcut{
 	},
 }
 
+// dimFreezeEquivalent renders the --rows/--cols spelling of a legacy
+// --dimension/--count call, so the deprecation note carries the exact
+// replacement instead of a generic pointer.
+func dimFreezeEquivalent(runtime flagView) string {
+	count := runtime.Int("count")
+	if count == 0 {
+		return "--rows 0 --cols 0"
+	}
+	if runtime.Str("dimension") == "row" {
+		return fmt.Sprintf("--rows %d", count)
+	}
+	return fmt.Sprintf("--cols %d", count)
+}
+
+// dimFreezeInput builds the freeze body for both the standalone shortcut and
+// the +batch-update sub-op, so the two stay byte-identical (see
+// TestBatchOp_BodyMatchesStandalone).
+//
+// Two request forms, deliberately not mixable:
+//
+//   - --rows / --cols state the complete target state in ONE operation. This
+//     is the only form that can hold both axes, because freeze is full-state
+//     replacement server-side (verified 07-31 live: freeze rows=1 then
+//     columns=2 in two calls ends at 0 rows / 2 columns — the second call
+//     drops the first axis). It is also the only form usable inside
+//     +batch-update, whose sub-ops are a static array that cannot read the
+//     current state to preserve an axis.
+//   - --dimension + --count is the original single-axis form, kept for
+//     compatibility. It necessarily unfreezes the axis it does not name.
 func dimFreezeInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, err
 	}
-	if !runtime.Changed("dimension") {
-		return nil, sheetsValidationForFlag("dimension", "--dimension is required")
+	pairForm := runtime.Changed("dimension") || runtime.Changed("count")
+	axisForm := runtime.Changed("rows") || runtime.Changed("cols")
+	switch {
+	case pairForm && axisForm:
+		return nil, sheetsValidationForFlag("rows",
+			"give either --rows/--cols or --dimension/--count, not both — they are two ways to say the same thing; --rows/--cols is the one that can hold both axes at once")
+	case !pairForm && !axisForm:
+		return nil, sheetsValidationForFlag("rows",
+			"nothing to freeze: pass --rows N and/or --cols N (e.g. --rows 1 --cols 2 holds the header row and the first 2 columns), or the single-axis --dimension row --count 1")
 	}
-	if !runtime.Changed("count") {
-		return nil, sheetsValidationForFlag("count", "--count is required (0 unfreezes)")
-	}
-	if runtime.Int("count") < 0 {
-		return nil, sheetsValidationForFlag("count", "--count must be >= 0")
-	}
-	dim := runtime.Str("dimension")
-	count := runtime.Int("count")
-	op := "freeze"
-	if count == 0 {
-		op = "unfreeze"
-	}
-	input := map[string]interface{}{"excel_id": token, "operation": op}
-	sheetSelectorForToolInput(input, sheetID, sheetName)
-	if op == "freeze" {
-		if dim == "row" {
-			input["freeze_rows"] = count
-		} else {
-			input["freeze_columns"] = count
+
+	rows, cols := 0, 0
+	if axisForm {
+		for _, name := range []string{"rows", "cols"} {
+			if runtime.Changed(name) && runtime.Int(name) < 0 {
+				return nil, sheetsValidationForFlag(name, "--%s must be >= 0 (0 leaves that axis unfrozen)", name)
+			}
 		}
+		rows, cols = runtime.Int("rows"), runtime.Int("cols")
+	} else {
+		if !runtime.Changed("dimension") {
+			return nil, sheetsValidationForFlag("dimension", "--dimension is required alongside --count (or use --rows/--cols to set both axes at once)")
+		}
+		if !runtime.Changed("count") {
+			return nil, sheetsValidationForFlag("count", "--count is required alongside --dimension (0 unfreezes)")
+		}
+		if runtime.Int("count") < 0 {
+			return nil, sheetsValidationForFlag("count", "--count must be >= 0")
+		}
+		if runtime.Str("dimension") == "row" {
+			rows = runtime.Int("count")
+		} else {
+			cols = runtime.Int("count")
+		}
+	}
+
+	// An all-zero target is the bare "unfreeze" operation, which carries no
+	// dimension and clears everything — the same request the old --count 0
+	// always sent.
+	input := map[string]interface{}{"excel_id": token, "operation": "unfreeze"}
+	if rows > 0 || cols > 0 {
+		input["operation"] = "freeze"
+	}
+	sheetSelectorForToolInput(input, sheetID, sheetName)
+	if rows > 0 {
+		input["freeze_rows"] = rows
+	}
+	if cols > 0 {
+		input["freeze_columns"] = cols
 	}
 	return input, nil
 }

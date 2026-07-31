@@ -1044,8 +1044,9 @@
         "name": "dimension",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "Dimension (row or column)",
+        "required": "optional",
+        "desc": "[legacy] Dimension (row or column), paired with --count; sets one axis only and unfreezes the other. Prefer --rows / --cols",
+        "hidden": true,
         "enum": [
           "row",
           "column"
@@ -1055,8 +1056,23 @@
         "name": "count",
         "kind": "own",
         "type": "int",
-        "required": "required",
-        "desc": "Freeze the first N rows/columns; pass 0 to unfreeze"
+        "required": "optional",
+        "desc": "[legacy] Freeze the first N rows/columns (paired with --dimension); 0 clears all freezing. Equivalent to --rows N / --cols N, and only --rows/--cols can hold both axes at once",
+        "hidden": true
+      },
+      {
+        "name": "rows",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Freeze the first N rows; together with --cols this states the COMPLETE freeze state — an omitted axis is left unfrozen (0 means no frozen rows)"
+      },
+      {
+        "name": "cols",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Freeze the first N columns; together with --rows this states the COMPLETE freeze state — an omitted axis is left unfrozen (0 means no frozen columns)"
       },
       {
         "name": "dry-run",

@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -128,6 +129,47 @@ func TestSheetStructureShortcuts_DryRun(t *testing.T) {
 			name:     "+dim-freeze count=0 → unfreeze",
 			sc:       DimFreeze,
 			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--dimension", "column", "--count", "0"},
+			toolName: "modify_sheet_structure",
+			wantInput: map[string]interface{}{
+				"excel_id":  testToken,
+				"operation": "unfreeze",
+				"sheet_id":  testSheetID,
+			},
+		},
+		{
+			// The whole point of --rows/--cols: both axes in ONE operation.
+			// Two single-axis calls would leave only the last axis frozen,
+			// because freeze is full-state replacement server-side.
+			name:     "+dim-freeze --rows 1 --cols 2 → one combined op",
+			sc:       DimFreeze,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--rows", "1", "--cols", "2"},
+			toolName: "modify_sheet_structure",
+			wantInput: map[string]interface{}{
+				"excel_id":       testToken,
+				"operation":      "freeze",
+				"sheet_id":       testSheetID,
+				"freeze_rows":    float64(1),
+				"freeze_columns": float64(2),
+			},
+		},
+		{
+			// Stating the survivor is how you unfreeze one axis and keep the
+			// other; a zero axis is simply omitted from the body.
+			name:     "+dim-freeze --rows 0 --cols 2 → columns only",
+			sc:       DimFreeze,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--rows", "0", "--cols", "2"},
+			toolName: "modify_sheet_structure",
+			wantInput: map[string]interface{}{
+				"excel_id":       testToken,
+				"operation":      "freeze",
+				"sheet_id":       testSheetID,
+				"freeze_columns": float64(2),
+			},
+		},
+		{
+			name:     "+dim-freeze --rows 0 --cols 0 → unfreeze",
+			sc:       DimFreeze,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--rows", "0", "--cols", "0"},
 			toolName: "modify_sheet_structure",
 			wantInput: map[string]interface{}{
 				"excel_id":  testToken,
@@ -288,6 +330,103 @@ func TestDimRange_Validation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			_, _, err := runShortcutCapturingErr(t, DimHide, tt.args)
+			requireValidation(t, err, tt.want)
+		})
+	}
+}
+
+// TestDimFreezeEquivalent pins the replacement spelling printed by the
+// phase-1 deprecation note: it must be the exact --rows/--cols call the user
+// should switch to, not a generic pointer. Each pairing is also asserted for
+// body equality, which is what makes the legacy form strictly redundant.
+func TestDimFreezeEquivalent(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		dimension string
+		count     int
+		want      string
+	}{
+		{"row", 2, "--rows 2"},
+		{"column", 3, "--cols 3"},
+		{"row", 0, "--rows 0 --cols 0"},
+		{"column", 0, "--rows 0 --cols 0"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.want, func(t *testing.T) {
+			t.Parallel()
+			legacy := newMapFlagViewForCommand("+dim-freeze", map[string]interface{}{
+				"dimension": tt.dimension, "count": tt.count,
+			})
+			if got := dimFreezeEquivalent(legacy); got != tt.want {
+				t.Fatalf("dimFreezeEquivalent = %q, want %q", got, tt.want)
+			}
+			// The advertised replacement must produce the identical body.
+			modern := map[string]interface{}{}
+			if tt.count > 0 {
+				if tt.dimension == "row" {
+					modern["rows"] = tt.count
+				} else {
+					modern["cols"] = tt.count
+				}
+			} else {
+				modern["rows"], modern["cols"] = 0, 0
+			}
+			legacyInput, err := dimFreezeInput(legacy, testToken, testSheetID, "")
+			if err != nil {
+				t.Fatalf("legacy form: %v", err)
+			}
+			modernInput, err := dimFreezeInput(newMapFlagViewForCommand("+dim-freeze", modern), testToken, testSheetID, "")
+			if err != nil {
+				t.Fatalf("modern form: %v", err)
+			}
+			if !reflect.DeepEqual(legacyInput, modernInput) {
+				t.Fatalf("bodies diverge:\n legacy = %v\n modern = %v", legacyInput, modernInput)
+			}
+		})
+	}
+}
+
+// TestDimFreeze_FormValidation pins the two request forms as mutually
+// exclusive, and pins that neither-form is a prescriptive error rather than a
+// silent no-op.
+func TestDimFreeze_FormValidation(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "forms cannot be mixed",
+			args: []string{"--rows", "1", "--dimension", "row", "--count", "1"},
+			want: "not both",
+		},
+		{
+			name: "neither form given",
+			args: []string{},
+			want: "nothing to freeze",
+		},
+		{
+			name: "negative rows",
+			args: []string{"--rows", "-1"},
+			want: "--rows must be >= 0",
+		},
+		{
+			name: "count without dimension",
+			args: []string{"--count", "2"},
+			want: "--dimension is required alongside --count",
+		},
+		{
+			name: "dimension without count",
+			args: []string{"--dimension", "row"},
+			want: "--count is required alongside --dimension",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			args := append([]string{"--url", testURL, "--sheet-id", testSheetID, "--dry-run"}, tt.args...)
+			_, _, err := runShortcutCapturingErr(t, DimFreeze, args)
 			requireValidation(t, err, tt.want)
 		})
 	}

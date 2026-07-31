@@ -111,8 +111,8 @@ _公共四件套 · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--dimension` | string | required | 维度方向（行或列）（可选值：`row` / `column`） |
-| `--count` | int | required | 冻结前 N 行/列；传 0 解除冻结 |
+| `--rows` | int | optional | 冻结前 N 行；与 --cols 一起描述完整冻结状态，省略的轴即为不冻结（0 表示不冻结行） |
+| `--cols` | int | optional | 冻结前 N 列；与 --rows 一起描述完整冻结状态，省略的轴即为不冻结（0 表示不冻结列） |
 
 ### `+dim-group`
 
@@ -202,9 +202,14 @@ lark-cli sheets +dim-move --url "..." --sheet-id "$SID" --source-range "C:F" --t
 
 ### `+dim-freeze`
 
+冻结是**整份状态覆盖**、不是按轴叠加：`--rows` / `--cols` 一起描述完整的目标状态，没写的轴即为不冻结。所以要同时冻住行和列必须一次给全，拆成两次调用只会剩下最后一次的那个轴。
+
 ```bash
-# 冻结前 1 行（--count 传 0 解除冻结）
-lark-cli sheets +dim-freeze --url "..." --sheet-id "$SID" --dimension row --count 1
+# 冻结前 1 行 + 前 2 列（一次给全）
+lark-cli sheets +dim-freeze --url "..." --sheet-id "$SID" --rows 1 --cols 2
+
+# 解除行冻结但保住列：把要保留的轴一并写出
+lark-cli sheets +dim-freeze --url "..." --sheet-id "$SID" --rows 0 --cols 2
 ```
 
 ### `+dim-group` / `+dim-ungroup`（大纲）
@@ -213,6 +218,6 @@ lark-cli sheets +dim-freeze --url "..." --sheet-id "$SID" --dimension row --coun
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`--range` / `--source-range` 必须是合法 A1 闭区间（行用数字、列用字母，不可混用）；`+dim-insert` 的 `--count` > 0；`+dim-move` 的 `--target` 必须与 `--source-range` 同维度（行 vs 列）；`+dim-delete` 强制 `--yes` 或 `--dry-run`，`--range` 与 `--ranges` 二选一、`--ranges` 各区间同维度且不可重叠（≤100 个）；`+rows-resize` / `+cols-resize` 的统一形态（`--range` + `--height`/`--width` 或 `--type`）与 map 形态（`--heights`/`--widths`）二选一、不可混用；详见 `lark-sheets-range-operations.md`。
+- `Validate`：XOR 公共四件套；`--range` / `--source-range` 必须是合法 A1 闭区间（行用数字、列用字母，不可混用）；`+dim-insert` 的 `--count` > 0；`+dim-freeze` 至少给 `--rows` / `--cols` 之一；`+dim-move` 的 `--target` 必须与 `--source-range` 同维度（行 vs 列）；`+dim-delete` 强制 `--yes` 或 `--dry-run`，`--range` 与 `--ranges` 二选一、`--ranges` 各区间同维度且不可重叠（≤100 个）；`+rows-resize` / `+cols-resize` 的统一形态（`--range` + `--height`/`--width` 或 `--type`）与 map 形态（`--heights`/`--widths`）二选一、不可混用；详见 `lark-sheets-range-operations.md`。
 - `DryRun`：写操作输出"将要 PATCH 的目标范围 + 目标参数"。
 - `Execute`：写后不自动回读；如需确认，自行调用 `+sheet-info --include row_heights,col_widths,hidden_rows,hidden_cols,groups,frozen` 查看受影响的范围。
