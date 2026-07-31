@@ -442,11 +442,11 @@
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `receiver` | 是 | ValueInfo[] |
-| `send_to_everyone` | 是 | 是否发送给所有人 |
+| `receiver` | 是 | 非空 ValueInfo[] |
+| `send_to_everyone` | 否 | boolean；是否发送给所有人，可省略 |
 | `title` | 否 | TextRefItem[] 消息标题 |
-| `content` | 是 | TextRefItem[] 消息内容 |
-| `btn_list` | 是 | 按钮列表，不需要时为空数组 |
+| `content` | 是 | 非空 TextRefItem[] 消息内容 |
+| `btn_list` | 否 | ButtonConfig[]；不需要时可省略，空数组也有效 |
 
 `ButtonConfig`：
 

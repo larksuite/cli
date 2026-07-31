@@ -39,10 +39,11 @@ var BaseWorkflowUpdate = common.Shortcut{
 			return baseFlagErrorf("--workflow-id must not be blank")
 		}
 		pc := newParseCtx(runtime)
-		if _, err := parseJSONObject(pc, runtime.Str("json"), "json"); err != nil {
+		body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+		if err != nil {
 			return err
 		}
-		return nil
+		return validateWorkflowMessageActions(body)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		pc := newParseCtx(runtime)

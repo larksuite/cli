@@ -38,10 +38,11 @@ var BaseWorkflowCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if _, err := parseJSONObject(pc, raw, "json"); err != nil {
+		body, err := parseJSONObject(pc, raw, "json")
+		if err != nil {
 			return err
 		}
-		return nil
+		return validateWorkflowMessageActions(body)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		pc := newParseCtx(runtime)

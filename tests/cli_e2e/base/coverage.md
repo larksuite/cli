@@ -2,19 +2,20 @@
 
 ## Metrics
 - Denominator: 78 leaf commands
-- Covered: 22
-- Coverage: 28.2%
+- Covered: 24
+- Coverage: 30.8%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
 - TestBaseBlockDryRun: proves the five `+base-block-*` shortcuts request shapes without touching live data.
 - TestBaseFieldCreateDryRunArrayCompat: proves `+field-create` dry-run request shape for the internal JSON-array compatibility path.
 - TestBaseRecordBatchUpdatePerRecordDryRun: proves `+record-batch-update` preserves the per-record `update_records` request shape.
+- TestBaseWorkflowMessageActionDryRun: proves `+workflow-create` and `+workflow-update` preserve valid `LarkMessageAction` optional fields and reject invalid optional-field types before dispatch.
 - TestBaseRecordBatchUpdatePerRecordWorkflow: creates two records, updates different field types in one request, asserts the minimal response contract, reads both records back, verifies a missing record ID is not prevalidated, and cleans up the temporary Base.
 - TestBase_RoleWorkflow: proves `+advperm-enable`, `+role-create`, `+role-list`, `+role-get`, and `+role-update`; key `t.Run(...)` proof points are `list as bot`, `get as bot`, and `update as bot`.
 - TestBaseFormQuestionsCreateVisibleRuleDryRun / TestBaseFormQuestionsUpdateVisibleRuleDryRun: prove `+form-questions-create` / `+form-questions-update` dry-run request shape and that the optional `visible_rule` display condition is transcribed verbatim into the request body.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
-- Blocked area: dashboard, field, most record operations, form, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
+- Blocked area: dashboard, field, most record operations, form, view, and live workflow CRUD still lack deterministic create/read/update workflows in this suite.
 
 ## Command Table
 
@@ -95,9 +96,9 @@
 | ✕ | base +view-set-sort | shortcut |  | none | view workflows not covered |
 | ✕ | base +view-set-timebar | shortcut |  | none | view workflows not covered |
 | ✕ | base +view-set-visible-fields | shortcut |  | none | view workflows not covered |
-| ✕ | base +workflow-create | shortcut |  | none | workflow CRUD not covered |
+| ✓ | base +workflow-create | shortcut | workflow_dryrun_test.go::TestBaseWorkflowMessageActionDryRun/create preserves typed optional fields | `--json` with required `receiver`/`content` and typed optional `send_to_everyone`/`btn_list`; dry-run only | request shape and local validation only |
 | ✕ | base +workflow-disable | shortcut |  | none | workflow CRUD not covered |
 | ✕ | base +workflow-enable | shortcut |  | none | workflow CRUD not covered |
 | ✕ | base +workflow-get | shortcut |  | none | workflow CRUD not covered |
 | ✕ | base +workflow-list | shortcut |  | none | workflow CRUD not covered |
-| ✕ | base +workflow-update | shortcut |  | none | workflow CRUD not covered |
+| ✓ | base +workflow-update | shortcut | workflow_dryrun_test.go::TestBaseWorkflowMessageActionDryRun/update keeps optional fields omitted | `--workflow-id`; `--json` with omitted optional message fields; dry-run only | request shape and local validation only |
