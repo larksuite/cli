@@ -117,6 +117,8 @@ dry-run 会展示两步调用链：
 
 ### 2. 只有知识库 URL（`.../wiki/<token>`）
 
+先确定后续 `wiki +delete-space` 使用的身份：默认使用 `user`；用户明确要求应用 / bot 视角时使用 `bot`。下面展示默认 user 身份；下游使用 bot 时将两步都改为 `--as bot`。节点解析和删除必须使用相同身份。
+
 ```bash
 lark-cli wiki +node-get \
   --node-token '<wiki_url>' \
@@ -124,7 +126,7 @@ lark-cli wiki +node-get \
   --format json
 ```
 
-读取顶层 `space_id`。只有当前 CLI 不提供 `+node-get`，或必须读取 shortcut 未输出的原始字段时，才在查看 `lark-cli schema wiki.spaces.get_node` 后回退到原生命令。
+读取 `data.space_id`。
 
 ### 3. 只有知识库名称
 
