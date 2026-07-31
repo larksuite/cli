@@ -324,6 +324,20 @@ var retiredEnumValues = map[string]map[string][]string{
 	"+dim-insert": {"inherit-style": {"none"}},
 }
 
+// clearRetiredFlag makes a retired value indistinguishable from an absent
+// flag. Resetting Changed matters as much as the value: the batch path
+// expresses "as if omitted" by deleting the key, so Changed() reports false
+// there. Leaving cobra's Changed at true would make a flag whose logic reads
+// Changed() (rather than the value) behave differently standalone than inside
+// +batch-update — and TestBatchOp_BodyMatchesStandalone only catches such a
+// split once it reaches the request body.
+func clearRetiredFlag(cmd *cobra.Command, name string) {
+	_ = cmd.Flags().Set(name, "")
+	if f := cmd.Flags().Lookup(name); f != nil {
+		f.Changed = false
+	}
+}
+
 // isRetiredEnumValue reports whether val is a retired spelling for this
 // command's flag, i.e. one that should be cleared rather than rejected.
 func isRetiredEnumValue(command, flag, val string) bool {
@@ -424,7 +438,7 @@ func chainEnumNormalization(cmd *cobra.Command) {
 				continue
 			}
 			if isRetiredEnumValue(cmd.Name(), df.Name, val) {
-				c.Flags().Set(df.Name, "")
+				clearRetiredFlag(c, df.Name)
 				continue
 			}
 			verr := common.ValidationErrorf("invalid value %q for --%s, allowed: %s",

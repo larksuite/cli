@@ -416,6 +416,37 @@ func TestRetiredEnumValueMatchesOmitted(t *testing.T) {
 		requireValidation(t, err, `invalid value "banana"`)
 	})
 
+	t.Run("reports as absent on both paths, not just empty", func(t *testing.T) {
+		// The two paths clear the value differently (cobra Set vs deleting the
+		// raw key), so Changed() is the part that can silently diverge: a flag
+		// whose logic reads Changed() rather than the value would then behave
+		// differently standalone than inside +batch-update.
+		t.Parallel()
+		parent, _, _, _ := newTestRig(t, shortcutFromRegistry(t, "+dim-insert"))
+		parent.SetArgs(append([]string{"+dim-insert"},
+			append(append([]string{}, base...), "--inherit-style", "none", "--dry-run")...))
+		if err := parent.Execute(); err != nil {
+			t.Fatalf("dry-run failed: %v", err)
+		}
+		cmd, _, err := parent.Find([]string{"+dim-insert"})
+		if err != nil {
+			t.Fatalf("find command: %v", err)
+		}
+		if cmd.Flags().Changed("inherit-style") {
+			t.Error("standalone: Changed() must report the retired value as absent")
+		}
+
+		fv := newMapFlagViewForCommand("+dim-insert", map[string]interface{}{
+			"position": 3, "count": 1, "inherit-style": "none",
+		})
+		if err := fv.normalizeAndValidateEnums(); err != nil {
+			t.Fatalf("batch enum pass: %v", err)
+		}
+		if fv.Changed("inherit-style") {
+			t.Error("batch: Changed() must report the retired value as absent")
+		}
+	})
+
 	t.Run("batch sub-op treats it the same", func(t *testing.T) {
 		t.Parallel()
 		sub := func(extra string) map[string]interface{} {
