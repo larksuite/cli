@@ -30,7 +30,7 @@ func TestStylesPutOperations_ExpansionOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	wantTools := []string{"merge_cells", "set_cell_range", "resize_range", "resize_range", "modify_sheet_structure", "modify_sheet_structure"}
+	wantTools := []string{"merge_cells", "set_cell_range", "resize_range", "resize_range", "modify_sheet_structure"}
 	if len(ops) != len(wantTools) {
 		t.Fatalf("got %d ops, want %d", len(ops), len(wantTools))
 	}
@@ -53,14 +53,12 @@ func TestStylesPutOperations_ExpansionOrder(t *testing.T) {
 	if len(cells) != 1 || len(cells[0]) != 2 {
 		t.Fatalf("style stamp matrix = %dx%d, want 1x2", len(cells), len(cells[0]))
 	}
-	// Freeze ops carry the freeze counts.
-	fr := ops[4].(map[string]interface{})["input"].(map[string]interface{})
-	if fr["operation"] != "freeze" || fr["freeze_rows"] != 1 {
-		t.Fatalf("freeze rows op = %v", fr)
-	}
-	fc := ops[5].(map[string]interface{})["input"].(map[string]interface{})
-	if fc["freeze_columns"] != 2 {
-		t.Fatalf("freeze cols op = %v", fc)
+	// Freeze rows and columns are combined into one operation because freeze is
+	// full-state replacement server-side (verified 07-31 live): two per-axis
+	// calls leave only the last axis frozen.
+	freeze := ops[4].(map[string]interface{})["input"].(map[string]interface{})
+	if freeze["operation"] != "freeze" || freeze["freeze_rows"] != 1 || freeze["freeze_columns"] != 2 {
+		t.Fatalf("freeze op = %v", freeze)
 	}
 }
 
@@ -126,16 +124,35 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 		}
 	})
 
-	t.Run("range prefixed with the item's own sheet passes", func(t *testing.T) {
+	t.Run("range prefixed with the item's own sheet passes and strips for every visual op", func(t *testing.T) {
 		t.Parallel()
 		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{map[string]interface{}{
 				"name":        "Summary",
 				"cell_styles": []interface{}{map[string]interface{}{"range": "'Summary'!A1:D1", "font_weight": "bold"}},
+				"cell_merges": []interface{}{map[string]interface{}{"range": "Summary!A2:B2"}, "'Summary'!C2:D2"},
+				"row_sizes":   []interface{}{map[string]interface{}{"range": "Summary!2:3", "type": "pixel", "size": float64(32)}},
+				"col_sizes":   []interface{}{map[string]interface{}{"range": "'Summary'!A:C", "type": "pixel", "size": float64(120)}},
 			}},
 		}), testToken)
-		if err != nil || len(ops) == 0 {
-			t.Fatalf("ops=%d err=%v (matching prefix must stay accepted)", len(ops), err)
+		if err != nil {
+			t.Fatalf("matching prefix must stay accepted: %v", err)
+		}
+		gotRanges := []string{}
+		for _, raw := range ops {
+			input := raw.(map[string]interface{})["input"].(map[string]interface{})
+			if rng, _ := input["range"].(string); rng != "" {
+				gotRanges = append(gotRanges, rng)
+			}
+		}
+		want := []string{"A2:B2", "C2:D2", "A1:D1", "2:3", "A:C"}
+		if len(gotRanges) != len(want) {
+			t.Fatalf("ranges = %v, want %v", gotRanges, want)
+		}
+		for i := range want {
+			if gotRanges[i] != want[i] {
+				t.Fatalf("ranges = %v, want %v", gotRanges, want)
+			}
 		}
 	})
 

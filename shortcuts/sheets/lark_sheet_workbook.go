@@ -1091,6 +1091,12 @@ func parseWorkbookCreateStyleItem(item map[string]interface{}, path string) (*wo
 		}
 		probs = append(probs, common.ValidationErrorf("%s", msg))
 	}
+	// Normalize "Sheet!" range prefixes before the section parsers see them:
+	// every carrier names the target sheet on the item, so a prefix is at best
+	// redundant and at worst a silent retarget.
+	if name, _ := item["name"].(string); strings.TrimSpace(name) != "" {
+		probs = append(probs, normalizeStyleItemRangePrefixes(item, path, strings.TrimSpace(name))...)
+	}
 	if raw, ok := item["cell_styles"]; ok {
 		var errsHere []error
 		payload.CellStyles, errsHere = parseWorkbookCreateCellStyleOps(raw, path+".cell_styles")
@@ -1126,6 +1132,68 @@ func parseWorkbookCreateStyleItem(item map[string]interface{}, path string) (*wo
 		return nil, []error{common.ValidationErrorf("%s must include at least one of cell_styles/row_sizes/col_sizes/cell_merges/freeze", path)}
 	}
 	return payload, nil
+}
+
+// styleItemRangeSections are the --styles item sections whose entries carry an
+// A1 range that may be written with a redundant "Sheet!" prefix.
+var styleItemRangeSections = []string{"cell_styles", "row_sizes", "col_sizes", "cell_merges"}
+
+// normalizeStyleItemRangePrefixes strips an optional "Sheet!" prefix from every
+// range in one --styles item, in place, and reports the ones naming a sheet
+// other than the item's own.
+//
+// Stripping has to happen before the section parsers run: parseWorkbookCreateResizeOp
+// feeds the range straight to parseA1Range, so row_sizes like "Sheet1!2:3" fail
+// as malformed even though the intent is unambiguous — the target sheet is
+// already carried by the item name and by each expanded sub-op's sheet selector.
+// A prefix naming a DIFFERENT sheet is an error rather than a strip, because
+// stripping alone would silently retarget the operation onto the item's sheet
+// (name "Summary" + range "Detail!A1:D1" applying to Summary). It is stripped
+// anyway so the section parser reports the entry's own issues instead of piling
+// a redundant syntax error on top of the mismatch.
+func normalizeStyleItemRangePrefixes(item map[string]interface{}, path, name string) []error {
+	var probs []error
+	rewrite := func(section, rangeStr string) (string, bool) {
+		idx := strings.Index(rangeStr, "!")
+		if idx < 0 {
+			return "", false
+		}
+		prefix := strings.Trim(strings.TrimSpace(rangeStr[:idx]), "'")
+		if prefix != name {
+			probs = append(probs, common.ValidationErrorf(
+				"%s.%s range %q names sheet %q but the item targets %q — drop the prefix, or move the entry into the item for %q",
+				path, section, rangeStr, prefix, name, prefix))
+		}
+		return strings.TrimSpace(rangeStr[idx+1:]), true
+	}
+	for _, key := range styleItemRangeSections {
+		arr, ok := item[key].([]interface{})
+		if !ok {
+			continue // a wrong-shaped section is the section parser's to report.
+		}
+		for i, elem := range arr {
+			section := fmt.Sprintf("%s[%d]", key, i)
+			switch v := elem.(type) {
+			case map[string]interface{}:
+				rangeStr, ok := v["range"].(string)
+				if !ok {
+					continue // non-string/missing range: the section parser reports it.
+				}
+				if stripped, changed := rewrite(section, rangeStr); changed {
+					v["range"] = stripped
+				}
+			case string:
+				// cell_merges also accepts a bare range string.
+				if key != "cell_merges" {
+					continue
+				}
+				if stripped, changed := rewrite(section, v); changed {
+					arr[i] = stripped
+				}
+			}
+		}
+	}
+	return probs
 }
 
 // parseWorkbookCreateFreezeOp parses a {rows, cols} freeze section. At least
@@ -1746,7 +1814,7 @@ func appendWorkbookCreateVisualOpsDryRun(dry *common.DryRunAPI, token, sheetID, 
 		}
 		wireBody, _ := buildToolBody(toolName, input)
 		dry.POST(toolInvokePath(token, ToolKindWrite)).
-			Desc(fmt.Sprintf("apply %s %s", op.Kind, op.Range)).
+			Desc(fmt.Sprintf("apply %s", op.describe())).
 			Body(wireBody)
 	}
 }
@@ -1766,11 +1834,11 @@ func applyWorkbookCreateVisualOps(ctx context.Context, runtime *common.RuntimeCo
 			// failing op as a recovery hint when one isn't already set.
 			if p, ok := errs.ProblemOf(err); ok {
 				if p.Hint == "" {
-					p.Hint = fmt.Sprintf("failed while applying %s on %s", op.Kind, op.Range)
+					p.Hint = fmt.Sprintf("failed while applying %s", op.describe())
 				}
 				return err
 			}
-			return errs.NewInternalError(errs.SubtypeUnknown, "%s %s failed", op.Kind, op.Range).WithCause(err)
+			return errs.NewInternalError(errs.SubtypeUnknown, "%s failed", op.describe()).WithCause(err)
 		}
 	}
 	return nil
@@ -1791,12 +1859,7 @@ func workbookCreateVisualOps(styles *workbookCreateStylePayload) []workbookCreat
 		ops = append(ops, workbookCreateStyleOp{Kind: "col_size", Range: op.Range, ResizeType: op.ResizeType, Size: op.Size})
 	}
 	if styles.Freeze != nil {
-		if styles.Freeze.Rows > 0 {
-			ops = append(ops, workbookCreateStyleOp{Kind: "freeze_rows", Size: styles.Freeze.Rows})
-		}
-		if styles.Freeze.Cols > 0 {
-			ops = append(ops, workbookCreateStyleOp{Kind: "freeze_cols", Size: styles.Freeze.Cols})
-		}
+		ops = append(ops, workbookCreateStyleOp{Kind: "freeze", FreezeRows: styles.Freeze.Rows, FreezeCols: styles.Freeze.Cols})
 	}
 	return ops
 }
@@ -1807,9 +1870,30 @@ type workbookCreateStyleOp struct {
 	MergeType  string
 	ResizeType string
 	Size       int
+	FreezeRows int
+	FreezeCols int
+}
+
+// describe renders the op for dry-run text and failure hints. freeze carries
+// counts instead of a range, so "%s %s" of kind and range would trail a blank.
+func (op workbookCreateStyleOp) describe() string {
+	if op.Kind != "freeze" {
+		return op.Kind + " " + op.Range
+	}
+	parts := make([]string, 0, 2)
+	if op.FreezeRows > 0 {
+		parts = append(parts, fmt.Sprintf("rows=%d", op.FreezeRows))
+	}
+	if op.FreezeCols > 0 {
+		parts = append(parts, fmt.Sprintf("cols=%d", op.FreezeCols))
+	}
+	return "freeze " + strings.Join(parts, " ")
 }
 
 func workbookCreateVisualOpInput(token, sheetID, sheetName string, op workbookCreateStyleOp) (map[string]interface{}, string) {
+	// Every caller names the sheet through the selector, so a "Sheet!" prefix
+	// left on the range would be a duplicate the backend range parser rejects.
+	op.Range = stripSheetPrefix(op.Range)
 	switch op.Kind {
 	case "cell_merge":
 		input := map[string]interface{}{
@@ -1836,16 +1920,24 @@ func workbookCreateVisualOpInput(token, sheetID, sheetName string, op workbookCr
 			input["resize_width"] = block
 		}
 		return input, "resize_range"
-	case "freeze_rows", "freeze_cols":
+	case "freeze":
+		// Both axes travel in ONE operation because the backend treats freeze as
+		// full-state replacement, not a per-axis patch: verified 07-31 on a live
+		// sheet — freezing 1 row then 2 columns in two calls ends at
+		// frozen_row_count 0 / frozen_column_count 2, the second call having
+		// silently dropped the first axis. One call carrying both lands 1/2.
+		// By the same rule an omitted axis is unfrozen, which is what a
+		// declarative --styles spec should mean.
 		input := map[string]interface{}{
 			"excel_id":  token,
 			"operation": "freeze",
 		}
 		sheetSelectorForToolInput(input, sheetID, sheetName)
-		if op.Kind == "freeze_rows" {
-			input["freeze_rows"] = op.Size
-		} else {
-			input["freeze_columns"] = op.Size
+		if op.FreezeRows > 0 {
+			input["freeze_rows"] = op.FreezeRows
+		}
+		if op.FreezeCols > 0 {
+			input["freeze_columns"] = op.FreezeCols
 		}
 		return input, "modify_sheet_structure"
 	default:

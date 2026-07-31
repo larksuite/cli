@@ -35,6 +35,20 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
+			name:     "+cells-get include=formula without style pins include_styles=false",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--include", "formula"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":            testToken,
+				"sheet_id":            testSheetID,
+				"ranges":              []interface{}{"A1:B2"},
+				"include_styles":      false,
+				"value_render_option": "formula",
+				"cell_limit":          float64(unboundedReadLimit),
+			},
+		},
+		{
 			// --include truncation toggles include_truncation_info so the tool
 			// estimates and returns per-cell isRowTruncated / isColTruncated.
 			name:     "+cells-get include=truncation",

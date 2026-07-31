@@ -690,3 +690,113 @@ func TestApplyWorkbookCreateStylesToMatrix(t *testing.T) {
 		}
 	})
 }
+
+// TestStyleItemRangePrefixNormalization pins the "Sheet!" prefix handling at the
+// shared item parser, so all three --styles carriers (+workbook-create,
+// +table-put, +styles-put) behave the same: a prefix naming the item's own
+// sheet is stripped (row_sizes would otherwise fail parseA1Range), one naming a
+// different sheet is reported instead of silently retargeting.
+func TestStyleItemRangePrefixNormalization(t *testing.T) {
+	t.Parallel()
+
+	t.Run("own-sheet prefix strips across every section", func(t *testing.T) {
+		t.Parallel()
+		item := map[string]interface{}{
+			"name":        "Summary",
+			"cell_styles": []interface{}{map[string]interface{}{"range": "Summary!A1:D1", "font_weight": "bold"}},
+			"cell_merges": []interface{}{map[string]interface{}{"range": "'Summary'!A2:B2"}, "Summary!C2:D2"},
+			"row_sizes":   []interface{}{map[string]interface{}{"range": "Summary!2:3", "type": "pixel", "size": float64(32)}},
+			"col_sizes":   []interface{}{map[string]interface{}{"range": "'Summary'!A:C", "type": "pixel", "size": float64(120)}},
+		}
+		payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]")
+		if len(probs) > 0 {
+			t.Fatalf("a redundant own-sheet prefix must be accepted: %v", probs)
+		}
+		got := []string{
+			payload.CellStyles[0].Range,
+			payload.CellMerges[0].Range, payload.CellMerges[1].Range,
+			payload.RowSizes[0].Range, payload.ColSizes[0].Range,
+		}
+		want := []string{"A1:D1", "A2:B2", "C2:D2", "2:3", "A:C"}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("ranges = %v, want %v", got, want)
+			}
+		}
+	})
+
+	t.Run("foreign-sheet prefix reported alongside the item's other issues", func(t *testing.T) {
+		t.Parallel()
+		item := map[string]interface{}{
+			"name":        "Summary",
+			"cell_styles": []interface{}{map[string]interface{}{"range": "Detail!A1:D1", "font_weight": "bold"}},
+			"row_sizes":   []interface{}{map[string]interface{}{"range": "2:3", "type": "custom", "size": float64(32)}},
+		}
+		_, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]")
+		joined := make([]string, 0, len(probs))
+		for _, p := range probs {
+			joined = append(joined, p.Error())
+		}
+		all := strings.Join(joined, "\n")
+		// Both must surface in one pass: stripping the mismatched prefix keeps the
+		// section parser from burying the real issue under a syntax error.
+		if !strings.Contains(all, `names sheet "Detail" but the item targets "Summary"`) {
+			t.Fatalf("probs = %v, want the foreign-prefix issue", all)
+		}
+		if !strings.Contains(all, `row_sizes[0].type "custom" is invalid`) {
+			t.Fatalf("probs = %v, want the type issue reported too", all)
+		}
+	})
+
+	t.Run("unnamed item keeps its ranges untouched", func(t *testing.T) {
+		// +workbook-create's untyped initial fill has no sheet name to compare
+		// against, so there is nothing to validate a prefix as redundant.
+		t.Parallel()
+		item := map[string]interface{}{
+			"cell_styles": []interface{}{map[string]interface{}{"range": "Sheet1!A1:D1", "font_weight": "bold"}},
+		}
+		payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]")
+		if len(probs) > 0 {
+			t.Fatalf("unexpected probs: %v", probs)
+		}
+		if payload.CellStyles[0].Range != "Sheet1!A1:D1" {
+			t.Fatalf("range = %q, want it left as written", payload.CellStyles[0].Range)
+		}
+	})
+}
+
+// TestWorkbookCreateVisualOpInput pins what the shared visual-op builder emits:
+// one combined freeze operation, and a range with no sheet prefix (the sheet
+// travels in the selector).
+func TestWorkbookCreateVisualOpInput(t *testing.T) {
+	t.Parallel()
+
+	t.Run("freeze rows and columns share one operation", func(t *testing.T) {
+		t.Parallel()
+		ops := workbookCreateVisualOps(&workbookCreateStylePayload{
+			Freeze: &workbookCreateFreezeOp{Rows: 1, Cols: 2},
+		})
+		if len(ops) != 1 {
+			t.Fatalf("ops = %d, want 1 combined freeze (a second call resets the first axis — verified live 07-31)", len(ops))
+		}
+		input, toolName := workbookCreateVisualOpInput(testToken, "sheet-id", "", ops[0])
+		if toolName != "modify_sheet_structure" {
+			t.Fatalf("toolName = %q", toolName)
+		}
+		if input["freeze_rows"] != 1 || input["freeze_columns"] != 2 {
+			t.Fatalf("input = %v, want both axes", input)
+		}
+		if got := ops[0].describe(); got != "freeze rows=1 cols=2" {
+			t.Errorf("describe() = %q", got)
+		}
+	})
+
+	t.Run("sheet prefix is stripped off the range", func(t *testing.T) {
+		t.Parallel()
+		input, toolName := workbookCreateVisualOpInput(testToken, "", "Summary",
+			workbookCreateStyleOp{Kind: "cell_merge", Range: "Summary!A1:B2", MergeType: "all"})
+		if toolName != "merge_cells" || input["range"] != "A1:B2" {
+			t.Fatalf("input = %v (%s), want range A1:B2", input, toolName)
+		}
+	})
+}
