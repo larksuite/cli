@@ -345,19 +345,39 @@ def _row_segments(row_numbers: list[int]) -> list[list[int]]:
     return segments
 
 
-def _write_hints(grid: CsvGrid, *, header_row: int | None, data_start: int, bounds) -> dict[str, Any]:
+def _write_hints(
+    grid: CsvGrid,
+    *,
+    header_row: int | None,
+    data_start: int,
+    bounds,
+    hidden_columns: list[str] | None = None,
+) -> dict[str, Any]:
     last_non_empty_col = None
     for idx, col in enumerate(grid.col_letters):
         if any(idx < len(row) and row[idx].strip() for row in grid.values):
             last_non_empty_col = col_to_index(col)
     safe_col_num = (last_non_empty_col + 1) if last_non_empty_col else bounds.start_col
+    # Step over hidden columns. Under --skip-hidden they are absent from the
+    # grid entirely, so "one past the last visible column" can land ON a hidden
+    # column that holds data — and when the hidden columns sit at the right edge
+    # there is no gap in the returned letters either, so data_range_has_col_gaps
+    # stays silent too. Appending there would overwrite data nobody can see.
+    hidden_indices = {col_to_index(col) for col in (hidden_columns or [])}
+    skipped_hidden: list[str] = []
+    while safe_col_num in hidden_indices:
+        skipped_hidden.append(index_to_col(safe_col_num))
+        safe_col_num += 1
     safe_col = index_to_col(safe_col_num)
-    return {
+    hints = {
         "last_non_empty_col": index_to_col(last_non_empty_col) if last_non_empty_col else None,
         "safe_append_col": safe_col,
         "safe_append_header_cell": f"{safe_col}{header_row}" if header_row else None,
         "safe_append_data_start_cell": f"{safe_col}{data_start}",
     }
+    if skipped_hidden:
+        hints["skipped_hidden_cols"] = skipped_hidden
+    return hints
 
 
 def profile_grid(
@@ -367,6 +387,7 @@ def profile_grid(
     skip_hidden: bool = False,
     hidden_rows: list[int] | None = None,
     hidden_columns: list[str] | None = None,
+    all_hidden_columns: list[str] | None = None,
     header_scan_rows: int = 20,
 ) -> dict[str, Any]:
     max_row = max(grid.row_numbers, default=1)
@@ -437,7 +458,13 @@ def profile_grid(
             "hidden_rows_in_range": hidden_rows,
             "hidden_columns_in_range": hidden_columns,
         },
-        "write_hints": _write_hints(grid, header_row=header_row, data_start=data_start, bounds=bounds),
+        "write_hints": _write_hints(
+            grid,
+            header_row=header_row,
+            data_start=data_start,
+            bounds=bounds,
+            hidden_columns=all_hidden_columns,
+        ),
         "special_rows": specials,
     }
 
@@ -469,6 +496,27 @@ def _hidden_rows_and_columns(grid: CsvGrid, layout: dict[str, Any]) -> tuple[lis
     rows = sorted(row for row in grid.row_numbers if row in hidden_row_indexes)
     columns = [col for col in grid.col_letters if col.upper() in hidden_column_letters]
     return rows, columns
+
+
+def _all_hidden_columns(layout: dict[str, Any]) -> list[str]:
+    """Every hidden column on the sheet, not just those inside the grid.
+
+    _hidden_rows_and_columns intersects with the returned grid, which is the
+    right scope for the "there are hidden rows/columns in what you read"
+    warnings. The append hint needs the opposite: the columns that are NOT in
+    the grid precisely because they are hidden.
+    """
+    letters: list[str] = []
+    raw = layout.get("hidden_cols") or layout.get("hidden_columns") or []
+    for value in raw if isinstance(raw, list) else []:
+        if isinstance(value, str) and value.isalpha():
+            letters.append(value.upper())
+            continue
+        try:
+            letters.append(index_to_col(int(value) + 1))
+        except (TypeError, ValueError):
+            continue
+    return letters
 
 
 def profile_table(args) -> tuple[dict[str, Any], list[str]]:
@@ -505,28 +553,36 @@ def profile_table(args) -> tuple[dict[str, Any], list[str]]:
         warnings.append("CSV row numbers were inferred from the requested range")
     hidden_rows: list[int] = []
     hidden_columns: list[str] = []
-    if not args.skip_hidden:
-        try:
-            layout = envelope_data(
-                run_sheets(
-                    "+sheet-info",
-                    url=args.url,
-                    spreadsheet_token=args.spreadsheet_token,
-                    sheet_id=args.sheet_id,
-                    sheet_name=args.sheet_name,
-                    flags={"include": "hidden_rows,hidden_cols"},
-                    timeout=args.timeout,
-                )
+    all_hidden_columns: list[str] = []
+    # Fetched in BOTH modes. Under --skip-hidden the hidden rows/columns are
+    # absent from the grid, so hidden_rows/hidden_columns (which are scoped to
+    # what the grid contains) come back empty and no warning fires — but the
+    # write hints still need to know where the hidden columns are, or
+    # safe_append_col can point at one that holds data. all_hidden_columns is
+    # the unscoped list used for exactly that.
+    try:
+        layout = envelope_data(
+            run_sheets(
+                "+sheet-info",
+                url=args.url,
+                spreadsheet_token=args.spreadsheet_token,
+                sheet_id=args.sheet_id,
+                sheet_name=args.sheet_name,
+                flags={"include": "hidden_rows,hidden_cols"},
+                timeout=args.timeout,
             )
-            hidden_rows, hidden_columns = _hidden_rows_and_columns(grid, layout)
-        except LarkCliError as exc:
-            warnings.append(f"hidden row/column detection unavailable: {exc}")
+        )
+        hidden_rows, hidden_columns = _hidden_rows_and_columns(grid, layout)
+        all_hidden_columns = _all_hidden_columns(layout)
+    except LarkCliError as exc:
+        warnings.append(f"hidden row/column detection unavailable: {exc}")
     return profile_grid(
         grid,
         source_range,
         skip_hidden=args.skip_hidden,
         hidden_rows=hidden_rows,
         hidden_columns=hidden_columns,
+        all_hidden_columns=all_hidden_columns,
         header_scan_rows=args.header_scan_rows,
     ), warnings
 

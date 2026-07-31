@@ -76,15 +76,20 @@ func TestReadResultTruncated_AllLevels(t *testing.T) {
 func TestMaxCharsInput_ExplicitZero(t *testing.T) {
 	t.Parallel()
 
-	t.Run("resolves to the flag default, not the tool fallback", func(t *testing.T) {
+	t.Run("resolves to whatever omitting the flag resolves to", func(t *testing.T) {
 		t.Parallel()
-		input := cellsGetToolInput(t, []string{"--max-chars", "0"})
-		got, ok := input["max_chars"]
+		// Compared against the omitted call rather than against maxCharsFallback:
+		// asserting the constant equals itself would pass even after the flag's
+		// declared default moved in flag-defs.json and left the two out of step.
+		// The contract is "0 means no cap of my own", i.e. behave as if unset.
+		zero := cellsGetToolInput(t, []string{"--max-chars", "0"})
+		omitted := cellsGetToolInput(t, nil)
+		got, ok := zero["max_chars"]
 		if !ok {
-			t.Fatalf("max_chars must be sent, or the tool's ~50000 fallback binds: %#v", input)
+			t.Fatalf("max_chars must be sent, or the tool's ~50000 fallback binds: %#v", zero)
 		}
-		if got != float64(maxCharsFallback) {
-			t.Errorf("max_chars = %v, want %d", got, maxCharsFallback)
+		if want := omitted["max_chars"]; got != want {
+			t.Errorf("--max-chars 0 sent max_chars=%v, omitting it sent %v; they must agree", got, want)
 		}
 	})
 
