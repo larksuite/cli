@@ -1,0 +1,47 @@
+events/approval/preconsume.go
+  s_89327a92b75c9c::t_c46b68a63fe0e1 16
+events/approval/register.go
+  s_89327a92b75c9c::t_837d11befd2b7e 44-46,61-63
+events/approval/register_test.go
+  s_89327a92b75c9c::t_38f38d18f82558 260,299,312,336
+events/internal/subscribeprep/subscribeprep.go
+  s_89327a92b75c9c::t_efad0e135d0c84 4-7,14,17-19,21-24,29-31,33-40,42-50
+events/minutes/register.go
+  s_89327a92b75c9c::t_8a9efff322dc54 10,35
+events/vc/internal_helpers.go
+  s_89327a92b75c9c::t_4ad7e493cb7dda 7-8,14-59,61
+events/vc/participant_meeting_ended.go
+  s_89327a92b75c9c::t_52c34b2c7c84e2 27-37,39-40,44
+events/vc/participant_meeting_joined.go
+  s_89327a92b75c9c::t_9af8e4a8ff40b8 26-36,38-39,43
+events/vc/participant_meeting_started.go
+  s_89327a92b75c9c::t_dd02d5486ad30d 26-35,37-38,42
+events/vc/recording_ended.go
+  s_89327a92b75c9c::t_111bd731af8fff 24,28,34-36
+events/vc/recording_started.go
+  s_89327a92b75c9c::t_a48e6cf851038f 24,28,34-36
+events/vc/recording_transcript_generated.go
+  s_89327a92b75c9c::t_16331039638acb 54,58,64-67,87-88
+events/vc/register.go
+  s_89327a92b75c9c::t_85a0201d87d700 10,45,61,77,93,109,125,141
+events/whiteboard/preconsume.go
+  s_89327a92b75c9c::t_e9b08048ddf841 11,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f6f77817e36042d9367679e0e22564283f667d3f",
+  "prompts": {},
+  "sessions": {
+    "s_89327a92b75c9c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acf59593c226238e0",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
