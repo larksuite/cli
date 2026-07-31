@@ -152,6 +152,20 @@
 ```json
 {
   "table_rule_map": {
+    "订单表": {
+      "perm": "edit",
+      "view_rule": {
+        "allow_edit": true,
+        "visibility": { "all_visible": true }
+      },
+      "record_rule": {
+        "record_operations": ["add", "delete"],
+        "other_record_all_read": true
+      },
+      "field_rule": {
+        "field_perm_mode": "all_edit"
+      }
+    },
     "用户表": {
       "perm": "read_only",
       "view_rule": {
