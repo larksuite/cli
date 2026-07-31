@@ -39,7 +39,7 @@ import (
 	"github.com/larksuite/cli/internal/event/consume"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/testutil"
-	"github.com/larksuite/cli/internal/event/transport"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 )
 
 // contractAppSeq makes every test invocation use a distinct app id. The bus

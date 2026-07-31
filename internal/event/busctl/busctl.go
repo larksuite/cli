@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
-	"github.com/larksuite/cli/internal/event/transport"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 )
 
 const readTimeout = 5 * time.Second // matches protocol.WriteTimeout

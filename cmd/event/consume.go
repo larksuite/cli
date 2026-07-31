@@ -27,7 +27,7 @@ import (
 	appconsume "github.com/larksuite/cli/internal/event/application/consume"
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/consume"
-	"github.com/larksuite/cli/internal/event/transport"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 )
