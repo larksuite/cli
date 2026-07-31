@@ -6,8 +6,6 @@ package vc
 import (
 	"context"
 	"encoding/json"
-	"strconv"
-	"time"
 
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/processing"
@@ -22,52 +20,20 @@ type VCRecordingEndedOutput struct {
 	Source    string `json:"source,omitempty"     desc:"Recording source; always recording_bean"`
 }
 
-type recordingEndedEnvelope struct {
-	Event recordingEndedEvent `json:"event"`
-}
-
-type recordingEndedEvent struct {
-	UniqueKey string `json:"unique_key"`
-	Source    string `json:"source"`
-}
-
 func processVCRecordingEnded(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
-	envelope, ok := parseRecordingEndedEnvelope(raw)
+	body, ok := decodeEventBody[recordingBeanEventBody](raw)
 	if !ok {
 		return nil, processing.DropMalformed(raw.EventType)
 	}
-	if !isRecordingEndedBeanEvent(envelope) {
+	if body.Source != recordingBeanSource {
 		return nil, nil
 	}
 	out := &VCRecordingEndedOutput{
 		Type:      raw.EventType,
 		EventID:   raw.EventID,
-		EventTime: recordingEndedEventTime(raw.SourceTime),
-		UniqueKey: envelope.Event.UniqueKey,
-		Source:    envelope.Event.Source,
+		EventTime: millisToLocalRFC3339(raw.SourceTime),
+		UniqueKey: body.UniqueKey,
+		Source:    body.Source,
 	}
 	return json.Marshal(out)
-}
-
-func parseRecordingEndedEnvelope(raw *event.RawEvent) (*recordingEndedEnvelope, bool) {
-	var envelope recordingEndedEnvelope
-	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return nil, false
-	}
-	return &envelope, true
-}
-
-func isRecordingEndedBeanEvent(envelope *recordingEndedEnvelope) bool {
-	return envelope != nil && envelope.Event.Source == "recording_bean"
-}
-
-func recordingEndedEventTime(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	millis, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return ""
-	}
-	return time.UnixMilli(millis).Local().Format(time.RFC3339)
 }

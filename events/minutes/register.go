@@ -7,6 +7,7 @@ package minutes
 import (
 	"reflect"
 
+	"github.com/larksuite/cli/events/internal/subscribeprep"
 	"github.com/larksuite/cli/internal/event"
 )
 
@@ -31,7 +32,7 @@ func Keys() []event.KeyDefinition {
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(MinutesMinuteGeneratedOutput{})},
 			},
 			Process:    processMinutesMinuteGenerated,
-			PreConsume: subscriptionPreConsume(eventTypeMinuteGenerated, pathMinuteSubscribe, pathMinuteUnsubscribe),
+			PreConsume: subscribeprep.Hook(eventTypeMinuteGenerated, pathMinuteSubscribe, pathMinuteUnsubscribe),
 			Scopes:     []string{"minutes:minutes.basic:read"},
 			AuthTypes: []string{
 				"user",

@@ -23,24 +23,24 @@ type VCParticipantMeetingJoinedOutput struct {
 	CalendarEventID string `json:"calendar_event_id,omitempty" desc:"Calendar event ID associated with the meeting"`
 }
 
+type participantMeetingJoinedEvent struct {
+	Meeting struct {
+		ID              string `json:"id"`
+		Topic           string `json:"topic"`
+		MeetingNo       string `json:"meeting_no"`
+		StartTime       string `json:"start_time"`
+		EndTime         string `json:"end_time"`
+		CalendarEventID string `json:"calendar_event_id"`
+	} `json:"meeting"`
+}
+
 func processVCParticipantMeetingJoined(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
-	var envelope struct {
-		Event struct {
-			Meeting struct {
-				ID              string `json:"id"`
-				Topic           string `json:"topic"`
-				MeetingNo       string `json:"meeting_no"`
-				StartTime       string `json:"start_time"`
-				EndTime         string `json:"end_time"`
-				CalendarEventID string `json:"calendar_event_id"`
-			} `json:"meeting"`
-		} `json:"event"`
-	}
-	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
+	body, ok := decodeEventBody[participantMeetingJoinedEvent](raw)
+	if !ok {
 		return nil, processing.DropMalformed(raw.EventType)
 	}
 
-	meeting := envelope.Event.Meeting
+	meeting := body.Meeting
 	out := &VCParticipantMeetingJoinedOutput{
 		Type:            raw.EventType,
 		EventID:         raw.EventID,

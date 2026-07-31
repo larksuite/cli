@@ -41,12 +41,9 @@ func Keys() []event.KeyDefinition {
 			Schema: event.SchemaDef{
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(ApprovalInstanceStatusChangedV4Output{})},
 			},
-			Process: processApprovalInstanceStatusChanged,
-			PreConsume: approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-				eventType:     eventTypeApprovalInstanceStatusChangedV4,
-				subscribePath: pathApprovalInstancesSubscription,
-			}),
-			Scopes: []string{"approval:instance:read"},
+			Process:    processApprovalInstanceStatusChanged,
+			PreConsume: approvalSubscriptionPreConsume(eventTypeApprovalInstanceStatusChangedV4, pathApprovalInstancesSubscription),
+			Scopes:     []string{"approval:instance:read"},
 			AuthTypes: []string{
 				"user",
 			},
@@ -61,12 +58,9 @@ func Keys() []event.KeyDefinition {
 			Schema: event.SchemaDef{
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(ApprovalTaskStatusChangedV4Output{})},
 			},
-			Process: processApprovalTaskStatusChanged,
-			PreConsume: approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-				eventType:     eventTypeApprovalTaskStatusChangedV4,
-				subscribePath: pathApprovalTasksSubscription,
-			}),
-			Scopes: []string{"approval:task:read"},
+			Process:    processApprovalTaskStatusChanged,
+			PreConsume: approvalSubscriptionPreConsume(eventTypeApprovalTaskStatusChangedV4, pathApprovalTasksSubscription),
+			Scopes:     []string{"approval:task:read"},
 			AuthTypes: []string{
 				"user",
 			},

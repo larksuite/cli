@@ -257,10 +257,7 @@ func TestApprovalPreConsumeRegistersSubscriptionTypesWithoutCleanup(t *testing.T
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			pc := approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-				eventType:     approvalEventType(tc.eventType),
-				subscribePath: approvalSubscriptionPath(tc.subscribePath),
-			})
+			pc := approvalSubscriptionPreConsume(tc.eventType, tc.subscribePath)
 			rt := &fakeAPIClient{}
 			cleanup, err := pc(context.Background(), rt, tc.params)
 			if err != nil {
@@ -299,9 +296,7 @@ func assertCall(t *testing.T, got recordedCall, wantMethod, wantPath string, wan
 
 func TestApprovalPreConsumeValidationErrors(t *testing.T) {
 	t.Run("nil runtime", func(t *testing.T) {
-		pc := approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-			eventType: eventTypeApprovalInstanceStatusChangedV4,
-		})
+		pc := approvalSubscriptionPreConsume(eventTypeApprovalInstanceStatusChangedV4, "")
 		_, err := pc(context.Background(), nil, map[string]string{"subscription_type": approvalSubscriptionTypeInvolved})
 		if err == nil {
 			t.Fatal("expected nil runtime error")
@@ -314,9 +309,7 @@ func TestApprovalPreConsumeValidationErrors(t *testing.T) {
 
 	for _, raw := range []string{"BAD", "[]", `["INVOLVED_APPROVAL",3]`} {
 		t.Run("invalid subscription type "+raw, func(t *testing.T) {
-			pc := approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-				eventType: eventTypeApprovalInstanceStatusChangedV4,
-			})
+			pc := approvalSubscriptionPreConsume(eventTypeApprovalInstanceStatusChangedV4, "")
 			cleanup, err := pc(context.Background(), &fakeAPIClient{}, map[string]string{"subscription_type": raw})
 			if err == nil {
 				t.Fatal("expected invalid subscription_type error")
@@ -340,10 +333,7 @@ func TestApprovalPreConsumeValidationErrors(t *testing.T) {
 	t.Run("partial registration failure reports registered and failed relation types", func(t *testing.T) {
 		upstream := errs.NewAPIError(errs.SubtypeServerError, "approval subscription API failed")
 		rt := &fakeAPIClient{err: upstream, errOnCall: 2}
-		pc := approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-			eventType:     eventTypeApprovalTaskStatusChangedV4,
-			subscribePath: pathApprovalTasksSubscription,
-		})
+		pc := approvalSubscriptionPreConsume(eventTypeApprovalTaskStatusChangedV4, pathApprovalTasksSubscription)
 
 		cleanup, err := pc(context.Background(), rt, map[string]string{})
 		if err == nil {

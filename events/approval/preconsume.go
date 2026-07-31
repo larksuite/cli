@@ -13,23 +13,13 @@ import (
 	"github.com/larksuite/cli/internal/event"
 )
 
-type approvalEventType string
-type approvalSubscriptionPath string
-
-type approvalSubscriptionConfig struct {
-	eventType     approvalEventType
-	subscribePath approvalSubscriptionPath
-}
-
-func approvalSubscriptionPreConsume(cfg approvalSubscriptionConfig) func(context.Context, event.APIClient, map[string]string) (func() error, error) {
+func approvalSubscriptionPreConsume(eventType, subscribePath string) func(context.Context, event.APIClient, map[string]string) (func() error, error) {
 	return func(ctx context.Context, rt event.APIClient, params map[string]string) (func() error, error) {
 		if rt == nil {
 			return nil, errs.NewInternalError(errs.SubtypeUnknown,
 				"runtime API client is required for pre-consume subscription")
 		}
 
-		eventType := string(cfg.eventType)
-		subscribePath := string(cfg.subscribePath)
 		subscriptionTypes, err := approvalSubscriptionTypes(eventType, params)
 		if err != nil {
 			return nil, err

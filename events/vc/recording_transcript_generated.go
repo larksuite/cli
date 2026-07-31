@@ -6,8 +6,6 @@ package vc
 import (
 	"context"
 	"encoding/json"
-	"strconv"
-	"time"
 
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/processing"
@@ -32,10 +30,6 @@ type VCRecordingTranscriptGeneratedOutput struct {
 	TranscriptItems []VCRecordingTranscriptItemOutput `json:"transcript_items,omitempty" desc:"Generated transcript items"`
 }
 
-type recordingTranscriptGeneratedEnvelope struct {
-	Event recordingTranscriptGeneratedEvent `json:"event"`
-}
-
 type recordingTranscriptGeneratedEvent struct {
 	UniqueKey       string                               `json:"unique_key"`
 	Source          string                               `json:"source"`
@@ -57,49 +51,22 @@ type recordingTranscriptGeneratedSpeakerIn struct {
 type recordingTranscriptGeneratedString string
 
 func processVCRecordingTranscriptGenerated(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
-	envelope, ok := parseRecordingTranscriptGeneratedEnvelope(raw)
+	body, ok := decodeEventBody[recordingTranscriptGeneratedEvent](raw)
 	if !ok {
 		return nil, processing.DropMalformed(raw.EventType)
 	}
-	if !isRecordingTranscriptGeneratedBeanEvent(envelope) {
+	if body.Source != recordingBeanSource {
 		return nil, nil
 	}
 	out := &VCRecordingTranscriptGeneratedOutput{
 		Type:            raw.EventType,
 		EventID:         raw.EventID,
-		EventTime:       recordingTranscriptGeneratedEventTime(raw.SourceTime),
-		UniqueKey:       envelope.Event.UniqueKey,
-		Source:          envelope.Event.Source,
-		TranscriptItems: recordingTranscriptItems(envelope.Event.TranscriptItems),
+		EventTime:       millisToLocalRFC3339(raw.SourceTime),
+		UniqueKey:       body.UniqueKey,
+		Source:          body.Source,
+		TranscriptItems: recordingTranscriptItems(body.TranscriptItems),
 	}
 	return json.Marshal(out)
-}
-
-func parseRecordingTranscriptGeneratedEnvelope(raw *event.RawEvent) (*recordingTranscriptGeneratedEnvelope, bool) {
-	var envelope recordingTranscriptGeneratedEnvelope
-	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return nil, false
-	}
-	return &envelope, true
-}
-
-func isRecordingTranscriptGeneratedBeanEvent(envelope *recordingTranscriptGeneratedEnvelope) bool {
-	return envelope != nil && envelope.Event.Source == "recording_bean"
-}
-
-func recordingTranscriptGeneratedEventTime(raw string) string {
-	return recordingTranscriptGeneratedMillisToLocalRFC3339(raw)
-}
-
-func recordingTranscriptGeneratedMillisToLocalRFC3339(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	millis, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return ""
-	}
-	return time.UnixMilli(millis).Local().Format(time.RFC3339)
 }
 
 func recordingTranscriptItems(items []recordingTranscriptGeneratedItemIn) []VCRecordingTranscriptItemOutput {
@@ -117,8 +84,8 @@ func recordingTranscriptItem(item recordingTranscriptGeneratedItemIn) VCRecordin
 	return VCRecordingTranscriptItemOutput{
 		SpeakerName: recordingSpeakerName(item.Speaker),
 		Text:        item.Text,
-		StartTime:   recordingTranscriptGeneratedMillisToLocalRFC3339(item.StartTimeMs.String()),
-		EndTime:     recordingTranscriptGeneratedMillisToLocalRFC3339(item.EndTimeMs.String()),
+		StartTime:   millisToLocalRFC3339(item.StartTimeMs.String()),
+		EndTime:     millisToLocalRFC3339(item.EndTimeMs.String()),
 		SentenceID:  item.SentenceID,
 	}
 }

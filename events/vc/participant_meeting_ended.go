@@ -6,8 +6,6 @@ package vc
 import (
 	"context"
 	"encoding/json"
-	"strconv"
-	"time"
 
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/processing"
@@ -26,24 +24,24 @@ type VCParticipantMeetingEndedOutput struct {
 	CalendarEventID string `json:"calendar_event_id,omitempty" desc:"Calendar event ID associated with the meeting"`
 }
 
+type participantMeetingEndedEvent struct {
+	Meeting struct {
+		ID              string `json:"id"`
+		Topic           string `json:"topic"`
+		MeetingNo       string `json:"meeting_no"`
+		StartTime       string `json:"start_time"`
+		EndTime         string `json:"end_time"`
+		CalendarEventID string `json:"calendar_event_id"`
+	} `json:"meeting"`
+}
+
 func processVCParticipantMeetingEnded(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
-	var envelope struct {
-		Event struct {
-			Meeting struct {
-				ID              string `json:"id"`
-				Topic           string `json:"topic"`
-				MeetingNo       string `json:"meeting_no"`
-				StartTime       string `json:"start_time"`
-				EndTime         string `json:"end_time"`
-				CalendarEventID string `json:"calendar_event_id"`
-			} `json:"meeting"`
-		} `json:"event"`
-	}
-	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
+	body, ok := decodeEventBody[participantMeetingEndedEvent](raw)
+	if !ok {
 		return nil, processing.DropMalformed(raw.EventType)
 	}
 
-	meeting := envelope.Event.Meeting
+	meeting := body.Meeting
 	out := &VCParticipantMeetingEndedOutput{
 		Type:            raw.EventType,
 		EventID:         raw.EventID,
@@ -56,15 +54,4 @@ func processVCParticipantMeetingEnded(_ context.Context, _ event.APIClient, raw 
 		CalendarEventID: meeting.CalendarEventID,
 	}
 	return json.Marshal(out)
-}
-
-func unixSecondsToLocalRFC3339(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	secs, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return ""
-	}
-	return time.Unix(secs, 0).Local().Format(time.RFC3339)
 }
