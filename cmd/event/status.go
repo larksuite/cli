@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/event/busctl"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/busctl"
 	"github.com/larksuite/cli/internal/event/busdiscover"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
