@@ -20,8 +20,8 @@ lark-cli drive +member-add \
 
 | 参数 | 必填 | 说明                                                                                                                                                                                  |
 |------|----|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--token` | 是 | 裸 token 或完整 URL。路径支持 `/drive/folder/`、`/docx/`、`/doc/`、`/sheets/`、`/base/`、`/bitable/`、`/wiki/`、`/file/`、`/mindnotes/`、`/slides/`、`/minutes/`；URL 输入可从路径推断 `--type`，裸 token 不做前缀推断 |
-| `--type` | 必填 | 目标资源类型：`docx` / `doc` / `sheet` / `bitable` / `file` / `folder` / `wiki` / `mindnote` / `slides` / `minutes`。传 URL 时可省略；裸 token 必须显式传；若同时传 URL 和 `--type`，显式 `--type` 覆盖 URL 推断                 |
+| `--token` | 是 | 裸 token 或完整 URL。路径支持 `/drive/folder/`、`/docx/`、`/doc/`、`/sheets/`、`/base/`、`/bitable/`、`/wiki/`、`/file/`、`/mindnotes/`、`/slides/`、`/minutes/`、`/page/`；URL 输入可从路径推断 `--type`，裸 token 不做前缀推断 |
+| `--type` | 必填 | 目标资源类型：`docx` / `doc` / `sheet` / `bitable` / `file` / `folder` / `wiki` / `mindnote` / `slides` / `minutes` / `apps`。传 URL 时可省略；裸 token 必须显式传；若同时传 URL 和 `--type`，显式 `--type` 覆盖 URL 推断 |
 | `--member-id` | 是 | 协作者 ID；逗号分隔可批量添加，最多 10 个                                                                                                                                                            |
 | `--member-type` | 是 | member-id 的类型；支持 `email` / `openid` / `unionid` / `openchat` / `opendepartmentid` / `groupid` / `appid` / `wikispaceid`。在实际使用里，给当前应用授权仍优先推荐 bot `open_id` + `openid`。                               |
 | `--member-kind` | 条件必填 | 仅当 `--member-type=wikispaceid` 时填写，映射到请求 body 的 `type` 字段。取值：`wiki_space_member` / `wiki_space_viewer` / `wiki_space_editor`。其他 member-type 禁止传此参数。 |

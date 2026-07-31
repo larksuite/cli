@@ -20,13 +20,14 @@ import (
 //   - 3 git-credential
 //   - 5 session（create/list/get/stop/chat）+ 1 session-messages-list
 //   - 8 openapi-key（list/get/create/update/enable/disable/delete/reset）
+//   - 3 cache（get/delete/clear）
 //   - 3 plugin（install/uninstall/list）
 //   - 6 automation（list/get/create/update/enable/disable）
-//   - 9 role（role CRUD + role-member list/add/remove + role-match-list）= 79。
-func TestAppsShortcuts_Returns79(t *testing.T) {
+//   - 9 role（role CRUD + role-member list/add/remove + role-match-list）= 82。
+func TestAppsShortcuts_Returns82(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 79 {
-		t.Fatalf("Shortcuts() returned %d entries, want 79", len(got))
+	if len(got) != 82 {
+		t.Fatalf("Shortcuts() returned %d entries, want 82", len(got))
 	}
 }
 

@@ -159,6 +159,7 @@ lark-cli drive +add-comment \
 
 ## 行为说明
 
+- **不支持妙搭 apps**：妙搭不支持新增评论，`--doc` 传 `/page/<token>` URL 或 `--type apps` 都不可用。其余评论管理命令（列表、批量查询、回复、解决/恢复、reaction）都支持 apps。
 - **局部评论需要先获取 block ID**：先调用 `docs +fetch --doc <TOKEN> --detail with-ids` 获取带有 block ID 的文档内容，然后使用 `--block-id` 指定目标块。
 - **Review 场景优先局部评论**：审阅、校对、逐条指出问题时，必须先尝试定位到具体 block / 单元格 / slide 元素，并逐问题创建局部评论；不要把所有问题合并成一条全文评论。
 - 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终可解析为 `doc`/`docx`/`file` 的 wiki URL。
@@ -174,10 +175,7 @@ lark-cli drive +add-comment \
     - `<img id="bPk" ... />` 对应 `--block-id img!bPk`，表示给图片元素评论。
     - `<shape type="text" id="bPq">...</shape>` 对应 `--block-id shape!bPq`，表示给文本 shape 评论。
 
-- `--content` 接收结构化评论元素数组；`type` 支持 `text`、`mention_user`、`link`。为便于书写，`mention_user` / `link` 元素可以直接把用户 ID 或链接地址放在 `text` 字段中，shortcut 会转换成 OpenAPI 所需字段。
-- `type=text` 的评论文本不能直接包含 `<`、`>`；应优先传 `&lt;`、`&gt;`。shortcut 在发送前也会自动将 `<`、`>` 转义为 `&lt;`、`&gt;` 作为兜底。
-- **所有 `type=text` 元素的字符总和 ≤ 10000**（按字符算，中英文 / 符号一视同仁）。超过会被 shortcut 在发送前拒绝，并指出累计超长的元素。**拆成多个 text element 不能绕过这个上限**——上限是总额，不是每元素。需要更长内容就缩短或拆成多条评论。
-- 长度限制只对 `type=text` 生效，`mention_user` / `link` 不计入。
+- `--content` 是结构化评论元素数组（`text` / `mention_user` / `link`），完整格式见 [`lark-drive-comment-content.md`](lark-drive-comment-content.md)；上方示例已覆盖常见写法。
 - 写入评论前会自动生成符合 OpenAPI 定义的请求体；shortcut 用户只需要传 `--doc`、`--content`，局部评论再传对应格式的 `--block-id`。
 - `--dry-run` 仅预览调用链和请求体，不会实际写入。
 - 如果需要更底层的控制，仍可改用 `lark-cli schema drive.file.comments.create_v2` + `lark-cli drive file.comments create_v2`。

@@ -32,6 +32,7 @@ const (
 	markdownUploadPrepareAction      = "initialize markdown multipart upload failed"
 	markdownUploadFinishAction       = "finalize markdown multipart upload failed"
 	markdownFetchNameAction          = "fetch existing markdown file name failed"
+	markdownSourceFilePreviewType    = "16"
 )
 
 var markdownUploadRetryBackoffs = []time.Duration{
@@ -192,9 +193,14 @@ func resolveMarkdownOverwriteFileName(runtime *common.RuntimeContext, spec markd
 }
 
 func openMarkdownDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken string) (*http.Response, error) {
+	query, err := markdownSourceFilePreviewQuery("", "")
+	if err != nil {
+		return nil, err
+	}
 	resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
-		HttpMethod: http.MethodGet,
-		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
+		HttpMethod:  http.MethodGet,
+		ApiPath:     fmt.Sprintf("/open-apis/drive/v1/medias/%s/preview_download", validate.EncodePathSegment(fileToken)),
+		QueryParams: query,
 	})
 	if err != nil {
 		return nil, wrapMarkdownDownloadError(err)
@@ -230,15 +236,15 @@ func markdownSourceSize(runtime *common.RuntimeContext, spec markdownUploadSpec)
 	return size, nil
 }
 
-func openMarkdownDownloadVersion(ctx context.Context, runtime *common.RuntimeContext, fileToken, version string) (*http.Response, string, error) {
-	req := &larkcore.ApiReq{
-		HttpMethod: http.MethodGet,
-		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
+func openMarkdownDownloadVersion(ctx context.Context, runtime *common.RuntimeContext, fileToken, version, versionParam string) (*http.Response, string, error) {
+	query, err := markdownSourceFilePreviewQuery(version, versionParam)
+	if err != nil {
+		return nil, "", err
 	}
-	if strings.TrimSpace(version) != "" {
-		req.QueryParams = larkcore.QueryParams{
-			"version": []string{strings.TrimSpace(version)},
-		}
+	req := &larkcore.ApiReq{
+		HttpMethod:  http.MethodGet,
+		ApiPath:     fmt.Sprintf("/open-apis/drive/v1/medias/%s/preview_download", validate.EncodePathSegment(fileToken)),
+		QueryParams: query,
 	}
 
 	resp, err := runtime.DoAPIStream(ctx, req)
@@ -246,6 +252,58 @@ func openMarkdownDownloadVersion(ctx context.Context, runtime *common.RuntimeCon
 		return nil, "", wrapMarkdownDownloadError(err)
 	}
 	return resp, fileNameFromDownloadHeader(resp.Header, fileToken+".md"), nil
+}
+
+func markdownSourceFilePreviewQuery(version, versionParam string) (larkcore.QueryParams, error) {
+	if err := validateMarkdownSourceFilePreviewVersion(version, versionParam); err != nil {
+		return nil, err
+	}
+	query := larkcore.QueryParams{
+		"preview_type": []string{markdownSourceFilePreviewType},
+	}
+	if version != "" {
+		query["version"] = []string{version}
+	}
+	return query, nil
+}
+
+func markdownSourceFilePreviewDryRunParams(version, versionParam string) (map[string]interface{}, error) {
+	if err := validateMarkdownSourceFilePreviewVersion(version, versionParam); err != nil {
+		return nil, err
+	}
+	params := map[string]interface{}{
+		"preview_type": markdownSourceFilePreviewType,
+	}
+	if version != "" {
+		params["version"] = version
+	}
+	return params, nil
+}
+
+func markdownSourceFilePreviewDryRunParamsForValidatedVersion(version, versionParam string) map[string]interface{} {
+	params, err := markdownSourceFilePreviewDryRunParams(version, versionParam)
+	if err != nil {
+		// Shortcut validation runs before DryRun. If a caller bypasses that
+		// contract, preserve the supplied value instead of silently dropping it.
+		params = map[string]interface{}{
+			"preview_type": markdownSourceFilePreviewType,
+			"version":      version,
+		}
+	}
+	return params
+}
+
+func validateMarkdownSourceFilePreviewVersion(version, flagName string) error {
+	if version == "" {
+		return nil
+	}
+	if strings.TrimSpace(version) != "" {
+		return nil
+	}
+	if flagName == "" {
+		flagName = "--version"
+	}
+	return markdownValidationParamError(flagName, "%s cannot be empty", flagName)
 }
 
 func markdownDryRunFileField(spec markdownUploadSpec) string {

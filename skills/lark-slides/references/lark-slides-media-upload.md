@@ -105,7 +105,7 @@ lark-cli slides +replace-slide --as user \
 
 `+media-upload` 内部调用 `POST /open-apis/drive/v1/medias/upload_all`（单次上传，最大 20 MB），固定使用：
 
-- `parent_type=slide_file`（slides 后端唯一接受的取值，已实测验证）
+- `parent_type=slide_file`（slides 后端唯一接受的取值）
 - `parent_node=<xml_presentation_id>`
 
 **不要尝试用 `slides_image`、`slide_image` 等 parent_type**——后端会返回 1061001 / 1061002 错误。这是 slides 的特殊约定。

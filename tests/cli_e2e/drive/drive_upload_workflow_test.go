@@ -117,4 +117,33 @@ func TestDrive_UploadWorkflow(t *testing.T) {
 	if string(data) != updatedContent {
 		t.Fatalf("downloaded content=%q want %q", string(data), updatedContent)
 	}
+
+	defaultDownloadResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+download",
+			"--file-token", overwriteToken,
+		},
+		WorkDir:   workDir,
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	defaultDownloadResult.AssertExitCode(t, 0)
+	defaultDownloadResult.AssertStdoutStatus(t, true)
+
+	defaultSavedPath := gjson.Get(defaultDownloadResult.Stdout, "data.saved_path").String()
+	require.NotEmpty(t, defaultSavedPath, "download without --output should return saved_path")
+	if got := filepath.Base(defaultSavedPath); got != "overwrite.txt" {
+		t.Fatalf("default saved basename=%q want overwrite.txt\nstdout:\n%s", got, defaultDownloadResult.Stdout)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(defaultSavedPath)
+	})
+
+	data, err = os.ReadFile(defaultSavedPath)
+	if err != nil {
+		t.Fatalf("read default downloaded file: %v", err)
+	}
+	if string(data) != updatedContent {
+		t.Fatalf("default downloaded content=%q want %q", string(data), updatedContent)
+	}
 }

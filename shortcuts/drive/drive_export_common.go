@@ -639,10 +639,27 @@ func sanitizeExportFileName(name, fallback string) string {
 	)
 	name = replacer.Replace(name)
 	name = strings.Trim(name, ". ")
-	if name == "" {
+	if name == "" || isWindowsReservedDeviceFileName(name) {
 		return fallback
 	}
 	return name
+}
+
+func isWindowsReservedDeviceFileName(name string) bool {
+	base := strings.TrimRight(name, ". ")
+	if dot := strings.IndexByte(base, '.'); dot >= 0 {
+		base = base[:dot]
+	}
+	switch strings.ToUpper(base) {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
+		return true
+	}
+	if len(base) == 4 {
+		prefix := strings.ToUpper(base[:3])
+		suffix := base[3]
+		return (prefix == "COM" || prefix == "LPT") && suffix >= '1' && suffix <= '9'
+	}
+	return false
 }
 
 // ensureExportFileExtension appends the expected local suffix when the chosen

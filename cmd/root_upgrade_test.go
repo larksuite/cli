@@ -128,6 +128,17 @@ func TestOfferRootUpgrade(t *testing.T) {
 			if gotPrompt != tc.wantPrompt {
 				t.Errorf("prompt: got %v want %v (stderr=%q)", gotPrompt, tc.wantPrompt, errBuf.String())
 			}
+			// The prompt must not name a target version: info.Latest comes from
+			// the on-disk cache and can be stale, while the version actually
+			// installed is resolved live by the update subcommand.
+			if tc.wantPrompt {
+				if strings.Contains(errBuf.String(), tc.latest) {
+					t.Errorf("prompt must not name the cached target version %q (stderr=%q)", tc.latest, errBuf.String())
+				}
+				if !strings.Contains(errBuf.String(), build.Version) {
+					t.Errorf("prompt must name the current version %q (stderr=%q)", build.Version, errBuf.String())
+				}
+			}
 			if called != tc.wantRun {
 				t.Errorf("runRootUpgrade called: got %v want %v", called, tc.wantRun)
 			}

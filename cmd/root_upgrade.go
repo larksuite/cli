@@ -65,7 +65,17 @@ func offerRootUpgrade(f *cmdutil.Factory, cmd *cobra.Command) {
 	if info == nil {
 		return
 	}
-	fmt.Fprintf(ios.ErrOut, "lark-cli %s available (current %s). Upgrade now? [y/N]: ", info.Latest, info.Current)
+	// Deliberately no target version here: info.Latest comes from the on-disk
+	// cache, which has no expiry (the 24h TTL only throttles refreshes, and a
+	// failed refresh leaves the old value in place), so it can name a version
+	// that is no longer the one npm would install. The version actually
+	// installed is resolved live by the update subcommand, which prints
+	// "Updating lark-cli <cur> -> <latest> via <pm> ..." before installing —
+	// that is where the user sees the real target. Keep going through the
+	// update subcommand rather than calling RunNpmInstall directly, otherwise
+	// that line disappears and the user approves a global install without ever
+	// being told what gets installed.
+	fmt.Fprintf(ios.ErrOut, "A newer lark-cli is available (current %s). Upgrade now? [y/N]: ", info.Current)
 	if !readYes(ios.In) {
 		return
 	}

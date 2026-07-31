@@ -35,6 +35,41 @@ func TestDrive_PreviewAndCoverWorkflow(t *testing.T) {
 
 	fileToken := uploadPreviewFixture(t, parentT, ctx, workDir, folderToken, sourceRelPath, "report.txt")
 
+	t.Run("source file download", func(t *testing.T) {
+		downloadDir := t.TempDir()
+		downloadResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"drive", "+preview",
+				"--file-token", fileToken,
+				"--type", "source_file",
+				"--output", "./artifacts/report-source",
+			},
+			WorkDir:   downloadDir,
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		downloadResult.AssertExitCode(t, 0)
+		downloadResult.AssertStdoutStatus(t, true)
+
+		stdout := downloadResult.Stdout
+		if gjson.Get(stdout, "data.requested_type").Exists() {
+			t.Fatalf("requested_type should be omitted from execute output\nstdout:\n%s", stdout)
+		}
+		if got := gjson.Get(stdout, "data.selected_type").String(); got != "source_file" {
+			t.Fatalf("selected_type=%q, want source_file\nstdout:\n%s", got, stdout)
+		}
+		if gjson.Get(stdout, "data.selected_type_code").Exists() {
+			t.Fatalf("selected_type_code should be omitted from execute output\nstdout:\n%s", stdout)
+		}
+		outputPath := gjson.Get(stdout, "data.output_path").String()
+		require.NotEmpty(t, outputPath, "source file preview should return output_path")
+		data, readErr := os.ReadFile(outputPath)
+		require.NoError(t, readErr)
+		if string(data) != sourceContent {
+			t.Fatalf("source file preview content=%q want %q", string(data), sourceContent)
+		}
+	})
+
 	t.Run("preview list and download", func(t *testing.T) {
 		listResult, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 			Args: []string{

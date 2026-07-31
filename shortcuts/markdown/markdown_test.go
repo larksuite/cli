@@ -1984,7 +1984,7 @@ func TestMarkdownFetchReturnsContent(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_fetch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_fetch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 		Headers: map[string][]string{
@@ -2050,7 +2050,7 @@ func TestMarkdownFetchPrettyReturnsContent(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_fetch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_fetch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 		Headers: map[string][]string{
@@ -2078,7 +2078,7 @@ func TestMarkdownFetchSavesFile(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_fetch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_fetch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 		Headers: map[string][]string{
@@ -2122,7 +2122,7 @@ func TestMarkdownFetchRejectsExistingFileWithoutOverwrite(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_fetch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_fetch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 		Headers: map[string][]string{
@@ -2151,7 +2151,7 @@ func TestMarkdownFetchOverwritesExistingFileWhenRequested(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_fetch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_fetch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 		Headers: map[string][]string{
@@ -2189,7 +2189,7 @@ func TestMarkdownFetchSavesUsingRemoteNameWhenOutputIsExistingDirectory(t *testi
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_fetch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_fetch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 		Headers: map[string][]string{
@@ -2226,7 +2226,7 @@ func TestMarkdownFetchSavesUsingRemoteNameWhenOutputUsesDirectorySyntax(t *testi
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_fetch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_fetch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 		Headers: map[string][]string{
@@ -2260,7 +2260,7 @@ func TestMarkdownFetchPrettySavesFile(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_fetch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_fetch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 		Headers: map[string][]string{
@@ -2295,7 +2295,7 @@ func TestMarkdownFetchSaveFailure(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_fetch/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_fetch/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# hello\n"),
 		Headers: map[string][]string{

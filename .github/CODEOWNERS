@@ -1,4 +1,7 @@
+/go.mod @liangshuo-1
+/go.sum @liangshuo-1
 /internal/ @liangshuo-1
+/shortcuts/common/ @liangshuo-1
 
 # Last match wins: existing domains below are exempt, only new skills/ entries need review.
 /skills/ @liangshuo-1

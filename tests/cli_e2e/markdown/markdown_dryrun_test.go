@@ -149,11 +149,14 @@ func TestMarkdownDiffDryRun_RemoteVsRemote(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	output := strings.TrimSpace(result.Stdout)
-	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
-	assert.Contains(t, output, `"mode": "remote_vs_remote"`)
-	assert.Contains(t, output, `"version": "7633658129540910621"`)
-	assert.Contains(t, output, `"version": "7633658129540910628"`)
-	assert.Contains(t, output, `"context_lines": 1`)
+	assert.Contains(t, output, "/open-apis/drive/v1/medias/boxcnMarkdownDryRun/preview_download")
+	require.Equal(t, "remote_vs_remote", clie2e.DryRunGet(output, "mode").String(), output)
+	require.Equal(t, int64(2), clie2e.DryRunGet(output, "api.#").Int(), output)
+	require.Equal(t, "16", clie2e.DryRunGet(output, "api.0.params.preview_type").String(), output)
+	require.Equal(t, "7633658129540910621", clie2e.DryRunGet(output, "api.0.params.version").String(), output)
+	require.Equal(t, "16", clie2e.DryRunGet(output, "api.1.params.preview_type").String(), output)
+	require.Equal(t, "7633658129540910628", clie2e.DryRunGet(output, "api.1.params.version").String(), output)
+	require.Equal(t, int64(1), clie2e.DryRunGet(output, "context_lines").Int(), output)
 }
 
 func TestMarkdownDiffDryRun_RemoteVsLocal(t *testing.T) {
@@ -179,8 +182,9 @@ func TestMarkdownDiffDryRun_RemoteVsLocal(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	output := strings.TrimSpace(result.Stdout)
-	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
+	assert.Contains(t, output, "/open-apis/drive/v1/medias/boxcnMarkdownDryRun/preview_download")
 	assert.Contains(t, output, `"mode": "remote_vs_local"`)
+	assert.Contains(t, output, `"preview_type": "16"`)
 	assert.Contains(t, output, `"local_file": "./draft.md"`)
 }
 
@@ -224,7 +228,8 @@ func TestMarkdownFetchDryRun_OutputFile(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	output := strings.TrimSpace(result.Stdout)
-	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
+	assert.Contains(t, output, "/open-apis/drive/v1/medias/boxcnMarkdownDryRun/preview_download")
+	assert.Contains(t, output, `"preview_type": "16"`)
 	assert.Contains(t, output, `"output": "./copy.md"`)
 }
 
@@ -305,7 +310,8 @@ func TestMarkdownPatchDryRun_Content(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	output := strings.TrimSpace(result.Stdout)
-	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
+	assert.Contains(t, output, "/open-apis/drive/v1/medias/boxcnMarkdownDryRun/preview_download")
+	assert.Contains(t, output, `"preview_type": "16"`)
 	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
 	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
 	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_prepare")

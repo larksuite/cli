@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.81] - 2026-07-31
+
+### Features
+
+- support visible_rule for form questions (#1891)
+- **contact**: add bot search shortcut (#2083)
+- add SXSD schema validation to Slides lint (#2103)
+- **drive**: add comment-operation shortcuts (#1898)
+- **drive**: extend permission shortcuts for Miaoda (#2070)
+- **apps**: add cache debug commands (+cache-get/-delete/-clear) (#1896)
+- support source file preview artifacts (#2085)
+
+### Bug Fixes
+
+- **contact**: stop bot match segments carrying tags or empty entries (#2115)
+- **base**: resolve Base URL block types accurately (#2099)
+- **drive**: use title for default download filename (#2089)
+- drop stale target version from root upgrade prompt (#2100)
+
+### Documentation
+
+- **calendar**: warn against container-default timezone in time conversion (#2104)
+- **calendar**: confirm scope before editing recurring events (#2119)
+- **base**: clarify form and file operation routing (#2110)
+
+### Misc
+
+- add protected public domain allowlists (#2111)
+
+## [v1.0.80] - 2026-07-29
+
+### Features
+
+- **drive**: add +member-list shortcut (#1795)
+- **drive**: add +permission-get-setting shortcut (#1738)
+- propagate invocation metadata (#2097)
+
+### Documentation
+
+- **slides**: 补齐 shortcut 参数说明，修正 +xml-get --output 必填标注 (#2088)
+- **slides**: +create 的参数下沉到 create.md，主 skill 只留路由 (#2096)
+
+### Tests
+
+- **e2e**: wait for base role update visibility (#2087)
+
+### Misc
+
+- Feat/detect line text overlap (#2069)
+
 ## [v1.0.79] - 2026-07-28
 
 ### Features
@@ -1701,6 +1751,8 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.81]: https://github.com/larksuite/cli/releases/tag/v1.0.81
+[v1.0.80]: https://github.com/larksuite/cli/releases/tag/v1.0.80
 [v1.0.79]: https://github.com/larksuite/cli/releases/tag/v1.0.79
 [v1.0.78]: https://github.com/larksuite/cli/releases/tag/v1.0.78
 [v1.0.77]: https://github.com/larksuite/cli/releases/tag/v1.0.77

@@ -35,10 +35,12 @@ func TestResolveDriveMemberAddTarget_URLAndBareToken(t *testing.T) {
 		{"folder URL", "https://example.feishu.cn/drive/folder/fldTok", "", "fldTok", "folder"},
 		{"wiki URL", "https://example.feishu.cn/wiki/wikTok", "", "wikTok", "wiki"},
 		{"mindnotes URL", "https://example.feishu.cn/mindnotes/mndTok", "", "mndTok", "mindnote"},
+		{"apps page URL", "https://example.feishu.cn/page/appMetaTok/?from=share", "", "appMetaTok", "apps"},
 		{"larkoffice URL", "https://tenant.larkoffice.com/docx/doxTok", "", "doxTok", "docx"},
 		{"explicit type overrides URL", "https://example.feishu.cn/docx/doxTok", "wiki", "doxTok", "wiki"},
 		{"bare token with explicit docx type", "N83ZduEnHooFswxnVWGcazlLnFf", "docx", "N83ZduEnHooFswxnVWGcazlLnFf", "docx"},
 		{"bare token with explicit folder type", "fldToken123", "folder", "fldToken123", "folder"},
+		{"bare token with explicit apps type", "appMetaTok", "apps", "appMetaTok", "apps"},
 	}
 	for _, temp := range tests {
 		tt := temp

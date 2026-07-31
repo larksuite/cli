@@ -6,6 +6,7 @@ package drive
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -25,7 +26,46 @@ const (
 	secureLabelOperationUpdate secureLabelOperation = "update"
 )
 
-var secureLabelTypes = permApplyTypes
+type secureLabelResourceKind struct {
+	Type string
+	Path string
+}
+
+// secureLabelResourceKinds is intentionally independent from apply-permission:
+// the two endpoints accept different resource type contracts.
+var secureLabelResourceKinds = []secureLabelResourceKind{
+	{Type: "doc", Path: "/doc/"},
+	{Type: "sheet", Path: "/sheets/"},
+	{Type: "file", Path: "/file/"},
+	{Type: "wiki", Path: "/wiki/"},
+	{Type: "bitable", Path: "/base/"},
+	{Type: "bitable", Path: "/bitable/"},
+	{Type: "docx", Path: "/docx/"},
+	{Type: "mindnote", Path: "/mindnote/"},
+	{Type: "slides", Path: "/slides/"},
+}
+
+var secureLabelTypes = func() []string {
+	types := make([]string, 0, len(secureLabelResourceKinds))
+	seen := make(map[string]struct{}, len(secureLabelResourceKinds))
+	for _, resourceKind := range secureLabelResourceKinds {
+		if _, ok := seen[resourceKind.Type]; ok {
+			continue
+		}
+		seen[resourceKind.Type] = struct{}{}
+		types = append(types, resourceKind.Type)
+	}
+	return types
+}()
+
+func secureLabelTypeAllowed(docType string) bool {
+	for _, allowedType := range secureLabelTypes {
+		if docType == allowedType {
+			return true
+		}
+	}
+	return false
+}
 
 // DriveSecureLabelList lists secure labels available to the current user.
 var DriveSecureLabelList = common.Shortcut{
@@ -81,6 +121,7 @@ var DriveSecureLabelUpdate = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	Tips: []string{
 		"Pass the numeric label id returned by +secure-label-list; display names like Public(D) are rejected.",
+		"When --token is a URL, its path determines --type; a conflicting --type is rejected.",
 		"Downgrading a secure label may require approval; retrying the same request will not bypass approval.",
 		"When updating many files, serialize requests and back off on rate_limit errors.",
 	},
@@ -146,8 +187,94 @@ func buildSecureLabelListParams(runtime *common.RuntimeContext) map[string]inter
 	return params
 }
 
+// resolveSecureLabelTarget owns secure-label URL inference and type errors so
+// changes to another endpoint cannot widen this command's accepted resources.
 func resolveSecureLabelTarget(raw, explicitType string) (token, docType string, err error) {
-	return resolvePermApplyTarget(raw, explicitType)
+	raw = strings.TrimSpace(raw)
+	explicitType = strings.ToLower(strings.TrimSpace(explicitType))
+	if raw == "" {
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--token is required").WithParam("--token")
+	}
+	if explicitType != "" && !secureLabelTypeAllowed(explicitType) {
+		return "", "", errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"invalid --type %q: allowed values are %s",
+			explicitType,
+			strings.Join(secureLabelTypes, ", "),
+		).WithParam("--type")
+	}
+
+	if strings.Contains(raw, "://") {
+		ref, ok := parseSecureLabelResourceURL(raw)
+		if !ok {
+			return "", "", errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"could not infer token from URL %q: supported paths are /docx/, /sheets/, /base/, /bitable/, /file/, /wiki/, /doc/, /mindnote/, /slides/. Pass a bare token with --type instead if the URL shape is unusual",
+				raw,
+			).WithParam("--token")
+		}
+		token, docType = ref.Token, ref.Type
+		if explicitType != "" && explicitType != docType {
+			return "", "", errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"--type %q conflicts with URL path type %q; remove --type or use a matching value",
+				explicitType,
+				docType,
+			).WithParam("--type")
+		}
+	} else {
+		token = raw
+		docType = explicitType
+	}
+
+	if docType == "" {
+		return "", "", errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--type is required when --token is a bare token; accepted values: %s",
+			strings.Join(secureLabelTypes, ", "),
+		).WithParam("--type")
+	}
+	if err := validateSecureLabelToken(token); err != nil {
+		return "", "", err
+	}
+	return token, docType, nil
+}
+
+func parseSecureLabelResourceURL(rawURL string) (common.ResourceRef, bool) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return common.ResourceRef{}, false
+	}
+
+	escapedPath := parsed.EscapedPath()
+	for _, resourceKind := range secureLabelResourceKinds {
+		if !strings.HasPrefix(escapedPath, resourceKind.Path) {
+			continue
+		}
+		escapedToken := strings.TrimSuffix(strings.TrimPrefix(escapedPath, resourceKind.Path), "/")
+		if escapedToken == "" || strings.Contains(escapedToken, "/") {
+			return common.ResourceRef{}, false
+		}
+		token, err := url.PathUnescape(escapedToken)
+		if err != nil || token == "" {
+			return common.ResourceRef{}, false
+		}
+		return common.ResourceRef{Type: resourceKind.Type, Token: token}, true
+	}
+	return common.ResourceRef{}, false
+}
+
+func validateSecureLabelToken(token string) error {
+	if err := validate.ResourceName(token, "--token"); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
+	}
+	if token == "." || strings.Contains(token, "/") {
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--token must be a non-dot single path segment",
+		).WithParam("--token")
+	}
+	return nil
 }
 
 // normalizeSecureLabelID trims a label id and rejects display names before the

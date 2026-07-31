@@ -68,23 +68,6 @@ func TestDrive_ApplyPermissionDryRun(t *testing.T) {
 			wantPerm: "edit",
 		},
 		{
-			// Explicit --type must override URL inference: the /docx/ marker
-			// would infer type=docx, but the caller asked for type=wiki (e.g.
-			// to apply against the underlying wiki node rather than its docx
-			// target). The URL token itself is still used as the path token.
-			name: "explicit --type overrides URL inference",
-			args: []string{
-				"drive", "+apply-permission",
-				"--token", "https://example.feishu.cn/docx/doxcnE2E003",
-				"--type", "wiki",
-				"--perm", "view",
-				"--dry-run",
-			},
-			wantURL:  "/open-apis/drive/v1/permissions/doxcnE2E003/members/apply",
-			wantType: "wiki",
-			wantPerm: "view",
-		},
-		{
 			name: "bare token with explicit type",
 			args: []string{
 				"drive", "+apply-permission",
@@ -108,6 +91,33 @@ func TestDrive_ApplyPermissionDryRun(t *testing.T) {
 			wantURL:  "/open-apis/drive/v1/permissions/slE2E004/members/apply",
 			wantType: "slides",
 			wantPerm: "view",
+		},
+		{
+			name: "apps page URL infers apps type",
+			args: []string{
+				"drive", "+apply-permission",
+				"--token", "https://example.feishu.cn/page/appMetaE2E/?from=share",
+				"--perm", "view",
+				"--remark", "access request",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v1/permissions/appMetaE2E/members/apply",
+			wantType: "apps",
+			wantPerm: "view",
+			wantBody: map[string]string{"remark": "access request"},
+		},
+		{
+			name: "bare token with explicit apps type",
+			args: []string{
+				"drive", "+apply-permission",
+				"--token", "appBareMetaE2E",
+				"--type", "apps",
+				"--perm", "edit",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v1/permissions/appBareMetaE2E/members/apply",
+			wantType: "apps",
+			wantPerm: "edit",
 		},
 	}
 
@@ -150,6 +160,42 @@ func TestDrive_ApplyPermissionDryRun(t *testing.T) {
 				if clie2e.DryRunGet(out, "api.0.body.remark").Exists() {
 					t.Fatalf("body.remark should be omitted when --remark is empty, stdout:\n%s", out)
 				}
+			}
+		})
+	}
+}
+
+func TestDrive_ApplyPermissionDryRunRejectsUnsafeTargets(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"bare traversal token", []string{"--token", "..", "--type", "docx"}},
+		{"bare dot token", []string{"--token", ".", "--type", "docx"}},
+		{"nested resource marker", []string{"--token", "https://example.feishu.cn/share/docx/doxNestedE2E"}},
+		{"encoded path separator", []string{"--token", "https://example.feishu.cn/docx/doxTarget%2Fother"}},
+		{"conflicting URL type", []string{"--token", "https://example.feishu.cn/docx/doxTypeE2E", "--type", "wiki"}},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			args := append([]string{"drive", "+apply-permission", "--perm", "view", "--dry-run"}, tt.args...)
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "user"})
+			require.NoError(t, err)
+			if result.ExitCode == 0 {
+				t.Fatalf("unsafe target must be rejected\nstdout:\n%s", result.Stdout)
+			}
+			if combined := result.Stdout + "\n" + result.Stderr; !strings.Contains(combined, "--token") && !strings.Contains(combined, "--type") {
+				t.Fatalf("expected target validation error\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
 			}
 		})
 	}

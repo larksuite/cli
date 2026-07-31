@@ -1,0 +1,24 @@
+# Exact test-only hostnames. Keep sorted.
+abc.feishu.cn
+attacker.example.com
+bytedance.feishu.cn
+cdn.feishu.cn
+evil.example.com
+example.feishu.cn
+example.larkoffice.com
+example.larksuite.com
+feishu.cn
+feishu.doubao.com
+gateway.docker.internal
+host.containers.internal
+host.docker.internal
+host.lima.internal
+lf3-static.bytednsdoc.com
+meetings.feishu.cn
+meetings.larksuite.com
+p3-lark-file.byteimg.com
+passport.feishu.cn
+sample.feishu.cn
+x.feishu.cn
+xxx.feishu.cn
+xxx.larksuite.com

@@ -2,13 +2,17 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import itertools
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest import mock
 
+import sxsd_validator
 import xml_text_overlap_lint
 
 
@@ -46,6 +50,37 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             completed.stderr,
             f"xml-text-overlap-lint error: unexpected argument: {input_path}, need --input\n",
         )
+
+    def test_cli_reports_structured_slide_sxsd_error_outside_skill_directory(self) -> None:
+        script_path = Path(xml_text_overlap_lint.__file__).resolve()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "invalid-slide.xml"
+            input_path.write_text(
+                """
+                <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                  <data><shape type="text" topLeftX="10" topLeftY="20" width="300"/></data>
+                </slide>
+                """,
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [sys.executable, str(script_path), "--input", str(input_path)],
+                cwd=temp_dir,
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+
+        result = json.loads(completed.stdout)
+        issue = result["slides"][0]["errors"][0]
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stderr, "")
+        self.assertEqual(issue["code"], "sxsd_missing_required_attr")
+        self.assertEqual(issue["path"], "slide/data/shape")
+        self.assertEqual(issue["attr"], "height")
+        self.assertEqual(issue["target"]["slide_number"], 1)
+        self.assertTrue(issue["hint"])
 
     def test_xml_text_overlap_lint_accepts_inline_fixture_xml_samples(self) -> None:
         samples = {
@@ -173,12 +208,12 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(issues[0]["tag"], "ns0:slide")
         self.assertIn("default namespace", issues[0]["hint"])
 
-    def test_lint_xml_allows_unprefixed_tags_without_namespace(self) -> None:
+    def test_lint_xml_accepts_server_readback_slide_without_namespace(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide>
+            <slide id="server-slide-id">
               <data>
-                <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                <shape id="server-shape-id" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                   <content textType="body"><p>Unprefixed SML</p></content>
                 </shape>
               </data>
@@ -186,6 +221,90 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_accepts_server_readback_presentation_short_namespace(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="/sml/2.0" width="960" height="540" id="server-presentation-id">
+              <slide id="server-slide-id">
+                <data>
+                  <shape id="server-shape-id" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                    <content textType="body"><p>Server readback presentation</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["slide_count"], 1)
+        self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_accepts_server_readback_presentation_https_namespace(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540" id="server-presentation-id">
+              <slide id="server-slide-id">
+                <data>
+                  <shape id="server-shape-id" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                    <content textType="body"><p>Server readback presentation</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["slide_count"], 1)
+        self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_rejects_server_readback_presentation_wrong_namespace(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="https://example.com/not-sml" width="960" height="540">
+              <slide/>
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["issues"][0]["code"], "sxsd_invalid_namespace")
+
+    def test_lint_xml_rejects_xml_declaration(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            '<?xml version="1.0"?><slide xmlns="http://www.larkoffice.com/sml/2.0"><data/></slide>'
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["issues"][0]["code"], "sxsd_unsupported_declaration")
+
+    def test_lint_xml_reports_missing_required_sxsd_attribute(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data><shape type="text" topLeftX="80" topLeftY="80" width="300"/></data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertNotIn("issues", result)
+        issue = result["slides"][0]["issues"][0]
+        self.assertEqual(issue["code"], "sxsd_missing_required_attr")
+        self.assertEqual(issue["attr"], "height")
+
+    def test_lint_xml_rejects_child_order_that_violates_xsd_sequence(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide/>
+              <title>Late title</title>
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["issues"][0]["code"], "sxsd_invalid_child_order")
 
     def test_lint_xml_accepts_escaped_entities_without_suspicious_entity_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -250,8 +369,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
               <slide xmlns="http://www.larkoffice.com/sml/2.0">
                 <data>
                   <img id="second" src="tok" topLeftX="100" topLeftY="120" width="240" height="160"/>
-                  <shape id="skipped" type="text" topLeftX="80" topLeftY="80" width="300">
-                    <content textType="body"><p>Missing height</p></content>
+                  <shape id="second-shape" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                    <content textType="body"><p>Second slide</p></content>
                   </shape>
                 </data>
               </slide>
@@ -261,9 +380,150 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["slide_size"], {"width": 1280, "height": 720})
         self.assertEqual(result["summary"]["slide_count"], 2)
         self.assertEqual([slide["slide_number"] for slide in result["slides"]], [1, 2])
-        self.assertEqual([slide["element_count"] for slide in result["slides"]], [1, 1])
+        self.assertEqual([slide["element_count"] for slide in result["slides"]], [1, 2])
         self.assertEqual(result["summary"]["error_count"], 0)
         self.assertEqual(result["summary"]["warning_count"], 0)
+
+    def test_lint_xml_handles_self_closing_slide_before_normal_slide(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide/>
+              <slide>
+                <data>
+                  <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                    <content textType="body"><p>Second slide</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["slide_count"], 2)
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][0]["errors"]],
+            ["blank_slide"],
+        )
+        self.assertEqual(result["slides"][1]["status"], "passed")
+
+    def test_lint_xml_keeps_trailing_self_closing_slide(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide>
+                <data>
+                  <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                    <content textType="body"><p>First slide</p></content>
+                  </shape>
+                </data>
+              </slide>
+              <slide/>
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["slide_count"], 2)
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][1]["errors"]],
+            ["blank_slide"],
+        )
+
+    def test_lint_xml_ignores_slide_markup_inside_xml_comments(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide>
+                <data>
+                  <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                    <content textType="body"><p>Real slide</p></content>
+                  </shape>
+                </data>
+              </slide>
+              <!-- Old draft: <slide id="ghost"/> -->
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["slide_count"], 1)
+        self.assertEqual(result["slides"][0]["status"], "passed")
+
+    def test_lint_xml_ignores_invalid_slide_markup_inside_xml_comments(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide><data/></slide>
+              <!-- Old draft: <slide bogus="x"/> -->
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["slide_count"], 1)
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][0]["errors"]],
+            ["blank_slide"],
+        )
+
+    def test_lint_xml_skips_only_invalid_slide_and_continues_geometry_checks(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide>
+                <data>
+                  <shape id="invalid" type="text" topLeftX="1000" topLeftY="80" width="300">
+                    <content textType="body"><p>Missing height</p></content>
+                  </shape>
+                </data>
+              </slide>
+              <slide>
+                <data>
+                  <shape id="outside" type="text" topLeftX="1000" topLeftY="80" width="120" height="60">
+                    <content textType="body"><p>Outside canvas</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["slide_count"], 2)
+        self.assertEqual(result["slides"][0]["element_count"], 0)
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][0]["errors"]],
+            ["sxsd_missing_required_attr"],
+        )
+        self.assertNotIn(
+            "shape_out_of_canvas",
+            [issue["code"] for issue in result["slides"][0]["issues"]],
+        )
+        self.assertIn(
+            "shape_out_of_canvas",
+            [issue["code"] for issue in result["slides"][1]["errors"]],
+        )
+
+    def test_lint_xml_scopes_invalid_slide_root_attribute_to_that_slide(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide bogusAttr="oops">
+                <data><shape type="rect" topLeftX="80" topLeftY="80" width="100" height="100"/></data>
+              </slide>
+              <slide>
+                <data><shape type="rect" topLeftX="1000" topLeftY="80" width="100" height="100"/></data>
+              </slide>
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["slide_count"], 2)
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][0]["errors"]],
+            ["sxsd_unsupported_attr"],
+        )
+        self.assertIn(
+            "shape_out_of_canvas",
+            [issue["code"] for issue in result["slides"][1]["errors"]],
+        )
 
     def test_lint_xml_reports_sxsd_unsupported_tag_with_alias_hint(self) -> None:
         cases = [
@@ -279,8 +539,15 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                     </slide>
                     """
                 )
-                issue = result["issues"][0]
+                slide_issues = result["slides"][0]["issues"]
+                issue = next(
+                    issue for issue in slide_issues if issue["code"] == "sxsd_unsupported_tag"
+                )
                 self.assertEqual(result["summary"]["error_count"], 1)
+                self.assertEqual(
+                    [reported["code"] for reported in slide_issues],
+                    ["sxsd_unsupported_tag"],
+                )
                 self.assertEqual(issue["code"], "sxsd_unsupported_tag")
                 self.assertEqual(issue["tag"], tag_name)
                 self.assertIn(expected_hint, issue["hint"])
@@ -288,6 +555,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_sxsd_unsupported_attr_with_alias_hint(self) -> None:
         cases = [
             ("shape", "x", "topLeftX", '<shape type="text" x="80" topLeftY="80" width="300" height="60"><content><p>Text</p></content></shape>'),
+            ("shape", "heigth", "height", '<shape type="text" topLeftX="80" topLeftY="80" width="300" heigth="60"><content><p>Text</p></content></shape>'),
             ("content", "fontColor", "color", '<shape type="text" topLeftX="80" topLeftY="80" width="300" height="60"><content fontColor="rgba(0, 0, 0, 1)"><p>Text</p></content></shape>'),
         ]
         for tag_name, attr_name, expected_attr, element_xml in cases:
@@ -299,12 +567,74 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                     </slide>
                     """
                 )
-                issue = result["issues"][0]
+                slide_issues = result["slides"][0]["issues"]
+                issue = next(
+                    issue for issue in slide_issues if issue["code"] == "sxsd_unsupported_attr"
+                )
                 self.assertEqual(result["summary"]["error_count"], 1)
+                self.assertEqual(
+                    [reported["code"] for reported in slide_issues],
+                    ["sxsd_unsupported_attr"],
+                )
                 self.assertEqual(issue["code"], "sxsd_unsupported_attr")
                 self.assertEqual(issue["tag"], tag_name)
                 self.assertEqual(issue["attr"], attr_name)
                 self.assertIn(expected_attr, issue["hint"])
+
+    def test_lint_xml_keeps_unrelated_unsupported_and_missing_attrs(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="text" bogus="x" topLeftX="80" topLeftY="80" width="300"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][0]["issues"]],
+            ["sxsd_unsupported_attr", "sxsd_missing_required_attr"],
+        )
+
+    def test_lint_xml_keeps_missing_attrs_when_suggestion_is_ambiguous(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="text" topLeft="80" width="300" height="60"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][0]["issues"]],
+            [
+                "sxsd_unsupported_attr",
+                "sxsd_missing_required_attr",
+                "sxsd_missing_required_attr",
+            ],
+        )
+
+    def test_lint_xml_suppresses_only_missing_attr_that_resolves_ambiguous_suggestion(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="text" topLeftXX="80" topLeftY="80" width="300" height="60"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(
+            [
+                (issue["code"], issue.get("attr"))
+                for issue in result["slides"][0]["issues"]
+            ],
+            [("sxsd_unsupported_attr", "topLeftXX")],
+        )
 
     def test_lint_xml_ignores_server_filled_id_attrs(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -322,10 +652,10 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         )
 
         self.assertEqual(result["summary"]["error_count"], 1)
-        issue = result["issues"][0]
-        self.assertEqual(issue["code"], "sxsd_unsupported_attr")
-        self.assertEqual(issue["tag"], "fill")
-        self.assertEqual(issue["attr"], "unexpected")
+        self.assertEqual(
+            [(issue["tag"], issue["attr"]) for issue in result["slides"][0]["issues"]],
+            [("fill", "unexpected")],
+        )
 
     def test_lint_xml_ignores_chart_roundtrip_attrs(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -333,7 +663,11 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
               <data>
                 <chart updated="true" topLeftX="80" topLeftY="80" width="300" height="160">
-                  <chartData isStaticData="true"/>
+                  <chartPlotArea><chartPlot type="line"/></chartPlotArea>
+                  <chartData isStaticData="true">
+                    <dim1><chartField name="category" valueType="string">A</chartField></dim1>
+                    <dim2><chartField name="value" valueType="number">1</chartField></dim2>
+                  </chartData>
                 </chart>
               </data>
             </slide>
@@ -341,7 +675,29 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         )
 
         self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertNotIn("issues", result)
+
+    def test_lint_xml_ignores_chart_parsed_values_roundtrip_tags(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <chart topLeftX="80" topLeftY="80" width="300" height="160">
+                  <chartPlotArea><chartPlot type="line"/></chartPlotArea>
+                  <chartData isStaticData="true">
+                    <dim1>
+                      <chartField name="category" valueType="string">
+                        A<chartParsedValues>A</chartParsedValues>
+                      </chartField>
+                    </dim1>
+                    <dim2><chartField name="value" valueType="number">1</chartField></dim2>
+                  </chartData>
+                </chart>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 0)
 
     def test_lint_xml_ignores_chart_parsed_values_roundtrip_tag(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -349,10 +705,14 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
               <data>
                 <chart topLeftX="80" topLeftY="80" width="300" height="160">
+                  <chartPlotArea><chartPlot type="line"/></chartPlotArea>
                   <chartData>
-                    <chartField>
-                      <chartParsedValues>Africa</chartParsedValues>
-                    </chartField>
+                    <dim1>
+                      <chartField name="category" valueType="string">
+                        Africa<chartParsedValues>Africa</chartParsedValues>
+                      </chartField>
+                    </dim1>
+                    <dim2><chartField name="value" valueType="number">1</chartField></dim2>
                   </chartData>
                 </chart>
               </data>
@@ -363,13 +723,40 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["summary"]["error_count"], 0)
         self.assertNotIn("issues", result)
 
+    def test_lint_xml_rejects_chart_parsed_values_outside_chart_field(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="rect" topLeftX="80" topLeftY="80" width="300" height="160">
+                  <chartParsedValues>unexpected</chartParsedValues>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(
+            [issue["code"] for issue in result["slides"][0]["issues"]],
+            ["sxsd_unsupported_tag"],
+        )
+        self.assertEqual(
+            result["slides"][0]["issues"][0]["path"],
+            "slide/data/shape/chartParsedValues",
+        )
+
     def test_lint_xml_limits_chart_roundtrip_attrs_to_matching_tags(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
               <data>
                 <chart isStaticData="true" topLeftX="80" topLeftY="80" width="300" height="160">
-                  <chartData updated="true"/>
+                  <chartPlotArea><chartPlot type="line"/></chartPlotArea>
+                  <chartData updated="true">
+                    <dim1><chartField name="category" valueType="string">A</chartField></dim1>
+                    <dim2><chartField name="value" valueType="number">1</chartField></dim2>
+                  </chartData>
                 </chart>
               </data>
             </slide>
@@ -377,11 +764,12 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         )
 
         self.assertEqual(result["summary"]["error_count"], 2)
+        slide_issues = result["slides"][0]["issues"]
         self.assertEqual(
-            {(issue["tag"], issue["attr"]) for issue in result["issues"]},
+            {(issue["tag"], issue["attr"]) for issue in slide_issues},
             {("chart", "isStaticData"), ("chartData", "updated")},
         )
-        self.assertTrue(all(issue["code"] == "sxsd_unsupported_attr" for issue in result["issues"]))
+        self.assertTrue(all(issue["code"] == "sxsd_unsupported_attr" for issue in slide_issues))
 
     def test_lint_xml_reports_gradient_shorthand_attrs_on_fill_color(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -403,14 +791,15 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </slide>
             """
         )
-        unsupported_attrs = {issue["attr"] for issue in result["issues"]}
+        slide_issues = result["slides"][0]["issues"]
+        unsupported_attrs = {issue["attr"] for issue in slide_issues}
         self.assertEqual(result["summary"]["error_count"], 6)
         self.assertEqual(
             unsupported_attrs,
             {"type", "color1", "color2", "angle", "stop1", "stop2"},
         )
-        self.assertTrue(all(issue["code"] == "sxsd_unsupported_attr" for issue in result["issues"]))
-        self.assertTrue(all(issue["tag"] == "fillColor" for issue in result["issues"]))
+        self.assertTrue(all(issue["code"] == "sxsd_unsupported_attr" for issue in slide_issues))
+        self.assertTrue(all(issue["tag"] == "fillColor" for issue in slide_issues))
 
     def test_lint_xml_accepts_chart_field_simple_content_attrs(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -1026,7 +1415,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["slides"][0]["infos"], [issues["bg-deco"]])
         self.assertIn("background decoration", issues["bg-deco"]["message"])
 
-    def test_lint_xml_allows_shape_alpha_ghost_text_out_of_canvas_and_overlap(self) -> None:
+    def test_lint_xml_reports_shape_alpha_ghost_text_out_of_canvas_but_allows_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
@@ -1042,11 +1431,11 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         codes = [issue["code"] for issue in result["slides"][0]["issues"]]
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertNotIn("shape_out_of_canvas", codes)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertIn("shape_out_of_canvas", codes)
         self.assertNotIn("bbox_overlap", codes)
 
-    def test_lint_xml_allows_content_color_alpha_ghost_text_out_of_canvas_and_overlap(self) -> None:
+    def test_lint_xml_reports_content_color_alpha_ghost_text_out_of_canvas_but_allows_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
@@ -1062,11 +1451,11 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         codes = [issue["code"] for issue in result["slides"][0]["issues"]]
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertNotIn("shape_out_of_canvas", codes)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertIn("shape_out_of_canvas", codes)
         self.assertNotIn("bbox_overlap", codes)
 
-    def test_lint_xml_allows_faint_medium_ghost_text_out_of_canvas_and_overlap(self) -> None:
+    def test_lint_xml_reports_faint_medium_ghost_text_out_of_canvas_but_allows_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
@@ -1082,8 +1471,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             """
         )
         codes = [issue["code"] for issue in result["slides"][0]["issues"]]
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertNotIn("shape_out_of_canvas", codes)
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertIn("shape_out_of_canvas", codes)
         self.assertNotIn("bbox_overlap", codes)
 
     def test_lint_xml_allows_ghost_text_image_overlap(self) -> None:
@@ -1126,7 +1515,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         codes = [issue["code"] for issue in result["issues"]]
         self.assertNotIn("whiteboard_external_overlap", codes)
 
-    def test_lint_xml_allows_faint_ghost_text_without_area_threshold(self) -> None:
+    def test_lint_xml_reports_faint_ghost_text_out_of_canvas_without_area_threshold(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
@@ -1138,8 +1527,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </slide>
             """
         )
-        self.assertEqual(result["summary"]["error_count"], 0)
-        self.assertEqual(result["slides"][0]["issues"], [])
+        self.assertEqual(result["summary"]["error_count"], 1)
+        self.assertEqual(result["slides"][0]["issues"][0]["code"], "shape_out_of_canvas")
 
     def test_lint_xml_keeps_out_of_canvas_error_for_medium_text_without_faint_alpha(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -1424,7 +1813,13 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                 <data>
                   <shape id="outside-shape" type="text" topLeftX="-10" topLeftY="40" width="50" height="50"/>
                   <img id="outside-img" src="token" topLeftX="120" topLeftY="-20" width="50" height="50"/>
-                  <chart id="outside-chart" topLeftX="900" topLeftY="100" width="100" height="100"/>
+                  <chart id="outside-chart" topLeftX="900" topLeftY="100" width="100" height="100">
+                    <chartPlotArea><chartPlot type="line"/></chartPlotArea>
+                    <chartData>
+                      <dim1><chartField name="category" valueType="string">A</chartField></dim1>
+                      <dim2><chartField name="value" valueType="number">1</chartField></dim2>
+                    </chartData>
+                  </chart>
                 </data>
               </slide>
             </presentation>
@@ -1448,7 +1843,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                 <shape id="body" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                   <content fontSize="18"><p>Visible content</p></content>
                 </shape>
-                <line id="connector" startX="80" startY="120" endX="980" endY="120"/>
+                <line id="connector" startX="80" startY="120" endX="980" endY="120"><border/></line>
               </data>
             </slide>
             """
@@ -1457,6 +1852,187 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["summary"]["error_count"], 0)
         self.assertEqual(result["slides"][0]["issues"], [])
 
+    def test_lint_xml_reports_horizontal_line_crossing_headline_glyphs(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="title" type="text" topLeftX="80" topLeftY="200" width="500" height="90">
+                  <content fontSize="60"><p>测试文字 ABC</p></content>
+                </shape>
+                <line id="strike" startX="80" startY="245" endX="560" endY="245">
+                  <border color="rgb(255, 0, 0)" width="4"/>
+                </line>
+              </data>
+            </slide>
+            """
+        )
+        crossing = [
+            issue for issue in result["slides"][0]["errors"] if set(issue["elements"]) == {"strike", "title"}
+        ]
+        self.assertEqual(len(crossing), 1)
+        self.assertEqual(crossing[0]["code"], "bbox_overlap")
+
+    def test_lint_xml_reports_vertical_line_crossing_multiline_text(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="col" type="text" topLeftX="700" topLeftY="180" width="240" height="180">
+                  <content fontSize="20"><p>第一行文字内容</p><p>第二行文字内容</p><p>第三行文字内容</p></content>
+                </shape>
+                <line id="vbar" startX="740" startY="170" endX="740" endY="360">
+                  <border color="rgb(0, 0, 255)" width="3"/>
+                </line>
+              </data>
+            </slide>
+            """
+        )
+        crossing = [
+            issue for issue in result["slides"][0]["errors"] if set(issue["elements"]) == {"vbar", "col"}
+        ]
+        self.assertEqual(len(crossing), 1)
+
+    def test_lint_xml_reports_diagonal_line_crossing_text_block(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="para" type="text" topLeftX="80" topLeftY="400" width="420" height="140">
+                  <content fontSize="18"><p>这是一段测试文字用于验证线条穿过</p></content>
+                </shape>
+                <line id="diag" startX="80" startY="410" endX="500" endY="530">
+                  <border color="rgb(255, 0, 0)" width="3"/>
+                </line>
+              </data>
+            </slide>
+            """
+        )
+        crossing = [
+            issue for issue in result["slides"][0]["errors"] if set(issue["elements"]) == {"diag", "para"}
+        ]
+        self.assertEqual(len(crossing), 1)
+
+    def test_lint_xml_ignores_diagonal_line_whose_bbox_but_not_segment_crosses_text(self) -> None:
+        # The diagonal's axis-aligned bounding box overlaps the text, but the segment itself passes
+        # through empty space in the opposite corner -- a naive bbox test would false-positive here.
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="corner-text" type="text" topLeftX="80" topLeftY="80" width="120" height="40">
+                  <content fontSize="18"><p>corner</p></content>
+                </shape>
+                <line id="far-diag" startX="700" startY="80" endX="90" endY="500">
+                  <border color="rgb(255, 0, 0)" width="3"/>
+                </line>
+              </data>
+            </slide>
+            """
+        )
+        crossing = [
+            issue for issue in result["slides"][0]["errors"] if set(issue["elements"]) == {"far-diag", "corner-text"}
+        ]
+        self.assertEqual(crossing, [])
+
+    def test_lint_xml_ignores_line_touching_text_frame_but_not_glyphs(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="lbl" type="text" topLeftX="80" topLeftY="80" width="300" height="200">
+                  <content fontSize="18" verticalAlign="top"><p>短标签</p></content>
+                </shape>
+                <line id="below" startX="80" startY="270" endX="380" endY="270">
+                  <border color="rgb(255, 0, 0)" width="2"/>
+                </line>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_ignores_invisible_line_crossing_text(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="title" type="text" topLeftX="80" topLeftY="200" width="500" height="90">
+                  <content fontSize="60"><p>测试文字 ABC</p></content>
+                </shape>
+                <line id="ghost-line" startX="80" startY="245" endX="560" endY="245">
+                  <border color="rgba(255, 0, 0, 0.03)" width="4"/>
+                </line>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_ignores_vertical_line_grazing_text_left_edge(self) -> None:
+        # Verbatim from deck GpGusGCwplQyK8dFN9LczmBXnwQ slide 4: a vertical line sitting on the text
+        # frame's left edge renders before the first glyph, so it must not be flagged.
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape width="240" height="60" topLeftX="120" topLeftY="100" type="text" id="bmm">
+                  <content fontSize="20" fontFamily="Arial" color="rgba(31, 35, 41, 1)" lineSpacing="fixed:24">
+                    <p>Vertical edge graze</p>
+                  </content>
+                </shape>
+                <line id="bmX" startX="120.00000000000001" startY="90" endX="120.00000000000001" endY="150.00833275470998">
+                  <border color="rgba(0, 0, 0, 1)"/>
+                </line>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_ignores_polyline_crossing_text(self) -> None:
+        # Verbatim from deck GpGusGCwplQyK8dFN9LczmBXnwQ slide 6: the crossing check is scoped to
+        # <line> only, so a <polyline> over text is not flagged.
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape width="240" height="60" topLeftX="120" topLeftY="100" type="text" id="bmr">
+                  <content fontSize="20" fontFamily="Arial" color="rgba(31, 35, 41, 1)" lineSpacing="fixed:24">
+                    <p>Polyline target</p>
+                  </content>
+                </shape>
+                <polyline id="bmH" width="270" height="55" topLeftX="110" topLeftY="95">
+                  <border color="rgba(0, 0, 0, 1)"/>
+                </polyline>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_ignores_line_below_visual_glyph_height(self) -> None:
+        # Verbatim from deck GpGusGCwplQyK8dFN9LczmBXnwQ slide 7: the shape frame is 80px tall but the
+        # single 20px line of glyphs occupies only its top; a line at the frame's lower region grazes
+        # under the visual glyph box (underline look) and must not be flagged.
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape width="240" height="80" topLeftX="120" topLeftY="100" type="text" id="bmB">
+                  <content fontSize="20" fontFamily="Arial" color="rgba(31, 35, 41, 1)" lineSpacing="fixed:24">
+                    <p>Visual height target</p>
+                  </content>
+                </shape>
+                <line id="bmQ" startX="110" startY="150" endX="380.00185184550116" endY="150">
+                  <border color="rgba(0, 0, 0, 1)"/>
+                </line>
+              </data>
+            </slide>
+            """
+        )
+        self.assertEqual(result["summary"]["error_count"], 0)
+
     def test_lint_xml_uses_rotated_text_and_chart_bounds_for_canvas_validation(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -1464,7 +2040,13 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
               <slide xmlns="http://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape id="rotated-text" type="text" topLeftX="0" topLeftY="0" width="100" height="100" rotation="45"/>
-                  <chart id="rotated-chart" topLeftX="860" topLeftY="200" width="100" height="100" rotation="45"/>
+                  <chart id="rotated-chart" topLeftX="860" topLeftY="200" width="100" height="100" rotation="45">
+                    <chartPlotArea><chartPlot type="line"/></chartPlotArea>
+                    <chartData>
+                      <dim1><chartField name="category" valueType="string">A</chartField></dim1>
+                      <dim2><chartField name="value" valueType="number">1</chartField></dim2>
+                    </chartData>
+                  </chart>
                 </data>
               </slide>
             </presentation>
@@ -1485,7 +2067,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
               <slide xmlns="http://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape id="rotated-rect" type="rect" topLeftX="900" topLeftY="0" width="100" height="100" rotation="45"/>
-                  <img id="rotated-image" topLeftX="860" topLeftY="200" width="100" height="100" rotation="45"/>
+                  <img id="rotated-image" src="token" topLeftX="860" topLeftY="200" width="100" height="100" rotation="45"/>
                 </data>
               </slide>
             </presentation>
@@ -1541,7 +2123,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual([issue["elements"] for issue in issues], [["table"], ["chart"], ["text"], ["rect"]])
         self.assertEqual(issues[-1]["bbox"], {"x": 95, "y": 0, "width": 10, "height": 10})
 
-    def test_lint_xml_treats_non_finite_rotations_as_zero(self) -> None:
+    def test_lint_xml_rejects_non_finite_rotation_values_from_xsd(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
@@ -1549,17 +2131,22 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                 <data>
                   <shape id="infinite" type="text" topLeftX="-10" topLeftY="0" width="20" height="20" rotation="inf"/>
                   <shape id="negative-infinite" type="text" topLeftX="0" topLeftY="-10" width="20" height="20" rotation="-inf"/>
-                  <chart id="not-a-number" topLeftX="950" topLeftY="0" width="20" height="20" rotation="nan"/>
+                  <chart id="not-a-number" topLeftX="950" topLeftY="0" width="20" height="20" rotation="nan">
+                    <chartPlotArea><chartPlot type="line"/></chartPlotArea>
+                    <chartData>
+                      <dim1><chartField name="category" valueType="string">A</chartField></dim1>
+                      <dim2><chartField name="value" valueType="number">1</chartField></dim2>
+                    </chartData>
+                  </chart>
                 </data>
               </slide>
             </presentation>
             """
         )
-        issues_by_element = {issue["elements"][0]: issue for issue in result["slides"][0]["issues"]}
         self.assertEqual(result["summary"]["error_count"], 3)
-        self.assertEqual(issues_by_element["infinite"]["overflow"], {"left": 10, "top": 0, "right": 0, "bottom": 0})
-        self.assertEqual(issues_by_element["negative-infinite"]["overflow"], {"left": 0, "top": 10, "right": 0, "bottom": 0})
-        self.assertEqual(issues_by_element["not-a-number"]["overflow"], {"left": 0, "top": 0, "right": 10, "bottom": 0})
+        slide_issues = result["slides"][0]["issues"]
+        self.assertTrue(all(issue["code"] == "sxsd_invalid_scalar" for issue in slide_issues))
+        self.assertEqual({issue["actual"] for issue in slide_issues}, {"inf", "-inf", "nan"})
 
     def test_lint_xml_reports_table_bottom_overflow_from_declared_bounds(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -1914,7 +2501,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
               <data>
-                <img id="ghost" topLeftX="60" topLeftY="60" width="200" height="200" alpha="0"/>
+                <img id="ghost" src="token" topLeftX="60" topLeftY="60" width="200" height="200" alpha="0"/>
               </data>
             </slide>
             """
@@ -2195,7 +2782,13 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="chart-card" type="rect" topLeftX="500" topLeftY="135" width="410" height="300"/>
-                <chart id="chart" topLeftX="525" topLeftY="170" width="350" height="220"/>
+                <chart id="chart" topLeftX="525" topLeftY="170" width="350" height="220">
+                  <chartPlotArea><chartPlot type="line"/></chartPlotArea>
+                  <chartData>
+                    <dim1><chartField name="category" valueType="string">A</chartField></dim1>
+                    <dim2><chartField name="value" valueType="number">1</chartField></dim2>
+                  </chartData>
+                </chart>
               </data>
             </slide>
             """
@@ -2212,7 +2805,13 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
                   <content fontSize="20"><p>Section title</p></content>
                 </shape>
                 <shape id="chart-card" type="rect" topLeftX="500" topLeftY="135" width="410" height="300"/>
-                <chart id="chart" topLeftX="525" topLeftY="170" width="350" height="220" alpha="0"/>
+                <chart id="chart" topLeftX="525" topLeftY="170" width="350" height="220" alpha="0">
+                  <chartPlotArea><chartPlot type="line"/></chartPlotArea>
+                  <chartData>
+                    <dim1><chartField name="category" valueType="string">A</chartField></dim1>
+                    <dim2><chartField name="value" valueType="number">1</chartField></dim2>
+                  </chartData>
+                </chart>
               </data>
             </slide>
             """
@@ -2289,7 +2888,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
                   <content fontSize="20"><p>Section title</p></content>
                 </shape>
                 <shape id="card" type="rect" topLeftX="330" topLeftY="120" width="300" height="300"/>
-                <img id="ghost-overlay" topLeftX="330" topLeftY="120" width="300" height="300" alpha="0"/>
+                <img id="ghost-overlay" src="token" topLeftX="330" topLeftY="120" width="300" height="300" alpha="0"/>
               </data>
             </slide>
             """
@@ -2395,7 +2994,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
               <data>
                 <shape id="metric-card" type="rect" topLeftX="80" topLeftY="140" width="360" height="300"/>
                 <shape id="metric" type="text" topLeftX="104" topLeftY="190" width="340" height="90">
-                  <content fontSize="12.4"><p><strong><span fontSize="62">400</span></strong>+ 项</p></content>
+                  <content fontSize="12"><p><strong><span fontSize="62">400</span></strong>+ 项</p></content>
                 </shape>
               </data>
             </slide>
@@ -2409,10 +3008,10 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
               <data>
-                <line id="l1" startX="100" startY="100" endX="800" endY="100"/>
-                <line id="l2" startX="100" startY="200" endX="800" endY="200"/>
-                <line id="l3" startX="100" startY="300" endX="800" endY="300"/>
-                <line id="l4" startX="100" startY="400" endX="800" endY="400"/>
+                <line id="l1" startX="100" startY="100" endX="800" endY="100"><border/></line>
+                <line id="l2" startX="100" startY="200" endX="800" endY="200"><border/></line>
+                <line id="l3" startX="100" startY="300" endX="800" endY="300"><border/></line>
+                <line id="l4" startX="100" startY="400" endX="800" endY="400"><border/></line>
               </data>
             </slide>
             """
@@ -2572,6 +3171,625 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
                 visible_card, [visible_card, ghost_1, ghost_2]
             )
         )
+
+
+SML_NAMESPACE = "http://www.larkoffice.com/sml/2.0"
+
+
+class SxsdSyntaxTestCase(unittest.TestCase):
+    def validate(self, xml: str) -> list[dict[str, object]]:
+        result = xml_text_overlap_lint.lint_xml(xml)
+        return [
+            *result.get("issues", []),
+            *(issue for slide in result["slides"] for issue in slide["issues"]),
+        ]
+
+    def assert_issue(
+        self,
+        issues: list[dict[str, object]],
+        code: str,
+        *,
+        path: str | None = None,
+        attr: str | None = None,
+    ) -> dict[str, object]:
+        for issue in issues:
+            if issue.get("code") != code:
+                continue
+            if path is not None and issue.get("path") != path:
+                continue
+            if attr is not None and issue.get("attr") != attr:
+                continue
+            return issue
+        self.fail(f"missing issue code={code!r} path={path!r} attr={attr!r}: {issues!r}")
+
+    def assert_no_issue(self, issues: list[dict[str, object]], code: str) -> None:
+        self.assertNotIn(code, [issue.get("code") for issue in issues])
+
+
+class SxsdSyntaxAttributeTest(SxsdSyntaxTestCase):
+
+    def test_xsd_pattern_translation_only_expands_whitespace_classes(self) -> None:
+        self.assertEqual(
+            sxsd_validator.python_pattern_for_xsd(r"\s+\S+\w+\d+"),
+            "[ \\t\\n\\r]+[^ \\t\\n\\r]+\\w+\\d+",
+        )
+
+    def test_href_domain_pattern_does_not_use_backtracking_regex(self) -> None:
+        pattern = r"[\w.-]+[.:]\S*"
+        adversarial_value = ("a." * 20_000) + " "
+        original_fullmatch = sxsd_validator.re.fullmatch
+        translated_pattern = sxsd_validator.python_pattern_for_xsd(pattern)
+
+        def reject_unsafe_pattern(candidate: str, value: str):
+            if candidate == translated_pattern:
+                raise AssertionError("href domain pattern must not use re.fullmatch")
+            return original_fullmatch(candidate, value)
+
+        with mock.patch.object(sxsd_validator.re, "fullmatch", side_effect=reject_unsafe_pattern):
+            self.assertFalse(sxsd_validator.xsd_pattern_matches(pattern, adversarial_value))
+
+    def test_href_domain_pattern_keeps_xsd_matching_behavior(self) -> None:
+        pattern = r"[\w.-]+[.:]\S*"
+        reference_pattern = sxsd_validator.re.compile(
+            sxsd_validator.python_pattern_for_xsd(pattern)
+        )
+
+        for length in range(5):
+            for characters in itertools.product("a.:-/ ©", repeat=length):
+                value = "".join(characters)
+                with self.subTest(value=value):
+                    self.assertEqual(
+                        sxsd_validator.xsd_pattern_matches(pattern, value),
+                        reference_pattern.fullmatch(value) is not None,
+                    )
+
+    def test_accepts_valid_shape_attributes(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                  <content textType="body"><p>Valid</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(issues, [])
+
+    def test_reports_missing_required_shape_attribute(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data><shape type="text" topLeftX="10" topLeftY="20" width="300"/></data>
+            </slide>
+            """
+        )
+
+        issue = self.assert_issue(
+            issues,
+            "sxsd_missing_required_attr",
+            path="slide/data/shape",
+            attr="height",
+        )
+        self.assertEqual(issue["expected"], "required attribute of type PositiveSize")
+        self.assertIsNone(issue["actual"])
+
+    def test_reports_invalid_scalar_value(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="NaN" topLeftY="20" width="300" height="80"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = self.assert_issue(issues, "sxsd_invalid_scalar", attr="topLeftX")
+        self.assertEqual(issue["actual"], "NaN")
+
+    def test_rejects_python_only_numeric_separator(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="rect" topLeftX="1_0" topLeftY="20" width="300" height="80"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_invalid_scalar", attr="topLeftX")
+
+    def test_accepts_xsd_double_lexical_forms(self) -> None:
+        for top_left_x in ("10", "-0.5", ".5", "1.", "1e2"):
+            with self.subTest(top_left_x=top_left_x):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="rect" topLeftX="{top_left_x}" topLeftY="20" width="300" height="80"/>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assertEqual(issues, [])
+
+    def test_accepts_bullet_char_length_boundaries(self) -> None:
+        for bullet_char in ("A", "12345678"):
+            with self.subTest(bullet_char=bullet_char):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                          <content bulletChar="{bullet_char}"><p>Text</p></content>
+                        </shape>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assertEqual(issues, [])
+
+    def test_rejects_bullet_char_outside_length_boundaries(self) -> None:
+        for bullet_char in ("", "123456789"):
+            with self.subTest(bullet_char=bullet_char):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                          <content bulletChar="{bullet_char}"><p>Text</p></content>
+                        </shape>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assert_issue(issues, "sxsd_value_out_of_range", attr="bulletChar")
+
+    def test_rejects_zero_size_that_violates_xsd(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="0" height="80"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_value_out_of_range", attr="width")
+
+    def test_reports_negative_size_rejected_by_xsd(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="-1" height="80"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_value_out_of_range", attr="width")
+
+    def test_rejects_shape_enum_that_violates_xsd(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="not-a-shape" topLeftX="10" topLeftY="20" width="300" height="80"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = self.assert_issue(issues, "sxsd_invalid_enum", attr="type")
+        self.assertLess(len(str(issue["message"])), 300)
+        self.assertEqual(issue["actual"], "not-a-shape")
+
+    def test_rejects_rotation_upper_bound_that_violates_xsd(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80" rotation="360"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_value_out_of_range", attr="rotation")
+
+    def test_rejects_fill_color_that_violates_xsd(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <style><fill><fillColor color="red"/></fill></style>
+              <data/>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_pattern_mismatch", attr="color")
+
+    def test_reports_missing_required_image_src(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data><img topLeftX="10" topLeftY="20" width="300" height="80"/></data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_missing_required_attr", attr="src")
+
+    def test_accepts_inline_attribute_simple_type(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                  <content><p><a href="https://example.com">Link</a></p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(issues, [])
+
+    def test_reports_inline_attribute_pattern_mismatch(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                  <content><p><a href="not a uri">Link</a></p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_pattern_mismatch", attr="href")
+
+    def test_accepts_values_matching_inline_union_members(self) -> None:
+        for bullet_size in ("25%", "100%", "400%", "6", "14", "400"):
+            with self.subTest(bullet_size=bullet_size):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                          <content bulletSize="{bullet_size}"><p>Text</p></content>
+                        </shape>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assertEqual(issues, [])
+
+    def test_rejects_values_outside_inline_union_members(self) -> None:
+        for bullet_size in ("24%", "401%", "5", "401", "abc"):
+            with self.subTest(bullet_size=bullet_size):
+                issues = self.validate(
+                    f"""
+                    <slide xmlns="{SML_NAMESPACE}">
+                      <data>
+                        <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                          <content bulletSize="{bullet_size}"><p>Text</p></content>
+                        </shape>
+                      </data>
+                    </slide>
+                    """
+                )
+
+                self.assert_issue(issues, "sxsd_pattern_mismatch", attr="bulletSize")
+
+    def test_rejects_symbol_outside_python_word_semantics_in_href(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                  <content><p><a href="©:resource">Link</a></p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_pattern_mismatch", attr="href")
+
+    def test_accepts_common_email_href_with_python_regex_semantics(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                  <content><p><a href="mailto:user@example.com">Email</a></p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(issues, [])
+
+    def test_accepts_common_gradient_with_python_regex_semantics(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <style>
+                <fill>
+                  <fillColor color="linear-gradient(90deg, rgb(255, 0, 0) 0%, rgb(0, 0, 255) 100%)"/>
+                </fill>
+              </style>
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                  <content><p>Gradient</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(issues, [])
+
+    def test_rejects_non_xsd_whitespace_in_color_pattern(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <style><fill><fillColor color="rgb(1,\u00a02,3)"/></fill></style>
+              <data/>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_pattern_mismatch", attr="color")
+
+class SxsdSyntaxStructureTest(SxsdSyntaxTestCase):
+    def test_accepts_nested_content_in_referenced_rich_text_shadow(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">
+                  <content>
+                    <p><span><shadow color="rgba(0, 0, 0, 1)"><strong>Text</strong></shadow></span></p>
+                  </content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(issues, [])
+
+    def test_keeps_shape_effect_shadow_as_childless_local_type(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data>
+                <shape type="rect" topLeftX="10" topLeftY="20" width="300" height="80">
+                  <shadow><strong>Not rich text</strong></shadow>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(
+            issues,
+            "sxsd_unexpected_child",
+            path="slide/data/shape/shadow/strong",
+        )
+
+    def test_accepts_standalone_slide_fragment_without_namespace(self) -> None:
+        issues = self.validate(
+            '<slide><data><shape type="text" topLeftX="10" topLeftY="20" width="300" height="80">'
+            '<content><p>Text</p></content></shape></data></slide>'
+        )
+
+        self.assertEqual(issues, [])
+
+    def test_rejects_presentation_without_namespace(self) -> None:
+        issues = self.validate(
+            '<presentation width="960" height="540"><slide/></presentation>'
+        )
+
+        self.assert_issue(issues, "sxsd_invalid_namespace", path="presentation")
+
+    def test_rejects_wrong_namespace_that_violates_xsd(self) -> None:
+        issues = self.validate('<slide xmlns="https://example.com/not-sml"><data/></slide>')
+
+        self.assert_issue(issues, "sxsd_invalid_namespace", path="slide")
+
+    def test_rejects_descendant_outside_document_namespace(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data xmlns="">
+                <shape xmlns="{SML_NAMESPACE}" type="rect" topLeftX="10" topLeftY="20" width="300" height="80"/>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_invalid_namespace", path="slide/data")
+
+    def test_rejects_unexpected_child_that_violates_xsd(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <shape type="text" topLeftX="10" topLeftY="20" width="300" height="80"/>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_unexpected_child", path="slide/shape")
+
+    def test_rejects_child_order_that_violates_xsd(self) -> None:
+        issues = self.validate(
+            f"""
+            <presentation xmlns="{SML_NAMESPACE}" width="1920" height="1080">
+              <slide/>
+              <title>Late title</title>
+            </presentation>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_invalid_child_order", path="presentation/title")
+
+    def test_enforces_presentation_slide_minimum_from_xsd(self) -> None:
+        issues = self.validate(
+            f'<presentation xmlns="{SML_NAMESPACE}" width="1920" height="1080"/>'
+        )
+
+        self.assert_issue(issues, "sxsd_missing_required_child", path="presentation")
+
+    def test_enforces_presentation_slide_maximum_from_xsd(self) -> None:
+        slides = "".join("<slide/>" for _ in range(101))
+        issues = self.validate(
+            f'<presentation xmlns="{SML_NAMESPACE}" width="1920" height="1080">{slides}</presentation>'
+        )
+
+        self.assert_issue(issues, "sxsd_too_many_children", path="presentation/slide")
+
+    def test_rejects_multiple_choice_children_that_violate_xsd(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <style>
+                <fill><fillColor/><fillImg src="token"/></fill>
+              </style>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_too_many_children", path="slide/style/fill")
+
+    def test_rejects_line_without_required_border_from_xsd(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data><line startX="0" startY="0" endX="100" endY="100"/></data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_missing_required_child", path="slide/data/line")
+
+    def test_reports_missing_required_chart_structure(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data><chart topLeftX="0" topLeftY="0" width="300" height="200"/></data>
+            </slide>
+            """
+        )
+
+        self.assert_issue(issues, "sxsd_missing_required_child", path="slide/data/chart")
+
+    def test_reports_missing_required_nested_sequence_child(self) -> None:
+        issues = self.validate(
+            f"""
+            <slide xmlns="{SML_NAMESPACE}">
+              <data><table topLeftX="0" topLeftY="0"><tr/></table></data>
+            </slide>
+            """
+        )
+
+        issue = self.assert_issue(issues, "sxsd_missing_required_child", path="slide/data/table/tr")
+        self.assertEqual(issue["expected"], "td (at least 1)")
+
+
+class SxsdSchemaModelTest(unittest.TestCase):
+    def test_reports_unsupported_xsd_pattern_without_crashing(self) -> None:
+        schema = rf"""
+        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                   xmlns:sml="{SML_NAMESPACE}"
+                   targetNamespace="{SML_NAMESPACE}"
+                   elementFormDefault="qualified">
+          <xs:simpleType name="UnsupportedPatternType">
+            <xs:union>
+              <xs:simpleType>
+                <xs:restriction base="xs:string"><xs:pattern value="[\S]"/></xs:restriction>
+              </xs:simpleType>
+              <xs:simpleType>
+                <xs:restriction base="xs:string"><xs:pattern value="z+"/></xs:restriction>
+              </xs:simpleType>
+            </xs:union>
+          </xs:simpleType>
+          <xs:complexType name="SlideType">
+            <xs:attribute name="value" type="sml:UnsupportedPatternType"/>
+          </xs:complexType>
+        </xs:schema>
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            schema_path = Path(temp_dir) / "schema.xsd"
+            schema_path.write_text(schema, encoding="utf-8")
+            try:
+                issues = sxsd_validator.validate_sxsd(
+                    ET.fromstring(f'<slide xmlns="{SML_NAMESPACE}" value="A"/>'),
+                    schema_path,
+                )
+            except (ValueError, sxsd_validator.re.error) as error:
+                self.fail(f"SXSD pattern capability errors must be reported, not raised: {error}")
+
+        self.assertEqual([issue["code"] for issue in issues], ["sxsd_unsupported_pattern"])
+        self.assertEqual(issues[0]["attr"], "value")
+        self.assertIn("pattern interpreter", str(issues[0]["hint"]).lower())
+
+    def test_standalone_slide_uses_slide_type_without_global_element(self) -> None:
+        schema = f"""
+        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                   xmlns:sml="{SML_NAMESPACE}"
+                   targetNamespace="{SML_NAMESPACE}"
+                   elementFormDefault="qualified">
+          <xs:complexType name="SlideType"><xs:sequence/></xs:complexType>
+          <xs:complexType name="PresentationType">
+            <xs:sequence><xs:element name="slide" type="sml:SlideType"/></xs:sequence>
+          </xs:complexType>
+          <xs:element name="presentation" type="sml:PresentationType"/>
+        </xs:schema>
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            schema_path = Path(temp_dir) / "schema.xsd"
+            schema_path.write_text(schema, encoding="utf-8")
+            issues = sxsd_validator.validate_sxsd(
+                ET.fromstring(f'<slide xmlns="{SML_NAMESPACE}"/>'),
+                schema_path,
+            )
+
+        self.assertEqual(issues, [])
+
+    def test_standalone_slide_requires_slide_type_in_xsd(self) -> None:
+        schema = f"""
+        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                   xmlns:sml="{SML_NAMESPACE}"
+                   targetNamespace="{SML_NAMESPACE}"
+                   elementFormDefault="qualified">
+          <xs:complexType name="PresentationType"><xs:sequence/></xs:complexType>
+          <xs:element name="presentation" type="sml:PresentationType"/>
+        </xs:schema>
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            schema_path = Path(temp_dir) / "schema.xsd"
+            schema_path.write_text(schema, encoding="utf-8")
+            issues = sxsd_validator.validate_sxsd(
+                ET.fromstring(f'<slide xmlns="{SML_NAMESPACE}"/>'),
+                schema_path,
+            )
+
+        self.assertEqual([issue["code"] for issue in issues], ["sxsd_unexpected_root"])
 
 
 if __name__ == "__main__":

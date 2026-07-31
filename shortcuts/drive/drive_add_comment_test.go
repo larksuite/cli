@@ -918,6 +918,27 @@ func TestSheetCommentValidateInvalidBlockIDFormat(t *testing.T) {
 	}
 }
 
+// create_v2 (+add-comment) uses reply_elements, which does NOT declare the
+// 100-element cap that the reply-create endpoint does; +add-comment must not
+// reject >100 elements locally.
+func TestDriveAddCommentDoesNotCapElements(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	elems := make([]string, 101)
+	for i := range elems {
+		elems[i] = `{"type":"text","text":"x"}`
+	}
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/docx/docxToken",
+		"--content", "[" + strings.Join(elems, ",") + "]",
+		"--full-comment",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("+add-comment must not cap element count locally, got %v", err)
+	}
+}
+
 func TestSheetCommentValidateRejectsFullComment(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 	err := mountAndRunDrive(t, DriveAddComment, []string{

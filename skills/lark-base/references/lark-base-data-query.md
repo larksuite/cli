@@ -79,16 +79,23 @@ lark-cli base +data-query \
 | `--base-token <token>` | 是 | Base Token（base_token） |
 | `--dsl <json>`         | 是 | LiteQuery Protocol JSON DSL 查询语句 |
 
-## 如何从链接中提取参数
+## 如何从链接中解析参数
 
 用户通常会提供如下 URL：
 
-```
-https://example.feishu.cn/base/<base_token>?table=<table_id>
+```text
+https://example.feishu.cn/base/<base_token>?table=<block_id>
 ```
 
-- `--base-token`：取 `/base/` 后面的字符串
-- DSL 中的 `tableId`：取 `table=` 后面的值
+不要直接把 URL 中的 `table=` 当成数据表 ID。它表示当前选中的 Base 顶层块，可能是数据表、仪表盘、工作流、文件夹或文档。先解析链接：
+
+```bash
+lark-cli base +url-resolve --url "<url>" --as user
+```
+
+- `--base-token`：使用返回的 `base_token`
+- 仅当返回的 `block_type` 为 `table` 时，DSL 中的 `tableId` 才使用返回的 `table_id`
+- 如果返回的是其他块类型，按 `hint.next_step` 继续处理；如果只返回中性的 `block_id`，先用 `+base-block-list` 确认块类型，再选择实际要查询的数据表
 
 ## API 入参详情
 

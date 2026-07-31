@@ -348,7 +348,7 @@ func driveListCommentsScopeParam(scope string) (*bool, bool) {
 }
 
 func buildDriveListCommentsOutput(target driveListCommentsTarget, data map[string]interface{}) map[string]interface{} {
-	items := common.GetSlice(data, "items")
+	items := driveCommentItems(data)
 	return map[string]interface{}{
 		"file_token": target.FileToken,
 		"file_type":  target.FileType,

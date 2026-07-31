@@ -19,7 +19,7 @@ lint/
 ├── lintapi/            # shared types every domain returns
 │   └── violation.go    # Violation, Action, ActionReject / ActionLabel / ActionWarning
 └── errscontract/       # first domain: typed-error contract guards
-    ├── scan.go         # ScanRepo(root) ([]lintapi.Violation, error)  ← public entry
+    ├── scan.go         # ScanRepoWithOptions(root, opts)  ← public entry
     ├── runner.go
     ├── typecheck.go
     ├── violation.go    # local type aliases to lintapi
@@ -30,16 +30,19 @@ lint/
     ├── rule_subtype_classifier.go
     ├── rule_typed_error_completeness.go
     └── *_test.go
-└── domaincontract/     # endpoint domain contract: no hardcoded resolver hosts
-    ├── scan.go         # ScanRepo(root) ([]lintapi.Violation, error)  ← public entry
-    └── scan_test.go
+└── domaincontract/     # resolver ownership + approved public hostname policy
+    ├── scan.go         # ScanRepoWithOptions(root, opts)  ← public entry
+    ├── unapproved.go   # Go AST/type-aware hostname extraction
+    ├── policy.go       # exact public/fixture allowlist validation
+    ├── diff.go         # added-line attribution
+    └── *_test.go
 ```
 
 ## Endpoint domain contract (`domaincontract`)
 
-`domaincontract` is a syntax-level regression guard for the resolver-owned
-Open, Accounts, MCP, and AppLink hosts used by the Go CLI. In production `.go`
-files it rejects:
+`domaincontract` contains two complementary Go source guards.
+
+The resolver-ownership guard rejects:
 
 - string literals containing a resolver-owned host FQDN
   (`{open,accounts,mcp,applink}.{feishu.cn,larksuite.com}`), and
@@ -59,17 +62,54 @@ parse-level guard). The forbidden-host list is bound to the resolver source by
 `TestForbiddenHostsMatchResolver`, so adding a resolver domain without updating
 the guard fails the lint module's tests.
 
-This is not a general outbound-URL or data-flow analyzer. It does not inspect
-non-Go assets, hosts assembled from string fragments, SDK constructor option
-flow, or previously unknown Feishu/Lark hosts. The literal rule and code review
-remain the backstop for those cases.
+The approved-domain guard parses every Git-tracked Go file in full. In CI,
+unapproved-host findings are limited to values whose expressions intersect an
+added line; policy validation and unused-entry checks remain repository-wide.
+It rejects an exact hostname unless it is present in one of:
 
-To add or change an outbound endpoint, edit the resolver — never hardcode a host.
+- `internal/qualitygate/config/allowlists/public-domains.txt`, for production
+  and test code; or
+- `internal/qualitygate/config/allowlists/fixture-domains.txt`, only for
+  `*_test.go`, the repository-root `tests/`, and any `testdata/` (never
+  `skills/`).
+
+RFC 2606 example/test names are accepted independently of those lists. This
+includes the reserved `.test`, `.example`, `.invalid`, and `.localhost`
+namespaces and the exact names `example.com`, `example.net`, and `example.org`;
+they are safe placeholders rather than supported public endpoints.
+
+High-confidence evidence is deliberately limited to static string expressions
+assigned to `host`, `hostname`, or `domain` semantic names (including common
+case/plural forms and collections), plus static strings whose entire value is
+an absolute `http`, `https`, `ws`, or `wss` URL. It supports Go literals,
+escapes, compile-time concatenation, constant references, grouped declarations,
+multi-value assignments, and multiline expressions. Bare domain-shaped strings
+without hostname semantics are not blocked.
+
+Sequence values are scanned individually. For a hostname-semantic map, a key or
+value is evidence only when it is the sole hostname-shaped side of that entry;
+ambiguous string-to-string entries are not guessed. Struct fields use Go type
+information so known non-network `Host` / `Domain` fields do not become hostname
+evidence merely because an enum or command category contains a dot.
+
+Allowlist matching is lowercase and exact: there are no wildcard, suffix, DNS,
+or public-suffix exceptions. Entries must be sorted and unique, use ASCII
+hostnames, and have a current in-scope use. See
+`internal/qualitygate/config/README.md` for admission and approval rules.
+
+This is not a general outbound-URL or cross-language data-flow analyzer. It does
+not inspect non-Go assets or dynamically constructed values.
+
+To add or change a resolver-owned Feishu/Lark endpoint, edit the resolver rather
+than hardcoding the host elsewhere.
 
 ## Running
 
 ```bash
-# from the repo root (one level above lint/)
+# PR-scoped scan from the repo root (one level above lint/)
+go run -C lint . --changed-from <base-revision> ..
+
+# Full inventory (also reports historical unapproved hostnames)
 go run -C lint . ..
 ```
 
@@ -100,10 +140,14 @@ Exit codes follow `lint/main.go`:
 
    import "github.com/larksuite/cli/lint/lintapi"
 
-   // ScanRepo walks root and returns every violation produced by this
-   // domain's checks. Domains MUST return []lintapi.Violation so the
-   // top-level dispatcher can aggregate uniformly.
-   func ScanRepo(root string) ([]lintapi.Violation, error) { ... }
+   type ScanOptions struct {
+       ChangedFrom string
+   }
+
+   // ScanRepoWithOptions walks root and returns every violation produced
+   // by this domain's checks. Domains MUST return []lintapi.Violation so
+   // the top-level dispatcher can aggregate uniformly.
+   func ScanRepoWithOptions(root string, opts ScanOptions) ([]lintapi.Violation, error) { ... }
    ```
 
 3. Per-rule files are named `rule_<name>.go` with sibling
@@ -114,8 +158,12 @@ Exit codes follow `lint/main.go`:
 
    ```go
    var scanners = []scanner{
-       {name: "errscontract", fn: errscontract.ScanRepo},
-       {name: "<domain>",     fn: <domain>.ScanRepo},  // ← add here
+       {name: "errscontract", fn: errscontract.ScanRepoWithOptions},
+       {name: "<domain>", fn: func(root string, opts errscontract.ScanOptions) ([]lintapi.Violation, error) {
+           return <domain>.ScanRepoWithOptions(root, <domain>.ScanOptions{
+               ChangedFrom: opts.ChangedFrom,
+           })
+       }},
    }
    ```
 
