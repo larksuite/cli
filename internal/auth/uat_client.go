@@ -82,7 +82,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 	}
 
 	if status == "needs_refresh" {
-		refreshed, err := refreshWithLock(httpClient, opts, stored)
+		refreshed, err := refreshWithLock(httpClient, opts)
 		if err != nil {
 			return "", err
 		}
@@ -104,7 +104,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 }
 
 // refreshWithLock acquires a file lock before attempting to refresh the token.
-func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
+func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUAToken, error) {
 	key := fmt.Sprintf("%s:%s", opts.AppId, opts.UserOpenId)
 
 	// 1. Process-level lock (prevents multiple goroutines in the same process)
@@ -126,12 +126,9 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 		refreshLocks.Delete(key)
 	}()
 
-	// 2. Cross-process lock using flock
-	// We use the same underlying storage directory resolution as keychain_other.go
-	// to ensure locks are isolated properly alongside other sensitive data.
-	configDir := core.GetConfigDir()
-
-	lockDir := filepath.Join(configDir, "locks")
+	// 2. Cross-process lock using the global config directory so all
+	// workspaces sharing the same token also share the same lock.
+	lockDir := filepath.Join(core.GetBaseConfigDir(), "locks")
 	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create lock directory: %w", err)
 	}
@@ -154,21 +151,46 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 	}
 	defer fileLock.Unlock()
 
-	// 3. Double-checked locking: Check if another process has already refreshed the token
-	freshStored := GetStoredToken(opts.AppId, opts.UserOpenId)
-	if freshStored != nil {
-		status := TokenStatus(freshStored)
-		if status == "valid" {
-			// Another process refreshed it, we can just use the new token
-			if opts.ErrOut != nil {
-				fmt.Fprintf(opts.ErrOut, "[lark-cli] uat-client: token already refreshed by another process\n")
-			}
-			return freshStored, nil
+	// 3. Re-read under the global lock and use only the current generation.
+	freshStored, err := readStoredToken(opts.AppId, opts.UserOpenId)
+	if err != nil {
+		return nil, err
+	}
+	if freshStored == nil {
+		return nil, nil
+	}
+
+	switch TokenStatus(freshStored) {
+	case "valid":
+		if opts.ErrOut != nil {
+			fmt.Fprintf(opts.ErrOut, "[lark-cli] uat-client: token already refreshed by another process\n")
 		}
+		return freshStored, nil
+	case "expired":
+		retained, removed, err := removeStoredTokenIfCurrent(freshStored)
+		if err != nil {
+			return nil, err
+		}
+		if !removed {
+			return storedTokenAfterGenerationChange(retained, opts.UserOpenId)
+		}
+		if opts.ErrOut != nil {
+			fmt.Fprintf(opts.ErrOut, "[lark-cli] uat-client: refresh_token expired for %s, clearing\n", opts.UserOpenId)
+		}
+		return nil, nil
+	}
+
+	if err := ensureDirWritable(lockDir, "tmp_writetest-*"); err != nil {
+		if opts.ErrOut != nil {
+			fmt.Fprintf(opts.ErrOut,
+				"[lark-cli] [WARN] uat-client: refresh lock directory is not writable while refreshing: %v\n",
+				err)
+		}
+		return nil, err
 	}
 
 	// 4. Actually perform the refresh
-	return doRefreshToken(httpClient, opts, stored)
+	return doRefreshToken(httpClient, opts, freshStored)
 }
 
 const refreshMaxAttempts = 2
@@ -225,8 +247,13 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 
 	if time.Now().UnixMilli() >= stored.RefreshExpiresAt {
 		fmt.Fprintf(errOut, "[lark-cli] uat-client: refresh_token expired for %s, clearing\n", opts.UserOpenId)
-		if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
+		retained, removed, err := removeStoredTokenIfCurrent(stored)
+		if err != nil {
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove expired token: %v\n", err)
+			return nil, err
+		}
+		if !removed {
+			return storedTokenAfterGenerationChange(retained, opts.UserOpenId)
 		}
 		return nil, nil
 	}
@@ -269,14 +296,16 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		if problem, ok := errs.ProblemOf(result.err); ok {
 			problem.Retryable = false
 		}
-		if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
+		retained, removed, err := removeStoredTokenIfCurrent(stored)
+		if err != nil {
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
-			if _, ok := errs.ProblemOf(err); ok {
-				return nil, err
-			}
-			return nil, errs.NewInternalError(errs.SubtypeStorage,
-				"failed to remove refreshed user token for user %q: %v", opts.UserOpenId, err).
-				WithCause(err)
+			return nil, err
+		}
+		if !removed {
+			fmt.Fprintf(errOut,
+				"[lark-cli] [WARN] uat-client: stored token changed during refresh for %s, preserving current token\n",
+				opts.UserOpenId)
+			return storedTokenAfterGenerationChange(retained, opts.UserOpenId)
 		}
 		fmt.Fprintf(errOut,
 			"[lark-cli] [WARN] uat-client: refresh failed for %s, token cleared: %v\n",
@@ -464,13 +493,70 @@ func saveRefreshResponse(opts UATCallOptions, stored *StoredUAToken, response re
 		Scope:            response.Scope,
 		GrantedAt:        stored.GrantedAt,
 	}
-	if err := SetStoredToken(updated); err != nil {
-		if _, ok := errs.ProblemOf(err); ok {
-			return nil, err
+	current, saved, err := setStoredTokenIfCurrent(stored, updated)
+	if err != nil {
+		return nil, err
+	}
+	if !saved {
+		if opts.ErrOut != nil {
+			fmt.Fprintf(opts.ErrOut,
+				"[lark-cli] [WARN] uat-client: stored token changed during refresh for %s, preserving current token\n",
+				opts.UserOpenId)
 		}
-		return nil, errs.NewInternalError(errs.SubtypeStorage,
-			"failed to store refreshed user token for user %q: %v", opts.UserOpenId, err).
-			WithCause(err)
+		return storedTokenAfterGenerationChange(current, opts.UserOpenId)
 	}
 	return updated, nil
+}
+
+func storedTokenAfterGenerationChange(current *StoredUAToken, userOpenId string) (*StoredUAToken, error) {
+	if current == nil {
+		return nil, nil
+	}
+	if TokenStatus(current) == "valid" {
+		return current, nil
+	}
+	return nil, errs.NewInternalError(errs.SubtypeStorage,
+		"stored refresh token changed while refreshing user %q", userOpenId).
+		WithRetryable().
+		WithHint("retry the command")
+}
+
+func ensureDirWritable(dir, tempPrefix string) error {
+	if dir == "" {
+		return nil
+	}
+
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
+		return errs.NewInternalError(errs.SubtypeFileIO,
+			"failed to access refresh lock directory %q", dir).
+			WithCause(err).
+			WithHint("If running in a sandbox or read-only workspace, grant write access for this directory and retry.")
+	}
+
+	tmp, err := vfs.CreateTemp(dir, tempPrefix)
+	if err != nil {
+		return errs.NewInternalError(errs.SubtypeFileIO,
+			"failed to create temporary file in refresh lock directory %q", dir).
+			WithCause(err).
+			WithHint("If running in a sandbox or read-only workspace, grant write access for this directory and retry.")
+	}
+
+	tmpName := tmp.Name()
+	closeErr := tmp.Close()
+	if removeErr := vfs.Remove(tmpName); removeErr != nil {
+		err := fmt.Errorf("%v", removeErr)
+		if closeErr != nil {
+			err = fmt.Errorf("%v; also failed to close temp file: %v", removeErr, closeErr)
+		}
+		return errs.NewInternalError(errs.SubtypeFileIO,
+			"failed to clean up refresh lock write-check file %q", tmpName).
+			WithCause(err)
+	}
+	if closeErr != nil {
+		return errs.NewInternalError(errs.SubtypeFileIO,
+			"failed to close refresh lock write-check file %q", tmpName).
+			WithCause(closeErr)
+	}
+
+	return nil
 }
