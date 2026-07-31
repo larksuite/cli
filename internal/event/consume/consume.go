@@ -10,13 +10,12 @@ import (
 	"io"
 	"os"
 	"slices"
-	"sort"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/protocol"
 	"github.com/larksuite/cli/internal/event/transport"
 )
@@ -26,12 +25,17 @@ type Options struct {
 	// Def is the resolved declaration for EventKey. The caller resolves it
 	// from the compiled catalog; this package validates and consumes it but
 	// never looks anything up itself.
-	Def             *event.KeyDefinition
-	Params          map[string]string
-	JQExpr          string
-	Quiet           bool
-	OutputDir       string
-	Runtime         event.APIClient
+	Def       *event.KeyDefinition
+	Params    map[string]string
+	JQExpr    string
+	Quiet     bool
+	OutputDir string
+	Runtime   event.APIClient
+	// Prepare, when set, replaces the declaration's PreConsume hook as the
+	// preparation to run when this consumer is first for its scope. The
+	// application layer injects it so the strategy that was decided is the
+	// strategy that executes; when nil, the declaration's own hook runs.
+	Prepare         func(ctx context.Context) (func() error, error)
 	Out             io.Writer // nil falls back to os.Stdout
 	ErrOut          io.Writer
 	RemoteAPIClient APIClient // nil disables remote-connection preflight
@@ -119,12 +123,19 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 		return capErr
 	}
 
+	prepare := opts.Prepare
+	if prepare == nil && keyDef.PreConsume != nil {
+		prepare = func(ctx context.Context) (func() error, error) {
+			return keyDef.PreConsume(ctx, opts.Runtime, opts.Params)
+		}
+	}
+
 	var cleanup func() error
-	if ack.FirstForKey && keyDef.PreConsume != nil {
+	if ack.FirstForKey && prepare != nil {
 		if !opts.Quiet {
 			fmt.Fprintf(errOut, "[event] running pre-consume setup...\n")
 		}
-		cleanup, err = keyDef.PreConsume(ctx, opts.Runtime, opts.Params)
+		cleanup, err = prepare(ctx)
 		if err != nil {
 			if _, ok := errs.ProblemOf(err); ok {
 				return err
@@ -216,44 +227,7 @@ func truncateDuration(d time.Duration) time.Duration {
 }
 
 func validateParams(def *event.KeyDefinition, params map[string]string) error {
-	for _, p := range def.Params {
-		if _, ok := params[p.Name]; !ok && p.Default != "" {
-			params[p.Name] = p.Default
-		}
-	}
-	for _, p := range def.Params {
-		if p.Required {
-			if _, ok := params[p.Name]; !ok {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument,
-					"required param %q missing for EventKey %s", p.Name, def.Key).
-					WithParam("--param").
-					WithHint("pass it as --param %s=<value>; run `lark-cli event schema %s` for details", p.Name, def.Key)
-			}
-		}
-	}
-	known := make(map[string]bool, len(def.Params))
-	validNames := make([]string, 0, len(def.Params))
-	for _, p := range def.Params {
-		known[p.Name] = true
-		validNames = append(validNames, p.Name)
-	}
-	sort.Strings(validNames)
-	for k := range params {
-		if known[k] {
-			continue
-		}
-		if len(validNames) == 0 {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"unknown param %q: EventKey %s accepts no params", k, def.Key).
-				WithParam("--param").
-				WithHint("run `lark-cli event schema %s` for details", def.Key)
-		}
-		return errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"unknown param %q for EventKey %s. valid params: %s", k, def.Key, strings.Join(validNames, ", ")).
-			WithParam("--param").
-			WithHint("run `lark-cli event schema %s` for details", def.Key)
-	}
-	return nil
+	return catalog.ValidateParams(def, params)
 }
 
 func checkMaxEvents(opts Options, emitted *atomic.Int64) bool {
