@@ -24,10 +24,10 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 	appconsume "github.com/larksuite/cli/internal/event/application/consume"
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/consume"
-	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 )

@@ -14,9 +14,9 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
+	"github.com/larksuite/cli/internal/event/catalog"
 )
 
 // fakeRT is a minimal event.APIClient mock.

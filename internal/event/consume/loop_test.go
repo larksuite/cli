@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/model"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
+	"github.com/larksuite/cli/internal/event/model"
 )
 
 func echoKeyDef(key string) *event.KeyDefinition {

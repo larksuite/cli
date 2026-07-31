@@ -9,11 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/larksuite/cli/internal/event/model"
 	"io"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/internal/event/model"
 )
 
 // Every NewXxx helper must set the Type discriminator (Decode rejects messages without it).

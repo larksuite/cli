@@ -18,8 +18,8 @@ import (
 
 	"github.com/itchyny/gojq"
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/processing"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // consumeLoop reads events and dispatches to workers; cancels on terminal sink errors.

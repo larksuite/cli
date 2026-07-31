@@ -18,8 +18,8 @@ import (
 	"github.com/larksuite/cli/errs"
 	event "github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
-	"github.com/larksuite/cli/internal/event/testutil"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
+	"github.com/larksuite/cli/internal/event/testutil"
 )
 
 // legacyBusAcks replays, byte for byte, the hello_ack an older bus would send:

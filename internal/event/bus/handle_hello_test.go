@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
+	"github.com/larksuite/cli/internal/event/catalog"
 )
 
 // compileBusTestSnapshot compiles synthetic declarations into the snapshot a

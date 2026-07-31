@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/model"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
+	"github.com/larksuite/cli/internal/event/model"
 )
 
 // checkLastForKey must skip non-ack frames buffered before PreShutdownAck.

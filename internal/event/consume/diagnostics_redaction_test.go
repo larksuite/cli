@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	event "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/model"
 	"github.com/larksuite/cli/internal/event/processing"
-	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 // assertNoPayloadBytes fails when a diagnostic line carries payload content.
