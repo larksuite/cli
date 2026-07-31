@@ -669,9 +669,6 @@ func mergeTriageStringFilter(current *string, canonical, value string) error {
 
 func mergeTriageUnreadFilter(filter *triageFilter, isUnread bool, source string) error {
 	if !isUnread {
-		if source == "is_unread" {
-			return nil
-		}
 		return unsupportedTriageReadFilterError()
 	}
 	filter.IsUnread = &isUnread

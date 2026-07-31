@@ -245,8 +245,6 @@ func TestParseTriageFilterNormalizesReadStatusInputs(t *testing.T) {
 		{name: "json is_unread true means unread", raw: `{"is_unread":true}`, want: boolPtr(true)},
 		{name: "alias is_unread means unread", raw: `is_unread`, want: boolPtr(true)},
 		{name: "kv is_read false means unread", raw: `is_read=false`, want: boolPtr(true)},
-		{name: "json is_unread false is ignored", raw: `{"is_unread":false}`, want: nil},
-		{name: "kv is_unread false is ignored", raw: `is_unread=false`, want: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -267,7 +265,9 @@ func TestParseTriageFilterNormalizesReadStatusInputs(t *testing.T) {
 func TestParseTriageFilterRejectsReadStatusInputs(t *testing.T) {
 	tests := []string{
 		`{"is_read":true}`,
+		`{"is_unread":false}`,
 		`is_read`,
+		`is_unread=false`,
 	}
 	for _, raw := range tests {
 		t.Run(raw, func(t *testing.T) {
