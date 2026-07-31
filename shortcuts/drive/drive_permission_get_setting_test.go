@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -84,6 +85,12 @@ func TestDrivePermissionGetSettingSpecResolvesTargets(t *testing.T) {
 			wantType: "mindnote",
 		},
 		{
+			name:     "canonical mindnote URL",
+			token:    "https://example.feishu.cn/mindnote/mndTok",
+			wantTok:  "mndTok",
+			wantType: "mindnote",
+		},
+		{
 			name:     "bare folder token",
 			token:    " fldTok ",
 			docType:  " folder ",
@@ -139,6 +146,57 @@ func TestDrivePermissionGetSettingSpecResolvesTargets(t *testing.T) {
 	}
 }
 
+func TestDrivePermissionGetSettingResourceKindsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	const token = "resourceRoundTripTok"
+	for _, resourceKind := range drivePermissionGetSettingResourceKinds {
+		kind := resourceKind
+		t.Run(kind.Type, func(t *testing.T) {
+			t.Parallel()
+
+			bareRuntime := newDrivePermissionGetSettingRuntime(t, token, kind.Type)
+			bareSpec, err := readDrivePermissionGetSettingSpec(bareRuntime)
+			if err != nil {
+				t.Fatalf("read bare-token spec: %v", err)
+			}
+			resourceURL := bareSpec.url(bareRuntime)
+			if resourceURL == "" {
+				t.Fatalf("resource URL is empty for allowed type %q", kind.Type)
+			}
+
+			urlRuntime := newDrivePermissionGetSettingRuntime(t, resourceURL, "")
+			urlSpec, err := readDrivePermissionGetSettingSpec(urlRuntime)
+			if err != nil {
+				t.Fatalf("read generated URL spec %q: %v", resourceURL, err)
+			}
+			if urlSpec.Token != token || urlSpec.Type != kind.Type {
+				t.Fatalf(
+					"generated URL resolved to token/type %q/%q, want %q/%q",
+					urlSpec.Token,
+					urlSpec.Type,
+					token,
+					kind.Type,
+				)
+			}
+		})
+	}
+}
+
+func TestDrivePermissionGetSettingResourceURLUsesConfiguredBrand(t *testing.T) {
+	t.Parallel()
+
+	runtime := newDrivePermissionGetSettingRuntime(t, "appMetaTok", "apps")
+	runtime.Config.Brand = core.BrandLark
+	spec, err := readDrivePermissionGetSettingSpec(runtime)
+	if err != nil {
+		t.Fatalf("read spec: %v", err)
+	}
+	if got, want := spec.url(runtime), "https://www.larksuite.com/page/appMetaTok"; got != want {
+		t.Fatalf("resource URL = %q, want %q", got, want)
+	}
+}
+
 func TestDrivePermissionGetSettingSpecValidationErrorsAreTyped(t *testing.T) {
 	t.Parallel()
 
@@ -159,6 +217,26 @@ func TestDrivePermissionGetSettingSpecValidationErrorsAreTyped(t *testing.T) {
 			token:       "doxTok",
 			wantParam:   "--type",
 			wantMessage: "--type is required",
+		},
+		{
+			name:        "bare token contains path separator",
+			token:       "doxTok/other",
+			docType:     "docx",
+			wantParam:   "--token",
+			wantMessage: "single path segment",
+		},
+		{
+			name:        "bare dot token",
+			token:       ".",
+			docType:     "docx",
+			wantParam:   "--token",
+			wantMessage: "non-dot single path segment",
+		},
+		{
+			name:        "non-HTTP URL",
+			token:       "ftp://example.feishu.cn/docx/doxTok",
+			wantParam:   "--token",
+			wantMessage: "unsupported --token URL",
 		},
 		{
 			name:        "unsupported URL",
@@ -431,6 +509,62 @@ func TestDrivePermissionGetSettingExecutePrettyFormatIncludesPermissionPublic(t 
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("pretty output missing %q:\n%s", want, stdout.String())
 		}
+	}
+}
+
+func TestDrivePermissionGetSettingExecutePrettyFormatIncludesResourceURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		token   string
+		docType string
+		wantURL string
+	}{
+		{
+			name:    "apps",
+			token:   "appMetaTok",
+			docType: "apps",
+			wantURL: "https://www.feishu.cn/page/appMetaTok",
+		},
+		{
+			name:    "minutes",
+			token:   "obcnMinuteTok",
+			docType: "minutes",
+			wantURL: "https://www.feishu.cn/minutes/obcnMinuteTok",
+		},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/drive/v2/permissions/" + tt.token + "/public?type=" + tt.docType,
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]interface{}{
+						"permission_public": map[string]interface{}{
+							"link_share_entity": "closed",
+						},
+					},
+				},
+			})
+
+			err := mountAndRunDrive(t, DrivePermissionGetSetting, []string{
+				"+permission-get-setting",
+				"--token", tt.token,
+				"--type", tt.docType,
+				"--format", "pretty",
+				"--as", "bot",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.Contains(stdout.String(), "URL:   "+tt.wantURL) {
+				t.Fatalf("pretty output missing resource URL %q:\n%s", tt.wantURL, stdout.String())
+			}
+		})
 	}
 }
 

@@ -134,15 +134,47 @@ func TestResolvePermApplyTarget_RejectsAppsMarkerOutsidePath(t *testing.T) {
 	}
 }
 
-func TestResolvePermApplyTarget_ExplicitTypeOverridesURL(t *testing.T) {
+func TestResolvePermApplyTarget_RejectsConflictingURLType(t *testing.T) {
 	t.Parallel()
-	// Even though the URL marker is /docx/, an explicit --type wins.
-	token, docType, err := resolvePermApplyTarget("https://example.feishu.cn/docx/doxTok123", "wiki")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	_, _, err := resolvePermApplyTarget("https://example.feishu.cn/docx/doxTok123", "wiki")
+	if err == nil || !strings.Contains(err.Error(), "conflicts with URL path type") {
+		t.Fatalf("expected URL type conflict error, got: %v", err)
 	}
-	if token != "doxTok123" || docType != "wiki" {
-		t.Fatalf("got (%q,%q), want (doxTok123,wiki)", token, docType)
+}
+
+func TestResolvePermApplyTarget_RejectsUnsafeOrAmbiguousTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		raw   string
+		type_ string
+	}{
+		{"bare traversal token", "..", "docx"},
+		{"bare dot token", ".", "docx"},
+		{"URL traversal token", "https://example.feishu.cn/docx/../victim", ""},
+		{"marker outside resource root", "https://example.feishu.cn/share/docx/doxUnexpected", ""},
+		{"encoded path separator", "https://example.feishu.cn/docx/doxTarget%2Fother", ""},
+		{"encoded query separator", "https://example.feishu.cn/docx/doxTarget%3Fother", ""},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, err := resolvePermApplyTarget(tt.raw, tt.type_)
+			if err == nil {
+				t.Fatalf("resolvePermApplyTarget(%q, %q) unexpectedly succeeded", tt.raw, tt.type_)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--token" {
+				t.Fatalf("error param = %q, want --token", validationErr.Param)
+			}
+		})
 	}
 }
 
@@ -291,6 +323,11 @@ func TestDriveApplyPermission_ExecuteNotApplicableHint(t *testing.T) {
 		Status: 400,
 		Body: map[string]interface{}{
 			"code": 1063007, "msg": "request not applicable",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "server says requests are disabled"},
+				},
+			},
 		},
 	})
 
@@ -306,6 +343,18 @@ func TestDriveApplyPermission_ExecuteNotApplicableHint(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not applicable") {
 		t.Fatalf("expected surfaced server message, got: %v", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(error) ok = false, error = %T %v", err, err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeInvalidParameters || problem.Code != 1063007 {
+		t.Fatalf("problem = %+v, want api/invalid_parameters code 1063007", problem)
+	}
+	for _, want := range []string{"server says requests are disabled", "does not accept a permission-apply request", "contact the owner"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint missing %q: %q", want, problem.Hint)
+		}
 	}
 }
 
@@ -329,5 +378,18 @@ func TestDriveApplyPermission_ExecuteRateLimitHint(t *testing.T) {
 	}, f, nil)
 	if err == nil {
 		t.Fatal("expected error for 1063006")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(error) ok = false, error = %T %v", err, err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 1063006 {
+		t.Fatalf("problem = %+v, want api/rate_limit code 1063006", problem)
+	}
+	if problem.Retryable {
+		t.Fatalf("problem.Retryable = true, want false for the daily per-document quota")
+	}
+	if !strings.Contains(problem.Hint, "at most 5 times per day") {
+		t.Fatalf("hint missing daily quota guidance: %q", problem.Hint)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -21,27 +22,68 @@ type drivePermissionGetSettingSpec struct {
 	Type  string
 }
 
-var drivePermissionGetSettingTypes = []string{
-	"doc", "sheet", "file", "wiki", "bitable", "docx",
-	"mindnote", "minutes", "slides", "folder", "apps",
+type drivePermissionGetSettingResourceKind struct {
+	Type          string
+	CanonicalPath string
+	PathAliases   []string
 }
 
-var drivePermissionGetSettingURLPathToType = []struct {
-	Prefix string
-	Type   string
-}{
-	{"/drive/folder/", "folder"},
-	{"/docx/", "docx"},
-	{"/doc/", "doc"},
-	{"/sheets/", "sheet"},
-	{"/base/", "bitable"},
-	{"/bitable/", "bitable"},
-	{"/wiki/", "wiki"},
-	{"/file/", "file"},
-	{"/mindnotes/", "mindnote"},
-	{"/slides/", "slides"},
-	{"/minutes/", "minutes"},
-	{"/page/", "apps"},
+var drivePermissionGetSettingResourceKinds = []drivePermissionGetSettingResourceKind{
+	{Type: "doc", CanonicalPath: "/doc/"},
+	{Type: "sheet", CanonicalPath: "/sheets/"},
+	{Type: "file", CanonicalPath: "/file/"},
+	{Type: "wiki", CanonicalPath: "/wiki/"},
+	{Type: "bitable", CanonicalPath: "/base/", PathAliases: []string{"/bitable/"}},
+	{Type: "docx", CanonicalPath: "/docx/"},
+	{Type: "mindnote", CanonicalPath: "/mindnote/", PathAliases: []string{"/mindnotes/"}},
+	{Type: "minutes", CanonicalPath: "/minutes/"},
+	{Type: "slides", CanonicalPath: "/slides/"},
+	{Type: "folder", CanonicalPath: "/drive/folder/"},
+	{Type: "apps", CanonicalPath: "/page/"},
+}
+
+var drivePermissionGetSettingTypes = func() []string {
+	types := make([]string, 0, len(drivePermissionGetSettingResourceKinds))
+	for _, resourceKind := range drivePermissionGetSettingResourceKinds {
+		types = append(types, resourceKind.Type)
+	}
+	return types
+}()
+
+func findDrivePermissionGetSettingResourceKind(docType string) (drivePermissionGetSettingResourceKind, bool) {
+	for _, resourceKind := range drivePermissionGetSettingResourceKinds {
+		if docType == resourceKind.Type {
+			return resourceKind, true
+		}
+	}
+	return drivePermissionGetSettingResourceKind{}, false
+}
+
+func parseDrivePermissionGetSettingResourcePath(path, prefix, docType string) (common.ResourceRef, bool) {
+	if !strings.HasPrefix(path, prefix) {
+		return common.ResourceRef{}, false
+	}
+	escapedToken := strings.TrimSuffix(path[len(prefix):], "/")
+	if escapedToken == "" || strings.Contains(escapedToken, "/") {
+		return common.ResourceRef{}, false
+	}
+	token, err := url.PathUnescape(escapedToken)
+	if err != nil || token == "" {
+		return common.ResourceRef{}, false
+	}
+	return common.ResourceRef{Type: docType, Token: token}, true
+}
+
+func parseDrivePermissionGetSettingResourceKindPath(path string, resourceKind drivePermissionGetSettingResourceKind) (common.ResourceRef, bool) {
+	if ref, ok := parseDrivePermissionGetSettingResourcePath(path, resourceKind.CanonicalPath, resourceKind.Type); ok {
+		return ref, true
+	}
+	for _, alias := range resourceKind.PathAliases {
+		if ref, ok := parseDrivePermissionGetSettingResourcePath(path, alias, resourceKind.Type); ok {
+			return ref, true
+		}
+	}
+	return common.ResourceRef{}, false
 }
 
 func readDrivePermissionGetSettingSpec(runtime *common.RuntimeContext) (drivePermissionGetSettingSpec, error) {
@@ -81,8 +123,8 @@ func readDrivePermissionGetSettingSpec(runtime *common.RuntimeContext) (drivePer
 				ref.Type,
 			).WithParam("--type")
 		}
-		if err := validate.ResourceName(ref.Token, "--token"); err != nil {
-			return drivePermissionGetSettingSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
+		if err := validateDrivePermissionGetSettingToken(ref.Token); err != nil {
+			return drivePermissionGetSettingSpec{}, err
 		}
 		return drivePermissionGetSettingSpec{Token: ref.Token, Type: ref.Type}, nil
 	}
@@ -95,53 +137,61 @@ func readDrivePermissionGetSettingSpec(runtime *common.RuntimeContext) (drivePer
 		).WithParam("--type")
 	}
 
-	if err := validate.ResourceName(rawToken, "--token"); err != nil {
-		return drivePermissionGetSettingSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
+	if err := validateDrivePermissionGetSettingToken(rawToken); err != nil {
+		return drivePermissionGetSettingSpec{}, err
 	}
 	return drivePermissionGetSettingSpec{Token: rawToken, Type: explicitType}, nil
 }
 
 func parseDrivePermissionGetSettingResourceURL(rawURL string) (common.ResourceRef, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || parsed.Hostname() == "" {
+	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return common.ResourceRef{}, false
 	}
 
-	for _, mapping := range drivePermissionGetSettingURLPathToType {
-		if !strings.HasPrefix(parsed.Path, mapping.Prefix) {
-			continue
+	for _, resourceKind := range drivePermissionGetSettingResourceKinds {
+		if ref, ok := parseDrivePermissionGetSettingResourceKindPath(parsed.EscapedPath(), resourceKind); ok {
+			return ref, true
 		}
-		token := parsed.Path[len(mapping.Prefix):]
-		token = strings.TrimRight(token, "/")
-		if idx := strings.IndexByte(token, '/'); idx >= 0 {
-			token = token[:idx]
-		}
-		token = strings.TrimSpace(token)
-		if token == "" {
-			return common.ResourceRef{}, false
-		}
-		return common.ResourceRef{Type: mapping.Type, Token: token}, true
 	}
 
 	return common.ResourceRef{}, false
 }
 
 func drivePermissionGetSettingTypeAllowed(docType string) bool {
-	for _, allowed := range drivePermissionGetSettingTypes {
-		if docType == allowed {
-			return true
-		}
-	}
-	return false
+	_, ok := findDrivePermissionGetSettingResourceKind(docType)
+	return ok
 }
 
 func (s drivePermissionGetSettingSpec) url(runtime *common.RuntimeContext) string {
-	if runtime != nil && runtime.Config != nil {
-		if u := common.BuildResourceURL(runtime.Config.Brand, s.Type, s.Token); u != "" {
-			return u
-		}
+	resourceKind, ok := findDrivePermissionGetSettingResourceKind(s.Type)
+	token := strings.TrimSpace(s.Token)
+	if !ok || token == "" {
+		return ""
 	}
-	return common.BuildResourceURL("", s.Type, s.Token)
+
+	brand := core.LarkBrand("")
+	if runtime != nil && runtime.Config != nil {
+		brand = runtime.Config.Brand
+	}
+	host := "https://www.feishu.cn"
+	if brand == core.BrandLark {
+		host = "https://www.larksuite.com"
+	}
+	return host + resourceKind.CanonicalPath + url.PathEscape(token)
+}
+
+func validateDrivePermissionGetSettingToken(token string) error {
+	if err := validate.ResourceName(token, "--token"); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
+	}
+	if token == "." || strings.Contains(token, "/") {
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--token must be a non-dot single path segment",
+		).WithParam("--token")
+	}
+	return nil
 }
 
 func (s drivePermissionGetSettingSpec) params() map[string]interface{} {

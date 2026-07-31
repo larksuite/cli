@@ -68,6 +68,26 @@ func TestDrive_PermissionGetSettingDryRun(t *testing.T) {
 			wantType: "apps",
 		},
 		{
+			name: "minutes URL infers minutes type",
+			args: []string{
+				"drive", "+permission-get-setting",
+				"--token", "https://example.feishu.cn/minutes/obcnE2E001",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v2/permissions/obcnE2E001/public",
+			wantType: "minutes",
+		},
+		{
+			name: "canonical mindnote URL infers mindnote type",
+			args: []string{
+				"drive", "+permission-get-setting",
+				"--token", "https://example.feishu.cn/mindnote/mndE2E001",
+				"--dry-run",
+			},
+			wantURL:  "/open-apis/drive/v2/permissions/mndE2E001/public",
+			wantType: "mindnote",
+		},
+		{
 			name: "bare token with explicit apps type",
 			args: []string{
 				"drive", "+permission-get-setting",
@@ -107,6 +127,31 @@ func TestDrive_PermissionGetSettingDryRun(t *testing.T) {
 				t.Fatalf("folder_token exists in dry-run output, want omitted\nstdout:\n%s", out)
 			}
 		})
+	}
+}
+
+func TestDrive_PermissionGetSettingDryRunRejectsMultiSegmentToken(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+
+	for _, args := range [][]string{
+		{"drive", "+permission-get-setting", "--token", "doxTarget/other", "--type", "docx", "--dry-run"},
+		{"drive", "+permission-get-setting", "--token", ".", "--type", "docx", "--dry-run"},
+		{"drive", "+permission-get-setting", "--token", "https://example.feishu.cn/docx/doxTarget%2Fother", "--dry-run"},
+		{"drive", "+permission-get-setting", "--token", "ftp://example.feishu.cn/docx/doxTarget", "--dry-run"},
+	} {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "bot"})
+		cancel()
+		require.NoError(t, err)
+		if result.ExitCode == 0 {
+			t.Fatalf("multi-segment token must be rejected\nstdout:\n%s", result.Stdout)
+		}
+		if combined := result.Stdout + "\n" + result.Stderr; !strings.Contains(combined, "--token") {
+			t.Fatalf("expected token validation error\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+		}
 	}
 }
 
