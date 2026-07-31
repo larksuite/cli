@@ -51,7 +51,7 @@ lark-cli mail +triage --page-size 10
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `--filter <filter>` | — | 筛选条件，支持 JSON 对象、单个 `key=value`、裸 `is_unread`（见下方字段说明） |
+| `--filter <filter>` | — | 筛选条件（见下方字段说明） |
 | `--folder <name-or-id>` | — | 文件夹名称或系统文件夹 ID 筛选；等价于设置 `filter.folder` |
 | `--folder-id <id>` | — | 明确的文件夹 ID 筛选；等价于设置 `filter.folder_id` |
 | `--is-unread` | — | 只看未读；等价于设置 `filter.is_unread=true` |
