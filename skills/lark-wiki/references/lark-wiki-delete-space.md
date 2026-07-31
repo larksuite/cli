@@ -118,12 +118,13 @@ dry-run 会展示两步调用链：
 ### 2. 只有知识库 URL（`.../wiki/<token>`）
 
 ```bash
-lark-cli wiki spaces get_node \
-  --params '{"token":"<wiki_token>"}' \
+lark-cli wiki +node-get \
+  --node-token '<wiki_url>' \
+  --as user \
   --format json
 ```
 
-读取 `data.node.space_id`。
+读取顶层 `space_id`。只有当前 CLI 不提供 `+node-get`，或必须读取 shortcut 未输出的原始字段时，才在查看 `lark-cli schema wiki.spaces.get_node` 后回退到原生命令。
 
 ### 3. 只有知识库名称
 

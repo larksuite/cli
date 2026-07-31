@@ -70,7 +70,7 @@ API 成功时返回空 `data`（仅 `code: 0, msg: "success"`），对应 CLI �
 
 ## 与 wiki URL 的关系
 
-传入 `/wiki/<node_token>` 时，shortcut 会直接用 `node_token` 作为路径参数并以 `type=wiki` 调用接口。如果需要先把 wiki 节点解析成 `obj_token`（例如想显式对底层 docx 申请），自行先调 `wiki spaces get_node` 拿 `obj_token + obj_type`，再用 bare token + `--type docx` 调本命令。
+传入 `/wiki/<node_token>` 时，shortcut 会直接用 `node_token` 作为路径参数并以 `type=wiki` 调用接口。如果需要先把 wiki 节点解析成 `obj_token`（例如想显式对底层 docx 申请），先调 `wiki +node-get --node-token '<wiki_url>' --as user --format json`，从顶层读取 `obj_token + obj_type`，再用 bare token + `--type docx` 调本命令。
 
 ## 参考
 

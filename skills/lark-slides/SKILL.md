@@ -274,10 +274,10 @@ N. 结尾页：[结尾文案]
 
 ### Wiki 链接特殊处理（关键！）
 
-知识库链接（`/wiki/TOKEN`）不能直接当 `xml_presentation_id`。直接调用原生 API 前，先查询 wiki 节点，确认 `node.obj_type == "slides"`，再用 `node.obj_token` 作为真实 presentation ID。
+知识库链接（`/wiki/TOKEN`）不能直接当 `xml_presentation_id`。直接调用原生 API 前，先用 Wiki shortcut 查询节点，确认顶层 `obj_type == "slides"`，再用顶层 `obj_token` 作为真实 presentation ID。
 
 ```bash
-lark-cli wiki spaces get_node --as user --params '{"token":"wiki_token"}'
+lark-cli wiki +node-get --node-token '<wiki_url>' --as user --format json
 ```
 
 Shortcut `+replace-slide` 和 `+media-upload` 会自动解析 `/wiki/` URL；手动调用 `xml_presentations.*` / `xml_presentation.slide.*` 时才需要自己做这一步。
