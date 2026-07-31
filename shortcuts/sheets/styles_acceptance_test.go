@@ -502,3 +502,82 @@ func TestStylesAcceptance_ResizeAndMergeCorpus(t *testing.T) {
 		}
 	})
 }
+
+// TestStylesAcceptance_FlagPathParity is property 1's missing half.
+//
+// TestStylesAcceptance_VocabularyParity walks the same flag-defs vocabulary but
+// exercises the PAYLOAD path (--styles items). The FLAG path — the flat
+// --font-color / --number-format / … flags on +cells-set-style — is a separate
+// hand-written mapping in buildCellStyleFromFlags, and a coverage run showed
+// six of its eleven branches never executed by any test. A typo there (writing
+// the wrong wire key, or reading the wrong flag) silently drops a style the
+// caller explicitly asked for: the request still succeeds, the sheet just does
+// not change. Derived from flag-defs so a new style flag is covered the moment
+// it is declared.
+func TestStylesAcceptance_FlagPathParity(t *testing.T) {
+	t.Parallel()
+	defs, err := loadFlagDefs()
+	if err != nil {
+		t.Fatalf("loadFlagDefs: %v", err)
+	}
+	spec, ok := defs["+cells-set-style"]
+	if !ok {
+		t.Fatal("no +cells-set-style flag defs")
+	}
+
+	args := []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2"}
+	want := map[string]interface{}{}
+	for _, df := range spec.Flags {
+		if df.Kind != "own" || df.Name == "range" || df.Name == "border-styles" {
+			continue // border-styles is a composite with its own structural tests
+		}
+		field := strings.ReplaceAll(df.Name, "-", "_")
+		var value string
+		switch {
+		case len(df.Enum) > 0:
+			value = df.Enum[0]
+			want[field] = value
+		case df.Type == "float64" || df.Type == "int":
+			value = "14"
+			want[field] = float64(14)
+		case df.Name == "font-family":
+			value, want[field] = "Arial", "Arial"
+		case df.Name == "number-format":
+			value, want[field] = "0.00", "0.00"
+		default:
+			value, want[field] = "#112233", "#112233"
+		}
+		args = append(args, "--"+df.Name, value)
+	}
+	if len(want) < 5 {
+		t.Fatalf("expected the flat style vocabulary, only built %d fields", len(want))
+	}
+
+	input := decodeToolInput(t, parseDryRunBody(t, CellsSetStyle, args), "set_cell_range")
+	cells, _ := input["cells"].([]interface{})
+	if len(cells) == 0 {
+		t.Fatalf("no cells in %v", input)
+	}
+	row, _ := cells[0].([]interface{})
+	cell, _ := row[0].(map[string]interface{})
+	got, _ := cell["cell_styles"].(map[string]interface{})
+	if got == nil {
+		t.Fatalf("no cell_styles emitted: %v", cell)
+	}
+	for field, expected := range want {
+		actual, present := got[field]
+		if !present {
+			t.Errorf("flag --%s produced no %q on the wire — the style is silently dropped",
+				strings.ReplaceAll(field, "_", "-"), field)
+			continue
+		}
+		if actual != expected {
+			t.Errorf("%s = %#v, want %#v", field, actual, expected)
+		}
+	}
+	for field := range got {
+		if _, expected := want[field]; !expected {
+			t.Errorf("unexpected wire field %q emitted by the flag path", field)
+		}
+	}
+}
