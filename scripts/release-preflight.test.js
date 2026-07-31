@@ -163,8 +163,8 @@ describe("validateReleaseSourcePolicy", () => {
     );
   });
 
-  it("warns but accepts a beta release tag pointing to the current main head", () => {
-    const result = validateReleaseSourcePolicy("beta", mainSha, mainSha, true);
+  it("warns but accepts a beta release tag pointing to a commit already in main", () => {
+    const result = validateReleaseSourcePolicy("beta", betaSha, mainSha, true);
 
     assert.equal(result.ok, true);
     assert.match(result.data.warning, /unintended beta version was merged into main/);

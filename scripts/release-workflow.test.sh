@@ -112,6 +112,9 @@ expect_equal(retry_steps.length, 1, "number of retry guidance steps")
 retry_step = retry_steps.first
 expect_equal(retry_step.fetch("name"), "Write retry guidance", "retry guidance step name")
 contract_error("retry guidance must write to the GitHub step summary") unless retry_step.fetch("run").include?("GITHUB_STEP_SUMMARY")
+contract_error("retry guidance must direct recoveries to failed-job retries") unless retry_step.fetch("run").include?("Re-run failed jobs")
+contract_error("retry guidance must explain Draft cleanup before a rebuild") unless retry_step.fetch("run").include?("delete the Draft, then retry build")
+contract_error("retry guidance must explain public Release cleanup after npm policy rejection") unless retry_step.fetch("run").include?("delete the public GitHub Release")
 
 signing_references = %w[
   secrets.MACOS_SIGN_P12
@@ -137,6 +140,12 @@ jobs.each do |job_name, job|
   )
 end
 
+build_steps = jobs.fetch("build-sign-notarize").fetch("steps")
+fetch_metadata_index = build_steps.index { |step| step["name"] == "Fetch build metadata" }
+prepare_key_index = build_steps.index { |step| step["name"] == "Prepare Apple notarization key" }
+contract_error("build metadata must be fetched before Apple credentials are prepared") unless fetch_metadata_index && prepare_key_index && fetch_metadata_index < prepare_key_index
+contract_error("build metadata must be fetched outside GoReleaser hooks") if goreleaser.dig("before", "hooks")&.include?("python3 scripts/fetch_meta.py")
+
 macos = jobs.fetch("verify-macos")
 expect_equal(macos.fetch("strategy").fetch("matrix").fetch("include"), [
   { "runner" => "macos-15-intel", "arch" => "amd64" },
@@ -149,7 +158,10 @@ macos_download_step = macos.fetch("steps").find { |step| step["name"] == "Downlo
 contract_error("verify-macos must download the build candidate artifact") unless macos_download_step&.fetch("uses", nil)&.start_with?("actions/download-artifact@")
 contract_error("verify-macos must not download mutable Draft Release assets") if macos_verify_run&.include?("gh release download")
 contract_error("verify-macos must verify notarization through codesign") unless macos_verify_run&.include?("--check-notarization -R='notarized'")
+contract_error("verify-macos must check Developer ID authority") unless macos_verify_run&.include?("^Authority=Developer ID Application: .+")
+contract_error("verify-macos must check the expected Team ID") unless macos_verify_run&.include?("TeamIdentifier=${MACOS_TEAM_ID}")
 contract_error("verify-macos must detect hardened runtime in CodeDirectory metadata") unless macos_verify_run&.include?("^CodeDirectory .*flags=0x")
+contract_error("verify-macos must check the signing timestamp") unless macos_verify_run&.include?("^Timestamp=.+")
 contract_error("verify-macos must match the complete release version") unless macos_verify_run&.include?("escaped_version")
 
 draft_step = jobs.fetch("create-draft-release").fetch("steps").find { |step| step["name"] == "Create or reuse Draft Release" }
@@ -162,12 +174,17 @@ contract_error("Draft Release creation must require the existing remote tag") un
 github_steps = jobs.fetch("publish-github").fetch("steps")
 github_check = github_steps.find { |step| step["name"] == "Verify Draft assets match the candidate" }
 contract_error("GitHub publication must verify Draft assets against the candidate") unless github_check&.fetch("run", nil)&.include?("release-candidate/checksums.txt")
+github_npm_guard = github_steps.find { |step| step["name"] == "Refuse GitHub publication if npm channel is newer" }
+contract_error("GitHub publication must refuse a version behind the npm channel") unless github_npm_guard&.fetch("run", nil)&.include?("compareReleaseVersions")
+contract_error("GitHub publication must query the matching npm dist-tag") unless github_npm_guard&.fetch("run", nil)&.include?("dist-tags.${dist_tag}")
 
 npm_steps = jobs.fetch("publish-npm").fetch("steps")
 pinned_npm = npm_steps.find { |step| step["name"] == "Install pinned npm" }
 contract_error("publish-npm must install npm 11.16.0 for trusted publishing") unless pinned_npm&.fetch("run", nil) == "npm install --global npm@11.16.0"
 publish_step = npm_steps.find { |step| step["name"] == "Publish or verify npm package" }
 contract_error("publish-npm must explicitly pass the candidate tarball as a local path") unless publish_step&.fetch("run", nil).include?('npm publish "./$tgz"')
+contract_error("publish-npm must publish provenance under the selected channel tag") unless publish_step&.fetch("run", nil).include?('--provenance --tag "$dist_tag"')
+contract_error("beta releases must publish under the beta dist-tag") unless publish_step&.fetch("run", nil).include?('[[ "$CHANNEL" != "beta" ]] || dist_tag=beta')
 
 action_references(workflow).each do |reference|
   contract_error("action is not pinned to a full commit SHA: #{reference}") unless reference.match?(%r{\A[^@]+@[0-9a-f]{40}\z})
@@ -189,6 +206,7 @@ expect_equal(macos_notarize.fetch("notarize"), {
   "wait" => true,
   "timeout" => "20m",
 }, "macOS notarization inputs")
+contract_error("GoReleaser must build a darwin release artifact") unless goreleaser.fetch("builds").any? { |build| build.fetch("goos").include?("darwin") }
 
 puts "release workflow contract passed"
 RUBY

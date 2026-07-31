@@ -33,8 +33,8 @@ function validateReleaseSourcePolicy(releaseChannel, sourceSha, mainSha, sourceI
   }
 
   if (releaseChannel === "beta") {
-    const warning = sourceSha === mainSha
-      ? "Beta release tag points to the current origin/main HEAD; check whether an unintended beta version was merged into main."
+    const warning = sourceInMain
+      ? "Beta release tag points to a commit already contained in origin/main; check whether an unintended beta version was merged into main."
       : null;
     return { ok: true, data: { warning } };
   }

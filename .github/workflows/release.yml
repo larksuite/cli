@@ -111,6 +111,9 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
+      - name: Fetch build metadata
+        run: python3 scripts/fetch_meta.py
+
       - name: Prepare Apple notarization key
         env:
           MACOS_NOTARY_ISSUER_ID: ${{ vars.MACOS_NOTARY_ISSUER_ID }}
@@ -348,6 +351,11 @@ jobs:
           ref: ${{ needs.preflight.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
       - name: Download release candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -375,6 +383,26 @@ jobs:
           diff --brief \
             <(find release-candidate -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name checksums.txt \) -printf '%f\n' | sort) \
             <(gh release view "$TAG" --json assets -q '.assets[].name' | sort)
+      - name: Refuse GitHub publication if npm channel is newer
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          dist_tag=latest
+          [[ "$CHANNEL" != "beta" ]] || dist_tag=beta
+          if ! current="$(npm view @larksuite/cli "dist-tags.${dist_tag}" --json | tr -d '"[:space:]')"; then
+            echo "Could not determine the npm ${dist_tag} dist-tag before GitHub publication." >&2
+            exit 1
+          fi
+          [[ -n "$current" && "$current" != "null" ]] || exit 0
+          node - "$VERSION" "$current" "$dist_tag" <<'NODE'
+          const { compareReleaseVersions } = require("./scripts/release-publish-policy");
+          const [version, current, distTag] = process.argv.slice(2);
+          if (compareReleaseVersions(current, version) >= 0) {
+            throw new Error(`npm ${distTag} already points to ${current}; retain no GitHub Release for ${version}.`);
+          }
+          NODE
       - name: Publish verified Draft Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -526,12 +554,12 @@ jobs:
             echo "| publish-npm | ${NPM_RESULT} |"
             printf '%s\n' \
               '' \
-              'Select the recovery action from the failed-step diagnosis:' \
+              'Select the recovery action from the failed-step diagnosis. If a Draft or public Release already exists, use **Re-run failed jobs**, not **Re-run all jobs**:' \
               '' \
               '- **preflight:** network or fetch failure → retry preflight. Version/tag validation failure → correct it, then create a new tag.' \
               '- **build-sign-notarize:** transient build/service failure → retry build. Code or release configuration issue → correct it, then create a new tag.' \
-              '- **create-draft-release:** GitHub Draft Release API/upload failure → retry draft; a partial Draft is verified and only missing assets are uploaded. Release-candidate inconsistency → retry build.' \
-              '- **verify-macos:** runner or network failure → retry only the failed matrix child. Checksum, signing, notarization, or runtime failure → retry build.' \
-              '- **publish-github:** GitHub publish network failure → retry GitHub publish. Install issue → retry build. Tag/assets inconsistency → stop and publish a new version.' \
-              '- **publish-npm:** network failure or uncertain publish outcome → retry npm only after verifying whether that version already exists. Integrity mismatch → publish a new version.'
+              '- **create-draft-release:** GitHub Draft Release API/upload failure → retry draft; a partial Draft is verified and only missing assets are uploaded. Release-candidate inconsistency → delete the Draft, then retry build.' \
+              '- **verify-macos:** runner or network failure → retry only the failed matrix child. Checksum, signing, notarization, or runtime failure → delete the Draft, then retry build.' \
+              '- **publish-github:** GitHub publish network failure → retry GitHub publish. If the npm channel is already newer, delete the retained Draft Release and publish a higher version. Install issue → delete the Draft, then retry build. Tag/assets inconsistency → stop and publish a new version.' \
+              '- **publish-npm:** network failure or uncertain publish outcome → retry npm only after verifying whether that version already exists. Integrity mismatch → publish a new version. If the npm channel is already newer, delete the public GitHub Release and publish a higher version.'
           } >> "$GITHUB_STEP_SUMMARY"

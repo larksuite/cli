@@ -1,9 +1,5 @@
 version: 2
 
-before:
-  hooks:
-    - python3 scripts/fetch_meta.py
-
 builds:
   - id: lark-cli
     binary: lark-cli
