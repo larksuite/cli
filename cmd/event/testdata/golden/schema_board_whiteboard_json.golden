@@ -9,7 +9,8 @@
       "name": "whiteboard_id",
       "type": "string",
       "required": true,
-      "description": "Whiteboard id to subscribe; subscription is per-whiteboard."
+      "description": "Whiteboard id to subscribe; subscription is per-whiteboard.",
+      "subscription_key": true
     }
   ],
   "schema": {

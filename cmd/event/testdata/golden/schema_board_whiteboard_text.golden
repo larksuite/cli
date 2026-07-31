@@ -11,7 +11,7 @@ Required Console Events (must be enabled in developer console):
 
 Parameters:
   NAME           TYPE    REQUIRED  SUB-KEY  DEFAULT  DESCRIPTION
-  whiteboard_id  string  yes       no       -        Whiteboard id to subscribe; subscription is per-whiteboard.
+  whiteboard_id  string  yes       yes      -        Whiteboard id to subscribe; subscription is per-whiteboard.
 
 Output Schema:
   {
