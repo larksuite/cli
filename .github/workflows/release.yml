@@ -30,6 +30,7 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.14.0'
+          package-manager-cache: false
 
       - name: Refuse to rebuild a published release
         env:
@@ -332,7 +333,8 @@ jobs:
           grep -Eq '^CodeDirectory .*flags=0x[0-9A-Fa-f]+[(][^)]*runtime[^)]*[)]' <<<"$details"
           grep -Eq '^Timestamp=.+' <<<"$details"
           codesign --verify --strict --verbose=4 --check-notarization -R='notarized' "$binary"
-          "$binary" --version | grep -Fq "$VERSION"
+          escaped_version="${VERSION//./\\.}"
+          "$binary" --version | grep -Eq "(^|[^0-9A-Za-z.])${escaped_version}([^0-9A-Za-z.]|$)"
 
   publish-github:
     needs: [preflight, create-draft-release, verify-macos]

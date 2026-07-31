@@ -10,13 +10,13 @@ ruby -ropen3 -ryaml <<'RUBY'
 workflow = YAML.load_file(".github/workflows/release.yml")
 goreleaser = YAML.load_file(".goreleaser.yml")
 
-def fail(message)
+def contract_error(message)
   abort("release workflow contract: #{message}")
 end
 
 def expect_equal(actual, expected, description)
   return if actual == expected
-  fail("#{description}; expected #{expected.inspect}, got #{actual.inspect}")
+  contract_error("#{description}; expected #{expected.inspect}, got #{actual.inspect}")
 end
 
 def scalar_values(value)
@@ -45,7 +45,7 @@ jobs.each do |job_name, job|
     next unless run.is_a?(String)
 
     _stdout, stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    fail("#{job_name}/#{step["name"]} has invalid bash syntax: #{stderr}") unless status.success?
+    contract_error("#{job_name}/#{step["name"]} has invalid bash syntax: #{stderr}") unless status.success?
   end
 end
 
@@ -95,7 +95,7 @@ expected_timeouts.each do |job_name, timeout|
 end
 
 expect_equal(jobs.fetch("build-sign-notarize").fetch("environment"), "npm-production", "signing approval environment")
-fail("publish-npm must not request a second Environment approval") if jobs.fetch("publish-npm").key?("environment")
+contract_error("publish-npm must not request a second Environment approval") if jobs.fetch("publish-npm").key?("environment")
 expect_equal(jobs.fetch("publish-npm").fetch("concurrency"), {
   "group" => "npm-release-${{ needs.preflight.outputs.channel }}",
   "queue" => "max",
@@ -111,7 +111,7 @@ retry_steps = retry_guidance.fetch("steps")
 expect_equal(retry_steps.length, 1, "number of retry guidance steps")
 retry_step = retry_steps.first
 expect_equal(retry_step.fetch("name"), "Write retry guidance", "retry guidance step name")
-fail("retry guidance must write to the GitHub step summary") unless retry_step.fetch("run").include?("GITHUB_STEP_SUMMARY")
+contract_error("retry guidance must write to the GitHub step summary") unless retry_step.fetch("run").include?("GITHUB_STEP_SUMMARY")
 
 signing_references = %w[
   secrets.MACOS_SIGN_P12
@@ -146,35 +146,37 @@ expect_equal(macos.fetch("runs-on"), "${{ matrix.runner }}", "macOS matrix runne
 macos_verify_step = macos.fetch("steps").find { |step| step["name"] == "Verify notarized macOS binary" }
 macos_verify_run = macos_verify_step&.fetch("run", nil)
 macos_download_step = macos.fetch("steps").find { |step| step["name"] == "Download release candidate" }
-fail("verify-macos must download the build candidate artifact") unless macos_download_step&.fetch("uses", nil)&.start_with?("actions/download-artifact@")
-fail("verify-macos must not download mutable Draft Release assets") if macos_verify_run&.include?("gh release download")
-fail("verify-macos must verify notarization through codesign") unless macos_verify_run&.include?("--check-notarization -R='notarized'")
-fail("verify-macos must detect hardened runtime in CodeDirectory metadata") unless macos_verify_run&.include?("^CodeDirectory .*flags=0x")
+contract_error("verify-macos must download the build candidate artifact") unless macos_download_step&.fetch("uses", nil)&.start_with?("actions/download-artifact@")
+contract_error("verify-macos must not download mutable Draft Release assets") if macos_verify_run&.include?("gh release download")
+contract_error("verify-macos must verify notarization through codesign") unless macos_verify_run&.include?("--check-notarization -R='notarized'")
+contract_error("verify-macos must detect hardened runtime in CodeDirectory metadata") unless macos_verify_run&.include?("^CodeDirectory .*flags=0x")
+contract_error("verify-macos must match the complete release version") unless macos_verify_run&.include?("escaped_version")
 
 draft_step = jobs.fetch("create-draft-release").fetch("steps").find { |step| step["name"] == "Create or reuse Draft Release" }
 draft_run = draft_step&.fetch("run", nil)
-fail("Draft Release creation must write generated release notes") unless draft_run&.include?("--notes-file")
-fail("Draft Release reuse must validate target commit and prerelease state") unless draft_run&.include?("targetCommitish") && draft_run.include?("isPrerelease")
-fail("Draft Release creation must target the validated source commit") unless draft_run&.include?("--target \"$SOURCE_SHA\"")
-fail("Draft Release creation must require the existing remote tag") unless draft_run&.include?("--verify-tag")
+contract_error("Draft Release creation must write generated release notes") unless draft_run&.include?("--notes-file")
+contract_error("Draft Release reuse must validate target commit and prerelease state") unless draft_run&.include?("targetCommitish") && draft_run.include?("isPrerelease")
+contract_error("Draft Release creation must target the validated source commit") unless draft_run&.include?("--target \"$SOURCE_SHA\"")
+contract_error("Draft Release creation must require the existing remote tag") unless draft_run&.include?("--verify-tag")
 
 github_steps = jobs.fetch("publish-github").fetch("steps")
 github_check = github_steps.find { |step| step["name"] == "Verify Draft assets match the candidate" }
-fail("GitHub publication must verify Draft assets against the candidate") unless github_check&.fetch("run", nil)&.include?("release-candidate/checksums.txt")
+contract_error("GitHub publication must verify Draft assets against the candidate") unless github_check&.fetch("run", nil)&.include?("release-candidate/checksums.txt")
 
 npm_steps = jobs.fetch("publish-npm").fetch("steps")
 pinned_npm = npm_steps.find { |step| step["name"] == "Install pinned npm" }
-fail("publish-npm must install npm 11.16.0 for trusted publishing") unless pinned_npm&.fetch("run", nil) == "npm install --global npm@11.16.0"
+contract_error("publish-npm must install npm 11.16.0 for trusted publishing") unless pinned_npm&.fetch("run", nil) == "npm install --global npm@11.16.0"
 publish_step = npm_steps.find { |step| step["name"] == "Publish or verify npm package" }
-fail("publish-npm must explicitly pass the candidate tarball as a local path") unless publish_step&.fetch("run", nil).include?('npm publish "./$tgz"')
+contract_error("publish-npm must explicitly pass the candidate tarball as a local path") unless publish_step&.fetch("run", nil).include?('npm publish "./$tgz"')
 
 action_references(workflow).each do |reference|
-  fail("action is not pinned to a full commit SHA: #{reference}") unless reference.match?(%r{\A[^@]+@[0-9a-f]{40}\z})
+  contract_error("action is not pinned to a full commit SHA: #{reference}") unless reference.match?(%r{\A[^@]+@[0-9a-f]{40}\z})
 end
 
 notarize = goreleaser.fetch("notarize").fetch("macos")
 expect_equal(notarize.length, 1, "number of macOS notarization configurations")
 macos_notarize = notarize.first
+expect_equal(macos_notarize.fetch("enabled"), '{{ isEnvSet "MACOS_SIGN_P12" }}', "macOS notarization enablement")
 expect_equal(macos_notarize.fetch("ids"), ["lark-cli"], "notarized build IDs")
 expect_equal(macos_notarize.fetch("sign"), {
   "certificate" => "{{ .Env.MACOS_SIGN_P12 }}",
