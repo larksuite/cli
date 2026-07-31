@@ -19,7 +19,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/busdiscover"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/busdiscover"
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
