@@ -18,6 +18,7 @@ import (
 
 	"github.com/itchyny/gojq"
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
@@ -199,9 +200,18 @@ func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *e
 
 // processAndOutput returns (wrote, err); err non-nil only for sink.Write failures.
 func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *protocol.Event, opts Options, sink Sink, jqCode *gojq.Code) (bool, error) {
-	raw := &event.RawEvent{
-		EventType: evt.EventType,
-		Payload:   evt.Payload,
+	raw := restoreCanonicalEvent(evt)
+
+	// Validate before any domain work: a payload header that contradicts the
+	// canonical metadata means the two sources of truth diverged somewhere on
+	// the delivery path — deliver neither. The diagnostic names identity
+	// facts only; payload content never reaches stderr.
+	if field := checkCanonicalConflict(raw); field != "" {
+		if !opts.Quiet {
+			fmt.Fprintf(opts.ErrOut, "WARN: event %s (%s) dropped: payload header conflicts with canonical metadata (field=%s)\n",
+				raw.EventID, raw.EventType, field)
+		}
+		return false, nil
 	}
 
 	// Synchronous Match filter runs before any work (Process / sink write).
@@ -216,7 +226,12 @@ func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *pro
 		result, err = keyDef.Process(ctx, opts.Runtime, raw, opts.Params)
 		if err != nil {
 			if !opts.Quiet {
-				fmt.Fprintf(opts.ErrOut, "WARN: Process error: %v\n", err)
+				if processing.IsDropMalformed(err) {
+					fmt.Fprintf(opts.ErrOut, "WARN: event %s (%s) dropped: malformed payload\n",
+						raw.EventID, raw.EventType)
+				} else {
+					fmt.Fprintf(opts.ErrOut, "WARN: Process error: %v\n", err)
+				}
 			}
 			return false, nil
 		}
@@ -245,6 +260,28 @@ func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *pro
 		return false, err
 	}
 	return true, nil
+}
+
+// restoreCanonicalEvent rebuilds the canonical event from the wire frame in
+// full. Every fact the ingress parsed must survive into the domain hooks —
+// restoring only a subset is how processors historically ended up re-parsing
+// the payload header as a second source of truth.
+func restoreCanonicalEvent(evt *protocol.Event) *event.RawEvent {
+	var observed time.Time
+	if evt.ObservedAt != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, evt.ObservedAt); err == nil {
+			observed = parsed
+		}
+	}
+	return &event.RawEvent{
+		EventID:    evt.EventID,
+		EventType:  evt.EventType,
+		SourceTime: evt.SourceTime,
+		AppID:      evt.AppID,
+		TenantKey:  evt.TenantKey,
+		Payload:    evt.Payload,
+		Timestamp:  observed,
+	}
 }
 
 // isTerminalSinkError reports if the output channel is permanently broken (EPIPE/ErrClosed).
