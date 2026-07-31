@@ -202,13 +202,17 @@ func printIndentedJSON(out io.Writer, raw json.RawMessage) {
 	fmt.Fprintf(out, "  %s\n", string(formatted))
 }
 
+// schemaPayload is the JSON shape of `event schema --json`. It is a named
+// type (not a function-local literal) so the render contract test can walk
+// its fields and reject accidental additions to the public output.
+type schemaPayload struct {
+	*eventlib.KeyDefinition
+	ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
+	JQRootPath     string          `json:"jq_root_path,omitempty"`
+}
+
 // writeSchemaJSON emits the EventKey definition plus resolved schema; jq_root_path tells callers whether fields live at `.` or `.event`.
 func writeSchemaJSON(f *cmdutil.Factory, def *eventlib.KeyDefinition) error {
-	type payload struct {
-		*eventlib.KeyDefinition
-		ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
-		JQRootPath     string          `json:"jq_root_path,omitempty"`
-	}
 	resolved, _, err := resolveSchemaJSON(def)
 	if err != nil {
 		return err
@@ -222,7 +226,7 @@ func writeSchemaJSON(f *cmdutil.Factory, def *eventlib.KeyDefinition) error {
 			jqRootPath = ".event"
 		}
 	}
-	output.PrintJson(f.IOStreams.Out, payload{
+	output.PrintJson(f.IOStreams.Out, schemaPayload{
 		KeyDefinition:  def,
 		ResolvedSchema: resolved,
 		JQRootPath:     jqRootPath,

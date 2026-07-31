@@ -104,18 +104,22 @@ func runList(f *cmdutil.Factory, asJSON bool) error {
 	return nil
 }
 
+// listRow is the JSON shape of one `event list --json` row. It is a named
+// type (not a function-local literal) so the render contract test can walk
+// its fields and reject accidental additions to the public output.
+type listRow struct {
+	*eventlib.KeyDefinition
+	ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
+}
+
 func writeListJSON(f *cmdutil.Factory, all []*eventlib.KeyDefinition) error {
-	type row struct {
-		*eventlib.KeyDefinition
-		ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
-	}
-	rows := make([]row, len(all))
+	rows := make([]listRow, len(all))
 	for i, def := range all {
 		resolved, _, err := resolveSchemaJSON(def)
 		if err != nil {
 			return err
 		}
-		rows[i] = row{KeyDefinition: def, ResolvedSchema: resolved}
+		rows[i] = listRow{KeyDefinition: def, ResolvedSchema: resolved}
 	}
 	output.PrintJson(f.IOStreams.Out, rows)
 	return nil
