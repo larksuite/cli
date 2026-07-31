@@ -447,7 +447,7 @@ lark-cli sheets +cells-set --spreadsheet-token shtXXX --sheet-id "$SID" \
 
 > 中间想跳过的 cell 用空对象 `{}` 占位（底层语义为"保留原值不变"），`--cells` 维度仍须与 `--range` 完全一致。例：`--range A1:A5 --cells '[[{"value":1}],[{}],[{}],[{}],[{"value":5}]]'` 只写 A1 和 A5。
 >
-> 跨多个不连续区域散点写入（如 `D2` + `F7` + `J15`）不属于 `+cells-set` 的能力范围——请用 `+batch-update` 把多次 `+cells-set` 打包成单次批量请求（fail-fast、不回滚）。
+> 跨多个不连续区域散点写入（如 `D2` + `F7` + `J15`）超出单次 `--range` + `--cells` 的范围，但**仍在 `+cells-set` 之内**：用本命令的 `--writes` 复数形态一次批量交付（每项 `{sheet_name, range, cells}`，可跨 sheet，见上方「多个不连续区域写入」）。**不要为此拼 `+batch-update` 的 `--operations`**——那是给跨类型、有顺序依赖的操作链用的。
 
 ### `+cells-set-style`
 
