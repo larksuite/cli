@@ -1,0 +1,89 @@
+Key:         board.whiteboard.updated_v1
+Description: Pushed when the whiteboard content is updated.
+Event:       board.whiteboard.updated_v1
+Pre-consume: yes
+
+Required Scopes:
+  - board:whiteboard:node:read
+
+Required Console Events (must be enabled in developer console):
+  - board.whiteboard.updated_v1
+
+Parameters:
+  NAME           TYPE    REQUIRED  SUB-KEY  DEFAULT  DESCRIPTION
+  whiteboard_id  string  yes       no       -        Whiteboard id to subscribe; subscription is per-whiteboard.
+
+Output Schema:
+  {
+    "description": "飞书事件",
+    "properties": {
+      "event": {
+        "properties": {
+          "operator_ids": {
+            "items": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "whiteboard_id": {
+            "description": "whiteboard id to subscribe",
+            "format": "whiteboard_id",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "header": {
+        "description": "事件头，所有事件结构一致",
+        "properties": {
+          "app_id": {
+            "description": "接收事件的应用 ID",
+            "type": "string"
+          },
+          "create_time": {
+            "description": "事件创建时间，毫秒时间戳字符串",
+            "type": "string"
+          },
+          "event_id": {
+            "description": "事件唯一 ID",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "事件类型，用于路由",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "租户唯一标识",
+            "type": "string"
+          },
+          "token": {
+            "description": "回调校验 token",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "schema": {
+        "description": "飞书事件协议版本",
+        "enum": [
+          "2.0"
+        ],
+        "type": "string"
+      }
+    },
+    "type": "object"
+  }

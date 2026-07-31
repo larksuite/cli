@@ -1,0 +1,42 @@
+KEY                                             AUTH      PARAMS  DESCRIPTION
+
+── application ──
+application.bot.menu_v6                         bot       0       Triggered when a user clicks a custom bot menu item whose action is configured as a push event.
+
+── approval ──
+approval.instance.status_changed_v4             user      1       Triggered after an approval instance status becomes visible to the requester or approval participants
+approval.task.status_changed_v4                 user      1       Triggered after an approval task status becomes visible to the requester or task approver
+
+── board ──
+board.whiteboard.updated_v1                     user|bot  1       Pushed when the whiteboard content is updated.
+
+── card ──
+card.action.trigger                             bot       0       Triggered when a user interacts with an interactive card (button click, form submit, dropdown select, etc.). Output includes: token (valid 30 min, max 2 updates), action details (tag, value, name, form_value), and card_content (original card in userDSL text format, auto-fetched at consume time). To update the card: parse card_content to understand the current state, construct the new card JSON, then call `lark-cli api POST /open-apis/interactive/v1/card/update` with the token (see lark-im-card-action-reply.md).
+
+── im ──
+im.chat.disbanded_v1                            bot       0       Triggered after a chat is disbanded
+im.chat.member.bot.added_v1                     bot       0       Triggered when the bot is added to a chat
+im.chat.member.bot.deleted_v1                   bot       0       Triggered after the bot is removed from a chat
+im.chat.member.user.added_v1                    bot       0       Triggered when a new user joins a chat (including topic chats)
+im.chat.member.user.deleted_v1                  bot       0       Triggered when a user leaves or is removed from a chat
+im.chat.member.user.withdrawn_v1                bot       0       Triggered after a pending user invite is withdrawn
+im.chat.updated_v1                              bot       0       Triggered after chat settings (owner, avatar, name, permissions, etc.) are updated
+im.message.message_read_v1                      bot       0       Triggered after a user reads a P2P message sent by the bot
+im.message.reaction.created_v1                  bot       0       Triggered when a reaction is added to a message
+im.message.reaction.deleted_v1                  bot       0       Triggered when a reaction is removed from a message
+im.message.receive_v1                           bot       0       Receive IM messages
+
+── minutes ──
+minutes.minute.generated_v1                     user      0       Triggered when a minute has been generated
+
+── task ──
+task.task.update_user_access_v2                 user|bot  0       Triggered when tasks visible to the current user or app are created, deleted, or updated
+
+── vc ──
+vc.meeting.participant_meeting_ended_v1         user      0       Triggered when a meeting the current user participates in has ended
+vc.meeting.participant_meeting_joined_v1        user      0       Triggered when the current user joins a meeting
+vc.meeting.participant_meeting_started_v1       user      0       Triggered when a meeting the current user participates in has started
+vc.note.generated_v1                            user      0       Triggered when a note has been generated
+vc.recording.recording_ended_v1                 user      0       Triggered when a recording_bean recording ends and uploads successfully; only generated when connected to Feishu software.
+vc.recording.recording_started_v1               user      0       Triggered when a recording_bean recording starts; only generated when connected to Feishu software.
+vc.recording.recording_transcript_generated_v1  user      0       Triggered when recording_bean transcript items are generated; only generated when connected to Feishu software.
