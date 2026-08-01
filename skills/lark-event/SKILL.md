@@ -68,40 +68,11 @@ wait
 
 ## Dry-run preview
 
-`event consume <key> --dry-run` performs only the read-only checks, then prints the consume decision on stdout as a standard envelope and exits 0 — no bus is started, no consumer registered, no server-side subscription touched, no files created.
+When the user asks to preview a consume or check readiness, execute `event consume <key> --dry-run` instead of only quoting it. It exits 0 after read-only checks without starting a bus, registering a consumer, touching a server-side subscription, creating files, or opening the event stream.
 
-**Run it, don't just recommend it.** Unlike a real consume, dry-run exits immediately and never starts listening or connecting to the event stream, so it is always safe to execute. When the user asks to preview / rehearse / check what would happen ("先预演一遍"), execute the dry-run and summarize the actual output — `dry_run`, `decision.status`, `would_write`, and `preparation` (strategy / condition / action) — instead of only showing the command. The same applies to readiness questions ("环境/权限是否就绪能不能收到事件"): the answer must come from an executed dry-run's `status` and `preconditions`, not from reading documentation — docs cannot see this tenant's console switches or granted scopes.
+Read the top-level `dry_run` marker and `data.decision`: `status` / `preconditions` report readiness, `would_write` previews real-run side effects, and optional `preparation` states its strategy and trigger condition. `ready` can run, `unknown` proceeds with an unresolved weak check, and `blocked` would refuse a real run.
 
-```json
-{
-  "ok": true,
-  "identity": "user",
-  "dry_run": true,
-  "data": {
-    "decision": {
-      "event_key": "vc.note.generated_v1",
-      "domain": "vc",
-      "identity": "user",
-      "status": "ready",
-      "params": {},
-      "scope": "vc.note.generated_v1",
-      "preconditions": [
-        {"name": "console_event_published", "status": "ok"},
-        {"name": "scopes_granted", "status": "ok"}
-      ],
-      "preparation": {
-        "strategy": "legacy_preconsume",
-        "condition": "first_consumer_for_scope",
-        "action": "register_event_delivery"
-      },
-      "would_read": ["local_bus_probe", "app_metadata_preflight"],
-      "would_write": ["start_or_reuse_local_bus", "register_consumer", "run_preparation_when_first", "open_event_stream"]
-    }
-  }
-}
-```
-
-Read `dry_run` at the envelope top level (not inside data). `data.decision.preparation` is present only for keys that need preparation (keys without a server-side registration step omit the field entirely). `data.decision.status` is `ready` / `unknown` / `blocked`: `unknown` means a weak read-only check could not answer (a real run would still proceed); `blocked` means a real run would refuse with the same error shown in the precondition detail. `would_write` lists the side effects a real run performs — `preparation.condition` = `first_consumer_for_scope` means the server-side subscription is registered only by the first consumer of that scope. Input errors behave exactly like a real run (unknown key / bad params → exit 2). An unusable credential does **not** fail the dry-run: it renders a `blocked` decision (exit 0) with a `credentials_available` precondition carrying the auth error — only a real run exits 3 on it.
+Unknown keys or bad params exit 2. Unusable credentials render `blocked` with a `credentials_available` precondition and still exit 0; a real run exits 3.
 
 ## Subprocess contract
 
