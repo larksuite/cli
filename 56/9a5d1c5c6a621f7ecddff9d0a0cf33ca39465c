@@ -1,0 +1,41 @@
+cmd/event/render/decision.go
+  s_6020181950b193::t_d18de824b842cc 5-6
+cmd/event/render/decision_test.go
+  s_6020181950b193::t_b496d132b05a61 91-92
+cmd/event/render/redaction_guard_test.go
+  s_6020181950b193::t_cbbe25e17eead2 1-121
+cmd/event/render_contract_test.go
+  s_6020181950b193::t_c45af398acfd98 15-19,24,37-63,67-69,76,83-91,93,103-109,111-113,115,125-131,134-139,141,144-161
+events/schema_instance_test.go
+  s_6020181950b193::t_634605743da0a2 1-259
+internal/event/arch_layering_test.go
+  s_6020181950b193::t_ac5efceca769b1 210-318
+internal/event/catalog/canonicalize.go
+  s_6020181950b193::t_420fbfb794212f 9-10,70-80
+internal/event/catalog/snapshot.go
+  s_6020181950b193::t_4c5a197f5e8218 131-134,150
+internal/event/catalog/snapshot_test.go
+  s_6020181950b193::t_3edd3c696b2463 14,78-104
+internal/event/consume/diagnostics_redaction_test.go
+  s_6020181950b193::t_b98d3aef16b5aa 10,80-162
+internal/event/consume/loop.go
+  s_6020181950b193::t_a42805f8fca463 18,202-221,254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "569a5d1c5c6a621f7ecddff9d0a0cf33ca39465c",
+  "prompts": {},
+  "sessions": {
+    "s_6020181950b193": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-adb6e271fbb53c201",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
