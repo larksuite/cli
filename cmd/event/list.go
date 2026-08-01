@@ -29,7 +29,10 @@ func NewCmdList(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the full EventKey list as JSON (for AI / scripts)")
-	cmd.Flags().StringVar(&domain, "domain", "", "Only list EventKeys of this domain (the key's first segment, e.g. im, vc)")
+	cmd.Flags().StringVar(&domain, "domain", "", fmt.Sprintf(
+		"Only list EventKeys of this domain. Valid domains: %s",
+		strings.Join(snap.Domains(), ", "),
+	))
 	cmdutil.SetRisk(cmd, "read")
 	return cmd
 }

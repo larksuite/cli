@@ -325,6 +325,14 @@ func TestNewCmdFactories_WireFlags(t *testing.T) {
 		if cmd.Flags().Lookup("json") == nil {
 			t.Error("list missing --json flag")
 		}
+		domainFlag := cmd.Flags().Lookup("domain")
+		if domainFlag == nil {
+			t.Fatal("list missing --domain flag")
+		}
+		wantUsage := "Only list EventKeys of this domain. Valid domains: " + strings.Join(snap.Domains(), ", ")
+		if domainFlag.Usage != wantUsage {
+			t.Errorf("--domain usage = %q, want %q", domainFlag.Usage, wantUsage)
+		}
 	})
 
 	t.Run("bus", func(t *testing.T) {
