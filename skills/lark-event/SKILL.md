@@ -70,6 +70,8 @@ wait
 
 `event consume <key> --dry-run` performs only the read-only checks, then prints the consume decision on stdout as a standard envelope and exits 0 — no bus is started, no consumer registered, no server-side subscription touched, no files created.
 
+**Run it, don't just recommend it.** Unlike a real consume, dry-run exits immediately and never starts listening, so it is always safe to execute. When the user asks to preview / rehearse / check what would happen ("先预演一遍"), execute the dry-run and summarize the actual output — `dry_run`, `decision.status`, `would_write`, and `preparation` (strategy / condition / action) — instead of only showing the command.
+
 ```json
 {
   "ok": true,
