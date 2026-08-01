@@ -22,6 +22,9 @@ func validDef() KeyDefinition {
 		Key:       "demo.thing.updated_v1",
 		EventType: "demo.thing.updated_v1",
 		Schema:    SchemaDef{Custom: &SchemaSpec{Raw: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}}}`)}},
+		Process: func(context.Context, processing.APIClient, *model.Event, map[string]string) (json.RawMessage, error) {
+			return json.RawMessage(`{}`), nil
+		},
 	}
 }
 
@@ -90,6 +93,14 @@ func TestCompile_RejectsContractViolations(t *testing.T) {
 		"explicit domain mismatch": {
 			func(d *KeyDefinition) { d.Domain = "gadget" },
 			"does not match the key's first segment",
+		},
+		"custom schema without process": {
+			func(d *KeyDefinition) { d.Process = nil },
+			"Schema.Custom requires Process",
+		},
+		"raw schema with garbage bytes": {
+			func(d *KeyDefinition) { d.Schema.Custom.Raw = json.RawMessage(`this is {{{ not json`) },
+			"is not a JSON object",
 		},
 		"placeholder object schema": {
 			func(d *KeyDefinition) { d.Schema.Custom.Raw = json.RawMessage(`{}`) },

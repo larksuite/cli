@@ -154,6 +154,13 @@ func validateDefinition(def *KeyDefinition) []string {
 	if nativeSet && def.Process != nil {
 		fail("EventKey %s: Schema.Native forbids Process (Process produces a complete shape — use Schema.Custom)", def.Key)
 	}
+	// The inverse also holds: a custom schema promises a processed output
+	// shape, and only a Process can produce it. Without one, the runtime
+	// would pass the raw envelope through — a shape the schema never
+	// described.
+	if customSet && def.Process == nil {
+		fail("EventKey %s: Schema.Custom requires Process (without it the raw envelope would pass through, outside the declared schema)", def.Key)
+	}
 	if spec := def.Schema.Native; spec != nil {
 		out = append(out, validateSpec(def.Key, "Schema.Native", spec)...)
 	}
@@ -191,6 +198,15 @@ func validateSpec(key, field string, s *SchemaSpec) []string {
 	rawSet := len(s.Raw) > 0
 	if typeSet == rawSet {
 		return []string{fmt.Sprintf("EventKey %s: %s requires exactly one of Type or Raw", key, field)}
+	}
+	// A raw schema must be a decodable JSON object; the placeholder check
+	// downstream only sees schemas that decoded, so garbage bytes have to be
+	// rejected here.
+	if rawSet {
+		var asObject map[string]json.RawMessage
+		if err := json.Unmarshal(s.Raw, &asObject); err != nil {
+			return []string{fmt.Sprintf("EventKey %s: %s.Raw is not a JSON object: %v", key, field, err)}
+		}
 	}
 	return nil
 }

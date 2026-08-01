@@ -39,7 +39,7 @@ func TestCapabilityGate_RefusesLegacyBusBeforeAnySideEffect(t *testing.T) {
 			def := compileDefForTest(t, event.KeyDefinition{
 				Key:       key,
 				EventType: key,
-				Schema:    event.SchemaDef{Custom: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
+				Schema:    event.SchemaDef{Native: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
 				PreConsume: func(_ context.Context, _ event.APIClient, _ map[string]string) (func() error, error) {
 					setupCalls.Add(1)
 					return nil, nil

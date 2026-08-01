@@ -18,7 +18,7 @@ func TestSubscriptionKeyParam_SplitsScopes(t *testing.T) {
 	def := &event.KeyDefinition{
 		Key:       "test.evt_scoped",
 		EventType: "test.evt_scoped",
-		Schema:    event.SchemaDef{Custom: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
+		Schema:    event.SchemaDef{Native: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
 		Params: []event.ParamDef{
 			{Name: "resource_id", Type: event.ParamString, Required: true, SubscriptionKey: true},
 		},

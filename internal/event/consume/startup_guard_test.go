@@ -87,7 +87,7 @@ func TestRun_InvalidJQFailsBeforeAnySideEffect(t *testing.T) {
 	def := compileDefForTest(t, event.KeyDefinition{
 		Key:       "consume.runtest.jq",
 		EventType: "consume.runtest.jq_v1",
-		Schema:    event.SchemaDef{Custom: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
+		Schema:    event.SchemaDef{Native: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
 	})
 	err := Run(context.Background(), failDialTransport{}, "cli_x", "", "", Options{
 		EventKey: "consume.runtest.jq",

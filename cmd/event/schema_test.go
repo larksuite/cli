@@ -396,7 +396,7 @@ func TestCompile_EmptySpecIsRejected(t *testing.T) {
 	_, err := catalog.Compile([]eventlib.KeyDefinition{{
 		Key:       "synthetic.empty.spec",
 		EventType: "synthetic.empty.spec",
-		Schema:    eventlib.SchemaDef{Custom: &eventlib.SchemaSpec{}},
+		Schema:    eventlib.SchemaDef{Native: &eventlib.SchemaSpec{}},
 	}}, catalog.StrategyRefs{catalog.StrategyNone})
 	if err == nil {
 		t.Fatal("expected error for spec with neither Type nor Raw")
@@ -418,7 +418,9 @@ func TestCompile_InvalidBaseWithOverridesIsRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unparsable base schema")
 	}
-	if !strings.Contains(err.Error(), "parse base schema for field overrides") {
+	// Garbage raw bytes are rejected by the spec check itself, before the
+	// overlay machinery would even try to parse them.
+	if !strings.Contains(err.Error(), "is not a JSON object") {
 		t.Errorf("error should reject the unparsable base schema, got: %v", err)
 	}
 }

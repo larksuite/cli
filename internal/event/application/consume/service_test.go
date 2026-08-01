@@ -130,7 +130,7 @@ func TestExecute_SpiesBiteOnTheRealPath(t *testing.T) {
 	def := catalog.KeyDefinition{
 		Key:       "demo.spy.check_v1",
 		EventType: "demo.spy.check_v1",
-		Schema:    catalog.SchemaDef{Custom: &catalog.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
+		Schema:    catalog.SchemaDef{Native: &catalog.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
 		PreConsume: func(ctx context.Context, rt processing.APIClient, params map[string]string) (func() error, error) {
 			setup.Add(1)
 			return nil, nil
