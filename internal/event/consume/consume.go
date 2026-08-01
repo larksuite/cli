@@ -27,10 +27,14 @@ type Options struct {
 	// never looks anything up itself.
 	Def       *event.KeyDefinition
 	Params    map[string]string
-	JQExpr    string
-	Quiet     bool
-	OutputDir string
-	Runtime   event.APIClient
+	// ParamsNormalized marks Params as already normalized by the declaration's
+	// NormalizeParams hook (the deciding layer runs it on these exact values).
+	// The host then skips the hook, keeping its run-once-per-consumer contract.
+	ParamsNormalized bool
+	JQExpr           string
+	Quiet            bool
+	OutputDir        string
+	Runtime          event.APIClient
 	// Prepare, when set, replaces the declaration's PreConsume hook as the
 	// preparation to run when this consumer is first for its scope. The
 	// application layer injects it so the strategy that was decided is the
@@ -59,6 +63,14 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 			"unknown EventKey: %s", opts.EventKey).
 			WithHint("run `lark-cli event list` to see available keys")
 	}
+	// EventKey and Def travel together; a mismatch would register one key on
+	// the bus while subscribing another's event types.
+	if opts.EventKey == "" {
+		opts.EventKey = keyDef.Key
+	} else if opts.EventKey != keyDef.Key {
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"consume options disagree: EventKey %q but definition is %q", opts.EventKey, keyDef.Key)
+	}
 
 	if err := validateParams(keyDef, opts.Params); err != nil {
 		return err
@@ -73,8 +85,9 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 
 	// Normalize params (resolve aliases like "me" -> real email) before fingerprint
 	// compute, PreConsume, Match, Process. Must happen BEFORE doHello so the
-	// SubscriptionID we send to bus reflects canonical values.
-	if keyDef.NormalizeParams != nil {
+	// SubscriptionID we send to bus reflects canonical values. Skipped when the
+	// caller already normalized (the hook runs once per consumer, wherever it runs).
+	if !opts.ParamsNormalized && keyDef.NormalizeParams != nil {
 		if err := keyDef.NormalizeParams(ctx, opts.Runtime, opts.Params); err != nil {
 			if _, ok := errs.ProblemOf(err); ok {
 				return err

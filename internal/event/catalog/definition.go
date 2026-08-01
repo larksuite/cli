@@ -115,7 +115,9 @@ type KeyDefinition struct {
 
 	// NormalizeParams canonicalizes param values BEFORE fingerprint compute,
 	// PreConsume, Match, and Process. Mutates the params map in place.
-	// May call OAPI; runs once per consumer at startup.
+	// May call OAPI; runs once per consumer at startup — the deciding layer
+	// runs it and hands the normalized values to the stream host, which then
+	// skips the hook (Options.ParamsNormalized).
 	//
 	// Use cases: resolve aliases ("me" -> real email, a name -> an ID),
 	// trim whitespace. On error, consume fails (no retry); caller gets the

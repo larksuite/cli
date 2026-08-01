@@ -70,7 +70,7 @@ wait
 
 `event consume <key> --dry-run` performs only the read-only checks, then prints the consume decision on stdout as a standard envelope and exits 0 — no bus is started, no consumer registered, no server-side subscription touched, no files created.
 
-**Run it, don't just recommend it.** Unlike a real consume, dry-run exits immediately and never starts listening, so it is always safe to execute. When the user asks to preview / rehearse / check what would happen ("先预演一遍"), execute the dry-run and summarize the actual output — `dry_run`, `decision.status`, `would_write`, and `preparation` (strategy / condition / action) — instead of only showing the command.
+**Run it, don't just recommend it.** Unlike a real consume, dry-run exits immediately and never starts listening or connecting to the event stream, so it is always safe to execute. When the user asks to preview / rehearse / check what would happen ("先预演一遍"), execute the dry-run and summarize the actual output — `dry_run`, `decision.status`, `would_write`, and `preparation` (strategy / condition / action) — instead of only showing the command. The same applies to readiness questions ("环境/权限是否就绪能不能收到事件"): the answer must come from an executed dry-run's `status` and `preconditions`, not from reading documentation — docs cannot see this tenant's console switches or granted scopes.
 
 ```json
 {
@@ -101,7 +101,7 @@ wait
 }
 ```
 
-Read `dry_run` at the envelope top level (not inside data). `data.decision.preparation` is present only for keys that need preparation (keys without a server-side registration step omit the field entirely). `data.decision.status` is `ready` / `unknown` / `blocked`: `unknown` means a weak read-only check could not answer (a real run would still proceed); `blocked` means a real run would refuse with the same error shown in the precondition detail. `would_write` lists the side effects a real run performs — `preparation.condition` = `first_consumer_for_scope` means the server-side subscription is registered only by the first consumer of that scope. Error paths behave exactly like a real run (unknown key → exit 2, auth failure → exit 3).
+Read `dry_run` at the envelope top level (not inside data). `data.decision.preparation` is present only for keys that need preparation (keys without a server-side registration step omit the field entirely). `data.decision.status` is `ready` / `unknown` / `blocked`: `unknown` means a weak read-only check could not answer (a real run would still proceed); `blocked` means a real run would refuse with the same error shown in the precondition detail. `would_write` lists the side effects a real run performs — `preparation.condition` = `first_consumer_for_scope` means the server-side subscription is registered only by the first consumer of that scope. Input errors behave exactly like a real run (unknown key / bad params → exit 2). An unusable credential does **not** fail the dry-run: it renders a `blocked` decision (exit 0) with a `credentials_available` precondition carrying the auth error — only a real run exits 3 on it.
 
 ## Subprocess contract
 

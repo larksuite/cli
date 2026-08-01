@@ -126,9 +126,16 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, snap *catalog.Snapshot, 
 
 	domain := core.ResolveEndpoints(cfg.Brand).Open
 
-	// Surface auth errors before forking the bus daemon.
+	// Surface auth errors before forking the bus daemon. A dry run instead
+	// reports the unusable credential as a blocked precondition: the caller
+	// asked what would happen, and "a real run would refuse to authenticate"
+	// is a legitimate part of that answer.
+	var tokenErr error
 	if _, err := resolveTenantToken(cmd.Context(), f, cfg.AppID); err != nil {
-		return err
+		if !o.dryRun {
+			return err
+		}
+		tokenErr = err
 	}
 
 	apiClient, err := f.NewAPIClient()
@@ -180,7 +187,7 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, snap *catalog.Snapshot, 
 		Strategies: consumeStrategies,
 		Identity:   identityResolverFunc(func(context.Context, *catalog.Entry) (string, error) { return string(identity), nil }),
 		Preflight: preflightReaderFunc(func(ctx context.Context, _ *catalog.Entry, _ string) ([]appconsume.Precondition, error) {
-			return readPreconditions(ctx, pf, appVerErr), nil
+			return readPreconditions(ctx, pf, appVerErr, tokenErr), nil
 		}),
 	}
 	req := appconsume.Request{
@@ -232,20 +239,21 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, snap *catalog.Snapshot, 
 
 	runner := streamRunnerFunc(func(ctx context.Context, prepare appconsume.PrepareFunc) error {
 		return consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
-			EventKey:        eventKey,
-			Def:             keyDef,
-			Params:          paramMap,
-			JQExpr:          o.jqExpr,
-			Quiet:           o.quiet,
-			OutputDir:       outputDir,
-			Runtime:         runtime,
-			Out:             f.IOStreams.Out,
-			ErrOut:          errOut,
-			RemoteAPIClient: botRuntime,
-			MaxEvents:       o.maxEvents,
-			Timeout:         o.timeout,
-			IsTTY:           f.IOStreams.IsTerminal,
-			Prepare:         prepare,
+			EventKey:         eventKey,
+			Def:              keyDef,
+			Params:           decision.NormalizedParams(),
+			ParamsNormalized: true,
+			JQExpr:           o.jqExpr,
+			Quiet:            o.quiet,
+			OutputDir:        outputDir,
+			Runtime:          runtime,
+			Out:              f.IOStreams.Out,
+			ErrOut:           errOut,
+			RemoteAPIClient:  botRuntime,
+			MaxEvents:        o.maxEvents,
+			Timeout:          o.timeout,
+			IsTTY:            f.IOStreams.IsTerminal,
+			Prepare:          prepare,
 		})
 	})
 	return svc.Execute(ctx, entry, decision, runner, appconsume.ExecutionContext{API: runtime})
@@ -276,10 +284,14 @@ type preflightCtx struct {
 	subscribedCallbacks []string
 }
 
-// preflightScopes compares required scopes against session-available scopes (user: UAT stored; bot: appVer.TenantScopes).
-func preflightScopes(ctx context.Context, pf *preflightCtx) error {
+// preflightScopes compares required scopes against session-available scopes
+// (user: UAT stored; bot: appVer.TenantScopes). checked reports whether a
+// comparison actually happened: "the ledger was unavailable" and "the check
+// passed" are different answers, and only the caller can decide how loudly to
+// say the first one.
+func preflightScopes(ctx context.Context, pf *preflightCtx) (checked bool, err error) {
 	if len(pf.keyDef.Scopes) == 0 || pf.identity == "" {
-		return nil
+		return true, nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -289,24 +301,24 @@ func preflightScopes(ctx context.Context, pf *preflightCtx) error {
 	switch {
 	case pf.identity.IsBot():
 		if pf.appVer == nil {
-			return nil
+			return false, nil
 		}
 		storedScopes = strings.Join(pf.appVer.TenantScopes, " ")
 	case pf.identity == core.AsUser:
 		result, err := pf.factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(pf.identity, pf.appID))
 		if err != nil || result == nil || result.Scopes == "" {
-			return nil //nolint:nilerr // best-effort: bus handshake will surface real auth error
+			return false, nil //nolint:nilerr // best-effort: the bus handshake surfaces the real auth error
 		}
 		storedScopes = result.Scopes
 	default:
-		return nil
+		return false, nil
 	}
 
 	missing := auth.MissingScopes(storedScopes, pf.keyDef.Scopes)
 	if len(missing) == 0 {
-		return nil
+		return true, nil
 	}
-	return errs.NewPermissionError(errs.SubtypeMissingScope,
+	return true, errs.NewPermissionError(errs.SubtypeMissingScope,
 		"missing required scopes for EventKey %s (as %s): %s",
 		pf.eventKey, pf.identity, strings.Join(missing, ", ")).
 		WithIdentity(string(pf.identity)).

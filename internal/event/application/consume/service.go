@@ -125,6 +125,12 @@ func (s *Service) Decide(ctx context.Context, entry *catalog.Entry, req Request,
 // dependencies degrade with a stderr note, they do not block, matching the
 // behavior consumers have always had.
 func (s *Service) Execute(ctx context.Context, entry *catalog.Entry, d *Decision, runner StreamRunner, ec ExecutionContext) error {
+	// The decision must be the one decided for this entry: executing a
+	// mismatched pair would apply one key's preparation to another's stream.
+	if got := entry.Descriptor().Key; d.eventKey != got {
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"decision for %q cannot execute against entry %q", d.eventKey, got)
+	}
 	if d.status == StatusBlocked {
 		return d.blockErr
 	}
@@ -134,6 +140,10 @@ func (s *Service) Execute(ctx context.Context, entry *catalog.Entry, d *Decision
 		if err != nil {
 			return errs.NewInternalError(errs.SubtypeUnknown, "%s", err)
 		}
+		if d.preparation == nil {
+			return errs.NewInternalError(errs.SubtypeUnknown,
+				"decision for %q carries no preparation but the entry requires strategy %q", d.eventKey, ref)
+		}
 		prep := *d.preparation
 		in := PreparedConsume{Entry: entry, Params: maps.Clone(d.params)}
 		prepare = func(ctx context.Context) (Cleanup, error) {
@@ -141,4 +151,11 @@ func (s *Service) Execute(ctx context.Context, entry *catalog.Entry, d *Decision
 		}
 	}
 	return runner.Run(ctx, prepare)
+}
+
+// NormalizedParams returns a copy of the decision's validated, normalized
+// parameters — what a real run must consume so normalization stays a
+// once-per-consumer event.
+func (d *Decision) NormalizedParams() map[string]string {
+	return maps.Clone(d.params)
 }

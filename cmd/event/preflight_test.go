@@ -108,7 +108,7 @@ func TestPreflightScopes_Bot_NoAppVer_SkipsCheck(t *testing.T) {
 		Key:    "im.message.text",
 		Scopes: []string{"im:message", "im:message.group_at_msg"},
 	}
-	err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, nil))
+	_, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, nil))
 	if err != nil {
 		t.Fatalf("bot + nil appVer should skip, got: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestPreflightScopes_Bot_AllGranted_Passes(t *testing.T) {
 		"im:message.group_at_msg",
 		"contact:user:readonly",
 	}}
-	err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
+	_, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
 	if err != nil {
 		t.Fatalf("all scopes granted, unexpected error: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestPreflightScopes_Bot_MissingBlocks(t *testing.T) {
 		Scopes: []string{"im:message", "im:message.group_at_msg"},
 	}
 	appVer := &appmeta.AppVersion{TenantScopes: []string{"im:message"}}
-	err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
+	_, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, appVer))
 	if err == nil {
 		t.Fatal("expected error for missing scope")
 	}
@@ -169,7 +169,7 @@ func TestPreflightScopes_Bot_MissingBlocks(t *testing.T) {
 
 func TestPreflightScopes_NoRequiredScopes_SkipsCheck(t *testing.T) {
 	def := &eventlib.KeyDefinition{Key: "x"}
-	if err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, nil)); err != nil {
+	if _, err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, nil)); err != nil {
 		t.Fatalf("no required scopes means nothing to verify, got: %v", err)
 	}
 }
