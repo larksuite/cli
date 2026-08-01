@@ -25,8 +25,8 @@ type Options struct {
 	// Def is the resolved declaration for EventKey. The caller resolves it
 	// from the compiled catalog; this package validates and consumes it but
 	// never looks anything up itself.
-	Def       *event.KeyDefinition
-	Params    map[string]string
+	Def    *event.KeyDefinition
+	Params map[string]string
 	// ParamsNormalized marks Params as already normalized by the declaration's
 	// NormalizeParams hook (the deciding layer runs it on these exact values).
 	// The host then skips the hook, keeping its run-once-per-consumer contract.

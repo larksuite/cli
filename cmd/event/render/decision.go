@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Package render turns consume decisions into user-facing output. It is the
-// only place a decision becomes text or JSON; the application layer never
-// formats anything itself.
+// only place a decision becomes JSON; the application layer never formats
+// anything itself.
 package render
 
 import (
-	"fmt"
 	"io"
 	"regexp"
-	"sort"
 
 	appconsume "github.com/larksuite/cli/internal/event/application/consume"
 	"github.com/larksuite/cli/internal/output"
@@ -73,52 +71,6 @@ func WriteDecisionJSON(out, errOut io.Writer, identity string, v appconsume.Deci
 		Out:         out,
 		ErrOut:      errOut,
 	})
-}
-
-// WriteDecisionText renders the same decision for humans.
-func WriteDecisionText(out io.Writer, v appconsume.DecisionView) {
-	fmt.Fprintf(out, "Dry run — no side effects were performed.\n\n")
-	fmt.Fprintf(out, "EventKey:  %s\n", v.EventKey)
-	fmt.Fprintf(out, "Domain:    %s\n", v.Domain)
-	fmt.Fprintf(out, "Identity:  %s\n", v.Identity)
-	fmt.Fprintf(out, "Status:    %s\n", v.Status)
-	fmt.Fprintf(out, "Scope:     %s\n", v.Scope)
-	if len(v.Params) > 0 {
-		params := redactParams(v.Params)
-		fmt.Fprintf(out, "Params:\n")
-		names := make([]string, 0, len(params))
-		for name := range params {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			fmt.Fprintf(out, "  %s = %s\n", name, params[name])
-		}
-	}
-	if len(v.Preconditions) > 0 {
-		fmt.Fprintf(out, "Preconditions:\n")
-		for _, p := range v.Preconditions {
-			if p.Detail != "" {
-				fmt.Fprintf(out, "  %-28s %s (%s)\n", p.Name, p.Status, p.Detail)
-			} else {
-				fmt.Fprintf(out, "  %-28s %s\n", p.Name, p.Status)
-			}
-		}
-	}
-	if v.Preparation != nil {
-		fmt.Fprintf(out, "Preparation:\n")
-		fmt.Fprintf(out, "  strategy:  %s\n", v.Preparation.Strategy)
-		fmt.Fprintf(out, "  condition: %s\n", v.Preparation.Condition)
-		fmt.Fprintf(out, "  action:    %s\n", v.Preparation.Action)
-	}
-	fmt.Fprintf(out, "Would read:\n")
-	for _, r := range v.WouldRead {
-		fmt.Fprintf(out, "  - %s\n", r)
-	}
-	fmt.Fprintf(out, "Would write (on a real run):\n")
-	for _, w := range v.WouldWrite {
-		fmt.Fprintf(out, "  - %s\n", w)
-	}
 }
 
 func toPayload(v appconsume.DecisionView) decisionPayload {

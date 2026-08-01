@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/internal/event/model"
 	"github.com/larksuite/cli/internal/event/processing"
+	"github.com/larksuite/cli/internal/event/schemas"
 )
 
 func compiledFixture(t *testing.T) *Snapshot {
@@ -71,6 +72,33 @@ func TestSnapshot_IsImmutableFromOutside(t *testing.T) {
 	keys[0] = "tampered"
 	if snap.Keys()[0] == "tampered" {
 		t.Error("mutating the returned key list leaked into the snapshot")
+	}
+}
+
+// FieldOverrides values carry a slice-typed member (FieldMeta.Enum), so a
+// shallow map clone still shares the Enum backing arrays: writing through one
+// copy would rewrite the catalog for everyone. Both directions must hold —
+// a returned Definition and the original compile input are equally outside.
+func TestSnapshot_FieldOverrideEnumIsNotShared(t *testing.T) {
+	def := validDef()
+	def.Schema.FieldOverrides = map[string]schemas.FieldMeta{
+		"/id": {Description: "the id", Enum: []string{"a", "b"}},
+	}
+	snap, err := Compile([]KeyDefinition{def}, testStrategies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, _ := snap.Resolve(def.Key)
+
+	got := entry.Definition()
+	got.Schema.FieldOverrides["/id"].Enum[0] = "tampered-via-definition"
+	if fresh := entry.Definition(); fresh.Schema.FieldOverrides["/id"].Enum[0] != "a" {
+		t.Error("mutating a returned Definition's FieldOverrides Enum leaked into the snapshot")
+	}
+
+	def.Schema.FieldOverrides["/id"].Enum[1] = "tampered-via-input"
+	if fresh := entry.Definition(); fresh.Schema.FieldOverrides["/id"].Enum[1] != "b" {
+		t.Error("mutating the compile input's FieldOverrides Enum leaked into the snapshot")
 	}
 }
 

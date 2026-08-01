@@ -88,8 +88,8 @@ func TestWriteDecisionJSON_EnvelopeContract(t *testing.T) {
 	}
 }
 
-// Sensitive parameter values never reach the rendered output, JSON or text.
-// The control assertion first proves the sentinel would be visible if leaked.
+// Sensitive parameter values never reach the rendered output. The control
+// assertion first proves the sentinel would be visible if leaked.
 func TestWriteDecision_RedactsSensitiveParams(t *testing.T) {
 	const sentinel = "sk-SENSITIVE-VALUE"
 	view := sampleView()
@@ -110,11 +110,5 @@ func TestWriteDecision_RedactsSensitiveParams(t *testing.T) {
 	}
 	if !strings.Contains(compact, `"whiteboard_id":"wb-1"`) {
 		t.Errorf("non-sensitive params must render verbatim, got: %s", jsonOut.String())
-	}
-
-	var textOut bytes.Buffer
-	WriteDecisionText(&textOut, view)
-	if strings.Contains(textOut.String(), sentinel) {
-		t.Errorf("text output leaks a sensitive param value: %s", textOut.String())
 	}
 }

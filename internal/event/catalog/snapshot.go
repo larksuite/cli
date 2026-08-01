@@ -128,8 +128,10 @@ func (s *Snapshot) Keys() []string { return slices.Clone(s.keys) }
 // Len reports how many keys were compiled.
 func (s *Snapshot) Len() int { return len(s.keys) }
 
-// Resolve returns the entry for a key. The two return values come from the
-// same entry, so a definition and its capability can never be mismatched.
+// Resolve returns the compiled entry for key, with ok=false for a key the
+// catalog does not have. Every projection (descriptor, output, capability,
+// binding) is read off the returned entry, so facts about one key can never
+// be paired with another key's.
 func (s *Snapshot) Resolve(key string) (*Entry, bool) {
 	e, ok := s.entries[key]
 	return e, ok
@@ -145,7 +147,7 @@ func (s *Snapshot) Entries() []*Entry {
 }
 
 // Definitions returns the canonical compatibility view of every entry in key
-// order — the drop-in replacement for the old registry listing.
+// order. Each element is a fresh deep copy, like Entry.Definition.
 func (s *Snapshot) Definitions() []*KeyDefinition {
 	out := make([]*KeyDefinition, 0, len(s.keys))
 	for _, k := range s.keys {

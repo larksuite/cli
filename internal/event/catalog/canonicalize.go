@@ -4,9 +4,10 @@
 package catalog
 
 import (
-	"maps"
 	"slices"
 	"strings"
+
+	"github.com/larksuite/cli/internal/event/schemas"
 )
 
 // Canonicalize returns the normalized copy of a declaration: the defaults
@@ -66,6 +67,16 @@ func deepCopyDefinition(def KeyDefinition) KeyDefinition {
 		spec.Raw = slices.Clone(def.Schema.Custom.Raw)
 		out.Schema.Custom = &spec
 	}
-	out.Schema.FieldOverrides = maps.Clone(def.Schema.FieldOverrides)
+	// A plain map clone is not enough here: FieldMeta.Enum is a slice, so the
+	// cloned map's values would still share the Enum backing arrays with the
+	// source. Copy each entry and clone its slice members.
+	if def.Schema.FieldOverrides != nil {
+		overrides := make(map[string]schemas.FieldMeta, len(def.Schema.FieldOverrides))
+		for path, meta := range def.Schema.FieldOverrides {
+			meta.Enum = slices.Clone(meta.Enum)
+			overrides[path] = meta
+		}
+		out.Schema.FieldOverrides = overrides
+	}
 	return out
 }

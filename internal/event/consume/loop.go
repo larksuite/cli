@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/itchyny/gojq"
 	"github.com/larksuite/cli/internal/event"
@@ -198,6 +199,26 @@ func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *e
 	return nil
 }
 
+// diagnosticErrMaxLen caps how much of a Process error text reaches stderr.
+// Error strings routinely embed input fragments (a parse error quoting the
+// payload, an API response echo), so the diagnostic keeps only a bounded
+// prefix of them.
+const diagnosticErrMaxLen = 200
+
+// truncateDiagnostic bounds s to diagnosticErrMaxLen bytes, backing off to
+// the previous rune boundary so the cut never emits invalid UTF-8, and marks
+// the cut explicitly.
+func truncateDiagnostic(s string) string {
+	if len(s) <= diagnosticErrMaxLen {
+		return s
+	}
+	cut := diagnosticErrMaxLen
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "...(truncated)"
+}
+
 // processAndOutput returns (wrote, err); err non-nil only for sink.Write failures.
 func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *protocol.Event, opts Options, sink Sink, jqCode *gojq.Code) (bool, error) {
 	raw := restoreCanonicalEvent(evt)
@@ -230,7 +251,7 @@ func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *pro
 					fmt.Fprintf(opts.ErrOut, "WARN: event %s (%s) dropped: malformed payload\n",
 						raw.EventID, raw.EventType)
 				} else {
-					fmt.Fprintf(opts.ErrOut, "WARN: Process error: %v\n", err)
+					fmt.Fprintf(opts.ErrOut, "WARN: Process error: %s\n", truncateDiagnostic(err.Error()))
 				}
 			}
 			return false, nil

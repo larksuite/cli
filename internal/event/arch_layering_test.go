@@ -207,6 +207,115 @@ func TestArchKernelPurity(t *testing.T) {
 	}
 }
 
+// archForbiddenHostImport reports why importPath is banned inside a host
+// production file, if it is. Hosts are deliberately held to a looser standard
+// than the kernel: they own sockets, so the standard library net packages are
+// legitimate there (the local bus is IPC over a socket) and only the platform
+// SDK is banned — a host speaking the platform wire format directly would
+// bypass the bus and its adapters, which is the seam the architecture exists
+// to keep. Matching is segment-boundary safe so a lookalike module name
+// cannot trip it.
+func archForbiddenHostImport(importPath string) (reason string, banned bool) {
+	const sdk = "github.com/larksuite/oapi-sdk-go"
+	if importPath == sdk || strings.HasPrefix(importPath, sdk+"/") {
+		return "platform SDK; hosts reach the platform only through the bus and its adapters, never by speaking the platform wire format themselves", true
+	}
+	return "", false
+}
+
+// TestArchHostPlatformSDKBan fails when any host production file imports the
+// platform SDK. The host set is pinned to the two long-running processes; a
+// new host must be added here deliberately.
+func TestArchHostPlatformSDKBan(t *testing.T) {
+	hosts := []string{"bus", "consume"}
+
+	sawNetImport := false
+	for _, host := range hosts {
+		if _, ok := outwardFacing[host]; !ok {
+			t.Fatalf("host %q is not in the outwardFacing set — the host moved and this gate is scanning a ghost", host)
+		}
+		files := archProductionFilesUnder(t, host)
+		if len(files) == 0 {
+			t.Fatalf("no production files found under %s — the walker is idling or the host is gone; fix that before trusting this gate", host)
+		}
+		fset := token.NewFileSet()
+		for _, file := range files {
+			for _, path := range archImports(t, fset, file) {
+				if path == "net" || strings.HasPrefix(path, "net/") {
+					sawNetImport = true
+				}
+				if reason, banned := archForbiddenHostImport(path); banned {
+					t.Errorf("%s imports %q: %s", filepath.ToSlash(file), path, reason)
+				}
+			}
+		}
+	}
+
+	// Tripwire: hosts do socket IPC, so the scan of real host files must have
+	// seen a net import. Seeing none means the import walk is not reading what
+	// the hosts actually import, and a green run would prove nothing. (It also
+	// pins the reason net is absent from the ban set: hosts need it.)
+	if !sawNetImport {
+		t.Fatal("scanned every host production file and found no net import — hosts are socket-IPC processes, so the import scan cannot be trusted; if the hosts genuinely dropped net, update this tripwire deliberately")
+	}
+}
+
+// TestArchHostImportDetectorSelfCheck runs the host forbidden-import matcher
+// on synthetic sources with known outcomes, so a drifted matcher cannot keep
+// TestArchHostPlatformSDKBan green on a violating tree.
+func TestArchHostImportDetectorSelfCheck(t *testing.T) {
+	scan := func(src string) []string {
+		t.Helper()
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, "synthetic.go", src, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("parse synthetic source: %v", err)
+		}
+		var flagged []string
+		for _, imp := range f.Imports {
+			path, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				t.Fatalf("unquote synthetic import: %v", err)
+			}
+			if _, banned := archForbiddenHostImport(path); banned {
+				flagged = append(flagged, path)
+			}
+		}
+		sort.Strings(flagged)
+		return flagged
+	}
+
+	const violating = `package fakehost
+
+import (
+	_ "github.com/larksuite/oapi-sdk-go/v3"
+	_ "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	_ "net"
+)
+`
+	want := []string{
+		"github.com/larksuite/oapi-sdk-go/v3",
+		"github.com/larksuite/oapi-sdk-go/v3/service/im/v1",
+	}
+	if got := scan(violating); !slices.Equal(got, want) {
+		t.Fatalf("detector self-check: flagged %v, want exactly %v — the matcher drifted and the host gate cannot be trusted", got, want)
+	}
+
+	// net stays legal for hosts (socket IPC), and prefix matching must respect
+	// path segment boundaries.
+	const clean = `package fakehost
+
+import (
+	_ "github.com/larksuite/oapi-sdk-golike"
+	_ "net"
+	_ "net/http"
+)
+`
+	if got := scan(clean); len(got) != 0 {
+		t.Fatalf("detector self-check: clean synthetic source flagged %v — the matcher over-triggers", got)
+	}
+}
+
 // hostAdapterAllowlist pins, per host, the exact adapter import paths its
 // production code uses today.
 //
