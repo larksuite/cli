@@ -21,19 +21,20 @@ import (
 // Placeholder substitutions turning copyable help examples into syntactically
 // valid dry-run invocations. IDs are obvious fakes; --dry-run never hits the API.
 var tipsPlaceholderValues = map[string]string{
-	"<chat_id>":       "oc_e2etest000000000000000000",
-	"<open_id>":       "ou_e2etest000000000000000000",
-	"<message_id>":    "om_e2etest000000000000000000",
-	"<thread_id>":     "omt_e2etest00000000000000000",
-	"<file_key>":      "file_v3_e2etest0000000000000",
-	"<image_key>":     "img_v3_e2etest00000000000000",
-	"<open_id1>":      "ou_e2etest000000000000000001",
-	"<open_id2>":      "ou_e2etest000000000000000002",
-	"<message_id1>":   "om_e2etest000000000000000001",
-	"<message_id2>":   "om_e2etest000000000000000002",
-	"<feed_group_id>": "ofg_e2etest00000000000000000",
-	"<chat_id1>":      "oc_e2etest000000000000000001",
-	"<chat_id2>":      "oc_e2etest000000000000000002",
+	"<chat_id>":            "oc_e2etest000000000000000000",
+	"<open_id>":            "ou_e2etest000000000000000000",
+	"<message_id>":         "om_e2etest000000000000000000",
+	"<thread_id>":          "omt_e2etest00000000000000000",
+	"<file_key>":           "file_v3_e2etest0000000000000",
+	"<image_key>":          "img_v3_e2etest00000000000000",
+	"<open_id1>":           "ou_e2etest000000000000000001",
+	"<open_id2>":           "ou_e2etest000000000000000002",
+	"<message_id1>":        "om_e2etest000000000000000001",
+	"<message_id2>":        "om_e2etest000000000000000002",
+	"<feed_group_id>":      "ofg_e2etest00000000000000000",
+	"<chat_id1>":           "oc_e2etest000000000000000001",
+	"<chat_id2>":           "oc_e2etest000000000000000002",
+	"<user_id_or_open_id>": "ou_e2etest000000000000000003",
 }
 
 // allExampleArgs extracts every "Example:" tip of the shortcut, replaces
