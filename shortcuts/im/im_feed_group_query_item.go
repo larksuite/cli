@@ -27,6 +27,9 @@ var ImFeedGroupQueryItem = common.Shortcut{
 		{Name: "feed-group-id", Desc: "feed group ID (ofg_xxx); path parameter (required)"},
 		{Name: "feed-id", Desc: "comma-separated chat IDs (oc_xxx); feed_type is fixed to chat (required)"},
 	},
+	Tips: []string{
+		`Example: lark-cli im +feed-group-query-item --feed-group-id <feed_group_id> --feed-id <chat_id> --as user`,
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := buildFeedGroupQueryItemBody(runtime)
 		return err

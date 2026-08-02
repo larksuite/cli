@@ -6,10 +6,12 @@ package im
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -410,6 +412,23 @@ func TestShortcutValidateBranches(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "--content is not valid JSON") {
 			t.Fatalf("ImMessagesSend.Validate() error = %v", err)
 		}
+		if !strings.Contains(err.Error(), "--text") {
+			t.Fatalf("ImMessagesSend.Validate() error = %v, want it to mention --text as a recovery alternative", err)
+		}
+		problem, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("ImMessagesSend.Validate() error is not a typed Problem: %v", err)
+		}
+		if problem.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("ImMessagesSend.Validate() Subtype = %v, want %v", problem.Subtype, errs.SubtypeInvalidArgument)
+		}
+		var verr *errs.ValidationError
+		if !errors.As(err, &verr) {
+			t.Fatalf("ImMessagesSend.Validate() error is not *errs.ValidationError: %v", err)
+		}
+		if verr.Param != "--content" {
+			t.Fatalf("ImMessagesSend.Validate() Param = %q, want --content", verr.Param)
+		}
 	})
 
 	t.Run("ImMessagesSend media with text", func(t *testing.T) {
@@ -650,6 +669,23 @@ func TestShortcutValidateBranches(t *testing.T) {
 		err := ImChatMessageList.Validate(context.Background(), runtime)
 		if err == nil || !strings.Contains(err.Error(), "requires user identity") {
 			t.Fatalf("ImChatMessageList.Validate() error = %v, want requires user identity", err)
+		}
+		if !strings.Contains(err.Error(), "--as user") || !strings.Contains(err.Error(), "--chat-id") {
+			t.Fatalf("ImChatMessageList.Validate() error = %v, want it to mention both --as user and --chat-id as recovery actions", err)
+		}
+		problem, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("ImChatMessageList.Validate() error is not a typed Problem: %v", err)
+		}
+		if problem.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("ImChatMessageList.Validate() Subtype = %v, want %v", problem.Subtype, errs.SubtypeInvalidArgument)
+		}
+		var verr *errs.ValidationError
+		if !errors.As(err, &verr) {
+			t.Fatalf("ImChatMessageList.Validate() error is not *errs.ValidationError: %v", err)
+		}
+		if verr.Param != "--user-id" {
+			t.Fatalf("ImChatMessageList.Validate() Param = %q, want --user-id", verr.Param)
 		}
 	})
 

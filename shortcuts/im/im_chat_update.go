@@ -28,6 +28,9 @@ var ImChatUpdate = common.Shortcut{
 		{Name: "name", Desc: "group name (max 60 chars)"},
 		{Name: "description", Desc: "group description (max 100 chars)"},
 	},
+	Tips: []string{
+		`Example: lark-cli im +chat-update --chat-id <chat_id> --name "new name"`,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		chatID := runtime.Str("chat-id")
 		body := buildUpdateChatBody(runtime)

@@ -55,6 +55,8 @@ var ImChatMembersList = common.Shortcut{
 		{Name: "page-delay", Type: "int", Default: fmt.Sprintf("%d", chatMembersListDefaultPageDelay), Desc: "delay in ms between pages when --page-all (0 = no delay)"},
 	},
 	Tips: []string{
+		`Example: lark-cli im +chat-members-list --chat-id <chat_id>`,
+		`Example: lark-cli im +chat-members-list --chat-id <chat_id> --page-all`,
 		"Default fetches a single page; pass --page-all to walk every page.",
 		"With --page-all and no explicit --page-size, the max page size is used to minimize round-trips.",
 		"truncations[] in the result means the server capped a bucket due to security config — the member list is incomplete.",

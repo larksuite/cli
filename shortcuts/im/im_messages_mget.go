@@ -32,6 +32,9 @@ var ImMessagesMGet = common.Shortcut{
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	},
+	Tips: []string{
+		`Example: lark-cli im +messages-mget --message-ids <message_id1>,<message_id2>`,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		ids := common.SplitCSV(runtime.Str("message-ids"))
 		d := common.NewDryRunAPI().GET(buildMGetURL(ids))

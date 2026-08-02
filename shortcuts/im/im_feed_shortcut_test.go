@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -112,6 +113,58 @@ func TestCollectChatIDs(t *testing.T) {
 			}
 			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
 				t.Fatalf("collectChatIDs() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCollectChatIDsHint locks that the missing/invalid chat-id errors from
+// collectChatIDs carry an actionable recovery hint pointing the user at how to
+// discover a real open_chat_id (im +chat-search / im +chat-list), name the
+// failing flag via Param, and keep the invalid_argument subtype. The
+// over-batch-limit error is intentionally out of scope — it needs no
+// ID-source guidance.
+func TestCollectChatIDsHint(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []string
+	}{
+		{name: "missing chat-id", input: nil},
+		{name: "bad prefix", input: []string{"om_abc"}},
+		{name: "whitespace only", input: []string{"   "}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newFeedShortcutCreateCmd(t)
+			for _, v := range tt.input {
+				if err := cmd.Flags().Set("chat-id", v); err != nil {
+					t.Fatalf("Set chat-id %q error = %v", v, err)
+				}
+			}
+			runtime := &common.RuntimeContext{Cmd: cmd}
+
+			_, err := collectChatIDs(runtime)
+			if err == nil {
+				t.Fatalf("collectChatIDs() expected error, got nil")
+			}
+
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("collectChatIDs() error is not a typed Problem: %v", err)
+			}
+			if problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("collectChatIDs() Subtype = %v, want %v", problem.Subtype, errs.SubtypeInvalidArgument)
+			}
+			if !strings.Contains(problem.Hint, "+chat-search") || !strings.Contains(problem.Hint, "+chat-list") {
+				t.Fatalf("collectChatIDs() Hint = %q, want it to mention both +chat-search and +chat-list", problem.Hint)
+			}
+			var verr *errs.ValidationError
+			if !errors.As(err, &verr) {
+				t.Fatalf("collectChatIDs() error is not *errs.ValidationError: %v", err)
+			}
+			if verr.Param != "--chat-id" {
+				t.Fatalf("collectChatIDs() Param = %q, want --chat-id", verr.Param)
 			}
 		})
 	}
@@ -307,6 +360,35 @@ func TestResolveIsHeader(t *testing.T) {
 				t.Fatalf("resolveIsHeader() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestResolveIsHeaderMutualExclusionHint(t *testing.T) {
+	// Locks the recovery hint on the --head/--tail conflict: an agent reading
+	// only the stderr envelope must be told which flag to drop, not just that
+	// the two are incompatible.
+	cmd := newFeedShortcutCreateCmd(t)
+	if err := cmd.Flags().Set("head", "true"); err != nil {
+		t.Fatalf("Set head error = %v", err)
+	}
+	if err := cmd.Flags().Set("tail", "true"); err != nil {
+		t.Fatalf("Set tail error = %v", err)
+	}
+	rt := &common.RuntimeContext{Cmd: cmd}
+
+	_, err := resolveIsHeader(rt)
+	if err == nil {
+		t.Fatal("want error when both --head and --tail are set")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want typed errs problem, got %T: %v", err, err)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %q, want invalid_argument", problem.Subtype)
+	}
+	if !strings.Contains(problem.Hint, "--head") || !strings.Contains(problem.Hint, "--tail") {
+		t.Errorf("hint = %q, want explicit next action naming --head/--tail", problem.Hint)
 	}
 }
 

@@ -37,6 +37,10 @@ var ImMessagesReply = common.Shortcut{
 		{Name: "reply-in-thread", Type: "bool", Desc: "reply in thread (message appears in thread stream instead of main chat)"},
 		{Name: "idempotency-key", Desc: "idempotency key, max 50 characters (prevents duplicate sends)"},
 	},
+	Tips: []string{
+		`Example: lark-cli im +messages-reply --message-id <message_id> --text "reply" --as bot`,
+		`Example: lark-cli im +messages-reply --message-id <message_id> --text "reply" --reply-in-thread --as bot`,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
 		msgType := runtime.Str("msg-type")
@@ -151,7 +155,11 @@ var ImMessagesReply = common.Shortcut{
 		}
 
 		if markdown != "" {
-			msgType, content = "post", resolveMarkdownAsPost(ctx, runtime, markdown)
+			post, err := resolveMarkdownAsPost(ctx, runtime, markdown)
+			if err != nil {
+				return err
+			}
+			msgType, content = "post", post
 		} else if mt, c, err := resolveMediaContent(ctx, runtime, text, imageVal, fileVal, videoVal, videoCoverVal, audioVal); err != nil {
 			return err
 		} else if mt != "" {

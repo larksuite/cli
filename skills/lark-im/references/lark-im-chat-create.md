@@ -138,7 +138,7 @@ lark-cli im +chat-create --name "Project Discussion Group" \
 
 ```bash
 CHAT_ID=$(lark-cli im +chat-create --name "New Group" --format json | jq -r '.data.chat_id')
-lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Welcome, everyone!"
+lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Welcome, everyone!" --as bot
 ```
 
 ## Common Errors and Troubleshooting

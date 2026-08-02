@@ -40,6 +40,10 @@ var ImChatCreate = common.Shortcut{
 		{Name: "chat-mode", Default: "group", Desc: "group mode (\"topic\" creates a topic chat; differs from a normal group in topic-message mode)", Enum: []string{"group", "topic"}},
 		{Name: "set-bot-manager", Type: "bool", Desc: "set the bot that creates this chat as manager (bot identity only)"},
 	},
+	Tips: []string{
+		`Example: lark-cli im +chat-create --name "project chat"`,
+		`Example: lark-cli im +chat-create --name "project chat" --users <open_id1>,<open_id2>`,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := buildCreateChatBody(runtime)
 		params := map[string]interface{}{"user_id_type": "open_id"}

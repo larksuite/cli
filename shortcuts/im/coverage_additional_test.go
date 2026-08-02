@@ -17,6 +17,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 )
 
@@ -98,7 +99,10 @@ func TestReadDurationHelpersInvalid(t *testing.T) {
 }
 
 func TestResolveMarkdownAsPost(t *testing.T) {
-	got := resolveMarkdownAsPost(context.Background(), nil, "# Title\n## Subtitle\n\nbody")
+	got, err := resolveMarkdownAsPost(context.Background(), nil, "# Title\n## Subtitle\n\nbody")
+	if err != nil {
+		t.Fatalf("resolveMarkdownAsPost() error = %v", err)
+	}
 	if !strings.Contains(got, `"tag":"md"`) {
 		t.Fatalf("resolveMarkdownAsPost() = %q, want post payload", got)
 	}
@@ -107,6 +111,33 @@ func TestResolveMarkdownAsPost(t *testing.T) {
 	}
 	if strings.Contains(got, `<br>`) {
 		t.Fatalf("resolveMarkdownAsPost() = %q, want no literal <br>", got)
+	}
+}
+
+// TestResolveMarkdownImageURLsFailureAborts locks the governance contract for
+// markdown images that fail to resolve: the whole send aborts — the image is
+// never silently stripped, because the user approved a draft that includes it.
+func TestResolveMarkdownImageURLsFailureAborts(t *testing.T) {
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+	}))
+
+	md := "before ![diagram](http://127.0.0.1/pic.png) after"
+	got, err := resolveMarkdownImageURLs(context.Background(), runtime, md)
+	if err == nil {
+		t.Fatalf("resolveMarkdownImageURLs() = (%q, nil), want hard error instead of stripping the image", got)
+	}
+	if got != "" {
+		t.Fatalf("resolveMarkdownImageURLs() returned content %q alongside error", got)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("resolveMarkdownImageURLs() error is not a typed Problem: %v", err)
+	}
+	for _, want := range []string{"nothing was sent", "approval"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("resolveMarkdownImageURLs() hint = %q, want it to contain %q", problem.Hint, want)
+		}
 	}
 }
 
@@ -496,7 +527,11 @@ func TestParseMediaDurationSuccess(t *testing.T) {
 	})
 }
 
-func TestResolveMediaContentURLFallback(t *testing.T) {
+// TestResolveMediaContentURLUploadFailure locks the governance contract for
+// URL media whose upload fails: the send must hard-fail with a re-approval
+// hint — never downgrade to a "[... upload failed, sending link]" text the
+// user never approved (the pre-governance fallback behavior).
+func TestResolveMediaContentURLUploadFailure(t *testing.T) {
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
 	}))
@@ -508,26 +543,30 @@ func TestResolveMediaContentURLFallback(t *testing.T) {
 		video      string
 		videoCover string
 		audio      string
-		wantType   string
-		wantText   string
 	}{
-		{name: "image URL fallback", image: "http://127.0.0.1/image.png", wantType: "text", wantText: "[image upload failed, sending link] http://127.0.0.1/image.png"},
-		{name: "file URL fallback", file: "http://127.0.0.1/report.pdf", wantType: "text", wantText: "[file upload failed, sending link] http://127.0.0.1/report.pdf"},
-		{name: "video URL fallback", video: "http://127.0.0.1/video.mp4", videoCover: "img_cover_x", wantType: "text", wantText: "[video upload failed, sending link] http://127.0.0.1/video.mp4"},
-		{name: "audio URL fallback", audio: "http://127.0.0.1/audio.ogg", wantType: "text", wantText: "[audio upload failed, sending link] http://127.0.0.1/audio.ogg"},
+		{name: "image URL upload failure", image: "https://mock.example.com/image.png"},
+		{name: "file URL upload failure", file: "https://mock.example.com/report.pdf"},
+		{name: "video URL upload failure", video: "https://mock.example.com/video.mp4", videoCover: "img_cover_x"},
+		{name: "audio URL upload failure", audio: "https://mock.example.com/audio.ogg"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			gotType, gotContent, err := resolveMediaContent(context.Background(), runtime, "", tt.image, tt.file, tt.video, tt.videoCover, tt.audio)
-			if err != nil {
-				t.Fatalf("resolveMediaContent() error = %v", err)
+			if err == nil {
+				t.Fatalf("resolveMediaContent() = (%q, %q, nil), want hard error instead of text fallback", gotType, gotContent)
 			}
-			if gotType != tt.wantType {
-				t.Fatalf("resolveMediaContent() type = %q, want %q", gotType, tt.wantType)
+			if gotType != "" || gotContent != "" {
+				t.Fatalf("resolveMediaContent() returned content (%q, %q) alongside error", gotType, gotContent)
 			}
-			if !strings.Contains(gotContent, tt.wantText) {
-				t.Fatalf("resolveMediaContent() content = %q, want substring %q", gotContent, tt.wantText)
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("resolveMediaContent() error is not a typed Problem: %v", err)
+			}
+			for _, want := range []string{"nothing was sent", "--text", "approval"} {
+				if !strings.Contains(problem.Hint, want) {
+					t.Fatalf("resolveMediaContent() hint = %q, want it to contain %q (explicit re-approval path)", problem.Hint, want)
+				}
 			}
 		})
 	}

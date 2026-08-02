@@ -438,19 +438,46 @@ func TestFileNameFromURL(t *testing.T) {
 func TestMediaFallbackOrError(t *testing.T) {
 	testErr := errors.New("upload failed")
 
-	// URL input: should fallback to text
+	// URL input: must hard-fail — never downgrade to a text link the user
+	// never approved. The hint must point at the explicit re-approval path.
 	mt, content, err := mediaFallbackOrError("https://example.com/photo.jpg", "image", testErr)
-	if err != nil {
-		t.Fatalf("mediaFallbackOrError(URL) returned error: %v", err)
+	if err == nil {
+		t.Fatalf("mediaFallbackOrError(URL) = (%q, %q, nil), want hard error", mt, content)
 	}
-	if mt != "text" {
-		t.Fatalf("mediaFallbackOrError(URL) mt = %q, want text", mt)
+	if mt != "" || content != "" {
+		t.Fatalf("mediaFallbackOrError(URL) returned content (%q, %q) alongside error", mt, content)
 	}
-	if !strings.Contains(content, "https://example.com/photo.jpg") {
-		t.Fatalf("mediaFallbackOrError(URL) content missing URL: %s", content)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("mediaFallbackOrError(URL) error is not a typed Problem: %v", err)
+	}
+	if !strings.Contains(problem.Message, "nothing was sent") {
+		t.Fatalf("mediaFallbackOrError(URL) message = %q, want it to state nothing was sent", problem.Message)
+	}
+	if !strings.Contains(problem.Hint, "--text") || !strings.Contains(problem.Hint, "approval") {
+		t.Fatalf("mediaFallbackOrError(URL) hint = %q, want explicit --text re-approval path", problem.Hint)
 	}
 
-	// Local file input: should return hard error
+	// A cause that is already a typed Problem passes through with its
+	// classification preserved and, lacking its own hint, gains the
+	// governance re-approval hint.
+	typedCause := errs.NewPermissionError(errs.SubtypePermissionDenied, "missing scope")
+	_, _, err = mediaFallbackOrError("https://example.com/photo.jpg", "image", typedCause)
+	if err != error(typedCause) {
+		t.Fatalf("mediaFallbackOrError(URL, typed cause) = %v, want the cause passed through", err)
+	}
+	if p, _ := errs.ProblemOf(err); p == nil || !strings.Contains(p.Hint, "--text") {
+		t.Fatalf("mediaFallbackOrError(URL, typed cause) hint = %v, want governance hint attached", p)
+	}
+
+	// A typed cause that already carries a hint keeps it.
+	hinted := errs.NewPermissionError(errs.SubtypePermissionDenied, "missing scope").WithHint("run auth login")
+	_, _, err = mediaFallbackOrError("https://example.com/photo.jpg", "image", hinted)
+	if p, _ := errs.ProblemOf(err); p == nil || p.Hint != "run auth login" {
+		t.Fatalf("mediaFallbackOrError(URL, hinted cause) hint = %v, want original hint kept", p)
+	}
+
+	// Local file input: hard error as before.
 	_, _, err = mediaFallbackOrError("./local.jpg", "image", testErr)
 	if err == nil {
 		t.Fatal("mediaFallbackOrError(local) should return error")
@@ -459,7 +486,10 @@ func TestMediaFallbackOrError(t *testing.T) {
 
 func TestResolveMarkdownImageURLs_NoImages(t *testing.T) {
 	input := "just text, no images"
-	got := resolveMarkdownImageURLs(context.Background(), nil, input)
+	got, err := resolveMarkdownImageURLs(context.Background(), nil, input)
+	if err != nil {
+		t.Fatalf("resolveMarkdownImageURLs(no images) returned error: %v", err)
+	}
 	if got != input {
 		t.Fatalf("resolveMarkdownImageURLs(no images) changed text: %q", got)
 	}

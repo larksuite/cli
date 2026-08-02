@@ -34,6 +34,10 @@ var ImMessagesResourcesDownload = common.Shortcut{
 		{Name: "type", Desc: "resource type (image or file)", Required: true, Enum: []string{"image", "file"}},
 		{Name: "output", Desc: "local save path (relative only, no .. traversal); when omitted, uses the server's Content-Disposition filename if available, otherwise file_key; extension is inferred from Content-Disposition or Content-Type if not provided"},
 	},
+	Tips: []string{
+		`Example: lark-cli im +messages-resources-download --message-id <message_id> --file-key <file_key> --type file`,
+		`Example: lark-cli im +messages-resources-download --message-id <message_id> --file-key <image_key> --type image --output ./downloads/pic.png`,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		fileKey := runtime.Str("file-key")
 		outputPath := runtime.Str("output")

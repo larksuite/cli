@@ -39,6 +39,10 @@ var ImChatMessageList = common.Shortcut{
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	},
+	Tips: []string{
+		`Example: lark-cli im +chat-messages-list --chat-id <chat_id>`,
+		`Example: lark-cli im +chat-messages-list --chat-id <chat_id> --start 2026-07-01 --end 2026-07-08 --order asc`,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		d := common.NewDryRunAPI()
 		chatId, err := resolveChatIDForMessagesList(runtime, true)

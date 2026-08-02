@@ -51,6 +51,10 @@ var ImMessagesSearch = common.Shortcut{
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max search pages when auto-pagination is enabled (default 20, max 40)"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 	},
+	Tips: []string{
+		`Example: lark-cli im +messages-search --query "keyword" --as user`,
+		`Example: lark-cli im +messages-search --query "keyword" --chat-id <chat_id> --start 2026-07-01 --end 2026-07-08 --as user`,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		req, err := buildMessagesSearchRequest(runtime)
 		if err != nil {

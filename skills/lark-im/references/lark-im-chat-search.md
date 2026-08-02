@@ -112,7 +112,7 @@ lark-cli im +chat-messages-list --chat-id "$CHAT_ID"
 
 ```bash
 CHAT_ID=$(lark-cli im +chat-search --query "daily report" --format json | jq -r '.data.chats[0].chat_id')
-lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Today's progress update"
+lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Today's progress update" --as bot
 ```
 
 ## Common Errors and Troubleshooting
