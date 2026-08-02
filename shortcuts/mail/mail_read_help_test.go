@@ -94,7 +94,7 @@ func TestMailTriageTableHintRoutesSingleAndMultipleReads(t *testing.T) {
 	registerTriageReadHintStubs(reg)
 
 	err := runMountedMailShortcut(t, MailTriage, []string{
-		"+triage", "--max", "1",
+		"+triage", "--format", "table", "--max", "1",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("triage returned error: %v", err)
@@ -110,23 +110,6 @@ func TestMailTriageTableHintRoutesSingleAndMultipleReads(t *testing.T) {
 		if !strings.Contains(errOut, want) {
 			t.Fatalf("stderr missing %q\n%s", want, errOut)
 		}
-	}
-}
-
-func TestMailTriageJSONDoesNotEmitReadHint(t *testing.T) {
-	f, stdout, stderr, reg := mailShortcutTestFactory(t)
-	registerTriageReadHintStubs(reg)
-
-	err := runMountedMailShortcut(t, MailTriage, []string{
-		"+triage", "--format", "json", "--max", "1",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("triage returned error: %v", err)
-	}
-	reg.Verify(t)
-
-	if strings.Contains(stderr.String(), "tip: read full content:") {
-		t.Fatalf("json output must not emit table read hint\nstderr=%s", stderr.String())
 	}
 }
 

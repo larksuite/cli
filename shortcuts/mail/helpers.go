@@ -212,6 +212,10 @@ func printMessageOutputSchema(runtime *common.RuntimeContext) {
 // Used by --print-output-schema to let callers discover field names without reading skill docs.
 func printWatchOutputSchema(runtime *common.RuntimeContext) {
 	schema := map[string]interface{}{
+		"_format_note": "Paths below are the bare per-event structure (as emitted by --format data). " +
+			"With the DEFAULT --format json, each event line is wrapped as " +
+			`{"ok":true,"identity":"user|bot","data":<structure below>} — prefix every path with .data ` +
+			"(e.g. .data.message.message_id; for --msg-format event, .data holds {header, event}).",
 		"minimal": map[string]interface{}{
 			"message": map[string]interface{}{
 				"message_id":    "<message_id>",

@@ -99,7 +99,7 @@ var MailWatch = common.Shortcut{
 	Scopes:      []string{"mail:event", "mail:user_mailbox.event.mail_address:read", "mail:user_mailbox:readonly", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
-		{Name: "format", Default: "data", Enum: []string{"json", "data"}, Desc: "json: NDJSON stream with ok/data envelope; data: bare NDJSON stream"},
+		{Name: "format", Default: "json", Enum: []string{"json", "data"}, Desc: "json: NDJSON stream with ok/data envelope; data: bare NDJSON stream"},
 		{Name: "msg-format", Default: "metadata", Desc: "message payload mode: metadata(headers + meta, for triage/notification) | minimal(IDs and state only, no headers, for tracking read/folder changes) | plain_text_full(all metadata fields + full plain-text body) | event(raw WebSocket event, no API call, for debug) | full(full message including HTML body and attachments)"},
 		{Name: "output-dir", Desc: "Write each message as a JSON file (always full payload, regardless of --msg-format)"},
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
@@ -332,7 +332,7 @@ var MailWatch = common.Shortcut{
 							output.PrintError(errOut, fmt.Sprintf("failed to write event file: %v", writeErr))
 						}
 					}
-					output.PrintJson(out, failureData)
+					output.PrintNdjson(out, watchFailureOutputValue(outFormat, string(runtime.As()), failureData))
 					return
 				}
 			}
@@ -385,12 +385,7 @@ var MailWatch = common.Shortcut{
 				}
 			}
 
-			switch outFormat {
-			case "json", "":
-				output.PrintNdjson(out, output.Envelope{OK: true, Identity: string(runtime.As()), Data: outputData})
-			case "data":
-				output.PrintNdjson(out, outputData)
-			}
+			output.PrintNdjson(out, watchOutputValue(outFormat, string(runtime.As()), outputData))
 		}
 
 		rawHandler := func(ctx context.Context, event *larkevent.EventReq) error {
@@ -685,6 +680,33 @@ func minimalWatchMessage(message map[string]interface{}) map[string]interface{} 
 		}
 	}
 	return out
+}
+
+// watchOutputValue selects the per-event value that +watch prints as NDJSON:
+// "data" emits the bare payload; every other format (json — the default) wraps
+// it in an ok/identity/data envelope. Extracted from Execute so the default
+// envelope behavior is unit-testable without a live WebSocket.
+func watchOutputValue(outFormat, identity string, outputData interface{}) interface{} {
+	if outFormat == "data" {
+		return outputData
+	}
+	return output.Envelope{OK: true, Identity: identity, Data: outputData}
+}
+
+// watchFailureOutputValue frames a fetch-failure payload for the watch stream,
+// mirroring watchOutputValue so the default json stream stays one JSON object
+// per line: bare payload for --format data, identity-tagged single line for the
+// default json envelope. failureData already carries {ok:false, error, ...}.
+func watchFailureOutputValue(outFormat, identity string, failureData map[string]interface{}) interface{} {
+	if outFormat == "data" || identity == "" {
+		return failureData
+	}
+	enriched := make(map[string]interface{}, len(failureData)+1)
+	for k, v := range failureData {
+		enriched[k] = v
+	}
+	enriched["identity"] = identity
+	return enriched
 }
 
 func watchFetchFailureValue(messageID, fetchFormat string, err error, eventBody map[string]interface{}) map[string]interface{} {
