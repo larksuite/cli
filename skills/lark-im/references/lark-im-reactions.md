@@ -2,264 +2,40 @@
 
 > **Prerequisite:** Before executing this command, ensure [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) has been read once in the current task for authentication, global parameters, and safety rules. Do not reread it if already loaded.
 
+Maps to `lark-cli im reactions <method>` (`create` / `list` / `delete` / `batch_query`) — raw API only, no typed shortcut. **Run `lark-cli schema im.reactions.<method> --format pretty` for the authoritative parameters, field shapes, and value ranges.** This file covers only what `schema` cannot.
+
 > **Heads-up — don't reach for `batch_query` by default.** The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+messages-search`, `+threads-messages-list`) already call `im.reactions.batch_query` automatically and attach the result as a `reactions` block on each message (replies inside `thread_replies` included). Use those shortcuts for any "read reactions of messages I'm already pulling" task. Reach for the raw `batch_query` API only when you have a standalone `message_id` outside that pull flow. See the main [message enrichment](lark-im-message-enrichment.md) for the contract.
 
-This reference is the shared annotation target for the IM reaction APIs:
+## Gotchas
 
-- `im.reactions.create`
-- `im.reactions.list`
-- `im.reactions.delete`
-- `im.reactions.batch_query`
+- **Reaction APIs return reaction *records*, not just aggregated counts.** `list` yields one entry per reaction event (who, when, which emoji); aggregate counts only appear in `batch_query`'s `success_msg_reaction_counts`. Do not expect a count-only response from `list`.
+- **`operator.operator_id` is not always a user ID.** When `operator_type=app` the value is the **app ID**, not an `ou_xxx` open_id. Only when `operator_type=user` does it follow the request's `user_id_type`.
 
-It focuses on:
+## `batch_query` Pagination
 
-- What each reaction method does
-- The request/response shape you need when calling the raw API commands
-- The complete `emoji_type` list used in reaction payloads and filters
-
-> **Important:** These raw API commands accept structured input through `--params '<json>'` and `--data '<json>'`. They do not expose typed flags such as `--message-id` or `--reaction-type` directly.
-
-## Command Overview
-
-| Method | HTTP | Path | Purpose |
-|---|---|---|---|
-| `im.reactions.create` | `POST` | `/open-apis/im/v1/messages/{message_id}/reactions` | Add a reaction to one message |
-| `im.reactions.list` | `GET` | `/open-apis/im/v1/messages/{message_id}/reactions` | List reaction records on one message |
-| `im.reactions.delete` | `DELETE` | `/open-apis/im/v1/messages/{message_id}/reactions/{reaction_id}` | Delete one specific reaction record |
-| `im.reactions.batch_query` | `POST` | `/open-apis/im/v1/messages/reactions/batch_query` | Query reactions for multiple messages in one request |
-
-## Common Notes
-
-- `message_id` is always an IM message ID such as `om_xxx`
-- `reaction_id` is the unique record ID returned after a reaction is added
-- `reaction_type.emoji_type` is the enum-like emoji identifier used by both write and read APIs
-- Reaction APIs return **reaction records**, not only aggregated counts
-- When the operator is a human user, the returned ID type may depend on `user_id_type`
-
-## Inspect Schema
-
-```bash
-lark-cli schema im.reactions
-lark-cli schema im.reactions.create --format pretty
-lark-cli schema im.reactions.list --format pretty
-lark-cli schema im.reactions.delete --format pretty
-```
-
-If your local build has already exposed the batch API in `schema`, also check:
-
-```bash
-lark-cli schema im.reactions.batch_query --format pretty
-```
-
-## create
-
-Add a reaction to one message.
-
-```bash
-lark-cli im reactions create \
-  --params '{"message_id":"om_xxx"}' \
-  --data '{"reaction_type":{"emoji_type":"SMILE"}}'
-```
-
-### Request
-
-- `--params.message_id`: required message ID
-- `--data.reaction_type.emoji_type`: required emoji type
-
-### Response
-
-```json
-{
-  "reaction_id": "ZCaCIjUBVVWSrm5L-3ZTw_xxx",
-  "operator": {
-    "operator_id": "ou_xxx",
-    "operator_type": "user"
-  },
-  "action_time": "1663054162546",
-  "reaction_type": {
-    "emoji_type": "SMILE"
-  }
-}
-```
-
-## list
-
-List reaction records on one message.
-
-```bash
-lark-cli im reactions list --params '{"message_id":"om_xxx"}'
-lark-cli im reactions list --params '{"message_id":"om_xxx","reaction_type":"SMILE"}'
-lark-cli im reactions list --params '{"message_id":"om_xxx","page_size":50}'
-lark-cli im reactions list --params '{"message_id":"om_xxx","page_token":"<PAGE_TOKEN>"}'
-lark-cli im reactions list --params '{"message_id":"om_xxx","user_id_type":"open_id"}'
-```
-
-### Request Parameters (`--params`)
-
-| Parameter | Required | Description |
-|---|---|---|
-| `message_id` | Yes | Message ID (`om_xxx`) |
-| `reaction_type` | No | Filter by one emoji type such as `SMILE` or `LAUGH` |
-| `page_size` | No | Number of records per page. Default is 20 |
-| `page_token` | No | Pagination token from the previous page |
-| `user_id_type` | No | Returned operator ID type when `operator_type=user`: `open_id`, `union_id`, or `user_id` |
-
-### Response Shape
-
-```json
-{
-  "items": [
-    {
-      "reaction_id": "ZCaCIjUBVVWSrm5L-3ZTw_xxx",
-      "operator": {
-        "operator_id": "ou_xxx",
-        "operator_type": "user"
-      },
-      "action_time": "1663054162546",
-      "reaction_type": {
-        "emoji_type": "SMILE"
-      }
-    }
-  ],
-  "has_more": true,
-  "page_token": "YhljsPiGfUgnVAg9urvRFd-BvSqRLxxxx"
-}
-```
-
-### Top-Level Fields
-
-| Field | Type | Meaning |
-|---|---|---|
-| `items` | `array<object>` | Reaction records for the current page |
-| `has_more` | `boolean` | Whether more pages are available |
-| `page_token` | `string` | Token for the next page when `has_more=true` |
-
-### `items[]` Fields
-
-| Field | Type | Meaning |
-|---|---|---|
-| `reaction_id` | `string` | Unique ID of this reaction record |
-| `operator` | `object` | Identity of the user or app that added the reaction |
-| `action_time` | `string` | Unix timestamp in milliseconds |
-| `reaction_type` | `object` | Reaction payload. The key field is `emoji_type` |
-
-### `operator` Fields
-
-| Field | Type | Meaning |
-|---|---|---|
-| `operator.operator_id` | `string` | Operator ID. If `operator_type=user`, the returned ID type follows `user_id_type`; if `operator_type=app`, this is the app ID |
-| `operator.operator_type` | `string` | `user` or `app` |
-
-## delete
-
-Delete one specific reaction record from one message.
-
-```bash
-lark-cli im reactions delete \
-  --params '{"message_id":"om_xxx","reaction_id":"ZCaCIjUBVVWSrm5L-3ZTw_xxx"}'
-```
-
-### Request
-
-- `--params.message_id`: required message ID
-- `--params.reaction_id`: required reaction record ID
-
-### Response
-
-The response shape is similar to `create`, and usually echoes:
-
-- `reaction_id`
-- `operator`
-- `action_time`
-- `reaction_type.emoji_type`
-
-## batch_query
-
-Query reactions for multiple messages in one request.
-
-`batch_query` covers only the reaction fragments returned for each query. When complete reactions for one message are required, use `im reactions list` and exhaust its pagination instead of treating an empty or partial batch fragment as complete.
-
-```bash
-lark-cli im reactions batch_query \
-  --params '{"user_id_type":"open_id"}' \
-  --data '{
-    "queries":[
-      {"message_id":"om_xxx"},
-      {"message_id":"om_yyy","page_token":"<PAGE_TOKEN>"}
-    ],
-    "page_size_per_message":10,
-    "reaction_type":"LAUGH"
-  }'
-```
-
-### Request
-
-#### `--params`
-
-| Parameter | Required | Description |
-|---|---|---|
-| `user_id_type` | No | Returned user ID type in operator info: `open_id`, `union_id`, or `user_id` |
-
-#### `--data`
-
-| Field | Required | Description |
-|---|---|---|
-| `queries` | Yes | Array of target messages |
-| `queries[].message_id` | No | Message ID to query |
-| `queries[].page_token` | No | Continuation token for that message |
-| `page_size_per_message` | No | Max reactions returned per message |
-| `reaction_type` | No | Filter by one emoji type |
-
-### Response
-
-The meta definition contains three top-level result groups:
-
-| Field | Meaning |
-|---|---|
-| `success_msg_reaction_details` | Per-message reaction detail records |
-| `success_msg_reaction_counts` | Per-message aggregated reaction counts |
-| `fail_msg_reaction_details` | Query failures for individual messages |
-
-#### `success_msg_reaction_details`
-
-Each `message_reaction_items[]` element includes:
-
-- `reaction_id`
-- `operator`
-- `action_time`
-- `emoji_type`
-
-#### `success_msg_reaction_counts`
-
-Each aggregated count record includes:
-
-- `message_id`
-- `reaction_count[].reaction_type`
-- `reaction_count[].count`
-
-#### `fail_msg_reaction_details`
-
-Each failed message record includes:
-
-- `message_id`
-- `fail_reason`
-
-Supported `fail_reason` values from meta:
-
-- `invalid`
-- `invalid_page_token`
-- `no_permission`
+- **A batch fragment is never a complete reaction set.** `batch_query` pages *per message* — each
+  `queries[]` element has its own cursor and its own size ceiling, so one call returns a slice of each
+  message's reactions, not all of them. When the *complete* list for one message is required, switch to
+  `im reactions list` and exhaust its pagination. An empty or short fragment from `batch_query` does not
+  mean the message has no more reactions.
+- **Read the cursor and size limits off `queries[].page_token` and `page_size_per_message`** in
+  `lark-cli schema im.reactions.batch_query --format pretty`. Both live under `--data`, and the size
+  ceiling is narrower than typical list endpoints — do not carry over a conventional page-size default.
 
 ## `emoji_type` Field
 
-Reaction emoji identifiers are used in slightly different field names across the APIs:
+The same emoji identifier appears under **different field names and nesting depths** across the four methods — the single most common source of malformed reaction payloads:
 
-- `im.reactions.create`: request and response use `reaction_type.emoji_type`
-- `im.reactions.list`: request filter uses `reaction_type`, response uses `reaction_type.emoji_type`
-- `im.reactions.delete`: response uses `reaction_type.emoji_type`
-- `im.reactions.batch_query`: request filter uses top-level `reaction_type`, detail results use `message_reaction_items[].emoji_type`, aggregated results use `reaction_count[].reaction_type`
+- `im.reactions.create` — request and response use `reaction_type.emoji_type`
+- `im.reactions.list` — request filter uses flat `reaction_type`; response uses `reaction_type.emoji_type`
+- `im.reactions.delete` — response uses `reaction_type.emoji_type`
+- `im.reactions.batch_query` — request filter uses top-level `reaction_type`; detail results use `message_reaction_items[].emoji_type`; aggregated results use `reaction_count[].reaction_type`
 
-## Complete `emoji_type` List
+## HELP-GAP — not yet in `--help`/schema; keep until CLI adds it
+
+`schema` links to the official emoji documentation page but does **not** enumerate the values inline, so the
+list below is the only machine-readable copy available offline. Keys are case-sensitive as written.
+
 
 The following list is synchronized from the official Feishu reaction emoji documentation:
 
@@ -296,6 +72,4 @@ GoGoGo, ThanksFace, SaluteFace, Shrug, ClownFace, HappyDragon
 
 ## References
 
-- [lark-im](../SKILL.md) - all IM commands
-- [lark-shared](../../lark-shared/SKILL.md) - authentication and global parameters
-- Official emoji doc: `https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce`
+- [lark-im](../SKILL.md) — all IM commands

@@ -2,138 +2,70 @@
 
 > **Prerequisite:** Before executing this command, ensure [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) has been read once in the current task for authentication, global parameters, and safety rules. Do not reread it if already loaded.
 
-Fetch the message list for a conversation. Supports both group chats and direct messages.
+**Run `lark-cli im +chat-messages-list --help` for the authoritative flags, defaults, sort/pagination controls, and completeness rule.** This file covers only what `--help` cannot.
 
-By default the response carries a `reactions` block (counts + details from `im.reactions.batch_query`) on every message that has reactions, and `update_time` on messages that were actually edited. Thread replies expanded via auto-`thread_replies` participate in the same batched enrichment. Pass `--no-reactions` to skip the extra round-trip. Pass `--download-resources` to additionally download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block — off by default. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
+## Automatic enrichment
 
-This skill maps to the shortcut: `lark-cli im +chat-messages-list` (internally calls `GET /open-apis/im/v1/messages`, and automatically resolves the p2p chat_id when needed).
+`--help` names the flags that turn enrichment off; it does not say what arrives when they are left on:
 
-## Commands
+- A `reactions` block (counts + details from `im.reactions.batch_query`) on every message that has reactions — so **do not call the reactions API separately** for messages you already pulled here.
+- `update_time` on messages that were actually edited (absent otherwise).
+- Thread replies expanded via auto-`thread_replies` participate in the same batched enrichment.
 
-```bash
-# Get group chat messages (json output by default)
-lark-cli im +chat-messages-list --chat-id oc_xxx
-
-# Get direct messages with a user (pass open_id and resolve p2p chat_id automatically)
-lark-cli im +chat-messages-list --user-id ou_xxx
-
-# Specify a time range (ISO 8601)
-lark-cli im +chat-messages-list --chat-id oc_xxx --start "2026-03-10T00:00:00+08:00" --end "2026-03-11T00:00:00+08:00"
-
-# Specify a time range (date only)
-lark-cli im +chat-messages-list --chat-id oc_xxx --start 2026-03-10 --end 2026-03-11
-
-# Control sort order
-lark-cli im +chat-messages-list --chat-id oc_xxx --order asc
-
-# JSON output
-lark-cli im +chat-messages-list --chat-id oc_xxx --format json
-```
-
-## Parameters
-
-| Parameter | Required | Description |
-|------|------|------|
-| `--chat-id <id>` | One of two | Specify the conversation by its chat_id directly (e.g., group chat `oc_xxx`) |
-| `--user-id <id>` | One of two | Specify a DM conversation by the other user's open_id (`ou_xxx`); p2p chat_id is resolved automatically. Requires user identity (`--as user`); not supported with bot identity |
-| `--start <time>` | No | Start time (ISO 8601 or date only) |
-| `--end <time>` | No | End time (ISO 8601 or date only) |
-| `--order <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
-| `--no-reactions` | No | Skip auto-fetching the `reactions` block |
-| `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default; no extra requests when omitted |
-
-> Rule: `--chat-id` and `--user-id` are mutually exclusive. You must provide exactly one of them.
-
-> **CAUTION:** `--order` is the only sort axis — messages are always ordered by creation time, `asc` or `desc`. There is no field axis: the command cannot sort by sender or any other field, so do **not** attempt `--sort sender` or similar (it is rejected). If the user asks to group or sort by sender, fetch with `--order` and aggregate client-side, and tell them this is local post-processing, not a CLI/API sort capability.
+See [message enrichment](lark-im-message-enrichment.md) for the full contract.
 
 ## Resource Rendering
 
-Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `![Image](img_xxx)`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). By default resource binaries are **not** downloaded.
+Message content is rendered into inspectable text, and the markers it uses are not documented anywhere else — an agent parsing `content` needs them:
 
-Two ways to get the binaries:
-- **In one pass:** add `--download-resources` to this command — every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) is downloaded into `./lark-im-resources/` and a `resources` block (`{message_id, key, type, local_path, size_bytes}`) is attached to each message. See [message enrichment](lark-im-message-enrichment.md#resource-auto-download---download-resources-opt-in).
-- **One at a time:** use [lark-im-messages-resources-download](lark-im-messages-resources-download.md).
-
-| Resource Type | Marker in Content | Behavior |
+| Resource | Marker inside `content` | Retrieval |
 |---------|-------------|------|
-| Image | `![Image](img_xxx)` | `--download-resources`, or manually `im +messages-resources-download --type image` |
-| File | `<file key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
-| Audio | `<audio key="file_xxx" duration="Xs"/>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
-| Video | `<video key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
-| Sticker | `[Sticker]` | Not downloadable (Feishu does not support fetching sticker resources) |
+| Image | `![Image](img_xxx)` | `--download-resources`, or `im +messages-resources-download --type image` |
+| File | `<file key="file_xxx" .../>` | `--download-resources`, or `im +messages-resources-download --type file` |
+| Audio | `<audio key="file_xxx" duration="Xs"/>` | same as File |
+| Video | `<video key="file_xxx" .../>` | same as File |
+| Sticker | `[Sticker]` | **Not retrievable at all** — Feishu exposes no endpoint for sticker bytes |
+
+With `--download-resources`, each message additionally carries a `resources` block shaped
+`{message_id, key, type, local_path, size_bytes}` — see
+[message enrichment](lark-im-message-enrichment.md#resource-auto-download---download-resources-opt-in).
 
 ## Thread Expansion (`thread_id`)
 
-In JSON output, a message may contain a `thread_id` (`omt_xxx`) field, which means the message has replies in a thread. Use [`im +threads-messages-list`](lark-im-threads-messages-list.md) to inspect replies in that thread:
+A message carrying `thread_id` (`omt_xxx`) has replies in a thread; the field is **absent** when it does not. The replies are not in this response — fetch them with [`im +threads-messages-list`](lark-im-threads-messages-list.md).
 
-```bash
-lark-cli im +threads-messages-list --thread omt_xxx
-```
-
-| Scenario | Recommendation |
+| Situation | What to do |
 |------|------|
-| You need context | Call `im +threads-messages-list --order desc` for the discovered thread_id to inspect recent replies |
-| The user asks for the "full discussion" | Inspect the thread command's `--help` for full-read controls, then read in chronological order |
-| You only need an overview | Skip thread expansion |
+| You need surrounding context | Read recent replies for the discovered `thread_id` |
+| The user asks for the "full discussion" | Read the thread in chronological order, and require its own completeness signal |
+| You only need an overview | Skip thread expansion entirely |
 
-## Output Fields
+## Gotchas
 
-| Field | Description |
-|------|------|
-| `messages` | Message array |
-| `total` | Number of messages in the current page |
-| `has_more` | Whether additional pages are available |
-| `page_token` | Pagination token for the next page |
-
-Each message contains:
-
-| Field | Description |
-|------|------|
-| `message_id` | Message ID |
-| `msg_type` | Message type: `text`, `image`, `file`, `interactive`, `post`, `audio`, `video`, `system`, etc. |
-| `create_time` | Creation time |
-| `sender` | Sender information (includes `name` for user senders) |
-| `content` | Message content |
-| `deleted` | Whether the message has been recalled (always present, `true` = recalled) |
-| `updated` | Whether the message has been edited after sending |
-| `mentions` | Array of @mentions in the message; each item contains `{id, key, name}`. Present only when the message contains @mentions |
-| `thread_id` | Thread ID (`omt_xxx`) if the message has replies in a thread. Present only when replies exist |
-
-If the task requires the complete conversation, inspect this concrete command's `--help` before executing and require `meta.complete=true` before claiming the history is complete.
-
-## Common Errors and Troubleshooting
-
-| Symptom | Root Cause | Solution |
-|---------|---------|---------|
-| `specify --chat-id <chat_id> or --user-id <open_id>` | Neither `--chat-id` nor `--user-id` was provided | You must provide exactly one |
-| `--chat-id and --user-id cannot be specified together` | Both parameters were provided | Use only one |
-| `--user-id requires user identity (--as user); use --chat-id when calling with bot identity` | `--user-id` was used with bot identity | The p2p resolution endpoint requires user identity. Either pass `--as user` or look up the p2p `chat_id` separately and pass it via `--chat-id` |
-| `P2P chat not found for this user` | `--user-id` was used but no p2p chat exists for the current identity and that user | Confirm the target direct-message relationship exists for the current identity |
-| `--start: invalid time format` | Invalid time format | Use ISO 8601 or date-only format such as `2026-03-10` |
-| Permission denied | Message read permissions are missing | Ensure the app has `im:message:readonly` and `im:chat:read` enabled |
+- **`--user-id` requires user identity.** The p2p-resolution endpoint is user-only, so with bot identity you must resolve the p2p `chat_id` yourself and pass `--chat-id`. `--help` states the flags are mutually exclusive but not this identity constraint.
+- **`msg_type` includes `system`** (join/leave/rename events) alongside user content. Summaries that should ignore housekeeping must filter it out — no flag does this.
+- **`deleted` is always present**, `updated` and `mentions` only appear when applicable. A `jq` path assuming they exist will break on ordinary messages.
+- **Table output truncates `content`.** Use `--format json` whenever the full message body matters.
+- **Sender names are already resolved** — no separate contact lookup is needed.
 
 ## AI Usage Guidance
 
-1. **Resolving chat_id from a chat name:** When the user refers to a chat by name and you don't have the `chat_id`, use [`+chat-search`](lark-im-chat-search.md) first:
-   ```bash
-   # Find chat_id by name, then list messages
-   lark-cli im +chat-search --query "<chat name keyword>" --format json
-   lark-cli im +chat-messages-list --chat-id <chat_id>
-   ```
-   **Do not use `im chats search` or `+chat-list` — always use the `+chat-search` shortcut.**
-2. **Prefer `--chat-id` when available:** if the chat_id is already known, use it directly to avoid extra API calls.
-3. **For direct messages:** use `--user-id` to resolve the p2p chat automatically instead of looking it up manually. This requires user identity (`--as user`); with bot identity, resolve the p2p `chat_id` yourself and pass it via `--chat-id`.
-4. **For time ranges:** both ISO 8601 and date-only inputs are supported. Date-only is usually simpler.
-5. **For full content:** table output truncates content. Use `--format json` when you need the complete message body.
-6. **For sender info:** the command already resolves sender names, so you do not need a separate lookup.
-7. **Application/bot identity + named group history:** If the user says "使用应用身份/以 bot 身份" and asks to list or read historical messages for a named group, use bot identity for both steps:
-   ```bash
-   lark-cli im +chat-search --as bot --query "<chat name keyword>" --format json
-   lark-cli im +chat-messages-list --as bot --chat-id <chat_id> --format json
-   ```
-   Do not use `im +messages-search --as bot`; `+messages-search` is user-only. Inspect `+chat-messages-list --help` first when the task requires complete history.
+**Resolving `chat_id` from a chat name:** use [`+chat-search`](lark-im-chat-search.md) first. **Do not use `im chats search` or `+chat-list`** — always the `+chat-search` shortcut.
+
+**Bot identity with a named group:** when the user says "使用应用身份 / 以 bot 身份" and asks for a named group's history, keep bot identity for both steps — `+chat-search --as bot` then `+chat-messages-list --as bot --chat-id`. Do **not** reach for `im +messages-search --as bot`; that command is user-only.
+
+**Prefer `--chat-id` when you already hold it** — passing `--user-id` costs an extra resolution round-trip.
+
+## Common Errors and Troubleshooting
+
+Only errors whose cause or fix is not evident from `--help`:
+
+| Symptom | Root cause | Solution |
+|---------|---------|---------|
+| `--user-id requires user identity (--as user); use --chat-id when calling with bot identity` | p2p resolution endpoint is user-only | Pass `--as user`, or look up the p2p `chat_id` separately and pass `--chat-id` |
+| `P2P chat not found for this user` | No p2p chat exists between the **current identity** and that user | Confirm the direct-message relationship exists for the identity you are using — it is identity-scoped, not global |
+| Permission denied | Read scopes missing | App needs `im:message:readonly` **and** `im:chat:read` |
 
 ## References
 
-- [lark-im](../SKILL.md) - all IM commands
-- [lark-shared](../../lark-shared/SKILL.md) - authentication and global parameters
+- [lark-im](../SKILL.md) — all IM commands

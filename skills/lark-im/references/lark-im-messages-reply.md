@@ -2,9 +2,7 @@
 
 > **Prerequisite:** Before executing this command, ensure [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) has been read once in the current task for authentication, global parameters, and safety rules. Do not reread it if already loaded.
 
-Reply to a specific message. Supports both user identity (`--as user`) and bot identity (`--as bot`). Also supports thread replies.
-
-This skill maps to the shortcut: `lark-cli im +messages-reply` (internally calls `POST /open-apis/im/v1/messages/:message_id/reply`).
+**Run `lark-cli im +messages-reply --help` for the authoritative flags, defaults, enums, mutual-exclusion rules, and examples.** This file covers only what `--help` cannot.
 
 ## Safety Constraints
 
@@ -22,256 +20,95 @@ When using `--as user`, the reply is sent as the authorized end user and require
 
 ## Choose The Right Content Flag
 
-### Default Selection Rule For Agents
+`--help` lists what each flag accepts; it does not say which to pick. The decision rule:
 
-- Prefer `--markdown` for headings, lists, links, summaries, investigation notes, or Markdown-looking content.
-- Use `--text` for exact plain text: logs, code, indentation-sensitive text, or literal Markdown.
-- Use `--content` for exact `post` JSON, titles, multiple locales, cards, or unsupported structures.
+- `--markdown` — headings, lists, links, summaries, reports, or Markdown-looking content.
+- `--text` — exact plain text: logs, code, indentation-sensitive text, or literal Markdown that must **not** render.
+- `--content` — exact `post` JSON, a `post` title, multiple locales, cards, or structures the other flags cannot express.
 
-| Need | Recommended flag | Why |
-|------|------|------|
-| Reply with headings, lists, links, summaries, or investigation notes | `--markdown` | Best default for lightweight formatting; converted to Feishu `post` JSON |
-| Reply with plain text exactly as written | `--text` | Preserves literal text; no Markdown conversion |
-| Precisely control the reply payload | `--content` | You provide the exact JSON |
-| Reply with media | `--image` / `--file` / `--video` / `--audio` | Shortcut uploads URLs, or cwd-relative local files automatically |
+## Markdown Boundaries
 
-### `--text` vs `--markdown`
+`--markdown` is not a general Markdown renderer. It converts to a Feishu `post` payload, so:
 
-- Use `--markdown` for lightweight formatted replies.
-- Use `--text` for exact plain text, especially logs, code, indentation, or literal Markdown characters.
-- Use `--content` when you need exact `post` JSON, a card, a title, multiple locales, or any structure that `--markdown` cannot express reliably.
-
-## What `--markdown` Really Does
-
-`--markdown` accepts Markdown-like input and converts it to the Feishu `post` payload required by the reply API.
-
-The shortcut:
-
-1. Forces `msg_type=post`
-2. Resolves remote Markdown images like `![x](https://...)`
-3. Normalizes the Markdown for Feishu post rendering
-4. Wraps the final content as:
-
-```json
-{"zh_cn":{"content":[[{"tag":"md","text":"..."}]]}}
-```
-
-This makes `--markdown` the simplest path for lightweight formatted replies.
-
-### Markdown Boundaries
-
-- It does **not** promise full CommonMark / GitHub Flavored Markdown support.
-- It always becomes a `post` payload with a single `zh_cn` locale.
-- It does **not** let you set a `post` title.
-- H1 through H6 are preserved outside fenced code blocks.
-- Consecutive headings are separated with blank lines during normalization.
-- Block spacing and line breaks may be normalized during conversion.
-- Code blocks are preserved as code blocks.
-- Excess blank lines are compressed.
-- Already-uploaded `img_xxx` image keys are the most reliable Markdown image input.
-- Local paths (e.g. `![x](./a.png)`) are **not** supported directly in `--markdown` and will not be auto-uploaded.
-- Remote URLs (`https://...`) will be auto-downloaded and uploaded at runtime; if the download or upload fails, the image is removed with a warning.
-
-If you need a title, multiple locales, cards, unsupported rich structures, or byte-for-byte post JSON control, use `--msg-type post --content ...`.
-
-### Image Constraint for `--markdown`
-
-When using `--markdown` with images, prefer pre-uploading via `images.create` and referencing `![alt](img_xxx)` for predictable results. Remote URLs may work but are not guaranteed.
-
-**Steps:**
+- It does **not** promise full CommonMark / GFM support.
+- The result always carries a single `zh_cn` locale, and there is **no way to set a `post` title** — use `--msg-type post --content` when you need either.
+- H1–H6 survive outside fenced code blocks; fenced code blocks are preserved.
+- **Local paths in Markdown image syntax (`![x](./a.png)`) are silently unsupported** — they are not uploaded and will not render. Pre-upload with `im images create` and reference the returned `img_xxx` key instead:
 
 ```bash
-# 1. Upload image to get image_key
 lark-cli im images create --data '{"image_type":"message"}' --file ./diagram.png --as bot
-# Returns: {"image_key":"img_v3_xxxx"}
-
-# 2. Use image_key in --markdown reply
-lark-cli im +messages-reply --message-id om_xxx --markdown $'## Result\n\n![diagram](img_v3_xxxx)\n\nSee above for details.' --as bot
+lark-cli im +messages-reply --message-id om_EXAMPLE_MESSAGE_ID --markdown $'## Report\n\n![diagram](img_EXAMPLE_KEY)' --as bot
 ```
+
+- Remote `https://` images are downloaded and uploaded at runtime; **if that fails the image is dropped and only a warning is emitted** — the reply still sends without it.
 
 ## Preserving Formatting
 
-If the reply contains multiple lines, code blocks, indentation, tabs, or a lot of escaping, prefer `$'...'` for either `--markdown` or `--text`.
-
-### When formatting must be preserved
-
-Use `--text` plus `$'...'`:
+For multi-line content, indentation, code blocks, tabs, or many quotes/backslashes, use shell ANSI-C quoting `$'...'` so `\n` is written explicitly rather than relying on the shell to carry literal newlines:
 
 ```bash
-lark-cli im +messages-reply --message-id om_xxx --text $'Received\nI will check this today.\nOwner: alice' --as bot
+lark-cli im +messages-reply --message-id om_EXAMPLE_MESSAGE_ID --text $'Checked\nBranch: feature/x\nResult: passing' --as bot
 ```
 
-```bash
-lark-cli im +messages-reply --message-id om_xxx --text $'```sql\nselect * from jobs;\n```' --as bot
-```
+Use `--text` (not `--markdown`) whenever the receiver must see the bytes exactly as entered.
 
-This keeps the reply as plain text instead of converting it to a `post`.
+## Thread vs Main Stream
 
-## Commands
+`--reply-in-thread` changes where the reply lands, and that choice is not recoverable after sending:
 
-```bash
-# Reply with a formatted update
-lark-cli im +messages-reply --message-id om_xxx --markdown $'## Reply\n\n- item 1\n- item 2' --as bot
+- Without it, the reply appears in the **main chat stream** and references the target message — visible to everyone reading the chat.
+- With it, the reply appears **only in the target message's thread** and does not surface in the main stream.
+- It is meaningful only in chats that support thread replies. In a chat without thread support the flag has no useful effect.
 
-# Reply with a plain one-line message
-lark-cli im +messages-reply --message-id om_xxx --text "Received" --as bot
-
-# Reply and add a structured user mention
-lark-cli im +messages-reply --message-id om_xxx --text "Please review" --mention ou_xxx --as bot
-
-# Reply and mention all members
-lark-cli im +messages-reply --message-id om_xxx --text "Incident update" --mention-all --as bot
-
-# Equivalent manual JSON
-lark-cli im +messages-reply --message-id om_xxx --content '{"text":"Received"}' --as bot
-
-# Reply as a bot
-lark-cli im +messages-reply --message-id om_xxx --text "bot reply" --as bot
-
-# Reply with preserved multi-line text
-lark-cli im +messages-reply --message-id om_xxx --text $'Line 1\nLine 2\n  indented line' --as bot
-
-# Reply inside the thread (message appears in the target thread)
-lark-cli im +messages-reply --message-id om_xxx --text "Let's discuss this" --reply-in-thread --as bot
-
-# Reply with Markdown containing an image (must pre-upload via images.create)
-lark-cli im images create --data '{"image_type":"message"}' --file ./screenshot.png --as bot
-# Use the returned image_key
-lark-cli im +messages-reply --message-id om_xxx --markdown $'## Screenshot\n\n![screenshot](img_v3_xxxx)\n\nConfirmed.' --as bot
-
-# If you need exact post structure, send JSON directly
-lark-cli im +messages-reply --message-id om_xxx --msg-type post --content '{"zh_cn":{"title":"Reply","content":[[{"tag":"text","text":"Detailed content"}]]}}' --as bot
-
-# Reply with a local image (uploaded automatically before sending)
-lark-cli im +messages-reply --message-id om_xxx --image ./photo.png --as bot
-
-# Reply with a local file (uploaded automatically before sending)
-lark-cli im +messages-reply --message-id om_xxx --file ./report.pdf --as bot
-
-# Reply with a local video (--video-cover is required as the video cover)
-lark-cli im +messages-reply --message-id om_xxx --video ./demo.mp4 --video-cover ./cover.png --as bot
-
-# Reply with a voice message
-lark-cli im +messages-reply --message-id om_xxx --audio ./voice.opus --as bot
-
-# With an idempotency key
-lark-cli im +messages-reply --message-id om_xxx --text "Received" --idempotency-key <generated_uuid> --as bot
-
-# Preview the request without executing it
-lark-cli im +messages-reply --message-id om_xxx --markdown $'## Test\n\nhello' --dry-run --as bot
-
-# ===== Interactive Card =====
-# 🚫 STOP — before constructing ANY interactive card JSON, you MUST read
-#    card/lark-im-card-create.md and follow its workflow. Do NOT
-#    hand-write or copy a card payload. The JSON passed to --content must be
-#    the OUTPUT of that workflow. This is non-negotiable.
-
-# Once the workflow has produced the card JSON, reply with it:
-lark-cli im +messages-reply --message-id om_xxx --msg-type interactive --content '<card_json_from_workflow>' --as bot
-```
+When the user says "reply in the thread" / "回复到话题里", pass the flag. When they just say "reply", do not — the main stream is the default and the more visible choice.
 
 ## Media Input Rules
 
-- Media flags accept an existing key (`img_xxx` / `file_xxx`), an `http://` or `https://` URL, or a local file path.
-- Local paths must be relative to the current working directory and stay within it after resolving `..` and symlinks.
-- Absolute paths such as `/tmp/photo.png` are rejected. Run the command from the file's directory and pass `./photo.png`, or copy the file into the current directory first.
-- `--audio` sends a voice message and accepts only Opus audio (`.opus` or Ogg Opus `.ogg`) for local paths and URLs. For `mp3`, `wav`, or other non-Opus audio, convert to `.opus` before using `--audio`, or use `--file` to send the original audio as an attachment.
-
-## Parameters
-
-| Parameter | Required | Description                                                                                                                                                                                   |
-|------|------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--message-id <id>` | Yes | ID of the message being replied to (`om_xxx`)                                                                                                                                                 |
-| `--msg-type <type>` | No | Message type (default `text`). If you use `--text` / `--markdown` / media flags, the effective type is inferred automatically. Explicitly setting a conflicting `--msg-type` fails validation |
-| `--content <json>` | One content option | Exact reply content as JSON. The JSON must match the effective `--msg-type`                                                                                                                   |
-| `--text <string>` | One content option | Plain text reply. Use when exact text and formatting preservation matter                                                                                                                      |
-| `--markdown <string>` | One content option | Best default for lightweight formatted replies such as headings, lists, links, summaries, and investigation notes. Internally converted to `post` JSON with Feishu-specific normalization |
-| `--image <path\|url\|key>` | One content option | Cwd-relative local image path, URL, or `image_key` (`img_xxx`)                                                                                                                                |
-| `--file <path\|url\|key>` | One content option | Cwd-relative local file path, URL, or `file_key` (`file_xxx`)                                                                                                                                 |
-| `--video <path\|url\|key>` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`); **must be used together with `--video-cover`**                                                                                |
-| `--video-cover <path\|url\|key>` | **Required with `--video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`)                                                                                                                          |
-| `--audio <path\|url\|key>` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
-| `--mention <id>` | No | Add a structured user mention to a text/post reply. Repeat the flag or pass comma-separated IDs; IDs are sent unchanged. |
-| `--mention-all` | No | Add a structured @all node to a text/post reply. May be combined with `--mention`; do not pass `all` through `--mention`. |
-| `--reply-in-thread` | No | Reply inside the thread. The reply appears in the target message's thread instead of the main chat stream                                                                                     |
-| `--idempotency-key <key>` | No | Idempotency key, max 50 characters; the same key sends only one reply within 1 hour                                                                                                          |
-| `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`)                                                                                                                                                |
-| `--dry-run` | No | Print the request only, do not execute it                                                                                                                                                     |
-
-> **Mutual exclusivity rule:** `--text`, `--markdown`, `--content`, and `--image`/`--file`/`--video`/`--audio` cannot be used together. Media flags are also mutually exclusive with each other.
->
-> **Video cover rule:** `--video` **must** be accompanied by `--video-cover`. Omitting `--video-cover` when using `--video` will fail validation. `--video-cover` cannot be used without `--video`.
+- Local paths must resolve to a location **inside** the current working directory after `..` **and symlinks** are resolved. When a file sits elsewhere, run the command from that file's directory or copy it in first — there is no flag that relaxes this.
+- Upload and send use the **same identity** (UAT for `--as user`, TAT for `--as bot`), so a bot that cannot post to the chat also cannot pre-upload for it.
+- **If an upload fails, nothing is sent.** The CLI never silently downgrades content (it will not swap a failed image for a text link). Any degraded form must be shown to the user and re-sent only after their approval.
+- `--dry-run` prints **placeholder** image/media keys for remote Markdown images and local uploads — never treat a dry-run key as real.
 
 ## Common Mistakes
 
-- Choosing `--text` for headings, lists, links, summaries, or investigation notes. Use `--markdown`.
-- Choosing `--markdown` when you actually need exact plain text. If exact line breaks, spacing, logs, code, or literal Markdown characters matter, use `--text`, usually with `$'...'`.
-- Assuming `--markdown` supports every Markdown feature. It is converted into a Feishu `post` payload and normalized first.
-- Putting local image paths inside Markdown like `![x](./a.png)`. `--markdown` does not auto-upload those paths.
-- **Using local file paths inside Markdown image syntax** (e.g. `![x](./a.png)`) with `--markdown`. Local paths are not auto-uploaded and will not render as an image. Pre-upload via `images.create` to get an `image_key` instead.
-- Using `--content` without making the JSON match the effective `--msg-type`.
-- Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
-- Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
-- Hand-writing `<at>` in text/post content. Pass targets with `--mention` / `--mention-all`; those flags are supported only for text and post replies.
+- Choosing `--text` for headings, lists, links, summaries, or reports — use `--markdown`.
+- Choosing `--markdown` when exact line breaks, spacing, logs, code, or literal Markdown characters matter — use `--text` with `$'...'`.
+- Assuming `--markdown` supports every Markdown feature; it is normalized into a `post` payload first.
+- Putting local image paths inside Markdown image syntax — they are not auto-uploaded.
+- Hand-writing `<at>` in text/post content. Pass targets with `--mention` / `--mention-all`, which are accepted **only** for text and post messages.
 
-## Return Value
+## `content` Format Reference
 
-```json
-{
-  "message_id": "om_xxx",
-  "chat_id": "oc_xxx",
-  "create_time": "1234567890"
-}
-```
+Needed only with `--content`, which requires you to build JSON matching the effective `msg_type`:
 
-## Usage Scenarios
+| `msg_type` | Example `content` |
+|----------|-------------|
+| `text` | `{"text":"Hello"}`; add mentions through `--mention` / `--mention-all` |
+| `post` | `{"zh_cn":{"title":"Title","content":[[{"tag":"text","text":"Body"}]]}}` |
+| `image` | `{"image_key":"img_xxx"}` |
+| `file` | `{"file_key":"file_xxx"}` |
+| `audio` | `{"file_key":"file_xxx"}` |
+| `media` | `{"file_key":"file_xxx","image_key":"img_xxx"}` (video; `image_key` is the cover from `--video-cover` — **required**) |
+| `share_chat` | `{"chat_id":"oc_xxx"}` |
+| `share_user` | `{"user_id":"ou_xxx"}` |
+| `interactive` | Card JSON — see the gate below |
 
-### Scenario 1: Reply in the main chat stream
-
-```bash
-lark-cli im +messages-reply --message-id om_xxx --text "OK, I will handle it" --as bot
-```
-
-The reply appears in the main chat stream and references the target message.
-
-### Scenario 2: Reply inside a thread
-
-```bash
-lark-cli im +messages-reply --message-id om_xxx --text "Let me take a look at this" --reply-in-thread --as bot
-```
-
-The reply appears in the target message's thread and does not show up in the main chat stream.
+**🚫 Interactive cards are gated.** Before constructing ANY card JSON you MUST read [`card/lark-im-card-create.md`](card/lark-im-card-create.md) and follow its workflow. The JSON passed to `--msg-type interactive --content` must be that workflow's output — never hand-written, never copied from an example. This applies every time. Callback handling: [`lark-im-card-action-reply.md`](lark-im-card-action-reply.md).
 
 ## Structured @Mentions
 
-- For `--text`, `--markdown`, or `--msg-type post --content`, pass each user ID through `--mention`; the flag is repeatable and also accepts comma-separated IDs. Values are sent unchanged, so do not convert between `user_id` and `open_id`.
-- Use `--mention-all` for @all. It may be combined with individual `--mention` values.
-- Do not hand-write `<at>` inside text/post content when using these shortcuts. Mention flags reject non-text/post message types.
-- A returned `mention_result.status` of `complete` means all requested individual mention results were attributed. `accepted_unverified` means the service accepted the reply/@all node but delivery is not verified. `partial` or `partial_unattributed` means the reply may already exist but mention completion is not fully proven.
-- Follow `data.mention_result.retry_scope`. When it is `none`, do not resend the original reply to repair or verify mentions; an extra remedial message is a new user-approved business action. For `partial_unattributed`, do not guess which user failed.
+`--help` documents the flags; it does not document what the response tells you about whether the mentions landed.
 
-Interactive cards do not use the shortcut mention flags. Use the card-native `<at>` syntax inside a `lark_md` / `markdown` element:
+- A returned `mention_result.status` of `complete` means all requested individual mention results were attributed. `accepted_unverified` means the service accepted the message/@all node but delivery is not verified. `partial` or `partial_unattributed` means the reply may already exist but mention completion is not fully proven.
+- Follow `data.mention_result.retry_scope`. When it is `none`, **do not resend the original reply** to repair or verify mentions — an extra remedial message is a new user-approved business action. For `partial_unattributed`, do not guess which user failed.
+- IDs are sent unchanged, so do not convert between `user_id` and `open_id`.
 
-- single user by open_id: `<at id=ou_xxx></at>`
+Interactive cards ignore the shortcut mention flags. Use card-native `<at>` inside a `lark_md` / `markdown` element:
+
+- single user: `<at id=ou_xxx></at>`
 - multiple users: `<at ids=ou_xxx1,ou_xxx2></at>`
 - by email: `<at email=user@example.com></at>`
 
-## Notes
+## HELP-GAP — not yet in `--help`/schema; keep until CLI adds it
 
-- `--message-id` must be a valid message ID in `om_xxx` format
-- `--content` must be valid JSON
-- When using `--content`, you are responsible for making the JSON structure match the effective `msg_type`
-- `--reply-in-thread` adds `reply_in_thread=true` to the API request
-- `--reply-in-thread` is mainly meaningful in chats that support thread replies
-- `--image`/`--file`/`--video`/`--audio`/`--video-cover` support existing keys, URLs, and cwd-relative local file paths; the shortcut uploads local paths and URLs first, then sends the reply; both the upload and send steps use the same identity (UAT when `--as user`, TAT when `--as bot`)
-- If an upload fails (URL media or a markdown image), **nothing is sent** — the command fails with a recovery hint. The CLI never downgrades content on its own (e.g. replacing a failed image with a text link); any degraded form must be shown to the user and re-sent explicitly after their approval
-- If the provided media value starts with `img_` or `file_`, it is treated as an existing key and used directly
-- `--markdown` always sends `msg_type=post`
-- If you explicitly set `--msg-type` and it conflicts with the chosen content flag, validation fails
-- When using `--video`, `--video-cover` is required as the video cover
-- `--dry-run` uses placeholder image keys for remote Markdown images and placeholder media keys for local uploads
-- Failures return error codes and messages
-- `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the reply is sent as the authorized end user
-- `--as bot` uses a tenant access token (TAT), and requires the `im:message:send_as_bot` scope
-- When using `--markdown` with images, pre-uploading via `images.create` to obtain an `image_key` is recommended for reliability; remote URLs may be auto-resolved at runtime, but if download/upload fails the image is removed with a warning; local paths are not supported
-- **Interactive cards are gated:** you MUST read and follow the [`card/lark-im-card-create.md`](card/lark-im-card-create.md) workflow to produce the card JSON *before* replying. Do not hand-write or copy a card payload — the JSON given to `--msg-type interactive --content` must be the workflow's output. This applies every time, with no exception
+- **Required scope per identity:** `--as bot` needs `im:message:send_as_bot`; `--as user` needs `im:message.send_as_user` plus `im:message`. `--help` prints no scope information at all.
