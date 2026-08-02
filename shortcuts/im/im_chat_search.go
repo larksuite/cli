@@ -107,8 +107,8 @@ var ImChatSearch = common.Shortcut{
 		}
 
 		rawItems, _ := resData["items"].([]interface{})
-		totalF, _ := util.ToFloat64(resData["total"])
-		total := totalF
+		total, hasPositiveTotal := util.ToFloat64(resData["total"])
+		hasPositiveTotal = hasPositiveTotal && int(total) > 0
 		hasMore, pageToken := common.PaginationMeta(resData)
 
 		// Extract MetaData from each item
@@ -144,9 +144,11 @@ var ImChatSearch = common.Shortcut{
 
 		outData := map[string]interface{}{
 			"chats":      items,
-			"total":      int(total),
 			"has_more":   hasMore,
 			"page_token": pageToken,
+		}
+		if hasPositiveTotal {
+			outData["total"] = int(total)
 		}
 		if notice, _ := resData["notice"].(string); notice != "" {
 			outData["notice"] = notice
