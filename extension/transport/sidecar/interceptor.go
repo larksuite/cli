@@ -4,11 +4,12 @@
 //go:build authsidecar
 
 // Package sidecar provides a transport interceptor for the auth sidecar
-// proxy mode. When LARKSUITE_CLI_AUTH_PROXY is set (an HTTP URL), all
-// outgoing requests are rewritten to the sidecar address. The interceptor
-// strips placeholder credentials, injects proxy headers, and signs each
-// request with HMAC-SHA256. No custom DialContext is needed — Go's
-// standard http.Transport connects to the sidecar via plain HTTP.
+// proxy mode. When LARKSUITE_CLI_AUTH_PROXY is set (an http:// or https://
+// URL), all outgoing requests are rewritten to the sidecar address. The
+// interceptor strips placeholder credentials, injects proxy headers, and
+// signs each request with HMAC-SHA256. No custom DialContext is needed —
+// Go's standard http.Transport connects to the sidecar via HTTP, or via
+// HTTPS (TLS) when the sidecar address is an https:// URL.
 package sidecar
 
 import (
@@ -46,15 +47,17 @@ func (p *Provider) ResolveInterceptor(ctx context.Context) transport.Interceptor
 	}
 	key := os.Getenv(envvars.CliProxyKey)
 	return &Interceptor{
-		key:         []byte(key),
-		sidecarHost: sidecar.ProxyHost(proxyAddr),
+		key:           []byte(key),
+		sidecarHost:   sidecar.ProxyHost(proxyAddr),
+		sidecarScheme: sidecar.ProxyScheme(proxyAddr),
 	}
 }
 
 // Interceptor rewrites requests for the sidecar proxy.
 type Interceptor struct {
-	key         []byte // HMAC signing key
-	sidecarHost string // sidecar host:port for URL rewriting
+	key           []byte // HMAC signing key
+	sidecarHost   string // sidecar host[:port] for URL rewriting
+	sidecarScheme string // "http" (same-host) or "https" (remote TLS sidecar)
 }
 
 // PreRoundTrip rewrites the request for sidecar routing when it carries a
@@ -130,8 +133,13 @@ func (i *Interceptor) PreRoundTrip(req *http.Request) func(resp *http.Response, 
 	req.Header.Set(sidecar.HeaderProxyTimestamp, ts)
 	req.Header.Set(sidecar.HeaderProxySignature, sig)
 
-	// 5. Rewrite URL to route through sidecar
-	req.URL.Scheme = "http"
+	// 5. Rewrite URL to route through sidecar. Scheme follows the configured
+	// proxy address: https for a remote (TLS) sidecar, http for a same-host one.
+	scheme := i.sidecarScheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	req.URL.Scheme = scheme
 	req.URL.Host = i.sidecarHost
 
 	return nil // no post-hook needed

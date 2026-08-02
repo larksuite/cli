@@ -7,11 +7,13 @@ package sidecar
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"testing"
 
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
 )
 
@@ -94,6 +96,54 @@ func TestInterceptor_PreRoundTrip(t *testing.T) {
 	readBody, _ := io.ReadAll(req.Body)
 	if !bytes.Equal(readBody, body) {
 		t.Errorf("body should be preserved after PreRoundTrip")
+	}
+}
+
+// TestInterceptor_PreRoundTrip_HTTPS verifies that a remote (TLS) sidecar
+// rewrites the request to https://<remote-host>, while still preserving the
+// original target and signing the request.
+func TestInterceptor_PreRoundTrip_HTTPS(t *testing.T) {
+	key := []byte("test-key-for-hmac-signing-32byte!")
+	interceptor := &Interceptor{key: key, sidecarHost: "sidecar.mycorp.com", sidecarScheme: "https"}
+
+	req, _ := http.NewRequest("GET", "https://open.feishu.cn/open-apis/im/v1/chats", nil)
+	req.Header.Set("Authorization", "Bearer "+sidecar.SentinelUAT)
+
+	interceptor.PreRoundTrip(req)
+
+	if req.URL.Scheme != "https" {
+		t.Errorf("scheme = %q, want %q", req.URL.Scheme, "https")
+	}
+	if req.URL.Host != "sidecar.mycorp.com" {
+		t.Errorf("host = %q, want %q", req.URL.Host, "sidecar.mycorp.com")
+	}
+	// Original target still preserved for the sidecar to forward upstream.
+	if target := req.Header.Get(sidecar.HeaderProxyTarget); target != "https://open.feishu.cn" {
+		t.Errorf("target = %q, want %q", target, "https://open.feishu.cn")
+	}
+	// Request is still signed.
+	if sig := req.Header.Get(sidecar.HeaderProxySignature); sig == "" {
+		t.Error("signature header should be set")
+	}
+}
+
+// TestResolveInterceptor_HTTPSScheme pins the end-to-end env→scheme path: a
+// (mixed-case) https proxy address must produce an interceptor that rewrites to
+// https, never silently downgrading a remote sidecar to plaintext http.
+func TestResolveInterceptor_HTTPSScheme(t *testing.T) {
+	t.Setenv(envvars.CliAuthProxy, "HTTPS://sidecar.mycorp.com") // uppercase on purpose
+	t.Setenv(envvars.CliProxyKey, "key")
+
+	ic := (&Provider{}).ResolveInterceptor(context.Background())
+	si, ok := ic.(*Interceptor)
+	if !ok || si == nil {
+		t.Fatalf("expected *Interceptor, got %T", ic)
+	}
+	if si.sidecarScheme != "https" {
+		t.Errorf("sidecarScheme = %q, want %q (uppercase HTTPS must not downgrade)", si.sidecarScheme, "https")
+	}
+	if si.sidecarHost != "sidecar.mycorp.com" {
+		t.Errorf("sidecarHost = %q, want %q", si.sidecarHost, "sidecar.mycorp.com")
 	}
 }
 

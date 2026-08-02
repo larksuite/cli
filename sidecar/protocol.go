@@ -3,7 +3,8 @@
 
 // Package sidecar defines the wire protocol shared between the CLI client
 // (running inside a sandbox) and the auth sidecar proxy (running in a
-// trusted environment). Communication uses plain HTTP.
+// trusted environment). Communication uses HTTP for a same-host sidecar, or
+// HTTPS (TLS) for a remote sidecar.
 package sidecar
 
 import (
@@ -103,32 +104,31 @@ func isSameHost(host string) bool {
 	return false
 }
 
-// errNotSameHost is the shared error returned when the sidecar address does
-// not resolve to the same physical host as the sandbox. Kept in one place so
-// tests can look for a stable marker.
+// errNotSameHost is the shared error returned when a plaintext (http) sidecar
+// address does not resolve to the same physical host as the sandbox. Kept in
+// one place so tests can look for a stable marker.
 func errNotSameHost(addr string) error {
-	return fmt.Errorf("invalid proxy address %q: host must be loopback "+
-		"(127.0.0.1 / ::1) or a recognized same-host alias "+
+	return fmt.Errorf("invalid proxy address %q: a plaintext (http) sidecar must be "+
+		"loopback (127.0.0.1 / ::1) or a recognized same-host alias "+
 		"(localhost, host.docker.internal, host.containers.internal, "+
 		"host.lima.internal, gateway.docker.internal). "+
-		"The sidecar must run on the same physical machine as the sandbox — "+
-		"cross-machine deployment is not a sidecar and is not supported", addr)
+		"For a remote sidecar on another machine, use an https:// address instead", addr)
 }
 
 // ValidateProxyAddr validates the LARKSUITE_CLI_AUTH_PROXY value.
 // Accepted formats:
-//   - http://host:port
-//   - host:port         (bare address, treated as http)
+//   - https://host[:port]  (remote sidecar; cross-machine allowed)
+//   - http://host:port     (plaintext; same-host only)
+//   - host:port            (bare address, treated as plaintext http; same-host only)
 //
-// Host must be loopback or in sameHostAliases. The sidecar pattern is
-// inherently same-machine; cross-machine deployment is a different product
-// and is not supported by this feature.
-//
-// https:// is rejected because sidecar is a same-host pattern: loopback
-// and virtual same-host bridges don't traverse any untrusted medium, so
-// TLS adds no security. Cross-machine deployment is out of scope (see the
-// host constraint above), so there is no scenario today where https
-// provides a real benefit over http on loopback.
+// Scheme policy:
+//   - https:// — any valid host is allowed, including a remote central sidecar
+//     on another machine. TLS provides confidentiality over the untrusted
+//     network; the per-request HMAC signature provides integrity/auth.
+//   - http:// (or bare host:port) — plaintext, allowed only when the host is
+//     loopback (127.0.0.1 / ::1) or a recognized same-host alias (a virtual
+//     same-host bridge that stays on the physical machine). For a remote
+//     sidecar, use an https:// address instead.
 //
 // userinfo (user:pass@) is rejected unconditionally — the sidecar protocol
 // does not use basic auth, and the syntactic slot exists only as a phishing
@@ -140,11 +140,11 @@ func ValidateProxyAddr(addr string) error {
 		return fmt.Errorf("proxy address is empty")
 	}
 
-	// Bare host:port (no scheme) — validate as a net address.
+	// Bare host:port (no scheme) — treated as plaintext http, so same-host only.
 	if !strings.Contains(addr, "://") {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
-			return fmt.Errorf("invalid proxy address %q: expected host:port or http://host:port", addr)
+			return fmt.Errorf("invalid proxy address %q: expected host:port or http(s)://host[:port]", addr)
 		}
 		if host == "" || port == "" {
 			return fmt.Errorf("invalid proxy address %q: host and port must not be empty", addr)
@@ -159,16 +159,9 @@ func ValidateProxyAddr(addr string) error {
 	if err != nil {
 		return fmt.Errorf("invalid proxy address %q: %w", addr, err)
 	}
+	// userinfo (user:pass@) is rejected unconditionally (phishing vector).
 	if u.User != nil {
 		return fmt.Errorf("invalid proxy address %q: userinfo is not allowed", addr)
-	}
-	if u.Scheme == "https" {
-		return fmt.Errorf("invalid proxy address %q: use http:// — sidecar is "+
-			"same-host only (loopback or virtual same-host bridge), so TLS adds "+
-			"no security; cross-machine deployment is out of scope", addr)
-	}
-	if u.Scheme != "http" {
-		return fmt.Errorf("invalid proxy address %q: scheme must be http", addr)
 	}
 	if u.Host == "" {
 		return fmt.Errorf("invalid proxy address %q: missing host", addr)
@@ -176,16 +169,37 @@ func ValidateProxyAddr(addr string) error {
 	if u.Path != "" && u.Path != "/" {
 		return fmt.Errorf("invalid proxy address %q: path is not allowed", addr)
 	}
-	// u.Hostname() strips the port and unwraps IPv6 brackets.
-	if !isSameHost(u.Hostname()) {
-		return errNotSameHost(addr)
+	if u.RawQuery != "" {
+		return fmt.Errorf("invalid proxy address %q: query is not allowed", addr)
 	}
-	return nil
+	if u.Fragment != "" {
+		return fmt.Errorf("invalid proxy address %q: fragment is not allowed", addr)
+	}
+
+	switch u.Scheme {
+	case "https":
+		// Remote sidecar over TLS. Cross-machine is allowed: https provides
+		// confidentiality over the network and the per-request HMAC signature
+		// provides integrity/authentication, so a remote central sidecar is
+		// supported without exposing credentials or signing material in clear.
+		return nil
+	case "http":
+		// Plaintext: only safe on the same physical host (loopback or a virtual
+		// same-host bridge). For a remote sidecar use an https:// address.
+		// u.Hostname() strips the port and unwraps IPv6 brackets.
+		if !isSameHost(u.Hostname()) {
+			return errNotSameHost(addr)
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid proxy address %q: scheme must be http or https", addr)
+	}
 }
 
 // ProxyHost extracts the host:port from an AUTH_PROXY URL.
-// Input is expected to be an HTTP URL like "http://127.0.0.1:16384".
-// Returns the host:port portion for URL rewriting.
+// Input is expected to be an http:// or https:// URL like
+// "http://127.0.0.1:16384" or "https://sidecar.mycorp.com".
+// Returns the host[:port] portion for URL rewriting.
 func ProxyHost(authProxy string) string {
 	// Strip scheme
 	host := authProxy
@@ -195,4 +209,20 @@ func ProxyHost(authProxy string) string {
 	// Strip trailing slash
 	host = strings.TrimRight(host, "/")
 	return host
+}
+
+// ProxyScheme returns the URL scheme the CLI must use when routing to the
+// sidecar: "https" for a TLS (remote) sidecar, otherwise "http" (same-host
+// plaintext). Input is a value already accepted by ValidateProxyAddr.
+//
+// It parses the address (rather than a case-sensitive prefix check) so the
+// result stays consistent with ValidateProxyAddr, which relies on url.Parse
+// normalizing the scheme. Otherwise "HTTPS://host" — accepted as https by
+// ValidateProxyAddr — would silently downgrade to plaintext http here,
+// breaking the "remote must use TLS" boundary.
+func ProxyScheme(authProxy string) string {
+	if u, err := url.Parse(authProxy); err == nil && strings.EqualFold(u.Scheme, "https") {
+		return "https"
+	}
+	return "http"
 }

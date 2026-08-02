@@ -161,6 +161,11 @@ func TestValidateProxyAddr(t *testing.T) {
 		"http://gateway.docker.internal:16384",
 		// trailing slash is tolerated
 		"http://127.0.0.1:8080/",
+		// https: any valid host (including remote, cross-machine) is allowed
+		"https://127.0.0.1:16384",
+		"https://sidecar.mycorp.com",
+		"https://sidecar.mycorp.com:8443",
+		"https://sidecar.corp.internal:443/",
 	}
 	for _, addr := range valid {
 		if err := ValidateProxyAddr(addr); err != nil {
@@ -242,6 +247,8 @@ func TestValidateProxyAddr_RejectsUserinfo(t *testing.T) {
 		"http://user@127.0.0.1:16384",
 		"http://user:pass@127.0.0.1:16384",
 		"http://127.0.0.1@attacker.com:16384",
+		"https://x@evil.com",
+		"https://user:pass@sidecar.mycorp.com",
 	} {
 		err := ValidateProxyAddr(addr)
 		if err == nil {
@@ -259,23 +266,99 @@ func TestValidateProxyAddr_RejectsUserinfo(t *testing.T) {
 	}
 }
 
-// TestValidateProxyAddr_HTTPSRejected pins the current contract: https is
-// rejected explicitly (not lumped into a generic "bad scheme" error) because
-// the interceptor hardcodes http and would silently downgrade an https URL
-// otherwise. The message must mention https so users understand why their
-// perfectly-looking config is refused.
-func TestValidateProxyAddr_HTTPSRejected(t *testing.T) {
+// TestValidateProxyAddr_HTTPSAllowed pins the contract: https addresses are
+// accepted, including a remote sidecar on another machine. TLS provides
+// confidentiality over the network and the HMAC signature provides
+// integrity/auth, so cross-machine https is supported.
+func TestValidateProxyAddr_HTTPSAllowed(t *testing.T) {
 	for _, addr := range []string{
-		"https://127.0.0.1:16384",
+		"https://127.0.0.1:16384", // same-host over TLS
 		"https://sidecar.corp.internal:443",
+		"https://sidecar.mycorp.com", // remote, no explicit port
+		"https://sidecar.mycorp.com:8443",
+	} {
+		if err := ValidateProxyAddr(addr); err != nil {
+			t.Errorf("ValidateProxyAddr(%q): expected accepted, got: %v", addr, err)
+		}
+	}
+}
+
+// TestValidateProxyAddr_HTTPRemoteRejected: plaintext http to a non-same-host
+// address stays rejected — a remote sidecar must use https.
+func TestValidateProxyAddr_HTTPRemoteRejected(t *testing.T) {
+	for _, addr := range []string{
+		"http://sidecar.mycorp.com",
+		"http://sidecar.mycorp.com:8080",
+		"http://10.0.0.1:16384",
 	} {
 		err := ValidateProxyAddr(addr)
 		if err == nil {
-			t.Errorf("ValidateProxyAddr(%q): expected error, got nil", addr)
+			t.Errorf("ValidateProxyAddr(%q): expected rejection (http remote), got nil", addr)
 			continue
 		}
-		if !strings.Contains(err.Error(), "https") {
-			t.Errorf("ValidateProxyAddr(%q): error should mention https, got: %v", addr, err)
+		msg := err.Error()
+		if !strings.Contains(msg, "https") && !strings.Contains(msg, "same-host") && !strings.Contains(msg, "loopback") {
+			t.Errorf("ValidateProxyAddr(%q): error should point to https/same-host, got: %v", addr, err)
+		}
+	}
+}
+
+// TestProxyScheme: scheme is https only for https:// addresses, http otherwise.
+// Case-insensitive: HTTPS:// must resolve to https, otherwise a remote sidecar
+// would silently downgrade to plaintext http (see ProxyScheme doc).
+func TestProxyScheme(t *testing.T) {
+	tests := map[string]string{
+		"https://sidecar.mycorp.com": "https",
+		"https://127.0.0.1:16384":    "https",
+		"http://127.0.0.1:16384":     "http",
+		"127.0.0.1:16384":            "http",
+		// case-insensitive scheme
+		"HTTPS://sidecar.mycorp.com": "https",
+		"Https://sidecar.mycorp.com": "https",
+		"HtTp://127.0.0.1:16384":     "http",
+	}
+	for in, want := range tests {
+		if got := ProxyScheme(in); got != want {
+			t.Errorf("ProxyScheme(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestValidateProxyAddr_SchemeCaseInsensitive: mixed-case scheme must follow the
+// same policy as lower-case — HTTPS accepted (remote allowed), HTTP remote
+// rejected — so case can't be used to bypass the plaintext same-host rule.
+func TestValidateProxyAddr_SchemeCaseInsensitive(t *testing.T) {
+	for _, addr := range []string{"HTTPS://sidecar.mycorp.com", "Https://sidecar.corp.internal:443"} {
+		if err := ValidateProxyAddr(addr); err != nil {
+			t.Errorf("ValidateProxyAddr(%q): expected accepted, got: %v", addr, err)
+		}
+	}
+	for _, addr := range []string{"HtTp://sidecar.mycorp.com", "HTTP://10.0.0.1:16384"} {
+		if err := ValidateProxyAddr(addr); err == nil {
+			t.Errorf("ValidateProxyAddr(%q): expected rejection (http remote), got nil", addr)
+		}
+	}
+}
+
+// TestValidateProxyAddr_IPv6HTTPS pins IPv6 https forms.
+func TestValidateProxyAddr_IPv6HTTPS(t *testing.T) {
+	for _, addr := range []string{"https://[::1]:443", "https://[::1]"} {
+		if err := ValidateProxyAddr(addr); err != nil {
+			t.Errorf("ValidateProxyAddr(%q): expected accepted, got: %v", addr, err)
+		}
+	}
+}
+
+// TestValidateProxyAddr_RejectsQueryFragment: a proxy address must not carry a
+// query or fragment, for either scheme.
+func TestValidateProxyAddr_RejectsQueryFragment(t *testing.T) {
+	for _, addr := range []string{
+		"https://sidecar.mycorp.com?x=1",
+		"https://sidecar.mycorp.com#frag",
+		"http://127.0.0.1:16384?x=1",
+	} {
+		if err := ValidateProxyAddr(addr); err == nil {
+			t.Errorf("ValidateProxyAddr(%q): expected rejection, got nil", addr)
 		}
 	}
 }
@@ -289,6 +372,10 @@ func TestProxyHost(t *testing.T) {
 		{"http://0.0.0.0:8080", "0.0.0.0:8080"},
 		{"http://host.docker.internal:16384/", "host.docker.internal:16384"},
 		{"127.0.0.1:16384", "127.0.0.1:16384"}, // no scheme
+		// https forms (remote sidecar)
+		{"https://sidecar.mycorp.com", "sidecar.mycorp.com"},
+		{"https://sidecar.mycorp.com:8443/", "sidecar.mycorp.com:8443"},
+		{"HTTPS://sidecar.mycorp.com", "sidecar.mycorp.com"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

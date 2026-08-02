@@ -114,17 +114,22 @@ export LARKSUITE_CLI_STRICT_MODE="user"            # optional: lock sandbox to o
 
 **`LARKSUITE_CLI_AUTH_PROXY` constraints** — validated by the CLI on startup:
 
-- Scheme must be `http://` (or bare `host:port`). `https://` is rejected
-  today because the interceptor does not yet perform TLS; a future PR that
-  wires up real TLS will relax this.
-- Host must be loopback (`127.0.0.1`, `::1`) or one of the recognized
-  same-host aliases: `localhost`, `host.docker.internal`,
-  `host.containers.internal`, `host.lima.internal`, `gateway.docker.internal`.
-  The sidecar pattern is inherently same-machine; cross-machine deployment
-  is a different product (auth broker / STS) with different security
-  requirements (mTLS, cert rotation, per-client keys) and is not supported
-  by this feature.
+- Scheme must be `http://` / `https://` (or bare `host:port`, treated as
+  plaintext http).
+  - `https://<any-host>` is allowed, **including a remote sidecar on another
+    machine**: TLS provides confidentiality over the network and the
+    per-request HMAC signature provides integrity/authentication.
+  - Plaintext `http://` (and bare `host:port`) is allowed **only same-host**:
+    loopback (`127.0.0.1`, `::1`) or a recognized same-host alias
+    (`localhost`, `host.docker.internal`, `host.containers.internal`,
+    `host.lima.internal`, `gateway.docker.internal`). For a remote sidecar,
+    use an `https://` address.
 - No path, query, fragment, or `user:pass@` in the URL.
+
+> Note: this demo server itself terminates plain HTTP and is meant to run
+> locally. A production **remote** sidecar must terminate TLS (its own
+> `https://` endpoint, e.g. behind a load balancer or with a real
+> certificate); the CLI-side policy above is what enables pointing at it.
 
 **How auto identity detection works in sidecar mode**: on every invocation the
 CLI asks the sidecar to look up the logged-in user's `open_id` via
