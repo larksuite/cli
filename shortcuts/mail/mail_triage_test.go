@@ -224,6 +224,100 @@ func TestParseTriageFilterUnknownFieldHintUnread(t *testing.T) {
 	}
 }
 
+func TestParseTriageFilterShorthand(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		wantFolder   string
+		wantFolderID string
+		wantUnread   *bool
+	}{
+		{name: "folder id", input: "folder_id=DRAFT", wantFolderID: "DRAFT"},
+		{name: "folder", input: "folder=INBOX", wantFolder: "INBOX"},
+		{name: "is unread", input: "is_unread", wantUnread: boolPtr(true)},
+		{name: "unread alias", input: "unread", wantUnread: boolPtr(true)},
+		{name: "is read", input: "is_read", wantUnread: boolPtr(false)},
+		{name: "read alias", input: "read", wantUnread: boolPtr(false)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseTriageFilter(tt.input)
+			if err != nil {
+				t.Fatalf("parseTriageFilter(%q): %v", tt.input, err)
+			}
+			if got.Folder != tt.wantFolder {
+				t.Fatalf("Folder = %q, want %q", got.Folder, tt.wantFolder)
+			}
+			if got.FolderID != tt.wantFolderID {
+				t.Fatalf("FolderID = %q, want %q", got.FolderID, tt.wantFolderID)
+			}
+			if tt.wantUnread == nil {
+				if got.IsUnread != nil {
+					t.Fatalf("IsUnread = %v, want nil", *got.IsUnread)
+				}
+				return
+			}
+			if got.IsUnread == nil || *got.IsUnread != *tt.wantUnread {
+				t.Fatalf("IsUnread = %v, want %v", got.IsUnread, *tt.wantUnread)
+			}
+		})
+	}
+}
+
+func TestParseTriageFilterShorthandRejectsInvalidInput(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "folder_id=", want: "requires a non-empty value"},
+		{input: "label=important", want: "unsupported shorthand field"},
+		{input: "unknown", want: "unsupported shorthand"},
+	}
+	for _, tt := range tests {
+		_, err := parseTriageFilter(tt.input)
+		if err == nil {
+			t.Fatalf("parseTriageFilter(%q) expected error", tt.input)
+		}
+		if !strings.Contains(err.Error(), tt.want) {
+			t.Fatalf("parseTriageFilter(%q) error = %v, want substring %q", tt.input, err, tt.want)
+		}
+	}
+}
+
+func TestTriageFilterFromRuntimeMergesFolderFlag(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"folder": "INBOX",
+		"filter": "is_unread",
+	})
+	got, err := triageFilterFromRuntime(runtime)
+	if err != nil {
+		t.Fatalf("triageFilterFromRuntime: %v", err)
+	}
+	if got.Folder != "INBOX" {
+		t.Fatalf("Folder = %q, want INBOX", got.Folder)
+	}
+	if got.IsUnread == nil || !*got.IsUnread {
+		t.Fatalf("IsUnread = %v, want true", got.IsUnread)
+	}
+}
+
+func TestTriageFilterFromRuntimeRejectsFolderConflict(t *testing.T) {
+	tests := []string{"folder_id=DRAFT", `{"folder":"SENT"}`}
+	for _, filter := range tests {
+		runtime := runtimeForMailTriageTest(t, map[string]string{
+			"folder": "INBOX",
+			"filter": filter,
+		})
+		_, err := triageFilterFromRuntime(runtime)
+		if err == nil {
+			t.Fatalf("filter %q expected conflict", filter)
+		}
+		if !strings.Contains(err.Error(), "cannot combine with --filter folder/folder_id") {
+			t.Fatalf("unexpected error for %q: %v", filter, err)
+		}
+	}
+}
+
 func TestBuildSearchParamsDoesNotSetUserMailboxIDInBody(t *testing.T) {
 	runtime := runtimeForMailTriageTest(t, map[string]string{"query": "hello"})
 	params, body, err := buildSearchParams(runtime, "", runtime.Str("query"), triageFilter{}, 15, "", true)
@@ -287,6 +381,52 @@ func TestMailTriageDryRunListPathUsesMessagesAndBatchGet(t *testing.T) {
 	}
 	if apis[1].URL != mailboxPath("me", "messages", "batch_get") {
 		t.Fatalf("batch_get url mismatch, got %s", apis[1].URL)
+	}
+}
+
+func TestMailTriageDryRunFolderFlagAndUnreadShorthandUsesListPath(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"folder": "INBOX",
+		"filter": "is_unread",
+	})
+
+	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
+	if len(apis) < 1 {
+		t.Fatalf("expected at least 1 dry-run api, got %d", len(apis))
+	}
+	if apis[0].Method != "GET" || apis[0].URL != mailboxPath("me", "messages") {
+		t.Fatalf("expected list path, got %s %s", apis[0].Method, apis[0].URL)
+	}
+	if apis[0].Params["folder_id"] != "INBOX" {
+		t.Fatalf("folder_id = %v, want INBOX", apis[0].Params["folder_id"])
+	}
+	if apis[0].Params["only_unread"] != true {
+		t.Fatalf("only_unread = %v, want true", apis[0].Params["only_unread"])
+	}
+}
+
+func TestMailTriageDryRunReadShorthandUsesSearchPath(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"filter": "is_read",
+	})
+
+	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
+	if len(apis) < 1 {
+		t.Fatalf("expected at least 1 dry-run api, got %d", len(apis))
+	}
+	if apis[0].Method != "POST" || apis[0].URL != mailboxPath("me", "search") {
+		t.Fatalf("expected search path, got %s %s", apis[0].Method, apis[0].URL)
+	}
+	body, ok := apis[0].Body.(map[string]interface{})
+	if !ok {
+		t.Fatalf("body = %#v, want object", apis[0].Body)
+	}
+	filterBody, ok := body["filter"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("filter body = %#v, want object", body["filter"])
+	}
+	if filterBody["is_unread"] != false {
+		t.Fatalf("is_unread = %v, want false", filterBody["is_unread"])
 	}
 }
 
@@ -1149,6 +1289,21 @@ func TestResolveTriagePathListTokenConflictsWithSearchFilter(t *testing.T) {
 	_, err := resolveTriagePath(mustParseTriagePageToken(t, "list:abc123"), "", triageFilter{From: []string{"a@b.com"}})
 	if err == nil {
 		t.Fatal("expected error for list: token with search-only filter")
+	}
+}
+
+func TestResolveTriagePathReadStatusFalseUsesSearch(t *testing.T) {
+	useSearch, err := resolveTriagePath(triagePageToken{}, "", triageFilter{IsUnread: boolPtr(false)})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !useSearch {
+		t.Fatal("is_unread=false must use search path")
+	}
+
+	_, err = resolveTriagePath(mustParseTriagePageToken(t, "list:abc123"), "", triageFilter{IsUnread: boolPtr(false)})
+	if err == nil {
+		t.Fatal("expected list: token conflict for is_unread=false")
 	}
 }
 

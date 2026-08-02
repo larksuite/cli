@@ -13,6 +13,7 @@ lark-cli mail +triage
 
 # 查看收件箱未读
 lark-cli mail +triage --filter '{"folder":"inbox","is_unread":true}'
+lark-cli mail +triage --folder=INBOX --filter=is_unread
 
 # 全文搜索
 lark-cli mail +triage --query "合同审批"
@@ -25,6 +26,7 @@ lark-cli mail +triage --query "项目评审" --filter '{"time_range":{"start_tim
 
 # 指定文件夹
 lark-cli mail +triage --filter '{"folder":"sent"}'
+lark-cli mail +triage --filter folder_id=DRAFT
 
 # 系统标签（可通过 folder 或 label 传入，搜索时自动转为 folder）
 lark-cli mail +triage --filter '{"folder":"flagged"}'
@@ -47,7 +49,8 @@ lark-cli mail +triage --page-size 10
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `--filter <json>` | — | 筛选条件（见下方字段说明） |
+| `--filter <json|shorthand>` | — | 筛选条件（见下方字段说明）。支持 JSON，也支持 `folder_id=DRAFT`、`folder=INBOX`、`is_unread`/`unread`、`is_read`/`read` |
+| `--folder <folder>` | — | 文件夹名称或 ID 的拆分写法，会归并为 filter folder；可与 `--filter=is_unread` 搭配，不能与 `--filter` 中的 `folder`/`folder_id` 同时使用 |
 | `--query <text>` | — | 全文搜索关键词 |
 | `--format <mode>` | `table` | `table` / `json` / `data`（`json` 和 `data` 均输出含分页信息的对象） |
 | `--max <n>` | `20` | 最大返回条数（1-400），内部自动分页拉取 |
@@ -73,7 +76,7 @@ lark-cli mail +triage --page-size 10
 
 > **系统标签说明**：`IMPORTANT`/`FLAGGED`/`OTHER` 可通过 `folder` 或 `label` 传入（也支持中文别名 `重要邮件`/`已加旗标`/`其他邮件`、搜索名 `priority`/`flagged`/`other`）。搜索时自动转为 folder 字段，列表时自动转为 label_id。label list 接口不返回这三个系统标签。
 >
-> **⚠️ 注意**：查询未读请用 `"is_unread":true`。
+> **简写说明**：常用筛选可直接写 `--filter folder_id=DRAFT`、`--filter=folder=INBOX`、`--filter=is_unread`、`--filter=is_read`。`is_read` 会转换为 `is_unread=false` 并走 search 路径，避免 list API 忽略已读过滤。
 可运行 `mail +triage --print-filter-schema` 查看完整字段说明。
 
 ## 输出

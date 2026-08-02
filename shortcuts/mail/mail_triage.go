@@ -59,7 +59,8 @@ var MailTriage = common.Shortcut{
 		{Name: "max", Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
 		{Name: "page-size", Type: "int", Desc: "alias for --max"},
 		{Name: "page-token", Desc: "pagination token from a previous response to fetch the next page"},
-		{Name: "filter", Desc: `exact-match condition filter (JSON). Narrow results by folder, label, sender, recipient, etc. Run --print-filter-schema to see all fields. Example: {"folder":"INBOX","from":["alice@example.com"]}`},
+		{Name: "filter", Desc: `exact-match condition filter (JSON or shorthand). Examples: {"folder":"INBOX","from":["alice@example.com"]}, folder_id=DRAFT, is_unread, is_read. Run --print-filter-schema to see all fields.`},
+		{Name: "folder", Desc: `folder name or ID shortcut merged into --filter. Example: --folder=INBOX --filter=is_unread. Cannot be combined with --filter folder/folder_id.`},
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
 		{Name: "query", Desc: `full-text keyword search across from/to/subject/body (max 50 chars). Example: "budget report"`},
 		{Name: "labels", Type: "bool", Desc: "include label IDs in output"},
@@ -74,8 +75,8 @@ var MailTriage = common.Shortcut{
 		showLabels := runtime.Bool("labels")
 		maxCount := resolveTriagePageSize(runtime)
 		parsed, parseErr := parseTriagePageToken(runtime.Str("page-token"))
-		filter, err := parseTriageFilter(runtime.Str("filter"))
-		d := common.NewDryRunAPI().Set("input_filter", runtime.Str("filter"))
+		filter, err := triageFilterFromRuntime(runtime)
+		d := common.NewDryRunAPI().Set("input_filter", runtime.Str("filter")).Set("input_folder", runtime.Str("folder"))
 		if parseErr != nil {
 			return d.Set("filter_error", parseErr.Error())
 		}
@@ -146,7 +147,7 @@ var MailTriage = common.Shortcut{
 			}
 		}
 		showLabels := runtime.Bool("labels")
-		filter, err := parseTriageFilter(runtime.Str("filter"))
+		filter, err := triageFilterFromRuntime(runtime)
 		if err != nil {
 			return err
 		}
@@ -328,6 +329,9 @@ var MailTriage = common.Shortcut{
 				if filterStr := runtime.Str("filter"); filterStr != "" {
 					hint.WriteString(" --filter " + shellQuote(filterStr))
 				}
+				if folder := runtime.Str("folder"); folder != "" {
+					hint.WriteString(" --folder " + shellQuote(folder))
+				}
 				hint.WriteString(" --page-token " + shellQuote(nextPageToken))
 				fmt.Fprintln(runtime.IO().ErrOut, hint.String())
 			}
@@ -344,7 +348,7 @@ var MailTriage = common.Shortcut{
 
 func printTriageFilterSchema(runtime *common.RuntimeContext) {
 	schema := map[string]interface{}{
-		"_description": "--filter field reference for mail +triage. All fields are optional. --filter narrows results by exact conditions; --query does full-text search.",
+		"_description": "--filter field reference for mail +triage. All fields are optional. --filter narrows results by exact conditions; --folder is a shortcut for folder filtering; --query does full-text search.",
 		"fields": map[string]interface{}{
 			"folder": map[string]string{
 				"type":    "string",
@@ -398,7 +402,7 @@ func printTriageFilterSchema(runtime *common.RuntimeContext) {
 			},
 			"is_unread": map[string]string{
 				"type":    "bool",
-				"desc":    "Filter by read status. On list path only is_unread=true is supported; on search path both true/false work.",
+				"desc":    "Filter by read status. is_unread=true may use the list path; is_unread=false always uses the search path.",
 				"example": "true",
 			},
 			"time_range": map[string]string{
@@ -409,12 +413,17 @@ func printTriageFilterSchema(runtime *common.RuntimeContext) {
 		},
 		"notes": []string{
 			"folder/folder_id and label/label_id work on both list and search paths.",
-			"from, to, cc, bcc, subject, has_attachment, time_range trigger the search path.",
+			"from, to, cc, bcc, subject, has_attachment, time_range, and is_unread=false trigger the search path.",
+			"--filter also accepts shorthand: folder_id=DRAFT, folder=INBOX, is_unread/unread, is_read/read.",
+			"--folder=INBOX can be combined with --filter=is_unread, but conflicts with --filter folder/folder_id.",
 			"--query and search-path filter fields can be combined.",
 			"folder and label cannot be set at the same time on the list path.",
 			"System labels (IMPORTANT/FLAGGED/OTHER) are automatically passed as folder (priority/flagged/other) in search.",
 		},
 		"examples": []string{
+			`folder_id=DRAFT`,
+			`is_unread`,
+			`is_read`,
 			`{"folder":"INBOX"}`,
 			`{"folder":"INBOX","from":["alice@example.com"]}`,
 			`{"label":"FLAGGED","is_unread":true}`,
@@ -426,18 +435,74 @@ func printTriageFilterSchema(runtime *common.RuntimeContext) {
 
 func parseTriageFilter(filterStr string) (triageFilter, error) {
 	var filter triageFilter
-	if strings.TrimSpace(filterStr) == "" {
+	raw := strings.TrimSpace(filterStr)
+	if raw == "" {
 		return filter, nil
 	}
-	dec := json.NewDecoder(strings.NewReader(filterStr))
+	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&filter); err != nil {
 		if hint := triageFilterUnknownFieldHint(err.Error()); hint != "" {
 			return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: %s", hint)
 		}
-		return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: %s", err)
+		shorthand, shorthandErr := parseTriageFilterShorthand(raw)
+		if shorthandErr == nil {
+			return shorthand, nil
+		}
+		return triageFilter{}, shorthandErr
 	}
 	return filter, nil
+}
+
+func triageFilterFromRuntime(runtime *common.RuntimeContext) (triageFilter, error) {
+	filter, err := parseTriageFilter(runtime.Str("filter"))
+	if err != nil {
+		return triageFilter{}, err
+	}
+	return mergeTriageFolderFlag(filter, runtime.Str("folder"))
+}
+
+func mergeTriageFolderFlag(filter triageFilter, folder string) (triageFilter, error) {
+	folder = strings.TrimSpace(folder)
+	if folder == "" {
+		return filter, nil
+	}
+	if strings.TrimSpace(filter.Folder) != "" || strings.TrimSpace(filter.FolderID) != "" {
+		return triageFilter{}, mailValidationParamError("--folder", "invalid --folder: cannot combine with --filter folder/folder_id")
+	}
+	filter.Folder = folder
+	return filter, nil
+}
+
+func parseTriageFilterShorthand(raw string) (triageFilter, error) {
+	value := strings.TrimSpace(raw)
+	switch strings.ToLower(value) {
+	case "is_unread", "unread":
+		return triageFilter{IsUnread: triageBoolPtr(true)}, nil
+	case "is_read", "read":
+		return triageFilter{IsUnread: triageBoolPtr(false)}, nil
+	}
+	if strings.Contains(value, "=") {
+		key, val, _ := strings.Cut(value, "=")
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: shorthand field %q requires a non-empty value", key)
+		}
+		switch key {
+		case "folder":
+			return triageFilter{Folder: val}, nil
+		case "folder_id":
+			return triageFilter{FolderID: val}, nil
+		default:
+			return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: unsupported shorthand field %q; use JSON for complex filters", key)
+		}
+	}
+	return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: unsupported shorthand %q", value)
+}
+
+func triageBoolPtr(v bool) *bool {
+	return &v
 }
 
 func triageFilterUnknownFieldHint(msg string) string {
@@ -469,6 +534,9 @@ func triageFilterUnknownFieldHint(msg string) string {
 
 func usesTriageSearchPath(query string, filter triageFilter) bool {
 	if strings.TrimSpace(query) != "" || len(triageQueryFilterFields(filter)) > 0 {
+		return true
+	}
+	if filter.IsUnread != nil && !*filter.IsUnread {
 		return true
 	}
 	// System labels (important/flagged/other and their aliases) can appear in either
