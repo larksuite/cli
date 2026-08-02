@@ -22,14 +22,17 @@ const (
 	pageDelayMaximum  = 60_000
 )
 
-// PageAllFlags returns the shared pagination control definitions.
-// Each call returns a fresh slice so shortcuts cannot mutate each other.
+// PageAllFlags returns the shared pagination control definitions. The caller's
+// page token, when present, selects the starting cursor; --page-all controls
+// whether pagination continues from that cursor until exhaustion or
+// --page-limit. Each call returns a fresh slice so shortcuts cannot mutate each
+// other.
 func PageAllFlags() []Flag {
 	return []Flag{
 		{
 			Name: PageAllFlagName,
 			Type: "bool",
-			Desc: "automatically paginate until exhaustion or --page-limit",
+			Desc: "continue from --page-token (if set) until exhaustion or --page-limit",
 		},
 		{
 			Name:    pageLimitFlagName,

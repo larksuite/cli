@@ -53,7 +53,7 @@ lark-cli im +chat-list --as user --types p2p
 | `--types <strings>` | No | `group`, `p2p` (comma-separated or repeated) | Chat types to include. Omitted = groups only (backward compatible). `p2p` requires user identity (`--as user`); under `--as bot`, `--types=p2p` alone is rejected and `--types=p2p,group` is silently downgraded to `group` |
 | `--sort <field>` | No | `create_time` (default, ascending), `active_time` (descending) | Result ordering |
 | `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
-| `--page-token <token>` | No | - | Pagination token from the previous response |
+| `--page-token <token>` | No | - | Starting cursor, normally returned by a previous response |
 | `--page-all` | No | - | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
 | `--page-limit <n>` | No | 1-1000, default 10 | Maximum pages fetched by `--page-all` |
 | `--exclude-muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under `--as bot`, the flag is silently inactive; see "Filtering muted chats" below |
@@ -62,7 +62,13 @@ lark-cli im +chat-list --as user --types p2p
 
 > **Note:** Supports both `--as user` (default) and `--as bot`. When using bot identity, the app must have bot capability enabled.
 
-By default, the command fetches one page. With `--page-all`, it fetches and merges subsequent pages up to `--page-limit`. If the limit is reached while the output still has `has_more=true`, the result is incomplete; continue with the returned `page_token`, or rerun with a larger `--page-limit`. An explicitly supplied `--page-token` takes precedence and fetches only that page even when `--page-all` is also present.
+By default, the command fetches one page, starting at `--page-token` when supplied. With `--page-all`, it continues from that cursor and merges subsequent pages up to `--page-limit`. If the limit is reached while the output still has `has_more=true`, the result is incomplete; continue with the returned `page_token`, or rerun with a larger `--page-limit`.
+
+Pagination status is emitted for both one-page and multi-page runs:
+
+- JSON, including the envelope supplied to `--jq`, uses `meta.pagination` as the authoritative CLI execution status. `complete` means endpoint exhaustion was observed; `pages` counts successful API pages; `items` counts final emitted records after filtering/enrichment; `next_token` is present when an incomplete result can resume.
+- `data.has_more` and `data.page_token` remain as API-compatible business fields.
+- `pretty` / `table` append a pagination footer. `csv` / `ndjson` keep stdout record-only and write one structured pagination diagnostic to stderr.
 
 ## Output Fields
 

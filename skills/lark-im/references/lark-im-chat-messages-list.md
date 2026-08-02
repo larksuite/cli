@@ -46,7 +46,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 | `--end <time>` | No | End time (ISO 8601 or date only) |
 | `--order <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
 | `--page-size <n>` | No | Page size (default 50, max 50) |
-| `--page-token <token>` | No | Pagination token |
+| `--page-token <token>` | No | Starting cursor, normally returned by a previous response |
 | `--page-all` | No | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--no-reactions` | No | Skip auto-fetching the `reactions` block |
@@ -117,7 +117,13 @@ By default, `im +chat-messages-list` fetches one page. It returns `has_more` and
 lark-cli im +chat-messages-list --chat-id oc_xxx --page-token <PAGE_TOKEN>
 ```
 
-Use `--page-all` to fetch and merge multiple pages. `--page-limit` defaults to 10 and accepts values from 1 to 1000. If the command reaches this limit while the output still has `has_more=true`, the result is incomplete; resume with the returned `page_token`, or rerun with a larger `--page-limit`. An explicitly supplied `--page-token` takes precedence and fetches only that page even when `--page-all` is also present.
+Use `--page-all` to fetch and merge multiple pages. When `--page-token` is also supplied, it sets the starting cursor and automatic pagination continues from there. `--page-limit` defaults to 10 and accepts values from 1 to 1000. If the command reaches this limit while the output still has `has_more=true`, the result is incomplete; resume with the returned `page_token`, or rerun with a larger `--page-limit`.
+
+Pagination status is emitted for both one-page and multi-page runs:
+
+- JSON, including the envelope supplied to `--jq`, uses `meta.pagination` as the authoritative CLI execution status. `complete` means endpoint exhaustion was observed; `pages` counts successful API pages; `items` counts final emitted records after filtering/enrichment; `next_token` is present when an incomplete result can resume.
+- `data.has_more` and `data.page_token` remain as API-compatible business fields.
+- `pretty` / `table` append a pagination footer. `csv` / `ndjson` keep stdout record-only and write one structured pagination diagnostic to stderr.
 
 You can also fall back to the generic API:
 

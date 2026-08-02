@@ -36,7 +36,7 @@ var ImFeedGroupListItem = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "feed-group-id", Desc: "feed group ID (ofg_xxx); path parameter (required)"},
 		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", feedGroupListItemDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", feedGroupListItemMaxPageSize)},
-		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
 		{Name: "start-time", Desc: "update-time window start (Unix milliseconds as a decimal string)"},
@@ -55,9 +55,7 @@ var ImFeedGroupListItem = common.Shortcut{
 			Desc("will also POST /open-apis/im/v1/chats/batch_query to resolve chat_name from feed_id; requires im:chat:read")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		// When --page-token is explicitly provided, the user wants a specific page —
-		// no auto-pagination regardless of --page-all.
-		if runtime.Bool("page-all") && !runtime.Cmd.Flags().Changed("page-token") {
+		if runtime.Bool("page-all") {
 			return executeFeedGroupListAllPages(runtime)
 		}
 
@@ -153,14 +151,14 @@ func executeFeedGroupListAllPages(rt *common.RuntimeContext) error {
 	allItems := make([]any, 0)
 	allDeletedItems := make([]any, 0)
 	var lastHasMore bool
-	var lastPageToken string
-	prevPageToken := "__START__"
+	lastPageToken := rt.Str("page-token")
+	prevPageToken := lastPageToken
 
 	for page := 0; page < maxPages; page++ {
 		params := larkcore.QueryParams{
 			"page_size": []string{strconv.Itoa(rt.Int("page-size"))},
 		}
-		if page > 0 {
+		if lastPageToken != "" {
 			params["page_token"] = []string{lastPageToken}
 		}
 		if start := rt.Str("start-time"); start != "" {

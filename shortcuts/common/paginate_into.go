@@ -35,8 +35,10 @@ type PageAccumulator[T any] interface {
 // PaginateInto walks an endpoint and decodes each successful data object into
 // T before handing it to dst. A normal invocation and --page-all use the same
 // path: the former has a one-page policy, while the latter uses --page-limit.
-// An explicit --page-token is only the starting cursor and never changes that
-// policy. Multi-page runs wait --page-delay between successful page requests;
+// --page-token sets the starting cursor; --page-all independently controls
+// whether the walk continues from that cursor. When both are supplied, the
+// walk starts at --page-token and continues until exhaustion or --page-limit.
+// Multi-page runs wait --page-delay between successful page requests;
 // the wait is context-aware and never occurs before page 1 or after the final
 // page.
 //
@@ -151,8 +153,24 @@ func resolvePaginationPolicy(runtime *RuntimeContext) (paginationPolicy, error) 
 	return paginationPolicy{
 		maxPages:     config.maxPages,
 		pageDelay:    config.delay,
-		showProgress: true,
+		showProgress: paginationProgressEnabled(runtime),
 	}, nil
+}
+
+// paginationProgressEnabled keeps stderr suitable for its actual consumer.
+// Human progress is useful only on an interactive diagnostics stream. CSV and
+// NDJSON reserve stderr for the emitter's one-object-per-line structured
+// pagination diagnostic, even when stderr happens to be a terminal. JQ owns
+// the effective output contract when present, just as it does in Emitter.
+func paginationProgressEnabled(runtime *RuntimeContext) bool {
+	if runtime == nil || !runtime.IO().StderrIsTerminal {
+		return false
+	}
+	if runtime.JqExpr != "" {
+		return true
+	}
+	format, known := output.ParseFormat(runtime.Format)
+	return !known || (format != output.FormatCSV && format != output.FormatNDJSON)
 }
 
 func waitPageDelay(ctx context.Context, delay time.Duration) error {

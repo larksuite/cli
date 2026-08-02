@@ -82,6 +82,7 @@ func TestPageAllFlagsContract(t *testing.T) {
 
 func TestPaginateIntoDecodesAndAccumulatesPages(t *testing.T) {
 	runtime, stderr, registry := newPaginateIntoTestRuntime(t, map[string]string{"page-all": "true", "page-delay": "0"})
+	runtime.IO().StderrIsTerminal = true
 	var requestTokens []string
 	for _, data := range []map[string]interface{}{
 		{"items": []string{"first"}, "has_more": true, "page_token": "next"},
@@ -126,6 +127,39 @@ func TestPaginateIntoDecodesAndAccumulatesPages(t *testing.T) {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 		}
+	}
+}
+
+func TestPaginationProgressContract(t *testing.T) {
+	tests := []struct {
+		name     string
+		format   string
+		jq       string
+		terminal bool
+		want     bool
+	}{
+		{name: "non-terminal json", format: "json", want: false},
+		{name: "terminal json", format: "json", terminal: true, want: true},
+		{name: "terminal pretty", format: "pretty", terminal: true, want: true},
+		{name: "terminal table", format: "table", terminal: true, want: true},
+		{name: "terminal csv", format: "csv", terminal: true, want: false},
+		{name: "terminal ndjson", format: "ndjson", terminal: true, want: false},
+		{name: "jq overrides record format", format: "csv", jq: ".data", terminal: true, want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runtime, _, _ := newPaginateIntoTestRuntime(t, map[string]string{"page-all": "true"})
+			runtime.Format = test.format
+			runtime.JqExpr = test.jq
+			runtime.IO().StderrIsTerminal = test.terminal
+			policy, err := resolvePaginationPolicy(runtime)
+			if err != nil {
+				t.Fatalf("resolvePaginationPolicy() error = %v", err)
+			}
+			if policy.showProgress != test.want {
+				t.Fatalf("showProgress = %v, want %v", policy.showProgress, test.want)
+			}
+		})
 	}
 }
 
@@ -242,17 +276,17 @@ func TestPaginateIntoStopsAtConfiguredPageLimit(t *testing.T) {
 		"page-limit": "2",
 		"page-delay": "0",
 	})
-	var calls int
+	var requestTokens []string
 	for _, data := range []map[string]interface{}{
-		{"items": []string{"first"}, "has_more": true, "page_token": "second"},
-		{"items": []string{"second"}, "has_more": true, "page_token": "resume"},
+		{"items": []string{"first"}, "has_more": true, "page_token": "next_1"},
+		{"items": []string{"second"}, "has_more": true, "page_token": "next_2"},
 	} {
 		registry.Register(&httpmock.Stub{
 			Method: http.MethodGet,
 			URL:    "/open-apis/test/v1/items",
 			Body:   map[string]interface{}{"code": 0, "data": data},
-			OnMatch: func(_ *http.Request) {
-				calls++
+			OnMatch: func(request *http.Request) {
+				requestTokens = append(requestTokens, request.URL.Query().Get("page_token"))
 			},
 		})
 	}
@@ -261,15 +295,16 @@ func TestPaginateIntoStopsAtConfiguredPageLimit(t *testing.T) {
 	meta, err := PaginateInto(runtime, PageRequest{
 		Method: http.MethodGet,
 		Path:   "/open-apis/test/v1/items",
+		Params: map[string]interface{}{"page_token": []string{"resume"}},
 	}, result)
 	if err != nil {
 		t.Fatalf("PaginateInto() error = %v", err)
 	}
-	if calls != 2 || result.pages != 2 {
-		t.Fatalf("page calls = %d, accumulated pages = %d; want hard stop at 2", calls, result.pages)
+	if !reflect.DeepEqual(requestTokens, []string{"resume", "next_1"}) || result.pages != 2 {
+		t.Fatalf("page tokens = %v, accumulated pages = %d; want [resume next_1] and hard stop at 2", requestTokens, result.pages)
 	}
-	if meta.Complete || meta.Pages != 2 || meta.NextToken != "resume" {
-		t.Fatalf("pagination meta = %+v, want incomplete result resumable at %q", meta, "resume")
+	if meta.Complete || meta.Pages != 2 || meta.NextToken != "next_2" {
+		t.Fatalf("pagination meta = %+v, want incomplete result resumable at %q", meta, "next_2")
 	}
 }
 
@@ -277,8 +312,9 @@ func TestPaginateIntoContinuesFromExplicitCursorWithPageAll(t *testing.T) {
 	runtime, _, registry := newPaginateIntoTestRuntime(t, map[string]string{"page-all": "true", "page-delay": "0"})
 	var requestTokens []string
 	for _, data := range []map[string]interface{}{
-		{"items": []string{"from-resume"}, "has_more": true, "page_token": "next"},
-		{"items": []string{"after-resume"}, "has_more": false},
+		{"items": []string{"from-resume"}, "has_more": true, "page_token": "next_1"},
+		{"items": []string{"after-resume-1"}, "has_more": true, "page_token": "next_2"},
+		{"items": []string{"after-resume-2"}, "has_more": false},
 	} {
 		registry.Register(&httpmock.Stub{
 			Method: http.MethodGet,
@@ -302,10 +338,10 @@ func TestPaginateIntoContinuesFromExplicitCursorWithPageAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PaginateInto() error = %v", err)
 	}
-	if !reflect.DeepEqual(requestTokens, []string{"resume", "next"}) {
-		t.Fatalf("request page tokens = %v, want [resume next]", requestTokens)
+	if !reflect.DeepEqual(requestTokens, []string{"resume", "next_1", "next_2"}) {
+		t.Fatalf("request page tokens = %v, want [resume next_1 next_2]", requestTokens)
 	}
-	if !reflect.DeepEqual(result.items, []string{"from-resume", "after-resume"}) || !meta.Complete || meta.Pages != 2 {
+	if !reflect.DeepEqual(result.items, []string{"from-resume", "after-resume-1", "after-resume-2"}) || !meta.Complete || meta.Pages != 3 || meta.NextToken != "" {
 		t.Fatalf("result = %+v meta = %+v", result, meta)
 	}
 }

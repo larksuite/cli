@@ -87,7 +87,7 @@ var ImChatSearch = common.Shortcut{
 		{Name: "sort", Desc: "sort field (always descending): create_time | update_time | member_count", Enum: []string{"create_time", "update_time", "member_count"}},
 		{Name: "sort-by", Hidden: true, Desc: "legacy API sorter vocabulary; use --sort", Enum: legacySortValues(chatSearchSortCompatibilityValues)},
 		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", chatSearchDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatSearchMaxPageSize)},
-		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "exclude-muted", Type: "bool", Desc: "(user identity only) drop chats the current user has muted (do-not-disturb); bot identity returns all chats unfiltered"},
 	}, common.PageAllFlags()...),
 	Normalize: normalizeChatSearchSortCompatibility,

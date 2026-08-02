@@ -35,6 +35,9 @@ type Spec struct {
 // Bind installs exact-name aliases on cmd and records them on their canonical
 // pflags for manifest/tooling introspection. Existing pflag normalization is
 // composed first; alias resolution is then applied to the normalized spelling.
+// The canonical pflag also remembers the spelling that supplied its most
+// recently applied value so validation errors can point back to the caller's
+// actual input without changing native repeated-flag semantics.
 //
 // Bind is intentionally the only production owner of SetNormalizeFunc. It
 // validates the complete accepted-name set before installing alias metadata or
@@ -69,6 +72,7 @@ func Bind(cmd *cobra.Command, specs []Spec) error {
 
 	aliases := make(map[string]string)
 	metadata := make(map[*pflag.Flag][]string)
+	canonicalFlags := make(map[string]*pflag.Flag)
 	seenCanonical := make(map[string]struct{})
 	for _, spec := range specs {
 		if len(spec.Aliases) == 0 {
@@ -83,6 +87,7 @@ func Bind(cmd *cobra.Command, specs []Spec) error {
 			return fmt.Errorf("%s declares flag aliases for --%s more than once after normalization", cmd.CommandPath(), canonical)
 		}
 		seenCanonical[canonical] = struct{}{}
+		canonicalFlags[canonical] = canonicalFlag
 		for _, alias := range spec.Aliases {
 			if err := validateAliasName(alias); err != nil {
 				return fmt.Errorf("%s alias for --%s: %w", cmd.CommandPath(), canonical, err)
@@ -114,6 +119,10 @@ func Bind(cmd *cobra.Command, specs []Spec) error {
 	if len(aliases) == 0 {
 		return nil
 	}
+	tracked := make(map[string]*trackedValue, len(canonicalFlags))
+	for canonical, flag := range canonicalFlags {
+		tracked[canonical] = ensureTrackedValue(flag)
+	}
 	for flag, names := range metadata {
 		setAliases(flag, append(Aliases(flag), names...))
 	}
@@ -123,7 +132,18 @@ func Bind(cmd *cobra.Command, specs []Spec) error {
 			normalized = string(previous(set, name))
 		}
 		if canonical, ok := aliases[normalized]; ok {
+			if set.Parsed() {
+				tracked[canonical].pendingSource = name
+			}
 			return pflag.NormalizedName(canonical)
+		}
+		// Preserve the caller's raw spelling when a previously installed
+		// normalizer (for example underscore-to-dash normalization) resolves it
+		// directly to a canonical flag. pflag immediately normalizes the
+		// canonical name once more from FlagSet.Set; leaving pendingSource intact
+		// lets trackedValue.Set commit the original spelling for that occurrence.
+		if value, ok := tracked[normalized]; ok && set.Parsed() && name != normalized {
+			value.pendingSource = name
 		}
 		return pflag.NormalizedName(normalized)
 	})
@@ -147,6 +167,81 @@ func Aliases(flag *pflag.Flag) []string {
 		return nil
 	}
 	return append([]string(nil), flag.Annotations[AnnotationAliases]...)
+}
+
+// Source returns the spelling that supplied the canonical flag's most recently
+// applied value. It returns the canonical name when no alias occurrence has
+// been applied. The returned name never includes leading dashes.
+func Source(flag *pflag.Flag) string {
+	if flag == nil {
+		return ""
+	}
+	if value, ok := flag.Value.(sourceValue); ok {
+		if source := value.sourceName(); source != "" {
+			return source
+		}
+	}
+	return flag.Name
+}
+
+type sourceValue interface {
+	pflag.Value
+	sourceName() string
+}
+
+// trackedValue delegates value parsing to the canonical pflag while retaining
+// only the source spelling for the last Set. pendingSource bridges pflag's two
+// normalization calls for a long flag: first the caller spelling is resolved,
+// then FlagSet.Set normalizes the canonical name before invoking Value.Set.
+type trackedValue struct {
+	pflag.Value
+	canonical     string
+	pendingSource string
+	lastSource    string
+}
+
+func (value *trackedValue) Set(raw string) error {
+	source := value.pendingSource
+	if source == "" {
+		source = value.canonical
+	}
+	value.pendingSource = ""
+	// Record the attempted spelling before delegating so parse-time value
+	// failures can also be attributed by callers that classify pflag errors.
+	value.lastSource = source
+	return value.Value.Set(raw)
+}
+
+func (value *trackedValue) sourceName() string { return value.lastSource }
+
+// trackedSliceValue preserves pflag.SliceValue for collection flags. Without
+// this adapter, wrapping a slice flag would make completion/tooling lose its
+// append/replace interface even though parsing still happened to work.
+type trackedSliceValue struct {
+	*trackedValue
+	slice pflag.SliceValue
+}
+
+func (value *trackedSliceValue) Append(raw string) error { return value.slice.Append(raw) }
+
+func (value *trackedSliceValue) Replace(raw []string) error { return value.slice.Replace(raw) }
+
+func (value *trackedSliceValue) GetSlice() []string { return value.slice.GetSlice() }
+
+func ensureTrackedValue(flag *pflag.Flag) *trackedValue {
+	if value, ok := flag.Value.(*trackedValue); ok {
+		return value
+	}
+	if value, ok := flag.Value.(*trackedSliceValue); ok {
+		return value.trackedValue
+	}
+	tracked := &trackedValue{Value: flag.Value, canonical: flag.Name}
+	if slice, ok := flag.Value.(pflag.SliceValue); ok {
+		flag.Value = &trackedSliceValue{trackedValue: tracked, slice: slice}
+	} else {
+		flag.Value = tracked
+	}
+	return tracked
 }
 
 func validateAliasName(name string) error {

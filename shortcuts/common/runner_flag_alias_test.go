@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -68,33 +69,101 @@ func TestShortcutFlagAliasesResolveToCanonicalContract(t *testing.T) {
 }
 
 func TestShortcutFlagAliasesUseRepeatedFlagLastWinsSemantics(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		want      string
+		wantParam string
+	}{
+		{name: "alias last", args: []string{"--order", "asc", "--sort-order", "desc"}, want: "desc", wantParam: "--sort-order"},
+		{name: "canonical last", args: []string{"--sort-order", "desc", "--order", "asc"}, want: "asc", wantParam: "--order"},
+		{name: "alias equals form", args: []string{"--sort-order=desc"}, want: "desc", wantParam: "--sort-order"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var observed string
+			shortcut := &Shortcut{
+				Service: "im", Command: "+alias-order", Description: "x", AuthTypes: []string{"bot"},
+				Flags: []Flag{{
+					Name: "order", Aliases: []string{"sort-order"}, Default: "desc",
+				}},
+				Validate: func(_ context.Context, runtime *RuntimeContext) error {
+					observed = runtime.Str("order")
+					return ValidationErrorf("invalid order for test").WithParam("--order")
+				},
+				Execute: func(context.Context, *RuntimeContext) error { return nil },
+			}
+			err := runAliasShortcut(t, shortcut, test.args...)
+			assertValidationParam(t, err, test.wantParam)
+			if observed != test.want {
+				t.Fatalf("order = %q, want %q", observed, test.want)
+			}
+		})
+	}
+}
+
+func TestShortcutFlagAliasEnumErrorUsesCallerSpelling(t *testing.T) {
 	shortcut := Shortcut{
-		Service: "im", Command: "+alias-order", Description: "x",
+		Service: "im", Command: "+alias-enum", Description: "x", AuthTypes: []string{"bot"},
 		Flags: []Flag{{
-			Name: "order", Aliases: []string{"sort-order"}, Default: "desc",
+			Name: "order", Aliases: []string{"sort-order"}, Enum: []string{"asc", "desc"},
 		}},
 		Execute: func(context.Context, *RuntimeContext) error { return nil },
 	}
 
-	tests := []struct {
-		name string
-		args []string
-		want string
-	}{
-		{name: "alias last", args: []string{"--order", "asc", "--sort-order", "desc"}, want: "desc"},
-		{name: "canonical last", args: []string{"--sort-order", "desc", "--order", "asc"}, want: "asc"},
+	err := runAliasShortcut(t, &shortcut, "--sort-order=sideways")
+	validationErr := assertValidationParam(t, err, "--sort-order")
+	if !strings.Contains(validationErr.Message, "--order") {
+		t.Fatalf("message = %q, want canonical --order guidance", validationErr.Message)
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			cmd := mountTestShortcut(t, shortcut)
-			if err := cmd.ParseFlags(test.args); err != nil {
-				t.Fatalf("ParseFlags(%v) error = %v", test.args, err)
-			}
-			if got, _ := cmd.Flags().GetString("order"); got != test.want {
-				t.Fatalf("order = %q, want %q", got, test.want)
-			}
-		})
+}
+
+func TestShortcutFlagAliasRangeErrorUsesCallerSpelling(t *testing.T) {
+	shortcut := Shortcut{
+		Service: "base", Command: "+alias-range", Description: "x", AuthTypes: []string{"bot"},
+		Flags: []Flag{{
+			Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "10",
+		}},
+		Validate: func(_ context.Context, runtime *RuntimeContext) error {
+			_, err := ValidatePageSizeTyped(runtime, "limit", 10, 1, 100)
+			return err
+		},
+		Execute: func(context.Context, *RuntimeContext) error { return nil },
 	}
+
+	err := runAliasShortcut(t, &shortcut, "--page-size=101")
+	assertValidationParam(t, err, "--page-size")
+}
+
+func TestRunnerAttributesBusinessValidationErrorAtAliasBoundary(t *testing.T) {
+	shortcut := Shortcut{
+		Service: "slides", Command: "+alias-business-validation", Description: "x", AuthTypes: []string{"bot"},
+		Flags: []Flag{{
+			Name: "presentation", Aliases: []string{"url"},
+		}},
+		Validate: func(context.Context, *RuntimeContext) error {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --presentation input").
+				WithParam("--presentation")
+		},
+		Execute: func(context.Context, *RuntimeContext) error { return nil },
+	}
+	err := runAliasShortcut(t, &shortcut, "--url=not/a/presentation")
+	validationErr := assertValidationParam(t, err, "--url")
+	if !strings.Contains(validationErr.Hint, "--url") || !strings.Contains(validationErr.Hint, "--presentation") {
+		t.Fatalf("hint = %q, want alias-to-canonical guidance", validationErr.Hint)
+	}
+}
+
+func runAliasShortcut(t *testing.T, shortcut *Shortcut, args ...string) error {
+	t.Helper()
+	factory := newTestFactory()
+	cmd := newTestShortcutCmd(shortcut, factory)
+	installFlagAliases(cmd, shortcut.Flags)
+	parseArgs := append(append([]string(nil), args...), "--as=bot")
+	if err := cmd.ParseFlags(parseArgs); err != nil {
+		t.Fatalf("ParseFlags(%v) error = %v", parseArgs, err)
+	}
+	return runShortcut(cmd, factory, shortcut, true)
 }
 
 func TestShortcutFlagAliasesComposeWithPostMountNormalizer(t *testing.T) {

@@ -6,8 +6,10 @@ package im
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -295,7 +297,7 @@ func TestIMListPageAllReportsIncompleteResultOnPageLimit(t *testing.T) {
 			}
 			assertListPaginationMeta(t, runtime, false, 2, 2, "token-2")
 			stderr := runtime.IO().ErrOut.(*bytes.Buffer).String()
-			for _, forbidden := range []string{"reached page limit", "result is incomplete", "Increase --page-limit"} {
+			for _, forbidden := range []string{"[page", "reached page limit", "result is incomplete", "Increase --page-limit"} {
 				if strings.Contains(stderr, forbidden) {
 					t.Fatalf("stderr contains business pagination warning %q: %s", forbidden, stderr)
 				}
@@ -316,20 +318,24 @@ func TestIMListPageAllContinuesFromExplicitPageToken(t *testing.T) {
 			var requestTokens []string
 			runtime, calls := newListPageAllRuntime(t, tc, map[string]string{"page-all": "true", "page-token": "resume"}, func(req *http.Request, call int) map[string]interface{} {
 				requestTokens = append(requestTokens, req.URL.Query().Get("page_token"))
-				if call == 1 {
-					return map[string]interface{}{"items": []interface{}{tc.makeRawItem("first")}, "has_more": true, "page_token": "next", "total": 2}
+				switch call {
+				case 1:
+					return map[string]interface{}{"items": []interface{}{tc.makeRawItem("first")}, "has_more": true, "page_token": "next_1", "total": 3}
+				case 2:
+					return map[string]interface{}{"items": []interface{}{tc.makeRawItem("second")}, "has_more": true, "page_token": "next_2", "total": 3}
+				default:
+					return map[string]interface{}{"items": []interface{}{tc.makeRawItem("third")}, "has_more": false, "page_token": "final", "total": 3}
 				}
-				return map[string]interface{}{"items": []interface{}{tc.makeRawItem("second")}, "has_more": false, "page_token": "final", "total": 2}
 			})
 			if err := tc.shortcut.Execute(context.Background(), runtime); err != nil {
 				t.Fatalf("Execute() error = %v", err)
 			}
-			if *calls != 2 || !reflect.DeepEqual(requestTokens, []string{"resume", "next"}) {
-				t.Fatalf("calls=%d page tokens=%v, want two calls from resume to next", *calls, requestTokens)
+			if *calls != 3 || !reflect.DeepEqual(requestTokens, []string{"resume", "next_1", "next_2"}) {
+				t.Fatalf("calls=%d page tokens=%v, want [resume next_1 next_2]", *calls, requestTokens)
 			}
 			data := listPageAllOutputData(t, runtime)
-			assertListPageAllOrder(t, data, tc, "first", "second")
-			assertListPaginationMeta(t, runtime, true, 2, 2, "")
+			assertListPageAllOrder(t, data, tc, "first", "second", "third")
+			assertListPaginationMeta(t, runtime, true, 3, 3, "")
 		})
 	}
 }
@@ -369,24 +375,66 @@ func TestChatListRecordFormatsKeepStdoutPureAndReportPagination(t *testing.T) {
 	}
 	for _, format := range []string{"ndjson", "csv"} {
 		t.Run(format, func(t *testing.T) {
-			runtime, _ := newListPageAllRuntime(t, tc, nil, func(_ *http.Request, _ int) map[string]interface{} {
+			runtime, calls := newListPageAllRuntime(t, tc, map[string]string{"page-all": "true"}, func(_ *http.Request, call int) map[string]interface{} {
+				if call == 1 {
+					return map[string]interface{}{
+						"items":      []interface{}{tc.makeRawItem("first")},
+						"has_more":   true,
+						"page_token": "next",
+					}
+				}
 				return map[string]interface{}{
-					"items":      []interface{}{tc.makeRawItem("only")},
-					"has_more":   true,
-					"page_token": "next",
+					"items":      []interface{}{tc.makeRawItem("second")},
+					"has_more":   false,
+					"page_token": "final",
 				}
 			})
 			runtime.Format = format
+			// Even an interactive stderr must remain a pure JSONL diagnostics
+			// stream for record-oriented stdout formats.
+			runtime.IO().StderrIsTerminal = true
 
 			if err := tc.shortcut.Execute(context.Background(), runtime); err != nil {
 				t.Fatalf("Execute() error = %v", err)
 			}
+			if *calls != 2 {
+				t.Fatalf("API calls = %d, want 2", *calls)
+			}
 			stdout := runtime.IO().Out.(*bytes.Buffer).String()
-			if !strings.Contains(stdout, "only") {
-				t.Fatalf("%s stdout = %q, want chat record", format, stdout)
+			if !strings.Contains(stdout, "first") || !strings.Contains(stdout, "second") {
+				t.Fatalf("%s stdout = %q, want both chat records", format, stdout)
 			}
 			if strings.Contains(stdout, "_diagnostic") || strings.Contains(stdout, "next_token") {
 				t.Fatalf("%s stdout contains pagination metadata: %q", format, stdout)
+			}
+			switch format {
+			case "ndjson":
+				decoder := json.NewDecoder(strings.NewReader(stdout))
+				count := 0
+				for {
+					var record map[string]interface{}
+					if err := decoder.Decode(&record); err != nil {
+						if err == io.EOF {
+							break
+						}
+						t.Fatalf("decode NDJSON record: %v", err)
+					}
+					if _, wrapped := record["chats"]; wrapped {
+						t.Fatalf("NDJSON emitted aggregate wrapper: %#v", record)
+					}
+					count++
+				}
+				if count != 2 {
+					t.Fatalf("NDJSON record count = %d, want 2", count)
+				}
+			case "csv":
+				records, err := csv.NewReader(strings.NewReader(stdout)).ReadAll()
+				if err != nil {
+					t.Fatalf("decode CSV: %v", err)
+				}
+				if len(records) != 3 {
+					t.Fatalf("CSV rows = %d, want header + 2 records", len(records))
+				}
 			}
 
 			var diagnostic map[string]interface{}
@@ -394,8 +442,11 @@ func TestChatListRecordFormatsKeepStdoutPureAndReportPagination(t *testing.T) {
 			if err := json.Unmarshal(bytes.TrimSpace(stderr), &diagnostic); err != nil {
 				t.Fatalf("decode stderr diagnostic %q: %v", stderr, err)
 			}
-			if diagnostic["_diagnostic"] != "pagination" || diagnostic["complete"] != false || diagnostic["pages"] != float64(1) || diagnostic["items"] != float64(1) || diagnostic["next_token"] != "next" {
+			if diagnostic["_diagnostic"] != "pagination" || diagnostic["complete"] != true || diagnostic["pages"] != float64(2) || diagnostic["items"] != float64(2) {
 				t.Fatalf("pagination diagnostic = %#v", diagnostic)
+			}
+			if _, exists := diagnostic["next_token"]; exists {
+				t.Fatalf("complete pagination diagnostic has next_token: %#v", diagnostic)
 			}
 		})
 	}
@@ -451,7 +502,7 @@ func TestIMListPageAllDryRunAndFlagSurface(t *testing.T) {
 			for _, flag := range tc.shortcut.Flags {
 				flags[flag.Name] = flag
 			}
-			if flag := flags[common.PageAllFlagName]; flag.Type != "bool" || flag.Desc != "automatically paginate until exhaustion or --page-limit" {
+			if flag := flags[common.PageAllFlagName]; flag.Type != "bool" || flag.Desc != common.PageAllFlags()[0].Desc {
 				t.Fatalf("page-all flag = %#v", flag)
 			}
 			if flag := flags["page-limit"]; flag.Type != "int" || flag.Default != "10" || !strings.Contains(flag.Desc, "1-1000") {

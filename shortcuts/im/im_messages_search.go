@@ -47,7 +47,7 @@ var ImMessagesSearch = common.Shortcut{
 		{Name: "start", Desc: "start time(ISO 8601) with local timezone offset (e.g. 2026-03-24T00:00:00+08:00)"},
 		{Name: "end", Desc: "end time(ISO 8601) with local timezone offset (e.g. 2026-03-25T23:59:59+08:00)"},
 		{Name: "page-size", Aliases: []string{"limit"}, Type: "int", Default: fmt.Sprintf("%d", messagesSearchDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", messagesSearchMaxPageSize)},
-		{Name: "page-token", Desc: "page token"},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate search results"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max search pages when auto-pagination is enabled (default 20, max 40)"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},

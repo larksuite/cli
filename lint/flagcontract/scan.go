@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/lint/lintapi"
@@ -53,22 +52,16 @@ func ScanRepoWithOptions(root string, _ ScanOptions) ([]lintapi.Violation, error
 			return nil // another compiler/lint stage owns syntax errors
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
-			switch value := node.(type) {
-			case *ast.CallExpr:
-				selector, ok := value.Fun.(*ast.SelectorExpr)
-				if ok && selector.Sel.Name == "SetNormalizeFunc" && rel != aliasOwnerPath {
-					out = append(out, violation(fset, rel, value.Pos(),
-						"flag_alias_normalizer_owner",
-						"SetNormalizeFunc is owned by internal/flagalias",
-						"declare exact synonyms with common.Flag.Aliases or call flagalias.Bind from a framework adapter"))
-				}
-			case *ast.CompositeLit:
-				if name, desc, hidden := hiddenFlagLiteral(value); hidden && aliasDescription(desc) {
-					out = append(out, violation(fset, rel, value.Pos(),
-						"flag_alias_independent_flag",
-						"--"+name+" is modeled as an independent hidden alias",
-						"put an exact synonym in the canonical common.Flag.Aliases; use Shortcut.Normalize only when the legacy input's value grammar or meaning differs"))
-				}
+			value, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			selector, ok := value.Fun.(*ast.SelectorExpr)
+			if ok && selector.Sel.Name == "SetNormalizeFunc" && rel != aliasOwnerPath {
+				out = append(out, violation(fset, rel, value.Pos(),
+					"flag_alias_normalizer_owner",
+					"SetNormalizeFunc is owned by internal/flagalias",
+					"declare exact synonyms with common.Flag.Aliases or call flagalias.Bind from a framework adapter"))
 			}
 			return true
 		})
@@ -98,43 +91,4 @@ func violation(fset *token.FileSet, file string, pos token.Pos, rule, message, s
 		Message:    message,
 		Suggestion: suggestion,
 	}
-}
-
-func hiddenFlagLiteral(lit *ast.CompositeLit) (name, desc string, hidden bool) {
-	for _, element := range lit.Elts {
-		item, ok := element.(*ast.KeyValueExpr)
-		if !ok {
-			continue
-		}
-		key, ok := item.Key.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		switch key.Name {
-		case "Name":
-			name, _ = stringLiteral(item.Value)
-		case "Desc":
-			desc, _ = stringLiteral(item.Value)
-		case "Hidden":
-			ident, ok := item.Value.(*ast.Ident)
-			hidden = ok && ident.Name == "true"
-		}
-	}
-	return name, desc, hidden && name != ""
-}
-
-func stringLiteral(expr ast.Expr) (string, bool) {
-	lit, ok := expr.(*ast.BasicLit)
-	if !ok || lit.Kind != token.STRING {
-		return "", false
-	}
-	value, err := strconv.Unquote(lit.Value)
-	return value, err == nil
-}
-
-func aliasDescription(desc string) bool {
-	desc = strings.ToLower(desc)
-	return strings.Contains(desc, "alias for --") ||
-		strings.Contains(desc, "alias of --") ||
-		strings.Contains(desc, "hidden alias")
 }

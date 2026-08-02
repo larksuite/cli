@@ -39,7 +39,7 @@ var ImFeedGroupList = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", feedGroupListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", feedGroupListMaxPageSize)},
-		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
 		{Name: "start-time", Desc: "update-time window start (Unix milliseconds as a decimal string)"},
@@ -57,9 +57,7 @@ var ImFeedGroupList = common.Shortcut{
 			Params(feedGroupListGroupsDryRunParams(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		// When --page-token is explicitly provided, the user wants a specific
-		// page — no auto-pagination regardless of --page-all.
-		if runtime.Bool("page-all") && !runtime.Cmd.Flags().Changed("page-token") {
+		if runtime.Bool("page-all") {
 			return executeFeedGroupListGroupsAllPages(runtime)
 		}
 
@@ -144,18 +142,15 @@ func executeFeedGroupListGroupsAllPages(rt *common.RuntimeContext) error {
 	allGroups := make([]any, 0)
 	allDeletedGroups := make([]any, 0)
 	var lastHasMore bool
-	var lastPageToken string
-	prevPageToken := "__START__"
+	lastPageToken := rt.Str("page-token")
+	prevPageToken := lastPageToken
 
 	for page := 0; page < maxPages; page++ {
 		// page_token is always sent (empty on the first page) — the groups
 		// endpoint rejects requests that omit it.
 		params := larkcore.QueryParams{
 			"page_size":  []string{strconv.Itoa(rt.Int("page-size"))},
-			"page_token": []string{""},
-		}
-		if page > 0 {
-			params["page_token"] = []string{lastPageToken}
+			"page_token": []string{lastPageToken},
 		}
 		if start := rt.Str("start-time"); start != "" {
 			params["start_time"] = []string{start}

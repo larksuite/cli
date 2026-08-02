@@ -129,7 +129,7 @@ func TestIMFlagAliasesProduceCanonicalRequests(t *testing.T) {
 	}
 }
 
-func TestIMAliasValidationReportsCanonicalFlag(t *testing.T) {
+func TestIMBusinessValidationUsesCanonicalFlagNames(t *testing.T) {
 	runtime, _ := newMountedIMRuntime(t, &ImChatMessageList, "--chat-id", "oc_test", "--start-time", "bad-time")
 	_, err := buildChatMessageListRequest(runtime, "oc_test")
 	assertIMValidationError(t, err, "--start", "--start: cannot parse time")

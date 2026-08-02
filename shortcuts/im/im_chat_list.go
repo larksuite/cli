@@ -58,7 +58,7 @@ var ImChatList = common.Shortcut{
 		{Name: "sort-type", Hidden: true, Desc: "legacy API sort vocabulary; use --sort", Enum: legacySortValues(chatListSortCompatibilityValues)},
 		{Name: "types", Type: "string_slice", Desc: "chat types to include (group, p2p); omit = groups only (backward compatible); p2p requires user identity"},
 		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", chatListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatListMaxPageSize)},
-		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "exclude-muted", Type: "bool", Desc: "(user identity only) drop chats the current user has muted (do-not-disturb); bot identity returns all chats unfiltered"},
 	}, common.PageAllFlags()...),
 	Normalize: normalizeChatListSortCompatibility,

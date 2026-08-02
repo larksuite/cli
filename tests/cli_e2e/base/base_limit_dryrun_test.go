@@ -87,7 +87,7 @@ func TestBaseListDryRunUsesLastPaginationSpelling(t *testing.T) {
 	}
 }
 
-func TestBaseListDryRunValidatesPageSizeAliasAsCanonicalLimit(t *testing.T) {
+func TestBaseListDryRunAttributesValidationToPageSizeAlias(t *testing.T) {
 	setBaseDryRunConfigEnv(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -97,6 +97,6 @@ func TestBaseListDryRunValidatesPageSizeAliasAsCanonicalLimit(t *testing.T) {
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 2)
-	require.Equal(t, "--limit", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+	require.Equal(t, "--page-size", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
 	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "must be between 1 and 100")
 }

@@ -30,9 +30,13 @@ type Meta struct {
 // exhausted the endpoint or stopped at --page-limit with somewhere to resume —
 // so there is no separate stop_reason string to keep in sync.
 type PaginationMeta struct {
-	Complete  bool   `json:"complete"`
-	Pages     int    `json:"pages"`
-	Items     int    `json:"items"`
+	// Complete is true only when the server's exhausted state was observed.
+	Complete bool `json:"complete"`
+	// Pages counts successful API pages included in this result.
+	Pages int `json:"pages"`
+	// Items counts records after command-level filtering and enrichment.
+	Items int `json:"items"`
+	// NextToken is the cursor at which an incomplete result can resume.
 	NextToken string `json:"next_token,omitempty"`
 }
 

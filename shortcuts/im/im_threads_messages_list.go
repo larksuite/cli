@@ -38,7 +38,7 @@ var ImThreadsMessagesList = common.Shortcut{
 		{Name: "order", Default: "asc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
 		{Name: "sort", Hidden: true, Desc: "legacy name for --order", Enum: []string{"asc", "desc"}},
 		{Name: "page-size", Default: fmt.Sprintf("%d", threadsMessagesListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", threadsMessagesListMaxPageSize)},
-		{Name: "page-token", Desc: "page token"},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	}, common.PageAllFlags()...),

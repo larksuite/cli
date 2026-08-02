@@ -47,7 +47,7 @@ lark-cli im +threads-messages-list --thread omt_xxx --dry-run
 | `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default |
 | `--order <order>` | No | Sort order: `asc` (default) / `desc` |
 | `--page-size <n>` | No | Number of items per page (default 50, range 1-50) |
-| `--page-token <token>` | No | Pagination token for the next page |
+| `--page-token <token>` | No | Starting cursor, normally returned by a previous response |
 | `--page-all` | No | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
@@ -68,7 +68,13 @@ Thread messages do not support `start_time` / `end_time` filtering because of Fe
 
 By default, the command fetches one page. When the result includes `has_more=true`, use `page_token` to fetch the next page, or add `--page-all` to fetch and merge subsequent pages automatically. `--page-limit` defaults to 10 and accepts values from 1 to 1000.
 
-If automatic pagination reaches the limit while the output still has `has_more=true`, the result is incomplete. Continue with the returned `page_token`, or rerun with a larger `--page-limit`. An explicitly supplied `--page-token` takes precedence and fetches only that page even when `--page-all` is also present.
+If `--page-token` and `--page-all` are supplied together, the token sets the starting cursor and automatic pagination continues from there. If automatic pagination reaches the limit while the output still has `has_more=true`, the result is incomplete. Continue with the returned `page_token`, or rerun with a larger `--page-limit`.
+
+Pagination status is emitted for both one-page and multi-page runs:
+
+- JSON, including the envelope supplied to `--jq`, uses `meta.pagination` as the authoritative CLI execution status. `complete` means endpoint exhaustion was observed; `pages` counts successful API pages; `items` counts final emitted records after filtering/enrichment; `next_token` is present when an incomplete result can resume.
+- `data.has_more` and `data.page_token` remain as API-compatible business fields.
+- `pretty` / `table` append a pagination footer. `csv` / `ndjson` keep stdout record-only and write one structured pagination diagnostic to stderr.
 
 ### 4. Recommended expansion strategy
 

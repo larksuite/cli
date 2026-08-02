@@ -52,12 +52,16 @@ func TestBindResolvesAliasesToOneCanonicalFlag(t *testing.T) {
 
 func TestBindUsesNativeRepeatedFlagSemantics(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
-		want string
+		name       string
+		args       []string
+		want       string
+		wantSource string
 	}{
-		{name: "alias last", args: []string{"--order", "asc", "--sort", "desc"}, want: "desc"},
-		{name: "canonical last", args: []string{"--sort", "desc", "--order", "asc"}, want: "asc"},
+		{name: "alias only", args: []string{"--sort", "desc"}, want: "desc", wantSource: "sort"},
+		{name: "canonical only", args: []string{"--order", "asc"}, want: "asc", wantSource: "order"},
+		{name: "alias last", args: []string{"--order", "asc", "--sort", "desc"}, want: "desc", wantSource: "sort"},
+		{name: "canonical last", args: []string{"--sort", "desc", "--order", "asc"}, want: "asc", wantSource: "order"},
+		{name: "alias equals form", args: []string{"--sort=desc"}, want: "desc", wantSource: "sort"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -72,6 +76,9 @@ func TestBindUsesNativeRepeatedFlagSemantics(t *testing.T) {
 			if got, _ := cmd.Flags().GetString("order"); got != test.want {
 				t.Fatalf("order = %q, want %q", got, test.want)
 			}
+			if got := Source(cmd.Flags().Lookup("order")); got != test.wantSource {
+				t.Fatalf("source = %q, want %q", got, test.wantSource)
+			}
 		})
 	}
 
@@ -85,6 +92,12 @@ func TestBindUsesNativeRepeatedFlagSemantics(t *testing.T) {
 	}
 	if got, _ := cmd.Flags().GetStringSlice("fields"); strings.Join(got, ",") != "name,status" {
 		t.Fatalf("collection aliases did not accumulate: %v", got)
+	}
+	if got := Source(cmd.Flags().Lookup("fields")); got != "fields" {
+		t.Fatalf("collection source = %q, want fields", got)
+	}
+	if _, ok := cmd.Flags().Lookup("fields").Value.(pflag.SliceValue); !ok {
+		t.Fatal("alias tracking must preserve pflag.SliceValue")
 	}
 }
 
@@ -102,6 +115,9 @@ func TestBindComposesExistingNormalizer(t *testing.T) {
 	}
 	if got, _ := cmd.Flags().GetString("order"); got != "asc" {
 		t.Fatalf("order = %q, want asc", got)
+	}
+	if got := Source(cmd.Flags().Lookup("order")); got != "sort_order" {
+		t.Fatalf("source = %q, want sort_order", got)
 	}
 }
 

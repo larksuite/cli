@@ -928,19 +928,19 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		// Normalize is opt-in and consumes resolved values. Shortcuts without a
 		// normalizer retain the established enum-before-input execution order.
 		if err := resolveInputFlags(rctx, s.Flags); err != nil {
-			return err
+			return attributeAliasValidationError(rctx, err)
 		}
 		flagContext := rctx.FlagContext()
 		if err := s.Normalize(rctx.ctx, flagContext); err != nil {
-			return err
+			return attributeAliasValidationError(rctx, err)
 		}
 	}
 	if err := validateEnumFlags(rctx, s.Flags); err != nil {
-		return err
+		return attributeAliasValidationError(rctx, err)
 	}
 	if s.Normalize == nil {
 		if err := resolveInputFlags(rctx, s.Flags); err != nil {
-			return err
+			return attributeAliasValidationError(rctx, err)
 		}
 	}
 	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
@@ -948,7 +948,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	}
 	if s.Validate != nil {
 		if err := s.Validate(rctx.ctx, rctx); err != nil {
-			return err
+			return attributeAliasValidationError(rctx, err)
 		}
 	}
 
@@ -961,7 +961,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	}
 
 	if err := s.Execute(rctx.ctx, rctx); err != nil {
-		return err
+		return attributeAliasValidationError(rctx, err)
 	}
 	return rctx.outputErr
 }

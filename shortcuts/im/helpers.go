@@ -458,7 +458,8 @@ func resolveThreadID(runtime *common.RuntimeContext, id string) (string, error) 
 		return id, nil
 	}
 	if !messageIDRe.MatchString(id) {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid thread ID format: must start with om_ or omt_").WithParam("--thread")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid thread ID format: must start with om_ or omt_").
+			WithParam("--thread")
 	}
 
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{

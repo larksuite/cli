@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestScanRejectsLocalNormalizerAndIndependentAliasFlag(t *testing.T) {
+func TestScanRejectsLocalNormalizer(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "shortcuts/demo/demo.go", `package demo
 func mount(cmd interface{ SetNormalizeFunc(any) }) { cmd.SetNormalizeFunc(nil) }
@@ -29,11 +29,28 @@ func bind(cmd interface{ SetNormalizeFunc(any) }) { cmd.SetNormalizeFunc(nil) }
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("violations = %#v, want 2", got)
+	if len(got) != 1 {
+		t.Fatalf("violations = %#v, want 1", got)
 	}
-	if got[0].Rule != "flag_alias_normalizer_owner" || got[1].Rule != "flag_alias_independent_flag" {
-		t.Fatalf("rules = %q, %q", got[0].Rule, got[1].Rule)
+	if got[0].Rule != "flag_alias_normalizer_owner" {
+		t.Fatalf("rule = %q", got[0].Rule)
+	}
+}
+
+func TestScanDoesNotInferAliasSemanticsFromHelpText(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "shortcuts/demo/demo.go", `package demo
+var flags = []struct { Name, Desc string; Hidden bool }{
+    {Name: "range", Hidden: true, Desc: "alias for --start-cell; ranges collapse to their top-left cell"},
+}
+`)
+
+	got, err := ScanRepoWithOptions(root, ScanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("help prose must not define alias structure: %#v", got)
 	}
 }
 

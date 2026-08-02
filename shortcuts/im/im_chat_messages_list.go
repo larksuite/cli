@@ -41,7 +41,7 @@ var ImChatMessageList = common.Shortcut{
 		{Name: "order", Aliases: []string{"sort-order"}, Default: "desc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
 		{Name: "sort", Hidden: true, Desc: "legacy name for --order", Enum: []string{"asc", "desc"}},
 		{Name: "page-size", Aliases: []string{"limit"}, Default: fmt.Sprintf("%d", chatMessagesListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatMessagesListMaxPageSize)},
-		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	}, common.PageAllFlags()...),
@@ -249,7 +249,8 @@ func buildChatMessageListRequest(runtime *common.RuntimeContext, chatId string) 
 	if startFlag != "" {
 		startTime, err := common.ParseTime(startFlag)
 		if err != nil {
-			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).
+				WithParam("--start")
 		}
 		params["start_time"] = []string{startTime}
 	}
@@ -257,7 +258,8 @@ func buildChatMessageListRequest(runtime *common.RuntimeContext, chatId string) 
 	if endFlag != "" {
 		endTime, err := common.ParseTime(endFlag, "end")
 		if err != nil {
-			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).
+				WithParam("--end")
 		}
 		params["end_time"] = []string{endTime}
 	}

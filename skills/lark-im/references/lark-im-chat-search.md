@@ -55,7 +55,7 @@ lark-cli im +chat-search --query "project" --dry-run
 | `--disable-search-by-user` | No | - | Disable member-name-based matching and search by group name only |
 | `--sort <field>` | No | `create_time`, `update_time`, `member_count` | Sort field (always descending) |
 | `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
-| `--page-token <token>` | No | - | Pagination token from the previous response |
+| `--page-token <token>` | No | - | Starting cursor, normally returned by a previous response |
 | `--page-all` | No | - | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
 | `--page-limit <n>` | No | 1-1000, default 10 | Maximum pages fetched by `--page-all` |
 | `--exclude-muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under `--as bot`, the flag is silently inactive (mute is a per-user setting); see "Filtering muted chats" below |
@@ -64,7 +64,13 @@ lark-cli im +chat-search --query "project" --dry-run
 
 > **Note:** Supports both `--as user` (default) and `--as bot`. When using bot identity, the app must have bot capability enabled.
 
-By default, the command fetches one page. With `--page-all`, it fetches and merges subsequent pages up to `--page-limit`. If the limit is reached while the output still has `has_more=true`, the result is incomplete; continue with the returned `page_token`, or rerun with a larger `--page-limit`. An explicitly supplied `--page-token` takes precedence and fetches only that page even when `--page-all` is also present.
+By default, the command fetches one page, starting at `--page-token` when supplied. With `--page-all`, it continues from that cursor and merges subsequent pages up to `--page-limit`. If the limit is reached while the output still has `has_more=true`, the result is incomplete; continue with the returned `page_token`, or rerun with a larger `--page-limit`.
+
+Pagination status is emitted for both one-page and multi-page runs:
+
+- JSON, including the envelope supplied to `--jq`, uses `meta.pagination` as the authoritative CLI execution status. `complete` means endpoint exhaustion was observed; `pages` counts successful API pages; `items` counts final emitted records after filtering/enrichment; `next_token` is present when an incomplete result can resume.
+- `data.has_more` and `data.page_token` remain as API-compatible business fields.
+- `pretty` / `table` append a pagination footer. `csv` / `ndjson` keep stdout record-only and write one structured pagination diagnostic to stderr.
 
 > **CAUTION:** `--sort` is **always descending** — the search API only ranks the chosen field high-to-low (e.g. `member_count` = most members first). There is no ascending option. If the user asks for "fewest first / ascending / 从少到多", tell them the search API does not support ascending order; any low-to-high view requires re-sorting the fetched page client-side and is not an upstream sort. Do **not** invent values like `member_count_asc` or pass `asc` (they are rejected).
 

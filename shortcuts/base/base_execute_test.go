@@ -2016,7 +2016,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--json", `{"keyword":"Alice","search_fields":["Name"]}`,
 			"--limit", "10", "--page-size", "201",
 		}, factory, stdout)
-		assertInvalidArgumentValidation(t, err, "--json", []string{"--json", "--limit"}, "mutually exclusive")
+		assertInvalidArgumentValidation(t, err, "--json", []string{"--json", "--page-size"}, "mutually exclusive")
 	})
 
 	t.Run("list canonical and alias projections reject duplicates consistently", func(t *testing.T) {

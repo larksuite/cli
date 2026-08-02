@@ -71,6 +71,19 @@ func TestIM_PageAllLiveWorkflow(t *testing.T) {
 		require.Equal(t, gjson.Get(result.Stdout, "data.page_token").String(),
 			gjson.Get(result.Stdout, "meta.pagination.next_token").String())
 		require.NotContains(t, result.Stderr, "result is incomplete")
+
+		resumed, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{"im", "+chat-messages-list", "--chat-id", chatID,
+				"--page-size", "1", "--page-token", gjson.Get(result.Stdout, "data.page_token").String(),
+				"--page-all", "--page-limit", "2"},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		resumed.AssertExitCode(t, 0)
+		resumed.AssertStdoutStatus(t, true)
+		require.Equal(t, int64(2), gjson.Get(resumed.Stdout, "meta.pagination.pages").Int(),
+			"--page-token must seed, rather than disable, --page-all")
+		require.Equal(t, int64(2), gjson.Get(resumed.Stdout, "data.messages.#").Int())
 	})
 
 	t.Run("chat-messages-list walks every page", func(t *testing.T) {
@@ -84,7 +97,6 @@ func TestIM_PageAllLiveWorkflow(t *testing.T) {
 		result.AssertStdoutStatus(t, true)
 		require.GreaterOrEqual(t, gjson.Get(result.Stdout, "data.messages.#").Int(), int64(3))
 		require.False(t, gjson.Get(result.Stdout, "data.has_more").Bool())
-		require.Contains(t, result.Stderr, "[page 2]", "expected a real second page fetch")
 		require.True(t, gjson.Get(result.Stdout, "meta.pagination.complete").Bool())
 		require.GreaterOrEqual(t, gjson.Get(result.Stdout, "meta.pagination.pages").Int(), int64(3))
 		require.Equal(t, gjson.Get(result.Stdout, "data.messages.#").Int(),
@@ -127,7 +139,6 @@ func TestIM_PageAllLiveWorkflow(t *testing.T) {
 		result.AssertStdoutStatus(t, true)
 		require.GreaterOrEqual(t, gjson.Get(result.Stdout, "data.messages.#").Int(), int64(2))
 		require.False(t, gjson.Get(result.Stdout, "data.has_more").Bool())
-		require.Contains(t, result.Stderr, "[page 2]", "expected a real second page fetch")
 		require.True(t, gjson.Get(result.Stdout, "meta.pagination.complete").Bool())
 		require.GreaterOrEqual(t, gjson.Get(result.Stdout, "meta.pagination.pages").Int(), int64(2))
 		require.Equal(t, gjson.Get(result.Stdout, "data.messages.#").Int(),
@@ -164,7 +175,6 @@ func TestIM_PageAllLiveWorkflow(t *testing.T) {
 		full.AssertExitCode(t, 0)
 		full.AssertStdoutStatus(t, true)
 		require.GreaterOrEqual(t, gjson.Get(full.Stdout, "data.chats.#").Int(), int64(2))
-		require.Contains(t, full.Stderr, "[page 2]", "expected a real second page fetch")
 		require.GreaterOrEqual(t, gjson.Get(full.Stdout, "meta.pagination.pages").Int(), int64(2))
 		require.Equal(t, gjson.Get(full.Stdout, "data.chats.#").Int(), gjson.Get(full.Stdout, "meta.pagination.items").Int())
 		if gjson.Get(full.Stdout, "data.has_more").Bool() {

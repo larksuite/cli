@@ -31,13 +31,13 @@ lark-cli im +feed-group-list --as user --page-all \
 | Flag | Required | Description |
 |---|---|---|
 | `--page-size` | No | Records per page, 1–50 (default 50). Caps the combined `groups` + `deleted_groups` count, so a page may hold fewer live groups than the size suggests |
-| `--page-token` | No | Continuation token for a specific page |
+| `--page-token` | No | Starting cursor, normally returned by a previous response |
 | `--page-all` | No | Auto-paginate and merge all pages (both lists) |
 | `--page-limit` | No | Max pages when `--page-all` is set, 1–1000 (default 20) |
 | `--start-time` | No | Update-time window start (Unix milliseconds as a decimal string) |
 | `--end-time` | No | Update-time window end (Unix milliseconds as a decimal string) |
 
-When `--page-token` is set explicitly, it wins over `--page-all` (you get exactly that page).
+When `--page-token` and `--page-all` are supplied together, automatic pagination starts at that cursor and continues until exhaustion or `--page-limit`.
 
 ## Output
 

@@ -57,7 +57,7 @@ func TestIM_ListPageAllDryRun(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			args := append([]string{}, tc.args...)
-			args = append(args, "--page-all", "--page-limit", "3", "--dry-run")
+			args = append(args, "--page-token", "resume", "--page-all", "--page-limit", "3", "--dry-run")
 			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "bot"})
 			require.NoError(t, err)
 			result.AssertExitCode(t, 0)
@@ -65,7 +65,8 @@ func TestIM_ListPageAllDryRun(t *testing.T) {
 			out := result.Stdout
 			require.Equal(t, tc.method, clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
 			require.Equal(t, tc.path, clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
-			require.Equal(t, "Auto-paginates until exhaustion or --page-limit is reached", clie2e.DryRunGet(out, "description").String(), "stdout:\n%s", out)
+			require.Equal(t, "resume", clie2e.DryRunGet(out, "api.0.params.page_token").String(), "stdout:\n%s", out)
+			require.Equal(t, "Auto-paginates from --page-token when provided, until exhaustion or --page-limit is reached", clie2e.DryRunGet(out, "description").String(), "stdout:\n%s", out)
 		})
 	}
 }

@@ -50,7 +50,7 @@ var ImChatMembersList = common.Shortcut{
 		{Name: "member-types", Type: "string_slice", Desc: "member types to return (user, bot); omit = all"},
 		{Name: "member-id-type", Default: "open_id", Desc: "ID type for member_id in response", Enum: []string{"open_id", "union_id", "user_id"}},
 		{Name: "page-size", Aliases: []string{"limit"}, Type: "int", Default: fmt.Sprintf("%d", chatMembersListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatMembersListMaxPageSize)},
-		{Name: "page-token", Desc: "page token; implies single-page fetch (no auto-pagination)"},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages (capped by --page-limit)"},
 		{Name: "page-limit", Type: "int", Default: "10", Desc: "max pages to fetch with --page-all (default 10, 0 = unlimited)"},
 		{Name: "page-delay", Type: "int", Default: fmt.Sprintf("%d", chatMembersListDefaultPageDelay), Desc: "delay in ms between pages when --page-all (0 = no delay)"},
@@ -92,8 +92,6 @@ var ImChatMembersList = common.Shortcut{
 			Params(params)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		warnIfConflictingPagingFlags(runtime)
-
 		chatID := strings.TrimSpace(runtime.Str("chat-id"))
 		res, err := fetchChatMembers(ctx, runtime, chatID)
 		if err != nil {
@@ -156,13 +154,9 @@ func effectiveChatMembersPageSize(runtime *common.RuntimeContext) int {
 	return chatMembersListDefaultPageSize
 }
 
-// chatMembersShouldAutoPaginate reports whether the fetch loop should walk
-// every page. An explicit --page-token disables the auto loop because the
-// caller supplied a specific cursor (single-page fetch).
+// chatMembersShouldAutoPaginate reports whether the fetch loop should continue
+// from its starting cursor. --page-token selects that cursor independently.
 func chatMembersShouldAutoPaginate(runtime *common.RuntimeContext) bool {
-	if strings.TrimSpace(runtime.Str("page-token")) != "" {
-		return false
-	}
 	return runtime.Bool("page-all")
 }
 
@@ -323,15 +317,6 @@ func normalizeMemberTypes(raw []string) (string, error) {
 		out = append(out, p)
 	}
 	return strings.Join(out, ","), nil
-}
-
-// warnIfConflictingPagingFlags mirrors the wiki list shortcuts: --page-token
-// wins (single-page fetch from the supplied cursor) and --page-all is ignored.
-func warnIfConflictingPagingFlags(runtime *common.RuntimeContext) {
-	if strings.TrimSpace(runtime.Str("page-token")) != "" && runtime.Bool("page-all") {
-		fmt.Fprintln(runtime.IO().ErrOut,
-			"warning: --page-token is set, so --page-all is ignored (single-page fetch from the supplied cursor)")
-	}
 }
 
 // writeChatMembersTruncationWarning emits a stderr warning for every

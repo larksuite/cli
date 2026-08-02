@@ -11,19 +11,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-func newThreadsTestRT(t *testing.T, stringFlags map[string]string) *common.RuntimeContext {
-	t.Helper()
-	if stringFlags == nil {
-		stringFlags = map[string]string{}
-	}
-	if _, ok := stringFlags["thread"]; !ok {
-		if _, aliasSet := stringFlags["thread-id"]; !aliasSet {
-			stringFlags["thread"] = "omt_test"
-		}
-	}
-	return newChatListTestRuntimeContext(t, stringFlags, nil)
-}
-
 func TestThreadsMessagesList_OrderMapping(t *testing.T) {
 	cases := []struct{ order, want string }{
 		{"asc", "ByCreateTimeAsc"},

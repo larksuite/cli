@@ -5,7 +5,7 @@ package im
 
 const imMessagesListPath = "/open-apis/im/v1/messages"
 
-const pageAllDryRunDescription = "Auto-paginates until exhaustion or --page-limit is reached"
+const pageAllDryRunDescription = "Auto-paginates from --page-token when provided, until exhaustion or --page-limit is reached"
 
 // imMapListPage is the page shape shared by IM endpoints whose items are JSON
 // objects. Endpoint-specific shapes such as chat search stay in their command.

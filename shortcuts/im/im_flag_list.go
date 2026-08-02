@@ -32,7 +32,7 @@ var ImFlagList = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", flagListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", flagListMaxPageSize)},
-		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate, capped by --page-limit"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages with --page-all (default 20; configurable range 1-1000)"},
 		{Name: "enrich-feed-thread", Type: "bool", Default: "true", Desc: "fetch message content for feed-type thread entries (default true; may call messages/mget and require im:message.group_msg:get_as_user/im:message.p2p_msg:get_as_user; use --enrich-feed-thread=false to avoid extra scopes)"},
@@ -56,9 +56,7 @@ var ImFlagList = common.Shortcut{
 		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		// When --page-token is explicitly provided, the user wants a specific page —
-		// no auto-pagination regardless of --page-all.
-		if runtime.Bool("page-all") && !runtime.Cmd.Flags().Changed("page-token") {
+		if runtime.Bool("page-all") {
 			return executeListAllPages(runtime)
 		}
 
@@ -242,14 +240,11 @@ func executeListAllPages(rt *common.RuntimeContext) error {
 	allDeleteFlagItems := make([]any, 0)
 	allMessages := make([]any, 0)
 	var lastHasMore bool
-	var lastPageToken string
-	prevPageToken := "__START__" // Sentinel to detect unchanged token
+	lastPageToken := rt.Str("page-token")
+	prevPageToken := lastPageToken
 
 	for page := 0; page < maxPages; page++ {
-		token := ""
-		if page > 0 {
-			token = lastPageToken
-		}
+		token := lastPageToken
 		data, err := rt.DoAPIJSONTyped("GET", "/open-apis/im/v1/flags",
 			larkcore.QueryParams{
 				"page_size":  []string{strconv.Itoa(rt.Int("page-size"))},
