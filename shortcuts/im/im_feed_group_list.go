@@ -15,7 +15,12 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
-const feedGroupListPath = "/open-apis/im/v1/groups"
+const (
+	feedGroupListPath            = "/open-apis/im/v1/groups"
+	feedGroupListDefaultPageSize = 50
+	// GET /open-apis/im/v1/groups accepts page_size up to 50.
+	feedGroupListMaxPageSize = 50
+)
 
 // ImFeedGroupList provides the +feed-group-list shortcut: it lists the caller's
 // feed groups (tags) with auto-pagination that correctly merges BOTH the live
@@ -33,7 +38,7 @@ var ImFeedGroupList = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "page-size", Type: "int", Default: "50", Desc: "page size (1-50)"},
+		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", feedGroupListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", feedGroupListMaxPageSize)},
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
@@ -72,8 +77,8 @@ var ImFeedGroupList = common.Shortcut{
 }
 
 func validateFeedGroupListPageOptions(rt *common.RuntimeContext) error {
-	if n := rt.Int("page-size"); n < 1 || n > 50 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
+	if _, err := common.ValidatePageSizeTyped(rt, "page-size", feedGroupListDefaultPageSize, 1, feedGroupListMaxPageSize); err != nil {
+		return err
 	}
 	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")

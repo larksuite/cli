@@ -7,14 +7,63 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+const (
+	imChatSearchPath          = "/open-apis/im/v2/chats/search"
+	chatSearchDefaultPageSize = 20
+	// POST /open-apis/im/v2/chats/search accepts page_size up to 100.
+	chatSearchMaxPageSize = 100
+)
+
+type chatSearchPageItem struct {
+	MetaData map[string]interface{} `json:"meta_data"`
+}
+
+type chatSearchPage struct {
+	Items         []chatSearchPageItem `json:"items"`
+	Total         int                  `json:"total"`
+	Notice        string               `json:"notice"`
+	HasMore       bool                 `json:"has_more"`
+	PageToken     string               `json:"page_token"`
+	NextPageToken string               `json:"next_page_token"`
+}
+
+// chatSearchResult owns the endpoint's merge semantics: meta_data is the
+// actual business record, total comes from the latest page, and a query notice
+// is retained even when later pages omit it.
+type chatSearchResult struct {
+	items     []map[string]interface{}
+	total     int
+	notice    string
+	hasMore   bool
+	pageToken string
+}
+
+func (result *chatSearchResult) AddPage(page chatSearchPage) error {
+	for _, item := range page.Items {
+		if item.MetaData != nil {
+			result.items = append(result.items, item.MetaData)
+		}
+	}
+	result.total = page.Total
+	if page.Notice != "" {
+		result.notice = page.Notice
+	}
+	result.hasMore = page.HasMore
+	result.pageToken = page.PageToken
+	if result.pageToken == "" {
+		result.pageToken = page.NextPageToken
+	}
+	return nil
+}
 
 // ImChatSearch is the +chat-search shortcut: wraps POST /open-apis/im/v2/chats/search
 // to find visible group chats by keyword and/or member open_ids. Supports
@@ -23,12 +72,12 @@ import (
 var ImChatSearch = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-search",
-	Description: "Search visible group chats by --query keyword and/or --member-ids; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, pagination, and --exclude-muted (user identity only)",
+	Description: "Search visible group chats by --query keyword and/or --member-ids; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, auto-pagination, and --exclude-muted (user identity only)",
 	Risk:        "read",
 	Scopes:      []string{"im:chat:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "query", Desc: "search keyword (server may return data.notice for overly long input)"},
 		{Name: "search-types", Desc: "chat types, comma-separated (private, external, public_joined, public_not_joined)"},
 		{Name: "chat-modes", Desc: "filter by chat mode, comma-separated (group, topic)"},
@@ -36,17 +85,22 @@ var ImChatSearch = common.Shortcut{
 		{Name: "is-manager", Type: "bool", Desc: "only show chats you created or manage"},
 		{Name: "disable-search-by-user", Type: "bool", Desc: "disable search-by-member-name (default: search by member name first, then group name)"},
 		{Name: "sort", Desc: "sort field (always descending): create_time | update_time | member_count", Enum: []string{"create_time", "update_time", "member_count"}},
-		{Name: "sort-by", Hidden: true, Desc: "alias of --sort (hidden)", Enum: []string{"create_time_desc", "update_time_desc", "member_count_desc"}},
-		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-100)"},
+		{Name: "sort-by", Hidden: true, Desc: "legacy API sorter vocabulary; use --sort", Enum: legacySortValues(chatSearchSortCompatibilityValues)},
+		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", chatSearchDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatSearchMaxPageSize)},
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "exclude-muted", Type: "bool", Desc: "(user identity only) drop chats the current user has muted (do-not-disturb); bot identity returns all chats unfiltered"},
-	},
+	}, common.PageAllFlags()...),
+	Normalize: normalizeChatSearchSortCompatibility,
 	// DryRun previews the POST /open-apis/im/v2/chats/search request without executing.
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := buildSearchChatBody(runtime)
 		params := buildSearchChatParams(runtime)
-		return common.NewDryRunAPI().
-			POST("/open-apis/im/v2/chats/search").
+		dry := common.NewDryRunAPI()
+		if runtime.Bool(common.PageAllFlagName) {
+			dry.Desc(pageAllDryRunDescription)
+		}
+		return dry.
+			POST(imChatSearchPath).
 			Params(params).
 			Body(body)
 	},
@@ -89,41 +143,37 @@ var ImChatSearch = common.Shortcut{
 				}
 			}
 		}
-		if n := runtime.Int("page-size"); n < 1 || n > 100 {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 100").WithParam("--page-size")
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", chatSearchDefaultPageSize, 1, chatSearchMaxPageSize); err != nil {
+			return err
 		}
-		return nil
+		return common.ValidatePageAllFlags(runtime)
 	},
-	// Execute fetches one page, extracts per-item meta_data, optionally applies
+	// Execute fetches one or more pages, extracts per-item meta_data, optionally applies
 	// the --exclude-muted client-side filter (with a PreSkipReason when
 	// --search-types is exactly public_not_joined), and renders the result.
 	// outData["filter"] is populated only when --exclude-muted is set.
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body := buildSearchChatBody(runtime)
 		params := buildSearchChatParams(runtime)
-		resData, err := runtime.CallAPITyped("POST", "/open-apis/im/v2/chats/search", params, body)
+
+		// Fetch + project: every page is decoded into the endpoint's typed
+		// wrapper, then its meta_data records are merged in page order.
+		result := &chatSearchResult{}
+		pagination, err := common.PaginateInto(runtime, common.PageRequest{
+			Method: http.MethodPost,
+			Path:   imChatSearchPath,
+			Params: params,
+			Body:   body,
+		}, result)
 		if err != nil {
 			return err
 		}
 
-		rawItems, _ := resData["items"].([]interface{})
-		totalF, _ := util.ToFloat64(resData["total"])
-		total := totalF
-		hasMore, pageToken := common.PaginationMeta(resData)
-
-		// Extract MetaData from each item
-		var items []map[string]interface{}
-		for _, raw := range rawItems {
-			item, _ := raw.(map[string]interface{})
-			if item == nil {
-				continue
-			}
-			meta, _ := item["meta_data"].(map[string]interface{})
-			if meta == nil {
-				continue
-			}
-			items = append(items, meta)
-		}
+		// Transform: the mute filter is global to the fetched result and may
+		// batch internally; API page boundaries are irrelevant here.
+		items := result.items
+		hasMore := result.hasMore
+		pageToken := result.pageToken
 
 		preSkipReason := ""
 		if runtime.Bool("exclude-muted") {
@@ -141,21 +191,24 @@ var ImChatSearch = common.Shortcut{
 			return err
 		}
 		items = mfOut.Chats
+		pagination.Items = len(items)
 
 		outData := map[string]interface{}{
 			"chats":      items,
-			"total":      int(total),
+			"total":      result.total,
 			"has_more":   hasMore,
 			"page_token": pageToken,
 		}
-		if notice, _ := resData["notice"].(string); notice != "" {
-			outData["notice"] = notice
+		if result.notice != "" {
+			outData["notice"] = result.notice
 		}
 		if mfOut.Meta.Applied != "" {
 			outData["filter"] = MuteFilterMetaToMap(mfOut.Meta)
 		}
 
-		runtime.OutFormat(outData, nil, func(w io.Writer) {
+		runtime.OutFormat(outData, &output.Meta{
+			Pagination: pagination,
+		}, func(w io.Writer) {
 			if len(items) == 0 {
 				fmt.Fprintln(w, "No matching group chats found.")
 				if mfOut.Meta.Hint != "" {
@@ -190,15 +243,7 @@ var ImChatSearch = common.Shortcut{
 				rows = append(rows, row)
 			}
 			output.PrintTable(w, rows)
-			moreHint := ""
-			if hasMore {
-				moreHint = " (more available, use --page-token to fetch next page"
-				if pageToken != "" {
-					moreHint += fmt.Sprintf(", page_token: %s", pageToken)
-				}
-				moreHint += ")"
-			}
-			fmt.Fprintf(w, "\n%d chat(s) found%s\n", int(total), moreHint)
+			fmt.Fprintf(w, "\n%d chat(s) found\n", result.total)
 			if mfOut.Meta.Hint != "" {
 				fmt.Fprintln(w, mfOut.Meta.Hint)
 			}
@@ -211,7 +256,7 @@ var ImChatSearch = common.Shortcut{
 // from the runtime flag values. The query string is normalized via
 // normalizeChatSearchQuery (hyphenated terms get quoted). The "filter" object
 // is omitted when no filter flags are set; "sorter" is omitted when --sort
-// (and its hidden alias --sort-by) is unset.
+// (and its hidden compatibility input --sort-by) is unset.
 func buildSearchChatBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{}
 
@@ -257,16 +302,13 @@ func buildSearchChatBody(runtime *common.RuntimeContext) map[string]interface{} 
 		body["filter"] = filter
 	}
 
-	// Build sorter (always descending). --sort maps field -> field_desc; the hidden
-	// --sort-by alias is already the upstream value (pass-through). Omitted when unset.
+	// Build sorter (always descending) from the canonical --sort value. The
+	// framework Normalize phase has already translated legacy --sort-by.
 	sorter := map[string]string{
 		"create_time":  "create_time_desc",
 		"update_time":  "update_time_desc",
 		"member_count": "member_count_desc",
 	}[runtime.Str("sort")]
-	if old, ok := aliasFlagValue(runtime, "sort-by", "sort"); ok {
-		sorter = old
-	}
 	if sorter != "" {
 		body["sorter"] = sorter
 	}

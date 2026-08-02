@@ -2009,6 +2009,16 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("search json conflict reports canonical pagination flag", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordSearch, []string{
+			"+record-search", "--base-token", "app_x", "--table-id", "tbl_x",
+			"--json", `{"keyword":"Alice","search_fields":["Name"]}`,
+			"--limit", "10", "--page-size", "201",
+		}, factory, stdout)
+		assertInvalidArgumentValidation(t, err, "--json", []string{"--json", "--limit"}, "mutually exclusive")
+	})
+
 	t.Run("list canonical and alias projections reject duplicates consistently", func(t *testing.T) {
 		cases := []struct {
 			name  string

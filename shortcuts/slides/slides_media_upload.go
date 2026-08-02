@@ -42,7 +42,7 @@ var SlidesMediaUpload = common.Shortcut{
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file", Desc: "local image path (max 20 MB)", Required: true},
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := parsePresentationRef(runtime.Str("presentation")); err != nil {

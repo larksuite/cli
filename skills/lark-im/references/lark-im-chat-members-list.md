@@ -78,6 +78,6 @@ A truncated result is *not* fixable by paging further — it is a server-side ca
 | Symptom | Root Cause |   | Solution |
 |---------|---------|---|---------|
 | `--chat-id is required` | `--chat-id` omitted |   | Provide the `oc_xxx` chat ID |
-| `--page-size must be an integer between 1 and 100` | out of range |   | Use 1-100 |
+| `invalid --page-size 101: must be between 1 and 100` | out of range |   | Use 1-100 |
 | `--member-types contains invalid value` | value other than `user`/`bot` |   | Use `user`, `bot`, or both |
 | Permission denied | missing `im:chat.members:read` |   | Bot: enable the scope in the console. User: `lark-cli auth login --scope "im:chat.members:read"` |

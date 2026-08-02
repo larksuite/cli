@@ -1081,11 +1081,16 @@ func TestBuildSearchParamsPageToken(t *testing.T) {
 	}
 }
 
-// --- resolveTriagePageSize ---
+// --- max normalization ---
+
+func effectiveTriageMax(t *testing.T, runtime *common.RuntimeContext) int {
+	t.Helper()
+	return normalizeTriageMax(runtime.Int("max"))
+}
 
 func TestResolveTriagePageSizeDefaultMax(t *testing.T) {
 	rt := runtimeForMailTriageTest(t, nil) // max=0 (unset) → normalizeTriageMax returns 20
-	got := resolveTriagePageSize(rt)
+	got := effectiveTriageMax(t, rt)
 	if got != 20 {
 		t.Fatalf("expected 20, got %d", got)
 	}
@@ -1093,31 +1098,15 @@ func TestResolveTriagePageSizeDefaultMax(t *testing.T) {
 
 func TestResolveTriagePageSizeFromMax(t *testing.T) {
 	rt := runtimeForMailTriageTest(t, map[string]string{"max": "30"})
-	got := resolveTriagePageSize(rt)
+	got := effectiveTriageMax(t, rt)
 	if got != 30 {
 		t.Fatalf("expected 30, got %d", got)
 	}
 }
 
-func TestResolveTriagePageSizeFromPageSize(t *testing.T) {
-	rt := runtimeForMailTriageTest(t, map[string]string{"page-size": "10"})
-	got := resolveTriagePageSize(rt)
-	if got != 10 {
-		t.Fatalf("expected 10, got %d", got)
-	}
-}
-
-func TestResolveTriagePageSizePageSizeOverridesMax(t *testing.T) {
-	rt := runtimeForMailTriageTest(t, map[string]string{"max": "30", "page-size": "5"})
-	got := resolveTriagePageSize(rt)
-	if got != 5 {
-		t.Fatalf("expected page-size=5 to override max=30, got %d", got)
-	}
-}
-
 func TestResolveTriagePageSizeClamped(t *testing.T) {
-	rt := runtimeForMailTriageTest(t, map[string]string{"page-size": "999"})
-	got := resolveTriagePageSize(rt)
+	rt := runtimeForMailTriageTest(t, map[string]string{"max": "999"})
+	got := effectiveTriageMax(t, rt)
 	if got != 400 {
 		t.Fatalf("expected clamped to 400, got %d", got)
 	}
@@ -1219,13 +1208,12 @@ func TestPageTokenBareTokenRejected(t *testing.T) {
 	}
 }
 
-// --- DryRun with page-size ---
+// --- DryRun with max ---
 
-func TestMailTriageDryRunPageSizeOverridesMax(t *testing.T) {
+func TestMailTriageDryRunUsesMax(t *testing.T) {
 	runtime := runtimeForMailTriageTest(t, map[string]string{
-		"max":       "50",
-		"page-size": "8",
-		"filter":    `{"folder_id":"INBOX"}`,
+		"max":    "8",
+		"filter": `{"folder_id":"INBOX"}`,
 	})
 	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
 	if len(apis) < 1 {
@@ -1236,14 +1224,14 @@ func TestMailTriageDryRunPageSizeOverridesMax(t *testing.T) {
 		t.Fatalf("page_size type mismatch, got %#v", apis[0].Params["page_size"])
 	}
 	if int(got) != 8 {
-		t.Fatalf("expected page_size=8 (from --page-size), got %d", int(got))
+		t.Fatalf("expected page_size=8 (from --max), got %d", int(got))
 	}
 }
 
 func TestMailTriageDryRunSearchPathCapsPageSizeAt15(t *testing.T) {
 	runtime := runtimeForMailTriageTest(t, map[string]string{
-		"query":     "hello",
-		"page-size": "30",
+		"query": "hello",
+		"max":   "30",
 	})
 	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
 	if len(apis) < 1 {
@@ -1415,15 +1403,22 @@ func TestMailTriageDryRunNoPageTokenOmitsParam(t *testing.T) {
 
 // --- Flag definition checks ---
 
-func TestMailTriageFlagsIncludePageTokenAndPageSize(t *testing.T) {
-	flagNames := make(map[string]bool)
+func TestMailTriageDeclaresPageSizeAliasForMax(t *testing.T) {
+	flagNames := make(map[string]common.Flag)
 	for _, fl := range MailTriage.Flags {
-		flagNames[fl.Name] = true
+		flagNames[fl.Name] = fl
 	}
-	for _, name := range []string{"page-token", "page-size", "max"} {
-		if !flagNames[name] {
+	for _, name := range []string{"page-token", "max"} {
+		if _, ok := flagNames[name]; !ok {
 			t.Fatalf("expected flag --%s to be defined", name)
 		}
+	}
+	if _, ok := flagNames["page-size"]; ok {
+		t.Fatal("--page-size must not be registered as an independent flag")
+	}
+	maxFlag := flagNames["max"]
+	if len(maxFlag.Aliases) != 1 || maxFlag.Aliases[0] != "page-size" {
+		t.Fatalf("--max aliases = %v, want [page-size]", maxFlag.Aliases)
 	}
 }
 

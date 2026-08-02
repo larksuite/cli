@@ -82,12 +82,19 @@ func senderDisplay(sender map[string]interface{}) string {
 }
 
 func validateMessageID(input string) (string, error) {
+	return validateMessageIDForParam(input, "--message-id")
+}
+
+// validateMessageIDForParam validates a message ID and attributes failures to
+// the command flag that owns the value. Batch inputs use --message-ids while
+// single-message shortcuts use --message-id.
+func validateMessageIDForParam(input, param string) (string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "message ID cannot be empty").WithParam("--message-id")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "message ID cannot be empty").WithParam(param)
 	}
 	if !strings.HasPrefix(input, "om_") {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid message ID %q: must start with om_", input).WithParam("--message-id")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid message ID %q: must start with om_", input).WithParam(param)
 	}
 	return input, nil
 }

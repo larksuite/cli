@@ -42,6 +42,33 @@ func TestMail_TriageDryRunPreservesMailboxInRequestChain(t *testing.T) {
 	require.Equal(t, "metadata", clie2e.DryRunGet(result.Stdout, "api.1.body.format").String(), "stdout:\n%s", result.Stdout)
 }
 
+func TestMail_TriageDryRunUsesPageSizeAsExactMaxAlias(t *testing.T) {
+	setMailTriageDryRunEnv(t)
+
+	tests := []struct {
+		name string
+		args []string
+		want int64
+	}{
+		{name: "alias only", args: []string{"--page-size", "5"}, want: 5},
+		{name: "alias last", args: []string{"--max", "7", "--page-size", "5"}, want: 5},
+		{name: "canonical last", args: []string{"--page-size", "5", "--max", "7"}, want: 7},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+			args := []string{"mail", "+triage", "--mailbox", "me"}
+			args = append(args, test.args...)
+			args = append(args, "--dry-run")
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "user"})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+			require.Equal(t, test.want, clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").Int(), result.Stdout)
+		})
+	}
+}
+
 func setMailTriageDryRunEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())

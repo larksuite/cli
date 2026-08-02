@@ -15,6 +15,13 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
+const (
+	feedGroupListItemDefaultPageSize = 50
+	// The endpoint has no published page_size range. Read-only probes show
+	// that 50 succeeds while 51 returns code 230001 "param is invalid".
+	feedGroupListItemMaxPageSize = 50
+)
+
 // ImFeedGroupListItem provides the +feed-group-list-item shortcut: it lists the
 // feed cards inside one feed group and enriches each item with chat_name resolved
 // from its feed_id.
@@ -28,7 +35,7 @@ var ImFeedGroupListItem = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "feed-group-id", Desc: "feed group ID (ofg_xxx); path parameter (required)"},
-		{Name: "page-size", Type: "int", Default: "50", Desc: "page size (1-50)"},
+		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", feedGroupListItemDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", feedGroupListItemMaxPageSize)},
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
@@ -72,8 +79,8 @@ func validateFeedGroupListOptions(rt *common.RuntimeContext) error {
 	if rt.Str("feed-group-id") == "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--feed-group-id is required").WithParam("--feed-group-id")
 	}
-	if n := rt.Int("page-size"); n < 1 || n > 50 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
+	if _, err := common.ValidatePageSizeTyped(rt, "page-size", feedGroupListItemDefaultPageSize, 1, feedGroupListItemMaxPageSize); err != nil {
+		return err
 	}
 	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")

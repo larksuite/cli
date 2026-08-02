@@ -20,7 +20,8 @@ import (
 const (
 	imChatMembersListPathFmt       = "/open-apis/im/v1/chats/%s/members/list"
 	chatMembersListDefaultPageSize = 20
-	chatMembersListMaxPageSize     = 100
+	// GET /open-apis/im/v1/chats/:chat_id/members/list accepts page_size up to 100.
+	chatMembersListMaxPageSize = 100
 	// chatMembersListDefaultPageDelay throttles --page-all the same way the
 	// generic paginateLoop does (200ms). It matters for tenants WITHOUT the
 	// server-side member cap, where a large group drains many pages back to
@@ -48,7 +49,7 @@ var ImChatMembersList = common.Shortcut{
 		{Name: "chat-id", Required: true, Desc: "chat ID (oc_xxx)"},
 		{Name: "member-types", Type: "string_slice", Desc: "member types to return (user, bot); omit = all"},
 		{Name: "member-id-type", Default: "open_id", Desc: "ID type for member_id in response", Enum: []string{"open_id", "union_id", "user_id"}},
-		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", chatMembersListDefaultPageSize), Desc: fmt.Sprintf("page size, 1-%d", chatMembersListMaxPageSize)},
+		{Name: "page-size", Aliases: []string{"limit"}, Type: "int", Default: fmt.Sprintf("%d", chatMembersListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatMembersListMaxPageSize)},
 		{Name: "page-token", Desc: "page token; implies single-page fetch (no auto-pagination)"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages (capped by --page-limit)"},
 		{Name: "page-limit", Type: "int", Default: "10", Desc: "max pages to fetch with --page-all (default 10, 0 = unlimited)"},
@@ -67,8 +68,8 @@ var ImChatMembersList = common.Shortcut{
 		if !strings.HasPrefix(chatID, "oc_") {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --chat-id %q: must be an open_chat_id starting with oc_", chatID).WithParam("--chat-id")
 		}
-		if n := runtime.Int("page-size"); n < 1 || n > chatMembersListMaxPageSize {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and %d", chatMembersListMaxPageSize).WithParam("--page-size")
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", chatMembersListDefaultPageSize, 1, chatMembersListMaxPageSize); err != nil {
+			return err
 		}
 		if n := runtime.Int("page-limit"); n < 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be a non-negative integer").WithParam("--page-limit")

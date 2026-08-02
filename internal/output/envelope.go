@@ -16,8 +16,24 @@ type Envelope struct {
 
 // Meta carries optional metadata in envelope responses.
 type Meta struct {
-	Count    int    `json:"count,omitempty"`
-	Rollback string `json:"rollback,omitempty"`
+	Count      int             `json:"count,omitempty"`
+	Rollback   string          `json:"rollback,omitempty"`
+	Pagination *PaginationMeta `json:"pagination,omitempty"`
+}
+
+// PaginationMeta reports how a paginated read ended.
+//
+// It lives in the envelope's meta rather than in the business data because a
+// stop reason is not part of the resource: writing it into data both pollutes
+// the payload and forces the caller to tell an API field apart from one the CLI
+// synthesised. Complete plus NextToken is the whole story — a run either
+// exhausted the endpoint or stopped at --page-limit with somewhere to resume —
+// so there is no separate stop_reason string to keep in sync.
+type PaginationMeta struct {
+	Complete  bool   `json:"complete"`
+	Pages     int    `json:"pages"`
+	Items     int    `json:"items"`
+	NextToken string `json:"next_token,omitempty"`
 }
 
 // PendingNotice, if set, returns system-level notices to inject as the

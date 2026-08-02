@@ -18,7 +18,7 @@ lint/
 ├── main.go             # package main — dispatches to every registered domain
 ├── lintapi/            # shared types every domain returns
 │   └── violation.go    # Violation, Action, ActionReject / ActionLabel / ActionWarning
-└── errscontract/       # first domain: typed-error contract guards
+├── errscontract/       # first domain: typed-error contract guards
     ├── scan.go         # ScanRepoWithOptions(root, opts)  ← public entry
     ├── runner.go
     ├── typecheck.go
@@ -30,13 +30,26 @@ lint/
     ├── rule_subtype_classifier.go
     ├── rule_typed_error_completeness.go
     └── *_test.go
-└── domaincontract/     # resolver ownership + approved public hostname policy
+├── domaincontract/     # resolver ownership + approved public hostname policy
     ├── scan.go         # ScanRepoWithOptions(root, opts)  ← public entry
     ├── unapproved.go   # Go AST/type-aware hostname extraction
     ├── policy.go       # exact public/fixture allowlist validation
     ├── diff.go         # added-line attribution
     └── *_test.go
+└── flagcontract/       # framework ownership for flag aliases
+    ├── scan.go         # rejects local name normalizers and independent aliases
+    └── scan_test.go
 ```
+
+## Flag alias contract (`flagcontract`)
+
+`flagcontract` keeps exact flag-name synonyms on the shared framework path. It
+rejects production calls to `SetNormalizeFunc` outside `internal/flagalias` and
+independent hidden flags described as aliases. Exact synonyms belong in the
+canonical `common.Flag.Aliases`; legacy inputs with a different value grammar
+or meaning remain real hidden flags and normalize into canonical state
+inside the business-owned `Shortcut.Normalize` execution stage. Exact
+aliases always share the canonical flag's occurrence and conflict semantics.
 
 ## Endpoint domain contract (`domaincontract`)
 

@@ -17,7 +17,9 @@ func newThreadsTestRT(t *testing.T, stringFlags map[string]string) *common.Runti
 		stringFlags = map[string]string{}
 	}
 	if _, ok := stringFlags["thread"]; !ok {
-		stringFlags["thread"] = "omt_test"
+		if _, aliasSet := stringFlags["thread-id"]; !aliasSet {
+			stringFlags["thread"] = "omt_test"
+		}
 	}
 	return newChatListTestRuntimeContext(t, stringFlags, nil)
 }
@@ -37,13 +39,13 @@ func TestThreadsMessagesList_OrderMapping(t *testing.T) {
 	}
 }
 
-// TestThreadsMessagesList_OrderAliasParity proves DryRun(--sort dir) == DryRun(--order dir).
-// This is the test the refactor exists to make meaningful (single shared mapping).
-func TestThreadsMessagesList_OrderAliasParity(t *testing.T) {
+// TestThreadsMessagesList_LegacySortParity proves the compatibility stage maps
+// historical --sort to canonical --order before command logic runs.
+func TestThreadsMessagesList_LegacySortParity(t *testing.T) {
 	for _, dir := range []string{"asc", "desc"} {
 		t.Run(dir, func(t *testing.T) {
-			newRT := newThreadsTestRT(t, map[string]string{"order": dir})
-			oldRT := newThreadsTestRT(t, map[string]string{"sort": dir})
+			newRT, _ := newMountedIMRuntime(t, &ImThreadsMessagesList, "--thread", "omt_test", "--order", dir)
+			oldRT, _ := newMountedIMRuntime(t, &ImThreadsMessagesList, "--thread", "omt_test", "--sort", dir)
 			a := mustMarshalDryRun(t, ImThreadsMessagesList.DryRun(context.Background(), newRT))
 			b := mustMarshalDryRun(t, ImThreadsMessagesList.DryRun(context.Background(), oldRT))
 			if a != b {
@@ -53,18 +55,30 @@ func TestThreadsMessagesList_OrderAliasParity(t *testing.T) {
 	}
 }
 
-func TestThreadsMessagesList_OrderFlagSurface(t *testing.T) {
-	var orderFlag, aliasFlag *common.Flag
-	for i := range ImThreadsMessagesList.Flags {
-		switch ImThreadsMessagesList.Flags[i].Name {
-		case "order":
-			orderFlag = &ImThreadsMessagesList.Flags[i]
-		case "sort":
-			aliasFlag = &ImThreadsMessagesList.Flags[i]
+func TestThreadsMessagesList_CanonicalOrderWinsOverLegacySort(t *testing.T) {
+	for _, args := range [][]string{
+		{"--thread", "omt_test", "--order", "desc", "--sort", "asc"},
+		{"--thread", "omt_test", "--sort", "asc", "--order", "desc"},
+	} {
+		rt, _ := newMountedIMRuntime(t, &ImThreadsMessagesList, args...)
+		if got := resolveThreadsOrder(rt); got != "desc" {
+			t.Fatalf("canonical --order must win for %v: order=%q", args, got)
 		}
 	}
-	if orderFlag == nil || aliasFlag == nil {
-		t.Fatalf("expected both --order and --sort flags declared")
+}
+
+func TestThreadsMessagesList_OrderFlagSurface(t *testing.T) {
+	var orderFlag, sortFlag *common.Flag
+	for i := range ImThreadsMessagesList.Flags {
+		if ImThreadsMessagesList.Flags[i].Name == "order" {
+			orderFlag = &ImThreadsMessagesList.Flags[i]
+		}
+		if ImThreadsMessagesList.Flags[i].Name == "sort" {
+			sortFlag = &ImThreadsMessagesList.Flags[i]
+		}
+	}
+	if orderFlag == nil {
+		t.Fatal("expected canonical --order declaration")
 	}
 	if orderFlag.Default != "asc" {
 		t.Errorf("--order Default = %q, want asc", orderFlag.Default)
@@ -72,10 +86,13 @@ func TestThreadsMessagesList_OrderFlagSurface(t *testing.T) {
 	if got := strings.Join(orderFlag.Enum, ","); got != "asc,desc" {
 		t.Errorf("--order Enum = %q, want asc,desc", got)
 	}
-	if !aliasFlag.Hidden {
-		t.Errorf("--sort must be Hidden")
+	if len(orderFlag.Aliases) != 0 {
+		t.Errorf("--order Aliases = %q, want none", orderFlag.Aliases)
 	}
-	if aliasFlag.Default != "" {
-		t.Errorf("--sort (hidden alias) must not carry a Default, got %q", aliasFlag.Default)
+	if sortFlag == nil || !sortFlag.Hidden {
+		t.Fatal("historical --sort must remain an independent hidden compatibility flag")
+	}
+	if got := strings.Join(sortFlag.Enum, ","); got != "asc,desc" {
+		t.Errorf("--sort Enum = %q, want asc,desc", got)
 	}
 }

@@ -43,13 +43,13 @@ func TestChatMessagesList_OrderMapping(t *testing.T) {
 	}
 }
 
-// TestChatMessagesList_OrderAliasParity: hidden --sort alias (asc/desc) must map
-// through the SAME table as --order (NOT pass through), producing identical upstream.
-func TestChatMessagesList_OrderAliasParity(t *testing.T) {
+// TestChatMessagesList_LegacySortParity proves the command-owned compatibility
+// stage resolves historical --sort to the canonical --order value.
+func TestChatMessagesList_LegacySortParity(t *testing.T) {
 	for _, dir := range []string{"asc", "desc"} {
 		t.Run(dir, func(t *testing.T) {
-			newRT := newMsgListTestRT(t, map[string]string{"order": dir})
-			oldRT := newMsgListTestRT(t, map[string]string{"sort": dir})
+			newRT, _ := newMountedIMRuntime(t, &ImChatMessageList, "--chat-id", "oc_test", "--order", dir)
+			oldRT, _ := newMountedIMRuntime(t, &ImChatMessageList, "--chat-id", "oc_test", "--sort", dir)
 			a := mustMarshalDryRun(t, ImChatMessageList.DryRun(context.Background(), newRT))
 			b := mustMarshalDryRun(t, ImChatMessageList.DryRun(context.Background(), oldRT))
 			if a != b {
@@ -59,29 +59,34 @@ func TestChatMessagesList_OrderAliasParity(t *testing.T) {
 	}
 }
 
-func TestChatMessagesList_OrderNewWins(t *testing.T) {
-	rt := newMsgListTestRT(t, map[string]string{"order": "asc", "sort": "desc"})
-	params, err := buildChatMessageListRequest(rt, "oc_test")
-	if err != nil {
-		t.Fatalf("error = %v", err)
-	}
-	if got := params["sort_type"][0]; got != "ByCreateTimeAsc" {
-		t.Fatalf("new should win: sort_type=%s, want ByCreateTimeAsc", got)
+func TestChatMessagesList_CanonicalOrderWinsOverLegacySort(t *testing.T) {
+	for _, args := range [][]string{
+		{"--order", "asc", "--sort", "desc"},
+		{"--sort", "desc", "--order", "asc"},
+	} {
+		rt, _ := newMountedIMRuntime(t, &ImChatMessageList, args...)
+		params, err := buildChatMessageListRequest(rt, "oc_test")
+		if err != nil {
+			t.Fatalf("error = %v", err)
+		}
+		if got := params["sort_type"][0]; got != "ByCreateTimeAsc" {
+			t.Fatalf("canonical --order must win for %v: sort_type=%s", args, got)
+		}
 	}
 }
 
 func TestChatMessagesList_OrderFlagSurface(t *testing.T) {
-	var orderFlag, aliasFlag *common.Flag
+	var orderFlag, sortFlag *common.Flag
 	for i := range ImChatMessageList.Flags {
-		switch ImChatMessageList.Flags[i].Name {
-		case "order":
+		if ImChatMessageList.Flags[i].Name == "order" {
 			orderFlag = &ImChatMessageList.Flags[i]
-		case "sort":
-			aliasFlag = &ImChatMessageList.Flags[i]
+		}
+		if ImChatMessageList.Flags[i].Name == "sort" {
+			sortFlag = &ImChatMessageList.Flags[i]
 		}
 	}
-	if orderFlag == nil || aliasFlag == nil {
-		t.Fatalf("expected both --order and --sort flags declared")
+	if orderFlag == nil {
+		t.Fatal("expected canonical --order declaration")
 	}
 	if orderFlag.Default != "desc" {
 		t.Errorf("--order Default = %q, want desc", orderFlag.Default)
@@ -89,10 +94,13 @@ func TestChatMessagesList_OrderFlagSurface(t *testing.T) {
 	if got := strings.Join(orderFlag.Enum, ","); got != "asc,desc" {
 		t.Errorf("--order Enum = %q, want asc,desc", got)
 	}
-	if !aliasFlag.Hidden {
-		t.Errorf("--sort must be Hidden")
+	if got := strings.Join(orderFlag.Aliases, ","); got != "sort-order" {
+		t.Errorf("--order Aliases = %q, want sort-order", got)
 	}
-	if got := strings.Join(aliasFlag.Enum, ","); got != "asc,desc" {
-		t.Errorf("--sort (alias) Enum = %q, want asc,desc", got)
+	if sortFlag == nil || !sortFlag.Hidden {
+		t.Fatal("historical --sort must remain an independent hidden compatibility flag")
+	}
+	if got := strings.Join(sortFlag.Enum, ","); got != "asc,desc" {
+		t.Errorf("--sort Enum = %q, want asc,desc", got)
 	}
 }

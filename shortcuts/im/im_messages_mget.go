@@ -28,7 +28,7 @@ var ImMessagesMGet = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "message-ids", Desc: "message IDs, comma-separated (om_xxx,om_yyy)", Required: true},
+		{Name: "message-ids", Aliases: []string{"message-id"}, Desc: "message IDs, comma-separated (om_xxx,om_yyy)", Required: true},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	},
@@ -53,7 +53,7 @@ var ImMessagesMGet = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-ids supports at most %d IDs per request (got %d)", maxMGetMessageIDs, len(ids)).WithParam("--message-ids")
 		}
 		for _, id := range ids {
-			if _, err := validateMessageID(id); err != nil {
+			if _, err := validateMessageIDForParam(id, "--message-ids"); err != nil {
 				return err
 			}
 		}

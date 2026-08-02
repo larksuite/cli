@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/qualitygate/manifest"
@@ -87,6 +88,42 @@ func TestCollectContainsDocsFetchAndDryRunFlag(t *testing.T) {
 	}
 	if cmd.Source != manifest.SourceShortcut {
 		t.Fatalf("docs +fetch source = %q, want shortcut", cmd.Source)
+	}
+}
+
+func TestCollectExportsShortcutAliasesOnCanonicalFlags(t *testing.T) {
+	got, err := collectHandAuthored(context.Background())
+	if err != nil {
+		t.Fatalf("collectHandAuthored() error = %v", err)
+	}
+	tests := []struct {
+		command   string
+		canonical string
+		aliases   []string
+	}{
+		{command: "base +url-resolve", canonical: "url", aliases: []string{"query"}},
+		{command: "im +chat-messages-list", canonical: "order", aliases: []string{"sort-order"}},
+		{command: "sheets +workbook-info", canonical: "spreadsheet-token", aliases: []string{"token"}},
+	}
+	for _, test := range tests {
+		t.Run(test.command+"/"+test.canonical, func(t *testing.T) {
+			cmd := findManifestCommand(&got, test.command)
+			if cmd == nil {
+				t.Fatalf("manifest command %q not found", test.command)
+			}
+			flag := findManifestFlag(cmd, test.canonical)
+			if flag == nil {
+				t.Fatalf("canonical --%s not found", test.canonical)
+			}
+			if strings.Join(flag.Aliases, ",") != strings.Join(test.aliases, ",") {
+				t.Fatalf("aliases = %v, want %v", flag.Aliases, test.aliases)
+			}
+			for _, alias := range test.aliases {
+				if findManifestFlag(cmd, alias) != nil {
+					t.Fatalf("alias --%s exported as an independent flag", alias)
+				}
+			}
+		})
 	}
 }
 

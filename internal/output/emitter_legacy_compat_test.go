@@ -269,16 +269,9 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 				MatchedRules: []string{"fixture-rule"},
 			},
 		},
-		{
-			name: "unknown_format_data_envelope_notice",
-			data: func() interface{} {
-				return map[string]interface{}{"ok": true, "value": "fixture"}
-			},
-			ok:        true,
-			format:    "yaml",
-			useFormat: true,
-			notice:    map[string]interface{}{"skills": map[string]interface{}{"current": "1.0.0"}},
-		},
+		// Unknown-format fallback is intentionally excluded from this frozen
+		// legacy set: it now uses the standard JSON Envelope. The replacement
+		// contract lives in TestEmitterPaginationMetadataByFormat.
 	}
 
 	golden := loadRuntimeContextLegacyGolden(t)
@@ -732,7 +725,7 @@ func TestEmitterCapturesNoticeAndColorDependencies(t *testing.T) {
 		t.Fatalf("Emitter.Success(unknown format) error = %v", err)
 	}
 	if strings.Contains(stdout.String(), "global") || !strings.Contains(stdout.String(), "captured") {
-		t.Fatalf("legacy JSON fallback consulted global notice:\n%s", stdout.String())
+		t.Fatalf("JSON envelope fallback consulted global notice:\n%s", stdout.String())
 	}
 }
 

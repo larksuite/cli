@@ -242,8 +242,10 @@ func (ctx *RuntimeContext) StrSlice(name string) []string {
 	return v
 }
 
-// Changed reports whether the user explicitly set the named flag on the
-// command line, as opposed to the flag carrying its default value.
+// Changed reports whether parsing or compatibility normalization populated the
+// named flag, as opposed to the flag carrying only its default value. During a
+// Normalize hook, check legacy and canonical spellings before SetCanonical to
+// distinguish which spelling the caller supplied.
 func (ctx *RuntimeContext) Changed(name string) bool {
 	f := ctx.Cmd.Flags().Lookup(name)
 	if f == nil {
@@ -871,10 +873,12 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	if shortcut.PostMount != nil {
 		shortcut.PostMount(cmd)
 	}
+	installFlagAliases(cmd, shortcut.Flags)
 }
 
 // runShortcut is the execution pipeline for a declarative shortcut.
-// Each step is a clear phase: identity → config → scopes → context → validate → execute.
+// Each step is a clear phase: identity → config → scopes → runtime →
+// canonical validation → execute.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
 	// --print-schema short-circuits everything below: it's pure local
 	// introspection, no identity / scope / network needed. The flag is
@@ -900,7 +904,6 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 			return nil
 		}
 	}
-
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
 		return err
@@ -921,12 +924,24 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	if err != nil {
 		return err
 	}
-
+	if s.Normalize != nil {
+		// Normalize is opt-in and consumes resolved values. Shortcuts without a
+		// normalizer retain the established enum-before-input execution order.
+		if err := resolveInputFlags(rctx, s.Flags); err != nil {
+			return err
+		}
+		flagContext := rctx.FlagContext()
+		if err := s.Normalize(rctx.ctx, flagContext); err != nil {
+			return err
+		}
+	}
 	if err := validateEnumFlags(rctx, s.Flags); err != nil {
 		return err
 	}
-	if err := resolveInputFlags(rctx, s.Flags); err != nil {
-		return err
+	if s.Normalize == nil {
+		if err := resolveInputFlags(rctx, s.Flags); err != nil {
+			return err
+		}
 	}
 	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
 		return err

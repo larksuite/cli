@@ -19,7 +19,7 @@ func dryRunFieldList(_ context.Context, runtime *common.RuntimeContext) *common.
 	if offset < 0 {
 		offset = 0
 	}
-	limit := getPaginationLimit(runtime)
+	limit := runtime.Int("limit")
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").
 		Params(map[string]interface{}{"offset": offset, "limit": limit}).
@@ -73,7 +73,7 @@ func dryRunFieldDelete(_ context.Context, runtime *common.RuntimeContext) *commo
 }
 
 func dryRunFieldSearchOptions(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	limit := getPaginationLimit(runtime)
+	limit := runtime.Int("limit")
 	params := map[string]interface{}{
 		"offset": runtime.Int("offset"),
 		"limit":  limit,
@@ -132,7 +132,7 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 	if offset < 0 {
 		offset = 0
 	}
-	limit := getPaginationLimit(runtime)
+	limit := runtime.Int("limit")
 	fields, total, err := listAllFields(runtime, runtime.Str("base-token"), baseTableID(runtime), offset, limit)
 	if err != nil {
 		return err
@@ -315,7 +315,7 @@ func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
 	fieldRef := runtime.Str("field-id")
-	limit := getPaginationLimit(runtime)
+	limit := runtime.Int("limit")
 	params := map[string]interface{}{
 		"offset": runtime.Int("offset"),
 		"limit":  limit,
