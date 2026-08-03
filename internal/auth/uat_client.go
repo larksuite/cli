@@ -189,6 +189,15 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUATok
 		return nil, err
 	}
 
+	if err := ensureTokenStorageWritable(opts.AppId, opts.UserOpenId); err != nil {
+		if opts.ErrOut != nil {
+			fmt.Fprintf(opts.ErrOut,
+				"[lark-cli] [WARN] uat-client: token storage is not writable while refreshing: %v\n",
+				err)
+		}
+		return nil, err
+	}
+	
 	// 4. Actually perform the refresh
 	return doRefreshToken(httpClient, opts, freshStored)
 }
@@ -482,6 +491,10 @@ func refreshActionForCode(code int) refreshAction {
 
 func saveRefreshResponse(opts UATCallOptions, stored *StoredUAToken, response refreshResponse) (*StoredUAToken, error) {
 	now := time.Now().UnixMilli()
+	scope := response.Scope
+	if scope == "" {
+		scope = stored.Scope
+	}
 
 	updated := &StoredUAToken{
 		UserOpenId:       stored.UserOpenId,
@@ -490,7 +503,7 @@ func saveRefreshResponse(opts UATCallOptions, stored *StoredUAToken, response re
 		RefreshToken:     response.RefreshToken,
 		ExpiresAt:        now + *response.ExpiresIn*1000,
 		RefreshExpiresAt: now + *response.RefreshTokenExpiresIn*1000,
-		Scope:            response.Scope,
+		Scope:            scope,
 		GrantedAt:        stored.GrantedAt,
 	}
 	current, saved, err := setStoredTokenIfCurrent(stored, updated)
@@ -558,5 +571,29 @@ func ensureDirWritable(dir, tempPrefix string) error {
 			WithCause(closeErr)
 	}
 
+	return nil
+}
+
+func ensureTokenStorageWritable(appID, userOpenID string) error {
+	if appID == "" || userOpenID == "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"cannot validate refresh token storage without user identity").
+			WithParam("app-id/user-open-id")
+	}
+
+	probeUserOpenID := fmt.Sprintf("%s:%s:%d", appID, userOpenID, time.Now().UnixNano())
+	probeToken := &StoredUAToken{
+		AppId:       appID,
+		UserOpenId:  probeUserOpenID,
+		AccessToken: "refresh-storage-probe",
+		Scope:       "",
+	}
+
+	if err := SetStoredToken(probeToken); err != nil {
+		return err
+	}
+	if err := RemoveStoredToken(appID, probeUserOpenID); err != nil {
+		return err
+	}
 	return nil
 }
