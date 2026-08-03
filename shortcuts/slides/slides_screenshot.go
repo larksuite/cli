@@ -67,11 +67,11 @@ var SlidesScreenshot = common.Shortcut{
 				return slidesScreenshotFlagErrorf("--presentation cannot be used with --content")
 			}
 		} else {
-			slideIDs, slideNumbers, err := slidesScreenshotSelectors(runtime)
+			ref, err := parsePresentationRef(slidesScreenshotPresentation(runtime))
 			if err != nil {
 				return err
 			}
-			ref, err := parsePresentationRef(slidesScreenshotPresentation(runtime))
+			slideIDs, slideNumbers, err := slidesScreenshotSelectors(runtime)
 			if err != nil {
 				return err
 			}
@@ -293,7 +293,10 @@ func slidesScreenshotSelectors(runtime *common.RuntimeContext) ([]string, []int,
 }
 
 func slidesScreenshotHasSelectorInput(runtime *common.RuntimeContext) bool {
-	return runtime.Changed("slide-id") || runtime.Changed("slide-number") || runtime.Changed("slide")
+	if runtime.Changed("slide-number") || runtime.Changed("slide") {
+		return true
+	}
+	return len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0
 }
 
 func normalizeSlideIDs(values []string) []string {

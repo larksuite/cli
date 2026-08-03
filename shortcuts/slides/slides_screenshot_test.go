@@ -177,6 +177,31 @@ func TestSlidesScreenshotRejectsMixedSelectorTypes(t *testing.T) {
 	}
 }
 
+func TestSlidesScreenshotValidatesPresentationBeforeSelectors(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "tmp/wiki/invalid",
+		"--slide-id", "pII",
+		"--slide-number", "2",
+		"--dry-run",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Param != "--presentation" {
+		t.Fatalf("param = %q, want --presentation", validationErr.Param)
+	}
+	if !strings.Contains(err.Error(), "unsupported --presentation input") {
+		t.Fatalf("error = %v, want presentation validation before selector conflict", err)
+	}
+}
+
 func TestSlidesScreenshotSlideAliasRejectsInvalidNumbers(t *testing.T) {
 	for _, value := range []string{"0", "999999999999999999999999999999"} {
 		t.Run(value, func(t *testing.T) {
@@ -742,6 +767,24 @@ func TestSlidesScreenshotRenderRejectsSlideNumberSelector(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--content cannot be used with --slide-id or --slide-number") {
 		t.Fatalf("error = %v, want content/slide selector conflict", err)
+	}
+}
+
+func TestSlidesScreenshotRenderIgnoresEmptySlideID(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--slide-id", "",
+		"--dry-run",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "/open-apis/slides_ai/v1/slide_image/render") {
+		t.Fatalf("dry-run missing render endpoint: %s", stdout.String())
 	}
 }
 

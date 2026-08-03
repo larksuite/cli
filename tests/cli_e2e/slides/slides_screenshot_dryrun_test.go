@@ -99,3 +99,45 @@ func TestSlidesScreenshotMixedSelectorsDryRunE2E(t *testing.T) {
 	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
 	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "cannot be used together")
 }
+
+func TestSlidesScreenshotValidationPriorityDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+screenshot",
+			"--presentation", "tmp/wiki/invalid",
+			"--slide-id", "pII",
+			"--slide-number", "2",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Equal(t, "--presentation", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "unsupported --presentation input")
+}
+
+func TestSlidesScreenshotEmptySlideIDDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+screenshot",
+			"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+			"--slide-id", "",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	require.Equal(t, "/open-apis/slides_ai/v1/slide_image/render", gjson.Get(result.Stdout, "data.api.0.url").String(), result.Stdout)
+}
