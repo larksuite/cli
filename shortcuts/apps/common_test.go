@@ -57,4 +57,37 @@ func TestWithAppsHint(t *testing.T) {
 			t.Fatalf("withAppsHint(plain) = %v, want unchanged plain error", out)
 		}
 	})
+
+	t.Run("no-database code rewrites message and forces cloud-dev hint", func(t *testing.T) {
+		// Raw upstream carries internal-term message and no hint.
+		in := errs.NewAPIError(errs.SubtypeUnknown, "workspace has no db branch").WithCode(appNoDatabaseCode)
+		out := withAppsHint(in, "generic db hint")
+		p, ok := errs.ProblemOf(out)
+		if !ok {
+			t.Fatalf("returned error is not typed: %T", out)
+		}
+		if p.Message != appNoDatabaseMessage {
+			t.Errorf("Message = %q, want rewritten %q", p.Message, appNoDatabaseMessage)
+		}
+		if p.Hint != appNoDatabaseHint {
+			t.Errorf("Hint = %q, want cloud-dev hint (not the generic caller hint)", p.Hint)
+		}
+		if p.Code != appNoDatabaseCode {
+			t.Errorf("Code mutated: got %d, want %d", p.Code, appNoDatabaseCode)
+		}
+	})
+
+	t.Run("no-database code overrides even a preexisting upstream hint", func(t *testing.T) {
+		// An upstream hint must NOT win here: the recovery flow is more actionable.
+		in := errs.NewAPIError(errs.SubtypeUnknown, "internal msg").
+			WithCode(appNoDatabaseCode).WithHint("upstream hint")
+		out := withAppsHint(in, "generic db hint")
+		p, _ := errs.ProblemOf(out)
+		if p.Hint != appNoDatabaseHint {
+			t.Errorf("Hint = %q, want cloud-dev hint to override upstream hint", p.Hint)
+		}
+		if p.Message != appNoDatabaseMessage {
+			t.Errorf("Message = %q, want %q", p.Message, appNoDatabaseMessage)
+		}
+	})
 }
