@@ -74,8 +74,8 @@ func RemoveStoredToken(appId, userOpenId string) error {
 	return keychain.Remove(keychain.LarkCliService, accountKey(appId, userOpenId))
 }
 
-// sameStoredTokenGeneration reports whether two snapshots represent the same
-// refresh-token generation. Access tokens are used only for case that does not 
+// isSameStoredTokenGeneration reports whether two snapshots represent the same
+// refresh-token generation. Access tokens are used only for case that does not
 // contain a refresh token.
 func isSameStoredTokenGeneration(current, expected *StoredUAToken) bool {
 	if current == nil || expected == nil ||

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -197,7 +198,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUATok
 		}
 		return nil, err
 	}
-	
+
 	// 4. Actually perform the refresh
 	return doRefreshToken(httpClient, opts, freshStored)
 }
@@ -366,7 +367,16 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 		if wroteRequest.Load() {
 			action = refreshRetryAndClear
 		}
-		return refreshResult{action: action, err: err}
+		if _, ok := errs.ProblemOf(err); !ok {
+			err = errs.NewNetworkError(errs.SubtypeNetworkTransport,
+				"token refresh request failed: %v", err).
+				WithRetryable().
+				WithCause(err)
+		}
+		return refreshResult{
+			action: action,
+			err:    err,
+		}
 	}
 	defer resp.Body.Close()
 	logHTTPResponse(resp)
@@ -438,7 +448,8 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 			AppID:    opts.AppId,
 			Identity: "user",
 		})
-		if authErr, ok := apiErr.(*errs.AuthenticationError); ok {
+		var authErr *errs.AuthenticationError
+		if errors.As(apiErr, &authErr) {
 			authErr.UserOpenID = opts.UserOpenId
 		}
 		return refreshResult{action: refreshActionForCode(code), err: apiErr}
@@ -478,11 +489,9 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 func refreshActionForCode(code int) refreshAction {
 	meta, ok := errclass.LookupCodeMeta(code)
 	switch {
-	case !ok:
-		return refreshRetryAndClear
-	case meta.Category == errs.CategoryPolicy:
+	case ok && meta.Category == errs.CategoryPolicy:
 		return refreshStopAndPreserve
-	case meta.Retryable:
+	case ok && meta.Retryable:
 		return refreshRetryAndPreserve
 	default:
 		return refreshStopAndClear
@@ -557,13 +566,14 @@ func ensureDirWritable(dir, tempPrefix string) error {
 	tmpName := tmp.Name()
 	closeErr := tmp.Close()
 	if removeErr := vfs.Remove(tmpName); removeErr != nil {
-		err := fmt.Errorf("%v", removeErr)
+		cleanupErr := removeErr
 		if closeErr != nil {
-			err = fmt.Errorf("%v; also failed to close temp file: %v", removeErr, closeErr)
+			cleanupErr = errors.Join(removeErr,
+				fmt.Errorf("also failed to close temp file: %w", closeErr))
 		}
 		return errs.NewInternalError(errs.SubtypeFileIO,
 			"failed to clean up refresh lock write-check file %q", tmpName).
-			WithCause(err)
+			WithCause(cleanupErr)
 	}
 	if closeErr != nil {
 		return errs.NewInternalError(errs.SubtypeFileIO,
@@ -581,7 +591,7 @@ func ensureTokenStorageWritable(appID, userOpenID string) error {
 			WithParam("app-id/user-open-id")
 	}
 
-	probeUserOpenID := fmt.Sprintf("%s:%s:%d", appID, userOpenID, time.Now().UnixNano())
+	probeUserOpenID := fmt.Sprintf("%s:%s:refresh-storage-probe", appID, userOpenID)
 	probeToken := &StoredUAToken{
 		AppId:       appID,
 		UserOpenId:  probeUserOpenID,

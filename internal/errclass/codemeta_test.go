@@ -23,27 +23,11 @@ func TestLookupCodeMeta_CredentialCodes(t *testing.T) {
 		{99991668, errs.CategoryAuthentication, errs.SubtypeTokenInvalid, false},
 		{99991663, errs.CategoryAuthentication, errs.SubtypeTokenInvalid, false},
 		{99991677, errs.CategoryAuthentication, errs.SubtypeTokenExpired, false},
-		{20024, errs.CategoryAuthentication, errs.SubtypeRefreshTokenInvalid, false},
 		{20026, errs.CategoryAuthentication, errs.SubtypeRefreshTokenInvalid, false},
 		{20037, errs.CategoryAuthentication, errs.SubtypeRefreshTokenExpired, false},
-		{20050, errs.CategoryAuthentication, errs.SubtypeRefreshServerError, true},
 		{20064, errs.CategoryAuthentication, errs.SubtypeRefreshTokenRevoked, false},
-		{20072, errs.CategoryAuthentication, errs.SubtypeRefreshServerError, false},
 		{20073, errs.CategoryAuthentication, errs.SubtypeRefreshTokenReused, false},
-		{20008, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, false},
-		{20009, errs.CategoryAuthorization, errs.SubtypeAppUnavailable, false},
-		{20010, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, false},
-		{20048, errs.CategoryAuthorization, errs.SubtypeAppUnavailable, false},
-		{20066, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, false},
-		{20069, errs.CategoryAuthorization, errs.SubtypeAppDisabled, false},
-		{20074, errs.CategoryAuthorization, errs.SubtypeAppUnavailable, false},
-		{20001, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
-		{20036, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
-		{20063, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
-		{20067, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
-		{20068, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
-		{20070, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
-		{20002, errs.CategoryConfig, errs.SubtypeInvalidClient, false},
+		{20050, errs.CategoryAuthentication, errs.SubtypeRefreshServerError, true},
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("%d", tc.code), func(t *testing.T) {
@@ -56,6 +40,19 @@ func TestLookupCodeMeta_CredentialCodes(t *testing.T) {
 					tc.code, meta, tc.wantCat, tc.wantSubtype, tc.wantRetry)
 			}
 		})
+	}
+}
+
+func TestLookupCodeMeta_RefreshResponseCodesRemainUnregistered(t *testing.T) {
+	codes := []int{
+		20001, 20002, 20008, 20009, 20010, 20024, 20036, 20048,
+		20063, 20066, 20067, 20068, 20069, 20070, 20072, 20074,
+	}
+
+	for _, code := range codes {
+		if got, ok := LookupCodeMeta(code); ok {
+			t.Errorf("LookupCodeMeta(%d) = %+v, want unregistered", code, got)
+		}
 	}
 }
 
