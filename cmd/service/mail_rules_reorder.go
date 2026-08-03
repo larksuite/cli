@@ -117,9 +117,9 @@ func listMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderRequest *
 		if !ok {
 			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list item %d must be a JSON object", i)
 		}
-		id, _ := item["rule_id"].(string)
+		id, _ := item["id"].(string)
 		if id == "" {
-			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list item %d missing rule_id", i)
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list item %d missing id", i)
 		}
 		ids = append(ids, id)
 	}

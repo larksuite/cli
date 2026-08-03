@@ -518,10 +518,10 @@ func TestServiceMethod_MailRulesReorderCompletesPartialIDs(t *testing.T) {
 			"code": 0,
 			"data": map[string]interface{}{
 				"items": []interface{}{
-					map[string]interface{}{"rule_id": "A"},
-					map[string]interface{}{"rule_id": "B"},
-					map[string]interface{}{"rule_id": "C"},
-					map[string]interface{}{"rule_id": "D"},
+					map[string]interface{}{"id": "A"},
+					map[string]interface{}{"id": "B"},
+					map[string]interface{}{"id": "C"},
+					map[string]interface{}{"id": "D"},
 				},
 			},
 		},
@@ -558,8 +558,8 @@ func TestServiceMethod_MailRulesReorderCompletesPartialIDsAcrossPages(t *testing
 			"code": 0,
 			"data": map[string]interface{}{
 				"items": []interface{}{
-					map[string]interface{}{"rule_id": "A"},
-					map[string]interface{}{"rule_id": "B"},
+					map[string]interface{}{"id": "A"},
+					map[string]interface{}{"id": "B"},
 				},
 				"has_more":   true,
 				"page_token": "next",
@@ -574,8 +574,8 @@ func TestServiceMethod_MailRulesReorderCompletesPartialIDsAcrossPages(t *testing
 			"code": 0,
 			"data": map[string]interface{}{
 				"items": []interface{}{
-					map[string]interface{}{"rule_id": "C"},
-					map[string]interface{}{"rule_id": "D"},
+					map[string]interface{}{"id": "C"},
+					map[string]interface{}{"id": "D"},
 				},
 				"has_more": false,
 			},
@@ -613,9 +613,9 @@ func TestServiceMethod_MailRulesReorderKeepsFullInputOrder(t *testing.T) {
 			"code": 0,
 			"data": map[string]interface{}{
 				"items": []interface{}{
-					map[string]interface{}{"rule_id": "A"},
-					map[string]interface{}{"rule_id": "B"},
-					map[string]interface{}{"rule_id": "C"},
+					map[string]interface{}{"id": "A"},
+					map[string]interface{}{"id": "B"},
+					map[string]interface{}{"id": "C"},
 				},
 			},
 		},
@@ -668,6 +668,22 @@ func TestServiceMethod_MailRulesReorderRejectsEmptyRuleID(t *testing.T) {
 	}
 }
 
+func TestServiceMethod_MailRulesReorderRejectsEmptyRuleIDs(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+
+	cmd := NewCmdServiceMethod(f, mailRulesSpec(), mailRulesReorderMethod(), "reorder", "user_mailbox.rules", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":[]}`})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected empty rule_ids error")
+	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, 0)
+	if !strings.Contains(err.Error(), "rule_ids must contain at least one rule ID") {
+		t.Fatalf("error = %v, want empty rule_ids error", err)
+	}
+}
+
 func TestServiceMethod_MailRulesReorderRejectsUnknownID(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
 	reg.Register(&httpmock.Stub{
@@ -677,8 +693,8 @@ func TestServiceMethod_MailRulesReorderRejectsUnknownID(t *testing.T) {
 			"code": 0,
 			"data": map[string]interface{}{
 				"items": []interface{}{
-					map[string]interface{}{"rule_id": "A"},
-					map[string]interface{}{"rule_id": "B"},
+					map[string]interface{}{"id": "A"},
+					map[string]interface{}{"id": "B"},
 				},
 			},
 		},
