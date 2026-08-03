@@ -28,6 +28,8 @@ const (
 	StatusVerifyFailed  = "verify_failed"
 )
 
+var loadStoredUserToken = larkauth.LoadStoredToken
+
 // verifyTimeout bounds each network call made during --verify so that a
 // hanging server cannot wedge `auth status --verify` or `doctor`. Mirrors
 // the 10s timeout used by the doctor endpoint probe.
@@ -270,7 +272,13 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		UserName: cfg.UserName,
 		OpenID:   cfg.UserOpenId,
 	}
-	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	stored, err := loadStoredUserToken(cfg.AppID, cfg.UserOpenId)
+	if err != nil {
+		id.Status = StatusVerifyFailed
+		id.Message = "User identity: credential storage unavailable: " + err.Error()
+		id.Hint = "check OS keychain access; reauthorization will not repair a storage failure"
+		return id
+	}
 	if stored == nil {
 		id.Status = StatusMissing
 		id.Message = "User identity: missing (no token in keychain for " + cfg.UserOpenId + ")"

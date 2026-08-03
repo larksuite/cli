@@ -5,6 +5,7 @@ package identitydiag
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -29,6 +30,24 @@ func TestDiagnose_NoUserReportsBotReadyAndUserMissing(t *testing.T) {
 	}
 	if got.User.Status != StatusMissing || got.User.Available {
 		t.Fatalf("user = %#v, want missing and unavailable", got.User)
+	}
+}
+
+func TestDiagnose_KeychainFailureDoesNotRecommendLogin(t *testing.T) {
+	originalLoad := loadStoredUserToken
+	loadStoredUserToken = func(string, string) (*larkauth.StoredUAToken, error) {
+		return nil, errors.New("keychain access denied")
+	}
+	t.Cleanup(func() { loadStoredUserToken = originalLoad })
+	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu, UserOpenId: "ou_user"}
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, false)
+	if got.User.Status != StatusVerifyFailed || got.User.Available {
+		t.Fatalf("user = %#v, want storage failure and unavailable", got.User)
+	}
+	if strings.Contains(got.User.Hint, "auth login") {
+		t.Fatalf("storage failure hint incorrectly recommends reauthorization: %q", got.User.Hint)
 	}
 }
 

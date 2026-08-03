@@ -259,6 +259,9 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		if persistErr == nil {
 			return updated, nil
 		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(1<<attempt) * 50 * time.Millisecond)
+		}
 	}
 	return nil, storageError("failed to store rotated user access token after three attempts; run `lark-cli auth login` after storage access is restored", persistErr)
 }

@@ -83,6 +83,25 @@ func RevokeToken(httpClient *http.Client, appId, appSecret string, brand core.La
 	return nil
 }
 
+// RevokeAndRemoveStoredToken serializes remote revocation with local credential removal.
+func RevokeAndRemoveStoredToken(httpClient *http.Client, appID, appSecret string, brand core.LarkBrand, userOpenID string) error {
+	return withCredentialLock(appID, userOpenID, func() error {
+		stored, err := loadStoredUAToken(appID, userOpenID)
+		if err == nil && stored != nil {
+			revokeToken := stored.RefreshToken
+			tokenTypeHint := "refresh_token"
+			if revokeToken == "" {
+				revokeToken = stored.AccessToken
+				tokenTypeHint = "access_token"
+			}
+			if revokeToken != "" {
+				_ = RevokeToken(httpClient, appID, appSecret, brand, revokeToken, tokenTypeHint)
+			}
+		}
+		return removeStoredUAToken(appID, userOpenID)
+	})
+}
+
 func revokeHTTPStatusError(status int, body []byte) error {
 	msg := formatOAuthErrorBody(body)
 	cause := errors.New(strings.TrimSpace(string(body)))

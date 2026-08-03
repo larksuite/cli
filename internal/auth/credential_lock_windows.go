@@ -9,12 +9,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"runtime"
 
 	"github.com/larksuite/cli/errs"
 	"golang.org/x/sys/windows"
 )
 
 func withCredentialLock(appID, userOpenID string, operation func() error) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	tokenUser, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to resolve Windows user for credential lock").WithCause(err)

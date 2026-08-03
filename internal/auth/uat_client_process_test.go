@@ -6,136 +6,157 @@
 package auth
 
 import (
-	"fmt"
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/gofrs/flock"
+	"github.com/larksuite/cli/internal/core"
 )
 
-func TestRefreshLockIsSharedAcrossProcesses(t *testing.T) {
-	if mode := os.Getenv("LARK_CLI_REFRESH_LOCK_HELPER"); mode != "" {
-		runRefreshLockHelper(t, mode)
+func TestRefreshRotatesOnceAcrossConfigIsolatedProcesses(t *testing.T) {
+	if os.Getenv("LARK_CLI_REFRESH_PROCESS_HELPER") != "" {
+		runRefreshProcessHelper(t)
 		return
 	}
 
 	tempDir := t.TempDir()
-	marker := filepath.Join(tempDir, "locked")
-	release := filepath.Join(tempDir, "release")
-	holderResult := filepath.Join(tempDir, "holder-result")
-	probeResult := filepath.Join(tempDir, "probe-result")
-	holder := refreshLockHelperCommand(t, "hold", filepath.Join(tempDir, "config-a"), tempDir, marker, release, holderResult)
-	if err := holder.Start(); err != nil {
-		t.Fatalf("AC6: start lock holder: %v", err)
-	}
-	defer func() { _ = holder.Process.Kill() }()
+	storePath := filepath.Join(tempDir, "token.json")
+	now := time.Now()
+	initial := refreshTestToken("expired-access", "single-use-refresh", now.Add(-time.Minute), now.Add(24*time.Hour))
+	writeProcessToken(t, storePath, initial)
 
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if _, err := os.Stat(marker); err == nil {
-			break
+	var refreshCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		refreshCalls.Add(1)
+		time.Sleep(150 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"code": 0, "access_token": "winner-access", "refresh_token": "winner-refresh",
+			"expires_in": 3600, "refresh_token_expires_in": 604800,
+		})
+	}))
+	defer server.Close()
+
+	firstResult := filepath.Join(tempDir, "first-result")
+	secondResult := filepath.Join(tempDir, "second-result")
+	first := refreshProcessCommand(t, filepath.Join(tempDir, "config-a"), tempDir, storePath, firstResult, server.URL)
+	second := refreshProcessCommand(t, filepath.Join(tempDir, "config-b"), tempDir, storePath, secondResult, server.URL)
+	if err := first.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Start(); err != nil {
+		_ = first.Process.Kill()
+		t.Fatal(err)
+	}
+	if err := first.Wait(); err != nil {
+		t.Fatalf("AC6: first refresh process failed: %v", err)
+	}
+	if err := second.Wait(); err != nil {
+		t.Fatalf("AC6: second refresh process failed: %v", err)
+	}
+
+	if refreshCalls.Load() != 1 {
+		t.Fatalf("AC6: refresh endpoint calls = %d, want 1", refreshCalls.Load())
+	}
+	for _, resultPath := range []string{firstResult, secondResult} {
+		result, err := os.ReadFile(resultPath)
+		if err != nil || string(result) != "winner-access" {
+			t.Fatalf("AC6: process result = %q, err=%v", result, err)
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("AC6: lock holder did not acquire credential-scoped lock")
-		}
-		time.Sleep(10 * time.Millisecond)
 	}
-
-	probe := refreshLockHelperCommand(t, "probe", filepath.Join(tempDir, "config-b"), tempDir, marker, release, probeResult)
-	if output, err := probe.CombinedOutput(); err != nil {
-		t.Fatalf("AC6: lock probe failed: %v\n%s", err, output)
-	}
-	if err := os.WriteFile(release, []byte("release"), 0600); err != nil {
-		t.Fatalf("AC6: release lock holder: %v", err)
-	}
-	if err := holder.Wait(); err != nil {
-		t.Fatalf("AC6: lock holder failed: %v", err)
-	}
-
-	holderValue, err := os.ReadFile(holderResult)
-	if err != nil {
-		t.Fatalf("AC6: read holder result: %v", err)
-	}
-	probeValue, err := os.ReadFile(probeResult)
-	if err != nil {
-		t.Fatalf("AC6: read probe result: %v", err)
-	}
-	if string(probeValue) != "blocked:"+string(holderValue) {
-		t.Fatalf("AC6: config-isolated processes did not contend on one lock: holder=%q probe=%q", holderValue, probeValue)
+	stored := readProcessToken(t, storePath)
+	if stored.RefreshToken != "winner-refresh" {
+		t.Fatalf("AC6: persisted refresh token = %q, want winner", stored.RefreshToken)
 	}
 }
 
-func refreshLockHelperCommand(t *testing.T, mode, configDir, homeDir, marker, release, result string) *exec.Cmd {
+func refreshProcessCommand(t *testing.T, configDir, homeDir, storePath, resultPath, serverURL string) *exec.Cmd {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=^TestRefreshLockIsSharedAcrossProcesses$")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRefreshRotatesOnceAcrossConfigIsolatedProcesses$")
 	env := make([]string, 0, len(os.Environ())+6)
 	for _, value := range os.Environ() {
-		if strings.HasPrefix(value, "HOME=") ||
-			strings.HasPrefix(value, "LARKSUITE_CLI_CONFIG_DIR=") ||
-			strings.HasPrefix(value, "LARKSUITE_CLI_DATA_DIR=") ||
-			strings.HasPrefix(value, "LARK_CLI_REFRESH_LOCK_HELPER=") {
+		if strings.HasPrefix(value, "HOME=") || strings.HasPrefix(value, "LARKSUITE_CLI_CONFIG_DIR=") ||
+			strings.HasPrefix(value, "LARKSUITE_CLI_DATA_DIR=") || strings.HasPrefix(value, "LARK_CLI_REFRESH_PROCESS_") {
 			continue
 		}
 		env = append(env, value)
 	}
-	cmd.Env = append(env,
-		"HOME="+homeDir,
-		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
-		"LARK_CLI_REFRESH_LOCK_HELPER="+mode,
-		"LARK_CLI_REFRESH_LOCK_MARKER="+marker,
-		"LARK_CLI_REFRESH_LOCK_RELEASE="+release,
-		"LARK_CLI_REFRESH_LOCK_RESULT="+result,
-	)
+	cmd.Env = append(env, "HOME="+homeDir, "LARKSUITE_CLI_CONFIG_DIR="+configDir,
+		"LARK_CLI_REFRESH_PROCESS_HELPER=1", "LARK_CLI_REFRESH_PROCESS_STORE="+storePath,
+		"LARK_CLI_REFRESH_PROCESS_RESULT="+resultPath, "LARK_CLI_REFRESH_PROCESS_SERVER="+serverURL)
+	cmd.Stdout = &bytes.Buffer{}
+	cmd.Stderr = &bytes.Buffer{}
 	return cmd
 }
 
-func runRefreshLockHelper(t *testing.T, mode string) {
-	t.Helper()
-	lockPath := refreshLockPath("cli_process_test", "ou_process_test")
-	lock := flock.New(lockPath)
-	if err := os.MkdirAll(filepath.Dir(lockPath), 0700); err != nil {
-		t.Fatal(err)
+func runRefreshProcessHelper(t *testing.T) {
+	storePath := os.Getenv("LARK_CLI_REFRESH_PROCESS_STORE")
+	loadStoredUAToken = func(string, string) (*StoredUAToken, error) {
+		data, err := os.ReadFile(storePath)
+		if err != nil {
+			return nil, err
+		}
+		var token StoredUAToken
+		return &token, json.Unmarshal(data, &token)
 	}
-	locked, err := lock.TryLock()
+	persistStoredUAToken = func(token *StoredUAToken) error {
+		data, err := json.Marshal(token)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(storePath, data, 0600)
+	}
+	target, err := url.Parse(os.Getenv("LARK_CLI_REFRESH_PROCESS_SERVER"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := os.Getenv("LARK_CLI_REFRESH_LOCK_RESULT")
-	switch mode {
-	case "hold":
-		if !locked {
-			t.Fatal("holder could not acquire lock")
-		}
-		defer lock.Unlock()
-		if err := os.WriteFile(result, []byte(lockPath), 0600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(os.Getenv("LARK_CLI_REFRESH_LOCK_MARKER"), []byte("ready"), 0600); err != nil {
-			t.Fatal(err)
-		}
-		deadline := time.Now().Add(5 * time.Second)
-		for {
-			if _, err := os.Stat(os.Getenv("LARK_CLI_REFRESH_LOCK_RELEASE")); err == nil {
-				break
-			}
-			if time.Now().After(deadline) {
-				t.Fatal("holder timed out waiting for release")
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	case "probe":
-		if locked {
-			_ = lock.Unlock()
-			t.Fatal("probe acquired a lock held by another config-isolated process")
-		}
-		if err := os.WriteFile(result, []byte(fmt.Sprintf("blocked:%s", lockPath)), 0600); err != nil {
-			t.Fatal(err)
-		}
-	default:
-		t.Fatalf("unknown helper mode %q", mode)
+	client := &http.Client{Transport: uatRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		clone := request.Clone(request.Context())
+		clone.URL.Scheme = target.Scheme
+		clone.URL.Host = target.Host
+		return http.DefaultTransport.RoundTrip(clone)
+	})}
+	token, err := GetValidAccessToken(client, UATCallOptions{
+		UserOpenId: "ou_user", AppId: "cli_test", AppSecret: "secret", Domain: core.BrandFeishu, ErrOut: io.Discard,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
+	if err := os.WriteFile(os.Getenv("LARK_CLI_REFRESH_PROCESS_RESULT"), []byte(token), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeProcessToken(t *testing.T, path string, token *StoredUAToken) {
+	t.Helper()
+	data, err := json.Marshal(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readProcessToken(t *testing.T, path string) *StoredUAToken {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token StoredUAToken
+	if err := json.Unmarshal(data, &token); err != nil {
+		t.Fatal(err)
+	}
+	return &token
 }

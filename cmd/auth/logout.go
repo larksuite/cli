@@ -77,19 +77,10 @@ func authLogoutRun(opts *LogoutOptions) error {
 
 	for _, user := range app.Users {
 		if httpErr == nil && secretErr == nil {
-			if token := larkauth.GetStoredToken(app.AppId, user.UserOpenId); token != nil {
-				revokeToken := token.RefreshToken
-				tokenTypeHint := "refresh_token"
-				if revokeToken == "" {
-					revokeToken = token.AccessToken
-					tokenTypeHint = "access_token"
-				}
-				if revokeToken != "" {
-					_ = larkauth.RevokeToken(httpClient, app.AppId, appSecret, app.Brand, revokeToken, tokenTypeHint)
-				}
+			if err := larkauth.RevokeAndRemoveStoredToken(httpClient, app.AppId, appSecret, app.Brand, user.UserOpenId); err != nil {
+				fmt.Fprintf(f.IOStreams.ErrOut, "Warning: failed to remove token for %s: %v\n", user.UserOpenId, err)
 			}
-		}
-		if err := larkauth.RemoveStoredToken(app.AppId, user.UserOpenId); err != nil {
+		} else if err := larkauth.RemoveStoredToken(app.AppId, user.UserOpenId); err != nil {
 			fmt.Fprintf(f.IOStreams.ErrOut, "Warning: failed to remove token for %s: %v\n", user.UserOpenId, err)
 		}
 	}

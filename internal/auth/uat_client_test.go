@@ -391,6 +391,11 @@ func TestLogoutWaitsForInFlightRefreshAndWins(t *testing.T) {
 		close(requestStarted)
 		<-releaseRefresh
 	})
+	registry.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    PathOAuthRevoke,
+		Body:   map[string]interface{}{"code": 0},
+	})
 	t.Cleanup(func() { registry.Verify(t) })
 	refreshDone := make(chan error, 1)
 	go func() {
@@ -402,7 +407,9 @@ func TestLogoutWaitsForInFlightRefreshAndWins(t *testing.T) {
 	<-requestStarted
 
 	logoutDone := make(chan error, 1)
-	go func() { logoutDone <- RemoveStoredToken("cli_test", "ou_user") }()
+	go func() {
+		logoutDone <- RevokeAndRemoveStoredToken(httpmock.NewClient(registry), "cli_test", "secret", core.BrandFeishu, "ou_user")
+	}()
 	select {
 	case err := <-logoutDone:
 		t.Fatalf("AC2: logout bypassed in-flight refresh lock: %v", err)
