@@ -192,8 +192,13 @@ const customerAffordanceDocs = `# docs
 
 ## +create
 Create a document.
+### Tips
+- Match --doc-format to the payload.
+- Prefer @file or stdin for multiline content.
 ### Skills
 - lark-doc/references/lark-doc-create.md
+- lark-doc/references/lark-doc-xml.md
+- lark-doc/references/lark-doc-md.md
 
 ## +fetch
 Fetch a document.
@@ -202,8 +207,13 @@ Fetch a document.
 
 ## +update
 Update a document.
+### Tips
+- Prefer targeted edits over overwrite.
+- Fetch block IDs before block edits.
 ### Skills
 - lark-doc/references/lark-doc-update.md
+- lark-doc/references/lark-doc-xml.md
+- lark-doc/references/lark-doc-md.md
 
 ## +history-list
 List history.

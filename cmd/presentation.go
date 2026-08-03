@@ -111,7 +111,7 @@ func collectPluginConcealments(
 			continue
 		}
 		cmd := findByPath(root, path)
-		if cmd == nil || commandDenialLayer(cmd) == cmdpolicy.LayerStrictMode {
+		if cmd == nil {
 			continue
 		}
 		projection.recordConcealed(path, denial)
@@ -218,13 +218,6 @@ func applyPresentationAffordances(root *cobra.Command, plan *surface.Plan) {
 	)
 	root.Long = renderRootHelpSections(rootLongSections, plan)
 	root.SetUsageTemplate(renderRootUsageTemplate(plan))
-}
-
-func commandDenialLayer(cmd *cobra.Command) string {
-	if cmd == nil || cmd.Annotations == nil {
-		return ""
-	}
-	return cmd.Annotations[cmdpolicy.AnnotationDenialLayer]
 }
 
 func isPresentationPureGroup(cmd *cobra.Command) bool {

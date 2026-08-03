@@ -709,6 +709,52 @@ func TestApplyStrictStubWinsOverPluginDenial(t *testing.T) {
 	}
 }
 
+func TestPluginConcealmentProjectsStrictStubWithoutRelabelingEnforcement(t *testing.T) {
+	root := newTestTree()
+	pruneForStrictMode(root, core.StrictModeBot)
+	stub := findCmd(root, "auth", "login")
+	if stub == nil {
+		t.Fatal("auth/login strict stub missing")
+	}
+
+	denial := cmdpolicy.Denial{
+		Layer:        cmdpolicy.LayerPolicy,
+		PolicySource: "plugin:acme",
+		ReasonCode:   "command_denylisted",
+		Reason:       "not shipped by this distribution",
+	}
+	denied := map[string]cmdpolicy.Denial{"auth/login": denial}
+	cmdpolicy.Apply(root, denied)
+
+	plan, concealed := applyDistributionPresentation(
+		root,
+		restrictionPresentationConfig{enabled: true},
+		denied,
+	)
+	if !concealed {
+		t.Fatal("plugin-restricted strict stub was not concealed")
+	}
+	if got := plan.State(surface.CommandAuthLogin); got != surface.CommandConcealed {
+		t.Fatalf("surface state = %v, want concealed", got)
+	}
+	if got := stub.Annotations[cmdpolicy.AnnotationDenialLayer]; got != cmdpolicy.LayerStrictMode {
+		t.Fatalf("presentation relabeled enforcement layer = %q, want strict_mode", got)
+	}
+	if !stub.Hidden {
+		t.Fatal("concealed strict stub remained visible")
+	}
+
+	err := stub.RunE(stub, nil)
+	var validation *errs.ValidationError
+	if !errors.As(err, &validation) || validation.Subtype != errs.SubtypeCommandUnavailable {
+		t.Fatalf("concealed strict stub error = %v, want command_unavailable", err)
+	}
+	var cause *platform.CommandDeniedError
+	if !errors.As(err, &cause) || cause.PolicySource != "plugin:acme" {
+		t.Fatalf("presentation cause = %#v, want plugin:acme denial", cause)
+	}
+}
+
 func executeWithCapturedOS(
 	t *testing.T,
 	opts []BuildOption,

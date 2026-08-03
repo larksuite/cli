@@ -181,9 +181,9 @@ func TestForkMainWiresEmbeddedSkillsWithoutOverlay(t *testing.T) {
 		shortcut   string
 		references []string
 	}{
-		{shortcut: "+create", references: []string{"lark-doc-create.md"}},
+		{shortcut: "+create", references: []string{"lark-doc-create.md", "lark-doc-xml.md", "lark-doc-md.md"}},
 		{shortcut: "+fetch", references: []string{"lark-doc-fetch.md"}},
-		{shortcut: "+update", references: []string{"lark-doc-update.md"}},
+		{shortcut: "+update", references: []string{"lark-doc-update.md", "lark-doc-xml.md", "lark-doc-md.md"}},
 		{shortcut: "+history-list", references: []string{"lark-doc-history.md"}},
 		{shortcut: "+history-revert", references: []string{"lark-doc-history.md"}},
 		{shortcut: "+history-revert-status", references: []string{"lark-doc-history.md"}},
@@ -255,6 +255,8 @@ func TestForkSkillsBaseReplacementAndReferenceRemapWithoutHostBase(t *testing.T)
 	}
 	for _, want := range []string{
 		"lark-cli skills read acme-docx/guides/create.md",
+		"lark-cli skills read acme-docx/references/lark-doc-xml.md",
+		"lark-cli skills read acme-docx/references/lark-doc-md.md",
 	} {
 		if !strings.Contains(help.stdout, want) {
 			t.Errorf("remapped docs help missing %q:\n%s", want, help.stdout)
@@ -271,7 +273,7 @@ func TestForkSkillsBaseReplacementAndReferenceRemapWithoutHostBase(t *testing.T)
 	}
 }
 
-func TestForkRemovingDocsSkillDropsCompleteDocsGuidanceBlocks(t *testing.T) {
+func TestForkRemovingDocsSkillDropsPointersButKeepsStandaloneGuidance(t *testing.T) {
 	bin := buildFork(t, "remove-docs-skill", removeDocsSkillPlugin)
 	for _, args := range [][]string{
 		{"docs", "--help"},
@@ -284,6 +286,13 @@ func TestForkRemovingDocsSkillDropsCompleteDocsGuidanceBlocks(t *testing.T) {
 		for _, dead := range []string{"skills read", "AI agents MUST read"} {
 			if strings.Contains(help.stdout, dead) {
 				t.Errorf("%v retained removed-skill guidance %q:\n%s", args, dead, help.stdout)
+			}
+		}
+		if len(args) > 1 && args[1] == "+create" {
+			for _, want := range []string{"Tips:", "Match --doc-format", "Prefer @file"} {
+				if !strings.Contains(help.stdout, want) {
+					t.Errorf("%v lost standalone help guidance %q after skill removal:\n%s", args, want, help.stdout)
+				}
 			}
 		}
 	}
