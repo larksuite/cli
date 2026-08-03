@@ -12,11 +12,9 @@ import (
 )
 
 type mockSource struct {
-	name   string
 	events []*event.RawEvent
 }
 
-func (s *mockSource) Name() string { return s.name }
 func (s *mockSource) Start(ctx context.Context, _ []string, emit func(*event.RawEvent), _ StatusNotifier) error {
 	for _, e := range s.events {
 		emit(e)
@@ -27,7 +25,6 @@ func (s *mockSource) Start(ctx context.Context, _ []string, emit func(*event.Raw
 
 func TestMockSource_EmitsEvents(t *testing.T) {
 	src := &mockSource{
-		name: "test",
 		events: []*event.RawEvent{
 			{EventID: "1", EventType: "im.message.receive_v1"},
 			{EventID: "2", EventType: "im.message.receive_v1"},
