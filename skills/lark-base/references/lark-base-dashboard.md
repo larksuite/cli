@@ -163,7 +163,7 @@ lark-cli base +dashboard-arrange \
 - 想看某个组件的详细 data_config 配置 → 用 **方式 C**
 - 想看某个图表/指标卡实际算出来的数据 → 用 **方式 D**
 
-用户要求读取“全部图表”或“完整仪表盘”时，先用方式 B 枚举所有 block，并对每个 block 收口，不能只返回 get-data 成功的子集：
+用户要求读取“全部图表”或“完整仪表盘”时，先用方式 B 分页枚举所有 block：使用 `--page-size 100`；若返回 `has_more=true`，继续把本页返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`。收齐后再对每个 block 收口，不能只返回 get-data 成功的子集：
 
 1. 图表或指标卡：使用方式 D 读取计算结果。
 2. `text`：使用方式 C，正文位于 `data_config.text`；text 没有计算结果，但属于完整仪表盘内容。
@@ -179,7 +179,10 @@ lark-cli base +dashboard-list --base-token xxx
 lark-cli base +dashboard-get --base-token xxx --dashboard-id blk_xxx
 
 # 方式 B：列出所有组件
-lark-cli base +dashboard-block-list --base-token xxx --dashboard-id blk_xxx
+lark-cli base +dashboard-block-list \
+  --base-token xxx \
+  --dashboard-id blk_xxx \
+  --page-size 100
 
 # 方式 C：查看某个组件的详细配置
 lark-cli base +dashboard-block-get --base-token xxx --dashboard-id blk_xxx --block-id chtxxxxxxxx

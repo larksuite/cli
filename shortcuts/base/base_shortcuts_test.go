@@ -553,6 +553,8 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"lark-cli base +dashboard-block-list --base-token <base_token> --dashboard-id <dashboard_id>",
 				"Use returned block_id and type values",
+				"--page-size 100",
+				"until has_more=false",
 			},
 		},
 		{
