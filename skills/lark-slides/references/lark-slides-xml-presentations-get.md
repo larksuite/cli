@@ -96,7 +96,7 @@ lark-cli slides xml_presentations get --as user --params '<json_params>'
     "xml_presentation": {
       "presentation_id": "slides_example_presentation_id",
       "revision_id": 1,
-      "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
+      "content": "<presentation xmlns=\"https://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
     }
   }
 }

@@ -241,7 +241,7 @@ func buildPresentationXML(title string) string {
 		escapedTitle = "Untitled"
 	}
 	return fmt.Sprintf(
-		`<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="%d" height="%d"><title>%s</title></presentation>`,
+		`<presentation xmlns="https://www.larkoffice.com/sml/2.0" width="%d" height="%d"><title>%s</title></presentation>`,
 		defaultPresentationWidth, defaultPresentationHeight, escapedTitle,
 	)
 }

@@ -200,7 +200,7 @@ func slidesHistoryWorkflowSlideXML(title, marker, markerShapeID string) string {
 	if markerShapeID != "" {
 		markerIDAttr = ` id="` + markerShapeID + `"`
 	}
-	return `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data>` +
+	return `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
 		`<shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>` + slidesHistoryWorkflowXMLEscape(title) + `</p></content></shape>` +
 		`<shape` + markerIDAttr + ` type="text" topLeftX="80" topLeftY="220" width="800" height="180"><content textType="body"><p>` + slidesHistoryWorkflowXMLEscape(marker) + `</p></content></shape>` +
 		`</data></slide>`

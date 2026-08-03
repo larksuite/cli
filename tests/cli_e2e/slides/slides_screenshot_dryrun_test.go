@@ -151,7 +151,7 @@ func TestSlidesScreenshotContentSlideAliasAttributionDryRunE2E(t *testing.T) {
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"slides", "+screenshot",
-			"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+			"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 			"--slide", "pII",
 			"--dry-run",
 		},
@@ -198,7 +198,7 @@ func TestSlidesScreenshotEmptySlideIDDryRunE2E(t *testing.T) {
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"slides", "+screenshot",
-			"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+			"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 			"--slide-id", "",
 			"--dry-run",
 		},

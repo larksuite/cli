@@ -29,7 +29,7 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 
 	suffix := clie2e.GenerateSuffix()
 	title := "slides-screenshot-alias-e2e-" + suffix
-	slideXML := `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data><shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>` + title + `</p></content></shape></data></slide>`
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data><shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>` + title + `</p></content></shape></data></slide>`
 	slidesJSON, err := json.Marshal([]string{slideXML})
 	require.NoError(t, err)
 

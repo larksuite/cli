@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <xs:schema
         xmlns:xs="http://www.w3.org/2001/XMLSchema"
-        xmlns:sml="http://www.larkoffice.com/sml/2.0"
-        targetNamespace="http://www.larkoffice.com/sml/2.0"
+        xmlns:sml="https://www.larkoffice.com/sml/2.0"
+        targetNamespace="https://www.larkoffice.com/sml/2.0"
         elementFormDefault="qualified"
         attributeFormDefault="unqualified">
     <xs:annotation>
@@ -11,7 +11,7 @@
 
             版本信息：
             - Schema 版本: 2.0.0
-            - 命名空间: http://www.larkoffice.com/sml/2.0
+            - 命名空间: https://www.larkoffice.com/sml/2.0
             - 发布日期: 2025-11-03
         </xs:documentation>
     </xs:annotation>

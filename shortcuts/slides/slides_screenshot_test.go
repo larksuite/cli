@@ -720,7 +720,7 @@ func TestSlidesScreenshotRenderContentWritesFile(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 
-	content := `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`
+	content := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`
 	if err := os.WriteFile(filepath.Join(dir, "slide.xml"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write input xml: %v", err)
 	}
@@ -792,7 +792,7 @@ func TestSlidesScreenshotRenderRejectsSlideSelectors(t *testing.T) {
 
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 		"+screenshot",
-		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 		"--slide-id", "slide_1",
 		"--as", "user",
 	})
@@ -813,7 +813,7 @@ func TestSlidesScreenshotRenderRejectsSlideNumberSelector(t *testing.T) {
 	// --slide-id side of that same `||` condition).
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 		"+screenshot",
-		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 		"--slide-number", "0",
 		"--as", "user",
 	})
@@ -830,7 +830,7 @@ func TestSlidesScreenshotRenderAttributesSlideAliasConflictToCallerInput(t *test
 
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 		"+screenshot",
-		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 		"--slide", "pII",
 		"--as", "user",
 	})
@@ -855,7 +855,7 @@ func TestSlidesScreenshotRenderIgnoresEmptySlideID(t *testing.T) {
 
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 		"+screenshot",
-		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 		"--slide-id", "",
 		"--dry-run",
 		"--as", "user",
@@ -873,7 +873,7 @@ func TestSlidesScreenshotRenderRejectsListOnlyFlags(t *testing.T) {
 
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 		"+screenshot",
-		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 		"--presentation", "pres_abc",
 		"--as", "user",
 	})
@@ -911,7 +911,7 @@ func TestSlidesScreenshotDryRunSelectsListOrRenderAPI(t *testing.T) {
 		f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 		err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 			"+screenshot",
-			"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+			"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 			"--dry-run",
 			"--as", "user",
 		})

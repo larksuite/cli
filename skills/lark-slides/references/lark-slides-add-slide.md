@@ -12,7 +12,7 @@
 # 追加到末尾（XML 直接作为参数）
 lark-cli slides +add-slide --as user \
   --presentation "$PID" \
-  --slide '<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>'
+  --slide '<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>'
 
 # XML 从文件读（推荐：避免 shell 转义和长参数截断）
 lark-cli slides +add-slide --as user \
@@ -58,7 +58,7 @@ XML 里写 `<img src="@./chart.png" .../>`，CLI 会：先把每个不重复的�
 ```bash
 lark-cli slides +add-slide --as user \
   --presentation "$PID" \
-  --slide '<slide xmlns="http://www.larkoffice.com/sml/2.0"><data><img src="@./chart.png" topLeftX="100" topLeftY="100" width="320" height="180"/></data></slide>'
+  --slide '<slide xmlns="https://www.larkoffice.com/sml/2.0"><data><img src="@./chart.png" topLeftX="100" topLeftY="100" width="320" height="180"/></data></slide>'
 ```
 
 - 文件不存在、不是普通文件、超过 20 MB，都在**调用任何接口之前**报错，不会留下半成品。

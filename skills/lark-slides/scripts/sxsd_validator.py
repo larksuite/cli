@@ -16,11 +16,11 @@ from typing import Any
 
 
 XS_NS = "{http://www.w3.org/2001/XMLSchema}"
-SML_NAMESPACE = "http://www.larkoffice.com/sml/2.0"
+SML_NAMESPACE = "https://www.larkoffice.com/sml/2.0"
+SML_LEGACY_HTTP_NAMESPACE = "http://www.larkoffice.com/sml/2.0"
 SML_READBACK_NAMESPACE = "/sml/2.0"
-SML_HTTPS_READBACK_NAMESPACE = "https://www.larkoffice.com/sml/2.0"
 ACCEPTED_SML_NAMESPACES = frozenset(
-    (SML_NAMESPACE, SML_READBACK_NAMESPACE, SML_HTTPS_READBACK_NAMESPACE)
+    (SML_NAMESPACE, SML_LEGACY_HTTP_NAMESPACE, SML_READBACK_NAMESPACE)
 )
 
 
