@@ -81,12 +81,12 @@ func isMailRulesReorderRequest(request *client.RawApiRequest, schemaPath string)
 
 func listMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderRequest *client.RawApiRequest, identity core.Identity) ([]string, error) {
 	listURL := strings.TrimSuffix(reorderRequest.URL, "/reorder")
-	result, err := ac.CallAPI(ctx, client.RawApiRequest{
+	result, err := ac.PaginateAll(ctx, client.RawApiRequest{
 		Method: "GET",
 		URL:    listURL,
-		Params: map[string]any{},
+		Params: map[string]any{"page_size": 100},
 		As:     identity,
-	})
+	}, client.PaginationOptions{Identity: identity})
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +106,9 @@ func listMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderRequest *
 	}
 	if !ok {
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing items array")
+	}
+	if hasMore, _ := data["has_more"].(bool); hasMore {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list pagination did not return all pages")
 	}
 
 	ids := make([]string, 0, len(items))
@@ -130,7 +133,14 @@ func stringSliceField(body map[string]any, name string) ([]string, error) {
 	}
 	switch values := raw.(type) {
 	case []string:
-		return append([]string(nil), values...), nil
+		out := make([]string, 0, len(values))
+		for i, id := range values {
+			if id == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s[%d] must be a non-empty string", name, i).WithParam(name)
+			}
+			out = append(out, id)
+		}
+		return out, nil
 	case []any:
 		out := make([]string, 0, len(values))
 		for i, value := range values {
