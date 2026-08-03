@@ -4,8 +4,10 @@
 package slides
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -31,6 +33,167 @@ func TestSlidesScreenshotDeclaredScopes(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("declared scopes = %#v, want %#v", got, want)
 	}
+}
+
+func TestSlidesScreenshotCompatibilityAliases(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantURL     string
+		wantIDs     []string
+		wantNumbers []int
+	}{
+		{
+			name:    "presentation-id",
+			args:    []string{"--presentation-id", "pres_alias", "--slide-id", "slide_1"},
+			wantURL: "/open-apis/slides_ai/v1/xml_presentations/pres_alias/slide_images",
+			wantIDs: []string{"slide_1"},
+		},
+		{name: "slide-id-aliases-merge", args: []string{"--presentation", "pres_abc", "--slide-ids", "s1", "--slides", "s2"}, wantIDs: []string{"s1", "s2"}},
+		{name: "slides", args: []string{"--presentation", "pres_abc", "--slides", "s1,s2"}, wantIDs: []string{"s1", "s2"}},
+		{name: "slide-numbers", args: []string{"--presentation", "pres_abc", "--slide-numbers", "1,2"}, wantNumbers: []int{1, 2}},
+		{name: "slide-routes-id", args: []string{"--presentation", "pres_abc", "--slide", "pII"}, wantIDs: []string{"pII"}},
+		{name: "slide-routes-number", args: []string{"--presentation", "pres_abc", "--slide", "7"}, wantNumbers: []int{7}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			args := append([]string{"+screenshot"}, tt.args...)
+			args = append(args, "--dry-run", "--as", "user")
+			if err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, args); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := decodeSlidesScreenshotDryRunRequest(t, stdout)
+			wantURL := tt.wantURL
+			if wantURL == "" {
+				wantURL = "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images"
+			}
+			if got.URL != wantURL {
+				t.Fatalf("url = %q, want %q", got.URL, wantURL)
+			}
+			if !reflect.DeepEqual(got.Body.SlideIDs, tt.wantIDs) {
+				t.Fatalf("slide_ids = %#v, want %#v", got.Body.SlideIDs, tt.wantIDs)
+			}
+			if !reflect.DeepEqual(got.Body.SlideNumbers, tt.wantNumbers) {
+				t.Fatalf("slide_numbers = %#v, want %#v", got.Body.SlideNumbers, tt.wantNumbers)
+			}
+		})
+	}
+}
+
+func TestSlidesScreenshotCompatibilityAliasesAreHidden(t *testing.T) {
+	wantTypes := map[string]string{
+		"presentation-id": "",
+		"slide-ids":       "string_slice",
+		"slides":          "string_slice",
+		"slide-numbers":   "int_array",
+		"slide":           "",
+	}
+	for _, flag := range SlidesScreenshot.Flags {
+		wantType, ok := wantTypes[flag.Name]
+		if !ok {
+			continue
+		}
+		if !flag.Hidden {
+			t.Errorf("--%s Hidden = false, want true", flag.Name)
+		}
+		if flag.Type != wantType {
+			t.Errorf("--%s Type = %q, want %q", flag.Name, flag.Type, wantType)
+		}
+		delete(wantTypes, flag.Name)
+	}
+	if len(wantTypes) != 0 {
+		t.Fatalf("missing compatibility flags: %#v", wantTypes)
+	}
+}
+
+func TestSlidesScreenshotCanonicalFlagsOverrideAliases(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_canonical",
+		"--presentation-id", "pres_alias",
+		"--slide-id", "canonical_id",
+		"--slide-ids", "alias_id",
+		"--slides", "alias_id_2",
+		"--slide-number", "8",
+		"--slide-numbers", "9",
+		"--slide", "10",
+		"--dry-run",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := decodeSlidesScreenshotDryRunRequest(t, stdout)
+	if got.URL != "/open-apis/slides_ai/v1/xml_presentations/pres_canonical/slide_images" {
+		t.Fatalf("url = %q, want canonical presentation", got.URL)
+	}
+	if !reflect.DeepEqual(got.Body.SlideIDs, []string{"canonical_id"}) {
+		t.Fatalf("slide_ids = %#v, want canonical selector only", got.Body.SlideIDs)
+	}
+	if !reflect.DeepEqual(got.Body.SlideNumbers, []int{8}) {
+		t.Fatalf("slide_numbers = %#v, want canonical selector only", got.Body.SlideNumbers)
+	}
+}
+
+func TestSlidesScreenshotSlideAliasRejectsAmbiguousValues(t *testing.T) {
+	for _, value := range []string{"0", "-1", "pA", "p12", "slide_1"} {
+		t.Run(value, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+				"+screenshot",
+				"--presentation", "pres_abc",
+				"--slide", value,
+				"--dry-run",
+				"--as", "user",
+			})
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if _, ok := errs.ProblemOf(err); !ok {
+				t.Fatalf("error = %v, want typed validation error", err)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error type = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--slide" {
+				t.Fatalf("param = %q, want --slide", validationErr.Param)
+			}
+		})
+	}
+}
+
+func decodeSlidesScreenshotDryRunRequest(t *testing.T, stdout *bytes.Buffer) struct {
+	URL  string `json:"url"`
+	Body struct {
+		SlideIDs     []string `json:"slide_ids"`
+		SlideNumbers []int    `json:"slide_numbers"`
+	} `json:"body"`
+} {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			API []struct {
+				URL  string `json:"url"`
+				Body struct {
+					SlideIDs     []string `json:"slide_ids"`
+					SlideNumbers []int    `json:"slide_numbers"`
+				} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode dry-run output: %v\nraw=%s", err, stdout.String())
+	}
+	if len(envelope.Data.API) != 1 {
+		t.Fatalf("api calls = %d, want 1\nraw=%s", len(envelope.Data.API), stdout.String())
+	}
+	return envelope.Data.API[0]
 }
 
 func TestSlidesScreenshotWritesFilesAndSuppressesBase64(t *testing.T) {
