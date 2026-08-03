@@ -3,6 +3,11 @@ title = "lark-cli gitleaks config"
 [extend]
 useDefault = true
 
+[allowlist]
+description = "EventKey identifiers (dotted lowercase names like minutes.minute.generated_v1) are public catalog data rendered in fixtures and docs, not credentials; the entropy heuristic of generic-api-key misreads them"
+regexTarget = "secret"
+regexes = ['''^[a-z0-9_]+(\.[a-z0-9_]+){2,}$''']
+
 [[rules]]
 id = "lark-bot-app-id"
 description = "Detect Lark bot app ids"
