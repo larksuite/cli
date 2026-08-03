@@ -47,7 +47,7 @@ var SlidesAddSlide = common.Shortcut{
 	ConditionalScopes: []string{"wiki:node:read", "docs:document.media:upload"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 		// The "(supports @file, - reads stdin ...)" suffix is appended from Input
 		// below, so spelling it out here too produced a doubled parenthetical.
 		{Name: "slide", Desc: "one complete <slide> XML document", Required: true, Input: []string{common.File, common.Stdin}},

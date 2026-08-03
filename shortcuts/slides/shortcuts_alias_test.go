@@ -10,6 +10,8 @@ import (
 
 func TestShortcutsDeclarePresentationFlagAliases(t *testing.T) {
 	wantRequired := map[string]bool{
+		"+add-slide":             true,
+		"+delete-slide":          true,
 		"+media-upload":          true,
 		"+replace-slide":         true,
 		"+replace-pages":         true,

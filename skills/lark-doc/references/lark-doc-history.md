@@ -2,24 +2,23 @@
 
 用于查看 Docx 历史版本、按 `history_version_id` 回滚，以及查询回滚任务状态。
 
-## 安全流程
+## 安全约束
 
-1. 先用分页接口 `+history-list` 找到目标版本的 `history_version_id`。
-2. 如果用户指定的是 `revision_id`，不要假设它唯一，也不要把 `revision_id` 直接传给 `+history-revert`。先拉一页并在 `entries[]` 中筛选 `revision_id` 相同的候选；如果未匹配到且 `has_more=true`，继续用 `page_token` 翻页；如果已匹配到候选，最多额外再拉一页补齐可能跨页的相邻候选。最终优先根据用户目标时间与 `edit_time` 的接近程度选择最合适的一条，取同一条的 `history_version_id`；如果没有目标时间，或多个候选无法可靠区分，再向用户展示候选版本（`history_version_id`、`revision_id`、`edit_time`、`name/description`）并确认后回滚。
-3. 如果用户指定的是某一时刻但没有指定 `revision_id`，按 `entries[].edit_time` 匹配；优先选择不晚于目标时刻的最近一条历史记录，无法明确匹配时先向用户确认候选版本。
-4. 再用 `+history-revert --history-version-id <history_version_id>` 发起回滚。默认最多等待 30 秒；如果返回 `status: running`，记录 `task_id`。
-5. 用 `+history-revert-status` 轮询 `task_id`，直到状态不再是 `running`。
-6. 回滚完成后，用 `docs +fetch` 读取文档确认内容。
+- `overwrite` 会重建正文和 block ID，且无法保证保留评论等非正文对象。用户要求保留这些对象时，应先说明限制并确认。
+- `overwrite` 返回 warning 或 `partial_success` 时，先核验最新内容。核验失败或发生 revision conflict 时停止，不要再次覆盖。
+- 权限、网络或临时系统错误应保留原错误分类，不得解释为目标版本不存在。
 
 ## 按 revision_id 或时间点回滚
 
-当用户说“回滚到 revision_id=42”“恢复到昨天下午 3 点的版本”这类需求时，流程是：
-
-1. 执行 `docs +history-list --doc <doc>` 获取第一页历史记录；`+history-list` 是分页接口，只有 `has_more=true` 且还需要更多候选时才继续传 `--page-token` 翻页。
-2. 如果用户给出 `revision_id`：先筛选当前页中 `entries[].revision_id == 用户给出的 revision_id`。如果未命中且 `has_more=true`，继续拉下一页；如果已经命中候选，最多额外再拉一页，补齐同一个 `revision_id` 可能跨页出现的相邻 `history_version_id`。若用户同时给出目标时间，在候选里选择 `edit_time` 与目标时间最接近的一条；若未给目标时间但候选只有一条，可直接使用；若多个候选无法可靠区分，不要自行取第一条，向用户展示候选并确认。
-3. 如果用户只给出时间：用 `entries[].edit_time` 匹配，选择目标时刻之前最近的一条；如果用户表达的是“最接近某时刻”，则选择绝对时间差最小的一条。
-4. 从最终匹配条目读取 `history_version_id`。`history_version_id` 对应服务端 `minor_history.version`，这是回滚接口需要的 ID。
-5. 执行 `docs +history-revert --doc <doc> --history-version-id <history_version_id>`。
+1. 使用 `+history-list` 定位目标记录。需要更多候选时，根据 `has_more` 和 `page_token` 翻页。
+   - 用户指定 `revision_id`：逐页筛选相同 `revision_id` 的记录。未命中时必须继续翻页至 `has_more=false` 才可进入 fallback；命中位于页尾时，继续读取下一页以收集相邻的同 `revision_id` 候选。多条记录时结合 `edit_time` 选择；无法区分时请用户确认。
+   - 用户指定时间：选择不晚于目标时间的最近一条记录；用户明确要求“最接近”时，选择时间差最小的记录。
+2. 找到目标记录后，使用该记录的 `history_version_id` 调用 `+history-revert`。不要将 `revision_id` 传给回滚接口。返回 `running` 时使用 `+history-revert-status` 查询；只有 `done` 表示成功，其他终态均停止并报告。
+3. 没有目标记录但用户指定了 `revision_id` 时，可读取目标版本并恢复正文：
+   - 使用 `docs +fetch --doc "<doc>" --revision-id <revision_id> --scope full --detail full --format json` 读取目标版本。确认文档一致、返回的 `revision_id` 与目标一致，且 `content` 不是 `<fragment>`。
+   - 使用 `docs +fetch --doc "<doc>" --scope full --detail full --format json` 读取当前完整文档，其 `content` 同样不得是 `<fragment>`。目标与当前响应的 `revision_id` 相同时直接结束，不执行 `overwrite`。否则移除目标 `content` 中旧的 block ID，将正文写入任务目录下的相对路径，然后仅执行一次 `docs +update --doc "<doc>" --command overwrite --revision-id <current_revision_id> --content @target.xml`，其中 `current_revision_id` 来自当前文档响应。目标响应包含非空 JSON object 形式的 `reference_map` 时，将其写入相对路径并追加 `--reference-map @target-reference-map.json`；否则省略该参数。`+update` 不支持 `--yes`。
+   - 使用 `docs +fetch --doc "<doc>" --scope full --detail full --format json` 读取最新完整文档并核验。忽略重新生成的 block ID，正文结构、文本、链接和引用资源应与目标版本一致。
+4. 目标版本明确不可读时停止并报告。
 
 候选确认时使用类似格式：
 
