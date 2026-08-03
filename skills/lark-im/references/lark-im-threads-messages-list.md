@@ -66,15 +66,7 @@ Thread messages do not support `start_time` / `end_time` filtering because of Fe
 
 ### 3. Pagination (`has_more` / `page_token`)
 
-By default, the command fetches one page. When the result includes `has_more=true`, use `page_token` to fetch the next page, or add `--page-all` to fetch and merge subsequent pages automatically. `--page-limit` defaults to 10 and accepts values from 1 to 1000.
-
-If `--page-token` and `--page-all` are supplied together, the token sets the starting cursor and automatic pagination continues from there. If automatic pagination reaches the limit while the output still has `has_more=true`, the result is incomplete. Continue with the returned `page_token`, or rerun with a larger `--page-limit`.
-
-Pagination status is emitted for both one-page and multi-page runs:
-
-- JSON, including the envelope supplied to `--jq`, uses `meta.pagination` as the authoritative CLI execution status. `complete` means endpoint exhaustion was observed; `pages` counts successful API pages; `items` counts final emitted records after filtering/enrichment; `next_token` is present when an incomplete result can resume.
-- `data.has_more` and `data.page_token` remain as API-compatible business fields.
-- `pretty` / `table` append a pagination footer. `csv` / `ndjson` keep stdout record-only and write one structured pagination diagnostic to stderr.
+Default is one page. With `--page-all`, `--page-token` sets the starting cursor; if `meta.pagination.complete=false`, resume from `meta.pagination.next_token` or raise `--page-limit`.
 
 ### 4. Recommended expansion strategy
 
