@@ -11,7 +11,7 @@
 ## 按 revision_id 或时间点回滚
 
 1. 使用 `+history-list` 定位目标记录。需要更多候选时，根据 `has_more` 和 `page_token` 翻页。
-   - 用户指定 `revision_id`：筛选相同 `revision_id` 的记录。同一 `revision_id` 对应多条记录时，结合 `edit_time` 选择；无法区分时请用户确认。
+   - 用户指定 `revision_id`：逐页筛选相同 `revision_id` 的记录。未命中时必须继续翻页至 `has_more=false` 才可进入 fallback；命中位于页尾时，继续读取下一页以收集相邻的同 `revision_id` 候选。多条记录时结合 `edit_time` 选择；无法区分时请用户确认。
    - 用户指定时间：选择不晚于目标时间的最近一条记录；用户明确要求“最接近”时，选择时间差最小的记录。
 2. 找到目标记录后，使用该记录的 `history_version_id` 调用 `+history-revert`。不要将 `revision_id` 传给回滚接口。返回 `running` 时使用 `+history-revert-status` 查询；只有 `done` 表示成功，其他终态均停止并报告。
 3. 没有目标记录但用户指定了 `revision_id` 时，可读取目标版本并恢复正文：
