@@ -37,10 +37,16 @@ func ValidateParams(def *KeyDefinition, params map[string]string) error {
 		validNames = append(validNames, p.Name)
 	}
 	sort.Strings(validNames)
+	unknown := make([]string, 0, len(params))
 	for k := range params {
-		if known[k] {
-			continue
+		if !known[k] {
+			unknown = append(unknown, k)
 		}
+	}
+	if len(unknown) > 0 {
+		// Sorted so the reported name does not vary with map iteration order.
+		sort.Strings(unknown)
+		k := unknown[0]
 		if len(validNames) == 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"unknown param %q: EventKey %s accepts no params", k, def.Key).
