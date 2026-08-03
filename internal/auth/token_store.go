@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/keychain"
 )
 
@@ -61,7 +62,27 @@ func readStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
 
 // SetStoredToken persists a UAT.
 func SetStoredToken(token *StoredUAToken) error {
-	key := accountKey(token.AppId, token.UserOpenId)
+	if token == nil {
+		return errs.NewInternalError(errs.SubtypeStorage,
+			"cannot store a nil token")
+	}
+	return withTokenStorageLock(token.AppId, token.UserOpenId, func() error {
+		return writeStoredToken(token.AppId, token.UserOpenId, token)
+	})
+}
+
+// writeStoredToken persists token for the supplied account. The caller must
+// hold that account's token storage lock.
+func writeStoredToken(appID, userOpenID string, token *StoredUAToken) error {
+	if token == nil {
+		return errs.NewInternalError(errs.SubtypeStorage,
+			"cannot store a nil token")
+	}
+	if token.AppId != appID || token.UserOpenId != userOpenID {
+		return errs.NewInternalError(errs.SubtypeStorage,
+			"cannot store a token for a different account")
+	}
+	key := accountKey(appID, userOpenID)
 	data, err := json.Marshal(token)
 	if err != nil {
 		return err
@@ -71,7 +92,15 @@ func SetStoredToken(token *StoredUAToken) error {
 
 // RemoveStoredToken removes a stored UAT.
 func RemoveStoredToken(appId, userOpenId string) error {
-	return keychain.Remove(keychain.LarkCliService, accountKey(appId, userOpenId))
+	return withTokenStorageLock(appId, userOpenId, func() error {
+		return deleteStoredToken(appId, userOpenId)
+	})
+}
+
+// deleteStoredToken removes the supplied account's token. The caller must hold
+// that account's token storage lock.
+func deleteStoredToken(appID, userOpenID string) error {
+	return keychain.Remove(keychain.LarkCliService, accountKey(appID, userOpenID))
 }
 
 // isSameStoredTokenGeneration reports whether two snapshots represent the same
@@ -89,34 +118,54 @@ func isSameStoredTokenGeneration(current, expected *StoredUAToken) bool {
 	return current.AccessToken == expected.AccessToken
 }
 
-// setStoredTokenIfCurrent stores updated only when expected is still the
-// current token generation. It returns the token present after the check and
-// whether the update was applied.
-func setStoredTokenIfCurrent(expected, updated *StoredUAToken) (*StoredUAToken, bool, error) {
-	current, err := readStoredToken(expected.AppId, expected.UserOpenId)
+// compareAndSwapStoredToken replaces expected with updated when the stored
+// token generation still matches expected. The caller must hold the storage
+// lock for appID and userOpenID.
+func compareAndSwapStoredToken(appID, userOpenID string, expected, updated *StoredUAToken) (*StoredUAToken, bool, error) {
+	if expected == nil || updated == nil {
+		return nil, false, errs.NewInternalError(errs.SubtypeStorage,
+			"cannot compare and swap a nil stored token")
+	}
+	if expected.AppId != appID || expected.UserOpenId != userOpenID ||
+		updated.AppId != appID || updated.UserOpenId != userOpenID {
+		return nil, false, errs.NewInternalError(errs.SubtypeStorage,
+			"cannot compare and swap stored tokens for different accounts")
+	}
+
+	current, err := readStoredToken(appID, userOpenID)
 	if err != nil {
 		return nil, false, err
 	}
 	if !isSameStoredTokenGeneration(current, expected) {
 		return current, false, nil
 	}
-	if err := SetStoredToken(updated); err != nil {
+	if err := writeStoredToken(appID, userOpenID, updated); err != nil {
 		return current, false, err
 	}
 	return updated, true, nil
 }
 
-// removeStoredTokenIfCurrent removes expected only when it is still the
-// current token generation. It returns the token retained on a mismatch.
-func removeStoredTokenIfCurrent(expected *StoredUAToken) (*StoredUAToken, bool, error) {
-	current, err := readStoredToken(expected.AppId, expected.UserOpenId)
+// compareAndDeleteStoredToken removes expected when the stored token generation
+// still matches it. The caller must hold the storage lock for appID and
+// userOpenID.
+func compareAndDeleteStoredToken(appID, userOpenID string, expected *StoredUAToken) (*StoredUAToken, bool, error) {
+	if expected == nil {
+		return nil, false, errs.NewInternalError(errs.SubtypeStorage,
+			"cannot compare and delete a nil stored token")
+	}
+	if expected.AppId != appID || expected.UserOpenId != userOpenID {
+		return nil, false, errs.NewInternalError(errs.SubtypeStorage,
+			"cannot compare and delete a stored token for a different account")
+	}
+
+	current, err := readStoredToken(appID, userOpenID)
 	if err != nil {
 		return nil, false, err
 	}
 	if !isSameStoredTokenGeneration(current, expected) {
 		return current, false, nil
 	}
-	if err := RemoveStoredToken(expected.AppId, expected.UserOpenId); err != nil {
+	if err := deleteStoredToken(appID, userOpenID); err != nil {
 		return current, false, err
 	}
 	return nil, true, nil
