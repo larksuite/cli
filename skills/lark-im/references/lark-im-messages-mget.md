@@ -30,7 +30,7 @@ lark-cli im +messages-mget --message-ids "om_aaa" --dry-run
 
 | Parameter | Required | Limits | Description |
 |------|------|------|------|
-| `--message-ids <ids>` | Yes | At least one, max 50, `om_xxx` format, comma-separated | Message ID list |
+| `--message-ids <ids>` | Yes | At least one, max 50, `om_xxx` format, comma-separated | Message ID list. `--message-id` is an alias for `--message-ids`; prefer the canonical flag |
 | `--no-reactions` | No | — | Skip auto-fetching the `reactions` block |
 | `--download-resources` | No | — | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default |
 

@@ -61,6 +61,7 @@ func ParseTime(input string, hint ...string) (string, error) {
 		time.RFC3339,
 		"2006-01-02T15:04Z07:00",
 		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02 15:04:05 Z07:00",
 	}
 	for _, f := range tzFormats {
 		if t, err := time.Parse(f, input); err == nil {

@@ -17,12 +17,17 @@ import (
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
 )
 
-const threadsMessagesMaxPageSize = 500
+const (
+	threadsMessagesListDefaultPageLimit = 10
+	threadsMessagesListMaxPageLimit     = 1000
+)
+
+var threadsMessagesMaxPageSize = imPageSizeLimit("+threads-messages-list")
 
 var ImThreadsMessagesList = common.Shortcut{
 	Service:     "im",
 	Command:     "+threads-messages-list",
-	Description: "List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports sort/pagination",
+	Description: "List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports --order asc|desc sorting, auto-pagination",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
 	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
@@ -30,27 +35,35 @@ var ImThreadsMessagesList = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "thread", Desc: "thread ID (om_xxx or omt_xxx)", Required: true},
+		{Name: "thread", Desc: "thread ID (om_xxx or omt_xxx)"},
+		{Name: "thread-id", Hidden: true, Desc: "alias of --thread (hidden)"},
 		{Name: "order", Default: "asc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
-		{Name: "sort", Hidden: true, Desc: "alias of --order (hidden)", Enum: []string{"asc", "desc"}},
-		{Name: "page-size", Default: "50", Desc: "page size (1-500)"},
+		{Name: "sort", Hidden: true, Desc: "alias of --order (hidden)"},
+		{Name: "page-size", Default: "50", Desc: imPageSizeDescription("+threads-messages-list")},
 		{Name: "page-token", Desc: "page token"},
+		{Name: "page-all", Type: "bool", Desc: "automatically paginate, capped by --page-limit"},
+		{Name: "page-limit", Type: "int", Default: "10", Desc: "max pages with --page-all (default 10; configurable range 1-1000)"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		threadFlag := runtime.Str("thread")
+		threadFlag, _ := resolveThreadsInput(runtime)
 		dir := resolveThreadsOrder(runtime)
 		pageSizeStr := runtime.Str("page-size")
 		pageToken := runtime.Str("page-token")
 
-		pageSize, _ := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
-
 		d := common.NewDryRunAPI()
+		pageSize, err := validateIMPageSize(runtime, "+threads-messages-list", threadsMessagesMaxPageSize)
+		if err != nil {
+			return d.Desc(err.Error())
+		}
 		containerID := threadFlag
 		if messageIDRe.MatchString(threadFlag) {
 			d.Desc("(--thread provided as message ID) Will resolve thread_id via GET /open-apis/im/v1/messages/:message_id at execution time")
 			containerID = "<resolved_thread_id>"
+		}
+		if threadsMessagesListShouldAutoPaginate(runtime) {
+			d.Desc("Auto-paginates through all pages (capped by --page-limit when > 0)")
 		}
 
 		params := buildThreadsMessagesListParams(dir, containerID, pageSize, pageToken)
@@ -69,29 +82,45 @@ var ImThreadsMessagesList = common.Shortcut{
 		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		threadId := runtime.Str("thread")
+		threadId, threadParam := resolveThreadsInput(runtime)
 		if threadId == "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--thread is required (om_xxx or omt_xxx)").WithParam("--thread")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s is required (om_xxx or omt_xxx)", threadParam).WithParam(threadParam)
 		}
 		if !strings.HasPrefix(threadId, "om_") && !strings.HasPrefix(threadId, "omt_") {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --thread %q: must start with om_ or omt_", threadId).WithParam("--thread")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid %s %q: must start with om_ or omt_", threadParam, threadId).WithParam(threadParam)
 		}
-		_, err := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
-		return err
+		if err := validateAliasEnum(runtime, "sort", "order", "asc", "desc"); err != nil {
+			return err
+		}
+		if _, err := validateIMPageSize(runtime, "+threads-messages-list", threadsMessagesMaxPageSize); err != nil {
+			return err
+		}
+		if n := runtime.Int("page-limit"); n < 1 || n > threadsMessagesListMaxPageLimit {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")
+		}
+		return nil
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		threadId, err := resolveThreadID(runtime, runtime.Str("thread"))
+		pageSize, err := validateIMPageSize(runtime, "+threads-messages-list", threadsMessagesMaxPageSize)
+		if err != nil {
+			return err
+		}
+		threadInput, _ := resolveThreadsInput(runtime)
+		threadId, err := resolveThreadID(runtime, threadInput)
 		if err != nil {
 			return err
 		}
 		dir := resolveThreadsOrder(runtime)
 		pageToken := runtime.Str("page-token")
 
-		pageSize, _ := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
-
 		params := buildThreadsMessagesListParams(dir, threadId, pageSize, pageToken)
 
-		data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
+		var data map[string]interface{}
+		if threadsMessagesListShouldAutoPaginate(runtime) {
+			data, err = fetchThreadsMessagesListAllPages(runtime, params)
+		} else {
+			data, err = runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
+		}
 		if err != nil {
 			return err
 		}
@@ -160,6 +189,71 @@ var ImThreadsMessagesList = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+func threadsMessagesListShouldAutoPaginate(runtime *common.RuntimeContext) bool {
+	return runtime.Bool("page-all") && !runtime.Cmd.Flags().Changed("page-token")
+}
+
+func fetchThreadsMessagesListAllPages(runtime *common.RuntimeContext, params map[string][]string) (map[string]interface{}, error) {
+	maxPages := runtime.Int("page-limit")
+	if maxPages < 1 {
+		maxPages = threadsMessagesListDefaultPageLimit
+	}
+	if maxPages > threadsMessagesListMaxPageLimit {
+		maxPages = threadsMessagesListMaxPageLimit
+	}
+
+	allItems := make([]interface{}, 0)
+	var lastData map[string]interface{}
+	var lastHasMore bool
+	var lastPageToken string
+	prevPageToken := "__START__"
+	delete(params, "page_token")
+
+	for page := 0; page < maxPages; page++ {
+		if page > 0 {
+			params["page_token"] = []string{lastPageToken}
+		}
+		data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
+		if err != nil {
+			return nil, err
+		}
+		lastData = data
+		if items, ok := data["items"].([]interface{}); ok {
+			allItems = append(allItems, items...)
+		}
+		lastHasMore, lastPageToken = common.PaginationMeta(data)
+		fmt.Fprintf(runtime.IO().ErrOut, "page %d: %d thread messages\n", page+1, len(allItems))
+
+		if !lastHasMore || lastPageToken == "" {
+			break
+		}
+		if lastPageToken == prevPageToken {
+			fmt.Fprintln(runtime.IO().ErrOut, "warning: page_token did not change, stopping pagination to avoid infinite loop")
+			break
+		}
+		if page+1 >= maxPages {
+			fmt.Fprintf(runtime.IO().ErrOut, "[pagination] reached page limit (%d) while has_more=true; result is incomplete. Increase --page-limit up to 1000 or resume with the page_token returned in stdout.\n", maxPages)
+			break
+		}
+		prevPageToken = lastPageToken
+	}
+
+	if lastData == nil {
+		lastData = map[string]interface{}{}
+	}
+	lastData["items"] = allItems
+	lastData["has_more"] = lastHasMore
+	lastData["page_token"] = lastPageToken
+	return lastData, nil
+}
+
+func resolveThreadsInput(runtime *common.RuntimeContext) (string, string) {
+	if old, ok := aliasFlagValue(runtime, "thread-id", "thread"); ok {
+		return old, "--thread-id" // attribute errors to the flag the caller actually typed
+	}
+	return runtime.Str("thread"), "--thread"
 }
 
 // buildThreadsMessagesListParams builds the upstream query params shared by

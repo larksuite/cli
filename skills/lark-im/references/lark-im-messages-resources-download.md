@@ -2,9 +2,13 @@
 
 > **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
-Download image or file resources from a message. Supports **automatic chunked download for large files** using HTTP Range requests. Resources are identified by the combination of `message_id` + `file_key`, both of which come directly from message content returned by `im +chat-messages-list`.
+Download image or file resources from a message. Supports **automatic chunked download for large files** using HTTP Range requests. Resources are identified by the combination of `message_id` + `file_key`. For a known message ID, run `lark-cli im +messages-mget --message-ids om_xxx` and read the resource key from the returned message content: images use `img_xxx`, while files use `file_xxx`.
 
 > **Note:** read-only message commands render resource keys in message content, but they do not download binaries automatically. Use this command whenever you need to fetch the actual image/file bytes or save them to a specific path.
+
+To download every attachment from a message result or chat without supplying each `file_key`, use `lark-cli im +chat-messages-list --download-resources`.
+
+There is no `--overwrite` flag. Saving to a path that already exists replaces that file atomically; use a different `--output` path to keep the existing file.
 
 This skill maps to the shortcut: `lark-cli im +messages-resources-download` (internally calls `GET /open-apis/im/v1/messages/{message_id}/resources/{file_key}`).
 
@@ -70,8 +74,8 @@ Different resource markers in message content correspond to different `file_key`
 ### Scenario: Extract and download an image from a message
 
 ```bash
-# Step 1: Fetch messages and find one containing an image
-lark-cli im +chat-messages-list --chat-id oc_xxx
+# Step 1: Fetch the known message and find its image key
+lark-cli im +messages-mget --message-ids om_xxx
 # In the response you see: { "msg_type": "image", "content": "{\"image_key\":\"img_v3_xxx\"}" }
 
 # Step 2: Download the image

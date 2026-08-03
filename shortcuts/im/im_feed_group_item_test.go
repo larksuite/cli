@@ -422,7 +422,7 @@ func TestFeedGroupValidationErrors(t *testing.T) {
 		want  string
 	}{
 		{"list missing feed-group-id", ImFeedGroupListItem, map[string]string{}, "--feed-group-id is required"},
-		{"list bad page-size", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "page-size": "0"}, "--page-size must be an integer between 1 and 50"},
+		{"list bad page-size", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "page-size": "0"}, "invalid --page-size 0: must be between 1 and 50"},
 		{"list bad page-limit", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "page-limit": "2000"}, "--page-limit must be an integer between 1 and 1000"},
 		{"list bad start-time", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "start-time": "notnum"}, "--start-time must be Unix milliseconds"},
 		{"list bad end-time", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "end-time": "notnum"}, "--end-time must be Unix milliseconds"},

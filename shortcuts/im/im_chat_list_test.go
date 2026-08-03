@@ -30,8 +30,10 @@ func newChatListTestRuntimeContextWithIdentity(t *testing.T, stringFlags map[str
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Bool("page-all", false, "")
 	for name := range stringFlags {
-		if name == "page-size" {
+		if name == "page-size" || name == "page-limit" {
 			continue
 		}
 		if name == "types" {
@@ -41,6 +43,9 @@ func newChatListTestRuntimeContextWithIdentity(t *testing.T, stringFlags map[str
 		}
 	}
 	for name := range boolFlags {
+		if name == "page-all" {
+			continue
+		}
 		cmd.Flags().Bool(name, false, "")
 	}
 	if err := cmd.ParseFlags(nil); err != nil {
@@ -296,10 +301,12 @@ func attachChatListCmd(t *testing.T, runtime *common.RuntimeContext, stringFlags
 	t.Helper()
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().Int("page-limit", 10, "")
 	cmd.Flags().String("user-id-type", "open_id", "")
 	cmd.Flags().String("sort-type", "ByCreateTimeAsc", "")
 	cmd.Flags().StringSlice("types", nil, "")
 	cmd.Flags().String("page-token", "", "")
+	cmd.Flags().Bool("page-all", false, "")
 	cmd.Flags().Bool("exclude-muted", false, "")
 	cmd.Flags().Bool("dry-run", false, "")
 	if err := cmd.ParseFlags(nil); err != nil {
@@ -686,8 +693,12 @@ func TestChatList_SortFlagSurface(t *testing.T) {
 	if !aliasFlag.Hidden {
 		t.Errorf("--sort-type must be Hidden")
 	}
-	if got := strings.Join(aliasFlag.Enum, ","); got != "ByCreateTimeAsc,ByActiveTimeDesc" {
-		t.Errorf("--sort-type Enum = %q, want ByCreateTimeAsc,ByActiveTimeDesc", got)
+	if len(aliasFlag.Enum) != 0 {
+		// A declared enum is framework-validated before canonical-wins
+		// resolution, so an inert alias value would fail the command even
+		// when --sort is present. The value set is enforced by
+		// validateAliasEnum in Validate instead.
+		t.Errorf("--sort-type (hidden alias) must not declare an Enum, got %q", aliasFlag.Enum)
 	}
 	if aliasFlag.Default != "" {
 		t.Errorf("--sort-type (hidden alias) must not carry a Default, got %q", aliasFlag.Default)

@@ -28,12 +28,13 @@ var ImMessagesMGet = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "message-ids", Desc: "message IDs, comma-separated (om_xxx,om_yyy)", Required: true},
+		{Name: "message-ids", Desc: "message IDs, comma-separated (om_xxx,om_yyy)"},
+		{Name: "message-id", Hidden: true, Desc: "alias of --message-ids (hidden)"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		ids := common.SplitCSV(runtime.Str("message-ids"))
+		ids := common.SplitCSV(resolveMessageIDsInput(runtime))
 		d := common.NewDryRunAPI().GET(buildMGetURL(ids))
 		if !runtime.Bool("no-reactions") {
 			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
@@ -45,22 +46,23 @@ var ImMessagesMGet = common.Shortcut{
 		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		ids := common.SplitCSV(runtime.Str("message-ids"))
+		raw, param := resolveMessageIDsInputWithParam(runtime)
+		ids := common.SplitCSV(raw)
 		if len(ids) == 0 {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-ids is required (comma-separated om_xxx)").WithParam("--message-ids")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s is required (comma-separated om_xxx)", param).WithParam(param)
 		}
 		if len(ids) > maxMGetMessageIDs {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-ids supports at most %d IDs per request (got %d)", maxMGetMessageIDs, len(ids)).WithParam("--message-ids")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s supports at most %d IDs per request (got %d)", param, maxMGetMessageIDs, len(ids)).WithParam(param)
 		}
 		for _, id := range ids {
-			if _, err := validateMessageID(id); err != nil {
+			if _, err := validateMessageIDForParam(id, param); err != nil {
 				return err
 			}
 		}
 		return nil
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		ids := common.SplitCSV(runtime.Str("message-ids"))
+		ids := common.SplitCSV(resolveMessageIDsInput(runtime))
 		mgetURL := buildMGetURL(ids)
 
 		data, err := runtime.DoAPIJSONTyped(http.MethodGet, mgetURL, nil, nil)
@@ -126,4 +128,18 @@ var ImMessagesMGet = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+func resolveMessageIDsInput(runtime *common.RuntimeContext) string {
+	ids, _ := resolveMessageIDsInputWithParam(runtime)
+	return ids
+}
+
+// resolveMessageIDsInputWithParam also reports which flag supplied the value,
+// so validation errors are attributed to the flag the caller actually typed.
+func resolveMessageIDsInputWithParam(runtime *common.RuntimeContext) (string, string) {
+	if old, ok := aliasFlagValue(runtime, "message-id", "message-ids"); ok {
+		return old, "--message-id"
+	}
+	return runtime.Str("message-ids"), "--message-ids"
 }

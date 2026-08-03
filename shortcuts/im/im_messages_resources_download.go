@@ -30,8 +30,8 @@ var ImMessagesResourcesDownload = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "message ID (om_xxx)", Required: true},
-		{Name: "file-key", Desc: "resource key (img_xxx or file_xxx)", Required: true},
-		{Name: "type", Desc: "resource type (image or file)", Required: true, Enum: []string{"image", "file"}},
+		{Name: "file-key", Desc: "resource key (img_xxx or file_xxx; required)"},
+		{Name: "type", Desc: "resource type (required)", Enum: []string{"image", "file"}},
 		{Name: "output", Desc: "local save path (relative only, no .. traversal); when omitted, uses the server's Content-Disposition filename if available, otherwise file_key; extension is inferred from Content-Disposition or Content-Type if not provided"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -50,6 +50,9 @@ var ImMessagesResourcesDownload = common.Shortcut{
 		if messageId := runtime.Str("message-id"); messageId == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-id is required (om_xxx)").WithParam("--message-id")
 		} else if _, err := validateMessageID(messageId); err != nil {
+			return err
+		}
+		if err := validateIMResourceDownloadRequiredFlags(runtime.Str("file-key"), runtime.Str("type")); err != nil {
 			return err
 		}
 		relPath, err := normalizeDownloadOutputPath(runtime.Str("file-key"), runtime.Str("output"))
@@ -84,6 +87,33 @@ var ImMessagesResourcesDownload = common.Shortcut{
 		runtime.Out(map[string]interface{}{"saved_path": finalPath, "size_bytes": sizeBytes}, nil)
 		return nil
 	},
+}
+
+const imResourceDownloadRequiredFlagsHint = "get --file-key from message content with `lark-cli im +messages-mget --message-ids om_xxx` (images use img_xxx; files use file_xxx), or download all attachments with `lark-cli im +chat-messages-list --download-resources` without supplying each file key"
+
+func validateIMResourceDownloadRequiredFlags(fileKey, fileType string) error {
+	missingFileKey := strings.TrimSpace(fileKey) == ""
+	missingType := strings.TrimSpace(fileType) == ""
+	if !missingFileKey && !missingType {
+		return nil
+	}
+
+	if missingFileKey && missingType {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-key and --type are required").
+			WithParams(
+				errs.InvalidParam{Name: "--file-key", Reason: "required"},
+				errs.InvalidParam{Name: "--type", Reason: "required"},
+			).
+			WithHint("%s", imResourceDownloadRequiredFlagsHint)
+	}
+	if missingFileKey {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-key is required").
+			WithParam("--file-key").
+			WithHint("%s", imResourceDownloadRequiredFlagsHint)
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "--type is required").
+		WithParam("--type").
+		WithHint("%s", imResourceDownloadRequiredFlagsHint)
 }
 
 func normalizeDownloadOutputPath(fileKey, outputPath string) (string, error) {

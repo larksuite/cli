@@ -23,6 +23,9 @@ lark-cli im +chat-list --page-size 50
 # Pagination
 lark-cli im +chat-list --page-token "xxx"
 
+# Fetch multiple pages automatically, up to 10 pages by default
+lark-cli im +chat-list --page-all
+
 # Drop muted chats (user identity only)
 lark-cli im +chat-list --exclude-muted
 
@@ -51,11 +54,15 @@ lark-cli im +chat-list --as user --types p2p
 | `--sort <field>` | No | `create_time` (default, ascending), `active_time` (descending) | Result ordering |
 | `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
 | `--page-token <token>` | No | - | Pagination token from the previous response |
+| `--page-all` | No | - | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
+| `--page-limit <n>` | No | 1-1000, default 10 | Maximum pages fetched by `--page-all` |
 | `--exclude-muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under `--as bot`, the flag is silently inactive; see "Filtering muted chats" below |
 | `--format json` | No | - | Output as JSON |
 | `--dry-run` | No | - | Preview the request without executing it |
 
 > **Note:** Supports both `--as user` (default) and `--as bot`. When using bot identity, the app must have bot capability enabled.
+
+By default, the command fetches one page. With `--page-all`, it fetches and merges subsequent pages up to `--page-limit`. If the limit is reached while the output still has `has_more=true`, the result is incomplete; continue with the returned `page_token`, or rerun with a larger `--page-limit`. An explicitly supplied `--page-token` takes precedence and fetches only that page even when `--page-all` is also present.
 
 ## Output Fields
 
@@ -156,7 +163,7 @@ done
 
 | Symptom | Root Cause | Solution |
 |---------|---------|---------|
-| `--page-size must be an integer between 1 and 100` | page-size is out of range or not an integer | Use an integer between 1 and 100 |
+| `invalid --page-size 101: must be between 1 and 100` | page-size is out of range | Use an integer between 1 and 100 |
 | Permission denied (99991672) | The bot app does not have `im:chat:read` TAT permission enabled | Enable the permission for the app in the Open Platform console |
 | Permission denied (99991679) with `--as user` | UAT is not authorized for `im:chat:read` | Run `lark-cli auth login --scope "im:chat:read"` |
 | `Bot ability is not activated` (232025) | The app does not have bot capability enabled | Enable bot capability in the Open Platform console |

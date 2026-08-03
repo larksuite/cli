@@ -92,7 +92,9 @@ func TestChatMessagesList_OrderFlagSurface(t *testing.T) {
 	if !aliasFlag.Hidden {
 		t.Errorf("--sort must be Hidden")
 	}
-	if got := strings.Join(aliasFlag.Enum, ","); got != "asc,desc" {
-		t.Errorf("--sort (alias) Enum = %q, want asc,desc", got)
+	if len(aliasFlag.Enum) != 0 {
+		// Enforced by validateAliasEnum in Validate; a declared enum would be
+		// framework-validated before canonical-wins resolution runs.
+		t.Errorf("--sort (hidden alias) must not declare an Enum, got %q", aliasFlag.Enum)
 	}
 }

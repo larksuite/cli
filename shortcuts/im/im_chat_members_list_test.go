@@ -164,6 +164,13 @@ func TestNormalizeMemberTypes(t *testing.T) {
 		{nil, "", false},
 		{[]string{"user", "bot"}, "user,bot", false},
 		{[]string{"USER", "user"}, "user", false}, // lowercased + deduped
+		{[]string{"all"}, "", false},
+		{[]string{"ALL"}, "", false},
+		{[]string{"users", "bots"}, "user,bot", false},
+		{[]string{"Users", "user", "Bots", "bot"}, "user,bot", false},
+		{[]string{"user", "all"}, "", false},
+		{[]string{"bots", "ALL"}, "", false},
+		{[]string{"admin", "ALL"}, "", true}, // invalid value is rejected even when all is present
 		{[]string{"admin"}, "", true},
 		{[]string{""}, "", true},
 	}
@@ -179,6 +186,54 @@ func TestNormalizeMemberTypes(t *testing.T) {
 		if got != c.want {
 			t.Errorf("normalizeMemberTypes(%v) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestChatMembersListMemberTypesCompatibilityNotes(t *testing.T) {
+	cases := []struct {
+		name       string
+		memberType string
+		want       []string
+	}{
+		{
+			name:       "all",
+			memberType: "all,user",
+			want:       []string{`note: --member-types "all" means no filter (same as omitting the flag)`},
+		},
+		{
+			name:       "uppercase all",
+			memberType: "ALL",
+			want:       []string{`note: --member-types "ALL" means no filter (same as omitting the flag)`},
+		},
+		{
+			name:       "plural values",
+			memberType: "Users,bots",
+			want: []string{
+				`note: --member-types "Users" is accepted as "user"`,
+				`note: --member-types "bots" is accepted as "bot"`,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newChatMembersTestRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return shortcutJSONResponse(200, map[string]interface{}{"code": 0}), nil
+			}), map[string]string{"chat-id": "oc_test", "member-types": tc.memberType}, nil, nil)
+
+			if err := ImChatMembersList.Validate(context.Background(), runtime); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+			stderr := runtime.IO().ErrOut.(*bytes.Buffer).String()
+			for _, note := range tc.want {
+				if got := strings.Count(stderr, note); got != 1 {
+					t.Fatalf("note count = %d, want 1 for %q; stderr=%q", got, note, stderr)
+				}
+			}
+			if stdout := runtime.IO().Out.(*bytes.Buffer).String(); stdout != "" {
+				t.Fatalf("compatibility note leaked to stdout: %q", stdout)
+			}
+		})
 	}
 }
 

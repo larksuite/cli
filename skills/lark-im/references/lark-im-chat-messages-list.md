@@ -29,6 +29,9 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --order asc --page-size 20
 # Pagination
 lark-cli im +chat-messages-list --chat-id oc_xxx --page-token "xxx"
 
+# Fetch multiple pages automatically, up to 10 pages by default
+lark-cli im +chat-messages-list --chat-id oc_xxx --page-all
+
 # JSON output
 lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 ```
@@ -39,11 +42,13 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 |------|------|------|
 | `--chat-id <id>` | One of two | Specify the conversation by its chat_id directly (e.g., group chat `oc_xxx`) |
 | `--user-id <id>` | One of two | Specify a DM conversation by the other user's open_id (`ou_xxx`); p2p chat_id is resolved automatically. Requires user identity (`--as user`); not supported with bot identity |
-| `--start <time>` | No | Start time (ISO 8601 or date only) |
-| `--end <time>` | No | End time (ISO 8601 or date only) |
-| `--order <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
-| `--page-size <n>` | No | Page size (default 50, max 50) |
+| `--start <time>` | No | Start time (ISO 8601 or date only). `--start-time` is an alias for `--start`; prefer the canonical flag |
+| `--end <time>` | No | End time (ISO 8601 or date only). `--end-time` is an alias for `--end`; prefer the canonical flag |
+| `--order <order>` | No | Sort order: `asc` / `desc` (default `desc`). `--sort-order` is an alias for `--order`; prefer the canonical flag |
+| `--page-size <n>` | No | Page size (default 50, max 50). `--limit` is an alias for `--page-size`; prefer the canonical flag |
 | `--page-token <token>` | No | Pagination token |
+| `--page-all` | No | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
+| `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--no-reactions` | No | Skip auto-fetching the `reactions` block |
 | `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default; no extra requests when omitted |
 
@@ -106,11 +111,13 @@ Each message contains:
 
 ## Pagination (`has_more` / `page_token`)
 
-`im +chat-messages-list` returns `has_more` and `page_token` when more data is available. Use `--page-token` to continue:
+By default, `im +chat-messages-list` fetches one page. It returns `has_more` and `page_token` when more data is available. Use `--page-token` to continue:
 
 ```bash
 lark-cli im +chat-messages-list --chat-id oc_xxx --page-token <PAGE_TOKEN>
 ```
+
+Use `--page-all` to fetch and merge multiple pages. `--page-limit` defaults to 10 and accepts values from 1 to 1000. If the command reaches this limit while the output still has `has_more=true`, the result is incomplete; resume with the returned `page_token`, or rerun with a larger `--page-limit`. An explicitly supplied `--page-token` takes precedence and fetches only that page even when `--page-all` is also present.
 
 You can also fall back to the generic API:
 

@@ -17,7 +17,9 @@ func newThreadsTestRT(t *testing.T, stringFlags map[string]string) *common.Runti
 		stringFlags = map[string]string{}
 	}
 	if _, ok := stringFlags["thread"]; !ok {
-		stringFlags["thread"] = "omt_test"
+		if _, aliasSet := stringFlags["thread-id"]; !aliasSet {
+			stringFlags["thread"] = "omt_test"
+		}
 	}
 	return newChatListTestRuntimeContext(t, stringFlags, nil)
 }

@@ -676,6 +676,82 @@ func TestShortcuts(t *testing.T) {
 	}
 }
 
+func TestValidateIMResourceDownloadRequiredFlags(t *testing.T) {
+	t.Run("both missing", func(t *testing.T) {
+		err := validateIMResourceDownloadRequiredFlags("", "")
+		if err == nil {
+			t.Fatal("validateIMResourceDownloadRequiredFlags() error = nil")
+		}
+		problem, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("ProblemOf() did not recognize %T", err)
+		}
+		if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("problem = %+v", problem)
+		}
+		if problem.Message != "--file-key and --type are required" {
+			t.Fatalf("message = %q", problem.Message)
+		}
+		if !strings.Contains(problem.Hint, "+messages-mget") || !strings.Contains(problem.Hint, "--download-resources") {
+			t.Fatalf("hint = %q", problem.Hint)
+		}
+
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("error type = %T", err)
+		}
+		if len(validationErr.Params) != 2 || validationErr.Params[0].Name != "--file-key" || validationErr.Params[1].Name != "--type" {
+			t.Fatalf("params = %#v", validationErr.Params)
+		}
+	})
+
+	t.Run("one missing", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			fileKey  string
+			fileType string
+			param    string
+		}{
+			{name: "file key", fileType: "image", param: "--file-key"},
+			{name: "type", fileKey: "img_xxx", param: "--type"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				err := validateIMResourceDownloadRequiredFlags(tc.fileKey, tc.fileType)
+				assertValidationError(t, tc.name, err, tc.param)
+				problem, _ := errs.ProblemOf(err)
+				if !strings.Contains(problem.Hint, "+messages-mget") || !strings.Contains(problem.Hint, "--download-resources") {
+					t.Fatalf("hint = %q", problem.Hint)
+				}
+			})
+		}
+	})
+
+	if err := validateIMResourceDownloadRequiredFlags("img_xxx", "image"); err != nil {
+		t.Fatalf("complete flags error = %v", err)
+	}
+}
+
+func TestMessagesResourcesDownloadRequiredFlagDescriptions(t *testing.T) {
+	want := map[string]string{
+		"file-key": "required",
+		"type":     "required",
+	}
+	for _, flag := range ImMessagesResourcesDownload.Flags {
+		if needle, ok := want[flag.Name]; ok {
+			if flag.Required {
+				t.Errorf("--%s must be validated manually so the error can carry a hint", flag.Name)
+			}
+			if !strings.Contains(flag.Desc, needle) {
+				t.Errorf("--%s description = %q, want %q", flag.Name, flag.Desc, needle)
+			}
+			delete(want, flag.Name)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing flag declarations: %v", want)
+	}
+}
+
 // TestSenderDisplay covers the human-readable sender column: a resolved name wins,
 // otherwise the sender id is shown (AC3 fallback), and a system/senderless message
 // with neither yields an empty string (no name is normal, not an error).

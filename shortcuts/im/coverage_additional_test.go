@@ -195,7 +195,7 @@ func TestBuildChatMessageListRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"sort":       "asc",
-			"page-size":  "80",
+			"page-size":  "50",
 			"page-token": "next",
 			"start":      "2026-03-01T00:00:00+08:00",
 			"end":        "2026-03-02T23:59:59+08:00",
@@ -245,7 +245,7 @@ func TestBuildChatMessageListRequest(t *testing.T) {
 }
 
 func TestChatMessageListOnlyThreadRootMessagesParams(t *testing.T) {
-	got := buildChatMessageListParams("desc", "20", "oc_123")
+	got := buildChatMessageListParams("desc", 20, "oc_123")
 	if vals := got["only_thread_root_messages"]; !reflect.DeepEqual(vals, []string{"true"}) {
 		t.Fatalf("only_thread_root_messages = %#v, want true", vals)
 	}
@@ -341,7 +341,7 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 			"exclude-sender-type":     "bot",
 			"start":                   "2026-03-01T00:00:00+08:00",
 			"end":                     "2026-03-02T23:59:59+08:00",
-			"page-size":               "80",
+			"page-size":               "50",
 			"page-token":              "next-token",
 		}, map[string]bool{
 			"at-all": true,

@@ -17,10 +17,16 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
+const (
+	chatMessagesListDefaultPageSize  = 50
+	chatMessagesListDefaultPageLimit = 10
+	chatMessagesListMaxPageLimit     = 1000
+)
+
 var ImChatMessageList = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-messages-list",
-	Description: "List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range/sort/pagination",
+	Description: "List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range, --order asc|desc sorting, auto-pagination",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
 	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
@@ -31,11 +37,17 @@ var ImChatMessageList = common.Shortcut{
 		{Name: "chat-id", Desc: "(required, mutually exclusive with --user-id) chat ID (oc_xxx)"},
 		{Name: "user-id", Desc: "(required, mutually exclusive with --chat-id; user identity only) user open_id (ou_xxx)"},
 		{Name: "start", Desc: "start time (ISO 8601)"},
+		{Name: "start-time", Hidden: true, Desc: "alias of --start (hidden)"},
 		{Name: "end", Desc: "end time (ISO 8601)"},
+		{Name: "end-time", Hidden: true, Desc: "alias of --end (hidden)"},
 		{Name: "order", Default: "desc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
-		{Name: "sort", Hidden: true, Desc: "alias of --order (hidden)", Enum: []string{"asc", "desc"}},
-		{Name: "page-size", Default: "50", Desc: "page size (1-50)"},
+		{Name: "sort", Hidden: true, Desc: "alias of --order (hidden)"},
+		{Name: "sort-order", Hidden: true, Desc: "alias of --order (hidden)"},
+		{Name: "page-size", Default: "50", Desc: imPageSizeDescription("+chat-messages-list")},
+		{Name: "limit", Hidden: true, Desc: "alias of --page-size (hidden)"},
 		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "page-all", Type: "bool", Desc: "automatically paginate, capped by --page-limit"},
+		{Name: "page-limit", Type: "int", Default: "10", Desc: "max pages with --page-all (default 10; configurable range 1-1000)"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	},
@@ -47,6 +59,9 @@ var ImChatMessageList = common.Shortcut{
 		}
 		if runtime.Str("user-id") != "" {
 			d.Desc("(--user-id provided) Will resolve P2P chat_id via POST /open-apis/im/v1/chat_p2p/batch_query at execution time")
+		}
+		if chatMessagesListShouldAutoPaginate(runtime) {
+			d.Desc("Auto-paginates through all pages (capped by --page-limit when > 0)")
 		}
 		params, err := buildChatMessageListRequest(runtime, chatId)
 		if err != nil {
@@ -97,6 +112,15 @@ var ImChatMessageList = common.Shortcut{
 				return err
 			}
 		}
+		if n := runtime.Int("page-limit"); n < 1 || n > chatMessagesListMaxPageLimit {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")
+		}
+		if err := validateAliasEnum(runtime, "sort", "order", "asc", "desc"); err != nil {
+			return err
+		}
+		if err := validateAliasEnum(runtime, "sort-order", "order", "asc", "desc"); err != nil {
+			return err
+		}
 
 		chatId := runtime.Str("chat-id")
 		if chatId == "" {
@@ -106,6 +130,9 @@ var ImChatMessageList = common.Shortcut{
 		return err
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if _, err := validateIMPageSize(runtime, "+chat-messages-list", chatMessagesListDefaultPageSize); err != nil {
+			return err
+		}
 		chatId, err := resolveChatIDForMessagesList(runtime, false)
 		if err != nil {
 			return err
@@ -115,7 +142,12 @@ var ImChatMessageList = common.Shortcut{
 			return err
 		}
 
-		data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
+		var data map[string]interface{}
+		if chatMessagesListShouldAutoPaginate(runtime) {
+			data, err = fetchChatMessagesListAllPages(runtime, params)
+		} else {
+			data, err = runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
+		}
 		if err != nil {
 			return err
 		}
@@ -188,16 +220,70 @@ var ImChatMessageList = common.Shortcut{
 	},
 }
 
+func chatMessagesListShouldAutoPaginate(runtime *common.RuntimeContext) bool {
+	return runtime.Bool("page-all") && !runtime.Cmd.Flags().Changed("page-token")
+}
+
+func fetchChatMessagesListAllPages(runtime *common.RuntimeContext, params larkcore.QueryParams) (map[string]interface{}, error) {
+	maxPages := runtime.Int("page-limit")
+	if maxPages < 1 {
+		maxPages = chatMessagesListDefaultPageLimit
+	}
+	if maxPages > chatMessagesListMaxPageLimit {
+		maxPages = chatMessagesListMaxPageLimit
+	}
+
+	allItems := make([]interface{}, 0)
+	var lastData map[string]interface{}
+	var lastHasMore bool
+	var lastPageToken string
+	prevPageToken := "__START__"
+	delete(params, "page_token")
+
+	for page := 0; page < maxPages; page++ {
+		if page > 0 {
+			params["page_token"] = []string{lastPageToken}
+		}
+		data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
+		if err != nil {
+			return nil, err
+		}
+		lastData = data
+		if items, ok := data["items"].([]interface{}); ok {
+			allItems = append(allItems, items...)
+		}
+		lastHasMore, lastPageToken = common.PaginationMeta(data)
+		fmt.Fprintf(runtime.IO().ErrOut, "page %d: %d messages\n", page+1, len(allItems))
+
+		if !lastHasMore || lastPageToken == "" {
+			break
+		}
+		if lastPageToken == prevPageToken {
+			fmt.Fprintln(runtime.IO().ErrOut, "warning: page_token did not change, stopping pagination to avoid infinite loop")
+			break
+		}
+		if page+1 >= maxPages {
+			fmt.Fprintf(runtime.IO().ErrOut, "[pagination] reached page limit (%d) while has_more=true; result is incomplete. Increase --page-limit up to 1000 or resume with the page_token returned in stdout.\n", maxPages)
+			break
+		}
+		prevPageToken = lastPageToken
+	}
+
+	if lastData == nil {
+		lastData = map[string]interface{}{}
+	}
+	lastData["items"] = allItems
+	lastData["has_more"] = lastHasMore
+	lastData["page_token"] = lastPageToken
+	return lastData, nil
+}
+
 // buildChatMessageListParams builds the shared API params for DryRun and Execute.
 // and params map construction that existed verbatim in both DryRun and Execute.
-func buildChatMessageListParams(sortFlag, pageSizeStr, chatId string) larkcore.QueryParams {
+func buildChatMessageListParams(sortFlag string, pageSize int, chatId string) larkcore.QueryParams {
 	sortType := "ByCreateTimeDesc"
 	if sortFlag == "asc" {
 		sortType = "ByCreateTimeAsc"
-	}
-	pageSize := 50
-	if n, err := strconv.Atoi(pageSizeStr); err == nil {
-		pageSize = min(max(n, 1), 50)
 	}
 	return larkcore.QueryParams{
 		"container_id_type":         []string{"chat"},
@@ -217,19 +303,42 @@ func buildChatMessageListRequest(runtime *common.RuntimeContext, chatId string) 
 	if old, ok := aliasFlagValue(runtime, "sort", "order"); ok {
 		dir = old // old value is asc/desc -> must go through the same map, never pass through
 	}
-	params := buildChatMessageListParams(dir, runtime.Str("page-size"), chatId)
+	if old, ok := aliasFlagValue(runtime, "sort-order", "order"); ok {
+		dir = old
+	}
+	pageSizeFlag := "page-size"
+	if _, ok := aliasFlagValue(runtime, "limit", "page-size"); ok {
+		pageSizeFlag = "limit"
+	}
+	pageSize, err := validateIMPageSizeFlag(runtime, "+chat-messages-list", pageSizeFlag, chatMessagesListDefaultPageSize)
+	if err != nil {
+		return nil, err
+	}
+	params := buildChatMessageListParams(dir, pageSize, chatId)
 
-	if startFlag := runtime.Str("start"); startFlag != "" {
+	startFlag := runtime.Str("start")
+	startParam := "--start"
+	if old, ok := aliasFlagValue(runtime, "start-time", "start"); ok {
+		startFlag = old
+		startParam = "--start-time" // attribute errors to the flag the caller actually typed
+	}
+	if startFlag != "" {
 		startTime, err := common.ParseTime(startFlag)
 		if err != nil {
-			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: %v", startParam, err).WithParam(startParam)
 		}
 		params["start_time"] = []string{startTime}
 	}
-	if endFlag := runtime.Str("end"); endFlag != "" {
+	endFlag := runtime.Str("end")
+	endParam := "--end"
+	if old, ok := aliasFlagValue(runtime, "end-time", "end"); ok {
+		endFlag = old
+		endParam = "--end-time"
+	}
+	if endFlag != "" {
 		endTime, err := common.ParseTime(endFlag, "end")
 		if err != nil {
-			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: %v", endParam, err).WithParam(endParam)
 		}
 		params["end_time"] = []string{endTime}
 	}

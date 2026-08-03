@@ -25,7 +25,7 @@ var ImFlagList = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "page-size", Type: "int", Default: "50", Desc: "page size (1-50)"},
+		{Name: "page-size", Type: "int", Default: "50", Desc: imPageSizeDescription("+flag-list")},
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate, capped by --page-limit"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages with --page-all (default 20; configurable range 1-1000)"},
@@ -71,8 +71,8 @@ var ImFlagList = common.Shortcut{
 }
 
 func validateListOptions(rt *common.RuntimeContext) error {
-	if n := rt.Int("page-size"); n < 1 || n > 50 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
+	if _, err := validateIMPageSize(rt, "+flag-list", 50); err != nil {
+		return err
 	}
 	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")

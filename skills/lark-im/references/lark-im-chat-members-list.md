@@ -2,7 +2,7 @@
 
 > **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
-List the members of a chat. Users and bots are returned in **separate buckets** — `users[]` and `bots[]` — with per-bucket totals (`user_total` / `bot_total`). Use `--member-types` to return only one kind.
+List the members of a chat. Users and bots are returned in **separate buckets** — `users[]` and `bots[]` — with per-bucket totals (`user_total` / `bot_total`). Use `--member-types` to return only one kind. `all` explicitly selects the default unfiltered behavior; plural `users` and `bots` are accepted as `user` and `bot`.
 
 This skill maps to the shortcut: `lark-cli im +chat-members-list` (internally calls `GET /open-apis/im/v1/chats/{chat_id}/members/list`).
 
@@ -15,6 +15,9 @@ lark-cli im +chat-members-list --chat-id oc_xxx
 # Only users, or only bots
 lark-cli im +chat-members-list --chat-id oc_xxx --member-types user
 lark-cli im +chat-members-list --chat-id oc_xxx --member-types user,bot
+
+# Explicitly request all member types (same request as omitting --member-types)
+lark-cli im +chat-members-list --chat-id oc_xxx --member-types all
 
 # Walk every page (capped by --page-limit; 0 = unlimited)
 lark-cli im +chat-members-list --chat-id oc_xxx --page-all --page-limit 0
@@ -32,7 +35,7 @@ lark-cli im +chat-members-list --chat-id oc_xxx --dry-run
 | Parameter | Required | Limits | Description |
 |------|------|------|------|
 | `--chat-id <id>` | Yes | `oc_xxx` | Target chat |
-| `--member-types <strings>` | No | `user`, `bot` (comma-separated or repeated) | Member types to return. Omitted = all |
+| `--member-types <strings>` | No | `user`, `bot`, `all` (comma-separated or repeated) | Member types to return. Omitted or `all` = no filter. `users` and `bots` are accepted as plural spellings. If `all` appears with another value, no filter is applied |
 | `--member-id-type <type>` | No | `open_id` (default), `union_id`, `user_id` | ID type for `member_id` in the response |
 | `--page-size <n>` | No | 1-100, default 20 | Results per page. With `--page-all` and no explicit `--page-size`, the max (100) is used automatically to minimize round-trips |
 | `--page-token <token>` | No | - | Pagination cursor; **implies a single-page fetch** (disables auto-pagination) |
@@ -78,6 +81,6 @@ A truncated result is *not* fixable by paging further — it is a server-side ca
 | Symptom | Root Cause |   | Solution |
 |---------|---------|---|---------|
 | `--chat-id is required` | `--chat-id` omitted |   | Provide the `oc_xxx` chat ID |
-| `--page-size must be an integer between 1 and 100` | out of range |   | Use 1-100 |
-| `--member-types contains invalid value` | value other than `user`/`bot` |   | Use `user`, `bot`, or both |
+| `invalid --page-size 101: must be between 1 and 100` | out of range |   | Use 1-100 |
+| `--member-types contains invalid value` | value other than `user`, `bot`, `all`, `users`, or `bots` |   | Use a supported singular, plural, or `all` |
 | Permission denied | missing `im:chat.members:read` |   | Bot: enable the scope in the console. User: `lark-cli auth login --scope "im:chat.members:read"` |

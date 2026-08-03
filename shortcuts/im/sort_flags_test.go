@@ -4,8 +4,11 @@
 package im
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -26,7 +29,13 @@ func newAliasTestRT(t *testing.T, newName, newDefault, oldName string, set map[s
 			t.Fatalf("Set(%q) error = %v", k, err)
 		}
 	}
-	return &common.RuntimeContext{Cmd: cmd}
+	return &common.RuntimeContext{
+		Cmd: cmd,
+		Factory: &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{
+			Out:    &bytes.Buffer{},
+			ErrOut: &bytes.Buffer{},
+		}},
+	}
 }
 
 func TestAliasFlagValue(t *testing.T) {
@@ -49,5 +58,49 @@ func TestAliasFlagValue(t *testing.T) {
 				t.Fatalf("aliasFlagValue() = (%q, %v), want (%q, %v)", gotVal, gotOK, c.wantVal, c.wantOK)
 			}
 		})
+	}
+}
+
+func TestAliasFlagValueWritesOneNoteToStderr(t *testing.T) {
+	rt := newAliasTestRT(t, "start", "", "start-time", map[string]string{
+		"start-time": "2026-07-27 00:00:00 +08:00",
+	})
+
+	for range 2 {
+		if _, ok := aliasFlagValue(rt, "start-time", "start"); !ok {
+			t.Fatal("aliasFlagValue() did not select --start-time")
+		}
+	}
+
+	stderr := rt.IO().ErrOut.(*bytes.Buffer).String()
+	if got := strings.Count(stderr, "note: --start-time is an alias for --start\n"); got != 1 {
+		t.Fatalf("alias note count = %d, want 1; stderr=%q", got, stderr)
+	}
+	if stdout := rt.IO().Out.(*bytes.Buffer).String(); stdout != "" {
+		t.Fatalf("alias note leaked to stdout: %q", stdout)
+	}
+}
+
+func TestAliasIntFlagValue(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().Int("limit", 0, "")
+	if err := cmd.Flags().Set("limit", "50"); err != nil {
+		t.Fatal(err)
+	}
+	rt := &common.RuntimeContext{
+		Cmd: cmd,
+		Factory: &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{
+			Out:    &bytes.Buffer{},
+			ErrOut: &bytes.Buffer{},
+		}},
+	}
+
+	got, ok := aliasIntFlagValue(rt, "limit", "page-size")
+	if !ok || got != 50 {
+		t.Fatalf("aliasIntFlagValue() = (%d, %v), want (50, true)", got, ok)
+	}
+	if stderr := rt.IO().ErrOut.(*bytes.Buffer).String(); stderr != "note: --limit is an alias for --page-size\n" {
+		t.Fatalf("stderr = %q", stderr)
 	}
 }

@@ -68,7 +68,7 @@ lark-cli im +messages-search --query "test" --dry-run
 
 | Parameter | Required | Description |
 |------|------|------|
-| `--query <text>` | No | Search keyword (may be empty when used with other filters) |
+| `--query <text>` | No | Search keyword (may be empty when used with other filters). `--keyword` is an alias for `--query`; prefer the canonical flag |
 | `--chat-id <id>` | No | Restrict to chat IDs, comma-separated (`oc_xxx,oc_yyy`) |
 | `--sender <ids>` | No | Sender open_ids, comma-separated (`ou_xxx`) |
 | `--include-attachment-type <type>` | No | Attachment filter: `file` / `image` / `video` / `link` |
@@ -79,7 +79,7 @@ lark-cli im +messages-search --query "test" --dry-run
 | `--at-chatter-ids <ids>` | No | Filter by @mentioned user open_ids, comma-separated (`ou_xxx,ou_yyy`). Matched results also include messages that `@all` |
 | `--start <time>` | No | Start time with local timezone offset required (e.g. `2026-03-24T00:00:00+08:00`) |
 | `--end <time>` | No | End time with local timezone offset required (e.g. `2026-03-25T23:59:59+08:00`) |
-| `--page-size <n>` | No | Page size (default 20, range 1-50) |
+| `--page-size <n>` | No | Page size (default 20, range 1-50). `--limit` is an alias for `--page-size`; prefer the canonical flag |
 | `--page-token <token>` | No | Pagination token for the next page |
 | `--page-all` | No | Automatically paginate through all result pages (up to 40 pages) |
 | `--page-limit <n>` | No | Max pages to fetch when auto-pagination is enabled (default 20, max 40). Setting it explicitly also enables auto-pagination |

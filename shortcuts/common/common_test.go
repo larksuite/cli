@@ -33,6 +33,16 @@ func TestParseTimeUnix(t *testing.T) {
 	}
 }
 
+func TestParseTimeWithSpaceSeparatedTimezone(t *testing.T) {
+	got, err := ParseTime("2026-07-27 00:00:00 +08:00")
+	if err != nil {
+		t.Fatalf("ParseTime(space-separated timezone) error: %v", err)
+	}
+	if got != "1785081600" {
+		t.Fatalf("ParseTime(space-separated timezone) = %q, want 1785081600", got)
+	}
+}
+
 func TestParseTimeRejectsRelative(t *testing.T) {
 	for _, input := range []string{"today", "tomorrow", "yesterday", "now", "this_week", "+3d", "-1w", "+2h", "-30m", "last_7_days"} {
 		t.Run(input, func(t *testing.T) {
