@@ -93,7 +93,10 @@ func TestSchemaInstanceValidator_BitesOnTamperedOutput(t *testing.T) {
 		t.Errorf("an undeclared field must produce exactly one finding, got: %v", problems)
 	}
 
-	flipped, _ := decodeInstance(t, key, frozen).(map[string]any)
+	flipped, ok := decodeInstance(t, key, frozen).(map[string]any)
+	if !ok {
+		t.Fatalf("baseline output for %s is not a JSON object", key)
+	}
 	flipped["message_id"] = true // declared as a string
 	if problems := validateValue("$", schema, flipped); len(problems) != 1 {
 		t.Errorf("a primitive type flip must produce exactly one finding, got: %v", problems)

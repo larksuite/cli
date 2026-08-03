@@ -34,7 +34,10 @@ func compiledFixture(t *testing.T) *Snapshot {
 // every other caller.
 func TestSnapshot_IsImmutableFromOutside(t *testing.T) {
 	snap := compiledFixture(t)
-	entry, _ := snap.Resolve("demo.thing.updated_v1")
+	entry, ok := snap.Resolve(validDef().Key)
+	if !ok {
+		t.Fatal("the compiled fixture does not contain its own key")
+	}
 
 	d := entry.Descriptor()
 	d.Params[0].Name = "tampered"
@@ -61,6 +64,9 @@ func TestSnapshot_IsImmutableFromOutside(t *testing.T) {
 	def := entry.Definition()
 	def.Params[0].Name = "tampered"
 	def.Scopes[0] = "tampered"
+	if def.Schema.Custom == nil || len(def.Schema.Custom.Raw) == 0 {
+		t.Fatal("the fixture no longer declares raw custom schema bytes; this check needs them")
+	}
 	def.Schema.Custom.Raw[0] = '!'
 	if fresh := entry.Definition(); fresh.Params[0].Name == "tampered" ||
 		fresh.Scopes[0] == "tampered" ||

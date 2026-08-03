@@ -50,6 +50,9 @@ func TestEventFrame_CarriesCanonicalFactsVerbatim(t *testing.T) {
 		frame.TenantKey != ev.TenantKey || frame.Seq != 7 {
 		t.Errorf("canonical facts drifted across the wire: %+v", frame)
 	}
+	if !bytes.Equal(frame.Payload, ev.Payload) {
+		t.Errorf("payload drifted across the wire: got %s, want %s", frame.Payload, ev.Payload)
+	}
 	// observed_at is a fixed RFC3339Nano string contract, not an incidental
 	// time.Time marshal shape.
 	parsed, err := time.Parse(time.RFC3339Nano, frame.ObservedAt)
