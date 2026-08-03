@@ -7,7 +7,6 @@ package vc
 import (
 	"reflect"
 
-	"github.com/larksuite/cli/events/internal/subscribeprep"
 	"github.com/larksuite/cli/internal/event"
 )
 
@@ -42,7 +41,7 @@ func Keys() []event.KeyDefinition {
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCParticipantMeetingStartedOutput{})},
 			},
 			Process:    processVCParticipantMeetingStarted,
-			PreConsume: subscribeprep.Hook(eventTypeMeetingStarted, pathMeetingSubscribe, pathMeetingUnsubscribe),
+			PreConsume: subscriptionPreConsume(eventTypeMeetingStarted, pathMeetingSubscribe, pathMeetingUnsubscribe),
 			Scopes:     []string{"vc:meeting.meetingevent:read"},
 			AuthTypes: []string{
 				"user",
@@ -58,7 +57,7 @@ func Keys() []event.KeyDefinition {
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCParticipantMeetingJoinedOutput{})},
 			},
 			Process:    processVCParticipantMeetingJoined,
-			PreConsume: subscribeprep.Hook(eventTypeMeetingJoined, pathMeetingSubscribe, pathMeetingUnsubscribe),
+			PreConsume: subscriptionPreConsume(eventTypeMeetingJoined, pathMeetingSubscribe, pathMeetingUnsubscribe),
 			Scopes:     []string{"vc:meeting.meetingevent:read"},
 			AuthTypes: []string{
 				"user",
@@ -74,7 +73,7 @@ func Keys() []event.KeyDefinition {
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCParticipantMeetingEndedOutput{})},
 			},
 			Process:    processVCParticipantMeetingEnded,
-			PreConsume: subscribeprep.Hook(eventTypeMeetingEnded, pathMeetingSubscribe, pathMeetingUnsubscribe),
+			PreConsume: subscriptionPreConsume(eventTypeMeetingEnded, pathMeetingSubscribe, pathMeetingUnsubscribe),
 			Scopes:     []string{"vc:meeting.meetingevent:read"},
 			AuthTypes: []string{
 				"user",
@@ -90,7 +89,7 @@ func Keys() []event.KeyDefinition {
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCNoteGeneratedOutput{})},
 			},
 			Process:    processVCNoteGenerated,
-			PreConsume: subscribeprep.Hook(eventTypeNoteGenerated, pathNoteSubscribe, pathNoteUnsubscribe),
+			PreConsume: subscriptionPreConsume(eventTypeNoteGenerated, pathNoteSubscribe, pathNoteUnsubscribe),
 			Scopes:     []string{"vc:note:read"},
 			AuthTypes: []string{
 				"user",
@@ -106,7 +105,7 @@ func Keys() []event.KeyDefinition {
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCRecordingStartedOutput{})},
 			},
 			Process:    processVCRecordingStarted,
-			PreConsume: subscribeprep.Hook(eventTypeRecordingStarted, pathRecordingSubscribe, pathRecordingUnsubscribe),
+			PreConsume: subscriptionPreConsume(eventTypeRecordingStarted, pathRecordingSubscribe, pathRecordingUnsubscribe),
 			Scopes:     []string{"vc:recording:read"},
 			AuthTypes: []string{
 				"user",
@@ -122,7 +121,7 @@ func Keys() []event.KeyDefinition {
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCRecordingTranscriptGeneratedOutput{})},
 			},
 			Process:    processVCRecordingTranscriptGenerated,
-			PreConsume: subscribeprep.Hook(eventTypeRecordingTranscriptGenerated, pathRecordingSubscribe, pathRecordingUnsubscribe),
+			PreConsume: subscriptionPreConsume(eventTypeRecordingTranscriptGenerated, pathRecordingSubscribe, pathRecordingUnsubscribe),
 			Scopes:     []string{"vc:recording:read"},
 			AuthTypes: []string{
 				"user",
@@ -138,7 +137,7 @@ func Keys() []event.KeyDefinition {
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCRecordingEndedOutput{})},
 			},
 			Process:    processVCRecordingEnded,
-			PreConsume: subscribeprep.Hook(eventTypeRecordingEnded, pathRecordingSubscribe, pathRecordingUnsubscribe),
+			PreConsume: subscriptionPreConsume(eventTypeRecordingEnded, pathRecordingSubscribe, pathRecordingUnsubscribe),
 			Scopes:     []string{"vc:recording:read"},
 			AuthTypes: []string{
 				"user",
