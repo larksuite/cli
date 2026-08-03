@@ -9,6 +9,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/errs"
 )
 
 type call struct {
@@ -26,13 +28,41 @@ type stubAPIClient struct {
 	failOn string
 }
 
+// apiFailure stands in for what the real client hands back: it classifies
+// every failure into a typed problem before returning, so this package always
+// receives one and must pass it along intact.
+var apiFailure = errs.NewNetworkError(errs.SubtypeNetworkServer,
+	"api POST /open-apis/demo/v1: upstream unavailable").WithRetryable()
+
 func (s *stubAPIClient) CallAPI(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
 	dl, ok := ctx.Deadline()
 	s.calls = append(s.calls, call{method: method, path: path, body: body, deadline: dl, hasDL: ok})
 	if s.failOn != "" && path == s.failOn {
-		return nil, errors.New("boom")
+		return nil, apiFailure
 	}
 	return json.RawMessage(`{"code":0,"msg":"success","data":{}}`), nil
+}
+
+// assertAPIFailurePassedThrough checks the caller still sees the client's own
+// typed error. Rewrapping it here would strip the category, subtype and
+// retryable flag the client established, and the consume command renders those
+// straight into its error envelope.
+func assertAPIFailurePassedThrough(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, apiFailure) {
+		t.Fatalf("the client error did not survive: got %v", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("the returned error carries no typed problem")
+	}
+	if problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkServer {
+		t.Errorf("problem = %s/%s, want %s/%s",
+			problem.Category, problem.Subtype, errs.CategoryNetwork, errs.SubtypeNetworkServer)
+	}
+	if !problem.Retryable {
+		t.Error("retryable was lost; callers use it to decide whether retrying can help")
+	}
 }
 
 const (
@@ -118,9 +148,7 @@ func TestHook_FailedSubscribeYieldsNoCleanup(t *testing.T) {
 	rt := &stubAPIClient{failOn: testSubPath}
 
 	cleanup, err := Hook(testEventType, testSubPath, testUnsubPath)(context.Background(), rt, nil)
-	if err == nil {
-		t.Fatal("expected the subscribe failure to surface")
-	}
+	assertAPIFailurePassedThrough(t, err)
 	if cleanup != nil {
 		t.Error("no cleanup may be returned when the subscription was never created")
 	}
@@ -139,20 +167,23 @@ func TestHook_FailedUnsubscribeSurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hook: %v", err)
 	}
-	if err := cleanup(); err == nil {
-		t.Error("expected the unsubscribe failure to surface")
-	}
+	assertAPIFailurePassedThrough(t, cleanup())
 }
 
 // The hook is the guard for a missing runtime client; it must fail before
 // dereferencing it rather than panicking inside the shared core.
 func TestHook_RejectsMissingAPIClient(t *testing.T) {
 	cleanup, err := Hook(testEventType, testSubPath, testUnsubPath)(context.Background(), nil, nil)
-	if err == nil {
-		t.Fatal("expected an error when no API client is available")
-	}
 	if cleanup != nil {
 		t.Error("no cleanup may be returned when the subscription was never attempted")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("missing API client must produce a typed error, got %v", err)
+	}
+	if problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Errorf("problem = %s/%s, want %s/%s",
+			problem.Category, problem.Subtype, errs.CategoryInternal, errs.SubtypeUnknown)
 	}
 }
 
