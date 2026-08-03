@@ -10,6 +10,7 @@ import (
 	"errors"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,30 @@ func driveMethod(httpMethod string, params map[string]interface{}) meta.Method {
 		}
 	}
 	return meta.FromMap(m)
+}
+
+func mailSpec() meta.Service {
+	return meta.ServiceFromMap(map[string]interface{}{
+		"name":        "mail",
+		"servicePath": "/open-apis/mail/v1",
+	})
+}
+
+func mailRulesReorderMethod() meta.Method {
+	return meta.FromMap(map[string]interface{}{
+		"path":       "user_mailboxes/{user_mailbox_id}/rules/reorder",
+		"httpMethod": "POST",
+		"parameters": map[string]interface{}{
+			"user_mailbox_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
+		},
+		"requestBody": map[string]interface{}{
+			"rule_ids": map[string]interface{}{"type": "array", "required": true},
+		},
+	})
+}
+
+func newMailRulesReorderCommand(f *cmdutil.Factory) *cobra.Command {
+	return NewCmdServiceMethod(f, mailSpec(), mailRulesReorderMethod(), "reorder", "user_mailbox.rules", nil)
 }
 
 // ── registerService ──
@@ -198,6 +223,282 @@ func TestNewCmdServiceMethod_RunFCallback(t *testing.T) {
 	}
 	if captured.SchemaPath != "drive.files.list" {
 		t.Errorf("expected SchemaPath=drive.files.list, got %s", captured.SchemaPath)
+	}
+}
+
+func TestMailRulesReorderCompletesPartialRuleIDs(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"rule_id": "rule_1"},
+					map[string]interface{}{"rule_id": "rule_2"},
+					map[string]interface{}{"rule_id": "rule_3"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reorderCalled := false
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+		BodyFilter: func(body []byte) bool {
+			var data map[string]interface{}
+			if err := json.Unmarshal(body, &data); err != nil {
+				return false
+			}
+			ids, ok := data["rule_ids"].([]interface{})
+			if !ok || len(ids) != 3 {
+				return false
+			}
+			return ids[0] == "rule_3" && ids[1] == "rule_1" && ids[2] == "rule_2"
+		},
+		OnMatch: func(req *http.Request) { reorderCalled = true },
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"ok": true},
+		},
+	})
+
+	cmd := newMailRulesReorderCommand(f)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["rule_3"]}`,
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reorderCalled {
+		t.Fatal("expected reorder API to be called")
+	}
+	if !strings.Contains(stdout.String(), `"ok": true`) {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestMailRulesReorderKeepsCompleteRuleIDsOrder(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"rule_id": "rule_1"},
+					map[string]interface{}{"rule_id": "rule_2"},
+					map[string]interface{}{"rule_id": "rule_3"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+		BodyFilter: func(body []byte) bool {
+			var data map[string]interface{}
+			if err := json.Unmarshal(body, &data); err != nil {
+				return false
+			}
+			ids := data["rule_ids"].([]interface{})
+			return ids[0] == "rule_2" && ids[1] == "rule_1" && ids[2] == "rule_3"
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"ok": true},
+		},
+	})
+
+	cmd := newMailRulesReorderCommand(f)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["rule_2","rule_1","rule_3"]}`,
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMailRulesReorderReadsAllRulePages(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+	var pageTokens []string
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		BodyFilter: func(_ []byte) bool {
+			return len(pageTokens) == 0
+		},
+		OnMatch: func(req *http.Request) {
+			pageTokens = append(pageTokens, req.URL.Query().Get("page_token"))
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"rule_id": "rule_1"},
+				},
+				"has_more":   true,
+				"page_token": "next_1",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		BodyFilter: func(_ []byte) bool {
+			return len(pageTokens) == 1
+		},
+		OnMatch: func(req *http.Request) {
+			pageTokens = append(pageTokens, req.URL.Query().Get("page_token"))
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"rule_id": "rule_2"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+		BodyFilter: func(body []byte) bool {
+			var data map[string]interface{}
+			if err := json.Unmarshal(body, &data); err != nil {
+				return false
+			}
+			ids := data["rule_ids"].([]interface{})
+			return len(ids) == 2 && ids[0] == "rule_2" && ids[1] == "rule_1"
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"ok": true},
+		},
+	})
+
+	cmd := newMailRulesReorderCommand(f)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["rule_2"]}`,
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pageTokens) < 2 || pageTokens[0] != "" || pageTokens[1] != "next_1" {
+		t.Fatalf("page tokens = %v, want ['', 'next_1']", pageTokens)
+	}
+}
+
+func TestMailRulesReorderRejectsInvalidInputBeforeReorder(t *testing.T) {
+	tests := []struct {
+		name      string
+		data      string
+		listItems []interface{}
+		want      string
+	}{
+		{
+			name:      "duplicate IDs",
+			data:      `{"rule_ids":["rule_1","rule_1"]}`,
+			listItems: []interface{}{map[string]interface{}{"rule_id": "rule_1"}},
+			want:      "duplicate rule_ids: rule_1",
+		},
+		{
+			name:      "unknown ID",
+			data:      `{"rule_ids":["missing"]}`,
+			listItems: []interface{}{map[string]interface{}{"rule_id": "rule_1"}},
+			want:      "unknown rule_ids: missing",
+		},
+		{
+			name:      "empty list with empty input",
+			data:      `{"rule_ids":[]}`,
+			listItems: nil,
+			want:      "no mail rules to reorder",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+			if tt.name != "duplicate IDs" {
+				reg.Register(&httpmock.Stub{
+					Method: "GET",
+					URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+					Body: map[string]interface{}{
+						"code": 0,
+						"msg":  "ok",
+						"data": map[string]interface{}{
+							"items":    tt.listItems,
+							"has_more": false,
+						},
+					},
+				})
+			}
+
+			cmd := newMailRulesReorderCommand(f)
+			cmd.SetArgs([]string{
+				"--as", "bot",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", tt.data,
+			})
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			prob, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if prob.Category != errs.CategoryValidation {
+				t.Fatalf("category = %q, want %q", prob.Category, errs.CategoryValidation)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestMailRulesReorderListFailureDoesNotCallReorder(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 999,
+			"msg":  "list failed",
+		},
+	})
+
+	cmd := newMailRulesReorderCommand(f)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["rule_1"]}`,
+	})
+
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected list error")
 	}
 }
 

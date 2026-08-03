@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -435,6 +436,12 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
 
+	if opts.SchemaPath == "mail.user_mailbox.rules.reorder" {
+		if err := completeMailRulesReorderRequest(opts.Ctx, ac, opts, &request); err != nil {
+			return err
+		}
+	}
+
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
 		return err
@@ -669,6 +676,206 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 
 func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
 	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
+}
+
+func completeMailRulesReorderRequest(ctx context.Context, ac *client.APIClient, opts *ServiceMethodOptions, request *client.RawApiRequest) error {
+	if request == nil {
+		return errs.NewInternalError(errs.SubtypeUnknown, "mail rules reorder request is not initialized")
+	}
+	userMailboxID, ok := mailRulesReorderMailboxID(opts, request)
+	if !ok {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "missing required path parameter: user_mailbox_id").
+			WithHint("%s", missingParamHint(opts, meta.Field{Name: "user_mailbox_id"})).
+			WithParam("user_mailbox_id")
+	}
+
+	body, ok := request.Data.(map[string]interface{})
+	if !ok {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be a JSON object for mail rules reorder").WithParam("--data")
+	}
+	inputIDs, err := stringSliceField(body, "rule_ids")
+	if err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "rule_ids must be an array of non-empty strings").WithParam("rule_ids").WithCause(err)
+	}
+	if duplicates := duplicateStrings(inputIDs); len(duplicates) > 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "duplicate rule_ids: %s", strings.Join(duplicates, ", ")).WithParam("rule_ids")
+	}
+
+	currentIDs, err := fetchAllMailRuleIDs(ctx, ac, *request, userMailboxID)
+	if err != nil {
+		return err
+	}
+	completedIDs, err := completeMailRuleIDs(inputIDs, currentIDs)
+	if err != nil {
+		return err
+	}
+	body["rule_ids"] = completedIDs
+	request.Data = body
+	return nil
+}
+
+func mailRulesReorderMailboxID(opts *ServiceMethodOptions, request *client.RawApiRequest) (string, bool) {
+	for _, p := range opts.Method.Params() {
+		if p.Name != "user_mailbox_id" || p.Location != "path" {
+			continue
+		}
+		marker := "{" + p.Name + "}"
+		prefix, suffix, ok := strings.Cut(opts.Method.Path, marker)
+		if !ok {
+			break
+		}
+		urlPrefix := strings.TrimRight(opts.ServicePath, "/") + "/" + prefix
+		if !strings.HasPrefix(request.URL, urlPrefix) || !strings.HasSuffix(request.URL, suffix) {
+			break
+		}
+		val := strings.TrimSuffix(strings.TrimPrefix(request.URL, urlPrefix), suffix)
+		if val == "" {
+			break
+		}
+		if decoded, err := url.PathUnescape(val); err == nil {
+			return decoded, true
+		}
+		return val, true
+	}
+	if v, ok := request.Params["user_mailbox_id"].(string); ok && v != "" {
+		return v, true
+	}
+	return "", false
+}
+
+func fetchAllMailRuleIDs(ctx context.Context, ac *client.APIClient, base client.RawApiRequest, userMailboxID string) ([]string, error) {
+	listPath := fmt.Sprintf("/open-apis/mail/v1/user_mailboxes/%s/rules", validate.EncodePathSegment(userMailboxID))
+	result, err := ac.PaginateAll(ctx, client.RawApiRequest{
+		Method: "GET",
+		URL:    listPath,
+		Params: map[string]interface{}{"page_size": 100},
+		As:     base.As,
+	}, client.PaginationOptions{PageLimit: 0, PageDelay: -1, Identity: base.As})
+	if err != nil {
+		return nil, err
+	}
+	if apiErr := ac.CheckResponse(result, base.As); apiErr != nil {
+		return nil, apiErr
+	}
+	return extractMailRuleIDs(result), nil
+}
+
+func extractMailRuleIDs(result interface{}) []string {
+	data, ok := dataMap(result)
+	if !ok {
+		return nil
+	}
+	for _, key := range []string{"items", "rules", "rule_list"} {
+		items, ok := data[key].([]interface{})
+		if !ok {
+			continue
+		}
+		ids := make([]string, 0, len(items))
+		for _, item := range items {
+			obj, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if id := firstString(obj, "rule_id", "id"); id != "" {
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	}
+	return nil
+}
+
+func dataMap(result interface{}) (map[string]interface{}, bool) {
+	top, ok := result.(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+	data, ok := top["data"].(map[string]interface{})
+	return data, ok
+}
+
+func firstString(values map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if v, ok := values[key].(string); ok {
+			if trimmed := strings.TrimSpace(v); trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+	return ""
+}
+
+func stringSliceField(values map[string]interface{}, key string) ([]string, error) {
+	raw, ok := values[key]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("%s is %T", key, raw)
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		s, ok := item.(string)
+		if !ok || strings.TrimSpace(s) == "" {
+			return nil, fmt.Errorf("%s contains %T", key, item)
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+func duplicateStrings(items []string) []string {
+	seen := map[string]bool{}
+	dups := map[string]bool{}
+	for _, item := range items {
+		if seen[item] {
+			dups[item] = true
+			continue
+		}
+		seen[item] = true
+	}
+	out := make([]string, 0, len(dups))
+	for item := range dups {
+		out = append(out, item)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func completeMailRuleIDs(inputIDs, currentIDs []string) ([]string, error) {
+	current := make(map[string]bool, len(currentIDs))
+	for _, id := range currentIDs {
+		current[id] = true
+	}
+	if len(currentIDs) == 0 {
+		if len(inputIDs) == 0 {
+			return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "no mail rules to reorder").WithParam("rule_ids")
+		}
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown rule_ids: %s", strings.Join(inputIDs, ", ")).WithParam("rule_ids")
+	}
+	var unknown []string
+	for _, id := range inputIDs {
+		if !current[id] {
+			unknown = append(unknown, id)
+		}
+	}
+	if len(unknown) > 0 {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown rule_ids: %s", strings.Join(unknown, ", ")).WithParam("rule_ids")
+	}
+
+	selected := make(map[string]bool, len(inputIDs))
+	out := make([]string, 0, len(currentIDs))
+	for _, id := range inputIDs {
+		selected[id] = true
+		out = append(out, id)
+	}
+	for _, id := range currentIDs {
+		if !selected[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
