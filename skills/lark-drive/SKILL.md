@@ -10,7 +10,7 @@ metadata:
 
 # drive (v1)
 
-**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
+**认证诊断边界：** 普通 Drive 搜索、复制、读取元数据、上传下载任务不要预先运行 `auth status` / `whoami`，也不要先读 `lark-shared`。只有用户明确要求检查登录态或 token 有效性（读取 shared 后使用 `lark-cli auth status --json --verify`）、明确要求显示当前身份（使用 `lark-cli whoami`），或目标命令返回 authentication / authorization / missing_scope / permission 相关错误或 `confirmation_required` 时，才读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 处理认证、权限或确认门禁。
 
 > **术语说明：** 飞书云空间也常被称为"云盘"、"云存储"、"网盘"或"我的空间"，这些说法通常指的是同一个产品，是飞书官方的云端文件存储与管理中心。
 
@@ -21,7 +21,7 @@ metadata:
 ## 快速决策
 
 - 用户要把**已有 Wiki 节点移出知识库，放到 Drive 文件夹或“我的空间”根目录**：切到 `lark-wiki`，使用 `lark-cli wiki +move-to-drive`；不要把 Wiki token 直接交给 `drive +move`。这是会改变文档归属和权限继承的写操作，执行前确认源节点与目标位置。
-- 用户要**复制文档 / 创建副本 / 另存为副本**时，使用 `lark-cli drive files copy`。先用 `lark-cli schema drive.files.copy --format json` 确认参数；如果来源是 wiki URL/token，先用 `lark-cli drive +inspect` 获取底层 `token` 和 `type`，不要把 wiki token 直接当 `file_token`。`params.file_token` 传源文档 token，`data.folder_token` 传目标文件夹 token，`data.name` 传副本名称，`data.type` 传源文件类型（如 `docx` / `sheet` / `bitable` / `slides`）。示例：`lark-cli drive files copy --params '{"file_token":"<DOC_TOKEN>"}' --data '{"folder_token":"<FOLDER_TOKEN>","name":"<COPY_NAME>","type":"docx"}'`。如返回 `confirmation_required`，按 `lark-shared` 高风险审批协议向用户确认后，在原命令末尾追加 `--yes` 重试。
+- 用户要**复制文档 / 创建副本 / 另存为副本**时，直接使用 `lark-cli drive files copy`，不要先跑 `schema` / `help` / `inspect`，除非 URL/token 类型不明确或命令返回结构化错误。按标题定位源文档时，必须基于 `drive +search` 公开返回的标题、token 和类型字段做完整标题严格相等与唯一性判断；标题超过查询长度限制时，直接使用不超过限制的稳定片段召回候选，再严格筛选完整标题，不要依赖服务端静默截断或因空结果反复改词。没有唯一严格匹配就停止报告，不要重复搜索、全量 list 或选择第一项。如果目标是 `/drive/folder/<token>` URL 或裸 folder token，直接提取 `folder_token`，不要 inspect。只有来源是 wiki URL/token 时，先用 `lark-cli drive +inspect` 获取底层 `token` 和 `type`，不要把 wiki token 直接当 `file_token`。`params.file_token` 传源文档 token；`data.folder_token` 必须来自用户明确指定的目标文件夹 URL/token；`data.name` 传副本名称；`data.type` 传源文件类型（如 `docx` / `sheet` / `bitable` / `slides`）。示例：`lark-cli drive files copy --params '{"file_token":"<DOC_TOKEN>"}' --data '{"folder_token":"<FOLDER_TOKEN>","name":"<COPY_NAME>","type":"docx"}'`。copy 成功后，后续正文修改只使用返回的副本 token，不要按副本标题重新搜索。如返回 `confirmation_required`，按 `lark-shared` 高风险审批协议向用户确认后，在原命令末尾追加 `--yes` 重试。
 - 用户要**识别飞书 / doubao 云空间 URL 的类型和 token**时，可以先按 URL 路径形态做轻量判断；当路径已明确指向 docx / sheet / bitable / slides / file / folder 等资源时，可直接提取对应 token/type。传入 wiki URL、需要识别标题或 canonical URL、URL/token 有歧义，或后续操作依赖底层真实资源时，再使用 `lark-cli drive +inspect --url '<url>'` 进行识别；具体用法、失败处理和边界见 [`references/lark-drive-inspect.md`](references/lark-drive-inspect.md)。
 - 高风险写操作（删除、公开权限修改、owner 转移、版本删除/回滚、批量移动/覆盖/同步）必须同时满足三个条件才执行：目标已解析为该操作可直接使用的执行对象，执行细节已明确到可直接调用命令（例如删除的 file-token/type、公开权限修改的共享范围、owner 转移的目标 owner、版本删除/回滚的 version id、移动/覆盖/同步的目标位置和冲突策略），且用户在本轮明确确认执行这些具体目标和执行细节。用户只说“删除没用的文件”“开放/共享给大家”“改成开放”“覆盖/移动这些”只表示目标状态；先只读发现并列出候选、权限档位或执行方案，停止等待用户确认。
 - 用户要**检查 / 治理文档权限、公开范围、链接分享、外部访问、复制下载权限、密级标签、owner 转移**，或要”权限风险报告、收紧权限、申请查看 / 编辑权限、转移 / 批量转移 owner”，必须先阅读 [`references/lark-drive-workflow.md`](references/lark-drive-workflow.md)，再按其中 `Workflow Registry` 进入 [`permission_governance`](references/lark-drive-workflow-permission-governance.md) workflow。
@@ -31,7 +31,7 @@ metadata:
 - 用户要**按特定主题、关键词或内容线索跨容器查找资料，并统一收集到 Drive 文件夹或 Wiki 节点**，必须先阅读 [`references/lark-drive-workflow.md`](references/lark-drive-workflow.md)，再按其中 `Workflow Registry` 进入 [`topic_move_collector`](references/lark-drive-workflow-topic-move-collector.md) workflow。该 workflow 负责搜索召回、内容验证、相关性分类、移动计划、写前确认和结果验证；禁止直接从 `drive +search` 或 `drive +move` 开始。
 - 用户要**整理云盘 / 文件夹 / 文档库 / 知识库 / 个人文档库**，或要“盘点目录结构、找出未归档/临时/重复/空目录、生成整理方案”，必须先阅读 [`references/lark-drive-workflow.md`](references/lark-drive-workflow.md)，再按其中 `Workflow Registry` 进入 [`knowledge_organize`](references/lark-drive-workflow-knowledge-organize.md) workflow。默认只生成方案；创建目录、移动资源、申请权限都必须单独确认。
 - 按主题跨范围查找并集中归档，进入 `topic_move_collector`；对已知文件夹、文档库或知识库做目录盘点和结构重组，进入 `knowledge_organize`；只移动一个已明确资源时仍使用原子移动命令。
-- 用户要**搜文档 / Wiki / 电子表格 / 多维表格 / 云空间（云盘/云存储）对象**，优先使用 `lark-cli drive +search`。自然语言里"最近我编辑过的"、"我创建的"（→ `--created-by-me`，原始创建者语义）、"我负责/owner 的"（→ `--mine`，owner 语义）、"最近一周我打开过的 xxx"、"某人 owner 的 docx" 等直接映射到扁平 flag，避免手写嵌套 JSON。
+- 用户要**搜文档 / Wiki / 电子表格 / 多维表格 / 云空间（云盘/云存储）对象**，包括按标题判断资源是否存在、是否唯一或是否重复时，优先使用 `lark-cli drive +search --query "<标题或关键词>"`；`drive files list` 只用于用户明确要求枚举文件夹直接子项，不能替代标题搜索。存在多个完整标题严格相等的候选时停止，不要选择第一项或执行写操作。`+search` 不接受位置参数。自然语言里"最近我编辑过的"、"我创建的"（→ `--created-by-me`，原始创建者语义）、"我负责/owner 的"（→ `--mine`，owner 语义）、"最近一周我打开过的 xxx"、"某人 owner 的 docx" 等直接映射到扁平 flag，避免手写嵌套 JSON。
 - 用户要对**文档评论**做任何操作（添加评论、列表 / 批量查询、回复、获取 / 更新 / 删除回复、解决 / 恢复、reaction），按下方 Shortcuts 表选择对应的 `drive +<verb>` 评论命令，执行前先阅读该命令的 ref。按评论定位文档正文位置见 [`references/lark-drive-comment-location.md`](references/lark-drive-comment-location.md)。
 - 用户给出 doubao.com 的云空间资源 URL/token，或明确提到豆包里的 file/folder/docx/sheet/bitable/wiki 资源时，仍按资源类型、URL 路径和 token 路由到本 skill；不要因为域名不是飞书而回退到 WebFetch。
 - 用户要把本地 `.xlsx` / `.csv` / `.base` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
@@ -160,11 +160,11 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 ## API Resources
 
 ```bash
-lark-cli schema drive.<resource>.<method>   # 调用 API 前必须先查看参数结构
+lark-cli schema drive.<resource>.<method>   # 原生 API 调用前查看参数结构；普通 files.copy 例外
 lark-cli drive <resource> <method> [flags] # 调用 API
 ```
 
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
+> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。普通文档、表格、Base、幻灯片和文件复制是例外，按快速决策中的固定参数契约直接使用 `drive files copy`；仅在命令返回结构化参数错误后再查 schema。
 >
 > **高频原生命令：** 读取 Drive 文件夹清单时使用 `drive files list`，使用前先读 [`references/lark-drive-files-list.md`](references/lark-drive-files-list.md)，按模板通过 `--params` 传参并手动处理分页；不要把 `--page-all` 输出直接交给 JSON 解析脚本。
 
