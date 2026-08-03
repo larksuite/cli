@@ -82,7 +82,9 @@ func TestPublishPopulatesEventIDAndSourceTime(t *testing.T) {
 	if ev.SourceTime != "" {
 		t.Errorf("SourceTime must stay empty without upstream create_time, got %q", ev.SourceTime)
 	}
-	if want := observed.Format(time.RFC3339Nano); ev.ObservedAt != want {
+	// UTC-normalized on the wire, so the frame bytes do not depend on the
+	// emitting host's local timezone.
+	if want := observed.UTC().Format(time.RFC3339Nano); ev.ObservedAt != want {
 		t.Errorf("ObservedAt: got %q, want %q", ev.ObservedAt, want)
 	}
 }

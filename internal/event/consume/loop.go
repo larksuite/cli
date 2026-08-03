@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"sync"
@@ -221,7 +222,7 @@ func truncateDiagnostic(s string) string {
 
 // processAndOutput returns (wrote, err); err non-nil only for sink.Write failures.
 func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *protocol.Event, opts Options, sink Sink, jqCode *gojq.Code) (bool, error) {
-	raw := restoreCanonicalEvent(evt)
+	raw := restoreCanonicalEvent(evt, opts.ErrOut, opts.Quiet)
 
 	// Validate before any domain work: a payload header that contradicts the
 	// canonical metadata means the two sources of truth diverged somewhere on
@@ -287,11 +288,18 @@ func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *pro
 // full. Every fact the ingress parsed must survive into the domain hooks —
 // restoring only a subset is how processors historically ended up re-parsing
 // the payload header as a second source of truth.
-func restoreCanonicalEvent(evt *protocol.Event) *event.RawEvent {
+func restoreCanonicalEvent(evt *protocol.Event, errOut io.Writer, quiet bool) *event.RawEvent {
 	var observed time.Time
 	if evt.ObservedAt != "" {
 		if parsed, err := time.Parse(time.RFC3339Nano, evt.ObservedAt); err == nil {
 			observed = parsed
+		} else if !quiet {
+			// A non-empty observed_at that fails to parse is a delivery
+			// defect of the same class as a canonical-metadata conflict:
+			// surface it, keep the event (empty means "missing upstream
+			// timestamp" and stays silent by design).
+			fmt.Fprintf(errOut, "WARN: event %s (%s): malformed observed_at %q ignored: %v\n",
+				evt.EventID, evt.EventType, evt.ObservedAt, err)
 		}
 	}
 	return &event.RawEvent{

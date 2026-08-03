@@ -160,7 +160,10 @@ func NewHelloAckRejected(busVersion, reason string) *HelloAck {
 func NewEvent(ev *model.Event, seq uint64) *Event {
 	observedAt := ""
 	if !ev.Timestamp.IsZero() {
-		observedAt = ev.Timestamp.Format(time.RFC3339Nano)
+		// UTC-normalized so the wire never carries the emitting host's local
+		// offset; consumers parse RFC3339Nano either way, but the frame bytes
+		// should not depend on where the bus happens to run.
+		observedAt = ev.Timestamp.UTC().Format(time.RFC3339Nano)
 	}
 	return &Event{
 		Type:       MsgTypeEvent,
