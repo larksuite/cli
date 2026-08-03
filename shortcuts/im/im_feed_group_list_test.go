@@ -67,6 +67,37 @@ func TestFeedGroupListPageAllMergesBothLists(t *testing.T) {
 	}
 }
 
+func TestFeedGroupListPageAllContinuesFromPageToken(t *testing.T) {
+	var reqs []recordedFGRequest
+	runtime := newFGRuntime(t, ImFeedGroupList, map[string]string{
+		"page-all": "true", "page-token": "resume",
+	}, &reqs, func(_ string, page int) (int, interface{}) {
+		if page == 1 {
+			return 200, wrapData(map[string]interface{}{
+				"groups": []interface{}{fgGroup("g1")}, "deleted_groups": []interface{}{},
+				"page_token": "next", "has_more": true,
+			})
+		}
+		return 200, wrapData(map[string]interface{}{
+			"groups": []interface{}{fgGroup("g2")}, "deleted_groups": []interface{}{},
+			"page_token": "", "has_more": false,
+		})
+	})
+
+	if err := ImFeedGroupList.Execute(context.Background(), runtime); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := countFGRequests(reqs, "/groups"); got != 2 {
+		t.Fatalf("groups requests = %d, want 2", got)
+	}
+	if got := []string{
+		firstQueryValue(reqs[0].query, "page_token"),
+		firstQueryValue(reqs[1].query, "page_token"),
+	}; strings.Join(got, ",") != "resume,next" {
+		t.Fatalf("page_token queries = %v, want [resume next]", got)
+	}
+}
+
 // TestFeedGroupListAlwaysSendsPageToken locks the fix for the groups endpoint's
 // requirement that page_token be present even on the first page (HTTP 400
 // "Missing required parameter: page_token" otherwise).

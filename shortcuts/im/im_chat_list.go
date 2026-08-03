@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -14,8 +15,13 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// imChatListPath is the upstream HTTP path for the +chat-list shortcut.
-const imChatListPath = "/open-apis/im/v1/chats"
+const (
+	// imChatListPath is the upstream HTTP path for the +chat-list shortcut.
+	imChatListPath          = "/open-apis/im/v1/chats"
+	chatListDefaultPageSize = 20
+	// GET /open-apis/im/v1/chats accepts page_size up to 100.
+	chatListMaxPageSize = 100
+)
 
 // bot_strip_p2p is the request-level adjustment notice emitted when bot
 // identity receives a mixed --types containing "p2p": the p2p value is
@@ -41,20 +47,21 @@ func writeBotStripP2pWarning(errOut io.Writer) {
 var ImChatList = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-list",
-	Description: "List chats the current user/bot is a member of; defaults to groups; pass --types=p2p,group to include p2p single chats (user-only); user/bot; supports sorting, pagination, --exclude-muted (user-only)",
+	Description: "List chats the current user/bot is a member of; defaults to groups; pass --types=p2p,group to include p2p single chats (user-only); user/bot; supports sorting, auto-pagination, --exclude-muted (user-only)",
 	Risk:        "read",
 	Scopes:      []string{"im:chat:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "user-id-type", Default: "open_id", Desc: "ID type for owner_id in response", Enum: []string{"open_id", "union_id", "user_id"}},
 		{Name: "sort", Default: "create_time", Desc: "sort field: create_time (ascending) | active_time (descending)", Enum: []string{"create_time", "active_time"}},
-		{Name: "sort-type", Hidden: true, Desc: "alias of --sort (hidden)", Enum: []string{"ByCreateTimeAsc", "ByActiveTimeDesc"}},
+		{Name: "sort-type", Hidden: true, Desc: "legacy API sort vocabulary; use --sort", Enum: legacySortValues(chatListSortCompatibilityValues)},
 		{Name: "types", Type: "string_slice", Desc: "chat types to include (group, p2p); omit = groups only (backward compatible); p2p requires user identity"},
-		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-100)"},
-		{Name: "page-token", Desc: "pagination token for next page"},
+		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", chatListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatListMaxPageSize)},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "exclude-muted", Type: "bool", Desc: "(user identity only) drop chats the current user has muted (do-not-disturb); bot identity returns all chats unfiltered"},
-	},
+	}, common.PageAllFlags()...),
+	Normalize: normalizeChatListSortCompatibility,
 	// DryRun previews the GET /open-apis/im/v1/chats request without executing.
 	// When bot identity strips p2p from --types, emits the same stderr warning
 	// Execute would emit, so DryRun output truthfully reflects what the API
@@ -65,15 +72,22 @@ var ImChatList = common.Shortcut{
 		if stripped {
 			writeBotStripP2pWarning(runtime.IO().ErrOut)
 		}
-		return common.NewDryRunAPI().
+		dry := common.NewDryRunAPI()
+		if runtime.Bool(common.PageAllFlagName) {
+			dry.Desc(pageAllDryRunDescription)
+		}
+		return dry.
 			GET(imChatListPath).
 			Params(buildChatListParams(runtime, effective))
 	},
 	// Validate enforces flag preconditions: page-size bounds, --types element
 	// enum, and the bot + single-p2p rejection (mixed types degrade in Execute).
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if n := runtime.Int("page-size"); n < 1 || n > 100 {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 100").WithParam("--page-size")
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", chatListDefaultPageSize, 1, chatListMaxPageSize); err != nil {
+			return err
+		}
+		if err := common.ValidatePageAllFlags(runtime); err != nil {
+			return err
 		}
 		parts, err := normalizeTypes(runtime.StrSlice("types"))
 		if err != nil {
@@ -85,7 +99,7 @@ var ImChatList = common.Shortcut{
 		}
 		return nil
 	},
-	// Execute fetches one page of chats, optionally applies --exclude-muted
+	// Execute fetches one or more pages of chats, optionally applies --exclude-muted
 	// via MaybeApplyMuteFilter, and renders the result. outData["filter"] is
 	// populated only when --exclude-muted is set (backward compatible).
 	// outData["notices"] is populated only when bot identity strips p2p from
@@ -97,22 +111,24 @@ var ImChatList = common.Shortcut{
 			writeBotStripP2pWarning(runtime.IO().ErrOut)
 		}
 		params := buildChatListParams(runtime, effective)
-		resData, err := runtime.CallAPITyped("GET", imChatListPath, params, nil)
+
+		// Fetch stage: one page and --page-all share the same paginator.
+		// The accumulator owns only the endpoint-specific page shape.
+		result := &imMapListResult{}
+		pagination, err := common.PaginateInto(runtime, common.PageRequest{
+			Method: http.MethodGet,
+			Path:   imChatListPath,
+			Params: params,
+		}, result)
 		if err != nil {
 			return err
 		}
 
-		rawItems, _ := resData["items"].([]interface{})
-		hasMore, pageToken := common.PaginationMeta(resData)
-
-		var items []map[string]interface{}
-		for _, raw := range rawItems {
-			item, _ := raw.(map[string]interface{})
-			if item == nil {
-				continue
-			}
-			items = append(items, item)
-		}
+		// Transform stage: filters run once against the complete fetched set, so
+		// their outcome is independent of API page boundaries.
+		items := result.items
+		hasMore := result.hasMore
+		pageToken := result.pageToken
 
 		mfOut, err := MaybeApplyMuteFilter(runtime, MuteFilterInput{
 			ExcludeMuted: runtime.Bool("exclude-muted"),
@@ -125,7 +141,11 @@ var ImChatList = common.Shortcut{
 			return err
 		}
 		items = mfOut.Chats
+		pagination.Items = len(items)
 
+		// Presentation stage: business data stays backward compatible while the
+		// output layer carries the authoritative pagination outcome for every
+		// format.
 		outData := map[string]interface{}{
 			"chats":      items,
 			"has_more":   hasMore,
@@ -140,7 +160,9 @@ var ImChatList = common.Shortcut{
 			}
 		}
 
-		runtime.OutFormat(outData, nil, func(w io.Writer) {
+		runtime.OutFormat(outData, &output.Meta{
+			Pagination: pagination,
+		}, func(w io.Writer) {
 			if len(items) == 0 {
 				fmt.Fprintln(w, "No chats found.")
 				if mfOut.Meta.Hint != "" {
@@ -180,15 +202,7 @@ var ImChatList = common.Shortcut{
 				rows = append(rows, row)
 			}
 			output.PrintTable(w, rows)
-			fmt.Fprintf(w, "\n%d chat(s) listed", len(rows))
-			if hasMore {
-				fmt.Fprint(w, " (more available, use --page-token to fetch next page")
-				if pageToken != "" {
-					fmt.Fprintf(w, ", page_token: %s", pageToken)
-				}
-				fmt.Fprint(w, ")")
-			}
-			fmt.Fprintln(w)
+			fmt.Fprintf(w, "\n%d chat(s) listed\n", len(rows))
 			if mfOut.Meta.Hint != "" {
 				fmt.Fprintln(w, mfOut.Meta.Hint)
 			}
@@ -271,9 +285,6 @@ func buildChatListParams(runtime *common.RuntimeContext, effectiveTypes string) 
 		"create_time": "ByCreateTimeAsc",
 		"active_time": "ByActiveTimeDesc",
 	}[runtime.Str("sort")]
-	if old, ok := aliasFlagValue(runtime, "sort-type", "sort"); ok {
-		sortType = old // old value is already the upstream enum -> pass through
-	}
 	params := map[string]interface{}{
 		"user_id_type": runtime.Str("user-id-type"),
 		"sort_type":    sortType,

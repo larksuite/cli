@@ -227,17 +227,17 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 ### img
 
 ```xml
-<img src="file_token_or_url" topLeftX="80" topLeftY="120" width="320" height="180"/>
+<img src="file_token_或_@本地路径" topLeftX="80" topLeftY="120" width="320" height="180"/>
 ```
 
 `img` 使用 `topLeftX` / `topLeftY`，不是 `x` / `y`。
 
-`src` 只支持：`slides +media-upload` 返回的 `file_token`，或 `@<本地路径>` 占位符（仅 `+create --slides` 自动上传并替换）。**禁止使用 http(s) 外链 URL**——飞书 slides 渲染端不会代理外链图，外链 src 在 PPT 里通常不显示。本地图片详见 [lark-slides-create.md](lark-slides-create.md#本地图片path-占位符) / [lark-slides-media-upload.md](lark-slides-media-upload.md)。
+`src` 只支持：`slides +media-upload` 返回的 `file_token`，或 `@<本地路径>` 占位符（`+create --slides` 和 `+add-slide` 会自动上传并替换）。**禁止使用 http(s) 外链 URL**——飞书 slides 渲染端不会代理外链图，外链 src 在 PPT 里通常不显示。本地图片详见 [lark-slides-create.md](lark-slides-create.md#本地图片path-占位符) / [lark-slides-media-upload.md](lark-slides-media-upload.md)。
 
 本地图片的两种姿势：
 
 - 新建带图 PPT：`+create --slides` 里直接写 `src="@./pic.png"`，CLI 在创空白 PPT 后、加 slides 前自动上传并替换 token
-- 给已有 PPT 加带图新页：先 `slides +media-upload --file ./pic.png --presentation $PID` 拿 token，再用 token 写进 `xml_presentation.slide create` 的 XML
+- 给已有 PPT 加带图新页：`+add-slide --slide` 的 XML 里直接写 `src="@./pic.png"`，CLI 上传后替换 token 再提交页面
 
 > **注意**：`width`/`height` 是**裁剪后**的显示尺寸。比例和原图不一致时会自动裁剪（无法靠属性关闭），想避免裁剪就让 `width:height` 对齐原图比例。
 

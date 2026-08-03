@@ -80,7 +80,7 @@ lark-cli im +messages-search --query "test" --dry-run
 | `--start <time>` | No | Start time with local timezone offset required (e.g. `2026-03-24T00:00:00+08:00`) |
 | `--end <time>` | No | End time with local timezone offset required (e.g. `2026-03-25T23:59:59+08:00`) |
 | `--page-size <n>` | No | Page size (default 20, range 1-50) |
-| `--page-token <token>` | No | Pagination token for the next page |
+| `--page-token <token>` | No | Starting cursor, normally returned by a previous response |
 | `--page-all` | No | Automatically paginate through all result pages (up to 40 pages) |
 | `--page-limit <n>` | No | Max pages to fetch when auto-pagination is enabled (default 20, max 40). Setting it explicitly also enables auto-pagination |
 | `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
@@ -135,6 +135,7 @@ Each message in JSON output contains:
 - Default behavior is still **single-page**.
 - `--page-token` is the manual continuation mechanism when you already have a token from a previous response.
 - `--page-all` enables auto-pagination and uses a default cap of **40 pages**.
+- With both flags, auto-pagination starts at `--page-token` and continues from that cursor.
 - `--page-limit <n>` enables auto-pagination with an explicit cap. If you pass `--page-limit` without `--page-all`, auto-pagination is still enabled.
 - When auto-pagination stops because of the configured page cap, the response still includes the last `has_more` / `page_token` so you can continue manually.
 

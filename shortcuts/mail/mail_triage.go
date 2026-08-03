@@ -58,8 +58,7 @@ var MailTriage = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "format", Default: "table", Enum: []string{"table", "json", "data"}, Desc: "output format: table | json | data (json/data output object with pagination fields)"},
-		{Name: "max", Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
-		{Name: "page-size", Type: "int", Desc: "alias for --max"},
+		{Name: "max", Aliases: []string{"page-size"}, Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
 		{Name: "page-token", Desc: "pagination token from a previous response to fetch the next page"},
 		{Name: "filter", Desc: `exact-match condition filter (JSON or key=value). Narrow results by folder, label, sender, recipient, unread status, etc. Run --print-filter-schema to see all fields. Example: {"folder":"INBOX","from":["alice@example.com"]}`},
 		{Name: "folder", Desc: "folder name or system folder ID filter"},
@@ -77,7 +76,7 @@ var MailTriage = common.Shortcut{
 		mailbox := resolveMailboxID(runtime)
 		query := runtime.Str("query")
 		showLabels := runtime.Bool("labels")
-		maxCount := resolveTriagePageSize(runtime)
+		maxCount := normalizeTriageMax(runtime.Int("max"))
 		parsed, parseErr := parseTriagePageToken(runtime.Str("page-token"))
 		filter, err := buildTriageFilter(runtime)
 		d := common.NewDryRunAPI().Set("input_filter", runtime.Str("filter"))
@@ -155,7 +154,7 @@ var MailTriage = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		maxCount := resolveTriagePageSize(runtime)
+		maxCount := normalizeTriageMax(runtime.Int("max"))
 		parsed, err := parseTriagePageToken(runtime.Str("page-token"))
 		if err != nil {
 			return err
@@ -1258,15 +1257,6 @@ func parseTriagePageToken(token string) (triagePageToken, error) {
 		return triagePageToken{}, mailValidationParamError("--page-token", "invalid --page-token: token value is empty after '%s:' prefix", path)
 	}
 	return triagePageToken{Path: path, RawToken: raw}, nil
-}
-
-// resolveTriagePageSize returns the effective max count from --page-size or --max.
-// --page-size is an alias for --max; if both are set, --page-size takes priority.
-func resolveTriagePageSize(runtime *common.RuntimeContext) int {
-	if ps := runtime.Int("page-size"); ps > 0 {
-		return normalizeTriageMax(ps)
-	}
-	return normalizeTriageMax(runtime.Int("max"))
 }
 
 func normalizeTriageMax(maxCount int) int {

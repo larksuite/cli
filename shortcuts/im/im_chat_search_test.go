@@ -4,9 +4,12 @@
 package im
 
 import (
+	"bytes"
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -18,7 +21,14 @@ func newSearchTestRT(t *testing.T, stringFlags map[string]string) *common.Runtim
 	if _, ok := stringFlags["query"]; !ok {
 		stringFlags["query"] = "team"
 	}
-	return newChatListTestRuntimeContext(t, stringFlags, nil)
+	rt := newChatSearchTestRuntimeContext(t, stringFlags, nil)
+	rt.Factory = &cmdutil.Factory{
+		IOStreams: &cmdutil.IOStreams{
+			Out:    &bytes.Buffer{},
+			ErrOut: &bytes.Buffer{},
+		},
+	}
+	return rt
 }
 
 func TestChatSearch_SortMapping(t *testing.T) {
@@ -47,9 +57,9 @@ func TestChatSearch_SortOmittedWhenUnset(t *testing.T) {
 	}
 }
 
-// TestChatSearch_SortAliasParity: hidden --sort-by value is already the upstream
-// sorter (pass-through), so it must equal the mapped new --sort body.
-func TestChatSearch_SortAliasParity(t *testing.T) {
+// TestChatSearch_SortCompatibilityParity proves Normalize translates the
+// legacy upstream sorter vocabulary before the canonical-only builder runs.
+func TestChatSearch_SortCompatibilityParity(t *testing.T) {
 	pairs := []struct{ newVal, oldVal string }{
 		{"create_time", "create_time_desc"},
 		{"update_time", "update_time_desc"},
@@ -58,7 +68,11 @@ func TestChatSearch_SortAliasParity(t *testing.T) {
 	for _, p := range pairs {
 		t.Run(p.newVal, func(t *testing.T) {
 			newBody := buildSearchChatBody(newSearchTestRT(t, map[string]string{"sort": p.newVal}))
-			oldBody := buildSearchChatBody(newSearchTestRT(t, map[string]string{"sort-by": p.oldVal}))
+			oldRT := newSearchTestRT(t, map[string]string{"sort-by": p.oldVal})
+			if err := normalizeChatSearchSortCompatibility(context.Background(), oldRT.FlagContext()); err != nil {
+				t.Fatal(err)
+			}
+			oldBody := buildSearchChatBody(oldRT)
 			if newBody["sorter"] != oldBody["sorter"] {
 				t.Fatalf("alias parity: new sorter=%v, old sorter=%v", newBody["sorter"], oldBody["sorter"])
 			}
@@ -68,6 +82,9 @@ func TestChatSearch_SortAliasParity(t *testing.T) {
 
 func TestChatSearch_SortNewWins(t *testing.T) {
 	rt := newSearchTestRT(t, map[string]string{"sort": "member_count", "sort-by": "create_time_desc"})
+	if err := normalizeChatSearchSortCompatibility(context.Background(), rt.FlagContext()); err != nil {
+		t.Fatal(err)
+	}
 	body := buildSearchChatBody(rt)
 	if body["sorter"] != "member_count_desc" {
 		t.Fatalf("new should win: sorter=%v, want member_count_desc", body["sorter"])
@@ -75,16 +92,16 @@ func TestChatSearch_SortNewWins(t *testing.T) {
 }
 
 func TestChatSearch_SortFlagSurface(t *testing.T) {
-	var sortFlag, aliasFlag *common.Flag
+	var sortFlag, legacyFlag *common.Flag
 	for i := range ImChatSearch.Flags {
 		switch ImChatSearch.Flags[i].Name {
 		case "sort":
 			sortFlag = &ImChatSearch.Flags[i]
 		case "sort-by":
-			aliasFlag = &ImChatSearch.Flags[i]
+			legacyFlag = &ImChatSearch.Flags[i]
 		}
 	}
-	if sortFlag == nil || aliasFlag == nil {
+	if sortFlag == nil || legacyFlag == nil {
 		t.Fatalf("expected both --sort and --sort-by flags declared")
 	}
 	if sortFlag.Default != "" {
@@ -93,10 +110,18 @@ func TestChatSearch_SortFlagSurface(t *testing.T) {
 	if got := strings.Join(sortFlag.Enum, ","); got != "create_time,update_time,member_count" {
 		t.Errorf("--sort Enum = %q", got)
 	}
-	if !aliasFlag.Hidden {
+	if !legacyFlag.Hidden {
 		t.Errorf("--sort-by must be Hidden")
 	}
-	if got := strings.Join(aliasFlag.Enum, ","); got != "create_time_desc,update_time_desc,member_count_desc" {
-		t.Errorf("--sort-by Enum = %q", got)
+	if got := strings.Join(legacyFlag.Enum, ","); got != "create_time_desc,update_time_desc,member_count_desc" {
+		t.Errorf("--sort-by Enum = %q, want create_time_desc,update_time_desc,member_count_desc", got)
+	}
+}
+
+func TestChatSearch_DoesNotDeclareCrossCommandTypesFlag(t *testing.T) {
+	for _, flag := range ImChatSearch.Flags {
+		if flag.Name == "types" {
+			t.Fatal("+chat-search must not expose the +chat-list --types vocabulary")
+		}
 	}
 }

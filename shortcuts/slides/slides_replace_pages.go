@@ -32,7 +32,7 @@ var SlidesReplacePages = common.Shortcut{
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 		{Name: "pages", Desc: "JSON array of page replacements (each: {slide_id, content}); supports @file or -", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "continue-on-error", Type: "bool", Desc: "continue with later pages after a create/delete failure; default false"},
 		{Name: "validate-only", Type: "bool", Desc: "validate input and build the create/delete plan without write calls"},

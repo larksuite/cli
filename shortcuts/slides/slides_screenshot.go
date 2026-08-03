@@ -42,7 +42,7 @@ var SlidesScreenshot = common.Shortcut{
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides; list mode only"},
+		listModePresentationRefFlag(),
 		{Name: "slide-id", Type: "string_slice", Desc: "slide page identifier (repeat or comma-separated for multiple slides; max 10 pages per request)"},
 		{Name: "slide-number", Type: "int_array", Desc: "slide page number (repeat for multiple slides; max 10 pages per request)"},
 		{Name: "content", Desc: "slide XML content to render directly instead of fetching existing slides", Input: []string{common.File, common.Stdin}},
