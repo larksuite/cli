@@ -15,4 +15,5 @@ registry.npmjs.org
 registry.npmmirror.com
 sf16-sg.tiktokcdn.com
 www.feishu.cn
+www.larkoffice.com
 www.larksuite.com

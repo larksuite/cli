@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -108,6 +109,16 @@ func resolvePresentationID(runtime *common.RuntimeContext, ref presentationRef) 
 		// not bad user input — classify as internal, not validation.
 		return "", errs.NewInternalError(errs.SubtypeUnknown, "unsupported presentation ref kind %q", ref.Kind)
 	}
+}
+
+// slideReplaceAPIPath builds the xml_presentation.slide.replace endpoint for a
+// presentation. Shared by +replace-slide (element-level parts) and
+// +update-slide (a single whole-page part) so the two cannot drift apart.
+func slideReplaceAPIPath(presentationID string) string {
+	return fmt.Sprintf(
+		"/open-apis/slides_ai/v1/xml_presentations/%s/slide/replace",
+		validate.EncodePathSegment(presentationID),
+	)
 }
 
 // imgSrcPlaceholderRegex matches `src="@<path>"` or `src='@<path>'` inside <img> tags.
