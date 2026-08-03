@@ -49,10 +49,10 @@ func TestSlidesAddSlideDryRunE2E(t *testing.T) {
 			},
 		},
 		{
-			name: "insert before a page with locking",
+			name: "insert before a page with locking via presentation alias",
 			args: []string{
 				"slides", "+add-slide",
-				"--presentation", "presAddDryRun",
+				"--presentation-id", "presAddDryRun",
 				"--slide", slideXML,
 				"--before-slide-id", "slide_target",
 				"--revision-id", "12",
@@ -98,7 +98,7 @@ func TestSlidesDeleteSlideDryRunE2E(t *testing.T) {
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"slides", "+delete-slide",
-			"--presentation", "presDeleteDryRun",
+			"--presentation-token", "presDeleteDryRun",
 			"--slide-id", "slide_gone",
 			"--dry-run",
 		},
