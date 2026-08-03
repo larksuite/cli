@@ -77,7 +77,7 @@ func (s *Service) Decide(ctx context.Context, entry *catalog.Entry, req Request,
 	strategyRef := entry.Capability().Preparation
 	strategy, err := s.Strategies.get(strategyRef)
 	if err != nil {
-		return nil, errs.NewInternalError(errs.SubtypeUnknown, "%s", err)
+		return nil, errs.NewInternalError(errs.SubtypeUnknown, "%s", err).WithCause(err)
 	}
 	prep, err := strategy.Decide(ctx, PreparedConsume{Entry: entry, Params: params})
 	if err != nil {
@@ -104,10 +104,14 @@ func (s *Service) Decide(ctx context.Context, entry *catalog.Entry, req Request,
 	}
 
 	d.status = StatusReady
+	blockedName := ""
 	for i := range preconditions {
 		switch preconditions[i].Status {
 		case PreconditionBlocked:
 			d.status = StatusBlocked
+			if blockedName == "" {
+				blockedName = preconditions[i].Name
+			}
 			if d.blockErr == nil {
 				d.blockErr = preconditions[i].BlockErr
 			}
@@ -116,6 +120,13 @@ func (s *Service) Decide(ctx context.Context, entry *catalog.Entry, req Request,
 				d.status = StatusUnknown
 			}
 		}
+	}
+	// A blocked decision must carry the error Execute returns; a preflight
+	// reader that reports blocked without one would otherwise make Execute a
+	// silent nil no-op.
+	if d.status == StatusBlocked && d.blockErr == nil {
+		d.blockErr = errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"precondition %s blocks consuming %s", blockedName, def.Key)
 	}
 	return d, nil
 }
@@ -138,7 +149,7 @@ func (s *Service) Execute(ctx context.Context, entry *catalog.Entry, d *Decision
 	if ref := entry.Capability().Preparation; ref != catalog.StrategyNone {
 		strategy, err := s.Strategies.get(ref)
 		if err != nil {
-			return errs.NewInternalError(errs.SubtypeUnknown, "%s", err)
+			return errs.NewInternalError(errs.SubtypeUnknown, "%s", err).WithCause(err)
 		}
 		if d.preparation == nil {
 			return errs.NewInternalError(errs.SubtypeUnknown,
