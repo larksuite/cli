@@ -154,8 +154,12 @@ func TestSlidesScreenshotSlideAliasRejectsAmbiguousValues(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected validation error")
 			}
-			if _, ok := errs.ProblemOf(err); !ok {
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
 				t.Fatalf("error = %v, want typed validation error", err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %s/%s, want %s/%s", problem.Category, problem.Subtype, errs.CategoryValidation, errs.SubtypeInvalidArgument)
 			}
 			var validationErr *errs.ValidationError
 			if !errors.As(err, &validationErr) {
