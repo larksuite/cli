@@ -210,7 +210,7 @@ func printMessageOutputSchema(runtime *common.RuntimeContext) {
 
 // printWatchOutputSchema prints the per-format field reference for +watch output.
 // Used by --print-output-schema to let callers discover field names without reading skill docs.
-func printWatchOutputSchema(runtime *common.RuntimeContext) {
+func printWatchOutputSchema(runtime *common.RuntimeContext) error {
 	schema := map[string]interface{}{
 		"minimal": map[string]interface{}{
 			"message": map[string]interface{}{
@@ -276,8 +276,7 @@ func printWatchOutputSchema(runtime *common.RuntimeContext) {
 			},
 		},
 	}
-	b, _ := json.MarshalIndent(schema, "", "  ")
-	fmt.Fprintln(runtime.IO().Out, string(b))
+	return runtime.EmitValue(schema, "json")
 }
 
 // resolveMailboxID returns the user_mailbox_id from --mailbox flag, defaulting to "me".

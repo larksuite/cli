@@ -45,6 +45,10 @@ func (p *emitterSafetyProvider) Scan(context.Context, extcs.ScanRequest) (*extcs
 	return p.alert, p.err
 }
 
+func (p *emitterSafetyProvider) ScanFullText(ctx context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	return p.Scan(ctx, req)
+}
+
 const (
 	runtimeContextLegacyGoldenPath       = "testdata/runtime_context_legacy.golden.json"
 	writeSuccessEnvelopeLegacyGoldenPath = "testdata/write_success_envelope_legacy.golden.json"
@@ -60,6 +64,7 @@ type runtimeContextOracleCase struct {
 	format      string
 	useFormat   bool
 	pretty      bool
+	keepError   bool
 	notice      map[string]interface{}
 	safetyMode  string
 	safetyAlert *extcs.Alert
@@ -189,15 +194,6 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 			pretty:    true,
 		},
 		{
-			name: "pretty_without_renderer",
-			data: func() interface{} {
-				return map[string]interface{}{"name": "Alice"}
-			},
-			ok:        true,
-			format:    "pretty",
-			useFormat: true,
-		},
-		{
 			name: "ndjson",
 			data: func() interface{} {
 				return map[string]interface{}{"items": []interface{}{
@@ -236,7 +232,7 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 			useFormat: true,
 		},
 		{
-			name: "jq_safety_alert_without_stderr_warning",
+			name: "jq_safety_alert_writes_stderr_warning",
 			data: func() interface{} {
 				return map[string]interface{}{"id": "1"}
 			},
@@ -249,12 +245,22 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 			},
 		},
 		{
-			name: "scanner_error_fails_open",
+			name: "scanner_error_warn_mode_fails_open",
 			data: func() interface{} {
 				return map[string]interface{}{"id": "1"}
 			},
 			ok:         true,
 			safetyMode: "warn",
+			safetyErr:  errors.New("scanner unavailable"),
+		},
+		// Block mode intentionally fails closed when scanning errors.
+		{
+			name: "scanner_error_block_mode_fails_closed",
+			data: func() interface{} {
+				return map[string]interface{}{"id": "1"}
+			},
+			ok:         false,
+			safetyMode: "block",
 			safetyErr:  errors.New("scanner unavailable"),
 		},
 		{
@@ -268,16 +274,6 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 				Provider:     "emitter-oracle",
 				MatchedRules: []string{"fixture-rule"},
 			},
-		},
-		{
-			name: "unknown_format_data_envelope_notice",
-			data: func() interface{} {
-				return map[string]interface{}{"ok": true, "value": "fixture"}
-			},
-			ok:        true,
-			format:    "yaml",
-			useFormat: true,
-			notice:    map[string]interface{}{"skills": map[string]interface{}{"current": "1.0.0"}},
 		},
 	}
 
@@ -309,7 +305,11 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 				format:    tc.format,
 				useFormat: tc.useFormat,
 				pretty:    tc.pretty,
+				keepError: tc.keepError,
 			}
+			// tc.format is the string a shortcut's --format flag would carry; the
+			// boundary parses it to a canonical Format before the Emitter sees it.
+			format, _ := output.ParseFormat(tc.format)
 			current := runEmitterWithRuntimeContextContract(tc.data(), output.EmitterConfig{
 				CommandPath:    "lark-cli fixture +emit",
 				Identity:       "bot",
@@ -317,10 +317,10 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 			}, tc.ok, output.EmitOptions{
 				Raw:    tc.raw,
 				Meta:   tc.meta,
-				Format: tc.format,
+				Format: format,
 				JQ:     tc.jq,
 				Pretty: emitterPrettyRenderer(tc.pretty),
-			})
+			}, tc.keepError)
 
 			assertEmitterGolden(t, want, current)
 
@@ -388,10 +388,15 @@ type runtimeOracleOptions struct {
 	format    string
 	useFormat bool
 	pretty    bool
+	keepError bool
 }
 
 func runRuntimeContextOracle(t *testing.T, data interface{}, opts runtimeOracleOptions) emitterCapture {
 	t.Helper()
+	if opts.keepError {
+		return runRuntimeContextShortcutOracle(t, data, opts)
+	}
+
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	parent := &cobra.Command{Use: "lark-cli"}
@@ -431,6 +436,42 @@ func runRuntimeContextOracle(t *testing.T, data interface{}, opts runtimeOracleO
 	return emitterCapture{stdout: stdout.String(), stderr: stderr.String(), err: err}
 }
 
+func runRuntimeContextShortcutOracle(t *testing.T, data interface{}, opts runtimeOracleOptions) emitterCapture {
+	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	factory, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+	})
+	root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
+	fixture := &cobra.Command{Use: "fixture"}
+	root.AddCommand(fixture)
+
+	shortcut := common.Shortcut{
+		Service:   "fixture",
+		Command:   "+emit",
+		AuthTypes: []string{"bot"},
+		Execute: func(_ context.Context, runtime *common.RuntimeContext) error {
+			pretty := func(w io.Writer) {
+				fmt.Fprintln(w, "pretty:fixture")
+			}
+			if !opts.pretty {
+				pretty = nil
+			}
+			if opts.raw {
+				runtime.OutFormatRaw(data, opts.meta, pretty)
+			} else {
+				runtime.OutFormat(data, opts.meta, pretty)
+			}
+			return nil
+		},
+	}
+	shortcut.Mount(fixture, factory)
+	root.SetArgs([]string{"fixture", "+emit", "--as", "bot", "--format", opts.format})
+
+	err := root.Execute()
+	return emitterCapture{stdout: stdout.String(), stderr: stderr.String(), err: err}
+}
+
 func runEmitterSuccess(data interface{}, config output.EmitterConfig, ok bool, opts output.EmitOptions) emitterCapture {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -446,7 +487,13 @@ func runEmitterSuccess(data interface{}, config output.EmitterConfig, ok bool, o
 	return emitterCapture{stdout: stdout.String(), stderr: stderr.String(), err: err}
 }
 
-func runEmitterWithRuntimeContextContract(data interface{}, config output.EmitterConfig, ok bool, opts output.EmitOptions) emitterCapture {
+func runEmitterWithRuntimeContextContract(
+	data interface{},
+	config output.EmitterConfig,
+	ok bool,
+	opts output.EmitOptions,
+	keepError bool,
+) emitterCapture {
 	capture := runEmitterSuccess(data, config, ok, opts)
 	if capture.err != nil {
 		var safetyErr *errs.ContentSafetyError
@@ -455,6 +502,9 @@ func runEmitterWithRuntimeContextContract(data interface{}, config output.Emitte
 		}
 		if opts.JQ != "" {
 			capture.stderr += fmt.Sprintf("error: %v\n", capture.err)
+			return capture
+		}
+		if keepError {
 			return capture
 		}
 		capture.err = nil
@@ -546,11 +596,10 @@ func TestEmitterMatchesWriteSuccessEnvelopeLegacyOracle(t *testing.T) {
 				Identity:       "bot",
 				NoticeProvider: func() map[string]interface{} { return notice },
 			}, true, output.EmitOptions{
-				Format:          "",
-				Raw:             false,
-				JQ:              tc.jq,
-				DryRun:          tc.dryRun,
-				JQSafetyWarning: true,
+				Format: output.FormatJSON,
+				Raw:    false,
+				JQ:     tc.jq,
+				DryRun: tc.dryRun,
 			})
 			assertEmitterGolden(t, want, current)
 
@@ -605,18 +654,9 @@ func TestEmitterStreamPageMatchesPaginationLegacyOracle(t *testing.T) {
 		{name: "table", format: output.FormatTable},
 		{name: "csv", format: output.FormatCSV},
 		{
-			name:       "warn",
-			format:     output.FormatNDJSON,
-			safetyMode: "warn",
-			safetyAlert: &extcs.Alert{
-				Provider:     "emitter-oracle",
-				MatchedRules: []string{"fixture-rule"},
-			},
-		},
-		{
-			name:       "block",
+			name:       "table warn",
 			format:     output.FormatTable,
-			safetyMode: "block",
+			safetyMode: "warn",
 			safetyAlert: &extcs.Alert{
 				Provider:     "emitter-oracle",
 				MatchedRules: []string{"fixture-rule"},
@@ -640,7 +680,7 @@ func TestEmitterStreamPageMatchesPaginationLegacyOracle(t *testing.T) {
 			t.Cleanup(func() { extcs.Register(nil) })
 
 			legacy := runPaginationOracle(pages, tc.format)
-			current := runEmitterStreamPages(pages, tc.format.String())
+			current := runEmitterStreamPages(pages, tc.format)
 
 			assertEmitterBytes(t, legacy, current)
 			assertEquivalentError(t, legacy.err, current.err)
@@ -667,7 +707,7 @@ func runPaginationOracle(pages []interface{}, format output.Format) emitterCaptu
 	return emitterCapture{stdout: stdout.String(), stderr: stderr.String(), err: emitErr}
 }
 
-func runEmitterStreamPages(pages []interface{}, format string) emitterCapture {
+func runEmitterStreamPages(pages []interface{}, format output.Format) emitterCapture {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	emitter := output.NewEmitter(output.EmitterConfig{
@@ -681,6 +721,9 @@ func runEmitterStreamPages(pages []interface{}, format string) emitterCapture {
 		if emitErr = emitter.StreamPage(page, output.StreamOptions{Format: format}); emitErr != nil {
 			break
 		}
+	}
+	if emitErr == nil {
+		emitErr = emitter.FinishStream()
 	}
 	return emitterCapture{stdout: stdout.String(), stderr: stderr.String(), err: emitErr}
 }
@@ -706,7 +749,7 @@ func TestEmitterCapturesNoticeAndColorDependencies(t *testing.T) {
 			return map[string]interface{}{"source": "captured"}
 		},
 	})
-	if err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{Format: "json"}); err != nil {
+	if err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{Format: output.FormatJSON}); err != nil {
 		t.Fatalf("Emitter.Success() error = %v", err)
 	}
 	if strings.Contains(stdout.String(), "global") || !strings.Contains(stdout.String(), "captured") {
@@ -714,7 +757,7 @@ func TestEmitterCapturesNoticeAndColorDependencies(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{Format: "pretty",
+	if err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{Format: output.FormatPretty,
 		Pretty: func(w io.Writer, colorEnabled bool) error {
 			colorSeen = colorEnabled
 			_, err := fmt.Fprintln(w, "pretty")
@@ -725,14 +768,6 @@ func TestEmitterCapturesNoticeAndColorDependencies(t *testing.T) {
 	}
 	if !colorSeen {
 		t.Fatal("PrettyRenderer did not receive captured ColorEnabled value")
-	}
-
-	stdout.Reset()
-	if err := emitter.Success(map[string]interface{}{"ok": true, "id": "1"}, output.EmitOptions{Format: "yaml"}); err != nil {
-		t.Fatalf("Emitter.Success(unknown format) error = %v", err)
-	}
-	if strings.Contains(stdout.String(), "global") || !strings.Contains(stdout.String(), "captured") {
-		t.Fatalf("legacy JSON fallback consulted global notice:\n%s", stdout.String())
 	}
 }
 
@@ -751,7 +786,7 @@ func TestEmitterPropagatesOutputError(t *testing.T) {
 		CommandPath: "lark-cli fixture +emit",
 	})
 	err := emitter.Success(map[string]interface{}{"id": "1"}, output.EmitOptions{
-		Raw: true, Format: "json",
+		Raw: true, Format: output.FormatJSON,
 		JQ: ".data",
 	})
 	if !errors.Is(err, sentinel) {

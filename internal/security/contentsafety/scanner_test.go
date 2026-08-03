@@ -5,6 +5,7 @@ package contentsafety
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"testing"
 )
@@ -45,6 +46,23 @@ func TestScanString_Truncate(t *testing.T) {
 	}
 }
 
+func TestScanString_FullTextDoesNotTruncate(t *testing.T) {
+	s := &scanner{
+		rules:    []rule{testRule("tail", `TAIL_MARKER`)},
+		fullText: true,
+	}
+	big := make([]byte, maxStringBytes+100)
+	for i := range big {
+		big[i] = 'x'
+	}
+	copy(big[maxStringBytes+10:], "TAIL_MARKER")
+	hits := make(map[string]struct{})
+	s.scanString(string(big), hits)
+	if _, ok := hits["tail"]; !ok {
+		t.Error("full-text scan should match marker beyond maxStringBytes")
+	}
+}
+
 func TestScanString_SkipsDuplicate(t *testing.T) {
 	s := &scanner{rules: []rule{testRule("r1", `match`)}}
 	hits := map[string]struct{}{"r1": {}}
@@ -62,16 +80,34 @@ func TestWalk_NestedMap(t *testing.T) {
 		},
 	}
 	hits := make(map[string]struct{})
-	s.walk(context.Background(), data, hits, 0)
+	if err := s.walk(context.Background(), data, hits, 0); err != nil {
+		t.Fatalf("walk() error = %v", err)
+	}
 	if _, ok := hits["found"]; !ok {
 		t.Error("expected to find 'inject' in nested map")
+	}
+}
+
+func TestWalk_ScansMapKeys(t *testing.T) {
+	// JSON/NDJSON/table/CSV all emit map keys, so a rule match hiding in a key
+	// must be scanned too — not only the value.
+	s := &scanner{rules: []rule{testRule("found", `(?i)inject`)}}
+	data := map[string]any{"please inject this": "harmless value"}
+	hits := make(map[string]struct{})
+	if err := s.walk(context.Background(), data, hits, 0); err != nil {
+		t.Fatalf("walk() error = %v", err)
+	}
+	if _, ok := hits["found"]; !ok {
+		t.Error("expected to match a rule hiding in a map key")
 	}
 }
 
 func TestWalk_Array(t *testing.T) {
 	s := &scanner{rules: []rule{testRule("found", `(?i)inject`)}}
 	hits := make(map[string]struct{})
-	s.walk(context.Background(), []any{"normal", "try to inject"}, hits, 0)
+	if err := s.walk(context.Background(), []any{"normal", "try to inject"}, hits, 0); err != nil {
+		t.Fatalf("walk() error = %v", err)
+	}
 	if _, ok := hits["found"]; !ok {
 		t.Error("expected to find 'inject' in array")
 	}
@@ -84,9 +120,30 @@ func TestWalk_MaxDepth(t *testing.T) {
 		data = map[string]any{"n": data}
 	}
 	hits := make(map[string]struct{})
-	s.walk(context.Background(), data, hits, 0)
+	if err := s.walk(context.Background(), data, hits, 0); err != nil {
+		t.Fatalf("walk() error = %v", err)
+	}
 	if _, ok := hits["deep"]; ok {
 		t.Error("should not reach string beyond maxDepth")
+	}
+}
+
+func TestWalk_FullTextMaxDepthReturnsIncomplete(t *testing.T) {
+	s := &scanner{
+		rules:    []rule{testRule("deep", `secret`)},
+		fullText: true,
+	}
+	var data any = "secret"
+	for i := 0; i < maxDepth+5; i++ {
+		data = map[string]any{"n": data}
+	}
+	hits := make(map[string]struct{})
+	err := s.walk(context.Background(), data, hits, 0)
+	if !errors.Is(err, errScanIncomplete) {
+		t.Fatalf("walk() error = %v, want errScanIncomplete", err)
+	}
+	if _, ok := hits["deep"]; ok {
+		t.Error("full-text walk should report incomplete before matching data beyond maxDepth")
 	}
 }
 
@@ -95,7 +152,10 @@ func TestWalk_ContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	hits := make(map[string]struct{})
-	s.walk(ctx, map[string]any{"key": "target"}, hits, 0)
+	err := s.walk(ctx, map[string]any{"key": "target"}, hits, 0)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("walk() error = %v, want context.Canceled", err)
+	}
 	if _, ok := hits["found"]; ok {
 		t.Error("should not match after context cancel")
 	}

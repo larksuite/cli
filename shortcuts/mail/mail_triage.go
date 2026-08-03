@@ -430,7 +430,7 @@ func printTriageFilterSchema(runtime *common.RuntimeContext) {
 			`{"folder":"SENT","time_range":{"start_time":"2026-03-01T00:00:00+08:00"}}`,
 		},
 	}
-	runtime.Out(schema, nil)
+	runtime.OutJSON(schema, nil)
 }
 
 func parseTriageFilter(filterStr string) (triageFilter, error) {

@@ -179,8 +179,7 @@ var MailWatch = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Bool("print-output-schema") {
-			printWatchOutputSchema(runtime)
-			return nil
+			return printWatchOutputSchema(runtime)
 		}
 		mailbox := resolveMailboxID(runtime)
 		hintIdentityFirst(runtime, mailbox)
@@ -217,8 +216,6 @@ var MailWatch = common.Shortcut{
 		foldersInput := runtime.Str("folders")
 
 		errOut := runtime.IO().ErrOut
-		out := runtime.IO().Out
-
 		info := func(msg string) {
 			fmt.Fprintln(errOut, msg)
 		}
@@ -286,7 +283,7 @@ var MailWatch = common.Shortcut{
 
 		var eventCount atomic.Int64
 
-		handleEvent := func(data map[string]interface{}) {
+		handleEvent := func(data map[string]interface{}) error {
 			// Extract event body
 			eventBody := extractMailEventBody(data)
 
@@ -294,13 +291,13 @@ var MailWatch = common.Shortcut{
 			if mailboxFilter != "" {
 				mailAddr, _ := eventBody["mail_address"].(string)
 				if !strings.EqualFold(mailAddr, mailboxFilter) {
-					return
+					return nil
 				}
 			}
 
 			messageID, _ := eventBody["message_id"].(string)
 			if messageID == "" {
-				return
+				return nil
 			}
 
 			// Use event's mail_address as the fetch mailbox when available,
@@ -332,8 +329,7 @@ var MailWatch = common.Shortcut{
 							output.PrintError(errOut, fmt.Sprintf("failed to write event file: %v", writeErr))
 						}
 					}
-					output.PrintJson(out, failureData)
-					return
+					return runtime.EmitValue(failureData, output.FormatNDJSON.String())
 				}
 			}
 
@@ -341,12 +337,12 @@ var MailWatch = common.Shortcut{
 			if len(folderIDSet) > 0 {
 				folderID, _ := message["folder_id"].(string)
 				if !folderIDSet[folderID] {
-					return
+					return nil
 				}
 			}
 			if len(labelIDSet) > 0 {
 				if !messageHasLabel(message, labelIDSet) {
-					return
+					return nil
 				}
 			}
 
@@ -387,10 +383,14 @@ var MailWatch = common.Shortcut{
 
 			switch outFormat {
 			case "json", "":
-				output.PrintNdjson(out, output.Envelope{OK: true, Identity: string(runtime.As()), Data: outputData})
+				return runtime.EmitValue(
+					output.Envelope{OK: true, Identity: string(runtime.As()), Data: outputData},
+					output.FormatNDJSON.String(),
+				)
 			case "data":
-				output.PrintNdjson(out, outputData)
+				return runtime.EmitValue(outputData, output.FormatNDJSON.String())
 			}
+			return nil
 		}
 
 		rawHandler := func(ctx context.Context, event *larkevent.EventReq) error {
@@ -405,8 +405,7 @@ var MailWatch = common.Shortcut{
 			if eventData == nil {
 				eventData = make(map[string]interface{})
 			}
-			handleEvent(eventData)
-			return nil
+			return handleEvent(eventData)
 		}
 
 		sdkLogger := &mailWatchLogger{w: errOut}

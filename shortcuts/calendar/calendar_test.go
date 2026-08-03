@@ -1358,7 +1358,7 @@ func TestAgenda_Success(t *testing.T) {
 		"+agenda",
 		"--start", "2025-03-21",
 		"--end", "2025-03-21",
-		"--format", "prettry",
+		"--format", "pretty",
 		"--as", "bot",
 	}, f, stdout)
 

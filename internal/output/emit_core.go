@@ -6,6 +6,7 @@ package output
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,10 +25,14 @@ const (
 	modeBlock
 )
 
-// scanTimeout caps the content-safety scan so it cannot dominate CLI latency.
-// 100 ms is generous for a regex walk of a typical API response (KB-scale JSON);
-// larger responses hit maxDepth/maxStringBytes well before this fires.
+// scanTimeout also bounds untruncated rendered-text scans.
 const scanTimeout = 100 * time.Millisecond
+
+type scanContextFactory func() (context.Context, context.CancelFunc)
+
+func defaultContentSafetyContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), scanTimeout)
+}
 
 // modeFromEnv reads LARKSUITE_CLI_CONTENT_SAFETY_MODE.
 func modeFromEnv(errOut io.Writer) mode {
@@ -66,11 +71,13 @@ func normalizeCommandPath(cobraPath string) string {
 	return strings.Join(segs, ".")
 }
 
-var errBlocked = fmt.Errorf("content safety blocked")
+var (
+	errBlocked        = errors.New("content safety blocked")
+	errScanFailed     = errors.New("content safety scan failed")
+	errScanIncomplete = errors.New("content safety scan incomplete")
+)
 
-// runContentSafety orchestrates the scan: mode check -> provider -> scan with timeout + panic recovery.
-func runContentSafety(cobraPath string, data any, errOut io.Writer) (*extcs.Alert, error) {
-	m := modeFromEnv(errOut)
+func runContentSafety(cobraPath string, data any, errOut io.Writer, fullText bool, m mode, newScanContext scanContextFactory) (*extcs.Alert, error) {
 	if m == modeOff {
 		return nil, nil
 	}
@@ -85,17 +92,28 @@ func runContentSafety(cobraPath string, data any, errOut io.Writer) (*extcs.Aler
 		return nil, nil
 	}
 
+	scan := p.Scan
+	if m == modeBlock {
+		fullTextProvider, ok := p.(extcs.FullTextProvider)
+		if !ok {
+			return nil, fmt.Errorf("%w: provider %q does not support complete scans",
+				errScanIncomplete, p.Name())
+		}
+		scan = fullTextProvider.ScanFullText
+	}
+
 	type result struct {
 		alert *extcs.Alert
 		err   error
 	}
 	ch := make(chan result, 1)
-	ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
+	if newScanContext == nil {
+		newScanContext = defaultContentSafetyContext
+	}
+	ctx, cancel := newScanContext()
 	defer cancel()
 
-	// Give the goroutine its own writer so it cannot race on errOut after timeout.
-	// On success, we copy any provider notices to the real errOut.
-	// On timeout, the buffer is owned by the goroutine until it finishes; no shared access.
+	// A timed-out provider may outlive this call, so it cannot share errOut.
 	scanErrBuf := &bytes.Buffer{}
 	go func() {
 		defer func() {
@@ -103,7 +121,12 @@ func runContentSafety(cobraPath string, data any, errOut io.Writer) (*extcs.Aler
 				ch <- result{nil, fmt.Errorf("content safety panic: %v", r)}
 			}
 		}()
-		a, e := p.Scan(ctx, extcs.ScanRequest{Path: cmdPath, Data: data, ErrOut: scanErrBuf})
+		a, e := scan(ctx, extcs.ScanRequest{
+			Path:     cmdPath,
+			Data:     data,
+			ErrOut:   scanErrBuf,
+			FullText: fullText,
+		})
 		ch <- result{a, e}
 	}()
 
@@ -113,13 +136,22 @@ func runContentSafety(cobraPath string, data any, errOut io.Writer) (*extcs.Aler
 		if scanErrBuf.Len() > 0 {
 			_, _ = io.Copy(errOut, scanErrBuf)
 		}
+		if ctx.Err() != nil && m == modeBlock {
+			return nil, fmt.Errorf("%w: %w", errScanIncomplete, ctx.Err())
+		}
 	case <-ctx.Done():
-		return nil, nil // timeout, fail-open; scanErrBuf stays with the goroutine
+		if m == modeBlock {
+			return nil, fmt.Errorf("%w: %w", errScanIncomplete, ctx.Err())
+		}
+		return nil, fmt.Errorf("%w: %w", errScanFailed, ctx.Err())
 	}
 
 	if res.err != nil {
 		fmt.Fprintf(errOut, "warning: content safety scan error: %v\n", res.err)
-		return nil, nil // fail-open
+		if m == modeBlock {
+			return nil, fmt.Errorf("%w: %w", errScanIncomplete, res.err)
+		}
+		return nil, fmt.Errorf("%w: %w", errScanFailed, res.err)
 	}
 	if res.alert == nil {
 		return nil, nil

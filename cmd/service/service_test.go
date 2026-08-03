@@ -257,6 +257,21 @@ func TestServiceMethod_DryRunWithJq(t *testing.T) {
 	}
 }
 
+func TestServiceMethod_DryRunMixedCasePrettyUsesPlainTextPreview(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--dry-run", "--format", "Pretty"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("dry-run --format Pretty must be accepted, got: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "# dry-run: request not sent") {
+		t.Fatalf("dry-run --format Pretty lost its plain-text preview, stdout:\n%s", stdout.String())
+	}
+}
+
 func TestServiceMethod_PathParamRejectsTraversal(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -525,6 +540,10 @@ func (p *serviceContentSafetyProvider) Scan(_ context.Context, req extcs.ScanReq
 	return &extcs.Alert{Provider: "service-test", MatchedRules: []string{"pagination"}}, nil
 }
 
+func (p *serviceContentSafetyProvider) ScanFullText(ctx context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	return p.Scan(ctx, req)
+}
+
 func TestServiceMethod_PageAll_DefaultJSONRunsContentSafety(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
 	provider := &serviceContentSafetyProvider{}
@@ -561,12 +580,12 @@ func TestServiceMethod_PageAll_DefaultJSONRunsContentSafety(t *testing.T) {
 	if provider.path != "list" {
 		t.Fatalf("scan path = %q, want list", provider.path)
 	}
-	data, ok := provider.data.(map[string]interface{})
+	data, ok := provider.data.(string)
 	if !ok {
-		t.Fatalf("scanned data type = %T, want map", provider.data)
+		t.Fatalf("scanned data type = %T, want rendered JSON string", provider.data)
 	}
-	if _, hasCode := data["code"]; hasCode {
-		t.Fatalf("scanned data should be business data only, got %#v", data)
+	if strings.Contains(data, `"code"`) || !strings.Contains(data, `"data"`) {
+		t.Fatalf("scanned JSON should be the success envelope without an API code, got %q", data)
 	}
 
 	var got map[string]interface{}
@@ -615,9 +634,11 @@ func TestServiceMethod_PageAll_StreamFormatRunsContentSafety(t *testing.T) {
 	if provider.path != "list" {
 		t.Fatalf("scan path = %q, want list", provider.path)
 	}
-	items, ok := provider.data.([]interface{})
-	if !ok || len(items) != 1 {
-		t.Fatalf("scanned data = %#v, want one streamed item", provider.data)
+	// Streaming now scans the exact rendered page bytes (not the structured
+	// item) so a rule match formed only in the rendered output cannot slip past.
+	scanned, ok := provider.data.(string)
+	if !ok || !strings.Contains(scanned, `"id":"1"`) {
+		t.Fatalf("scanned data = %#v, want rendered ndjson page text", provider.data)
 	}
 	if !strings.Contains(stderr.String(), "warning: content safety alert from service-test") {
 		t.Fatalf("expected content safety warning on stderr, got: %s", stderr.String())
@@ -680,11 +701,8 @@ func TestServiceMethod_PageAll_StreamFormatBlockSkipsBlockedPage(t *testing.T) {
 		t.Fatalf("rules = %v, want [pagination]", safetyErr.Rules)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "safe-page") {
-		t.Fatalf("expected earlier safe page to remain streamed, got: %s", out)
-	}
-	if strings.Contains(out, "blocked-page") {
-		t.Fatalf("blocked page was written before safety block: %s", out)
+	if out != "" {
+		t.Fatalf("blocked complete stream was written before safety block: %s", out)
 	}
 }
 
@@ -795,14 +813,11 @@ func TestServiceMethod_PageAll_StreamBusinessErrorDoesNotDumpJSON(t *testing.T) 
 	}
 }
 
-func TestServiceMethod_UnknownFormat_Warning(t *testing.T) {
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+func TestServiceMethod_UnknownFormat_Rejected(t *testing.T) {
+	// No stub is registered: the unknown --format must be rejected before any
+	// API call is made.
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-fmt", AppSecret: "test-secret-fmt", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		URL:  "/open-apis/svc/v1/items",
-		Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	})
 
 	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
@@ -810,11 +825,69 @@ func TestServiceMethod_UnknownFormat_Warning(t *testing.T) {
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--format", "unknown"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	// An unknown --format is a typed validation error, not a silent JSON fallback.
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected a validation error for unknown --format")
 	}
-	if !strings.Contains(stderr.String(), "warning: unknown format") {
-		t.Errorf("expected format warning in stderr, got:\n%s", stderr.String())
+	requireValidationParam(t, err, "--format")
+	if !strings.Contains(err.Error(), "unknown output format") {
+		t.Errorf("error = %v, want unknown-format message", err)
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "pretty") {
+		t.Errorf("error = %v, raw service format choices must exclude pretty", err)
+	}
+	if stdout.String() != "" {
+		t.Errorf("unknown --format must not write stdout, got:\n%s", stdout.String())
+	}
+	// The old degrade-to-JSON warning must be gone, not merely accompanied by an error.
+	if strings.Contains(stderr.String(), "falling back to json") {
+		t.Errorf("unknown --format must not emit the legacy fallback warning, got stderr:\n%s", stderr.String())
+	}
+}
+
+func TestServiceMethod_UnknownFormatPrecedesJqConflict(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-fmt", AppSecret: "test-secret-fmt", Brand: core.BrandFeishu,
+	})
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{
+		"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{},
+	})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--format", "tabel", "--jq", "."})
+
+	err := cmd.Execute()
+	requireValidationParam(t, err, "--format")
+	if !strings.Contains(err.Error(), "unknown output format") {
+		t.Fatalf("error = %v, want unknown-format message", err)
+	}
+	if strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("error = %v, unknown format should be reported before jq conflict", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("unknown --format wrote stdout:\n%s", stdout.String())
+	}
+}
+
+func TestServiceMethod_PrettyRejectedOnEmit(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-fmt", AppSecret: "test-secret-fmt", Brand: core.BrandFeishu,
+	})
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{
+		"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{},
+	})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--format", "pretty"})
+
+	err := cmd.Execute()
+	requireValidationParam(t, err, "--format")
+	if !strings.Contains(err.Error(), "pretty") {
+		t.Fatalf("error = %v, want pretty-not-supported message", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("rejected --format pretty wrote stdout:\n%s", stdout.String())
 	}
 }
 
@@ -1025,6 +1098,18 @@ func requireProblem(t *testing.T, err error, category errs.Category, subtype err
 	}
 	if p.Category != category || p.Subtype != subtype || p.Code != code {
 		t.Fatalf("problem = %s/%s/%d, want %s/%s/%d", p.Category, p.Subtype, p.Code, category, subtype, code)
+	}
+}
+
+func requireValidationParam(t *testing.T, err error, param string) {
+	t.Helper()
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, 0)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Param != param {
+		t.Fatalf("Param = %q, want %q", validationErr.Param, param)
 	}
 }
 

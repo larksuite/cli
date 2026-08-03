@@ -139,7 +139,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 			Identity:       string(identity),
 			NoticeProvider: output.GetNotice,
 		})
-		return emitter.Success(result, output.EmitOptions{Format: opts.Format.String()})
+		return emitter.Success(result, output.EmitOptions{Format: opts.Format})
 	}
 
 	// Non-JSON (binary) responses.

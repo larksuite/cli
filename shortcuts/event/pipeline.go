@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
@@ -27,6 +28,7 @@ const dedupTTL = 5 * time.Minute
 type PipelineConfig struct {
 	Mode      TransformMode // determined by --compact flag
 	JsonFlag  bool          // --json: pretty JSON instead of NDJSON
+	Format    string        // explicit stdout format: json or ndjson
 	OutputDir string        // --output-dir: write events to files
 	Quiet     bool          // --quiet: suppress stderr status messages
 	Router    *EventRouter  // --route: regex-based output routing
@@ -39,7 +41,8 @@ type EventPipeline struct {
 	config     PipelineConfig
 	eventCount atomic.Int64
 	seen       sync.Map // key → time.Time (first-seen timestamp)
-	out        io.Writer
+	emitMu     sync.Mutex
+	emitter    *output.Emitter
 	errOut     io.Writer
 }
 
@@ -50,12 +53,17 @@ func NewEventPipeline(
 	config PipelineConfig,
 	out, errOut io.Writer,
 ) *EventPipeline {
+	commandPath := "lark-cli event +subscribe"
 	return &EventPipeline{
 		registry: registry,
 		filters:  filters,
 		config:   config,
-		out:      out,
-		errOut:   errOut,
+		emitter: output.NewEmitter(output.EmitterConfig{
+			Out:         out,
+			ErrOut:      errOut,
+			CommandPath: commandPath,
+		}),
+		errOut: errOut,
 	}
 }
 
@@ -109,12 +117,12 @@ func (p *EventPipeline) cleanupSeen(now time.Time) {
 }
 
 // Process is the pipeline entry point, called by the WebSocket callback.
-func (p *EventPipeline) Process(ctx context.Context, raw *RawEvent) {
+func (p *EventPipeline) Process(ctx context.Context, raw *RawEvent) error {
 	eventType := raw.Header.EventType
 
 	// 1. Filter
 	if !p.filters.Allow(eventType) {
-		return
+		return nil
 	}
 
 	// 2. Lookup processor
@@ -123,7 +131,7 @@ func (p *EventPipeline) Process(ctx context.Context, raw *RawEvent) {
 	// 3. Dedup
 	if key := processor.DeduplicateKey(raw); key != "" && p.isDuplicate(key) {
 		p.infof("%s[dedup]%s %s (key=%s)", output.Dim, output.Reset, eventType, key)
-		return
+		return nil
 	}
 
 	n := p.eventCount.Add(1)
@@ -141,23 +149,34 @@ func (p *EventPipeline) Process(ctx context.Context, raw *RawEvent) {
 			for _, dir := range dirs {
 				p.writeAndLog(dir, n, eventType, data, raw.Header)
 			}
-			return
+			return nil
 		}
 	}
 
 	// 5b. --output-dir
 	if p.config.OutputDir != "" {
 		p.writeAndLog(p.config.OutputDir, n, eventType, data, raw.Header)
-		return
+		return nil
 	}
 
 	// 5c. Stdout
-	if p.config.JsonFlag {
-		output.PrintJson(p.out, data)
-	} else {
-		output.PrintNdjson(p.out, data)
+	format := output.FormatNDJSON
+	switch {
+	case p.config.JsonFlag || p.config.Format == output.FormatJSON.String():
+		format = output.FormatJSON
+	case p.config.Format == "", p.config.Format == output.FormatNDJSON.String():
+	default:
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"internal: unsupported event pipeline format %q", p.config.Format)
+	}
+	p.emitMu.Lock()
+	err := p.emitter.Value(data, output.StreamOptions{Format: format})
+	p.emitMu.Unlock()
+	if err != nil {
+		return err
 	}
 	p.infof("%s[%d]%s %s", output.Dim, n, output.Reset, eventType)
+	return nil
 }
 
 // writeAndLog writes an event to a directory and logs the result.

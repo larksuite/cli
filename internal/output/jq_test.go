@@ -160,8 +160,13 @@ func TestValidateJqFlags(t *testing.T) {
 		{name: "empty jq is noop", jqExpr: "", outputFlag: "file.json", format: "csv", wantErr: ""},
 		{name: "jq only", jqExpr: ".data", outputFlag: "", format: "", wantErr: ""},
 		{name: "jq with json format", jqExpr: ".data", outputFlag: "", format: "json", wantErr: ""},
+		// Format classification is case-insensitive via ParseFormat: an
+		// upper/mixed-case JSON must not be mistaken for a conflicting format.
+		{name: "jq with uppercase JSON format", jqExpr: ".data", outputFlag: "", format: "JSON", wantErr: ""},
+		{name: "jq with mixed-case Json format", jqExpr: ".data", outputFlag: "", format: "Json", wantErr: ""},
 		{name: "jq and output conflict", jqExpr: ".data", outputFlag: "out.json", format: "", wantErr: "--jq and --output are mutually exclusive"},
 		{name: "jq and csv conflict", jqExpr: ".data", outputFlag: "", format: "csv", wantErr: "--jq and --format csv are mutually exclusive"},
+		{name: "jq and pretty conflict", jqExpr: ".data", outputFlag: "", format: "pretty", wantErr: "--jq and --format pretty are mutually exclusive"},
 		{name: "jq and ndjson conflict", jqExpr: ".data", outputFlag: "", format: "ndjson", wantErr: "--jq and --format ndjson are mutually exclusive"},
 		{name: "invalid expression", jqExpr: "invalid[", outputFlag: "", format: "", wantErr: "invalid jq expression"},
 	}

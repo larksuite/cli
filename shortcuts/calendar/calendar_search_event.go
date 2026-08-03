@@ -324,7 +324,7 @@ var CalendarSearchEvent = common.Shortcut{
 		})
 
 		if hasMore && runtime.Format != "json" && runtime.Format != "" {
-			fmt.Fprintf(runtime.IO().Out, "\n(more available, page_token: %s)\n", pageToken)
+			fmt.Fprintf(runtime.IO().ErrOut, "\n(more available, page_token: %s)\n", pageToken)
 		}
 		return nil
 	},

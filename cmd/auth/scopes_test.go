@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -40,6 +41,36 @@ func scopesTestFactory(t *testing.T) *ScopesOptions {
 		Factory: f,
 		Ctx:     context.Background(),
 		Format:  "json",
+	}
+}
+
+func TestAuthScopesRunPrettyWritesBusinessDataToStdout(t *testing.T) {
+	previous := getAppInfoFn
+	getAppInfoFn = func(context.Context, *cmdutil.Factory, string) (*appInfo, error) {
+		return &appInfo{UserScopes: []string{"im:message"}}, nil
+	}
+	t.Cleanup(func() { getAppInfoFn = previous })
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID:     "test-app",
+		AppSecret: "test-secret",
+		Brand:     core.BrandFeishu,
+	})
+	err := authScopesRun(&ScopesOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Format:  "pretty",
+	})
+	if err != nil {
+		t.Fatalf("authScopesRun() error = %v", err)
+	}
+	for _, want := range []string{"App ID: test-app", "Enabled scopes (1)", "im:message"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout missing %q: %s", want, stdout.String())
+		}
+		if strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr contains business data %q: %s", want, stderr.String())
+		}
 	}
 }
 

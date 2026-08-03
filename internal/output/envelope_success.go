@@ -41,10 +41,9 @@ func WriteSuccessEnvelope(data interface{}, opts SuccessEnvelopeOptions) error {
 		Identity:       opts.Identity,
 		NoticeProvider: GetNotice,
 	}).Success(data, EmitOptions{
-		Format:          "",
-		Raw:             false,
-		JQ:              opts.JqExpr,
-		DryRun:          opts.DryRun,
-		JQSafetyWarning: true,
+		Format: FormatJSON,
+		Raw:    false,
+		JQ:     opts.JqExpr,
+		DryRun: opts.DryRun,
 	})
 }

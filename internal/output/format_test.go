@@ -6,8 +6,11 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func TestFormatValue_JSON(t *testing.T) {
@@ -98,6 +101,18 @@ func TestFormatValue_CSV(t *testing.T) {
 	}
 }
 
+func TestWriteFormatted_InvalidFormatReturnsInternalErrorWithoutOutput(t *testing.T) {
+	var buf bytes.Buffer
+	err := WriteFormatted(&buf, map[string]interface{}{"id": "1"}, Format(99))
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("WriteFormatted() problem = %#v, %v; want internal/unknown", problem, ok)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("WriteFormatted() wrote %d bytes, want 0", buf.Len())
+	}
+}
+
 func TestPaginatedFormatter_JSON(t *testing.T) {
 	var buf bytes.Buffer
 	pf := NewPaginatedFormatter(&buf, FormatJSON)
@@ -167,6 +182,22 @@ func TestPaginatedFormatter_CSV(t *testing.T) {
 	lines2 := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
 	if len(lines2) != 1 {
 		t.Errorf("continuation CSV page should have only data, got %d lines", len(lines2))
+	}
+}
+
+func TestPaginatedFormatterWritePage_InvalidFormatReturnsInternalErrorWithoutOutput(t *testing.T) {
+	var buf bytes.Buffer
+	pf := NewPaginatedFormatter(&buf, Format(99))
+	err := pf.WritePage([]interface{}{map[string]interface{}{"id": "1"}})
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("WritePage() error = %T, want *errs.InternalError", err)
+	}
+	if internalErr.Category != errs.CategoryInternal || internalErr.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("WritePage() problem = %s/%s, want internal/unknown", internalErr.Category, internalErr.Subtype)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("WritePage() wrote %d bytes, want 0", buf.Len())
 	}
 }
 

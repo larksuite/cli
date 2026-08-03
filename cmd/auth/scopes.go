@@ -6,6 +6,8 @@ package auth
 import (
 	"context"
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -33,6 +35,13 @@ func NewCmdAuthScopes(f *cmdutil.Factory, runF func(*ScopesOptions) error) *cobr
 			opts.Ctx = cmd.Context()
 			if opts.JSON {
 				opts.Format = "json"
+			} else {
+				opts.Format = strings.ToLower(strings.TrimSpace(opts.Format))
+				if opts.Format != "json" && opts.Format != "pretty" {
+					return errs.NewValidationError(errs.SubtypeInvalidArgument,
+						"unknown output format %q (want json or pretty)", opts.Format).
+						WithParam("--format")
+				}
 			}
 			if runF != nil {
 				return runF(opts)
@@ -74,20 +83,36 @@ func authScopesRun(opts *ScopesOptions) error {
 		return errs.NewInternalError(errs.SubtypeSDKError,
 			"failed to get app scope info: %v", err).WithCause(err)
 	}
+	data := map[string]interface{}{
+		"appId":      config.AppID,
+		"brand":      config.Brand,
+		"tokenType":  "user",
+		"userScopes": appInfo.UserScopes,
+		"count":      len(appInfo.UserScopes),
+	}
+	emitter := output.NewEmitter(output.EmitterConfig{
+		Out:         f.IOStreams.Out,
+		ErrOut:      f.IOStreams.ErrOut,
+		CommandPath: "lark-cli auth scopes",
+	})
 	if opts.Format == "pretty" {
-		fmt.Fprintf(f.IOStreams.ErrOut, "App ID: %s\n", config.AppID)
-		fmt.Fprintf(f.IOStreams.ErrOut, "Enabled scopes (%d):\n\n", len(appInfo.UserScopes))
-		for _, s := range appInfo.UserScopes {
-			fmt.Fprintf(f.IOStreams.ErrOut, "  • %s\n", s)
-		}
-	} else {
-		output.PrintJson(f.IOStreams.Out, map[string]interface{}{
-			"appId":      config.AppID,
-			"brand":      config.Brand,
-			"tokenType":  "user",
-			"userScopes": appInfo.UserScopes,
-			"count":      len(appInfo.UserScopes),
+		return emitter.Value(data, output.StreamOptions{
+			Format: output.FormatPretty,
+			Pretty: func(w io.Writer, _ bool) error {
+				if _, err := fmt.Fprintf(w, "App ID: %s\n", config.AppID); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintf(w, "Enabled scopes (%d):\n\n", len(appInfo.UserScopes)); err != nil {
+					return err
+				}
+				for _, scope := range appInfo.UserScopes {
+					if _, err := fmt.Fprintf(w, "  • %s\n", scope); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
 		})
 	}
-	return nil
+	return emitter.Value(data, output.StreamOptions{Format: output.FormatJSON})
 }

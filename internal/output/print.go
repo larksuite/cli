@@ -81,21 +81,6 @@ func injectNotice(data interface{}) {
 	m["_notice"] = notice
 }
 
-// PrintNdjson prints data as NDJSON (Newline Delimited JSON) to w.
-func PrintNdjson(w io.Writer, data interface{}) {
-	if arr, ok := data.([]interface{}); ok {
-		for _, item := range arr {
-			if err := WriteNDJSON(w, item); isOutputMarshalError(err) {
-				legacyStderrf("ndjson marshal error: %v\n", err)
-			}
-		}
-		return
-	}
-	if err := WriteNDJSON(w, data); isOutputMarshalError(err) {
-		legacyStderrf("ndjson marshal error: %v\n", err)
-	}
-}
-
 // WriteNDJSON writes data as NDJSON and returns marshal or write errors.
 func WriteNDJSON(w io.Writer, data interface{}) error {
 	emit := func(item interface{}) error {

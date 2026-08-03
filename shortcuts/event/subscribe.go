@@ -98,13 +98,25 @@ var EventSubscribe = common.Shortcut{
 		{Name: "route", Type: "string_array", Desc: "regex-based event routing (e.g. --route '^im\\.message=dir:./im/' --route '^contact\\.=dir:./contacts/'); unmatched events fall through to --output-dir or stdout"},
 		// Output format — how events are serialized
 		{Name: "compact", Type: "bool", Desc: "flat key-value output: extract text, strip noise fields"},
-		{Name: "json", Type: "bool", Desc: "pretty-print JSON instead of NDJSON"},
+		{Name: "format", Default: "ndjson", Enum: []string{"json", "ndjson"}, Desc: "stdout format: json (pretty-printed event objects) or ndjson (one compact object per line)"},
+		{Name: "json", Type: "bool", Desc: "alias for --format json"},
 		// Filtering — which events reach the pipeline
 		{Name: "event-types", Desc: "comma-separated event types to subscribe; only use when you do not need other events (omit for catch-all)"},
 		{Name: "filter", Desc: "regex to further filter events by event_type"},
 		// Behavior
 		{Name: "quiet", Type: "bool", Desc: "suppress stderr status messages"},
 		{Name: "force", Type: "bool", Desc: "bypass single-instance lock (UNSAFE: server randomly splits events across connections, each instance only receives a subset)"},
+	},
+	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
+		if runtime.Bool("json") &&
+			runtime.Cmd.Flags().Changed("format") &&
+			runtime.Str("format") != output.FormatJSON.String() {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--json conflicts with --format %s", runtime.Str("format")).
+				WithParam("--format").
+				WithHint("use --format json or remove --json")
+		}
+		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		eventTypesDisplay := "(catch-all)"
@@ -123,18 +135,27 @@ var EventSubscribe = common.Shortcut{
 		if routes := runtime.StrArray("route"); len(routes) > 0 {
 			routeDisplay = strings.Join(routes, "; ")
 		}
+		formatDisplay := runtime.Str("format")
+		if runtime.Bool("json") {
+			formatDisplay = output.FormatJSON.String()
+		}
 		return common.NewDryRunAPI().
 			Desc("Subscribe to Lark events via WebSocket (long-running)").
 			Set("command", "event +subscribe").
 			Set("app_id", runtime.Config.AppID).
 			Set("event_types", eventTypesDisplay).
 			Set("filter", filterDisplay).Set("output_dir", outputDirDisplay).
-			Set("route", routeDisplay)
+			Set("route", routeDisplay).
+			Set("format", formatDisplay)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		eventTypesStr := runtime.Str("event-types")
 		filterStr := runtime.Str("filter")
 		jsonFlag := runtime.Bool("json")
+		formatName := runtime.Str("format")
+		if jsonFlag {
+			formatName = output.FormatJSON.String()
+		}
 		compactFlag := runtime.Bool("compact")
 		outputDir := runtime.Str("output-dir")
 		quietFlag := runtime.Bool("quiet")
@@ -207,7 +228,7 @@ var EventSubscribe = common.Shortcut{
 		}
 		pipeline := NewEventPipeline(DefaultRegistry(), filters, PipelineConfig{
 			Mode:      mode,
-			JsonFlag:  jsonFlag,
+			Format:    formatName,
 			OutputDir: outputDir,
 			Quiet:     quietFlag,
 			Router:    router,
@@ -227,8 +248,7 @@ var EventSubscribe = common.Shortcut{
 				output.PrintError(errOut, fmt.Sprintf("failed to parse event: %v", err))
 				return nil
 			}
-			pipeline.Process(ctx, &raw)
-			return nil
+			return pipeline.Process(ctx, &raw)
 		}
 
 		sdkLogger := &stderrLogger{w: errOut, quiet: quietFlag}

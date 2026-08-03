@@ -6,7 +6,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 
@@ -380,6 +379,15 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if opts.PageAll && opts.Output != "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output and --page-all are mutually exclusive").WithParam("--output")
 	}
+	// Parse before the dry-run branch so both dry-run and emit reject unknown
+	// values. Raw service responses accept four formats; pretty remains available
+	// only for the dry-run request preview handled below.
+	format, ok := output.ParseFormat(opts.Format)
+	if !ok {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"unknown output format %q (want json, ndjson, table, or csv)", opts.Format).
+			WithParam("--format")
+	}
 	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
 		return err
 	}
@@ -403,9 +411,18 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 	if opts.DryRun {
 		if fileMeta != nil {
-			return cmdutil.PrintDryRunWithFile(request, config, serviceDryRunOutputOptions(f, opts), *fileMeta)
+			return cmdutil.PrintDryRunWithFile(request, config, serviceDryRunOutputOptions(f, opts, format), *fileMeta)
 		}
-		return serviceDryRun(f, request, config, opts)
+		return serviceDryRun(f, request, config, opts, format)
+	}
+	// pretty is a shortcut-only presentation format; the raw service command has
+	// no pretty renderer for responses, so reject it before the confirmation and
+	// client init rather than fall back. (Dry-run keeps its own plain-text pretty
+	// preview, handled above.)
+	if format == output.FormatPretty {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--format pretty is not supported here (use json, ndjson, table, or csv)").
+			WithParam("--format")
 	}
 
 	if opts.Method.Risk == cmdutil.RiskHighRiskWrite {
@@ -420,10 +437,6 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	}
 
 	out := f.IOStreams.Out
-	format, formatOK := output.ParseFormat(opts.Format)
-	if !formatOK {
-		fmt.Fprintf(f.IOStreams.ErrOut, "warning: unknown format %q, falling back to json\n", opts.Format)
-	}
 
 	// Scope-insufficient (99991679) and all other Lark API codes route through
 	// errclass.BuildAPIError via ac.CheckResponse, producing *errs.PermissionError
@@ -431,8 +444,18 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	checkErr := ac.CheckResponse
 
 	if opts.PageAll {
-		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
-			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
+		return client.PaginateToOutput(opts.Ctx, client.PaginateOutputOptions{
+			Client:      ac,
+			Request:     request,
+			Format:      format,
+			JqExpr:      opts.JqExpr,
+			Out:         out,
+			ErrOut:      f.IOStreams.ErrOut,
+			CommandPath: opts.Cmd.CommandPath(),
+			Pagination:  client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay},
+			CheckErr:    checkErr,
+			MarkErr:     nil,
+		})
 	}
 
 	resp, err := ac.DoAPI(opts.Ctx, request)
@@ -667,89 +690,17 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	return request, nil, nil
 }
 
-func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *ServiceMethodOptions) error {
-	return cmdutil.PrintDryRun(request, config, serviceDryRunOutputOptions(f, opts))
+func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *ServiceMethodOptions, format output.Format) error {
+	return cmdutil.PrintDryRun(request, config, serviceDryRunOutputOptions(f, opts, format))
 }
 
-func serviceDryRunOutputOptions(f *cmdutil.Factory, opts *ServiceMethodOptions) cmdutil.DryRunOutputOptions {
+func serviceDryRunOutputOptions(f *cmdutil.Factory, opts *ServiceMethodOptions, format output.Format) cmdutil.DryRunOutputOptions {
 	return cmdutil.DryRunOutputOptions{
-		Format:      opts.Format,
+		Format:      format.String(),
 		JqExpr:      opts.JqExpr,
 		CommandPath: opts.Cmd.CommandPath(),
 		Identity:    opts.As,
 		Out:         f.IOStreams.Out,
 		ErrOut:      f.IOStreams.ErrOut,
-	}
-}
-
-func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
-	if pagOpts.Identity == "" {
-		pagOpts.Identity = request.As
-	}
-	// When jq is set, always aggregate all pages then filter.
-	if jqExpr != "" {
-		result, err := ac.PaginateAll(ctx, request, pagOpts)
-		if err != nil {
-			return err
-		}
-		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
-			output.FormatValue(out, result, output.FormatJSON)
-			return apiErr
-		}
-		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
-			CommandPath: commandPath,
-			Identity:    string(pagOpts.Identity),
-			JqExpr:      jqExpr,
-			Out:         out,
-			ErrOut:      errOut,
-		})
-	}
-
-	switch format {
-	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
-		emitter := output.NewEmitter(output.EmitterConfig{
-			Out:            out,
-			ErrOut:         errOut,
-			CommandPath:    commandPath,
-			Identity:       string(pagOpts.Identity),
-			NoticeProvider: output.GetNotice,
-		})
-		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) error {
-			// Streaming formats intentionally emit each page after that page has
-			// passed safety scanning. A later page may still fail, so callers
-			// must use the exit code to distinguish complete vs partial output.
-			return emitter.StreamPage(items, output.StreamOptions{Format: format.String()})
-		}, pagOpts)
-		if err != nil {
-			return err
-		}
-		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
-			return apiErr
-		}
-		if !hasItems {
-			fmt.Fprintf(errOut, "warning: this API does not return a list, format %q is not supported, falling back to json\n", format)
-			return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
-				CommandPath: commandPath,
-				Identity:    string(pagOpts.Identity),
-				Out:         out,
-				ErrOut:      errOut,
-			})
-		}
-		return nil
-	default:
-		result, err := ac.PaginateAll(ctx, request, pagOpts)
-		if err != nil {
-			return err
-		}
-		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
-			output.FormatValue(out, result, output.FormatJSON)
-			return apiErr
-		}
-		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
-			CommandPath: commandPath,
-			Identity:    string(pagOpts.Identity),
-			Out:         out,
-			ErrOut:      errOut,
-		})
 	}
 }

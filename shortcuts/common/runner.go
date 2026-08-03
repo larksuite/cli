@@ -698,41 +698,78 @@ func wrapLegacyPrettyRenderer(prettyFn func(w io.Writer)) output.PrettyRenderer 
 	}
 }
 
-// Out prints a success JSON envelope to stdout.
+func (ctx *RuntimeContext) emitOutput(data interface{}, meta *output.Meta, raw bool, prettyFn func(w io.Writer), formatName string) {
+	format, ok := output.ParseFormat(formatName)
+	if !ok {
+		ctx.handleEmitterError(errs.NewInternalError(errs.SubtypeUnknown,
+			"output helper received unsupported format %q", formatName))
+		return
+	}
+	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
+		Format: format,
+		Raw:    raw,
+		JQ:     ctx.JqExpr,
+		Meta:   meta,
+		Pretty: wrapLegacyPrettyRenderer(prettyFn),
+	}))
+}
+
+// EmitValue writes a naked business value with the selected formatter. Custom
+// output contracts and long-running callbacks use this method when a success
+// envelope would change their wire representation.
+func (ctx *RuntimeContext) EmitValue(data interface{}, formatName string) error {
+	format, err := output.ParseFormatStrict(formatName)
+	if err != nil {
+		return err
+	}
+	return ctx.newEmitter().Value(data, output.StreamOptions{Format: format})
+}
+
+// EmitRenderedValue writes a caller-rendered naked value after scanning both
+// the structured source and the exact rendered bytes.
+func (ctx *RuntimeContext) EmitRenderedValue(data interface{}, renderer func(io.Writer) error) error {
+	return ctx.newEmitter().Value(data, output.StreamOptions{
+		Format: output.FormatPretty,
+		Pretty: func(w io.Writer, _ bool) error {
+			return renderer(w)
+		},
+	})
+}
+
+// Out prints a success result using the selected output format.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
-	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
-		Format: "",
-		Raw:    false,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-	}))
+	ctx.emitOutput(data, meta, false, nil, ctx.Format)
 }
 
-// OutRaw prints a success JSON envelope to stdout with HTML escaping disabled.
-// Use this instead of Out when the data contains XML/HTML content (e.g. document bodies)
-// that should be preserved as-is in JSON output.
+// OutRaw prints a success result using the selected output format. JSON
+// envelope output preserves XML/HTML content without escaping.
 func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
-	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
-		Format: "",
-		Raw:    true,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-	}))
+	ctx.emitOutput(data, meta, true, nil, ctx.Format)
 }
 
-// OutPartialFailure writes an ok:false multi-status result envelope to stdout
-// and returns the partial-failure exit signal. Use it for batch operations
-// where some items failed but the per-item outcomes are the primary output:
-// the full result (summary + per-item statuses) stays machine-readable on
-// stdout, the process exits non-zero, and nothing is written to stderr.
+// OutJSON prints a success JSON envelope regardless of a shortcut's custom
+// format flag. It is reserved for branches whose output contract is JSON.
+func (ctx *RuntimeContext) OutJSON(data interface{}, meta *output.Meta) {
+	ctx.emitOutput(data, meta, false, nil, output.FormatJSON.String())
+}
+
+// OutPartialFailure writes a multi-status result in the selected format and
+// returns the partial-failure exit signal. JSON and jq retain an ok:false
+// envelope; table, csv, ndjson, and pretty emit the full result as naked data.
+// The process exits non-zero and stdout remains parseable in the requested
+// format.
 //
 // It is the typed alternative to `Out(...)` + `output.ErrBare(...)` — the
-// envelope's ok field honestly reports failure instead of a misleading
-// ok:true, and the exit signal is distinct from ErrBare (the
-// stdout-carries-the-answer silent-exit signal).
+// JSON's ok field honestly reports failure, and the exit signal is distinct
+// from ErrBare (the stdout-carries-the-answer silent-exit signal).
 func (ctx *RuntimeContext) OutPartialFailure(data interface{}, meta *output.Meta) error {
+	format, err := output.ParseFormatStrict(ctx.Format)
+	if err != nil {
+		ctx.handleEmitterError(err)
+		return err
+	}
 	ctx.handleEmitterError(ctx.newEmitter().PartialFailure(data, output.EmitOptions{
-		Format: "",
+		Format: format,
 		Raw:    false,
 		JQ:     ctx.JqExpr,
 		Meta:   meta,
@@ -748,25 +785,13 @@ func (ctx *RuntimeContext) OutPartialFailure(data interface{}, meta *output.Meta
 // When JqExpr is set, envelope filtering takes precedence over format.
 // The Emitter handles content safety scanning for every format.
 func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
-	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
-		Format: ctx.Format,
-		Raw:    false,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-		Pretty: wrapLegacyPrettyRenderer(prettyFn),
-	}))
+	ctx.emitOutput(data, meta, false, prettyFn, ctx.Format)
 }
 
 // OutFormatRaw is like OutFormat but with HTML escaping disabled in JSON output.
 // Use this when the data contains XML/HTML content that should be preserved as-is.
 func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
-	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
-		Format: ctx.Format,
-		Raw:    true,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-		Pretty: wrapLegacyPrettyRenderer(prettyFn),
-	}))
+	ctx.emitOutput(data, meta, true, prettyFn, ctx.Format)
 }
 
 // ── Scope pre-check ──
@@ -876,18 +901,25 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 // runShortcut is the execution pipeline for a declarative shortcut.
 // Each step is a clear phase: identity → config → scopes → context → validate → execute.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
-	// --print-schema short-circuits everything below: it's pure local
-	// introspection, no identity / scope / network needed. The flag is
-	// only registered when the shortcut opts in via PrintFlagSchema.
 	if s.PrintFlagSchema != nil {
 		if want, _ := cmd.Flags().GetBool("print-schema"); want {
+			formatName, _ := cmd.Flags().GetString("format")
+			if !shortcutDeclaresFormatFlag(s) {
+				canonicalFormat, err := canonicalizeFrameworkFormatFlag(cmd)
+				if err != nil {
+					return err
+				}
+				formatName = canonicalFormat
+			}
+			if !strings.EqualFold(strings.TrimSpace(formatName), output.FormatJSON.String()) {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"--print-schema requires --format json").
+					WithParam("--format").
+					WithHint("rerun with --format json")
+			}
 			flagName, _ := cmd.Flags().GetString("flag-name")
 			out, err := s.PrintFlagSchema(strings.TrimSpace(flagName))
 			if err != nil {
-				// PrintFlagSchema implementations return bare errors; wrap as a
-				// typed validation error so --print-schema (an agent-facing
-				// introspection path) yields a parseable envelope, not a plain
-				// string.
 				if !errs.IsTyped(err) {
 					err = errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err.Error()).WithCause(err)
 				}
@@ -927,6 +959,13 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	}
 	if err := resolveInputFlags(rctx, s.Flags); err != nil {
 		return err
+	}
+	if !shortcutDeclaresFormatFlag(s) {
+		canonicalFormat, err := canonicalizeFrameworkFormatFlag(rctx.Cmd)
+		if err != nil {
+			return err
+		}
+		rctx.Format = canonicalFormat
 	}
 	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
 		return err
@@ -1131,8 +1170,13 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 		// Same data.context contract as the service/api dry-run paths.
 		dryResult.Context(rctx.Config.AppID, rctx.UserOpenId())
 	}
+	dryRunFormat := rctx.Format
+	if !shortcutDeclaresFormatFlag(s) {
+		format, _ := output.ParseFormat(rctx.Format)
+		dryRunFormat = format.String()
+	}
 	return cmdutil.WriteDryRun(dryResult, cmdutil.DryRunOutputOptions{
-		Format:      rctx.Format,
+		Format:      dryRunFormat,
 		JqExpr:      rctx.JqExpr,
 		CommandPath: rctx.Cmd.CommandPath(),
 		Identity:    rctx.As(),
@@ -1170,6 +1214,35 @@ func shortcutDeclaresJSONFlag(s *Shortcut) bool {
 		}
 	}
 	return false
+}
+
+func shortcutDeclaresFormatFlag(s *Shortcut) bool {
+	for _, fl := range s.Flags {
+		if fl.Name == "format" {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalizeFrameworkFormatFlag(cmd *cobra.Command) (string, error) {
+	raw, err := cmd.Flags().GetString("format")
+	if err != nil {
+		return "", errs.NewInternalError(errs.SubtypeUnknown,
+			"failed to read the framework --format value").WithCause(err)
+	}
+	format, err := output.ParseFormatStrict(raw)
+	if err != nil {
+		return "", err
+	}
+	canonical := format.String()
+	if raw != canonical {
+		if err := cmd.Flags().Set("format", canonical); err != nil {
+			return "", errs.NewInternalError(errs.SubtypeUnknown,
+				"failed to canonicalize the framework --format value").WithCause(err)
+		}
+	}
+	return canonical, nil
 }
 
 // shortcutFormatSupportsJSON reports whether the command's format flag accepts

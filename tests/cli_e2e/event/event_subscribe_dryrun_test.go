@@ -28,6 +28,7 @@ func TestEventSubscribeDryRun(t *testing.T) {
 			"--filter", "^im\\.",
 			"--output-dir", "events_out",
 			"--route", "^im\\.message=dir:./messages",
+			"--format", "json",
 			"--dry-run",
 		},
 		DefaultAs: "bot",
@@ -42,4 +43,5 @@ func TestEventSubscribeDryRun(t *testing.T) {
 	require.Equal(t, "^im\\.", clie2e.DryRunGet(out, "filter").String(), "stdout:\n%s", out)
 	require.Equal(t, "events_out", clie2e.DryRunGet(out, "output_dir").String(), "stdout:\n%s", out)
 	require.Equal(t, "^im\\.message=dir:./messages", clie2e.DryRunGet(out, "route").String(), "stdout:\n%s", out)
+	require.Equal(t, "json", clie2e.DryRunGet(out, "format").String(), "stdout:\n%s", out)
 }

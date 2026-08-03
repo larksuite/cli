@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+
+	"github.com/larksuite/cli/errs"
 )
 
 // Known array field names for pagination.
@@ -114,8 +116,22 @@ func FormatValue(w io.Writer, data interface{}, format Format) {
 
 // WriteFormatted formats a single response and returns marshal or write errors.
 func WriteFormatted(w io.Writer, data interface{}, format Format) error {
+	if !format.Valid() {
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"internal: unknown output format %d", int(format))
+	}
 	data = toGeneric(data)
 	switch format {
+	case FormatJSON:
+		return WriteJSON(w, data)
+	case FormatPretty:
+		switch data.(type) {
+		case map[string]interface{}, []interface{}:
+			return WriteTable(w, data)
+		default:
+			_, err := fmt.Fprintln(w, cellStr(data))
+			return err
+		}
 	case FormatNDJSON:
 		items := ExtractItems(data)
 		if items != nil {
@@ -137,9 +153,9 @@ func WriteFormatted(w io.Writer, data interface{}, format Format) error {
 		}
 		return WriteCSV(w, data)
 
-	default: // FormatJSON
-		return WriteJSON(w, data)
 	}
+	return errs.NewInternalError(errs.SubtypeUnknown,
+		"internal: unknown output format %d", int(format))
 }
 
 // PaginatedFormatter holds state across paginated calls to ensure
@@ -166,6 +182,10 @@ func (pf *PaginatedFormatter) FormatPage(data interface{}) {
 
 // WritePage formats one page of items and returns marshal or write errors.
 func (pf *PaginatedFormatter) WritePage(data interface{}) error {
+	if !pf.Format.Valid() {
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"internal: unknown output format %d", int(pf.Format))
+	}
 	switch pf.Format {
 	case FormatJSON, FormatNDJSON:
 		if arr, ok := data.([]interface{}); ok {
@@ -194,7 +214,8 @@ func (pf *PaginatedFormatter) WritePage(data interface{}) error {
 			return writeCSVRows(w, rows, cols, isFirst)
 		})
 	}
-	return nil
+	return errs.NewInternalError(errs.SubtypeUnknown,
+		"internal: unknown output format %d", int(pf.Format))
 }
 
 // formatStructuredPage handles column-locking logic shared by table and csv.

@@ -5,8 +5,8 @@ package common
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -16,14 +16,14 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-// TestOutPartialFailure pins the batch / multi-status contract: the result
-// rides on stdout as an ok:false envelope (carrying the full payload), and the
-// returned error is the typed partial-failure exit signal (ExitAPI), distinct
-// from ErrBare (the silent-exit signal).
+// TestOutPartialFailure pins the batch / multi-status contract: stdout honors
+// the selected format and still carries the full payload, while the returned
+// error is the typed partial-failure exit signal.
 func TestOutPartialFailure(t *testing.T) {
 	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_x"}
 	f, stdout, _, _ := cmdutil.TestFactory(t, cfg)
 	rt := TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+push"}, cfg, f, core.AsUser)
+	rt.Format = "table"
 
 	payload := map[string]interface{}{
 		"summary": map[string]interface{}{"uploaded": 1, "failed": 1},
@@ -44,20 +44,15 @@ func TestOutPartialFailure(t *testing.T) {
 		t.Errorf("exit code = %d, want %d (ExitAPI)", pfErr.Code, output.ExitAPI)
 	}
 
-	// 2) stdout envelope reports ok:false but still carries the full payload
-	// (both the succeeded and failed items) — consistent with a success Out().
-	var env struct {
-		OK   bool                   `json:"ok"`
-		Data map[string]interface{} `json:"data"`
+	// 2) table output contains both successful and failed outcomes and does not
+	// silently switch to a JSON envelope.
+	got := stdout.String()
+	for _, want := range []string{"a.txt", "uploaded", "b.txt", "failed", "boom"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, got)
+		}
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
-		t.Fatalf("unmarshal stdout envelope: %v\nstdout: %s", err, stdout.String())
-	}
-	if env.OK {
-		t.Errorf("ok must be false on partial failure, got ok:true\nstdout: %s", stdout.String())
-	}
-	items, _ := env.Data["items"].([]interface{})
-	if len(items) != 2 {
-		t.Fatalf("both succeeded and failed items must ride on stdout, got %d items\nstdout: %s", len(items), stdout.String())
+	if strings.Contains(got, `"ok"`) {
+		t.Fatalf("table output contains JSON envelope:\n%s", got)
 	}
 }

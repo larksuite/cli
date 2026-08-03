@@ -6,10 +6,9 @@ package base
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -31,7 +30,7 @@ func outputRecordMarkdown(runtime *common.RuntimeContext, data map[string]interf
 func outputRecordMarkdownWithRenderer(runtime *common.RuntimeContext, data map[string]interface{}, renderer func(map[string]interface{}) (string, error)) error {
 	if runtime.JqExpr != "" {
 		if !runtime.Changed("format") {
-			runtime.Out(data, nil)
+			runtime.OutJSON(data, nil)
 			return nil
 		}
 		return baseValidationErrorf("--jq and --format markdown are mutually exclusive")
@@ -39,32 +38,13 @@ func outputRecordMarkdownWithRenderer(runtime *common.RuntimeContext, data map[s
 	rendered, err := renderer(data)
 	if err != nil {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: record markdown render failed, falling back to json: %v\n", err)
-		runtime.Out(data, nil)
+		runtime.OutJSON(data, nil)
 		return nil
 	}
-	scanResult := output.ScanForSafety(runtime.Cmd.CommandPath(), data, runtime.IO().ErrOut)
-	if scanResult.Blocked {
-		return baseContentSafetyBlockError(scanResult)
-	}
-	if scanResult.Alert != nil {
-		output.WriteAlertWarning(runtime.IO().ErrOut, scanResult.Alert)
-	}
-	fmt.Fprint(runtime.IO().Out, rendered)
-	return nil
-}
-
-func baseContentSafetyBlockError(scanResult output.ScanResult) error {
-	message := "content safety violation detected"
-	var rules []string
-	if scanResult.Alert != nil {
-		rules = scanResult.Alert.MatchedRules
-	}
-	if len(rules) > 0 {
-		message = fmt.Sprintf("content safety violation detected (rules: %s)", strings.Join(rules, ", "))
-	}
-	return errs.NewContentSafetyError(errs.SubtypeUnknown, "%s", message).
-		WithRules(rules...).
-		WithCause(scanResult.BlockErr)
+	return runtime.EmitRenderedValue(data, func(w io.Writer) error {
+		_, writeErr := io.WriteString(w, rendered)
+		return writeErr
+	})
 }
 
 func outputRecordGetMarkdown(runtime *common.RuntimeContext, data map[string]interface{}) error {

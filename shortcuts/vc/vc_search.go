@@ -265,7 +265,7 @@ var VCSearch = common.Shortcut{
 		// 非 json 格式下追加分页提示（json 格式已包含 has_more/page_token 字段）
 		if hasMore && runtime.Format != "json" && runtime.Format != "" {
 			pt, _ := data["page_token"].(string)
-			fmt.Fprintf(runtime.IO().Out, "\n(more available, page_token: %s)\n", pt)
+			fmt.Fprintf(runtime.IO().ErrOut, "\n(more available, page_token: %s)\n", pt)
 		}
 		return nil
 	},

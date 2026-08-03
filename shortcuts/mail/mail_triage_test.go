@@ -1032,11 +1032,16 @@ func TestMergeTriageLabels(t *testing.T) {
 
 func TestPrintTriageFilterSchema(t *testing.T) {
 	rt := runtimeForMailTriageTest(t, nil)
+	rt.Format = "data"
 	var buf strings.Builder
 	rt.Factory = &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{Out: &buf, ErrOut: &buf}}
 	printTriageFilterSchema(rt)
 	if !strings.Contains(buf.String(), "folder") {
 		t.Fatal("schema output should contain 'folder'")
+	}
+	var envelope map[string]interface{}
+	if err := json.Unmarshal([]byte(buf.String()), &envelope); err != nil {
+		t.Fatalf("schema output is not a JSON envelope: %v\n%s", err, buf.String())
 	}
 }
 

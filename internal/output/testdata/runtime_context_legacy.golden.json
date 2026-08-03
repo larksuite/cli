@@ -5,7 +5,7 @@
       "stderr": ""
     },
     "format_raw_json_preserves_html": {
-      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"html\": \"\u003cp\u003ea\u0026b\u003c/p\u003e\"\n  }\n}\n",
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"html\": \"<p>a&b</p>\"\n  }\n}\n",
       "stderr": ""
     },
     "jq_invalid_expression": {
@@ -22,9 +22,9 @@
         "exit_code": 2
       }
     },
-    "jq_safety_alert_without_stderr_warning": {
+    "jq_safety_alert_writes_stderr_warning": {
       "stdout": "1\n",
-      "stderr": ""
+      "stderr": "warning: content safety alert from emitter-oracle (rules: fixture-rule)\n"
     },
     "jq_scalar": {
       "stdout": "Alice\n",
@@ -62,16 +62,12 @@
       "stdout": "pretty:fixture\n",
       "stderr": ""
     },
-    "pretty_without_renderer": {
-      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"name\": \"Alice\"\n  }\n}\n",
-      "stderr": ""
-    },
     "raw_jq_complex": {
-      "stdout": "{\n  \"html\": \"\u003cp\u003ea\u0026b\u003c/p\u003e\"\n}\n",
+      "stdout": "{\n  \"html\": \"<p>a&b</p>\"\n}\n",
       "stderr": ""
     },
     "raw_json_preserves_html": {
-      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"html\": \"\u003cp\u003ea\u0026b\u003c/p\u003e\"\n  }\n}\n",
+      "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"html\": \"<p>a&b</p>\"\n  }\n}\n",
       "stderr": ""
     },
     "scanner_block": {
@@ -91,17 +87,27 @@
         "exit_code": 6
       }
     },
-    "scanner_error_fails_open": {
+    "scanner_error_block_mode_fails_closed": {
+      "stdout": "",
+      "stderr": "warning: content safety scan error: scanner unavailable\n",
+      "error": {
+        "go_type": "*errs.ContentSafetyError",
+        "json": {
+          "type": "policy",
+          "subtype": "content_safety",
+          "message": "content-safety scan did not complete; blocked (block mode)"
+        },
+        "message": "content-safety scan did not complete; blocked (block mode)",
+        "exit_code": 6
+      }
+    },
+    "scanner_error_warn_mode_fails_open": {
       "stdout": "{\n  \"ok\": true,\n  \"identity\": \"bot\",\n  \"data\": {\n    \"id\": \"1\"\n  }\n}\n",
       "stderr": "warning: content safety scan error: scanner unavailable\n"
     },
     "table_with_safety_warning": {
       "stdout": "id  name \n──  ─────\n1   Alice\n",
       "stderr": "warning: content safety alert from emitter-oracle (rules: fixture-rule)\n"
-    },
-    "unknown_format_data_envelope_notice": {
-      "stdout": "{\n  \"_notice\": {\n    \"skills\": {\n      \"current\": \"1.0.0\"\n    }\n  },\n  \"ok\": true,\n  \"value\": \"fixture\"\n}\n",
-      "stderr": "warning: unknown format \"yaml\", falling back to json\n"
     }
   }
 }

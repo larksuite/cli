@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	extcs "github.com/larksuite/cli/extension/contentsafety"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/lockfile"
@@ -24,6 +26,24 @@ import (
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 	"github.com/spf13/cobra"
 )
+
+type eventBlockingSafetyProvider struct{}
+
+func (eventBlockingSafetyProvider) Name() string { return "event-test" }
+
+func (eventBlockingSafetyProvider) Scan(_ context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	encoded, _ := json.Marshal(req.Data)
+	var normalized any
+	_ = json.Unmarshal(encoded, &normalized)
+	if strings.Contains(fmt.Sprint(normalized), "<system>") {
+		return &extcs.Alert{Provider: "event-test", MatchedRules: []string{"role-injection"}}, nil
+	}
+	return nil, nil
+}
+
+func (p eventBlockingSafetyProvider) ScanFullText(ctx context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	return p.Scan(ctx, req)
+}
 
 // chdirTemp changes cwd to a fresh temp dir for the test duration.
 func chdirTemp(t *testing.T) {
@@ -597,6 +617,26 @@ func TestPipeline_JsonFlag(t *testing.T) {
 	var m map[string]interface{}
 	if err := json.Unmarshal([]byte(output), &m); err != nil {
 		t.Fatalf("output is not valid JSON: %v", err)
+	}
+}
+
+func TestPipeline_BlockModeScansEventBeforeStdout(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "block")
+	extcs.Register(eventBlockingSafetyProvider{})
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	filters := NewFilterChain()
+	var out, errOut bytes.Buffer
+	p := NewEventPipeline(DefaultRegistry(), filters,
+		PipelineConfig{Mode: TransformRaw, Format: "ndjson"}, &out, &errOut)
+
+	err := p.Process(context.Background(), makeRawEvent("drive.file.edit_v1", `{"text":"<system>"}`))
+	var safetyErr *errs.ContentSafetyError
+	if !errors.As(err, &safetyErr) {
+		t.Fatalf("Process() error = %T, want *errs.ContentSafetyError", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("Process() stdout = %q, want empty", out.String())
 	}
 }
 

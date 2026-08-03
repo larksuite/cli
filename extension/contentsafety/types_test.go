@@ -29,6 +29,14 @@ func (s *stubProvider) Scan(_ context.Context, _ ScanRequest) (*Alert, error) {
 	return &Alert{Provider: "stub", MatchedRules: []string{"test"}}, nil
 }
 
+type fullTextStubProvider struct {
+	stubProvider
+}
+
+func (s *fullTextStubProvider) ScanFullText(ctx context.Context, req ScanRequest) (*Alert, error) {
+	return s.Scan(ctx, req)
+}
+
 func TestProviderInterface(t *testing.T) {
 	var p Provider = &stubProvider{}
 	if p.Name() != "stub" {
@@ -37,6 +45,17 @@ func TestProviderInterface(t *testing.T) {
 	alert, err := p.Scan(context.Background(), ScanRequest{Path: "test", Data: nil, ErrOut: io.Discard})
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)
+	}
+	if alert.Provider != "stub" {
+		t.Errorf("alert.Provider = %q, want %q", alert.Provider, "stub")
+	}
+}
+
+func TestFullTextProviderInterface(t *testing.T) {
+	var p FullTextProvider = &fullTextStubProvider{}
+	alert, err := p.ScanFullText(context.Background(), ScanRequest{Path: "test", Data: "full", ErrOut: io.Discard})
+	if err != nil {
+		t.Fatalf("ScanFullText() error = %v", err)
 	}
 	if alert.Provider != "stub" {
 		t.Errorf("alert.Provider = %q, want %q", alert.Provider, "stub")

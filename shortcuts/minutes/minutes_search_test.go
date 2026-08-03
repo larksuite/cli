@@ -476,7 +476,7 @@ func TestMinutesSearchDryRun(t *testing.T) {
 
 // TestMinutesSearchExecuteRendersRowsAndMoreHint verifies pretty output renders rows and pagination hints.
 func TestMinutesSearchExecuteRendersRowsAndMoreHint(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, defaultConfig())
 	searchStub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/minutes/v1/minutes/search",
@@ -526,9 +526,14 @@ func TestMinutesSearchExecuteRendersRowsAndMoreHint(t *testing.T) {
 	}
 
 	out := stdout.String()
-	for _, want := range []string{"minute_1", "周会摘要", "周会纪要", "https://meetings.feishu.cn/minutes/obcn123", "next_token", "more available"} {
+	for _, want := range []string{"minute_1", "周会摘要", "周会纪要", "https://meetings.feishu.cn/minutes/obcn123"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %q, got: %s", want, out)
+		}
+	}
+	for _, want := range []string{"next_token", "more available"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr missing %q, got: %s", want, stderr.String())
 		}
 	}
 }
@@ -563,11 +568,12 @@ func TestMinutesSearchExecuteNoMinutes(t *testing.T) {
 	}
 }
 
-// TestMinutesSearchExecuteShowsPaginationHintForTableFormat verifies table output includes pagination hints.
+// TestMinutesSearchExecuteShowsPaginationHintForTableFormat verifies pagination
+// hints stay on stderr so table stdout remains parseable.
 func TestMinutesSearchExecuteShowsPaginationHintForTableFormat(t *testing.T) {
 	t.Parallel()
 
-	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/minutes/v1/minutes/search",
@@ -599,9 +605,11 @@ func TestMinutesSearchExecuteShowsPaginationHintForTableFormat(t *testing.T) {
 	}
 	reg.Verify(t)
 
-	out := stdout.String()
-	if !strings.Contains(out, "next_token") || !strings.Contains(out, "more available") {
-		t.Fatalf("expected pagination hint in table output, got: %s", out)
+	if strings.Contains(stdout.String(), "next_token") || strings.Contains(stdout.String(), "more available") {
+		t.Fatalf("table stdout contains pagination hint: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "next_token") || !strings.Contains(stderr.String(), "more available") {
+		t.Fatalf("stderr missing pagination hint: %s", stderr.String())
 	}
 }
 

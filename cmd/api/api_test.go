@@ -118,6 +118,101 @@ func TestApiCmd_DryRunWithJq(t *testing.T) {
 	}
 }
 
+// An unknown --format is a typed validation error, not a silent JSON fallback —
+// on both the emit path and (parsed before the dry-run branch) the dry-run path.
+// No stub is registered because the command must fail before any API call.
+func TestApiCmd_UnknownFormat_Rejected(t *testing.T) {
+	for _, extra := range [][]string{nil, {"--dry-run"}} {
+		name := "emit"
+		if len(extra) > 0 {
+			name = "dry-run"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+				AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+			})
+			cmd := newTestApiCmd(f, nil)
+			cmd.SetArgs(append([]string{"GET", "/open-apis/test", "--as", "bot", "--format", "bogus"}, extra...))
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("expected a validation error for unknown --format")
+			}
+			requireValidationParam(t, err, "--format")
+			if !strings.Contains(err.Error(), "unknown output format") {
+				t.Errorf("error = %v, want unknown-format message", err)
+			}
+			if strings.Contains(strings.ToLower(err.Error()), "pretty") {
+				t.Errorf("error = %v, raw api format choices must exclude pretty", err)
+			}
+			if stdout.String() != "" {
+				t.Errorf("unknown --format must not write stdout, got:\n%s", stdout.String())
+			}
+		})
+	}
+}
+
+func TestApiCmd_UnknownFormatPrecedesJqConflict(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{
+		"GET", "/open-apis/test", "--as", "bot",
+		"--format", "tabel", "--jq", ".",
+	})
+
+	err := cmd.Execute()
+	requireValidationParam(t, err, "--format")
+	if !strings.Contains(err.Error(), "unknown output format") {
+		t.Fatalf("error = %v, want unknown-format message", err)
+	}
+	if strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("error = %v, unknown format should be reported before jq conflict", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("unknown --format wrote stdout:\n%s", stdout.String())
+	}
+}
+
+// pretty is shortcut-only: the raw api command rejects it on the emit path
+// (before client init) but keeps the dry-run plain-text preview.
+func TestApiCmd_Pretty_RejectedOnEmit(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--format", "pretty"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected a validation error for --format pretty on the emit path")
+	}
+	requireValidationParam(t, err, "--format")
+	if !strings.Contains(err.Error(), "pretty") {
+		t.Errorf("error = %v, want pretty-not-supported message", err)
+	}
+	if stdout.String() != "" {
+		t.Errorf("rejected --format pretty must not write stdout, got:\n%s", stdout.String())
+	}
+}
+
+func TestApiCmd_MixedCasePretty_PreservedOnDryRun(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--format", "Pretty", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("dry-run --format pretty must be accepted, got: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "# dry-run: request not sent") {
+		t.Fatalf("dry-run --format pretty lost its plain-text preview, stdout:\n%s", stdout.String())
+	}
+}
+
 // Regression: --params null parses to a nil map; writing page_size onto it must
 // not panic. Symmetric to the typed-flag overlay path in cmd/service — both
 // write into the map ParseJSONMap returns.
@@ -404,7 +499,7 @@ func TestApiCmd_BinaryResponse_AutoSave(t *testing.T) {
 	}
 }
 
-func TestApiCmd_PageAll_NonBatchAPI_FallbackToJSON(t *testing.T) {
+func TestApiCmd_PageAll_NonBatchAPI_HonorsNDJSON(t *testing.T) {
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-pageall1", AppSecret: "test-secret-pageall1", Brand: core.BrandFeishu,
 	})
@@ -427,24 +522,15 @@ func TestApiCmd_PageAll_NonBatchAPI_FallbackToJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Should print fallback warning to stderr
-	if !strings.Contains(stderr.String(), "warning: this API does not return a list") {
-		t.Error("expected fallback warning in stderr")
+	if strings.Contains(stderr.String(), "falling back") {
+		t.Fatalf("stderr contains format fallback warning: %q", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "falling back to json") {
-		t.Error("expected 'falling back to json' in stderr")
-	}
-	// Should output JSON result to stdout
 	var got map[string]interface{}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
-		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+		t.Fatalf("invalid NDJSON object: %v\n%s", err, stdout.String())
 	}
-	data, ok := got["data"].(map[string]interface{})
-	if got["ok"] != true || got["identity"] != "bot" || !ok || data["user_id"] != "u123" {
-		t.Fatalf("unexpected fallback envelope: %#v", got)
-	}
-	if _, hasCode := got["code"]; hasCode {
-		t.Fatalf("fallback success envelope leaked outer code: %s", stdout.String())
+	if got["user_id"] != "u123" || got["name"] != "Test User" {
+		t.Fatalf("unexpected NDJSON object: %#v", got)
 	}
 }
 
@@ -621,6 +707,10 @@ func (p *apiContentSafetyProvider) Scan(_ context.Context, req extcs.ScanRequest
 	return &extcs.Alert{Provider: "api-test", MatchedRules: []string{"pagination"}}, nil
 }
 
+func (p *apiContentSafetyProvider) ScanFullText(ctx context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	return p.Scan(ctx, req)
+}
+
 func TestApiCmd_PageAll_DefaultJSONRunsContentSafety(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
 	provider := &apiContentSafetyProvider{}
@@ -654,12 +744,12 @@ func TestApiCmd_PageAll_DefaultJSONRunsContentSafety(t *testing.T) {
 	if provider.path != "api" {
 		t.Fatalf("scan path = %q, want api", provider.path)
 	}
-	data, ok := provider.data.(map[string]interface{})
+	data, ok := provider.data.(string)
 	if !ok {
-		t.Fatalf("scanned data type = %T, want map", provider.data)
+		t.Fatalf("scanned data type = %T, want rendered JSON string", provider.data)
 	}
-	if _, hasCode := data["code"]; hasCode {
-		t.Fatalf("scanned data should be business data only, got %#v", data)
+	if strings.Contains(data, `"code"`) || !strings.Contains(data, `"data"`) {
+		t.Fatalf("scanned JSON should be the success envelope without an API code, got %q", data)
 	}
 
 	var got map[string]interface{}
@@ -705,9 +795,11 @@ func TestApiCmd_PageAll_StreamFormatRunsContentSafety(t *testing.T) {
 	if provider.path != "api" {
 		t.Fatalf("scan path = %q, want api", provider.path)
 	}
-	items, ok := provider.data.([]interface{})
-	if !ok || len(items) != 1 {
-		t.Fatalf("scanned data = %#v, want one streamed item", provider.data)
+	// Streaming now scans the exact rendered page bytes (not the structured
+	// item) so a rule match formed only in the rendered output cannot slip past.
+	scanned, ok := provider.data.(string)
+	if !ok || !strings.Contains(scanned, `"id":"1"`) {
+		t.Fatalf("scanned data = %#v, want rendered ndjson page text", provider.data)
 	}
 	if !strings.Contains(stderr.String(), "warning: content safety alert from api-test") {
 		t.Fatalf("expected content safety warning on stderr, got: %s", stderr.String())
@@ -767,11 +859,8 @@ func TestApiCmd_PageAll_StreamFormatBlockSkipsBlockedPage(t *testing.T) {
 		t.Fatalf("rules = %v, want [pagination]", safetyErr.Rules)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "safe-page") {
-		t.Fatalf("expected earlier safe page to remain streamed, got: %s", out)
-	}
-	if strings.Contains(out, "blocked-page") {
-		t.Fatalf("blocked page was written before safety block: %s", out)
+	if out != "" {
+		t.Fatalf("blocked complete stream was written before safety block: %s", out)
 	}
 }
 
@@ -783,6 +872,18 @@ func requireProblem(t *testing.T, err error, category errs.Category, subtype err
 	}
 	if p.Category != category || p.Subtype != subtype || p.Code != code {
 		t.Fatalf("problem = %s/%s/%d, want %s/%s/%d", p.Category, p.Subtype, p.Code, category, subtype, code)
+	}
+}
+
+func requireValidationParam(t *testing.T, err error, param string) {
+	t.Helper()
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, 0)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Param != param {
+		t.Fatalf("Param = %q, want %q", validationErr.Param, param)
 	}
 }
 

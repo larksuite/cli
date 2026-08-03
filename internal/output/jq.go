@@ -70,7 +70,14 @@ func ValidateJqFlags(jqExpr, outputFlag, format string) error {
 	if outputFlag != "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--jq and --output are mutually exclusive")
 	}
-	if format != "" && format != "json" {
+	// Classify via ParseFormat so the JSON check is case-insensitive and shares
+	// the single canonical format definition. Only a recognized JSON format is
+	// compatible with --jq; every other value conflicts and is rejected: known
+	// non-JSON framework formats ("csv", "pretty", ...) and values ParseFormat
+	// does not recognize as JSON (a shortcut's own "markdown"/"data" enum, or an
+	// unknown format that ParseFormatStrict rejects downstream). The !ok guard
+	// keeps those unrecognized values out of the JSON-compatible branch.
+	if f, ok := ParseFormat(format); !ok || f != FormatJSON {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--jq and --format %s are mutually exclusive", format)
 	}
 	return ValidateJqExpression(jqExpr)

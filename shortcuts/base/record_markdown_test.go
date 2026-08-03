@@ -31,6 +31,10 @@ func (p *recordMarkdownCSTestProvider) Scan(_ context.Context, _ extcs.ScanReque
 	return p.alert, nil
 }
 
+func (p *recordMarkdownCSTestProvider) ScanFullText(ctx context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	return p.Scan(ctx, req)
+}
+
 func newRecordMarkdownTestRuntime(stdout, stderr *bytes.Buffer) *common.RuntimeContext {
 	parentCmd := &cobra.Command{Use: "lark-cli"}
 	baseCmd := &cobra.Command{Use: "base"}
@@ -41,6 +45,7 @@ func newRecordMarkdownTestRuntime(stdout, stderr *bytes.Buffer) *common.RuntimeC
 	return &common.RuntimeContext{
 		Config:  &core.CliConfig{Brand: core.BrandFeishu},
 		Cmd:     cmd,
+		Format:  "markdown",
 		Factory: &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{Out: stdout, ErrOut: stderr}},
 	}
 }

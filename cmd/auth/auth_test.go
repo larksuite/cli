@@ -381,6 +381,34 @@ func TestAuthScopesCmd_JSONFlagForcesJSONFormat(t *testing.T) {
 	}
 }
 
+func TestAuthScopesCmd_RejectsUnknownFormat(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	runCalled := false
+	cmd := NewCmdAuthScopes(f, func(*ScopesOptions) error {
+		runCalled = true
+		return nil
+	})
+	cmd.SetArgs([]string{"--format", "tabel"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid format error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Category != errs.CategoryValidation || validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--format" {
+		t.Fatalf("validation error = %#v; want validation/invalid_argument with --format", validationErr)
+	}
+	if runCalled {
+		t.Fatal("auth scopes runner was called for an invalid format")
+	}
+}
+
 func TestAuthScopesRun_UsesTenantAccessTokenFromCredentialProvider(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "", Brand: core.BrandFeishu,

@@ -24,6 +24,15 @@ type regexProvider struct {
 func (p *regexProvider) Name() string { return "regex" }
 
 func (p *regexProvider) Scan(ctx context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	return p.scan(ctx, req, false)
+}
+
+func (p *regexProvider) ScanFullText(ctx context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	req.FullText = true
+	return p.scan(ctx, req, true)
+}
+
+func (p *regexProvider) scan(ctx context.Context, req extcs.ScanRequest, fullText bool) (*extcs.Alert, error) {
 	cfg, err := p.loadOrCreate(req.ErrOut)
 	if err != nil {
 		return nil, err
@@ -37,9 +46,11 @@ func (p *regexProvider) Scan(ctx context.Context, req extcs.ScanRequest) (*extcs
 	}
 
 	data := normalize(req.Data)
-	s := &scanner{rules: cfg.Rules}
+	s := &scanner{rules: cfg.Rules, fullText: fullText}
 	hits := make(map[string]struct{})
-	s.walk(ctx, data, hits, 0)
+	if err := s.walk(ctx, data, hits, 0); err != nil {
+		return nil, err
+	}
 
 	if len(hits) == 0 {
 		return nil, nil

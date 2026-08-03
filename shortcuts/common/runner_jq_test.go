@@ -143,6 +143,15 @@ func TestRuntimeContext_OutRaw_PropagatesWriteError(t *testing.T) {
 	}
 }
 
+func TestRuntimeContext_OutRaw_HonorsSelectedFormat(t *testing.T) {
+	rctx, stdout, _ := newJqTestContext("", "ndjson")
+	rctx.OutRaw([]interface{}{map[string]interface{}{"html": "<p>hello</p>"}}, nil)
+
+	if got := stdout.String(); got != "{\"html\":\"\\u003cp\\u003ehello\\u003c/p\\u003e\"}\n" {
+		t.Fatalf("OutRaw() stdout = %q, want NDJSON without an envelope", got)
+	}
+}
+
 func TestRunShortcut_OutRawWriteErrorPropagates(t *testing.T) {
 	sentinel := errors.New("write failed")
 	f := newTestFactory()
@@ -246,12 +255,15 @@ func TestRunShortcut_JqAndFormatConflict(t *testing.T) {
 			return nil
 		},
 	}
-	cmd := newTestShortcutCmd(s, newTestFactory())
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+	})
+	cmd := newTestShortcutCmd(s, f)
 	cmd.Flags().Set("jq", ".data")
 	cmd.Flags().Set("format", "table")
 	cmd.Flags().Set("as", "bot")
 
-	err := runShortcut(cmd, newTestFactory(), s, true)
+	err := runShortcut(cmd, f, s, true)
 	if err == nil {
 		t.Fatal("expected error for --jq + --format table conflict")
 	}
@@ -336,6 +348,207 @@ func TestRunShortcut_DryRunJSONUsesEnvelope(t *testing.T) {
 	dctx, ok := data["context"].(map[string]interface{})
 	if !ok || dctx["app_id"] != "test" {
 		t.Fatalf("runner must inject data.context like the service/api paths, got: %#v", data["context"])
+	}
+}
+
+func TestRunShortcut_DryRunMixedCasePrettyUsesPlainTextPreview(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		DryRun: func(context.Context, *RuntimeContext) *cmdutil.DryRunAPI {
+			return cmdutil.NewDryRunAPI().GET("/open-apis/test")
+		},
+		Execute: func(context.Context, *RuntimeContext) error {
+			t.Fatal("Execute should not run in dry-run")
+			return nil
+		},
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+	})
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("dry-run", "true")
+	cmd.Flags().Set("format", "Pretty")
+	cmd.Flags().Set("as", "bot")
+
+	if err := runShortcut(cmd, f, s, false); err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "# dry-run: request not sent") {
+		t.Fatalf("dry-run --format Pretty lost its plain-text preview, stdout:\n%s", stdout.String())
+	}
+}
+
+func TestRunShortcut_MixedCaseFrameworkFormatIsCanonicalized(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	var runtimeFormat string
+	var flagFormat string
+	prettyBranchFired := false
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		Execute: func(_ context.Context, rctx *RuntimeContext) error {
+			runtimeFormat = rctx.Format
+			flagFormat = rctx.Str("format")
+			prettyBranchFired = rctx.Format == "pretty"
+			return nil
+		},
+	}
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+	})
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("format", "PRETTY")
+	cmd.Flags().Set("as", "bot")
+
+	if err := runShortcut(cmd, f, s, false); err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	if runtimeFormat != "pretty" {
+		t.Fatalf("RuntimeContext.Format = %q, want pretty", runtimeFormat)
+	}
+	if flagFormat != "pretty" {
+		t.Fatalf("RuntimeContext.Str(\"format\") = %q, want pretty", flagFormat)
+	}
+	if !prettyBranchFired {
+		t.Fatal("downstream RuntimeContext.Format == \"pretty\" branch did not fire")
+	}
+}
+
+func TestRunShortcut_UnknownFormatErrorIncludesPretty(t *testing.T) {
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		Execute: func(context.Context, *RuntimeContext) error {
+			t.Fatal("Execute should not run for an unknown format")
+			return nil
+		},
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+	})
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("format", "tabel")
+	cmd.Flags().Set("as", "bot")
+
+	err := runShortcut(cmd, f, s, false)
+	if err == nil {
+		t.Fatal("expected a validation error for unknown --format")
+	}
+	validationErr := requireValidation(t, err, "unknown output format")
+	if validationErr.Param != "--format" {
+		t.Fatalf("Param = %q, want --format", validationErr.Param)
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "pretty") {
+		t.Fatalf("shortcut unknown-format error = %v, want pretty in allowed choices", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("unknown --format wrote stdout:\n%s", stdout.String())
+	}
+}
+
+func TestRunShortcut_PrintSchemaRejectsUnknownFrameworkFormat(t *testing.T) {
+	schemaCalled := false
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		PrintFlagSchema: func(string) ([]byte, error) {
+			schemaCalled = true
+			return []byte(`{"type":"object"}`), nil
+		},
+		Execute: func(context.Context, *RuntimeContext) error {
+			t.Fatal("Execute should not run for --print-schema")
+			return nil
+		},
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+	})
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("print-schema", "true")
+	cmd.Flags().Set("format", "tabel")
+
+	err := runShortcut(cmd, f, s, false)
+	validationErr := requireValidation(t, err, "unknown output format")
+	if validationErr.Param != "--format" {
+		t.Fatalf("Param = %q, want --format", validationErr.Param)
+	}
+	if schemaCalled {
+		t.Fatal("PrintFlagSchema should not run after an invalid framework --format")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("invalid --format wrote schema to stdout:\n%s", stdout.String())
+	}
+}
+
+func TestRunShortcut_PrintSchemaRejectsKnownNonJSONFormat(t *testing.T) {
+	schemaCalled := false
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		PrintFlagSchema: func(string) ([]byte, error) {
+			schemaCalled = true
+			return []byte(`{"type":"object"}`), nil
+		},
+		Execute: func(context.Context, *RuntimeContext) error {
+			t.Fatal("Execute should not run for --print-schema")
+			return nil
+		},
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+	})
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("print-schema", "true")
+	cmd.Flags().Set("format", "csv")
+
+	err := runShortcut(cmd, f, s, false)
+	validationErr := requireValidation(t, err, "requires --format json")
+	if validationErr.Param != "--format" {
+		t.Fatalf("Param = %q, want --format", validationErr.Param)
+	}
+	if schemaCalled {
+		t.Fatal("PrintFlagSchema should not run for a non-JSON format")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("non-JSON format wrote schema to stdout:\n%s", stdout.String())
+	}
+}
+
+func TestRunShortcut_UnknownFormatPrecedesJqConflict(t *testing.T) {
+	s := &Shortcut{
+		Service:   "test",
+		Command:   "test-shortcut",
+		AuthTypes: []string{"bot"},
+		Execute: func(context.Context, *RuntimeContext) error {
+			t.Fatal("Execute should not run for an unknown format")
+			return nil
+		},
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+	})
+	cmd := newTestShortcutCmd(s, f)
+	cmd.Flags().Set("format", "tabel")
+	cmd.Flags().Set("jq", ".")
+	cmd.Flags().Set("as", "bot")
+
+	err := runShortcut(cmd, f, s, false)
+	validationErr := requireValidation(t, err, "unknown output format")
+	if validationErr.Param != "--format" {
+		t.Fatalf("Param = %q, want --format", validationErr.Param)
+	}
+	if strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("error = %v, unknown format should be reported before jq conflict", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("unknown --format wrote stdout:\n%s", stdout.String())
 	}
 }
 

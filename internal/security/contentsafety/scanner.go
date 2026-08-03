@@ -5,6 +5,8 @@ package contentsafety
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"regexp"
 )
 
@@ -13,38 +15,52 @@ const (
 	maxDepth       = 64
 )
 
+var errScanIncomplete = errors.New("content safety scan incomplete")
+
 type rule struct {
 	ID      string
 	Pattern *regexp.Regexp
 }
 
 type scanner struct {
-	rules []rule
+	rules    []rule
+	fullText bool
 }
 
-func (s *scanner) walk(ctx context.Context, v any, hits map[string]struct{}, depth int) {
-	if depth > maxDepth {
-		return
+func (s *scanner) walk(ctx context.Context, v any, hits map[string]struct{}, depth int) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if ctx.Err() != nil {
-		return
+	if depth > maxDepth {
+		if s.fullText {
+			return fmt.Errorf("%w: maximum depth %d exceeded", errScanIncomplete, maxDepth)
+		}
+		return nil
 	}
 	switch t := v.(type) {
 	case string:
 		s.scanString(t, hits)
 	case map[string]any:
-		for _, child := range t {
-			s.walk(ctx, child, hits, depth+1)
+		for k, child := range t {
+			// Scan the key too: JSON/NDJSON/table/CSV all emit map keys, so a
+			// rule match hiding in a key must not slip past block mode.
+			s.scanString(k, hits)
+			if err := s.walk(ctx, child, hits, depth+1); err != nil {
+				return err
+			}
 		}
 	case []any:
 		for _, child := range t {
-			s.walk(ctx, child, hits, depth+1)
+			if err := s.walk(ctx, child, hits, depth+1); err != nil {
+				return err
+			}
 		}
 	}
+	return ctx.Err()
 }
 
 func (s *scanner) scanString(text string, hits map[string]struct{}) {
-	if len(text) > maxStringBytes {
+	if !s.fullText && len(text) > maxStringBytes {
 		text = text[:maxStringBytes]
 	}
 	for _, r := range s.rules {
