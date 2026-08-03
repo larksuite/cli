@@ -419,6 +419,10 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		return err
 	}
 
+	if err := completeMailRulesReorder(opts.Ctx, ac, &request, opts.SchemaPath, opts.As); err != nil {
+		return err
+	}
+
 	out := f.IOStreams.Out
 	format, formatOK := output.ParseFormat(opts.Format)
 	if !formatOK {
