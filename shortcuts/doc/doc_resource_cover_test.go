@@ -386,6 +386,7 @@ func TestValidateDocCoverURLHost(t *testing.T) {
 
 func TestDocCoverIPSafetyBlocksSpecialRanges(t *testing.T) {
 	for _, rawIP := range []string{
+		"0.1.2.3",
 		"10.0.0.1",
 		"127.0.0.1",
 		"169.254.1.1",
@@ -406,17 +407,26 @@ func TestDocCoverIPSafetyBlocksSpecialRanges(t *testing.T) {
 	}
 }
 
-func TestDocCoverHTTPClientDoesNotUseProxy(t *testing.T) {
-	baseTransport := &http.Transport{Proxy: http.ProxyFromEnvironment}
+func TestDocCoverHTTPClientPreservesProxyPolicy(t *testing.T) {
+	proxyErr := errors.New("proxy selected")
+	directErr := errors.New("direct dialed")
+	baseTransport := &http.Transport{
+		Proxy: func(*http.Request) (*url.URL, error) {
+			return nil, proxyErr
+		},
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			return nil, directErr
+		},
+	}
 	baseClient := &http.Client{Transport: baseTransport}
 
 	client := newDocCoverHTTPClient(baseClient)
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("client transport = %T, want *http.Transport", client.Transport)
+	req, err := http.NewRequest(http.MethodGet, "https://203.0.113.10/cover.png", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if transport.Proxy != nil {
-		t.Fatal("cover URL downloader must not inherit proxy settings")
+	if _, err := client.Transport.RoundTrip(req); !errors.Is(err, proxyErr) {
+		t.Fatalf("RoundTrip() error = %v, want proxy policy error %v", err, proxyErr)
 	}
 	if baseTransport.Proxy == nil {
 		t.Fatal("base transport proxy was mutated")
@@ -443,21 +453,6 @@ func TestDocCoverHTTPClientRedirectValidation(t *testing.T) {
 	}
 	if err := client.CheckRedirect(downgrade, []*http.Request{prev}); err == nil {
 		t.Fatal("expected https-to-http redirect error")
-	}
-}
-
-func TestDocCoverConnRemoteIPValidation(t *testing.T) {
-	if err := validateDocCoverConnRemoteIP(nil); err == nil {
-		t.Fatal("expected nil connection error")
-	}
-	if err := validateDocCoverConnRemoteIP(docCoverRemoteAddrConn{}); err == nil {
-		t.Fatal("expected missing remote address error")
-	}
-	if err := validateDocCoverConnRemoteIP(docCoverRemoteAddrConn{addr: testAddr("not-ip")}); err == nil {
-		t.Fatal("expected invalid remote IP error")
-	}
-	if err := validateDocCoverConnRemoteIP(docCoverRemoteAddrConn{addr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 443}}); err == nil {
-		t.Fatal("expected local remote IP error")
 	}
 }
 
@@ -662,16 +657,6 @@ func (c docCoverRemoteAddrConn) RemoteAddr() net.Addr {
 	return c.addr
 }
 
-type testAddr string
-
-func (a testAddr) Network() string {
-	return "test"
-}
-
-func (a testAddr) String() string {
-	return string(a)
-}
-
 type repeatByteReader byte
 
 func (r repeatByteReader) Read(p []byte) (int, error) {
@@ -709,4 +694,62 @@ func decodeDocResourceOutput(t *testing.T, stdout *bytes.Buffer) docResourceOutp
 		t.Fatalf("decode resource output: %v; output=%s", err, stdout.String())
 	}
 	return out
+}
+
+type opaqueDocCoverTransport struct {
+	called bool
+}
+
+func (t *opaqueDocCoverTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.called = true
+	return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Request: req}, nil
+}
+
+func TestNewDocCoverHTTPClientFailsClosedForOpaqueTransport(t *testing.T) {
+	opaque := &opaqueDocCoverTransport{}
+	client := newDocCoverHTTPClient(&http.Client{Transport: opaque})
+	req, err := http.NewRequest(http.MethodGet, "https://public.example/cover.png", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.Transport.RoundTrip(req)
+	if err == nil || !strings.Contains(err.Error(), "cannot safely clone download transport") {
+		t.Fatalf("RoundTrip() error = %v, want fail-closed clone error", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("RoundTrip() problem = %#v, %v; want internal/unknown", problem, ok)
+	}
+	if opaque.called {
+		t.Fatal("opaque transport was called after safe cloning failed")
+	}
+}
+
+func TestNewDocCoverHTTPClientGuardsLegacyDialTLS(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	base := &http.Transport{DialTLS: func(_, _ string) (net.Conn, error) {
+		return tls.Dial("tcp", server.Listener.Addr().String(), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // local TLS server verifies the connection guard.
+	}}
+	client := newDocCoverHTTPClient(&http.Client{Transport: base})
+	req, err := http.NewRequest(http.MethodGet, "https://public.example/cover.png", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.Transport.RoundTrip(req)
+	if err == nil || !strings.Contains(err.Error(), "local/internal host is not allowed") {
+		t.Fatalf("RoundTrip() error = %v, want legacy DialTLS IP guard", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeAccessDenied {
+		t.Fatalf("RoundTrip() problem = %#v, %v; want policy/access_denied", problem, ok)
+	}
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(err, &policyErr) || policyErr.Cause == nil {
+		t.Fatalf("RoundTrip() error = %T, want policy error with cause", err)
+	}
 }

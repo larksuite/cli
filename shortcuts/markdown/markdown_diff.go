@@ -112,9 +112,8 @@ func validateMarkdownDiffSpec(runtime *common.RuntimeContext, spec markdownDiffS
 }
 
 func validateMarkdownDiffVersionValue(value, flagName string) error {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return markdownValidationParamError(flagName, "%s cannot be empty", flagName)
+	if err := validateMarkdownSourceFilePreviewVersion(value, flagName); err != nil {
+		return err
 	}
 	if !markdownDiffVersionRe.MatchString(value) {
 		return markdownValidationParamError(flagName, "%s must be a numeric version string", flagName)
@@ -134,31 +133,33 @@ func markdownDiffDryRun(spec markdownDiffSpec) *common.DryRunAPI {
 	switch markdownDiffMode(spec) {
 	case markdownDiffModeRemoteVsLocal:
 		if spec.FromVersion != "" {
-			dry.GET("/open-apis/drive/v1/files/:file_token/download").
-				Desc("[1] Download the specified remote Markdown version").
+			dry.GET("/open-apis/drive/v1/medias/:file_token/preview_download").
+				Desc("[1] Download the specified remote Markdown source file preview artifact").
 				Set("file_token", spec.FileToken).
-				Params(map[string]interface{}{"version": spec.FromVersion})
+				Params(markdownSourceFilePreviewDryRunParamsForValidatedVersion(spec.FromVersion, "--from-version"))
 		} else {
-			dry.GET("/open-apis/drive/v1/files/:file_token/download").
-				Desc("[1] Download the latest remote Markdown version").
-				Set("file_token", spec.FileToken)
+			dry.GET("/open-apis/drive/v1/medias/:file_token/preview_download").
+				Desc("[1] Download the latest remote Markdown source file preview artifact").
+				Set("file_token", spec.FileToken).
+				Params(markdownSourceFilePreviewDryRunParamsForValidatedVersion("", ""))
 		}
 		dry.Set("local_file", spec.FilePath)
 		dry.Set("mode", markdownDiffModeRemoteVsLocal)
 	default:
-		dry.GET("/open-apis/drive/v1/files/:file_token/download").
-			Desc("[1] Download the base remote Markdown version").
+		dry.GET("/open-apis/drive/v1/medias/:file_token/preview_download").
+			Desc("[1] Download the base remote Markdown source file preview artifact").
 			Set("file_token", spec.FileToken).
-			Params(map[string]interface{}{"version": spec.FromVersion})
+			Params(markdownSourceFilePreviewDryRunParamsForValidatedVersion(spec.FromVersion, "--from-version"))
 		if spec.ToVersion != "" {
-			dry.GET("/open-apis/drive/v1/files/:file_token/download").
-				Desc("[2] Download the target remote Markdown version").
+			dry.GET("/open-apis/drive/v1/medias/:file_token/preview_download").
+				Desc("[2] Download the target remote Markdown source file preview artifact").
 				Set("file_token", spec.FileToken).
-				Params(map[string]interface{}{"version": spec.ToVersion})
+				Params(markdownSourceFilePreviewDryRunParamsForValidatedVersion(spec.ToVersion, "--to-version"))
 		} else {
-			dry.GET("/open-apis/drive/v1/files/:file_token/download").
-				Desc("[2] Download the latest remote Markdown version").
-				Set("file_token", spec.FileToken)
+			dry.GET("/open-apis/drive/v1/medias/:file_token/preview_download").
+				Desc("[2] Download the latest remote Markdown source file preview artifact").
+				Set("file_token", spec.FileToken).
+				Params(markdownSourceFilePreviewDryRunParamsForValidatedVersion("", ""))
 		}
 		dry.Set("mode", markdownDiffModeRemoteVsRemote)
 	}
@@ -166,8 +167,8 @@ func markdownDiffDryRun(spec markdownDiffSpec) *common.DryRunAPI {
 	return dry
 }
 
-func downloadMarkdownContent(ctx context.Context, runtime *common.RuntimeContext, fileToken, version string) (string, string, error) {
-	resp, fileName, err := openMarkdownDownloadVersion(ctx, runtime, fileToken, version)
+func downloadMarkdownContent(ctx context.Context, runtime *common.RuntimeContext, fileToken, version, versionParam string) (string, string, error) {
+	resp, fileName, err := openMarkdownDownloadVersion(ctx, runtime, fileToken, version, versionParam)
 	if err != nil {
 		return "", "", err
 	}
@@ -446,8 +447,8 @@ var MarkdownDiff = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateMarkdownDiffSpec(runtime, markdownDiffSpec{
 			FileToken:    strings.TrimSpace(runtime.Str("file-token")),
-			FromVersion:  strings.TrimSpace(runtime.Str("from-version")),
-			ToVersion:    strings.TrimSpace(runtime.Str("to-version")),
+			FromVersion:  runtime.Str("from-version"),
+			ToVersion:    runtime.Str("to-version"),
 			FilePath:     strings.TrimSpace(runtime.Str("file")),
 			ContextLines: runtime.Int("context-lines"),
 			Format:       runtime.Format,
@@ -456,8 +457,8 @@ var MarkdownDiff = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return markdownDiffDryRun(markdownDiffSpec{
 			FileToken:    strings.TrimSpace(runtime.Str("file-token")),
-			FromVersion:  strings.TrimSpace(runtime.Str("from-version")),
-			ToVersion:    strings.TrimSpace(runtime.Str("to-version")),
+			FromVersion:  runtime.Str("from-version"),
+			ToVersion:    runtime.Str("to-version"),
 			FilePath:     strings.TrimSpace(runtime.Str("file")),
 			ContextLines: runtime.Int("context-lines"),
 		})
@@ -465,8 +466,8 @@ var MarkdownDiff = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := markdownDiffSpec{
 			FileToken:    strings.TrimSpace(runtime.Str("file-token")),
-			FromVersion:  strings.TrimSpace(runtime.Str("from-version")),
-			ToVersion:    strings.TrimSpace(runtime.Str("to-version")),
+			FromVersion:  runtime.Str("from-version"),
+			ToVersion:    runtime.Str("to-version"),
 			FilePath:     strings.TrimSpace(runtime.Str("file")),
 			ContextLines: runtime.Int("context-lines"),
 		}
@@ -487,7 +488,7 @@ var MarkdownDiff = common.Shortcut{
 			} else {
 				fromLabel += "@latest"
 			}
-			_, fromContent, err = downloadMarkdownContent(ctx, runtime, spec.FileToken, spec.FromVersion)
+			_, fromContent, err = downloadMarkdownContent(ctx, runtime, spec.FileToken, spec.FromVersion, "--from-version")
 			if err != nil {
 				return err
 			}
@@ -499,17 +500,17 @@ var MarkdownDiff = common.Shortcut{
 			}
 		default:
 			fromLabel = "a/" + spec.FileToken + "@version:" + spec.FromVersion
-			_, fromContent, err = downloadMarkdownContent(ctx, runtime, spec.FileToken, spec.FromVersion)
+			_, fromContent, err = downloadMarkdownContent(ctx, runtime, spec.FileToken, spec.FromVersion, "--from-version")
 			if err != nil {
 				return err
 			}
 
 			if spec.ToVersion != "" {
 				toLabel = "b/" + spec.FileToken + "@version:" + spec.ToVersion
-				_, toContent, err = downloadMarkdownContent(ctx, runtime, spec.FileToken, spec.ToVersion)
+				_, toContent, err = downloadMarkdownContent(ctx, runtime, spec.FileToken, spec.ToVersion, "--to-version")
 			} else {
 				toLabel = "b/" + spec.FileToken + "@latest"
-				_, toContent, err = downloadMarkdownContent(ctx, runtime, spec.FileToken, "")
+				_, toContent, err = downloadMarkdownContent(ctx, runtime, spec.FileToken, "", "")
 			}
 			if err != nil {
 				return err

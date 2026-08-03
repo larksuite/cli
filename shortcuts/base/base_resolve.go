@@ -37,8 +37,7 @@ var BaseURLResolve = common.Shortcut{
 	AuthTypes: authTypes(),
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "url", Desc: "Base/Wiki/record-share URL to resolve"},
-		{Name: "query", Hidden: true, Desc: "Alias for --url; accepted to recover from AI routing mistakes"},
+		{Name: "url", Aliases: []string{"query"}, Desc: "Base/Wiki/record-share URL to resolve"},
 	},
 	Tips: []string{
 		`Example: lark-cli base +url-resolve --url "https://example.larkoffice.com/base/<base_token>?table=<block_id>&view=<view_id>"`,
@@ -108,9 +107,7 @@ var BaseTitleResolve = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "title", Desc: "Base title keyword to search via Drive (30 characters or fewer)"},
-		{Name: "query", Hidden: true, Desc: "Alias for --title; accepted to recover from AI routing mistakes"},
-		{Name: "url", Hidden: true, Desc: "Alias for --title; accepted to recover from AI routing mistakes"},
+		{Name: "title", Aliases: []string{"query", "url"}, Desc: "Base title keyword to search via Drive (30 characters or fewer)"},
 	},
 	Tips: []string{
 		`Example: lark-cli base +title-resolve --title "Sales pipeline"`,
@@ -135,15 +132,7 @@ var BaseTitleResolve = common.Shortcut{
 }
 
 func readURLResolveInput(runtime *common.RuntimeContext) (string, error) {
-	urlValue := strings.TrimSpace(runtime.Str("url"))
-	queryValue := strings.TrimSpace(runtime.Str("query"))
-	if urlValue != "" && queryValue != "" {
-		return "", baseFlagErrorf("--url and --query are mutually exclusive")
-	}
-	value := urlValue
-	if value == "" {
-		value = queryValue
-	}
+	value := strings.TrimSpace(runtime.Str("url"))
 	if value == "" {
 		return "", baseFlagErrorf("specify --url")
 	}
@@ -151,25 +140,7 @@ func readURLResolveInput(runtime *common.RuntimeContext) (string, error) {
 }
 
 func readTitleResolveQuery(runtime *common.RuntimeContext) (string, error) {
-	values := []struct {
-		name  string
-		value string
-	}{
-		{"title", strings.TrimSpace(runtime.Str("title"))},
-		{"query", strings.TrimSpace(runtime.Str("query"))},
-		{"url", strings.TrimSpace(runtime.Str("url"))},
-	}
-	var pickedName, pickedValue string
-	for _, v := range values {
-		if v.value == "" {
-			continue
-		}
-		if pickedValue != "" {
-			return "", baseFlagErrorf("--%s and --%s are mutually exclusive", pickedName, v.name)
-		}
-		pickedName = v.name
-		pickedValue = v.value
-	}
+	pickedValue := strings.TrimSpace(runtime.Str("title"))
 	if pickedValue == "" {
 		return "", baseFlagErrorf("specify --title")
 	}

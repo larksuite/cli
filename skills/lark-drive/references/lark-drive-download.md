@@ -25,6 +25,10 @@ https://xxx.feishu.cn/drive/file/boxbc_xxx
                                   file_token
 ```
 
+## 排障
+
+- 如果返回 `HTTP 403`，可以使用 [lark-drive-preview](lark-drive-preview.md) 下载源文件产物。
+
 ## 参考
 
 - [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令

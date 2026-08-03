@@ -88,23 +88,24 @@ func TestShared_NoProxyOverridesSystemProxy(t *testing.T) {
 	}
 }
 
-// TestNewHTTPClient verifies the factory wires the shared proxy-plugin-aware
-// transport (instead of a bare client that bypasses proxy plugin mode).
-func TestNewHTTPClient(t *testing.T) {
+// TestHTTPClientConstructors verifies both the policy-routed client and its
+// forced-external view retain explicit transports and configured timeouts.
+func TestHTTPClientConstructors(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	unsetProxyPluginEnv(t)
 	resetProxyPluginState()
 	t.Setenv(EnvNoProxy, "")
 
-	c := NewHTTPClient(7 * time.Second)
-	if c.Transport == nil {
-		t.Fatal("NewHTTPClient transport is nil; want shared transport")
-	}
-	if c.Transport != Shared() {
-		t.Errorf("NewHTTPClient transport = %v, want Shared()", c.Transport)
-	}
-	if c.Timeout != 7*time.Second {
-		t.Errorf("NewHTTPClient timeout = %v, want 7s", c.Timeout)
+	for name, client := range map[string]*http.Client{
+		"routed":   NewHTTPClient(7 * time.Second),
+		"external": NewExternalHTTPClient(7 * time.Second),
+	} {
+		if client.Transport == nil {
+			t.Fatalf("%s client transport is nil", name)
+		}
+		if client.Timeout != 7*time.Second {
+			t.Errorf("%s client timeout = %v, want 7s", name, client.Timeout)
+		}
 	}
 }
 
@@ -152,5 +153,33 @@ func TestShared_MalformedConfigFailsClosedEvenWithNoProxy(t *testing.T) {
 	resp, err := rt.RoundTrip(&http.Request{URL: &url.URL{Scheme: "https", Host: "open.feishu.cn"}})
 	if err == nil {
 		t.Fatalf("RoundTrip() err = nil (resp=%v); malformed config must fail closed", resp)
+	}
+
+	for name, test := range map[string]struct {
+		client *http.Client
+		url    string
+	}{
+		"platform": {
+			client: NewHTTPClient(time.Second),
+			url:    "https://open.feishu.cn/open-apis/test",
+		},
+		"external": {
+			client: NewHTTPClient(time.Second),
+			url:    "https://external.example/test",
+		},
+		"forced external": {
+			client: NewExternalHTTPClient(time.Second),
+			url:    "https://external.example/test",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			resp, err := test.client.Get(test.url)
+			if err == nil {
+				if resp != nil && resp.Body != nil {
+					resp.Body.Close()
+				}
+				t.Fatalf("policy-routed client succeeded with malformed proxy config")
+			}
+		})
 	}
 }

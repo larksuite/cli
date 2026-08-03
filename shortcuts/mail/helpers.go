@@ -1790,7 +1790,7 @@ func downloadAttachmentContent(runtime *common.RuntimeContext, downloadURL strin
 		return nil, mailInvalidResponseError("attachment download URL has no host")
 	}
 
-	httpClient, err := runtime.Factory.HttpClient()
+	httpClient, err := runtime.Factory.ExternalHTTPClient()
 	if err != nil {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "failed to get HTTP client: %v", err).WithCause(err)
 	}

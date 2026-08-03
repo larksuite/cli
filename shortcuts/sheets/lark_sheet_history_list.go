@@ -20,7 +20,7 @@ import (
 //
 // History is workbook-level (no sheet selector), mirroring +workbook-info:
 // the only locator is --url / --spreadsheet-token (XOR), with --token accepted
-// as a parse-time alias for --spreadsheet-token via the shared PostMount hook.
+// as a parse-time alias for --spreadsheet-token via the shared flagalias engine.
 
 // historyLocatorFlags is the --url / --spreadsheet-token XOR locator pair
 // shared by the three history shortcuts. Mirrors +workbook-info's flag-defs

@@ -4,6 +4,7 @@
 package update
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,12 +13,38 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	exttransport "github.com/larksuite/cli/extension/transport"
 )
 
 // roundTripFunc adapts a function to http.RoundTripper.
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+type updateExternalProvider struct {
+	interceptor exttransport.Interceptor
+}
+
+func (p updateExternalProvider) Name() string { return "update-external-test" }
+
+func (p updateExternalProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return p.interceptor
+}
+
+func (updateExternalProvider) SupportsRequestClass(class exttransport.RequestClass) bool {
+	return class == exttransport.RequestClassExternal
+}
+
+type updateExternalInterceptor struct {
+	calls int
+}
+
+func (i *updateExternalInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
+	i.calls++
+	req.Header.Set("X-External-Route", "1")
+	return nil
+}
 
 // clearSkipEnv unsets all env vars that shouldSkip checks,
 // preventing the host environment (e.g. CI=true) from polluting test results.
@@ -240,6 +267,46 @@ func TestRefreshCache(t *testing.T) {
 
 	// Second refresh should be no-op (cache is fresh) — won't hit network.
 	RefreshCache("1.0.0")
+}
+
+func TestHTTPClientUsesExternalRequestClass(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARK_CLI_NO_PROXY", "")
+	previousClient := DefaultClient
+	DefaultClient = nil
+	t.Cleanup(func() { DefaultClient = previousClient })
+
+	previousProvider := exttransport.GetProvider()
+	interceptor := &updateExternalInterceptor{}
+	exttransport.Register(updateExternalProvider{interceptor: interceptor})
+	t.Cleanup(func() { exttransport.Register(previousProvider) })
+
+	previousTransport := http.DefaultTransport
+	var receivedHeader string
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		receivedHeader = req.Header.Get("X-External-Route")
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Header:     make(http.Header),
+			Body:       http.NoBody,
+			Request:    req,
+		}, nil
+	})
+	t.Cleanup(func() { http.DefaultTransport = previousTransport })
+
+	req, err := http.NewRequest(http.MethodGet, "https://open.feishu.cn/npm/latest", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := httpClient().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if interceptor.calls != 1 || receivedHeader != "1" {
+		t.Fatalf("external route = calls %d, header %q; want 1, %q", interceptor.calls, receivedHeader, "1")
+	}
 }
 
 func TestPendingAtomicAccess(t *testing.T) {

@@ -10,7 +10,7 @@ Lists **one page** of the **current user's** feed shortcuts.
 
 - Only **CHAT-type** shortcuts are exposed via OpenAPI today (others in the IDL are not yet whitelisted).
 - The shortcut is a **thin one-page wrapper** — there is no built-in auto-pagination. Callers drive their own loop when they actually need to paginate.
-- Server-side page size is controlled by the service; in normal use one page usually covers the list.
+- Server-side page size is controlled by the service, so this command has no `--page-size` flag; in normal use one page usually covers the list.
 - Pagination tokens are opaque. If a token is rejected because the shortcut list changed, restart by omitting `--page-token`.
 
 ## Commands

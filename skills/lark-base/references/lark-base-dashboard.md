@@ -19,7 +19,7 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 | 修改组件 | `+dashboard-block-update` | 先读 block 现状，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 决定替换哪些顶层 key |
 | 查看仪表盘有哪些组件 | `+dashboard-get` 或 `+dashboard-block-list` | 本页下方「查看仪表盘」 |
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
-| 智能重排组件布局 | `+dashboard-arrange` | 用户明确要求重排，或本次会话新建仪表盘的收尾整理；无法指定精确位置 |
+| 智能重排组件布局 | `+dashboard-arrange` | 用户明确要求重排，或本次会话新建仪表盘的收尾整理；无法指定 `x/y/w/h`、精确位置或尺寸 |
 
 ## 典型场景工作流
 
@@ -29,7 +29,7 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 
 - 聚合方式：创建指标卡或分布图时优先把聚合写进 `data_config`，只有 Top N、字段取值探索、复杂筛选校验或 helper 汇总表场景才先用 `+data-query`。
 - Dry-run 边界：已按模板构造的简单指标卡、分布图、趋势图不需要逐个 `--dry-run` 后再真实创建；只有在调试 JSON、检查请求体、复杂自造 `data_config` 或处理 API validation 错误时才 dry-run。
-- 验证方式：通过创建接口返回值确认创建成功与否,只在结果不确定时用 `+dashboard-get` 或 `+dashboard-block-list` 确认仪表盘和组件存在,或调用 `+dashboard-block-get-data`读取计算结果验证。
+- 验证方式：创建接口成功返回即表示写入成功。只有结果不确定时才用一次 `+dashboard-get` 或 `+dashboard-block-list` 确认仪表盘和组件存在；不要仅为确认创建而逐组件调用 `+dashboard-block-get-data`。
 - 布局方式：`+dashboard-arrange` 仅两种情况使用：① 用户明确要求美化/重排；② 本次会话中从零新建的仪表盘，建完组件后做一次性布局整理。不是创建成功的必要步骤。
 
 示例：搭建一个销售数据分析仪表盘
@@ -142,8 +142,10 @@ lark-cli base +dashboard-block-update \
 
 > [!CAUTION]
 > - 排列结果是**服务端智能推荐**，不一定完全符合用户预期
-> - 无法指定具体位置（如"第一排放 A，第二排放 B"），排列逻辑是**自适应**的
+> - Dashboard shortcut 无法指定 `x/y/w/h`、精确位置或尺寸（如"第一排放 A""图表撑满整行"），排列逻辑是**自适应**的
 > - **不建议**在已有仪表盘上自动调用，除非用户明确要求
+> - 用户只要求一般性重排/美化时，可执行一次 `+dashboard-arrange`；用户要求精确结果时，先说明限制并询问是否接受自适应布局，接受后才执行，不能静默替代或声称精确满足
+> - 执行一次 `+dashboard-arrange` 后即停止；不要继续探测 raw `lark-cli api`、源码或未公开布局参数
 
 ```bash
 # 第 1 步：列出仪表盘，定位到目标仪表盘
@@ -183,6 +185,8 @@ lark-cli base +dashboard-block-get-data --base-token xxx --block-id chtxxxxxxxx
 
 # 最后：把获取到的现状信息整理好告诉用户
 ```
+
+需要读取多个组件的计算结果时，先用方式 B 获取真实 `block_id`（使用 `--page-size 100`；若 `has_more=true`，继续把返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`），再按 [lark-base-dashboard-block-get-data.md](lark-base-dashboard-block-get-data.md) 的多组件范式，在一个 shell 工具调用内串行读取；不要把每个 block 拆成独立模型轮次。文本组件没有计算结果，应跳过。
 
 ## 组件类型选择
 

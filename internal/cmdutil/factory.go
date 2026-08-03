@@ -16,10 +16,12 @@ import (
 	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
+	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/transport"
 )
 
 // Factory holds shared dependencies injected into every command.
@@ -31,7 +33,7 @@ type InvocationContext struct {
 
 type Factory struct {
 	Config     func() (*core.CliConfig, error) // lazily loads app config from Credential
-	HttpClient func() (*http.Client, error)    // HTTP client for non-Lark API calls (with retry and security headers)
+	HttpClient func() (*http.Client, error)    // policy-routed HTTP client for direct requests
 	LarkClient func() (*lark.Client, error)    // Lark SDK client for all Open API calls
 	IOStreams  *IOStreams                      // stdin/stdout/stderr streams
 
@@ -46,6 +48,18 @@ type Factory struct {
 	FileIOProvider fileio.Provider // file transfer provider (default: local filesystem)
 
 	SkillContent fs.FS // embedded skill tree (rooted at the skill list); nil when the build embeds no skills
+}
+
+// ExternalHTTPClient returns a clone of the existing Factory client whose
+// requests are explicitly classified as external. The underlying client,
+// redirect policy, timeout, proxy configuration, and legacy transport provider
+// behavior are preserved.
+func (f *Factory) ExternalHTTPClient() (*http.Client, error) {
+	client, err := f.HttpClient()
+	if err != nil {
+		return nil, err
+	}
+	return transport.ClientForRequestClass(client, exttransport.RequestClassExternal), nil
 }
 
 // ResolveFileIO resolves a FileIO instance using the current execution context.

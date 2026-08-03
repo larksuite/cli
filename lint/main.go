@@ -31,6 +31,7 @@ import (
 
 	"github.com/larksuite/cli/lint/domaincontract"
 	"github.com/larksuite/cli/lint/errscontract"
+	"github.com/larksuite/cli/lint/flagcontract"
 	"github.com/larksuite/cli/lint/lintapi"
 )
 
@@ -45,6 +46,11 @@ var scanners = []scanner{
 	{name: "errscontract", fn: errscontract.ScanRepoWithOptions},
 	{name: "domaincontract", fn: func(root string, opts errscontract.ScanOptions) ([]lintapi.Violation, error) {
 		return domaincontract.ScanRepoWithOptions(root, domaincontract.ScanOptions{
+			ChangedFrom: opts.ChangedFrom,
+		})
+	}},
+	{name: "flagcontract", fn: func(root string, opts errscontract.ScanOptions) ([]lintapi.Violation, error) {
+		return flagcontract.ScanRepoWithOptions(root, flagcontract.ScanOptions{
 			ChangedFrom: opts.ChangedFrom,
 		})
 	}},

@@ -518,6 +518,29 @@ func TestDoStream_TransportFailureSplitsSubtype(t *testing.T) {
 	}
 }
 
+func TestDoStream_PreservesTypedTransportError(t *testing.T) {
+	policyErr := errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "blocked redirect")
+	ac := &APIClient{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, policyErr
+		})},
+		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+
+	_, err := ac.DoStream(context.Background(), &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    "/open-apis/drive/v1/files/file_token/download",
+	}, core.AsBot)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeAccessDenied {
+		t.Fatalf("DoStream() problem = %#v, %v; want policy/access_denied", problem, ok)
+	}
+	if !errors.Is(err, policyErr) {
+		t.Fatal("DoStream() did not preserve the typed transport error")
+	}
+}
+
 // failingTokenResolver always returns TokenUnavailableError, exercising the
 // auth/credential failure path through resolveAccessToken.
 type failingTokenResolver struct{}
