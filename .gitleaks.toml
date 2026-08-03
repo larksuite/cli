@@ -3,8 +3,15 @@ title = "lark-cli gitleaks config"
 [extend]
 useDefault = true
 
-[allowlist]
-description = "EventKey identifiers (dotted lowercase names like minutes.minute.generated_v1) are public catalog data rendered in fixtures and docs, not credentials; the entropy heuristic of generic-api-key misreads them"
+# Extends the default rule of the same id: the base regex is kept and this
+# allowlist is appended to that rule only, leaving every other rule untouched.
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "EventKey identifiers (dotted lowercase names like minutes.minute.generated_v1) in the event catalog fixtures are public catalog data, not credentials; the entropy heuristic misreads them"
+condition = "AND"
+paths = ['''cmd/event/testdata/golden/.*''']
 regexTarget = "secret"
 regexes = ['''^[a-z0-9_]+(\.[a-z0-9_]+){2,}$''']
 
