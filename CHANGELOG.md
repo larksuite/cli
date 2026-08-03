@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.82] - 2026-08-03
+
+### Features
+
+- **enhancement**: centralize HTTP transport policies (#2021)
+- add framework flag aliases and unified IM pagination (#2146)
+
+### Bug Fixes
+
+- normalize mail triage filters (#2068)
+
+### Documentation
+
+- remove broken Star History chart (#2141)
+- **base**: harden dashboard multi-block read guidance (#2122)
+
+### Tests
+
+- pass contact list params explicitly (#2150)
+
 ## [v1.0.81] - 2026-07-31
 
 ### Features
@@ -1751,6 +1771,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.82]: https://github.com/larksuite/cli/releases/tag/v1.0.82
 [v1.0.81]: https://github.com/larksuite/cli/releases/tag/v1.0.81
 [v1.0.80]: https://github.com/larksuite/cli/releases/tag/v1.0.80
 [v1.0.79]: https://github.com/larksuite/cli/releases/tag/v1.0.79
