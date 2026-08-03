@@ -15,8 +15,8 @@
    - 用户指定时间：选择不晚于目标时间的最近一条记录；用户明确要求“最接近”时，选择时间差最小的记录。
 2. 找到目标记录后，使用该记录的 `history_version_id` 调用 `+history-revert`。不要将 `revision_id` 传给回滚接口。返回 `running` 时使用 `+history-revert-status` 查询；只有 `done` 表示成功，其他终态均停止并报告。
 3. 没有目标记录但用户指定了 `revision_id` 时，可读取目标版本并恢复正文：
-   - 使用 `docs +fetch --revision-id <revision_id> --detail full --format json` 读取目标版本。确认文档一致、返回的 `revision_id` 与目标一致，并且 `content` 和 `reference_map` 类型有效。
-   - 读取当前完整文档，将当前 `revision_id` 作为乐观锁。移除目标 `content` 中旧的 block ID，并将同一次目标响应中的 `content` 和 `reference_map` 用于一次 `docs +update --command overwrite`；`+update` 不支持 `--yes`。
+   - 使用 `docs +fetch --doc "<doc>" --revision-id <revision_id> --detail full --format json` 读取目标版本。确认文档一致、返回的 `revision_id` 与目标一致，并且 `content` 和 `reference_map` 类型有效。
+   - 使用 `docs +fetch --doc "<doc>" --detail full --format json` 读取当前完整文档。移除目标 `content` 中旧的 block ID，然后仅执行一次 `docs +update --doc "<doc>" --command overwrite --revision-id <current_revision_id> --content <target_content> --reference-map <target_reference_map>`；`current_revision_id` 来自当前文档响应，`target_content` 和 `target_reference_map` 来自同一次目标版本响应。`+update` 不支持 `--yes`。
    - 读取最新完整文档核验结果。核验时忽略重新生成的 block ID，正文结构、文本、链接和引用资源应与目标版本一致。
 4. 目标版本明确不可读时停止并报告。
 
