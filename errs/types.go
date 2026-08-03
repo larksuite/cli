@@ -150,6 +150,11 @@ func (e *ValidationError) WithCause(cause error) *ValidationError {
 	return e
 }
 
+func (e *ValidationError) WithTarget(t *ErrTarget) *ValidationError {
+	e.Target = t
+	return e
+}
+
 // =========================== AuthenticationError =============================
 
 // AuthenticationError is the typed error for CategoryAuthentication.
@@ -375,6 +380,11 @@ func (e *ConfigError) WithCause(cause error) *ConfigError {
 	return e
 }
 
+func (e *ConfigError) WithTarget(t *ErrTarget) *ConfigError {
+	e.Target = t
+	return e
+}
+
 // =============================== NetworkError ================================
 
 // NetworkError is the typed error for CategoryNetwork. The Subtype carries
@@ -434,6 +444,11 @@ func (e *NetworkError) WithRetryable() *NetworkError {
 
 func (e *NetworkError) WithCause(cause error) *NetworkError {
 	e.Cause = cause
+	return e
+}
+
+func (e *NetworkError) WithTarget(t *ErrTarget) *NetworkError {
+	e.Target = t
 	return e
 }
 
@@ -770,5 +785,10 @@ func (e *ConfirmationRequiredError) WithCode(code int) *ConfirmationRequiredErro
 
 func (e *ConfirmationRequiredError) WithCause(cause error) *ConfirmationRequiredError {
 	e.Cause = cause
+	return e
+}
+
+func (e *ConfirmationRequiredError) WithTarget(t *ErrTarget) *ConfirmationRequiredError {
+	e.Target = t
 	return e
 }

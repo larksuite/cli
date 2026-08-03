@@ -4,7 +4,9 @@
 package errs
 
 import (
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -68,5 +70,15 @@ func TestProblemCategoryTagIsType(t *testing.T) {
 	}
 	if got := f.Tag.Get("json"); got != "type" {
 		t.Errorf("Problem.Category json tag = %q, want %q", got, "type")
+	}
+}
+
+func TestProblem_TargetSerialized(t *testing.T) {
+	e := NewConfirmationRequiredError(RiskHighRiskWrite, "x", "msg").
+		WithTarget(&ErrTarget{Profile: "cursor", AppID: "cli_x", IsActive: true})
+	b, _ := json.Marshal(e)
+	s := string(b)
+	if !strings.Contains(s, `"target"`) || !strings.Contains(s, `"app_id":"cli_x"`) || !strings.Contains(s, `"is_active":true`) {
+		t.Fatalf("target not serialized: %s", s)
 	}
 }

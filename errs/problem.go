@@ -3,6 +3,16 @@
 
 package errs
 
+// ErrTarget carries the structured identity of the bot/profile that a
+// confirmation-required or config-change operation will affect. It is
+// intentionally limited to non-secret fields: profile name, app_id, and
+// whether the profile is the active one. Secret values must never appear here.
+type ErrTarget struct {
+	Profile  string `json:"profile,omitempty"`
+	AppID    string `json:"app_id,omitempty"`
+	IsActive bool   `json:"is_active"`
+}
+
 // Problem is the RFC 7807-aligned shared shape embedded by every typed error.
 //
 // Message is REQUIRED. Producers must populate it; an empty Message will make
@@ -20,15 +30,19 @@ package errs
 //     includes it, otherwise absent.
 //   - Retryable uses omitempty so only `true` is emitted; consumers treat
 //     absence as false.
+//   - Target is optional; when present it identifies the bot/profile that the
+//     operation will affect so an AI agent or user can confirm the right target
+//     before a secret rotation or config change proceeds.
 type Problem struct {
-	Category       Category `json:"type"`
-	Subtype        Subtype  `json:"subtype,omitempty"`
-	Code           int      `json:"code,omitempty"`
-	Message        string   `json:"message"`
-	Hint           string   `json:"hint,omitempty"`
-	LogID          string   `json:"log_id,omitempty"`
-	Troubleshooter string   `json:"troubleshooter,omitempty"`
-	Retryable      bool     `json:"retryable,omitempty"`
+	Category       Category   `json:"type"`
+	Subtype        Subtype    `json:"subtype,omitempty"`
+	Code           int        `json:"code,omitempty"`
+	Message        string     `json:"message"`
+	Hint           string     `json:"hint,omitempty"`
+	LogID          string     `json:"log_id,omitempty"`
+	Troubleshooter string     `json:"troubleshooter,omitempty"`
+	Retryable      bool       `json:"retryable,omitempty"`
+	Target         *ErrTarget `json:"target,omitempty"`
 }
 
 // Error satisfies the standard `error` interface. A nil receiver is treated

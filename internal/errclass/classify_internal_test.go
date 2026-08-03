@@ -113,7 +113,8 @@ func TestBuildAPIError_UnknownCategoryRoutesToInternalError(t *testing.T) {
 // TestBuildAPIError_ConfigInvalidClient_HasHint pins that when a
 // CategoryConfig response (Lark code 10014 — "app secret invalid") flows
 // through BuildAPIError, the resulting *ConfigError MUST carry the canonical
-// recovery hint pointing the user at `lark-cli config init`.
+// recovery hint pointing the user at `lark-cli config set-app-secret --app-secret-stdin`
+// (secret rotation, not profile re-init).
 func TestBuildAPIError_ConfigInvalidClient_HasHint(t *testing.T) {
 	const code = 10014
 	resp := map[string]any{"code": code, "msg": "app secret invalid"}
@@ -130,7 +131,10 @@ func TestBuildAPIError_ConfigInvalidClient_HasHint(t *testing.T) {
 	if cfgErr.Hint == "" {
 		t.Errorf("Hint is empty; canonical hint required for invalid_client")
 	}
-	if !strings.Contains(cfgErr.Hint, "lark-cli config init") {
-		t.Errorf("Hint should reference `lark-cli config init`; got %q", cfgErr.Hint)
+	if !strings.Contains(cfgErr.Hint, "config set-app-secret --app-secret-stdin") {
+		t.Errorf("Hint should reference `config set-app-secret --app-secret-stdin`; got %q", cfgErr.Hint)
+	}
+	if strings.Contains(cfgErr.Hint, "config init") {
+		t.Errorf("Hint must not point to config init; got %q", cfgErr.Hint)
 	}
 }

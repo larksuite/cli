@@ -245,7 +245,7 @@ func buildConfigError(p errs.Problem) *errs.ConfigError {
 func ConfigHint(subtype errs.Subtype) string {
 	switch subtype {
 	case errs.SubtypeInvalidClient:
-		return "run `lark-cli config init` to set valid app_id and app_secret"
+		return "app secret invalid — rotate it: lark-cli config set-app-secret --app-secret-stdin (provide the new secret via stdin; previews the target first, then re-run with --profile <app_id> --yes to apply)"
 	case errs.SubtypeNotConfigured:
 		return "run `lark-cli config init` to set up app_id and app_secret"
 	case errs.SubtypeInvalidConfig:

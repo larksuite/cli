@@ -931,6 +931,46 @@ func TestPermissionError_HintPopulated(t *testing.T) {
 	}
 }
 
+// TestConfigHint_InvalidClientPointsToRotate pins that the SubtypeInvalidClient
+// hint redirects to `config set-app-secret --app-secret-stdin` (secret rotation)
+// and NOT to `config init` (which overwrites the whole profile). Both Lark codes
+// 99991543 and 10014 map to SubtypeInvalidClient (codemeta.go:67-68), so this
+// one hint change covers both codes.
+func TestConfigHint_InvalidClientPointsToRotate(t *testing.T) {
+	h := errclass.ConfigHint(errs.SubtypeInvalidClient)
+	// Entry segment must be present (no --yes — just previews).
+	if !strings.Contains(h, "config set-app-secret --app-secret-stdin (") {
+		t.Fatalf("hint=%q: must contain entry segment 'config set-app-secret --app-secret-stdin ('", h)
+	}
+	// Apply step must carry --yes so an agent can actually apply.
+	if !strings.Contains(h, "--profile <app_id> --yes to apply") {
+		t.Fatalf("hint=%q: must contain '--profile <app_id> --yes to apply'", h)
+	}
+	if strings.Contains(h, "config init") {
+		t.Fatal("hint must not point to config init")
+	}
+
+	// Optional: assert that both Lark codes that mean "app secret invalid"
+	// route through this hint (codemeta.go maps them to SubtypeInvalidClient).
+	for _, code := range []int{99991543, 10014} {
+		resp := map[string]any{"code": code, "msg": "app secret invalid"}
+		err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+		if err == nil {
+			t.Fatalf("code %d: expected error, got nil", code)
+		}
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("code %d: ProblemOf returned !ok", code)
+		}
+		if p.Subtype != errs.SubtypeInvalidClient {
+			t.Errorf("code %d: Subtype = %q, want SubtypeInvalidClient", code, p.Subtype)
+		}
+		if !strings.Contains(p.Hint, "config set-app-secret --app-secret-stdin") {
+			t.Errorf("code %d: Hint = %q: must contain 'config set-app-secret --app-secret-stdin'", code, p.Hint)
+		}
+	}
+}
+
 func TestBuildAPIError_JSONNumberCode(t *testing.T) {
 	// SDK parses with json.Number; verify intFromAny handles it.
 	resp := map[string]any{"code": json.Number("99991679"), "msg": "x"}
