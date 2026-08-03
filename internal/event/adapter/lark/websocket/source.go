@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package source is a pluggable event source abstraction (separate package to keep
-// business registrations free of SDK transitive deps).
+// Package websocket adapts the platform WebSocket connection into a pluggable
+// event source (separate package to keep business registrations free of SDK
+// transitive deps).
 package websocket
 
 // StatusNotifier surfaces source lifecycle states; detail is free-form
