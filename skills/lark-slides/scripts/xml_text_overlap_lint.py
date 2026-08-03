@@ -2690,8 +2690,9 @@ def run_cli(argv: list[str] | None = None) -> None:
     if not options.get("input"):
         print_usage()
         fail("--input is required")
-    input_path = Path(options["input"]).resolve()
-    result = lint_xml(read_file(input_path), str(input_path))
+    requested_path = options["input"]
+    resolved_path = Path(requested_path).resolve()
+    result = lint_xml(read_file(resolved_path), requested_path)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result["summary"]["error_count"] > 0:
         raise SystemExit(1)
