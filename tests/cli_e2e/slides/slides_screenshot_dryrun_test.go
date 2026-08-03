@@ -76,3 +76,26 @@ func TestSlidesScreenshotAliasesDryRunE2E(t *testing.T) {
 	require.Equal(t, "slide_1", slideIDs[0].String(), result.Stdout)
 	require.Equal(t, "slide_2", slideIDs[1].String(), result.Stdout)
 }
+
+func TestSlidesScreenshotMixedSelectorsDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+screenshot",
+			"--presentation", "presScreenshotMixed",
+			"--slide-id", "pII",
+			"--slide-number", "2",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "cannot be used together")
+}

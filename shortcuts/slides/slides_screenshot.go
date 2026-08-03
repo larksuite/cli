@@ -30,8 +30,7 @@ const (
 
 var (
 	unsafeScreenshotFileCharRegex = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
-	slideNumberAliasRegex         = regexp.MustCompile(`^[1-9][0-9]*$`)
-	slideIDAliasRegex             = regexp.MustCompile(`^p[A-Za-z]{2,}$`)
+	slideNumberAliasRegex         = regexp.MustCompile(`^[0-9]+$`)
 )
 
 // SlidesScreenshot fetches server-rendered slide screenshots and writes them to
@@ -48,12 +47,8 @@ var SlidesScreenshot = common.Shortcut{
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		listModePresentationRefFlag(),
-		{Name: "slide-id", Type: "string_slice", Desc: "slide page identifier (repeat or comma-separated for multiple slides; max 10 pages per request)"},
-		{Name: "slide-number", Type: "int_array", Desc: "slide page number (repeat for multiple slides; max 10 pages per request)"},
-		{Name: "presentation-id", Desc: "hidden alias for --presentation", Hidden: true},
-		{Name: "slide-ids", Type: "string_slice", Desc: "hidden alias for --slide-id", Hidden: true},
-		{Name: "slides", Type: "string_slice", Desc: "hidden alias for --slide-id", Hidden: true},
-		{Name: "slide-numbers", Type: "int_array", Desc: "hidden alias for --slide-number", Hidden: true},
+		{Name: "slide-id", Aliases: []string{"slide-ids", "slides"}, Type: "string_slice", Desc: "slide page identifier (repeat or comma-separated for multiple slides; max 10 pages per request)"},
+		{Name: "slide-number", Aliases: []string{"slide-numbers"}, Type: "int_array", Desc: "slide page number (repeat for multiple slides; max 10 pages per request)"},
 		{Name: "slide", Desc: "hidden alias routed to --slide-number for digits, otherwise --slide-id", Hidden: true},
 		{Name: "content", Desc: "slide XML content to render directly instead of fetching existing slides", Input: []string{common.File, common.Stdin}},
 		{Name: "output-dir", Default: defaultSlidesScreenshotDir, Desc: "relative directory for saved screenshots"},
@@ -61,21 +56,21 @@ var SlidesScreenshot = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		renderMode := runtime.Changed("content")
-		slideIDs, slideNumbers, err := slidesScreenshotSelectors(runtime)
-		if err != nil {
-			return err
-		}
 		if renderMode {
 			if strings.TrimSpace(runtime.Str("content")) == "" {
 				return slidesScreenshotFlagErrorf("--content cannot be empty")
 			}
-			if len(slideIDs) > 0 || len(slideNumbers) > 0 {
+			if slidesScreenshotHasSelectorInput(runtime) {
 				return slidesScreenshotFlagErrorf("--content cannot be used with --slide-id or --slide-number")
 			}
-			if runtime.Changed("presentation") || runtime.Changed("presentation-id") {
+			if runtime.Changed("presentation") {
 				return slidesScreenshotFlagErrorf("--presentation cannot be used with --content")
 			}
 		} else {
+			slideIDs, slideNumbers, err := slidesScreenshotSelectors(runtime)
+			if err != nil {
+				return err
+			}
 			ref, err := parsePresentationRef(slidesScreenshotPresentation(runtime))
 			if err != nil {
 				return err
@@ -205,14 +200,10 @@ func dryRunRenderScreenshot(runtime *common.RuntimeContext) *common.DryRunAPI {
 	if strings.TrimSpace(content) == "" {
 		return common.NewDryRunAPI().Set("error", "--content cannot be empty")
 	}
-	slideIDs, slideNumbers, err := slidesScreenshotSelectors(runtime)
-	if err != nil {
-		return common.NewDryRunAPI().Set("error", err.Error())
-	}
-	if len(slideIDs) > 0 || len(slideNumbers) > 0 {
+	if slidesScreenshotHasSelectorInput(runtime) {
 		return common.NewDryRunAPI().Set("error", "--content cannot be used with --slide-id or --slide-number")
 	}
-	if runtime.Changed("presentation") || runtime.Changed("presentation-id") {
+	if runtime.Changed("presentation") {
 		return common.NewDryRunAPI().Set("error", "--presentation cannot be used with --content")
 	}
 	dry := common.NewDryRunAPI().Desc("Render slide XML content to a screenshot file")
@@ -228,14 +219,10 @@ func executeRenderScreenshot(runtime *common.RuntimeContext) error {
 	if strings.TrimSpace(content) == "" {
 		return slidesScreenshotFlagErrorf("--content cannot be empty")
 	}
-	slideIDs, slideNumbers, err := slidesScreenshotSelectors(runtime)
-	if err != nil {
-		return err
-	}
-	if len(slideIDs) > 0 || len(slideNumbers) > 0 {
+	if slidesScreenshotHasSelectorInput(runtime) {
 		return slidesScreenshotFlagErrorf("--content cannot be used with --slide-id or --slide-number")
 	}
-	if runtime.Changed("presentation") || runtime.Changed("presentation-id") {
+	if runtime.Changed("presentation") {
 		return slidesScreenshotFlagErrorf("--presentation cannot be used with --content")
 	}
 	outputDir := runtime.Str("output-dir")
@@ -262,53 +249,51 @@ func executeRenderScreenshot(runtime *common.RuntimeContext) error {
 }
 
 func slidesScreenshotPresentation(runtime *common.RuntimeContext) string {
-	if runtime.Changed("presentation") {
-		return runtime.Str("presentation")
-	}
-	return runtime.Str("presentation-id")
+	return runtime.Str("presentation")
 }
 
 func slidesScreenshotSelectors(runtime *common.RuntimeContext) ([]string, []int, error) {
 	aliasSlide := strings.TrimSpace(runtime.Str("slide"))
 	aliasSlideIsNumber := runtime.Changed("slide") && slideNumberAliasRegex.MatchString(aliasSlide)
-	aliasSlideIsID := runtime.Changed("slide") && slideIDAliasRegex.MatchString(aliasSlide)
-	if runtime.Changed("slide") && !aliasSlideIsNumber && !aliasSlideIsID {
+	aliasSlideIsID := runtime.Changed("slide") && aliasSlide != "" && !aliasSlideIsNumber
+	if runtime.Changed("slide") && aliasSlide == "" {
 		return nil, nil, errs.NewValidationError(
 			errs.SubtypeInvalidArgument,
-			"--slide must be a positive page number or a slide ID matching p[A-Za-z]{2,}",
+			"--slide cannot be empty",
 		).WithParam("--slide").WithHint("use --slide-number or --slide-id to specify the selector type explicitly")
 	}
 
-	var slideIDValues []string
-	if runtime.Changed("slide-id") {
-		slideIDValues = runtime.StrSlice("slide-id")
-	} else {
-		slideIDValues = append(slideIDValues, runtime.StrSlice("slide-ids")...)
-		slideIDValues = append(slideIDValues, runtime.StrSlice("slides")...)
-		if aliasSlideIsID {
-			slideIDValues = append(slideIDValues, aliasSlide)
-		}
+	slideIDValues := append([]string(nil), runtime.StrSlice("slide-id")...)
+	if aliasSlideIsID {
+		slideIDValues = append(slideIDValues, aliasSlide)
 	}
 
-	var slideNumberValues []int
-	if runtime.Changed("slide-number") {
-		slideNumberValues = runtime.IntArray("slide-number")
-	} else {
-		slideNumberValues = append(slideNumberValues, runtime.IntArray("slide-numbers")...)
-		if aliasSlideIsNumber {
-			n, err := strconv.Atoi(aliasSlide)
-			if err != nil {
-				return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide must be a valid page number or slide ID").WithParam("--slide")
-			}
-			slideNumberValues = append(slideNumberValues, n)
+	slideNumberValues := append([]int(nil), runtime.IntArray("slide-number")...)
+	if aliasSlideIsNumber {
+		n, err := strconv.Atoi(aliasSlide)
+		if err != nil {
+			return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide page number is outside the supported integer range").WithParam("--slide")
 		}
+		if n < 1 {
+			return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide must be a positive page number").WithParam("--slide")
+		}
+		slideNumberValues = append(slideNumberValues, n)
 	}
 
 	slideNumbers, err := normalizeSlideNumbers(slideNumberValues)
 	if err != nil {
 		return nil, nil, err
 	}
-	return normalizeSlideIDs(slideIDValues), slideNumbers, nil
+	slideIDs := normalizeSlideIDs(slideIDValues)
+	if len(slideIDs) > 0 && len(slideNumbers) > 0 {
+		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide-id and --slide-number cannot be used together").
+			WithHint("choose either slide IDs or slide numbers for one screenshot request")
+	}
+	return slideIDs, slideNumbers, nil
+}
+
+func slidesScreenshotHasSelectorInput(runtime *common.RuntimeContext) bool {
+	return runtime.Changed("slide-id") || runtime.Changed("slide-number") || runtime.Changed("slide")
 }
 
 func normalizeSlideIDs(values []string) []string {
