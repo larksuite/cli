@@ -4,7 +4,6 @@
 package auth
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,17 +11,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/gofrs/flock"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/vfs"
 )
 
 var safeIDChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
@@ -66,17 +61,12 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 	}
 }
 
-var refreshLocks sync.Map
-
-var (
-	getStoredUAToken    = GetStoredToken
-	setStoredUAToken    = SetStoredToken
-	removeStoredUAToken = RemoveStoredToken
-)
-
 // GetValidAccessToken obtains a valid access token for the given user.
 func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
-	stored := getStoredUAToken(opts.AppId, opts.UserOpenId)
+	stored, err := loadStoredUAToken(opts.AppId, opts.UserOpenId)
+	if err != nil {
+		return "", err
+	}
 	if stored == nil {
 		return "", NewNeedUserAuthorizationError(opts.UserOpenId)
 	}
@@ -88,7 +78,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 	}
 
 	if status == "needs_refresh" {
-		refreshed, err := refreshWithLock(httpClient, opts, stored)
+		refreshed, err := refreshWithLock(httpClient, opts)
 		if err != nil {
 			return "", err
 		}
@@ -102,74 +92,27 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 }
 
 // refreshWithLock acquires a file lock before attempting to refresh the token.
-func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
-	key := fmt.Sprintf("%s:%s", opts.AppId, opts.UserOpenId)
-
-	// 1. Process-level lock (prevents multiple goroutines in the same process)
-	done := make(chan struct{})
-	if existing, loaded := refreshLocks.LoadOrStore(key, done); loaded {
-		// Another goroutine is already refreshing; wait for it
-		if ch, ok := existing.(chan struct{}); ok {
-			<-ch
-		} else {
-			// fallback in case of unexpected type
-			refreshLocks.Delete(key)
+func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUAToken, error) {
+	var refreshed *StoredUAToken
+	err := withCredentialLock(opts.AppId, opts.UserOpenId, func() error {
+		freshStored, err := loadStoredUAToken(opts.AppId, opts.UserOpenId)
+		if err != nil {
+			return err
 		}
-		refreshed := getStoredUAToken(opts.AppId, opts.UserOpenId)
-		if refreshed != nil && TokenStatus(refreshed) == "valid" {
-			return refreshed, nil
+		if freshStored == nil {
+			return NewNeedUserAuthorizationError(opts.UserOpenId)
 		}
-		return nil, preservedRefreshStateError(opts)
-	}
-
-	// We own the process lock; done is the channel stored in the map
-	defer func() {
-		close(done)
-		refreshLocks.Delete(key)
-	}()
-
-	// 2. Cross-process lock using flock
-	// We use the same underlying storage directory resolution as keychain_other.go
-	// to ensure locks are isolated properly alongside other sensitive data.
-	lockFile := refreshLockPath(opts.AppId, opts.UserOpenId)
-	lockDir := filepath.Dir(lockFile)
-	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
-		return nil, fmt.Errorf("failed to create lock directory: %w", err)
-	}
-	fileLock := flock.New(lockFile)
-
-	// Try to acquire the lock, wait if necessary
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	locked, err := fileLock.TryLockContext(ctx, 500*time.Millisecond)
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire cross-process lock: %w", err)
-	}
-	if !locked {
-		return nil, fmt.Errorf("timeout waiting for cross-process lock")
-	}
-	defer fileLock.Unlock()
-
-	// 3. Double-checked locking: Check if another process has already refreshed the token
-	freshStored := getStoredUAToken(opts.AppId, opts.UserOpenId)
-	if freshStored != nil {
-		status := TokenStatus(freshStored)
-		if status == "valid" {
-			// Another process refreshed it, we can just use the new token
-			if opts.ErrOut != nil {
-				fmt.Fprintf(opts.ErrOut, "[lark-cli] uat-client: token already refreshed by another process\n")
-			}
-			return freshStored, nil
+		if TokenStatus(freshStored) == "valid" {
+			refreshed = freshStored
+			return nil
 		}
-	}
-
-	// 4. Actually perform the refresh
-	return doRefreshToken(httpClient, opts, stored)
-}
-
-func refreshLockPath(appID, userOpenID string) string {
-	return filepath.Join(refreshLockDir(), fmt.Sprintf("refresh_%s_%s.lock", sanitizeID(appID), sanitizeID(userOpenID)))
+		if err := persistStoredUAToken(freshStored); err != nil {
+			return storageError("credential store is not writable; token refresh was not attempted", err)
+		}
+		refreshed, err = doRefreshToken(httpClient, opts, freshStored)
+		return err
+	})
+	return refreshed, err
 }
 
 // doRefreshToken performs the actual HTTP request to refresh the token.
@@ -310,27 +253,33 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		GrantedAt:        stored.GrantedAt,
 	}
 
-	if err := setStoredUAToken(updated); err != nil {
-		return nil, errs.NewInternalError(errs.SubtypeStorage, "failed to store refreshed user access token").WithCause(err)
+	var persistErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		persistErr = persistStoredUAToken(updated)
+		if persistErr == nil {
+			return updated, nil
+		}
 	}
-	return updated, nil
+	return nil, storageError("failed to store rotated user access token after three attempts; run `lark-cli auth login` after storage access is restored", persistErr)
 }
 
 func concurrentRefreshWinner(opts UATCallOptions, attempted *StoredUAToken) *StoredUAToken {
-	latest := getStoredUAToken(opts.AppId, opts.UserOpenId)
-	if latest == nil || attempted == nil || latest.RefreshToken == attempted.RefreshToken {
+	latest, err := loadStoredUAToken(opts.AppId, opts.UserOpenId)
+	if err != nil {
+		return nil
+	}
+	if latest == nil || attempted == nil {
+		return nil
+	}
+	if latest.RefreshToken == attempted.RefreshToken &&
+		latest.AccessToken == attempted.AccessToken &&
+		latest.ExpiresAt == attempted.ExpiresAt {
 		return nil
 	}
 	if TokenStatus(latest) != "valid" {
 		return nil
 	}
 	return latest
-}
-
-func preservedRefreshStateError(opts UATCallOptions) error {
-	return errs.NewAuthenticationError(errs.SubtypeRefreshServerError, "token refresh did not produce a valid access token").
-		WithUserOpenID(opts.UserOpenId).
-		WithHint("retry after concurrent lark-cli commands finish; if the refresh token was revoked, run `lark-cli auth login`")
 }
 
 func refreshTokenExpiredError(opts UATCallOptions) error {
@@ -345,6 +294,10 @@ func wrapRefreshTransportError(err error) error {
 	}
 	return errs.NewNetworkError(errs.SubtypeNetworkTransport, "token refresh request failed").
 		WithCause(err)
+}
+
+func storageError(message string, err error) error {
+	return errs.NewInternalError(errs.SubtypeStorage, message).WithCause(err)
 }
 
 func buildRefreshFailureError(data map[string]interface{}, opts UATCallOptions) error {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/keychain"
 )
 
@@ -25,6 +26,14 @@ type StoredUAToken struct {
 
 const refreshAheadMs = 5 * 60 * 1000 // 5 minutes
 
+var (
+	loadStoredUAToken    = LoadStoredToken
+	persistStoredUAToken = persistStoredToken
+	removeStoredUAToken  = func(appID, userOpenID string) error {
+		return keychain.Remove(keychain.LarkCliService, accountKey(appID, userOpenID))
+	}
+)
+
 // accountKey generates a unique key for an account based on its AppID and UserOpenID.
 func accountKey(appId, userOpenId string) string {
 	return fmt.Sprintf("%s:%s", appId, userOpenId)
@@ -40,19 +49,34 @@ func MaskToken(token string) string {
 
 // GetStoredToken reads the stored UAT for a given (appId, userOpenId) pair.
 func GetStoredToken(appId, userOpenId string) *StoredUAToken {
+	token, _ := LoadStoredToken(appId, userOpenId)
+	return token
+}
+
+// LoadStoredToken distinguishes a missing token from an unreadable credential store.
+func LoadStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
 	jsonStr, err := keychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
-	if err != nil || jsonStr == "" {
-		return nil
+	if err != nil {
+		return nil, err
+	}
+	if jsonStr == "" {
+		return nil, nil
 	}
 	var token StoredUAToken
 	if err := json.Unmarshal([]byte(jsonStr), &token); err != nil {
-		return nil
+		return nil, errs.NewInternalError(errs.SubtypeStorage, "stored user access token is unreadable").WithCause(err)
 	}
-	return &token
+	return &token, nil
 }
 
 // SetStoredToken persists a UAT.
 func SetStoredToken(token *StoredUAToken) error {
+	return withCredentialLock(token.AppId, token.UserOpenId, func() error {
+		return persistStoredUAToken(token)
+	})
+}
+
+func persistStoredToken(token *StoredUAToken) error {
 	key := accountKey(token.AppId, token.UserOpenId)
 	data, err := json.Marshal(token)
 	if err != nil {
@@ -63,7 +87,9 @@ func SetStoredToken(token *StoredUAToken) error {
 
 // RemoveStoredToken removes a stored UAT.
 func RemoveStoredToken(appId, userOpenId string) error {
-	return keychain.Remove(keychain.LarkCliService, accountKey(appId, userOpenId))
+	return withCredentialLock(appId, userOpenId, func() error {
+		return removeStoredUAToken(appId, userOpenId)
+	})
 }
 
 // TokenStatus determines the freshness of a stored token.
