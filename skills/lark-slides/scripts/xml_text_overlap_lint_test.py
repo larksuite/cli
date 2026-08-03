@@ -525,6 +525,118 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             [issue["code"] for issue in result["slides"][1]["errors"]],
         )
 
+    def test_lint_xml_allows_svg_subtree_inside_embed(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <embed topLeftX="80" topLeftY="120" width="240" height="140">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+                    <rect x="10" y="10" width="220" height="120" rx="12" fill="#EFF6FF"/>
+                    <circle cx="70" cy="70" r="34" fill="#2563EB"/>
+                    <text x="130" y="76" font-size="18" fill="#1E3A8A">SVG OK</text>
+                    <foreignObject x="0" y="0" width="1" height="1">
+                      <embed xmlns="http://www.w3.org/1999/xhtml">
+                        <rect xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>
+                      </embed>
+                    </foreignObject>
+                  </svg>
+                </embed>
+              </data>
+            </slide>
+            """
+        )
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertNotIn("sxsd_unsupported_tag", codes)
+        self.assertNotIn("sxsd_unsupported_attr", codes)
+        self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_enforces_embed_svg_contract(self) -> None:
+        cases = [
+            ("missing SVG", "", "sxsd_missing_required_child"),
+            ("wrong namespace", '<svg viewBox="0 0 20 20"/>', "sxsd_unsupported_tag"),
+            (
+                "multiple SVG roots",
+                '<svg xmlns="http://www.w3.org/2000/svg"/><svg xmlns="http://www.w3.org/2000/svg"/>',
+                "sxsd_too_many_children",
+            ),
+            (
+                "non-SVG root element",
+                '<rect xmlns="http://www.w3.org/2000/svg" width="20" height="20"/>',
+                "sxsd_unexpected_child",
+            ),
+            (
+                "SVG after reflection",
+                '<reflection/><svg xmlns="http://www.w3.org/2000/svg"/>',
+                "sxsd_invalid_child_order",
+            ),
+        ]
+        for name, children, expected_code in cases:
+            with self.subTest(name=name):
+                result = xml_text_overlap_lint.lint_xml(
+                    f"""
+                    <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                      <data>
+                        <embed topLeftX="80" topLeftY="120" width="240" height="140">
+                          {children}
+                        </embed>
+                      </data>
+                    </slide>
+                    """
+                )
+                codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+                self.assertIn(expected_code, codes)
+
+    def test_lint_xml_enforces_embed_svg_root_for_readback_namespaces(self) -> None:
+        document_templates = [
+            ("bare slide", "<slide>{content}</slide>"),
+            (
+                "short namespace",
+                '<presentation xmlns="/sml/2.0" width="960" height="540">'
+                "<slide>{content}</slide>"
+                "</presentation>",
+            ),
+            (
+                "HTTPS namespace",
+                '<presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">'
+                "<slide>{content}</slide>"
+                "</presentation>",
+            ),
+        ]
+        embed_template = """
+            <data>
+              <embed topLeftX="80" topLeftY="120" width="240" height="140">
+                {svg_root}
+              </embed>
+            </data>
+        """
+        roots = [
+            ("valid SVG root", '<svg xmlns="http://www.w3.org/2000/svg"/>', False),
+            (
+                "non-SVG root element",
+                '<rect xmlns="http://www.w3.org/2000/svg" width="20" height="20"/>',
+                True,
+            ),
+        ]
+
+        for document_name, document_template in document_templates:
+            for root_name, svg_root, should_error in roots:
+                with self.subTest(document=document_name, root=root_name):
+                    content = embed_template.format(svg_root=svg_root)
+                    result = xml_text_overlap_lint.lint_xml(
+                        document_template.format(content=content)
+                    )
+                    codes = [
+                        issue["code"]
+                        for slide in result["slides"]
+                        for issue in slide["issues"]
+                    ]
+                    if should_error:
+                        self.assertIn("sxsd_unexpected_child", codes)
+                    else:
+                        self.assertNotIn("sxsd_unexpected_child", codes)
+                        self.assertEqual(result["summary"]["error_count"], 0)
+
     def test_lint_xml_reports_sxsd_unsupported_tag_with_alias_hint(self) -> None:
         cases = [
             ("textbox", '<textbox topLeftX="80" topLeftY="80" width="300" height="60">Text</textbox>', '<shape type="text">'),
@@ -928,6 +1040,29 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(issue["iconType"], "iconpark/Base/settng.svg")
         self.assertIn("iconpark-index.json", issue["hint"])
         self.assertIn("iconpark/Base/setting.svg", issue["hint"])
+
+    def test_lint_xml_skips_iconpark_validation_inside_embedded_svg(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <embed topLeftX="80" topLeftY="120" width="240" height="140">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+                    <rect x="10" y="10" width="220" height="120" fill="#EFF6FF"/>
+                    <icon iconType="not-an-iconpark-name"/>
+                    <foreignObject x="0" y="0" width="60" height="60">
+                      <icon xmlns="http://www.w3.org/1999/xhtml" iconType="not-an-iconpark-name"/>
+                    </foreignObject>
+                  </svg>
+                </embed>
+              </data>
+            </slide>
+            """
+        )
+        codes = [issue["code"] for issue in result["document"]["errors"]]
+        self.assertNotIn("iconpark_unsupported_icon_type", codes)
+        self.assertNotIn("icon_missing_fill_color", codes)
+        self.assertEqual(result["summary"]["error_count"], 0)
 
     def test_lint_xml_detects_overlapping_text_boxes(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -1745,6 +1880,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                 <table id="table" topLeftX="400" topLeftY="60" width="220" height="120"></table>
                 <chart id="chart" topLeftX="640" topLeftY="60" width="220" height="120"/>
                 <whiteboard id="wb" topLeftX="80" topLeftY="220" width="760" height="240"/>
+                <embed id="emb" topLeftX="600" topLeftY="320" width="240" height="140">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140"><rect x="0" y="0" width="240" height="140"/></svg>
+                </embed>
                 <shape id="missing-height" type="text" topLeftX="80" topLeftY="480" width="320">
                   <content><p>Skipped</p></content>
                 </shape>
@@ -1752,9 +1890,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </slide>
             """
         )
-        self.assertEqual([element["id"] for element in elements], ["photo", "headline", "table", "chart", "wb"])
-        self.assertEqual([element["kind"] for element in elements], ["img", "shape", "table", "chart", "whiteboard"])
-        self.assertEqual([element["order"] for element in elements], [0, 1, 2, 3, 4])
+        self.assertEqual([element["id"] for element in elements], ["photo", "headline", "table", "chart", "wb", "emb"])
+        self.assertEqual([element["kind"] for element in elements], ["img", "shape", "table", "chart", "whiteboard", "embed"])
+        self.assertEqual([element["order"] for element in elements], [0, 1, 2, 3, 4, 5])
         self.assertEqual(elements[1]["type"], "text")
         self.assertEqual(elements[1]["textType"], "headline")
         self.assertEqual(elements[1]["textAlign"], "center")
@@ -3002,6 +3140,25 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         )
 
         self.assertEqual(result["slides"][0]["issues"], [])
+
+    def test_lint_xml_does_not_report_blank_slide_for_embed_only_content(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <embed id="emb" topLeftX="280" topLeftY="130" width="400" height="280">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 280">
+                    <circle cx="200" cy="140" r="100" fill="#2563EB"/>
+                  </svg>
+                </embed>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 0)
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertNotIn("blank_slide", codes)
 
     def test_lint_xml_does_not_report_blank_slide_for_line_only_content(self) -> None:
         result = xml_text_overlap_lint.lint_xml(

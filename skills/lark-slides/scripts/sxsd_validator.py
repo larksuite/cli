@@ -80,6 +80,15 @@ class ChildRule:
 
 
 @dataclass(frozen=True)
+class WildcardRule:
+    namespace: str
+    process_contents: str
+    min_occurs: int
+    max_occurs: int | None
+    order: int | None
+
+
+@dataclass(frozen=True)
 class ChoiceRequirement:
     names: tuple[str, ...]
     min_occurs: int
@@ -307,12 +316,13 @@ def multiplied_max(left: int | None, right: int | None) -> int | None:
 
 def child_rules_for_complex_type(
     complex_type: ET.Element,
-) -> tuple[list[ChildRule], list[ChoiceRequirement]]:
+) -> tuple[list[ChildRule], list[WildcardRule], list[ChoiceRequirement]]:
     particle = particle_for_complex_type(complex_type)
     if particle is None:
-        return [], []
+        return [], [], []
 
     rules: list[ChildRule] = []
+    wildcard_rules: list[WildcardRule] = []
     requirements: list[ChoiceRequirement] = []
     next_order = 0
 
@@ -331,6 +341,25 @@ def child_rules_for_complex_type(
         rules.append(
             ChildRule(
                 element=element_rule,
+                min_occurs=0 if optional_by_choice else minimum,
+                max_occurs=multiplied_max(maximum, max_multiplier),
+                order=order,
+            )
+        )
+
+    def add_wildcard(
+        wildcard: ET.Element,
+        *,
+        order: int | None,
+        optional_by_choice: bool,
+        max_multiplier: int | None,
+    ) -> None:
+        minimum = occurs_value(wildcard.attrib.get("minOccurs"), 1) or 0
+        maximum = occurs_value(wildcard.attrib.get("maxOccurs"), 1)
+        wildcard_rules.append(
+            WildcardRule(
+                namespace=wildcard.attrib.get("namespace", "##any"),
+                process_contents=wildcard.attrib.get("processContents", "strict"),
                 min_occurs=0 if optional_by_choice else minimum,
                 max_occurs=multiplied_max(maximum, max_multiplier),
                 order=order,
@@ -369,6 +398,13 @@ def child_rules_for_complex_type(
                         optional_by_choice=True,
                         max_multiplier=effective_max,
                     )
+                elif child_kind == "any":
+                    add_wildcard(
+                        child,
+                        order=choice_order,
+                        optional_by_choice=True,
+                        max_multiplier=effective_max,
+                    )
                 elif child_kind in {"sequence", "all", "choice"}:
                     walk_group(
                         child,
@@ -395,6 +431,17 @@ def child_rules_for_complex_type(
                     optional_by_choice=optional_by_choice or group_min == 0,
                     max_multiplier=effective_max,
                 )
+            elif child_kind == "any":
+                child_order = fixed_order
+                if child_order is None and ordered and group_ordered:
+                    child_order = next_order
+                    next_order += 1
+                add_wildcard(
+                    child,
+                    order=child_order,
+                    optional_by_choice=optional_by_choice or group_min == 0,
+                    max_multiplier=effective_max,
+                )
             elif child_kind in {"sequence", "all", "choice"}:
                 walk_group(
                     child,
@@ -405,7 +452,7 @@ def child_rules_for_complex_type(
                 )
 
     walk_group(particle, ordered=local_name(particle.tag) == "sequence")
-    return rules, requirements
+    return rules, wildcard_rules, requirements
 
 
 def issue(
@@ -688,6 +735,31 @@ def element_namespace(tag: str) -> str | None:
     return tag[1:].split("}", 1)[0]
 
 
+def wildcard_matches_namespace(namespace_rule: str, namespace: str | None) -> bool:
+    tokens = namespace_rule.split()
+    if "##any" in tokens:
+        return True
+    if "##local" in tokens and namespace is None:
+        return True
+    if "##targetNamespace" in tokens and namespace == SML_NAMESPACE:
+        return True
+    if "##other" in tokens and namespace not in {None, SML_NAMESPACE}:
+        return True
+    return namespace in tokens
+
+
+def wildcard_namespace_description(namespace_rule: str) -> str:
+    if namespace_rule == "##any":
+        return "any namespace"
+    if namespace_rule == "##local":
+        return "the local namespace"
+    if namespace_rule == "##targetNamespace":
+        return f"the target namespace {SML_NAMESPACE}"
+    if namespace_rule == "##other":
+        return "a namespace other than the SXSD target namespace"
+    return f"namespace {namespace_rule}"
+
+
 def validate_element_children(
     element: ET.Element,
     path: str,
@@ -696,8 +768,10 @@ def validate_element_children(
 ) -> tuple[list[dict[str, Any]], dict[int, ElementRule]]:
     tag = local_name(element.tag)
     complex_type = complex_type_for_element(element_rule, model)
-    child_rules, choice_requirements = (
-        child_rules_for_complex_type(complex_type) if complex_type is not None else ([], [])
+    child_rules, wildcard_rules, choice_requirements = (
+        child_rules_for_complex_type(complex_type)
+        if complex_type is not None
+        else ([], [], [])
     )
     rules_by_name: dict[str, list[ChildRule]] = {}
     for child_rule in child_rules:
@@ -706,24 +780,76 @@ def validate_element_children(
     issues: list[dict[str, Any]] = []
     matched: dict[int, ElementRule] = {}
     counts: dict[str, int] = {}
+    wildcard_counts: dict[int, int] = {}
     latest_order = -1
     for child in element:
         child_name = local_name(child.tag)
         child_path = f"{path}/{child_name}"
         candidates = rules_by_name.get(child_name, [])
-        if not candidates:
+        wildcard_match = next(
+            (
+                (index, wildcard_rule)
+                for index, wildcard_rule in enumerate(wildcard_rules)
+                if wildcard_matches_namespace(
+                    wildcard_rule.namespace,
+                    element_namespace(child.tag),
+                )
+            ),
+            None,
+        )
+        if not candidates and wildcard_match is None:
+            expected_children = sorted(rules_by_name)
+            expected_children.extend(
+                wildcard_namespace_description(rule.namespace) for rule in wildcard_rules
+            )
             issues.append(
                 issue(
                     "sxsd_unexpected_child",
                     child_path,
                     child_name,
                     attr=None,
-                    expected="one of: " + ", ".join(sorted(rules_by_name)) if rules_by_name else "no child elements",
+                    expected="one of: " + ", ".join(expected_children)
+                    if expected_children
+                    else "no child elements",
                     actual=child_name,
                     message=f"unexpected SXSD child <{child_name}> under <{tag}> at {child_path}",
                     hint=f"Move or remove <{child_name}> so <{tag}> follows the SXSD child structure.",
                 )
             )
+            continue
+
+        if not candidates and wildcard_match is not None:
+            wildcard_index, wildcard_rule = wildcard_match
+            if wildcard_rule.order is not None:
+                if wildcard_rule.order < latest_order:
+                    issues.append(
+                        issue(
+                            "sxsd_invalid_child_order",
+                            child_path,
+                            child_name,
+                            attr=None,
+                            expected="children in xs:sequence order",
+                            actual=child_name,
+                            message=f"SXSD child <{child_name}> is out of order under <{tag}> at {child_path}",
+                            hint=f"Reorder <{child_name}> according to the SXSD sequence for <{tag}>.",
+                        )
+                    )
+                latest_order = max(latest_order, wildcard_rule.order)
+            wildcard_counts[wildcard_index] = wildcard_counts.get(wildcard_index, 0) + 1
+            actual_count = wildcard_counts[wildcard_index]
+            if wildcard_rule.max_occurs is not None and actual_count > wildcard_rule.max_occurs:
+                issues.append(
+                    issue(
+                        "sxsd_too_many_children",
+                        child_path,
+                        child_name,
+                        attr=None,
+                        expected=f"at most {wildcard_rule.max_occurs} child from {wildcard_namespace_description(wildcard_rule.namespace)}",
+                        actual=actual_count,
+                        message=f"too many wildcard SXSD children under <{tag}> at {path}",
+                        hint=f"Keep at most {wildcard_rule.max_occurs} child from {wildcard_namespace_description(wildcard_rule.namespace)} under <{tag}>.",
+                    )
+                )
             continue
 
         child_rule = candidates[0]
@@ -774,6 +900,24 @@ def validate_element_children(
                 actual=actual_count,
                 message=f"missing required SXSD child <{child_name}> under <{tag}> at {path}",
                 hint=f"Add at least {child_rule.min_occurs} <{child_name}> child under <{tag}>.",
+            )
+        )
+
+    for wildcard_index, wildcard_rule in enumerate(wildcard_rules):
+        actual_count = wildcard_counts.get(wildcard_index, 0)
+        if wildcard_rule.min_occurs <= actual_count:
+            continue
+        namespace_description = wildcard_namespace_description(wildcard_rule.namespace)
+        issues.append(
+            issue(
+                "sxsd_missing_required_child",
+                path,
+                tag,
+                attr=None,
+                expected=f"at least {wildcard_rule.min_occurs} child from {namespace_description}",
+                actual=actual_count,
+                message=f"missing required wildcard SXSD child under <{tag}> at {path}",
+                hint=f"Add at least {wildcard_rule.min_occurs} child from {namespace_description} under <{tag}>.",
             )
         )
 

@@ -81,7 +81,7 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 **子元素：**
 
 - `<style>?` - 页面样式，目前可放 `<fill>`
-- `<data>?` - 页面元素容器，可放 `shape`、`line`、`polyline`、`img`、`table`、`icon`、`chart`、`undefined`
+- `<data>?` - 页面元素容器，可放 `shape`、`line`、`polyline`、`img`、`table`、`icon`、`embed`、`chart`、`undefined`
 - `<note>?` - 演讲者备注，内部可放 `<content>`
 
 这意味着 `<title>`、`<headline>`、`<body>`、`<caption>` 不能直接放在 `<slide>` 下。
@@ -354,6 +354,20 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 隐藏 `<chart>` 的图例只能通过不写或删除 `<chartLegend>` 实现，`<chartLegend>` 不支持 `position="none"`。
 
 详细用法见 [slides_xml_schema_definition.xml](slides_xml_schema_definition.xml)。
+
+### embed
+
+嵌入内容容器：外层 `<embed>` 承载 Slides 的摆放和效果属性（`topLeftX`/`topLeftY`/`width`/`height` 必填，`rotation`/`flipX`/`flipY`/`alpha` 可选），内层承载外部标准内容。当前内层内容为标准 SVG，`<svg>` 必须使用 `http://www.w3.org/2000/svg` 命名空间，且仅描述嵌入内容本身，不承载 Slides 布局属性。
+
+```xml
+<embed topLeftX="80" topLeftY="120" width="200" height="120">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120">
+    <circle cx="100" cy="60" r="40" fill="rgba(37, 99, 235, 1)"/>
+  </svg>
+</embed>
+```
+
+`<embed>` 直接子元素为一个 `<svg>`（必需），以及可选的 `<reflection>`（倒影）与 `<shadow>`（阴影）。
 
 ## 颜色与样式
 
