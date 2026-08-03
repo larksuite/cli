@@ -37,19 +37,18 @@ lint/
     ├── diff.go         # added-line attribution
     └── *_test.go
 └── flagcontract/       # framework ownership for flag aliases
-    ├── scan.go         # rejects local name normalizers and independent aliases
+    ├── scan.go         # rejects local name normalizers
     └── scan_test.go
 ```
 
 ## Flag alias contract (`flagcontract`)
 
 `flagcontract` keeps exact flag-name synonyms on the shared framework path. It
-rejects production calls to `SetNormalizeFunc` outside `internal/flagalias` and
-independent hidden flags described as aliases. Exact synonyms belong in the
-canonical `common.Flag.Aliases`; legacy inputs with a different value grammar
-or meaning remain real hidden flags and normalize into canonical state
-inside the business-owned `Shortcut.Normalize` execution stage. Exact
-aliases always share the canonical flag's occurrence and conflict semantics.
+rejects production calls to `SetNormalizeFunc` outside `internal/flagalias`.
+Exact synonyms belong in the canonical `common.Flag.Aliases`; legacy inputs
+with a different value grammar or meaning remain real hidden flags and
+normalize into canonical state inside the business-owned `Shortcut.Normalize`
+execution stage.
 
 ## Endpoint domain contract (`domaincontract`)
 

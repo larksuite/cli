@@ -26,7 +26,7 @@ const (
 var ImThreadsMessagesList = common.Shortcut{
 	Service:     "im",
 	Command:     "+threads-messages-list",
-	Description: "List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports --order asc|desc sorting, auto-pagination",
+	Description: "List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports --order asc/desc sorting, auto-pagination",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
 	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
@@ -35,8 +35,7 @@ var ImThreadsMessagesList = common.Shortcut{
 	HasFormat:   true,
 	Flags: append([]common.Flag{
 		{Name: "thread", Aliases: []string{"thread-id"}, Desc: "thread ID (om_xxx or omt_xxx)", Required: true},
-		{Name: "order", Default: "asc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
-		{Name: "sort", Hidden: true, Desc: "legacy name for --order", Enum: []string{"asc", "desc"}},
+		{Name: "order", Aliases: []string{"sort"}, Default: "asc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
 		{Name: "page-size", Default: fmt.Sprintf("%d", threadsMessagesListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", threadsMessagesListMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
@@ -44,7 +43,7 @@ var ImThreadsMessagesList = common.Shortcut{
 	}, common.PageAllFlags()...),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		threadFlag := runtime.Str("thread")
-		dir := resolveThreadsOrder(runtime)
+		dir := runtime.Str("order")
 		pageSizeStr := runtime.Str("page-size")
 		pageToken := runtime.Str("page-token")
 
@@ -101,7 +100,7 @@ var ImThreadsMessagesList = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		dir := resolveThreadsOrder(runtime)
+		dir := runtime.Str("order")
 		pageToken := runtime.Str("page-token")
 
 		params := buildThreadsMessagesListParams(dir, threadId, pageSize, pageToken)
@@ -208,14 +207,6 @@ func buildThreadsMessagesListParams(dir, containerID string, pageSize int, pageT
 		params["page_token"] = []string{pageToken}
 	}
 	return params
-}
-
-func resolveThreadsOrder(runtime *common.RuntimeContext) string {
-	dir := runtime.Str("order")
-	if legacy, ok := legacyFlagValue(runtime, "sort", "order"); ok {
-		dir = legacy
-	}
-	return dir
 }
 
 // toDryParams flattens single-valued query params to scalars for dry-run preview,

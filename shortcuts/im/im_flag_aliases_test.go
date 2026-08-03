@@ -43,10 +43,11 @@ func TestIMDeclarativeFlagAliases(t *testing.T) {
 	}{
 		{&ImChatMessageList, "start", []string{"start-time"}},
 		{&ImChatMessageList, "end", []string{"end-time"}},
-		{&ImChatMessageList, "order", []string{"sort-order"}},
+		{&ImChatMessageList, "order", []string{"sort-order", "sort"}},
 		{&ImChatMessageList, "page-size", []string{"limit"}},
 		{&ImChatMembersList, "page-size", []string{"limit"}},
 		{&ImThreadsMessagesList, "thread", []string{"thread-id"}},
+		{&ImThreadsMessagesList, "order", []string{"sort"}},
 		{&ImMessagesMGet, "message-ids", []string{"message-id"}},
 		{&ImMessagesSearch, "query", []string{"keyword"}},
 		{&ImMessagesSearch, "page-size", []string{"limit"}},

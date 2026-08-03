@@ -36,17 +36,6 @@ func legacySortValues(values []sortCompatibilityValue) []string {
 	return legacy
 }
 
-// legacyFlagValue preserves the precedence contract of an independently
-// declared historical flag: the canonical flag wins whenever both are set.
-// This is command-owned compatibility rather than a framework Flag.Alias,
-// whose scalar contract is intentionally last-occurrence-wins.
-func legacyFlagValue(runtime *common.RuntimeContext, legacyName, canonicalName string) (string, bool) {
-	if runtime.Changed(legacyName) && !runtime.Changed(canonicalName) {
-		return runtime.Str(legacyName), true
-	}
-	return "", false
-}
-
 // normalizeSortCompatibilityFlag is the IM adapter for the framework Normalize
 // phase. It translates a legacy sort vocabulary into the canonical flag before
 // framework enum validation and before Validate/DryRun/Execute. Exact name

@@ -102,7 +102,7 @@ func TestCollectExportsShortcutAliasesOnCanonicalFlags(t *testing.T) {
 		aliases   []string
 	}{
 		{command: "base +url-resolve", canonical: "url", aliases: []string{"query"}},
-		{command: "im +chat-messages-list", canonical: "order", aliases: []string{"sort-order"}},
+		{command: "im +chat-messages-list", canonical: "order", aliases: []string{"sort-order", "sort"}},
 		{command: "sheets +workbook-info", canonical: "spreadsheet-token", aliases: []string{"token"}},
 	}
 	for _, test := range tests {

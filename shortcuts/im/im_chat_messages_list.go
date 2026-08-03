@@ -26,7 +26,7 @@ const (
 var ImChatMessageList = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-messages-list",
-	Description: "List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range, --order asc|desc sorting, auto-pagination",
+	Description: "List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range, --order asc/desc sorting, auto-pagination",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
 	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
@@ -38,8 +38,7 @@ var ImChatMessageList = common.Shortcut{
 		{Name: "user-id", Desc: "(required, mutually exclusive with --chat-id; user identity only) user open_id (ou_xxx)"},
 		{Name: "start", Aliases: []string{"start-time"}, Desc: "start time (ISO 8601)"},
 		{Name: "end", Aliases: []string{"end-time"}, Desc: "end time (ISO 8601)"},
-		{Name: "order", Aliases: []string{"sort-order"}, Default: "desc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
-		{Name: "sort", Hidden: true, Desc: "legacy name for --order", Enum: []string{"asc", "desc"}},
+		{Name: "order", Aliases: []string{"sort-order", "sort"}, Default: "desc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
 		{Name: "page-size", Aliases: []string{"limit"}, Default: fmt.Sprintf("%d", chatMessagesListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatMessagesListMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
@@ -236,9 +235,6 @@ func buildChatMessageListParams(sortFlag string, pageSize int, chatId string) la
 
 func buildChatMessageListRequest(runtime *common.RuntimeContext, chatId string) (larkcore.QueryParams, error) {
 	dir := runtime.Str("order")
-	if legacy, ok := legacyFlagValue(runtime, "sort", "order"); ok {
-		dir = legacy
-	}
 	pageSize, err := common.ValidatePageSizeTyped(runtime, "page-size", chatMessagesListDefaultPageSize, 1, chatMessagesListMaxPageSize)
 	if err != nil {
 		return nil, err

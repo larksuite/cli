@@ -29,13 +29,13 @@ func TestIMFlagAliasesDryRun(t *testing.T) {
 				"im", "+chat-messages-list", "--chat-id", "oc_dryrun",
 				"--start-time", "2026-07-27T00:00:00+08:00",
 				"--end-time", "1785254400",
-				"--sort-order", "asc", "--limit", "25", "--no-reactions", "--dry-run",
+				"--sort-order", "asc", "--sort", "desc", "--limit", "25", "--no-reactions", "--dry-run",
 			},
 			canonicalArgs: []string{
 				"im", "+chat-messages-list", "--chat-id", "oc_dryrun",
 				"--start", "2026-07-27T00:00:00+08:00",
 				"--end", "1785254400",
-				"--order", "asc", "--page-size", "25", "--no-reactions", "--dry-run",
+				"--order", "desc", "--page-size", "25", "--no-reactions", "--dry-run",
 			},
 			defaultAs: "bot",
 		},
@@ -47,8 +47,8 @@ func TestIMFlagAliasesDryRun(t *testing.T) {
 		},
 		{
 			name:          "thread id",
-			aliasArgs:     []string{"im", "+threads-messages-list", "--thread-id", "omt_dryrun", "--no-reactions", "--dry-run"},
-			canonicalArgs: []string{"im", "+threads-messages-list", "--thread", "omt_dryrun", "--no-reactions", "--dry-run"},
+			aliasArgs:     []string{"im", "+threads-messages-list", "--thread-id", "omt_dryrun", "--sort", "desc", "--no-reactions", "--dry-run"},
+			canonicalArgs: []string{"im", "+threads-messages-list", "--thread", "omt_dryrun", "--order", "desc", "--no-reactions", "--dry-run"},
 			defaultAs:     "bot",
 		},
 		{

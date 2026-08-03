@@ -26,9 +26,7 @@ func TestThreadsMessagesList_OrderMapping(t *testing.T) {
 	}
 }
 
-// TestThreadsMessagesList_LegacySortParity proves the compatibility stage maps
-// historical --sort to canonical --order before command logic runs.
-func TestThreadsMessagesList_LegacySortParity(t *testing.T) {
+func TestThreadsMessagesList_SortAliasParity(t *testing.T) {
 	for _, dir := range []string{"asc", "desc"} {
 		t.Run(dir, func(t *testing.T) {
 			newRT, _ := newMountedIMRuntime(t, &ImThreadsMessagesList, "--thread", "omt_test", "--order", dir)
@@ -42,26 +40,30 @@ func TestThreadsMessagesList_LegacySortParity(t *testing.T) {
 	}
 }
 
-func TestThreadsMessagesList_CanonicalOrderWinsOverLegacySort(t *testing.T) {
-	for _, args := range [][]string{
-		{"--thread", "omt_test", "--order", "desc", "--sort", "asc"},
-		{"--thread", "omt_test", "--sort", "asc", "--order", "desc"},
-	} {
-		rt, _ := newMountedIMRuntime(t, &ImThreadsMessagesList, args...)
-		if got := resolveThreadsOrder(rt); got != "desc" {
-			t.Fatalf("canonical --order must win for %v: order=%q", args, got)
+func TestThreadsMessagesList_SortAliasesUseLastOccurrence(t *testing.T) {
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"--thread", "omt_test", "--order", "desc", "--sort", "asc"}, want: "asc"},
+		{args: []string{"--thread", "omt_test", "--sort", "asc", "--order", "desc"}, want: "desc"},
+	}
+	for _, test := range tests {
+		rt, _ := newMountedIMRuntime(t, &ImThreadsMessagesList, test.args...)
+		if got := rt.Str("order"); got != test.want {
+			t.Fatalf("order for %v = %q, want %q", test.args, got, test.want)
 		}
 	}
 }
 
 func TestThreadsMessagesList_OrderFlagSurface(t *testing.T) {
-	var orderFlag, sortFlag *common.Flag
+	var orderFlag *common.Flag
 	for i := range ImThreadsMessagesList.Flags {
 		if ImThreadsMessagesList.Flags[i].Name == "order" {
 			orderFlag = &ImThreadsMessagesList.Flags[i]
 		}
 		if ImThreadsMessagesList.Flags[i].Name == "sort" {
-			sortFlag = &ImThreadsMessagesList.Flags[i]
+			t.Fatal("--sort must not be declared independently")
 		}
 	}
 	if orderFlag == nil {
@@ -73,13 +75,7 @@ func TestThreadsMessagesList_OrderFlagSurface(t *testing.T) {
 	if got := strings.Join(orderFlag.Enum, ","); got != "asc,desc" {
 		t.Errorf("--order Enum = %q, want asc,desc", got)
 	}
-	if len(orderFlag.Aliases) != 0 {
-		t.Errorf("--order Aliases = %q, want none", orderFlag.Aliases)
-	}
-	if sortFlag == nil || !sortFlag.Hidden {
-		t.Fatal("historical --sort must remain an independent hidden compatibility flag")
-	}
-	if got := strings.Join(sortFlag.Enum, ","); got != "asc,desc" {
-		t.Errorf("--sort Enum = %q, want asc,desc", got)
+	if got := strings.Join(orderFlag.Aliases, ","); got != "sort" {
+		t.Errorf("--order Aliases = %q, want sort", got)
 	}
 }
