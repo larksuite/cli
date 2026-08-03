@@ -57,7 +57,10 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 
 // GetValidAccessToken obtains a valid access token for the given user.
 func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
-	stored := GetStoredToken(opts.AppId, opts.UserOpenId)
+	stored, err := readStoredToken(opts.AppId, opts.UserOpenId)
+	if err != nil {
+		return "", err
+	}
 	if stored == nil {
 		return "", NewNeedUserAuthorizationError(opts.UserOpenId)
 	}
@@ -102,7 +105,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUATok
 				return err
 			}
 			if !deleted {
-				refreshed, err = storedTokenAfterGenerationChange(retained, opts.UserOpenId)
+				refreshed, err = resolveStoredTokenGenerationConflict(retained, opts.UserOpenId)
 				return err
 			}
 			if opts.ErrOut != nil {
@@ -187,7 +190,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 			return nil, err
 		}
 		if !deleted {
-			return storedTokenAfterGenerationChange(retained, opts.UserOpenId)
+			return resolveStoredTokenGenerationConflict(retained, opts.UserOpenId)
 		}
 		return nil, nil
 	}
@@ -217,9 +220,9 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 				"unrecognized token refresh action %d", result.action)
 		}
 
-		clearToken := result.action == refreshStopAndClear ||
-			result.action == refreshRetryAndClear ||
+		clearAfterUncertainResult := result.action == refreshRetryAndClear ||
 			(result.action == refreshRetryAndPreserve && uncertain)
+		clearToken := result.action == refreshStopAndClear || clearAfterUncertainResult
 		if !clearToken {
 			fmt.Fprintf(errOut,
 				"[lark-cli] [WARN] uat-client: refresh failed for %s, preserving token: %v\n",
@@ -236,11 +239,22 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 			fmt.Fprintf(errOut,
 				"[lark-cli] [WARN] uat-client: stored token changed during refresh for %s, preserving current token\n",
 				opts.UserOpenId)
-			return storedTokenAfterGenerationChange(retained, opts.UserOpenId)
+			return resolveStoredTokenGenerationConflict(retained, opts.UserOpenId)
 		}
 		fmt.Fprintf(errOut,
 			"[lark-cli] [WARN] uat-client: refresh failed for %s, token cleared: %v\n",
 			opts.UserOpenId, result.err)
+		// Once the credential is gone, only a known non-retryable terminal
+		// error may pass through. Every other cause needs a fresh terminal
+		// contract that directs the caller to re-authorize.
+		problem, typed := errs.ProblemOf(result.err)
+		if clearAfterUncertainResult || !typed || problem.Retryable {
+			terminalErr := NewNeedUserAuthorizationError(opts.UserOpenId)
+			needAuthCause := terminalErr.Cause
+			return nil, terminalErr.
+				WithHint("refresh state is unrecoverable because the stored token was cleared; run: lark-cli auth login to re-authorize").
+				WithCause(errors.Join(needAuthCause, result.err))
+		}
 		return nil, result.err
 	}
 
@@ -447,12 +461,12 @@ func saveRefreshResponse(opts UATCallOptions, stored *StoredUAToken, response re
 				"[lark-cli] [WARN] uat-client: stored token changed during refresh for %s, preserving current token\n",
 				opts.UserOpenId)
 		}
-		return storedTokenAfterGenerationChange(current, opts.UserOpenId)
+		return resolveStoredTokenGenerationConflict(current, opts.UserOpenId)
 	}
 	return updated, nil
 }
 
-func storedTokenAfterGenerationChange(current *StoredUAToken, userOpenId string) (*StoredUAToken, error) {
+func resolveStoredTokenGenerationConflict(current *StoredUAToken, userOpenId string) (*StoredUAToken, error) {
 	if current == nil {
 		return nil, nil
 	}

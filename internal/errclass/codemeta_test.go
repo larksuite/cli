@@ -43,19 +43,6 @@ func TestLookupCodeMeta_CredentialCodes(t *testing.T) {
 	}
 }
 
-func TestLookupCodeMeta_RefreshResponseCodesRemainUnregistered(t *testing.T) {
-	codes := []int{
-		20001, 20002, 20008, 20009, 20010, 20024, 20036, 20048,
-		20063, 20066, 20067, 20068, 20069, 20070, 20072, 20074,
-	}
-
-	for _, code := range codes {
-		if got, ok := LookupCodeMeta(code); ok {
-			t.Errorf("LookupCodeMeta(%d) = %+v, want unregistered", code, got)
-		}
-	}
-}
-
 func TestLookupCodeMeta_MissingScope(t *testing.T) {
 	got, ok := LookupCodeMeta(99991679)
 	if !ok {

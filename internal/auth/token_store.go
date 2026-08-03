@@ -55,7 +55,9 @@ func readStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
 	}
 	var token StoredUAToken
 	if err := json.Unmarshal([]byte(jsonStr), &token); err != nil {
-		return nil, err
+		return nil, errs.NewInternalError(errs.SubtypeStorage,
+			"failed to decode stored token: %v", err).
+			WithCause(err)
 	}
 	return &token, nil
 }

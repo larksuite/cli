@@ -48,7 +48,12 @@ func tokenStorageProcessLock(appID, userOpenID string) *sync.Mutex {
 }
 
 // withTokenStorageLock runs fn while holding both the process-local and
-// cross-process locks for one account.
+// cross-process locks for one account. The lock is not reentrant: fn must not
+// call SetStoredToken, RemoveStoredToken, refreshWithLock, or another mutation
+// path that reacquires the lock for the same account, because doing so will
+// deadlock. Token storage mutations inside fn must use helpers that require the
+// caller to hold the lock, such as writeStoredToken, deleteStoredToken,
+// compareAndSwapStoredToken, or compareAndDeleteStoredToken.
 func withTokenStorageLock(appID, userOpenID string, fn func() error) (err error) {
 	processLock := tokenStorageProcessLock(appID, userOpenID)
 	processLock.Lock()
