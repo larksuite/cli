@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import html
 import json
 import math
 import re
@@ -112,7 +113,8 @@ def extract_attribute(tag_source: str, name: str) -> str | None:
     )
     if not match:
         return None
-    return match.group(1) if match.group(1) is not None else match.group(2)
+    raw = match.group(1) if match.group(1) is not None else match.group(2)
+    return html.unescape(raw)
 
 
 def extract_numeric_attribute(tag_source: str, name: str) -> int | float | None:
@@ -802,7 +804,29 @@ def attach_source_xml_paths(
         kind_paths = source_paths.get(kind, [])
         if offset < len(kind_paths):
             element["xml_path"] = kind_paths[offset]
+            element["_ref"] = kind_paths[offset]
         offsets[kind] = max(offsets.get(kind, 0), offset + 1)
+
+
+def element_ref(element: dict[str, Any]) -> str:
+    ref = element.get("_ref") or element.get("xml_path")
+    if isinstance(ref, str) and ref:
+        return ref
+    # Low-level detector tests and external callers may pass already-extracted objects.
+    # The lint_xml pipeline always attaches the source path before issue detection.
+    fallback = element.get("id")
+    if isinstance(fallback, str) and fallback:
+        return fallback
+    raise AssertionError("lint element must have a source xml path or fallback id")
+
+
+def source_element_id(element: dict[str, Any]) -> str | None:
+    value = element.get("_source_id")
+    return value if isinstance(value, str) and value else None
+
+
+def element_label(element: dict[str, Any]) -> str:
+    return source_element_id(element) or element_ref(element)
 
 
 def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
@@ -820,7 +844,8 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
             if close_index != -1:
                 content = slide_xml[match.end() : close_index]
 
-        element_id = extract_attribute(attrs, "id") or f"{kind}-{len(elements) + 1}"
+        source_id = extract_attribute(attrs, "id") or None
+        element_id = source_id or f"{kind}-{len(elements) + 1}"
         x = extract_numeric_attribute(attrs, "topLeftX")
         y = extract_numeric_attribute(attrs, "topLeftY")
         width = extract_numeric_attribute(attrs, "width")
@@ -838,6 +863,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
         if all(value is not None for value in [x, y, width, height]):
             element = {
                 "id": element_id,
+                "_source_id": source_id,
                 "kind": kind,
                 "type": extract_attribute(attrs, "type") or kind,
                 "x": x,
@@ -948,8 +974,11 @@ def detect_image_text_occlusions(elements: list[dict[str, Any]]) -> list[dict[st
                     issues.append({
                         "level": "info",
                         "code": "image_may_cover_vertical_text",
-                        "elements": [image_element["id"], text_element["id"]],
-                        "message": f'image {image_element["id"]} may cover vertical text shape {text_element["id"]}',
+                        "elements": [element_ref(image_element), element_ref(text_element)],
+                        "message": (
+                            f"image {element_label(image_element)} may cover vertical text shape "
+                            f"{element_label(text_element)}"
+                        ),
                         "hint": "Inspect the rendered slide because vertical text layout is not statically modeled.",
                     })
                 continue
@@ -958,8 +987,11 @@ def detect_image_text_occlusions(elements: list[dict[str, Any]]) -> list[dict[st
                 issues.append({
                     "level": "error",
                     "code": "image_covers_text",
-                    "elements": [image_element["id"], text_element["id"]],
-                    "message": f'image {image_element["id"]} covers text shape {text_element["id"]}',
+                    "elements": [element_ref(image_element), element_ref(text_element)],
+                    "message": (
+                        f"image {element_label(image_element)} covers text shape "
+                        f"{element_label(text_element)}"
+                    ),
                     "hint": "Move the image before the text shape in XML order, or adjust the image and text shape coordinates or dimensions.",
                 })
     return issues
@@ -1225,7 +1257,7 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
         else:
             level = "error" if overflow > 10 else "warning"
         message = (
-            f'text shape {element["id"]} may overflow its own content box '
+            f"text shape {element_label(element)} may overflow its own content box "
             f'(estimated {estimated_height:g}px, available {available_height:g}px); '
             'consider setting content wrap="true" autoFit="normal-auto-fit"'
         )
@@ -1235,7 +1267,7 @@ def detect_text_may_overflow_shapes(elements: list[dict[str, Any]]) -> list[dict
             {
                 "level": level,
                 "code": "text_may_overflow_shape",
-                "elements": [element["id"]],
+                "elements": [element_ref(element)],
                 "line_count": line_count,
                 "line_height": max(line_heights),
                 "estimated_height": estimated_height,
@@ -1476,12 +1508,15 @@ def should_flag_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
 def build_whiteboard_external_overlap_issue(
     whiteboard: dict[str, Any], overlap_details: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    element_ids = [detail["element"] for detail in overlap_details]
+    element_refs = [detail["element"] for detail in overlap_details]
     return {
         "level": "warning",
         "code": "whiteboard_external_overlap",
-        "elements": [whiteboard["id"], *element_ids],
-        "message": f'whiteboard {whiteboard["id"]} overlaps {len(element_ids)} sibling elements across its boundary',
+        "elements": [element_ref(whiteboard), *element_refs],
+        "message": (
+            f"whiteboard {element_label(whiteboard)} overlaps {len(element_refs)} "
+            "sibling elements across its boundary"
+        ),
         "hint": (
             "Treat this as a static whiteboard container-bbox risk, not final visual proof. "
             "After moving or accepting the overlap, use screenshot QA or equivalent rendered visual inspection as "
@@ -1522,7 +1557,7 @@ def should_report_whiteboard_overlap(
         return None
 
     return {
-        "element": other["id"],
+        "element": element_ref(other),
         "kind": other["kind"],
         "type": other.get("type"),
         "overlap_width": overlap_width,
@@ -1532,16 +1567,16 @@ def should_report_whiteboard_overlap(
 
 
 def prune_contained_text_overlap_details(
-    overlap_details: list[dict[str, Any]], elements_by_id: dict[str, dict[str, Any]]
+    overlap_details: list[dict[str, Any]], elements_by_ref: dict[str, dict[str, Any]]
 ) -> list[dict[str, Any]]:
     pruned: list[dict[str, Any]] = []
     for detail in overlap_details:
-        element = elements_by_id[detail["element"]]
+        element = elements_by_ref[detail["element"]]
         if is_text_element(element):
             has_reported_container = any(
                 detail["element"] != other_detail["element"]
-                and not is_text_element(elements_by_id[other_detail["element"]])
-                and contains(elements_by_id[other_detail["element"]], element)
+                and not is_text_element(elements_by_ref[other_detail["element"]])
+                and contains(elements_by_ref[other_detail["element"]], element)
                 for other_detail in overlap_details
             )
             if has_reported_container:
@@ -1554,7 +1589,7 @@ def detect_whiteboard_external_overlaps(
     elements: list[dict[str, Any]], slide_width: int | float, slide_height: int | float
 ) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    elements_by_id = {element["id"]: element for element in elements}
+    elements_by_ref = {element_ref(element): element for element in elements}
     for whiteboard in [element for element in elements if is_whiteboard_element(element)]:
         overlap_details = [
             detail
@@ -1569,7 +1604,7 @@ def detect_whiteboard_external_overlaps(
             )
             is not None
         ]
-        overlap_details = prune_contained_text_overlap_details(overlap_details, elements_by_id)
+        overlap_details = prune_contained_text_overlap_details(overlap_details, elements_by_ref)
         if overlap_details:
             issues.append(build_whiteboard_external_overlap_issue(whiteboard, overlap_details))
     return issues
@@ -1628,12 +1663,12 @@ def detect_elements_out_of_canvas(
             {
                 "level": "error",
                 "code": f'{element["kind"]}_out_of_canvas',
-                "elements": [element["id"]],
+                "elements": [element_ref(element)],
                 "canvas": {"width": slide_width, "height": slide_height},
                 "bbox": bbox,
                 "overflow": overflow,
                 "message": (
-                    f'{element["kind"]} {element["id"]} exceeds the {slide_width:g}x{slide_height:g} canvas '
+                    f'{element["kind"]} {element_label(element)} exceeds the {slide_width:g}x{slide_height:g} canvas '
                     f'({", ".join(overflow_details)})'
                 ),
                 "hint": (
@@ -1701,13 +1736,13 @@ def detect_table_layout_size_mismatches(elements: list[dict[str, Any]]) -> list[
                 {
                     "level": "info",
                     "code": "table_resolved_size_mismatch",
-                    "elements": [table["id"]],
+                    "elements": [element_ref(table)],
                     "dimension": dimension,
                     "declared_size": target_size,
                     "resolved_size": actual_size,
                     "resolved_sizes": layout["final_sizes"],
                     "message": (
-                        f'table {table["id"]} declares {dimension}={format_size(target_size)}px, but its '
+                        f'table {element_label(table)} declares {dimension}={format_size(target_size)}px, but its '
                         f"{child_description} resolve to {format_size(actual_size)}px"
                     ),
                     "hint": (
@@ -1783,11 +1818,12 @@ def line_crosses_text(line: dict[str, Any], text_element: dict[str, Any]) -> boo
 
 
 def detect_line_text_crossings(
-    slide_xml: str, elements: list[dict[str, Any]]
+    slide_xml: str, elements: list[dict[str, Any]], slide_number: int
 ) -> list[dict[str, Any]]:
     lines = extract_line_elements(slide_xml)
     if not lines:
         return []
+    attach_source_xml_paths(lines, build_source_xml_paths(slide_xml, slide_number))
     text_elements = [element for element in elements if is_text_element(element)]
     issues: list[dict[str, Any]] = []
     for line in lines:
@@ -1798,8 +1834,10 @@ def detect_line_text_crossings(
                 {
                     "level": "error",
                     "code": "bbox_overlap",
-                    "elements": [line["id"], text_element["id"]],
-                    "message": f'line {line["id"]} crosses text {text_element["id"]}',
+                    "elements": [element_ref(line), element_ref(text_element)],
+                    "message": (
+                        f"line {element_label(line)} crosses text {element_label(text_element)}"
+                    ),
                     "hint": "Move the line off the text glyphs so it no longer cuts through the letterforms.",
                 }
             )
@@ -1810,13 +1848,14 @@ def lint_slide(
     slide_xml: str, slide_number: int, slide_width: int | float = 960, slide_height: int | float = 540
 ) -> dict[str, Any]:
     elements = extract_elements(slide_xml)
+    attach_source_xml_paths(elements, build_source_xml_paths(slide_xml, slide_number))
     issues: list[dict[str, Any]] = [
         *detect_whiteboard_external_overlaps(elements, slide_width, slide_height),
         *detect_elements_out_of_canvas(elements, slide_width, slide_height),
         *detect_table_layout_size_mismatches(elements),
         *detect_text_may_overflow_shapes(elements),
         *detect_image_text_occlusions(elements),
-        *detect_line_text_crossings(slide_xml, elements),
+        *detect_line_text_crossings(slide_xml, elements, slide_number),
     ]
 
     for index, left in enumerate(elements):
@@ -1828,8 +1867,8 @@ def lint_slide(
                 {
                     "level": "error",
                     "code": "bbox_overlap",
-                    "elements": [left["id"], right["id"]],
-                    "message": f'{left["id"]} overlaps {right["id"]}',
+                    "elements": [element_ref(left), element_ref(right)],
+                    "message": f"{element_label(left)} overlaps {element_label(right)}",
                     "hint": "Move or resize the elements so their visual bounds no longer intersect.",
                     **(
                         {"measurement": horizontal_text_overflow_measurement(left, right)}
@@ -1973,14 +2012,22 @@ def is_nested_in_layout_panel(
     )
 
 
-def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
+def extract_density_elements(slide_xml: str, slide_number: int = 1) -> list[dict[str, Any]]:
     elements = extract_elements(slide_xml)
-    elements_by_id = {element["id"]: element for element in elements}
+    source_paths = build_source_xml_paths(slide_xml, slide_number)
+    attach_source_xml_paths(elements, source_paths)
+    shape_elements_by_index = {
+        element["_source_kind_index"]: element
+        for element in elements
+        if element["kind"] == "shape"
+    }
     root = ET.fromstring(slide_xml)
+    shape_index = 0
     for node in root.iter():
         if xml_local_name(node.tag) != "shape":
             continue
-        element = elements_by_id.get(node.attrib.get("id", ""))
+        shape_index += 1
+        element = shape_elements_by_index.get(shape_index)
         if element is None:
             continue
         content_node = next(
@@ -2029,6 +2076,7 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
         re.finditer(r"<icon\b([^>]*)>", slide_xml), start=1
     ):
         attrs = match.group(1)
+        source_id = extract_attribute(attrs, "id") or None
         x = extract_numeric_attribute(attrs, "topLeftX")
         y = extract_numeric_attribute(attrs, "topLeftY")
         width = extract_numeric_attribute(attrs, "width")
@@ -2038,7 +2086,8 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
         icon_alpha = extract_numeric_attribute(attrs, "alpha")
         elements.append(
             {
-                "id": extract_attribute(attrs, "id") or f"icon-{len(elements) + 1}",
+                "id": source_id or f"icon-{len(elements) + 1}",
+                "_source_id": source_id,
                 "kind": "icon",
                 "type": "icon",
                 "x": x,
@@ -2062,9 +2111,11 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
         if any(value is None for value in (x, y, width, height)):
             continue
         polyline_alpha = extract_numeric_attribute(attrs, "alpha")
+        source_id = extract_attribute(attrs, "id") or None
         elements.append(
             {
-                "id": extract_attribute(attrs, "id") or f"polyline-{len(elements) + 1}",
+                "id": source_id or f"polyline-{len(elements) + 1}",
+                "_source_id": source_id,
                 "kind": "polyline",
                 "type": "polyline",
                 "x": x,
@@ -2080,6 +2131,7 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
     for line_element in extract_line_elements(slide_xml):
         line_element["order"] = len(elements)
         elements.append(line_element)
+    attach_source_xml_paths(elements, source_paths)
     return elements
 
 
@@ -2199,7 +2251,12 @@ def detect_sparse_container_content(
                 "code": "sparse_container_content",
                 "target": {
                     "slide_number": slide_number,
-                    "container_id": container["id"],
+                    **(
+                        {"container_id": source_element_id(container)}
+                        if source_element_id(container) is not None
+                        else {}
+                    ),
+                    "container_xml_path": element_ref(container),
                     "container_type": container["type"],
                     "bbox": {key: container[key] for key in ("x", "y", "width", "height")},
                 },
@@ -2214,7 +2271,10 @@ def detect_sparse_container_content(
                     "content_coverage_ratio": round(coverage_ratio, 3),
                     "content_element_count": len(children) + (1 if own_text_bbox else 0),
                 },
-                "elements": [container["id"], *[child["id"] for child in children]],
+                "elements": [
+                    element_ref(container),
+                    *[element_ref(child) for child in children],
+                ],
             }
         )
     return issues
@@ -2255,7 +2315,7 @@ def detect_sparse_slide_content(
                 "content_coverage_ratio": round(coverage_ratio, 3),
                 "content_element_count": len(content),
             },
-            "elements": [element["id"] for element, _ in content],
+            "elements": [element_ref(element) for element, _ in content],
         }
     ]
 
@@ -2286,12 +2346,34 @@ def detect_blank_slide(
                 "visible_element_count": 0,
                 "declared_element_count": len(elements),
             },
-            "elements": [element["id"] for element in elements],
+            "elements": [element_ref(element) for element in elements],
             "message": "slide has no visible content beyond empty layout shapes",
             "hint": "Add visible text, an image, a chart, a table, a whiteboard, or an icon before creating the slide.",
         }
     ]
 
+
+def detect_duplicate_element_ids(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    elements_by_source_id: dict[str, list[dict[str, Any]]] = {}
+    for element in elements:
+        source_id = source_element_id(element)
+        if source_id is not None:
+            elements_by_source_id.setdefault(source_id, []).append(element)
+    return [
+        {
+            "level": "error",
+            "code": "duplicate_element_id",
+            "elements": [element_ref(element) for element in duplicates],
+            "measurement": {
+                "element_id": source_id,
+                "duplicate_count": len(duplicates),
+            },
+            "message": f'element id "{source_id}" is used by {len(duplicates)} elements',
+            "hint": "Give every element a unique non-empty id before editing by element_id.",
+        }
+        for source_id, duplicates in elements_by_source_id.items()
+        if len(duplicates) > 1
+    ]
 
 
 RULE_METADATA: dict[str, dict[str, Any]] = {
@@ -2351,6 +2433,10 @@ RULE_METADATA: dict[str, dict[str, Any]] = {
         "name": "slide_has_visible_content",
         "comparison": "visible_element_count > 0",
     },
+    "duplicate_element_id": {
+        "name": "element_ids_are_unique",
+        "comparison": "duplicate_count == 0",
+    },
 }
 
 
@@ -2373,13 +2459,13 @@ def issue_rule(issue: dict[str, Any]) -> dict[str, Any]:
 
 
 def issue_measurement(
-    issue: dict[str, Any], elements_by_id: dict[str, dict[str, Any]]
+    issue: dict[str, Any], elements_by_ref: dict[str, dict[str, Any]]
 ) -> dict[str, Any]:
     if issue.get("measurement") is not None:
         return issue["measurement"]
     if issue["code"] == "bbox_overlap" and len(issue.get("elements", [])) == 2:
-        left = elements_by_id.get(issue["elements"][0])
-        right = elements_by_id.get(issue["elements"][1])
+        left = elements_by_ref.get(issue["elements"][0])
+        right = elements_by_ref.get(issue["elements"][1])
         if left and right:
             left_box = (estimate_text_visual_bbox(left) if is_text_element(left) else None) or left
             right_box = (estimate_text_visual_bbox(right) if is_text_element(right) else None) or right
@@ -2419,11 +2505,12 @@ def issue_measurement(
 
 def related_object(element: dict[str, Any]) -> dict[str, Any]:
     related = {
-        "element_id": element["id"],
         "kind": element["kind"],
         "type": element["type"],
         "bbox": {key: element[key] for key in ("x", "y", "width", "height")},
     }
+    if source_element_id(element) is not None:
+        related["element_id"] = source_element_id(element)
     if element.get("xml_path"):
         related["xml_path"] = element["xml_path"]
     return related
@@ -2435,6 +2522,7 @@ def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
         re.finditer(r"<line\b([^>]*?)(/?)>", slide_xml), start=1
     ):
         attrs = match.group(1)
+        source_id = extract_attribute(attrs, "id") or None
         start_x = extract_numeric_attribute(attrs, "startX")
         start_y = extract_numeric_attribute(attrs, "startY")
         end_x = extract_numeric_attribute(attrs, "endX")
@@ -2453,7 +2541,8 @@ def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
                 border_alpha = color_alpha
         elements.append(
             {
-                "id": extract_attribute(attrs, "id") or f"line-{len(elements) + 1}",
+                "id": source_id or f"line-{len(elements) + 1}",
+                "_source_id": source_id,
                 "kind": "line",
                 "type": "line",
                 "x": min(start_x, end_x),
@@ -2476,23 +2565,30 @@ def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
 def normalize_issue(
     issue: dict[str, Any],
     slide_number: int | None,
-    elements_by_id: dict[str, dict[str, Any]],
+    elements_by_ref: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     normalized = dict(issue)
-    element_ids = list(dict.fromkeys(normalized.get("elements", [])))
+    element_refs = normalized.get("elements", [])
+    resolved_elements = [
+        elements_by_ref[element_ref]
+        for element_ref in element_refs
+        if element_ref in elements_by_ref
+    ]
+    element_ids = [
+        source_id
+        for element in resolved_elements
+        if (source_id := source_element_id(element)) is not None
+    ]
     normalized["schema_version"] = "2.0"
+    normalized["elements"] = element_ids
     normalized["element_ids"] = element_ids
     normalized["target"] = {
         **({"slide_number": slide_number} if slide_number is not None else {}),
         **normalized.get("target", {}),
     }
     normalized["rule"] = issue_rule(normalized)
-    normalized["measurement"] = issue_measurement(normalized, elements_by_id)
-    normalized["related_objects"] = [
-        related_object(elements_by_id[element_id])
-        for element_id in element_ids
-        if element_id in elements_by_id
-    ]
+    normalized["measurement"] = issue_measurement(issue, elements_by_ref)
+    normalized["related_objects"] = [related_object(element) for element in resolved_elements]
     if normalized["code"] == "sparse_container_content":
         ratio = normalized["measurement"]["content_coverage_ratio"]
         threshold = normalized["rule"]["threshold"]
@@ -2655,26 +2751,25 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             )
             continue
 
-        source_paths = build_source_xml_paths(slide_xml, slide_number)
         geometry = lint_slide(
             slide_xml,
             slide_number,
             presentation["width"],
             presentation["height"],
         )
-        attach_source_xml_paths(geometry["elements"], source_paths)
-        density_elements = extract_density_elements(slide_xml)
-        attach_source_xml_paths(density_elements, source_paths)
+        density_elements = extract_density_elements(slide_xml, slide_number)
         extra_elements = [
             element for element in density_elements if element["kind"] in {"icon", "polyline", "line"}
         ]
-        elements_by_id = {
-            element["id"]: element for element in [*density_elements, *extra_elements]
+        elements_by_ref = {
+            element_ref(element): element for element in density_elements
         }
         # geometry["elements"] are the exact objects should_flag_overlap/detect_elements_out_of_canvas
-        # decided with inside lint_slide; prefer them so measurement/related_objects stay consistent
+        # selected inside lint_slide; prefer them so measurement/related_objects stay consistent
         # with whatever actually triggered the issue, instead of density_elements' separate re-parse.
-        elements_by_id.update({element["id"]: element for element in geometry["elements"]})
+        elements_by_ref.update(
+            {element_ref(element): element for element in geometry["elements"]}
+        )
         extra_overflow_issues = detect_elements_out_of_canvas(
             extra_elements,
             presentation["width"],
@@ -2683,6 +2778,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         raw_issues = [
             *geometry["issues"],
             *extra_overflow_issues,
+            *detect_duplicate_element_ids(density_elements),
             *detect_blank_slide(
                 density_elements,
                 slide_number,
@@ -2705,7 +2801,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         issues = [
             *slide_sxsd_issues,
             *[
-                normalize_issue(issue, slide_number, elements_by_id)
+                normalize_issue(issue, slide_number, elements_by_ref)
                 for issue in raw_issues
             ],
         ]
@@ -2716,7 +2812,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             {
                 "slide_number": slide_number,
                 "status": slide_status(errors, warnings),
-                "element_count": len(elements_by_id),
+                "element_count": len(elements_by_ref),
                 "errors": errors,
                 "warnings": warnings,
                 "infos": infos,

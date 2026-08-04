@@ -2323,6 +2323,194 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             "slide[1]/data/table[2]",
         )
 
+    def test_lint_xml_duplicate_id_keeps_issue_bound_to_original_shape(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="dup" type="rect" topLeftX="-20" topLeftY="40" width="50" height="50"/>
+                <shape id="dup" type="rect" topLeftX="100" topLeftY="40" width="50" height="50"/>
+              </data>
+            </slide>
+            """
+        )
+
+        canvas_issue = next(
+            issue for issue in result["slides"][0]["issues"]
+            if issue["code"] == "shape_out_of_canvas"
+        )
+        self.assertEqual(canvas_issue["element_ids"], ["dup"])
+        self.assertEqual(
+            canvas_issue["related_objects"],
+            [
+                {
+                    "element_id": "dup",
+                    "kind": "shape",
+                    "type": "rect",
+                    "bbox": {"x": -20, "y": 40, "width": 50, "height": 50},
+                    "xml_path": "slide[1]/data/shape[1]",
+                }
+            ],
+        )
+        duplicate_issue = next(
+            issue for issue in result["slides"][0]["issues"]
+            if issue["code"] == "duplicate_element_id"
+        )
+        self.assertEqual(duplicate_issue["element_ids"], ["dup", "dup"])
+        self.assertEqual(
+            [obj["xml_path"] for obj in duplicate_issue["related_objects"]],
+            ["slide[1]/data/shape[1]", "slide[1]/data/shape[2]"],
+        )
+
+    def test_lint_xml_cross_kind_duplicate_id_does_not_change_related_object_kind(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="dup" type="rect" topLeftX="-20" topLeftY="40" width="50" height="50"/>
+                <img id="dup" src="token" topLeftX="100" topLeftY="40" width="50" height="50"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue for issue in result["slides"][0]["issues"]
+            if issue["code"] == "shape_out_of_canvas"
+        )
+        self.assertEqual(issue["related_objects"][0]["kind"], "shape")
+        self.assertEqual(
+            issue["related_objects"][0]["xml_path"],
+            "slide[1]/data/shape[1]",
+        )
+        duplicate_issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "duplicate_element_id"
+        )
+        self.assertEqual(
+            [obj["xml_path"] for obj in duplicate_issue["related_objects"]],
+            ["slide[1]/data/shape[1]", "slide[1]/data/img[1]"],
+        )
+
+    def test_lint_xml_reports_duplicate_ids_for_every_linted_element_kind(self) -> None:
+        duplicate_pairs = {
+            "shape": (
+                '<shape id="dup" type="rect" topLeftX="10" topLeftY="10" width="40" height="40"/>',
+                '<shape id="dup" type="rect" topLeftX="60" topLeftY="10" width="40" height="40"/>',
+            ),
+            "chart": (
+                '<chart id="dup" topLeftX="10" topLeftY="10" width="40" height="40"><chartPlotArea><chartPlot type="line"/></chartPlotArea><chartData><dim1><chartField name="category" valueType="string">A</chartField></dim1><dim2><chartField name="value" valueType="number">1</chartField></dim2></chartData></chart>',
+                '<chart id="dup" topLeftX="60" topLeftY="10" width="40" height="40"><chartPlotArea><chartPlot type="line"/></chartPlotArea><chartData><dim1><chartField name="category" valueType="string">A</chartField></dim1><dim2><chartField name="value" valueType="number">1</chartField></dim2></chartData></chart>',
+            ),
+            "table": (
+                '<table id="dup" topLeftX="10" topLeftY="10" width="40" height="40"><colgroup><col width="40"/></colgroup><tr height="40"><td/></tr></table>',
+                '<table id="dup" topLeftX="60" topLeftY="10" width="40" height="40"><colgroup><col width="40"/></colgroup><tr height="40"><td/></tr></table>',
+            ),
+            "img": (
+                '<img id="dup" src="token" topLeftX="10" topLeftY="10" width="40" height="40"/>',
+                '<img id="dup" src="token" topLeftX="60" topLeftY="10" width="40" height="40"/>',
+            ),
+            "line": (
+                '<line id="dup" startX="10" startY="10" endX="40" endY="40"><border color="rgb(0, 0, 0)"/></line>',
+                '<line id="dup" startX="60" startY="10" endX="90" endY="40"><border color="rgb(0, 0, 0)"/></line>',
+            ),
+            "icon": (
+                '<icon id="dup" iconType="iconpark/Base/setting.svg" topLeftX="10" topLeftY="10" width="40" height="40"><fill><fillColor color="rgb(0, 0, 0)"/></fill></icon>',
+                '<icon id="dup" iconType="iconpark/Base/setting.svg" topLeftX="60" topLeftY="10" width="40" height="40"><fill><fillColor color="rgb(0, 0, 0)"/></fill></icon>',
+            ),
+            "polyline": (
+                '<polyline id="dup" topLeftX="10" topLeftY="10" width="40" height="40"><border color="rgb(0, 0, 0)"/></polyline>',
+                '<polyline id="dup" topLeftX="60" topLeftY="10" width="40" height="40"><border color="rgb(0, 0, 0)"/></polyline>',
+            ),
+        }
+        for kind, pair in duplicate_pairs.items():
+            with self.subTest(kind=kind):
+                result = xml_text_overlap_lint.lint_xml(
+                    f'<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>{pair[0]}{pair[1]}</data></slide>'
+                )
+                issue = next(
+                    issue
+                    for issue in result["slides"][0]["issues"]
+                    if issue["code"] == "duplicate_element_id"
+                )
+                self.assertEqual(issue["element_ids"], ["dup", "dup"])
+                self.assertEqual(
+                    [obj["xml_path"] for obj in issue["related_objects"]],
+                    [
+                        f"slide[1]/data/{kind}[1]",
+                        f"slide[1]/data/{kind}[2]",
+                    ],
+                )
+
+    def test_lint_xml_missing_id_does_not_collide_with_explicit_synthetic_like_id(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="rect" topLeftX="-20" topLeftY="40" width="50" height="50"/>
+                <shape id="shape-1" type="rect" topLeftX="100" topLeftY="40" width="50" height="50"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue for issue in result["slides"][0]["issues"]
+            if issue["code"] == "shape_out_of_canvas"
+        )
+        self.assertEqual(issue["element_ids"], [])
+        self.assertNotIn("element_id", issue["related_objects"][0])
+        self.assertEqual(
+            issue["related_objects"][0]["xml_path"],
+            "slide[1]/data/shape[1]",
+        )
+        self.assertNotIn(
+            "duplicate_element_id",
+            [candidate["code"] for candidate in result["slides"][0]["issues"]],
+        )
+
+    def test_lint_xml_empty_id_is_not_exposed_as_an_element_id(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="" type="rect" topLeftX="-20" topLeftY="40" width="50" height="50"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "shape_out_of_canvas"
+        )
+        self.assertEqual(issue["element_ids"], [])
+        self.assertNotIn("element_id", issue["related_objects"][0])
+        self.assertEqual(
+            issue["related_objects"][0]["xml_path"],
+            "slide[1]/data/shape[1]",
+        )
+
+    def test_lint_xml_element_id_uses_decoded_xml_attribute_value(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="amp&amp;id" type="rect" topLeftX="-20" topLeftY="40" width="50" height="50"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue for issue in result["slides"][0]["issues"]
+            if issue["code"] == "shape_out_of_canvas"
+        )
+        self.assertEqual(issue["element_ids"], ["amp&id"])
+        self.assertEqual(issue["related_objects"][0]["element_id"], "amp&id")
+
     def test_lint_xml_uses_resolved_table_bounds_for_canvas_validation(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -2347,7 +2535,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(mismatch_issue["dimension"], "width")
         self.assertEqual(mismatch_issue["resolved_size"], canvas_issue["bbox"]["width"])
 
-    def test_lint_xml_uses_the_same_anonymous_table_id_for_all_table_diagnostics(self) -> None:
+    def test_lint_xml_uses_the_same_anonymous_table_path_for_all_table_diagnostics(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
@@ -2367,8 +2555,18 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         issues = result["slides"][0]["issues"]
         canvas_issue = next(issue for issue in issues if issue["code"] == "table_out_of_canvas")
         mismatch_issue = next(issue for issue in issues if issue["code"] == "table_resolved_size_mismatch")
-        self.assertEqual(canvas_issue["elements"], ["table-3"])
-        self.assertEqual(mismatch_issue["elements"], ["table-3"])
+        self.assertEqual(canvas_issue["elements"], [])
+        self.assertEqual(mismatch_issue["elements"], [])
+        self.assertEqual(
+            canvas_issue["related_objects"][0]["xml_path"],
+            "slide[1]/data/table[1]",
+        )
+        self.assertEqual(
+            mismatch_issue["related_objects"][0]["xml_path"],
+            "slide[1]/data/table[1]",
+        )
+        self.assertNotIn("element_id", canvas_issue["related_objects"][0])
+        self.assertNotIn("element_id", mismatch_issue["related_objects"][0])
 
     def test_lint_xml_reports_info_when_table_target_size_resolves_larger_than_declared(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -2590,14 +2788,14 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             if issue["code"] == "image_covers_text"
         )
         self.assertEqual(
-            {
-                obj["element_id"]: obj["xml_path"]
-                for obj in issue["related_objects"]
-            },
-            {
-                "img-4": "slide[2]/data/img[1]",
-                "shape-3": "slide[2]/data/shape[3]",
-            },
+            [(obj["kind"], obj["xml_path"]) for obj in issue["related_objects"]],
+            [
+                ("img", "slide[2]/data/img[1]"),
+                ("shape", "slide[2]/data/shape[3]"),
+            ],
+        )
+        self.assertTrue(
+            all("element_id" not in obj for obj in issue["related_objects"])
         )
 
     def test_lint_xml_related_objects_include_line_xml_path(self) -> None:
@@ -2737,6 +2935,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         self.assertEqual(issue["target"], {
             "slide_number": 1,
             "container_id": "trend-card",
+            "container_xml_path": "slide[1]/data/shape[1]",
             "container_type": "rect",
             "bbox": {"x": 500, "y": 135, "width": 410, "height": 370},
         })
