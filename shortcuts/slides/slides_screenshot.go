@@ -104,9 +104,6 @@ var SlidesScreenshot = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		if len(slideIDs) == 0 && len(slideNumbers) == 0 {
-			return common.NewDryRunAPI().Set("error", slidesScreenshotMissingSelectorError().Error())
-		}
 		if err := validateSlidesScreenshotSelectorLimit(len(slideIDs) + len(slideNumbers)); err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
