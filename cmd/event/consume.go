@@ -245,25 +245,42 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, snap *catalog.Snapshot, 
 			watchStdinEOF(os.Stdin, cancel, errOut)
 		}
 
-		return consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
-			EventKey:         eventKey,
-			Def:              keyDef,
-			Params:           decision.NormalizedParams(),
-			ParamsNormalized: true,
-			JQExpr:           o.jqExpr,
-			Quiet:            o.quiet,
-			OutputDir:        outputDir,
-			Runtime:          runtime,
-			Out:              f.IOStreams.Out,
-			ErrOut:           errOut,
-			RemoteAPIClient:  botRuntime,
-			MaxEvents:        o.maxEvents,
-			Timeout:          o.timeout,
-			IsTTY:            f.IOStreams.IsTerminal,
-			Prepare:          prepare,
-		})
+		return consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain,
+			applyDecision(consume.Options{
+				EventKey:        eventKey,
+				Def:             keyDef,
+				JQExpr:          o.jqExpr,
+				Quiet:           o.quiet,
+				OutputDir:       outputDir,
+				Runtime:         runtime,
+				Out:             f.IOStreams.Out,
+				ErrOut:          errOut,
+				RemoteAPIClient: botRuntime,
+				MaxEvents:       o.maxEvents,
+				Timeout:         o.timeout,
+				IsTTY:           f.IOStreams.IsTerminal,
+			}, decision, prepare))
 	})
 	return svc.Execute(ctx, entry, decision, runner, appconsume.ExecutionContext{API: runtime})
+}
+
+// applyDecision transfers the decided parts of a consume onto the host's
+// options. It exists as a named function because these three assignments are
+// couplings the command alone can get wrong, and a test can only pin them where
+// they are written.
+//
+// The parameters and the flag travel together: the deciding layer already ran
+// the normalizer on exactly these values to compute the subscription identity.
+// The flag without the values would leave the host normalizing input the bus
+// was never told about; the values without the flag would run a
+// once-per-consumer hook a second time. Prepare carries the strategy the
+// decision settled on, so what was decided is what executes instead of the
+// declaration's own hook.
+func applyDecision(opts consume.Options, decision *appconsume.Decision, prepare appconsume.PrepareFunc) consume.Options {
+	opts.Params = decision.NormalizedParams()
+	opts.ParamsNormalized = true
+	opts.Prepare = prepare
+	return opts
 }
 
 // resolveIdentity resolves the session identity and enforces keyDef.AuthTypes as a whitelist.
