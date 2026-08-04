@@ -174,6 +174,26 @@ func TestBuildAPIError_TaskInvalidParamsRoutesToAPIError(t *testing.T) {
 	}
 }
 
+func TestBuildAPIError_OpenIDCrossAppIncludesProfileRecoveryHint(t *testing.T) {
+	err := errclass.BuildAPIError(map[string]any{
+		"code": 999999,
+		"msg":  "open_id cross app",
+	}, errclass.ClassifyContext{})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("ProblemOf returned !ok")
+	}
+	if p.Category != errs.CategoryAPI {
+		t.Errorf("Category = %q, want %q", p.Category, errs.CategoryAPI)
+	}
+	if !strings.Contains(p.Hint, "lark-cli config show") {
+		t.Errorf("Hint = %q, want profile recovery guidance", p.Hint)
+	}
+	if !strings.Contains(p.Hint, "lark-cli auth status --verify") {
+		t.Errorf("Hint = %q, want auth verification guidance", p.Hint)
+	}
+}
+
 // TestBuildAPIError_TroubleshooterLiftedOnAPIArm pins that BuildAPIError lifts
 // resp.error.troubleshooter into Problem.Troubleshooter when the response
 // routes to the catch-all CategoryAPI arm. troubleshooter is the only
