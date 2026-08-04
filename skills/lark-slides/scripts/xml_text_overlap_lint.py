@@ -2130,6 +2130,8 @@ def extract_density_elements(slide_xml: str, slide_number: int = 1) -> list[dict
         line_element["order"] = len(elements)
         elements.append(line_element)
     attach_source_xml_paths(elements, source_paths)
+    for element in elements:
+        element["_slide_number"] = slide_number
     return elements
 
 
@@ -2351,7 +2353,9 @@ def detect_blank_slide(
     ]
 
 
-def detect_duplicate_element_ids(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def detect_duplicate_element_ids(
+    elements: list[dict[str, Any]], *, cross_slide_only: bool = False
+) -> list[dict[str, Any]]:
     elements_by_source_id: dict[str, list[dict[str, Any]]] = {}
     for element in elements:
         source_id = source_element_id(element)
@@ -2375,6 +2379,10 @@ def detect_duplicate_element_ids(elements: list[dict[str, Any]]) -> list[dict[st
         }
         for source_id, duplicates in elements_by_source_id.items()
         if len(duplicates) > 1
+        and (
+            not cross_slide_only
+            or len({element.get("_slide_number") for element in duplicates}) > 1
+        )
     ]
 
 
@@ -2730,6 +2738,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
     presentation = parse_presentation(root)
     slide_roots = presentation["slide_roots"]
     slides: list[dict[str, Any]] = []
+    presentation_density_elements: list[dict[str, Any]] = []
     for index, slide_xml in enumerate(presentation["slides"]):
         slide_number = index + 1
         slide_root = slide_roots[index]
@@ -2764,6 +2773,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             presentation["height"],
         )
         density_elements = extract_density_elements(slide_xml, slide_number)
+        presentation_density_elements.extend(density_elements)
         extra_elements = [
             element for element in density_elements if element["kind"] in {"icon", "polyline", "line"}
         ]
@@ -2825,6 +2835,16 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
                 "issues": issues,
             }
         )
+
+    presentation_elements_by_ref = {
+        element_ref(element): element for element in presentation_density_elements
+    }
+    top_level_issues.extend(
+        normalize_issue(issue, None, presentation_elements_by_ref)
+        for issue in detect_duplicate_element_ids(
+            presentation_density_elements, cross_slide_only=True
+        )
+    )
 
     return build_result(
         source_path,

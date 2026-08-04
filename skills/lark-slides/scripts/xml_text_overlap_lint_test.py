@@ -2368,6 +2368,36 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             ["slide[1]/data/shape[1]", "slide[1]/data/shape[2]"],
         )
 
+    def test_lint_xml_blocks_duplicate_ids_across_slides(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide>
+                <data>
+                  <shape id="dup" type="rect" topLeftX="40" topLeftY="40" width="80" height="80"/>
+                </data>
+              </slide>
+              <slide>
+                <data>
+                  <shape id="dup" type="rect" topLeftX="140" topLeftY="40" width="80" height="80"/>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+
+        issue = next(
+            issue
+            for issue in result["document"]["errors"]
+            if issue["code"] == "duplicate_element_id"
+        )
+        self.assertFalse(result["summary"]["release_ready"])
+        self.assertEqual(issue["element_ids"], ["dup", "dup"])
+        self.assertEqual(
+            [obj["xml_path"] for obj in issue["related_objects"]],
+            ["slide[1]/data/shape[1]", "slide[2]/data/shape[1]"],
+        )
+
     def test_lint_xml_cross_kind_duplicate_id_does_not_change_related_object_kind(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
