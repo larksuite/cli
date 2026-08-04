@@ -71,6 +71,31 @@ func TestSlidesScreenshotRequiresSelectorDryRunE2E(t *testing.T) {
 	require.Empty(t, result.Stdout)
 }
 
+func TestSlidesScreenshotRejectsEmptySlideIDWithSlideNumberDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+screenshot",
+			"--presentation", "presScreenshotEmptyID",
+			"--slide-id", "",
+			"--slide-number", "1",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+	require.Equal(t, "--slide-id", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+	require.Equal(t, "--slide-id cannot be empty", gjson.Get(result.Stderr, "error.message").String(), result.Stderr)
+	require.Empty(t, result.Stdout)
+}
+
 func TestSlidesScreenshotAliasesDryRunE2E(t *testing.T) {
 	setSlidesDryRunEnv(t)
 
