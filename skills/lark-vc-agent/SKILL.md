@@ -164,15 +164,15 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 | Shortcut                                                        | 类型 | 说明                                                                         |
 | --------------------------------------------------------------- | -- | -------------------------------------------------------------------------- |
 | [`+meeting-join`](references/lark-vc-agent-meeting-join.md)     | 写  | Join an in-progress meeting by 9-digit meeting number                      |
-| [`+meeting-list-active`](references/lark-vc-agent-meeting-list-active.md) | 读  | List active meetings and discover meeting_id for event reads               |
-| [`+meeting-events`](references/lark-vc-agent-meeting-events.md) | 读  | List meeting events visible to the app agent (participant joined/left, transcript, chat, share) |
-| [`+meeting-message-send`](references/lark-vc-agent-meeting-message-send.md) | 写  | Send an in-meeting text message or reaction emoji                          |
+| [`+meeting-list-active`](../lark-vc/references/lark-vc-meeting-list-active.md) | 读  | List active meetings and discover meeting_id for event reads               |
+| [`+meeting-events`](../lark-vc/references/lark-vc-meeting-events.md) | 读  | List meeting events visible to the current identity                        |
+| [`+meeting-message-send`](../lark-vc/references/lark-vc-meeting-message-send.md) | 写  | Send an in-meeting text message or reaction emoji                          |
 | [`+meeting-leave`](references/lark-vc-agent-meeting-leave.md)   | 写  | Leave a meeting by meeting\_id                                             |
 
 - [`+meeting-join`](references/lark-vc-agent-meeting-join.md)：入参格式、写操作可见性风险、入会失败排查。
-- [`+meeting-list-active`](references/lark-vc-agent-meeting-list-active.md)：用户身份和应用身份的不同返回范围。
-- [`+meeting-events`](references/lark-vc-agent-meeting-events.md)：`meeting_id` 来源、身份延续、分页和错误码（10005 / 20001 / 20002）。
-- [`+meeting-message-send`](references/lark-vc-agent-meeting-message-send.md)：会中文本、完整 `emoji_type` 列表、身份延续和写操作风险。
+- [`+meeting-list-active`](../lark-vc/references/lark-vc-meeting-list-active.md)：用户身份和应用身份的不同返回范围。
+- [`+meeting-events`](../lark-vc/references/lark-vc-meeting-events.md)：`meeting_id` 来源、身份延续、分页和错误码（10005 / 20001 / 20002）。
+- [`+meeting-message-send`](../lark-vc/references/lark-vc-meeting-message-send.md)：会中文本、完整 `emoji_type` 列表、身份延续和写操作风险。
 - [`+meeting-leave`](references/lark-vc-agent-meeting-leave.md)：`meeting_id` 的来源与写操作可见性。
 
 ## 应用身份权限配置检查

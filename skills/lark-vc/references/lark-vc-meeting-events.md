@@ -304,12 +304,12 @@ lark-cli vc +meeting-events \
 
 ## 参考
 
-- [lark-vc-agent-meeting-join](lark-vc-agent-meeting-join.md) — 先真实入会
-- [lark-vc-agent-meeting-list-active](lark-vc-agent-meeting-list-active.md) — 发现当前可读事件的进行中会议 ID
-- [lark-vc-agent-meeting-leave](lark-vc-agent-meeting-leave.md) — 用户明确要求时离会
-- [lark-vc-search](../../lark-vc/references/lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
-- [lark-vc-recording](../../lark-vc/references/lark-vc-recording.md) — 查询 minute_token
-- [lark-vc-detail](../../lark-vc/references/lark-vc-detail.md) — 获取会议详情
-- [lark-vc-agent](../SKILL.md) — Agent 参会能力（本 skill）
-- [lark-vc](../../lark-vc/SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
+- [lark-vc-agent-meeting-join](../../lark-vc-agent/references/lark-vc-agent-meeting-join.md) — 先真实入会
+- [lark-vc-meeting-list-active](lark-vc-meeting-list-active.md) — 发现当前可读事件的进行中会议 ID
+- [lark-vc-agent-meeting-leave](../../lark-vc-agent/references/lark-vc-agent-meeting-leave.md) — 用户明确要求时离会
+- [lark-vc-search](lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
+- [lark-vc-recording](lark-vc-recording.md) — 查询 minute_token
+- [lark-vc-detail](lark-vc-detail.md) — 获取会议详情
+- [lark-vc-agent](../../lark-vc-agent/SKILL.md) — Agent 参会能力
+- [lark-vc](../SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
