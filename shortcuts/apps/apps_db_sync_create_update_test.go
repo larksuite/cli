@@ -1,0 +1,367 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package apps
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/httpmock"
+)
+
+const (
+	dbSyncURL       = "/open-apis/spark/v1/apps/app_x/db/sync_create"
+	dbSyncUpdateURL = "/open-apis/spark/v1/apps/app_x/db/sync_update"
+)
+
+const dbSyncPreviewConfig = `{
+  "mode": "batch",
+  "source": {"type": "base", "table": {"url": "https://base.example/table"}},
+  "target": {"type": "postgresql", "table": {"name": "orders", "action": "create"}},
+  "schema_only": true
+}`
+
+const dbSyncCommitConfig = `{
+  "mode": "streaming",
+  "source": {"type": "base", "table": {"url": "https://base.example/table"}},
+  "target": {"type": "postgresql", "table": {"name": "orders", "action": "use_existing"}},
+  "field_maps": [
+    {"source_field": "Base 表记录 ID", "target_field": "record_id", "enabled": true}
+  ]
+}`
+
+const dbSyncNoFieldMapsConfig = `{
+  "mode": "streaming",
+  "source": {"type": "base", "table": {"url": "https://base.example/table"}},
+  "target": {"type": "postgresql", "table": {"name": "orders", "action": "use_existing"}}
+}`
+
+func TestAppsDBSyncCreatePreviewDryRun(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+		"+db-sync-create", "--app-id", "app_x", "--config", dbSyncPreviewConfig,
+		"--preview", "--environment", "dev", "--dry-run", "--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+
+	a := dbSyncFirstDryRunAPI(t, stdout.String())
+	if a.Method != "POST" || a.URL != dbSyncURL {
+		t.Fatalf("dry-run = %s %s", a.Method, a.URL)
+	}
+	if a.Params["env"] != "dev" {
+		t.Fatalf("dry-run params = %v", a.Params)
+	}
+	if _, ok := a.Params["preview"]; ok {
+		t.Fatalf("preview must be in body, not query params: %v", a.Params)
+	}
+	if a.Body["preview"] != true {
+		t.Fatalf("dry-run body = %v", a.Body)
+	}
+	config := a.Body["config"].(map[string]interface{})
+	if config["mode"] != "batch" {
+		t.Fatalf("dry-run body.config = %v", config)
+	}
+	target := config["target"].(map[string]interface{})
+	table := target["table"].(map[string]interface{})
+	if table["action"] != "create" {
+		t.Fatalf("target.table.action = %v", table["action"])
+	}
+}
+
+func TestAppsDBSyncCreateCommitDryRun(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+		"+db-sync-create", "--app-id", "app_x", "--config", dbSyncCommitConfig,
+		"--environment", "online", "--dry-run", "--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+
+	a := dbSyncFirstDryRunAPI(t, stdout.String())
+	if a.Method != "POST" || a.URL != dbSyncURL {
+		t.Fatalf("dry-run = %s %s", a.Method, a.URL)
+	}
+	if a.Params["env"] != "online" {
+		t.Fatalf("env missing from dry-run params: %v", a.Params)
+	}
+	if _, ok := a.Params["preview"]; ok {
+		t.Fatalf("commit dry-run must not include preview param: %v", a.Params)
+	}
+	if a.Body["preview"] != false {
+		t.Fatalf("dry-run body = %v", a.Body)
+	}
+	config := a.Body["config"].(map[string]interface{})
+	if config["mode"] != "streaming" || config["field_maps"] == nil {
+		t.Fatalf("dry-run body.config = %v", config)
+	}
+}
+
+func TestAppsDBSyncCreatePreviewExecuteWritesConfigOnly(t *testing.T) {
+	chdirTemp(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "POST", URL: dbSyncURL,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"config": map[string]interface{}{
+				"mode": "batch",
+				"target": map[string]interface{}{"table": map[string]interface{}{
+					"name": "orders", "action": "create",
+				}},
+				"field_maps": []map[string]interface{}{{"source_field": "Name", "target_field": "name"}},
+			},
+			"syncable_source_fields": []map[string]interface{}{{"name": "Name"}},
+			"summary": map[string]interface{}{
+				"syncable_source_field_count": 1,
+				"mapped_field_count":          1,
+				"estimated_record_count":      42,
+			},
+		}},
+	}
+	reg.Register(stub)
+
+	if err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+		"+db-sync-create", "--app-id", "app_x", "--config", dbSyncPreviewConfig,
+		"--preview", "--output", "resolved.json", "--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+
+	var req map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &req); err != nil {
+		t.Fatalf("decode captured request body: %v", err)
+	}
+	if req["preview"] != true {
+		t.Fatalf("captured request body = %v", req)
+	}
+	config := req["config"].(map[string]interface{})
+	if config["mode"] != "batch" {
+		t.Fatalf("captured request body.config = %v", config)
+	}
+
+	raw, err := os.ReadFile("resolved.json")
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	var saved map[string]interface{}
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		t.Fatalf("decode saved config: %v", err)
+	}
+	if saved["mode"] != "batch" || saved["summary"] != nil || saved["syncable_source_fields"] != nil {
+		t.Fatalf("saved file must contain only data.config, got %v", saved)
+	}
+	data := dbSyncEnvelopeData(t, stdout.String())
+	if data["config"] == nil || data["summary"] == nil {
+		t.Fatalf("stdout should still contain preview data envelope: %v", data)
+	}
+}
+
+func TestAppsDBSyncCreateCommitExecuteOutputsTask(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "POST", URL: dbSyncURL,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"task_id": "streaming_101", "mode": "streaming", "status": "active",
+		}},
+	}
+	reg.Register(stub)
+
+	if err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+		"+db-sync-create", "--app-id", "app_x", "--config", dbSyncCommitConfig, "--yes", "--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	var req map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &req); err != nil {
+		t.Fatalf("decode captured request body: %v", err)
+	}
+	if req["preview"] != false {
+		t.Fatalf("captured request body = %v", req)
+	}
+	config := req["config"].(map[string]interface{})
+	if config["mode"] != "streaming" || config["field_maps"] == nil {
+		t.Fatalf("captured request body.config = %v", config)
+	}
+	data := dbSyncEnvelopeData(t, stdout.String())
+	for _, key := range []string{"task_id", "mode", "status"} {
+		if data[key] == "" {
+			t.Fatalf("output missing %s: %v", key, data)
+		}
+	}
+}
+
+func TestAppsDBSyncCreateTargetTableNotFoundHint(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: dbSyncURL,
+		Body: map[string]interface{}{"code": 500002789, "msg": "target table not found"},
+	})
+
+	err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+		"+db-sync-create", "--app-id", "app_x", "--config", dbSyncCommitConfig, "--yes", "--as", "user",
+	}, factory, stdout)
+	p := requireAppsAPIProblem(t, err)
+	if !strings.Contains(p.Hint, "target.table.action") {
+		t.Fatalf("hint = %q, want target.table.action guidance", p.Hint)
+	}
+}
+
+func TestAppsDBSyncCreateRejectsUnsafeOutput(t *testing.T) {
+	for _, out := range []string{"/tmp/resolved.json", "../resolved.json"} {
+		t.Run(out, func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+				"+db-sync-create", "--app-id", "app_x", "--config", dbSyncPreviewConfig,
+				"--preview", "--output", out, "--as", "user",
+			}, factory, stdout)
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %T %v, want validation", err, err)
+			}
+			if ve.Param != "--output" {
+				t.Fatalf("Param = %q, want --output", ve.Param)
+			}
+		})
+	}
+}
+
+func TestAppsDBSyncCreateConfirmation(t *testing.T) {
+	t.Run("commit requires yes", func(t *testing.T) {
+		factory, stdout, _ := newAppsExecuteFactory(t)
+		err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+			"+db-sync-create", "--app-id", "app_x", "--config", dbSyncCommitConfig, "--as", "user",
+		}, factory, stdout)
+		p := requireAppsProblem(t, err, errs.CategoryConfirmation)
+		if p.Subtype != errs.SubtypeConfirmationRequired {
+			t.Fatalf("subtype = %q", p.Subtype)
+		}
+	})
+
+	t.Run("preview does not require yes", func(t *testing.T) {
+		factory, stdout, reg := newAppsExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: dbSyncURL,
+			Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+				"config": map[string]interface{}{"mode": "batch"},
+			}},
+		})
+		if err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+			"+db-sync-create", "--app-id", "app_x", "--config", dbSyncPreviewConfig, "--preview", "--as", "user",
+		}, factory, stdout); err != nil {
+			t.Fatalf("preview execute err=%v", err)
+		}
+	})
+}
+
+func TestAppsDBSyncUpdateDryRun(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBSyncUpdate, []string{
+		"+db-sync-update", "--app-id", "app_x", "--task-id", "streaming 1/prod",
+		"--config", dbSyncCommitConfig, "--environment", "dev", "--dry-run", "--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+
+	a := dbSyncFirstDryRunAPI(t, stdout.String())
+	if a.Method != "PUT" || a.URL != dbSyncUpdateURL {
+		t.Fatalf("dry-run = %s %s", a.Method, a.URL)
+	}
+	if a.Params["task_id"] != "streaming 1/prod" {
+		t.Fatalf("dry-run params.task_id = %v", a.Params["task_id"])
+	}
+	if a.Params["env"] != "dev" {
+		t.Fatalf("dry-run params.env = %v", a.Params["env"])
+	}
+	config := a.Body["config"].(map[string]interface{})
+	if config["mode"] != "streaming" || config["field_maps"] == nil {
+		t.Fatalf("dry-run body = %v", a.Body)
+	}
+}
+
+func TestAppsDBSyncUpdateExecuteSuccess(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PUT", URL: dbSyncUpdateURL,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"task_id": "streaming_1", "mode": "streaming", "status": "active",
+		}},
+	}
+	reg.Register(stub)
+
+	if err := runAppsShortcut(t, AppsDBSyncUpdate, []string{
+		"+db-sync-update", "--app-id", "app_x", "--task-id", "streaming_1",
+		"--config", dbSyncCommitConfig, "--yes", "--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	var req map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &req); err != nil {
+		t.Fatalf("decode captured request body: %v", err)
+	}
+	config := req["config"].(map[string]interface{})
+	if config["mode"] != "streaming" || config["field_maps"] == nil {
+		t.Fatalf("captured request body = %v", req)
+	}
+	data := dbSyncEnvelopeData(t, stdout.String())
+	if data["task_id"] != "streaming_1" || data["mode"] != "streaming" || data["status"] != "active" {
+		t.Fatalf("output data = %v", data)
+	}
+}
+
+func TestAppsDBSyncUpdateMissingFieldMapsValidation(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsDBSyncUpdate, []string{
+		"+db-sync-update", "--app-id", "app_x", "--task-id", "streaming_1",
+		"--config", dbSyncNoFieldMapsConfig, "--yes", "--as", "user",
+	}, factory, stdout)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("err = %T %v, want validation", err, err)
+	}
+	if ve.Param != "--config" {
+		t.Fatalf("Param = %q, want --config", ve.Param)
+	}
+}
+
+func TestAppsDBSyncUpdateConfirmation(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsDBSyncUpdate, []string{
+		"+db-sync-update", "--app-id", "app_x", "--task-id", "streaming_1",
+		"--config", dbSyncCommitConfig, "--as", "user",
+	}, factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryConfirmation)
+	if p.Subtype != errs.SubtypeConfirmationRequired {
+		t.Fatalf("subtype = %q", p.Subtype)
+	}
+}
+
+func dbSyncFirstDryRunAPI(t *testing.T, stdout string) dryRunAPICall {
+	t.Helper()
+	var env dryRunAPIEnvelope
+	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+		t.Fatalf("decode dry-run: %v (raw=%s)", err, stdout)
+	}
+	if len(env.API) != 1 {
+		t.Fatalf("dry-run API calls = %d, want 1; stdout=%s", len(env.API), stdout)
+	}
+	return env.API[0]
+}
+
+func dbSyncEnvelopeData(t *testing.T, stdout string) map[string]interface{} {
+	t.Helper()
+	var env struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+		t.Fatalf("decode envelope: %v (raw=%s)", err, stdout)
+	}
+	if env.Data == nil {
+		t.Fatalf("envelope data is nil: %s", stdout)
+	}
+	return env.Data
+}

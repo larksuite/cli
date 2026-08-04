@@ -1,0 +1,183 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package apps
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+)
+
+const (
+	dbSyncDryRunAppID    = "app_db_sync_e2e"
+	dbSyncDryRunTaskID   = "streaming_1"
+	dbSyncConfig         = `{"mode":"streaming","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_sync","action":"use_existing"}},"field_maps":[{"source_field":"Base 表记录 ID","target_field":"base_record_id","enabled":true}]}`
+	dbSyncPreviewConfig  = `{"mode":"batch","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_preview","action":"create"}}}`
+	dbSyncSingularConfig = `{"mode":"streaming","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_sync","action":"use_existing"}},"field_map":[{"source_field":"Base 表记录 ID","target_field":"base_record_id","enabled":true}]}`
+)
+
+func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
+	setAppsDryRunEnv(t)
+
+	t.Run("create preview", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{
+			"apps", "+db-sync-create",
+			"--app-id", dbSyncDryRunAppID,
+			"--config", dbSyncPreviewConfig,
+			"--preview",
+			"--dry-run",
+		})
+
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_create", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.env").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.preview").Exists())
+		assert.True(t, clie2e.DryRunGet(result.Stdout, "api.0.body.preview").Bool())
+		assert.Equal(t, "batch", clie2e.DryRunGet(result.Stdout, "api.0.body.config.mode").String())
+		assert.Equal(t, "base", clie2e.DryRunGet(result.Stdout, "api.0.body.config.source.type").String())
+		assert.Equal(t, "postgresql", clie2e.DryRunGet(result.Stdout, "api.0.body.config.target.type").String())
+	})
+
+	t.Run("create commit", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{
+			"apps", "+db-sync-create",
+			"--app-id", dbSyncDryRunAppID,
+			"--config", dbSyncConfig,
+			"--environment", "dev",
+			"--dry-run",
+		})
+
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_create", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.preview").Exists())
+		assert.Equal(t, "dev", clie2e.DryRunGet(result.Stdout, "api.0.params.env").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.preview").Bool())
+		assert.Equal(t, "streaming", clie2e.DryRunGet(result.Stdout, "api.0.body.config.mode").String())
+		assert.Equal(t, "orders_sync", clie2e.DryRunGet(result.Stdout, "api.0.body.config.target.table.name").String())
+		assert.Equal(t, "Base 表记录 ID", clie2e.DryRunGet(result.Stdout, "api.0.body.config.field_maps.0.source_field").String())
+	})
+
+	t.Run("list with filters", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{
+			"apps", "+db-sync-list",
+			"--app-id", dbSyncDryRunAppID,
+			"--mode", "streaming",
+			"--status", "active",
+			"--table", "orders_sync",
+			"--page-size", "50",
+			"--page-token", "cursor_1",
+			"--environment", "online",
+			"--dry-run",
+		})
+
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_list", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "streaming", clie2e.DryRunGet(result.Stdout, "api.0.params.mode").String())
+		assert.Equal(t, "active", clie2e.DryRunGet(result.Stdout, "api.0.params.status").String())
+		assert.Equal(t, "orders_sync", clie2e.DryRunGet(result.Stdout, "api.0.params.table").String())
+		assert.Equal(t, "50", clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").String())
+		assert.Equal(t, "cursor_1", clie2e.DryRunGet(result.Stdout, "api.0.params.page_token").String())
+		assert.Equal(t, "online", clie2e.DryRunGet(result.Stdout, "api.0.params.env").String())
+	})
+
+	t.Run("get task", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{
+			"apps", "+db-sync-get",
+			"--app-id", dbSyncDryRunAppID,
+			"--task-id", dbSyncDryRunTaskID,
+			"--dry-run",
+		})
+
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_task", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.env").Exists())
+	})
+
+	t.Run("enable task", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{"apps", "+db-sync-enable", "--app-id", dbSyncDryRunAppID, "--task-id", dbSyncDryRunTaskID, "--dry-run"})
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_enable", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").String())
+	})
+
+	t.Run("disable task", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{"apps", "+db-sync-disable", "--app-id", dbSyncDryRunAppID, "--task-id", dbSyncDryRunTaskID, "--dry-run"})
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_disable", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").String())
+	})
+
+	t.Run("update task", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{
+			"apps", "+db-sync-update",
+			"--app-id", dbSyncDryRunAppID,
+			"--task-id", dbSyncDryRunTaskID,
+			"--config", dbSyncConfig,
+			"--environment", "dev",
+			"--dry-run",
+		})
+		assert.Equal(t, "PUT", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_update", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").String())
+		assert.Equal(t, "dev", clie2e.DryRunGet(result.Stdout, "api.0.params.env").String())
+		assert.Equal(t, "streaming", clie2e.DryRunGet(result.Stdout, "api.0.body.config.mode").String())
+		assert.Equal(t, "base_record_id", clie2e.DryRunGet(result.Stdout, "api.0.body.config.field_maps.0.target_field").String())
+	})
+
+	t.Run("delete task", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{"apps", "+db-sync-delete", "--app-id", dbSyncDryRunAppID, "--task-id", dbSyncDryRunTaskID, "--dry-run"})
+		assert.Equal(t, "DELETE", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_del", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").String())
+	})
+}
+
+func TestAppsDBSyncValidationErrors(t *testing.T) {
+	setAppsDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"apps", "+db-sync-create", "--app-id", dbSyncDryRunAppID, "--config", dbSyncSingularConfig, "--dry-run"},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	assert.NotEqual(t, 0, result.ExitCode, "singular field_map must fail validation")
+	message := dbSyncValidateErrorMessage(result)
+	assert.Contains(t, message, "field_maps")
+	assert.Contains(t, message, "--config")
+}
+
+func runDBSyncDryRun(t *testing.T, args []string) *clie2e.Result {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      args,
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 0, result.ExitCode, "stdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+	result.AssertStdoutStatus(t, true)
+	return result
+}
+
+func dbSyncValidateErrorMessage(r *clie2e.Result) string {
+	if msg := gjson.Get(r.Stdout, "error.message").String(); msg != "" {
+		return msg
+	}
+	if msg := gjson.Get(r.Stderr, "error.message").String(); msg != "" {
+		return msg
+	}
+	return strings.TrimSpace(r.Stderr)
+}

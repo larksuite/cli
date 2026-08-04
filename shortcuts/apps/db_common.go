@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -141,6 +142,36 @@ func appDbQuotaPath(appID string) string {
 	return fmt.Sprintf("%s/apps/%s/db/quota", apiBasePath, validate.EncodePathSegment(appID))
 }
 
+// appDbSyncCreatePath returns the Base data sync task create/preview URL.
+func appDbSyncCreatePath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_create", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncListPath returns the Base data sync task list URL.
+func appDbSyncListPath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_list", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncTaskPath returns the Base data sync task detail URL.
+func appDbSyncTaskPath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_task", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncUpdatePath returns the Base data sync task update URL.
+func appDbSyncUpdatePath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_update", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncDeletePath returns the Base data sync task delete URL.
+func appDbSyncDeletePath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_del", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncActionPath returns a Base data sync task action URL.
+func appDbSyncActionPath(appID, action string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_%s", apiBasePath, validate.EncodePathSegment(appID), validate.EncodePathSegment(action))
+}
+
 // ── 变更追溯（changelog / audit）路由 ──
 
 // appChangelogListPath 返回 DDL 变更记录列表 URL：db/changelog_list。
@@ -272,4 +303,177 @@ func requireAppID(raw string) (string, error) {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--app-id is required").WithParam("--app-id")
 	}
 	return id, nil
+}
+
+var dbSyncCodeHints = map[int]string{
+	500002783: "Map 'Base 表记录 ID' to a text, single-value, unique database field. For create, rerun preview; for update, resubmit the corrected configuration.",
+	500002784: "Run +log-list with --keyword <table> to inspect logs. Fix the target with +db-execute or update the streaming task mapping with +db-sync-update, then query the same task again.",
+	500002785: "Run +db-sync-get --task-id <task_id> to inspect the completed task, or create a new task with the required mode.",
+	500002786: "Verify --task-id and list tasks with +db-sync-list.",
+	500002787: "Use a task_id returned by +db-sync-create or +db-sync-list, such as streaming_<id> or batch_<id>.",
+	500002788: "Correct source.table in the config file, then run +db-sync-create --preview again.",
+	500002789: "Set target.table.action to 'create', or create the table with +db-execute, then rerun preview.",
+}
+
+// withDBSyncHint attaches data-sync recovery guidance to typed API errors
+// without changing the original category, subtype, code, log_id, or cause.
+func withDBSyncHint(err error, fallback string) error {
+	if err == nil {
+		return nil
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+	if strings.TrimSpace(p.Hint) != "" {
+		return err
+	}
+	if hint := dbSyncCodeHints[p.Code]; hint != "" {
+		p.Hint = hint
+		return err
+	}
+	if fallback != "" {
+		p.Hint = fallback
+	}
+	return err
+}
+
+// parseDBSyncConfigFlag parses and validates the local, recoverable portion of
+// the db sync config contract. Service-owned checks such as table existence and
+// field compatibility are intentionally left to the OpenAPI endpoint.
+func parseDBSyncConfigFlag(raw string, requireFieldMaps bool) (map[string]interface{}, error) {
+	var cfg map[string]interface{}
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&cfg); err != nil {
+		return nil, dbSyncConfigError("invalid JSON object for --config").WithCause(err)
+	}
+	if cfg == nil {
+		return nil, dbSyncConfigError("--config must be a JSON object")
+	}
+	var extra interface{}
+	if err := dec.Decode(&extra); err != io.EOF {
+		return nil, dbSyncConfigError("--config must contain one JSON object")
+	}
+
+	if _, ok := cfg["field_map"]; ok {
+		return nil, dbSyncConfigError("unsupported key field_map in --config; use field_maps instead").
+			WithHint("use field_maps instead")
+	}
+	if _, ok := cfg["option_mapping"]; ok {
+		return nil, dbSyncConfigError("unsupported key option_mapping in --config; use option_mappings instead").
+			WithHint("use option_mappings instead")
+	}
+
+	mode, ok := stringField(cfg, "mode")
+	if !ok || (mode != "batch" && mode != "streaming") {
+		return nil, dbSyncConfigError("config.mode must be batch or streaming")
+	}
+
+	source, ok := objectField(cfg, "source")
+	if !ok {
+		return nil, dbSyncConfigError("config.source is required")
+	}
+	sourceType, ok := stringField(source, "type")
+	if !ok || sourceType != "base" {
+		return nil, dbSyncConfigError("config.source.type must be base")
+	}
+
+	target, ok := objectField(cfg, "target")
+	if !ok {
+		return nil, dbSyncConfigError("config.target is required")
+	}
+	targetType, ok := stringField(target, "type")
+	if !ok || targetType != "postgresql" {
+		return nil, dbSyncConfigError("config.target.type must be postgresql")
+	}
+	table, ok := objectField(target, "table")
+	if !ok {
+		return nil, dbSyncConfigError("config.target.table is required")
+	}
+	tableName, ok := stringField(table, "name")
+	if !ok || strings.TrimSpace(tableName) == "" {
+		return nil, dbSyncConfigError("config.target.table.name is required")
+	}
+	action, ok := stringField(table, "action")
+	if !ok || (action != "create" && action != "use_existing") {
+		return nil, dbSyncConfigError("config.target.table.action must be create or use_existing")
+	}
+	if schemaOnly, ok := boolField(cfg, "schema_only"); ok && schemaOnly && (mode != "batch" || action != "create") {
+		return nil, dbSyncConfigError("config.schema_only=true requires mode=batch and target.table.action=create")
+	}
+	if requireFieldMaps && !hasEnabledFieldMap(cfg["field_maps"]) {
+		return nil, dbSyncConfigError("config.field_maps must contain at least one enabled mapping")
+	}
+	if err := rejectSingularOptionMappings(cfg["field_maps"]); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func dbSyncConfigError(msg string) *errs.ValidationError {
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, msg).WithParam("--config")
+}
+
+func objectField(m map[string]interface{}, key string) (map[string]interface{}, bool) {
+	v, ok := m[key]
+	if !ok {
+		return nil, false
+	}
+	obj, ok := v.(map[string]interface{})
+	return obj, ok
+}
+
+func stringField(m map[string]interface{}, key string) (string, bool) {
+	v, ok := m[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
+
+func boolField(m map[string]interface{}, key string) (bool, bool) {
+	v, ok := m[key]
+	if !ok {
+		return false, false
+	}
+	b, ok := v.(bool)
+	return b, ok
+}
+
+func hasEnabledFieldMap(v interface{}) bool {
+	items, ok := v.([]interface{})
+	if !ok {
+		return false
+	}
+	for _, item := range items {
+		mapping, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if enabled, ok := mapping["enabled"].(bool); ok && !enabled {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func rejectSingularOptionMappings(v interface{}) error {
+	items, ok := v.([]interface{})
+	if !ok {
+		return nil
+	}
+	for _, item := range items {
+		mapping, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if _, ok := mapping["option_mapping"]; ok {
+			return dbSyncConfigError("unsupported key option_mapping in --config field_maps; use option_mappings instead").
+				WithHint("use option_mappings instead")
+		}
+	}
+	return nil
 }

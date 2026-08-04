@@ -57,3 +57,44 @@ func TestLookupCodeMetaSparkRoleCodes(t *testing.T) {
 		})
 	}
 }
+
+func TestLookupCodeMetaSparkDBSyncCodes(t *testing.T) {
+	tests := []struct {
+		code     int
+		category errs.Category
+		subtype  errs.Subtype
+	}{
+		{500002783, errs.CategoryAPI, errs.SubtypeInvalidParameters},
+		{500002784, errs.CategoryAPI, errs.SubtypeInvalidParameters},
+		{500002785, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
+		{500002786, errs.CategoryAPI, errs.SubtypeNotFound},
+		{500002787, errs.CategoryAPI, errs.SubtypeInvalidParameters},
+		{500002788, errs.CategoryAPI, errs.SubtypeNotFound},
+		{500002789, errs.CategoryAPI, errs.SubtypeNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%d", tt.code), func(t *testing.T) {
+			meta, ok := LookupCodeMeta(tt.code)
+			if !ok {
+				t.Fatalf("code %d is not registered", tt.code)
+			}
+			if meta.Category != tt.category || meta.Subtype != tt.subtype || meta.Retryable {
+				t.Fatalf("code %d metadata = %+v, want category=%s subtype=%s retryable=false", tt.code, meta, tt.category, tt.subtype)
+			}
+
+			err := BuildAPIError(map[string]any{
+				"code":   tt.code,
+				"msg":    "db sync error",
+				"log_id": "log-db-sync",
+			}, ClassifyContext{Identity: "user"})
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("BuildAPIError(%d) = %#v, want typed problem", tt.code, err)
+			}
+			if problem.Category != tt.category || problem.Subtype != tt.subtype || problem.Code != tt.code || problem.LogID != "log-db-sync" || problem.Retryable {
+				t.Fatalf("BuildAPIError(%d) problem = %+v", tt.code, problem)
+			}
+		})
+	}
+}
