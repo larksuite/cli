@@ -49,8 +49,8 @@ var AppsDBSyncUpdate = common.Shortcut{
 		return common.NewDryRunAPI().
 			PUT(appDbSyncUpdatePath(appID)).
 			Desc("Update Base data sync task").
-			Params(dbEnvParams(rctx, map[string]interface{}{"task_id": strings.TrimSpace(rctx.Str("task-id"))})).
-			Body(dbSyncUpdateBody(config))
+			Params(dbEnvParams(rctx, map[string]interface{}{})).
+			Body(dbSyncUpdateBody(strings.TrimSpace(rctx.Str("task-id")), config))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, err := requireAppID(rctx.Str("app-id"))
@@ -65,7 +65,7 @@ var AppsDBSyncUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPITyped("PUT", appDbSyncUpdatePath(appID), dbEnvParams(rctx, map[string]interface{}{"task_id": taskID}), dbSyncUpdateBody(config))
+		data, err := rctx.CallAPITyped("PUT", appDbSyncUpdatePath(appID), dbEnvParams(rctx, map[string]interface{}{}), dbSyncUpdateBody(taskID, config))
 		if err != nil {
 			return withDBSyncHint(err, dbSyncUpdateFallbackHint)
 		}
@@ -74,6 +74,6 @@ var AppsDBSyncUpdate = common.Shortcut{
 	},
 }
 
-func dbSyncUpdateBody(config map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{"config": config}
+func dbSyncUpdateBody(taskID string, config map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{"task_id": taskID, "config": config}
 }

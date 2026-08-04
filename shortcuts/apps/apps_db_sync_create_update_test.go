@@ -271,8 +271,11 @@ func TestAppsDBSyncUpdateDryRun(t *testing.T) {
 	if a.Method != "PUT" || a.URL != dbSyncUpdateURL {
 		t.Fatalf("dry-run = %s %s", a.Method, a.URL)
 	}
-	if a.Params["task_id"] != "streaming 1/prod" {
-		t.Fatalf("dry-run params.task_id = %v", a.Params["task_id"])
+	if a.Body["task_id"] != "streaming 1/prod" {
+		t.Fatalf("dry-run body.task_id = %v", a.Body["task_id"])
+	}
+	if _, ok := a.Params["task_id"]; ok {
+		t.Fatalf("task_id must be in body, not query params: %v", a.Params)
 	}
 	if a.Params["env"] != "dev" {
 		t.Fatalf("dry-run params.env = %v", a.Params["env"])
@@ -306,6 +309,9 @@ func TestAppsDBSyncUpdateExecuteSuccess(t *testing.T) {
 	config := req["config"].(map[string]interface{})
 	if config["mode"] != "streaming" || config["field_maps"] == nil {
 		t.Fatalf("captured request body = %v", req)
+	}
+	if req["task_id"] != "streaming_1" {
+		t.Fatalf("captured request body.task_id = %v", req["task_id"])
 	}
 	data := dbSyncEnvelopeData(t, stdout.String())
 	if data["task_id"] != "streaming_1" || data["mode"] != "streaming" || data["status"] != "active" {

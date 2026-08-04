@@ -35,7 +35,7 @@ var AppsDBSyncEnable = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST(appDbSyncActionPath(appID, "enable")).
 			Desc("Enable a streaming Base data sync task").
-			Params(map[string]interface{}{"task_id": taskID})
+			Body(map[string]interface{}{"task_id": taskID})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		return runDBSyncTaskAction(rctx, "enable", "Enabled")
@@ -62,7 +62,7 @@ var AppsDBSyncDisable = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST(appDbSyncActionPath(appID, "disable")).
 			Desc("Disable a streaming Base data sync task").
-			Params(map[string]interface{}{"task_id": taskID})
+			Body(map[string]interface{}{"task_id": taskID})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		return runDBSyncTaskAction(rctx, "disable", "Disabled")
@@ -89,7 +89,7 @@ var AppsDBSyncDelete = common.Shortcut{
 		return common.NewDryRunAPI().
 			DELETE(appDbSyncDeletePath(appID)).
 			Desc("Delete a streaming Base data sync task").
-			Params(map[string]interface{}{"task_id": taskID})
+			Body(map[string]interface{}{"task_id": taskID})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, err := requireAppID(rctx.Str("app-id"))
@@ -97,7 +97,7 @@ var AppsDBSyncDelete = common.Shortcut{
 			return err
 		}
 		taskID := strings.TrimSpace(rctx.Str("task-id"))
-		data, err := rctx.CallAPITyped("DELETE", appDbSyncDeletePath(appID), map[string]interface{}{"task_id": taskID}, nil)
+		data, err := rctx.CallAPITyped("DELETE", appDbSyncDeletePath(appID), nil, map[string]interface{}{"task_id": taskID})
 		if err != nil {
 			return withDBSyncHint(err, dbSyncOperateHint)
 		}
@@ -131,7 +131,7 @@ func runDBSyncTaskAction(rctx *common.RuntimeContext, action, verb string) error
 		return err
 	}
 	taskID := strings.TrimSpace(rctx.Str("task-id"))
-	data, err := rctx.CallAPITyped("POST", appDbSyncActionPath(appID, action), map[string]interface{}{"task_id": taskID}, nil)
+	data, err := rctx.CallAPITyped("POST", appDbSyncActionPath(appID, action), nil, map[string]interface{}{"task_id": taskID})
 	if err != nil {
 		return withDBSyncHint(err, dbSyncOperateHint)
 	}

@@ -32,8 +32,8 @@ func TestAppsDBSyncEnableDryRun(t *testing.T) {
 	if env.API[0].Method != "POST" || env.API[0].URL != dbSyncEnableURL {
 		t.Fatalf("dry-run = %s %s", env.API[0].Method, env.API[0].URL)
 	}
-	if env.API[0].Params["task_id"] != "streaming_1" {
-		t.Fatalf("dry-run params = %v", env.API[0].Params)
+	if env.API[0].Body["task_id"] != "streaming_1" {
+		t.Fatalf("dry-run body = %v", env.API[0].Body)
 	}
 }
 
@@ -51,8 +51,8 @@ func TestAppsDBSyncDisableDryRun(t *testing.T) {
 	if env.API[0].Method != "POST" || env.API[0].URL != dbSyncDisableURL {
 		t.Fatalf("dry-run = %s %s", env.API[0].Method, env.API[0].URL)
 	}
-	if env.API[0].Params["task_id"] != "streaming_1" {
-		t.Fatalf("dry-run params = %v", env.API[0].Params)
+	if env.API[0].Body["task_id"] != "streaming_1" {
+		t.Fatalf("dry-run body = %v", env.API[0].Body)
 	}
 }
 
@@ -70,8 +70,8 @@ func TestAppsDBSyncDeleteDryRun(t *testing.T) {
 	if env.API[0].Method != "DELETE" || env.API[0].URL != dbSyncDeleteURL {
 		t.Fatalf("dry-run = %s %s", env.API[0].Method, env.API[0].URL)
 	}
-	if env.API[0].Params["task_id"] != "streaming_1" {
-		t.Fatalf("dry-run params = %v", env.API[0].Params)
+	if env.API[0].Body["task_id"] != "streaming_1" {
+		t.Fatalf("dry-run body = %v", env.API[0].Body)
 	}
 }
 
