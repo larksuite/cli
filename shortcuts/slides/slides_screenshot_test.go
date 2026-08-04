@@ -221,6 +221,10 @@ func TestSlidesScreenshotAttributesMixedSelectorAliasesToCallerInput(t *testing.
 			if err == nil {
 				t.Fatal("expected validation error")
 			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
+			}
 			var validationErr *errs.ValidationError
 			if !errors.As(err, &validationErr) {
 				t.Fatalf("error type = %T, want *errs.ValidationError", err)
@@ -607,6 +611,8 @@ func TestSlidesScreenshotOutputRejectsInvalidPath(t *testing.T) {
 		{name: "path escapes working directory", output: "../cover.jpg"},
 		{name: "directory suffix", output: "shots/", wantDirHint: true},
 		{name: "existing directory", output: "shots", createDirectory: true, wantDirHint: true},
+		{name: "leading whitespace", output: " shots/cover.png"},
+		{name: "trailing whitespace", output: "shots/cover.png "},
 	}
 
 	for _, tt := range tests {
@@ -737,7 +743,7 @@ func TestSlidesScreenshotOutputAppendsResponseExtensionWhenMissing(t *testing.T)
 	}
 }
 
-func TestSlidesScreenshotOutputRejectsExistingPathWithoutOverwrite(t *testing.T) {
+func TestSlidesScreenshotOutputAvoidsExistingPath(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 	if err := os.MkdirAll(filepath.Join(dir, "shots"), 0o755); err != nil {
@@ -773,38 +779,30 @@ func TestSlidesScreenshotOutputRejectsExistingPathWithoutOverwrite(t *testing.T)
 		"--output", "shots/cover.jpg",
 		"--as", "user",
 	})
-	if err == nil {
-		t.Fatal("expected existing output error")
-	}
-	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeFailedPrecondition {
-		t.Fatalf("problem = %#v, want validation/failed_precondition", problem)
-	}
-	var validationErr *errs.ValidationError
-	if !errors.As(err, &validationErr) || validationErr.Param != "--output" {
-		t.Fatalf("error = %#v, want --output validation error", err)
-	}
-	if !strings.Contains(validationErr.Hint, "--overwrite") {
-		t.Fatalf("hint = %q, want --overwrite guidance", validationErr.Hint)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if got, err := os.ReadFile(existingPath); err != nil || string(got) != "existing" {
 		t.Fatalf("existing output = %q, err=%v", got, err)
 	}
-	if _, statErr := os.Stat(filepath.Join(dir, "shots", "cover_2.jpg")); !os.IsNotExist(statErr) {
-		t.Fatalf("unexpected deduplicated output, stat error = %v", statErr)
+	actualPath := filepath.Join(dir, "shots", "cover_2.jpg")
+	if got, readErr := os.ReadFile(actualPath); readErr != nil || string(got) != "new-jpeg" {
+		t.Fatalf("deduplicated output = %q, err=%v", got, readErr)
 	}
-	if stdout.Len() != 0 {
-		t.Fatalf("stdout = %q, want no success envelope", stdout.String())
+	actualPath = canonicalSlidesScreenshotTestPath(t, actualPath)
+	data := decodeShortcutData(t, stdout)
+	if data["requested_output"] != "shots/cover.jpg" || data["output"] != actualPath || data["output_adjusted"] != true {
+		t.Fatalf("adjusted output metadata = %#v", data)
 	}
 }
 
-func TestSlidesScreenshotOutputOverwriteReplacesExistingPath(t *testing.T) {
+func TestSlidesScreenshotOutputAdjustsFormatBeforeAvoidingExistingPath(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 	if err := os.MkdirAll(filepath.Join(dir, "shots"), 0o755); err != nil {
 		t.Fatalf("create output dir: %v", err)
 	}
-	existingPath := filepath.Join(dir, "shots", "cover.jpg")
+	existingPath := filepath.Join(dir, "shots", "cover.png")
 	if err := os.WriteFile(existingPath, []byte("existing"), 0o644); err != nil {
 		t.Fatalf("write existing output: %v", err)
 	}
@@ -818,8 +816,8 @@ func TestSlidesScreenshotOutputOverwriteReplacesExistingPath(t *testing.T) {
 			"data": map[string]interface{}{
 				"slide_images": []map[string]interface{}{{
 					"slide_number": 1,
-					"format":       2,
-					"data":         base64.StdEncoding.EncodeToString([]byte("new-jpeg")),
+					"format":       1,
+					"data":         base64.StdEncoding.EncodeToString([]byte("new-png")),
 				}},
 			},
 		},
@@ -830,47 +828,22 @@ func TestSlidesScreenshotOutputOverwriteReplacesExistingPath(t *testing.T) {
 		"--presentation", "pres_abc",
 		"--slide-number", "1",
 		"--output", "shots/cover.jpg",
-		"--overwrite",
 		"--as", "user",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got, err := os.ReadFile(existingPath); err != nil || string(got) != "new-jpeg" {
-		t.Fatalf("overwritten output = %q, err=%v", got, err)
+	if got, err := os.ReadFile(existingPath); err != nil || string(got) != "existing" {
+		t.Fatalf("existing output = %q, err=%v", got, err)
 	}
+	actualPath := filepath.Join(dir, "shots", "cover_2.png")
+	if got, readErr := os.ReadFile(actualPath); readErr != nil || string(got) != "new-png" {
+		t.Fatalf("deduplicated output = %q, err=%v", got, readErr)
+	}
+	actualPath = canonicalSlidesScreenshotTestPath(t, actualPath)
 	data := decodeShortcutData(t, stdout)
-	wantPath := canonicalSlidesScreenshotTestPath(t, existingPath)
-	if data["output"] != wantPath {
-		t.Fatalf("output = %v, want %q", data["output"], wantPath)
-	}
-	if _, ok := data["output_adjusted"]; ok {
-		t.Fatalf("output_adjusted must be omitted for an exact overwrite: %#v", data)
-	}
-	if _, ok := data["requested_output"]; ok {
-		t.Fatalf("requested_output must be omitted for an exact overwrite: %#v", data)
-	}
-}
-
-func TestSlidesScreenshotOverwriteRequiresOutput(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
-	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
-		"+screenshot",
-		"--presentation", "pres_abc",
-		"--slide-number", "1",
-		"--overwrite",
-		"--as", "user",
-	})
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
-	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
-		t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
-	}
-	var validationErr *errs.ValidationError
-	if !errors.As(err, &validationErr) || validationErr.Param != "--overwrite" {
-		t.Fatalf("error = %#v, want --overwrite validation error", err)
+	if data["requested_output"] != "shots/cover.jpg" || data["output"] != actualPath || data["output_adjusted"] != true {
+		t.Fatalf("adjusted output metadata = %#v", data)
 	}
 }
 
@@ -1349,14 +1322,23 @@ func TestSlidesScreenshotOutputWritesRequestedRenderPath(t *testing.T) {
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 		"+screenshot",
 		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
-		"--output", "shots/preview.png",
+		"--output", "shots/preview.jpg",
 		"--as", "user",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got, err := os.ReadFile(filepath.Join(dir, "shots", "preview.png")); err != nil || string(got) != string(imageBytes) {
+	actualPath := filepath.Join(dir, "shots", "preview.png")
+	if got, err := os.ReadFile(actualPath); err != nil || string(got) != string(imageBytes) {
 		t.Fatalf("render output = %q, err=%v", got, err)
+	}
+	actualPath = canonicalSlidesScreenshotTestPath(t, actualPath)
+	data := decodeShortcutData(t, stdout)
+	if data["requested_output"] != "shots/preview.jpg" || data["output"] != actualPath || data["output_adjusted"] != true {
+		t.Fatalf("adjusted render output metadata = %#v", data)
+	}
+	if _, ok := data["output_dir"]; ok {
+		t.Fatalf("output_dir must be omitted with --output: %#v", data)
 	}
 }
 
@@ -1485,6 +1467,7 @@ func TestSlidesScreenshotDryRunSelectsListOrRenderAPI(t *testing.T) {
 		err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 			"+screenshot",
 			"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+			"--output", "shots/preview.png",
 			"--dry-run",
 			"--as", "user",
 		})
@@ -1497,6 +1480,12 @@ func TestSlidesScreenshotDryRunSelectsListOrRenderAPI(t *testing.T) {
 		}
 		if !strings.Contains(out, "base64_output") {
 			t.Fatalf("dry-run missing base64 suppression note: %s", out)
+		}
+		if !strings.Contains(out, `"output": "shots/preview.png"`) {
+			t.Fatalf("dry-run missing requested output: %s", out)
+		}
+		if strings.Contains(out, `"output_dir"`) {
+			t.Fatalf("dry-run output_dir must be omitted with --output: %s", out)
 		}
 	})
 }

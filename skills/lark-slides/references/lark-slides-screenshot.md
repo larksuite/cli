@@ -34,7 +34,6 @@ lark-cli slides +screenshot --as user \
 | `--slide-number` | list 模式与 `--slide-id` 二选一 | 页面页号；不能与 `--slide-id` 同时使用；多页截图时重复传入，或用逗号分隔一次传多个（如 `--slide-number 1,2,3`）；一次最多 10 个页码 |
 | `--content` | render 模式必需 | 要直接渲染的 `<slide>` XML 片段；支持直接传值、`@file`、`-` stdin。传入后不能同时传 `--slide-id` / `--slide-number` |
 | `--output` | 否 | 单张截图的期望相对输出路径，可不写扩展名，显式扩展名只支持 `.png`、`.jpg`、`.jpeg`。只能选择一页，不能与 `--output-dir` / `--output-name` 同时使用；最终路径以返回的 `output` 为准 |
-| `--overwrite` | 否 | 仅与 `--output` 一起使用；目标文件已存在时明确覆盖。未传该参数时返回错误，不会静默改名 |
 | `--output-dir` | 否 | 输出目录，默认 `.lark-slides/screenshots`；必须是当前目录内的相对路径 |
 | `--output-name` | 否 | 仅为旧版 `--content` render 调用保留的文件名 stem；新调用统一使用 `--output`。普通页面截图传入该参数会返回 `validation/invalid_argument`（`param: --output-name`）并提示改用 `--output` |
 
@@ -111,6 +110,6 @@ lark-cli slides +screenshot --as user \
 5. list 模式下 `--slide-id` 与 `--slide-number` 必须二选一；同一类型 selector 一次最多传 10 个，更多页面请分批截图。
 6. 单张且需要调用方统一路径和命名时使用 `--output`；多张时使用 `--output-dir`，由 CLI 按页面信息生成文件名。不要为批量截图循环传同一个 `--output`。
 7. CLI 不转换图片格式，也不要求模型预判服务端格式。未写扩展名时自动追加真实扩展名；请求扩展名与真实格式不一致时保留目录和名称、修正扩展名，例如请求 `slide3.png` 而服务端返回 JPEG 时实际保存为 `slide3.jpg`。
-8. 使用 `--output` 时，目标文件已存在会返回 `validation/failed_precondition`，需要明确传 `--overwrite` 才会替换；CLI 不会静默改成 `_2`。批量 `--output-dir` 和旧版自动命名仍会追加 `_2`、`_3` 避免覆盖。服务端图片格式导致扩展名修正时会返回 `requested_output` 和 `output_adjusted: true`；后续必须使用 `output` / `screenshots[].path` 中的实际绝对路径。
+8. 发生扩展名修正或同名避让时会返回原始 `requested_output`、实际绝对路径 `output` 和 `output_adjusted: true`；后续必须使用 `output` / `screenshots[].path`，不要继续猜测请求路径。
 9. list 模式默认文件名包含 presentation ID、页码和/或 slide ID。
 10. 截图来自服务端渲染结果，适合创建/替换后验证页面是否为空白、破图或布局明显异常。

@@ -108,7 +108,6 @@ func TestSlidesScreenshotOutputDryRunE2E(t *testing.T) {
 			"--presentation", "presScreenshotOutput",
 			"--slide-number", "3",
 			"--output", "./slide3.png",
-			"--overwrite",
 			"--dry-run",
 		},
 		DefaultAs: "bot",

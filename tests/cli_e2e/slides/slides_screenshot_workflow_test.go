@@ -132,7 +132,7 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 		wantExt = ".jpg"
 	}
 	wantOutput := filepath.Join(workDir, "fixed", "cover"+wantExt)
-	wantOutput, err = filepath.EvalSymlinks(wantOutput)
+	wantOutput, err = vfs.EvalSymlinks(wantOutput)
 	require.NoError(t, err)
 	require.Equal(t, wantOutput, gjson.Get(fixedOutputResult.Stdout, "data.output").String(), fixedOutputResult.Stdout)
 	require.False(t, gjson.Get(fixedOutputResult.Stdout, "data.output_dir").Exists(), fixedOutputResult.Stdout)

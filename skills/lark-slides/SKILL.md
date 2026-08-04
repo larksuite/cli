@@ -287,7 +287,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli slides +<verb> [flags]`�
 | [`+add-slide`](references/lark-slides-add-slide.md) | 向已有演示文稿追加或插入**一页**（`--before-slide-id` 控制位置），XML 支持 `@file` / stdin，`<img src="@./path">` 占位符自动上传 |
 | [`+delete-slide`](references/lark-slides-delete-slide.md) | 按 `slide_id` 删除**一页** |
 | [`+xml-get`](references/lark-slides-xml-presentations-get.md) | 读取全文 XML，用 `--presentation` 指定演示文稿的 `xml_presentation_id`，用 `--output` 把 XML 存到本地文件（必须是 CWD 内的相对路径，如 `.lark-slides/plan/<deck>/readback.xml`） |
-| [`+screenshot`](references/lark-slides-screenshot.md) | 把幻灯片页面截图保存为本地图片；单张用 `--output path/name.png`，批量用 `--output-dir`（路径必须在 CWD 内，一次最多 10 页）；单张同名文件默认报错，明确传 `--overwrite` 才覆盖；格式修正可能改变最终路径，后续必须读取返回的 `output` / `screenshots[].path` |
+| [`+screenshot`](references/lark-slides-screenshot.md) | 把幻灯片页面截图保存为本地图片；单张用 `--output path/name.png`，批量用 `--output-dir`（路径必须在 CWD 内，一次最多 10 页）；CLI 先按真实格式修正扩展名，再用 `_2`、`_3` 避免同名覆盖；后续必须读取返回的 `output` / `screenshots[].path` |
 | [`+media-upload`](references/lark-slides-media-upload.md) | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |
 | [`+replace-slide`](references/lark-slides-replace-slide.md) | 对已有幻灯片页面进行块级替换/插入（`block_replace` / `block_insert`），自动注入 id 和 `<content/>`，不改变页序 |
 | [`+replace-pages`](references/lark-slides-replace-pages.md) | 在原演示文稿内重建一页或多页：先创建新页到旧页前，再删除旧页；适合已有 Slides 的整页大改，不新建链接 |
