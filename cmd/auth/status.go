@@ -27,6 +27,9 @@ func NewCmdAuthStatus(f *cmdutil.Factory, runF func(*StatusOptions) error) *cobr
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "View current auth status",
+		Long: `Show OAuth user login, token validity, and granted scopes.
+For token-validity checks, run lark-cli auth status --json --verify.
+This is not profile/app selection diagnostics; use lark-cli whoami for the effective app/profile identity used by an invocation.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if runF != nil {
 				return runF(opts)

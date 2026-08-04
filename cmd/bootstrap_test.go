@@ -3,7 +3,11 @@
 
 package cmd
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/larksuite/cli/internal/envvars"
+)
 
 func TestBootstrapInvocationContext_ProfileFlag(t *testing.T) {
 	inv, err := BootstrapInvocationContext([]string{"--profile", "target", "auth", "status"})
@@ -69,4 +73,59 @@ func TestBootstrapInvocationContext_HelpWithProfile(t *testing.T) {
 	if inv.Profile != "target" {
 		t.Fatalf("profile = %q, want %q", inv.Profile, "target")
 	}
+}
+
+func TestBootstrapProfileEnvFallback(t *testing.T) {
+	t.Run("flag wins over env", func(t *testing.T) {
+		t.Setenv(envvars.CliProfile, "tenant_env")
+		inv, err := BootstrapInvocationContext([]string{"--profile", "tenant_flag", "whoami"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if inv.Profile != "tenant_flag" {
+			t.Errorf("got %q, want tenant_flag", inv.Profile)
+		}
+		if !inv.ProfileFromFlag {
+			t.Errorf("ProfileFromFlag = false, want true")
+		}
+	})
+	t.Run("explicit empty flag clears env selection", func(t *testing.T) {
+		t.Setenv(envvars.CliProfile, "tenant_env")
+		inv, err := BootstrapInvocationContext([]string{"--profile=", "whoami"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if inv.Profile != "" {
+			t.Errorf("got %q, want empty", inv.Profile)
+		}
+		if !inv.ProfileFromFlag {
+			t.Errorf("ProfileFromFlag = false, want true")
+		}
+	})
+	t.Run("env used when flag absent", func(t *testing.T) {
+		t.Setenv(envvars.CliProfile, "tenant_env")
+		inv, err := BootstrapInvocationContext([]string{"whoami"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if inv.Profile != "tenant_env" {
+			t.Errorf("got %q, want tenant_env", inv.Profile)
+		}
+		if inv.ProfileFromFlag {
+			t.Errorf("ProfileFromFlag = true, want false")
+		}
+	})
+	t.Run("empty when neither set", func(t *testing.T) {
+		t.Setenv(envvars.CliProfile, "")
+		inv, err := BootstrapInvocationContext([]string{"whoami"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if inv.Profile != "" {
+			t.Errorf("got %q, want empty", inv.Profile)
+		}
+		if inv.ProfileFromFlag {
+			t.Errorf("ProfileFromFlag = true, want false")
+		}
+	})
 }

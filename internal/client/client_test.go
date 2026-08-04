@@ -48,6 +48,18 @@ func (s *staticTokenResolver) ResolveToken(_ context.Context, _ credential.Token
 	return &credential.TokenResult{Token: "test-token"}, nil
 }
 
+type clientTestAccountResolver struct {
+	appID string
+}
+
+func (r clientTestAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return &credential.Account{AppID: r.appID, Brand: core.BrandFeishu}, nil
+}
+
+func newClientTestCredentialProvider(appID string, tokenResolver credential.DefaultTokenResolver) *credential.CredentialProvider {
+	return credential.NewCredentialProvider(nil, clientTestAccountResolver{appID: appID}, tokenResolver, nil)
+}
+
 // newTestAPIClient creates an APIClient with a mock HTTP transport.
 func newTestAPIClient(t *testing.T, rt http.RoundTripper) (*APIClient, *bytes.Buffer) {
 	t.Helper()
@@ -58,7 +70,7 @@ func newTestAPIClient(t *testing.T, rt http.RoundTripper) (*APIClient, *bytes.Bu
 		lark.WithLogLevel(larkcore.LogLevelError),
 		lark.WithHttpClient(httpClient),
 	)
-	testCred := credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil)
+	testCred := newClientTestCredentialProvider("test-app", &staticTokenResolver{})
 	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu}
 	return &APIClient{
 		SDK:        sdk,
@@ -463,7 +475,7 @@ func TestDoStream_IgnoresBaseHTTPClientTimeout(t *testing.T) {
 
 	ac := &APIClient{
 		HTTP:       &http.Client{Timeout: 5 * time.Millisecond},
-		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Credential: newClientTestCredentialProvider("test-app", &staticTokenResolver{}),
 		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
 	}
 
@@ -498,7 +510,7 @@ func TestDoStream_TransportFailureSplitsSubtype(t *testing.T) {
 	})
 	ac := &APIClient{
 		HTTP:       &http.Client{Transport: rt},
-		Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+		Credential: newClientTestCredentialProvider("test-app", &staticTokenResolver{}),
 		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
 	}
 
@@ -555,7 +567,7 @@ func (f *failingTokenResolver) ResolveToken(_ context.Context, spec credential.T
 func TestResolveAccessToken_NoToken_ReturnsTypedAuthenticationError(t *testing.T) {
 	ac := &APIClient{
 		HTTP:       &http.Client{},
-		Credential: credential.NewCredentialProvider(nil, nil, &failingTokenResolver{}, nil),
+		Credential: newClientTestCredentialProvider("test-app", &failingTokenResolver{}),
 		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
 	}
 
@@ -595,7 +607,7 @@ func (f *needAuthTokenResolver) ResolveToken(_ context.Context, _ credential.Tok
 func TestResolveAccessToken_NeedAuthorization_SurfacesAsTypedAuthentication(t *testing.T) {
 	ac := &APIClient{
 		HTTP:       &http.Client{},
-		Credential: credential.NewCredentialProvider(nil, nil, &needAuthTokenResolver{userOpenID: "ou_test_user"}, nil),
+		Credential: newClientTestCredentialProvider("test-app", &needAuthTokenResolver{userOpenID: "ou_test_user"}),
 		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
 	}
 
@@ -635,7 +647,7 @@ func TestResolveAccessToken_NeedAuthorization_SurfacesAsTypedAuthentication(t *t
 func TestDoSDKRequest_AuthFailureSurfacesTypedAuthenticationError(t *testing.T) {
 	ac := &APIClient{
 		HTTP:       &http.Client{},
-		Credential: credential.NewCredentialProvider(nil, nil, &failingTokenResolver{}, nil),
+		Credential: newClientTestCredentialProvider("test-app", &failingTokenResolver{}),
 		Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
 	}
 

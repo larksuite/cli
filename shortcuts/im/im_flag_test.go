@@ -288,12 +288,12 @@ func (r errorTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSp
 
 func setRuntimeScopes(t *testing.T, rt *common.RuntimeContext, scopes string) {
 	t.Helper()
-	rt.Factory.Credential = credential.NewCredentialProvider(nil, nil, scopedTokenResolver{scopes: scopes}, nil)
+	rt.Factory.Credential = newIMTestCredentialProvider(rt.Config.AppID, scopedTokenResolver{scopes: scopes})
 }
 
 func setRuntimeTokenError(t *testing.T, rt *common.RuntimeContext, err error) {
 	t.Helper()
-	rt.Factory.Credential = credential.NewCredentialProvider(nil, nil, errorTokenResolver{err: err}, nil)
+	rt.Factory.Credential = newIMTestCredentialProvider(rt.Config.AppID, errorTokenResolver{err: err})
 }
 
 func TestFlagMessageID(t *testing.T) {

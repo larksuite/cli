@@ -44,7 +44,7 @@ func newTestConsumeRuntime(rt http.RoundTripper) *consumeRuntime {
 		client: &client.APIClient{
 			SDK:        sdk,
 			ErrOut:     io.Discard,
-			Credential: credential.NewCredentialProvider(nil, nil, &staticTokenResolver{}, nil),
+			Credential: newEventTestCredentialProvider("test-app", &staticTokenResolver{}),
 			Config:     &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
 		},
 		accessIdentity: core.AsBot,

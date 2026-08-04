@@ -1,7 +1,7 @@
 ---
 name: lark-shared
 version: 1.0.0
-description: "Use for lark-cli setup/auth tasks: auth login/status/logout, user vs bot identity, business-domain permissions (--domain, including all/docs/drive), missing scopes, revoking authorization, or handling _notice JSON."
+description: "Use for lark-cli setup/auth tasks: auth login/status/logout, user vs bot identity, business-domain permissions (--domain, including all/docs/drive), missing scopes, revoking authorization, handling _notice JSON, or pinning/clearing a profile/tenant identity for a task or session."
 ---
 
 # lark-cli 共享规则
@@ -32,7 +32,7 @@ lark-cli config init --new
 | 获取全部权限 | `lark-cli auth login --domain all --no-wait --json` |
 | 按业务域授权 | `lark-cli auth login --domain docs --domain drive --no-wait --json`；`--domain` 可重复，也可用逗号分隔 |
 | 指定单个 scope 授权 | `lark-cli auth login --scope "<scope>" --no-wait --json` |
-| 检查当前登录态、是谁登录、token 是否有效 | `lark-cli auth status --json --verify`；回答时引用 `identity`、`verified`、`identities.user.status`、`identities.user.userName`、`identities.user.openId`（用户 open id）、`identities.user.tokenStatus`、`identities.user.scope` |
+| 检查当前登录态、是谁登录、token 是否有效 | 必须运行 `lark-cli auth status --json --verify`；回答时引用 `identity`、`verified`、`identities.user.status`、`identities.user.userName`、`identities.user.openId`（用户 open id）、`identities.user.tokenStatus`、`identities.user.scope` |
 | 快速查看当前身份状态 | `lark-cli whoami`；实际生效的那一个身份 |
 | 退出当前机器的用户登录态 | `lark-cli auth logout --json`；`loggedOut:true` 表示注销成功 |
 | bot 缺少权限 | 不要执行 `auth login`；引导用户在开发者后台开通 bot scope，优先复用错误里的 `console_url` |
@@ -125,6 +125,18 @@ lark-cli auth login --device-code <device_code>
 - **你必须亲自执行 `--device-code` 命令**，不要指示用户自行执行
 - **不要在同一轮中展示 URL 后立刻执行 `--device-code`**，这会导致用户看不到 URL
 - **禁止缓存 `verification_url` 或 `device_code`**：每次需要授权时，必须重新执行 `lark-cli auth login --no-wait --json` 生成新的链接。不要将授权链接和 device code 存入上下文供后续复用
+
+## Profile 选择
+
+- 查当前实际生效身份：`whoami --json`
+- 查 OAuth 登录或 token 有效性：`auth status --json --verify`
+- 为 agent 任务指定身份：每条 `lark-cli` 命令都加 `--profile <profile-or-appId>`
+- 为同一 shell 的脚本或批处理指定身份：使用 `LARKSUITE_CLI_PROFILE=<profile-or-appId>`，或 export/unset
+- 清除会话身份并恢复默认：使用 `unset LARKSUITE_CLI_PROFILE`；即使变量未设置，也向用户说明该操作。不要为此使用 `profile use` 或 `profile remove`
+- 查已保存的配置：`config show` 或 `profile list`；它们不表示当前实际生效身份
+- 永久修改默认 profile：`profile use`
+
+profile 不明确时先问用户。除非用户提供了直连凭证，否则不要设置 `LARKSUITE_CLI_APP_ID` 或 `LARKSUITE_CLI_APP_SECRET`。
 
 ## 更新检查
 

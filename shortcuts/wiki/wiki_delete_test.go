@@ -16,7 +16,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -79,7 +78,7 @@ func newWikiDeleteSpaceRuntimeWithScopes(t *testing.T, as core.Identity, scopes 
 
 	cfg := wikiTestConfig()
 	factory, _, stderr, _ := cmdutil.TestFactory(t, cfg)
-	factory.Credential = credential.NewCredentialProvider(nil, nil, &mockWikiMoveTokenResolver{scopes: scopes}, nil)
+	factory.Credential = newWikiTestCredentialProvider(cfg.AppID, &mockWikiMoveTokenResolver{scopes: scopes})
 
 	runtime := common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "wiki +delete-space"}, cfg, as)
 	runtime.Factory = factory

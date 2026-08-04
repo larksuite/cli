@@ -21,6 +21,7 @@ const (
 
 	CliAgentName  = "LARKSUITE_CLI_AGENT_NAME"
 	CliAgentTrace = "LARKSUITE_CLI_AGENT_TRACE"
+	CliProfile    = "LARKSUITE_CLI_PROFILE"
 
 	CliProxyEnable  = "LARKSUITE_CLI_PROXY_ENABLE"
 	CliProxyAddress = "LARKSUITE_CLI_PROXY_ADDRESS"

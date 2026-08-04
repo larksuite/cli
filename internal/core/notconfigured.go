@@ -36,16 +36,13 @@ func LoadOrNotConfigured() (*MultiAppConfig, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, NotConfiguredError()
 		}
-		// Surface the real cause (parse error, permission denied, etc.)
-		// so the user can fix the broken file. A malformed file is
-		// invalid_config; anything else (permission denied, etc.) is
-		// not_configured. Both stay on the typed structured-envelope path
-		// at the root command's error sink.
-		subtype := errs.SubtypeNotConfigured
-		if isMalformedConfigError(err) {
-			subtype = errs.SubtypeInvalidConfig
-		}
-		return nil, errs.NewConfigError(subtype, "failed to load config: %v", err).WithCause(err)
+		// Surface the real cause so the user can fix the broken file. Every
+		// non-ENOENT load failure — malformed JSON, permission denied, I/O
+		// error — means a config EXISTS but cannot be used: invalid_config.
+		// Only a genuinely absent config is not_configured; anything else
+		// classified as not_configured would let callers degrade it into
+		// profile_not_found / no_active_profile and hide the real cause.
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "failed to load config: %v", err).WithCause(err)
 	}
 	if multi == nil || len(multi.Apps) == 0 {
 		return nil, NotConfiguredError()

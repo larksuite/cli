@@ -26,12 +26,13 @@ import (
 
 // fakeExtProvider is a stub extcred.Provider for tests that returns a fixed token.
 type fakeExtProvider struct {
+	appID string
 	token string
 }
 
 func (f *fakeExtProvider) Name() string { return "fake" }
 func (f *fakeExtProvider) ResolveAccount(ctx context.Context) (*extcred.Account, error) {
-	return nil, nil
+	return &extcred.Account{AppID: f.appID}, nil
 }
 func (f *fakeExtProvider) ResolveToken(ctx context.Context, req extcred.TokenSpec) (*extcred.Token, error) {
 	return &extcred.Token{Value: f.token, Source: "fake"}, nil
@@ -381,7 +382,7 @@ func TestProxyHandler_AcceptsAllowedAuthHeaders(t *testing.T) {
 			// Use a handler with a real (fake) credential provider so we can
 			// distinguish auth-header reject (403) from later failures.
 			cred := credential.NewCredentialProvider(
-				[]extcred.Provider{&fakeExtProvider{token: "real-token"}},
+				[]extcred.Provider{&fakeExtProvider{appID: "cli_test", token: "real-token"}},
 				nil, nil, nil,
 			)
 			h := &proxyHandler{
@@ -501,7 +502,7 @@ func TestProxyHandler_StripsClientSuppliedAuthHeaders(t *testing.T) {
 	upstreamHost := strings.TrimPrefix(upstream.URL, "https://")
 
 	cred := credential.NewCredentialProvider(
-		[]extcred.Provider{&fakeExtProvider{token: realToken}},
+		[]extcred.Provider{&fakeExtProvider{appID: "cli_test", token: realToken}},
 		nil, nil, nil,
 	)
 

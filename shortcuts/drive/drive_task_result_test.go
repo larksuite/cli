@@ -329,7 +329,7 @@ func newDriveTaskResultRuntimeWithScopes(t *testing.T, as core.Identity, scopes 
 
 	cfg := driveTestConfig()
 	factory, _, _, _ := cmdutil.TestFactory(t, cfg)
-	factory.Credential = credential.NewCredentialProvider(nil, nil, &mockDriveTaskResultTokenResolver{scopes: scopes}, nil)
+	factory.Credential = newDriveTestCredentialProvider(cfg.AppID, &mockDriveTaskResultTokenResolver{scopes: scopes})
 
 	runtime := common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "drive +task_result"}, cfg, as)
 	runtime.Factory = factory
@@ -919,7 +919,7 @@ func TestValidateDriveTaskResultScopesPropagatesContextCancellation(t *testing.T
 
 	cfg := driveTestConfig()
 	factory, _, _, _ := cmdutil.TestFactory(t, cfg)
-	factory.Credential = credential.NewCredentialProvider(nil, nil, cancelingTokenResolver{}, nil)
+	factory.Credential = newDriveTestCredentialProvider(cfg.AppID, cancelingTokenResolver{})
 
 	runtime := common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "drive +task_result"}, cfg, core.AsUser)
 	runtime.Factory = factory

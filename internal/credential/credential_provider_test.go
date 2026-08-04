@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
@@ -23,6 +24,7 @@ type mockExtProvider struct {
 	err        error
 	accountErr error
 	tokenErr   error
+	tokenCalls int
 }
 
 func (m *mockExtProvider) Name() string { return m.name }
@@ -33,6 +35,7 @@ func (m *mockExtProvider) ResolveAccount(ctx context.Context) (*extcred.Account,
 	return m.account, m.err
 }
 func (m *mockExtProvider) ResolveToken(ctx context.Context, req extcred.TokenSpec) (*extcred.Token, error) {
+	m.tokenCalls++
 	if m.tokenErr != nil {
 		return nil, m.tokenErr
 	}
@@ -49,11 +52,13 @@ func (m *mockDefaultAcct) ResolveAccount(ctx context.Context) (*Account, error) 
 }
 
 type mockDefaultToken struct {
-	result *TokenResult
-	err    error
+	result     *TokenResult
+	err        error
+	tokenCalls int
 }
 
 func (m *mockDefaultToken) ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error) {
+	m.tokenCalls++
 	return m.result, m.err
 }
 
@@ -116,34 +121,44 @@ func TestCredentialProvider_AccountCached(t *testing.T) {
 }
 
 func TestCredentialProvider_TokenFromExtension(t *testing.T) {
-	cp := NewCredentialProvider(
-		[]extcred.Provider{&mockExtProvider{
-			name:    "env",
-			account: &extcred.Account{AppID: "ext_app", Brand: "feishu"},
-			token:   &extcred.Token{Value: "ext_tok", Source: "env"},
-		}},
-		&mockDefaultAcct{}, &mockDefaultToken{result: &TokenResult{Token: "default_tok"}}, nil,
-	)
-	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Token != "ext_tok" {
-		t.Errorf("expected ext_tok, got %s", result.Token)
+	for _, sourceName := range []string{"env", "authsidecar"} {
+		t.Run(sourceName, func(t *testing.T) {
+			cp := NewCredentialProvider(
+				[]extcred.Provider{&mockExtProvider{
+					name:    sourceName,
+					account: &extcred.Account{AppID: "ext_app", Brand: "feishu"},
+					token:   &extcred.Token{Value: "ext_tok", Source: sourceName},
+				}},
+				&mockDefaultAcct{account: &Account{AppID: "default_app"}},
+				&mockDefaultToken{result: &TokenResult{Token: "default_tok"}}, nil,
+			)
+			result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "ext_app"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Token != "ext_tok" {
+				t.Errorf("expected ext_tok, got %s", result.Token)
+			}
+		})
 	}
 }
 
 func TestCredentialProvider_TokenFallsToDefault(t *testing.T) {
+	defaultToken := &mockDefaultToken{result: &TokenResult{Token: "default_tok"}}
 	cp := NewCredentialProvider(
 		[]extcred.Provider{&mockExtProvider{name: "skip"}},
-		&mockDefaultAcct{}, &mockDefaultToken{result: &TokenResult{Token: "default_tok"}}, nil,
+		&mockDefaultAcct{account: &Account{AppID: "default_app"}},
+		defaultToken, nil,
 	)
-	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
+	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "default_app"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Token != "default_tok" {
 		t.Errorf("expected default_tok, got %s", result.Token)
+	}
+	if defaultToken.tokenCalls != 1 {
+		t.Fatalf("default ResolveToken() calls = %d, want 1", defaultToken.tokenCalls)
 	}
 }
 
@@ -159,7 +174,7 @@ func TestCredentialProvider_TokenDoesNotMixSourcesAfterDefaultAccountSelection(t
 		t.Fatalf("ResolveAccount() error = %v", err)
 	}
 
-	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
+	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "default_app"})
 	if err != nil {
 		t.Fatalf("ResolveToken() error = %v", err)
 	}
@@ -181,7 +196,7 @@ func TestCredentialProvider_SelectedSourceWithoutTokenReturnsUnavailableError(t 
 		t.Fatalf("ResolveAccount() error = %v", err)
 	}
 
-	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "ext_app"})
 	if err == nil {
 		t.Fatal("ResolveToken() error = nil, want unavailable error")
 	}
@@ -202,7 +217,7 @@ func TestCredentialProvider_ResolveTokenPropagatesNonBlockExtensionError(t *test
 		nil,
 	)
 
-	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "ext_app"})
 	if err == nil || err.Error() != "provider exploded" {
 		t.Fatalf("ResolveToken() error = %v, want provider exploded", err)
 	}
@@ -312,12 +327,12 @@ func TestCredentialProvider_ResolveIdentityHint_CachesResult(t *testing.T) {
 func TestCredentialProvider_ResolveTokenTreatsEmptyDefaultTokenAsMalformed(t *testing.T) {
 	cp := NewCredentialProvider(
 		nil,
-		nil,
+		&mockDefaultAcct{account: &Account{AppID: "default_app"}},
 		&mockDefaultToken{result: &TokenResult{Token: ""}},
 		nil,
 	)
 
-	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "default_app"})
 	if err == nil || !strings.Contains(err.Error(), "empty token") {
 		t.Fatalf("ResolveToken() error = %v, want malformed empty token error", err)
 	}
@@ -410,16 +425,188 @@ func TestCredentialProvider_ResolveAccountWarnsWhenExtensionIdentityVerification
 }
 
 func TestCredentialProvider_ResolveTokenDoesNotBypassFailedDefaultAccountResolution(t *testing.T) {
+	defaultToken := &mockDefaultToken{result: &TokenResult{Token: "default_tok"}}
 	cp := NewCredentialProvider(
 		nil,
 		&mockDefaultAcct{err: errors.New("config unavailable")},
-		&mockDefaultToken{result: &TokenResult{Token: "default_tok"}},
+		defaultToken,
 		nil,
 	)
 
-	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "default_app"})
 	if err == nil || err.Error() != "config unavailable" {
 		t.Fatalf("ResolveToken() error = %v, want config unavailable", err)
+	}
+	if defaultToken.tokenCalls != 0 {
+		t.Fatalf("default ResolveToken() calls = %d, want 0", defaultToken.tokenCalls)
+	}
+}
+
+func TestCredentialProvider_ResolveTokenRejectsUnboundAppBeforeExtensionIO(t *testing.T) {
+	tests := []struct {
+		name  string
+		appID string
+	}{
+		{name: "empty app id"},
+		{name: "different app id", appID: "other_app"},
+	}
+
+	for _, tt := range tests {
+		for _, sourceName := range []string{"env", "authsidecar"} {
+			t.Run(tt.name+"/"+sourceName, func(t *testing.T) {
+				provider := &mockExtProvider{
+					name:    sourceName,
+					account: &extcred.Account{AppID: "ext_app", Brand: "feishu"},
+					token:   &extcred.Token{Value: "ext_tok", Source: sourceName},
+				}
+				httpClientCalls := 0
+				cp := NewCredentialProvider(
+					[]extcred.Provider{provider},
+					&mockDefaultAcct{account: &Account{AppID: "default_app"}},
+					&mockDefaultToken{result: &TokenResult{Token: "default_tok"}},
+					func() (*http.Client, error) {
+						httpClientCalls++
+						return nil, errors.New("unexpected user_info call")
+					},
+				)
+
+				_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: tt.appID})
+				if err == nil {
+					t.Fatal("ResolveToken() error = nil, want app binding error")
+				}
+				assertInternalUnknownWithRetryHint(t, err)
+				if provider.tokenCalls != 0 {
+					t.Fatalf("extension ResolveToken() calls = %d, want 0", provider.tokenCalls)
+				}
+				if httpClientCalls != 0 {
+					t.Fatalf("httpClient() calls = %d, want 0", httpClientCalls)
+				}
+			})
+		}
+	}
+}
+
+func TestCredentialProvider_ResolveTokenRejectsUnboundAppBeforeDefaultIO(t *testing.T) {
+	tests := []struct {
+		name  string
+		appID string
+	}{
+		{name: "empty app id"},
+		{name: "different app id", appID: "other_app"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defaultToken := &mockDefaultToken{result: &TokenResult{Token: "default_tok"}}
+			cp := NewCredentialProvider(
+				nil,
+				&mockDefaultAcct{account: &Account{AppID: "default_app"}},
+				defaultToken,
+				nil,
+			)
+
+			_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: tt.appID})
+			if err == nil {
+				t.Fatal("ResolveToken() error = nil, want app binding error")
+			}
+			assertInternalUnknownWithRetryHint(t, err)
+			if defaultToken.tokenCalls != 0 {
+				t.Fatalf("default ResolveToken() calls = %d, want 0", defaultToken.tokenCalls)
+			}
+		})
+	}
+}
+
+func TestCredentialProvider_ResolveTokenRejectsNilAccountBeforeTokenIO(t *testing.T) {
+	defaultToken := &mockDefaultToken{result: &TokenResult{Token: "default_tok"}}
+	cp := NewCredentialProvider(
+		nil,
+		&mockDefaultAcct{},
+		defaultToken,
+		nil,
+	)
+
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "requested_app"})
+	if err == nil {
+		t.Fatal("ResolveToken() error = nil, want nil account error")
+	}
+	assertInternalUnknownWithRetryHint(t, err)
+	if defaultToken.tokenCalls != 0 {
+		t.Fatalf("default ResolveToken() calls = %d, want 0", defaultToken.tokenCalls)
+	}
+}
+
+func TestCredentialProvider_ResolveTokenRejectsMissingSelectedSourceWithoutFallback(t *testing.T) {
+	extension := &mockExtProvider{
+		name:  "env",
+		token: &extcred.Token{Value: "ext_tok", Source: "env"},
+	}
+	defaultToken := &mockDefaultToken{result: &TokenResult{Token: "default_tok"}}
+	cp := NewCredentialProvider(
+		[]extcred.Provider{extension},
+		&mockDefaultAcct{account: &Account{AppID: "default_app"}},
+		defaultToken,
+		nil,
+	)
+	cp.account = &Account{AppID: "selected_app"}
+	cp.accountOnce.Do(func() {})
+
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "selected_app"})
+	if err == nil {
+		t.Fatal("ResolveToken() error = nil, want missing selected source error")
+	}
+	assertInternalUnknownWithRetryHint(t, err)
+	if extension.tokenCalls != 0 {
+		t.Fatalf("extension ResolveToken() calls = %d, want 0", extension.tokenCalls)
+	}
+	if defaultToken.tokenCalls != 0 {
+		t.Fatalf("default ResolveToken() calls = %d, want 0", defaultToken.tokenCalls)
+	}
+}
+
+func TestCredentialProvider_ResolveTokenMatchingExtensionDoesNotEnrichIdentity(t *testing.T) {
+	provider := &mockExtProvider{
+		name:    "env",
+		account: &extcred.Account{AppID: "ext_app", Brand: "feishu"},
+		token:   &extcred.Token{Value: "ext_tok", Source: "env"},
+	}
+	httpClientCalls := 0
+	cp := NewCredentialProvider(
+		[]extcred.Provider{provider},
+		nil,
+		nil,
+		func() (*http.Client, error) {
+			httpClientCalls++
+			return nil, errors.New("unexpected user_info call")
+		},
+	)
+
+	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT, AppID: "ext_app"})
+	if err != nil {
+		t.Fatalf("ResolveToken() error = %v", err)
+	}
+	if result.Token != "ext_tok" {
+		t.Fatalf("ResolveToken() token = %q, want %q", result.Token, "ext_tok")
+	}
+	if provider.tokenCalls != 1 {
+		t.Fatalf("extension ResolveToken() calls = %d, want 1", provider.tokenCalls)
+	}
+	if httpClientCalls != 0 {
+		t.Fatalf("httpClient() calls = %d, want 0", httpClientCalls)
+	}
+}
+
+func assertInternalUnknownWithRetryHint(t *testing.T, err error) {
+	t.Helper()
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error type = %T, want typed internal error", err)
+	}
+	if problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("error problem = %+v, want internal/unknown", problem)
+	}
+	if problem.Hint != "retry the command." {
+		t.Fatalf("error hint = %q, want retry hint", problem.Hint)
 	}
 }
 

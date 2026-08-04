@@ -61,9 +61,11 @@ type TypedError interface {
 // it is intentionally not serialized.
 type ValidationError struct {
 	Problem
-	Param  string         `json:"param,omitempty"`
-	Params []InvalidParam `json:"params,omitempty"`
-	Cause  error          `json:"-"`
+	Param        string         `json:"param,omitempty"`
+	Params       []InvalidParam `json:"params,omitempty"`
+	ProfileAppID string         `json:"profile_app_id,omitempty"`
+	EnvAppID     string         `json:"env_app_id,omitempty"`
+	Cause        error          `json:"-"`
 }
 
 // InvalidParam is one structured validation diagnostic: the parameter that
@@ -147,6 +149,12 @@ func (e *ValidationError) WithParams(params ...InvalidParam) *ValidationError {
 
 func (e *ValidationError) WithCause(cause error) *ValidationError {
 	e.Cause = cause
+	return e
+}
+
+func (e *ValidationError) WithProfileAppConflict(profileAppID, envAppID string) *ValidationError {
+	e.ProfileAppID = profileAppID
+	e.EnvAppID = envAppID
 	return e
 }
 
@@ -315,8 +323,18 @@ func (e *PermissionError) WithCause(cause error) *PermissionError {
 // intentionally not serialized.
 type ConfigError struct {
 	Problem
-	Field string `json:"field,omitempty"`
-	Cause error  `json:"-"`
+	Field         string   `json:"field,omitempty"`
+	MissingKeys   []string `json:"missing_keys,omitempty"`
+	RequiredAnyOf []string `json:"required_any_of,omitempty"`
+	Profile       string   `json:"profile,omitempty"`
+	AppID         string   `json:"app_id,omitempty"`
+	// CredentialSource is the machine-readable App/credential selection source
+	// that produced this config error (e.g. "flag:--profile",
+	// "env:LARKSUITE_CLI_PROFILE", "config"). It is required on
+	// profile_not_found and no_active_profile so an agent can branch
+	// on how the identity was (or was not) chosen. It is never a secret.
+	CredentialSource string `json:"credential_source,omitempty"`
+	Cause            error  `json:"-"`
 }
 
 // Unwrap is nil-receiver safe; see ValidationError.Unwrap.
@@ -367,6 +385,34 @@ func (e *ConfigError) WithRetryable() *ConfigError {
 
 func (e *ConfigError) WithField(field string) *ConfigError {
 	e.Field = field
+	return e
+}
+
+func (e *ConfigError) WithMissingKeys(keys ...string) *ConfigError {
+	e.MissingKeys = slices.Clone(keys)
+	return e
+}
+
+func (e *ConfigError) WithRequiredAnyOf(keys ...string) *ConfigError {
+	e.RequiredAnyOf = slices.Clone(keys)
+	return e
+}
+
+func (e *ConfigError) WithProfile(name string) *ConfigError {
+	e.Profile = name
+	return e
+}
+
+func (e *ConfigError) WithAppID(appID string) *ConfigError {
+	e.AppID = appID
+	return e
+}
+
+// WithCredentialSource records the machine-readable credential-selection source
+// on the wire (snake_case credential_source). The value is an enum string
+// (e.g. "flag:--profile", "config"), never a secret.
+func (e *ConfigError) WithCredentialSource(source string) *ConfigError {
+	e.CredentialSource = source
 	return e
 }
 

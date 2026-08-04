@@ -38,6 +38,18 @@ func (s *staticShortcutTokenResolver) ResolveToken(_ context.Context, _ credenti
 	return &credential.TokenResult{Token: "tenant-token"}, nil
 }
 
+type imTestAccountResolver struct {
+	appID string
+}
+
+func (r imTestAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return &credential.Account{AppID: r.appID}, nil
+}
+
+func newIMTestCredentialProvider(appID string, tokenResolver credential.DefaultTokenResolver) *credential.CredentialProvider {
+	return credential.NewCredentialProvider(nil, imTestAccountResolver{appID: appID}, tokenResolver, nil)
+}
+
 type shortcutRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f shortcutRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -110,7 +122,7 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 		AppSecret: "test-secret",
 		Brand:     core.BrandFeishu,
 	}
-	testCred := credential.NewCredentialProvider(nil, nil, &staticShortcutTokenResolver{}, nil)
+	testCred := newIMTestCredentialProvider(cfg.AppID, &staticShortcutTokenResolver{})
 	runtime := &common.RuntimeContext{
 		Config: cfg,
 		Factory: &cmdutil.Factory{

@@ -15,10 +15,13 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
+	envprovider "github.com/larksuite/cli/extension/credential/env"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/identitydiag"
+	"github.com/larksuite/cli/internal/keychain"
 )
 
 func TestResolveSource(t *testing.T) {
@@ -52,7 +55,7 @@ func TestBuildResult_UserValid(t *testing.T) {
 	diag := identitydiag.Result{
 		User: identitydiag.Identity{Available: true, Status: "ready", TokenStatus: "valid", OpenID: "ou_x", UserName: "Alice"},
 	}
-	r := buildResult(cfg, core.AsUser, "auto_detect", diag)
+	r := buildResult(cfg, core.AsUser, "auto_detect", diag, credential.IdentitySelection{})
 
 	if r.Identity != "user" || r.IdentitySource != "auto_detect" {
 		t.Fatalf("identity/source = %q/%q", r.Identity, r.IdentitySource)
@@ -77,7 +80,7 @@ func TestBuildResult_UserMissingToken(t *testing.T) {
 	diag := identitydiag.Result{
 		User: identitydiag.Identity{Available: false, Status: "missing", Hint: "run: lark-cli auth login --help"}, // never logged in
 	}
-	r := buildResult(cfg, core.AsUser, "auto_detect", diag)
+	r := buildResult(cfg, core.AsUser, "auto_detect", diag, credential.IdentitySelection{})
 
 	if r.Available {
 		t.Fatalf("available = true, want false")
@@ -100,7 +103,7 @@ func TestBuildResult_BotReady(t *testing.T) {
 	diag := identitydiag.Result{
 		Bot: identitydiag.Identity{Available: true, Status: "ready"},
 	}
-	r := buildResult(cfg, core.AsBot, "default_as", diag)
+	r := buildResult(cfg, core.AsBot, "default_as", diag, credential.IdentitySelection{})
 
 	if r.Identity != "bot" || r.IdentitySource != "default_as" {
 		t.Fatalf("identity/source = %q/%q", r.Identity, r.IdentitySource)
@@ -121,7 +124,7 @@ func TestBuildResult_BotNotConfigured(t *testing.T) {
 	diag := identitydiag.Result{
 		Bot: identitydiag.Identity{Available: false, Status: "not_configured", Hint: "run: lark-cli config --help"},
 	}
-	r := buildResult(cfg, core.AsBot, "auto_detect", diag)
+	r := buildResult(cfg, core.AsBot, "auto_detect", diag, credential.IdentitySelection{})
 
 	if r.Available {
 		t.Fatalf("available = true, want false")
@@ -316,5 +319,96 @@ func TestWhoami_ExternalProvider_UserHintNotKeychain(t *testing.T) {
 	}
 	if !strings.Contains(got.Hint, "external") {
 		t.Fatalf("hint should explain external management: %q", got.Hint)
+	}
+}
+
+// noopWhoamiKeychain is a no-op KeychainAccess; the profile below uses a
+// plaintext secret, so no keychain lookup is actually required.
+type noopWhoamiKeychain struct{}
+
+func (noopWhoamiKeychain) Get(service, account string) (string, error) { return "", nil }
+func (noopWhoamiKeychain) Set(service, account, value string) error    { return nil }
+func (noopWhoamiKeychain) Remove(service, account string) error        { return nil }
+
+// credentialSourceSecret is the profile secret written to config for
+// TestWhoamiIncludesCredentialSource. It must never leak into whoami's output
+// (security: never leak a secret).
+const credentialSourceSecret = "test-secret"
+
+// profileSelectionFactory builds a Factory whose CredentialProvider resolves
+// an explicit profile ("tenant_a") supplied via the LARKSUITE_CLI_PROFILE env
+// fallback (not --profile), so Selection().Source resolves to
+// env:LARKSUITE_CLI_PROFILE and Explicit() is true, with no direct
+// app-credential env vars present.
+func profileSelectionFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer) {
+	t.Helper()
+	t.Setenv(envvars.CliAppID, "")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	multi := &core.MultiAppConfig{
+		CurrentApp: "tenant_a",
+		Apps: []core.AppConfig{{
+			Name:      "tenant_a",
+			AppId:     "cli_a",
+			AppSecret: core.PlainSecret(credentialSourceSecret),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
+
+	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return noopWhoamiKeychain{} }, "tenant_a")
+	cred := credential.NewCredentialProvider([]extcred.Provider{&envprovider.Provider{}}, defaultAcct, nil, nil)
+	cred.WithProfileFromEnv("tenant_a")
+
+	cfg := &core.CliConfig{ProfileName: "tenant_a", AppID: "cli_a", AppSecret: credentialSourceSecret, Brand: core.BrandFeishu}
+	out := &bytes.Buffer{}
+	f := &cmdutil.Factory{
+		Config:     func() (*core.CliConfig, error) { return cfg, nil },
+		Credential: cred,
+		IOStreams:  &cmdutil.IOStreams{Out: out, ErrOut: &bytes.Buffer{}},
+	}
+	return f, out
+}
+
+// TestWhoamiIncludesCredentialSource locks in the diagnostic fields surfaced
+// from the cached credential.IdentitySelection: credentialSource,
+// explicit, and directCredentialEnv. whoami must read the cached selection
+// as-is, not re-infer it.
+func TestWhoamiIncludesCredentialSource(t *testing.T) {
+	f, out := profileSelectionFactory(t)
+
+	cmd := NewCmdWhoami(f)
+	cmd.SetArgs([]string{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	raw := out.String()
+	if strings.Contains(raw, credentialSourceSecret) {
+		t.Fatalf("whoami output leaked the profile secret: %s", raw)
+	}
+
+	var got whoamiResult
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\n%s", err, raw)
+	}
+	if got.CredentialSource != string(credential.SourceEnvProfile) {
+		t.Fatalf("credentialSource = %q, want %q", got.CredentialSource, credential.SourceEnvProfile)
+	}
+	if !got.Explicit {
+		t.Fatalf("explicit = false, want true")
+	}
+	if got.DirectCredentialEnv.Present {
+		t.Fatalf("directCredentialEnv.present = true, want false: %#v", got.DirectCredentialEnv)
+	}
+	if !strings.Contains(raw, `"credentialSource": "env:LARKSUITE_CLI_PROFILE"`) {
+		t.Fatalf("raw JSON missing credentialSource literal: %s", raw)
+	}
+	if got.DirectCredentialEnv.Present || len(got.DirectCredentialEnv.Keys) != 0 ||
+		got.DirectCredentialEnv.AppID != "" || got.DirectCredentialEnv.Matched || got.DirectCredentialEnv.ConflictsWithProfile {
+		t.Fatalf("directCredentialEnv = %#v, want only present:false set", got.DirectCredentialEnv)
 	}
 }

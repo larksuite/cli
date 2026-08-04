@@ -136,6 +136,79 @@ func TestConfigError_MarshalJSON(t *testing.T) {
 	}
 }
 
+func TestConfigError_ProfileFieldsMarshalJSON(t *testing.T) {
+	ce := NewConfigError(SubtypeAppCredentialIncomplete, "incomplete").
+		WithMissingKeys("LARKSUITE_CLI_APP_ID", "LARKSUITE_CLI_APP_SECRET").
+		WithRequiredAnyOf("LARKSUITE_CLI_APP_SECRET", "LARKSUITE_CLI_USER_ACCESS_TOKEN").
+		WithProfile("work").
+		WithAppID("cli_abc").
+		WithCredentialSource("flag:--profile")
+	b, err := json.Marshal(ce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{
+		`"type":"config"`,
+		`"subtype":"app_credential_incomplete"`,
+		`"missing_keys":["LARKSUITE_CLI_APP_ID","LARKSUITE_CLI_APP_SECRET"]`,
+		`"required_any_of":["LARKSUITE_CLI_APP_SECRET","LARKSUITE_CLI_USER_ACCESS_TOKEN"]`,
+		`"profile":"work"`,
+		`"app_id":"cli_abc"`,
+		`"credential_source":"flag:--profile"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in %s", want, s)
+		}
+	}
+
+	// omitempty: unset fields must not appear on the wire.
+	empty := NewConfigError(SubtypeProfileNotFound, "x")
+	b2, err := json.Marshal(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2 := string(b2)
+	for _, notWant := range []string{`"missing_keys"`, `"required_any_of"`, `"profile"`, `"app_id"`, `"credential_source"`} {
+		if strings.Contains(s2, notWant) {
+			t.Errorf("%q should be omitted when empty; got %s", notWant, s2)
+		}
+	}
+}
+
+func TestValidationError_ProfileConflictMarshalJSON(t *testing.T) {
+	ve := NewValidationError(SubtypeProfileAppCredentialConflict, "conflict").
+		WithProfileAppConflict("cli_profile", "cli_env")
+	b, err := json.Marshal(ve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{
+		`"type":"validation"`,
+		`"subtype":"profile_app_credential_conflict"`,
+		`"profile_app_id":"cli_profile"`,
+		`"env_app_id":"cli_env"`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in %s", want, s)
+		}
+	}
+
+	// omitempty: unset conflict fields must not appear on the wire.
+	empty := NewValidationError(SubtypeInvalidArgument, "x")
+	b2, err := json.Marshal(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2 := string(b2)
+	for _, notWant := range []string{`"profile_app_id"`, `"env_app_id"`} {
+		if strings.Contains(s2, notWant) {
+			t.Errorf("%q should be omitted when empty; got %s", notWant, s2)
+		}
+	}
+}
+
 func TestNetworkError_MarshalJSON(t *testing.T) {
 	ne := &NetworkError{
 		Problem: Problem{Category: CategoryNetwork, Subtype: SubtypeNetworkTimeout, Message: "dial timeout"},

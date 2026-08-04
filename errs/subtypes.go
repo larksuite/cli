@@ -12,8 +12,9 @@ const (
 
 // CategoryValidation subtypes
 const (
-	SubtypeInvalidArgument    Subtype = "invalid_argument"    // user-supplied flag / arg failed validation (gRPC INVALID_ARGUMENT alignment)
-	SubtypeFailedPrecondition Subtype = "failed_precondition" // request is valid but the system/resource state is not in the state required to execute; caller must change state (not retry) — e.g. ambiguous remote mapping (gRPC FAILED_PRECONDITION alignment)
+	SubtypeInvalidArgument              Subtype = "invalid_argument"                // user-supplied flag / arg failed validation (gRPC INVALID_ARGUMENT alignment)
+	SubtypeFailedPrecondition           Subtype = "failed_precondition"             // request is valid but the system/resource state is not in the state required to execute; caller must change state (not retry) — e.g. ambiguous remote mapping (gRPC FAILED_PRECONDITION alignment)
+	SubtypeProfileAppCredentialConflict Subtype = "profile_app_credential_conflict" // profile and direct app env both set but app_id differs
 )
 
 // CategoryAuthentication subtypes
@@ -41,9 +42,13 @@ const (
 
 // CategoryConfig subtypes
 const (
-	SubtypeInvalidClient Subtype = "invalid_client" // app_id / app_secret incorrect (RFC 6749 §5.2 alignment)
-	SubtypeNotConfigured Subtype = "not_configured" // local config file absent (user has not run `config init`)
-	SubtypeInvalidConfig Subtype = "invalid_config" // local config file present but malformed
+	SubtypeInvalidClient           Subtype = "invalid_client"            // app_id / app_secret incorrect (RFC 6749 §5.2 alignment)
+	SubtypeNotConfigured           Subtype = "not_configured"            // local config file absent (user has not run `config init`)
+	SubtypeInvalidConfig           Subtype = "invalid_config"            // local config file present but malformed
+	SubtypeProfileNotFound         Subtype = "profile_not_found"         // --profile / LARKSUITE_CLI_PROFILE points to a nonexistent profile
+	SubtypeNoActiveProfile         Subtype = "no_active_profile"         // no active identity input and no usable default profile
+	SubtypeAppCredentialIncomplete Subtype = "app_credential_incomplete" // direct app env missing app_id or app_secret
+	SubtypeProfileSecretInvalid    Subtype = "profile_secret_invalid"    // profile exists but its secret cannot be resolved locally
 )
 
 // CategoryNetwork subtypes

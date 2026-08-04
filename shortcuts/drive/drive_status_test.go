@@ -33,6 +33,18 @@ func (r *driveStatusScopedTokenResolver) ResolveToken(ctx context.Context, req c
 	return &credential.TokenResult{Token: "test-token", Scopes: r.scopes}, nil
 }
 
+type driveTestAccountResolver struct {
+	appID string
+}
+
+func (r driveTestAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return &credential.Account{AppID: r.appID}, nil
+}
+
+func newDriveTestCredentialProvider(appID string, tokenResolver credential.DefaultTokenResolver) *credential.CredentialProvider {
+	return credential.NewCredentialProvider(nil, driveTestAccountResolver{appID: appID}, tokenResolver, nil)
+}
+
 // TestDriveStatusCategorizesByHash exercises the four-bucket classification
 // against a real walk of the temp dir and a mocked Drive listing.
 func TestDriveStatusCategorizesByHash(t *testing.T) {
@@ -308,7 +320,7 @@ func TestDriveStatusQuickMarksUntrustedTimestampAsModified(t *testing.T) {
 // requiring drive:file:download even after quick mode made download optional.
 func TestDriveStatusExactRejectsMissingDownloadScope(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
-	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:drive.metadata:readonly"}, nil)
+	f.Credential = newDriveTestCredentialProvider(driveTestConfig().AppID, &driveStatusScopedTokenResolver{scopes: "drive:drive.metadata:readonly"})
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -357,7 +369,7 @@ func TestDriveStatusExactRejectsMissingDownloadScope(t *testing.T) {
 // blocked on the exact-mode download scope precheck.
 func TestDriveStatusQuickAcceptsMissingDownloadScope(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:drive.metadata:readonly"}, nil)
+	f.Credential = newDriveTestCredentialProvider(driveTestConfig().AppID, &driveStatusScopedTokenResolver{scopes: "drive:drive.metadata:readonly"})
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)

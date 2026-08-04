@@ -27,7 +27,16 @@ func NewCmdConfigShow(f *cmdutil.Factory, runF func(*ConfigShowOptions) error) *
 
 	cmd := &cobra.Command{
 		Use:   "show",
-		Short: "Show current configuration",
+		Short: "Show saved config",
+		Long:  "Shows saved config. To see the app/profile lark-cli is using now, run `lark-cli whoami --json`.",
+		// Override parent's RequireBuiltinCredentialProvider check: this
+		// command reads the SAVED config only (its own help promises "saved
+		// config, not current usage"), so the currently effective credential
+		// source — external or otherwise — must not gate it.
+		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
+			c.SilenceUsage = true
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if runF != nil {
 				return runF(opts)
@@ -53,7 +62,10 @@ func configShowRun(opts *ConfigShowOptions) error {
 	if config == nil || len(config.Apps) == 0 {
 		return core.NotConfiguredError()
 	}
-	app := config.CurrentAppConfig(f.Invocation.Profile)
+	// Saved config only: the session profile (--profile / LARKSUITE_CLI_PROFILE)
+	// must not change what this command shows — the help and skill routing
+	// promise "saved config, not current usage" (use whoami for that).
+	app := config.CurrentAppConfig("")
 	if app == nil {
 		return errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").WithHint("run: lark-cli profile list")
 	}

@@ -110,8 +110,20 @@ func (failingTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSp
 	return nil, errors.New("backend unavailable")
 }
 
+type eventTestAccountResolver struct {
+	appID string
+}
+
+func (r eventTestAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return &credential.Account{AppID: r.appID}, nil
+}
+
+func newEventTestCredentialProvider(appID string, tokenResolver credential.DefaultTokenResolver) *credential.CredentialProvider {
+	return credential.NewCredentialProvider(nil, eventTestAccountResolver{appID: appID}, tokenResolver, nil)
+}
+
 func factoryWithResolver(r credential.DefaultTokenResolver) *cmdutil.Factory {
-	return &cmdutil.Factory{Credential: credential.NewCredentialProvider(nil, nil, r, nil)}
+	return &cmdutil.Factory{Credential: newEventTestCredentialProvider("cli_x", r)}
 }
 
 func TestResolveTenantToken_EmptyTokenResult(t *testing.T) {

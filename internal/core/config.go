@@ -255,7 +255,11 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	}
 
 	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
-		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "appId and appSecret keychain key are out of sync").
+		// invalid_config, not not_configured: the config exists but is
+		// internally inconsistent. not_configured would let callers degrade
+		// this into a generic "secret invalid" answer and destroy the precise
+		// repair hint (which names the expected keychain key — never a value).
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "appId and appSecret keychain key are out of sync").
 			WithHint("%s", err.Error()).
 			WithCause(err)
 	}

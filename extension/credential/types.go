@@ -44,6 +44,27 @@ func (s IdentitySupport) UserOnly() bool { return s == SupportsUser }
 // BotOnly returns true if only bot identity is supported.
 func (s IdentitySupport) BotOnly() bool { return s == SupportsBot }
 
+// AccountKind declares how an account participates in credential arbitration.
+type AccountKind int
+
+const (
+	// AccountManaged means the provider owns the whole identity; winning it
+	// ends arbitration outright. The zero value, so existing providers are
+	// unchanged.
+	AccountManaged AccountKind = iota
+	// AccountDirect marks an actively supplied raw credential (the env
+	// provider's LARKSUITE_CLI_* variables). It participates in profile
+	// arbitration and conflict detection instead of winning outright.
+	//
+	// RESERVED: only the builtin env provider may declare AccountDirect
+	// today — the arbitration's direct-credential diagnostics are defined in
+	// terms of the process environment, and the caller rejects AccountDirect
+	// from any other provider. Third-party providers must return
+	// AccountManaged until the SPI carries provider-reported input
+	// descriptors.
+	AccountDirect
+)
+
 // Account holds resolved app credentials and configuration.
 type Account struct {
 	AppID               string
@@ -53,6 +74,7 @@ type Account struct {
 	ProfileName         string
 	OpenID              string          // optional; if UAT is available, API result takes precedence
 	SupportedIdentities IdentitySupport // zero = provider did not declare; treat as no restriction
+	Kind                AccountKind     // AccountManaged (default) or AccountDirect
 }
 
 // Token holds a resolved access token and optional metadata.
@@ -76,11 +98,38 @@ type TokenSpec struct {
 	AppID string
 }
 
+// BlockReason classifies provider-originated block conditions that callers may
+// safely map to a more specific public error contract.
+type BlockReason string
+
+const (
+	// BlockReasonCredentialIncomplete marks incomplete inputs from the builtin
+	// process-env credential provider. It is reserved for that provider because
+	// direct-credential arbitration and diagnostics currently name the fixed
+	// LARKSUITE_CLI_* env surface. Third-party providers must return an
+	// unclassified BlockError until the SPI carries provider-owned input
+	// descriptors. Blocks without a Code propagate unchanged.
+	BlockReasonCredentialIncomplete BlockReason = "credential_incomplete"
+
+	// BlockReasonInvalidPolicy marks a user-supplied policy input (e.g.
+	// LARKSUITE_CLI_DEFAULT_AS / LARKSUITE_CLI_STRICT_MODE) that failed
+	// validation. The caller maps it to a typed validation error carrying
+	// Param and a repair hint, so user input mistakes never surface as
+	// internal errors.
+	BlockReasonInvalidPolicy BlockReason = "invalid_policy"
+)
+
 // BlockError is returned by a Provider to actively reject a request
 // and prevent subsequent providers in the chain from being consulted.
 type BlockError struct {
-	Provider string
-	Reason   string
+	Provider      string
+	Reason        string
+	Code          BlockReason
+	MissingKeys   []string // environment variable names only; never values
+	RequiredAnyOf []string // environment variable names only; never values
+	PresentKeys   []string // environment variable names only; never values
+	AppID         string   // plaintext app identifier used only for source comparison; never a secret
+	Param         string   // name of the invalid input variable on invalid_policy blocks; never a value
 }
 
 func (e *BlockError) Error() string {

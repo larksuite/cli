@@ -22,7 +22,6 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -1593,7 +1592,7 @@ func TestDriveSyncAskConflictEOFDuringPlanningPreventsAnyWrites(t *testing.T) {
 
 func TestDriveSyncDryRunQuickAcceptsMetadataOnlyScope(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
-	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:drive.metadata:readonly"}, nil)
+	f.Credential = newDriveTestCredentialProvider(driveTestConfig().AppID, &driveStatusScopedTokenResolver{scopes: "drive:drive.metadata:readonly"})
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -1622,7 +1621,7 @@ func TestDriveSyncPreflightsActionScopesBeforeListing(t *testing.T) {
 		AppID: "drive-sync-download-scope-only", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, _ := cmdutil.TestFactory(t, syncTestConfig)
-	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:drive.metadata:readonly drive:file:download"}, nil)
+	f.Credential = newDriveTestCredentialProvider(syncTestConfig.AppID, &driveStatusScopedTokenResolver{scopes: "drive:drive.metadata:readonly drive:file:download"})
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)

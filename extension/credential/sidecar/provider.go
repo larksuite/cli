@@ -77,6 +77,8 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		return nil, &credential.BlockError{
 			Provider: "sidecar",
 			Reason:   fmt.Sprintf("invalid %s %q (want user, bot, or auto)", envvars.CliDefaultAs, id),
+			Code:     credential.BlockReasonInvalidPolicy,
+			Param:    envvars.CliDefaultAs,
 		}
 	}
 
@@ -92,6 +94,8 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		return nil, &credential.BlockError{
 			Provider: "sidecar",
 			Reason:   fmt.Sprintf("invalid %s %q (want bot, user, or off)", envvars.CliStrictMode, strictMode),
+			Code:     credential.BlockReasonInvalidPolicy,
+			Param:    envvars.CliStrictMode,
 		}
 	}
 

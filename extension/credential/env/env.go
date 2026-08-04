@@ -23,61 +23,87 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	appSecret := os.Getenv(envvars.CliAppSecret)
 	hasUAT := os.Getenv(envvars.CliUserAccessToken) != ""
 	hasTAT := os.Getenv(envvars.CliTenantAccessToken) != ""
-	if appID == "" && appSecret == "" {
-		switch {
-		case hasUAT:
-			return nil, &credential.BlockError{Provider: "env", Reason: envvars.CliUserAccessToken + " is set but " + envvars.CliAppID + " is missing"}
-		case hasTAT:
-			return nil, &credential.BlockError{Provider: "env", Reason: envvars.CliTenantAccessToken + " is set but " + envvars.CliAppID + " is missing"}
-		default:
-			return nil, nil
-		}
+	presentKeys := presentCredentialEnvKeys(appID, appSecret, hasUAT, hasTAT)
+	if len(presentKeys) == 0 {
+		return nil, nil
 	}
-	if appID == "" {
-		return nil, &credential.BlockError{Provider: "env", Reason: envvars.CliAppSecret + " is set but " + envvars.CliAppID + " is missing"}
-	}
-	if appSecret == "" && !hasUAT && !hasTAT {
-		return nil, &credential.BlockError{
-			Provider: "env",
-			Reason:   envvars.CliAppID + " is set but no app secret or access token is available",
-		}
-	}
-	brand := credential.Brand(core.ParseBrand(os.Getenv(envvars.CliBrand)))
-	acct := &credential.Account{AppID: appID, AppSecret: appSecret, Brand: brand}
 
-	switch id := credential.Identity(os.Getenv(envvars.CliDefaultAs)); id {
-	case "", credential.IdentityAuto:
-		acct.DefaultAs = id
-	case credential.IdentityUser, credential.IdentityBot:
-		acct.DefaultAs = id
+	// Identity policy variables are validated whenever a direct credential
+	// input is present. Their errors must not be hidden by a later credential
+	// completeness check or profile arbitration.
+	defaultAs := credential.Identity(os.Getenv(envvars.CliDefaultAs))
+	switch defaultAs {
+	case "", credential.IdentityAuto, credential.IdentityUser, credential.IdentityBot:
 	default:
 		return nil, &credential.BlockError{
 			Provider: "env",
-			Reason:   fmt.Sprintf("invalid %s %q (want user, bot, or auto)", envvars.CliDefaultAs, id),
+			Reason:   fmt.Sprintf("invalid %s %q (want user, bot, or auto)", envvars.CliDefaultAs, defaultAs),
+			Code:     credential.BlockReasonInvalidPolicy,
+			Param:    envvars.CliDefaultAs,
 		}
 	}
 
-	// Explicit strict mode policy takes priority
-	switch strictMode := os.Getenv(envvars.CliStrictMode); strictMode {
+	strictMode := os.Getenv(envvars.CliStrictMode)
+	var supported credential.IdentitySupport
+	switch strictMode {
 	case "bot":
-		acct.SupportedIdentities = credential.SupportsBot
+		supported = credential.SupportsBot
 	case "user":
-		acct.SupportedIdentities = credential.SupportsUser
+		supported = credential.SupportsUser
 	case "off":
-		acct.SupportedIdentities = credential.SupportsAll
+		supported = credential.SupportsAll
 	case "":
-		// Infer from available tokens
 		if hasUAT {
-			acct.SupportedIdentities |= credential.SupportsUser
+			supported |= credential.SupportsUser
 		}
 		if hasTAT {
-			acct.SupportedIdentities |= credential.SupportsBot
+			supported |= credential.SupportsBot
 		}
 	default:
 		return nil, &credential.BlockError{
 			Provider: "env",
 			Reason:   fmt.Sprintf("invalid %s %q (want bot, user, or off)", envvars.CliStrictMode, strictMode),
+			Code:     credential.BlockReasonInvalidPolicy,
+			Param:    envvars.CliStrictMode,
 		}
+	}
+
+	if appID == "" && appSecret == "" {
+		switch {
+		case hasUAT:
+			return nil, incompleteCredentialError(
+				appID,
+				envvars.CliUserAccessToken+" is set but "+envvars.CliAppID+" is missing",
+				[]string{envvars.CliAppID}, nil, presentKeys)
+		case hasTAT:
+			return nil, incompleteCredentialError(
+				appID,
+				envvars.CliTenantAccessToken+" is set but "+envvars.CliAppID+" is missing",
+				[]string{envvars.CliAppID}, nil, presentKeys)
+		}
+	}
+	if appID == "" {
+		return nil, incompleteCredentialError(
+			appID,
+			envvars.CliAppSecret+" is set but "+envvars.CliAppID+" is missing",
+			[]string{envvars.CliAppID}, nil, presentKeys)
+	}
+	if appSecret == "" && !hasUAT && !hasTAT {
+		return nil, incompleteCredentialError(
+			appID,
+			envvars.CliAppID+" is set but no app secret or access token is available",
+			nil,
+			[]string{envvars.CliAppSecret, envvars.CliUserAccessToken, envvars.CliTenantAccessToken},
+			presentKeys)
+	}
+	brand := credential.Brand(core.ParseBrand(os.Getenv(envvars.CliBrand)))
+	acct := &credential.Account{
+		AppID:               appID,
+		AppSecret:           appSecret,
+		Brand:               brand,
+		DefaultAs:           defaultAs,
+		SupportedIdentities: supported,
+		Kind:                credential.AccountDirect,
 	}
 
 	if acct.DefaultAs == "" {
@@ -90,6 +116,35 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	}
 
 	return acct, nil
+}
+
+func incompleteCredentialError(appID, reason string, missingKeys, requiredAnyOf, presentKeys []string) *credential.BlockError {
+	return &credential.BlockError{
+		Provider:      "env",
+		Reason:        reason,
+		Code:          credential.BlockReasonCredentialIncomplete,
+		MissingKeys:   missingKeys,
+		RequiredAnyOf: requiredAnyOf,
+		PresentKeys:   presentKeys,
+		AppID:         appID,
+	}
+}
+
+func presentCredentialEnvKeys(appID, appSecret string, hasUAT, hasTAT bool) []string {
+	var keys []string
+	if appID != "" {
+		keys = append(keys, envvars.CliAppID)
+	}
+	if appSecret != "" {
+		keys = append(keys, envvars.CliAppSecret)
+	}
+	if hasUAT {
+		keys = append(keys, envvars.CliUserAccessToken)
+	}
+	if hasTAT {
+		keys = append(keys, envvars.CliTenantAccessToken)
+	}
+	return keys
 }
 
 func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (*credential.Token, error) {

@@ -27,6 +27,18 @@ type fakeWikiMoveNodeCall struct {
 	Spec          wikiMoveSpec
 }
 
+type wikiTestAccountResolver struct {
+	appID string
+}
+
+func (r wikiTestAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return &credential.Account{AppID: r.appID}, nil
+}
+
+func newWikiTestCredentialProvider(appID string, tokenResolver credential.DefaultTokenResolver) *credential.CredentialProvider {
+	return credential.NewCredentialProvider(nil, wikiTestAccountResolver{appID: appID}, tokenResolver, nil)
+}
+
 type fakeWikiDocsToWikiMoveCall struct {
 	TargetSpaceID string
 	Spec          wikiMoveSpec
@@ -143,7 +155,7 @@ func newWikiMoveRuntimeWithScopes(t *testing.T, as core.Identity, scopes string)
 
 	cfg := wikiTestConfig()
 	factory, _, stderr, _ := cmdutil.TestFactory(t, cfg)
-	factory.Credential = credential.NewCredentialProvider(nil, nil, &mockWikiMoveTokenResolver{scopes: scopes}, nil)
+	factory.Credential = newWikiTestCredentialProvider(cfg.AppID, &mockWikiMoveTokenResolver{scopes: scopes})
 
 	runtime := common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "wiki +move"}, cfg, as)
 	runtime.Factory = factory

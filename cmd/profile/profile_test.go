@@ -306,14 +306,24 @@ func TestProfileListRun_OutputsProfiles(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("Unmarshal() error = %v; output=%s", err, stdout.String())
 	}
+	raw := stdout.String()
+	// `active` is renamed to `default` as a declared breaking change: keeping
+	// a permanently mirrored alias would keep misleading agents into reading
+	// it as the currently effective identity (whoami's job).
+	if strings.Contains(raw, `"active"`) {
+		t.Fatalf("profile list output contains renamed active field: %s", raw)
+	}
+	if !strings.Contains(raw, `"default"`) {
+		t.Fatalf("profile list output missing default field: %s", raw)
+	}
 	if len(got) != 2 {
 		t.Fatalf("len(got) = %d, want 2", len(got))
 	}
-	if got[0].Name != "default" || !got[0].Active {
-		t.Fatalf("got[0] = %#v, want active default profile", got[0])
+	if got[0].Name != "default" || !got[0].Default {
+		t.Fatalf("got[0] = %#v, want configured default profile", got[0])
 	}
-	if got[1].Name != "target" || got[1].Active {
-		t.Fatalf("got[1] = %#v, want inactive target profile", got[1])
+	if got[1].Name != "target" || got[1].Default {
+		t.Fatalf("got[1] = %#v, want non-default target profile", got[1])
 	}
 }
 
@@ -625,6 +635,39 @@ func TestProfileRemoveRun_ValidationErrors(t *testing.T) {
 			t.Fatal("hint is empty, want actionable hint")
 		}
 	})
+}
+
+// TestProfileHelpHasSelectionSection asserts `profile --help` documents the
+// per-invocation flag and session-scoped env var for selecting a profile, so
+// users and AI agents can find LARKSUITE_CLI_PROFILE without reading source.
+func TestProfileHelpHasSelectionSection(t *testing.T) {
+	cmd := NewCmdProfile(nil)
+	if !strings.Contains(cmd.Long, "Identity diagnostics and profile selection:") {
+		t.Errorf("profile --help missing identity diagnostics and profile selection section")
+	}
+	if !strings.Contains(cmd.Long, "LARKSUITE_CLI_PROFILE") {
+		t.Errorf("profile --help missing LARKSUITE_CLI_PROFILE")
+	}
+	if !strings.Contains(cmd.Long, "lark-cli whoami --json") {
+		t.Errorf("profile --help missing whoami identity route")
+	}
+	if !strings.Contains(cmd.Long, "config show / profile list") {
+		t.Errorf("profile --help missing saved-config boundary")
+	}
+	const precedence = "A selected profile takes precedence over matching direct env credentials and tokens."
+	if !strings.Contains(cmd.Long, precedence) {
+		t.Errorf("profile --help missing precedence statement %q", precedence)
+	}
+}
+
+func TestProfileListHelpClarifiesSavedProfiles(t *testing.T) {
+	cmd := NewCmdProfileList(nil)
+	if !strings.Contains(cmd.Short, "saved profiles") {
+		t.Errorf("profile list short = %q, want saved profiles", cmd.Short)
+	}
+	if !strings.Contains(cmd.Long, "lark-cli whoami --json") {
+		t.Errorf("profile list help missing whoami route")
+	}
 }
 
 func TestProfileListRun_InvalidConfigReturnsValidationError(t *testing.T) {

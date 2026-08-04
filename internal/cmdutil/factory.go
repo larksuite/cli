@@ -29,6 +29,11 @@ import (
 // In tests, replace any field to stub out external dependencies.
 type InvocationContext struct {
 	Profile string
+	// ProfileFromFlag is true when Profile was set via the --profile flag,
+	// and false when it came from the LARKSUITE_CLI_PROFILE env fallback
+	// (or neither was set). Downstream credential resolution uses this to
+	// report the correct profile source.
+	ProfileFromFlag bool
 }
 
 type Factory struct {

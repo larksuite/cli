@@ -6,6 +6,7 @@ package env
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -47,6 +48,22 @@ func TestResolveAccount_OnlyIDSet(t *testing.T) {
 	if !errors.As(err, &blockErr) {
 		t.Fatalf("expected BlockError, got %v", err)
 	}
+	if blockErr.Code != credential.BlockReasonCredentialIncomplete {
+		t.Fatalf("Code = %q, want %q", blockErr.Code, credential.BlockReasonCredentialIncomplete)
+	}
+	want := []string{envvars.CliAppSecret, envvars.CliUserAccessToken, envvars.CliTenantAccessToken}
+	if !slices.Equal(blockErr.RequiredAnyOf, want) {
+		t.Fatalf("RequiredAnyOf = %v, want %v", blockErr.RequiredAnyOf, want)
+	}
+	if len(blockErr.MissingKeys) != 0 {
+		t.Fatalf("MissingKeys = %v, want empty", blockErr.MissingKeys)
+	}
+	if !slices.Equal(blockErr.PresentKeys, []string{envvars.CliAppID}) {
+		t.Fatalf("PresentKeys = %v, want [%s]", blockErr.PresentKeys, envvars.CliAppID)
+	}
+	if blockErr.AppID != "cli_test" {
+		t.Fatalf("AppID = %q, want cli_test", blockErr.AppID)
+	}
 }
 
 func TestResolveAccount_AppIDAndUserTokenWithoutSecret(t *testing.T) {
@@ -75,18 +92,81 @@ func TestResolveAccount_OnlySecretSet(t *testing.T) {
 	if !errors.As(err, &blockErr) {
 		t.Fatalf("expected BlockError, got %v", err)
 	}
+	if blockErr.Code != credential.BlockReasonCredentialIncomplete ||
+		!slices.Equal(blockErr.MissingKeys, []string{envvars.CliAppID}) ||
+		!slices.Equal(blockErr.PresentKeys, []string{envvars.CliAppSecret}) {
+		t.Fatalf("BlockError = %+v, want incomplete with missing APP_ID and present APP_SECRET", blockErr)
+	}
+	if len(blockErr.RequiredAnyOf) != 0 {
+		t.Fatalf("RequiredAnyOf = %v, want empty for APP_SECRET-only", blockErr.RequiredAnyOf)
+	}
 }
 
 func TestResolveAccount_OnlyTokenSetWithoutAppID(t *testing.T) {
-	t.Setenv(envvars.CliUserAccessToken, "uat_test")
+	for _, tt := range []struct {
+		name string
+		key  string
+	}{
+		{name: "UAT", key: envvars.CliUserAccessToken},
+		{name: "TAT", key: envvars.CliTenantAccessToken},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(envvars.CliAppID, "")
+			t.Setenv(envvars.CliAppSecret, "")
+			t.Setenv(envvars.CliUserAccessToken, "")
+			t.Setenv(envvars.CliTenantAccessToken, "")
+			t.Setenv(tt.key, "token_test")
 
-	_, err := (&Provider{}).ResolveAccount(context.Background())
-	var blockErr *credential.BlockError
-	if !errors.As(err, &blockErr) {
-		t.Fatalf("expected BlockError, got %v", err)
+			_, err := (&Provider{}).ResolveAccount(context.Background())
+			var blockErr *credential.BlockError
+			if !errors.As(err, &blockErr) {
+				t.Fatalf("expected BlockError, got %v", err)
+			}
+			if !strings.Contains(err.Error(), envvars.CliAppID) {
+				t.Fatalf("error = %v, want mention of %s", err, envvars.CliAppID)
+			}
+			if blockErr.Code != credential.BlockReasonCredentialIncomplete ||
+				!slices.Equal(blockErr.MissingKeys, []string{envvars.CliAppID}) ||
+				!slices.Equal(blockErr.PresentKeys, []string{tt.key}) {
+				t.Fatalf("BlockError = %+v, want incomplete for %s", blockErr, tt.key)
+			}
+			if len(blockErr.RequiredAnyOf) != 0 {
+				t.Fatalf("RequiredAnyOf = %v, want empty for %s-only", blockErr.RequiredAnyOf, tt.name)
+			}
+		})
 	}
-	if !strings.Contains(err.Error(), envvars.CliAppID) {
-		t.Fatalf("error = %v, want mention of %s", err, envvars.CliAppID)
+}
+
+func TestResolveAccount_InvalidPolicyRejectedBeforeIncomplete(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		key  string
+	}{
+		{name: "DEFAULT_AS", key: envvars.CliDefaultAs},
+		{name: "STRICT_MODE", key: envvars.CliStrictMode},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(envvars.CliAppID, "cli_test")
+			t.Setenv(envvars.CliAppSecret, "")
+			t.Setenv(envvars.CliUserAccessToken, "")
+			t.Setenv(envvars.CliTenantAccessToken, "")
+			t.Setenv(tt.key, "banana")
+
+			_, err := (&Provider{}).ResolveAccount(context.Background())
+			var blockErr *credential.BlockError
+			if !errors.As(err, &blockErr) {
+				t.Fatalf("error = %T %v, want BlockError", err, err)
+			}
+			if blockErr.Code != credential.BlockReasonInvalidPolicy {
+				t.Fatalf("Code = %q, want %q", blockErr.Code, credential.BlockReasonInvalidPolicy)
+			}
+			if blockErr.Param != tt.key {
+				t.Fatalf("Param = %q, want %q", blockErr.Param, tt.key)
+			}
+			if !strings.Contains(blockErr.Reason, tt.key) {
+				t.Fatalf("reason = %q, want %s", blockErr.Reason, tt.key)
+			}
+		})
 	}
 }
 
@@ -258,6 +338,9 @@ func TestResolveAccount_InvalidStrictModeRejected(t *testing.T) {
 	if !errors.As(err, &blockErr) {
 		t.Fatalf("expected BlockError, got %T", err)
 	}
+	if blockErr.Code != credential.BlockReasonInvalidPolicy || blockErr.Param != envvars.CliStrictMode {
+		t.Fatalf("BlockError = %+v, want invalid_policy with Param %s", blockErr, envvars.CliStrictMode)
+	}
 	if !strings.Contains(err.Error(), envvars.CliStrictMode) {
 		t.Fatalf("error = %v, want mention of %s", err, envvars.CliStrictMode)
 	}
@@ -275,6 +358,9 @@ func TestResolveAccount_InvalidDefaultAsRejected(t *testing.T) {
 	var blockErr *credential.BlockError
 	if !errors.As(err, &blockErr) {
 		t.Fatalf("expected BlockError, got %T", err)
+	}
+	if blockErr.Code != credential.BlockReasonInvalidPolicy || blockErr.Param != envvars.CliDefaultAs {
+		t.Fatalf("BlockError = %+v, want invalid_policy with Param %s", blockErr, envvars.CliDefaultAs)
 	}
 	if !strings.Contains(err.Error(), envvars.CliDefaultAs) {
 		t.Fatalf("error = %v, want mention of %s", err, envvars.CliDefaultAs)

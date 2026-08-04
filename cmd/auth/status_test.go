@@ -4,14 +4,34 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
+	extcred "github.com/larksuite/cli/extension/credential"
+	envprovider "github.com/larksuite/cli/extension/credential/env"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/httpmock"
 )
+
+func TestAuthStatusHelpDistinguishesFromWhoami(t *testing.T) {
+	cmd := NewCmdAuthStatus(nil, nil)
+	for _, want := range []string{
+		"OAuth user login",
+		"auth status --json --verify",
+		"not profile/app selection diagnostics",
+		"lark-cli whoami",
+	} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("auth status --help Long missing %q; got:\n%s", want, cmd.Long)
+		}
+	}
+}
 
 func TestAuthStatusRun_SplitsBotAndUserIdentity(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
@@ -76,6 +96,51 @@ func TestAuthStatusRun_VerifyReportsBotIdentity(t *testing.T) {
 	}
 	if got.Identities.User.Status != "missing" {
 		t.Fatalf("user status = %q, want missing", got.Identities.User.Status)
+	}
+}
+
+type fixedStatusAccountResolver struct {
+	account *credential.Account
+}
+
+func (r *fixedStatusAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return r.account, nil
+}
+
+func TestAuthStatus_AllowsMatchingAppIDOnlySelectedProfile(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv(envvars.CliAppID, "cli_a")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "tenant_a",
+		Apps: []core.AppConfig{{
+			Name:      "tenant_a",
+			AppId:     "cli_a",
+			AppSecret: core.PlainSecret("test-secret"),
+			Brand:     core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
+
+	config := &core.CliConfig{ProfileName: "tenant_a", AppID: "cli_a", AppSecret: "test-secret", Brand: core.BrandFeishu}
+	f, stdout, _, _ := cmdutil.TestFactory(t, config)
+	f.Credential = credential.NewCredentialProvider(
+		[]extcred.Provider{&envprovider.Provider{}},
+		&fixedStatusAccountResolver{account: credential.AccountFromCliConfig(config)},
+		nil,
+		nil,
+	).WithProfileFromFlag("tenant_a")
+
+	cmd := NewCmdAuth(f)
+	cmd.SetArgs([]string{"status", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("auth status should use the selected built-in profile: %v", err)
+	}
+	if strings.Contains(stdout.String(), "credentials are provided externally") {
+		t.Fatalf("matching APP_ID-only env was misclassified as external:\n%s", stdout.String())
 	}
 }
 

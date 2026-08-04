@@ -27,6 +27,14 @@ func (s *staticConvertlibTokenResolver) ResolveToken(_ context.Context, _ creden
 	return &credential.TokenResult{Token: "test-token"}, nil
 }
 
+type convertlibTestAccountResolver struct {
+	appID string
+}
+
+func (r convertlibTestAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return &credential.Account{AppID: r.appID}, nil
+}
+
 type convertlibRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f convertlibRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -68,7 +76,12 @@ func newBotConvertlibRuntime(t *testing.T, rt http.RoundTripper) *common.Runtime
 		AppSecret: "test-secret",
 		Brand:     core.BrandFeishu,
 	}
-	testCred := credential.NewCredentialProvider(nil, nil, &staticConvertlibTokenResolver{}, nil)
+	testCred := credential.NewCredentialProvider(
+		nil,
+		convertlibTestAccountResolver{appID: cfg.AppID},
+		&staticConvertlibTokenResolver{},
+		nil,
+	)
 	runtime := &common.RuntimeContext{
 		Config: cfg,
 		Factory: &cmdutil.Factory{

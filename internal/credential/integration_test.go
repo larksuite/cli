@@ -52,6 +52,24 @@ func TestFullChain_EnvWins(t *testing.T) {
 	}
 }
 
+func TestFullChain_EnvRejectsDifferentApp(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "env_app")
+	t.Setenv(envvars.CliAppSecret, "env_secret")
+	t.Setenv(envvars.CliUserAccessToken, "env_uat")
+
+	cp := credential.NewCredentialProvider(
+		[]extcred.Provider{&envprovider.Provider{}},
+		nil, nil, nil,
+	)
+
+	_, err := cp.ResolveToken(context.Background(), credential.TokenSpec{
+		Type: credential.TokenTypeUAT, AppID: "other_app",
+	})
+	if err == nil {
+		t.Fatal("ResolveToken() error = nil, want app binding error")
+	}
+}
+
 func TestFullChain_Fallthrough(t *testing.T) {
 	// env provider returns nil (no env vars set), falls through to default token
 	ep := &envprovider.Provider{}
@@ -59,7 +77,8 @@ func TestFullChain_Fallthrough(t *testing.T) {
 
 	cp := credential.NewCredentialProvider(
 		[]extcred.Provider{ep},
-		nil, mock, nil,
+		&mockDefaultAccountProvider{account: &credential.Account{AppID: "app1"}},
+		mock, nil,
 	)
 	result, err := cp.ResolveToken(context.Background(), credential.TokenSpec{
 		Type: credential.TokenTypeUAT, AppID: "app1",
@@ -70,6 +89,14 @@ func TestFullChain_Fallthrough(t *testing.T) {
 	if result.Token != "mock_tok" || result.Scopes != "drive:read" {
 		t.Errorf("unexpected: %+v", result)
 	}
+}
+
+type mockDefaultAccountProvider struct {
+	account *credential.Account
+}
+
+func (m *mockDefaultAccountProvider) ResolveAccount(context.Context) (*credential.Account, error) {
+	return m.account, nil
 }
 
 type mockDefaultTokenProvider struct {

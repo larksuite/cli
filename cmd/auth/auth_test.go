@@ -386,7 +386,7 @@ func TestAuthScopesRun_UsesTenantAccessTokenFromCredentialProvider(t *testing.T)
 		AppID: "test-app", AppSecret: "", Brand: core.BrandFeishu,
 	})
 	tokenResolver := &authScopesTokenResolver{}
-	f.Credential = credential.NewCredentialProvider(nil, nil, tokenResolver, nil)
+	f.Credential = newAuthTestCredentialProvider("test-app", tokenResolver)
 
 	appInfoStub := &httpmock.Stub{
 		Method: http.MethodGet,
@@ -442,7 +442,7 @@ func TestAuthScopesRun_LarkPermissionError_TypedAsPermissionError(t *testing.T) 
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 	tokenResolver := &authScopesTokenResolver{}
-	f.Credential = credential.NewCredentialProvider(nil, nil, tokenResolver, nil)
+	f.Credential = newAuthTestCredentialProvider("test-app", tokenResolver)
 
 	reg.Register(&httpmock.Stub{
 		Method: http.MethodGet,
@@ -483,6 +483,18 @@ func TestAuthScopesRun_LarkPermissionError_TypedAsPermissionError(t *testing.T) 
 
 type authScopesTokenResolver struct {
 	requests []credential.TokenSpec
+}
+
+type authTestAccountResolver struct {
+	appID string
+}
+
+func (r authTestAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return &credential.Account{AppID: r.appID, Brand: core.BrandFeishu}, nil
+}
+
+func newAuthTestCredentialProvider(appID string, tokenResolver credential.DefaultTokenResolver) *credential.CredentialProvider {
+	return credential.NewCredentialProvider(nil, authTestAccountResolver{appID: appID}, tokenResolver, nil)
 }
 
 func (r *authScopesTokenResolver) ResolveToken(ctx context.Context, req credential.TokenSpec) (*credential.TokenResult, error) {

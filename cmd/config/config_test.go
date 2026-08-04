@@ -84,6 +84,16 @@ func TestConfigShowCmd_FlagParsing(t *testing.T) {
 	}
 }
 
+func TestConfigShowHelpClarifiesSavedConfig(t *testing.T) {
+	cmd := NewCmdConfigShow(nil, nil)
+	if !strings.Contains(cmd.Short, "saved config") {
+		t.Errorf("config show short = %q, want saved config", cmd.Short)
+	}
+	if !strings.Contains(cmd.Long, "lark-cli whoami --json") {
+		t.Errorf("config show help missing whoami route")
+	}
+}
+
 func TestConfigShowRun_NotConfiguredReturnsStructuredError(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
@@ -103,6 +113,77 @@ func TestConfigShowRun_NotConfiguredReturnsStructuredError(t *testing.T) {
 	}
 	if cfgErr.Subtype != errs.SubtypeNotConfigured || cfgErr.Message != "not configured" {
 		t.Fatalf("detail = %+v, want not_configured/not configured", cfgErr)
+	}
+}
+
+// config show promises "saved config, not current usage" (help + skill
+// routing): the session profile (--profile / LARKSUITE_CLI_PROFILE) must not
+// change what it shows.
+func TestConfigShowRun_IgnoresSessionProfile(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	multi := &core.MultiAppConfig{
+		CurrentApp: "tenant_a",
+		Apps: []core.AppConfig{
+			{Name: "tenant_a", AppId: "cli_a", AppSecret: core.PlainSecret("your-secret-a"), Brand: core.BrandFeishu},
+			{Name: "tenant_b", AppId: "cli_b", AppSecret: core.PlainSecret("your-secret-b"), Brand: core.BrandFeishu},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f.Invocation.Profile = "tenant_b" // session selection must not leak in
+
+	if err := configShowRun(&ConfigShowOptions{Factory: f}); err != nil {
+		t.Fatalf("configShowRun: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"cli_a"`) || !strings.Contains(out, `"tenant_a"`) {
+		t.Fatalf("output = %s, want the saved default tenant_a/cli_a", out)
+	}
+	if strings.Contains(out, `"cli_b"`) {
+		t.Fatalf("output = %s, session profile tenant_b must not change saved-config view", out)
+	}
+}
+
+// engagedEnvStub simulates a fully engaged external credential provider.
+type engagedEnvStub struct{}
+
+func (engagedEnvStub) Name() string  { return "env" }
+func (engagedEnvStub) Priority() int { return 10 }
+func (engagedEnvStub) ResolveAccount(context.Context) (*extcred.Account, error) {
+	return &extcred.Account{AppID: "cli_env", AppSecret: "your-password"}, nil // managed takeover
+}
+func (engagedEnvStub) ResolveToken(context.Context, extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
+
+// config show inspects the SAVED config only, so the parent command's
+// external-credential gate must not apply: even with a fully engaged direct
+// env credential, `config show` still answers from the saved config.
+func TestConfigShow_BypassesExternalCredentialGate(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	multi := &core.MultiAppConfig{
+		CurrentApp: "tenant_a",
+		Apps: []core.AppConfig{{
+			Name: "tenant_a", AppId: "cli_a", AppSecret: core.PlainSecret("your-secret-a"), Brand: core.BrandFeishu,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f.Credential = credential.NewCredentialProvider([]extcred.Provider{engagedEnvStub{}}, nil, nil, nil)
+
+	cmd := NewCmdConfig(f)
+	cmd.SetArgs([]string{"show"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config show must bypass the external-credential gate: %v", err)
+	}
+	if out := stdout.String(); !strings.Contains(out, `"cli_a"`) {
+		t.Fatalf("output = %s, want the saved config shown", out)
 	}
 }
 
@@ -481,7 +562,8 @@ func TestConfigBlockedByExternalProvider(t *testing.T) {
 	}{
 		{"init", []string{"init", "--app-id", "x", "--app-secret-stdin"}},
 		{"remove", []string{"remove"}},
-		{"show", []string{"show"}},
+		// "show" is deliberately absent: it inspects the SAVED config only
+		// and bypasses this gate (TestConfigShow_BypassesExternalCredentialGate).
 		{"default-as", []string{"default-as", "user"}},
 		{"strict-mode", []string{"strict-mode", "off"}},
 	}

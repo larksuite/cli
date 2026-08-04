@@ -25,6 +25,18 @@ func (r *scopeCheckTokenResolver) ResolveToken(ctx context.Context, req credenti
 	return r.result, r.err
 }
 
+type scopeCheckAccountResolver struct {
+	appID string
+}
+
+func (r scopeCheckAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return &credential.Account{AppID: r.appID}, nil
+}
+
+func newScopeCheckCredentialProvider(appID string, tokenResolver credential.DefaultTokenResolver) *credential.CredentialProvider {
+	return credential.NewCredentialProvider(nil, scopeCheckAccountResolver{appID: appID}, tokenResolver, nil)
+}
+
 // TestEnhancePermissionError_TypedPermissionErrorRouted pins typed routing:
 // an *errs.PermissionError gets enhanced regardless of its Message text,
 // decoupling this helper from canonical-message rewrites that would
@@ -106,7 +118,7 @@ func TestEnhancePermissionError_PermissionErrorGetsScopeHint(t *testing.T) {
 
 func TestCheckShortcutScopes_PropagatesContextCancellation(t *testing.T) {
 	f := &cmdutil.Factory{
-		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{err: context.Canceled}, nil),
+		Credential: newScopeCheckCredentialProvider("app-1", &scopeCheckTokenResolver{err: context.Canceled}),
 	}
 
 	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, []string{"im:message:read"})
@@ -124,9 +136,9 @@ func TestCheckShortcutScopes_PropagatesContextCancellation(t *testing.T) {
 // command for human consumers.
 func TestCheckShortcutScopes_ReturnsTypedPermissionError(t *testing.T) {
 	f := &cmdutil.Factory{
-		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{
+		Credential: newScopeCheckCredentialProvider("app-1", &scopeCheckTokenResolver{
 			result: &credential.TokenResult{Token: "t", Scopes: "im:message:read calendar:calendar:read"},
-		}, nil),
+		}),
 	}
 
 	required := []string{"im:message:read", "drive:drive:read", "docx:document:read"}
@@ -168,7 +180,7 @@ func TestCheckShortcutScopes_ReturnsTypedPermissionError(t *testing.T) {
 
 func TestCheckShortcutScopes_IgnoresNonContextTokenErrors(t *testing.T) {
 	f := &cmdutil.Factory{
-		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{err: errors.New("token cache unavailable")}, nil),
+		Credential: newScopeCheckCredentialProvider("app-1", &scopeCheckTokenResolver{err: errors.New("token cache unavailable")}),
 	}
 
 	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, []string{"im:message:read"})

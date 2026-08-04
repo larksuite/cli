@@ -67,6 +67,17 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.params` | per-Subtype-stable | per-parameter validation detail array (`ValidationError`); see **Validation parameters** |
 | per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url` |
 
+Credential/identity-selection extension fields (per-Subtype-stable):
+
+| Field | Carrier | Subtypes | Notes |
+|-------|---------|----------|-------|
+| `missing_keys` | `ConfigError` | `app_credential_incomplete` | env var NAMES that must all be set; never values |
+| `required_any_of` | `ConfigError` | `app_credential_incomplete` | env var NAMES where any one completes the credential; mutually exclusive with `missing_keys` |
+| `profile` | `ConfigError` | `profile_not_found`, `profile_secret_invalid` | requested profile name |
+| `app_id` | `ConfigError` | `profile_secret_invalid` | plaintext app id; never a secret |
+| `credential_source` | `ConfigError` | `profile_not_found`, `no_active_profile` | how the identity was (not) chosen: `flag:--profile` \| `env:LARKSUITE_CLI_PROFILE` \| `config` |
+| `profile_app_id`, `env_app_id` | `ValidationError` | `profile_app_credential_conflict` | the two conflicting plaintext app ids |
+
 `SecurityPolicyError` renders through the same typed envelope as every
 other category. `error.type` is `"policy"`, `error.subtype` is one of
 `challenge_required` / `access_denied`, and process exit is `6` via

@@ -13,6 +13,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
+	envprovider "github.com/larksuite/cli/extension/credential/env"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
@@ -405,6 +406,14 @@ type stubExtProvider struct {
 	err  error
 }
 
+type stubDefaultAccountResolver struct {
+	acct *credential.Account
+}
+
+func (s *stubDefaultAccountResolver) ResolveAccount(_ context.Context) (*credential.Account, error) {
+	return s.acct, nil
+}
+
 func (s *stubExtProvider) Name() string { return s.name }
 func (s *stubExtProvider) ResolveAccount(_ context.Context) (*extcred.Account, error) {
 	return s.acct, s.err
@@ -445,6 +454,86 @@ func TestRequireBuiltinCredentialProvider_AllowsBuiltinProvider(t *testing.T) {
 	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRequireBuiltinCredentialProvider_AllowsMatchingAppIDOnlyProfile(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv(envvars.CliAppID, "cli_a")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "tenant_a",
+		Apps: []core.AppConfig{{
+			Name:      "tenant_a",
+			AppId:     "cli_a",
+			AppSecret: core.PlainSecret("test-secret"),
+			Brand:     core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
+
+	cred := credential.NewCredentialProvider(
+		[]extcred.Provider{&envprovider.Provider{}},
+		&stubDefaultAccountResolver{acct: &credential.Account{AppID: "cli_a", AppSecret: "test-secret"}},
+		nil,
+		nil,
+	).WithProfileFromFlag("tenant_a")
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	if err := f.RequireBuiltinCredentialProvider(context.Background(), "auth"); err != nil {
+		t.Fatalf("matching APP_ID-only profile should use builtin credentials: %v", err)
+	}
+}
+
+// A stale LARKSUITE_CLI_PROFILE (profile that cannot resolve) must not lock
+// the user out of the builtin setup/repair commands this gate guards: the
+// probe falls back to provider engagement and lets the command run.
+func TestRequireBuiltinCredentialProvider_StaleProfileDoesNotLockOut(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir()) // no config -> "ghost" cannot resolve
+
+	stub := &stubExtProvider{name: "env"} // not engaged: returns nil, nil
+	cred := credential.NewCredentialProvider(
+		[]extcred.Provider{stub},
+		&stubDefaultAccountResolver{},
+		nil,
+		nil,
+	).WithProfileFromEnv("ghost")
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	if err := f.RequireBuiltinCredentialProvider(context.Background(), "config"); err != nil {
+		t.Fatalf("stale profile must not lock out builtin auth/config commands: %v", err)
+	}
+}
+
+// An invalid policy variable (e.g. LARKSUITE_CLI_DEFAULT_AS=banana) is a user
+// input error, not an external credential takeover: the gate surfaces the
+// same typed validation error as formal arbitration instead of a misleading
+// "provided externally" refusal.
+func TestRequireBuiltinCredentialProvider_InvalidPolicySurfacesTypedError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	stub := &stubExtProvider{name: "env", err: &extcred.BlockError{
+		Provider: "env",
+		Reason:   "invalid LARKSUITE_CLI_DEFAULT_AS \"banana\" (want user, bot, or auto)",
+		Code:     extcred.BlockReasonInvalidPolicy,
+		Param:    envvars.CliDefaultAs,
+	}}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, &stubDefaultAccountResolver{}, nil, nil)
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	prob, ok := errs.ProblemOf(err)
+	if !ok || prob.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("err = %v, want typed invalid_argument (same as formal arbitration)", err)
+	}
+	if strings.Contains(err.Error(), "provided externally") {
+		t.Fatalf("err = %v, must not read as external takeover", err)
 	}
 }
 

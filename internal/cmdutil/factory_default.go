@@ -77,10 +77,11 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	// Phase 2: Credential (sole data source)
 	// Keychain is read via closure so callers can replace f.Keychain after construction.
 	f.Credential = buildCredentialProvider(credentialDeps{
-		Keychain:   func() keychain.KeychainAccess { return f.Keychain },
-		Profile:    inv.Profile,
-		HttpClient: f.HttpClient,
-		ErrOut:     f.IOStreams.ErrOut,
+		Keychain:        func() keychain.KeychainAccess { return f.Keychain },
+		Profile:         inv.Profile,
+		ProfileFromFlag: inv.ProfileFromFlag,
+		HttpClient:      f.HttpClient,
+		ErrOut:          f.IOStreams.ErrOut,
 	})
 
 	// Phase 3: Runtime config contains resolved account data only.
@@ -270,10 +271,11 @@ func buildSDKHTTPTransport(base http.RoundTripper, platform bool) http.RoundTrip
 }
 
 type credentialDeps struct {
-	Keychain   func() keychain.KeychainAccess
-	Profile    string
-	HttpClient func() (*http.Client, error)
-	ErrOut     io.Writer
+	Keychain        func() keychain.KeychainAccess
+	Profile         string
+	ProfileFromFlag bool
+	HttpClient      func() (*http.Client, error)
+	ErrOut          io.Writer
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
@@ -286,5 +288,13 @@ func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider
 	// depend on. enrichUserInfo failures are already non-fatal (the
 	// provider clears unverified identity fields), so silencing the
 	// warning is safe.
-	return credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
+	cred := credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
+	if deps.Profile == "" {
+		// No profile selected — don't record a phantom env source.
+		return cred
+	}
+	if deps.ProfileFromFlag {
+		return cred.WithProfileFromFlag(deps.Profile)
+	}
+	return cred.WithProfileFromEnv(deps.Profile)
 }

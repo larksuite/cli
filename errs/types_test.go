@@ -643,3 +643,29 @@ func TestBuilderSetter_DefensiveCopy(t *testing.T) {
 		}
 	})
 }
+
+// ======================= Profile selection error subtypes =======================
+
+func TestConfigErrorProfileFields(t *testing.T) {
+	e := errs.NewConfigError(errs.SubtypeAppCredentialIncomplete, "incomplete").
+		WithMissingKeys("LARKSUITE_CLI_APP_ID").
+		WithCredentialSource("env:LARKSUITE_CLI_PROFILE")
+	p, ok := errs.ProblemOf(e)
+	if !ok || p.Subtype != errs.SubtypeAppCredentialIncomplete {
+		t.Fatalf("subtype mismatch: %+v", p)
+	}
+	if len(e.MissingKeys) != 1 || e.MissingKeys[0] != "LARKSUITE_CLI_APP_ID" {
+		t.Errorf("missing_keys not set: %v", e.MissingKeys)
+	}
+	if e.CredentialSource != "env:LARKSUITE_CLI_PROFILE" {
+		t.Errorf("credential_source not set: %q", e.CredentialSource)
+	}
+}
+
+func TestValidationErrorProfileConflict(t *testing.T) {
+	e := errs.NewValidationError(errs.SubtypeProfileAppCredentialConflict, "conflict").
+		WithProfileAppConflict("cli_profile", "cli_env")
+	if e.ProfileAppID != "cli_profile" || e.EnvAppID != "cli_env" {
+		t.Errorf("conflict fields not set: %q %q", e.ProfileAppID, e.EnvAppID)
+	}
+}

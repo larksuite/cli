@@ -7,7 +7,9 @@ package sidecar
 
 import (
 	"context"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/extension/credential"
@@ -141,6 +143,57 @@ func TestResolveAccount_StrictMode(t *testing.T) {
 			}
 			if acct.SupportedIdentities != tt.want {
 				t.Errorf("SupportedIdentities = %d, want %d", acct.SupportedIdentities, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveAccount_InvalidPolicyClassified(t *testing.T) {
+	setEnv(t, envvars.CliAuthProxy, "http://127.0.0.1:16384")
+	setEnv(t, envvars.CliProxyKey, "test-key")
+	setEnv(t, envvars.CliAppID, "cli_test")
+
+	tests := []struct {
+		name          string
+		key           string
+		value         string
+		supportedText string
+	}{
+		{
+			name:          "default as",
+			key:           envvars.CliDefaultAs,
+			value:         "banana",
+			supportedText: "want user, bot, or auto",
+		},
+		{
+			name:          "strict mode",
+			key:           envvars.CliStrictMode,
+			value:         "banana",
+			supportedText: "want bot, user, or off",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			unsetEnv(t, envvars.CliDefaultAs)
+			unsetEnv(t, envvars.CliStrictMode)
+			setEnv(t, tt.key, tt.value)
+
+			_, err := (&Provider{}).ResolveAccount(context.Background())
+			var blockErr *credential.BlockError
+			if !errors.As(err, &blockErr) {
+				t.Fatalf("error = %T %v, want BlockError", err, err)
+			}
+			if blockErr.Code != credential.BlockReasonInvalidPolicy {
+				t.Fatalf("Code = %q, want %q", blockErr.Code, credential.BlockReasonInvalidPolicy)
+			}
+			if blockErr.Param != tt.key {
+				t.Fatalf("Param = %q, want %q", blockErr.Param, tt.key)
+			}
+			if !strings.Contains(blockErr.Reason, tt.key) ||
+				!strings.Contains(blockErr.Reason, tt.value) ||
+				!strings.Contains(blockErr.Reason, tt.supportedText) {
+				t.Fatalf("Reason = %q, want variable, invalid value, and supported values", blockErr.Reason)
 			}
 		})
 	}

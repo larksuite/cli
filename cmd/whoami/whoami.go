@@ -10,6 +10,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -33,6 +34,15 @@ type whoamiResult struct {
 	TokenStatus    string         `json:"tokenStatus"`
 	OnBehalfOf     *delegatedUser `json:"onBehalfOf,omitempty"`
 	Hint           string         `json:"hint,omitempty"`
+
+	// CredentialSource, Explicit, and DirectCredentialEnv surface the cached
+	// credential.IdentitySelection computed during resolution (not re-inferred
+	// here). On the non-env extension-provider path CredentialSource is
+	// "extension:<provider>" (e.g. "extension:sidecar"); an empty value only
+	// means the selection was never resolved.
+	CredentialSource    string                         `json:"credentialSource"`
+	Explicit            bool                           `json:"explicit"`
+	DirectCredentialEnv credential.DirectCredentialEnv `json:"directCredentialEnv"`
 }
 
 // delegatedUser is the user a user-identity acts on behalf of.
@@ -58,6 +68,10 @@ func NewCmdWhoami(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "whoami",
 		Short: "Show the current effective identity, app, profile, and token status (JSON)",
+		Long: `Show the effective app identity used by this invocation. This is not OAuth login status;
+use ` + "`lark-cli auth status --json`" + ` for OAuth user/token state.
+The JSON output includes credentialSource, appId, brand, and whether direct app credential
+env is present and matches the selected profile.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return whoamiRun(cmd, opts)
 		},
@@ -97,7 +111,17 @@ func whoamiRun(cmd *cobra.Command, opts *Options) error {
 		f.ResolveStrictMode(ctx).ForcedIdentity(),
 	)
 	diag := identitydiag.Diagnose(ctx, f, cfg, false)
-	res := buildResult(cfg, as, source, diag)
+	// Read the cached selection computed during resolution; never re-infer it
+	// here. A resolution failure (e.g. under a non-env extension provider that
+	// doesn't populate a selection) degrades to the zero value rather than
+	// regressing whoami's own error/diagnostic path above.
+	var selection credential.IdentitySelection
+	if f.Credential != nil {
+		if sel, err := f.Credential.Selection(ctx); err == nil {
+			selection = sel
+		}
+	}
+	res := buildResult(cfg, as, source, diag, selection)
 	output.PrintJson(f.IOStreams.Out, res)
 	return nil
 }
@@ -122,18 +146,23 @@ func resolveSource(changedAs bool, flagAs core.Identity, autoDetected bool, stri
 
 // buildResult maps the resolved identity and local diagnostics into the output.
 // ResolveAs only ever returns user or bot, so the default branch handles user.
-func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag identitydiag.Result) *whoamiResult {
+// selection is the cached credential.IdentitySelection from resolution; it is
+// read as-is, never recomputed.
+func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag identitydiag.Result, selection credential.IdentitySelection) *whoamiResult {
 	defaultAs := cfg.DefaultAs
 	if defaultAs == "" {
 		defaultAs = core.AsAuto
 	}
 	res := &whoamiResult{
-		Profile:        cfg.ProfileName,
-		AppID:          cfg.AppID,
-		Brand:          cfg.Brand,
-		DefaultAs:      string(defaultAs),
-		Identity:       string(as),
-		IdentitySource: source,
+		Profile:             cfg.ProfileName,
+		AppID:               cfg.AppID,
+		Brand:               cfg.Brand,
+		DefaultAs:           string(defaultAs),
+		Identity:            string(as),
+		IdentitySource:      source,
+		CredentialSource:    string(selection.Source),
+		Explicit:            selection.Explicit(),
+		DirectCredentialEnv: selection.DirectCredentialEnv,
 	}
 	// Use the diagnosed hint as-is: it is tailored to the credential source, so
 	// it never says "auth login" when that is blocked under an external provider.
