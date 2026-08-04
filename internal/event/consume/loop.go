@@ -224,14 +224,25 @@ func truncateDiagnostic(s string) string {
 func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *protocol.Event, opts Options, sink Sink, jqCode *gojq.Code) (bool, error) {
 	raw := restoreCanonicalEvent(evt, opts.ErrOut, opts.Quiet)
 
+	// On a legacy connection the frame cannot speak to every canonical fact,
+	// so the missing ones are derived from the payload header first — a fact
+	// the header cannot legitimately claim is a conflict like any other.
+	conflict := ""
+	if opts.legacy.enabled {
+		conflict = restoreLegacyMetadata(raw, opts.legacy.appID)
+	}
+
 	// Validate before any domain work: a payload header that contradicts the
 	// canonical metadata means the two sources of truth diverged somewhere on
 	// the delivery path — deliver neither. The diagnostic names identity
 	// facts only; payload content never reaches stderr.
-	if field := checkCanonicalConflict(raw); field != "" {
+	if conflict == "" {
+		conflict = checkCanonicalConflict(raw, opts.legacy.enabled)
+	}
+	if conflict != "" {
 		if !opts.Quiet {
 			fmt.Fprintf(opts.ErrOut, "WARN: event %s (%s) dropped: payload header conflicts with canonical metadata (field=%s)\n",
-				raw.EventID, raw.EventType, field)
+				raw.EventID, raw.EventType, conflict)
 		}
 		return false, nil
 	}

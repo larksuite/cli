@@ -27,17 +27,23 @@ type payloadHeaderClaims struct {
 //
 // name is both the row's identity and the header field it reads: the envelope
 // spells these facts the same way the rows are named.
+//
+// headerDerivedInLegacy marks the facts a legacy bus never sends, which the
+// compatibility path fills from the header itself. Comparing those to the
+// header they came from asserts nothing, so legacy connections skip them —
+// and only them. The facts a legacy frame does carry stay arbitrated.
 type factComparison struct {
-	name      string
-	canonical func(ev *model.Event) string
+	name                  string
+	canonical             func(ev *model.Event) string
+	headerDerivedInLegacy bool
 }
 
 var canonicalFactComparisons = []factComparison{
 	{name: "event_id", canonical: func(ev *model.Event) string { return ev.EventID }},
 	{name: "event_type", canonical: func(ev *model.Event) string { return ev.EventType }},
 	{name: "create_time", canonical: func(ev *model.Event) string { return ev.SourceTime }},
-	{name: "app_id", canonical: func(ev *model.Event) string { return ev.AppID }},
-	{name: "tenant_key", canonical: func(ev *model.Event) string { return ev.TenantKey }},
+	{name: "app_id", canonical: func(ev *model.Event) string { return ev.AppID }, headerDerivedInLegacy: true},
+	{name: "tenant_key", canonical: func(ev *model.Event) string { return ev.TenantKey }, headerDerivedInLegacy: true},
 }
 
 // checkCanonicalConflict returns the name of the first canonical fact the
@@ -59,12 +65,15 @@ var canonicalFactComparisons = []factComparison{
 // A payload that is not a JSON object, or whose header is not one, claims no
 // fact at all and is not re-classified here — malformed handling belongs to
 // the processing layer.
-func checkCanonicalConflict(ev *model.Event) string {
+func checkCanonicalConflict(ev *model.Event, legacy bool) string {
 	var claims payloadHeaderClaims
 	if err := json.Unmarshal(ev.Payload, &claims); err != nil {
 		return ""
 	}
 	for _, c := range canonicalFactComparisons {
+		if legacy && c.headerDerivedInLegacy {
+			continue
+		}
 		raw, asserted := claims.Header[c.name]
 		if !asserted {
 			continue

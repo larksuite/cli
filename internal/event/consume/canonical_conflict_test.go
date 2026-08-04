@@ -94,7 +94,7 @@ func TestCanonicalConflict_DetectsEveryFactMismatch(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			ev := conflictBaseEvent()
 			ev.Payload = headerPayload(map[string]string{c.name: "tampered-value"})
-			if got := checkCanonicalConflict(ev); got != c.name {
+			if got := checkCanonicalConflict(ev, false); got != c.name {
 				t.Errorf("header claiming a different %s must conflict, got %q", c.name, got)
 			}
 		})
@@ -121,7 +121,7 @@ func TestCanonicalConflict_CatchesLostFacts(t *testing.T) {
 			ev := conflictBaseEvent()
 			ev.Payload = headerPayload(nil)
 			blank[c.name](ev)
-			if got := checkCanonicalConflict(ev); got != c.name {
+			if got := checkCanonicalConflict(ev, false); got != c.name {
 				t.Errorf("a lost canonical %s facing an asserted header claim must conflict, got %q", c.name, got)
 			}
 		})
@@ -155,7 +155,7 @@ func TestCanonicalConflict_TypeFlippedClaimConflicts(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			ev := conflictBaseEvent()
 			ev.Payload = headerPayloadTyped(map[string]any{c.name: 1700000000000})
-			if got := checkCanonicalConflict(ev); got != c.name {
+			if got := checkCanonicalConflict(ev, false); got != c.name {
 				t.Errorf("a non-string %s claim must conflict, got %q", c.name, got)
 			}
 		})
@@ -173,7 +173,7 @@ func TestCanonicalConflict_TypeFlipCannotSmuggleForgedIdentity(t *testing.T) {
 		"app_id":      "cli_forged",
 		"tenant_key":  "tenant_forged",
 	})
-	if got := checkCanonicalConflict(ev); got == "" {
+	if got := checkCanonicalConflict(ev, false); got == "" {
 		t.Fatal("a header carrying forged identity facts behind a type flip must not be delivered")
 	}
 
@@ -185,7 +185,7 @@ func TestCanonicalConflict_TypeFlipCannotSmuggleForgedIdentity(t *testing.T) {
 		"app_id":     "cli_forged",
 		"tenant_key": "tenant_forged",
 	})
-	if got := checkCanonicalConflict(control); got != "app_id" {
+	if got := checkCanonicalConflict(control, false); got != "app_id" {
 		t.Errorf("control: forged app_id must conflict, got %q", got)
 	}
 }
@@ -195,7 +195,7 @@ func TestCanonicalConflict_TypeFlipCannotSmuggleForgedIdentity(t *testing.T) {
 func TestCanonicalConflict_NullClaimStaysSilent(t *testing.T) {
 	ev := conflictBaseEvent()
 	ev.Payload = headerPayloadTyped(map[string]any{"app_id": nil})
-	if got := checkCanonicalConflict(ev); got != "" {
+	if got := checkCanonicalConflict(ev, false); got != "" {
 		t.Errorf("a null claim must deliver, got conflict on %q", got)
 	}
 }
@@ -205,7 +205,7 @@ func TestCanonicalConflict_NullClaimStaysSilent(t *testing.T) {
 func TestCanonicalConflict_NonObjectHeaderDelivers(t *testing.T) {
 	ev := conflictBaseEvent()
 	ev.Payload = json.RawMessage(`{"schema":"2.0","header":"not-an-object","event":{}}`)
-	if got := checkCanonicalConflict(ev); got != "" {
+	if got := checkCanonicalConflict(ev, false); got != "" {
 		t.Errorf("a non-object header claims nothing and must deliver, got conflict on %q", got)
 	}
 }
@@ -214,20 +214,20 @@ func TestCanonicalConflict_NonObjectHeaderDelivers(t *testing.T) {
 func TestCanonicalConflict_AgreementAndSilenceDeliver(t *testing.T) {
 	agree := conflictBaseEvent()
 	agree.Payload = headerPayload(nil)
-	if got := checkCanonicalConflict(agree); got != "" {
+	if got := checkCanonicalConflict(agree, false); got != "" {
 		t.Errorf("matching header must deliver, got conflict on %q", got)
 	}
 
 	silent := conflictBaseEvent()
 	silent.Payload = json.RawMessage(`{"schema":"2.0","event":{"text":"no header block"}}`)
-	if got := checkCanonicalConflict(silent); got != "" {
+	if got := checkCanonicalConflict(silent, false); got != "" {
 		t.Errorf("a silent header claims nothing and must deliver, got conflict on %q", got)
 	}
 
 	// Non-JSON payloads are the processing layer's business, not arbitration's.
 	malformed := conflictBaseEvent()
 	malformed.Payload = json.RawMessage(`this is definitely not valid json {{{`)
-	if got := checkCanonicalConflict(malformed); got != "" {
+	if got := checkCanonicalConflict(malformed, false); got != "" {
 		t.Errorf("non-JSON payloads are not re-classified here, got conflict on %q", got)
 	}
 }
@@ -239,7 +239,7 @@ func TestCanonicalConflict_PipelineDropsWithRedactedDiagnostic(t *testing.T) {
 	ev := conflictBaseEvent()
 	ev.Payload = headerPayload(map[string]string{"app_id": "attacker-" + sentinel})
 
-	field := checkCanonicalConflict(ev)
+	field := checkCanonicalConflict(ev, false)
 	if field != "app_id" {
 		t.Fatalf("expected app_id conflict, got %q", field)
 	}
