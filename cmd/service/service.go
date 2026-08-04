@@ -402,6 +402,9 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	}
 
 	if opts.DryRun {
+		if isMailRuleReorderMethod(opts, request) {
+			fmt.Fprintln(f.IOStreams.ErrOut, "warning: mail rule reorder expands rule_ids from the current mailbox rule list when executed; dry-run shows the request before that API-backed expansion")
+		}
 		if fileMeta != nil {
 			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
 		}

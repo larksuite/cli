@@ -77,16 +77,13 @@ func fetchAllMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderReque
 	}
 
 	params := copyParams(reorderRequest.Params)
-	delete(params, "page_token")
-	params["page_size"] = 100
 
 	var ids []string
 	var pageToken string
+	seenPageTokens := map[string]bool{}
 	for {
 		if pageToken != "" {
 			params["page_token"] = pageToken
-		} else {
-			delete(params, "page_token")
 		}
 		result, err := ac.CallAPI(ctx, client.RawApiRequest{
 			Method:    "GET",
@@ -112,6 +109,10 @@ func fetchAllMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderReque
 		if nextToken == "" {
 			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rule list response has has_more=true but no page_token")
 		}
+		if seenPageTokens[nextToken] {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rule list response repeated page_token %q", nextToken)
+		}
+		seenPageTokens[nextToken] = true
 		pageToken = nextToken
 	}
 	return ids, nil
@@ -151,7 +152,14 @@ func extractMailRulePage(result interface{}) ([]string, bool, string, error) {
 		ids = append(ids, ruleID)
 	}
 
-	hasMore, _ := data["has_more"].(bool)
+	hasMore := false
+	if rawHasMore, exists := data["has_more"]; exists {
+		b, ok := rawHasMore.(bool)
+		if !ok {
+			return nil, false, "", errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rule list field has_more must be a boolean")
+		}
+		hasMore = b
+	}
 	pageToken, _ := data["page_token"].(string)
 	if pageToken == "" {
 		pageToken, _ = data["next_page_token"].(string)
@@ -185,7 +193,7 @@ func completeMailRuleIDs(requestedIDs, currentIDs []string) ([]string, error) {
 		currentSet[id] = true
 	}
 	if len(currentIDs) == 0 {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot reorder rules because current mailbox rule list is empty").WithParam("rule_ids")
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "cannot reorder rules because current mailbox rule list is empty")
 	}
 	for _, id := range requestedIDs {
 		if !currentSet[id] {
