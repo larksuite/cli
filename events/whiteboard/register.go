@@ -44,6 +44,7 @@ func Keys() []event.KeyDefinition {
 					"/event/operator_ids/*/user_id":  {Kind: "user_id"},
 				},
 			},
+			Match:                 whiteboardIDMatch,
 			PreConsume:            whiteboardSubscriptionPreConsume(eventTypeWhiteboardUpdated),
 			Scopes:                []string{"board:whiteboard:node:read"},
 			AuthTypes:             []string{"user", "bot"},
