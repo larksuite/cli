@@ -11,6 +11,7 @@ const (
 	CliTenantAccessToken = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN"
 	CliDefaultAs         = "LARKSUITE_CLI_DEFAULT_AS"
 	CliStrictMode        = "LARKSUITE_CLI_STRICT_MODE"
+	CliUserOpenID        = "LARKSUITE_CLI_USER_OPEN_ID"
 
 	// Sidecar proxy (auth proxy mode)
 	CliAuthProxy = "LARKSUITE_CLI_AUTH_PROXY" // sidecar HTTP address, e.g. "http://127.0.0.1:16384"

@@ -280,3 +280,47 @@ func TestResolveAccount_InvalidDefaultAsRejected(t *testing.T) {
 		t.Fatalf("error = %v, want mention of %s", err, envvars.CliDefaultAs)
 	}
 }
+
+func TestResolveAccountOpenIDAssertedWithUAT(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliUserAccessToken, "u-token")
+	t.Setenv(envvars.CliUserOpenID, "ou_injected")
+
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount: %v", err)
+	}
+	if acct.OpenID != "ou_injected" {
+		t.Errorf("OpenID = %q, want %q", acct.OpenID, "ou_injected")
+	}
+	if !acct.OpenIDVerified {
+		t.Error("OpenIDVerified = false, want true")
+	}
+}
+
+func TestResolveAccountOpenIDIgnoredWithoutUAT(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliTenantAccessToken, "t-token") // 仅 TAT，无 UAT
+	t.Setenv(envvars.CliUserOpenID, "ou_injected")
+
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount: %v", err)
+	}
+	if acct.OpenID != "" || acct.OpenIDVerified {
+		t.Errorf("OpenID/OpenIDVerified = %q/%v, want empty/false (no UAT)", acct.OpenID, acct.OpenIDVerified)
+	}
+}
+
+func TestResolveAccountNoOpenIDEnvUnchanged(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envvars.CliUserAccessToken, "u-token")
+
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount: %v", err)
+	}
+	if acct.OpenID != "" || acct.OpenIDVerified {
+		t.Errorf("OpenID/OpenIDVerified = %q/%v, want empty/false (env not set)", acct.OpenID, acct.OpenIDVerified)
+	}
+}

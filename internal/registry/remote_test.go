@@ -32,6 +32,9 @@ func resetInit() {
 	waitBackgroundRefresh()
 	initOnce = sync.Once{}
 	embeddedParseOnce = sync.Once{}
+	embeddedInjectMu.Lock()
+	embeddedParsed = false
+	embeddedInjectMu.Unlock()
 	servicesTypedOnce = sync.Once{}
 	servicesTyped = nil
 	mergedServices = make(map[string]meta.Service)

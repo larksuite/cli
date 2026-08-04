@@ -181,7 +181,13 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 		if acct != nil {
 			internal := convertAccount(acct)
 			source := extensionTokenSource{provider: prov}
-			if err := p.enrichUserInfo(ctx, internal, source); err != nil {
+			if acct.OpenIDVerified && acct.OpenID != "" {
+				// Provider asserted a verified identity (e.g. env provider's
+				// LARKSUITE_CLI_USER_OPEN_ID): skip the startup user_info
+				// verification. UserOpenId is already populated by
+				// convertAccount; the token's validity is still enforced by
+				// the first real API call.
+			} else if err := p.enrichUserInfo(ctx, internal, source); err != nil {
 				if p.warnOut != nil {
 					_, _ = fmt.Fprintf(p.warnOut, "warning: unable to verify user identity from credential source %q: %v\n", source.Name(), err)
 				}

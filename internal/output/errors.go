@@ -34,6 +34,30 @@ func PartialFailure(code int) *PartialFailureError {
 	return &PartialFailureError{Code: code}
 }
 
+// renderTypedEnvelope serializes the typed-error envelope for err. It returns
+// (nil, false) when err carries no Problem or when JSON encoding fails — the
+// dispatcher then falls through to its signal / usage-error branches.
+func renderTypedEnvelope(err error, identity string) ([]byte, bool) {
+	typed, ok := errs.UnwrapTypedError(err)
+	if !ok {
+		return nil, false
+	}
+	env := typedEnvelope{
+		OK:       false,
+		Identity: identity,
+		Error:    typed,
+		Notice:   GetNotice(),
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if encErr := enc.Encode(env); encErr != nil {
+		return nil, false
+	}
+	return buf.Bytes(), true
+}
+
 // WriteTypedErrorEnvelope writes the JSON error envelope for a typed error.
 // Each typed error owns its wire shape via its own struct tags: Problem fields
 // are promoted to the top level through embedding, and extension fields
@@ -56,30 +80,11 @@ func PartialFailure(code int) *PartialFailureError {
 // Returns false only when err carries no Problem (the dispatcher then handles
 // it via its signal / usage-error branches) or when JSON encoding itself failed.
 func WriteTypedErrorEnvelope(w io.Writer, err error, identity string) bool {
-	typed, ok := errs.UnwrapTypedError(err)
+	b, ok := renderTypedEnvelope(err, identity)
 	if !ok {
 		return false
 	}
-	env := typedEnvelope{
-		OK:       false,
-		Identity: identity,
-		Error:    typed,
-		Notice:   GetNotice(),
-	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if encErr := enc.Encode(env); encErr != nil {
-		// Encoding failed — emit nothing here; the dispatcher's fall-through
-		// branches still surface the error, so stderr is never blank.
-		return false
-	}
-	// Best-effort write. Partial-write does not downgrade the success status:
-	// the dispatcher has already captured ExitCodeOf(err) before calling us,
-	// and a torn stderr is preferable to falling through to the plain
-	// "Error:" path with exit 1.
-	_, _ = w.Write(buf.Bytes())
+	_, _ = w.Write(b)
 	return true
 }
 

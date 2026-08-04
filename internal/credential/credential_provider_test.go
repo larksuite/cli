@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -489,5 +490,101 @@ func TestActiveExtensionProviderName_SkipsNilProvider(t *testing.T) {
 	}
 	if name != "" {
 		t.Errorf("got %q, want empty string", name)
+	}
+}
+
+func TestCredentialProvider_AssertedOpenIDSkipsUserInfo(t *testing.T) {
+	httpClientCalls := 0
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name: "asserted",
+			account: &extcred.Account{
+				AppID: "cli_a", Brand: extcred.BrandFeishu,
+				OpenID: "ou_injected", OpenIDVerified: true,
+			},
+			token: &extcred.Token{Value: "u-token", Source: "test"},
+		}},
+		nil, nil,
+		func() (*http.Client, error) {
+			httpClientCalls++
+			return nil, errors.New("user_info must not be fetched on asserted path")
+		},
+	)
+	acct, err := cp.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount: %v", err)
+	}
+	if httpClientCalls != 0 {
+		t.Fatalf("httpClient() called %d times, want 0 (verification skipped)", httpClientCalls)
+	}
+	if acct.UserOpenId != "ou_injected" {
+		t.Errorf("UserOpenId = %q, want %q", acct.UserOpenId, "ou_injected")
+	}
+	if acct.UserName != "" {
+		t.Errorf("UserName = %q, want empty on asserted path", acct.UserName)
+	}
+}
+
+func TestCredentialProvider_VerifiedFlagWithoutOpenIDFallsBack(t *testing.T) {
+	// 非法组合：OpenIDVerified=true 但 OpenID 空 → 视为未断言，照常尝试验证。
+	httpClientCalls := 0
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name: "misconfigured",
+			account: &extcred.Account{
+				AppID: "cli_a", Brand: extcred.BrandFeishu, OpenIDVerified: true,
+			},
+			token: &extcred.Token{Value: "u-token", Source: "test"},
+		}},
+		nil, nil,
+		func() (*http.Client, error) {
+			httpClientCalls++
+			return nil, errors.New("fail verification")
+		},
+	)
+	acct, err := cp.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount: %v", err)
+	}
+	if httpClientCalls == 0 {
+		t.Fatal("httpClient() not called, want verification attempt (invalid combination must fall back)")
+	}
+	// enrich 失败 → 现有防御逻辑清空未验证身份
+	if acct.UserOpenId != "" {
+		t.Errorf("UserOpenId = %q, want empty after failed verification", acct.UserOpenId)
+	}
+}
+
+func TestCredentialProvider_UnassertedOpenIDStillOverridden(t *testing.T) {
+	// 现有语义保持：OpenID 非空但未断言 → 有 UAT 时 API 结果覆盖。
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/open-apis/authen/v1/user_info" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"code":0,"msg":"ok","data":{"open_id":"ou_from_api","name":"API User"}}`))
+	}))
+	defer srv.Close()
+	// Endpoint injection mirrors tat_fetch_test.go's TestFetchTAT_ContextCanceled:
+	// there is no env-var endpoint override in this repo, so we rewrite the
+	// request host to the test server via a custom RoundTripper instead.
+	hc := &http.Client{Transport: &urlRewriteRT{base: srv.URL}}
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name: "hint-only",
+			account: &extcred.Account{
+				AppID: "cli_a", Brand: extcred.BrandFeishu, OpenID: "ou_hint",
+			},
+			token: &extcred.Token{Value: "u-token", Source: "test"},
+		}},
+		nil, nil,
+		func() (*http.Client, error) { return hc, nil },
+	)
+	acct, err := cp.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount: %v", err)
+	}
+	if acct.UserOpenId != "ou_from_api" {
+		t.Errorf("UserOpenId = %q, want %q (API result takes precedence)", acct.UserOpenId, "ou_from_api")
 	}
 }

@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -230,109 +229,25 @@ func configureFlagCompletions(args []string) {
 }
 
 // handleRootError dispatches a command error to the appropriate handler
-// and returns the process exit code.
-//
-// Dispatch order:
-//  1. Typed errors from errs/ (e.g. *errs.PermissionError, *errs.APIError,
-//     *errs.SecurityPolicyError, *errs.AuthenticationError, *errs.ConfigError):
-//     render via the typed envelope writer, which lifts extension fields
-//     (missing_scopes, console_url, challenge_url, ...) to the top level.
-//     Routed by errs.CategoryOf via ExitCodeOf. Auth and config errors are
-//     constructed typed at their origin (internal/auth, internal/core), so the
-//     dispatcher no longer promotes any legacy shape here.
-//  2. PartialFailure / BareError signals: the result envelope is already on
-//     stdout; honor the exit code and write nothing to stderr.
-//  3. Residual cobra usage errors (missing required flag, unknown command,
-//     argument validation): typed as an invalid_argument envelope (exit 2),
-//     matching the explicit flag/subcommand guards. Flag parse errors are
-//     already typed upstream by the root FlagErrorFunc.
+// and returns the process exit code. The classification itself (typed
+// envelope vs. PartialFailure/Bare signal vs. cobra-usage vs. leaked-untyped)
+// lives in output.DispatchError so the public extension/envelope facade
+// shares the exact same branches — see its doc comment for the dispatch
+// order.
 func handleRootError(f *cmdutil.Factory, err error) int {
-	errOut := f.IOStreams.ErrOut
-
 	// When the typed error is a need_user_authorization signal, fold in the
-	// current command's declared scopes as a Hint so the user/AI sees the
-	// concrete scope(s) to re-auth with. The hint is computed on the fly from
-	// local shortcut/service metadata — it never depends on server state.
+	// current command's declared scopes as a Hint. The hint depends on the
+	// Factory, so it stays in the cmd layer — it is applied before dispatch
+	// and is not part of the public DispatchError contract.
 	if !errs.IsRaw(err) {
 		applyNeedAuthorizationHint(f, err)
 	}
-
-	// Staged dispatch: capture the typed exit code BEFORE attempting the
-	// envelope write. WriteTypedErrorEnvelope is best-effort on the wire
-	// (partial-write still returns true) so the exit code we read here is
-	// preserved even if stderr is torn — torn stderr must not downgrade
-	// typed exits 3/4/6/10 to the plain "Error:" path with exit 1.
-	// WriteTypedErrorEnvelope still returns false when err carries no
-	// Problem; in that case we fall through to the signal / plain-text paths.
-	typedExit := output.ExitCodeOf(err)
-	if output.WriteTypedErrorEnvelope(errOut, err, string(f.ResolvedIdentity)) {
-		return typedExit
+	env, code, has := output.DispatchError(err, string(f.ResolvedIdentity))
+	if has {
+		// Best-effort write: a torn stderr must not downgrade the typed exit.
+		_, _ = f.IOStreams.ErrOut.Write(env)
 	}
-
-	// Partial-failure (batch / multi-status): the ok:false result envelope is
-	// already on stdout; set the exit code and write nothing to stderr.
-	var pfErr *output.PartialFailureError
-	if errors.As(err, &pfErr) {
-		return pfErr.Code
-	}
-
-	// Silent-exit signal (e.g. `auth check` predicate, or `update --json`):
-	// stdout already carries the result; honor the requested exit code and
-	// write nothing to stderr.
-	var bareErr *output.BareError
-	if errors.As(err, &bareErr) {
-		return bareErr.Code
-	}
-
-	// Errors reaching here are untyped: every RunE returns a typed errs.* error
-	// and flag-parse errors are typed by the root FlagErrorFunc. The remainder
-	// is either a cobra usage mistake (missing required flag, unknown command,
-	// wrong arg count), which cobra surfaces as a plain error identified by its
-	// stable text — the same external contract unknownFlagName relies on — or an
-	// untyped error that leaked past the typed boundary. Classify the former as
-	// invalid_argument (exit 2, like the explicit guards); treat the latter as an
-	// internal fault (exit 5) rather than blaming the user's input. The message
-	// is preserved either way, and the typed envelope still carries any pending
-	// deprecation notice.
-	var fallback error
-	if isCobraUsageError(err) {
-		fallback = errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err.Error())
-	} else {
-		fallback = errs.NewInternalError(errs.SubtypeUnknown, "%s", err.Error()).WithCause(err)
-	}
-	output.WriteTypedErrorEnvelope(errOut, fallback, string(f.ResolvedIdentity))
-	return output.ExitCodeOf(fallback)
-}
-
-// cobraUsageErrorMarkers are the stable error-text fragments cobra / pflag
-// (pinned at v1.10.2) emit for usage mistakes — missing required flag, unknown
-// command / flag, wrong argument count. Cobra surfaces these as plain errors,
-// not a typed value we can match on, so the dispatcher recognizes them by text;
-// this is the same external contract unknownFlagName already depends on. A
-// residual error matching none of these has leaked the typed boundary and is
-// treated as an internal fault, not a user error.
-var cobraUsageErrorMarkers = []string{
-	"unknown command ",
-	"unknown flag: ",
-	"unknown shorthand",
-	"required flag(s) ",
-	"flag needs an argument",
-	"bad flag syntax:",
-	"no such flag ",
-	"invalid argument ",
-	"arg(s), ", // accepts / requires N arg(s), received / only received M
-}
-
-// isCobraUsageError reports whether err is a cobra / pflag usage mistake,
-// identified by the stable error text of the pinned cobra version.
-func isCobraUsageError(err error) bool {
-	msg := err.Error()
-	for _, m := range cobraUsageErrorMarkers {
-		if strings.Contains(msg, m) {
-			return true
-		}
-	}
-	return false
+	return code
 }
 
 // installUnknownSubcommandGuard replaces cobra's silent help fallback on

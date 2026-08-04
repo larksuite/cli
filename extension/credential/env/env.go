@@ -89,6 +89,11 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		}
 	}
 
+	if openID := os.Getenv(envvars.CliUserOpenID); openID != "" && hasUAT {
+		acct.OpenID = openID
+		acct.OpenIDVerified = true
+	}
+
 	return acct, nil
 }
 

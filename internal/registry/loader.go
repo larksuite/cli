@@ -4,8 +4,11 @@
 package registry
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"math"
 	"path/filepath"
 	"runtime"
@@ -31,6 +34,43 @@ var (
 	embeddedParseOnce      sync.Once
 )
 
+// ErrMetaAlreadyLoaded is returned by SetEmbeddedMeta when the embedded
+// metadata has already been parsed; injection must happen before any
+// registry consumption. extension/apimeta re-exports it as ErrAlreadyLoaded.
+var ErrMetaAlreadyLoaded = errors.New("embedded api metadata already parsed")
+
+var (
+	// embeddedInjectMu serializes SetEmbeddedMeta against the first parse so
+	// check-then-write and mark-then-parse never interleave: an injection
+	// either fully lands before the parse or fails with ErrMetaAlreadyLoaded.
+	embeddedInjectMu sync.Mutex
+	embeddedParsed   bool // set inside parseEmbedded's Once body
+)
+
+// SetEmbeddedMeta validates data and installs it as this process's embedded
+// API metadata — the same variable go:embed fills in official builds, so every
+// downstream consumer (schema, command generation, scope discovery, cache
+// overlay version gating) behaves exactly as an official build would.
+//
+// It is the internal engine of extension/apimeta.SetEmbedded; see that
+// package for the public contract.
+func SetEmbeddedMeta(data []byte) error {
+	reg, err := meta.Parse(data) // validate before write; meta.Parse(nil/empty) returns a zero Registry with no error
+	if err != nil {
+		return fmt.Errorf("invalid api metadata: %w", err)
+	}
+	if len(reg.Services) == 0 {
+		return errors.New("api metadata contains no services")
+	}
+	embeddedInjectMu.Lock()
+	defer embeddedInjectMu.Unlock()
+	if embeddedParsed {
+		return ErrMetaAlreadyLoaded
+	}
+	embeddedMetaJSON = bytes.Clone(data)
+	return nil
+}
+
 // parseEmbedded decodes the embedded meta_data.json into the typed model exactly
 // once. It is the single parse of the embedded bytes: both the overlay-free
 // envelope path (EmbeddedServicesTyped) and the merged command/scope path
@@ -38,6 +78,9 @@ var (
 // twice and no map round-trip is needed downstream.
 func parseEmbedded() {
 	embeddedParseOnce.Do(func() {
+		embeddedInjectMu.Lock()
+		embeddedParsed = true
+		embeddedInjectMu.Unlock()
 		reg, _ := meta.Parse(embeddedMetaJSON)
 		embeddedVersion = reg.Version
 		embeddedServices = reg.Services
