@@ -96,6 +96,37 @@ func TestSlidesScreenshotRejectsEmptySlideIDWithSlideNumberDryRunE2E(t *testing.
 	require.Empty(t, result.Stdout)
 }
 
+func TestSlidesScreenshotOutputDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+screenshot",
+			"--presentation", "presScreenshotOutput",
+			"--slide-number", "3",
+			"--output", "./slide3.png",
+			"--overwrite",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	require.Equal(t, "./slide3.png", gjson.Get(result.Stdout, "data.output").String(), result.Stdout)
+	require.False(t, gjson.Get(result.Stdout, "data.output_dir").Exists(), result.Stdout)
+	require.Equal(t, "POST", gjson.Get(result.Stdout, "data.api.0.method").String(), result.Stdout)
+	require.Equal(t,
+		"/open-apis/slides_ai/v1/xml_presentations/presScreenshotOutput/slide_images",
+		gjson.Get(result.Stdout, "data.api.0.url").String(),
+		result.Stdout,
+	)
+	require.Equal(t, int64(3), gjson.Get(result.Stdout, "data.api.0.body.slide_numbers.0").Int(), result.Stdout)
+}
+
 func TestSlidesScreenshotAliasesDryRunE2E(t *testing.T) {
 	setSlidesDryRunEnv(t)
 

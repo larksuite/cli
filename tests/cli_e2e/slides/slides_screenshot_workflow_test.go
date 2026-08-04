@@ -106,6 +106,47 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 	require.Equal(t, info.Size(), screenshots[0].Get("size").Int(), "stdout:\n%s", screenshotResult.Stdout)
 	require.False(t, screenshots[0].Get("data").Exists(), "stdout must not expose screenshot payload: %s", screenshotResult.Stdout)
 	require.NotContains(t, screenshotResult.Stdout, "data:image/", "stdout must not expose screenshot payload")
+
+	requestedExt := ".png"
+	if format == "png" {
+		requestedExt = ".jpg"
+	}
+	requestedOutput := filepath.Join("fixed", "cover"+requestedExt)
+	fixedOutputResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+screenshot",
+			"--presentation", presentationID,
+			"--slide-id", slideID,
+			"--output", requestedOutput,
+		},
+		DefaultAs: "bot",
+		WorkDir:   workDir,
+	})
+	require.NoError(t, err)
+	fixedOutputResult.AssertExitCode(t, 0)
+	fixedOutputResult.AssertStdoutStatus(t, true)
+
+	actualFormat := gjson.Get(fixedOutputResult.Stdout, "data.screenshots.0.format").String()
+	wantExt := ".png"
+	if actualFormat == "jpeg" {
+		wantExt = ".jpg"
+	}
+	wantOutput := filepath.Join(workDir, "fixed", "cover"+wantExt)
+	wantOutput, err = filepath.EvalSymlinks(wantOutput)
+	require.NoError(t, err)
+	require.Equal(t, wantOutput, gjson.Get(fixedOutputResult.Stdout, "data.output").String(), fixedOutputResult.Stdout)
+	require.False(t, gjson.Get(fixedOutputResult.Stdout, "data.output_dir").Exists(), fixedOutputResult.Stdout)
+	require.Equal(t, wantOutput, gjson.Get(fixedOutputResult.Stdout, "data.screenshots.0.path").String(), fixedOutputResult.Stdout)
+	if requestedExt != wantExt {
+		require.Equal(t, requestedOutput, gjson.Get(fixedOutputResult.Stdout, "data.requested_output").String(), fixedOutputResult.Stdout)
+		require.True(t, gjson.Get(fixedOutputResult.Stdout, "data.output_adjusted").Bool(), fixedOutputResult.Stdout)
+	}
+	fixedImageFile, err := vfs.Open(wantOutput)
+	require.NoError(t, err)
+	defer fixedImageFile.Close()
+	_, decodedFormat, err := image.DecodeConfig(fixedImageFile)
+	require.NoError(t, err)
+	require.Equal(t, actualFormat, decodedFormat, fixedOutputResult.Stdout)
 }
 
 func requireScreenshotPathUnderDir(t *testing.T, path, dir string) {

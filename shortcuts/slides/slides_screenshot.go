@@ -51,11 +51,19 @@ var SlidesScreenshot = common.Shortcut{
 		{Name: "slide-number", Aliases: []string{"slide-numbers"}, Type: "int_array", Desc: "slide page number (repeat for multiple slides; max 10 pages per request)"},
 		{Name: "slide", Desc: "hidden alias routed to --slide-number for digits, otherwise --slide-id", Hidden: true},
 		{Name: "content", Desc: "slide XML content to render directly instead of fetching existing slides", Input: []string{common.File, common.Stdin}},
+		{Name: "output", Desc: "preferred relative output path for a single screenshot (extension optional; .png, .jpg, or .jpeg)"},
+		{Name: "overwrite", Type: "bool", Desc: "overwrite an existing file selected by --output"},
 		{Name: "output-dir", Default: defaultSlidesScreenshotDir, Desc: "relative directory for saved screenshots"},
-		{Name: "output-name", Desc: "file name stem for --content render output"},
+		{Name: "output-name", Desc: "legacy file name stem for --content render output; prefer --output for new calls"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		renderMode := runtime.Changed("content")
+		selectorCount := 1
+		if runtime.Changed("overwrite") && !runtime.Changed("output") {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--overwrite requires --output").
+				WithParam("--overwrite").
+				WithHint("use --overwrite only with --output <file>")
+		}
 		if renderMode {
 			if strings.TrimSpace(runtime.Str("content")) == "" {
 				return slidesScreenshotFlagErrorf("--content cannot be empty")
@@ -83,12 +91,33 @@ var SlidesScreenshot = common.Shortcut{
 			if len(slideIDs) == 0 && len(slideNumbers) == 0 {
 				return slidesScreenshotMissingSelectorError()
 			}
-			if err := validateSlidesScreenshotSelectorLimit(len(slideIDs) + len(slideNumbers)); err != nil {
+			selectorCount = len(slideIDs) + len(slideNumbers)
+			if err := validateSlidesScreenshotSelectorLimit(selectorCount); err != nil {
 				return err
 			}
 		}
-		if _, err := validateScreenshotOutputDir(runtime, runtime.Str("output-dir")); err != nil {
-			return err
+		if runtime.Changed("output") {
+			if runtime.Changed("output-dir") {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output cannot be combined with --output-dir").WithParam("--output")
+			}
+			if runtime.Changed("output-name") {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output cannot be combined with --output-name").WithParam("--output")
+			}
+			if selectorCount != 1 {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output requires exactly one slide; use --output-dir for multiple screenshots").WithParam("--output")
+			}
+			if err := validateScreenshotOutputPath(runtime, runtime.Str("output")); err != nil {
+				return err
+			}
+		} else {
+			if !renderMode && runtime.Changed("output-name") {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output-name is only supported with --content").
+					WithParam("--output-name").
+					WithHint("use --output <file> for one existing slide, or --output-dir for multiple slides")
+			}
+			if _, err := validateScreenshotOutputDir(runtime, runtime.Str("output-dir")); err != nil {
+				return err
+			}
 		}
 		return nil
 	},
@@ -117,7 +146,11 @@ var SlidesScreenshot = common.Shortcut{
 				Desc("[1] Resolve wiki node to slides presentation").
 				Params(map[string]interface{}{"token": ref.Token})
 		} else {
-			dry.Desc(fmt.Sprintf("Fetch %d slide screenshot(s) and save files under %s", len(slideIDs)+len(slideNumbers), runtime.Str("output-dir")))
+			if outputPath := strings.TrimSpace(runtime.Str("output")); outputPath != "" {
+				dry.Desc(fmt.Sprintf("Fetch one slide screenshot and save it as %s", outputPath))
+			} else {
+				dry.Desc(fmt.Sprintf("Fetch %d slide screenshot(s) and save files under %s", len(slideIDs)+len(slideNumbers), runtime.Str("output-dir")))
+			}
 		}
 		body := map[string]interface{}{}
 		if len(slideIDs) > 0 {
@@ -131,7 +164,7 @@ var SlidesScreenshot = common.Shortcut{
 			validate.EncodePathSegment(presentationID),
 		)).
 			Body(body)
-		return dry.Set("output_dir", runtime.Str("output-dir")).Set("base64_output", "suppressed; decoded to local files during execution")
+		return setSlidesScreenshotDryRunOutput(dry, runtime).Set("base64_output", "suppressed; decoded to local files during execution")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Changed("content") {
@@ -156,8 +189,7 @@ var SlidesScreenshot = common.Shortcut{
 		if err := validateSlidesScreenshotSelectorLimit(len(slideIDs) + len(slideNumbers)); err != nil {
 			return err
 		}
-		outputDir := runtime.Str("output-dir")
-		safeOutputDir, err := ensureScreenshotOutputDir(runtime, outputDir)
+		outputTarget, err := resolveSlidesScreenshotOutputTarget(runtime)
 		if err != nil {
 			return err
 		}
@@ -179,15 +211,16 @@ var SlidesScreenshot = common.Shortcut{
 			return enrichSlidesScreenshotSelectorError(err, slideNumbers)
 		}
 
-		saved, err := saveSlideScreenshots(runtime, data, safeOutputDir, presentationID)
+		saved, err := saveSlideScreenshots(runtime, data, outputTarget.safeOutputDir, presentationID, outputTarget.requested, outputTarget.overwrite)
 		if err != nil {
 			return err
 		}
-		runtime.Out(map[string]interface{}{
+		result := map[string]interface{}{
 			"xml_presentation_id": presentationID,
-			"output_dir":          outputDir,
 			"screenshots":         saved,
-		}, nil)
+		}
+		setSlidesScreenshotResultOutput(result, outputTarget, saved)
+		runtime.Out(result, nil)
 		return nil
 	},
 }
@@ -208,7 +241,7 @@ func dryRunRenderScreenshot(runtime *common.RuntimeContext) *common.DryRunAPI {
 		Body(map[string]interface{}{
 			"content": fmt.Sprintf("<xml omitted; length=%d>", len(content)),
 		})
-	return dry.Set("output_dir", runtime.Str("output-dir")).Set("base64_output", "suppressed; decoded to local file during execution")
+	return setSlidesScreenshotDryRunOutput(dry, runtime).Set("base64_output", "suppressed; decoded to local file during execution")
 }
 
 func executeRenderScreenshot(runtime *common.RuntimeContext) error {
@@ -222,8 +255,7 @@ func executeRenderScreenshot(runtime *common.RuntimeContext) error {
 	if runtime.Changed("presentation") {
 		return slidesScreenshotFlagErrorf("--presentation cannot be used with --content")
 	}
-	outputDir := runtime.Str("output-dir")
-	safeOutputDir, err := ensureScreenshotOutputDir(runtime, outputDir)
+	outputTarget, err := resolveSlidesScreenshotOutputTarget(runtime)
 	if err != nil {
 		return err
 	}
@@ -234,15 +266,68 @@ func executeRenderScreenshot(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	saved, err := saveRenderedSlideScreenshot(runtime, data, safeOutputDir, runtime.Str("output-name"))
+	saved, err := saveRenderedSlideScreenshot(runtime, data, outputTarget.safeOutputDir, runtime.Str("output-name"), outputTarget.requested, outputTarget.overwrite)
 	if err != nil {
 		return err
 	}
-	runtime.Out(map[string]interface{}{
-		"output_dir":  outputDir,
+	result := map[string]interface{}{
 		"screenshots": saved,
-	}, nil)
+	}
+	setSlidesScreenshotResultOutput(result, outputTarget, saved)
+	runtime.Out(result, nil)
 	return nil
+}
+
+func setSlidesScreenshotDryRunOutput(dry *common.DryRunAPI, runtime *common.RuntimeContext) *common.DryRunAPI {
+	if outputPath := strings.TrimSpace(runtime.Str("output")); outputPath != "" {
+		return dry.Set("output", outputPath)
+	}
+	return dry.Set("output_dir", runtime.Str("output-dir"))
+}
+
+type slidesScreenshotOutputTarget struct {
+	requested         string
+	requestedResolved string
+	outputDir         string
+	safeOutputDir     string
+	overwrite         bool
+}
+
+func resolveSlidesScreenshotOutputTarget(runtime *common.RuntimeContext) (slidesScreenshotOutputTarget, error) {
+	target := slidesScreenshotOutputTarget{
+		requested: strings.TrimSpace(runtime.Str("output")),
+		outputDir: runtime.Str("output-dir"),
+		overwrite: runtime.Bool("overwrite"),
+	}
+	if target.requested != "" {
+		resolved, err := runtime.ResolveSavePath(target.requested)
+		if err != nil {
+			return target, errs.NewValidationError(errs.SubtypeInvalidArgument, "--output invalid: %v", err).
+				WithParam("--output").
+				WithCause(err)
+		}
+		target.requestedResolved = resolved
+		return target, nil
+	}
+	safeOutputDir, err := ensureScreenshotOutputDir(runtime, target.outputDir)
+	if err != nil {
+		return target, err
+	}
+	target.safeOutputDir = safeOutputDir
+	return target, nil
+}
+
+func setSlidesScreenshotResultOutput(result map[string]interface{}, target slidesScreenshotOutputTarget, saved []map[string]interface{}) {
+	if target.requested != "" && len(saved) == 1 {
+		actualPath, _ := saved[0]["path"].(string)
+		result["output"] = actualPath
+		if filepath.Clean(target.requestedResolved) != filepath.Clean(actualPath) {
+			result["requested_output"] = target.requested
+			result["output_adjusted"] = true
+		}
+		return
+	}
+	result["output_dir"] = target.outputDir
 }
 
 func slidesScreenshotPresentation(runtime *common.RuntimeContext) string {
@@ -397,14 +482,48 @@ func validateScreenshotOutputDir(runtime *common.RuntimeContext, outputDir strin
 	return outputDir, nil
 }
 
+func validateScreenshotOutputPath(runtime *common.RuntimeContext, outputPath string) error {
+	outputPath = strings.TrimSpace(outputPath)
+	if outputPath == "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output cannot be empty").WithParam("--output")
+	}
+	if os.IsPathSeparator(outputPath[len(outputPath)-1]) {
+		return screenshotOutputDirectoryError(outputPath)
+	}
+	ext := strings.ToLower(filepath.Ext(outputPath))
+	if ext != "" && ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output must have no extension or end with .png, .jpg, or .jpeg").WithParam("--output")
+	}
+	if _, err := runtime.ResolveSavePath(outputPath); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output invalid: %v", err).WithParam("--output").WithCause(err)
+	}
+	if info, err := runtime.FileIO().Stat(outputPath); err == nil {
+		if info.IsDir() {
+			return screenshotOutputDirectoryError(outputPath)
+		}
+	} else if !isScreenshotFileNotExist(err) {
+		return errs.NewInternalError(errs.SubtypeFileIO, "inspect --output path %s: %v", outputPath, err).WithCause(err)
+	}
+	return nil
+}
+
+func screenshotOutputDirectoryError(outputPath string) error {
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output expects a file path, got directory %q", outputPath).
+		WithParam("--output").
+		WithHint("use --output-dir <directory> for directory output")
+}
+
 func ensureScreenshotOutputDir(runtime *common.RuntimeContext, outputDir string) (string, error) {
 	return validateScreenshotOutputDir(runtime, outputDir)
 }
 
-func saveSlideScreenshots(runtime *common.RuntimeContext, data map[string]interface{}, outputDir string, presentationID string) ([]map[string]interface{}, error) {
+func saveSlideScreenshots(runtime *common.RuntimeContext, data map[string]interface{}, outputDir string, presentationID string, outputPath string, overwrite bool) ([]map[string]interface{}, error) {
 	items := common.GetSlice(data, "slide_images")
 	if len(items) == 0 {
 		return nil, slidesScreenshotAPIDataError(data, "slides screenshot returned no slide_images")
+	}
+	if outputPath != "" && len(items) != 1 {
+		return nil, slidesScreenshotAPIDataError(data, "slides screenshot returned %d slide_images for single --output", len(items))
 	}
 	saved := make([]map[string]interface{}, 0, len(items))
 	for i, item := range items {
@@ -412,7 +531,7 @@ func saveSlideScreenshots(runtime *common.RuntimeContext, data map[string]interf
 		if !ok {
 			return nil, slidesScreenshotAPIDataError(data, "slides screenshot returned invalid slide_images[%d]", i)
 		}
-		item, err := saveSlideScreenshotImage(runtime, m, outputDir, slideScreenshotListFileBase(presentationID, m, i), "")
+		item, err := saveSlideScreenshotImage(runtime, m, outputDir, slideScreenshotListFileBase(presentationID, m, i), "", outputPath, overwrite)
 		if err != nil {
 			if isSlidesScreenshotPassthroughError(err) {
 				return nil, err
@@ -424,12 +543,12 @@ func saveSlideScreenshots(runtime *common.RuntimeContext, data map[string]interf
 	return saved, nil
 }
 
-func saveRenderedSlideScreenshot(runtime *common.RuntimeContext, data map[string]interface{}, outputDir string, outputName string) ([]map[string]interface{}, error) {
+func saveRenderedSlideScreenshot(runtime *common.RuntimeContext, data map[string]interface{}, outputDir string, outputName string, outputPath string, overwrite bool) ([]map[string]interface{}, error) {
 	item := common.GetMap(data, "slide_image")
 	if item == nil {
 		return nil, slidesScreenshotAPIDataError(data, "slides render screenshot returned no slide_image")
 	}
-	saved, err := saveSlideScreenshotImage(runtime, item, outputDir, outputName, "rendered-slide")
+	saved, err := saveSlideScreenshotImage(runtime, item, outputDir, outputName, "rendered-slide", outputPath, overwrite)
 	if err != nil {
 		if isSlidesScreenshotPassthroughError(err) {
 			return nil, err
@@ -439,7 +558,7 @@ func saveRenderedSlideScreenshot(runtime *common.RuntimeContext, data map[string
 	return []map[string]interface{}{saved}, nil
 }
 
-func saveSlideScreenshotImage(runtime *common.RuntimeContext, item map[string]interface{}, outputDir string, outputName string, fallbackName string) (map[string]interface{}, error) {
+func saveSlideScreenshotImage(runtime *common.RuntimeContext, item map[string]interface{}, outputDir string, outputName string, fallbackName string, outputPath string, overwrite bool) (map[string]interface{}, error) {
 	slideID := strings.TrimSpace(common.GetString(item, "slide_id"))
 	ext, label, err := slideScreenshotFormat(item)
 	if err != nil {
@@ -453,14 +572,19 @@ func saveSlideScreenshotImage(runtime *common.RuntimeContext, item map[string]in
 	if err != nil {
 		return nil, slidesScreenshotImageDataCauseError(slideID, err, "decode screenshot: %s", err)
 	}
-	fileBase := strings.TrimSpace(outputName)
-	if fileBase == "" {
-		fileBase = slideID
+	var path string
+	if outputPath != "" {
+		path, err = writeScreenshotOutputPath(runtime, slideScreenshotOutputPathForFormat(outputPath, ext), imageBytes, overwrite)
+	} else {
+		fileBase := strings.TrimSpace(outputName)
+		if fileBase == "" {
+			fileBase = slideID
+		}
+		if fileBase == "" {
+			fileBase = fallbackName
+		}
+		path, err = writeUniqueScreenshotFile(runtime, outputDir, fileBase, ext, imageBytes)
 	}
-	if fileBase == "" {
-		fileBase = fallbackName
-	}
-	path, err := writeUniqueScreenshotFile(runtime, outputDir, fileBase, ext, imageBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -471,6 +595,25 @@ func saveSlideScreenshotImage(runtime *common.RuntimeContext, item map[string]in
 		"path":         path,
 		"size":         len(imageBytes),
 	}, nil
+}
+
+func slideScreenshotOutputExtMatches(outputExt string, responseExt string) bool {
+	outputExt = strings.ToLower(outputExt)
+	if responseExt == "jpg" {
+		return outputExt == ".jpg" || outputExt == ".jpeg"
+	}
+	return outputExt == "."+responseExt
+}
+
+func slideScreenshotOutputPathForFormat(outputPath string, responseExt string) string {
+	outputExt := filepath.Ext(outputPath)
+	if outputExt == "" {
+		return outputPath + "." + responseExt
+	}
+	if slideScreenshotOutputExtMatches(outputExt, responseExt) {
+		return outputPath
+	}
+	return strings.TrimSuffix(outputPath, outputExt) + "." + responseExt
 }
 
 func slideScreenshotListFileBase(presentationID string, item map[string]interface{}, index int) string {
@@ -625,28 +768,55 @@ func safeScreenshotFileBase(base string) string {
 
 func writeUniqueScreenshotFile(runtime *common.RuntimeContext, outputDir string, fileBase string, ext string, imageBytes []byte) (string, error) {
 	base := safeScreenshotFileBase(fileBase)
-	for i := 0; i < 1000; i++ {
-		candidateBase := base
-		if i > 0 {
-			candidateBase = fmt.Sprintf("%s_%d", base, i+1)
+	return writeUniqueScreenshotPath(runtime, filepath.Join(outputDir, base+"."+ext), imageBytes)
+}
+
+func writeScreenshotOutputPath(runtime *common.RuntimeContext, outputPath string, imageBytes []byte, overwrite bool) (string, error) {
+	if info, err := runtime.FileIO().Stat(outputPath); err == nil {
+		if info.IsDir() {
+			return "", screenshotOutputDirectoryError(outputPath)
 		}
-		path := filepath.Join(outputDir, candidateBase+"."+ext)
-		if _, err := runtime.FileIO().Stat(path); err == nil {
+		if !overwrite {
+			return "", errs.NewValidationError(errs.SubtypeFailedPrecondition, "output file already exists: %s", outputPath).
+				WithParam("--output").
+				WithHint("add --overwrite to replace the existing file")
+		}
+	} else if !isScreenshotFileNotExist(err) {
+		return "", errs.NewInternalError(errs.SubtypeFileIO, "inspect screenshot output %s: %v", outputPath, err).WithCause(err)
+	}
+	if _, err := runtime.FileIO().Save(outputPath, fileio.SaveOptions{}, bytes.NewReader(imageBytes)); err != nil {
+		return "", common.WrapSaveErrorTyped(err)
+	}
+	resolvedPath, err := runtime.ResolveSavePath(outputPath)
+	if err != nil {
+		return "", errs.NewInternalError(errs.SubtypeFileIO, "resolve saved screenshot path %s: %v", outputPath, err).WithCause(err)
+	}
+	return resolvedPath, nil
+}
+
+func writeUniqueScreenshotPath(runtime *common.RuntimeContext, outputPath string, imageBytes []byte) (string, error) {
+	ext := filepath.Ext(outputPath)
+	base := strings.TrimSuffix(outputPath, ext)
+	for i := 0; i < 1000; i++ {
+		candidate := outputPath
+		if i > 0 {
+			candidate = fmt.Sprintf("%s_%d%s", base, i+1, ext)
+		}
+		if _, err := runtime.FileIO().Stat(candidate); err == nil {
 			continue
 		} else if !isScreenshotFileNotExist(err) {
-			return "", errs.NewInternalError(errs.SubtypeFileIO, "write screenshot %s: %v", path, err).WithCause(err)
+			return "", errs.NewInternalError(errs.SubtypeFileIO, "write screenshot %s: %v", candidate, err).WithCause(err)
 		}
-		if _, err := runtime.FileIO().Save(path, fileio.SaveOptions{}, bytes.NewReader(imageBytes)); err != nil {
+		if _, err := runtime.FileIO().Save(candidate, fileio.SaveOptions{}, bytes.NewReader(imageBytes)); err != nil {
 			return "", common.WrapSaveErrorTyped(err)
 		}
-		resolvedPath, err := runtime.ResolveSavePath(path)
+		resolvedPath, err := runtime.ResolveSavePath(candidate)
 		if err != nil {
-			return "", errs.NewInternalError(errs.SubtypeFileIO, "resolve saved screenshot path %s: %v", path, err).WithCause(err)
+			return "", errs.NewInternalError(errs.SubtypeFileIO, "resolve saved screenshot path %s: %v", candidate, err).WithCause(err)
 		}
 		return resolvedPath, nil
 	}
-	path := filepath.Join(outputDir, base+"."+ext)
-	return "", errs.NewInternalError(errs.SubtypeFileIO, "write screenshot %s: too many duplicate file names", path)
+	return "", errs.NewInternalError(errs.SubtypeFileIO, "write screenshot %s: too many duplicate file names", outputPath)
 }
 
 func isScreenshotFileNotExist(err error) bool {
