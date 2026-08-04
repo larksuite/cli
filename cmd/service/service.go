@@ -401,6 +401,19 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		return err
 	}
 
+	var ac *client.APIClient
+	mailRulesReorderCompleted := false
+	if opts.SchemaPath == mailRulesReorderSchemaPath {
+		ac, err = f.NewAPIClientWithConfig(config)
+		if err != nil {
+			return err
+		}
+		if err := maybeCompleteMailRulesReorderIDs(opts.Ctx, ac, opts, &request, ac.CheckResponse); err != nil {
+			return err
+		}
+		mailRulesReorderCompleted = true
+	}
+
 	if opts.DryRun {
 		if fileMeta != nil {
 			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
@@ -414,9 +427,11 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		}
 	}
 
-	ac, err := f.NewAPIClientWithConfig(config)
-	if err != nil {
-		return err
+	if ac == nil {
+		ac, err = f.NewAPIClientWithConfig(config)
+		if err != nil {
+			return err
+		}
 	}
 
 	out := f.IOStreams.Out
@@ -430,8 +445,10 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	// with MissingScopes / Identity / ConsoleURL populated from the response.
 	checkErr := ac.CheckResponse
 
-	if err := maybeCompleteMailRulesReorderIDs(opts.Ctx, ac, opts, &request, checkErr); err != nil {
-		return err
+	if !mailRulesReorderCompleted {
+		if err := maybeCompleteMailRulesReorderIDs(opts.Ctx, ac, opts, &request, checkErr); err != nil {
+			return err
+		}
 	}
 
 	if opts.PageAll {

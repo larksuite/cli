@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -94,6 +95,7 @@ func registerMailRulesReorder(reg *httpmock.Registry, mailboxID string, onMatch 
 func TestMailRulesReorder_CompletesPartialIDsBeforeReorder(t *testing.T) {
 	_, _, reg, cmd := newMailRulesReorderCommand(t)
 	var listMailbox, reorderMailbox string
+	var gotRuleIDs []string
 	registerMailRulesListPage(reg, "shared@example.com", map[string]interface{}{
 		"items": []interface{}{
 			map[string]interface{}{"rule_id": "r1"},
@@ -106,9 +108,7 @@ func TestMailRulesReorder_CompletesPartialIDsBeforeReorder(t *testing.T) {
 	})
 	registerMailRulesReorder(reg, "shared@example.com", func(req *http.Request, got map[string]interface{}) {
 		reorderMailbox = req.URL.Path
-		if gotIDs := interfaceSliceToStrings(got["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r2", "r1", "r3"}) {
-			t.Fatalf("rule_ids = %#v, want [r2 r1 r3]", got["rule_ids"])
-		}
+		gotRuleIDs = interfaceSliceToStrings(got["rule_ids"])
 	}, map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{"ok": true}})
 
 	cmd.setArgs([]string{
@@ -119,6 +119,9 @@ func TestMailRulesReorder_CompletesPartialIDsBeforeReorder(t *testing.T) {
 	if err := cmd.execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
+	if !reflect.DeepEqual(gotRuleIDs, []string{"r2", "r1", "r3"}) {
+		t.Fatalf("rule_ids = %#v, want [r2 r1 r3]", gotRuleIDs)
+	}
 	if listMailbox != reorderMailbox {
 		t.Fatalf("list path = %q, reorder path = %q; want same mailbox context", listMailbox, reorderMailbox)
 	}
@@ -126,6 +129,7 @@ func TestMailRulesReorder_CompletesPartialIDsBeforeReorder(t *testing.T) {
 
 func TestMailRulesReorder_FullIDsRemainInRequestedOrder(t *testing.T) {
 	_, _, reg, cmd := newMailRulesReorderCommand(t)
+	var gotRuleIDs []string
 	registerMailRulesListPage(reg, "me", map[string]interface{}{
 		"items": []interface{}{
 			map[string]interface{}{"rule_id": "r1"},
@@ -135,14 +139,45 @@ func TestMailRulesReorder_FullIDsRemainInRequestedOrder(t *testing.T) {
 		"has_more": false,
 	}, nil)
 	registerMailRulesReorder(reg, "me", func(req *http.Request, got map[string]interface{}) {
-		if gotIDs := interfaceSliceToStrings(got["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r3", "r1", "r2"}) {
-			t.Fatalf("rule_ids = %#v, want [r3 r1 r2]", got["rule_ids"])
-		}
+		gotRuleIDs = interfaceSliceToStrings(got["rule_ids"])
 	}, map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}})
 
 	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r3","r1","r2"]}`})
 	if err := cmd.execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
+	}
+	if !reflect.DeepEqual(gotRuleIDs, []string{"r3", "r1", "r2"}) {
+		t.Fatalf("rule_ids = %#v, want [r3 r1 r2]", gotRuleIDs)
+	}
+}
+
+func TestMailRulesReorder_DryRunCompletesPartialIDs(t *testing.T) {
+	_, stdout, reg, cmd := newMailRulesReorderCommand(t)
+	registerMailRulesListPage(reg, "me", map[string]interface{}{
+		"items": []interface{}{
+			map[string]interface{}{"rule_id": "r1"},
+			map[string]interface{}{"rule_id": "r2"},
+			map[string]interface{}{"rule_id": "r3"},
+		},
+		"has_more": false,
+	}, nil)
+
+	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r2"]}`, "--dry-run"})
+	if err := cmd.execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	var dryRun map[string]any
+	decoder := json.NewDecoder(strings.NewReader(strings.TrimPrefix(stdout.String(), "=== Dry Run ===\n")))
+	if err := decoder.Decode(&dryRun); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
+	}
+	body, ok := dryRun["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("dry-run body = %#v, want object", dryRun["body"])
+	}
+	if gotIDs := interfaceSliceToStrings(body["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r2", "r1", "r3"}) {
+		t.Fatalf("dry-run rule_ids = %#v, want [r2 r1 r3]", gotIDs)
 	}
 }
 
@@ -190,10 +225,7 @@ func TestMailRulesReorder_ListFailureDoesNotCallReorder(t *testing.T) {
 	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r1"]}`})
 
 	err := cmd.execute()
-	var apiErr *errs.APIError
-	if !errors.As(err, &apiErr) || !strings.Contains(err.Error(), "list failed") {
-		t.Fatalf("expected list API error, got %T: %v", err, err)
-	}
+	assertServiceAPIError(t, err, 999, "list failed")
 }
 
 func TestMailRulesReorder_ReorderFailureIsSurfaced(t *testing.T) {
@@ -208,15 +240,13 @@ func TestMailRulesReorder_ReorderFailureIsSurfaced(t *testing.T) {
 	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r1"]}`})
 
 	err := cmd.execute()
-	var apiErr *errs.APIError
-	if !errors.As(err, &apiErr) || !strings.Contains(err.Error(), "reorder failed") {
-		t.Fatalf("expected reorder API error, got %T: %v", err, err)
-	}
+	assertServiceAPIError(t, err, 998, "reorder failed")
 }
 
 func TestMailRulesReorder_ListPaginationFetchesAllRules(t *testing.T) {
 	_, _, reg, cmd := newMailRulesReorderCommand(t)
 	var tokens []string
+	var gotRuleIDs []string
 	registerMailRulesListPage(reg, "me", map[string]interface{}{
 		"items":      []interface{}{map[string]interface{}{"rule_id": "r1"}},
 		"has_more":   true,
@@ -231,14 +261,15 @@ func TestMailRulesReorder_ListPaginationFetchesAllRules(t *testing.T) {
 		tokens = append(tokens, req.URL.Query().Get("page_token"))
 	})
 	registerMailRulesReorder(reg, "me", func(req *http.Request, got map[string]interface{}) {
-		if gotIDs := interfaceSliceToStrings(got["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r2", "r1"}) {
-			t.Fatalf("rule_ids = %#v, want [r2 r1]", got["rule_ids"])
-		}
+		gotRuleIDs = interfaceSliceToStrings(got["rule_ids"])
 	}, map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}})
 
 	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r2"]}`})
 	if err := cmd.execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
+	}
+	if !reflect.DeepEqual(gotRuleIDs, []string{"r2", "r1"}) {
+		t.Fatalf("rule_ids = %#v, want [r2 r1]", gotRuleIDs)
 	}
 	if !reflect.DeepEqual(tokens, []string{"", "next-1"}) {
 		t.Fatalf("page tokens = %v, want [ next-1]", tokens)
@@ -278,8 +309,24 @@ func assertServiceValidationError(t *testing.T, err error, wantSubstr string) {
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected validation error, got %T: %v", err, err)
 	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, 0)
+	if validationErr.Param != "rule_ids" {
+		t.Fatalf("validation error param = %q, want rule_ids", validationErr.Param)
+	}
 	if !strings.Contains(err.Error(), wantSubstr) {
 		t.Fatalf("validation error = %q, want substring %q", err.Error(), wantSubstr)
+	}
+}
+
+func assertServiceAPIError(t *testing.T, err error, wantCode int, wantSubstr string) {
+	t.Helper()
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected API error, got %T: %v", err, err)
+	}
+	requireProblem(t, err, errs.CategoryAPI, errs.SubtypeUnknown, wantCode)
+	if !strings.Contains(err.Error(), wantSubstr) {
+		t.Fatalf("api error = %q, want substring %q", err.Error(), wantSubstr)
 	}
 }
 
@@ -287,7 +334,7 @@ func interfaceSliceToStrings(v interface{}) []string {
 	items, _ := v.([]interface{})
 	out := make([]string, 0, len(items))
 	for _, item := range items {
-		out = append(out, item.(string))
+		out = append(out, fmt.Sprint(item))
 	}
 	return out
 }
