@@ -47,7 +47,7 @@ python3 "<lark-slides-skill-dir>/scripts/xml_text_overlap_lint.py" --input <pres
 - `element_ids`：相关 XML 元素 ID；
 - `rule`：规则 ID、名称、阈值和比较关系；
 - `measurement`：越界量、交叠面积、覆盖率等实测值；
-- `related_objects`：相关对象的类型与坐标框；
+- `related_objects`：相关对象的类型、坐标框，以及指向当前输入 XML 节点的 XPath-like `xml_path`；
 - `target`、`message`、`hint`：页码、语义说明和处理建议。
 
 当 `sparse_container_content.measurement.content_coverage_ratio < rule.threshold` 时，需要结合同页截图判断留白是否有意设计；不要仅凭 warning 自动扩充内容。
