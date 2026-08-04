@@ -771,6 +771,35 @@ def parse_presentation(root: ET.Element) -> dict[str, Any]:
     }
 
 
+def build_source_xml_paths(slide_xml: str, slide_number: int) -> dict[str, list[str]]:
+    root = ET.fromstring(slide_xml)
+    data = next((child for child in root if xml_local_name(child.tag) == "data"), None)
+    paths: dict[str, list[str]] = {}
+    if data is None:
+        return paths
+    counts: dict[str, int] = {}
+    for child in data:
+        kind = xml_local_name(child.tag)
+        counts[kind] = counts.get(kind, 0) + 1
+        paths.setdefault(kind, []).append(
+            f"slide[{slide_number}]/data/{kind}[{counts[kind]}]"
+        )
+    return paths
+
+
+def attach_source_xml_paths(
+    elements: list[dict[str, Any]], source_paths: dict[str, list[str]]
+) -> None:
+    offsets: dict[str, int] = {}
+    for element in elements:
+        kind = element["kind"]
+        offset = offsets.get(kind, 0)
+        kind_paths = source_paths.get(kind, [])
+        if offset < len(kind_paths):
+            element["xml_path"] = kind_paths[offset]
+        offsets[kind] = offset + 1
+
+
 def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
 
@@ -2374,12 +2403,15 @@ def issue_measurement(
 
 
 def related_object(element: dict[str, Any]) -> dict[str, Any]:
-    return {
+    related = {
         "element_id": element["id"],
         "kind": element["kind"],
         "type": element["type"],
         "bbox": {key: element[key] for key in ("x", "y", "width", "height")},
     }
+    if element.get("xml_path"):
+        related["xml_path"] = element["xml_path"]
+    return related
 
 
 def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
@@ -2605,13 +2637,16 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             )
             continue
 
+        source_paths = build_source_xml_paths(slide_xml, slide_number)
         geometry = lint_slide(
             slide_xml,
             slide_number,
             presentation["width"],
             presentation["height"],
         )
+        attach_source_xml_paths(geometry["elements"], source_paths)
         density_elements = extract_density_elements(slide_xml)
+        attach_source_xml_paths(density_elements, source_paths)
         extra_elements = [
             element for element in density_elements if element["kind"] in {"icon", "polyline", "line"}
         ]

@@ -2528,8 +2528,115 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["summary"]["error_count"], 0)
         self.assertEqual(result["summary"]["info_count"], 1)
 
+    def test_lint_xml_related_objects_include_source_xml_paths(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide>
+                <data>
+                  <shape type="text" topLeftX="80" topLeftY="80" width="400" height="60">
+                    <content fontSize="24"><p>Control slide</p></content>
+                  </shape>
+                </data>
+              </slide>
+              <slide>
+                <data>
+                  <shape type="text" topLeftX="70" topLeftY="55" width="820" height="70">
+                    <content fontSize="32"><p>shape-3 mapping experiment</p></content>
+                  </shape>
+                  <shape type="text" topLeftX="80" topLeftY="165" width="400" height="70">
+                    <content fontSize="18"><p>First, preserve source order.</p></content>
+                  </shape>
+                  <shape type="text" topLeftX="80" topLeftY="315" width="400" height="64">
+                    <content fontSize="26"><p>TARGET_SHAPE_THREE</p></content>
+                  </shape>
+                  <img src="token" topLeftX="80" topLeftY="305" width="400" height="110"/>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+
+        issue = next(
+            issue
+            for issue in result["slides"][1]["issues"]
+            if issue["code"] == "image_covers_text"
+        )
+        self.assertEqual(
+            {
+                obj["element_id"]: obj["xml_path"]
+                for obj in issue["related_objects"]
+            },
+            {
+                "img-4": "slide[2]/data/img[1]",
+                "shape-3": "slide[2]/data/shape[3]",
+            },
+        )
+
+    def test_lint_xml_related_objects_include_line_xml_path(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="label" type="text" topLeftX="100" topLeftY="100" width="200" height="80">
+                  <content fontSize="24"><p>Crossed text</p></content>
+                </shape>
+                <line id="connector" startX="80" startY="130" endX="330" endY="130">
+                  <border color="rgb(15, 23, 42)" width="2"/>
+                </line>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "bbox_overlap" and issue["elements"][0] == "connector"
+        )
+        self.assertEqual(
+            {
+                obj["element_id"]: obj["xml_path"]
+                for obj in issue["related_objects"]
+            },
+            {
+                "connector": "slide[1]/data/line[1]",
+                "label": "slide[1]/data/shape[1]",
+            },
+        )
+
 
 class XmlTextOverlapLintDensityTest(unittest.TestCase):
+    def test_lint_xml_sparse_container_related_objects_include_icon_xml_path(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="card" type="rect" topLeftX="60" topLeftY="120" width="400" height="300"/>
+                <icon id="visual" iconType="iconpark/Base/setting.svg" topLeftX="80" topLeftY="140" width="32" height="32">
+                  <fill><fillColor color="rgb(37, 99, 235)"/></fill>
+                </icon>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "sparse_container_content"
+        )
+        self.assertEqual(
+            {
+                obj["element_id"]: obj["xml_path"]
+                for obj in issue["related_objects"]
+            },
+            {
+                "card": "slide[1]/data/shape[1]",
+                "visual": "slide[1]/data/icon[1]",
+            },
+        )
+
     def test_lint_xml_blocks_blank_slide(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
