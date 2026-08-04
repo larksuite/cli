@@ -2356,6 +2356,12 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             issue for issue in result["slides"][0]["issues"]
             if issue["code"] == "duplicate_element_id"
         )
+        self.assertEqual(
+            duplicate_issue["hint"],
+            "Do not invent replacement IDs. For newly authored elements, remove the id attribute. "
+            "When updating read-back XML, keep the server ID on the original element only and remove it "
+            "from copied or new elements. Use xml_path to edit the correct nodes.",
+        )
         self.assertEqual(duplicate_issue["element_ids"], ["dup", "dup"])
         self.assertEqual(
             [obj["xml_path"] for obj in duplicate_issue["related_objects"]],

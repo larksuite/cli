@@ -2369,7 +2369,11 @@ def detect_duplicate_element_ids(elements: list[dict[str, Any]]) -> list[dict[st
                 "duplicate_count": len(duplicates),
             },
             "message": f'element id "{source_id}" is used by {len(duplicates)} elements',
-            "hint": "Give every element a unique non-empty id before editing by element_id.",
+            "hint": (
+                "Do not invent replacement IDs. For newly authored elements, remove the id attribute. "
+                "When updating read-back XML, keep the server ID on the original element only and remove it "
+                "from copied or new elements. Use xml_path to edit the correct nodes."
+            ),
         }
         for source_id, duplicates in elements_by_source_id.items()
         if len(duplicates) > 1
