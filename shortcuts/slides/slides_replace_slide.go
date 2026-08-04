@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -49,7 +50,7 @@ var SlidesReplaceSlide = common.Shortcut{
 	Flags: []common.Flag{
 		requiredPresentationRefFlag(),
 		{Name: "slide-id", Desc: "slide page identifier (slide_id)", Required: true},
-		{Name: "parts", Desc: "JSON array of replace parts (each: {action: block_replace|block_insert, ...}); max 200", Required: true, Input: []string{common.File, common.Stdin}},
+		{Name: "parts", Desc: "JSON array of replace parts; each needs action plus block_id + replacement (block_replace) or insertion [+ insert_before_block_id] (block_insert); any other key is rejected; max 200", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "revision-id", Type: "int", Default: "-1", Desc: "presentation revision (-1 = latest; pass a specific number for optimistic locking)"},
 		{Name: "tid", Desc: "transaction id for concurrent-edit locking (usually empty)"},
 	},
@@ -193,10 +194,11 @@ type replacePart struct {
 
 // parseReplaceParts decodes the --parts JSON into typed structs.
 //
-// Accepts JSON with extra keys (pattern / is_multiple) so that a user who
-// copy-pasted a doc example doesn't get a decoder error; those keys are
-// ignored because str_replace isn't exposed. validateReplaceParts enforces
-// that nothing from the str_replace family actually gets used.
+// Fields outside the action's own set are rejected (see
+// checkReplacePartFields) rather than dropped: silently ignoring them is what
+// made XML in a hallucinated field (e.g. "content") surface as the misleading
+// "requires non-empty replacement". Parts carrying an action this shortcut
+// doesn't expose keep their own errors from validateReplaceParts.
 func parseReplaceParts(raw string) ([]replacePart, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -215,6 +217,14 @@ func parseReplaceParts(raw string) ([]replacePart, error) {
 				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].action must be a string", i).WithParam("--parts")
 			}
 			p.Action = s
+		} else if err := checkMisspelledAction(i, m); err != nil {
+			// "Action" selects no schema, so the per-action check below would skip
+			// the part entirely and validateReplaceParts would only say action is
+			// required. Name the misspelling instead.
+			return nil, err
+		}
+		if err := checkReplacePartFields(i, m, p.Action); err != nil {
+			return nil, err
 		}
 		if v, ok := m["replacement"]; ok {
 			s, ok := v.(string)
@@ -247,6 +257,148 @@ func parseReplaceParts(raw string) ([]replacePart, error) {
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// replacePartSchema describes one exposed action: the fields it accepts, the
+// field carrying its XML fragment, and a correct one-liner to echo back.
+type replacePartSchema struct {
+	fields  []string
+	payload string
+	hint    string
+}
+
+// replacePartSchemas is the field contract of the two exposed actions. Holding
+// it in one place lets the error name the exact set the caller may use, instead
+// of a generic "unknown field".
+var replacePartSchemas = map[string]replacePartSchema{
+	"block_replace": {
+		fields:  []string{"action", "block_id", "replacement"},
+		payload: "replacement",
+		hint:    `correct shape: {"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"text\"><content><p>text</p></content></shape>"}`,
+	},
+	"block_insert": {
+		fields:  []string{"action", "insertion", "insert_before_block_id"},
+		payload: "insertion",
+		hint:    `correct shape: {"action":"block_insert","insertion":"<shape type=\"rect\" width=\"100\" height=\"100\"/>"}`,
+	},
+}
+
+// xmlPayloadAliases are the wrong field names callers reach for when they mean
+// the XML payload. internal/suggest can't route these: edit distance misses
+// most of them outright (content → replacement), and its prefix ranking would
+// send block / block_xml to block_id — the wrong field. Hence the explicit
+// list. "content" dominates in practice because <shape> nests a <content>
+// child, which makes it the intuitive-but-wrong top-level key.
+//
+// Entries are limited to names actually observed carrying a fragment. A
+// shape attribute like "fill" is deliberately absent: whoever writes it means
+// "recolor this block", not "here is my XML", so pointing them at replacement
+// would be guessing. The unknown-field error already names the valid set.
+var xmlPayloadAliases = []string{"block", "block_xml", "content", "data", "element", "new_xml", "xml"}
+
+// normalizeFieldKey folds case and the _/- separators so "Content", "newXml",
+// "new-xml" and "new_xml" collapse onto one key. Callers pick the casing of
+// whatever language they happen to be thinking in (the CLI's own flags are
+// kebab-case), and the suggestion should survive that; the whitelist itself
+// stays exact, because the API only accepts snake_case.
+func normalizeFieldKey(k string) string {
+	k = strings.ReplaceAll(k, "_", "")
+	k = strings.ReplaceAll(k, "-", "")
+	return strings.ToLower(k)
+}
+
+// matchNormalized returns the candidate that matches k once both are
+// normalized, so "blockId" resolves to "block_id".
+func matchNormalized(k string, candidates []string) (string, bool) {
+	nk := normalizeFieldKey(k)
+	for _, c := range candidates {
+		if normalizeFieldKey(c) == nk {
+			return c, true
+		}
+	}
+	return "", false
+}
+
+// checkMisspelledAction runs when a part has no exact "action" key: if some key
+// normalizes to it, that spelling is the real problem, and saying so beats the
+// bare "action is required" the caller would otherwise get.
+func checkMisspelledAction(i int, m map[string]interface{}) error {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		if normalizeFieldKey(k) != "action" {
+			continue
+		}
+		err := errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--parts[%d] unknown field %q; did you mean %q?", i, k, "action",
+		).WithParam("--parts")
+		// The misspelled key still holds the action name, so the example can be
+		// the one the caller was actually reaching for.
+		if name, ok := m[k].(string); ok {
+			if schema, known := replacePartSchemas[name]; known {
+				return err.WithHint("%s", schema.hint)
+			}
+		}
+		return err
+	}
+	return nil
+}
+
+// checkReplacePartFields rejects fields that don't belong to the part's action,
+// naming the field the caller most likely meant. Actions this shortcut doesn't
+// expose ("", str_replace, unknown) are skipped so their own errors from
+// validateReplaceParts still win.
+func checkReplacePartFields(i int, m map[string]interface{}, action string) error {
+	schema, ok := replacePartSchemas[action]
+	if !ok {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	// Sorted so a part carrying several bad fields always reports the same one.
+	slices.Sort(keys)
+	for _, k := range keys {
+		if slices.Contains(schema.fields, k) {
+			continue
+		}
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"%s", unknownPartFieldMessage(i, k, action, schema),
+		).WithParam("--parts").WithHint("%s", schema.hint)
+	}
+	return nil
+}
+
+// unknownPartFieldMessage builds the error text for one rejected field,
+// naming the field the caller most likely meant.
+func unknownPartFieldMessage(i int, key, action string, schema replacePartSchema) string {
+	valid := fmt.Sprintf("Valid fields for %s: %s", action, strings.Join(schema.fields, ", "))
+	// Right field, wrong casing or separator (e.g. "blockId", "block-id").
+	if field, ok := matchNormalized(key, schema.fields); ok {
+		return fmt.Sprintf("--parts[%d] unknown field %q; did you mean %q? %s", i, key, field, valid)
+	}
+	if _, ok := matchNormalized(key, xmlPayloadAliases); ok {
+		return fmt.Sprintf("--parts[%d] unknown field %q; did you mean %q? %s", i, key, schema.payload, valid)
+	}
+	// Other actions are checked in sorted-name order so the one named in the
+	// error stays deterministic even if a future field matches several.
+	others := make([]string, 0, len(replacePartSchemas))
+	for name := range replacePartSchemas {
+		if name != action {
+			others = append(others, name)
+		}
+	}
+	slices.Sort(others)
+	for _, other := range others {
+		if _, ok := matchNormalized(key, replacePartSchemas[other].fields); ok {
+			return fmt.Sprintf("--parts[%d] unknown field %q; it belongs to %s. %s", i, key, other, valid)
+		}
+	}
+	return fmt.Sprintf("--parts[%d] unknown field %q. %s", i, key, valid)
 }
 
 const larkCodeSlidesInvalidParam = 3350001

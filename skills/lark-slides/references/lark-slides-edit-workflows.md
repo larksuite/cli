@@ -33,6 +33,8 @@ lark-cli slides +replace-slide --as user \
 
 `slide_id` / 页序不会变。`block_replace` 的 `replacement` 根元素 `id` 会自动注入为 `block_id`，用户手写 XML 时不需要自己加。
 
+> **part 的字段名是 `block_id` + `replacement`（XML 字符串）**：写成 `content` / `xml` / `block` 会被 CLI 拒绝（报 `unknown field "content"; did you mean "replacement"?`）。收到这个报错时改字段名，不要改字段值。
+
 ## `revision_id` 参数
 
 `--revision-id` 默认 `-1`，表示基于当前最新版执行。传具体版本号时，服务端以该版本为 base 应用变更：
