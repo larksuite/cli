@@ -10,6 +10,7 @@ import (
 	"errors"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -996,6 +997,280 @@ func requireProblem(t *testing.T, err error, category errs.Category, subtype err
 	if p.Category != category || p.Subtype != subtype || p.Code != code {
 		t.Fatalf("problem = %s/%s/%d, want %s/%s/%d", p.Category, p.Subtype, p.Code, category, subtype, code)
 	}
+}
+
+func TestCompleteMailRuleIDs(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested []string
+		current   []string
+		want      []string
+		wantErr   string
+	}{
+		{
+			name:      "partial input is prefix and missing rules append in current order",
+			requested: []string{"C", "A"},
+			current:   []string{"A", "B", "C", "D"},
+			want:      []string{"C", "A", "B", "D"},
+		},
+		{
+			name:      "complete input preserves user order",
+			requested: []string{"C", "B", "A"},
+			current:   []string{"A", "B", "C"},
+			want:      []string{"C", "B", "A"},
+		},
+		{
+			name:      "duplicate requested id",
+			requested: []string{"A", "A"},
+			current:   []string{"A", "B"},
+			wantErr:   "duplicate rule_id",
+		},
+		{
+			name:      "unknown requested id",
+			requested: []string{"A", "X"},
+			current:   []string{"A", "B"},
+			wantErr:   "not found",
+		},
+		{
+			name:      "empty current list rejects requested ids",
+			requested: []string{"A"},
+			current:   nil,
+			wantErr:   "current mailbox rule list is empty",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := completeMailRuleIDs(tt.requested, tt.current)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("completeMailRuleIDs() error = %v, want substring %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("completeMailRuleIDs() error = %v", err)
+			}
+			if !stringSlicesEqual(got, tt.want) {
+				t.Fatalf("completeMailRuleIDs() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestServiceMethod_MailRuleReorderCompletesIDs(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-mail-rules", AppSecret: "test-secret-mail-rules", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(mailRuleListStub("", []string{"A", "B", "C", "D"}, false, ""))
+	reorderStub := mailRuleReorderStub(t, []string{"C", "A", "B", "D"}, map[string]interface{}{
+		"code": 0,
+		"msg":  "ok",
+		"data": map[string]interface{}{"ok": true},
+	})
+	reg.Register(reorderStub)
+
+	cmd := NewCmdServiceMethod(f, mailRuleSpec(), mailRuleReorderMethod(), "reorder", "user_mailbox.rules", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["C","A"]}`,
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+	if !strings.Contains(stdout.String(), `"ok": true`) && !strings.Contains(stdout.String(), `"ok":true`) {
+		t.Fatalf("expected success envelope, got: %s", stdout.String())
+	}
+}
+
+func TestServiceMethod_MailRuleReorderCompletesIDsAcrossPages(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-mail-rules-pages", AppSecret: "test-secret-mail-rules-pages", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(mailRuleListStub("", []string{"A", "B"}, true, "next-1"))
+	reg.Register(mailRuleListStub("page_token=next-1", []string{"C", "D"}, false, ""))
+	reg.Register(mailRuleReorderStub(t, []string{"D", "A", "B", "C"}, map[string]interface{}{
+		"code": 0,
+		"msg":  "ok",
+		"data": map[string]interface{}{"ok": true},
+	}))
+
+	cmd := NewCmdServiceMethod(f, mailRuleSpec(), mailRuleReorderMethod(), "reorder", "user_mailbox.rules", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["D","A"]}`,
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+}
+
+func TestServiceMethod_MailRuleReorderListFailureDoesNotCallReorder(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-mail-rules-list-fail", AppSecret: "test-secret-mail-rules-list-fail", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body:   map[string]interface{}{"code": 99991400, "msg": "rate limited"},
+	})
+
+	cmd := NewCmdServiceMethod(f, mailRuleSpec(), mailRuleReorderMethod(), "reorder", "user_mailbox.rules", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["A"]}`,
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected list API error")
+	}
+	requireProblem(t, err, errs.CategoryAPI, errs.SubtypeRateLimit, 99991400)
+}
+
+func TestServiceMethod_MailRuleReorderFailurePreservesAPIError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-mail-rules-reorder-fail", AppSecret: "test-secret-mail-rules-reorder-fail", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(mailRuleListStub("", []string{"A", "B"}, false, ""))
+	reg.Register(mailRuleReorderStub(t, []string{"B", "A"}, map[string]interface{}{
+		"code": 230027,
+		"msg":  "user not authorized",
+	}))
+
+	cmd := NewCmdServiceMethod(f, mailRuleSpec(), mailRuleReorderMethod(), "reorder", "user_mailbox.rules", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["B"]}`,
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected reorder API error")
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+}
+
+func TestServiceMethod_MailRuleReorderValidationErrorsBeforeReorder(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-mail-rules-validation", AppSecret: "test-secret-mail-rules-validation", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(mailRuleListStub("", []string{"A", "B"}, false, ""))
+
+	cmd := NewCmdServiceMethod(f, mailRuleSpec(), mailRuleReorderMethod(), "reorder", "user_mailbox.rules", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["A","X"]}`,
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), `rule_id "X" was not found`) {
+		t.Fatalf("expected unknown rule validation error, got: %v", err)
+	}
+}
+
+func mailRuleSpec() meta.Service {
+	return meta.ServiceFromMap(map[string]interface{}{
+		"name":        "mail",
+		"servicePath": "/open-apis/mail/v1",
+	})
+}
+
+func mailRuleReorderMethod() meta.Method {
+	return meta.FromMap(map[string]interface{}{
+		"id":         "ReorderUserMailboxRule",
+		"path":       "user_mailboxes/{user_mailbox_id}/rules/reorder",
+		"httpMethod": "POST",
+		"risk":       "write",
+		"parameters": map[string]interface{}{
+			"user_mailbox_id": map[string]interface{}{
+				"type": "string", "location": "path", "required": true,
+			},
+		},
+		"requestBody": map[string]interface{}{
+			"rule_ids": map[string]interface{}{
+				"type": "array", "required": true,
+			},
+		},
+		"accessTokens": []interface{}{"tenant"},
+	})
+}
+
+func mailRuleListStub(queryContains string, ids []string, hasMore bool, nextToken string) *httpmock.Stub {
+	items := make([]interface{}, 0, len(ids))
+	for _, id := range ids {
+		items = append(items, map[string]interface{}{"rule_id": id})
+	}
+	data := map[string]interface{}{
+		"items":    items,
+		"has_more": hasMore,
+	}
+	if nextToken != "" {
+		data["page_token"] = nextToken
+	}
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": data,
+		},
+		BodyFilter: nil,
+		OnMatch: func(req *http.Request) {
+			if queryContains != "" && !strings.Contains(req.URL.RawQuery, queryContains) {
+				panic("unexpected mail rule list query: " + req.URL.RawQuery)
+			}
+			if queryContains == "" && req.URL.Query().Get("page_token") != "" {
+				panic("unexpected first mail rule list page token: " + req.URL.RawQuery)
+			}
+		},
+	}
+}
+
+func mailRuleReorderStub(t *testing.T, wantIDs []string, body map[string]interface{}) *httpmock.Stub {
+	t.Helper()
+	return &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+		Body:   body,
+		BodyFilter: func(raw []byte) bool {
+			var got map[string]interface{}
+			if err := json.Unmarshal(raw, &got); err != nil {
+				t.Fatalf("reorder body is not JSON: %v\n%s", err, string(raw))
+			}
+			ids, ok := stringSlice(got["rule_ids"])
+			if !ok {
+				t.Fatalf("reorder rule_ids has wrong shape: %#v", got["rule_ids"])
+			}
+			return stringSlicesEqual(ids, wantIDs)
+		},
+	}
+}
+
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // ── file upload ──
