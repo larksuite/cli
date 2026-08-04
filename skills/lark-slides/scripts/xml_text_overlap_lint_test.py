@@ -51,13 +51,41 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             f"xml-text-overlap-lint error: unexpected argument: {input_path}, need --input\n",
         )
 
+    def test_cli_preserves_requested_symlink_path_in_result(self) -> None:
+        script_path = Path(xml_text_overlap_lint.__file__).resolve()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            resolved_path = temp_path / "resolved.xml"
+            requested_path = temp_path / "requested.xml"
+            resolved_path.write_text(
+                '<presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">'
+                '<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>'
+                '<shape type="text" topLeftX="10" topLeftY="10" width="100" height="30">'
+                '<content><p><span>Test</span></p></content>'
+                '</shape></data></slide>'
+                '</presentation>',
+                encoding="utf-8",
+            )
+            requested_path.symlink_to(resolved_path)
+
+            completed = subprocess.run(
+                [sys.executable, str(script_path), "--input", str(requested_path)],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertEqual(result["file"], str(requested_path))
+
     def test_cli_reports_structured_slide_sxsd_error_outside_skill_directory(self) -> None:
         script_path = Path(xml_text_overlap_lint.__file__).resolve()
         with tempfile.TemporaryDirectory() as temp_dir:
             input_path = Path(temp_dir) / "invalid-slide.xml"
             input_path.write_text(
                 """
-                <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <slide xmlns="https://www.larkoffice.com/sml/2.0">
                   <data><shape type="text" topLeftX="10" topLeftY="20" width="300"/></data>
                 </slide>
                 """,
@@ -85,8 +113,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_xml_text_overlap_lint_accepts_inline_fixture_xml_samples(self) -> None:
         samples = {
             "image-led-cover": """
-                <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-                  <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+                  <slide xmlns="https://www.larkoffice.com/sml/2.0">
                     <style><fill><fillColor color="rgb(15,23,42)"/></fill></style>
                     <data>
                       <img src="tok" topLeftX="560" topLeftY="0" width="400" height="540"/>
@@ -101,8 +129,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                 </presentation>
             """,
             "content-grid": """
-                <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-                  <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+                  <slide xmlns="https://www.larkoffice.com/sml/2.0">
                     <data>
                       <shape type="text" topLeftX="60" topLeftY="44" width="620" height="46">
                         <content textType="title"><p><span fontSize="30">Execution Snapshot</span></p></content>
@@ -136,7 +164,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_unescaped_ampersand_in_text(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                   <content textType="body"><p>Q&A</p></content>
@@ -156,7 +184,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_unescaped_ampersand_in_attribute(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                   <content textType="body"><p><a href="https://example.com/?a=1&b=2">link</a></p></content>
@@ -173,7 +201,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_mismatched_xml_tag(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                   <content textType="body"><p>Broken XML</content>
@@ -193,9 +221,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_rejects_prefixed_sml_tags(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <ns0:slide xmlns:ns0="http://www.larkoffice.com/sml/2.0">
+            <ns0:slide xmlns:ns0="https://www.larkoffice.com/sml/2.0">
               <ns0:data>
-                <sml:shape xmlns:sml="http://www.larkoffice.com/sml/2.0" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                <sml:shape xmlns:sml="https://www.larkoffice.com/sml/2.0" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                   <sml:content textType="body"><sml:p>Prefixed SML</sml:p></sml:content>
                 </sml:shape>
               </ns0:data>
@@ -207,6 +235,29 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual([issue["code"] for issue in issues], ["sml_prefixed_tag"] * 5)
         self.assertEqual(issues[0]["tag"], "ns0:slide")
         self.assertIn("default namespace", issues[0]["hint"])
+        self.assertEqual({issue["namespace"] for issue in issues}, {SML_NAMESPACE})
+
+    def test_lint_xml_reports_bound_namespace_for_prefixed_sml_tags(self) -> None:
+        for namespace in (
+            "http://www.larkoffice.com/sml/2.0",
+            "/sml/2.0",
+            SML_NAMESPACE,
+        ):
+            with self.subTest(namespace=namespace):
+                result = xml_text_overlap_lint.lint_xml(
+                    f"""
+                    <sml:slide xmlns:sml="{namespace}">
+                      <sml:data>
+                        <sml:shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                          <sml:content textType="body"><sml:p>Prefixed SML</sml:p></sml:content>
+                        </sml:shape>
+                      </sml:data>
+                    </sml:slide>
+                    """
+                )
+                issues = result["issues"]
+                self.assertEqual([issue["code"] for issue in issues], ["sml_prefixed_tag"] * 5)
+                self.assertEqual({issue["namespace"] for issue in issues}, {namespace})
 
     def test_lint_xml_accepts_server_readback_slide_without_namespace(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -258,6 +309,24 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(result["summary"]["slide_count"], 1)
         self.assertEqual(result["summary"]["error_count"], 0)
 
+    def test_lint_xml_accepts_legacy_http_namespace(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540" id="legacy-http-id">
+              <slide id="server-slide-id">
+                <data>
+                  <shape id="server-shape-id" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
+                    <content textType="body"><p>Legacy HTTP namespace</p></content>
+                  </shape>
+                </data>
+              </slide>
+            </presentation>
+            """
+        )
+
+        self.assertEqual(result["summary"]["slide_count"], 1)
+        self.assertEqual(result["summary"]["error_count"], 0)
+
     def test_lint_xml_rejects_server_readback_presentation_wrong_namespace(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -272,7 +341,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
 
     def test_lint_xml_rejects_xml_declaration(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
-            '<?xml version="1.0"?><slide xmlns="http://www.larkoffice.com/sml/2.0"><data/></slide>'
+            '<?xml version="1.0"?><slide xmlns="https://www.larkoffice.com/sml/2.0"><data/></slide>'
         )
 
         self.assertEqual(result["summary"]["error_count"], 1)
@@ -281,7 +350,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_missing_required_sxsd_attribute(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data><shape type="text" topLeftX="80" topLeftY="80" width="300"/></data>
             </slide>
             """
@@ -296,7 +365,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_rejects_child_order_that_violates_xsd_sequence(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
               <slide/>
               <title>Late title</title>
             </presentation>
@@ -309,7 +378,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_accepts_escaped_entities_without_suspicious_entity_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                   <content textType="body"><p>Q&amp;A</p></content>
@@ -324,7 +393,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_accepts_chinese_full_width_punctuation(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="text" topLeftX="80" topLeftY="80" width="620" height="90">
                   <content textType="body"><p>承诺：按期交付；持续复盘｜风险透明</p></content>
@@ -338,7 +407,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_single_slide_reports_out_of_canvas_and_blank_slide_errors(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="text" topLeftX="1000" topLeftY="500" width="120" height="80">
                   <content textType="body"><p>Body text outside the canvas</p></content>
@@ -358,15 +427,15 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_preserves_presentation_canvas_and_slide_order(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="1280" height="720">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="1280" height="720">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape id="first" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                     <content textType="body"><p>First slide</p></content>
                   </shape>
                 </data>
               </slide>
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <img id="second" src="tok" topLeftX="100" topLeftY="120" width="240" height="160"/>
                   <shape id="second-shape" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
@@ -387,7 +456,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_handles_self_closing_slide_before_normal_slide(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
               <slide/>
               <slide>
                 <data>
@@ -410,7 +479,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_keeps_trailing_self_closing_slide(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
               <slide>
                 <data>
                   <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
@@ -432,7 +501,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_slide_markup_inside_xml_comments(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
               <slide>
                 <data>
                   <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
@@ -451,7 +520,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_invalid_slide_markup_inside_xml_comments(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
               <slide><data/></slide>
               <!-- Old draft: <slide bogus="x"/> -->
             </presentation>
@@ -467,7 +536,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_skips_only_invalid_slide_and_continues_geometry_checks(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
               <slide>
                 <data>
                   <shape id="invalid" type="text" topLeftX="1000" topLeftY="80" width="300">
@@ -504,7 +573,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_scopes_invalid_slide_root_attribute_to_that_slide(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
               <slide bogusAttr="oops">
                 <data><shape type="rect" topLeftX="80" topLeftY="80" width="100" height="100"/></data>
               </slide>
@@ -525,6 +594,118 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             [issue["code"] for issue in result["slides"][1]["errors"]],
         )
 
+    def test_lint_xml_allows_svg_subtree_inside_embed(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <embed topLeftX="80" topLeftY="120" width="240" height="140">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+                    <rect x="10" y="10" width="220" height="120" rx="12" fill="#EFF6FF"/>
+                    <circle cx="70" cy="70" r="34" fill="#2563EB"/>
+                    <text x="130" y="76" font-size="18" fill="#1E3A8A">SVG OK</text>
+                    <foreignObject x="0" y="0" width="1" height="1">
+                      <embed xmlns="http://www.w3.org/1999/xhtml">
+                        <rect xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>
+                      </embed>
+                    </foreignObject>
+                  </svg>
+                </embed>
+              </data>
+            </slide>
+            """
+        )
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertNotIn("sxsd_unsupported_tag", codes)
+        self.assertNotIn("sxsd_unsupported_attr", codes)
+        self.assertEqual(result["summary"]["error_count"], 0)
+
+    def test_lint_xml_enforces_embed_svg_contract(self) -> None:
+        cases = [
+            ("missing SVG", "", "sxsd_missing_required_child"),
+            ("wrong namespace", '<svg viewBox="0 0 20 20"/>', "sxsd_unsupported_tag"),
+            (
+                "multiple SVG roots",
+                '<svg xmlns="http://www.w3.org/2000/svg"/><svg xmlns="http://www.w3.org/2000/svg"/>',
+                "sxsd_too_many_children",
+            ),
+            (
+                "non-SVG root element",
+                '<rect xmlns="http://www.w3.org/2000/svg" width="20" height="20"/>',
+                "sxsd_unexpected_child",
+            ),
+            (
+                "SVG after reflection",
+                '<reflection/><svg xmlns="http://www.w3.org/2000/svg"/>',
+                "sxsd_invalid_child_order",
+            ),
+        ]
+        for name, children, expected_code in cases:
+            with self.subTest(name=name):
+                result = xml_text_overlap_lint.lint_xml(
+                    f"""
+                    <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                      <data>
+                        <embed topLeftX="80" topLeftY="120" width="240" height="140">
+                          {children}
+                        </embed>
+                      </data>
+                    </slide>
+                    """
+                )
+                codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+                self.assertIn(expected_code, codes)
+
+    def test_lint_xml_enforces_embed_svg_root_for_readback_namespaces(self) -> None:
+        document_templates = [
+            ("bare slide", "<slide>{content}</slide>"),
+            (
+                "short namespace",
+                '<presentation xmlns="/sml/2.0" width="960" height="540">'
+                "<slide>{content}</slide>"
+                "</presentation>",
+            ),
+            (
+                "HTTPS namespace",
+                '<presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">'
+                "<slide>{content}</slide>"
+                "</presentation>",
+            ),
+        ]
+        embed_template = """
+            <data>
+              <embed topLeftX="80" topLeftY="120" width="240" height="140">
+                {svg_root}
+              </embed>
+            </data>
+        """
+        roots = [
+            ("valid SVG root", '<svg xmlns="http://www.w3.org/2000/svg"/>', False),
+            (
+                "non-SVG root element",
+                '<rect xmlns="http://www.w3.org/2000/svg" width="20" height="20"/>',
+                True,
+            ),
+        ]
+
+        for document_name, document_template in document_templates:
+            for root_name, svg_root, should_error in roots:
+                with self.subTest(document=document_name, root=root_name):
+                    content = embed_template.format(svg_root=svg_root)
+                    result = xml_text_overlap_lint.lint_xml(
+                        document_template.format(content=content)
+                    )
+                    codes = [
+                        issue["code"]
+                        for slide in result["slides"]
+                        for issue in slide["issues"]
+                    ]
+                    if should_error:
+                        self.assertIn("sxsd_unexpected_child", codes)
+                    else:
+                        self.assertNotIn("sxsd_unexpected_child", codes)
+                        self.assertEqual(result["summary"]["error_count"], 0)
+
     def test_lint_xml_reports_sxsd_unsupported_tag_with_alias_hint(self) -> None:
         cases = [
             ("textbox", '<textbox topLeftX="80" topLeftY="80" width="300" height="60">Text</textbox>', '<shape type="text">'),
@@ -534,7 +715,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             with self.subTest(tag=tag_name):
                 result = xml_text_overlap_lint.lint_xml(
                     f"""
-                    <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                    <slide xmlns="https://www.larkoffice.com/sml/2.0">
                       <data>{element_xml}</data>
                     </slide>
                     """
@@ -562,7 +743,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             with self.subTest(attr=attr_name):
                 result = xml_text_overlap_lint.lint_xml(
                     f"""
-                    <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                    <slide xmlns="https://www.larkoffice.com/sml/2.0">
                       <data>{element_xml}</data>
                     </slide>
                     """
@@ -584,7 +765,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_keeps_unrelated_unsupported_and_missing_attrs(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="text" bogus="x" topLeftX="80" topLeftY="80" width="300"/>
               </data>
@@ -600,7 +781,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_keeps_missing_attrs_when_suggestion_is_ambiguous(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="text" topLeft="80" width="300" height="60"/>
               </data>
@@ -620,7 +801,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_suppresses_only_missing_attr_that_resolves_ambiguous_suggestion(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="text" topLeftXX="80" topLeftY="80" width="300" height="60"/>
               </data>
@@ -639,7 +820,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_server_filled_id_attrs(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide id="server-slide-id" xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide id="server-slide-id" xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="server-shape-id" type="rect" topLeftX="80" topLeftY="80" width="300" height="160">
                   <fill id="server-fill-id" unexpected="value">
@@ -660,7 +841,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_chart_roundtrip_attrs(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <chart updated="true" topLeftX="80" topLeftY="80" width="300" height="160">
                   <chartPlotArea><chartPlot type="line"/></chartPlotArea>
@@ -679,7 +860,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_chart_parsed_values_roundtrip_tags(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <chart topLeftX="80" topLeftY="80" width="300" height="160">
                   <chartPlotArea><chartPlot type="line"/></chartPlotArea>
@@ -702,7 +883,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_chart_parsed_values_roundtrip_tag(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <chart topLeftX="80" topLeftY="80" width="300" height="160">
                   <chartPlotArea><chartPlot type="line"/></chartPlotArea>
@@ -726,7 +907,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_rejects_chart_parsed_values_outside_chart_field(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="rect" topLeftX="80" topLeftY="80" width="300" height="160">
                   <chartParsedValues>unexpected</chartParsedValues>
@@ -749,7 +930,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_limits_chart_roundtrip_attrs_to_matching_tags(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <chart isStaticData="true" topLeftX="80" topLeftY="80" width="300" height="160">
                   <chartPlotArea><chartPlot type="line"/></chartPlotArea>
@@ -774,7 +955,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_gradient_shorthand_attrs_on_fill_color(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape type="rect" topLeftX="80" topLeftY="80" width="300" height="160">
                   <fill>
@@ -804,7 +985,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_accepts_chart_field_simple_content_attrs(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <chart topLeftX="80" topLeftY="80" width="520" height="320">
                   <chartPlotArea>
@@ -836,7 +1017,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         try:
             result = xml_text_overlap_lint.lint_xml(
                 """
-                <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                <slide xmlns="https://www.larkoffice.com/sml/2.0">
                   <data>
                     <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                       <content><p>No icons here</p></content>
@@ -854,7 +1035,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_accepts_iconpark_icon_type_from_index(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <icon iconType="iconpark/Base/setting.svg" topLeftX="80" topLeftY="80" width="48" height="48">
                   <fill><fillColor color="rgba(37, 99, 235, 1)"/></fill>
@@ -879,7 +1060,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             with self.subTest(icon=icon_xml):
                 result = xml_text_overlap_lint.lint_xml(
                     f"""
-                    <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                    <slide xmlns="https://www.larkoffice.com/sml/2.0">
                       <data>{icon_xml}</data>
                     </slide>
                     """
@@ -893,7 +1074,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_icon_transparent_fill_color(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <icon iconType="iconpark/Base/setting.svg" topLeftX="80" topLeftY="80" width="48" height="48">
                   <fill><fillColor color="rgba(37, 99, 235, 0)"/></fill>
@@ -911,7 +1092,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_iconpark_icon_type_outside_index(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <icon iconType="iconpark/Base/settng.svg" topLeftX="80" topLeftY="80" width="48" height="48">
                   <fill><fillColor color="rgba(37, 99, 235, 1)"/></fill>
@@ -929,11 +1110,34 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertIn("iconpark-index.json", issue["hint"])
         self.assertIn("iconpark/Base/setting.svg", issue["hint"])
 
+    def test_lint_xml_skips_iconpark_validation_inside_embedded_svg(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <embed topLeftX="80" topLeftY="120" width="240" height="140">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+                    <rect x="10" y="10" width="220" height="120" fill="#EFF6FF"/>
+                    <icon iconType="not-an-iconpark-name"/>
+                    <foreignObject x="0" y="0" width="60" height="60">
+                      <icon xmlns="http://www.w3.org/1999/xhtml" iconType="not-an-iconpark-name"/>
+                    </foreignObject>
+                  </svg>
+                </embed>
+              </data>
+            </slide>
+            """
+        )
+        codes = [issue["code"] for issue in result["document"]["errors"]]
+        self.assertNotIn("iconpark_unsupported_icon_type", codes)
+        self.assertNotIn("icon_missing_fill_color", codes)
+        self.assertEqual(result["summary"]["error_count"], 0)
+
     def test_lint_xml_detects_overlapping_text_boxes(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                     <content textType="title"><p>Title</p></content>
@@ -953,7 +1157,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_detects_current_itinerary_cjk_caption_occlusion(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide id="pQO" xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide id="pQO" xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape width="190" height="80" topLeftX="580" topLeftY="170" presetHandlers="0" type="rect" id="blI">
                   <fill><fillColor color="rgba(255, 255, 255, 0.9)"/></fill>
@@ -1011,7 +1215,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_detects_horizontal_text_overflow_across_declared_box_gap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="source" type="text" topLeftX="80" topLeftY="100" width="160" height="40">
                   <content fontSize="18" wrap="false"><p>这是一个足够长的中文文本用于检测跨越间隙的横向溢出</p></content>
@@ -1034,7 +1238,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_allows_horizontal_text_with_default_wrap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="source" type="text" topLeftX="80" topLeftY="100" width="160" height="40">
                   <content fontSize="18"><p>这是一个足够长的中文文本用于检测默认自动换行</p></content>
@@ -1055,8 +1259,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_text_out_of_canvas_and_warns_for_text_height(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape type="text" topLeftX="80" topLeftY="80" width="180" height="20">
                     <content textType="body" fontSize="18"><p>This paragraph is intentionally much longer than the box can safely contain.</p></content>
@@ -1078,7 +1282,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_warns_when_text_may_overflow_its_own_shape(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="overflowing" type="text" topLeftX="80" topLeftY="80" width="360" height="80">
                   <content fontSize="20" lineSpacing="multiple:1.5" autoFit="no-auto-fit">
@@ -1122,7 +1326,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_uses_fixed_line_spacing_for_text_height_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="fixed-overflow" type="text" topLeftX="80" topLeftY="80" width="360" height="50">
                   <content fontSize="20" lineSpacing="fixed:20" autoFit="no-auto-fit">
@@ -1144,7 +1348,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_subpixel_text_height_overflow_tolerance(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="minor-overflow" type="text" topLeftX="80" topLeftY="80" width="360" height="39.8">
                   <content fontSize="20" lineSpacing="fixed:20" autoFit="no-auto-fit">
@@ -1165,7 +1369,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_allows_single_line_width_estimation_jitter(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="metric" type="text" topLeftX="80" topLeftY="80" width="152" height="54">
                   <content fontSize="36" lineSpacing="multiple:1.2" autoFit="no-auto-fit"><p>4.16万亿</p></content>
@@ -1184,7 +1388,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_allows_short_metric_text_with_separators_as_single_line(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="metric" type="text" topLeftX="80" topLeftY="80" width="150" height="50">
                   <content textType="title" fontSize="36" autoFit="no-auto-fit"><p>4.16万亿</p></content>
@@ -1206,7 +1410,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_plain_short_metric_when_it_wraps(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="plain-age" type="text" topLeftX="80" topLeftY="80" width="50" height="80">
                   <content textType="title" fontSize="36" bold="true" autoFit="no-auto-fit"><p>82岁</p></content>
@@ -1226,7 +1430,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_allows_centered_short_label_near_fit_as_single_line(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="centered-label" type="text" topLeftX="80" topLeftY="80" width="200" height="30">
                   <content fontSize="14" bold="true" textAlign="center" autoFit="no-auto-fit">
@@ -1247,7 +1451,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_allows_headline_near_fit_as_single_line(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="headline" type="text" topLeftX="80" topLeftY="80" width="700" height="50">
                   <content textType="headline" fontSize="26" bold="true" lineSpacing="multiple:1.3" autoFit="no-auto-fit">
@@ -1268,7 +1472,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_allows_dense_body_line_spacing_estimation_slack(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="dense-body" type="text" topLeftX="80" topLeftY="80" width="360" height="140">
                   <content fontSize="13" bold="true" lineSpacing="multiple:1.7" autoFit="no-auto-fit">
@@ -1294,7 +1498,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_dense_body_when_adjusted_height_still_overflows(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="dense-body" type="text" topLeftX="80" topLeftY="80" width="360" height="100">
                   <content fontSize="13" bold="true" lineSpacing="multiple:1.7" autoFit="no-auto-fit">
@@ -1321,7 +1525,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_letter_spaced_caption_near_fit(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="caption" type="text" topLeftX="80" topLeftY="80" width="120" height="20">
                   <content textType="caption" fontSize="11" letterSpacing="1" autoFit="no-auto-fit">
@@ -1343,7 +1547,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_micro_caption_when_wrapping_overflows(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="micro-caption" type="text" topLeftX="80" topLeftY="60" width="200" height="16">
                   <content textType="caption" fontSize="3" lineSpacing="multiple:1.3" letterSpacing="160" autoFit="no-auto-fit">
@@ -1365,7 +1569,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_text_may_overflow_shape_upgrades_to_error_above_threshold(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="just-warning" type="text" topLeftX="80" topLeftY="80" width="360" height="50">
                   <content fontSize="20" lineSpacing="fixed:20" autoFit="no-auto-fit">
@@ -1392,7 +1596,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_text_may_overflow_shape_downgrades_background_decoration_to_info(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="bg-deco" type="text" topLeftX="0" topLeftY="0" width="600" height="80" alpha="0.3">
                   <content fontSize="120" lineSpacing="fixed:120" autoFit="no-auto-fit"><p>2026</p></content>
@@ -1418,7 +1622,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_shape_alpha_ghost_text_out_of_canvas_but_allows_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="ghost-number" type="text" topLeftX="-60" topLeftY="30" width="360" height="180" alpha="0.2">
                   <content fontSize="160" lineSpacing="fixed:160" wrap="false"><p>01</p></content>
@@ -1438,7 +1642,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_content_color_alpha_ghost_text_out_of_canvas_but_allows_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="ghost-year" type="text" topLeftX="760" topLeftY="20" width="260" height="160">
                   <content fontSize="140" color="rgba(0,0,0,0.2)" lineSpacing="fixed:140" wrap="false"><p>2026</p></content>
@@ -1458,7 +1662,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_faint_medium_ghost_text_out_of_canvas_but_allows_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="medium-ghost" type="text" topLeftX="820" topLeftY="300" width="270" height="72" alpha="0.32">
                   <content fontSize="40" lineSpacing="fixed:40" wrap="false"><p>OFF EDGE</p></content>
@@ -1478,7 +1682,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_allows_ghost_text_image_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="ghost-label" type="text" topLeftX="100" topLeftY="40" width="560" height="160" alpha="0.2">
                   <content fontSize="120" lineSpacing="fixed:120" wrap="false"><p>2026</p></content>
@@ -1498,7 +1702,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_slide_allows_ghost_text_whiteboard_overlap(self) -> None:
         result = xml_text_overlap_lint.lint_slide(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <whiteboard id="board" topLeftX="180" topLeftY="70" width="420" height="300"/>
                 <shape id="ghost-label" type="text" topLeftX="100" topLeftY="40" width="560" height="160" alpha="0.2">
@@ -1518,7 +1722,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_faint_ghost_text_out_of_canvas_without_area_threshold(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="small-ghost" type="text" topLeftX="940" topLeftY="300" width="40" height="40" alpha="0.32">
                   <content fontSize="36" lineSpacing="fixed:36" wrap="false"><p>土</p></content>
@@ -1533,7 +1737,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_keeps_out_of_canvas_error_for_medium_text_without_faint_alpha(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="medium-not-ghost" type="text" topLeftX="820" topLeftY="300" width="270" height="72" alpha="0.36">
                   <content fontSize="54" lineSpacing="fixed:54" wrap="false"><p>OFF EDGE</p></content>
@@ -1549,7 +1753,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_keeps_out_of_canvas_error_for_half_alpha_large_text(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="half-alpha" type="text" topLeftX="760" topLeftY="20" width="260" height="160">
                   <content fontSize="140" color="rgba(0,0,0,0.5)" lineSpacing="fixed:140" wrap="false"><p>2026</p></content>
@@ -1565,7 +1769,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_text_may_overflow_shape_keeps_error_when_alpha_not_low(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="opaque-big" type="text" topLeftX="0" topLeftY="0" width="600" height="80" alpha="0.9">
                   <content fontSize="120" lineSpacing="fixed:120" autoFit="no-auto-fit"><p>2026</p></content>
@@ -1587,7 +1791,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_text_may_overflow_shape_keeps_error_when_no_foreground_text(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="lonely-big" type="text" topLeftX="0" topLeftY="0" width="600" height="80" alpha="0.3">
                   <content fontSize="120" lineSpacing="fixed:120" autoFit="no-auto-fit"><p>2026</p></content>
@@ -1606,7 +1810,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_text_may_overflow_shape_keeps_error_when_foreground_alpha_zero(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="bg-deco" type="text" topLeftX="0" topLeftY="0" width="600" height="80" alpha="0.3">
                   <content fontSize="120" lineSpacing="fixed:120" autoFit="no-auto-fit"><p>2026</p></content>
@@ -1628,7 +1832,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_text_may_overflow_shape_keeps_error_when_foreground_is_below_in_order(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="foreground" type="text" topLeftX="40" topLeftY="20" width="400" height="60">
                   <content fontSize="20" lineSpacing="fixed:24"><p>Annual Report</p></content>
@@ -1650,7 +1854,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_uses_paragraph_spacing_overrides_for_text_height_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="paragraph-overflow" type="text" topLeftX="80" topLeftY="80" width="360" height="30">
                   <content fontSize="20" lineSpacing="multiple:1.5" autoFit="no-auto-fit">
@@ -1677,7 +1881,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_uses_letter_spacing_for_text_overflow_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="baseline" type="text" topLeftX="0" topLeftY="0" width="120" height="30">
                   <content fontSize="20" lineSpacing="multiple:1.5" autoFit="no-auto-fit"><p>一二三四五六</p></content>
@@ -1712,8 +1916,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_allows_template_style_images_outside_canvas(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <img src="tok" topLeftX="-120" topLeftY="20" width="360" height="360"/>
                   <shape type="text" topLeftX="40" topLeftY="80" width="180" height="80">
@@ -1733,7 +1937,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_extract_elements_preserves_supported_element_geometry_order_and_text_metadata(self) -> None:
         elements = xml_text_overlap_lint.extract_elements(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <img id="photo" src="tok" topLeftX="10" topLeftY="20" width="100" height="80"/>
                 <shape id="headline" type="text" topLeftX="40" topLeftY="60" width="320" height="90">
@@ -1745,6 +1949,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                 <table id="table" topLeftX="400" topLeftY="60" width="220" height="120"></table>
                 <chart id="chart" topLeftX="640" topLeftY="60" width="220" height="120"/>
                 <whiteboard id="wb" topLeftX="80" topLeftY="220" width="760" height="240"/>
+                <embed id="emb" topLeftX="600" topLeftY="320" width="240" height="140">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140"><rect x="0" y="0" width="240" height="140"/></svg>
+                </embed>
                 <shape id="missing-height" type="text" topLeftX="80" topLeftY="480" width="320">
                   <content><p>Skipped</p></content>
                 </shape>
@@ -1752,9 +1959,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             </slide>
             """
         )
-        self.assertEqual([element["id"] for element in elements], ["photo", "headline", "table", "chart", "wb"])
-        self.assertEqual([element["kind"] for element in elements], ["img", "shape", "table", "chart", "whiteboard"])
-        self.assertEqual([element["order"] for element in elements], [0, 1, 2, 3, 4])
+        self.assertEqual([element["id"] for element in elements], ["photo", "headline", "table", "chart", "wb", "emb"])
+        self.assertEqual([element["kind"] for element in elements], ["img", "shape", "table", "chart", "whiteboard", "embed"])
+        self.assertEqual([element["order"] for element in elements], [0, 1, 2, 3, 4, 5])
         self.assertEqual(elements[1]["type"], "text")
         self.assertEqual(elements[1]["textType"], "headline")
         self.assertEqual(elements[1]["textAlign"], "center")
@@ -1765,8 +1972,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_small_out_of_bounds_images(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <img src="tok" topLeftX="-20" topLeftY="20" width="120" height="120"/>
                 </data>
@@ -1779,8 +1986,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_out_of_canvas_images(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <img src="right" topLeftX="780" topLeftY="0" width="500" height="540"/>
                   <img src="bottom" topLeftX="0" topLeftY="430" width="900" height="280"/>
@@ -1794,8 +2001,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_full_bleed_images_outside_canvas(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <img src="tok" topLeftX="-80" topLeftY="-20" width="1080" height="600"/>
                 </data>
@@ -1808,8 +2015,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_text_and_chart_but_not_image_out_of_canvas(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape id="outside-shape" type="text" topLeftX="-10" topLeftY="40" width="50" height="50"/>
                   <img id="outside-img" src="token" topLeftX="120" topLeftY="-20" width="50" height="50"/>
@@ -1838,7 +2045,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_line_out_of_canvas(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="body" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                   <content fontSize="18"><p>Visible content</p></content>
@@ -1855,7 +2062,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_horizontal_line_crossing_headline_glyphs(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="title" type="text" topLeftX="80" topLeftY="200" width="500" height="90">
                   <content fontSize="60"><p>测试文字 ABC</p></content>
@@ -1876,7 +2083,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_vertical_line_crossing_multiline_text(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="col" type="text" topLeftX="700" topLeftY="180" width="240" height="180">
                   <content fontSize="20"><p>第一行文字内容</p><p>第二行文字内容</p><p>第三行文字内容</p></content>
@@ -1896,7 +2103,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_diagonal_line_crossing_text_block(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="para" type="text" topLeftX="80" topLeftY="400" width="420" height="140">
                   <content fontSize="18"><p>这是一段测试文字用于验证线条穿过</p></content>
@@ -1918,7 +2125,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         # through empty space in the opposite corner -- a naive bbox test would false-positive here.
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="corner-text" type="text" topLeftX="80" topLeftY="80" width="120" height="40">
                   <content fontSize="18"><p>corner</p></content>
@@ -1938,7 +2145,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_line_touching_text_frame_but_not_glyphs(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="lbl" type="text" topLeftX="80" topLeftY="80" width="300" height="200">
                   <content fontSize="18" verticalAlign="top"><p>短标签</p></content>
@@ -1955,7 +2162,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_ignores_invisible_line_crossing_text(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="title" type="text" topLeftX="80" topLeftY="200" width="500" height="90">
                   <content fontSize="60"><p>测试文字 ABC</p></content>
@@ -1974,7 +2181,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         # frame's left edge renders before the first glyph, so it must not be flagged.
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape width="240" height="60" topLeftX="120" topLeftY="100" type="text" id="bmm">
                   <content fontSize="20" fontFamily="Arial" color="rgba(31, 35, 41, 1)" lineSpacing="fixed:24">
@@ -1995,7 +2202,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         # <line> only, so a <polyline> over text is not flagged.
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape width="240" height="60" topLeftX="120" topLeftY="100" type="text" id="bmr">
                   <content fontSize="20" fontFamily="Arial" color="rgba(31, 35, 41, 1)" lineSpacing="fixed:24">
@@ -2017,7 +2224,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         # under the visual glyph box (underline look) and must not be flagged.
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape width="240" height="80" topLeftX="120" topLeftY="100" type="text" id="bmB">
                   <content fontSize="20" fontFamily="Arial" color="rgba(31, 35, 41, 1)" lineSpacing="fixed:24">
@@ -2036,8 +2243,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_uses_rotated_text_and_chart_bounds_for_canvas_validation(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape id="rotated-text" type="text" topLeftX="0" topLeftY="0" width="100" height="100" rotation="45"/>
                   <chart id="rotated-chart" topLeftX="860" topLeftY="200" width="100" height="100" rotation="45">
@@ -2063,8 +2270,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_uses_declared_bounds_for_rect_and_ignores_images(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape id="rotated-rect" type="rect" topLeftX="900" topLeftY="0" width="100" height="100" rotation="45"/>
                   <img id="rotated-image" src="token" topLeftX="860" topLeftY="200" width="100" height="100" rotation="45"/>
@@ -2126,8 +2333,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_rejects_non_finite_rotation_values_from_xsd(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape id="infinite" type="text" topLeftX="-10" topLeftY="0" width="20" height="20" rotation="inf"/>
                   <shape id="negative-infinite" type="text" topLeftX="0" topLeftY="-10" width="20" height="20" rotation="-inf"/>
@@ -2151,8 +2358,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_table_bottom_overflow_from_declared_bounds(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <table id="score-table" topLeftX="54" topLeftY="238" width="414" height="385">
                     <tr><td><content><p>Score</p></content></td></tr>
@@ -2172,8 +2379,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_table_right_overflow_from_declared_bounds(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <table id="wide-table" topLeftX="850" topLeftY="80" width="180" height="120">
                     <tr><td><content><p>Score</p></content></td></tr>
@@ -2191,8 +2398,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_allows_table_with_declared_bounds_inside_canvas(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <table id="inside-table" topLeftX="40" topLeftY="120" width="880" height="360">
                     <tr><td><content><p>Score</p></content></td></tr>
@@ -2208,8 +2415,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_resolved_table_bounds_when_declared_sizes_are_missing(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <table id="implicit-size-table" topLeftX="850" topLeftY="480">
                     <colgroup><col/><col/></colgroup>
@@ -2230,8 +2437,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_uses_resolved_table_bounds_for_canvas_validation(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <table id="resolved-overflow-table" topLeftX="800" topLeftY="80" width="100" height="40">
                     <colgroup><col width="100"/><col width="100"/></colgroup>
@@ -2254,8 +2461,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_uses_the_same_anonymous_table_id_for_all_table_diagnostics(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <shape id="title" type="text" topLeftX="40" topLeftY="40" width="200" height="40"/>
                   <img id="logo" src="token" topLeftX="40" topLeftY="100" width="40" height="40"/>
@@ -2277,8 +2484,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_info_when_table_target_size_resolves_larger_than_declared(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <table id="size-mismatch" topLeftX="40" topLeftY="120" width="200" height="80">
                     <colgroup><col span="2" width="100"/><col width="50"/></colgroup>
@@ -2304,8 +2511,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_does_not_report_info_when_table_target_size_is_resolved_exactly(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <table id="size-match" topLeftX="40" topLeftY="120" width="300" height="100">
                     <colgroup><col width="100"/><col/></colgroup>
@@ -2324,8 +2531,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_keeps_resolved_table_sizes_positive_when_target_is_too_small(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-              <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide xmlns="https://www.larkoffice.com/sml/2.0">
                 <data>
                   <table id="narrow-table" topLeftX="40" topLeftY="120" width="1">
                     <colgroup><col/><col/></colgroup>
@@ -2392,8 +2599,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                     input_path = Path(temp_dir) / f"{name}.xml"
                     input_path.write_text(
                         f"""
-                        <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-                          <slide xmlns="http://www.larkoffice.com/sml/2.0"><data>{table_xml}</data></slide>
+                        <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+                          <slide xmlns="https://www.larkoffice.com/sml/2.0"><data>{table_xml}</data></slide>
                         </presentation>
                         """,
                         encoding="utf-8",
@@ -2432,8 +2639,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             with self.subTest(name=name):
                 result = xml_text_overlap_lint.lint_xml(
                     f"""
-                    <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
-                      <slide xmlns="http://www.larkoffice.com/sml/2.0">
+                    <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+                      <slide xmlns="https://www.larkoffice.com/sml/2.0">
                         <data>{shapes}</data>
                       </slide>
                     </presentation>
@@ -2446,7 +2653,7 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
     def test_lint_xml_reports_vertical_text_image_overlap_as_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0"><data>
+            <slide xmlns="https://www.larkoffice.com/sml/2.0"><data>
               <shape id="text" type="text" vert="vert" topLeftX="100" topLeftY="100" width="100" height="100">
                 <content><p>Vertical</p></content>
               </shape>
@@ -2464,7 +2671,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_blocks_blank_slide(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
               <slide id="content-slide">
                 <data>
                   <shape id="title" type="text" topLeftX="60" topLeftY="60" width="400" height="50">
@@ -2499,7 +2706,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_blocks_blank_slide_with_only_transparent_image(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <img id="ghost" src="token" topLeftX="60" topLeftY="60" width="200" height="200" alpha="0"/>
               </data>
@@ -2514,7 +2721,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_warns_when_large_container_is_mostly_empty(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="trend-card" type="rect" topLeftX="500" topLeftY="135" width="410" height="370"/>
                 <shape id="trend-title" type="text" topLeftX="515" topLeftY="147" width="380" height="28">
@@ -2558,7 +2765,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_warns_for_sparse_short_cards(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card-1" type="rect" topLeftX="60" topLeftY="180" width="400" height="105"/>
                 <shape id="text-1" type="text" topLeftX="80" topLeftY="220" width="360" height="30">
@@ -2604,7 +2811,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_warns_when_whole_slide_has_too_little_effective_content(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="background" type="rect" topLeftX="0" topLeftY="0" width="960" height="540"/>
                 <shape id="text-1" type="text" topLeftX="60" topLeftY="80" width="200" height="30">
@@ -2636,7 +2843,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_ignores_isolated_short_layout_bar(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="summary-bar" type="rect" topLeftX="52" topLeftY="82" width="856" height="105"/>
                 <shape id="summary" type="text" topLeftX="72" topLeftY="115" width="816" height="30">
@@ -2652,7 +2859,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_counts_rect_own_content_as_visible_content(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="load-card" type="rect" topLeftX="60" topLeftY="140" width="220" height="184">
                   <content fontSize="18">
@@ -2671,7 +2878,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_reports_nonzero_coverage_for_rect_own_content_reproduction(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="load-card" type="rect" topLeftX="60" topLeftY="140" width="220" height="184">
                   <content fontSize="18">
@@ -2693,7 +2900,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_still_warns_for_sparse_rect_own_content(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="sparse-card" type="rect" topLeftX="60" topLeftY="140" width="220" height="184">
                   <content fontSize="12"><p>A</p></content>
@@ -2712,7 +2919,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_unions_rect_own_content_with_child_content(self) -> None:
         self_only = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card" type="rect" topLeftX="60" topLeftY="140" width="220" height="184">
                   <content fontSize="12"><p>A</p></content>
@@ -2723,7 +2930,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         )
         with_overlapping_child = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card" type="rect" topLeftX="60" topLeftY="140" width="220" height="184">
                   <content fontSize="12"><p>A</p></content>
@@ -2747,7 +2954,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_extract_density_elements_reads_nested_font_size_from_rect_content(self) -> None:
         elements = xml_text_overlap_lint.extract_density_elements(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card" type="rect" topLeftX="60" topLeftY="140" width="220" height="184">
                   <content fontSize="12"><p><span fontSize="36">32.0 t</span></p></content>
@@ -2762,7 +2969,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_extract_density_elements_does_not_attach_following_text_to_self_closing_rect(self) -> None:
         elements = xml_text_overlap_lint.extract_density_elements(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card" type="rect" topLeftX="60" topLeftY="140" width="220" height="184"/>
                 <shape id="title" type="text" topLeftX="80" topLeftY="160" width="180" height="30">
@@ -2779,7 +2986,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_allows_container_with_large_visual_child(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="chart-card" type="rect" topLeftX="500" topLeftY="135" width="410" height="300"/>
                 <chart id="chart" topLeftX="525" topLeftY="170" width="350" height="220">
@@ -2799,7 +3006,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_does_not_let_transparent_visual_child_suppress_sparse_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="title" type="text" topLeftX="40" topLeftY="40" width="300" height="40">
                   <content fontSize="20"><p>Section title</p></content>
@@ -2825,7 +3032,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_warns_for_small_empty_visual_placeholder_cards(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="letter-placeholder" type="rect" topLeftX="520" topLeftY="180" width="200" height="200"/>
                 <shape id="letter" type="text" topLeftX="540" topLeftY="250" width="160" height="70">
@@ -2847,7 +3054,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_applies_global_threshold_to_normal_text_card(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card" type="rect" topLeftX="70" topLeftY="184" width="260" height="288"/>
                 <shape id="title" type="text" topLeftX="90" topLeftY="215" width="220" height="30">
@@ -2868,7 +3075,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_allows_image_overlay_rect(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <img id="hero" topLeftX="560" topLeftY="0" width="400" height="540"/>
                 <shape id="tint" type="rect" topLeftX="560" topLeftY="0" width="400" height="540"/>
@@ -2882,7 +3089,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_does_not_let_transparent_image_overlay_suppress_sparse_warning(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="title" type="text" topLeftX="40" topLeftY="40" width="300" height="40">
                   <content fontSize="20"><p>Section title</p></content>
@@ -2902,7 +3109,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_allows_edge_spanning_layout_panel_and_nested_decoration(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="panel" type="rect" topLeftX="600" topLeftY="0" width="360" height="540"/>
                 <shape id="decoration" type="rect" topLeftX="660" topLeftY="150" width="240" height="240"/>
@@ -2916,7 +3123,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_counts_icons_as_visible_content(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card" type="rect" topLeftX="80" topLeftY="140" width="320" height="240"/>
                 <icon id="visual" iconType="iconpark/Safe/shield.svg" topLeftX="100" topLeftY="160" width="180" height="180">
@@ -2932,7 +3139,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_does_not_count_transparent_icon_as_visible_content(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="title" type="text" topLeftX="40" topLeftY="40" width="300" height="40">
                   <content fontSize="20"><p>Section title</p></content>
@@ -2955,7 +3162,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_warns_when_coverage_is_below_global_threshold(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card" type="rect" topLeftX="80" topLeftY="140" width="200" height="200"/>
                 <icon id="visual" iconType="iconpark/Safe/shield.svg" topLeftX="100" topLeftY="160" width="70" height="70">
@@ -2974,7 +3181,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_allows_quarter_coverage_under_lower_threshold(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card" type="rect" topLeftX="80" topLeftY="140" width="200" height="200"/>
                 <icon id="visual" iconType="iconpark/Safe/shield.svg" topLeftX="100" topLeftY="160" width="100" height="100">
@@ -2990,7 +3197,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_allows_large_metric_card_above_lower_threshold(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="metric-card" type="rect" topLeftX="80" topLeftY="140" width="360" height="300"/>
                 <shape id="metric" type="text" topLeftX="104" topLeftY="190" width="340" height="90">
@@ -3003,10 +3210,29 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
 
         self.assertEqual(result["slides"][0]["issues"], [])
 
-    def test_lint_xml_does_not_report_blank_slide_for_line_only_content(self) -> None:
+    def test_lint_xml_does_not_report_blank_slide_for_embed_only_content(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
             <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <embed id="emb" topLeftX="280" topLeftY="130" width="400" height="280">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 280">
+                    <circle cx="200" cy="140" r="100" fill="#2563EB"/>
+                  </svg>
+                </embed>
+              </data>
+            </slide>
+            """
+        )
+
+        self.assertEqual(result["summary"]["error_count"], 0)
+        codes = [issue["code"] for issue in result["slides"][0]["issues"]]
+        self.assertNotIn("blank_slide", codes)
+
+    def test_lint_xml_does_not_report_blank_slide_for_line_only_content(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <line id="l1" startX="100" startY="100" endX="800" endY="100"><border/></line>
                 <line id="l2" startX="100" startY="200" endX="800" endY="200"><border/></line>
@@ -3024,7 +3250,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_reports_bbox_overlap_measurement_from_decision_time_visual_bbox(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="left" type="text" topLeftX="80" topLeftY="80" width="300" height="60">
                   <content fontSize="14"><p>overlap text <span fontSize="96">big</span></p></content>
@@ -3061,7 +3287,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_reports_schema_version_2_for_sparse_issues(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="card" type="rect" topLeftX="60" topLeftY="140" width="220" height="184"/>
               </data>
@@ -3077,7 +3303,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_does_not_report_blank_slide_for_textless_decorative_shapes(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="deco1" type="ellipse" topLeftX="60" topLeftY="60" width="300" height="300">
                   <fill><fillColor color="rgba(37, 99, 235, 1)"/></fill>
@@ -3101,7 +3327,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         # trivially "pass" that density check.
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="background" type="rect" topLeftX="0" topLeftY="0" width="960" height="540"/>
                 <shape id="text-1" type="text" topLeftX="60" topLeftY="80" width="200" height="30">
@@ -3127,7 +3353,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_accepts_whitespace_around_attribute_equals_sign(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="visible" type="text" topLeftX = "80" topLeftY = "80" width = "300" height = "60">
                   <content><p>hello</p></content>
@@ -3144,7 +3370,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
     def test_lint_xml_reports_blank_slide_for_full_canvas_background_only(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
-            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
               <data>
                 <shape id="background" type="rect" topLeftX="0" topLeftY="0" width="960" height="540">
                   <fill><fillColor color="rgba(240, 235, 220, 1)"/></fill>
@@ -3173,7 +3399,7 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         )
 
 
-SML_NAMESPACE = "http://www.larkoffice.com/sml/2.0"
+SML_NAMESPACE = "https://www.larkoffice.com/sml/2.0"
 
 
 class SxsdSyntaxTestCase(unittest.TestCase):

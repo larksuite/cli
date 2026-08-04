@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/skillscheck"
@@ -596,13 +597,21 @@ func isLarkDomain(c *cobra.Command) bool {
 // converts cobra's flag-parse errors into a typed validation envelope: an
 // unknown flag gets a focused "did you mean" hint (so agents recover even when
 // the typo is semantic, e.g. --query vs --find, where edit distance alone finds
-// nothing) and the offending flag in `params`. Other flag errors stay typed
-// but generic.
+// nothing) and the offending flag in `params`. Invalid values on alias-backed
+// flags retain the caller's spelling; all other flag errors stay typed but
+// generic.
 func flagDidYouMean(c *cobra.Command, ferr error) error {
 	name, isUnknown := unknownFlagName(ferr)
 	if !isUnknown {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", ferr.Error()).
+		validationErr := errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", ferr.Error()).
 			WithHint("run `%s --help` for valid flags", c.CommandPath())
+		if attribution, ok := flagalias.InvalidValueAttributionOf(ferr); ok {
+			validationErr.WithParam("--" + attribution.Source)
+			if attribution.Source != attribution.Canonical {
+				validationErr.WithHint("--%s maps to canonical flag --%s; run `%s --help` for valid values", attribution.Source, attribution.Canonical, c.CommandPath())
+			}
+		}
+		return validationErr
 	}
 	valid := visibleFlagNames(c)
 	suggestions := suggest.Closest(name, valid, 3)

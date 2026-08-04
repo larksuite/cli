@@ -22,26 +22,15 @@ var BaseFieldSearchOptions = common.Shortcut{
 		fieldRefFlag(true),
 		{Name: "keyword", Desc: "keyword for option query"},
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Type: "int", Default: "30", Desc: "pagination size, range 1-200"},
-		pageSizeLimitAliasFlag(),
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "30", Desc: "pagination size, range 1-200"},
 	},
 	Tips: []string{
 		`Example: lark-cli base +field-search-options --base-token <base_token> --table-id <table_id> --field-id "Status" --keyword "Do"`,
 		"Use only for select fields, whether multiple is false or true.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateLimitPageSizeAlias(runtime); err != nil {
-			return err
-		}
-		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 30, 1, 200); err != nil {
-			return err
-		}
-		if runtime.Changed("page-size") {
-			if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 30, 1, 200); err != nil {
-				return err
-			}
-		}
-		return nil
+		_, err := common.ValidatePageSizeTyped(runtime, "limit", 30, 1, 200)
+		return err
 	},
 	DryRun: dryRunFieldSearchOptions,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

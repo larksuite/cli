@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -33,8 +34,7 @@ func TestSlides_HistoryWorkflow(t *testing.T) {
 	updatedMarker := "updated history marker " + suffix
 	const defaultAs = "user"
 
-	originalSlideXML := slidesHistoryWorkflowSlideXML(title, originalMarker)
-	updatedSlideXML := slidesHistoryWorkflowSlideXML(title, updatedMarker)
+	originalSlideXML := slidesHistoryWorkflowSlideXML(title, originalMarker, "")
 	slidesJSON := mustMarshalSlidesJSON(t, []string{originalSlideXML})
 
 	var presentationID string
@@ -84,20 +84,28 @@ func TestSlides_HistoryWorkflow(t *testing.T) {
 	originalRevision := gjson.Get(fetchOriginal.Stdout, "data.xml_presentation.revision_id").Int()
 	require.Greater(t, originalRevision, int64(0), "stdout:\n%s", fetchOriginal.Stdout)
 
-	pagesJSON := mustMarshalPagesJSON(t, []slidesHistoryWorkflowPage{
-		{SlideID: slideID, Content: updatedSlideXML},
-	})
+	// Capture the server-assigned id of the marker shape and carry it into the
+	// updated XML. Element-id preservation is the command's core promise — the
+	// reason +replace-pages is deprecated — so the update must send an element
+	// with its original id and the readback must prove that id survived. An
+	// id-less update would pass even against a backend that regenerates every id.
+	markerShapeID := slidesHistoryShapeID(t, originalContent, originalMarker)
+	updatedSlideXML := slidesHistoryWorkflowSlideXML(title, updatedMarker, markerShapeID)
+
 	updateResult, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
-			"slides", "+replace-pages",
+			"slides", "+update-slide",
 			"--presentation", presentationID,
-			"--pages", pagesJSON,
+			"--slide-id", slideID,
+			"--content", updatedSlideXML,
 		},
 		DefaultAs: defaultAs,
 	})
 	require.NoError(t, err)
 	updateResult.AssertExitCode(t, 0)
 	updateResult.AssertStdoutStatus(t, true)
+	require.Equal(t, slideID, gjson.Get(updateResult.Stdout, "data.slide_id").String(),
+		"whole-page update must preserve slide_id; stdout:\n%s", updateResult.Stdout)
 
 	fetchUpdated, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args:      []string{"api", "get", "/open-apis/slides_ai/v1/xml_presentations/" + presentationID},
@@ -110,6 +118,8 @@ func TestSlides_HistoryWorkflow(t *testing.T) {
 	updatedContent := gjson.Get(fetchUpdated.Stdout, "data.xml_presentation.content").String()
 	assert.Contains(t, updatedContent, updatedMarker, "stdout:\n%s", fetchUpdated.Stdout)
 	assert.NotContains(t, updatedContent, originalMarker, "stdout:\n%s", fetchUpdated.Stdout)
+	assert.Equal(t, markerShapeID, slidesHistoryShapeID(t, updatedContent, updatedMarker),
+		"an element written back with its original id must keep that id; content:\n%s", updatedContent)
 	currentRevision := gjson.Get(fetchUpdated.Stdout, "data.xml_presentation.revision_id").Int()
 	require.Greater(t, currentRevision, originalRevision, "stdout:\n%s", fetchUpdated.Stdout)
 
@@ -185,16 +195,33 @@ func TestSlides_HistoryWorkflow(t *testing.T) {
 	assert.NotContains(t, revertedContent, updatedMarker, "stdout:\n%s", fetchReverted.Stdout)
 }
 
-type slidesHistoryWorkflowPage struct {
-	SlideID string `json:"slide_id"`
-	Content string `json:"content"`
+func slidesHistoryWorkflowSlideXML(title, marker, markerShapeID string) string {
+	markerIDAttr := ""
+	if markerShapeID != "" {
+		markerIDAttr = ` id="` + markerShapeID + `"`
+	}
+	return `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
+		`<shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>` + slidesHistoryWorkflowXMLEscape(title) + `</p></content></shape>` +
+		`<shape` + markerIDAttr + ` type="text" topLeftX="80" topLeftY="220" width="800" height="180"><content textType="body"><p>` + slidesHistoryWorkflowXMLEscape(marker) + `</p></content></shape>` +
+		`</data></slide>`
 }
 
-func slidesHistoryWorkflowSlideXML(title, marker string) string {
-	return `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data>` +
-		`<shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>` + slidesHistoryWorkflowXMLEscape(title) + `</p></content></shape>` +
-		`<shape type="text" topLeftX="80" topLeftY="220" width="800" height="180"><content textType="body"><p>` + slidesHistoryWorkflowXMLEscape(marker) + `</p></content></shape>` +
-		`</data></slide>`
+// slidesHistoryShapeID returns the id attribute of the <shape> element whose
+// body contains marker, as found in a whole-presentation readback. Attribute
+// order in server XML is not guaranteed, so it locates the marker first and
+// walks back to the nearest opening <shape> tag.
+func slidesHistoryShapeID(t *testing.T, content, marker string) string {
+	t.Helper()
+	markerIdx := strings.Index(content, marker)
+	require.GreaterOrEqual(t, markerIdx, 0, "marker %q not found in content:\n%s", marker, content)
+	shapeStart := strings.LastIndex(content[:markerIdx], "<shape")
+	require.GreaterOrEqual(t, shapeStart, 0, "no <shape> before marker %q; content:\n%s", marker, content)
+	openEnd := strings.Index(content[shapeStart:], ">")
+	require.Greater(t, openEnd, 0, "unterminated <shape> tag; content:\n%s", content)
+	openTag := content[shapeStart : shapeStart+openEnd]
+	m := regexp.MustCompile(`\bid="([^"]+)"`).FindStringSubmatch(openTag)
+	require.Len(t, m, 2, "marker shape carries no id in readback; open tag: %s", openTag)
+	return m[1]
 }
 
 func slidesHistoryWorkflowXMLEscape(s string) string {
@@ -217,11 +244,19 @@ func mustMarshalSlidesJSON(t *testing.T, slides []string) string {
 	return string(raw)
 }
 
-func mustMarshalPagesJSON(t *testing.T, pages []slidesHistoryWorkflowPage) string {
-	t.Helper()
-	raw, err := json.Marshal(pages)
-	if err != nil {
-		t.Fatalf("marshal pages JSON: %v", err)
+// TestSlidesHistoryShapeID always runs (the live workflow above is opt-in), so
+// a regression in the id-capture helper surfaces in default CI instead of only
+// when someone exports LARK_SLIDES_HISTORY_E2E=1.
+func TestSlidesHistoryShapeID(t *testing.T) {
+	t.Parallel()
+	content := `<presentation><slide id="pAA"><data>` +
+		`<shape type="text" id="bTT"><content><p>title text</p></content></shape>` +
+		`<shape width="800" id="bMM" type="text"><content><p>the marker</p></content></shape>` +
+		`</data></slide></presentation>`
+	if got := slidesHistoryShapeID(t, content, "the marker"); got != "bMM" {
+		t.Fatalf("shape id = %q, want bMM", got)
 	}
-	return strings.TrimSpace(string(raw))
+	if got := slidesHistoryShapeID(t, content, "title text"); got != "bTT" {
+		t.Fatalf("shape id = %q, want bTT", got)
+	}
 }

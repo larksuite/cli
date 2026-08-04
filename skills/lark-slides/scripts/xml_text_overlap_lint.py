@@ -23,7 +23,7 @@ import sxsd_validator
 XS_NS = "{http://www.w3.org/2001/XMLSchema}"
 XML_NS = "{http://www.w3.org/XML/1998/namespace}"
 SVG_NS = "{http://www.w3.org/2000/svg}"
-SML_NAMESPACE = "http://www.larkoffice.com/sml/2.0"
+SML_NAMESPACE = "https://www.larkoffice.com/sml/2.0"
 SXSD_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "references" / "slides_xml_schema_definition.xml"
 ICONPARK_INDEX_PATH = Path(__file__).resolve().parents[1] / "references" / "iconpark-index.json"
 SXSD_TAG_ALIASES = {
@@ -348,7 +348,7 @@ def build_sxsd_tag_hint(tag_name: str, supported_tags: set[str]) -> str:
     if alias:
         return f"Use {alias} instead of <{tag_name}>."
     if tag_name == "svg":
-        return 'Inside <whiteboard>, write SVG as <svg xmlns="http://www.w3.org/2000/svg">...</svg>.'
+        return 'Inside <embed> or <whiteboard>, write SVG as <svg xmlns="http://www.w3.org/2000/svg">...</svg>.'
     close_matches = get_close_matches(tag_name, sorted(supported_tags), n=3, cutoff=0.72)
     if close_matches:
         return "Unsupported SXSD tag. Did you mean " + ", ".join(f"<{match}>" for match in close_matches) + "?"
@@ -375,7 +375,7 @@ def build_sxsd_attr_hint(tag_name: str, attr_name: str, allowed_attrs: set[str])
 
 
 def should_skip_sxsd_subtree(element: ET.Element, ancestors: list[str]) -> bool:
-    return "whiteboard" in ancestors and xml_namespace(element.tag) == SVG_NS
+    return ("whiteboard" in ancestors or "embed" in ancestors) and xml_namespace(element.tag) == SVG_NS
 
 
 def should_skip_sxsd_attribute(tag_name: str, attr_name: str) -> bool:
@@ -532,6 +532,53 @@ def _validate_sxsd_schema_constraints(xml: str, root: ET.Element) -> list[dict[s
             SXSD_SCHEMA_PATH,
         )
     )
+    issues.extend(validate_embed_svg_roots(root))
+    return issues
+
+
+def validate_embed_svg_roots(root: ET.Element) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    document_namespace = sxsd_validator.element_namespace(root.tag)
+    is_bare_slide_fragment = (
+        xml_local_name(root.tag) == "slide" and document_namespace is None
+    )
+    if (
+        document_namespace not in sxsd_validator.ACCEPTED_SML_NAMESPACES
+        and not is_bare_slide_fragment
+    ):
+        return issues
+
+    def visit(element: ET.Element, ancestors: list[str], parent_path: str) -> None:
+        if should_skip_sxsd_subtree(element, ancestors):
+            return
+
+        tag_name = xml_local_name(element.tag)
+        path = f"{parent_path}/{tag_name}" if parent_path else tag_name
+        if (
+            tag_name == "embed"
+            and sxsd_validator.element_namespace(element.tag) == document_namespace
+        ):
+            for child in element:
+                if xml_namespace(child.tag) != SVG_NS or xml_local_name(child.tag) == "svg":
+                    continue
+                child_name = xml_local_name(child.tag)
+                child_path = f"{path}/{child_name}"
+                issues.append(
+                    {
+                        "level": "error",
+                        "code": "sxsd_unexpected_child",
+                        "path": child_path,
+                        "tag": child_name,
+                        "expected": '<svg xmlns="http://www.w3.org/2000/svg">',
+                        "actual": child_name,
+                        "message": f"embedded SVG content must use an <svg> root at {child_path}",
+                        "hint": 'Wrap the SVG content in <svg xmlns="http://www.w3.org/2000/svg">...</svg>.',
+                    }
+                )
+        for child in element:
+            visit(child, [*ancestors, tag_name], path)
+
+    visit(root, [], "")
     return issues
 
 
@@ -577,8 +624,11 @@ def validate_iconpark_icon_types(root: ET.Element) -> list[dict[str, Any]]:
             }
         )
 
-    def visit(element: ET.Element, path: str) -> None:
+    def visit(element: ET.Element, ancestors: list[str], path: str) -> None:
         nonlocal supported_icon_types
+        if should_skip_sxsd_subtree(element, ancestors):
+            return
+
         tag_name = xml_local_name(element.tag)
         current_path = f"{path}/{tag_name}" if path else tag_name
         if tag_name == "icon":
@@ -618,9 +668,9 @@ def validate_iconpark_icon_types(root: ET.Element) -> list[dict[str, Any]]:
                     }
                 )
         for child in element:
-            visit(child, current_path)
+            visit(child, [*ancestors, tag_name], current_path)
 
-    visit(root, "")
+    visit(root, [], "")
     return issues
 
 
@@ -683,7 +733,8 @@ def validate_sml_tag_prefixes(xml: str) -> list[dict[str, Any]]:
         if not prefix:
             return
 
-        if namespace_map.get(prefix) != SML_NAMESPACE:
+        actual_namespace = namespace_map.get(prefix)
+        if actual_namespace not in sxsd_validator.ACCEPTED_SML_NAMESPACES:
             return
         path = "/".join(element_stack)
         issues.append(
@@ -691,7 +742,7 @@ def validate_sml_tag_prefixes(xml: str) -> list[dict[str, Any]]:
                 "level": "error",
                 "code": "sml_prefixed_tag",
                 "tag": element_name,
-                "namespace": SML_NAMESPACE,
+                "namespace": actual_namespace,
                 "path": path,
                 "line": parser.CurrentLineNumber,
                 "column": parser.CurrentColumnNumber,
@@ -773,7 +824,7 @@ def parse_presentation(root: ET.Element) -> dict[str, Any]:
 def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
 
-    for match in re.finditer(r"<(shape|img|table|chart|whiteboard)\b([^>]*)>", slide_xml):
+    for match in re.finditer(r"<(shape|img|table|chart|whiteboard|embed)\b([^>]*)>", slide_xml):
         kind, attrs = match.group(1), match.group(2)
         is_self_closing = attrs.rstrip().endswith("/")
         content = ""
@@ -2074,7 +2125,7 @@ def slide_content_visual_bbox(
         # a straight horizontal/vertical line has zero width or height in one axis; clipped_bbox
         # treats zero-area rects as invisible, so pad to its rendered stroke thickness instead.
         return clipped_bbox(line_stroke_bbox(element), slide_bbox)
-    if element["kind"] in {"img", "chart", "table", "whiteboard", "icon", "polyline"}:
+    if element["kind"] in {"img", "chart", "table", "whiteboard", "embed", "icon", "polyline"}:
         return clipped_bbox(element, slide_bbox)
     return None
 
@@ -2112,7 +2163,7 @@ def is_slide_content_present(
 
 
 def is_large_visual_child(element: dict[str, Any], container: dict[str, Any]) -> bool:
-    if element["kind"] not in {"img", "chart", "table", "whiteboard"}:
+    if element["kind"] not in {"img", "chart", "table", "whiteboard", "embed"}:
         return False
     if not is_visually_rendered(element):
         return False
@@ -2690,8 +2741,9 @@ def run_cli(argv: list[str] | None = None) -> None:
     if not options.get("input"):
         print_usage()
         fail("--input is required")
-    input_path = Path(options["input"]).resolve()
-    result = lint_xml(read_file(input_path), str(input_path))
+    requested_path = options["input"]
+    resolved_path = Path(requested_path).resolve()
+    result = lint_xml(read_file(resolved_path), requested_path)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result["summary"]["error_count"] > 0:
         raise SystemExit(1)

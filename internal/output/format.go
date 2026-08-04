@@ -43,13 +43,28 @@ func FindArrayField(data map[string]interface{}) string {
 	return ""
 }
 
-// toGeneric normalises any Go value (structs, typed slices, …) into
-// plain map[string]interface{} / []interface{} via a JSON round-trip so
-// that subsequent type assertions in format handlers work uniformly.
+// toGeneric normalises any Go value (structs, typed slices, …) into plain
+// map[string]interface{} / []interface{} so subsequent type assertions in
+// format handlers work uniformly. Generic containers are copied recursively:
+// a map[string]interface{} can still contain a typed []T, so treating the
+// outer map as already-normalised would make record formats emit that whole
+// map as one record.
 func toGeneric(v interface{}) interface{} {
-	switch v.(type) {
-	case map[string]interface{}, []interface{}, nil:
-		return v // already generic
+	switch value := v.(type) {
+	case nil:
+		return nil
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(value))
+		for key, item := range value {
+			out[key] = toGeneric(item)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(value))
+		for index, item := range value {
+			out[index] = toGeneric(item)
+		}
+		return out
 	}
 	b, err := json.Marshal(v)
 	if err != nil {

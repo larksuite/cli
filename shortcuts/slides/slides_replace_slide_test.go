@@ -284,6 +284,9 @@ func TestReplaceSlideMissingRequiredField(t *testing.T) {
 		{"block_replace missing replacement", `[{"action":"block_replace","block_id":"bUn"}]`, "replacement"},
 		{"block_insert missing insertion", `[{"action":"block_insert"}]`, "insertion"},
 		{"empty action", `[{"block_id":"bUn"}]`, "action is required"},
+		// An actually-empty payload keeps the non-empty wording; only a wrong
+		// field name gets rerouted to the unknown-field error.
+		{"block_replace empty replacement", `[{"action":"block_replace","block_id":"bUn","replacement":""}]`, "requires non-empty replacement"},
 	}
 
 	for _, tt := range tests {
@@ -302,6 +305,17 @@ func TestReplaceSlideMissingRequiredField(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("err = %v, want substring %q", err, tt.wantErr)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %#v, ok = %v, want CategoryValidation/SubtypeInvalidArgument", problem, ok)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %v, want *errs.ValidationError", err)
+			}
+			if ve.Param != "--parts" {
+				t.Fatalf("Param = %q, want %q", ve.Param, "--parts")
 			}
 		})
 	}
@@ -745,5 +759,234 @@ func TestReplaceSlideValidationParam(t *testing.T) {
 				t.Fatalf("Param = %q, want %q", ve.Param, tt.wantParam)
 			}
 		})
+	}
+}
+
+// TestReplaceSlideUnknownPartField covers the field-name hallucinations seen in
+// the wild: XML written into "content" (and friends) instead of the action's own
+// payload field. Each case must name the wrong field and point at the right one,
+// so the caller fixes the key instead of rewriting the value.
+func TestReplaceSlideUnknownPartField(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		parts    string
+		want     []string
+		notWant  string
+		wantHint string
+	}{
+		{
+			name:     "content alias",
+			parts:    `[{"action":"block_replace","block_id":"bUn","content":"<shape type=\"text\"/>"}]`,
+			want:     []string{`unknown field "content"`, `did you mean "replacement"?`, "Valid fields for block_replace: action, block_id, replacement"},
+			wantHint: `"action":"block_replace"`,
+		},
+		{
+			name:  "xml alias",
+			parts: `[{"action":"block_replace","block_id":"bUn","xml":"<shape/>"}]`,
+			want:  []string{`unknown field "xml"`, `did you mean "replacement"?`},
+		},
+		{
+			name:  "new_xml alias",
+			parts: `[{"action":"block_replace","block_id":"bUn","new_xml":"<shape/>"}]`,
+			want:  []string{`unknown field "new_xml"`, `did you mean "replacement"?`},
+		},
+		{
+			name:  "block_xml alias",
+			parts: `[{"action":"block_replace","block_id":"bUn","block_xml":"<shape/>"}]`,
+			want:  []string{`unknown field "block_xml"`, `did you mean "replacement"?`},
+		},
+		{
+			name:  "block alias",
+			parts: `[{"action":"block_replace","block_id":"bUn","block":{"content":"x"}}]`,
+			want:  []string{`unknown field "block"`, `did you mean "replacement"?`},
+		},
+		{
+			name:  "element alias",
+			parts: `[{"action":"block_replace","block_id":"bUn","element":"<shape/>"}]`,
+			want:  []string{`unknown field "element"`, `did you mean "replacement"?`},
+		},
+		{
+			name:  "data alias",
+			parts: `[{"action":"block_replace","block_id":"bUn","data":{"x":1}}]`,
+			want:  []string{`unknown field "data"`, `did you mean "replacement"?`},
+		},
+		{
+			// A shape attribute is not a payload alias: "recolor this block" is a
+			// different intent from "here is my XML", so no field is guessed.
+			name:    "shape attribute is not treated as a payload alias",
+			parts:   `[{"action":"block_replace","block_id":"bUn","fill":"#fff"}]`,
+			want:    []string{`unknown field "fill"`, "Valid fields for block_replace: action, block_id, replacement"},
+			notWant: "did you mean",
+		},
+		{
+			name:     "alias under block_insert points at insertion",
+			parts:    `[{"action":"block_insert","content":"<shape/>"}]`,
+			want:     []string{`unknown field "content"`, `did you mean "insertion"?`, "Valid fields for block_insert: action, insertion, insert_before_block_id"},
+			wantHint: `"action":"block_insert"`,
+		},
+		{
+			name:  "field of the other action",
+			parts: `[{"action":"block_replace","block_id":"bUn","insertion":"<shape/>"}]`,
+			want:  []string{`unknown field "insertion"`, "it belongs to block_insert"},
+		},
+		{
+			name:  "block_id under block_insert",
+			parts: `[{"action":"block_insert","insertion":"<shape/>","block_id":"bUn"}]`,
+			want:  []string{`unknown field "block_id"`, "it belongs to block_replace"},
+		},
+		{
+			// Casing and separator variants: models write the casing of whatever
+			// language they're thinking in, so these must still resolve.
+			name:  "capitalized alias",
+			parts: `[{"action":"block_replace","block_id":"bUn","Content":"<shape/>"}]`,
+			want:  []string{`unknown field "Content"`, `did you mean "replacement"?`},
+		},
+		{
+			name:  "camelCase alias",
+			parts: `[{"action":"block_replace","block_id":"bUn","newXml":"<shape/>"}]`,
+			want:  []string{`unknown field "newXml"`, `did you mean "replacement"?`},
+		},
+		{
+			name:  "right field wrong casing",
+			parts: `[{"action":"block_replace","block_id":"bUn","Replacement":"<shape/>"}]`,
+			want:  []string{`unknown field "Replacement"`, `did you mean "replacement"?`},
+		},
+		{
+			name:  "right field camelCased",
+			parts: `[{"action":"block_replace","blockId":"bUn","replacement":"<shape/>"}]`,
+			want:  []string{`unknown field "blockId"`, `did you mean "block_id"?`},
+		},
+		{
+			// The CLI's own flags are kebab-case (--slide-id), so callers copy
+			// that separator into part fields too.
+			name:  "right field kebab-cased",
+			parts: `[{"action":"block_replace","block-id":"bUn","replacement":"<shape/>"}]`,
+			want:  []string{`unknown field "block-id"`, `did you mean "block_id"?`},
+		},
+		{
+			// "action" picks the schema, so a misspelling there would otherwise
+			// skip the field check and surface only as "action is required".
+			name:  "action itself misspelled",
+			parts: `[{"Action":"block_replace","block_id":"bUn","replacement":"<shape/>"}]`,
+			want:  []string{`unknown field "Action"`, `did you mean "action"?`},
+		},
+		{
+			name:  "action misspelled with a separator",
+			parts: `[{"action-":"block_replace","block_id":"bUn","replacement":"<shape/>"}]`,
+			want:  []string{`unknown field "action-"`, `did you mean "action"?`},
+		},
+		{
+			name:  "camelCased field of the other action",
+			parts: `[{"action":"block_replace","block_id":"bUn","insertBeforeBlockId":"bab","replacement":"<shape/>"}]`,
+			want:  []string{`unknown field "insertBeforeBlockId"`, "it belongs to block_insert"},
+		},
+		{
+			// Not in the alias table: still rejected, but without a misleading
+			// "did you mean" pointing at an unrelated field.
+			name:    "unlisted typo falls back to the field list",
+			parts:   `[{"action":"block_replace","block_id":"bUn","replacment":"<shape/>"}]`,
+			want:    []string{`unknown field "replacment"`, "Valid fields for block_replace: action, block_id, replacement"},
+			notWant: "did you mean",
+		},
+		{
+			// Two bad fields: the reported one is sorted-first, so the message
+			// doesn't flip between runs on Go's randomized map iteration.
+			// TestReplaceSlideUnknownFieldIsDeterministic re-parses to prove it.
+			name:  "several bad fields report deterministically",
+			parts: `[{"action":"block_replace","block_id":"bUn","zzz":"1","content":"<shape/>"}]`,
+			want:  []string{`unknown field "content"`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
+				"+replace-slide",
+				"--presentation", "pres_abc",
+				"--slide-id", "s",
+				"--parts", tt.parts,
+				"--as", "user",
+			})
+			if err == nil {
+				t.Fatalf("expected error for %s", tt.name)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("err = %v, want substring %q", err, want)
+				}
+			}
+			if tt.notWant != "" && strings.Contains(err.Error(), tt.notWant) {
+				t.Fatalf("err = %v, should not contain %q", err, tt.notWant)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %#v, ok = %v, want CategoryValidation/SubtypeInvalidArgument", problem, ok)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %v, want *errs.ValidationError", err)
+			}
+			if ve.Param != "--parts" {
+				t.Fatalf("Param = %q, want %q", ve.Param, "--parts")
+			}
+			if ve.Hint == "" {
+				t.Fatalf("hint is empty; the correct-shape example should be attached")
+			}
+			if tt.wantHint != "" && !strings.Contains(ve.Hint, tt.wantHint) {
+				t.Fatalf("hint = %q, want substring %q", ve.Hint, tt.wantHint)
+			}
+		})
+	}
+}
+
+// TestReplaceSlideAllKnownPartFieldsAccepted guards the field whitelist against
+// typos: every legitimate field of both actions must survive a mixed batch.
+func TestReplaceSlideAllKnownPartFieldsAccepted(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	parts := `[` +
+		`{"action":"block_replace","block_id":"bUn","replacement":"<shape type=\"rect\"/>"},` +
+		`{"action":"block_insert","insertion":"<shape type=\"rect\"/>","insert_before_block_id":"bUn"}` +
+		`]`
+	err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
+		"+replace-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "slide_xyz",
+		"--parts", parts,
+		"--dry-run",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out := stdout.String(); !strings.Contains(out, "insert_before_block_id") {
+		t.Fatalf("dry-run body should keep insert_before_block_id: %s", out)
+	}
+}
+
+// TestReplaceSlideUnknownFieldIsDeterministic re-parses one payload carrying
+// several rejected fields. A single parse would pass by luck even without the
+// key sort, since Go's randomized map iteration can still land on the same
+// field; repeating it makes the sort the only way every message matches.
+func TestReplaceSlideUnknownFieldIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	// "content", "data" and "zzz" are all rejected; sorted order reports "content".
+	parts := `[{"action":"block_replace","block_id":"bUn","zzz":"1","data":{"x":1},"content":"<shape/>"}]`
+	const want = `--parts[0] unknown field "content"; did you mean "replacement"? Valid fields for block_replace: action, block_id, replacement`
+
+	for i := 0; i < 50; i++ {
+		_, err := parseReplaceParts(parts)
+		if err == nil {
+			t.Fatalf("parse %d: expected an error", i)
+		}
+		if err.Error() != want {
+			t.Fatalf("parse %d: err = %q, want %q", i, err.Error(), want)
+		}
 	}
 }
