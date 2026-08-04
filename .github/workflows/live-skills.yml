@@ -1,0 +1,60 @@
+name: Live skills integration
+
+# The live skills tests exercise the real `npx skills` CLI against the live
+# registry. Their dominant failure mode is upstream drift — a new skills CLI
+# release changing output or flags — which breaks without any commit in this
+# repo, so this runs on a daily schedule rather than per PR (where live
+# network flakiness would block unrelated changes).
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  live-skills:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Run live skills integration tests
+        run: make live-skills-test
+      # A scheduled job nobody is notified about rots as silently as no job
+      # at all: keep one open issue as the failure signal, commenting on
+      # repeats instead of piling up duplicates.
+      - name: Report failure as a tracking issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Live skills integration schedule is failing"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body=$(cat <<EOF
+          The scheduled live skills integration run failed: $run_url
+
+          The job runs \`make live-skills-test\` against the real \`npx skills\` CLI; a failure here usually means upstream drift in the skills CLI rather than a regression in this repo. Reproduce locally with \`make live-skills-test\`.
+          EOF
+          )
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" \
+              --body "Still failing: $run_url"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
+              --body "$body"
+          fi
