@@ -40,7 +40,7 @@ const appNoDatabaseMessage = "this app does not have a database yet"
 // execute it without matching natural-language error text. Adding a database is
 // a cloud write: a failed read alone does not authorize it — confirm with the
 // user before starting a +chat.
-const appNoDatabaseHint = "ask the user whether to add a database through Miaoda cloud development; if confirmed, run `lark-cli apps +session-list --app-id <app_id>` and reuse an active session, or run `lark-cli apps +session-create --app-id <app_id>`; send the database requirement with `lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message \"<database requirement>\"`, poll `lark-cli apps +session-get --app-id <app_id> --session-id <session_id>` until `latest_turn.status=completed`, then retry `lark-cli apps +db-table-list --app-id <app_id>`"
+const appNoDatabaseHint = "ask the user whether to add a database through Miaoda cloud development; if confirmed, run `lark-cli apps +session-list --app-id <app_id>` and reuse an active session, or run `lark-cli apps +session-create --app-id <app_id>`; send the database requirement with `lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message \"<database requirement>\"`, poll `lark-cli apps +session-get --app-id <app_id> --session-id <session_id>` until `latest_turn.status=completed`, then retry the original db command"
 
 // withAppsHint attaches an actionable next-step hint to a typed failure,
 // preserving its original classification (subtype/code/log_id). A hint already

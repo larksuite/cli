@@ -59,9 +59,16 @@ func TestWithAppsHint(t *testing.T) {
 	})
 
 	t.Run("no-database code rewrites message and forces cloud-dev hint", func(t *testing.T) {
-		// Raw upstream carries internal-term message and no hint.
-		in := errs.NewAPIError(errs.SubtypeUnknown, "workspace has no db branch").WithCode(appNoDatabaseCode)
+		// Raw upstream carries internal-term message and no hint. A concrete
+		// subtype (not Unknown) lets us prove the override leaves classification
+		// intact while only rewriting Message/Hint.
+		in := errs.NewAPIError(errs.SubtypeNotFound, "workspace has no db branch").WithCode(appNoDatabaseCode)
 		out := withAppsHint(in, "generic db hint")
+		// The helper must mutate in place and hand back the same error value,
+		// not a replacement that would drop the cause chain.
+		if out != in {
+			t.Fatalf("withAppsHint returned a different error value: got %p, want original %p", out, in)
+		}
 		p, ok := errs.ProblemOf(out)
 		if !ok {
 			t.Fatalf("returned error is not typed: %T", out)
@@ -72,8 +79,16 @@ func TestWithAppsHint(t *testing.T) {
 		if p.Hint != appNoDatabaseHint {
 			t.Errorf("Hint = %q, want cloud-dev hint (not the generic caller hint)", p.Hint)
 		}
+		// Classification and code are the source-specific discriminators the
+		// error envelope keys on; the override must not touch them.
 		if p.Code != appNoDatabaseCode {
 			t.Errorf("Code mutated: got %d, want %d", p.Code, appNoDatabaseCode)
+		}
+		if p.Category != errs.CategoryAPI {
+			t.Errorf("Category mutated: got %q, want %q", p.Category, errs.CategoryAPI)
+		}
+		if p.Subtype != errs.SubtypeNotFound {
+			t.Errorf("Subtype mutated: got %q, want %q", p.Subtype, errs.SubtypeNotFound)
 		}
 	})
 
