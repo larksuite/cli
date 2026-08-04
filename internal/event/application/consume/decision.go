@@ -8,9 +8,12 @@
 package consume
 
 import (
+	"errors"
 	"maps"
 	"slices"
 	"time"
+
+	"github.com/larksuite/cli/errs"
 )
 
 // Request carries the caller's consume inputs, already parsed from flags.
@@ -87,9 +90,19 @@ func (d *Decision) View() DecisionView {
 		WouldWrite: slices.Clone(d.wouldWrite),
 	}
 	for _, p := range d.preconditions {
-		v.Preconditions = append(v.Preconditions, PreconditionView{
-			Name: p.Name, Status: string(p.Status), Detail: p.Detail,
-		})
+		pv := PreconditionView{Name: p.Name, Status: string(p.Status), Detail: p.Detail}
+		// A blocking error already carries the classification and the recovery
+		// action; a preview that dropped them would be the one surface with no
+		// way forward, even though it exists to be read before acting.
+		if problem, ok := errs.ProblemOf(p.BlockErr); ok {
+			pv.Subtype = string(problem.Subtype)
+			pv.Hint = problem.Hint
+		}
+		var permission *errs.PermissionError
+		if errors.As(p.BlockErr, &permission) {
+			pv.MissingScopes = slices.Clone(permission.MissingScopes)
+		}
+		v.Preconditions = append(v.Preconditions, pv)
 	}
 	if d.preparation != nil {
 		v.Preparation = &PreparationView{
@@ -115,10 +128,21 @@ type DecisionView struct {
 	WouldWrite    []string
 }
 
+// PreconditionView is the render model of one precondition. Beyond the human
+// sentence in Detail it carries the machine-readable half of the failure, so a
+// caller previewing a consume gets the same recovery information a real run
+// would put in its error envelope instead of having to parse prose.
 type PreconditionView struct {
 	Name   string
 	Status string
 	Detail string
+	// Subtype classifies the failure the way the error envelope does, which is
+	// what callers are told to branch on.
+	Subtype string
+	// Hint is the recovery action, verbatim from the error that blocked.
+	Hint string
+	// MissingScopes lists the scopes to grant, when that is what is missing.
+	MissingScopes []string
 }
 
 type PreparationView struct {

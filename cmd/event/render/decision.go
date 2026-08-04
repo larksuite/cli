@@ -51,6 +51,12 @@ type preconditionView struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Detail string `json:"detail,omitempty"`
+	// The machine-readable half of a failure, mirroring the error envelope a
+	// real run would emit: callers branch on subtype and act on hint instead of
+	// matching prose. Omitted when the check did not fail.
+	Subtype       string   `json:"subtype,omitempty"`
+	Hint          string   `json:"hint,omitempty"`
+	MissingScopes []string `json:"missing_scopes,omitempty"`
 }
 
 type preparationView struct {

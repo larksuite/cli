@@ -58,8 +58,9 @@ func blockedDecisionFixture(t *testing.T) (*catalog.Entry, *appconsume.Service, 
 	if !ok {
 		t.Fatalf("catalog has no %s", blockedTestKey)
 	}
-	blockErr := errs.NewValidationError(errs.SubtypeMissingScope,
+	blockErr := errs.NewPermissionError(errs.SubtypeMissingScope,
 		"missing scopes for %s", blockedTestKey).
+		WithMissingScopes("im:message", "im:chat:readonly").
 		WithHint("run `lark-cli auth login --scope im:message` and retry")
 
 	svc := &appconsume.Service{
@@ -94,9 +95,12 @@ func TestBlockedDecision_DryRunEnvelopeStatesTheRefusal(t *testing.T) {
 			Decision struct {
 				Status        string `json:"status"`
 				Preconditions []struct {
-					Name   string `json:"name"`
-					Status string `json:"status"`
-					Detail string `json:"detail"`
+					Name          string   `json:"name"`
+					Status        string   `json:"status"`
+					Detail        string   `json:"detail"`
+					Subtype       string   `json:"subtype"`
+					Hint          string   `json:"hint"`
+					MissingScopes []string `json:"missing_scopes"`
 				} `json:"preconditions"`
 				WouldWrite []string `json:"would_write"`
 			} `json:"decision"`
@@ -115,9 +119,12 @@ func TestBlockedDecision_DryRunEnvelopeStatesTheRefusal(t *testing.T) {
 	}
 
 	var blocked *struct {
-		Name   string `json:"name"`
-		Status string `json:"status"`
-		Detail string `json:"detail"`
+		Name          string   `json:"name"`
+		Status        string   `json:"status"`
+		Detail        string   `json:"detail"`
+		Subtype       string   `json:"subtype"`
+		Hint          string   `json:"hint"`
+		MissingScopes []string `json:"missing_scopes"`
 	}
 	for i := range envelope.Data.Decision.Preconditions {
 		if envelope.Data.Decision.Preconditions[i].Status == "blocked" {
@@ -132,6 +139,24 @@ func TestBlockedDecision_DryRunEnvelopeStatesTheRefusal(t *testing.T) {
 	}
 	if blocked.Detail == "" {
 		t.Error("a blocked precondition must carry a detail; without it the caller knows only that something failed")
+	}
+	// The preview is read before acting, so it has to say what to do about the
+	// refusal — the same recovery information a real run puts in its error
+	// envelope, in the same machine-readable shape.
+	if blocked.Subtype != string(errs.SubtypeMissingScope) {
+		t.Errorf("subtype = %q, want the classification callers branch on", blocked.Subtype)
+	}
+	if blocked.Hint == "" {
+		t.Error("a blocked precondition must carry the recovery hint; the preview is the surface an agent reads before acting")
+	}
+	if len(blocked.MissingScopes) != 2 {
+		t.Errorf("missing_scopes = %v, want the concrete scopes to grant", blocked.MissingScopes)
+	}
+	// A precondition that passed has nothing to recover from and must stay bare.
+	for _, pc := range envelope.Data.Decision.Preconditions {
+		if pc.Status == "ok" && (pc.Subtype != "" || pc.Hint != "" || len(pc.MissingScopes) > 0) {
+			t.Errorf("a passing precondition must carry no recovery fields, got %+v", pc)
+		}
 	}
 	// Declared write side effects stay declarations in a preview.
 	if len(envelope.Data.Decision.WouldWrite) == 0 {
