@@ -128,6 +128,88 @@ func TestCanonicalConflict_CatchesLostFacts(t *testing.T) {
 	}
 }
 
+// headerPayloadTyped builds a payload whose header values keep their declared
+// JSON types, so a test can assert what happens when one field is not a
+// string.
+func headerPayloadTyped(overrides map[string]any) json.RawMessage {
+	header := map[string]any{
+		"event_id":    "evt-1",
+		"event_type":  "im.message.receive_v1",
+		"create_time": "1700000000000",
+		"app_id":      "cli_app",
+		"tenant_key":  "tenant_a",
+	}
+	for k, v := range overrides {
+		header[k] = v
+	}
+	raw, _ := json.Marshal(map[string]any{"schema": "2.0", "header": header, "event": map[string]any{}})
+	return raw
+}
+
+// The envelope contract declares every header fact as a string. A header that
+// asserts one with a different JSON type is not a value this arbiter can
+// compare, and letting it through would disable arbitration for the whole
+// header — so it is a conflict.
+func TestCanonicalConflict_TypeFlippedClaimConflicts(t *testing.T) {
+	for _, c := range canonicalFactComparisons {
+		t.Run(c.name, func(t *testing.T) {
+			ev := conflictBaseEvent()
+			ev.Payload = headerPayloadTyped(map[string]any{c.name: 1700000000000})
+			if got := checkCanonicalConflict(ev); got != c.name {
+				t.Errorf("a non-string %s claim must conflict, got %q", c.name, got)
+			}
+		})
+	}
+}
+
+// The attack the per-field decode closes: one type-flipped field used as a
+// carrier for forged identity facts. Decoding the header into typed strings
+// fails on the flipped field while still populating the forged ones, so a
+// whole-header bail-out would deliver the forgery.
+func TestCanonicalConflict_TypeFlipCannotSmuggleForgedIdentity(t *testing.T) {
+	ev := conflictBaseEvent()
+	ev.Payload = headerPayloadTyped(map[string]any{
+		"create_time": 1700000000000,
+		"app_id":      "cli_forged",
+		"tenant_key":  "tenant_forged",
+	})
+	if got := checkCanonicalConflict(ev); got == "" {
+		t.Fatal("a header carrying forged identity facts behind a type flip must not be delivered")
+	}
+
+	// The same payload with every value a string is caught on the first forged
+	// fact, which proves the flip is the only thing standing between the
+	// forgery and stdout.
+	control := conflictBaseEvent()
+	control.Payload = headerPayload(map[string]string{
+		"app_id":     "cli_forged",
+		"tenant_key": "tenant_forged",
+	})
+	if got := checkCanonicalConflict(control); got != "app_id" {
+		t.Errorf("control: forged app_id must conflict, got %q", got)
+	}
+}
+
+// A null claim asserts nothing, which is the one non-string form that stays
+// silent: JSON null is how the platform spells "field not present".
+func TestCanonicalConflict_NullClaimStaysSilent(t *testing.T) {
+	ev := conflictBaseEvent()
+	ev.Payload = headerPayloadTyped(map[string]any{"app_id": nil})
+	if got := checkCanonicalConflict(ev); got != "" {
+		t.Errorf("a null claim must deliver, got conflict on %q", got)
+	}
+}
+
+// A header that is not an object cannot assert any fact, so there is nothing
+// to arbitrate — the same as a missing header.
+func TestCanonicalConflict_NonObjectHeaderDelivers(t *testing.T) {
+	ev := conflictBaseEvent()
+	ev.Payload = json.RawMessage(`{"schema":"2.0","header":"not-an-object","event":{}}`)
+	if got := checkCanonicalConflict(ev); got != "" {
+		t.Errorf("a non-object header claims nothing and must deliver, got conflict on %q", got)
+	}
+}
+
 // Well-formed control cases: agreement and silence both deliver.
 func TestCanonicalConflict_AgreementAndSilenceDeliver(t *testing.T) {
 	agree := conflictBaseEvent()
