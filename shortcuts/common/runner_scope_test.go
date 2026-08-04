@@ -166,6 +166,38 @@ func TestCheckShortcutScopes_ReturnsTypedPermissionError(t *testing.T) {
 	}
 }
 
+func TestCheckShortcutScopes_SlidesHintMentionsAppScopeCheck(t *testing.T) {
+	f := &cmdutil.Factory{
+		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{
+			result: &credential.TokenResult{Token: "t", Scopes: "docs:document.media:upload"},
+		}, nil),
+	}
+
+	required := []string{"slides:presentation:create", "slides:presentation:write_only"}
+	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{
+		AppID: "cli_slides",
+		Brand: core.BrandFeishu,
+	}, required)
+	if err == nil {
+		t.Fatal("expected missing slides scope error, got nil")
+	}
+
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	for _, want := range []string{
+		"auth login --scope",
+		"auth scopes --format json",
+		"Open Platform",
+		"slides:*",
+	} {
+		if !strings.Contains(permErr.Hint, want) {
+			t.Fatalf("Hint = %q, want it to mention %q", permErr.Hint, want)
+		}
+	}
+}
+
 func TestCheckShortcutScopes_IgnoresNonContextTokenErrors(t *testing.T) {
 	f := &cmdutil.Factory{
 		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{err: errors.New("token cache unavailable")}, nil),
