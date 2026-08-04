@@ -2,6 +2,18 @@
 
 管理自动处理收到邮件的规则。规则写操作需使用真实 `rule_id`，不要猜测 ID。规则写操作执行前需按 SKILL.md 的写操作确认规则获得用户确认。
 
+## 重排序
+
+`user_mailbox.rules reorder` 可以只传需要优先排序的一部分规则 ID。CLI 会先用同一个 `user_mailbox_id` / `--as` 身份上下文调用 `user_mailbox.rules list` 读取当前全部规则，再按“用户输入顺序优先 + 未输入规则保持当前相对顺序”补齐完整 `rule_ids` 后调用 reorder。
+
+```bash
+lark-cli mail user_mailbox.rules reorder --as user \
+  --params '{"user_mailbox_id":"me"}' \
+  --data '{"rule_ids":["<rule_id_to_move_first>","<rule_id_to_move_second>"]}'
+```
+
+空 `rule_ids`、重复 ID、未知 ID 会在 CLI 侧报 validation error，且不会调用 reorder。list 失败时也不会调用 reorder；reorder 失败时透传 API error。
+
 ## 主题包含文本 → 标记为已读
 
 ```bash
