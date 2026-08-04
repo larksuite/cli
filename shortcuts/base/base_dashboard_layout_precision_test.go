@@ -268,9 +268,9 @@ func TestBaseDashboardBlockCreate_PositionNotValidated(t *testing.T) {
 }
 
 // TestBaseDashboardBlockPositionRequiresAllKeys proves a partial position
-// object is rejected on both commands. The server fills missing coordinates
-// with zero rather than leaving them alone, so an update meant to move a block
-// sideways would silently resize it to nothing.
+// object is rejected on both commands. position is submitted whole rather than
+// merged field by field, so a partial object does not mean "move it sideways and
+// keep the size" — it is a placement with three quarters missing.
 func TestBaseDashboardBlockPositionRequiresAllKeys(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -669,22 +669,38 @@ func TestBaseDashboardBlockDryRunMatchesExecuteBody(t *testing.T) {
 			if err := runShortcut(t, tc.shortcut, dryArgs, dryFactory, dryStdout); err != nil {
 				t.Fatalf("dry-run err=%v", err)
 			}
-			previewed := dryRunPreviewBody(t, dryStdout.Bytes())
+			previewed, previewCall := dryRunPreviewBody(t, dryStdout.Bytes())
 
 			if !reflect.DeepEqual(previewed, executed) {
 				t.Fatalf("preview and executed request bodies diverge:\npreview=%v\nexecuted=%v", previewed, executed)
+			}
+			// The endpoint has to match too: a preview that shows an
+			// unsubstituted :param template, or a different verb, describes a
+			// request the client would never send.
+			if previewCall.Method != tc.method || previewCall.URL != tc.url {
+				t.Fatalf("preview targets %s %s, executed %s %s", previewCall.Method, previewCall.URL, tc.method, tc.url)
+			}
+			if strings.Contains(previewCall.URL, ":") {
+				t.Fatalf("preview URL still carries an unsubstituted placeholder: %s", previewCall.URL)
 			}
 		})
 	}
 }
 
-// dryRunPreviewBody extracts the single previewed request body from a --dry-run
-// envelope (data.api[0].body).
-func dryRunPreviewBody(t *testing.T, raw []byte) map[string]interface{} {
+// previewedCall is the method and resolved URL of a previewed request.
+type previewedCall struct {
+	Method string `json:"method"`
+	URL    string `json:"url"`
+}
+
+// dryRunPreviewBody extracts the single previewed request from a --dry-run
+// envelope (data.api[0]), returning its body and its method/URL.
+func dryRunPreviewBody(t *testing.T, raw []byte) (map[string]interface{}, previewedCall) {
 	t.Helper()
 	var envelope struct {
 		Data struct {
 			API []struct {
+				previewedCall
 				Body map[string]interface{} `json:"body"`
 			} `json:"api"`
 		} `json:"data"`
@@ -695,7 +711,7 @@ func dryRunPreviewBody(t *testing.T, raw []byte) map[string]interface{} {
 	if len(envelope.Data.API) != 1 {
 		t.Fatalf("expected exactly one previewed call, got %d: %s", len(envelope.Data.API), string(raw))
 	}
-	return envelope.Data.API[0].Body
+	return envelope.Data.API[0].Body, envelope.Data.API[0].previewedCall
 }
 
 // TestBaseDashboardBlockCreateDryRunOmitsBlockID pins that a create preview
@@ -725,41 +741,53 @@ func TestBaseDashboardBlockCreateDryRunOmitsBlockID(t *testing.T) {
 	}
 }
 
-// TestDryRunDashboardBaseSkipsOnlyEmptyIdentifiers covers all three branches of
-// the shared identifier helper: each one is emitted when set and omitted when
-// blank, so the empty-value skip cannot regress into dropping real values.
-func TestDryRunDashboardBaseSkipsOnlyEmptyIdentifiers(t *testing.T) {
+// TestDryRunDashboardBaseCarriesDeclaredIdentifiers pins that the shared helper
+// keys off which identifiers the command declares, not off whether the value
+// happens to be non-empty. Set doubles as the substitution source for :param
+// placeholders, so dropping a declared-but-empty identifier would print the raw
+// route template and hide the empty argument that caused it.
+func TestDryRunDashboardBaseCarriesDeclaredIdentifiers(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		flags map[string]string
-		want  map[string]interface{}
+		name    string
+		flags   map[string]string
+		want    map[string]interface{}
+		wantURL string
 	}{
 		{
-			name:  "all three set",
-			flags: map[string]string{"base-token": "app_x", "dashboard-id": "dsh_1", "block-id": "blk_1"},
-			want:  map[string]interface{}{"base_token": "app_x", "dashboard_id": "dsh_1", "block_id": "blk_1"},
+			name:    "all declared and set",
+			flags:   map[string]string{"base-token": "app_x", "dashboard-id": "dsh_1", "block-id": "blk_1"},
+			want:    map[string]interface{}{"base_token": "app_x", "dashboard_id": "dsh_1", "block_id": "blk_1"},
+			wantURL: "/b/app_x/d/dsh_1/blk/blk_1",
 		},
 		{
-			name:  "block id blank",
-			flags: map[string]string{"base-token": "app_x", "dashboard-id": "dsh_1", "block-id": ""},
-			want:  map[string]interface{}{"base_token": "app_x", "dashboard_id": "dsh_1"},
+			name:    "declared but empty still substitutes",
+			flags:   map[string]string{"base-token": "app_x", "dashboard-id": "dsh_1", "block-id": ""},
+			want:    map[string]interface{}{"base_token": "app_x", "dashboard_id": "dsh_1", "block_id": ""},
+			wantURL: "/b/app_x/d/dsh_1/blk/",
 		},
 		{
-			name:  "dashboard id blank",
-			flags: map[string]string{"base-token": "app_x", "dashboard-id": "", "block-id": "blk_1"},
-			want:  map[string]interface{}{"base_token": "app_x", "block_id": "blk_1"},
-		},
-		{
-			name:  "base token blank and whitespace-only dashboard id",
-			flags: map[string]string{"base-token": "", "dashboard-id": "   ", "block-id": "blk_1"},
-			want:  map[string]interface{}{"block_id": "blk_1"},
+			name:    "undeclared identifier is omitted",
+			flags:   map[string]string{"base-token": "app_x", "dashboard-id": "dsh_1"},
+			want:    map[string]interface{}{"base_token": "app_x", "dashboard_id": "dsh_1"},
+			wantURL: "/b/app_x/d/dsh_1/blk/:block_id",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rt := newBaseTestRuntime(tc.flags, nil, nil)
-			raw, err := json.Marshal(dryRunDashboardBase(rt).GET("/x"))
+			raw, err := json.Marshal(dryRunDashboardBase(rt).GET("/b/:base_token/d/:dashboard_id/blk/:block_id"))
 			if err != nil {
 				t.Fatalf("marshal err=%v", err)
+			}
+			var envelope struct {
+				API []struct {
+					URL string `json:"url"`
+				} `json:"api"`
+			}
+			if err := json.Unmarshal(raw, &envelope); err != nil {
+				t.Fatalf("unmarshal err=%v raw=%s", err, raw)
+			}
+			if envelope.API[0].URL != tc.wantURL {
+				t.Fatalf("url = %q, want %q", envelope.API[0].URL, tc.wantURL)
 			}
 			var got map[string]interface{}
 			if err := json.Unmarshal(raw, &got); err != nil {

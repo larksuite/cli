@@ -129,20 +129,23 @@ func validateDashboardBlockPosition(pc *parseCtx, runtime *common.RuntimeContext
 	return nil
 }
 
-// dryRunDashboardBase returns a base DryRunAPI with the dashboard identifiers
-// that are actually present. Empty values are skipped so a preview never
-// advertises an identifier the command does not take — a create preview has no
-// block_id yet, and echoing an empty one back reads like a missing argument.
+// dryRunDashboardBase returns a base DryRunAPI carrying the dashboard
+// identifiers this command actually takes. The test is whether the command
+// declares the flag, not whether the value is non-empty: Set doubles as the
+// substitution source for :param placeholders in the URL, so skipping a
+// declared-but-empty identifier would leave the raw template in the preview and
+// hide the fact that the argument was empty. A create command simply has no
+// block-id flag, and that is the case worth omitting.
 func dryRunDashboardBase(runtime *common.RuntimeContext) *common.DryRunAPI {
 	api := common.NewDryRunAPI()
-	if v := strings.TrimSpace(runtime.Str("base-token")); v != "" {
-		api.Set("base_token", v)
-	}
-	if v := strings.TrimSpace(runtime.Str("dashboard-id")); v != "" {
-		api.Set("dashboard_id", v)
-	}
-	if v := strings.TrimSpace(runtime.Str("block-id")); v != "" {
-		api.Set("block_id", v)
+	for key, flag := range map[string]string{
+		"base_token":   "base-token",
+		"dashboard_id": "dashboard-id",
+		"block_id":     "block-id",
+	} {
+		if runtime.Cmd.Flags().Lookup(flag) != nil {
+			api.Set(key, strings.TrimSpace(runtime.Str(flag)))
+		}
 	}
 	return api
 }

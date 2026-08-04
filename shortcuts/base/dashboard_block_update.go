@@ -25,7 +25,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		blockIDFlag(true),
 		{Name: "name", Desc: "new block name"},
 		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-config.md for the SSOT"},
-		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; all four keys required (a partial object would zero the rest). Advisory bounds x/y>=0, 1<=w<=12 and x+w<=12, h>=1 — coordinate VALUES are not validated locally and pass through as given; server-side acceptance of out-of-range coordinates is not verified. Omit to leave layout unchanged`},
+		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; all four keys required and numeric (position is submitted whole, so a partial object cannot express a complete placement). Advisory bounds x/y>=0, 1<=w<=12 and x+w<=12, h>=1 — coordinate VALUES are not validated locally and pass through as given; server-side acceptance of out-of-range coordinates is not verified. Omit to leave layout unchanged`},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local SEMANTIC validation: data_config checks + normalization, and the --position x/y/w/h completeness check. JSON syntax is still parsed (a malformed value never silently vanishes from the preview). Sends data_config and position as-is"},
 	},
@@ -38,7 +38,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		"Use +dashboard-block-get first to inspect the current data_config before replacing nested values.",
 		"Block type cannot be changed; delete and recreate the block to change chart type.",
 		"data_config update merges top-level keys, but each provided key is replaced as a whole.",
-		"--position is optional precise layout in a 12-col grid; omit it to leave the current layout unchanged. Coordinate values are not validated locally and overlaps are not server-checked. To re-tidy an existing dashboard use +dashboard-arrange instead.",
+		"--position is optional precise layout in a 12-col grid; omit it to leave the current layout unchanged. Coordinate values are not validated locally; how the server treats out-of-range or overlapping coordinates is not verified. To re-tidy an existing dashboard use +dashboard-arrange instead.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pc := newParseCtx(runtime)

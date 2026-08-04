@@ -381,7 +381,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 
 | formatName | 含义 | 示例（precision=2） |
 |------------|------|--------------------|
-| `digital` | 千分位数字（默认） | `1,234.56` |
+| `digital` | 千分位数字（不传 number_format 时后端多半按此展示，未核实） | `1,234.56` |
 | `digital_without_separator` | 无千分位数字 | `1234.56` |
 | `percentage_rounded` | 百分比 | `1,234.56%` |
 | `cyn_rounded` | 人民币金额 | `¥1,234.56` |
