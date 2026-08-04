@@ -64,7 +64,6 @@ var WikiNodeDelete = common.Shortcut{
 	},
 	Tips: []string{
 		"Deletion is irreversible; double-check --node-token and --obj-type before running.",
-		"This is a high-risk-write command; pass --yes to confirm the deletion.",
 		"--node-token accepts a raw token (wikcnXXX, docxXXX, ...) or a Lark URL like https://feishu.cn/wiki/<token> or https://feishu.cn/docx/<token>; URL paths also imply --obj-type.",
 		"Run +node-get first to confirm space_id / obj_type when in doubt.",
 		"Auto-resolving space_id (when --space-id is omitted) also calls get_node, which needs the wiki:node:retrieve scope; pass --space-id to skip that lookup if your token only carries wiki:node:create.",

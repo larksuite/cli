@@ -18,8 +18,7 @@ var BaseViewDelete = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
 	Tips: []string{
-		baseHighRiskYesTip,
-		`Example: lark-cli base +view-delete --base-token <base_token> --table-id <table_id> --view-id "Old View" --yes`,
+		`Example: lark-cli base +view-delete --base-token <base_token> --table-id <table_id> --view-id "Old View" --yes   # only after the user has confirmed`,
 	},
 	DryRun: dryRunViewDelete,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

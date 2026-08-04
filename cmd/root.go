@@ -682,26 +682,23 @@ func installTipsHelpFunc(root *cobra.Command) {
 				defer func() { f.Hidden = true }()
 			}
 		}
-		// Domain and method commands compose their agent guidance into Long lazily
-		// here (shortcuts attach after service registration); both skip the generic
-		// bottom-of-help append below.
+		// Domain help composes its own navigational guidance into Long and is
+		// rendered as-is (it carries no Risk line or Tips, so it skips the
+		// generic bottom-of-help append below); method and shortcut help both
+		// compose their affordance block into Long but leave Risk and Tips to
+		// the shared append below, so every method and shortcut shows them in
+		// the same place with the same wording.
 		if service.PrepareDomainHelp(cmd, embeddedSkillContent) {
 			defaultHelp(cmd, args)
 			return
 		}
-		if service.PrepareMethodHelp(cmd, embeddedSkillContent) {
-			defaultHelp(cmd, args)
-			return
-		}
-		if service.PrepareShortcutHelp(cmd, embeddedSkillContent) {
-			defaultHelp(cmd, args)
-			return
-		}
+		service.PrepareMethodHelp(cmd, embeddedSkillContent)
+		service.PrepareShortcutHelp(cmd, embeddedSkillContent)
 		defaultHelp(cmd, args)
 		out := cmd.OutOrStdout()
-		if level, ok := cmdutil.GetRisk(cmd); ok {
+		if line, ok := cmdutil.RiskLine(cmd); ok {
 			fmt.Fprintln(out)
-			fmt.Fprintln(out, "Risk:", level)
+			fmt.Fprintln(out, line)
 		}
 		tips := cmdutil.GetTips(cmd)
 		if len(tips) == 0 {

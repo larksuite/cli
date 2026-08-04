@@ -151,7 +151,7 @@ func buildInputSchema(m meta.Method) *InputSchema {
 			Type:        "boolean",
 			Flag:        "--yes",
 			Default:     falseVal,
-			Description: "CLI confirmation gate. Must be true to execute; lark-cli rejects with confirmation_required if absent or false. Pass --yes only after the user has explicitly confirmed; not sent to the backend.",
+			Description: "CLI confirmation gate. Must be true to execute; lark-cli rejects with confirmation_required if absent or false; " + core.YesSelfApprovalBan + "; not sent to the backend.",
 		})
 	}
 

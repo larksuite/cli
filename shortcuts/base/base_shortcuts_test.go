@@ -227,6 +227,12 @@ func TestBaseDeleteShortcutsRisk(t *testing.T) {
 	}
 }
 
+// TestBaseHighRiskShortcutsTipsGuideAgents asserts that every high-risk-write
+// base shortcut with a --yes flag carries the agent-facing --yes guardrail.
+// The guardrail is now rendered by the framework's Risk line (RiskLine, see
+// internal/cmdutil/risk.go) rather than by a per-shortcut Tips string, so this
+// checks that render path instead of Tips content. Shortcut-level Tips must
+// not restate or contradict it (see shortcuts/base/high_risk.go removal).
 func TestBaseHighRiskShortcutsTipsGuideAgents(t *testing.T) {
 	for _, shortcut := range Shortcuts() {
 		if shortcut.Risk != "high-risk-write" {
@@ -239,9 +245,56 @@ func TestBaseHighRiskShortcutsTipsGuideAgents(t *testing.T) {
 		if flag == nil {
 			t.Fatalf("%s missing --yes flag", shortcut.Command)
 		}
-		tips := strings.Join(cmdutil.GetTips(cmd), "\n")
-		if !strings.Contains(tips, "pass --yes without asking again") {
-			t.Fatalf("%s tips missing agent guidance:\n%s", shortcut.Command, tips)
+		riskLine, ok := cmdutil.RiskLine(cmd)
+		if !ok || !strings.Contains(riskLine, "must NOT add --yes on its own") {
+			t.Fatalf("%s Risk line missing agent guidance: %q", shortcut.Command, riskLine)
+		}
+	}
+}
+
+// TestBaseHighRiskShortcutsTipsDoNotAuthorizeSelfApproval pins the deletion of
+// the 14 hand-written tips that told agents to pass --yes on their own. Without
+// this, nothing stops the wording from growing back: the sibling test above
+// checks only the framework Risk line, so re-adding the old tip verbatim to any
+// base shortcut passes the whole package.
+//
+// The predicate keys on the tip's PRECONDITION, not on the mention of --yes,
+// because the removed and the retained wording are nearly identical in surface
+// form. Compare the deleted tip:
+//
+//	This is a high-risk write command. If the user explicitly requested it and
+//	the target is unambiguous, pass --yes without asking again.
+//
+// against the one deliberately kept on +base-block-delete:
+//
+//	If the user already explicitly confirmed this exact delete target, pass
+//	--yes without asking again.
+//
+// Both end the same way. The difference is what they treat as consent: a
+// *request* for an operation is not confirmation of it — that is the whole
+// point of the framework ban — whereas an *already given* confirmation is. So
+// banning "pass --yes" or "without asking again" outright would delete a
+// correct tip, and only the "requested" framing is the defect.
+func TestBaseHighRiskShortcutsTipsDoNotAuthorizeSelfApproval(t *testing.T) {
+	// Substrings that only ever appear in a tip treating a request as consent.
+	banned := []string{
+		"explicitly requested",
+		"This is a high-risk write command",
+	}
+	for _, shortcut := range Shortcuts() {
+		// Compare against the shared constant, not a literal: if the label is
+		// ever renamed, a literal would quietly match nothing and this test
+		// would pass while checking zero shortcuts.
+		if shortcut.Risk != cmdutil.RiskHighRiskWrite {
+			continue
+		}
+		for _, tip := range shortcut.Tips {
+			for _, bad := range banned {
+				if strings.Contains(tip, bad) {
+					t.Errorf("%s carries a tip that authorizes self-approval (matched %q):\n  %s",
+						shortcut.Command, bad, tip)
+				}
+			}
 		}
 	}
 }
@@ -545,7 +598,6 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"lark-cli base +dashboard-delete --base-token <base_token> --dashboard-id <dashboard_id> --yes",
 				"also deletes its blocks",
-				"pass --yes",
 			},
 		},
 		{
@@ -613,7 +665,6 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			shortcut: BaseDashboardBlockDelete,
 			wantTips: []string{
 				"lark-cli base +dashboard-block-delete --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --yes",
-				"pass --yes",
 			},
 		},
 	}
@@ -1125,10 +1176,14 @@ func TestBaseAttachmentHelpGuidesAgents(t *testing.T) {
 				"remove from the target cell",
 				"max 50 tokens",
 			},
+			// "requires --yes" is deliberately absent: the confirmation
+			// requirement is rendered by the framework Risk line now, and
+			// TestBaseHighRiskShortcutsTipsGuideAgents asserts it for every
+			// high-risk-write base shortcut, this one included. Restating it in
+			// Tips duplicated the Risk line, which is what this branch removes.
 			wantTips: []string{
 				"lark-cli base +record-remove-attachment",
 				"Repeat --file-token",
-				"requires --yes",
 			},
 		},
 	}

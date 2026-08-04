@@ -24,7 +24,7 @@ var AppsDBEnvCreate = common.Shortcut{
 	Description: "Create a DB environment (split single-env DB into dev/online, irreversible)",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		"Example: lark-cli apps +db-env-create --environment dev --sync-data --app-id <app_id> --yes",
+		"Example: lark-cli apps +db-env-create --environment dev --sync-data --app-id <app_id> --yes   # only after the user has confirmed",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},

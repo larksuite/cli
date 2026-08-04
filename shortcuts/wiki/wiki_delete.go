@@ -43,7 +43,6 @@ var WikiDeleteSpace = common.Shortcut{
 	},
 	Tips: []string{
 		"Deletion is irreversible; double-check --space-id before running.",
-		"This is a high-risk-write command; pass --yes to confirm the deletion.",
 		"If the API returns a long-running task, this command polls for a bounded window and then prints a follow-up drive +task_result command.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

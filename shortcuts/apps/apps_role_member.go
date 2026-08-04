@@ -147,8 +147,8 @@ var AppsRoleMemberRemove = common.Shortcut{
 	Description: "Remove app role members",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		"Example: lark-cli apps +role-member-remove --app-id <app_id> --role-id <role_id> --users ou_x --yes",
-		"Example: lark-cli apps +role-member-remove --app-id <app_id> --role-id <role_id> --all --yes",
+		"Example: lark-cli apps +role-member-remove --app-id <app_id> --role-id <role_id> --users ou_x --yes   # only after the user has confirmed",
+		"Example: lark-cli apps +role-member-remove --app-id <app_id> --role-id <role_id> --all --yes   # only after the user has confirmed",
 		"When the user names a member, resolve and verify that exact name before writing; if lookup fails, stop and never infer that the role's only current member is the target",
 		"--all clears members but does not delete the role; after a confirmed --all operation, use an unfiltered +role-member-list to verify users, departments, and chats are empty",
 	},

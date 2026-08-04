@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -35,8 +36,12 @@ func TestRequireConfirmation_TypedShape(t *testing.T) {
 	if !strings.Contains(cre.Message, "drive +delete") || !strings.Contains(cre.Message, "requires confirmation") {
 		t.Errorf("Message = %q, want it to mention action and 'requires confirmation'", cre.Message)
 	}
-	if cre.Hint != "add --yes to confirm" {
-		t.Errorf("Hint = %q, want 'add --yes to confirm'", cre.Hint)
+	wantHint := "add --yes to confirm; " + core.YesSelfApprovalBan
+	if cre.Hint != wantHint {
+		t.Errorf("Hint = %q, want %q", cre.Hint, wantHint)
+	}
+	if !strings.Contains(cre.Hint, core.YesSelfApprovalBan) {
+		t.Errorf("Hint = %q, want it to contain the shared self-approval ban text", cre.Hint)
 	}
 	if cre.Risk != errs.RiskHighRiskWrite {
 		t.Errorf("Risk = %q, want %q", cre.Risk, errs.RiskHighRiskWrite)

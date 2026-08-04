@@ -34,7 +34,7 @@ var AppsDBDataImport = common.Shortcut{
 	Description: "Import rows from a local csv/json file into a Miaoda app table",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		"Example: lark-cli apps +db-data-import --app-id <app_id> --file ./orders.csv --yes",
+		"Example: lark-cli apps +db-data-import --app-id <app_id> --file ./orders.csv --yes   # only after the user has confirmed",
 		"Table defaults to the file name; override with --table.",
 	},
 	Scopes:    []string{"spark:app:write"},

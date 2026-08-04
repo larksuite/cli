@@ -21,7 +21,7 @@ var BaseBaseBlockDelete = common.Shortcut{
 		baseBlockIDFlag(true),
 	},
 	Tips: []string{
-		"Example: lark-cli base +base-block-delete --base-token <base_token> --block-id <block_id> --yes",
+		"Example: lark-cli base +base-block-delete --base-token <base_token> --block-id <block_id> --yes   # only after the user has confirmed",
 		"Deletes the block identified by --block-id.",
 		"Recursive folder deletion is not supported. If a folder is not empty, move or delete its children first.",
 		"Different block types may have independent backing resources; deletion follows backend semantics.",

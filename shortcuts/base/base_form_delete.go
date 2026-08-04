@@ -24,7 +24,6 @@ var BaseFormDelete = common.Shortcut{
 	},
 	Tips: []string{
 		"Use +form-list or +form-get first when the form target is ambiguous.",
-		baseHighRiskYesTip,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().

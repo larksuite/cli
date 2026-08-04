@@ -29,7 +29,6 @@ var BaseRoleUpdate = common.Shortcut{
 		{Name: "json", Desc: "delta role config JSON; read lark-base-role-guide.md and role-config.md before changing permissions", Required: true},
 	},
 	Tips: []string{
-		baseHighRiskYesTip,
 		"Requires advanced permissions to be enabled and the caller to be a Base admin.",
 		"Update is a delta merge: only changed fields are updated, others remain unchanged.",
 		"Use lark-base-role-guide.md as the entry guide and role-config.md as the role permission JSON SSOT.",

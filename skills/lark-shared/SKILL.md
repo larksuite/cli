@@ -183,7 +183,7 @@ lark-cli 对高风险写操作（`risk: "high-risk-write"`）有强制确认门�
     "type": "confirmation",
     "subtype": "confirmation_required",
     "message": "drive +delete requires confirmation",
-    "hint": "add --yes to confirm",
+    "hint": "add --yes to confirm; the agent must NOT add --yes on its own — only pass --yes after the user has confirmed",
     "risk": "high-risk-write",
     "action": "drive +delete"
   }
@@ -207,5 +207,5 @@ lark-cli 对高风险写操作（`risk: "high-risk-write"`）有强制确认门�
 
 ### 如何识别一条命令是高风险
 
-- shortcut：`lark-cli <service> +<cmd> --help` 顶部会显示 `Risk: high-risk-write`
+- shortcut：`lark-cli <service> +<cmd> --help` 输出末尾会显示 `Risk: high-risk-write`，并附带"须由用户明确确认、agent 不得自行加 `--yes`"的提示
 - service 命令：`lark-cli schema <service>.<resource>.<method> --format json` 的返回值里 `"risk": "high-risk-write"`

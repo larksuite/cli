@@ -54,8 +54,8 @@ var AppsDBExecute = common.Shortcut{
 	Description: "Execute SQL (SELECT / DML / DDL) against a Miaoda app database",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		`Example: lark-cli apps +db-execute --app-id <app_id> --sql "SELECT * FROM orders LIMIT 10" --yes`,
-		`Example: lark-cli apps +db-execute --app-id <app_id> --environment dev --file ./migration.sql --yes`,
+		`Example: lark-cli apps +db-execute --app-id <app_id> --sql "SELECT * FROM orders LIMIT 10" --yes   # only after the user has confirmed`,
+		`Example: lark-cli apps +db-execute --app-id <app_id> --environment dev --file ./migration.sql --yes   # only after the user has confirmed`,
 		"Tip: single SELECT returns data as a row array — filter with --jq, e.g. -q '.data[].id'",
 	},
 	Scopes:    []string{"spark:app:write"},

@@ -79,7 +79,7 @@ var AppsDBRecoveryApply = common.Shortcut{
 	Description: "Restore the database to a point in time (overwrites current data, irreversible)",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		"Example: lark-cli apps +db-recovery-apply --app-id <app_id> --target 2026-04-15T10:00:00Z --yes",
+		"Example: lark-cli apps +db-recovery-apply --app-id <app_id> --target 2026-04-15T10:00:00Z --yes   # only after the user has confirmed",
 		"Preview first with +db-recovery-diff.",
 	},
 	Scopes:    []string{"spark:app:write"},

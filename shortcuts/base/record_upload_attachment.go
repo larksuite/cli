@@ -116,10 +116,8 @@ var BaseRecordRemoveAttachment = common.Shortcut{
 		{Name: "file-token", Type: "string_array", Desc: "attachment file_token to remove from the target cell; repeat to remove multiple attachments; max 50 tokens", Required: true},
 	},
 	Tips: []string{
-		baseHighRiskYesTip,
-		`Example: lark-cli base +record-remove-attachment --base-token <base_token> --table-id <table_id> --record-id <record_id> --field-id <attachment_field_id> --file-token <file_token> --yes`,
+		`Example: lark-cli base +record-remove-attachment --base-token <base_token> --table-id <table_id> --record-id <record_id> --field-id <attachment_field_id> --file-token <file_token> --yes   # only after the user has confirmed`,
 		`Repeat --file-token to remove multiple attachments from the same cell in one call.`,
-		`This is a high-risk write command and requires --yes.`,
 	},
 	DryRun: dryRunRecordRemoveAttachment,
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

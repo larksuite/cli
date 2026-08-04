@@ -26,7 +26,6 @@ var BaseAdvpermDisable = common.Shortcut{
 		{Name: "base-token", Desc: "base token", Required: true},
 	},
 	Tips: []string{
-		baseHighRiskYesTip,
 		"Disabling advanced permissions invalidates existing custom roles; confirm the target Base before passing --yes.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

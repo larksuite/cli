@@ -246,7 +246,7 @@ var AppsRoleDelete = common.Shortcut{
 	Description: "Delete an app role",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		"Example: lark-cli apps +role-delete --app-id <app_id> --role-id <role_id> --yes",
+		"Example: lark-cli apps +role-delete --app-id <app_id> --role-id <role_id> --yes   # only after the user has confirmed",
 		"A delete request alone is not explicit confirmation: first show the exact app, role, current member scope, and irreversible impact; use --yes only after the user confirms that impact",
 		"When independent verification is required, use +role-list --name <exact_name> and confirm the deleted role_id is absent; a failed +role-get alone does not prove deletion",
 	},

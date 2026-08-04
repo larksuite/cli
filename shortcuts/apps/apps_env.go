@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -122,7 +123,7 @@ var AppsEnvVarSet = common.Shortcut{
 				errs.RiskWrite,
 				"apps +env-set --environment online",
 				"apps +env-set --environment online requires confirmation",
-			).WithHint("add --yes to confirm")
+			).WithHint("add --yes to confirm; %s", core.YesSelfApprovalBan)
 		}
 		appID, err := requireAppID(rctx.Str("app-id"))
 		if err != nil {
@@ -160,7 +161,7 @@ var AppsEnvVarDelete = common.Shortcut{
 	Description: "Delete app environment variables",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		"Example: lark-cli apps +env-delete --app-id <app_id> --key FOO --yes",
+		"Example: lark-cli apps +env-delete --app-id <app_id> --key FOO --yes   # only after the user has confirmed",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},

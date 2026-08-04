@@ -7,7 +7,7 @@ import "github.com/larksuite/cli/shortcuts/common"
 
 // Shortcuts returns all apps domain shortcuts.
 func Shortcuts() []common.Shortcut {
-	envSet := withExtraTips(AppsEnvVarSet, "Example: lark-cli apps +env-set --app-id <app_id> --environment online --key FOO --value <value> --yes")
+	envSet := withExtraTips(AppsEnvVarSet, "Example: lark-cli apps +env-set --app-id <app_id> --environment online --key FOO --value <value> --yes   # only after the user has confirmed")
 	envDelete := withExtraTips(AppsEnvVarDelete, "Tip: +env-delete is high-risk-write; only pass --yes after explicit confirmation.")
 
 	return []common.Shortcut{

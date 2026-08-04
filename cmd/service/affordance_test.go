@@ -108,17 +108,22 @@ func TestRenderAffordanceForCmd(t *testing.T) {
 
 // PrepareMethodHelp composes the guidance into Long at the top: description,
 // then the affordance block, then the full-schema pointer — so an agent reads
-// when-to-use/examples before the flag list.
+// when-to-use/examples before the flag list. Risk and Tips are deliberately
+// absent from Long — they render at the bottom of help for every method
+// command, the same as shortcuts (see PrepareShortcutHelp) — so the overlay's
+// tips are handed to the command instead.
 func TestPrepareMethodHelp(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	orig := affordanceLookup
 	t.Cleanup(func() { affordanceLookup = orig })
 	affordanceLookup = func(_, _ string) (json.RawMessage, bool) {
-		return json.RawMessage(`{"use_when":["发文本消息"],"examples":[{"description":"发一条","command":"lark-cli im messages create ..."}]}`), true
+		return json.RawMessage(`{"use_when":["发文本消息"],"tips":["富文本用 msg_type=post"],"examples":[{"description":"发一条","command":"lark-cli im messages create ..."}]}`), true
 	}
 
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
 	m := map[string]interface{}{"id": "messages.create", "path": "messages", "httpMethod": "POST", "description": "发送消息"}
 	cmd := NewCmdServiceMethod(f, imSpec(), meta.FromMap(m), "create", "messages", nil)
+	cmdutil.SetRisk(cmd, "high-risk-write")
 
 	if !PrepareMethodHelp(cmd, nil) {
 		t.Fatal("PrepareMethodHelp returned false for a service-method command")
@@ -135,6 +140,14 @@ func TestPrepareMethodHelp(t *testing.T) {
 	if !(descAt < useAt && useAt < exAt && exAt < schemaAt) {
 		t.Errorf("order should be description < affordance < schema pointer; got desc=%d use=%d ex=%d schema=%d\n%s", descAt, useAt, exAt, schemaAt, long)
 	}
+	for _, unwanted := range []string{"Risk:", "Tips:", "富文本用 msg_type=post"} {
+		if strings.Contains(long, unwanted) {
+			t.Errorf("method Long must not carry %q (it renders at the bottom of help):\n%s", unwanted, long)
+		}
+	}
+	if got := cmdutil.GetTips(cmd); len(got) != 1 || got[0] != "富文本用 msg_type=post" {
+		t.Errorf("expected the overlay tips to move onto the command for the bottom append, got %v", got)
+	}
 
 	// A non-service command (no schema-path annotation) is left untouched.
 	if PrepareMethodHelp(&cobra.Command{Use: "plain"}, nil) {
@@ -143,9 +156,9 @@ func TestPrepareMethodHelp(t *testing.T) {
 }
 
 // PrepareShortcutHelp composes a shortcut's Long from its overlay with the same
-// top layout as method help (no schema pointer), folding declarative tips when
-// the overlay declares none, and leaves shortcuts without an overlay entry (and
-// non-shortcut commands) for the default help path.
+// top layout as method help (no schema pointer). Risk and Tips are deliberately
+// absent from Long — they render at the bottom of help for every shortcut — so
+// the overlay's tips are handed to the command instead.
 func TestPrepareShortcutHelp(t *testing.T) {
 	orig := affordanceLookup
 	t.Cleanup(func() { affordanceLookup = orig })
@@ -165,10 +178,18 @@ func TestPrepareShortcutHelp(t *testing.T) {
 	if !PrepareShortcutHelp(sc, nil) {
 		t.Fatal("PrepareShortcutHelp returned false for a shortcut with an overlay")
 	}
-	for _, want := range []string{"Create an event", "Risk: write", "When to use:", "高层创建日程", "Tips:", "start/end 收 ISO 8601"} {
+	for _, want := range []string{"Create an event", "When to use:", "高层创建日程"} {
 		if !strings.Contains(sc.Long, want) {
 			t.Errorf("shortcut Long missing %q:\n%s", want, sc.Long)
 		}
+	}
+	for _, unwanted := range []string{"Risk:", "Tips:", "start/end 收 ISO 8601"} {
+		if strings.Contains(sc.Long, unwanted) {
+			t.Errorf("shortcut Long must not carry %q (it renders at the bottom of help):\n%s", unwanted, sc.Long)
+		}
+	}
+	if got := cmdutil.GetTips(sc); len(got) != 1 || got[0] != "start/end 收 ISO 8601" {
+		t.Errorf("expected the tips to move onto the command for the bottom append, got %v", got)
 	}
 	if strings.Contains(sc.Long, "Full parameter schema:") {
 		t.Errorf("shortcut Long must not carry a schema pointer:\n%s", sc.Long)
@@ -187,6 +208,30 @@ func TestPrepareShortcutHelp(t *testing.T) {
 	cmdmeta.SetAffordanceRef(notSc, "calendar", "+create")
 	if PrepareShortcutHelp(notSc, nil) {
 		t.Error("PrepareShortcutHelp should return false for a non-shortcut command")
+	}
+
+	// The overlay's own Tips still win over the declarative Go Tips (replace,
+	// not merge) — only the render location moved.
+	affordanceLookup = func(service, methodID string) (json.RawMessage, bool) {
+		if service == "calendar" && methodID == "+overlay-tips" {
+			return json.RawMessage(`{"tips":["overlay wins"]}`), true
+		}
+		return nil, false
+	}
+	both := &cobra.Command{Use: "+overlay-tips", Short: "x"}
+	cmdmeta.SetSource(both, cmdmeta.SourceShortcut, false)
+	cmdmeta.SetAffordanceRef(both, "calendar", "+overlay-tips")
+	cmdutil.SetTips(both, []string{"go tips lose"})
+	if !PrepareShortcutHelp(both, nil) {
+		t.Fatal("PrepareShortcutHelp returned false for a shortcut with an overlay")
+	}
+	if got := cmdutil.GetTips(both); len(got) != 1 || got[0] != "overlay wins" {
+		t.Errorf("expected the overlay tips to replace the declarative tips, got %v", got)
+	}
+	// Asserting only that the tip is ON the command would still pass if it were
+	// ALSO left in Long — which is exactly the double-render this change removes.
+	if strings.Contains(both.Long, "overlay wins") {
+		t.Errorf("overlay tips must not remain in Long once handed to the command:\n%s", both.Long)
 	}
 }
 

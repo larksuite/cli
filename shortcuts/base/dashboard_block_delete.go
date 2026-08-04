@@ -24,7 +24,6 @@ var BaseDashboardBlockDelete = common.Shortcut{
 	},
 	Tips: []string{
 		"lark-cli base +dashboard-block-delete --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --yes",
-		baseHighRiskYesTip,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().

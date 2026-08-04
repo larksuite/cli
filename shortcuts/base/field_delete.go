@@ -18,8 +18,7 @@ var BaseFieldDelete = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true)},
 	Tips: []string{
-		baseHighRiskYesTip,
-		`Example: lark-cli base +field-delete --base-token <base_token> --table-id <table_id> --field-id "Status" --yes`,
+		`Example: lark-cli base +field-delete --base-token <base_token> --table-id <table_id> --field-id "Status" --yes   # only after the user has confirmed`,
 	},
 	DryRun: dryRunFieldDelete,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

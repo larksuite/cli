@@ -5,6 +5,7 @@ package cmdutil
 
 import (
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 )
 
 // RequireConfirmation constructs a typed *errs.ConfirmationRequiredError
@@ -21,5 +22,5 @@ import (
 func RequireConfirmation(action string) error {
 	return errs.NewConfirmationRequiredError(errs.RiskHighRiskWrite, action,
 		"%s requires confirmation", action).
-		WithHint("add --yes to confirm")
+		WithHint("add --yes to confirm; %s", core.YesSelfApprovalBan)
 }

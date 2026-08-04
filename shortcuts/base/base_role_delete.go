@@ -27,10 +27,9 @@ var BaseRoleDelete = common.Shortcut{
 		{Name: "role-id", Desc: "role ID (e.g. rolxxxxxx4)", Required: true},
 	},
 	Tips: []string{
-		baseHighRiskYesTip,
 		"Requires advanced permissions to be enabled and the caller to be a Base admin.",
 		"Only custom roles can be deleted; system roles cannot be deleted.",
-		"Use +role-get first if the role target is ambiguous, then pass --yes to confirm deletion.",
+		"Use +role-get first if the role target is ambiguous.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {

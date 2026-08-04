@@ -13,3 +13,11 @@ const (
 	RiskWrite         = "write"
 	RiskHighRiskWrite = "high-risk-write"
 )
+
+// YesSelfApprovalBan is the sentence every surface must carry when it mentions
+// --yes: the flag asserts that the USER confirmed, so an agent may never add it
+// on its own initiative. Each surface embeds this in its own context (help line,
+// schema property, exit-10 hint) instead of wording its own version — three
+// independently-worded copies are what let the weakest one quietly become the
+// rule agents actually follow.
+const YesSelfApprovalBan = "the agent must NOT add --yes on its own — only pass --yes after the user has confirmed"
