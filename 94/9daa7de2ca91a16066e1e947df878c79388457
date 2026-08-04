@@ -1,0 +1,21 @@
+internal/event/adapter/localbus/protocol/frame_budget_test.go
+  s_5ed4643b7ed0ce::t_d3acdcfa74444a 1-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "949daa7de2ca91a16066e1e947df878c79388457",
+  "prompts": {},
+  "sessions": {
+    "s_5ed4643b7ed0ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2575c3b-b939-4af2-95f9-229f8a0dcd25",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
