@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import copy
-import html
 import json
 import math
 import re
@@ -113,8 +112,7 @@ def extract_attribute(tag_source: str, name: str) -> str | None:
     )
     if not match:
         return None
-    raw = match.group(1) if match.group(1) is not None else match.group(2)
-    return html.unescape(raw)
+    return match.group(1) if match.group(1) is not None else match.group(2)
 
 
 def extract_numeric_attribute(tag_source: str, name: str) -> int | float | None:

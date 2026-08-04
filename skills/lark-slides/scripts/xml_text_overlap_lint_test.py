@@ -2499,24 +2499,6 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             "slide[1]/data/shape[1]",
         )
 
-    def test_lint_xml_element_id_uses_decoded_xml_attribute_value(self) -> None:
-        result = xml_text_overlap_lint.lint_xml(
-            """
-            <slide xmlns="https://www.larkoffice.com/sml/2.0">
-              <data>
-                <shape id="amp&amp;id" type="rect" topLeftX="-20" topLeftY="40" width="50" height="50"/>
-              </data>
-            </slide>
-            """
-        )
-
-        issue = next(
-            issue for issue in result["slides"][0]["issues"]
-            if issue["code"] == "shape_out_of_canvas"
-        )
-        self.assertEqual(issue["element_ids"], ["amp&id"])
-        self.assertEqual(issue["related_objects"][0]["element_id"], "amp&id")
-
     def test_lint_xml_uses_resolved_table_bounds_for_canvas_validation(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
