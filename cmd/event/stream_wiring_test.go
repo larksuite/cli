@@ -87,10 +87,10 @@ func TestStreamOptions_PassesTheDecidedPreparation(t *testing.T) {
 	_, decision := wiringDecision(t)
 
 	var ran atomic.Int64
-	prepare := appconsume.PrepareFunc(func(context.Context) (appconsume.Cleanup, error) {
+	prepare := func(context.Context) (appconsume.Cleanup, error) {
 		ran.Add(1)
 		return nil, nil
-	})
+	}
 
 	opts := applyDecision(consume.Options{EventKey: wiringKey}, decision, prepare)
 

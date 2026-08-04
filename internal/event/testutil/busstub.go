@@ -9,11 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"os"
 	"testing"
 
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // BusStub speaks just enough of the local bus protocol to drive a real
@@ -42,11 +42,11 @@ func NewBusStub(rawAck string, rawFrames ...string) *BusStub {
 // limit, so a descriptive subtest name would fail the bind.
 func (s *BusStub) Listen(t *testing.T, appID string) *FakeTransport {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "busstub-*")
+	dir, err := vfs.MkdirTemp("", "busstub-*")
 	if err != nil {
 		t.Fatalf("stub bus tempdir: %v", err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = vfs.RemoveAll(dir) })
 
 	tr := NewWrappedFake(transport.New(), dir+"/bus.sock")
 	ln, err := tr.Listen(appID)
