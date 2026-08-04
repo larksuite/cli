@@ -1,6 +1,6 @@
 # 编辑已有 PPT：读-改-写闭环
 
-局部编辑走 **shortcut [`+replace-slide`](../cli/lark-slides-replace-slide.md)**（块级替换 / 插入），配合 `xml_presentation.slide.get` 读原页拿 `block_id`。整页重建走 **[`+update-slide`](../lark-slides-update-slide.md)**，多页就每页各跑一次 —— 它原地覆盖并保留 `slide_id` 和页序；只有写进 `--content` 且带原 id 的元素才会保留元素 id，遗漏的元素会被删除。
+局部编辑走 **shortcut [`+replace-slide`](../cli/lark-slides-replace-slide.md)**（块级替换 / 插入），配合 `xml_presentation.slide.get` 读原页拿 `block_id`。整页重建走 **[`+update-slide`](../cli/lark-slides-update-slide.md)**，多页就每页各跑一次 —— 它原地覆盖并保留 `slide_id` 和页序；只有写进 `--content` 且带原 id 的元素才会保留元素 id，遗漏的元素会被删除。
 
 > 生成 XML 前**必读** [xml-schema-quick-ref.md](../xml/xml-schema-quick-ref.md)。
 
@@ -136,7 +136,7 @@ cat parts.json | lark-cli slides +replace-slide --as user --presentation "$PID" 
 ## 相关文档
 
 - [lark-slides-replace-slide.md](../cli/lark-slides-replace-slide.md) — +replace-slide shortcut 参数详情
-- [lark-slides-update-slide.md](../lark-slides-update-slide.md) — +update-slide shortcut 参数详情（整页覆盖）
+- [lark-slides-update-slide.md](../cli/lark-slides-update-slide.md) — +update-slide shortcut 参数详情（整页覆盖）
 - [lark-slides-xml-presentation-slide-get.md](../cli/lark-slides-xml-presentation-slide-get.md) — slide.get 参考（拿 `block_id` / `revision_id`）
 - [lark-slides-xml-presentation-slide-replace.md](../cli/lark-slides-xml-presentation-slide-replace.md) — 底层 replace API 参考（一般直接用 shortcut 即可）
 - [lark-slides-media-upload.md](../cli/lark-slides-media-upload.md) — 上传图片拿 file_token

@@ -38,7 +38,7 @@ metadata:
 - `<td>` 直接子元素只有 `<fill>`（背景）、`<content>`（文字）和边框配置（一般不用），不能嵌套 `<shape>`、`<img>`、`<icon>`。
 - `<shape type="rect">` 只是形状不是容器，`<icon>`、`<img>`、`<shape type="text">` 和其他 `<shape>` 必须与它平级靠坐标叠放。
 - 填充渐变颜色必须用 `<fill><fillColor color="linear-gradient(135deg, rgba(R,G,B,A) 0%, rgba(R,G,B,A) 100%)"/></fill>`。
-- 编辑页面前必须阅读 [`workflow/slides_editing.md`](references/workflow/slides_editing.md)。
+- 编辑页面前必须阅读 [`workflow/slides-editing.md`](references/workflow/slides-editing.md)。
 - 绘制图表前必须阅读 [`xml/slides_chart_demo.xml`](references/xml/slides_chart_demo.xml)。
 - 当用户要求无损复述历史上下文时，必须无损复述以上权威经验、必读的技能文档（需要重新阅读）和易错元素语法（尤其是 `<table>` 和 `<chart>`）。
 
@@ -112,7 +112,7 @@ metadata:
 
 **CRITICAL — 创建前自检或失败排障时，MUST 按 [workflow/error-handling.md](references/workflow/error-handling.md) 检查 XML 转义、结构、shell 截断、图片 token、3350001 和布局风险。**
 
-**编辑已有幻灯片页面**：单个标题、文本块、图片或局部元素优先用 [`+replace-slide`](references/cli/lark-slides-replace-slide.md)（块级替换/插入，不动页序）；一页里改动很多（例如批量换字体）、要改背景、或要删掉若干元素时用 [`+update-slide`](references/lark-slides-update-slide.md) 整页覆盖（`slide_id` 和页序不变，但没写进 `--content` 的元素会被删除）；**多页大改就对每一页各跑一次 `+update-slide`**。选择 action 和完整读-改-写流程见 [`workflow/slides_editing.md`](references/workflow/slides_editing.md)。
+**编辑已有幻灯片页面**：单个标题、文本块、图片或局部元素优先用 [`+replace-slide`](references/cli/lark-slides-replace-slide.md)（块级替换/插入，不动页序）；一页里改动很多（例如批量换字体）、要改背景、或要删掉若干元素时用 [`+update-slide`](references/cli/lark-slides-update-slide.md) 整页覆盖（`slide_id` 和页序不变，但没写进 `--content` 的元素会被删除）；**多页大改就对每一页各跑一次 `+update-slide`**。选择 action 和完整读-改-写流程见 [`workflow/slides-editing.md`](references/workflow/slides-editing.md)。
 
 **用户要求使用模板**：按 [workflow/template-editing.md](references/workflow/template-editing.md) 处理。
 
@@ -151,7 +151,7 @@ lark-cli auth login --domain slides
 - 创建：[`cli/lark-slides-create.md`](references/cli/lark-slides-create.md)、[`cli/lark-slides-add-slide.md`](references/cli/lark-slides-add-slide.md)（逐页添加 / 给已有 PPT 追加页面）
 - 删除页面：[`cli/lark-slides-delete-slide.md`](references/cli/lark-slides-delete-slide.md)
 - 阅读：[`cli/lark-slides-xml-presentations-get.md`](references/cli/lark-slides-xml-presentations-get.md)
-- 编辑：[`workflow/slides_editing.md`](references/workflow/slides_editing.md)、[`cli/lark-slides-replace-slide.md`](references/cli/lark-slides-replace-slide.md)、[`lark-slides-update-slide.md`](references/lark-slides-update-slide.md)
+- 编辑：[`workflow/slides-editing.md`](references/workflow/slides-editing.md)、[`cli/lark-slides-replace-slide.md`](references/cli/lark-slides-replace-slide.md)、[`lark-slides-update-slide.md`](references/cli/lark-slides-update-slide.md)
 - 历史版本：[`cli/lark-slides-history.md`](references/cli/lark-slides-history.md)
 - 截图：[`cli/lark-slides-screenshot.md`](references/cli/lark-slides-screenshot.md)
 - 图片：[`cli/lark-slides-media-upload.md`](references/cli/lark-slides-media-upload.md)
@@ -290,7 +290,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli slides +<verb> [flags]`�
 | [`+screenshot`](references/cli/lark-slides-screenshot.md) | 把幻灯片页面截图保存为本地图片；用 `--slide-number` 指定页码（从 1 开始，多页重复传入）或用 `--slide-id` 指定页面；单张用 `--output .lark-slides/screenshots/<deck-or-task-id>/page-01`，批量用 `--output-dir .lark-slides/screenshots/<deck-or-task-id>`（一次最多 10 页）；后续必须读取返回的 `output` / `screenshots[].path` |
 | [`+media-upload`](references/cli/lark-slides-media-upload.md) | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |
 | [`+replace-slide`](references/cli/lark-slides-replace-slide.md) | 对已有幻灯片页面进行块级替换/插入（`block_replace` / `block_insert`），自动注入 id 和 `<content/>`，不改变页序 |
-| [`+update-slide`](references/lark-slides-update-slide.md) | 把一整页 XML 交给已有页面，页面变成 `--content` 描述的样子；能一次改样式/插入/删除/备注/背景，`slide_id` 和页序不变。**没写进 `--content` 的元素会被删除** |
+| [`+update-slide`](references/cli/lark-slides-update-slide.md) | 把一整页 XML 交给已有页面，页面变成 `--content` 描述的样子；能一次改样式/插入/删除/备注/背景，`slide_id` 和页序不变。**没写进 `--content` 的元素会被删除** |
 
 没有 Shortcut 覆盖时使用原生 API。高频资源：`slides +xml-get` 读取全文；`xml_presentation.slide.create/delete/get/replace` 管理单页。
 
