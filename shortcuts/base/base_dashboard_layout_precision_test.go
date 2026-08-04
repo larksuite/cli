@@ -280,6 +280,12 @@ func TestBaseDashboardBlockPositionRequiresAllKeys(t *testing.T) {
 		{"only x", `{"x":6}`, []string{"y", "w", "h"}},
 		{"missing height", `{"x":6,"y":0,"w":6}`, []string{"h"}},
 		{"empty object", `{}`, []string{"x", "y", "w", "h"}},
+		// A present-but-null coordinate carries exactly as little information
+		// as an absent one, so key presence alone must not satisfy the check.
+		{"explicit nulls", `{"x":6,"y":null,"w":null,"h":null}`, []string{"y", "w", "h"}},
+		{"string coordinate", `{"x":"6","y":0,"w":6,"h":4}`, []string{"x"}},
+		{"object coordinate", `{"x":{"a":1},"y":0,"w":6,"h":4}`, []string{"x"}},
+		{"bool coordinate", `{"x":true,"y":0,"w":6,"h":4}`, []string{"x"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			factory, stdout, _ := newExecuteFactory(t)
@@ -716,5 +722,53 @@ func TestBaseDashboardBlockCreateDryRunOmitsBlockID(t *testing.T) {
 	}
 	if envelope.Data["dashboard_id"] != "dsh_1" || envelope.Data["base_token"] != "app_x" {
 		t.Fatalf("create preview lost its identifiers: %s", stdout.String())
+	}
+}
+
+// TestDryRunDashboardBaseSkipsOnlyEmptyIdentifiers covers all three branches of
+// the shared identifier helper: each one is emitted when set and omitted when
+// blank, so the empty-value skip cannot regress into dropping real values.
+func TestDryRunDashboardBaseSkipsOnlyEmptyIdentifiers(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		flags map[string]string
+		want  map[string]interface{}
+	}{
+		{
+			name:  "all three set",
+			flags: map[string]string{"base-token": "app_x", "dashboard-id": "dsh_1", "block-id": "blk_1"},
+			want:  map[string]interface{}{"base_token": "app_x", "dashboard_id": "dsh_1", "block_id": "blk_1"},
+		},
+		{
+			name:  "block id blank",
+			flags: map[string]string{"base-token": "app_x", "dashboard-id": "dsh_1", "block-id": ""},
+			want:  map[string]interface{}{"base_token": "app_x", "dashboard_id": "dsh_1"},
+		},
+		{
+			name:  "dashboard id blank",
+			flags: map[string]string{"base-token": "app_x", "dashboard-id": "", "block-id": "blk_1"},
+			want:  map[string]interface{}{"base_token": "app_x", "block_id": "blk_1"},
+		},
+		{
+			name:  "base token blank and whitespace-only dashboard id",
+			flags: map[string]string{"base-token": "", "dashboard-id": "   ", "block-id": "blk_1"},
+			want:  map[string]interface{}{"block_id": "blk_1"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := newBaseTestRuntime(tc.flags, nil, nil)
+			raw, err := json.Marshal(dryRunDashboardBase(rt).GET("/x"))
+			if err != nil {
+				t.Fatalf("marshal err=%v", err)
+			}
+			var got map[string]interface{}
+			if err := json.Unmarshal(raw, &got); err != nil {
+				t.Fatalf("unmarshal err=%v raw=%s", err, raw)
+			}
+			delete(got, "api")
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("identifiers = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

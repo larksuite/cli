@@ -5,12 +5,10 @@ package base
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,15 +38,17 @@ func TestBaseDashboardBlockCreateDryRun_PositionAndNumberFormat(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	output := strings.TrimSpace(result.Stdout)
-	assert.Contains(t, output, "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks")
-	assert.Contains(t, output, `"method": "POST"`)
-	// top-level position sibling of name/type/data_config
-	assert.Contains(t, output, `"position"`)
-	assert.Contains(t, output, `"w": 6`)
+	out := result.Stdout
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks", clie2e.DryRunGet(out, "api.0.url").String(), out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), out)
+	// position is a top-level sibling of name/type/data_config, not nested in it
+	require.Equal(t, int64(0), clie2e.DryRunGet(out, "api.0.body.position.x").Int(), out)
+	require.Equal(t, int64(6), clie2e.DryRunGet(out, "api.0.body.position.w").Int(), out)
+	require.Equal(t, int64(4), clie2e.DryRunGet(out, "api.0.body.position.h").Int(), out)
+	require.False(t, clie2e.DryRunGet(out, "api.0.body.data_config.position").Exists(), out)
 	// number_format nested inside data_config
-	assert.Contains(t, output, `"number_format"`)
-	assert.Contains(t, output, `"dollar_rounded"`)
+	require.Equal(t, "dollar_rounded", clie2e.DryRunGet(out, "api.0.body.data_config.number_format.formatName").String(), out)
+	require.Equal(t, int64(2), clie2e.DryRunGet(out, "api.0.body.data_config.number_format.precision").Int(), out)
 }
 
 // TestBaseDashboardBlockUpdateDryRun_Position proves the update command
@@ -74,11 +74,13 @@ func TestBaseDashboardBlockUpdateDryRun_Position(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	output := strings.TrimSpace(result.Stdout)
-	assert.Contains(t, output, "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a")
-	assert.Contains(t, output, `"method": "PATCH"`)
-	assert.Contains(t, output, `"position"`)
-	assert.Contains(t, output, `"x": 6`)
+	out := result.Stdout
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a", clie2e.DryRunGet(out, "api.0.url").String(), out)
+	require.Equal(t, "PATCH", clie2e.DryRunGet(out, "api.0.method").String(), out)
+	require.Equal(t, int64(6), clie2e.DryRunGet(out, "api.0.body.position.x").Int(), out)
+	require.Equal(t, int64(6), clie2e.DryRunGet(out, "api.0.body.position.w").Int(), out)
+	// update must not carry type; the API rejects a type change
+	require.False(t, clie2e.DryRunGet(out, "api.0.body.type").Exists(), out)
 }
 
 // TestBaseDashboardBlockCreateDryRun_InvalidNumberFormat proves the statistics
@@ -103,6 +105,6 @@ func TestBaseDashboardBlockCreateDryRun_InvalidNumberFormat(t *testing.T) {
 		DefaultAs:  "bot",
 	})
 	require.NoError(t, err)
-	assert.NotEqual(t, 0, result.ExitCode)
-	assert.Contains(t, result.Stderr, "formatName")
+	require.NotEqual(t, 0, result.ExitCode, "stdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+	require.Contains(t, result.Stderr, "formatName", "validation errors must go to stderr, not stdout")
 }

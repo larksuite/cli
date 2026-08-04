@@ -22,6 +22,14 @@ func blockIDFlag(required bool) common.Flag {
 	return common.Flag{Name: "block-id", Desc: "dashboard block ID", Required: required}
 }
 
+// includeBlockType / omitBlockType name buildDashboardBlockBody's bool at the
+// call sites: create sends the block type, update must not (the API rejects a
+// type change).
+const (
+	includeBlockType = true
+	omitBlockType    = false
+)
+
 // buildDashboardBlockBody assembles the request body shared by the dashboard
 // block create and update commands. It is the single source of truth for body
 // shape so DryRun and Execute stay isomorphic across all call sites.
@@ -61,10 +69,25 @@ func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, inclu
 }
 
 // positionKeys are the four grid coordinates a position object must carry.
-// A partial object is rejected because the server fills the missing ones with
-// zero rather than keeping the current layout: an update meant to move a block
-// sideways would silently resize it to nothing.
+// A partial object is rejected because a missing coordinate is not "leave this
+// one alone" — an update meant to move a block sideways would arrive without a
+// size. An explicit null is rejected for the same reason a missing key is:
+// `{"x":6,"y":null}` carries exactly as little information as `{"x":6}`, so
+// presence alone is not enough, the value has to actually be a number.
 var positionKeys = []string{"x", "y", "w", "h"}
+
+// isJSONNumber reports whether v came out of the JSON decoder as a number.
+// float64 is what the production path yields (parseJSONObject uses a plain
+// json.Unmarshal); json.Number is accepted so the check keeps working if that
+// decoder ever switches to UseNumber.
+func isJSONNumber(v interface{}) bool {
+	switch v.(type) {
+	case float64, json.Number:
+		return true
+	default:
+		return false
+	}
+}
 
 // validateDashboardBlockPosition parses the optional --position flag as a JSON
 // object to fail fast on malformed input. Coordinate *values* (x/y/w/h) are NOT
@@ -87,18 +110,20 @@ func validateDashboardBlockPosition(pc *parseCtx, runtime *common.RuntimeContext
 	if !runtime.Bool("no-validate") {
 		var missing []string
 		for _, key := range positionKeys {
-			if _, ok := pos[key]; !ok {
+			if v, ok := pos[key]; !ok || !isJSONNumber(v) {
 				missing = append(missing, key)
 			}
 		}
 		if len(missing) > 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--position 缺少必填字段 %s；必须同时提供 x/y/w/h，否则服务端会把缺失项按 0 处理",
+				"--position 的 %s 缺失或不是数字；x/y/w/h 必须同时提供且为数值"+
+					"（position 按整体提交，不做逐字段合并，残缺对象无法表达一个完整位置）",
 				strings.Join(missing, "/")).WithParam("--position")
 		}
 	}
-	// Rewrite the flag with canonical JSON so the parsed shape is identical
-	// across Validate, DryRun and Execute.
+	// Fold an @file input into inline JSON so DryRun and Execute do not each
+	// re-open the file — the preview and the request are then guaranteed to
+	// describe the same bytes even if the file changes underneath us.
 	b, _ := json.Marshal(pos)
 	_ = runtime.Cmd.Flags().Set("position", string(b))
 	return nil
@@ -205,7 +230,7 @@ func dryRunDashboardBlockGetData(_ context.Context, runtime *common.RuntimeConte
 // dryRunDashboardBlockCreate returns a DryRunAPI for creating a dashboard block.
 func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body, err := buildDashboardBlockBody(pc, runtime, true)
+	body, err := buildDashboardBlockBody(pc, runtime, includeBlockType)
 	if err != nil {
 		// Unreachable while Validate parses the same flags first. Returning nil
 		// makes the runner fail loudly instead of previewing a body that is
@@ -226,7 +251,7 @@ func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContex
 // dryRunDashboardBlockUpdate returns a DryRunAPI for updating a dashboard block.
 func dryRunDashboardBlockUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body, err := buildDashboardBlockBody(pc, runtime, false)
+	body, err := buildDashboardBlockBody(pc, runtime, omitBlockType)
 	if err != nil {
 		// See dryRunDashboardBlockCreate: fail loudly rather than preview a
 		// body that diverges from what Execute would send.
@@ -360,7 +385,7 @@ func executeDashboardBlockGetData(runtime *common.RuntimeContext) error {
 // executeDashboardBlockCreate creates a new dashboard block.
 func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	body, err := buildDashboardBlockBody(pc, runtime, true)
+	body, err := buildDashboardBlockBody(pc, runtime, includeBlockType)
 	if err != nil {
 		return err
 	}
@@ -381,7 +406,7 @@ func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 // executeDashboardBlockUpdate updates an existing dashboard block.
 func executeDashboardBlockUpdate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	body, err := buildDashboardBlockBody(pc, runtime, false)
+	body, err := buildDashboardBlockBody(pc, runtime, omitBlockType)
 	if err != nil {
 		return err
 	}
