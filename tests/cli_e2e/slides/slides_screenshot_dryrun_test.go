@@ -98,6 +98,10 @@ func TestSlidesScreenshotMixedSelectorsDryRunE2E(t *testing.T) {
 	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
 	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
 	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "cannot be used together")
+	require.Equal(t, int64(2), gjson.Get(result.Stderr, "error.params.#").Int(), result.Stderr)
+	require.Equal(t, "--slide-id", gjson.Get(result.Stderr, "error.params.0.name").String(), result.Stderr)
+	require.Equal(t, "--slide-number", gjson.Get(result.Stderr, "error.params.1.name").String(), result.Stderr)
+	require.Empty(t, result.Stdout)
 }
 
 func TestSlidesScreenshotValidationPriorityDryRunE2E(t *testing.T) {
@@ -118,8 +122,11 @@ func TestSlidesScreenshotValidationPriorityDryRunE2E(t *testing.T) {
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 2)
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
 	require.Equal(t, "--presentation", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
 	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "unsupported --presentation input")
+	require.Empty(t, result.Stdout)
 }
 
 func TestSlidesScreenshotEmptySlideIDDryRunE2E(t *testing.T) {

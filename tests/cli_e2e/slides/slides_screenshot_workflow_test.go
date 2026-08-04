@@ -9,12 +9,12 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/internal/vfs"
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -47,9 +47,6 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 
 	presentationID := gjson.Get(createResult.Stdout, "data.xml_presentation_id").String()
 	require.NotEmpty(t, presentationID, "stdout:\n%s", createResult.Stdout)
-	slideID := gjson.Get(createResult.Stdout, "data.slide_ids.0").String()
-	require.NotEmpty(t, slideID, "stdout:\n%s", createResult.Stdout)
-
 	parentT.Cleanup(func() {
 		cleanupCtx, cleanupCancel := clie2e.CleanupContext()
 		defer cleanupCancel()
@@ -65,6 +62,8 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 		})
 		clie2e.ReportCleanupFailure(parentT, "delete presentation "+presentationID, deleteResult, deleteErr)
 	})
+	slideID := gjson.Get(createResult.Stdout, "data.slide_ids.0").String()
+	require.NotEmpty(t, slideID, "stdout:\n%s", createResult.Stdout)
 
 	workDir := t.TempDir()
 	screenshotResult, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -92,7 +91,7 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 	require.True(t, filepath.IsAbs(imagePath), "path must be absolute: %s", imagePath)
 	requireScreenshotPathUnderDir(t, imagePath, filepath.Join(workDir, "shots"))
 
-	imageFile, err := os.Open(imagePath)
+	imageFile, err := vfs.Open(imagePath)
 	require.NoError(t, err)
 	defer imageFile.Close()
 	config, format, err := image.DecodeConfig(imageFile)

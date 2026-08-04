@@ -175,6 +175,17 @@ func TestSlidesScreenshotRejectsMixedSelectorTypes(t *testing.T) {
 	if !strings.Contains(err.Error(), "cannot be used together") {
 		t.Fatalf("error = %v, want mixed selector guidance", err)
 	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
+	}
+	wantParams := []errs.InvalidParam{
+		{Name: "--slide-id", Reason: "mutually exclusive with --slide-number"},
+		{Name: "--slide-number", Reason: "mutually exclusive with --slide-id"},
+	}
+	if !reflect.DeepEqual(validationErr.Params, wantParams) {
+		t.Fatalf("params = %#v, want %#v", validationErr.Params, wantParams)
+	}
 }
 
 func TestSlidesScreenshotValidatesPresentationBeforeSelectors(t *testing.T) {

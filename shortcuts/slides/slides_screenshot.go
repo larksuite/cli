@@ -287,6 +287,10 @@ func slidesScreenshotSelectors(runtime *common.RuntimeContext) ([]string, []int,
 	slideIDs := normalizeSlideIDs(slideIDValues)
 	if len(slideIDs) > 0 && len(slideNumbers) > 0 {
 		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide-id and --slide-number cannot be used together").
+			WithParams(
+				errs.InvalidParam{Name: "--slide-id", Reason: "mutually exclusive with --slide-number"},
+				errs.InvalidParam{Name: "--slide-number", Reason: "mutually exclusive with --slide-id"},
+			).
 			WithHint("choose either slide IDs or slide numbers for one screenshot request")
 	}
 	return slideIDs, slideNumbers, nil
