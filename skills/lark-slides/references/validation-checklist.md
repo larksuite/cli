@@ -66,7 +66,7 @@ python3 "<lark-slides-skill-dir>/scripts/xml_text_overlap_lint.py" --input <pres
 | `bbox_overlap` | 文本元素的估算绘制区域明显重叠 | 拉开文本坐标、缩小文本框/字号，或改成明确的分栏/分组结构 |
 | `*_out_of_canvas` | 元素边界超出页面画布 | 根据 `measurement.overflow` 移回画布或缩小尺寸 |
 | `blank_slide` | 页面没有画布内可见内容 | 补充主体内容；仅有空背景或空形状不能准出 |
-| `sparse_container_content` | 大卡片内容覆盖率低于阈值 | 按元素 ID 定位卡片，结合截图判断是否补充或放大内容 |
+| `sparse_container_content` | 大卡片内容覆盖率低于阈值 | 按 `related_objects[].xml_path` 定位卡片；`element_id` 存在且唯一时也可按 ID 定位，再结合截图判断是否补充或放大内容 |
 | `sparse_slide_content` | 全页有效内容覆盖率偏低 | 复核截图，确认是否为有意留白 |
 
 ## Screenshot QA

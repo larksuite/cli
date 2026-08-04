@@ -2963,6 +2963,35 @@ class XmlTextOverlapLintDensityTest(unittest.TestCase):
         self.assertEqual(result["slides"][0]["status"], "needs_screenshot_review")
         self.assertEqual(result["slides"][0]["warnings"], result["slides"][0]["issues"])
 
+    def test_lint_xml_uses_xml_path_in_anonymous_sparse_container_message(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="rect" topLeftX="500" topLeftY="135" width="410" height="370"/>
+                <shape id="trend-title" type="text" topLeftX="515" topLeftY="147" width="380" height="28">
+                  <content fontSize="15"><p>Core trends</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "sparse_container_content"
+        )
+        self.assertNotIn("container_id", issue["target"])
+        self.assertEqual(
+            issue["target"]["container_xml_path"],
+            "slide[1]/data/shape[1]",
+        )
+        self.assertEqual(
+            issue["message"],
+            "large card slide[1]/data/shape[1] content coverage 1.0% is below 15.0%",
+        )
+
     def test_lint_xml_warns_for_sparse_short_cards(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """

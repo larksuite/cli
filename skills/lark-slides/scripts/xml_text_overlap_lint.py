@@ -2596,10 +2596,14 @@ def normalize_issue(
     if normalized["code"] == "sparse_container_content":
         ratio = normalized["measurement"]["content_coverage_ratio"]
         threshold = normalized["rule"]["threshold"]
-        container_id = normalized["target"].get("container_id", "unknown")
+        container_locator = (
+            normalized["target"].get("container_id")
+            or normalized["target"].get("container_xml_path")
+            or "unknown"
+        )
         normalized.setdefault(
             "message",
-            f"large card {container_id} content coverage {ratio:.1%} is below {threshold:.1%}",
+            f"large card {container_locator} content coverage {ratio:.1%} is below {threshold:.1%}",
         )
         normalized.setdefault(
             "hint",
