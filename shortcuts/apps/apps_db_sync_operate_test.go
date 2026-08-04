@@ -67,7 +67,7 @@ func TestAppsDBSyncDeleteDryRun(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
 		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
 	}
-	if env.API[0].Method != "DELETE" || env.API[0].URL != dbSyncDeleteURL {
+	if env.API[0].Method != "POST" || env.API[0].URL != dbSyncDeleteURL {
 		t.Fatalf("dry-run = %s %s", env.API[0].Method, env.API[0].URL)
 	}
 	if env.API[0].Body["task_id"] != "streaming_1" {
@@ -121,7 +121,7 @@ func TestAppsDBSyncDisableExecute(t *testing.T) {
 func TestAppsDBSyncDeleteExecute(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
-		Method: "DELETE",
+		Method: "POST",
 		URL:    dbSyncDeleteURL,
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
 			"task_id": "streaming_1",

@@ -87,7 +87,7 @@ var AppsDBSyncDelete = common.Shortcut{
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		taskID := strings.TrimSpace(rctx.Str("task-id"))
 		return common.NewDryRunAPI().
-			DELETE(appDbSyncDeletePath(appID)).
+			POST(appDbSyncDeletePath(appID)).
 			Desc("Delete a streaming Base data sync task").
 			Body(map[string]interface{}{"task_id": taskID})
 	},
@@ -97,7 +97,7 @@ var AppsDBSyncDelete = common.Shortcut{
 			return err
 		}
 		taskID := strings.TrimSpace(rctx.Str("task-id"))
-		data, err := rctx.CallAPITyped("DELETE", appDbSyncDeletePath(appID), nil, map[string]interface{}{"task_id": taskID})
+		data, err := rctx.CallAPITyped("POST", appDbSyncDeletePath(appID), nil, map[string]interface{}{"task_id": taskID})
 		if err != nil {
 			return withDBSyncHint(err, dbSyncOperateHint)
 		}
