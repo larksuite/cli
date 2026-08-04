@@ -231,13 +231,20 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, snap *catalog.Snapshot, 
 		errOut = io.Discard
 	}
 
-	// Non-TTY unbounded consumers use stdin EOF as shutdown for subprocess callers.
-	// Bounded runs already have --max-events/--timeout as their lifecycle control.
-	if shouldWatchStdinEOF(f.IOStreams.IsTerminal, o.maxEvents, o.timeout) {
-		watchStdinEOF(os.Stdin, cancel, errOut)
-	}
-
 	runner := streamRunnerFunc(func(ctx context.Context, prepare appconsume.PrepareFunc) error {
+		// Non-TTY unbounded consumers use stdin EOF as shutdown for subprocess
+		// callers. Bounded runs already have --max-events/--timeout as their
+		// lifecycle control.
+		//
+		// The watcher starts here rather than before the decision is executed:
+		// a blocked decision never reaches this point, and starting it earlier
+		// announced "stdin closed — shutting down" on a run that was actually
+		// refused for an unmet precondition, pointing the caller at the wrong
+		// cause.
+		if shouldWatchStdinEOF(f.IOStreams.IsTerminal, o.maxEvents, o.timeout) {
+			watchStdinEOF(os.Stdin, cancel, errOut)
+		}
+
 		return consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
 			EventKey:         eventKey,
 			Def:              keyDef,
