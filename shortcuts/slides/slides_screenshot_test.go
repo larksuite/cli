@@ -589,6 +589,10 @@ func TestSlidesScreenshotOutputRejectsConflictingNamingFlags(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected validation error")
 			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
+			}
 			var validationErr *errs.ValidationError
 			if !errors.As(err, &validationErr) || validationErr.Param != "--output" {
 				t.Fatalf("error = %#v, want --output validation error", err)
