@@ -84,12 +84,22 @@ func validateDashboardBlockPosition(pc *parseCtx, runtime *common.RuntimeContext
 	return nil
 }
 
-// dryRunDashboardBase returns a base DryRunAPI with common dashboard parameters set.
+// dryRunDashboardBase returns a base DryRunAPI with the dashboard identifiers
+// that are actually present. Empty values are skipped so a preview never
+// advertises an identifier the command does not take — a create preview has no
+// block_id yet, and echoing an empty one back reads like a missing argument.
 func dryRunDashboardBase(runtime *common.RuntimeContext) *common.DryRunAPI {
-	return common.NewDryRunAPI().
-		Set("base_token", runtime.Str("base-token")).
-		Set("dashboard_id", runtime.Str("dashboard-id")).
-		Set("block_id", runtime.Str("block-id"))
+	api := common.NewDryRunAPI()
+	if v := strings.TrimSpace(runtime.Str("base-token")); v != "" {
+		api.Set("base_token", v)
+	}
+	if v := strings.TrimSpace(runtime.Str("dashboard-id")); v != "" {
+		api.Set("dashboard_id", v)
+	}
+	if v := strings.TrimSpace(runtime.Str("block-id")); v != "" {
+		api.Set("block_id", v)
+	}
+	return api
 }
 
 // dryRunDashboardList returns a DryRunAPI for listing dashboards.

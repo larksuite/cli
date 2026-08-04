@@ -581,3 +581,30 @@ func dryRunPreviewBody(t *testing.T, raw []byte) map[string]interface{} {
 	}
 	return envelope.Data.API[0].Body
 }
+
+// TestBaseDashboardBlockCreateDryRunOmitsBlockID pins that a create preview
+// carries only the identifiers the command actually takes. Create has no
+// block_id yet, and an empty one in the envelope reads to both humans and
+// agents like an argument that failed to resolve.
+func TestBaseDashboardBlockCreateDryRunOmitsBlockID(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+		"--name", "N", "--type", "statistics", "--data-config", `{"table_name":"T","count_all":true}`,
+		"--dry-run"}
+	if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+
+	var envelope struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("dry-run envelope json err=%v out=%s", err, stdout.String())
+	}
+	if _, hasBlockID := envelope.Data["block_id"]; hasBlockID {
+		t.Fatalf("create preview must not carry block_id: %s", stdout.String())
+	}
+	if envelope.Data["dashboard_id"] != "dsh_1" || envelope.Data["base_token"] != "app_x" {
+		t.Fatalf("create preview lost its identifiers: %s", stdout.String())
+	}
+}
