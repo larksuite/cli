@@ -138,11 +138,12 @@ func TestLegacyRestore_TenantKeyIsTheAcceptedCost(t *testing.T) {
 // answer for a legacy bus, and the answer must follow from its subscription
 // shape rather than from a hand-maintained list.
 //
-// Keys that degrade are covered end to end by composition: this asserts the
-// canonical event a legacy frame restores to is identical to the one a current
-// frame produces, and TestProcessedOutputBaseline freezes Process output as a
-// function of that canonical event. Identical input to a frozen function is
-// what makes the rendered bytes identical.
+// This pins the restore at field level and states the one place a legacy
+// canonical event legitimately differs from a current one. What actually gets
+// printed is covered by TestLegacyBusReplay_RendersTheFrozenOutput, which
+// drives the real pipeline off an old-format frame and compares stdout with
+// the frozen baseline — field-level equality alone would not prove the output
+// matches, precisely because of the difference recorded below.
 func TestLegacyBus_EveryShippedKeyHasADefinedAnswer(t *testing.T) {
 	snap, err := catalog.Compile(allShippedDefs(t), catalog.StrategyRefs{catalog.StrategyNone, catalog.StrategyLegacyPreConsume})
 	if err != nil {
@@ -174,8 +175,10 @@ func TestLegacyBus_EveryShippedKeyHasADefinedAnswer(t *testing.T) {
 				t.Fatal("a legacy ack must put the connection in compatibility mode")
 			}
 
-			// The restored canonical event must equal what a current frame
-			// carries natively.
+			// Compare against what a current bus actually puts on the wire,
+			// observation clock included — not against another legacy frame
+			// with two fields filled in, which would agree trivially on the
+			// one field the two formats cannot agree on.
 			payload := legacyEnvelope(map[string]any{"event_type": def.EventType})
 			old := legacyFrame(payload)
 			old.EventType = def.EventType
@@ -188,13 +191,24 @@ func TestLegacyBus_EveryShippedKeyHasADefinedAnswer(t *testing.T) {
 			current.EventType = def.EventType
 			current.AppID = legacyConfiguredAppID
 			current.TenantKey = "tenant-legacy"
+			current.ObservedAt = "2023-11-14T22:13:20.5Z"
 			want := restoreCanonicalEvent(current, nil, true)
 
 			if restored.EventID != want.EventID || restored.EventType != want.EventType ||
 				restored.SourceTime != want.SourceTime || restored.AppID != want.AppID ||
-				restored.TenantKey != want.TenantKey || !restored.Timestamp.Equal(want.Timestamp) ||
+				restored.TenantKey != want.TenantKey ||
 				!bytes.Equal(restored.Payload, want.Payload) {
 				t.Errorf("legacy restore diverged from the current frame:\n got %+v\nwant %+v", restored, want)
+			}
+
+			// The single recorded difference: a legacy frame has no
+			// observation clock. Nothing under events/ reads it today, and the
+			// replay test is what would catch it if something started to.
+			if !restored.Timestamp.IsZero() {
+				t.Errorf("Timestamp = %v, want the zero value: a legacy frame carries no observation clock", restored.Timestamp)
+			}
+			if want.Timestamp.IsZero() {
+				t.Error("the current-frame control must carry an observation clock, otherwise this comparison hides the one field the formats disagree on")
 			}
 		})
 	}

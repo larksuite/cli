@@ -63,11 +63,19 @@ func TestCapabilityGate_RefusesLegacyBusForResourceScopedKeyBeforeAnySideEffect(
 
 			tr := startLegacyBusStub(t, rawAck)
 
-			err := Run(context.Background(), tr, "cap-gate-app", "", "", Options{
+			// Bounded on purpose: refusal returns before the consume loop
+			// starts, so a regression that degrades instead would otherwise
+			// block until the package timeout and report that rather than the
+			// missing refusal.
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			err := Run(ctx, tr, "cap-gate-app", "", "", Options{
 				EventKey: key,
 				Def:      def,
 				Params:   map[string]string{"resource_id": "res-1"},
 				Runtime:  &fakeRT{},
+				Out:      io.Discard,
 				Quiet:    true,
 			})
 			if err == nil {
