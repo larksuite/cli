@@ -397,7 +397,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 }
 ```
 
-> **更新时 `number_format` 整体替换，不做子字段合并**（与其它顶层 key 一致）：只想改精度也要把 `formatName` 一并带回，否则原格式会回落默认值。
+> **更新时 `number_format` 整体替换，不做子字段合并**（与其它顶层 key 一致，见 [lark-base-dashboard.md](lark-base-dashboard.md) 的「data_config 更新策略」）：只想改精度也要把 `formatName` 一并带回。缺省时后端如何回退未在本仓库核实，带全字段是安全写法。
 
 文本组件（Markdown 富文本）：
 

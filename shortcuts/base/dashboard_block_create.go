@@ -26,7 +26,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		{Name: "name", Desc: "block name", Required: true},
 		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|statistics(指标卡)|text(文本). Read lark-base-dashboard-block-config.md before creating.", Required: true},
 		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-config.md for the SSOT"},
-		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; advisory bounds x/y>=0, 1<=w<=12 and x+w<=12, h>=1 (NOT validated locally or server-side, out-of-range passes through); omit for server auto-layout`},
+		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; all four keys required. Advisory bounds x/y>=0, 1<=w<=12 and x+w<=12, h>=1 — coordinate VALUES are not validated locally or server-side, out-of-range passes through. Omit for server auto-layout`},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation and normalization; send data_config as-is"},
 	},

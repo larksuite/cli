@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -46,28 +47,34 @@ func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, inclu
 		parsed, err := parseJSONObject(pc, raw, "data-config")
 		if err != nil {
 			return nil, err
-		} else {
-			body["data_config"] = parsed
 		}
+		body["data_config"] = parsed
 	}
 	if raw := strings.TrimSpace(runtime.Str("position")); raw != "" {
 		parsed, err := parseJSONObject(pc, raw, "position")
 		if err != nil {
 			return nil, err
-		} else {
-			body["position"] = parsed
 		}
+		body["position"] = parsed
 	}
 	return body, nil
 }
 
+// positionKeys are the four grid coordinates a position object must carry.
+// A partial object is rejected because the server fills the missing ones with
+// zero rather than keeping the current layout: an update meant to move a block
+// sideways would silently resize it to nothing.
+var positionKeys = []string{"x", "y", "w", "h"}
+
 // validateDashboardBlockPosition parses the optional --position flag as a JSON
-// object to fail fast on malformed input. Coordinate values (x/y/w/h) are NOT
-// validated — they pass through verbatim, aligning with dws grid semantics and
-// leaving overlap handling to the server. This syntax check always runs,
-// including with --no-validate, because it is required for DryRun/Execute
-// request-shape parity; --no-validate only bypasses semantic data_config
-// validation and normalization.
+// object to fail fast on malformed input. Coordinate *values* (x/y/w/h) are NOT
+// validated — out-of-range, negative and overlapping coordinates pass through
+// verbatim, aligning with dws grid semantics and leaving overlap handling to
+// the server. Only the object's shape is enforced.
+//
+// The JSON parse always runs, including with --no-validate, because it is
+// required for DryRun/Execute request-shape parity. The key-completeness check
+// is semantic, so --no-validate skips it like the rest of the semantic layer.
 func validateDashboardBlockPosition(pc *parseCtx, runtime *common.RuntimeContext) error {
 	raw := strings.TrimSpace(runtime.Str("position"))
 	if raw == "" {
@@ -76,6 +83,19 @@ func validateDashboardBlockPosition(pc *parseCtx, runtime *common.RuntimeContext
 	pos, err := parseJSONObject(pc, raw, "position")
 	if err != nil {
 		return err
+	}
+	if !runtime.Bool("no-validate") {
+		var missing []string
+		for _, key := range positionKeys {
+			if _, ok := pos[key]; !ok {
+				missing = append(missing, key)
+			}
+		}
+		if len(missing) > 0 {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--position 缺少必填字段 %s；必须同时提供 x/y/w/h，否则服务端会把缺失项按 0 处理",
+				strings.Join(missing, "/")).WithParam("--position")
+		}
 	}
 	// Rewrite the flag with canonical JSON so the parsed shape is identical
 	// across Validate, DryRun and Execute.
@@ -185,7 +205,13 @@ func dryRunDashboardBlockGetData(_ context.Context, runtime *common.RuntimeConte
 // dryRunDashboardBlockCreate returns a DryRunAPI for creating a dashboard block.
 func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body, _ := buildDashboardBlockBody(pc, runtime, true)
+	body, err := buildDashboardBlockBody(pc, runtime, true)
+	if err != nil {
+		// Unreachable while Validate parses the same flags first. Returning nil
+		// makes the runner fail loudly instead of previewing a body that is
+		// silently missing a field the real request would have carried.
+		return nil
+	}
 
 	params := map[string]interface{}{}
 	if userIDType := strings.TrimSpace(runtime.Str("user-id-type")); userIDType != "" {
@@ -200,7 +226,12 @@ func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContex
 // dryRunDashboardBlockUpdate returns a DryRunAPI for updating a dashboard block.
 func dryRunDashboardBlockUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body, _ := buildDashboardBlockBody(pc, runtime, false)
+	body, err := buildDashboardBlockBody(pc, runtime, false)
+	if err != nil {
+		// See dryRunDashboardBlockCreate: fail loudly rather than preview a
+		// body that diverges from what Execute would send.
+		return nil
+	}
 	params := map[string]interface{}{}
 	if userIDType := strings.TrimSpace(runtime.Str("user-id-type")); userIDType != "" {
 		params["user_id_type"] = userIDType

@@ -267,6 +267,68 @@ func TestBaseDashboardBlockCreate_PositionNotValidated(t *testing.T) {
 	}
 }
 
+// TestBaseDashboardBlockPositionRequiresAllKeys proves a partial position
+// object is rejected on both commands. The server fills missing coordinates
+// with zero rather than leaving them alone, so an update meant to move a block
+// sideways would silently resize it to nothing.
+func TestBaseDashboardBlockPositionRequiresAllKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		position string
+		missing  []string
+	}{
+		{"only x", `{"x":6}`, []string{"y", "w", "h"}},
+		{"missing height", `{"x":6,"y":0,"w":6}`, []string{"h"}},
+		{"empty object", `{}`, []string{"x", "y", "w", "h"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+				"--block-id", "blk_a", "--position", tc.position}
+			err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout)
+			assertInvalidArgumentValidation(t, err, "--position", nil, "x/y/w/h")
+			for _, key := range tc.missing {
+				if !strings.Contains(err.Error(), key) {
+					t.Fatalf("error must name the missing key %q, got %v", key, err)
+				}
+			}
+		})
+	}
+
+	t.Run("create rejects partial too", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+			"--name", "N", "--type", "statistics", "--data-config", `{"table_name":"T","count_all":true}`,
+			"--position", `{"x":0,"y":0,"w":6}`}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		assertInvalidArgumentValidation(t, err, "--position", nil, "h")
+	})
+}
+
+// TestBaseDashboardBlockPartialPositionBypass proves --no-validate skips the
+// key-completeness check (it is semantic) while still parsing the JSON (that is
+// required for preview/request parity), and that the partial object reaches the
+// request untouched.
+func TestBaseDashboardBlockPartialPositionBypass(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+	}
+	reg.Register(stub)
+	args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+		"--block-id", "blk_a", "--position", `{"x":6}`, "--no-validate"}
+	if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+		t.Fatalf("--no-validate must bypass the key check, got err=%v", err)
+	}
+	body := decodeCapturedBody(t, stub.CapturedBody)
+	pos, ok := body["position"].(map[string]interface{})
+	if !ok || len(pos) != 1 || toInt(pos["x"]) != 6 {
+		t.Fatalf("partial position must pass through verbatim: body=%s", string(stub.CapturedBody))
+	}
+}
+
 // TestBaseDashboardBlockCreate_InvalidPositionJSON proves malformed position
 // JSON fails consistently on the execute path.
 func TestBaseDashboardBlockCreate_InvalidPositionJSON(t *testing.T) {
@@ -363,6 +425,54 @@ func TestBaseDashboardBlockCreate_NumberFormatInvalidRejected(t *testing.T) {
 	}
 	err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
 	assertInvalidArgumentValidation(t, err, "--data-config", nil, "formatName")
+}
+
+// TestBaseDashboardBlockCreate_PrecisionRejectedOnRealPath exercises precision
+// validation through the actual command. The table-driven unit tests above
+// decode with UseNumber and therefore hit toIntStrict's json.Number branch,
+// which production never takes: parseJSONObject goes through common.ParseJSON
+// (a plain json.Unmarshal), so precision always arrives as float64. These cases
+// pin the branch real input actually uses.
+func TestBaseDashboardBlockCreate_PrecisionRejectedOnRealPath(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		precision string
+	}{
+		{"fractional", "2.5"},
+		{"above range", "10"},
+		{"negative", "-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+				"--name", "N", "--type", "statistics",
+				"--data-config", `{"table_name":"T","count_all":true,"number_format":{"precision":` + tc.precision + `}}`}
+			err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+			assertInvalidArgumentValidation(t, err, "--data-config", nil, "precision")
+		})
+	}
+
+	t.Run("integral float64 accepted", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_new"}},
+		}
+		reg.Register(stub)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+			"--name", "N", "--type", "statistics",
+			"--data-config", `{"table_name":"T","count_all":true,"number_format":{"precision":9}}`}
+		if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+			t.Fatalf("precision 9 must be accepted, got err=%v", err)
+		}
+		body := decodeCapturedBody(t, stub.CapturedBody)
+		dc, _ := body["data_config"].(map[string]interface{})
+		nf, _ := dc["number_format"].(map[string]interface{})
+		if toInt(nf["precision"]) != 9 {
+			t.Fatalf("precision not forwarded: body=%s", string(stub.CapturedBody))
+		}
+	})
 }
 
 // TestBaseDashboardBlockUpdate_NumberFormatInvalidRejected proves the update
