@@ -77,10 +77,12 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	// Phase 2: Credential (sole data source)
 	// Keychain is read via closure so callers can replace f.Keychain after construction.
 	f.Credential = buildCredentialProvider(credentialDeps{
-		Keychain:   func() keychain.KeychainAccess { return f.Keychain },
-		Profile:    inv.Profile,
-		HttpClient: f.HttpClient,
-		ErrOut:     f.IOStreams.ErrOut,
+		Keychain:          func() keychain.KeychainAccess { return f.Keychain },
+		Profile:           inv.Profile,
+		ProfileSource:     inv.ProfileSource,
+		ProfileConfigPath: inv.ProfileConfigPath,
+		HttpClient:        f.HttpClient,
+		ErrOut:            f.IOStreams.ErrOut,
 	})
 
 	// Phase 3: Runtime config contains resolved account data only.
@@ -270,15 +272,17 @@ func buildSDKHTTPTransport(base http.RoundTripper, platform bool) http.RoundTrip
 }
 
 type credentialDeps struct {
-	Keychain   func() keychain.KeychainAccess
-	Profile    string
-	HttpClient func() (*http.Client, error)
-	ErrOut     io.Writer
+	Keychain          func() keychain.KeychainAccess
+	Profile           string
+	ProfileSource     core.ProfileSource
+	ProfileConfigPath string
+	HttpClient        func() (*http.Client, error)
+	ErrOut            io.Writer
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
 	providers := extcred.Providers()
-	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile)
+	defaultAcct := credential.NewDefaultAccountProviderWithSource(deps.Keychain, deps.Profile, deps.ProfileSource, deps.ProfileConfigPath)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
 	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
 	// happens before the command runs, so any plain-text warning written

@@ -55,7 +55,7 @@ func configShowRun(opts *ConfigShowOptions) error {
 	}
 	app := config.CurrentAppConfig(f.Invocation.Profile)
 	if app == nil {
-		return errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").WithHint("run: lark-cli profile list")
+		return noActiveProfileError(f, config)
 	}
 	users := "(no logged-in users)"
 	if len(app.Users) > 0 {

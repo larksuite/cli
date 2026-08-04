@@ -30,6 +30,15 @@ const (
 // IsBot returns true if the identity is bot.
 func (id Identity) IsBot() bool { return id == AsBot }
 
+// ProfileSource describes where the effective profile selector came from.
+type ProfileSource string
+
+const (
+	ProfileSourceCLI     ProfileSource = "cli"
+	ProfileSourceProject ProfileSource = "project"
+	ProfileSourceGlobal  ProfileSource = "global"
+)
+
 // AppUser is a logged-in user record stored in config.
 type AppUser struct {
 	UserOpenId string `json:"userOpenId"`

@@ -5,6 +5,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -59,6 +60,31 @@ func TestAuthListRun_JSONMode_NotConfigured_WritesStdoutOnly(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("stderr must stay empty in JSON mode, got:\n%s", stderr.String())
+	}
+}
+
+func TestAuthListRun_ProjectProfileMissingFailsClosedWhenNotConfigured(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	projectPath := core.ProjectConfigPath(t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f.Invocation = cmdutil.InvocationContext{
+		Profile:           "missing",
+		ProfileSource:     core.ProfileSourceProject,
+		ProfileConfigPath: projectPath,
+	}
+	err := authListRun(&ListOptions{Factory: f, JSON: true})
+	if err == nil {
+		t.Fatal("authListRun() error = nil, want project profile not found")
+	}
+	var cfgErr *core.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *core.ConfigError", err)
+	}
+	wantMsg := `profile "missing" is configured by project but not found`
+	wantHint := "project config: " + projectPath + "; run: lark-cli profile list"
+	if cfgErr.Code != 3 || cfgErr.Type != "config" || cfgErr.Message != wantMsg || cfgErr.Hint != wantHint {
+		t.Fatalf("ConfigError = %#v", cfgErr)
 	}
 }
 

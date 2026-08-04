@@ -27,7 +27,7 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 
 			app := multi.CurrentAppConfig(f.Invocation.Profile)
 			if app == nil {
-				return core.NoActiveProfileError()
+				return noActiveProfileError(f, multi)
 			}
 
 			if len(args) == 0 {
