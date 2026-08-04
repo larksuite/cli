@@ -14,7 +14,24 @@ import (
 	"time"
 )
 
-const MaxFrameBytes = 1 << 20 // reject larger frames to bound reader buffer growth
+// MaxEventPayloadBytes is the largest event body this wire format promises to
+// relay. The ingress caps what it accepts at the same number; a boundary test
+// keeps the two in step, since the ingress deliberately does not import this
+// package.
+const MaxEventPayloadBytes = 1 << 20
+
+// maxFrameOverheadBytes is the room a frame gets on top of its payload for the
+// canonical metadata and JSON punctuation around it. Worst-case realistic
+// metadata measures a few hundred bytes, so this is generous on purpose: a
+// frame limit that merely equalled the payload limit would make the top of the
+// accepted payload range undeliverable, which is how an accepted event turned
+// into a dropped one.
+const maxFrameOverheadBytes = 4 << 10
+
+// MaxFrameBytes bounds reader buffer growth. It must stay above
+// MaxEventPayloadBytes, or the bus can frame an event the consumer then refuses
+// to read.
+const MaxFrameBytes = MaxEventPayloadBytes + maxFrameOverheadBytes
 
 // ErrFrameTooLarge is returned by ReadFrame when a single frame exceeds MaxFrameBytes.
 var ErrFrameTooLarge = errors.New("protocol: frame exceeds MaxFrameBytes")
