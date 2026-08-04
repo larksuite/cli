@@ -537,6 +537,138 @@ func missingParamHint(opts *ServiceMethodOptions, f meta.Field) string {
 	return fmt.Sprintf("set %s; see: lark-cli schema %s", paramsForm, opts.SchemaPath)
 }
 
+func isMailRuleReorder(schemaPath string) bool {
+	return schemaPath == "mail.user_mailbox.rules.reorder"
+}
+
+func completeMailRuleOrder(input []string, all []string) ([]string, error) {
+	if len(input) == 0 {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "rule_ids must contain at least one rule ID").WithParam("rule_ids")
+	}
+	if len(all) == 0 {
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "current mailbox has no rules to reorder").WithParam("rule_ids")
+	}
+
+	allSet := make(map[string]struct{}, len(all))
+	for _, id := range all {
+		if id == "" {
+			continue
+		}
+		allSet[id] = struct{}{}
+	}
+
+	seen := make(map[string]struct{}, len(input))
+	ordered := make([]string, 0, len(all))
+	for _, id := range input {
+		if id == "" {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "rule_ids must not contain empty rule IDs").WithParam("rule_ids")
+		}
+		if _, ok := seen[id]; ok {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "rule_ids contains duplicate rule ID %q", id).WithParam("rule_ids")
+		}
+		if _, ok := allSet[id]; !ok {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "rule_ids contains unknown rule ID %q", id).WithParam("rule_ids")
+		}
+		seen[id] = struct{}{}
+		ordered = append(ordered, id)
+	}
+
+	for _, id := range all {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		ordered = append(ordered, id)
+	}
+	return ordered, nil
+}
+
+func extractRuleIDsFromListResponse(result interface{}) ([]string, error) {
+	resultMap, ok := result.(map[string]interface{})
+	if !ok {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list returned a non-object response")
+	}
+	dataMap, ok := resultMap["data"].(map[string]interface{})
+	if !ok {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing data object")
+	}
+	rawItems, ok := dataMap["items"].([]interface{})
+	if !ok {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing items array")
+	}
+
+	ids := make([]string, 0, len(rawItems))
+	for _, rawItem := range rawItems {
+		itemMap, ok := rawItem.(map[string]interface{})
+		if !ok {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list returned an invalid item shape")
+		}
+		id, ok := itemMap["id"].(string)
+		if !ok || id == "" {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list item missing id")
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func completeMailRuleReorderRequest(ctx context.Context, opts *ServiceMethodOptions, userMailboxID string, requestData interface{}) (interface{}, error) {
+	if !isMailRuleReorder(opts.SchemaPath) {
+		return requestData, nil
+	}
+
+	body, ok := requestData.(map[string]interface{})
+	if !ok {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "mail rule reorder requires --data JSON object with rule_ids").WithParam("--data")
+	}
+	rawRuleIDs, ok := body["rule_ids"].([]interface{})
+	if !ok {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "mail rule reorder requires rule_ids array").WithParam("rule_ids")
+	}
+
+	if userMailboxID == "" {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "missing required path parameter: user_mailbox_id").WithParam("user_mailbox_id")
+	}
+
+	inputRuleIDs := make([]string, 0, len(rawRuleIDs))
+	for _, rawID := range rawRuleIDs {
+		id, ok := rawID.(string)
+		if !ok {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "rule_ids must be an array of strings").WithParam("rule_ids")
+		}
+		inputRuleIDs = append(inputRuleIDs, id)
+	}
+
+	config, err := opts.Factory.Config()
+	if err != nil {
+		return nil, err
+	}
+	ac, err := opts.Factory.NewAPIClientWithConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	listResult, err := ac.CallAPI(ctx, client.RawApiRequest{
+		Method: "GET",
+		URL:    opts.ServicePath + "/user_mailboxes/" + validate.EncodePathSegment(userMailboxID) + "/rules",
+		As:     opts.As,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	allRuleIDs, err := extractRuleIDsFromListResponse(listResult)
+	if err != nil {
+		return nil, err
+	}
+	completedRuleIDs, err := completeMailRuleOrder(inputRuleIDs, allRuleIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	body["rule_ids"] = completedRuleIDs
+	return body, nil
+}
+
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
 // When dryRun is true and a file is provided, file reading is skipped and
 // FileUploadMeta is returned instead so the caller can render dry-run output.
@@ -561,6 +693,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		return client.RawApiRequest{}, nil, err
 	}
 	opts.binder.overlay(opts.Cmd, params)
+	pathValues := map[string]string{}
 
 	url := opts.ServicePath + "/" + method.Path
 
@@ -580,6 +713,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		if err := validate.ResourceName(valStr, s.Name); err != nil {
 			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam(s.Name).WithCause(err)
 		}
+		pathValues[s.Name] = valStr
 		url = strings.Replace(url, "{"+s.Name+"}", validate.EncodePathSegment(valStr), 1)
 		delete(params, s.Name)
 	}
@@ -655,6 +789,10 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileUpload())
 	} else {
 		data, err := cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin, fileIO)
+		if err != nil {
+			return client.RawApiRequest{}, nil, err
+		}
+		data, err = completeMailRuleReorderRequest(opts.Ctx, opts, pathValues["user_mailbox_id"], data)
 		if err != nil {
 			return client.RawApiRequest{}, nil, err
 		}
