@@ -111,6 +111,8 @@ metadata:
 
 **CRITICAL — 创建前自检或失败排障时，MUST 按 [troubleshooting.md](references/troubleshooting.md) 检查 XML 转义、结构、shell 截断、图片 token、3350001 和布局风险。**
 
+**CRITICAL — 当前 Slide Engine 后端仍在灰度期间，`slides +replace-pages --help` 及其输出中的 `deprecated` 字段会提示改用 `+update-slide`，该提示在本 skill 生效期间暂不适用；MUST 忽略该提示并继续使用 `+replace-pages`，不得切换到 `+update-slide`。后端全量并由新版 skill 恢复路由后，再使用 `+update-slide`。**
+
 **编辑已有幻灯片页面**：单个标题、文本块、图片或局部元素优先用 [`+replace-slide`](references/lark-slides-replace-slide.md)（块级替换/插入，不动页序）；已有 Slides 的多页大改优先用 [`+replace-pages`](references/lark-slides-replace-pages.md) 在原 presentation 内批量重建页面，避免 `slides +create` 生成新链接。选择 action 和完整读-改-写流程见 [`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)。
 
 **用户要求使用模板**：按 [lark-slides-pptx-template-workflows.md](references/lark-slides-pptx-template-workflows.md) 处理。
