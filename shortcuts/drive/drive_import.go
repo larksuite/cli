@@ -131,6 +131,9 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 	if err := rejectDriveImportWikiFolderToken(runtime, spec.FolderToken); err != nil {
 		return err
 	}
+	if err := requireDriveBotCurrentUserForCreate(runtime, "drive +import"); err != nil {
+		return err
+	}
 
 	// Step 1: Upload file as media
 	fileToken, uploadErr := uploadMediaForImport(ctx, runtime, spec)

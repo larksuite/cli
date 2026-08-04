@@ -6,10 +6,12 @@ package drive
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -76,7 +78,7 @@ func TestDriveUploadBotAutoGrantSuccess(t *testing.T) {
 }
 
 func TestDriveUploadBotOverwriteSkipsPermissionGrant(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, "ou_current_user"))
+	f, stdout, _, reg := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, ""))
 	registerDriveBotTokenStub(reg)
 
 	reg.Register(&httpmock.Stub{
@@ -207,6 +209,37 @@ func TestDriveImportBotAutoGrantSuccess(t *testing.T) {
 	}
 }
 
+func TestDriveImportBotRequiresCurrentUserBeforeCreate(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, ""))
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.WriteFile("README.md", []byte("# Title"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveImport, []string{
+		"+import",
+		"--file", "README.md",
+		"--type", "docx",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected missing current user error")
+	}
+
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("subtype = %q, want %q", validationErr.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if !strings.Contains(validationErr.Hint, "auth login") {
+		t.Fatalf("hint = %q, want auth login guidance", validationErr.Hint)
+	}
+}
+
 func TestDriveUploadUserSkipsPermissionGrantAugmentation(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, "ou_current_user"))
 	registerDriveBotTokenStub(reg)
@@ -285,21 +318,8 @@ func decodeCapturedJSONBody(t *testing.T, stub *httpmock.Stub) map[string]interf
 	return body
 }
 
-func TestDriveUploadBotAutoGrantSkippedNoUser(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, ""))
-	registerDriveBotTokenStub(reg)
-
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/drive/v1/files/upload_all",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": map[string]interface{}{
-				"file_token": "file_skipped",
-			},
-		},
-	})
+func TestDriveUploadBotRequiresCurrentUserBeforeCreate(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, ""))
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -312,17 +332,19 @@ func TestDriveUploadBotAutoGrantSkippedNoUser(t *testing.T) {
 		"--file", "report.pdf",
 		"--as", "bot",
 	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected missing current user error")
 	}
 
-	data := decodeDriveEnvelope(t, stdout)
-	grant, _ := data["permission_grant"].(map[string]interface{})
-	if grant["status"] != common.PermissionGrantSkipped {
-		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantSkipped)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "auth login") {
-		t.Fatalf("hint = %#v, want string containing 'auth login'", grant["hint"])
+	if validationErr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("subtype = %q, want %q", validationErr.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if !strings.Contains(validationErr.Hint, "auth login") {
+		t.Fatalf("hint = %q, want auth login guidance", validationErr.Hint)
 	}
 }
 
