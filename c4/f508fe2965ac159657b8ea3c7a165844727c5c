@@ -1,0 +1,23 @@
+cmd/event/blocked_decision_test.go
+  s_5ed4643b7ed0ce::t_a98577e923ba84 61,63,98-103,122-127,143-160
+cmd/event/render/decision.go
+  s_5ed4643b7ed0ce::t_7ff3ee95dbefc8 54-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c4f508fe2965ac159657b8ea3c7a165844727c5c",
+  "prompts": {},
+  "sessions": {
+    "s_5ed4643b7ed0ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2575c3b-b939-4af2-95f9-229f8a0dcd25",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
