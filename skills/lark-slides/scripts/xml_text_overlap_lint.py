@@ -793,18 +793,26 @@ def attach_source_xml_paths(
     offsets: dict[str, int] = {}
     for element in elements:
         kind = element["kind"]
-        offset = offsets.get(kind, 0)
+        source_kind_index = element.get("_source_kind_index")
+        offset = (
+            source_kind_index - 1
+            if isinstance(source_kind_index, int) and source_kind_index > 0
+            else offsets.get(kind, 0)
+        )
         kind_paths = source_paths.get(kind, [])
         if offset < len(kind_paths):
             element["xml_path"] = kind_paths[offset]
-        offsets[kind] = offset + 1
+        offsets[kind] = max(offsets.get(kind, 0), offset + 1)
 
 
 def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
+    source_kind_counts: dict[str, int] = {}
 
     for match in re.finditer(r"<(shape|img|table|chart|whiteboard)\b([^>]*)>", slide_xml):
         kind, attrs = match.group(1), match.group(2)
+        source_kind_counts[kind] = source_kind_counts.get(kind, 0) + 1
+        source_kind_index = source_kind_counts[kind]
         is_self_closing = attrs.rstrip().endswith("/")
         content = ""
         if kind in {"shape", "table"} and not is_self_closing:
@@ -839,6 +847,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "rotation": rotation,
                 "alpha": alpha if alpha is not None else 1,
                 "order": len(elements),
+                "_source_kind_index": source_kind_index,
             }
             if kind == "table":
                 element.update(
@@ -2016,7 +2025,9 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
                 continue
         if declared_font_sizes:
             element["fontSize"] = max(declared_font_sizes)
-    for match in re.finditer(r"<icon\b([^>]*)>", slide_xml):
+    for source_kind_index, match in enumerate(
+        re.finditer(r"<icon\b([^>]*)>", slide_xml), start=1
+    ):
         attrs = match.group(1)
         x = extract_numeric_attribute(attrs, "topLeftX")
         y = extract_numeric_attribute(attrs, "topLeftY")
@@ -2037,9 +2048,12 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "rotation": extract_numeric_attribute(attrs, "rotation") or 0,
                 "alpha": icon_alpha if icon_alpha is not None else 1,
                 "order": len(elements),
+                "_source_kind_index": source_kind_index,
             }
         )
-    for match in re.finditer(r"<polyline\b([^>]*)>", slide_xml):
+    for source_kind_index, match in enumerate(
+        re.finditer(r"<polyline\b([^>]*)>", slide_xml), start=1
+    ):
         attrs = match.group(1)
         x = extract_numeric_attribute(attrs, "topLeftX")
         y = extract_numeric_attribute(attrs, "topLeftY")
@@ -2060,6 +2074,7 @@ def extract_density_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "rotation": extract_numeric_attribute(attrs, "rotation") or 0,
                 "alpha": polyline_alpha if polyline_alpha is not None else 1,
                 "order": len(elements),
+                "_source_kind_index": source_kind_index,
             }
         )
     for line_element in extract_line_elements(slide_xml):
@@ -2416,7 +2431,9 @@ def related_object(element: dict[str, Any]) -> dict[str, Any]:
 
 def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
-    for match in re.finditer(r"<line\b([^>]*?)(/?)>", slide_xml):
+    for source_kind_index, match in enumerate(
+        re.finditer(r"<line\b([^>]*?)(/?)>", slide_xml), start=1
+    ):
         attrs = match.group(1)
         start_x = extract_numeric_attribute(attrs, "startX")
         start_y = extract_numeric_attribute(attrs, "startY")
@@ -2450,6 +2467,7 @@ def extract_line_elements(slide_xml: str) -> list[dict[str, Any]]:
                 "rotation": 0,
                 "alpha": base_alpha * border_alpha,
                 "order": len(elements),
+                "_source_kind_index": source_kind_index,
             }
         )
     return elements

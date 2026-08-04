@@ -2296,6 +2296,33 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(issue["bbox"], {"x": 850, "y": 480, "width": 220, "height": 74})
         self.assertEqual(issue["overflow"], {"left": 0, "top": 0, "right": 110, "bottom": 14})
 
+    def test_lint_xml_xml_path_preserves_source_index_after_filtered_table(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <table id="t1" topLeftX="20" topLeftY="20">
+                  <tr><td/></tr>
+                </table>
+                <table id="t2" topLeftX="20" topLeftY="100" width="9999" height="100">
+                  <tr><td/></tr>
+                </table>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "table_out_of_canvas"
+        )
+        self.assertEqual(issue["element_ids"], ["t2"])
+        self.assertEqual(
+            issue["related_objects"][0]["xml_path"],
+            "slide[1]/data/table[2]",
+        )
+
     def test_lint_xml_uses_resolved_table_bounds_for_canvas_validation(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
