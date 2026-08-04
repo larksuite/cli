@@ -450,8 +450,8 @@ func TestDryRunDashboardBlockPositionAndNumberFormat(t *testing.T) {
 
 	// Isomorphism: DryRun body and Execute body must be built identically.
 	pc := newParseCtx(rt)
-	dryBody, _ := buildDashboardBlockBody(pc, rt, true, false)
-	execBody, err := buildDashboardBlockBody(pc, rt, true, true)
+	dryBody, _ := buildDashboardBlockBody(pc, rt, true)
+	execBody, err := buildDashboardBlockBody(pc, rt, true)
 	if err != nil {
 		t.Fatalf("execute body build err=%v", err)
 	}
@@ -460,8 +460,8 @@ func TestDryRunDashboardBlockPositionAndNumberFormat(t *testing.T) {
 	}
 
 	// Same isomorphism must hold on the update path (includeType=false).
-	dryUpdate, _ := buildDashboardBlockBody(pc, rt, false, false)
-	execUpdate, err := buildDashboardBlockBody(pc, rt, false, true)
+	dryUpdate, _ := buildDashboardBlockBody(pc, rt, false)
+	execUpdate, err := buildDashboardBlockBody(pc, rt, false)
 	if err != nil {
 		t.Fatalf("update execute body build err=%v", err)
 	}

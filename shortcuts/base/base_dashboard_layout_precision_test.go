@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // ── toIntStrict ──────────────────────────────────────────────────────
@@ -47,8 +48,9 @@ func TestToIntStrict(t *testing.T) {
 
 // TestValidateBlockDataConfig_NumberFormat covers the statistics number_format
 // light validation: valid enum + precision pass, illegal formatName / precision
-// (out of range or fractional) fail, absent field is a no-op, and non-statistics
-// types ignore number_format entirely (F-5).
+// (out of range or fractional) fail, absent field is a no-op, explicit null is
+// rejected, and non-statistics types reject number_format because the backend
+// schemas are strict.
 func TestValidateBlockDataConfig_NumberFormat(t *testing.T) {
 	baseStat := func(nf interface{}) map[string]interface{} {
 		cfg := map[string]interface{}{
@@ -120,6 +122,23 @@ func TestValidateBlockDataConfig_NumberFormat(t *testing.T) {
 		}
 	})
 
+	t.Run("number_format explicit null", func(t *testing.T) {
+		cfg := baseStat(nil)
+		cfg["number_format"] = nil
+		errs := validateBlockDataConfig("statistics", cfg)
+		if !containsSubstr(errs, "number_format") {
+			t.Fatalf("expected explicit null number_format error, got %v", errs)
+		}
+	})
+
+	t.Run("formatName whitespace rejected", func(t *testing.T) {
+		cfg := baseStat(map[string]interface{}{"formatName": " digital ", "precision": 2})
+		errs := validateBlockDataConfig("statistics", cfg)
+		if !containsSubstr(errs, "formatName") {
+			t.Fatalf("expected whitespace formatName error, got %v", errs)
+		}
+	})
+
 	t.Run("absent number_format is fine", func(t *testing.T) {
 		cfg := baseStat(nil)
 		if errs := validateBlockDataConfig("statistics", cfg); len(errs) != 0 {
@@ -127,15 +146,23 @@ func TestValidateBlockDataConfig_NumberFormat(t *testing.T) {
 		}
 	})
 
-	t.Run("non-statistics ignores number_format (F-5)", func(t *testing.T) {
+	t.Run("non-statistics rejects number_format", func(t *testing.T) {
 		cfg := map[string]interface{}{
 			"table_name":    "T",
 			"count_all":     true,
 			"group_by":      []interface{}{map[string]interface{}{"field_name": "x", "mode": "integrated"}},
 			"number_format": map[string]interface{}{"formatName": "not_a_format", "precision": 99},
 		}
-		if errs := validateBlockDataConfig("column", cfg); len(errs) != 0 {
-			t.Fatalf("column type must ignore number_format, got %v", errs)
+		if errs := validateBlockDataConfig("column", cfg); !containsSubstr(errs, "仅支持 statistics") {
+			t.Fatalf("column type must reject number_format, got %v", errs)
+		}
+	})
+
+	t.Run("block type whitespace still validates statistics", func(t *testing.T) {
+		cfg := baseStat(map[string]interface{}{"formatName": "bogus"})
+		errs := validateBlockDataConfig(" statistics ", cfg)
+		if !containsSubstr(errs, "formatName") {
+			t.Fatalf("trimmed statistics type must validate number_format, got %v", errs)
 		}
 	})
 }
@@ -247,9 +274,67 @@ func TestBaseDashboardBlockCreate_InvalidPositionJSON(t *testing.T) {
 		"--name", "N", "--type", "statistics", "--data-config", `{"table_name":"T","count_all":true}`,
 		"--position", `not-json`,
 	}
-	if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err == nil {
-		t.Fatalf("expected error for malformed --position JSON")
+	err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+	assertInvalidArgumentValidation(t, err, "--position", nil, "JSON")
+}
+
+// TestBaseDashboardBlockNoValidateStillParsesJSON ensures --no-validate only
+// skips semantic validation/normalization. It must not make dry-run silently
+// drop malformed JSON that the execute path would reject.
+func TestBaseDashboardBlockNoValidateStillParsesJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+		param    string
+	}{
+		{
+			name:     "create position",
+			shortcut: BaseDashboardBlockCreate,
+			args: []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+				"--name", "N", "--type", "statistics", "--data-config", `{"table_name":"T","count_all":true}`,
+				"--position", "not-json", "--no-validate", "--dry-run"},
+			param: "--position",
+		},
+		{
+			name:     "update data-config",
+			shortcut: BaseDashboardBlockUpdate,
+			args: []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+				"--data-config", "not-json", "--no-validate", "--dry-run"},
+			param: "--data-config",
+		},
 	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			err := runShortcut(t, tc.shortcut, tc.args, factory, stdout)
+			assertInvalidArgumentValidation(t, err, tc.param, nil, "JSON")
+		})
+	}
+}
+
+// TestBaseDashboardBlockCreate_ExplicitNullNumberFormatRejected pins the
+// distinction between an omitted optional field and an explicit JSON null.
+func TestBaseDashboardBlockCreate_ExplicitNullNumberFormatRejected(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+		"--name", "N", "--type", "statistics",
+		"--data-config", `{"table_name":"T","count_all":true,"number_format":null}`,
+	}
+	err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+	assertInvalidArgumentValidation(t, err, "--data-config", nil, "number_format")
+}
+
+// TestBaseDashboardBlockCreate_NonStatisticsNumberFormatRejected prevents a
+// strict backend schema error from being deferred until after a network call.
+func TestBaseDashboardBlockCreate_NonStatisticsNumberFormatRejected(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+		"--name", "N", "--type", " column ",
+		"--data-config", `{"table_name":"T","count_all":true,"number_format":{"formatName":"digital"}}`,
+	}
+	err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+	assertInvalidArgumentValidation(t, err, "--data-config", nil, "仅支持 statistics")
 }
 
 // TestBaseDashboardBlockCreate_NumberFormatInvalidRejected proves the statistics
@@ -261,12 +346,7 @@ func TestBaseDashboardBlockCreate_NumberFormatInvalidRejected(t *testing.T) {
 		"--data-config", `{"table_name":"T","count_all":true,"number_format":{"formatName":"bogus","precision":2}}`,
 	}
 	err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
-	if err == nil {
-		t.Fatalf("expected validation error for bad formatName")
-	}
-	if !strings.Contains(err.Error(), "formatName") || !strings.Contains(err.Error(), "data_config 校验失败") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	assertInvalidArgumentValidation(t, err, "--data-config", nil, "formatName")
 }
 
 // TestBaseDashboardBlockUpdate_NumberFormatInvalidRejected proves the update
@@ -280,12 +360,7 @@ func TestBaseDashboardBlockUpdate_NumberFormatInvalidRejected(t *testing.T) {
 		"--data-config", `{"number_format":{"formatName":"bogus","precision":2}}`,
 	}
 	err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout)
-	if err == nil {
-		t.Fatalf("expected validation error for bad formatName on update")
-	}
-	if !strings.Contains(err.Error(), "formatName") || !strings.Contains(err.Error(), "data_config 校验失败") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	assertInvalidArgumentValidation(t, err, "--data-config", nil, "formatName")
 }
 
 // TestBaseDashboardBlockUpdate_NumberFormatOnlyAllowed proves that a

@@ -374,7 +374,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 
 ### statistics 指标卡数值格式 number_format（可选）
 
-仅 `type: statistics` 的指标卡支持在 `data_config` 里加可选 `number_format`，控制数值展示精度与格式；不传时后端回退默认千分位整数（`digital`）。其它组件类型携带 `number_format` 会被静默忽略、不生效、不报错。
+仅 `type: statistics` 的指标卡支持在 `data_config` 里加可选 `number_format`，控制数值展示精度与格式；不传时后端回退默认千分位整数（`digital`）。其它组件类型不支持该字段，CLI 会在创建时直接拒绝（除非显式使用 `--no-validate`），避免把后端严格 schema 错误延迟到请求阶段。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -391,7 +391,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | `cyn_rounded` | 人民币金额 | `¥1,234.56` |
 | `dollar_rounded` | 美元金额 | `$1,234.56` |
 
-> 本地会校验 `formatName` 属于上述 5 个枚举、`precision` 为 0..9 整数；`--no-validate` 跳过本地校验，由后端裁决。
+> 本地会校验 `formatName` 必须精确匹配上述 5 个枚举、`precision` 为 0..9 整数；显式 `null` 不是有效对象。`--no-validate` 跳过语义校验，但仍会解析 JSON，非法 JSON 不会被静默丢弃，由后端裁决其余约束。
 
 指标卡（金额，保留 2 位小数）：
 

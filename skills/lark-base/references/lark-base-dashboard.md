@@ -126,7 +126,7 @@ lark-cli base +dashboard-block-create \
 ### 场景 3：编辑已有组件
 
 > [!IMPORTANT]
-> `+dashboard-block-update` **不能修改组件的 `type`**（图表类型），只能更新 `name` 和 `data_config`。
+> `+dashboard-block-update` **不能修改组件的 `type`**（图表类型），只能更新 `name`、`data_config` 和可选的 `position`。
 > 如需更换组件类型，必须先删除再重新创建。
 
 ```bash
@@ -153,7 +153,8 @@ lark-cli base +dashboard-block-update \
   --base-token xxx \
   --dashboard-id blk_xxx \
   --block-id chtxxxxxxxx \
-  --data-config '{...}'
+  --data-config '{...}' \
+  --position '{"x":0,"y":0,"w":6,"h":4}'
 
 ```
 
@@ -253,7 +254,7 @@ A: 常见原因：
 A: 不可以，必须串行执行。等上一个 `+dashboard-block-create` 完成后再执行下一个。
 
 **Q: 组件的 `type` 创建后能改吗？**
-A: 不能。`+dashboard-block-update` 只能修改 `name` 和 `data_config`，不能修改 `type`。
+A: 不能。`+dashboard-block-update` 只能修改 `name`、`data_config` 和 `position`，不能修改 `type`。
 
 **Q: 更新组件的命令和 data_config 怎么写？**
 A:

@@ -29,10 +29,10 @@ func blockIDFlag(required bool) common.Flag {
 //   - The optional top-level position object is parsed as JSON and passed
 //     through verbatim as a sibling of name/type/data_config; coordinate values
 //     are NOT validated (aligns with dws grid semantics).
-//   - When strict is true (Execute path) a malformed data-config/position fails
-//     the command; when false (DryRun preview) the offending field is skipped so
-//     the preview still renders, matching the existing dry-run behaviour.
-func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, includeType, strict bool) (map[string]interface{}, error) {
+//   - data-config and position are parsed as JSON objects. Validate performs
+//     this same parse before either DryRun or Execute, so malformed input cannot
+//     disappear from a preview while failing only on the live request.
+func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, includeType bool) (map[string]interface{}, error) {
 	body := map[string]interface{}{}
 	if name := strings.TrimSpace(runtime.Str("name")); name != "" {
 		body["name"] = name
@@ -42,12 +42,10 @@ func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, inclu
 			body["type"] = blockType
 		}
 	}
-	if raw := runtime.Str("data-config"); raw != "" {
+	if raw := strings.TrimSpace(runtime.Str("data-config")); raw != "" {
 		parsed, err := parseJSONObject(pc, raw, "data-config")
 		if err != nil {
-			if strict {
-				return nil, err
-			}
+			return nil, err
 		} else {
 			body["data_config"] = parsed
 		}
@@ -55,9 +53,7 @@ func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, inclu
 	if raw := strings.TrimSpace(runtime.Str("position")); raw != "" {
 		parsed, err := parseJSONObject(pc, raw, "position")
 		if err != nil {
-			if strict {
-				return nil, err
-			}
+			return nil, err
 		} else {
 			body["position"] = parsed
 		}
@@ -68,8 +64,10 @@ func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, inclu
 // validateDashboardBlockPosition parses the optional --position flag as a JSON
 // object to fail fast on malformed input. Coordinate values (x/y/w/h) are NOT
 // validated — they pass through verbatim, aligning with dws grid semantics and
-// leaving overlap handling to the server. Callers must skip this when
-// --no-validate is set so dry-run and execute stay consistent.
+// leaving overlap handling to the server. This syntax check always runs,
+// including with --no-validate, because it is required for DryRun/Execute
+// request-shape parity; --no-validate only bypasses semantic data_config
+// validation and normalization.
 func validateDashboardBlockPosition(pc *parseCtx, runtime *common.RuntimeContext) error {
 	raw := strings.TrimSpace(runtime.Str("position"))
 	if raw == "" {
@@ -177,7 +175,7 @@ func dryRunDashboardBlockGetData(_ context.Context, runtime *common.RuntimeConte
 // dryRunDashboardBlockCreate returns a DryRunAPI for creating a dashboard block.
 func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body, _ := buildDashboardBlockBody(pc, runtime, true, false)
+	body, _ := buildDashboardBlockBody(pc, runtime, true)
 
 	params := map[string]interface{}{}
 	if userIDType := strings.TrimSpace(runtime.Str("user-id-type")); userIDType != "" {
@@ -192,7 +190,7 @@ func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContex
 // dryRunDashboardBlockUpdate returns a DryRunAPI for updating a dashboard block.
 func dryRunDashboardBlockUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body, _ := buildDashboardBlockBody(pc, runtime, false, false)
+	body, _ := buildDashboardBlockBody(pc, runtime, false)
 	params := map[string]interface{}{}
 	if userIDType := strings.TrimSpace(runtime.Str("user-id-type")); userIDType != "" {
 		params["user_id_type"] = userIDType
@@ -321,7 +319,7 @@ func executeDashboardBlockGetData(runtime *common.RuntimeContext) error {
 // executeDashboardBlockCreate creates a new dashboard block.
 func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	body, err := buildDashboardBlockBody(pc, runtime, true, true)
+	body, err := buildDashboardBlockBody(pc, runtime, true)
 	if err != nil {
 		return err
 	}
@@ -342,7 +340,7 @@ func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 // executeDashboardBlockUpdate updates an existing dashboard block.
 func executeDashboardBlockUpdate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	body, err := buildDashboardBlockBody(pc, runtime, false, true)
+	body, err := buildDashboardBlockBody(pc, runtime, false)
 	if err != nil {
 		return err
 	}

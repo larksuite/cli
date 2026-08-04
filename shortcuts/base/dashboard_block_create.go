@@ -45,16 +45,13 @@ var BaseDashboardBlockCreate = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pc := newParseCtx(runtime)
-		if runtime.Bool("no-validate") {
-			return nil
-		}
 		if err := validateDashboardBlockPosition(pc, runtime); err != nil {
 			return err
 		}
-		raw := runtime.Str("data-config")
-		if strings.TrimSpace(raw) == "" {
+		raw := strings.TrimSpace(runtime.Str("data-config"))
+		if raw == "" {
 			// text 类型必须提供 data-config（含 text 内容）
-			if strings.ToLower(runtime.Str("type")) == "text" {
+			if !runtime.Bool("no-validate") && strings.EqualFold(strings.TrimSpace(runtime.Str("type")), "text") {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "text 类型组件必须提供 data-config，包含必填字段 text").WithParam("--data-config")
 			}
 			return nil
@@ -62,6 +59,9 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		cfg, err := parseJSONObject(pc, raw, "data-config")
 		if err != nil {
 			return err
+		}
+		if runtime.Bool("no-validate") {
+			return nil
 		}
 		norm := normalizeDataConfig(cfg)
 		if errs := validateBlockDataConfig(runtime.Str("type"), norm); len(errs) > 0 {
@@ -74,7 +74,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		pc := newParseCtx(runtime)
-		body, _ := buildDashboardBlockBody(pc, runtime, true, false)
+		body, _ := buildDashboardBlockBody(pc, runtime, true)
 		params := map[string]interface{}{}
 		if uid := runtime.Str("user-id-type"); uid != "" {
 			params["user_id_type"] = uid

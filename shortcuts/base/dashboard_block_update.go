@@ -42,23 +42,25 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pc := newParseCtx(runtime)
-		if runtime.Bool("no-validate") {
-			return nil
-		}
 		if err := validateDashboardBlockPosition(pc, runtime); err != nil {
 			return err
 		}
-		raw := runtime.Str("data-config")
-		if strings.TrimSpace(raw) == "" {
+		raw := strings.TrimSpace(runtime.Str("data-config"))
+		if raw == "" {
 			return nil
 		}
 		cfg, err := parseJSONObject(pc, raw, "data-config")
 		if err != nil {
 			return err
 		}
+		if runtime.Bool("no-validate") {
+			return nil
+		}
 		norm := normalizeDataConfig(cfg)
-		if problems := validateNumberFormat(norm["number_format"]); len(problems) > 0 {
-			return formatDataConfigErrors(problems)
+		if rawNumberFormat, hasNumberFormat := norm["number_format"]; hasNumberFormat {
+			if problems := validateNumberFormat(rawNumberFormat); len(problems) > 0 {
+				return formatDataConfigErrors(problems)
+			}
 		}
 		b, _ := json.Marshal(norm)
 		_ = runtime.Cmd.Flags().Set("data-config", string(b))
@@ -66,7 +68,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		pc := newParseCtx(runtime)
-		body, _ := buildDashboardBlockBody(pc, runtime, false, false)
+		body, _ := buildDashboardBlockBody(pc, runtime, false)
 		params := map[string]interface{}{}
 		if uid := runtime.Str("user-id-type"); uid != "" {
 			params["user_id_type"] = uid
