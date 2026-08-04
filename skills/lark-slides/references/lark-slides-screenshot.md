@@ -21,6 +21,10 @@ lark-cli slides +screenshot --as user \
   --content @slide.xml
 ```
 
+## 截图全部页面
+
+枚举全部页面的 `slide_id` 或页码，按每批最多 10 页分组并串行调用 `slides +screenshot`，复用同一个 `--output-dir`；记录失败批次，已完成批次不重复执行。
+
 ## 参数
 
 | 参数 | 必需 | 说明 |

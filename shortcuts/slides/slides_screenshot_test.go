@@ -670,18 +670,39 @@ func TestSlidesScreenshotAvoidsOverwritingExistingFile(t *testing.T) {
 }
 
 func TestSlidesScreenshotListRequiresSelector(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
-
-	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
-		"+screenshot",
-		"--presentation", "pres_abc",
-		"--as", "user",
-	})
-	if err == nil {
-		t.Fatal("expected error")
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "omitted", args: nil},
+		{name: "empty slide ID", args: []string{"--slide-id", ""}},
 	}
-	if !strings.Contains(err.Error(), "--slide-id or --slide-number is required") {
-		t.Fatalf("error = %v, want missing selector error", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			args := append([]string{"+screenshot", "--presentation", "pres_abc"}, tt.args...)
+			args = append(args, "--as", "user")
+
+			err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, args)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("error = %T %v, want typed validation error", err, err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
+			}
+			if problem.Message != "--slide-id or --slide-number is required" {
+				t.Fatalf("message = %q, want missing selector error", problem.Message)
+			}
+			wantHint := "specify up to 10 slides with --slide-id <slide_id> or --slide-number <number>; repeat the flag or use comma-separated values for multiple slides"
+			if problem.Hint != wantHint {
+				t.Fatalf("hint = %q, want %q", problem.Hint, wantHint)
+			}
+		})
 	}
 }
 
