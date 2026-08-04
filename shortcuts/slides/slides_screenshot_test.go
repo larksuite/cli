@@ -180,11 +180,55 @@ func TestSlidesScreenshotRejectsMixedSelectorTypes(t *testing.T) {
 		t.Fatalf("error type = %T, want *errs.ValidationError", err)
 	}
 	wantParams := []errs.InvalidParam{
-		{Name: "--slide-id", Reason: "mutually exclusive with --slide-number"},
-		{Name: "--slide-number", Reason: "mutually exclusive with --slide-id"},
+		{Name: "--slide-id", Reason: "selects by slide ID; cannot be combined with slide-number selectors"},
+		{Name: "--slide-number", Reason: "selects by slide number; cannot be combined with slide-ID selectors"},
 	}
 	if !reflect.DeepEqual(validationErr.Params, wantParams) {
 		t.Fatalf("params = %#v, want %#v", validationErr.Params, wantParams)
+	}
+}
+
+func TestSlidesScreenshotAttributesMixedSelectorAliasesToCallerInput(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantParams []errs.InvalidParam
+	}{
+		{
+			name: "numeric slide alias",
+			args: []string{"--slides", "pII", "--slide", "2"},
+			wantParams: []errs.InvalidParam{
+				{Name: "--slides", Reason: "selects by slide ID; cannot be combined with slide-number selectors"},
+				{Name: "--slide", Reason: "selects by slide number; cannot be combined with slide-ID selectors"},
+			},
+		},
+		{
+			name: "ID slide alias",
+			args: []string{"--slide", "pII", "--slide-numbers", "2"},
+			wantParams: []errs.InvalidParam{
+				{Name: "--slide", Reason: "selects by slide ID; cannot be combined with slide-number selectors"},
+				{Name: "--slide-numbers", Reason: "selects by slide number; cannot be combined with slide-ID selectors"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			args := append([]string{"+screenshot", "--presentation", "pres_abc"}, tt.args...)
+			args = append(args, "--dry-run", "--as", "user")
+			err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, args)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error type = %T, want *errs.ValidationError", err)
+			}
+			if !reflect.DeepEqual(validationErr.Params, tt.wantParams) {
+				t.Fatalf("params = %#v, want %#v", validationErr.Params, tt.wantParams)
+			}
+		})
 	}
 }
 
@@ -755,7 +799,7 @@ func TestSlidesScreenshotRenderRejectsSlideSelectors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "--content cannot be used with --slide-id or --slide-number") {
+	if !strings.Contains(err.Error(), "--content cannot be used with slide selectors") {
 		t.Fatalf("error = %v, want content/slide selector conflict", err)
 	}
 }
@@ -776,8 +820,33 @@ func TestSlidesScreenshotRenderRejectsSlideNumberSelector(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "--content cannot be used with --slide-id or --slide-number") {
+	if !strings.Contains(err.Error(), "--content cannot be used with slide selectors") {
 		t.Fatalf("error = %v, want content/slide selector conflict", err)
+	}
+}
+
+func TestSlidesScreenshotRenderAttributesSlideAliasConflictToCallerInput(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--slide", "pII",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
+	}
+	wantParams := []errs.InvalidParam{
+		{Name: "--content", Reason: "cannot be combined with slide selectors"},
+		{Name: "--slide", Reason: "cannot be combined with --content"},
+	}
+	if !reflect.DeepEqual(validationErr.Params, wantParams) {
+		t.Fatalf("params = %#v, want %#v", validationErr.Params, wantParams)
 	}
 }
 

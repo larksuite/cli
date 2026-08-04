@@ -104,6 +104,66 @@ func TestSlidesScreenshotMixedSelectorsDryRunE2E(t *testing.T) {
 	require.Empty(t, result.Stdout)
 }
 
+func TestSlidesScreenshotMixedSelectorAliasAttributionDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+	tests := []struct {
+		name       string
+		args       []string
+		wantParams []string
+	}{
+		{
+			name:       "numeric slide alias",
+			args:       []string{"--slides", "pII", "--slide", "2"},
+			wantParams: []string{"--slides", "--slide"},
+		},
+		{
+			name:       "ID slide alias",
+			args:       []string{"--slide", "pII", "--slide-numbers", "2"},
+			wantParams: []string{"--slide", "--slide-numbers"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			args := append([]string{"slides", "+screenshot", "--presentation", "presScreenshotMixedAlias"}, tt.args...)
+			args = append(args, "--dry-run")
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: args, DefaultAs: "bot"})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 2)
+			require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+			require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+			require.Equal(t, int64(2), gjson.Get(result.Stderr, "error.params.#").Int(), result.Stderr)
+			require.Equal(t, tt.wantParams[0], gjson.Get(result.Stderr, "error.params.0.name").String(), result.Stderr)
+			require.Equal(t, tt.wantParams[1], gjson.Get(result.Stderr, "error.params.1.name").String(), result.Stderr)
+			require.Empty(t, result.Stdout)
+		})
+	}
+}
+
+func TestSlidesScreenshotContentSlideAliasAttributionDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+screenshot",
+			"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+			"--slide", "pII",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Equal(t, "--content", gjson.Get(result.Stderr, "error.params.0.name").String(), result.Stderr)
+	require.Equal(t, "--slide", gjson.Get(result.Stderr, "error.params.1.name").String(), result.Stderr)
+	require.Empty(t, result.Stdout)
+}
+
 func TestSlidesScreenshotValidationPriorityDryRunE2E(t *testing.T) {
 	setSlidesDryRunEnv(t)
 

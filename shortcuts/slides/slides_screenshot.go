@@ -61,7 +61,7 @@ var SlidesScreenshot = common.Shortcut{
 				return slidesScreenshotFlagErrorf("--content cannot be empty")
 			}
 			if slidesScreenshotHasSelectorInput(runtime) {
-				return slidesScreenshotFlagErrorf("--content cannot be used with --slide-id or --slide-number")
+				return slidesScreenshotContentSelectorConflictError(runtime)
 			}
 			if runtime.Changed("presentation") {
 				return slidesScreenshotFlagErrorf("--presentation cannot be used with --content")
@@ -201,7 +201,7 @@ func dryRunRenderScreenshot(runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().Set("error", "--content cannot be empty")
 	}
 	if slidesScreenshotHasSelectorInput(runtime) {
-		return common.NewDryRunAPI().Set("error", "--content cannot be used with --slide-id or --slide-number")
+		return common.NewDryRunAPI().Set("error", "--content cannot be used with slide selectors")
 	}
 	if runtime.Changed("presentation") {
 		return common.NewDryRunAPI().Set("error", "--presentation cannot be used with --content")
@@ -220,7 +220,7 @@ func executeRenderScreenshot(runtime *common.RuntimeContext) error {
 		return slidesScreenshotFlagErrorf("--content cannot be empty")
 	}
 	if slidesScreenshotHasSelectorInput(runtime) {
-		return slidesScreenshotFlagErrorf("--content cannot be used with --slide-id or --slide-number")
+		return slidesScreenshotContentSelectorConflictError(runtime)
 	}
 	if runtime.Changed("presentation") {
 		return slidesScreenshotFlagErrorf("--presentation cannot be used with --content")
@@ -286,21 +286,52 @@ func slidesScreenshotSelectors(runtime *common.RuntimeContext) ([]string, []int,
 	}
 	slideIDs := normalizeSlideIDs(slideIDValues)
 	if len(slideIDs) > 0 && len(slideNumbers) > 0 {
-		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide-id and --slide-number cannot be used together").
-			WithParams(
-				errs.InvalidParam{Name: "--slide-id", Reason: "mutually exclusive with --slide-number"},
-				errs.InvalidParam{Name: "--slide-number", Reason: "mutually exclusive with --slide-id"},
-			).
+		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "slide ID selectors and slide number selectors cannot be used together").
+			WithParams(slidesScreenshotSelectorConflictParams(runtime, aliasSlideIsID, aliasSlideIsNumber)...).
 			WithHint("choose either slide IDs or slide numbers for one screenshot request")
 	}
 	return slideIDs, slideNumbers, nil
 }
 
 func slidesScreenshotHasSelectorInput(runtime *common.RuntimeContext) bool {
-	if runtime.Changed("slide-number") || runtime.Changed("slide") {
-		return true
+	return len(slidesScreenshotSelectorInputParams(runtime, "")) > 0
+}
+
+func slidesScreenshotSelectorConflictParams(runtime *common.RuntimeContext, aliasSlideIsID, aliasSlideIsNumber bool) []errs.InvalidParam {
+	params := make([]errs.InvalidParam, 0, 3)
+	if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 {
+		params = append(params, errs.InvalidParam{Name: "--slide-id", Reason: "selects by slide ID; cannot be combined with slide-number selectors"})
 	}
-	return len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0
+	if aliasSlideIsID {
+		params = append(params, errs.InvalidParam{Name: "--slide", Reason: "selects by slide ID; cannot be combined with slide-number selectors"})
+	}
+	if runtime.Changed("slide-number") {
+		params = append(params, errs.InvalidParam{Name: "--slide-number", Reason: "selects by slide number; cannot be combined with slide-ID selectors"})
+	}
+	if aliasSlideIsNumber {
+		params = append(params, errs.InvalidParam{Name: "--slide", Reason: "selects by slide number; cannot be combined with slide-ID selectors"})
+	}
+	return params
+}
+
+func slidesScreenshotSelectorInputParams(runtime *common.RuntimeContext, reason string) []errs.InvalidParam {
+	params := make([]errs.InvalidParam, 0, 3)
+	if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 {
+		params = append(params, errs.InvalidParam{Name: "--slide-id", Reason: reason})
+	}
+	if runtime.Changed("slide-number") {
+		params = append(params, errs.InvalidParam{Name: "--slide-number", Reason: reason})
+	}
+	if runtime.Changed("slide") {
+		params = append(params, errs.InvalidParam{Name: "--slide", Reason: reason})
+	}
+	return params
+}
+
+func slidesScreenshotContentSelectorConflictError(runtime *common.RuntimeContext) error {
+	params := []errs.InvalidParam{{Name: "--content", Reason: "cannot be combined with slide selectors"}}
+	params = append(params, slidesScreenshotSelectorInputParams(runtime, "cannot be combined with --content")...)
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content cannot be used with slide selectors").WithParams(params...)
 }
 
 func normalizeSlideIDs(values []string) []string {
