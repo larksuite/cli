@@ -1,0 +1,21 @@
+internal/event/execution_chain_test.go
+  s_5ed4643b7ed0ce::t_97c269721bcf7f 1-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8b5cc03137eb48f2f883c7a1f9f2f64b88779658",
+  "prompts": {},
+  "sessions": {
+    "s_5ed4643b7ed0ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2575c3b-b939-4af2-95f9-229f8a0dcd25",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

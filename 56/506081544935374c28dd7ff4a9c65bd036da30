@@ -1,0 +1,23 @@
+cmd/event/consume.go
+  s_5ed4643b7ed0ce::t_4ce7221af5080b 248-262,267-285
+cmd/event/stream_wiring_test.go
+  s_5ed4643b7ed0ce::t_f532cc346d350e 1-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "56506081544935374c28dd7ff4a9c65bd036da30",
+  "prompts": {},
+  "sessions": {
+    "s_5ed4643b7ed0ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2575c3b-b939-4af2-95f9-229f8a0dcd25",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
