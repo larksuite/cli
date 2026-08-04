@@ -5,7 +5,6 @@ package base
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -422,8 +421,9 @@ func TestDryRunDashboardOps(t *testing.T) {
 
 // TestDryRunDashboardBlockPositionAndNumberFormat asserts the shared body
 // builder surfaces the optional top-level position and data_config.number_format
-// in the dry-run request body, and that create DryRun matches the create Execute
-// body shape (isomorphism) for the same inputs.
+// in the dry-run request body, and that the update preview never carries type
+// (which the API rejects). Preview-vs-executed body equality is proven end to
+// end by TestBaseDashboardBlockDryRunMatchesExecuteBody.
 func TestDryRunDashboardBlockPositionAndNumberFormat(t *testing.T) {
 	ctx := context.Background()
 
@@ -448,28 +448,13 @@ func TestDryRunDashboardBlockPositionAndNumberFormat(t *testing.T) {
 		"PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1",
 		`"position"`, `"w":6`)
 
-	// Isomorphism: DryRun body and Execute body must be built identically.
 	pc := newParseCtx(rt)
-	dryBody, _ := buildDashboardBlockBody(pc, rt, true)
-	execBody, err := buildDashboardBlockBody(pc, rt, true)
+	updateBody, err := buildDashboardBlockBody(pc, rt, false)
 	if err != nil {
-		t.Fatalf("execute body build err=%v", err)
+		t.Fatalf("update body build err=%v", err)
 	}
-	if !reflect.DeepEqual(dryBody, execBody) {
-		t.Fatalf("dry-run and execute bodies diverge:\n dry=%v\nexec=%v", dryBody, execBody)
-	}
-
-	// Same isomorphism must hold on the update path (includeType=false).
-	dryUpdate, _ := buildDashboardBlockBody(pc, rt, false)
-	execUpdate, err := buildDashboardBlockBody(pc, rt, false)
-	if err != nil {
-		t.Fatalf("update execute body build err=%v", err)
-	}
-	if !reflect.DeepEqual(dryUpdate, execUpdate) {
-		t.Fatalf("update dry-run and execute bodies diverge:\n dry=%v\nexec=%v", dryUpdate, execUpdate)
-	}
-	if _, hasType := dryUpdate["type"]; hasType {
-		t.Fatalf("update body must not carry type: %v", dryUpdate)
+	if _, hasType := updateBody["type"]; hasType {
+		t.Fatalf("update body must not carry type: %v", updateBody)
 	}
 }
 

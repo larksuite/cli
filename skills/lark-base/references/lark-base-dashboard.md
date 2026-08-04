@@ -24,23 +24,12 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 
 ## 精确布局 --position vs +dashboard-arrange
 
-创建/更新组件时可选 `--position`，用一个 12 列栅格坐标对象精确指定组件落点与大小：
-
-```bash
-lark-cli base +dashboard-block-create --base-token xxx --dashboard-id blk_xxx --name "总销售额" --type statistics --data-config '{"table_name":"订单表","count_all":true}' --position '{"x":0,"y":0,"w":6,"h":4}'
-```
-
-`--position` 字段：`x`/`y` 为左上角栅格坐标（>=0），`w` 为宽度（1..12，且 `x+w<=12`），`h` 为高度（>=1）。JSON key 固定为 `x`/`y`/`w`/`h`，与 `name`/`type`/`data_config` 平级挂在请求体顶层。
+create/update 可选 `--position`，用 12 列栅格坐标精确指定单个组件的落点与大小：`{"x","y","w","h"}`，`x`/`y` 为左上角坐标（>=0），`w` 为宽度（1..12，且 `x+w<=12`），`h` 为高度（>=1）。它与 `name`/`type`/`data_config` 平级挂在请求体顶层。
 
 > [!IMPORTANT]
-> - `--position` 只做 JSON 解析，**不做坐标取值校验**：越界、负值、重叠都原样透传，服务端也**不做碰撞检测**。需要不重叠布局时由调用方自行规划坐标。
-> - 不传 `--position`：create 时服务端自动装箱（找空位），update 时保持当前布局不变。
-> - `--position` 与 `+dashboard-arrange` 用途不同，别混用：
-
-| 能力 | 时机 | 效果 | 适用 |
-|------|------|------|------|
-| `--position`（create/update） | 建/改组件的同时 | 精确指定单个组件的 x/y/w/h，适合**复刻已有看板布局**或按业务排布 | 需要可控、可复现的坐标 |
-| `+dashboard-arrange` | 组件建好之后 | 服务端一键**智能重排**整个仪表盘，无法指定精确位置 | 只想一键美化、不在意具体落点 |
+> - 坐标**只做 JSON 解析，不做取值校验**：越界、负值、重叠都原样透传，服务端也不做碰撞检测，需要不重叠布局时由调用方自行规划。
+> - 不传 `--position`：create 由服务端自动装箱，update 保持当前布局不变。
+> - 需要精确、可复现的坐标（如复刻已有看板）用 `--position`；只想一键美化、不在意具体落点用 `+dashboard-arrange`（服务端整盘智能重排，无法指定坐标）。两者用途不同，别互相替代。
 
 ## 典型场景工作流
 
@@ -154,7 +143,7 @@ lark-cli base +dashboard-block-update \
   --dashboard-id blk_xxx \
   --block-id chtxxxxxxxx \
   --data-config '{...}' \
-  --position '{"x":0,"y":0,"w":6,"h":4}'
+  --position '{...}'   # 可选，只在需要调整布局时传
 
 ```
 
@@ -164,9 +153,9 @@ lark-cli base +dashboard-block-update \
 
 > [!CAUTION]
 > - 排列结果是**服务端智能推荐**，不一定完全符合用户预期
-> - Dashboard shortcut 无法指定 `x/y/w/h`、精确位置或尺寸（如"第一排放 A""图表撑满整行"），排列逻辑是**自适应**的
+> - `+dashboard-arrange` 无法指定 `x/y/w/h`、精确位置或尺寸（如"第一排放 A""图表撑满整行"），排列逻辑是**自适应**的；用户要求精确落点时改用 create/update 的 `--position`，不要用一次智能重排静默替代
 > - **不建议**在已有仪表盘上自动调用，除非用户明确要求
-> - 用户只要求一般性重排/美化时，可执行一次 `+dashboard-arrange`；用户要求精确结果时，先说明限制并询问是否接受自适应布局，接受后才执行，不能静默替代或声称精确满足
+> - 用户只要求一般性重排/美化时，可执行一次 `+dashboard-arrange`
 > - 执行一次 `+dashboard-arrange` 后即停止；不要继续探测 raw `lark-cli api`、源码或未公开布局参数
 
 ```bash

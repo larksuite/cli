@@ -32,7 +32,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 	Tips: []string{
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
-		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"number_format":{"precision":0}}'`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"number_format":{"formatName":"dollar_rounded","precision":0}}'`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --position '{"x":6,"y":0,"w":6,"h":4}'`,
 		"Read lark-base-dashboard-block-config.md as the SSOT for data_config templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
 		"Use +dashboard-block-get first to inspect the current data_config before replacing nested values.",
@@ -57,6 +57,11 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 			return nil
 		}
 		norm := normalizeDataConfig(cfg)
+		// update 不传 type，其余字段交给后端按组件现有类型校验。
+		// number_format 是例外：它必须和 create 一样在本地拦截，否则同一份
+		// 非法取值在 create 报错、在 update 却要等一次网络往返才失败。这里
+		// 只复用 number_format 子校验，不走 validateBlockDataConfig 全量分支
+		// ——后者会误报 table_name/series 缺失，破坏“只改 number_format”的用法。
 		if rawNumberFormat, hasNumberFormat := norm["number_format"]; hasNumberFormat {
 			if problems := validateNumberFormat(rawNumberFormat); len(problems) > 0 {
 				return formatDataConfigErrors(problems)
@@ -66,21 +71,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		_ = runtime.Cmd.Flags().Set("data-config", string(b))
 		return nil
 	},
-	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		pc := newParseCtx(runtime)
-		body, _ := buildDashboardBlockBody(pc, runtime, false)
-		params := map[string]interface{}{}
-		if uid := runtime.Str("user-id-type"); uid != "" {
-			params["user_id_type"] = uid
-		}
-		return common.NewDryRunAPI().
-			PATCH("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks/:block_id").
-			Params(params).
-			Body(body).
-			Set("base_token", runtime.Str("base-token")).
-			Set("dashboard_id", runtime.Str("dashboard-id")).
-			Set("block_id", runtime.Str("block-id"))
-	},
+	DryRun: dryRunDashboardBlockUpdate,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeDashboardBlockUpdate(runtime)
 	},

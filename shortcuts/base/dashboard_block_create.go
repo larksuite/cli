@@ -72,20 +72,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		_ = runtime.Cmd.Flags().Set("data-config", string(b))
 		return nil
 	},
-	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		pc := newParseCtx(runtime)
-		body, _ := buildDashboardBlockBody(pc, runtime, true)
-		params := map[string]interface{}{}
-		if uid := runtime.Str("user-id-type"); uid != "" {
-			params["user_id_type"] = uid
-		}
-		return common.NewDryRunAPI().
-			POST("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks").
-			Params(params).
-			Body(body).
-			Set("base_token", runtime.Str("base-token")).
-			Set("dashboard_id", runtime.Str("dashboard-id"))
-	},
+	DryRun: dryRunDashboardBlockCreate,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeDashboardBlockCreate(runtime)
 	},

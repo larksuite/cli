@@ -374,14 +374,10 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 
 ### statistics 指标卡数值格式 number_format（可选）
 
-仅 `type: statistics` 的指标卡支持在 `data_config` 里加可选 `number_format`，控制数值展示精度与格式；不传时后端回退默认千分位整数（`digital`）。其它组件类型不支持该字段，CLI 会在创建时直接拒绝（除非显式使用 `--no-validate`），避免把后端严格 schema 错误延迟到请求阶段。
+仅 `type: statistics` 支持在 `data_config` 里加可选 `number_format`，控制数值展示格式与精度；不传时后端按默认千分位数字（`digital`）展示。其它组件类型不支持该字段：create 会被 CLI 直接拒绝（显式 `--no-validate` 可跳过），避免把后端严格 schema 错误延迟到请求阶段；update 不带 `--type`，由服务端结合组件现有类型裁决。
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `number_format.formatName` | string | 否 | 数值格式名，取值见下表 |
-| `number_format.precision` | integer | 否 | 小数位数，取值 `0` 到 `9` 的整数（本地严格校验，`2.5` 之类非整数会被拒） |
-
-`formatName` 枚举与含义：
+- `formatName`（string，可选）：必须精确匹配下表 5 个枚举之一。
+- `precision`（integer，可选）：小数位数，`0` 到 `9` 的整数；`2.5` 这类非整数会被本地拒绝。
 
 | formatName | 含义 | 示例（precision=2） |
 |------------|------|--------------------|
@@ -391,19 +387,17 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | `cyn_rounded` | 人民币金额 | `¥1,234.56` |
 | `dollar_rounded` | 美元金额 | `$1,234.56` |
 
-> 本地会校验 `formatName` 必须精确匹配上述 5 个枚举、`precision` 为 0..9 整数；显式 `null` 不是有效对象。`--no-validate` 跳过语义校验，但仍会解析 JSON，非法 JSON 不会被静默丢弃，由后端裁决其余约束。
-
 指标卡（金额，保留 2 位小数）：
 
 ```json
-{"table_name":"订单表","series":[{"field_name":"金额","rollup":"SUM"}],"number_format":{"formatName":"dollar_rounded","precision":2}}
+{
+  "table_name": "订单表",
+  "series": [{ "field_name": "金额", "rollup": "SUM" }],
+  "number_format": { "formatName": "dollar_rounded", "precision": 2 }
+}
 ```
 
-更新时 `number_format` 支持子字段合并：只传 `precision` 会保留原有 `formatName`，例如把已有指标卡改成 0 位小数：
-
-```json
-{"number_format":{"precision":0}}
-```
+> **更新时 `number_format` 整体替换，不做子字段合并**（与其它顶层 key 一致）：只想改精度也要把 `formatName` 一并带回，否则原格式会回落默认值。
 
 文本组件（Markdown 富文本）：
 

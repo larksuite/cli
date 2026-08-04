@@ -6,6 +6,7 @@ package base
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -297,6 +298,21 @@ func TestBaseDashboardBlockNoValidateStillParsesJSON(t *testing.T) {
 			param: "--position",
 		},
 		{
+			name:     "create data-config",
+			shortcut: BaseDashboardBlockCreate,
+			args: []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+				"--name", "N", "--type", "statistics", "--data-config", "not-json",
+				"--no-validate", "--dry-run"},
+			param: "--data-config",
+		},
+		{
+			name:     "update position",
+			shortcut: BaseDashboardBlockUpdate,
+			args: []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+				"--position", "not-json", "--no-validate", "--dry-run"},
+			param: "--position",
+		},
+		{
 			name:     "update data-config",
 			shortcut: BaseDashboardBlockUpdate,
 			args: []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
@@ -482,4 +498,86 @@ func decodeCapturedBody(t *testing.T, raw []byte) map[string]interface{} {
 		t.Fatalf("captured body json err=%v body=%s", err, string(raw))
 	}
 	return body
+}
+
+// TestBaseDashboardBlockDryRunMatchesExecuteBody proves the preview and the real
+// request are assembled from the same body: one set of arguments is run through
+// --dry-run and through Execute, and the two request bodies must be equal. This
+// is what keeps a malformed or reshaped body from being visible on one path and
+// not the other; a future change that reassembles the body on only one path
+// fails here.
+func TestBaseDashboardBlockDryRunMatchesExecuteBody(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		method   string
+		url      string
+		args     []string
+	}{
+		{
+			name:     "create",
+			shortcut: BaseDashboardBlockCreate,
+			method:   "POST",
+			url:      "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks",
+			args: []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+				"--name", "Revenue", "--type", "statistics",
+				"--data-config", `{"table_name":"Orders","count_all":true,"number_format":{"formatName":"dollar_rounded","precision":2}}`,
+				"--position", `{"x":0,"y":0,"w":6,"h":4}`},
+		},
+		{
+			name:     "update",
+			shortcut: BaseDashboardBlockUpdate,
+			method:   "PATCH",
+			url:      "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a",
+			args: []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+				"--name", "Total Sales",
+				"--data-config", `{"number_format":{"formatName":"dollar_rounded","precision":2}}`,
+				"--position", `{"x":6,"y":0,"w":6,"h":4}`},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			stub := &httpmock.Stub{
+				Method: tc.method,
+				URL:    tc.url,
+				Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+			}
+			reg.Register(stub)
+			if err := runShortcut(t, tc.shortcut, tc.args, factory, stdout); err != nil {
+				t.Fatalf("execute err=%v", err)
+			}
+			executed := decodeCapturedBody(t, stub.CapturedBody)
+
+			dryFactory, dryStdout, _ := newExecuteFactory(t)
+			dryArgs := append(append([]string{}, tc.args...), "--dry-run")
+			if err := runShortcut(t, tc.shortcut, dryArgs, dryFactory, dryStdout); err != nil {
+				t.Fatalf("dry-run err=%v", err)
+			}
+			previewed := dryRunPreviewBody(t, dryStdout.Bytes())
+
+			if !reflect.DeepEqual(previewed, executed) {
+				t.Fatalf("preview and executed request bodies diverge:\npreview=%v\nexecuted=%v", previewed, executed)
+			}
+		})
+	}
+}
+
+// dryRunPreviewBody extracts the single previewed request body from a --dry-run
+// envelope (data.api[0].body).
+func dryRunPreviewBody(t *testing.T, raw []byte) map[string]interface{} {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			API []struct {
+				Body map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatalf("dry-run envelope json err=%v out=%s", err, string(raw))
+	}
+	if len(envelope.Data.API) != 1 {
+		t.Fatalf("expected exactly one previewed call, got %d: %s", len(envelope.Data.API), string(raw))
+	}
+	return envelope.Data.API[0].Body
 }

@@ -78,13 +78,17 @@ func TestBaseDashboardBlockLayoutPrecisionWorkflow(t *testing.T) {
 		reportCleanupFailure(t, "delete dashboard block "+blockID, result, cleanupErr)
 	})
 
+	// Update both fields to values distinct from the create call, so the
+	// read-back below proves the update landed rather than re-reading the
+	// created state. number_format is replaced as a whole (like every
+	// data_config top-level key), so formatName is carried back explicitly.
 	updateBlock, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"base", "+dashboard-block-update",
 			"--base-token", baseToken,
 			"--dashboard-id", dashboardID,
 			"--block-id", blockID,
-			"--data-config", `{"number_format":{"precision":0}}`,
+			"--data-config", `{"number_format":{"formatName":"dollar_rounded","precision":0}}`,
 			"--position", `{"x":6,"y":0,"w":6,"h":4}`,
 		},
 		DefaultAs: "bot",
@@ -100,6 +104,14 @@ func TestBaseDashboardBlockLayoutPrecisionWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	getBlock.AssertExitCode(t, 0)
 	getBlock.AssertStdoutStatus(t, true)
-	require.Contains(t, getBlock.Stdout, "position")
-	require.Contains(t, getBlock.Stdout, "number_format")
+
+	// Located by key rather than by a fixed path: the assertion is about the
+	// updated values, not about where the response nests data_config.
+	// Coordinate read-back (x/y/w/h) is not asserted — the get response is not
+	// contracted to echo position in this iteration.
+	numberFormats := gjson.Get(getBlock.Stdout, "@dig:number_format").Array()
+	require.NotEmpty(t, numberFormats, "number_format missing from block read-back:\n%s", getBlock.Stdout)
+	updated := numberFormats[0]
+	require.Equal(t, "dollar_rounded", updated.Get("formatName").String(), "stdout:\n%s", getBlock.Stdout)
+	require.Equal(t, int64(0), updated.Get("precision").Int(), "stdout:\n%s", getBlock.Stdout)
 }
