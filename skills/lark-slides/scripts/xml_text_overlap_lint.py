@@ -2650,11 +2650,17 @@ def normalize_issue(
     elements_by_ref: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     normalized = dict(issue)
-    element_refs = normalized.get("elements", [])
+    element_refs = list(dict.fromkeys(normalized.get("elements", [])))
     resolved_elements = [
         elements_by_ref[element_ref]
         for element_ref in element_refs
         if element_ref in elements_by_ref
+    ]
+    element_locators = [
+        source_element_id(elements_by_ref[element_ref]) or element_ref
+        if element_ref in elements_by_ref
+        else element_ref
+        for element_ref in element_refs
     ]
     element_ids = [
         source_id
@@ -2662,7 +2668,7 @@ def normalize_issue(
         if (source_id := source_element_id(element)) is not None
     ]
     normalized["schema_version"] = "2.0"
-    normalized["elements"] = element_ids
+    normalized["elements"] = element_locators
     normalized["element_ids"] = element_ids
     normalized["target"] = {
         **({"slide_number": slide_number} if slide_number is not None else {}),

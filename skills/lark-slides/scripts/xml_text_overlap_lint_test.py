@@ -2595,6 +2595,65 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
 
         self.assertEqual(issue["hint"].count(prefix), 1)
 
+    def test_lint_xml_elements_keep_locator_for_anonymous_related_object(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape type="text" topLeftX="100" topLeftY="100" width="300" height="100">
+                  <content fontSize="24"><p>Important text</p></content>
+                </shape>
+                <img id="srv-42" src="token" topLeftX="100" topLeftY="100" width="300" height="100"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "image_covers_text"
+        )
+        self.assertEqual(
+            issue["elements"],
+            ["srv-42", "slide[1]/data/shape[1]"],
+        )
+        self.assertEqual(issue["element_ids"], ["srv-42"])
+        self.assertEqual(len(issue["related_objects"]), 2)
+
+    def test_normalize_issue_deduplicates_repeated_element_refs(self) -> None:
+        xml_path = "slide[1]/data/shape[1]"
+        element = {
+            "id": "srv-42",
+            "_source_id": "srv-42",
+            "_ref": xml_path,
+            "xml_path": xml_path,
+            "kind": "shape",
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "width": 40,
+            "height": 40,
+        }
+
+        issue = xml_text_overlap_lint.normalize_issue(
+            {
+                "level": "warning",
+                "code": "blank_slide",
+                "measurement": {
+                    "visible_element_count": 0,
+                    "declared_element_count": 1,
+                },
+                "elements": [xml_path, xml_path],
+            },
+            1,
+            {xml_path: element},
+        )
+
+        self.assertEqual(issue["elements"], ["srv-42"])
+        self.assertEqual(issue["element_ids"], ["srv-42"])
+        self.assertEqual(len(issue["related_objects"]), 1)
+
     def test_lint_xml_reports_duplicate_ids_for_every_linted_element_kind(self) -> None:
         duplicate_pairs = {
             "shape": (
@@ -2742,8 +2801,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         issues = result["slides"][0]["issues"]
         canvas_issue = next(issue for issue in issues if issue["code"] == "table_out_of_canvas")
         mismatch_issue = next(issue for issue in issues if issue["code"] == "table_resolved_size_mismatch")
-        self.assertEqual(canvas_issue["elements"], [])
-        self.assertEqual(mismatch_issue["elements"], [])
+        self.assertEqual(canvas_issue["elements"], ["slide[1]/data/table[1]"])
+        self.assertEqual(mismatch_issue["elements"], ["slide[1]/data/table[1]"])
         self.assertEqual(
             canvas_issue["related_objects"][0]["xml_path"],
             "slide[1]/data/table[1]",
