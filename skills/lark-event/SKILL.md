@@ -32,7 +32,6 @@ metadata:
 | `--max-events N` | Exit after N events. Default 0 = unlimited |
 | `--timeout D` | Exit after duration D (e.g. `30s`, `2m`). Default 0 = no timeout. Whichever of `--max-events` / `--timeout` fires first wins |
 | `--output-dir <dir>` | Write each event as a file (relative paths only; prevents traversal) |
-| `--dry-run` | Decide and preview the consume (identity, preconditions, side effects) without performing any of them, then exit 0. See "Dry-run preview" below |
 | `--quiet` | Suppress stderr diagnostics. **AI should not use this** — it silences the ready marker |
 | `--as user\|bot\|auto` | Identity for the session (see lark-shared) |
 
@@ -61,18 +60,9 @@ wait
 
 ## Call flow
 
-1. `lark-cli event list --json` → pick a legal key (`--domain <d>` narrows to one domain, e.g. `--domain vc`; unknown domains fail with the valid set listed in the hint)
+1. `lark-cli event list --json` → pick a legal key. `--domain <d>` narrows to one domain; the domains are `application`, `approval`, `board`, `card`, `im`, `minutes`, `task`, `vc`. An unknown domain fails with the valid set listed in the hint.
 2. `lark-cli event schema <key> --json` → read `resolved_output_schema` + `jq_root_path` to determine field paths
-3. `lark-cli event consume <key> --dry-run` → optional: verify readiness and preview side effects before committing to a long-running process
-4. `lark-cli event consume <key> [--jq '<expr>']` → consume
-
-## Dry-run preview
-
-When the user asks to preview a consume or check readiness, execute `event consume <key> --dry-run` instead of only quoting it. It exits 0 after read-only checks without starting a bus, registering a consumer, touching a server-side subscription, creating files, or opening the event stream.
-
-Read the top-level `dry_run` marker and `data.decision`: `status` / `preconditions` report readiness, `would_write` previews real-run side effects, and optional `preparation` states its strategy and trigger condition. `ready` can run, `unknown` proceeds with an unresolved weak check, and `blocked` would refuse a real run.
-
-Unknown keys or bad params exit 2. Unusable credentials render `blocked` with a `credentials_available` precondition and still exit 0; a real run exits 3.
+3. `lark-cli event consume <key> [--jq '<expr>']` → consume
 
 ## Subprocess contract
 
