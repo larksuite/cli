@@ -807,6 +807,75 @@ def attach_source_xml_paths(
         offsets[kind] = max(offsets.get(kind, 0), offset + 1)
 
 
+def extract_nested_id_elements(slide_xml: str, slide_number: int) -> list[dict[str, Any]]:
+    root = ET.fromstring(slide_xml)
+    elements: list[dict[str, Any]] = []
+
+    note_index = 0
+    for child in root:
+        if xml_local_name(child.tag) != "note":
+            continue
+        note_index += 1
+        source_id = extract_attribute(
+            ET.tostring(child, encoding="unicode").split(">", 1)[0], "id"
+        )
+        if not source_id:
+            continue
+        xml_path = f"slide[{slide_number}]/note[{note_index}]"
+        elements.append(
+            {
+                "id": source_id,
+                "_source_id": source_id,
+                "kind": "note",
+                "type": "note",
+                "xml_path": xml_path,
+                "_ref": xml_path,
+                "_slide_number": slide_number,
+            }
+        )
+
+    data = next((child for child in root if xml_local_name(child.tag) == "data"), None)
+    if data is None:
+        return elements
+
+    table_index = 0
+    for table in data:
+        if xml_local_name(table.tag) != "table":
+            continue
+        table_index += 1
+        row_index = 0
+        for row in table:
+            if xml_local_name(row.tag) != "tr":
+                continue
+            row_index += 1
+            cell_index = 0
+            for cell in row:
+                if xml_local_name(cell.tag) != "td":
+                    continue
+                cell_index += 1
+                source_id = extract_attribute(
+                    ET.tostring(cell, encoding="unicode").split(">", 1)[0], "id"
+                )
+                if not source_id:
+                    continue
+                xml_path = (
+                    f"slide[{slide_number}]/data/table[{table_index}]"
+                    f"/tr[{row_index}]/td[{cell_index}]"
+                )
+                elements.append(
+                    {
+                        "id": source_id,
+                        "_source_id": source_id,
+                        "kind": "td",
+                        "type": "td",
+                        "xml_path": xml_path,
+                        "_ref": xml_path,
+                        "_slide_number": slide_number,
+                    }
+                )
+    return elements
+
+
 def element_ref(element: dict[str, Any]) -> str:
     ref = element.get("_ref") or element.get("xml_path")
     if isinstance(ref, str) and ref:
@@ -2518,8 +2587,10 @@ def related_object(element: dict[str, Any]) -> dict[str, Any]:
     related = {
         "kind": element["kind"],
         "type": element["type"],
-        "bbox": {key: element[key] for key in ("x", "y", "width", "height")},
     }
+    bbox_keys = ("x", "y", "width", "height")
+    if all(key in element for key in bbox_keys):
+        related["bbox"] = {key: element[key] for key in bbox_keys}
     if source_element_id(element) is not None:
         related["element_id"] = source_element_id(element)
     if element.get("xml_path"):
@@ -2743,7 +2814,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
     presentation = parse_presentation(root)
     slide_roots = presentation["slide_roots"]
     slides: list[dict[str, Any]] = []
-    presentation_density_elements: list[dict[str, Any]] = []
+    presentation_id_elements: list[dict[str, Any]] = []
     for index, slide_xml in enumerate(presentation["slides"]):
         slide_number = index + 1
         slide_root = slide_roots[index]
@@ -2778,13 +2849,21 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             presentation["height"],
         )
         density_elements = extract_density_elements(slide_xml, slide_number)
-        presentation_density_elements.extend(density_elements)
+        id_elements = [
+            *density_elements,
+            *extract_nested_id_elements(slide_xml, slide_number),
+        ]
+        presentation_id_elements.extend(id_elements)
         extra_elements = [
             element for element in density_elements if element["kind"] in {"icon", "polyline", "line"}
         ]
         elements_by_ref = {
             element_ref(element): element for element in density_elements
         }
+        visible_element_count = len(elements_by_ref)
+        elements_by_ref.update(
+            {element_ref(element): element for element in id_elements}
+        )
         # geometry["elements"] are the exact objects should_flag_overlap/detect_elements_out_of_canvas
         # selected inside lint_slide; prefer them so measurement/related_objects stay consistent
         # with whatever actually triggered the issue, instead of density_elements' separate re-parse.
@@ -2799,7 +2878,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         raw_issues = [
             *geometry["issues"],
             *extra_overflow_issues,
-            *detect_duplicate_element_ids(density_elements),
+            *detect_duplicate_element_ids(id_elements),
             *detect_blank_slide(
                 density_elements,
                 slide_number,
@@ -2833,7 +2912,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             {
                 "slide_number": slide_number,
                 "status": slide_status(errors, warnings),
-                "element_count": len(elements_by_ref),
+                "element_count": visible_element_count,
                 "errors": errors,
                 "warnings": warnings,
                 "infos": infos,
@@ -2842,12 +2921,12 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         )
 
     presentation_elements_by_ref = {
-        element_ref(element): element for element in presentation_density_elements
+        element_ref(element): element for element in presentation_id_elements
     }
     top_level_issues.extend(
         normalize_issue(issue, None, presentation_elements_by_ref)
         for issue in detect_duplicate_element_ids(
-            presentation_density_elements, cross_slide_only=True
+            presentation_id_elements, cross_slide_only=True
         )
     )
 
