@@ -371,6 +371,42 @@ func TestResolve_DoesNotInferDependenciesFromMarkdownLinks(t *testing.T) {
 	}
 }
 
+func TestResolve_UnclosedFrontmatterFailsClosed(t *testing.T) {
+	base := skillFS(map[string]string{
+		"lark-a/SKILL.md": "---\nmetadata:\n  requires:\n    skills: [\"lark-shared\"]\nbase a",
+	})
+	_, err := resolveContent(base, []PluginSkill{{
+		PluginName:    "acme",
+		SkillsOverlay: &platform.SkillsOverlay{Allow: []string{"lark-a"}},
+	}})
+	if !errors.Is(err, ErrInvalidHostBase) {
+		t.Fatalf("err = %v, want ErrInvalidHostBase", err)
+	}
+	for _, want := range []string{"lark-a", "invalid metadata", "frontmatter is not closed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not identify %q", err, want)
+		}
+	}
+}
+
+func TestResolve_InvalidRequiredSkillNameFailsClosed(t *testing.T) {
+	base := skillFS(map[string]string{
+		"lark-a/SKILL.md": "---\nmetadata:\n  requires:\n    skills: [\"../escape\"]\n---\nbase a",
+	})
+	_, err := resolveContent(base, []PluginSkill{{
+		PluginName:    "acme",
+		SkillsOverlay: &platform.SkillsOverlay{Allow: []string{"lark-a"}},
+	}})
+	if !errors.Is(err, ErrInvalidHostBase) {
+		t.Fatalf("err = %v, want ErrInvalidHostBase", err)
+	}
+	for _, want := range []string{"lark-a", "invalid metadata", "../escape"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not identify %q", err, want)
+		}
+	}
+}
+
 // Remove wins over Allow, mirroring Rule's Deny-over-Allow.
 func TestResolve_RemoveWinsOverAllow(t *testing.T) {
 	got := mustResolve(t, baseTree(), &platform.SkillsOverlay{

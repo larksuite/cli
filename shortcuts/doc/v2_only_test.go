@@ -43,6 +43,9 @@ func TestValidateDocsV2OnlyRejectsChangedLegacyFlags(t *testing.T) {
 	if !ok {
 		t.Fatalf("error = %T, want typed problem", err)
 	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem = %s/%s, want validation/invalid_argument", problem.Category, problem.Subtype)
+	}
 	if got, want := problem.Message, "docs +update is v2-only; the old v1 interface has been shut down; legacy v1 flag(s) --mode are no longer supported; --mode -> use --command"; got != want {
 		t.Fatalf("message = %q, want %q", got, want)
 	}

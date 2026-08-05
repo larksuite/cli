@@ -248,6 +248,7 @@ func TestDocsUpdateDryRunLegacyFlagReturnsCurrentEmbeddedGuidance(t *testing.T) 
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout, "validate-stage failure must not write to stdout")
 
 	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
 	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)

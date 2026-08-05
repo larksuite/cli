@@ -20,13 +20,28 @@ func TestPermissionHint_usesBuildLocalSurface(t *testing.T) {
 	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		surface.CommandAuthLogin: surface.CommandConcealed,
 	})
+	cause := errors.New("permission cause")
 	for _, st := range []errs.Subtype{errs.SubtypeMissingScope, errs.SubtypeTokenScopeInsufficient, errs.SubtypeUserUnauthorized} {
 		hint := PermissionHint([]string{"im:message"}, "user", st, "")
 		sourceTyped := errs.NewPermissionError(st, "permission denied").
-			WithHint("%s", hint)
+			WithHint("%s", hint).
+			WithCause(cause)
 		source := recovery.Attach(sourceTyped, permissionRecoveryHint([]string{"im:message"}, "user", st, ""))
 
 		rendered := recovery.Render(source, plan)
+		problem, ok := errs.ProblemOf(rendered)
+		if !ok {
+			t.Fatalf("%s: rendered error = %T, want typed error", st, rendered)
+		}
+		if problem.Category != errs.CategoryAuthorization {
+			t.Errorf("%s: rendered category = %q, want %q", st, problem.Category, errs.CategoryAuthorization)
+		}
+		if problem.Subtype != st {
+			t.Errorf("%s: rendered subtype = %q, want %q", st, problem.Subtype, st)
+		}
+		if !errors.Is(rendered, cause) {
+			t.Errorf("%s: rendered error lost cause %v: %v", st, cause, rendered)
+		}
 		var concealed *errs.PermissionError
 		if !errors.As(rendered, &concealed) {
 			t.Fatalf("%s: rendered error = %T, want *errs.PermissionError", st, rendered)

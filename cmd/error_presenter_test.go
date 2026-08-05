@@ -19,16 +19,30 @@ import (
 )
 
 func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProducer(t *testing.T) {
+	cause := errors.New("permission cause")
 	source := errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope").
 		WithMissingScopes("docx:document").
-		WithIdentity("user")
+		WithIdentity("user").
+		WithCause(cause)
 
 	visible := presentRootError(
 		&cmdutil.Factory{ResolvedIdentity: core.AsUser},
 		source,
 		recovery.NewProjector(nil),
 	)
-	visibleProblem, _ := errs.ProblemOf(visible)
+	visibleProblem, ok := errs.ProblemOf(visible)
+	if !ok {
+		t.Fatalf("visible error = %T, want typed error", visible)
+	}
+	if visibleProblem.Category != errs.CategoryAuthorization {
+		t.Errorf("visible category = %q, want %q", visibleProblem.Category, errs.CategoryAuthorization)
+	}
+	if visibleProblem.Subtype != errs.SubtypeMissingScope {
+		t.Errorf("visible subtype = %q, want %q", visibleProblem.Subtype, errs.SubtypeMissingScope)
+	}
+	if !errors.Is(visible, cause) {
+		t.Errorf("visible error lost cause %v: %v", cause, visible)
+	}
 	const wantVisible = "run `lark-cli auth login --scope \"docx:document\" --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login"
 	if got, want := visibleProblem.Hint, wantVisible; got != want {
 		t.Fatalf("visible recovery = %q, want exact split-flow recovery %q", got, want)

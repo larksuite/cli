@@ -32,6 +32,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // cleanTree is the git-archived, committed-only source tree of the repo under
@@ -129,7 +131,7 @@ func buildForkWithMain(t *testing.T, name, pluginSrc, mainSrc string) string {
 		t.Fatalf("mkdir customer module: %v", err)
 	}
 	for _, name := range []string{"lark-a", "lark-b", "lark-doc", "lark-shared"} {
-		if err := os.MkdirAll(filepath.Join(mod, "skills", name), 0o755); err != nil {
+		if err := vfs.MkdirAll(filepath.Join(mod, "skills", name), 0o755); err != nil {
 			t.Fatalf("mkdir customer skill %q: %v", name, err)
 		}
 		skillMD := "---\nname: " + name + "\ndescription: plugin e2e base skill\n---\n"

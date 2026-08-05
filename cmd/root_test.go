@@ -6,6 +6,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -552,6 +553,12 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	if problem.Category != errs.CategoryAuthentication {
 		t.Errorf("Category = %q, want authentication", problem.Category)
 	}
+	if problem.Subtype != errs.SubtypeUnknown {
+		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
+	}
+	if !errors.Is(rendered, authErr.Cause) {
+		t.Errorf("rendered error lost need-authorization cause %v: %v", authErr.Cause, rendered)
+	}
 	if !strings.Contains(problem.Message, "need_user_authorization") {
 		t.Errorf("Message should preserve need_user_authorization marker; got %q", problem.Message)
 	}
@@ -586,6 +593,12 @@ func TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT(t *testi
 	if !ok {
 		t.Fatalf("rendered error = %T, want typed error", rendered)
 	}
+	if problem.Category != errs.CategoryAuthentication {
+		t.Errorf("Category = %q, want %q", problem.Category, errs.CategoryAuthentication)
+	}
+	if problem.Subtype != errs.SubtypeUnknown {
+		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
+	}
 
 	if !strings.Contains(problem.Hint, "current command requires scope(s): docx:document:create") {
 		t.Errorf("expected shortcut scope hint, got %q", problem.Hint)
@@ -614,6 +627,12 @@ func TestApplyNeedAuthorizationHint_ShortcutIncludesConditionalScopes(t *testing
 	problem, ok := errs.ProblemOf(rendered)
 	if !ok {
 		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
+	if problem.Category != errs.CategoryAuthentication {
+		t.Errorf("Category = %q, want %q", problem.Category, errs.CategoryAuthentication)
+	}
+	if problem.Subtype != errs.SubtypeUnknown {
+		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
 	}
 
 	if !strings.Contains(problem.Hint, "current command requires scope(s): drive:drive.metadata:readonly, drive:file:download") {
@@ -645,6 +664,15 @@ func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 	problem, ok := errs.ProblemOf(rendered)
 	if !ok {
 		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
+	if problem.Category != errs.CategoryAuthentication {
+		t.Errorf("Category = %q, want %q", problem.Category, errs.CategoryAuthentication)
+	}
+	if problem.Subtype != errs.SubtypeUnknown {
+		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
+	}
+	if !errors.Is(rendered, authErr.Cause) {
+		t.Errorf("rendered error lost need-authorization cause %v: %v", authErr.Cause, rendered)
 	}
 
 	want := "existing hint\ncurrent command requires scope(s): docx:document:create"

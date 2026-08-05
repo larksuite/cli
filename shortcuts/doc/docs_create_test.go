@@ -6,6 +6,7 @@ package doc
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -285,6 +286,16 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 	problem, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("error = %T, want typed problem", err)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem = %s/%s, want validation/invalid_argument", problem.Category, problem.Subtype)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	if got, want := validationErr.Param, "--markdown"; got != want {
+		t.Fatalf("param = %q, want %q", got, want)
 	}
 	presented := problem.Message + "\n" + problem.Hint
 	for _, want := range []string{

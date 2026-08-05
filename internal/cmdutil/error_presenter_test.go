@@ -4,6 +4,7 @@
 package cmdutil
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -14,13 +15,15 @@ import (
 )
 
 func TestFactoryPresentErrorClonesAndPreservesPermissionMachineFields(t *testing.T) {
+	cause := errors.New("permission cause")
 	source := errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope").
 		WithCode(99991679).
 		WithLogID("log-123").
 		WithMissingScopes("docx:document").
 		WithRequestedScopes("docx:document", "drive:drive").
 		WithGrantedScopes("drive:drive").
-		WithIdentity("user")
+		WithIdentity("user").
+		WithCause(cause)
 	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		surface.CommandAuthLogin: surface.CommandConcealed,
 	})
@@ -38,6 +41,16 @@ func TestFactoryPresentErrorClonesAndPreservesPermissionMachineFields(t *testing
 	}
 	if presented == source {
 		t.Fatal("PresentError returned the producer instead of a clone")
+	}
+	if !errors.Is(rendered, cause) {
+		t.Fatalf("PresentError did not preserve cause %v: %v", cause, rendered)
+	}
+	problem, ok := errs.ProblemOf(rendered)
+	if !ok {
+		t.Fatalf("PresentError() = %T, want typed problem", rendered)
+	}
+	if problem.Category != errs.CategoryAuthorization || problem.Subtype != errs.SubtypeMissingScope {
+		t.Fatalf("problem = %s/%s, want authorization/missing_scope", problem.Category, problem.Subtype)
 	}
 	if presented.Code != source.Code || presented.LogID != source.LogID ||
 		presented.Identity != source.Identity || presented.Subtype != source.Subtype {

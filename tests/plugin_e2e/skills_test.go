@@ -6,6 +6,7 @@ package plugin_e2e
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -275,9 +276,24 @@ func TestForkSkillsMissingRequiredSkillUsesTypedStartupGuard(t *testing.T) {
 	if got := gjson.Get(res.stderr, "error.subtype").String(); got != "failed_precondition" {
 		t.Errorf("error.subtype=%q want failed_precondition; stderr=%s", got, res.stderr)
 	}
-	for _, want := range []string{"lark-doc", "lark-shared", "reason_code invalid_skills_overlay"} {
-		if !strings.Contains(res.stderr, want) {
-			t.Errorf("typed startup error missing %q: %s", want, res.stderr)
+	hint := gjson.Get(res.stderr, "error.hint").String()
+	reasonMatches := regexp.MustCompile(`\breason_code ([a-z0-9_]+)\b`).FindAllStringSubmatch(hint, -1)
+	if len(reasonMatches) != 1 || reasonMatches[0][1] != "invalid_skills_overlay" {
+		t.Errorf("error.hint reason_codes=%v want exactly [invalid_skills_overlay]; hint=%q", reasonMatches, hint)
+	}
+
+	message := gjson.Get(res.stderr, "error.message").String()
+	affectedSkills := make(map[string]struct{})
+	for _, match := range regexp.MustCompile(`\bskill "([^"]+)"`).FindAllStringSubmatch(message, -1) {
+		affectedSkills[match[1]] = struct{}{}
+	}
+	if len(affectedSkills) != 2 {
+		t.Errorf("affected skills=%v want exactly [lark-doc lark-shared]; message=%q", affectedSkills, message)
+	} else {
+		for _, want := range []string{"lark-doc", "lark-shared"} {
+			if _, ok := affectedSkills[want]; !ok {
+				t.Errorf("affected skills=%v missing %q; message=%q", affectedSkills, want, message)
+			}
 		}
 	}
 }
