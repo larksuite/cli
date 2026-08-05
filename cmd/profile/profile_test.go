@@ -721,6 +721,40 @@ func TestProfileListRun_MarksEffectiveOverride(t *testing.T) {
 	}
 }
 
+func TestProfileListRun_MarksEffectiveOverrideFromFlag(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("s1"), Brand: core.BrandFeishu},
+			{Name: "target", AppId: "app-target", AppSecret: core.PlainSecret("s2"), Brand: core.BrandFeishu},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	f.Invocation = cmdutil.InvocationContext{Profile: "target", ProfileSource: core.ProfileFromFlag}
+	if err := profileListRun(f); err != nil {
+		t.Fatalf("profileListRun() error = %v", err)
+	}
+
+	var got []profileListItem
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v; output=%s", err, stdout.String())
+	}
+	if !got[0].Active || got[0].Effective {
+		t.Fatalf("got[0] = %#v, want persisted default active but not effective", got[0])
+	}
+	if got[1].Active || !got[1].Effective || got[1].EffectiveSource != "flag" {
+		t.Fatalf("got[1] = %#v, want effective via flag", got[1])
+	}
+	if stderr.String() != "" {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
 func TestProfileListRun_EffectiveFollowsPersistedDefault(t *testing.T) {
 	setupProfileConfigDir(t)
 	multi := &core.MultiAppConfig{

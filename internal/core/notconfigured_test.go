@@ -251,8 +251,12 @@ func TestProfileNotFoundError_NamesSelectorAndSource(t *testing.T) {
 			if !errors.As(err, &cfgErr) {
 				t.Fatalf("expected *errs.ConfigError, got %T %v", err, err)
 			}
-			if cfgErr.Subtype != errs.SubtypeNotConfigured {
-				t.Errorf("subtype = %q, want not_configured", cfgErr.Subtype)
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf(%T) = _, false; want typed problem", err)
+			}
+			if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeNotConfigured {
+				t.Errorf("problem = %s/%s, want config/not_configured", problem.Category, problem.Subtype)
 			}
 			if cfgErr.Message != tc.wantMessage {
 				t.Errorf("message = %q, want %q", cfgErr.Message, tc.wantMessage)
@@ -286,6 +290,13 @@ func TestProfileNotFoundError_DanglingCurrentApp(t *testing.T) {
 	if !errors.As(err, &cfgErr) {
 		t.Fatalf("expected *errs.ConfigError, got %T %v", err, err)
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(%T) = _, false; want typed problem", err)
+	}
+	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("problem = %s/%s, want config/not_configured", problem.Category, problem.Subtype)
+	}
 	if cfgErr.Message != `profile "renamed-away" not found` {
 		t.Errorf("message = %q, want the dangling currentApp named", cfgErr.Message)
 	}
@@ -310,6 +321,13 @@ func TestProfileNotFoundError_EmptyConfigFallsBackToNotConfigured(t *testing.T) 
 	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
 		t.Fatalf("expected *errs.ConfigError, got %T %v", err, err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(%T) = _, false; want typed problem", err)
+	}
+	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("problem = %s/%s, want config/not_configured", problem.Category, problem.Subtype)
 	}
 	if cfgErr.Message != "not configured" {
 		t.Errorf("message = %q, want the NotConfiguredError fallback", cfgErr.Message)

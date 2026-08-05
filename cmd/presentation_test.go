@@ -6,6 +6,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -670,15 +671,30 @@ func TestExecuteEnvironmentProfileConcealmentFailsBeforeLifecycle(t *testing.T) 
 	if code != output.ExitValidation || stdout != "" {
 		t.Fatalf("environment profile gate: exit=%d stdout=%q stderr=%s", code, stdout, stderr)
 	}
-	for _, want := range []string{
-		`"subtype": "invalid_argument"`,
-		`"param": "` + envvars.CliProfile + `"`,
-		`environment variable \"` + envvars.CliProfile + `\" is not supported by this build`,
-		`remove ` + envvars.CliProfile + ` from the process environment and retry`,
-	} {
-		if !strings.Contains(stderr, want) {
-			t.Errorf("stderr missing %q:\n%s", want, stderr)
-		}
+	var envelope struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Type    errs.Category `json:"type"`
+			Subtype errs.Subtype  `json:"subtype"`
+			Message string        `json:"message"`
+			Hint    string        `json:"hint"`
+			Param   string        `json:"param"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(stderr), &envelope); err != nil {
+		t.Fatalf("stderr is not a JSON envelope: %v\n%s", err, stderr)
+	}
+	if envelope.OK ||
+		envelope.Error.Type != errs.CategoryValidation ||
+		envelope.Error.Subtype != errs.SubtypeInvalidArgument ||
+		envelope.Error.Param != envvars.CliProfile {
+		t.Errorf("envelope = %+v, want ok=false validation/invalid_argument param=%s", envelope, envvars.CliProfile)
+	}
+	if want := `environment variable "` + envvars.CliProfile + `" is not supported by this build`; !strings.Contains(envelope.Error.Message, want) {
+		t.Errorf("message = %q, missing %q", envelope.Error.Message, want)
+	}
+	if want := "remove " + envvars.CliProfile + " from the process environment and retry"; !strings.Contains(envelope.Error.Hint, want) {
+		t.Errorf("hint = %q, missing %q", envelope.Error.Hint, want)
 	}
 	if startups != 0 || shutdowns != 0 {
 		t.Fatalf("invalid environment profile emitted lifecycle events: startup=%d shutdown=%d", startups, shutdowns)

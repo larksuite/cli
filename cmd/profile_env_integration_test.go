@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
@@ -116,17 +117,33 @@ func TestExecuteEnvironmentProfileNotFoundNamesTheVariable(t *testing.T) {
 			if code != output.ExitAuth {
 				t.Fatalf("exit = %d, want %d\nstdout: %s\nstderr: %s", code, output.ExitAuth, stdout, stderr)
 			}
-			for _, want := range []string{
-				`profile \"ghost\" not found`,
-				`"field": "` + envvars.CliProfile + `"`,
-				"unset " + envvars.CliProfile,
-			} {
-				if !strings.Contains(stderr, want) {
-					t.Errorf("stderr missing %q:\n%s", want, stderr)
-				}
+			var envelope struct {
+				OK    bool `json:"ok"`
+				Error struct {
+					Type    errs.Category `json:"type"`
+					Subtype errs.Subtype  `json:"subtype"`
+					Message string        `json:"message"`
+					Hint    string        `json:"hint"`
+					Field   string        `json:"field"`
+				} `json:"error"`
 			}
-			if strings.Contains(stderr, "config init") {
-				t.Errorf("stderr must not steer to config init:\n%s", stderr)
+			if err := json.Unmarshal([]byte(stderr), &envelope); err != nil {
+				t.Fatalf("stderr is not a JSON envelope: %v\n%s", err, stderr)
+			}
+			if envelope.OK ||
+				envelope.Error.Type != errs.CategoryConfig ||
+				envelope.Error.Subtype != errs.SubtypeNotConfigured ||
+				envelope.Error.Field != envvars.CliProfile {
+				t.Errorf("envelope = %+v, want ok=false config/not_configured field=%s", envelope, envvars.CliProfile)
+			}
+			if want := `profile "ghost" not found`; envelope.Error.Message != want {
+				t.Errorf("message = %q, want %q", envelope.Error.Message, want)
+			}
+			if !strings.Contains(envelope.Error.Hint, "unset "+envvars.CliProfile) {
+				t.Errorf("hint = %q, want unset guidance", envelope.Error.Hint)
+			}
+			if strings.Contains(envelope.Error.Hint, "config init") {
+				t.Errorf("hint must not steer to config init: %q", envelope.Error.Hint)
 			}
 			// auth list must not disguise the input error as an empty account.
 			if strings.Contains(stdout, "not_logged_in") {
