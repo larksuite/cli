@@ -322,7 +322,6 @@ var MinutesDetail = common.Shortcut{
 			if missing := auth.MissingScopes(result.Scopes, scopesDetailMinuteTokens); len(missing) > 0 {
 				return errs.NewPermissionError(errs.SubtypeMissingScope,
 					"missing required scope(s): %s", strings.Join(missing, ", ")).
-					WithHint("run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")).
 					WithMissingScopes(missing...).
 					WithIdentity(string(runtime.As()))
 			}

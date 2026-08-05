@@ -225,7 +225,7 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	if offset < 0 {
 		offset = 0
 	}
-	limit := getPaginationLimit(runtime)
+	limit := runtime.Int("limit")
 	params := url.Values{}
 	params.Set("offset", strconv.Itoa(offset))
 	params.Set("limit", strconv.Itoa(limit))
@@ -522,7 +522,7 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if offset < 0 {
 		offset = 0
 	}
-	limit := getPaginationLimit(runtime)
+	limit := runtime.Int("limit")
 	params := map[string]interface{}{"offset": offset, "limit": limit}
 	fields, err := recordProjectionFields(runtime)
 	if err != nil {

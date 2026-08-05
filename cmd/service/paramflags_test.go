@@ -11,6 +11,8 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -594,6 +596,38 @@ func TestServiceMethod_MissingRequired_HintNamesFlagAndParams(t *testing.T) {
 		if !strings.Contains(ve.Hint, want) {
 			t.Errorf("hint %q should contain %q", ve.Hint, want)
 		}
+	}
+}
+
+func TestServiceMethod_MissingRequired_ProjectsOnlySchemaRecovery(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), imChatMembersCreate(), "create", "chat.members", nil)
+	cmd.SetArgs([]string{"--data", `{"id_list":["ou_x"]}`, "--dry-run"})
+
+	source := cmd.Execute()
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandSchema: surface.CommandConcealed,
+	})
+	rendered := recovery.NewProjector(func() *surface.Plan { return plan }).Render(source)
+	var ve *errs.ValidationError
+	if !errors.As(rendered, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", rendered, rendered)
+	}
+	for _, want := range []string{"--chat-id", `--params '{"chat_id": "<value>"}'`} {
+		if !strings.Contains(ve.Hint, want) {
+			t.Errorf("projected hint %q lost valid recovery %q", ve.Hint, want)
+		}
+	}
+	if strings.Contains(ve.Hint, "lark-cli schema") {
+		t.Errorf("projected hint retained concealed schema pointer: %q", ve.Hint)
+	}
+
+	var sourceValidation *errs.ValidationError
+	if !errors.As(source, &sourceValidation) {
+		t.Fatalf("source is not *errs.ValidationError: %T", source)
+	}
+	if !strings.Contains(sourceValidation.Hint, "lark-cli schema im.chat.members.create") {
+		t.Errorf("presentation mutated source hint: %q", sourceValidation.Hint)
 	}
 }
 

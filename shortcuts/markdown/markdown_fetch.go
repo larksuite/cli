@@ -5,13 +5,9 @@ package markdown
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"net/http"
 	"path/filepath"
 	"strings"
-
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/validate"
@@ -47,8 +43,9 @@ var MarkdownFetch = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		dry := common.NewDryRunAPI().
-			Desc("download markdown file bytes; when --output is omitted the CLI returns content as UTF-8 text").
-			GET("/open-apis/drive/v1/files/:file_token/download").
+			Desc("download markdown source file preview artifact bytes; when --output is omitted the CLI returns content as UTF-8 text").
+			GET("/open-apis/drive/v1/medias/:file_token/preview_download").
+			Params(markdownSourceFilePreviewDryRunParamsForValidatedVersion("", "")).
 			Set("file_token", runtime.Str("file-token"))
 		if outputPath := strings.TrimSpace(runtime.Str("output")); outputPath != "" {
 			dry.Set("output", outputPath)
@@ -61,12 +58,9 @@ var MarkdownFetch = common.Shortcut{
 		fileToken := strings.TrimSpace(runtime.Str("file-token"))
 		outputPath := strings.TrimSpace(runtime.Str("output"))
 
-		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
-			HttpMethod: http.MethodGet,
-			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
-		})
+		resp, err := openMarkdownDownload(ctx, runtime, fileToken)
 		if err != nil {
-			return wrapMarkdownDownloadError(err)
+			return err
 		}
 		defer resp.Body.Close()
 

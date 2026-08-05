@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/hook"
 	internalplatform "github.com/larksuite/cli/internal/platform"
+	"github.com/larksuite/cli/internal/skillpolicy"
 )
 
 // installFatalGuard wires a fail-closed guard at every cobra dispatch
@@ -106,6 +107,33 @@ func installPluginConflictGuard(rootCmd *cobra.Command, err error) {
 		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", err.Error()).
 			WithHint("plugin policy configuration is broken (reason_code %s); fix the plugin's Restrict rule or remove the conflicting plugin", reasonCode).
 			WithCause(err)
+	}
+	installFatalGuard(rootCmd, makeErr)
+}
+
+// installPluginSkillErrorGuard surfaces a plugin SkillsOverlay configuration
+// error before any command runs. Two failure modes, split by reason code:
+//
+//   - "invalid_skills_overlay"          - a Remove/Overlay that cannot compose
+//   - "multiple_skills_overlay_plugins" - two plugins each customizing skills
+//
+// The CLI must NOT silently fall back to default skills once an
+// integrator has declared a customization.
+func installPluginSkillErrorGuard(rootCmd *cobra.Command, err error) {
+	makeErr := func() error {
+		reasonCode := internalplatform.ReasonInvalidSkillsOverlay
+		if errors.Is(err, skillpolicy.ErrMultipleSkillsOverlays) {
+			reasonCode = internalplatform.ReasonMultipleSkillsOverlays
+		}
+		typed := errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", err.Error()).
+			WithCause(err)
+		if errors.Is(err, skillpolicy.ErrNoBaseSkillContent) {
+			return typed.WithHint("this build embeds no base skill content; call cmd.SetEmbeddedSkillContent before Execute or provide a non-empty EmbeddedSkills.Base (reason_code %s)", reasonCode)
+		}
+		if errors.Is(err, skillpolicy.ErrInvalidHostBase) {
+			return typed.WithHint("the wrapper's embedded base skill tree is invalid; fix the content passed to cmd.SetEmbeddedSkillContent (reason_code %s)", reasonCode)
+		}
+		return typed.WithHint("skill customization is broken (reason_code %s); fix the plugin's EmbeddedSkills configuration or remove the conflicting plugin", reasonCode)
 	}
 	installFatalGuard(rootCmd, makeErr)
 }

@@ -1,6 +1,6 @@
 # 编辑已有 PPT：读-改-写闭环
 
-局部编辑走 **shortcut [`+replace-slide`](lark-slides-replace-slide.md)**（块级替换 / 插入），配合 `xml_presentation.slide.get` 读原页拿 `block_id`。已有 Slides 的多页整页重建走 **[`+replace-pages`](lark-slides-replace-pages.md)**，保持原 presentation 链接不变。
+局部编辑走 **shortcut [`+replace-slide`](lark-slides-replace-slide.md)**（块级替换 / 插入），配合 `xml_presentation.slide.get` 读原页拿 `block_id`。一页改动很多、要改背景或删除若干元素，以及一页或多页的整页重建，走 **[`+replace-pages`](lark-slides-replace-pages.md)**，保持原 presentation 链接不变。
 
 > 生成 XML 前**必读** [xml-schema-quick-ref.md](xml-schema-quick-ref.md)。
 
@@ -11,7 +11,7 @@
 | 已知某块的 `block_id`，要换这块内容（改标题、换图、挪坐标） | `block_replace` | 精准替换，原子性好；`replacement` 根 `id` 由 CLI 自动注入为 `block_id` |
 | 只加 1~N 个元素、不动现有布局 | `block_insert` | 新增不覆盖，可选 `insert_before_block_id` 指定位置 |
 | 一次动多个元素（如：换标题 + 加图） | 单次 `--parts` 里拼多条 | 整批作为原子事务，任一失败整批不生效；`block_replace` 和 `block_insert` 可混用 |
-| 多页版式重建、整页坐标重排 | `+replace-pages` | 原 presentation 内批量 create-before/delete-old，不生成新 Slides 链接 |
+| 单页或多页版式重建、整页坐标重排、改页面背景、删除若干元素 | `+replace-pages` | 原 presentation 内按页 create-before/delete-old，不生成新 Slides 链接 |
 
 > **没有字段级 patch**：即便只想改一个 `shape` 的 `topLeftX`，也得把整个块的新 XML 写出来用 `block_replace`。这不是"微调"，是块级重写。
 
@@ -32,6 +32,8 @@ lark-cli slides +replace-slide --as user \
 ```
 
 `slide_id` / 页序不会变。`block_replace` 的 `replacement` 根元素 `id` 会自动注入为 `block_id`，用户手写 XML 时不需要自己加。
+
+> **part 的字段名是 `block_id` + `replacement`（XML 字符串）**：写成 `content` / `xml` / `block` 会被 CLI 拒绝（报 `unknown field "content"; did you mean "replacement"?`）。收到这个报错时改字段名，不要改字段值。
 
 ## `revision_id` 参数
 
@@ -137,7 +139,7 @@ cat parts.json | lark-cli slides +replace-slide --as user --presentation "$PID" 
 ## 相关文档
 
 - [lark-slides-replace-slide.md](lark-slides-replace-slide.md) — +replace-slide shortcut 参数详情
-- [lark-slides-replace-pages.md](lark-slides-replace-pages.md) — 多页整页重建 shortcut
+- [lark-slides-replace-pages.md](lark-slides-replace-pages.md) — 单页或多页整页重建 shortcut
 - [lark-slides-xml-presentation-slide-get.md](lark-slides-xml-presentation-slide-get.md) — slide.get 参考（拿 `block_id` / `revision_id`）
 - [lark-slides-xml-presentation-slide-replace.md](lark-slides-xml-presentation-slide-replace.md) — 底层 replace API 参考（一般直接用 shortcut 即可）
 - [lark-slides-media-upload.md](lark-slides-media-upload.md) — 上传图片拿 file_token

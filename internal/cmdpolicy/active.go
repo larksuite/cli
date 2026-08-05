@@ -20,9 +20,21 @@ import (
 // common single-rule case, several when a plugin or yaml declares scoped
 // grants). nil/empty means "no rule applied".
 type ActivePolicy struct {
-	Rules       []*platform.Rule
-	Source      ResolveSource
-	DeniedPaths int // number of commands the engine marked as denied (post-aggregation)
+	Rules  []*platform.Rule
+	Source ResolveSource
+
+	// DeniedByPath is the full post-aggregation denial map.
+	DeniedByPath map[string]Denial
+}
+
+// DeniedPathCount returns the number of post-aggregation denied commands.
+// Deriving it from DeniedByPath prevents diagnostics from drifting away from
+// the exact denial snapshot used by presentation.
+func (p *ActivePolicy) DeniedPathCount() int {
+	if p == nil {
+		return 0
+	}
+	return len(p.DeniedByPath)
 }
 
 var (
@@ -61,8 +73,8 @@ func GetActive() *ActivePolicy {
 }
 
 // cloneActivePolicy deep-copies the top-level struct, the Rules slice, and
-// each Rule's own slice fields. Other fields (Source, DeniedPaths) are
-// value types so the struct copy already disjoints them.
+// each Rule's own slice fields. Source is a value type, so the struct copy
+// already disjoints it.
 func cloneActivePolicy(in *ActivePolicy) *ActivePolicy {
 	if in == nil {
 		return nil
@@ -79,6 +91,12 @@ func cloneActivePolicy(in *ActivePolicy) *ActivePolicy {
 			rule.Deny = append([]string(nil), r.Deny...)
 			rule.Identities = append([]platform.Identity(nil), r.Identities...)
 			cp.Rules[i] = &rule
+		}
+	}
+	if in.DeniedByPath != nil {
+		cp.DeniedByPath = make(map[string]Denial, len(in.DeniedByPath))
+		for k, v := range in.DeniedByPath {
+			cp.DeniedByPath[k] = v
 		}
 	}
 	return &cp

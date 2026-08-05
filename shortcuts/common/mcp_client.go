@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/util"
 )
 
@@ -172,8 +173,10 @@ func classifyMCPMessageError(msg string) error {
 		strings.Contains(lower, "access token"),
 		strings.Contains(lower, "token invalid"),
 		strings.Contains(lower, "token expired"):
-		return errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "%s", msg).
-			WithHint("run `lark-cli auth login` in the background to re-authorize. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.")
+		return recovery.Attach(
+			errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "%s", msg),
+			recovery.UserAuthorization(),
+		)
 	default:
 		return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg)
 	}

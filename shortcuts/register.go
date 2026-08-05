@@ -40,6 +40,13 @@ import (
 	"github.com/larksuite/cli/shortcuts/wiki"
 )
 
+// serviceAliases maps singular spellings agents habitually type onto the
+// canonical service name. `slide update` was a documented dead end: the service
+// is `slides`, so the invocation died before the subcommand was even considered.
+var serviceAliases = map[string][]string{
+	"slides": {"slide"},
+}
+
 // Empty brand (no config loaded) is treated as no-restriction so bootstrap
 // paths and tests without config still see the full service list.
 var brandRestrictedServices = map[string][]core.LarkBrand{
@@ -147,10 +154,16 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 		// before shortcuts run). Without this, only pure-shortcut
 		// services like `docs` would get tagged.
 		cmdmeta.SetDomain(svc, service)
-		if service == "docs" {
-			doc.ConfigureServiceHelp(svc)
+		// Applied OUTSIDE the create branch for the same reason as the domain tag:
+		// OpenAPI auto-registration has usually created the service command
+		// already, so setting Aliases only where the command is constructed would
+		// be dead code — it compiles, the tests pass, and `lark-cli slide …` still
+		// answers "unknown command".
+		for _, alias := range serviceAliases[service] {
+			if !slices.Contains(svc.Aliases, alias) {
+				svc.Aliases = append(svc.Aliases, alias)
+			}
 		}
-
 		for _, shortcut := range shortcuts {
 			shortcut.MountWithContext(ctx, svc, f)
 		}

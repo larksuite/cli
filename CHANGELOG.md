@@ -2,6 +2,82 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.83] - 2026-08-04
+
+### Features
+
+- **slides**: add +update-slide for whole-page updates (#2143)
+- **apps**: friendly error for db commands on an app with no database (#2162)
+- **slides**: support embedded SVG content (#2154)
+
+### Bug Fixes
+
+- **slides**: add agent-friendly aliases for screenshot flags (#2156)
+- **slides**: migrate SML namespace from HTTP to HTTPS (#2169)
+- **slides**: improve missing screenshot selector guidance (#2177)
+- **slides**: name the wrong --parts field instead of "non-empty replacement" (#2174)
+
+### Documentation
+
+- **base**: clarify unsupported capability boundaries (#2133)
+- **slides**: correct +xml-get flag requirements (#2171)
+
+### Misc
+
+- notarize macOS release candidates (#2073)
+- allow concurrent live e2e jobs (#2182)
+
+## [v1.0.82] - 2026-08-03
+
+### Features
+
+- **enhancement**: centralize HTTP transport policies (#2021)
+- add framework flag aliases and unified IM pagination (#2146)
+- **slides**: add +add-slide and +delete-slide shortcuts (#2120)
+
+### Bug Fixes
+
+- normalize mail triage filters (#2068)
+- **slides**: restore presentation aliases (#2164)
+
+### Documentation
+
+- remove broken Star History chart (#2141)
+- **base**: harden dashboard multi-block read guidance (#2122)
+
+### Tests
+
+- pass contact list params explicitly (#2150)
+
+## [v1.0.81] - 2026-07-31
+
+### Features
+
+- support visible_rule for form questions (#1891)
+- **contact**: add bot search shortcut (#2083)
+- add SXSD schema validation to Slides lint (#2103)
+- **drive**: add comment-operation shortcuts (#1898)
+- **drive**: extend permission shortcuts for Miaoda (#2070)
+- **apps**: add cache debug commands (+cache-get/-delete/-clear) (#1896)
+- support source file preview artifacts (#2085)
+
+### Bug Fixes
+
+- **contact**: stop bot match segments carrying tags or empty entries (#2115)
+- **base**: resolve Base URL block types accurately (#2099)
+- **drive**: use title for default download filename (#2089)
+- drop stale target version from root upgrade prompt (#2100)
+
+### Documentation
+
+- **calendar**: warn against container-default timezone in time conversion (#2104)
+- **calendar**: confirm scope before editing recurring events (#2119)
+- **base**: clarify form and file operation routing (#2110)
+
+### Misc
+
+- add protected public domain allowlists (#2111)
+
 ## [v1.0.80] - 2026-07-29
 
 ### Features
@@ -1722,6 +1798,9 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.83]: https://github.com/larksuite/cli/releases/tag/v1.0.83
+[v1.0.82]: https://github.com/larksuite/cli/releases/tag/v1.0.82
+[v1.0.81]: https://github.com/larksuite/cli/releases/tag/v1.0.81
 [v1.0.80]: https://github.com/larksuite/cli/releases/tag/v1.0.80
 [v1.0.79]: https://github.com/larksuite/cli/releases/tag/v1.0.79
 [v1.0.78]: https://github.com/larksuite/cli/releases/tag/v1.0.78

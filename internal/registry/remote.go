@@ -180,8 +180,8 @@ func saveCachedMerged(data []byte, cm CacheMeta) error {
 // localVersion is sent as data_version query param for server-side version comparison.
 // Returns (data, reg, err). A nil reg means the version is unchanged (not modified).
 func fetchRemoteMerged(localVersion string) (data []byte, reg *MergedRegistry, err error) {
-	// Route through the shared proxy-plugin-aware transport so remote API
-	// definition fetches honor proxy plugin mode instead of bypassing it.
+	// Remote metadata is platform traffic and must honor both the shared proxy
+	// configuration and the registered platform transport extension.
 	client := transport.NewHTTPClient(fetchTimeout)
 	req, err := http.NewRequest("GET", remoteMetaURL(localVersion), nil)
 	if err != nil {

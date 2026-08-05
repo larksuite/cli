@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -27,19 +28,23 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		{Name: "form-id", Desc: "form ID", Required: true},
 		{Name: "questions", Desc: `questions JSON array, max 10 items. Each item requires "title"(field title) and "type"(text/number/select/datetime/user/attachment/location). Optional fields: "description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown/1=vertical/2=horizontal,select only),"multiple"(bool,select/user),"options"([{"name":"opt","hue":"Blue"}],select only),"style"({"type":"plain/phone/url/email/barcode/rating","precision":2,"format":"yyyy/MM/dd","icon":"star","min":1,"max":5}),"visible_rule"(display condition; same shape as view filter {"logic":"and","conditions":[["前序题目","==","是"]]}, field references another question's title/id, empty/absent = always shown). E.g. '[{"type":"text","title":"Your name","required":true}]'`, Required: true},
 	},
+	Tips: []string{
+		"If the form may already contain questions and has not been checked, run +form-questions-list for the same --base-token, --table-id, and --form-id. A verified empty form can create directly.",
+		"Each new question creates a field in the form's table; question IDs are field IDs.",
+		"Unless the user explicitly requests a separate same-title question, update an existing title with +form-questions-update instead of creating a duplicate.",
+	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		_, err := parseFormQuestionsCreate(runtime.Str("questions"))
+		return err
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		api := common.NewDryRunAPI().
+		questions, _ := parseFormQuestionsCreate(runtime.Str("questions"))
+		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/questions").
 			Set("base_token", runtime.Str("base-token")).
 			Set("table_id", runtime.Str("table-id")).
-			Set("form_id", runtime.Str("form-id"))
-		// Transcribe the questions body verbatim so the preview shows exactly
-		// what would be sent (including optional fields like visible_rule).
-		var questions []interface{}
-		if err := json.Unmarshal([]byte(runtime.Str("questions")), &questions); err == nil {
-			api.Body(map[string]interface{}{"questions": questions})
-		}
-		return api
+			Set("form_id", runtime.Str("form-id")).
+			Body(map[string]interface{}{"questions": questions})
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		baseToken := runtime.Str("base-token")
@@ -47,9 +52,9 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		formId := runtime.Str("form-id")
 		questionsJSON := runtime.Str("questions")
 
-		var questions []interface{}
-		if err := json.Unmarshal([]byte(questionsJSON), &questions); err != nil {
-			return baseValidationErrorf("--questions must be a valid JSON array: %s", err)
+		questions, err := parseFormQuestionsCreate(questionsJSON)
+		if err != nil {
+			return err
 		}
 
 		data, err := baseV3Call(runtime, "POST",
@@ -77,4 +82,32 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+func parseFormQuestionsCreate(raw string) ([]interface{}, error) {
+	var questions []interface{}
+	if err := json.Unmarshal([]byte(raw), &questions); err != nil {
+		return nil, baseValidationErrorf("--questions must be a valid JSON array: %s", err)
+	}
+	if questions == nil {
+		return nil, baseValidationErrorf("--questions must be a non-null JSON array")
+	}
+	if len(questions) > 10 {
+		return nil, baseValidationErrorf("--questions must contain at most 10 items")
+	}
+	for i, question := range questions {
+		item, ok := question.(map[string]interface{})
+		if !ok {
+			return nil, baseValidationErrorf("--questions item %d must be an object", i+1)
+		}
+		title, ok := item["title"].(string)
+		if !ok || strings.TrimSpace(title) == "" {
+			return nil, baseValidationErrorf("--questions item %d must include a non-empty string \"title\"", i+1)
+		}
+		questionType, ok := item["type"].(string)
+		if !ok || strings.TrimSpace(questionType) == "" {
+			return nil, baseValidationErrorf("--questions item %d must include a non-empty string \"type\"", i+1)
+		}
+	}
+	return questions, nil
 }

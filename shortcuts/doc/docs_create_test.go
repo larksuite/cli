@@ -286,11 +286,6 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 		"the old v1 interface has been shut down",
 		"legacy v1 flag(s) --markdown are no longer supported",
 		"--markdown -> use --content with --doc-format markdown",
-		"lark-cli skills read lark-doc references/lark-doc-create.md",
-		"lark-cli skills read lark-doc references/lark-doc-xml.md",
-		"lark-cli skills read lark-doc references/lark-doc-md.md",
-		"follow the latest format rules",
-		"MUST NOT grep/open local SKILL.md files",
 		"lark-cli docs +create --help",
 	} {
 		if !strings.Contains(err.Error(), want) {

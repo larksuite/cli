@@ -4,11 +4,63 @@
 package plugin_e2e
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/tidwall/gjson"
 )
+
+func TestExistingRestrictPluginKeepsLegacyEnvelopeWithoutHostOptIn(t *testing.T) {
+	bin := buildFork(t, "readonly", readonlyPlugin)
+	res := run(t, bin, "schema")
+	if res.exit != 2 || !gjson.Valid(res.stderr) {
+		t.Fatalf("legacy Restrict exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
+	}
+	if got := gjson.Get(res.stderr, "error.subtype").String(); got != "failed_precondition" {
+		t.Errorf("legacy subtype=%q want failed_precondition; stderr=%s", got, res.stderr)
+	}
+	hint := gjson.Get(res.stderr, "error.hint").String()
+	for _, want := range []string{"source plugin:readonly", "reason_code"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("legacy Restrict hint missing %q: %q", want, hint)
+		}
+	}
+	if strings.Contains(res.stderr, "command not included in this build") {
+		t.Errorf("legacy Restrict was implicitly concealed: %s", res.stderr)
+	}
+}
+
+func TestLegacyRestrictReasonCodesRemainVisible(t *testing.T) {
+	tests := []struct {
+		name       string
+		fork       string
+		plugin     string
+		args       []string
+		reasonCode string
+	}{
+		{"allow list", "readonly", readonlyPlugin, []string{"schema"}, "domain_not_allowed"},
+		{"identity", "identity", identityPlugin, []string{"im", "+messages-search", "--as", "user"}, "identity_mismatch"},
+		{"deny list", "denylist", denylistPlugin, []string{"docs", "+search"}, "command_denylisted"},
+		{"multiple rules", "multirule", multiRulePlugin, []string{"schema"}, "no_matching_rule"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := run(t, buildFork(t, "legacy-"+tt.fork, tt.plugin), tt.args...)
+			if res.exit != 2 || !gjson.Valid(res.stderr) {
+				t.Fatalf("legacy denial exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
+			}
+			if got := gjson.Get(res.stderr, "error.subtype").String(); got != "failed_precondition" {
+				t.Fatalf("subtype=%q want failed_precondition; stderr=%s", got, res.stderr)
+			}
+			hint := gjson.Get(res.stderr, "error.hint").String()
+			if !strings.Contains(hint, "reason_code "+tt.reasonCode) {
+				t.Errorf("hint missing reason_code %s: %q", tt.reasonCode, hint)
+			}
+		})
+	}
+}
 
 // readonlyPlugin registers a Restrict rule that only allows read-risk
 // commands under the docs/** and im/** domains. It mirrors the official
@@ -30,32 +82,22 @@ func init() {
 }
 `
 
-// TestReadonlyDenial asserts the VERIFIED denial envelope shape: stderr is
-// valid JSON, error.type=="validation", error.subtype=="failed_precondition",
-// error.hint contains the literal "reason_code <X>" substring, and the
-// process exits 2. reason_code lives only in the hint string, not a
-// structured field.
+// TestReadonlyDenial asserts the public plugin-restriction envelope: stderr is
+// valid JSON, error.type=="validation", error.subtype=="command_unavailable",
+// the default integrator message is present, no policy diagnostics leak, and
+// the process exits 2.
 func TestReadonlyDenial(t *testing.T) {
-	bin := buildFork(t, "readonly", readonlyPlugin)
-	// Note: reason_code mixed_children_policy is intentionally NOT covered here.
-	// It requires a parent command whose *enumerated children* have mixed
-	// allow/deny outcomes, which needs the full command tree from API metadata.
-	// This L4 harness builds a bare-module fork (embedded stub only), so offline
-	// a parent like "sheets" has no known children and collapses to
-	// domain_not_allowed -- identical to the "leaf out of allow list" case and
-	// not a distinct reason_code. Covered instead by the in-process cmdpolicy
-	// unit tests, which construct a mixed-children tree directly.
+	bin := buildConcealedFork(t, "concealed-readonly", readonlyPlugin)
 	cases := []struct {
-		name       string
-		args       []string
-		reasonCode string
+		name string
+		args []string
 	}{
-		{"write in allowed domain", []string{"docs", "+update", "--doc-token", "x", "--content", "y"}, "write_not_allowed"},
-		{"leaf out of allow list", []string{"schema"}, "domain_not_allowed"},
+		{"write in allowed domain", []string{"docs", "+update", "--doc-token", "x", "--content", "y"}},
+		{"leaf out of allow list", []string{"schema"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertReasonCodeEnvelope(t, run(t, bin, tc.args...), tc.reasonCode)
+			assertUnavailableEnvelope(t, run(t, bin, tc.args...))
 		})
 	}
 }
@@ -65,15 +107,209 @@ func TestReadonlyDenial(t *testing.T) {
 // downstream (e.g. api/auth error), but that failure must not carry the
 // denial envelope shape and must not exit 2.
 func TestReadonlyAllows(t *testing.T) {
-	bin := buildFork(t, "readonly", readonlyPlugin)
+	bin := buildConcealedFork(t, "concealed-readonly", readonlyPlugin)
 	res := run(t, bin, "docs", "+fetch", "--doc", "nonexistent")
 	if res.exit == 2 {
 		t.Fatalf("read command was denied (exit=2); stderr=%s", res.stderr)
 	}
-	if gjson.Valid(res.stderr) && gjson.Get(res.stderr, "error.subtype").String() == "failed_precondition" {
+	if gjson.Valid(res.stderr) && gjson.Get(res.stderr, "error.subtype").String() == "command_unavailable" {
 		t.Errorf("read command produced a denial envelope; stderr=%s", res.stderr)
 	}
 }
+
+func TestConcealedForkProjectsFrameworkOwnedRootHelp(t *testing.T) {
+	bin := buildConcealedFork(t, "concealed-readonly", readonlyPlugin)
+	res := run(t, bin, "--help")
+	if res.exit != 0 {
+		t.Fatalf("--help exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
+	}
+	for _, dead := range []string{
+		"lark-cli api ",
+		"lark-cli schema ",
+		"lark-cli calendar +agenda",
+		"lark-cli mail user_mailbox.messages list",
+	} {
+		if strings.Contains(res.stdout, dead) {
+			t.Errorf("concealed fork root help retained %q:\n%s", dead, res.stdout)
+		}
+	}
+	if !strings.Contains(res.stdout, "Browse commands:") {
+		t.Fatalf("target-independent root guidance disappeared:\n%s", res.stdout)
+	}
+	if strings.Contains(res.stdout, "EXAMPLES (one per command style") {
+		t.Fatalf("empty root examples section survived projection:\n%s", res.stdout)
+	}
+}
+
+func TestConcealedForkProjectsSchemaFromGeneratedMethodHelp(t *testing.T) {
+	bin := buildConcealedFork(t, "concealed-readonly", readonlyPlugin)
+	catalog := strings.ReplaceAll(seededCatalogJSON, "plugine2e", "im")
+	assertUnavailableEnvelope(t, runWithSeededCatalog(t, bin, catalog, "schema"))
+	rootHelp := runWithSeededCatalog(t, bin, catalog, "--help")
+	if rootHelp.exit != 0 || strings.Contains(rootHelp.stdout, "lark-cli schema ") {
+		t.Fatalf("seeded root help did not project schema: exit=%d stdout=%s stderr=%s",
+			rootHelp.exit, rootHelp.stdout, rootHelp.stderr)
+	}
+	res := runWithSeededCatalog(
+		t,
+		bin,
+		catalog,
+		"im", "widgets", "get", "--help",
+	)
+	if res.exit != 0 {
+		t.Fatalf("generated method --help exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
+	}
+	if strings.Contains(res.stdout, "lark-cli schema") ||
+		strings.Contains(res.stdout, "Full parameter schema:") {
+		t.Fatalf("concealed schema left a generated-method dead pointer:\n%s", res.stdout)
+	}
+	for _, want := range []string{"synthetic read method", "--id"} {
+		if !strings.Contains(res.stdout, want) {
+			t.Errorf("schema projection removed generated-method help %q:\n%s", want, res.stdout)
+		}
+	}
+}
+
+func TestConcealedForkHelpRejectsDescendantOfConcealedParent(t *testing.T) {
+	bin := buildConcealedFork(t, "concealed-readonly", readonlyPlugin)
+	assertUnavailableEnvelope(t, run(t, bin, "help", "auth", "login"))
+}
+
+func TestConcealedForkUsesTargetFreeAuthorizationFallback(t *testing.T) {
+	bin := buildConcealedFork(t, "concealed-drive", driveOnlyPlugin)
+	configDir := t.TempDir()
+	writeFile(t, filepath.Join(configDir, "config.json"),
+		`{"apps":[{"appId":"cli_plugin_e2e","appSecret":"secret","brand":"feishu","users":[]}]}`)
+	env := append(baseEnv(),
+		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
+		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
+		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
+		"LARKSUITE_CLI_REMOTE_META=off",
+	)
+	res := runWithEnv(t, bin, env, "drive", "+search", "--as", "user")
+	if res.exit != 3 || !gjson.Valid(res.stderr) {
+		t.Fatalf("drive +search --as user exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
+	}
+	hint := gjson.Get(res.stderr, "error.hint").String()
+	if strings.Contains(hint, "auth login") ||
+		!strings.Contains(hint, "supported authorization flow") {
+		t.Fatalf("concealed authorization recovery = %q, want target-free fallback", hint)
+	}
+	if !strings.Contains(hint, "current command requires scope(s): search:docs:read") {
+		t.Fatalf("concealed authorization recovery lost command scope context: %q", hint)
+	}
+}
+
+func TestConcealedForkProjectsAuthorizationCommandOutOfValidationMessage(t *testing.T) {
+	bin := buildConcealedFork(t, "concealed-drive", driveOnlyPlugin)
+	configDir := t.TempDir()
+	writeFile(t, filepath.Join(configDir, "config.json"),
+		`{"apps":[{"appId":"cli_plugin_e2e","appSecret":"secret","brand":"feishu","users":[]}]}`)
+	env := append(baseEnv(),
+		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
+		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
+		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
+		"LARKSUITE_CLI_REMOTE_META=off",
+	)
+	res := runWithEnv(t, bin, env, "drive", "+search", "--mine")
+	if res.exit != 2 || !gjson.Valid(res.stderr) {
+		t.Fatalf("drive +search --mine exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
+	}
+	message := gjson.Get(res.stderr, "error.message").String()
+	if strings.Contains(message, "auth login") ||
+		!strings.Contains(message, "set user open_id in config") {
+		t.Fatalf("concealed validation message = %q, want retained target-free recovery", message)
+	}
+}
+
+func TestConcealedForkProjectsRetainedFrameworkRecovery(t *testing.T) {
+	bin := buildConcealedFork(t, "concealed-recovery-targets", recoveryTargetsPlugin)
+	configDir := t.TempDir()
+	writeFile(t, filepath.Join(configDir, "config.json"),
+		`{"currentApp":"only","apps":[{"name":"only","appId":"cli_plugin_e2e","appSecret":"secret","brand":"feishu","users":[]}]}`)
+	env := append(baseEnv(),
+		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
+		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
+		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
+		"LARKSUITE_CLI_REMOTE_META=off",
+	)
+
+	assertUnavailableEnvelope(t, runWithEnv(t, bin, env, "profile", "add", "--help"))
+	profileRemove := runWithEnv(t, bin, env, "profile", "remove", "only")
+	if profileRemove.exit != 2 || !gjson.Valid(profileRemove.stderr) {
+		t.Fatalf("profile remove exit=%d stdout=%s stderr=%s", profileRemove.exit, profileRemove.stdout, profileRemove.stderr)
+	}
+	if got := gjson.Get(profileRemove.stderr, "error.subtype").String(); got != "failed_precondition" {
+		t.Fatalf("profile remove subtype=%q, want failed_precondition; stderr=%s", got, profileRemove.stderr)
+	}
+	profileHint := gjson.Get(profileRemove.stderr, "error.hint").String()
+	if strings.Contains(profileHint, "profile add") ||
+		profileHint != "configure another profile through this distribution before removing the only profile" {
+		t.Fatalf("concealed profile recovery = %q, want target-free fallback", profileHint)
+	}
+
+	assertUnavailableEnvelope(t, runWithEnv(t, bin, env, "config", "bind", "--help"))
+	configInitHelp := runWithEnv(t, bin, env, "config", "init", "--help")
+	if configInitHelp.exit != 0 || configInitHelp.stderr != "" {
+		t.Fatalf("config init --help exit=%d stdout=%s stderr=%s",
+			configInitHelp.exit, configInitHelp.stdout, configInitHelp.stderr)
+	}
+	if strings.Contains(configInitHelp.stdout, "config bind") {
+		t.Fatalf("config init --help retained concealed config bind pointer:\n%s", configInitHelp.stdout)
+	}
+	for _, want := range []string{"--force-init", "supported setup flow"} {
+		if !strings.Contains(configInitHelp.stdout, want) {
+			t.Fatalf("config init --help missing %q:\n%s", want, configInitHelp.stdout)
+		}
+	}
+	agentEnv := append(append([]string(nil), env...), "OPENCLAW_HOME="+t.TempDir())
+	configInit := runWithEnv(t, bin, agentEnv, "config", "init", "--new")
+	if configInit.exit != 3 || !gjson.Valid(configInit.stderr) {
+		t.Fatalf("config init exit=%d stdout=%s stderr=%s", configInit.exit, configInit.stdout, configInit.stderr)
+	}
+	if got := gjson.Get(configInit.stderr, "error.subtype").String(); got != "not_configured" {
+		t.Fatalf("config init subtype=%q, want not_configured; stderr=%s", got, configInit.stderr)
+	}
+	configHint := gjson.Get(configInit.stderr, "error.hint").String()
+	if strings.Contains(configHint, "config bind") ||
+		configHint != "Pass --force-init only if the user explicitly wants a separate app in this workspace." {
+		t.Fatalf("concealed config recovery = %q, want retained --force-init path", configHint)
+	}
+}
+
+const recoveryTargetsPlugin = `// Code generated by plugin_e2e; DO NOT EDIT.
+package plugin
+
+import "github.com/larksuite/cli/extension/platform"
+
+func init() {
+	platform.Register(
+		platform.NewPlugin("recovery-targets", "0.1.0").
+			Restrict(&platform.Rule{
+				Name:    "retain-error-producers",
+				Allow:   []string{"profile/remove", "config/init"},
+				MaxRisk: platform.RiskWrite,
+			}).
+			MustBuild())
+}
+`
+
+const driveOnlyPlugin = `// Code generated by plugin_e2e; DO NOT EDIT.
+package plugin
+
+import "github.com/larksuite/cli/extension/platform"
+
+func init() {
+	platform.Register(
+		platform.NewPlugin("drive-only", "0.1.0").
+			Restrict(&platform.Rule{
+				Name:    "drive-readonly",
+				Allow:   []string{"drive/**"},
+				MaxRisk: platform.RiskRead,
+			}).
+			MustBuild())
+}
+`
 
 // identityPlugin registers a Restrict rule scoped to bot identities only.
 // im +messages-search declares AuthTypes:["user"] (see
@@ -149,57 +385,61 @@ func init() {
 }
 `
 
-// assertReasonCodeEnvelope asserts the VERIFIED envelope shape shared by every
-// reason_code across this package -- both policy denials (this file) and
-// install-time failures (install_test.go): exit 2, valid JSON on stderr,
-// error.type=="validation", error.subtype=="failed_precondition", and
-// error.hint containing "reason_code <wantReasonCode>". Both paths render
-// through the SAME cmd/platform_guards.go WithHint(...) family, embedding
-// reason_code in the hint STRING, not a structured error.detail.reason_code
-// field (contradicting internal/platform/error.go:34's comment).
-func assertReasonCodeEnvelope(t *testing.T, res result, wantReasonCode string) {
+// assertUnavailableEnvelope pins the process-level contract for a command
+// removed from an integrator build by Plugin.Restrict.
+func assertUnavailableEnvelope(t *testing.T, res result) {
 	t.Helper()
 	if res.exit != 2 {
 		t.Fatalf("exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
 	}
-	if !gjson.Valid(res.stderr) {
-		t.Fatalf("stderr not JSON: %s", res.stderr)
+	assertUnavailableJSON(t, res.stderr)
+}
+
+func assertUnavailableJSON(t *testing.T, envelope string) {
+	t.Helper()
+	if !gjson.Valid(envelope) {
+		t.Fatalf("stderr not JSON: %s", envelope)
 	}
-	if got := gjson.Get(res.stderr, "error.type").String(); got != "validation" {
+	if got := gjson.Get(envelope, "error.type").String(); got != "validation" {
 		t.Errorf("error.type=%q want validation", got)
 	}
-	if got := gjson.Get(res.stderr, "error.subtype").String(); got != "failed_precondition" {
-		t.Errorf("error.subtype=%q want failed_precondition", got)
+	if got := gjson.Get(envelope, "error.subtype").String(); got != "command_unavailable" {
+		t.Errorf("error.subtype=%q want command_unavailable", got)
 	}
-	if hint := gjson.Get(res.stderr, "error.hint").String(); !strings.Contains(hint, "reason_code "+wantReasonCode) {
-		t.Errorf("hint=%q want to contain reason_code %s", hint, wantReasonCode)
+	if got := gjson.Get(envelope, "error.message").String(); got != "command not included in this build" {
+		t.Errorf("error.message=%q want default unavailable message", got)
+	}
+	if gjson.Get(envelope, "error.hint").Exists() {
+		t.Errorf("error.hint must be absent for an unavailable command: %s", envelope)
+	}
+	if gjson.Get(envelope, "error.detail").Exists() {
+		t.Errorf("error.detail must be absent for an unavailable command: %s", envelope)
 	}
 }
 
-// TestIdentityMismatchDenial pins reason_code=identity_mismatch: a bot-only
-// rule rejects a command whose declared AuthTypes don't include "bot".
+// TestIdentityMismatchDenial pins the uniform unavailable presentation when a
+// bot-only rule rejects a command whose declared AuthTypes don't include bot.
 func TestIdentityMismatchDenial(t *testing.T) {
-	bin := buildFork(t, "identity", identityPlugin)
+	bin := buildConcealedFork(t, "concealed-identity", identityPlugin)
 	res := run(t, bin, "im", "+messages-search", "--as", "user")
 	t.Logf("exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
-	assertReasonCodeEnvelope(t, res, "identity_mismatch")
+	assertUnavailableEnvelope(t, res)
 }
 
-// TestDenylistDenial pins reason_code=command_denylisted: a Deny glob hit
-// rejects the command even though it also matches Allow.
+// TestDenylistDenial pins the uniform unavailable presentation when a Deny
+// glob rejects a command even though it also matches Allow.
 func TestDenylistDenial(t *testing.T) {
-	bin := buildFork(t, "denylist", denylistPlugin)
+	bin := buildConcealedFork(t, "concealed-denylist", denylistPlugin)
 	res := run(t, bin, "docs", "+search")
 	t.Logf("exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
-	assertReasonCodeEnvelope(t, res, "command_denylisted")
+	assertUnavailableEnvelope(t, res)
 }
 
-// TestMultiRuleDenial pins reason_code=no_matching_rule: a command rejected
-// by every rule in a multi-Restrict() plugin gets the aggregate reason_code,
-// not either rule's own per-rule reason_code.
+// TestMultiRuleDenial pins the uniform unavailable presentation when every
+// rule in a multi-Restrict plugin rejects the command.
 func TestMultiRuleDenial(t *testing.T) {
-	bin := buildFork(t, "multirule", multiRulePlugin)
+	bin := buildConcealedFork(t, "concealed-multirule", multiRulePlugin)
 	res := run(t, bin, "schema")
 	t.Logf("exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
-	assertReasonCodeEnvelope(t, res, "no_matching_rule")
+	assertUnavailableEnvelope(t, res)
 }

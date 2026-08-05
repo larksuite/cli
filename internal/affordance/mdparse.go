@@ -93,11 +93,16 @@ type mdSection struct {
 	cases []meta.AffordanceCase
 }
 
+type parsedDomain struct {
+	skill   string
+	methods map[string]meta.Affordance
+}
+
 // parseDomainMD parses one domain's markdown into per-method Affordance values,
 // keyed by method id. resolve maps a command-form heading ("user_mailbox.messages
 // list") to its method id ("user_mailbox.message.list"); nil falls back to the
 // space→dot rule (valid only where the command form already equals the id).
-func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affordance {
+func parseDomainMD(src []byte, resolve func(string) string) parsedDomain {
 	if resolve == nil {
 		resolve = headingToKey
 	}
@@ -171,7 +176,7 @@ func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affo
 		case strings.HasPrefix(line, "# "):
 			continue
 		case strings.HasPrefix(t, "> skill:"):
-			skill = strings.TrimSpace(t[len("> skill:"):])
+			skill = strings.Trim(strings.TrimSpace(t[len("> skill:"):]), "`")
 			continue
 		case strings.HasPrefix(line, "### "):
 			flushPending()
@@ -220,5 +225,5 @@ func parseDomainMD(src []byte, resolve func(string) string) map[string]meta.Affo
 	}
 	flushPending()
 	assemble()
-	return out
+	return parsedDomain{skill: skill, methods: out}
 }

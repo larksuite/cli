@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
 
 	"github.com/larksuite/cli/errs"
 )
@@ -36,9 +35,11 @@ type EmitterConfig struct {
 // EmitOptions describes one result's wire representation.
 //
 // The format contract is explicit: JSON (including the empty default) uses an
-// Envelope; pretty, table, csv, and ndjson render naked business data. JQ takes
-// precedence over Format and filters the JSON Envelope. Raw affects only JSON
-// envelope encoding and jq's complex-value encoding.
+// Envelope. Pretty and table render business data plus a human pagination
+// summary when supplied; csv and ndjson keep stdout as naked records and put
+// pagination metadata on the diagnostics stream. JQ takes precedence over
+// Format and filters the JSON Envelope. Raw affects only JSON envelope encoding
+// and jq's complex-value encoding.
 //
 // JQSafetyWarning preserves the legacy difference between RuntimeContext.emit
 // (false) and WriteSuccessEnvelope (true) until their callers are migrated.
@@ -94,8 +95,8 @@ func NewEmitter(config EmitterConfig) *Emitter {
 }
 
 // Success scans and emits one command result by composing the package's leaf
-// primitives. JSON and jq use the standard envelope; pretty, table, csv, and
-// ndjson render the business value directly.
+// primitives. JSON and jq use the standard envelope; record formats keep their
+// stdout payload free of envelope metadata.
 func (e *Emitter) Success(data interface{}, opts EmitOptions) error {
 	if err := e.requireOutput(); err != nil {
 		return err
@@ -104,14 +105,23 @@ func (e *Emitter) Success(data interface{}, opts EmitOptions) error {
 	if opts.JQ != "" {
 		return e.emitEnvelope(data, true, opts)
 	}
-
-	switch opts.Format {
-	case "", "json":
-		return e.emitEnvelope(data, true, opts)
-	case "pretty":
+	if opts.Format == "pretty" {
 		return e.emitPretty(data, opts)
+	}
+
+	format, known := ParseFormat(opts.Format)
+	if !known {
+		fmt.Fprintf(e.errOut, "warning: unknown format %q, falling back to json\n", opts.Format)
+		return e.emitEnvelope(data, true, opts)
+	}
+	switch format {
+	case FormatJSON:
+		return e.emitEnvelope(data, true, opts)
+	case FormatTable, FormatCSV, FormatNDJSON:
+		return e.emitFormatted(data, format, opts.Meta)
 	default:
-		return e.emitFormatted(data, opts.Format)
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"unsupported output format %q", format)
 	}
 }
 
@@ -245,7 +255,10 @@ func (e *Emitter) emitPretty(data interface{}, opts EmitOptions) error {
 	}
 	if opts.Pretty != nil {
 		return e.emit(func(w io.Writer) error {
-			return opts.Pretty(w, e.colorEnabled)
+			if err := opts.Pretty(w, e.colorEnabled); err != nil {
+				return err
+			}
+			return writePaginationSummary(w, opts.Meta)
 		})
 	}
 
@@ -255,7 +268,10 @@ func (e *Emitter) emitPretty(data interface{}, opts EmitOptions) error {
 	return e.emitEnvelope(data, true, opts)
 }
 
-func (e *Emitter) emitFormatted(data interface{}, rawFormat string) error {
+// emitFormatted handles only non-envelope formats. JSON, jq, and unknown-format
+// fallback are resolved by Success before reaching this function, so there is
+// exactly one JSON success contract: the standard Envelope.
+func (e *Emitter) emitFormatted(data interface{}, format Format, meta *Meta) error {
 	scanResult := ScanForSafety(e.commandPath, data, e.errOut)
 	if scanResult.Blocked {
 		return scanResult.BlockErr
@@ -266,43 +282,49 @@ func (e *Emitter) emitFormatted(data interface{}, rawFormat string) error {
 		}
 	}
 
-	format, known := ParseFormat(rawFormat)
-	if !known && e.errOut != nil {
-		fmt.Fprintf(e.errOut, "warning: unknown format %q, falling back to json\n", rawFormat)
+	switch format {
+	case FormatTable:
+		return e.emit(func(w io.Writer) error {
+			if err := WriteFormatted(w, data, format); err != nil {
+				return err
+			}
+			return writePaginationSummary(w, meta)
+		})
+	case FormatCSV, FormatNDJSON:
+		if err := e.emit(func(w io.Writer) error {
+			return WriteFormatted(w, data, format)
+		}); err != nil {
+			return err
+		}
+		if meta == nil || meta.Pagination == nil {
+			return nil
+		}
+		return writePaginationDiagnostic(e.errOut, *meta.Pagination)
+	default:
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"non-envelope emitter received unsupported format %q", format)
 	}
-	if format == FormatJSON {
-		return e.printLegacyDataJSON(data)
-	}
-	return e.emit(func(w io.Writer) error {
-		return WriteFormatted(w, data, format)
-	})
 }
 
-type emitterDataMap map[string]interface{}
-
-// printLegacyDataJSON matches FormatValue's JSON branch while sourcing notice
-// data from this Emitter instead of PrintJson's global PendingNotice hook.
-func (e *Emitter) printLegacyDataJSON(data interface{}) error {
-	// Normalise structs / named maps to plain generic types first, exactly as
-	// FormatValue does, so a struct or named-map payload still matches the map
-	// case below and keeps its injected _notice on the unknown-format fallback.
-	data = toGeneric(data)
-	if m, ok := data.(map[string]interface{}); ok {
-		if _, isEnvelope := m["ok"]; isEnvelope {
-			if notice := e.notice(); notice != nil {
-				m = maps.Clone(m)
-				m["_notice"] = notice
-			}
-		}
-		// The named map retains identical JSON bytes while preventing PrintJson
-		// from consulting its legacy global notice hook a second time.
-		return e.emit(func(w io.Writer) error {
-			return WriteJSON(w, emitterDataMap(m))
-		})
+func writePaginationSummary(w io.Writer, meta *Meta) error {
+	if meta == nil || meta.Pagination == nil {
+		return nil
 	}
-	return e.emit(func(w io.Writer) error {
-		return WriteJSON(w, data)
-	})
+	pagination := meta.Pagination
+	status := "complete"
+	if !pagination.Complete {
+		status = "incomplete"
+	}
+	if _, err := fmt.Fprintf(w, "\nPagination: %s (%d page(s), %d item(s))", status, pagination.Pages, pagination.Items); err != nil {
+		return err
+	}
+	if !pagination.Complete && pagination.NextToken != "" {
+		if _, err := fmt.Fprintf(w, "; resume token: %q", pagination.NextToken); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintln(w)
+	return err
 }
 
 func (e *Emitter) emit(render func(io.Writer) error) error {

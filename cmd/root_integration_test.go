@@ -59,7 +59,7 @@ func executeRootIntegration(t *testing.T, f *cmdutil.Factory, rootCmd *cobra.Com
 	t.Helper()
 	rootCmd.SetArgs(args)
 	if err := rootCmd.Execute(); err != nil {
-		return handleRootError(f, err)
+		return handleRootError(f, err, nil)
 	}
 	return 0
 }
@@ -505,7 +505,7 @@ func TestSetupNotices_ColdStart_NoNotice(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	notice := output.GetNotice()
 	if notice == nil {
@@ -539,7 +539,7 @@ func TestSetupNotices_InSync(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	notice := output.GetNotice()
 	if notice != nil {
@@ -572,7 +572,7 @@ func TestSetupNotices_Drift(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	notice := output.GetNotice()
 	if notice == nil {
@@ -621,7 +621,7 @@ func TestSetupNotices_BothUpdateAndSkills(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	// After setupNotices, skills pending is set (drift). Manually populate
 	// the update side so the composed envelope has both keys — the update

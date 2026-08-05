@@ -17,6 +17,8 @@ import (
 	"github.com/larksuite/cli/internal/transport"
 )
 
+var _ transport.RoundTripperDecorator = (*SecurityPolicyTransport)(nil)
+
 // SecurityPolicyTransport is an http.RoundTripper that intercepts all responses
 // and checks for security policy errors.
 type SecurityPolicyTransport struct {
@@ -29,6 +31,16 @@ func (t *SecurityPolicyTransport) base() http.RoundTripper {
 		return t.Base
 	}
 	return transport.Fallback()
+}
+
+func (t *SecurityPolicyTransport) BaseRoundTripper() http.RoundTripper {
+	return t.base()
+}
+
+func (t *SecurityPolicyTransport) WithBaseRoundTripper(base http.RoundTripper) http.RoundTripper {
+	cloned := *t
+	cloned.Base = base
+	return &cloned
 }
 
 // RoundTrip implements http.RoundTripper.

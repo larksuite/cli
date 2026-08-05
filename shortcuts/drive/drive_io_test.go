@@ -1580,6 +1580,84 @@ func TestDriveDownloadAllowsOverwriteFlag(t *testing.T) {
 	}
 }
 
+func TestDriveDownloadHTTP403SuggestsPreview(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/file_403/download",
+		Status:  http.StatusForbidden,
+		RawBody: []byte("permission denied"),
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveDownload, []string{
+		"+download",
+		"--file-token", "file_403",
+		"--output", "blocked.md",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected HTTP 403 error, got nil")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryNetwork {
+		t.Fatalf("category=%q, want network", problem.Category)
+	}
+	if problem.Code != http.StatusForbidden {
+		t.Fatalf("code=%d, want %d", problem.Code, http.StatusForbidden)
+	}
+	if !strings.Contains(problem.Hint, "drive +preview") {
+		t.Fatalf("hint=%q, want preview guidance", problem.Hint)
+	}
+	if strings.Contains(problem.Hint, "file_403") {
+		t.Fatalf("hint=%q, want placeholder file token", problem.Hint)
+	}
+	if !strings.Contains(problem.Hint, "--file-token <FILE_TOKEN>") {
+		t.Fatalf("hint=%q, want file token placeholder", problem.Hint)
+	}
+	if !strings.Contains(problem.Hint, "--type source_file") || !strings.Contains(problem.Hint, "--output <path>") {
+		t.Fatalf("hint=%q, want source_file output command", problem.Hint)
+	}
+}
+
+func TestDriveDownloadHTTP404DoesNotSuggestPreview(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/file_missing/download",
+		Status:  http.StatusNotFound,
+		RawBody: []byte("not found"),
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveDownload, []string{
+		"+download",
+		"--file-token", "file_missing",
+		"--output", "missing.md",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected HTTP 404 error, got nil")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Code != http.StatusNotFound {
+		t.Fatalf("code=%d, want %d", problem.Code, http.StatusNotFound)
+	}
+	if strings.Contains(problem.Hint, "drive +preview") {
+		t.Fatalf("hint=%q, want no preview guidance for non-403", problem.Hint)
+	}
+}
+
 func TestDriveDownloadDefaultOutputPathSanitizesSlashOnlyNames(t *testing.T) {
 	header := http.Header{
 		"Content-Disposition": []string{`attachment; filename="////"`},

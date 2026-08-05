@@ -10,6 +10,8 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 )
 
 // TestAuthListRun_NotConfigured_ReturnsExitZero pins the contract that
@@ -126,7 +128,49 @@ func TestAuthListRun_DefaultMode_NoLoggedInUsers_KeepsTextOutput(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Errorf("stdout must stay empty in default mode, got:\n%s", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "No logged-in users") {
-		t.Errorf("stderr = %q, want no-users hint", stderr.String())
+	if got := stderr.String(); !strings.Contains(got, "No logged-in users") ||
+		!strings.Contains(got, "auth login") {
+		t.Errorf("stderr = %q, want established no-users login hint", got)
+	}
+}
+
+func TestAuthListRun_ConcealedLoginKeepsStateWithoutDeadRecovery(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	writeLogoutConfig(t, nil)
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	if err := authListRunWithRecovery(
+		&ListOptions{Factory: f},
+		recovery.NewProjector(func() *surface.Plan { return plan }),
+	); err != nil {
+		t.Fatalf("auth list should remain a successful probe: %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout must stay empty, got:\n%s", stdout.String())
+	}
+	if got := stderr.String(); !strings.Contains(got, "No logged-in users") ||
+		strings.Contains(got, "auth login") {
+		t.Fatalf("concealed recovery = %q, want state without dead login action", got)
+	}
+}
+
+func TestAuthListRun_ConcealedConfigInitProjectsManualErrorOutput(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandConfigInit: surface.CommandConcealed,
+	})
+	if err := authListRunWithRecovery(
+		&ListOptions{Factory: f},
+		recovery.NewProjector(func() *surface.Plan { return plan }),
+	); err != nil {
+		t.Fatalf("auth list should remain a successful probe: %v", err)
+	}
+	if got := stderr.String(); strings.Contains(got, "config init") {
+		t.Fatalf("manual config error rendering retained concealed recovery: %q", got)
 	}
 }

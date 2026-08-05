@@ -38,9 +38,10 @@ func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) e
 	}
 	switch oauthErr {
 	case "invalid_client", "unauthorized_client":
-		return errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
+		typed := errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
 			WithCode(code).
 			WithHint("%s", errclass.ConfigHint(errs.SubtypeInvalidClient))
+		return errclass.AnnotateConfigRecovery(typed, errs.SubtypeInvalidClient)
 	}
 	if err := errclass.BuildAPIError(map[string]any{
 		"code": code,

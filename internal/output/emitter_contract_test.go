@@ -63,6 +63,127 @@ func TestEmitterSuccessWritesAllBytes(t *testing.T) {
 	}
 }
 
+func TestEmitterPaginationMetadataByFormat(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+	data := map[string]interface{}{
+		"items": []interface{}{map[string]interface{}{"id": "1", "name": "first"}},
+	}
+	meta := &output.Meta{
+		Count: 1,
+		Pagination: &output.PaginationMeta{
+			Complete:  false,
+			Pages:     2,
+			Items:     1,
+			NextToken: "resume-token",
+		},
+	}
+
+	t.Run("json envelope", func(t *testing.T) {
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+		emitter := output.NewEmitter(output.EmitterConfig{
+			Out: stdout, ErrOut: stderr, CommandPath: "lark-cli fixture +emit",
+		})
+		if err := emitter.Success(data, output.EmitOptions{Format: "json", Meta: meta}); err != nil {
+			t.Fatalf("Emitter.Success() error = %v", err)
+		}
+		var envelope output.Envelope
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode stdout: %v", err)
+		}
+		if envelope.Meta == nil || !reflect.DeepEqual(envelope.Meta.Pagination, meta.Pagination) {
+			t.Fatalf("pagination meta = %#v, want %#v", envelope.Meta, meta.Pagination)
+		}
+		if stderr.Len() != 0 {
+			t.Fatalf("json wrote pagination diagnostic to stderr: %q", stderr.String())
+		}
+	})
+
+	t.Run("unknown format falls back to the same json envelope", func(t *testing.T) {
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+		emitter := output.NewEmitter(output.EmitterConfig{
+			Out: stdout, ErrOut: stderr, CommandPath: "lark-cli fixture +emit",
+		})
+		if err := emitter.Success(data, output.EmitOptions{Format: "yaml", Meta: meta}); err != nil {
+			t.Fatalf("Emitter.Success() error = %v", err)
+		}
+		var envelope output.Envelope
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("fallback stdout is not one complete JSON envelope: %v\n%s", err, stdout.String())
+		}
+		if envelope.Meta == nil || !reflect.DeepEqual(envelope.Meta.Pagination, meta.Pagination) {
+			t.Fatalf("fallback pagination meta = %#v, want %#v", envelope.Meta, meta.Pagination)
+		}
+		if !strings.Contains(stderr.String(), `warning: unknown format "yaml", falling back to json`) {
+			t.Fatalf("fallback stderr = %q, want unknown-format warning", stderr.String())
+		}
+		if strings.Contains(stderr.String(), `"_diagnostic":"pagination"`) {
+			t.Fatalf("fallback emitted a second pagination contract: %q", stderr.String())
+		}
+	})
+
+	for _, tc := range []struct {
+		name   string
+		format string
+		pretty output.PrettyRenderer
+	}{
+		{name: "pretty", format: "pretty", pretty: func(w io.Writer, _ bool) error {
+			_, err := io.WriteString(w, "first\n")
+			return err
+		}},
+		{name: "table", format: "table"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout := &bytes.Buffer{}
+			stderr := &bytes.Buffer{}
+			emitter := output.NewEmitter(output.EmitterConfig{
+				Out: stdout, ErrOut: stderr, CommandPath: "lark-cli fixture +emit",
+			})
+			if err := emitter.Success(data, output.EmitOptions{Format: tc.format, Pretty: tc.pretty, Meta: meta}); err != nil {
+				t.Fatalf("Emitter.Success() error = %v", err)
+			}
+			for _, want := range []string{"Pagination: incomplete", "2 page(s)", "1 item(s)", `resume token: "resume-token"`} {
+				if !strings.Contains(stdout.String(), want) {
+					t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+				}
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("%s wrote pagination diagnostic to stderr: %q", tc.format, stderr.String())
+			}
+		})
+	}
+
+	for _, format := range []string{"ndjson", "csv"} {
+		t.Run(format, func(t *testing.T) {
+			stdout := &bytes.Buffer{}
+			stderr := &bytes.Buffer{}
+			emitter := output.NewEmitter(output.EmitterConfig{
+				Out: stdout, ErrOut: stderr, CommandPath: "lark-cli fixture +emit",
+			})
+			if err := emitter.Success(data, output.EmitOptions{Format: format, Meta: meta}); err != nil {
+				t.Fatalf("Emitter.Success() error = %v", err)
+			}
+			if strings.Contains(stdout.String(), "_diagnostic") || strings.Contains(stdout.String(), "resume-token") {
+				t.Fatalf("%s stdout was polluted by pagination metadata: %q", format, stdout.String())
+			}
+			var diagnostic struct {
+				Diagnostic string `json:"_diagnostic"`
+				Complete   bool   `json:"complete"`
+				Pages      int    `json:"pages"`
+				Items      int    `json:"items"`
+				NextToken  string `json:"next_token"`
+			}
+			if err := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &diagnostic); err != nil {
+				t.Fatalf("decode pagination diagnostic %q: %v", stderr.String(), err)
+			}
+			if diagnostic.Diagnostic != "pagination" || diagnostic.Complete || diagnostic.Pages != 2 || diagnostic.Items != 1 || diagnostic.NextToken != "resume-token" {
+				t.Fatalf("pagination diagnostic = %+v", diagnostic)
+			}
+		})
+	}
+}
+
 func TestEmitterMarshalFailureReturnsTypedErrorWithoutOutput(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
 	stdout := &bytes.Buffer{}

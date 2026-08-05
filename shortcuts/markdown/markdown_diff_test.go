@@ -48,6 +48,73 @@ func TestMarkdownDiffRejectsToVersionWithoutFromVersion(t *testing.T) {
 	}
 }
 
+func TestMarkdownDiffRejectsBlankVersion(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantParam string
+	}{
+		{
+			name: "from version",
+			args: []string{
+				"+diff",
+				"--file-token", "box_md_diff",
+				"--from-version", " \t",
+				"--file", "./local.md",
+			},
+			wantParam: "--from-version",
+		},
+		{
+			name: "to version",
+			args: []string{
+				"+diff",
+				"--file-token", "box_md_diff",
+				"--from-version", "7633658129540910621",
+				"--to-version", "  ",
+			},
+			wantParam: "--to-version",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
+
+			err := mountAndRunMarkdown(t, MarkdownDiff, tt.args, f, stdout)
+			requireMarkdownValidationParam(t, err, tt.wantParam)
+			if !strings.Contains(err.Error(), "cannot be empty") {
+				t.Fatalf("expected empty version validation error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestMarkdownSourceFilePreviewParamsValidateAndPreserveVersion(t *testing.T) {
+	version := " 7633658129540910621 "
+
+	query, err := markdownSourceFilePreviewQuery(version, "--from-version")
+	if err != nil {
+		t.Fatalf("markdownSourceFilePreviewQuery() error: %v", err)
+	}
+	if got := query["version"]; len(got) != 1 || got[0] != version {
+		t.Fatalf("query version = %#v, want original %q", got, version)
+	}
+
+	params, err := markdownSourceFilePreviewDryRunParams(version, "--from-version")
+	if err != nil {
+		t.Fatalf("markdownSourceFilePreviewDryRunParams() error: %v", err)
+	}
+	if got := params["version"]; got != version {
+		t.Fatalf("dry-run version = %#v, want original %q", got, version)
+	}
+
+	_, err = markdownSourceFilePreviewQuery(" \n", "--from-version")
+	requireMarkdownValidationParam(t, err, "--from-version")
+	_, err = markdownSourceFilePreviewDryRunParams(" \t", "--to-version")
+	requireMarkdownValidationParam(t, err, "--to-version")
+}
+
 func TestMarkdownDiffMissingVersionAndFileNamesCandidateParams(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
@@ -79,7 +146,7 @@ func TestMarkdownDiffRemoteVsRemoteJSON(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_diff/download?version=7633658129540910621",
+		URL:     "/open-apis/drive/v1/medias/box_md_diff/preview_download?preview_type=16&version=7633658129540910621",
 		Status:  200,
 		RawBody: []byte("# Title\n\n- alpha\n- beta\n"),
 		Headers: http.Header{
@@ -88,7 +155,7 @@ func TestMarkdownDiffRemoteVsRemoteJSON(t *testing.T) {
 	})
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_diff/download?version=7633658129540910628",
+		URL:     "/open-apis/drive/v1/medias/box_md_diff/preview_download?preview_type=16&version=7633658129540910628",
 		Status:  200,
 		RawBody: []byte("# Title\n\n- alpha\n- beta updated\n- gamma\n"),
 		Headers: http.Header{
@@ -151,7 +218,7 @@ func TestMarkdownDiffRemoteVsLocalPretty(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_diff/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_diff/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# Title\n\nhello old\n"),
 		Headers: http.Header{
@@ -191,7 +258,7 @@ func TestMarkdownDiffRejectsOversizedRemoteContent(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_diff/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_diff/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: bytes.Repeat([]byte("x"), markdownDiffMaxContentBytes+1),
 	})
@@ -218,7 +285,7 @@ func TestMarkdownDiffRejectsOversizedLocalContent(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_diff/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_diff/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# Title\n"),
 	})
@@ -337,7 +404,7 @@ func TestMarkdownDiffRemoteVsRemoteJSONMultipleHunks(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_diff/download?version=7633658129540910621",
+		URL:     "/open-apis/drive/v1/medias/box_md_diff/preview_download?preview_type=16&version=7633658129540910621",
 		Status:  200,
 		RawBody: []byte("line1\nline2\nline3\nline4\nline5\nline6\n"),
 		Headers: http.Header{
@@ -346,7 +413,7 @@ func TestMarkdownDiffRemoteVsRemoteJSONMultipleHunks(t *testing.T) {
 	})
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_diff/download?version=7633658129540910628",
+		URL:     "/open-apis/drive/v1/medias/box_md_diff/preview_download?preview_type=16&version=7633658129540910628",
 		Status:  200,
 		RawBody: []byte("line1\nline2 changed\nline3\nline4\nline5 changed\nline6\n"),
 		Headers: http.Header{
@@ -398,13 +465,13 @@ func TestMarkdownDiffNoChangesPretty(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_diff/download?version=7633658129540910621",
+		URL:     "/open-apis/drive/v1/medias/box_md_diff/preview_download?preview_type=16&version=7633658129540910621",
 		Status:  200,
 		RawBody: []byte("# Title\n"),
 	})
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/box_md_diff/download",
+		URL:     "/open-apis/drive/v1/medias/box_md_diff/preview_download?preview_type=16",
 		Status:  200,
 		RawBody: []byte("# Title\n"),
 	})
@@ -445,8 +512,11 @@ func TestMarkdownDiffDryRunRemoteVsLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "/open-apis/drive/v1/files/:file_token/download") && !strings.Contains(stdout.String(), "/open-apis/drive/v1/files/box_md_diff/download") {
-		t.Fatalf("dry-run missing download call: %s", stdout.String())
+	if !strings.Contains(stdout.String(), "/open-apis/drive/v1/medias/box_md_diff/preview_download") {
+		t.Fatalf("dry-run missing source preview download call: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"preview_type": "16"`) {
+		t.Fatalf("dry-run missing source_file preview_type: %s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), `"local_file": "local.md"`) && !strings.Contains(stdout.String(), `"local_file": "./local.md"`) {
 		t.Fatalf("dry-run missing local file metadata: %s", stdout.String())

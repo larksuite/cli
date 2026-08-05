@@ -39,7 +39,7 @@ var SlidesCreate = common.Shortcut{
 	Scopes: []string{"slides:presentation:create", "slides:presentation:write_only", "docs:document.media:upload"},
 	Flags: []common.Flag{
 		{Name: "title", Desc: "presentation title"},
-		{Name: "slides", Desc: "slide content JSON array (each element is a <slide> XML string, max 10; for more pages, create first then add via xml_presentation.slide.create). <img src=\"@./local.png\"> placeholders are auto-uploaded and replaced with file_token."},
+		{Name: "slides", Desc: "slide content JSON array (each element is a <slide> XML string, max 10; for more pages, create first then add them one at a time with slides +add-slide). <img src=\"@./local.png\"> placeholders are auto-uploaded and replaced with file_token."},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if slidesStr := runtime.Str("slides"); slidesStr != "" {
@@ -48,22 +48,12 @@ var SlidesCreate = common.Shortcut{
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides invalid JSON, must be an array of XML strings").WithParam("--slides")
 			}
 			if len(slides) > maxSlidesPerCreate {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides array exceeds maximum of %d slides; create the presentation first, then add slides via xml_presentation.slide.create", maxSlidesPerCreate).WithParam("--slides")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides array exceeds maximum of %d slides; create the presentation first, then add the remaining pages one at a time with slides +add-slide", maxSlidesPerCreate).WithParam("--slides")
 			}
 			// Validate placeholder paths up front so we don't create a presentation
 			// only to fail mid-way on a missing local file.
-			for _, path := range extractImagePlaceholderPaths(slides) {
-				stat, err := runtime.FileIO().Stat(path)
-				if err != nil {
-					return slidesInputStatError(err, "--slides", fmt.Sprintf("--slides @%s: file not found", path))
-				}
-				if !stat.Mode().IsRegular() {
-					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides @%s: must be a regular file", path).WithParam("--slides")
-				}
-				if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
-					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides @%s: file size %s exceeds 20 MB limit for slides image upload",
-						path, common.FormatSize(stat.Size())).WithParam("--slides")
-				}
+			if err := validateImagePlaceholderFiles(runtime, "--slides", extractImagePlaceholderPaths(slides)); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -251,7 +241,7 @@ func buildPresentationXML(title string) string {
 		escapedTitle = "Untitled"
 	}
 	return fmt.Sprintf(
-		`<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="%d" height="%d"><title>%s</title></presentation>`,
+		`<presentation xmlns="https://www.larkoffice.com/sml/2.0" width="%d" height="%d"><title>%s</title></presentation>`,
 		defaultPresentationWidth, defaultPresentationHeight, escapedTitle,
 	)
 }
@@ -265,7 +255,7 @@ func uploadSlidesPlaceholders(runtime *common.RuntimeContext, presentationID str
 	for i, path := range paths {
 		stat, err := runtime.FileIO().Stat(path)
 		if err != nil {
-			return tokens, i, slidesInputStatError(err, "--slides", fmt.Sprintf("@%s: file not found", path))
+			return tokens, i, slidesInputStatError(err, "--slides", fmt.Sprintf("@%s", path))
 		}
 		if !stat.Mode().IsRegular() {
 			return tokens, i, errs.NewValidationError(errs.SubtypeInvalidArgument, "@%s: must be a regular file", path).WithParam("--slides")

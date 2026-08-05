@@ -16,13 +16,13 @@ import (
 var DrivePreview = common.Shortcut{
 	Service:     "drive",
 	Command:     "+preview",
-	Description: "List or download available preview artifacts for a Drive file",
+	Description: "View or download Drive file content, or list and fetch available preview artifacts",
 	Risk:        "read",
 	Scopes:      []string{"drive:file:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file-token", Desc: "Drive file token", Required: true},
-		{Name: "type", Desc: "preview type to download: pdf | html | text | image | source"},
+		{Name: "type", Desc: "preview type to download: pdf | html | text | image | source_file"},
 		{Name: "version", Desc: "optional file version"},
 		{Name: "list-only", Type: "bool", Desc: "list preview candidates without downloading"},
 		{Name: "output", Desc: "local output path for downloaded preview"},
@@ -40,6 +40,25 @@ var DrivePreview = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		fileToken := runtime.Str("file-token")
 		version := strings.TrimSpace(runtime.Str("version"))
+		requestedType := strings.TrimSpace(runtime.Str("type"))
+		if requestedType == "source_file" {
+			downloadParams := map[string]interface{}{
+				"preview_type": drivePreviewTypeSourceFile,
+			}
+			if version != "" {
+				downloadParams["version"] = version
+			}
+			return common.NewDryRunAPI().
+				GET("/open-apis/drive/v1/medias/:file_token/preview_download").
+				Desc("Download the source file artifact").
+				Params(downloadParams).
+				Set("file_token", fileToken).
+				Set("mode", "download").
+				Set("requested_type", requestedType).
+				Set("selected_type", "source_file").
+				Set("selected_type_code", drivePreviewTypeSourceFile).
+				Set("output", runtime.Str("output"))
+		}
 		body := map[string]interface{}{}
 		if version != "" {
 			body["version"] = version
@@ -67,7 +86,7 @@ var DrivePreview = common.Shortcut{
 			Desc("[2] Download the requested preview after selecting a matching candidate from preview_result").
 			Params(downloadParams).
 			Set("mode", "download").
-			Set("requested_type", runtime.Str("type")).
+			Set("requested_type", requestedType).
 			Set("output", runtime.Str("output"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -82,9 +101,25 @@ var DrivePreview = common.Shortcut{
 			body["version"] = version
 		}
 
+		if requestedType == "source_file" {
+			fmt.Fprintf(runtime.IO().ErrOut, "Downloading source file artifact: %s\n", common.MaskToken(fileToken))
+			result, err := downloadDrivePreviewArtifact(ctx, runtime, fileToken, drivePreviewTypeSourceFile, version, outputPath, ifExists, drivePreviewFallbackExt("source_file"))
+			if err != nil {
+				return err
+			}
+			result["mode"] = "download"
+			result["file_token"] = fileToken
+			result["selected_type"] = "source_file"
+			runtime.Out(result, nil)
+			return nil
+		}
+
 		fmt.Fprintf(runtime.IO().ErrOut, "Fetching preview candidates: %s\n", common.MaskToken(fileToken))
 		data, candidates, err := fetchDrivePreviewCandidates(runtime, fileToken, body)
 		if err != nil {
+			if runtime.Bool("list-only") {
+				return withDrivePreviewSourceFileHint(err)
+			}
 			return err
 		}
 		if runtime.Bool("list-only") {

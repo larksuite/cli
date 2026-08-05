@@ -14,6 +14,8 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/spf13/cobra"
 )
 
@@ -377,5 +379,50 @@ func TestStrictModeStub_PreservesOriginalMetadata(t *testing.T) {
 	// Denial stamps must still be present.
 	if stub.Annotations[cmdpolicy.AnnotationDenialLayer] != cmdpolicy.LayerStrictMode {
 		t.Errorf("denial annotation overwritten or missing")
+	}
+}
+
+// The strict-mode stub carries a targeted config/strict-mode action alongside
+// non-command policy context. Rendering for a concealed tree drops only the
+// dead pointer and does not mutate the source error.
+func TestStrictModeStub_ConfigHintUsesBuildLocalSurface(t *testing.T) {
+	child := &cobra.Command{Use: "search", RunE: func(*cobra.Command, []string) error { return nil }}
+	stub := strictModeStubFrom(child, core.StrictModeBot)
+	source := stub.RunE(stub, nil)
+	var original *errs.ValidationError
+	if !errors.As(source, &original) {
+		t.Fatalf("expected *errs.ValidationError, got %T %v", source, source)
+	}
+	if original.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("subtype = %q, want failed_precondition", original.Subtype)
+	}
+	if !strings.Contains(original.Hint, "config strict-mode") {
+		t.Fatalf("producer hint = %q, want config strict-mode", original.Hint)
+	}
+
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandConfigStrictMode: surface.CommandConcealed,
+	})
+	var concealed *errs.ValidationError
+	if rendered := recovery.Render(source, plan); !errors.As(rendered, &concealed) {
+		t.Fatalf("rendered error = %T, want *errs.ValidationError", rendered)
+	}
+	if concealed == original {
+		t.Fatal("Render must clone the typed error")
+	}
+	if strings.Contains(concealed.Hint, "config strict-mode") {
+		t.Errorf("concealed hint still contains config strict-mode: %q", concealed.Hint)
+	}
+	if !strings.Contains(concealed.Hint, "reason_code identity_not_supported") {
+		t.Errorf("non-command policy guidance was lost: %q", concealed.Hint)
+	}
+
+	var visible *errs.ValidationError
+	if !errors.As(recovery.Render(source, nil), &visible) ||
+		!strings.Contains(visible.Hint, "config strict-mode") {
+		t.Errorf("visible render must keep config strict-mode, got %+v", visible)
+	}
+	if !strings.Contains(original.Hint, "config strict-mode") {
+		t.Errorf("concealed render mutated source hint: %q", original.Hint)
 	}
 }

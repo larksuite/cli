@@ -34,9 +34,9 @@ var proxyWarnGateCases = []struct {
 	{"non-terminal stderr stays silent", false, 0},
 }
 
-// TestCachedHttpClientFunc_ProxyWarnGate verifies the http-client init path
+// TestCachedHTTPClientFunc_ProxyWarnGate verifies the HTTP client init path
 // invokes WarnIfProxied only when stderr is an interactive terminal.
-func TestCachedHttpClientFunc_ProxyWarnGate(t *testing.T) {
+func TestCachedHTTPClientFunc_ProxyWarnGate(t *testing.T) {
 	isEnabled := false
 	for _, tc := range proxyWarnGateCases {
 		t.Run(tc.name, func(t *testing.T) {

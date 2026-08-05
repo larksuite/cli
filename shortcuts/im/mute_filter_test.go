@@ -4,7 +4,9 @@
 package im
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -29,37 +31,37 @@ func TestBuildMuteFilterHint(t *testing.T) {
 			name:    "2 skipped all non-member, has_more",
 			meta:    MuteFilterMeta{Applied: "exclude_muted", Skipped: true, SkipReason: SkipReasonAllNonMember},
 			hasMore: true,
-			want:    "All results on this page are non-member public groups; mute filter does not apply. Use --page-token to fetch more.",
+			want:    "All fetched results are non-member public groups; mute filter does not apply. Use --page-token to fetch more.",
 		},
 		{
 			name:    "3 skipped all non-member, no more",
 			meta:    MuteFilterMeta{Applied: "exclude_muted", Skipped: true, SkipReason: SkipReasonAllNonMember},
 			hasMore: false,
-			want:    "All results on this page are non-member public groups; mute filter does not apply. No more pages.",
+			want:    "All fetched results are non-member public groups; mute filter does not apply. No more pages.",
 		},
 		{
 			name:    "4 filtered>0 unknown=0 has_more",
 			meta:    MuteFilterMeta{Applied: "exclude_muted", FetchedCount: 20, ReturnedCount: 17, FilteredCount: 3},
 			hasMore: true,
-			want:    "Filtered out 3 muted chat(s) on this page (17 remaining); use --page-token to fetch more.",
+			want:    "Filtered out 3 muted chat(s) from the fetched result (17 remaining); use --page-token to fetch more.",
 		},
 		{
 			name:    "5 filtered>0 unknown=0 no more",
 			meta:    MuteFilterMeta{Applied: "exclude_muted", FetchedCount: 20, ReturnedCount: 17, FilteredCount: 3},
 			hasMore: false,
-			want:    "Filtered out 3 muted chat(s) on this page (17 remaining); no more pages.",
+			want:    "Filtered out 3 muted chat(s) from the fetched result (17 remaining); no more pages.",
 		},
 		{
 			name:    "6 filtered>0 unknown>0 has_more",
 			meta:    MuteFilterMeta{Applied: "exclude_muted", FetchedCount: 20, ReturnedCount: 19, FilteredCount: 1, UnknownCount: 2},
 			hasMore: true,
-			want:    "Filtered out 1 muted chat(s) on this page (19 remaining, including 2 non-member public group(s)); use --page-token to fetch more.",
+			want:    "Filtered out 1 muted chat(s) from the fetched result (19 remaining, including 2 non-member public group(s)); use --page-token to fetch more.",
 		},
 		{
 			name:    "7 filtered>0 unknown>0 no more",
 			meta:    MuteFilterMeta{Applied: "exclude_muted", FetchedCount: 20, ReturnedCount: 19, FilteredCount: 1, UnknownCount: 2},
 			hasMore: false,
-			want:    "Filtered out 1 muted chat(s) on this page (19 remaining, including 2 non-member public group(s)); no more pages.",
+			want:    "Filtered out 1 muted chat(s) from the fetched result (19 remaining, including 2 non-member public group(s)); no more pages.",
 		},
 		{
 			name:    "8 filtered=0 returns empty regardless of unknown/hasMore",
@@ -391,7 +393,7 @@ func TestMaybeApplyMuteFilter_PreSkipAllNonMember(t *testing.T) {
 	if !out.Meta.Skipped || out.Meta.SkipReason != SkipReasonAllNonMember {
 		t.Fatalf("meta = %+v", out.Meta)
 	}
-	wantHint := "All results on this page are non-member public groups; mute filter does not apply. Use --page-token to fetch more."
+	wantHint := "All fetched results are non-member public groups; mute filter does not apply. Use --page-token to fetch more."
 	if out.Meta.Hint != wantHint {
 		t.Fatalf("hint = %q", out.Meta.Hint)
 	}
@@ -421,15 +423,41 @@ func TestMaybeApplyMuteFilter_EmptyPage(t *testing.T) {
 	}
 }
 
-func TestFetchMuteStatus_OverLimit(t *testing.T) {
-	rt := runtimeForOrchestrator(t)
-	ids := make([]string, MaxMuteStatusBatchSize+1)
+func TestFetchMuteStatusBatchesAcrossUpstreamLimit(t *testing.T) {
+	var batchSizes []int
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodPost || req.URL.Path != BatchGetMuteStatusPath {
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+		}
+		var body struct {
+			ChatIDs []string `json:"chat_ids"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		batchSizes = append(batchSizes, len(body.ChatIDs))
+		items := make([]interface{}, 0, len(body.ChatIDs))
+		for _, id := range body.ChatIDs {
+			items = append(items, map[string]interface{}{"chat_id": id, "is_muted": false})
+		}
+		return shortcutJSONResponse(http.StatusOK, map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": items},
+		}), nil
+	}))
+	ids := make([]string, MaxMuteStatusBatchSize*2+5)
 	for i := range ids {
 		ids[i] = fmt.Sprintf("oc_%d", i)
 	}
-	_, _, err := FetchMuteStatus(rt, ids)
-	if err == nil {
-		t.Fatalf("expected error on over-limit batch")
+	muted, unknown, err := FetchMuteStatus(rt, ids)
+	if err != nil {
+		t.Fatalf("FetchMuteStatus() error = %v", err)
+	}
+	if !reflect.DeepEqual(batchSizes, []int{100, 100, 5}) {
+		t.Fatalf("batch sizes = %v, want [100 100 5]", batchSizes)
+	}
+	if len(muted) != len(ids) || len(unknown) != 0 {
+		t.Fatalf("muted=%d unknown=%v, want %d known and no unknown", len(muted), unknown, len(ids))
 	}
 }
 

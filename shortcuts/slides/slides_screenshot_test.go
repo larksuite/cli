@@ -4,8 +4,10 @@
 package slides
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -31,6 +33,288 @@ func TestSlidesScreenshotDeclaredScopes(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("declared scopes = %#v, want %#v", got, want)
 	}
+}
+
+func TestSlidesScreenshotCompatibilityAliases(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantURL     string
+		wantIDs     []string
+		wantNumbers []int
+	}{
+		{
+			name:    "presentation-id",
+			args:    []string{"--presentation-id", "pres_alias", "--slide-id", "slide_1"},
+			wantURL: "/open-apis/slides_ai/v1/xml_presentations/pres_alias/slide_images",
+			wantIDs: []string{"slide_1"},
+		},
+		{name: "slide-id-aliases-merge", args: []string{"--presentation", "pres_abc", "--slide-ids", "s1", "--slides", "s2"}, wantIDs: []string{"s1", "s2"}},
+		{name: "slides", args: []string{"--presentation", "pres_abc", "--slides", "s1,s2"}, wantIDs: []string{"s1", "s2"}},
+		{name: "slide-numbers", args: []string{"--presentation", "pres_abc", "--slide-numbers", "1,2"}, wantNumbers: []int{1, 2}},
+		{name: "slide-routes-id", args: []string{"--presentation", "pres_abc", "--slide", "pII"}, wantIDs: []string{"pII"}},
+		{name: "slide-routes-nonnumeric-id", args: []string{"--presentation", "pres_abc", "--slide", "sld_123"}, wantIDs: []string{"sld_123"}},
+		{name: "slide-routes-number", args: []string{"--presentation", "pres_abc", "--slide", "7"}, wantNumbers: []int{7}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			args := append([]string{"+screenshot"}, tt.args...)
+			args = append(args, "--dry-run", "--as", "user")
+			if err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, args); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := decodeSlidesScreenshotDryRunRequest(t, stdout)
+			wantURL := tt.wantURL
+			if wantURL == "" {
+				wantURL = "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images"
+			}
+			if got.URL != wantURL {
+				t.Fatalf("url = %q, want %q", got.URL, wantURL)
+			}
+			if !reflect.DeepEqual(got.Body.SlideIDs, tt.wantIDs) {
+				t.Fatalf("slide_ids = %#v, want %#v", got.Body.SlideIDs, tt.wantIDs)
+			}
+			if !reflect.DeepEqual(got.Body.SlideNumbers, tt.wantNumbers) {
+				t.Fatalf("slide_numbers = %#v, want %#v", got.Body.SlideNumbers, tt.wantNumbers)
+			}
+		})
+	}
+}
+
+func TestSlidesScreenshotCompatibilityAliasesUseCanonicalFlags(t *testing.T) {
+	wantAliases := map[string][]string{
+		"presentation": {"presentation-id", "presentation-token", "token", "presentation_id", "xml-presentation-id", "url"},
+		"slide-id":     {"slide-ids", "slides"},
+		"slide-number": {"slide-numbers"},
+	}
+	for _, flag := range SlidesScreenshot.Flags {
+		want, ok := wantAliases[flag.Name]
+		if !ok {
+			if flag.Name == "presentation-id" || flag.Name == "slide-ids" || flag.Name == "slides" || flag.Name == "slide-numbers" {
+				t.Errorf("--%s registered independently, want a canonical flag alias", flag.Name)
+			}
+			continue
+		}
+		if !reflect.DeepEqual(flag.Aliases, want) {
+			t.Errorf("--%s aliases = %#v, want %#v", flag.Name, flag.Aliases, want)
+		}
+		delete(wantAliases, flag.Name)
+	}
+	if len(wantAliases) != 0 {
+		t.Fatalf("missing canonical alias declarations: %#v", wantAliases)
+	}
+	for _, flag := range SlidesScreenshot.Flags {
+		if flag.Name == "slide" && !flag.Hidden {
+			t.Fatal("--slide Hidden = false, want true")
+		}
+	}
+}
+
+func TestSlidesScreenshotSameTypeSelectorsMergeAndDeduplicate(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantIDs     []string
+		wantNumbers []int
+	}{
+		{
+			name:    "ids",
+			args:    []string{"--slide-id", "canonical_id", "--slide-ids", "alias_id", "--slides", "canonical_id,alias_id_2", "--slide", "pII"},
+			wantIDs: []string{"canonical_id", "alias_id", "alias_id_2", "pII"},
+		},
+		{
+			name:        "numbers",
+			args:        []string{"--slide-number", "8", "--slide-numbers", "9,8", "--slide", "10"},
+			wantNumbers: []int{8, 9, 10},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			args := append([]string{"+screenshot", "--presentation", "pres_abc"}, tt.args...)
+			args = append(args, "--dry-run", "--as", "user")
+			if err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, args); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := decodeSlidesScreenshotDryRunRequest(t, stdout)
+			if !reflect.DeepEqual(got.Body.SlideIDs, tt.wantIDs) {
+				t.Fatalf("slide_ids = %#v, want %#v", got.Body.SlideIDs, tt.wantIDs)
+			}
+			if !reflect.DeepEqual(got.Body.SlideNumbers, tt.wantNumbers) {
+				t.Fatalf("slide_numbers = %#v, want %#v", got.Body.SlideNumbers, tt.wantNumbers)
+			}
+		})
+	}
+}
+
+func TestSlidesScreenshotRejectsMixedSelectorTypes(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-id", "pII",
+		"--slide-number", "2",
+		"--dry-run",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %v, want typed validation error", err)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem = %s/%s, want %s/%s", problem.Category, problem.Subtype, errs.CategoryValidation, errs.SubtypeInvalidArgument)
+	}
+	if !strings.Contains(err.Error(), "cannot be used together") {
+		t.Fatalf("error = %v, want mixed selector guidance", err)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
+	}
+	wantParams := []errs.InvalidParam{
+		{Name: "--slide-id", Reason: "selects by slide ID; cannot be combined with slide-number selectors"},
+		{Name: "--slide-number", Reason: "selects by slide number; cannot be combined with slide-ID selectors"},
+	}
+	if !reflect.DeepEqual(validationErr.Params, wantParams) {
+		t.Fatalf("params = %#v, want %#v", validationErr.Params, wantParams)
+	}
+}
+
+func TestSlidesScreenshotAttributesMixedSelectorAliasesToCallerInput(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantParams []errs.InvalidParam
+	}{
+		{
+			name: "numeric slide alias",
+			args: []string{"--slides", "pII", "--slide", "2"},
+			wantParams: []errs.InvalidParam{
+				{Name: "--slides", Reason: "selects by slide ID; cannot be combined with slide-number selectors"},
+				{Name: "--slide", Reason: "selects by slide number; cannot be combined with slide-ID selectors"},
+			},
+		},
+		{
+			name: "ID slide alias",
+			args: []string{"--slide", "pII", "--slide-numbers", "2"},
+			wantParams: []errs.InvalidParam{
+				{Name: "--slide", Reason: "selects by slide ID; cannot be combined with slide-number selectors"},
+				{Name: "--slide-numbers", Reason: "selects by slide number; cannot be combined with slide-ID selectors"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			args := append([]string{"+screenshot", "--presentation", "pres_abc"}, tt.args...)
+			args = append(args, "--dry-run", "--as", "user")
+			err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, args)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error type = %T, want *errs.ValidationError", err)
+			}
+			if !reflect.DeepEqual(validationErr.Params, tt.wantParams) {
+				t.Fatalf("params = %#v, want %#v", validationErr.Params, tt.wantParams)
+			}
+		})
+	}
+}
+
+func TestSlidesScreenshotValidatesPresentationBeforeSelectors(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "tmp/wiki/invalid",
+		"--slide-id", "pII",
+		"--slide-number", "2",
+		"--dry-run",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Param != "--presentation" {
+		t.Fatalf("param = %q, want --presentation", validationErr.Param)
+	}
+	if !strings.Contains(err.Error(), "unsupported --presentation input") {
+		t.Fatalf("error = %v, want presentation validation before selector conflict", err)
+	}
+}
+
+func TestSlidesScreenshotSlideAliasRejectsInvalidNumbers(t *testing.T) {
+	for _, value := range []string{"0", "999999999999999999999999999999"} {
+		t.Run(value, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+				"+screenshot",
+				"--presentation", "pres_abc",
+				"--slide", value,
+				"--dry-run",
+				"--as", "user",
+			})
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("error = %v, want typed validation error", err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %s/%s, want %s/%s", problem.Category, problem.Subtype, errs.CategoryValidation, errs.SubtypeInvalidArgument)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error type = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--slide" {
+				t.Fatalf("param = %q, want --slide", validationErr.Param)
+			}
+		})
+	}
+}
+
+func decodeSlidesScreenshotDryRunRequest(t *testing.T, stdout *bytes.Buffer) struct {
+	URL  string `json:"url"`
+	Body struct {
+		SlideIDs     []string `json:"slide_ids"`
+		SlideNumbers []int    `json:"slide_numbers"`
+	} `json:"body"`
+} {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			API []struct {
+				URL  string `json:"url"`
+				Body struct {
+					SlideIDs     []string `json:"slide_ids"`
+					SlideNumbers []int    `json:"slide_numbers"`
+				} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode dry-run output: %v\nraw=%s", err, stdout.String())
+	}
+	if len(envelope.Data.API) != 1 {
+		t.Fatalf("api calls = %d, want 1\nraw=%s", len(envelope.Data.API), stdout.String())
+	}
+	return envelope.Data.API[0]
 }
 
 func TestSlidesScreenshotWritesFilesAndSuppressesBase64(t *testing.T) {
@@ -386,18 +670,66 @@ func TestSlidesScreenshotAvoidsOverwritingExistingFile(t *testing.T) {
 }
 
 func TestSlidesScreenshotListRequiresSelector(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
-
-	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
-		"+screenshot",
-		"--presentation", "pres_abc",
-		"--as", "user",
-	})
-	if err == nil {
-		t.Fatal("expected error")
+	tests := []struct {
+		name        string
+		args        []string
+		wantMessage string
+		wantHint    string
+		wantParam   string
+	}{
+		{
+			name:        "omitted",
+			args:        nil,
+			wantMessage: "--slide-id or --slide-number is required",
+			wantHint:    "specify up to 10 slides with --slide-id <slide_id> or --slide-number <number>; repeat the flag or use comma-separated values for multiple slides",
+		},
+		{
+			name:        "empty slide ID",
+			args:        []string{"--slide-id", ""},
+			wantMessage: "--slide-id cannot be empty",
+			wantHint:    "provide a non-empty slide ID or use --slide-number <number>",
+			wantParam:   "--slide-id",
+		},
+		{
+			name:        "empty slide ID with slide number",
+			args:        []string{"--slide-id", "", "--slide-number", "1"},
+			wantMessage: "--slide-id cannot be empty",
+			wantHint:    "provide a non-empty slide ID or use --slide-number <number>",
+			wantParam:   "--slide-id",
+		},
 	}
-	if !strings.Contains(err.Error(), "--slide-id or --slide-number is required") {
-		t.Fatalf("error = %v, want missing selector error", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			args := append([]string{"+screenshot", "--presentation", "pres_abc"}, tt.args...)
+			args = append(args, "--as", "user")
+
+			err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, args)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("error = %T %v, want typed validation error", err, err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
+			}
+			if problem.Message != tt.wantMessage {
+				t.Fatalf("message = %q, want %q", problem.Message, tt.wantMessage)
+			}
+			if problem.Hint != tt.wantHint {
+				t.Fatalf("hint = %q, want %q", problem.Hint, tt.wantHint)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error type = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != tt.wantParam {
+				t.Fatalf("param = %q, want %q", validationErr.Param, tt.wantParam)
+			}
+		})
 	}
 }
 
@@ -436,7 +768,7 @@ func TestSlidesScreenshotRenderContentWritesFile(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
 
-	content := `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`
+	content := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`
 	if err := os.WriteFile(filepath.Join(dir, "slide.xml"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write input xml: %v", err)
 	}
@@ -508,14 +840,14 @@ func TestSlidesScreenshotRenderRejectsSlideSelectors(t *testing.T) {
 
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 		"+screenshot",
-		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 		"--slide-id", "slide_1",
 		"--as", "user",
 	})
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "--content cannot be used with --slide-id or --slide-number") {
+	if !strings.Contains(err.Error(), "--content cannot be used with slide selectors") {
 		t.Fatalf("error = %v, want content/slide selector conflict", err)
 	}
 }
@@ -529,15 +861,58 @@ func TestSlidesScreenshotRenderRejectsSlideNumberSelector(t *testing.T) {
 	// --slide-id side of that same `||` condition).
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 		"+screenshot",
-		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
-		"--slide-number", "1",
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--slide-number", "0",
 		"--as", "user",
 	})
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "--content cannot be used with --slide-id or --slide-number") {
+	if !strings.Contains(err.Error(), "--content cannot be used with slide selectors") {
 		t.Fatalf("error = %v, want content/slide selector conflict", err)
+	}
+}
+
+func TestSlidesScreenshotRenderAttributesSlideAliasConflictToCallerInput(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--slide", "pII",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
+	}
+	wantParams := []errs.InvalidParam{
+		{Name: "--content", Reason: "cannot be combined with slide selectors"},
+		{Name: "--slide", Reason: "cannot be combined with --content"},
+	}
+	if !reflect.DeepEqual(validationErr.Params, wantParams) {
+		t.Fatalf("params = %#v, want %#v", validationErr.Params, wantParams)
+	}
+}
+
+func TestSlidesScreenshotRenderIgnoresEmptySlideID(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--slide-id", "",
+		"--dry-run",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "/open-apis/slides_ai/v1/slide_image/render") {
+		t.Fatalf("dry-run missing render endpoint: %s", stdout.String())
 	}
 }
 
@@ -546,7 +921,7 @@ func TestSlidesScreenshotRenderRejectsListOnlyFlags(t *testing.T) {
 
 	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 		"+screenshot",
-		"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 		"--presentation", "pres_abc",
 		"--as", "user",
 	})
@@ -584,7 +959,7 @@ func TestSlidesScreenshotDryRunSelectsListOrRenderAPI(t *testing.T) {
 		f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 		err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 			"+screenshot",
-			"--content", `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+			"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
 			"--dry-run",
 			"--as", "user",
 		})

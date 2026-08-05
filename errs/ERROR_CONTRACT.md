@@ -509,6 +509,9 @@ Rare; the existing structs cover the 9 Categories with room. If you must:
 1. In `errs/types.go`, add a new section with: the struct embedding `errs.Problem`, a nil-receiver-safe `Unwrap()` if it carries `Cause`, a `NewXxxError(subtype, format, args...)` constructor, and one chained `WithX` setter per extension field.
 2. Add an `IsXxx` predicate in `errs/predicates.go`.
 3. Add a wire-format pin in `errs/marshal_test.go` and a builder-chain pin in `errs/types_test.go`.
+4. Add the concrete type and deep-copy handling to
+   `internal/recovery.CloneTyped`, then extend
+   `TestRenderClonesEveryConcreteTypedErrorAndPreservesWireExtensions`.
 
 `CheckProblemEmbed` enforces the `Problem` embed at lint time. New
 top-level wire fields are forbidden — per-Subtype data goes into the

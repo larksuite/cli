@@ -4,12 +4,17 @@
 package cmdutil
 
 import (
-	"context"
 	"net/http"
 	"time"
 
-	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/transport"
+)
+
+var (
+	_ transport.RoundTripperDecorator = (*RetryTransport)(nil)
+	_ transport.RoundTripperDecorator = (*UserAgentTransport)(nil)
+	_ transport.RoundTripperDecorator = (*BuildHeaderTransport)(nil)
+	_ transport.RoundTripperDecorator = (*SecurityHeaderTransport)(nil)
 )
 
 // RetryTransport is an http.RoundTripper that retries on 5xx responses
@@ -25,6 +30,16 @@ func (t *RetryTransport) base() http.RoundTripper {
 		return t.Base
 	}
 	return transport.Fallback()
+}
+
+func (t *RetryTransport) BaseRoundTripper() http.RoundTripper {
+	return t.base()
+}
+
+func (t *RetryTransport) WithBaseRoundTripper(base http.RoundTripper) http.RoundTripper {
+	cloned := *t
+	cloned.Base = base
+	return &cloned
 }
 
 func (t *RetryTransport) delay() time.Duration {
@@ -63,6 +78,19 @@ type UserAgentTransport struct {
 	Base http.RoundTripper
 }
 
+func (t *UserAgentTransport) BaseRoundTripper() http.RoundTripper {
+	if t.Base != nil {
+		return t.Base
+	}
+	return transport.Fallback()
+}
+
+func (t *UserAgentTransport) WithBaseRoundTripper(base http.RoundTripper) http.RoundTripper {
+	cloned := *t
+	cloned.Base = base
+	return &cloned
+}
+
 func (t *UserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
 	req.Header.Set(HeaderUserAgent, UserAgentValue())
@@ -73,12 +101,23 @@ func (t *UserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error
 }
 
 // BuildHeaderTransport is an http.RoundTripper that force-writes the
-// X-Cli-Build header before every request. Used in the SDK transport chain,
-// where SecurityHeaderTransport is not installed, to prevent extensions from
-// tampering with the build classification. The direct HTTP chain is already
-// covered by SecurityHeaderTransport iterating BaseSecurityHeaders.
+// X-Cli-Build header before every request. It remains in the SDK transport
+// chain as a narrow defense-in-depth layer alongside SecurityHeaderTransport.
 type BuildHeaderTransport struct {
 	Base http.RoundTripper
+}
+
+func (t *BuildHeaderTransport) BaseRoundTripper() http.RoundTripper {
+	if t.Base != nil {
+		return t.Base
+	}
+	return transport.Fallback()
+}
+
+func (t *BuildHeaderTransport) WithBaseRoundTripper(base http.RoundTripper) http.RoundTripper {
+	cloned := *t
+	cloned.Base = base
+	return &cloned
 }
 
 func (t *BuildHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -103,6 +142,16 @@ func (t *SecurityHeaderTransport) base() http.RoundTripper {
 	return transport.Fallback()
 }
 
+func (t *SecurityHeaderTransport) BaseRoundTripper() http.RoundTripper {
+	return t.base()
+}
+
+func (t *SecurityHeaderTransport) WithBaseRoundTripper(base http.RoundTripper) http.RoundTripper {
+	cloned := *t
+	cloned.Base = base
+	return &cloned
+}
+
 // RoundTrip implements http.RoundTripper.
 func (t *SecurityHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
@@ -119,68 +168,4 @@ func (t *SecurityHeaderTransport) RoundTrip(req *http.Request) (*http.Response, 
 		req.Header.Set(HeaderExecutionId, eid)
 	}
 	return t.base().RoundTrip(req)
-}
-
-// extensionMiddleware wraps the built-in transport chain with pre/post hooks.
-// The built-in chain always executes unless the extension is an
-// exttransport.AbortableInterceptor and its PreRoundTripE returns a non-nil
-// error; it cannot otherwise be skipped or overridden.
-//
-// The original request context is restored after the pre hook to prevent
-// extensions from tampering with cancellation, deadlines, or built-in values.
-// Cloning the request isolates header/URL/etc. mutations from the caller's
-// request object; req.Body is intentionally shared — extensions that consume
-// it are responsible for rewinding (see Interceptor doc).
-type extensionMiddleware struct {
-	Base    http.RoundTripper
-	Ext     exttransport.Interceptor
-	ExtName string // Provider.Name(), captured at wrap time for *AbortError.Extension
-}
-
-// RoundTrip invokes the interceptor pre hook, restores the original context,
-// executes the built-in chain (unless aborted), then calls the post hook if
-// non-nil. When the extension implements AbortableInterceptor and returns a
-// non-nil error from PreRoundTripE, the built-in chain is skipped and an
-// *exttransport.AbortError is returned; the post hook is still invoked with
-// (nil, reason) so extensions can unwind resources.
-func (m *extensionMiddleware) RoundTrip(req *http.Request) (*http.Response, error) {
-	origCtx := req.Context()
-	req = req.Clone(origCtx)
-
-	var (
-		post    func(*http.Response, error)
-		abortEr error
-	)
-	if a, ok := m.Ext.(exttransport.AbortableInterceptor); ok {
-		post, abortEr = a.PreRoundTripE(req)
-	} else {
-		post = m.Ext.PreRoundTrip(req)
-	}
-	if abortEr != nil {
-		if post != nil {
-			post(nil, abortEr)
-		}
-		return nil, &exttransport.AbortError{Extension: m.ExtName, Reason: abortEr}
-	}
-
-	req = req.WithContext(origCtx) // restore original context
-	resp, err := m.Base.RoundTrip(req)
-	if post != nil {
-		post(resp, err)
-	}
-	return resp, err
-}
-
-// wrapWithExtension wraps transport with the registered extension middleware.
-// If no extension is registered, returns transport unchanged.
-func wrapWithExtension(transport http.RoundTripper) http.RoundTripper {
-	p := exttransport.GetProvider()
-	if p == nil {
-		return transport
-	}
-	tr := p.ResolveInterceptor(context.Background())
-	if tr == nil {
-		return transport
-	}
-	return &extensionMiddleware{Base: transport, Ext: tr, ExtName: p.Name()}
 }

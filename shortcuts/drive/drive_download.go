@@ -202,7 +202,7 @@ var DriveDownload = common.Shortcut{
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
 		})
 		if err != nil {
-			return wrapDriveNetworkErr(err, "download failed: %s", err)
+			return withDriveDownloadForbiddenPreviewHint(wrapDriveNetworkErr(err, "download failed: %s", err), fileToken)
 		}
 		defer resp.Body.Close()
 

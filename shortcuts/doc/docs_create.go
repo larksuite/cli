@@ -21,7 +21,6 @@ var DocsCreate = common.Shortcut{
 	Risk:        "write",
 	AuthTypes:   []string{"user", "bot"},
 	Scopes:      []string{"docx:document:create"},
-	PostMount:   installDocsShortcutHelp("+create"),
 	Flags: concatFlags(
 		[]common.Flag{
 			docsAPIVersionCompatFlag(),

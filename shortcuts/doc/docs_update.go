@@ -21,7 +21,6 @@ var DocsUpdate = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
-	PostMount:   installDocsShortcutHelp("+update"),
 	Flags: concatFlags(
 		[]common.Flag{
 			docsAPIVersionCompatFlag(),

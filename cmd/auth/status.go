@@ -11,6 +11,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // StatusOptions holds all inputs for auth status.
@@ -22,6 +23,14 @@ type StatusOptions struct {
 
 // NewCmdAuthStatus creates the auth status subcommand.
 func NewCmdAuthStatus(f *cmdutil.Factory, runF func(*StatusOptions) error) *cobra.Command {
+	return newCmdAuthStatus(f, runF, nil)
+}
+
+func newCmdAuthStatus(
+	f *cmdutil.Factory,
+	runF func(*StatusOptions) error,
+	projector *recovery.Projector,
+) *cobra.Command {
 	opts := &StatusOptions{Factory: f}
 
 	cmd := &cobra.Command{
@@ -31,7 +40,7 @@ func NewCmdAuthStatus(f *cmdutil.Factory, runF func(*StatusOptions) error) *cobr
 			if runF != nil {
 				return runF(opts)
 			}
-			return authStatusRun(opts)
+			return authStatusRun(opts, projector)
 		},
 	}
 
@@ -42,7 +51,7 @@ func NewCmdAuthStatus(f *cmdutil.Factory, runF func(*StatusOptions) error) *cobr
 	return cmd
 }
 
-func authStatusRun(opts *StatusOptions) error {
+func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 	f := opts.Factory
 
 	config, err := f.Config()
@@ -60,11 +69,14 @@ func authStatusRun(opts *StatusOptions) error {
 		"defaultAs": defaultAs,
 	}
 
-	diagnostics := identitydiag.Diagnose(context.Background(), f, config, opts.Verify)
+	diagnostics := identitydiag.FilterRecovery(
+		identitydiag.Diagnose(context.Background(), f, config, opts.Verify),
+		projector.CanReference,
+	)
 	result["identities"] = diagnostics
 	result["identity"] = effectiveIdentity(diagnostics)
 	addEffectiveVerification(result, diagnostics)
-	addStatusNote(result, diagnostics)
+	addStatusNote(result, diagnostics, projector.CanReference(recovery.TargetAuthLogin))
 
 	output.PrintJson(f.IOStreams.Out, result)
 	return nil
@@ -106,13 +118,21 @@ func addEffectiveVerification(result map[string]interface{}, d identitydiag.Resu
 	}
 }
 
-func addStatusNote(result map[string]interface{}, d identitydiag.Result) {
+func addStatusNote(result map[string]interface{}, d identitydiag.Result, canAuthLogin bool) {
 	switch {
 	case !d.User.Available && d.Bot.Available:
-		result["note"] = "User identity is " + identitydiag.StatusMessage(d.User.Status) + "; bot identity is ready for bot/tenant API calls. Run `lark-cli auth login` to enable user identity."
+		note := "User identity is " + identitydiag.StatusMessage(d.User.Status) + "; bot identity is ready for bot/tenant API calls."
+		if canAuthLogin {
+			note += " Run `lark-cli auth login` to enable user identity."
+		}
+		result["note"] = note
 	case d.User.Status == identitydiag.StatusNeedsRefresh:
 		result["note"] = "User identity needs refresh and will be refreshed automatically on the next user API call."
 	case !d.User.Available && !d.Bot.Available:
-		result["note"] = "No usable identity is available. Configure bot credentials or run `lark-cli auth login`."
+		note := "No usable identity is available. Configure bot credentials"
+		if canAuthLogin {
+			note += " or run `lark-cli auth login`"
+		}
+		result["note"] = note + "."
 	}
 }

@@ -12,6 +12,8 @@ import (
 	internaltransport "github.com/larksuite/cli/internal/transport"
 )
 
+var _ internaltransport.RoundTripperDecorator = (*Transport)(nil)
+
 const (
 	HeaderProductModel = "X-Agent-Device-Type"
 	HeaderOSType       = "X-Agent-Os-Type"
@@ -38,6 +40,28 @@ func NewTransport(next http.RoundTripper, source Source) *Transport {
 		next:   next,
 		source: source,
 	}
+}
+
+// BaseRoundTripper exposes the network transport so policy routers can clone
+// and rebuild the complete decorator graph without dropping risk control.
+func (t *Transport) BaseRoundTripper() http.RoundTripper {
+	if t == nil || t.next == nil {
+		return internaltransport.Fallback()
+	}
+	return t.next
+}
+
+// WithBaseRoundTripper returns an equivalent risk-control boundary over base.
+func (t *Transport) WithBaseRoundTripper(base http.RoundTripper) http.RoundTripper {
+	if t == nil {
+		return NewTransport(base, nil)
+	}
+	cloned := *t
+	if base == nil {
+		base = internaltransport.Fallback()
+	}
+	cloned.next = base
+	return &cloned
 }
 
 // RoundTrip implements http.RoundTripper.

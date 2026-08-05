@@ -62,8 +62,9 @@ var MarkdownPatch = common.Shortcut{
 		sizeThreshold := common.FormatSize(markdownSinglePartSizeLimit)
 		return common.NewDryRunAPI().
 			Desc("Download the current Markdown file, apply the replacement locally, and overwrite the file only when matches are found").
-			GET("/open-apis/drive/v1/files/:file_token/download").
-			Desc("[1] Download the current Markdown content").
+			GET("/open-apis/drive/v1/medias/:file_token/preview_download").
+			Desc("[1] Download the current Markdown source file preview artifact").
+			Params(markdownSourceFilePreviewDryRunParamsForValidatedVersion("", "")).
 			Set("file_token", spec.FileToken).
 			POST("/open-apis/drive/v1/metas/batch_query").
 			Desc("[2] Read current file metadata to preserve the existing file name before overwrite").
