@@ -16,6 +16,8 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -178,6 +180,47 @@ func TestProfileRemoveRun_RemovesCurrentProfileAndSwitchesToFirstRemaining(t *te
 	}
 	if len(saved.Apps) != 1 || saved.Apps[0].ProfileName() != "default" {
 		t.Fatalf("remaining apps = %#v, want only default", saved.Apps)
+	}
+}
+
+func TestProfileRemoveRun_AddRecoveryUsesBuildLocalSurface(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "only",
+		Apps: []core.AppConfig{{
+			Name:      "only",
+			AppId:     "app-only",
+			AppSecret: core.PlainSecret("secret-only"),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	source := profileRemoveRun(nil, "only")
+	var original *errs.ValidationError
+	if !errors.As(source, &original) {
+		t.Fatalf("profileRemoveRun() error = %T, want *errs.ValidationError", source)
+	}
+	const visibleHint = "add another profile first: lark-cli profile add"
+	if original.Hint != visibleHint {
+		t.Fatalf("producer hint = %q, want %q", original.Hint, visibleHint)
+	}
+
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandProfileAdd: surface.CommandConcealed,
+	})
+	var concealed *errs.ValidationError
+	if rendered := recovery.Render(source, plan); !errors.As(rendered, &concealed) {
+		t.Fatalf("rendered error = %T, want *errs.ValidationError", rendered)
+	}
+	const fallback = "configure another profile through this distribution before removing the only profile"
+	if concealed.Hint != fallback {
+		t.Errorf("concealed hint = %q, want %q", concealed.Hint, fallback)
+	}
+	if original.Hint != visibleHint {
+		t.Errorf("concealed render mutated producer hint: %q", original.Hint)
 	}
 }
 

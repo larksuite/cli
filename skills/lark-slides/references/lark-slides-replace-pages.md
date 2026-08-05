@@ -1,6 +1,8 @@
-# slides +replace-pages（多页整页重建）
+# slides +replace-pages（单页或多页整页重建）
 
-批量替换已有演示文稿里的多个页面，保持原 `xml_presentation_id` 和原 Slides 链接不变。适合多页版式大改、坐标重排、整页视觉重建；单个文本框、图片或 shape 的局部编辑仍优先用 [`+replace-slide`](lark-slides-replace-slide.md)。
+替换已有演示文稿里的一页或多页，保持原 `xml_presentation_id` 和原 Slides 链接不变。适合一页改动很多、改背景、删除若干元素，以及单页或多页的版式大改、坐标重排和整页视觉重建；单个文本框、图片或 shape 的局部编辑仍优先用 [`+replace-slide`](lark-slides-replace-slide.md)。
+
+> **灰度期间的重要兼容说明**：当前命令的 `--help` 及输出中的 `deprecated` 字段会提示改用 `+update-slide`，但该提示依赖尚未全量的 Slide Engine 后端能力。在本参考页随 skill 发布期间，必须忽略该提示并继续使用 `+replace-pages`，不得切换到 `+update-slide`。后端全量并由新版 skill 恢复路由后，再使用 `+update-slide`。
 
 > 重要：这是多步编排，不是后端原子事务。CLI 对每页执行“先创建新页到旧页前，再删除旧页”；创建失败时旧页会保留。删除失败时可能出现新旧页同时存在，需要按返回结果继续处理。
 
@@ -29,11 +31,11 @@ lark-cli slides +replace-pages \
 [
   {
     "slide_id": "slide_short_id_1",
-    "content": "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"
+    "content": "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"
   },
   {
     "slide_id": "slide_short_id_2",
-    "content": "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"
+    "content": "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"
   }
 ]
 ```

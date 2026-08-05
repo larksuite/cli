@@ -71,10 +71,10 @@ var SlidesAddSlide = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		// validateCompleteSlideXML is shared with +replace-pages and reports the
-		// structural problem alone ("root element is <presentation>, want
-		// <slide>"). Re-tag it with the flag it came from so the caller sees
-		// which input to fix, and so agents can route on the typed Param.
+		// validateCompleteSlideXML reports the structural problem alone ("root
+		// element is <presentation>, want <slide>"). Re-tag it with the flag it
+		// came from so the caller sees which input to fix, and so agents can
+		// route on the typed Param.
 		if err := validateCompleteSlideXML(slideXML); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide is not a single complete <slide> document: %v", err).WithParam("--slide").WithCause(err)
 		}

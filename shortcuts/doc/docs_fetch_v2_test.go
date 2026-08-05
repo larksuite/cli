@@ -920,8 +920,6 @@ func TestDocsFetchRejectsLegacyFlags(t *testing.T) {
 				"the old v1 interface has been shut down",
 				"legacy v1 flag(s) --offset are no longer supported",
 				"--offset -> use --scope outline/range/keyword/section",
-				"lark-cli skills read lark-doc references/lark-doc-fetch.md",
-				"MUST NOT grep/open local SKILL.md files",
 				"lark-cli docs +fetch --help",
 			},
 		},

@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // isMalformedConfigError reports whether a config load failure indicates a
@@ -81,14 +82,24 @@ const (
 func NotConfiguredError() error {
 	ws := CurrentWorkspace()
 	if ws.IsLocal() {
-		return errs.NewConfigError(errs.SubtypeNotConfigured, "not configured").
-			WithHint("%s", localInitHint)
+		hint := recovery.Join("", recovery.Command(recovery.TargetConfigInit, localInitHint)).
+			WithFallback("configure this distribution before retrying")
+		return recovery.Annotate(
+			errs.NewConfigError(errs.SubtypeNotConfigured, "not configured").
+				WithHint("%s", hint.String()),
+			hint,
+		)
 	}
 	// Agent workspace: the workspace name appears only in the message, never
 	// in the wire subtype, which stays not_configured.
-	return errs.NewConfigError(errs.SubtypeNotConfigured,
-		"%s context detected but lark-cli is not bound to it", ws.Display()).
-		WithHint("%s", agentBindHint)
+	hint := recovery.Join("", recovery.Command(recovery.TargetConfigBind, agentBindHint)).
+		WithFallback("bind this agent workspace through the distribution's supported setup flow")
+	return recovery.Annotate(
+		errs.NewConfigError(errs.SubtypeNotConfigured,
+			"%s context detected but lark-cli is not bound to it", ws.Display()).
+			WithHint("%s", hint.String()),
+		hint,
+	)
 }
 
 // reconfigureHint returns the workspace-aware "fix it from scratch" hint
@@ -110,10 +121,20 @@ func reconfigureHint() string {
 func NoActiveProfileError() error {
 	ws := CurrentWorkspace()
 	if ws.IsLocal() {
-		return errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").
-			WithHint("%s", localInitHint)
+		hint := recovery.Join("", recovery.Command(recovery.TargetConfigInit, localInitHint)).
+			WithFallback("configure this distribution before retrying")
+		return recovery.Annotate(
+			errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").
+				WithHint("%s", hint.String()),
+			hint,
+		)
 	}
-	return errs.NewConfigError(errs.SubtypeNotConfigured,
-		"no active profile in %s workspace", ws.Display()).
-		WithHint("%s", agentBindHint)
+	hint := recovery.Join("", recovery.Command(recovery.TargetConfigBind, agentBindHint)).
+		WithFallback("bind this agent workspace through the distribution's supported setup flow")
+	return recovery.Annotate(
+		errs.NewConfigError(errs.SubtypeNotConfigured,
+			"no active profile in %s workspace", ws.Display()).
+			WithHint("%s", hint.String()),
+		hint,
+	)
 }

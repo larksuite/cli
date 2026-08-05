@@ -24,7 +24,7 @@ func TestSlidesAddSlideDryRunE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
-	const slideXML = `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data></data></slide>`
+	const slideXML = `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`
 
 	tests := []struct {
 		name      string

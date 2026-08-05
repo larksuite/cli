@@ -7,7 +7,7 @@ const { execFileSync } = require("child_process");
 const os = require("os");
 const crypto = require("crypto");
 
-const VERSION = require("../package.json").version.replace(/-.*$/, "");
+const VERSION = require("../package.json").version;
 const REPO = "larksuite/cli";
 const NAME = "lark-cli";
 const DEFAULT_MIRROR_HOST = "https://registry.npmmirror.com";
@@ -37,12 +37,25 @@ const platform = PLATFORM_MAP[process.platform];
 const arch = ARCH_MAP[process.arch];
 
 const isWindows = process.platform === "win32";
-const ext = isWindows ? ".zip" : ".tar.gz";
-const archiveName = `${NAME}-${VERSION}-${platform}-${arch}${ext}`;
-const GITHUB_URL = `https://github.com/${REPO}/releases/download/v${VERSION}/${archiveName}`;
+const { archiveName, githubUrl: GITHUB_URL } = resolveReleaseAsset(
+  VERSION,
+  platform,
+  arch
+);
 
 const binDir = path.join(__dirname, "..", "bin");
 const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
+
+function resolveReleaseAsset(version, platformName, archName) {
+  const extension = platformName === "windows" ? ".zip" : ".tar.gz";
+  const resolvedArchiveName =
+    `${NAME}-${version}-${platformName}-${archName}${extension}`;
+  return {
+    archiveName: resolvedArchiveName,
+    githubUrl:
+      `https://github.com/${REPO}/releases/download/v${version}/${resolvedArchiveName}`,
+  };
+}
 
 // Build the ordered list of binary mirror URLs to try. Resolution rules:
 //   1. npm_config_registry     — when the user has set a non-default
@@ -348,4 +361,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, curlSupportsSslRevokeBestEffort, isCurlVersionSupported };
+module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, resolveReleaseAsset, curlSupportsSslRevokeBestEffort, isCurlVersionSupported };

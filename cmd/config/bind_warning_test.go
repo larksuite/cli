@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 )
 
 // runHermesBindWithIdentity boots a Hermes-shaped fake env, runs `config bind`
@@ -58,5 +60,31 @@ func TestConfigBindRun_BotOnlyIdentity_NoImpersonationWarning(t *testing.T) {
 	out := runHermesBindWithIdentity(t, "bot-only")
 	if strings.Contains(out, bindMsgZh.IdentityEscalationMessage) {
 		t.Errorf("bot-only bind must NOT warn about impersonation; got: %s", out)
+	}
+}
+
+func TestUserDefaultBindMessageProjectsConcealedLogin(t *testing.T) {
+	visible := userDefaultBindMessage(bindMsgEn, "cli_test", "Hermes", nil)
+	if !strings.Contains(visible, "lark-cli auth login --recommend") {
+		t.Fatalf("default message lost established login action: %q", visible)
+	}
+
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	concealed := userDefaultBindMessage(
+		bindMsgEn,
+		"cli_test",
+		"Hermes",
+		recovery.NewProjector(func() *surface.Plan { return plan }),
+	)
+	if strings.Contains(concealed, "auth login") ||
+		!strings.Contains(concealed, "supported authorization flow") {
+		t.Fatalf("concealed message = %q, want target-free authorization fallback", concealed)
+	}
+	for _, want := range []string{"cli_test", "Hermes"} {
+		if !strings.Contains(concealed, want) {
+			t.Errorf("concealed message lost binding fact %q: %q", want, concealed)
+		}
 	}
 }

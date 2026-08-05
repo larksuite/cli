@@ -19,7 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-const testSlideXML = `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data><shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>hi</p></content></shape></data></slide>`
+const testSlideXML = `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data><shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>hi</p></content></shape></data></slide>`
 
 func TestAddSlideDeclaredScopes(t *testing.T) {
 	// Pre-flight must stay at the two slides scopes: an XML-only page needs
@@ -161,7 +161,7 @@ func TestAddSlideUploadsImagePlaceholder(t *testing.T) {
 	reg.Register(slideStub)
 
 	// The same image referenced twice must still upload once.
-	slideXML := `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data>` +
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
 		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
 		`<img src="@./chart.png" topLeftX="200" topLeftY="10" width="100" height="100"/>` +
 		`</data></slide>`
@@ -202,7 +202,7 @@ func TestAddSlideRejectsNonSlideRoot(t *testing.T) {
 	err := runSlidesShortcut(t, f, stdout, SlidesAddSlide, []string{
 		"+add-slide",
 		"--presentation", "pres_abc",
-		"--slide", `<presentation xmlns="http://www.larkoffice.com/sml/2.0"><slide/></presentation>`,
+		"--slide", `<presentation xmlns="https://www.larkoffice.com/sml/2.0"><slide/></presentation>`,
 		"--as", "user",
 	})
 	if err == nil {
@@ -360,7 +360,7 @@ func TestAddSlideDryRunPlansUploadsBeforePost(t *testing.T) {
 	withSlidesTestWorkingDir(t, dir)
 
 	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
-	slideXML := `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data>` +
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
 		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
 		`</data></slide>`
 
@@ -526,7 +526,7 @@ func TestAddSlideReportsUploadedImagesWhenPageFails(t *testing.T) {
 		Body:   map[string]interface{}{"code": 3350001, "msg": "invalid slide xml"},
 	})
 
-	slideXML := `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data>` +
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
 		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
 		`</data></slide>`
 
@@ -576,7 +576,7 @@ func TestAddSlideReportsProgressWhenUploadFails(t *testing.T) {
 	// The slide endpoint is deliberately unstubbed: reaching it would fail as
 	// "no stub for POST .../slide", which is the no-page-created assertion.
 
-	slideXML := `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data>` +
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
 		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
 		`</data></slide>`
 

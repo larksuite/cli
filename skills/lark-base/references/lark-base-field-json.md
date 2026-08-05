@@ -518,6 +518,8 @@
 
 Object（对象字段）、Button（按钮字段）、Stage（流程字段）暂时都没有被 CLI 支持。这些字段会展示为 `not_support` 字段并被保护：不允许修改，不允许读取内容。
 
+遇到暂不支持的字段类型时，直接说明 Base CLI 当前不支持并停止；不要猜测未注册的字段 JSON、service 或 schema，也不要用其他字段类型冒充目标能力。
+
 ## 6. 易错点
 
 - `select` 只有一个类型；不要写 `single_select` / `multi_select`，用 `multiple` 控制是否多选。

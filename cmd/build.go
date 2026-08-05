@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/cmd/skill"
 	cmdupdate "github.com/larksuite/cli/cmd/update"
 	"github.com/larksuite/cli/cmd/whoami"
+	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdpolicy"
@@ -27,7 +28,12 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/keychain"
+	internalplatform "github.com/larksuite/cli/internal/platform"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/skillpolicy"
+	"github.com/larksuite/cli/internal/skillref"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
 )
@@ -36,14 +42,29 @@ import (
 type BuildOption func(*buildConfig)
 
 type buildConfig struct {
-	streams        *cmdutil.IOStreams
-	keychain       keychain.KeychainAccess
-	globals        GlobalOptions
-	skipPlugins    bool
-	skipStrictMode bool
-	skipService    bool
-	serviceCatalog *apicatalog.Catalog
-	startupBrand   core.LarkBrand
+	streams         *cmdutil.IOStreams
+	keychain        keychain.KeychainAccess
+	globals         GlobalOptions
+	presentation    restrictionPresentationConfig
+	skipPlugins     bool
+	skipStrictMode  bool
+	skipService     bool
+	deferStartup    bool
+	serviceCatalog  *apicatalog.Catalog
+	startupBrand    core.LarkBrand
+	startupBrandSet bool
+	hideProfileSet  bool
+}
+
+// buildRuntime owns presentation state for exactly one command tree. Factory
+// remains the business dependency container; distribution policy never enters
+// it. The embedded pointer preserves convenient access to Factory fields in
+// cmd-internal tests without exposing the surface plan to business packages.
+type buildRuntime struct {
+	*cmdutil.Factory
+	surface         *surface.Plan
+	recovery        *recovery.Projector
+	skillReferences *skillref.Resolver
 }
 
 // WithStartupBrand initializes the API registry with the given brand before
@@ -54,6 +75,7 @@ type buildConfig struct {
 func WithStartupBrand(brand core.LarkBrand) BuildOption {
 	return func(c *buildConfig) {
 		c.startupBrand = brand
+		c.startupBrandSet = true
 	}
 }
 
@@ -84,6 +106,12 @@ var embeddedSkillContent fs.FS
 // supply its own skill content.
 func SetEmbeddedSkillContent(fsys fs.FS) { embeddedSkillContent = fsys }
 
+// SetEmbeddedAffordanceContent registers the per-domain command guidance tree.
+// Wrapper mains should wire the repository's affordance directory alongside
+// embedded skills so generic --help presentation remains complete and skill
+// references follow the composed distribution.
+func SetEmbeddedAffordanceContent(fsys fs.FS) { affordance.SetSource(fsys) }
+
 // HideProfile sets the visibility policy for the root-level --profile flag.
 // When hide is true the flag stays registered (so existing invocations still
 // parse) but is omitted from help and shell completion. Typically called as
@@ -91,6 +119,7 @@ func SetEmbeddedSkillContent(fsys fs.FS) { embeddedSkillContent = fsys }
 func HideProfile(hide bool) BuildOption {
 	return func(c *buildConfig) {
 		c.globals.HideProfile = hide
+		c.hideProfileSet = true
 	}
 }
 
@@ -146,11 +175,11 @@ func Build(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOpti
 // inv and BuildOptions alone. Any state-dependent decision (disk, network,
 // env) belongs in the caller and must be threaded in via BuildOption.
 //
-// Returns (factory, rootCmd, registry). The registry is nil when plugin
+// Returns (runtime, rootCmd, registry). The registry is nil when plugin
 // install failed (FailClosed guard installed) or when no plugin produced
 // hooks; callers that wire Shutdown emit must nil-check before calling
 // hook.Emit.
-func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOption) (*cmdutil.Factory, *cobra.Command, *hook.Registry) {
+func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOption) (*buildRuntime, *cobra.Command, *hook.Registry) {
 	// cfg.globals.Profile is left zero here; it's bound to the --profile
 	// flag in RegisterGlobalFlags and filled by cobra's parse step.
 	cfg := &buildConfig{}
@@ -159,6 +188,16 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 			o(cfg)
 		}
 	}
+	return buildInternalWithConfig(ctx, inv, cfg)
+}
+
+// buildInternalWithConfig assembles one command tree from an already-applied
+// option snapshot. Execute uses this boundary so stateful BuildOptions are
+// never evaluated once for bootstrap inspection and a second time for Build.
+func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext, cfg *buildConfig) (*buildRuntime, *cobra.Command, *hook.Registry) {
+	if cfg == nil {
+		cfg = &buildConfig{}
+	}
 	// Default streams when WithIO is not supplied so the root command's
 	// SetIn/Out/Err calls below don't deref nil. NewDefault also normalizes
 	// partial streams internally; keep both in sync so cfg.streams reflects
@@ -166,18 +205,28 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	if cfg.streams == nil {
 		cfg.streams = cmdutil.SystemIO()
 	}
-
 	// Initialize the registry brand before anything touches the runtime
 	// catalog (its sync.Once would otherwise lock onto the Feishu default).
 	if cfg.startupBrand != "" {
 		registry.InitWithBrand(cfg.startupBrand)
 	}
 
+	// Reset the legacy process-global diagnostic snapshots before paths that
+	// may return early. Distribution presentation state is deliberately not
+	// stored here; it belongs to this build's immutable surface plan.
+	cmdpolicy.SetActive(nil)
+	internalplatform.SetActiveInventory(nil)
+
 	f := cmdutil.NewDefault(cfg.streams, inv)
 	if cfg.keychain != nil {
 		f.Keychain = cfg.keychain
 	}
 	f.SkillContent = embeddedSkillContent
+	runtime := &buildRuntime{Factory: f}
+	runtime.recovery = recovery.NewProjector(func() *surface.Plan {
+		return runtime.surface
+	})
+	f.Recovery = runtime.recovery
 	rootCmd := &cobra.Command{
 		Use:     "lark-cli",
 		Short:   "Lark/Feishu CLI — OAuth authorization, UAT management, API calls",
@@ -194,7 +243,17 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	// rootUsageTemplate.
 	rootCmd.SetUsageTemplate(rootUsageTemplate)
 
-	installTipsHelpFunc(rootCmd)
+	// Framework-generated skill pointers read this build's final content and
+	// exact command surface lazily. A second Build therefore cannot rewrite
+	// help rendered by the first tree.
+	installTipsHelpFunc(rootCmd, func() fs.FS {
+		if !runtime.surface.CanReference(surface.CommandSkillsRead) {
+			return nil
+		}
+		return runtime.SkillContent
+	}, func() *skillref.Resolver {
+		return runtime.skillReferences
+	}, runtime.recovery)
 	rootCmd.SilenceErrors = true
 	// SilenceUsage as a static field (not only in PersistentPreRun) so it also
 	// covers flag-parse errors, which fail before PreRun runs — otherwise cobra
@@ -210,11 +269,11 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 		f.CurrentCommand = cmd
 	}
 
-	rootCmd.AddCommand(cmdconfig.NewCmdConfig(f))
-	rootCmd.AddCommand(auth.NewCmdAuth(f))
+	rootCmd.AddCommand(cmdconfig.NewCmdConfigWithRecovery(f, runtime.recovery))
+	rootCmd.AddCommand(auth.NewCmdAuthWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(profile.NewCmdProfile(f))
-	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
-	rootCmd.AddCommand(whoami.NewCmdWhoami(f))
+	rootCmd.AddCommand(doctor.NewCmdDoctorWithRecovery(f, runtime.recovery))
+	rootCmd.AddCommand(whoami.NewCmdWhoamiWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
 	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
@@ -230,52 +289,93 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	}
 	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
 
-	groupRootCommands(rootCmd)
+	classifyRootCommands(rootCmd)
 
 	installUnknownSubcommandGuard(rootCmd)
 	// Bare `lark-cli` in an interactive terminal offers an interactive upgrade
 	// before printing help; non-bare invocations and non-TTY are unaffected.
-	installRootUpgradePrompt(f, rootCmd)
+	installRootUpgradePrompt(f, rootCmd, runtime.recovery)
 
 	if mode := f.ResolveStrictMode(ctx); mode.IsActive() && !cfg.skipStrictMode {
 		pruneForStrictMode(rootCmd, mode)
 	}
 
-	if cfg.skipPlugins {
-		recordInventory(nil)
-		return f, rootCmd, nil
-	}
+	var (
+		installResult *internalplatform.InstallResult
+		pluginRules   []cmdpolicy.PluginRule
+		pluginSkills  []skillpolicy.PluginSkill
+		hookRegistry  *hook.Registry
+		denied        map[string]cmdpolicy.Denial
+	)
 
-	installResult, installErr := installPluginsAndHooks(cfg.streams.ErrOut)
-	if installErr != nil {
-		installPluginInstallErrorGuard(rootCmd, installErr)
-		return f, rootCmd, nil
-	}
-	var pluginRules []cmdpolicy.PluginRule
-	var registry *hook.Registry
-	if installResult != nil {
-		pluginRules = installResult.PluginRules
-		registry = installResult.Registry
-	}
-
-	// Policy errors fail-CLOSED when a plugin contributed (security
-	// intent must not be silently dropped); yaml-only errors fail-OPEN
-	// with a warning so a typo can't lock the user out.
-	if err := applyUserPolicyPruning(rootCmd, pluginRules); err != nil {
-		if len(pluginRules) > 0 {
-			installPluginConflictGuard(rootCmd, err)
-			return f, rootCmd, nil
+	if !cfg.skipPlugins {
+		var installErr error
+		installResult, installErr = installPluginsAndHooks(cfg.streams.ErrOut)
+		if installErr != nil {
+			installPluginInstallErrorGuard(rootCmd, installErr)
+			return finalizeFailedBuild(runtime, rootCmd)
 		}
-		warnPolicyError(cfg.streams.ErrOut, err)
+		if installResult != nil {
+			pluginRules = installResult.PluginRules
+			pluginSkills = installResult.PluginSkills
+			hookRegistry = installResult.Registry
+		}
+
+		// Policy errors fail-CLOSED when a plugin contributed (security
+		// intent must not be silently dropped); yaml-only errors fail-OPEN
+		// with a warning so a typo can't lock the user out.
+		var policyErr error
+		denied, policyErr = applyUserPolicyPruning(rootCmd, pluginRules)
+		if policyErr != nil {
+			if len(pluginRules) > 0 {
+				installPluginConflictGuard(rootCmd, policyErr)
+				return finalizeFailedBuild(runtime, rootCmd)
+			}
+			warnPolicyError(cfg.streams.ErrOut, policyErr)
+		}
 	}
 
-	if registry != nil {
-		if err := wireHooks(ctx, rootCmd, registry); err != nil {
+	// Presentation is an explicit host projection over the exact enforcement
+	// decisions. With no opt-in, legacy Restrict and YAML policy behavior is
+	// mechanically unchanged.
+	var hasConcealedCommands bool
+	runtime.surface, hasConcealedCommands = applyDistributionPresentation(rootCmd, cfg.presentation, denied)
+
+	// Resolve skill assets and canonical references before installing hooks.
+	// A declared customization is a build-integrity boundary: failure must
+	// happen before Startup so no lifecycle side effect is stranded.
+	skillResolution, skillErr := skillpolicy.ResolveWithReferences(embeddedSkillContent, pluginSkills)
+	if skillErr != nil {
+		installPluginSkillErrorGuard(rootCmd, skillErr)
+		return finalizeFailedBuild(runtime, rootCmd)
+	}
+	f.SkillContent = skillResolution.Content
+	runtime.skillReferences = skillResolution.References
+
+	// Install hooks only on business commands. The concealment-specific help
+	// command is attached afterwards, preserving Cobra's historical contract
+	// that help is not observed or wrapped by plugins.
+	if hookRegistry != nil {
+		installHooks(rootCmd, hookRegistry)
+	}
+	if hasConcealedCommands {
+		installHelpCommand(rootCmd)
+	}
+	finalizeRootCommandGroups(rootCmd, runtime.surface)
+
+	if hookRegistry != nil && !cfg.deferStartup {
+		if err := emitStartup(ctx, hookRegistry); err != nil {
 			installPluginLifecycleErrorGuard(rootCmd, err)
-			return f, rootCmd, nil
+			recordInventory(installResult)
+			return runtime, rootCmd, nil
 		}
 	}
 
 	recordInventory(installResult)
-	return f, rootCmd, registry
+	return runtime, rootCmd, hookRegistry
+}
+
+func finalizeFailedBuild(runtime *buildRuntime, root *cobra.Command) (*buildRuntime, *cobra.Command, *hook.Registry) {
+	finalizeRootCommandGroups(root, runtime.surface)
+	return runtime, root, nil
 }

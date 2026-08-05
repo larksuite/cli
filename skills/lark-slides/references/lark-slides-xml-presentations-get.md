@@ -22,9 +22,9 @@ lark-cli slides +xml-get --as user \
 |------|------|------|------|
 | `--presentation` | string | 是 | 演示文稿的唯一标识符 |
 | `--revision-id` | integer | 否 | 版本号，`-1` 表示最新版本 |
-| `--output` | string | 是 | 本地文件，必须使用相对路径 |
+| `--output` | string | 否 | XML 保存路径，必须使用相对路径；省略时 XML 在 stdout 的 JSON envelope 中返回 |
 | `--remove-attr-id` | flag | 否 | 移除 XML id 属性后读取 |
-| `--json` | flag | 是 | 必须按照 json 格式输出 |
+| `--json` | flag | 否 | `--format json` 的简写，json 为默认输出格式 |
 
 
 ### 基础示例
@@ -96,7 +96,7 @@ lark-cli slides xml_presentations get --as user --params '<json_params>'
     "xml_presentation": {
       "presentation_id": "slides_example_presentation_id",
       "revision_id": 1,
-      "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
+      "content": "<presentation xmlns=\"https://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
     }
   }
 }

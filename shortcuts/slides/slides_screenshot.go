@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -27,7 +28,10 @@ const (
 	maxSlidesPerScreenshot     = 10
 )
 
-var unsafeScreenshotFileCharRegex = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+var (
+	unsafeScreenshotFileCharRegex = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+	slideNumberAliasRegex         = regexp.MustCompile(`^[0-9]+$`)
+)
 
 // SlidesScreenshot fetches server-rendered slide screenshots and writes them to
 // local files. The raw API returns Base64 image payloads; this shortcut keeps
@@ -43,8 +47,9 @@ var SlidesScreenshot = common.Shortcut{
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		listModePresentationRefFlag(),
-		{Name: "slide-id", Type: "string_slice", Desc: "slide page identifier (repeat or comma-separated for multiple slides; max 10 pages per request)"},
-		{Name: "slide-number", Type: "int_array", Desc: "slide page number (repeat for multiple slides; max 10 pages per request)"},
+		{Name: "slide-id", Aliases: []string{"slide-ids", "slides"}, Type: "string_slice", Desc: "slide page identifier (repeat or comma-separated for multiple slides; max 10 pages per request)"},
+		{Name: "slide-number", Aliases: []string{"slide-numbers"}, Type: "int_array", Desc: "slide page number (repeat for multiple slides; max 10 pages per request)"},
+		{Name: "slide", Desc: "hidden alias routed to --slide-number for digits, otherwise --slide-id", Hidden: true},
 		{Name: "content", Desc: "slide XML content to render directly instead of fetching existing slides", Input: []string{common.File, common.Stdin}},
 		{Name: "output-dir", Default: defaultSlidesScreenshotDir, Desc: "relative directory for saved screenshots"},
 		{Name: "output-name", Desc: "file name stem for --content render output"},
@@ -55,14 +60,18 @@ var SlidesScreenshot = common.Shortcut{
 			if strings.TrimSpace(runtime.Str("content")) == "" {
 				return slidesScreenshotFlagErrorf("--content cannot be empty")
 			}
-			if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0 {
-				return slidesScreenshotFlagErrorf("--content cannot be used with --slide-id or --slide-number")
+			if slidesScreenshotHasSelectorInput(runtime) {
+				return slidesScreenshotContentSelectorConflictError(runtime)
 			}
 			if runtime.Changed("presentation") {
 				return slidesScreenshotFlagErrorf("--presentation cannot be used with --content")
 			}
 		} else {
-			ref, err := parsePresentationRef(runtime.Str("presentation"))
+			ref, err := parsePresentationRef(slidesScreenshotPresentation(runtime))
+			if err != nil {
+				return err
+			}
+			slideIDs, slideNumbers, err := slidesScreenshotSelectors(runtime)
 			if err != nil {
 				return err
 			}
@@ -71,13 +80,8 @@ var SlidesScreenshot = common.Shortcut{
 					return err
 				}
 			}
-			slideIDs := normalizeSlideIDs(runtime.StrSlice("slide-id"))
-			slideNumbers, err := normalizeSlideNumbers(runtime.IntArray("slide-number"))
-			if err != nil {
-				return err
-			}
 			if len(slideIDs) == 0 && len(slideNumbers) == 0 {
-				return slidesScreenshotFlagErrorf("--slide-id or --slide-number is required")
+				return slidesScreenshotMissingSelectorError()
 			}
 			if err := validateSlidesScreenshotSelectorLimit(len(slideIDs) + len(slideNumbers)); err != nil {
 				return err
@@ -92,17 +96,13 @@ var SlidesScreenshot = common.Shortcut{
 		if runtime.Changed("content") {
 			return dryRunRenderScreenshot(runtime)
 		}
-		ref, err := parsePresentationRef(runtime.Str("presentation"))
+		ref, err := parsePresentationRef(slidesScreenshotPresentation(runtime))
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		slideIDs := normalizeSlideIDs(runtime.StrSlice("slide-id"))
-		slideNumbers, err := normalizeSlideNumbers(runtime.IntArray("slide-number"))
+		slideIDs, slideNumbers, err := slidesScreenshotSelectors(runtime)
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
-		}
-		if len(slideIDs) == 0 && len(slideNumbers) == 0 {
-			return common.NewDryRunAPI().Set("error", "--slide-id or --slide-number is required")
 		}
 		if err := validateSlidesScreenshotSelectorLimit(len(slideIDs) + len(slideNumbers)); err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
@@ -137,7 +137,7 @@ var SlidesScreenshot = common.Shortcut{
 		if runtime.Changed("content") {
 			return executeRenderScreenshot(runtime)
 		}
-		ref, err := parsePresentationRef(runtime.Str("presentation"))
+		ref, err := parsePresentationRef(slidesScreenshotPresentation(runtime))
 		if err != nil {
 			return err
 		}
@@ -146,13 +146,12 @@ var SlidesScreenshot = common.Shortcut{
 			return err
 		}
 
-		slideIDs := normalizeSlideIDs(runtime.StrSlice("slide-id"))
-		slideNumbers, err := normalizeSlideNumbers(runtime.IntArray("slide-number"))
+		slideIDs, slideNumbers, err := slidesScreenshotSelectors(runtime)
 		if err != nil {
 			return err
 		}
 		if len(slideIDs) == 0 && len(slideNumbers) == 0 {
-			return slidesScreenshotFlagErrorf("--slide-id or --slide-number is required")
+			return slidesScreenshotMissingSelectorError()
 		}
 		if err := validateSlidesScreenshotSelectorLimit(len(slideIDs) + len(slideNumbers)); err != nil {
 			return err
@@ -198,8 +197,8 @@ func dryRunRenderScreenshot(runtime *common.RuntimeContext) *common.DryRunAPI {
 	if strings.TrimSpace(content) == "" {
 		return common.NewDryRunAPI().Set("error", "--content cannot be empty")
 	}
-	if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0 {
-		return common.NewDryRunAPI().Set("error", "--content cannot be used with --slide-id or --slide-number")
+	if slidesScreenshotHasSelectorInput(runtime) {
+		return common.NewDryRunAPI().Set("error", "--content cannot be used with slide selectors")
 	}
 	if runtime.Changed("presentation") {
 		return common.NewDryRunAPI().Set("error", "--presentation cannot be used with --content")
@@ -217,8 +216,8 @@ func executeRenderScreenshot(runtime *common.RuntimeContext) error {
 	if strings.TrimSpace(content) == "" {
 		return slidesScreenshotFlagErrorf("--content cannot be empty")
 	}
-	if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0 {
-		return slidesScreenshotFlagErrorf("--content cannot be used with --slide-id or --slide-number")
+	if slidesScreenshotHasSelectorInput(runtime) {
+		return slidesScreenshotContentSelectorConflictError(runtime)
 	}
 	if runtime.Changed("presentation") {
 		return slidesScreenshotFlagErrorf("--presentation cannot be used with --content")
@@ -244,6 +243,95 @@ func executeRenderScreenshot(runtime *common.RuntimeContext) error {
 		"screenshots": saved,
 	}, nil)
 	return nil
+}
+
+func slidesScreenshotPresentation(runtime *common.RuntimeContext) string {
+	return runtime.Str("presentation")
+}
+
+func slidesScreenshotSelectors(runtime *common.RuntimeContext) ([]string, []int, error) {
+	aliasSlide := strings.TrimSpace(runtime.Str("slide"))
+	aliasSlideIsNumber := runtime.Changed("slide") && slideNumberAliasRegex.MatchString(aliasSlide)
+	aliasSlideIsID := runtime.Changed("slide") && aliasSlide != "" && !aliasSlideIsNumber
+	if runtime.Changed("slide") && aliasSlide == "" {
+		return nil, nil, errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--slide cannot be empty",
+		).WithParam("--slide").WithHint("use --slide-number or --slide-id to specify the selector type explicitly")
+	}
+
+	slideIDValues := append([]string(nil), runtime.StrSlice("slide-id")...)
+	if runtime.Changed("slide-id") && len(normalizeSlideIDs(slideIDValues)) == 0 {
+		return nil, nil, slidesScreenshotEmptySlideIDError()
+	}
+	if aliasSlideIsID {
+		slideIDValues = append(slideIDValues, aliasSlide)
+	}
+
+	slideNumberValues := append([]int(nil), runtime.IntArray("slide-number")...)
+	if aliasSlideIsNumber {
+		n, err := strconv.Atoi(aliasSlide)
+		if err != nil {
+			return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide page number is outside the supported integer range").WithParam("--slide")
+		}
+		if n < 1 {
+			return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide must be a positive page number").WithParam("--slide")
+		}
+		slideNumberValues = append(slideNumberValues, n)
+	}
+
+	slideNumbers, err := normalizeSlideNumbers(slideNumberValues)
+	if err != nil {
+		return nil, nil, err
+	}
+	slideIDs := normalizeSlideIDs(slideIDValues)
+	if len(slideIDs) > 0 && len(slideNumbers) > 0 {
+		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "slide ID selectors and slide number selectors cannot be used together").
+			WithParams(slidesScreenshotSelectorConflictParams(runtime, aliasSlideIsID, aliasSlideIsNumber)...).
+			WithHint("choose either slide IDs or slide numbers for one screenshot request")
+	}
+	return slideIDs, slideNumbers, nil
+}
+
+func slidesScreenshotHasSelectorInput(runtime *common.RuntimeContext) bool {
+	return len(slidesScreenshotSelectorInputParams(runtime, "")) > 0
+}
+
+func slidesScreenshotSelectorConflictParams(runtime *common.RuntimeContext, aliasSlideIsID, aliasSlideIsNumber bool) []errs.InvalidParam {
+	params := make([]errs.InvalidParam, 0, 3)
+	if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 {
+		params = append(params, errs.InvalidParam{Name: "--slide-id", Reason: "selects by slide ID; cannot be combined with slide-number selectors"})
+	}
+	if aliasSlideIsID {
+		params = append(params, errs.InvalidParam{Name: "--slide", Reason: "selects by slide ID; cannot be combined with slide-number selectors"})
+	}
+	if runtime.Changed("slide-number") {
+		params = append(params, errs.InvalidParam{Name: "--slide-number", Reason: "selects by slide number; cannot be combined with slide-ID selectors"})
+	}
+	if aliasSlideIsNumber {
+		params = append(params, errs.InvalidParam{Name: "--slide", Reason: "selects by slide number; cannot be combined with slide-ID selectors"})
+	}
+	return params
+}
+
+func slidesScreenshotSelectorInputParams(runtime *common.RuntimeContext, reason string) []errs.InvalidParam {
+	params := make([]errs.InvalidParam, 0, 3)
+	if len(normalizeSlideIDs(runtime.StrSlice("slide-id"))) > 0 {
+		params = append(params, errs.InvalidParam{Name: "--slide-id", Reason: reason})
+	}
+	if runtime.Changed("slide-number") {
+		params = append(params, errs.InvalidParam{Name: "--slide-number", Reason: reason})
+	}
+	if runtime.Changed("slide") {
+		params = append(params, errs.InvalidParam{Name: "--slide", Reason: reason})
+	}
+	return params
+}
+
+func slidesScreenshotContentSelectorConflictError(runtime *common.RuntimeContext) error {
+	params := []errs.InvalidParam{{Name: "--content", Reason: "cannot be combined with slide selectors"}}
+	params = append(params, slidesScreenshotSelectorInputParams(runtime, "cannot be combined with --content")...)
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content cannot be used with slide selectors").WithParams(params...)
 }
 
 func normalizeSlideIDs(values []string) []string {
@@ -285,6 +373,17 @@ func validateSlidesScreenshotSelectorLimit(count int) error {
 			WithHint("request at most 10 pages at a time")
 	}
 	return nil
+}
+
+func slidesScreenshotMissingSelectorError() error {
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide-id or --slide-number is required").
+		WithHint("specify up to 10 slides with --slide-id <slide_id> or --slide-number <number>; repeat the flag or use comma-separated values for multiple slides")
+}
+
+func slidesScreenshotEmptySlideIDError() error {
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide-id cannot be empty").
+		WithParam("--slide-id").
+		WithHint("provide a non-empty slide ID or use --slide-number <number>")
 }
 
 func slidesScreenshotFlagErrorf(format string, args ...interface{}) error {

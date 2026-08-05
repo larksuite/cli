@@ -15,6 +15,9 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
+	"github.com/larksuite/cli/internal/update"
 	"github.com/spf13/cobra"
 )
 
@@ -122,7 +125,7 @@ func TestOfferRootUpgrade(t *testing.T) {
 				OutIsTerminal:    tc.out,
 				StderrIsTerminal: tc.err,
 			}}
-			offerRootUpgrade(f, &cobra.Command{})
+			offerRootUpgrade(f, &cobra.Command{}, nil)
 
 			gotPrompt := strings.Contains(errBuf.String(), "available")
 			if gotPrompt != tc.wantPrompt {
@@ -146,6 +149,34 @@ func TestOfferRootUpgrade(t *testing.T) {
 	}
 }
 
+func TestOfferRootUpgradeDoesNotReadCacheWhenUpdateIsConcealed(t *testing.T) {
+	oldCheck := checkRootCachedUpdate
+	t.Cleanup(func() { checkRootCachedUpdate = oldCheck })
+
+	cacheReads := 0
+	checkRootCachedUpdate = func(string) *update.UpdateInfo {
+		cacheReads++
+		return &update.UpdateInfo{Current: "1.0.0", Latest: "2.0.0"}
+	}
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandUpdate: surface.CommandConcealed,
+	})
+	projector := recovery.NewProjector(func() *surface.Plan { return plan })
+	f := &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{
+		In:               strings.NewReader("y\n"),
+		Out:              &bytes.Buffer{},
+		ErrOut:           &bytes.Buffer{},
+		IsTerminal:       true,
+		OutIsTerminal:    true,
+		StderrIsTerminal: true,
+	}}
+
+	offerRootUpgrade(f, &cobra.Command{}, projector)
+	if cacheReads != 0 {
+		t.Fatalf("concealed update read cache %d time(s)", cacheReads)
+	}
+}
+
 func TestInstallRootUpgradePromptPreservesInner(t *testing.T) {
 	orig := rawInvocationArgs
 	t.Cleanup(func() { rawInvocationArgs = orig })
@@ -158,7 +189,7 @@ func TestInstallRootUpgradePromptPreservesInner(t *testing.T) {
 	f := &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{
 		In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{},
 	}}
-	installRootUpgradePrompt(f, root)
+	installRootUpgradePrompt(f, root, nil)
 
 	if err := root.RunE(root, []string{}); err != nil {
 		t.Fatalf("bare RunE err = %v", err)
@@ -195,7 +226,7 @@ func TestInstallRootUpgradePromptNilInnerNoop(t *testing.T) {
 	f := &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{
 		In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{},
 	}}
-	installRootUpgradePrompt(f, root)
+	installRootUpgradePrompt(f, root, nil)
 	if root.RunE != nil {
 		t.Error("installRootUpgradePrompt must not wrap a nil RunE (inner==nil guard)")
 	}

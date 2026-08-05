@@ -4,7 +4,7 @@
 
 ## 最重要的规则
 
-1. 协议标准写法应使用 `<presentation xmlns="http://www.larkoffice.com/sml/2.0">`；当前服务端实现可能兼容不带 `xmlns` 的输入，但不作为协议保证
+1. 协议标准写法应使用 `<presentation xmlns="https://www.larkoffice.com/sml/2.0">`；当前服务端实现可能兼容不带 `xmlns` 的输入，但不作为协议保证
 2. `<presentation>` 直接子元素只有 `<title>`、`<theme>`、`<slide>`
 3. `<slide>` 直接子元素只有 `<style>`、`<data>`、`<note>`
 4. 页面中的文本通常通过 `<content>` 表达，而不是把 `<title>`、`<body>` 直接挂在 `<slide>` 下
@@ -13,7 +13,7 @@
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+<presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
   <slide>
     <data>
       <shape type="text" topLeftX="80" topLeftY="80" width="800" height="120">
@@ -81,7 +81,7 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 **子元素：**
 
 - `<style>?` - 页面样式，目前可放 `<fill>`
-- `<data>?` - 页面元素容器，可放 `shape`、`line`、`polyline`、`img`、`table`、`icon`、`chart`、`undefined`
+- `<data>?` - 页面元素容器，可放 `shape`、`line`、`polyline`、`img`、`table`、`icon`、`embed`、`chart`、`undefined`
 - `<note>?` - 演讲者备注，内部可放 `<content>`
 
 这意味着 `<title>`、`<headline>`、`<body>`、`<caption>` 不能直接放在 `<slide>` 下。
@@ -355,6 +355,20 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 
 详细用法见 [slides_xml_schema_definition.xml](slides_xml_schema_definition.xml)。
 
+### embed
+
+嵌入内容容器：外层 `<embed>` 承载 Slides 的摆放和效果属性（`topLeftX`/`topLeftY`/`width`/`height` 必填，`rotation`/`flipX`/`flipY`/`alpha` 可选），内层承载外部标准内容。当前内层内容为标准 SVG，`<svg>` 必须使用 `http://www.w3.org/2000/svg` 命名空间，且仅描述嵌入内容本身，不承载 Slides 布局属性。
+
+```xml
+<embed topLeftX="80" topLeftY="120" width="200" height="120">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120">
+    <circle cx="100" cy="60" r="40" fill="rgba(37, 99, 235, 1)"/>
+  </svg>
+</embed>
+```
+
+`<embed>` 直接子元素为一个 `<svg>`（必需），以及可选的 `<reflection>`（倒影）与 `<shadow>`（阴影）。
+
 ## 颜色与样式
 
 ### fill
@@ -418,7 +432,7 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+<presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
   <title>季度报告</title>
   <theme>
     <textStyles>
@@ -466,7 +480,7 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 
 ## 最佳实践
 
-1. 始终带上命名空间 `xmlns="http://www.larkoffice.com/sml/2.0"`
+1. 始终带上命名空间 `xmlns="https://www.larkoffice.com/sml/2.0"`
 2. 用 `shape type="text"` + `content` 表达页面文本
 3. 用 `topLeftX` / `topLeftY`、`startX` / `startY` 等 schema 中定义的属性名
 4. 优先使用 `rgb` / `rgba` 颜色格式；渐变必须使用 `rgba()` 且带百分比停靠点
@@ -481,5 +495,5 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 ## Schema 版本信息
 
 - **版本**: 2.0.0
-- **命名空间**: http://www.larkoffice.com/sml/2.0
+- **命名空间**: https://www.larkoffice.com/sml/2.0
 - **发布日期**: 2025-11-03

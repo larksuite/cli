@@ -28,8 +28,8 @@ lark-cli slides +create --title "项目汇报"
 
 # 创建 PPT + 添加 slide 页面
 lark-cli slides +create --title "项目汇报" --slides '[
-  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>封面</p></content></shape></data></slide>",
-  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>第二页</p></content></shape></data></slide>"
+  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>封面</p></content></shape></data></slide>",
+  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>第二页</p></content></shape></data></slide>"
 ]'
 
 # 以应用身份创建（自动授权当前用户）
@@ -89,8 +89,8 @@ lark-cli slides +create --as user --title "项目汇报" \
 
 ```json
 [
-  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\">...第1页XML...</slide>",
-  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\">...第2页XML...</slide>"
+  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\">...第1页XML...</slide>",
+  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\">...第2页XML...</slide>"
 ]
 ```
 
@@ -102,7 +102,7 @@ JSON string 数组，每个元素是一页 slide 的完整 XML。CLI 内部负�
 
 ```bash
 lark-cli slides +create --as user --title "图测试" --slides '[
-  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><img src=\"@./assets/chart.png\" topLeftX=\"100\" topLeftY=\"100\" width=\"320\" height=\"180\"/></data></slide>"
+  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data><img src=\"@./assets/chart.png\" topLeftX=\"100\" topLeftY=\"100\" width=\"320\" height=\"180\"/></data></slide>"
 ]'
 ```
 

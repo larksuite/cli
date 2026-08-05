@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<presentation xmlns="/sml/2.0" width="960" height="540">
+<presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
   <title>原生图表 Chart Demo</title>
   <theme>
     <textStyles>

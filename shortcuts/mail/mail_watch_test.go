@@ -13,6 +13,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -629,7 +630,13 @@ func TestWrapWatchSubscribeErrorTypedProblemAddsMissingHint(t *testing.T) {
 }
 
 func TestEnhanceProfileErrorAuthorization(t *testing.T) {
-	original := errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope")
+	original := errs.NewPermissionError(errs.SubtypeMissingScope,
+		"missing scope mail:user_mailbox.folder:readonly, mail:message:send").
+		WithHint("original classifier hint").
+		WithMissingScopes("mail:user_mailbox.folder:readonly", "mail:message:send").
+		WithIdentity("bot").
+		WithCode(99991679).
+		WithLogID("logid-profile")
 
 	err := enhanceProfileError(original)
 
@@ -643,8 +650,22 @@ func TestEnhanceProfileErrorAuthorization(t *testing.T) {
 	if !strings.Contains(p.Message, "unable to resolve mailbox address") {
 		t.Fatalf("message missing mailbox context: %q", p.Message)
 	}
-	if !strings.Contains(p.Hint, "mail:user_mailbox:readonly") {
-		t.Fatalf("profile scope hint missing: %q", p.Hint)
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) {
+		t.Fatalf("error = %T, want *errs.PermissionError", err)
+	}
+	if !slices.Equal(permissionErr.MissingScopes,
+		[]string{"mail:user_mailbox.folder:readonly", "mail:message:send"}) {
+		t.Fatalf("missing scopes overwritten: %v", permissionErr.MissingScopes)
+	}
+	if permissionErr.Identity != "bot" {
+		t.Fatalf("identity overwritten: %q", permissionErr.Identity)
+	}
+	if permissionErr.Code != 99991679 || permissionErr.LogID != "logid-profile" {
+		t.Fatalf("code/log_id changed: %+v", permissionErr)
+	}
+	if permissionErr.Hint != "" {
+		t.Fatalf("hint = %q, want root presenter to rebuild it from preserved facts", permissionErr.Hint)
 	}
 }
 
