@@ -52,6 +52,7 @@ func TestContact_LookupWorkflowAsUser(t *testing.T) {
 }
 
 func TestContact_LookupWorkflowAsBot(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
@@ -59,7 +60,7 @@ func TestContact_LookupWorkflowAsBot(t *testing.T) {
 
 	t.Run("discover user via api as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"api", "get", "/open-apis/contact/v3/users"},
+			Args:      []string{"api", "get", "/open-apis/contact/v3/users", "--params", `{"department_id":"0","page_size":10}`},
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)

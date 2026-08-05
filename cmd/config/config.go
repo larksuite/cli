@@ -6,11 +6,22 @@ package config
 import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/spf13/cobra"
 )
 
 // NewCmdConfig creates the config command with subcommands.
 func NewCmdConfig(f *cmdutil.Factory) *cobra.Command {
+	return newCmdConfig(f, nil)
+}
+
+// NewCmdConfigWithRecovery creates the config command with build-local
+// recovery projection while preserving NewCmdConfig's established signature.
+func NewCmdConfigWithRecovery(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
+	return newCmdConfig(f, projector)
+}
+
+func newCmdConfig(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Global CLI configuration management",
@@ -26,11 +37,12 @@ func NewCmdConfig(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.DisableAuthCheck(cmd)
 
 	cmd.AddCommand(NewCmdConfigInit(f, nil))
-	cmd.AddCommand(NewCmdConfigBind(f, nil))
+	cmd.AddCommand(newCmdConfigBind(f, nil, projector))
 	cmd.AddCommand(NewCmdConfigRemove(f, nil))
 	cmd.AddCommand(NewCmdConfigShow(f, nil))
 	cmd.AddCommand(NewCmdConfigDefaultAs(f))
 	cmd.AddCommand(NewCmdConfigStrictMode(f))
+	cmd.AddCommand(NewCmdConfigRiskControl(f))
 	cmd.AddCommand(NewCmdConfigPolicy(f))
 	cmd.AddCommand(NewCmdConfigPlugins(f))
 	cmd.AddCommand(NewCmdConfigKeychainDowngrade(f))

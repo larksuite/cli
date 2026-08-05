@@ -115,7 +115,7 @@ var CreateTasklist = common.Shortcut{
 
 					if tErr != nil {
 						summary, _ := tDef["summary"].(string)
-						failedTasks = append(failedTasks, buildTaskCreateFailure(idx, summary, tErr))
+						failedTasks = append(failedTasks, buildTaskCreateFailure(runtime, idx, summary, tErr))
 						return
 					}
 
@@ -186,19 +186,20 @@ var CreateTasklist = common.Shortcut{
 	},
 }
 
-func buildTaskCreateFailure(index int, summary string, err error) map[string]interface{} {
+func buildTaskCreateFailure(runtime *common.RuntimeContext, index int, summary string, err error) map[string]interface{} {
+	presented := runtime.PresentError(err)
 	failDetail := map[string]interface{}{
 		"index":   index,
 		"summary": summary,
 	}
-	if p, ok := errs.ProblemOf(err); ok {
+	if p, ok := errs.ProblemOf(presented); ok {
 		failDetail["type"] = string(p.Subtype)
 		failDetail["code"] = p.Code
 		failDetail["message"] = p.Message
 		failDetail["hint"] = p.Hint
 	} else {
 		failDetail["type"] = "api_error"
-		failDetail["message"] = err.Error()
+		failDetail["message"] = presented.Error()
 	}
 	return failDetail
 }

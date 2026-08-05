@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -490,19 +491,15 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 
 // newPreflightMissingScopeError constructs a PermissionError for the local
 // pre-flight scope check that converges byte-for-byte with the dispatcher's
-// BuildAPIError path. Uses the canonical helpers in internal/errclass so
-// Hint and Message stay in lock-step with the server-response classifier.
+// BuildAPIError path. It records the same typed facts and canonical message;
+// the root presenter supplies identity-appropriate recovery at the final
+// command boundary.
 // ConsoleURL is deliberately omitted: the dispatcher only sets it for
 // SubtypeAppScopeNotApplied (bot-perspective dev-action recovery), and this
 // pre-flight path is user-perspective SubtypeMissingScope whose recovery is
 // `lark-cli auth login --scope ...`, not a console deep-link.
-func newPreflightMissingScopeError(brand, appID, identity string, missing []string) *errs.PermissionError {
-	consoleURL := errclass.ConsoleURL(brand, appID, missing)
-	return errs.NewPermissionError(errs.SubtypeMissingScope,
-		"%s", errclass.CanonicalPermissionMessage(errs.SubtypeMissingScope, appID, missing, "")).
-		WithHint("%s", errclass.PermissionHint(missing, identity, errs.SubtypeMissingScope, consoleURL)).
-		WithMissingScopes(missing...).
-		WithIdentity(identity)
+func newPreflightMissingScopeError(brand, appID, identity string, missing []string) error {
+	return errclass.NewMissingScopeError(brand, appID, identity, missing)
 }
 
 // unusableParamValue reports whether a provided path/query parameter value
@@ -529,12 +526,28 @@ func unusableParamValue(v interface{}) bool {
 // only the --params form: a flag with its kebab name exists but belongs to
 // something else (e.g. the output --format), and the hint must not steer
 // there. Asking the binder, not cmd.Flags(), is what tells those apart.
-func missingParamHint(opts *ServiceMethodOptions, f meta.Field) string {
+func missingParamHint(opts *ServiceMethodOptions, f meta.Field) recovery.Hint {
 	paramsForm := fmt.Sprintf("--params '{%q: \"<value>\"}'", f.Name)
+	var input string
 	if opts.binder.hasTypedFlag(f.Name) {
-		return fmt.Sprintf("set --%s <value> (or %s); see: lark-cli schema %s", f.FlagName(), paramsForm, opts.SchemaPath)
+		input = fmt.Sprintf("set --%s <value> (or %s)", f.FlagName(), paramsForm)
+	} else {
+		input = fmt.Sprintf("set %s", paramsForm)
 	}
-	return fmt.Sprintf("set %s; see: lark-cli schema %s", paramsForm, opts.SchemaPath)
+	return recovery.Join("; ",
+		recovery.Text(input),
+		recovery.Command(recovery.TargetSchema, "see: lark-cli schema "+opts.SchemaPath),
+	)
+}
+
+func missingRequiredParamError(opts *ServiceMethodOptions, f meta.Field, location string) error {
+	hint := missingParamHint(opts, f)
+	return recovery.Attach(
+		errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"missing required %s parameter: %s", location, f.Name).
+			WithParam(f.Name),
+		hint,
+	)
 }
 
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
@@ -571,10 +584,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		}
 		val, ok := params[s.Name]
 		if !ok || unusableParamValue(val) {
-			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"missing required path parameter: %s", s.Name).
-				WithHint("%s", missingParamHint(opts, s)).
-				WithParam(s.Name)
+			return client.RawApiRequest{}, nil, missingRequiredParamError(opts, s, "path")
 		}
 		valStr := fmt.Sprintf("%v", val)
 		if err := validate.ResourceName(valStr, s.Name); err != nil {
@@ -592,10 +602,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		value, exists := params[s.Name]
 		isPaginationParam := opts.PageAll && (s.Name == "page_token" || s.Name == "page_size")
 		if s.Required && !isPaginationParam && (!exists || unusableParamValue(value)) {
-			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"missing required query parameter: %s", s.Name).
-				WithHint("%s", missingParamHint(opts, s)).
-				WithParam(s.Name)
+			return client.RawApiRequest{}, nil, missingRequiredParamError(opts, s, "query")
 		}
 		if exists && !unusableParamValue(value) {
 			queryParams[s.Name] = value
@@ -707,20 +714,18 @@ func servicePaginate(ctx context.Context, ac *client.APIClient, request client.R
 
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
-		pf := output.NewPaginatedFormatter(out, format)
+		emitter := output.NewEmitter(output.EmitterConfig{
+			Out:            out,
+			ErrOut:         errOut,
+			CommandPath:    commandPath,
+			Identity:       string(pagOpts.Identity),
+			NoticeProvider: output.GetNotice,
+		})
 		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) error {
 			// Streaming formats intentionally emit each page after that page has
 			// passed safety scanning. A later page may still fail, so callers
 			// must use the exit code to distinguish complete vs partial output.
-			scanResult := output.ScanForSafety(commandPath, items, errOut)
-			if scanResult.Blocked {
-				return scanResult.BlockErr
-			}
-			if scanResult.Alert != nil {
-				output.WriteAlertWarning(errOut, scanResult.Alert)
-			}
-			pf.FormatPage(items)
-			return nil
+			return emitter.StreamPage(items, output.StreamOptions{Format: format.String()})
 		}, pagOpts)
 		if err != nil {
 			return err

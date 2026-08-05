@@ -105,7 +105,7 @@ func TestSheetMediaUploadDryRunSmallFileOfficeParentType(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
 	err := mountAndRunSheets(t, SheetMediaUpload, []string{
 		"+media-upload",
-		"--spreadsheet-token", "fake_office_abc123",
+		"--spreadsheet-token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
 		"--file", "img.png",
 		"--dry-run", "--as", "user",
 	}, f, stdout)
@@ -117,10 +117,10 @@ func TestSheetMediaUploadDryRunSmallFileOfficeParentType(t *testing.T) {
 		t.Fatalf("dry-run should use upload_all for small file, got: %s", out)
 	}
 	if !strings.Contains(out, `"office_sheet_file"`) {
-		t.Fatalf("dry-run should include parent_type=office_sheet_file for fake_office_ token, got: %s", out)
+		t.Fatalf("dry-run should include parent_type=office_sheet_file for interleaved OFL0X token, got: %s", out)
 	}
 	if strings.Contains(out, `"sheet_image"`) {
-		t.Fatalf("dry-run must not emit sheet_image for fake_office_ token, got: %s", out)
+		t.Fatalf("dry-run must not emit sheet_image for interleaved OFL0X token, got: %s", out)
 	}
 }
 
@@ -239,7 +239,7 @@ func TestSheetMediaUploadExecuteSuccess(t *testing.T) {
 }
 
 // TestSheetMediaUploadExecuteOfficeParentType confirms that an imported
-// "office" spreadsheet (token prefixed with "fake_office_") uploads with
+// "office" spreadsheet (token carrying the interleaved "OFL0X" marker) uploads with
 // parent_type=office_sheet_file instead of the native sheet_image.
 func TestSheetMediaUploadExecuteOfficeParentType(t *testing.T) {
 	dir := t.TempDir()
@@ -259,7 +259,7 @@ func TestSheetMediaUploadExecuteOfficeParentType(t *testing.T) {
 	}
 	reg.Register(stub)
 
-	const officeToken = "fake_office_abc123"
+	const officeToken = "aaaaOaaaaFaaaaLaaaa0aaaaXaaa"
 	err := mountAndRunSheets(t, SheetMediaUpload, []string{
 		"+media-upload",
 		"--spreadsheet-token", officeToken,

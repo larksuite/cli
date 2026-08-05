@@ -1,10 +1,10 @@
 # apps db 域命令
 
-管理妙搭应用数据库：看表与结构、初始化与发布多环境、数据搬运、变更治理、时间点恢复、用量。逐条跑 SQL（SELECT/DML/DDL）走 [`+db-execute`](lark-apps-db-execute.md)（单独一篇）。运行时命令事实以 `lark-cli apps +<cmd> --help` 为准；认证、`--as user`、exit 码、`_notice` 等通用处理见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 与本域 [`SKILL.md`](../SKILL.md)。
+管理妙搭应用数据库：看表与结构、初始化与发布多环境、数据搬运、变更治理、时间点恢复、用量。逐条跑 SQL（SELECT/DML/DDL）走 [`+db-execute`](lark-apps-db-execute.md)（单独一篇）。运行时命令事实以 `lark-cli apps +<cmd> --help` 为准；认证、`--as user`、exit 码、`_notice` 等通用处理见 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 与本域 [`SKILL.md`](../SKILL.md)。
 
 ## 何时用
 
-用户要看应用里有哪些表 / 某张表的结构、把单库应用拆成 dev/online 多环境、把数据导进导出表、查谁在什么时候改了表结构或表数据、开关行级审计、把开发环境的库结构发布到线上、把库恢复到过去某个时间点、或看数据库用量时。逐条执行 SQL 走 [`+db-execute`](lark-apps-db-execute.md)；文件存储（上传/下载文件）走 [`lark-apps-file.md`](lark-apps-file.md)。
+用户要看应用里有哪些表 / 某张表的结构、把单库应用拆成 dev/online 多环境、把数据导进导出表、查谁在什么时候改了表结构或表数据、开关行级审计、把开发环境的库结构发布到线上、把库恢复到过去某个时间点、或看数据库用量时。逐条执行 SQL 走 [`+db-execute`](lark-apps-db-execute.md)；文件存储（上传/下载文件）走 [`lark-apps-file.md`](lark-apps-file.md)。**建表 / 改表 / 写 SQL 的平台内容规范**（审计列、RLS、`user_profile`、禁用 SQL、PG 陷阱）见 [`lark-apps-db-execute.md`](lark-apps-db-execute.md) 的「平台 SQL 规范」。
 
 ## 命令一览
 

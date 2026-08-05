@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 )
 
 // apiErrWithScopes builds the typed error errclass.BuildAPIError produces for a
@@ -29,6 +31,14 @@ func apiErrWithScopes(code int, msg string, subjects ...string) error {
 		resp["error"] = map[string]any{"permission_violations": violations}
 	}
 	return errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+}
+
+func TestPermissionGrantPermMessageUsesAPINameOnly(t *testing.T) {
+	t.Parallel()
+
+	if got := permissionGrantPermMessage(); got != "full_access" {
+		t.Fatalf("permissionGrantPermMessage() = %q, want %q", got, "full_access")
+	}
 }
 
 func TestAutoGrantStderrWarning_SkippedNoUser(t *testing.T) {
@@ -54,14 +64,43 @@ func TestAutoGrantStderrWarning_SkippedNoUser(t *testing.T) {
 	if result["status"] != PermissionGrantSkipped {
 		t.Fatalf("status = %v, want %q", result["status"], PermissionGrantSkipped)
 	}
-	if !strings.Contains(stderr.String(), "auto-grant was skipped") {
-		t.Fatalf("stderr missing auto-grant skipped warning; got:\n%s", stderr.String())
+	const wantStderr = "Warning: resource was created with bot identity, but no current user open_id is configured, so auto-grant was skipped. Run `lark-cli auth login` and retry, or grant permission manually.\n"
+	if got := stderr.String(); got != wantStderr {
+		t.Fatalf("default stderr changed:\n got: %q\nwant: %q", got, wantStderr)
 	}
-	if hint, ok := result["hint"].(string); !ok || !strings.Contains(hint, "auth login") {
-		t.Fatalf("hint = %#v, want string containing 'auth login'", result["hint"])
+	const wantHint = "No current user identity (not logged in or session expired). Run `lark-cli auth login` and retry, or grant permission manually via the Lark document UI."
+	if got := result["hint"]; got != wantHint {
+		t.Fatalf("default hint changed:\n got: %#v\nwant: %q", got, wantHint)
 	}
-	if hint, ok := result["hint"].(string); !ok || !strings.Contains(hint, "not logged in") {
-		t.Fatalf("hint = %#v, want string containing 'not logged in'", result["hint"])
+}
+
+func TestAutoGrantStderrWarning_SkippedNoUserProjectsConcealedLogin(t *testing.T) {
+	config := &core.CliConfig{
+		AppID:     "perm-grant-test-concealed",
+		AppSecret: "perm-grant-test-secret-concealed",
+		Brand:     core.BrandFeishu,
+	}
+	f, _, stderr, _ := cmdutil.TestFactory(t, config)
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	f.Recovery = recovery.NewProjector(func() *surface.Plan { return plan })
+
+	runtime := &RuntimeContext{
+		ctx:        cmdutil.ContextWithShortcut(context.Background(), "test:shortcut", "exec-concealed"),
+		Config:     config,
+		Factory:    f,
+		resolvedAs: core.AsBot,
+	}
+	result := AutoGrantCurrentUserDrivePermission(runtime, "tkn_doc", "docx")
+
+	const wantStderr = "Warning: resource was created with bot identity, but no current user open_id is configured, so auto-grant was skipped. Establish a current user identity through this distribution's supported authorization flow and retry, or grant permission manually.\n"
+	if got := stderr.String(); got != wantStderr {
+		t.Fatalf("concealed stderr changed:\n got: %q\nwant: %q", got, wantStderr)
+	}
+	const wantHint = "No current user identity (not logged in or session expired). Establish a current user identity through this distribution's supported authorization flow and retry, or grant permission manually via the Lark document UI."
+	if got := result["hint"]; got != wantHint {
+		t.Fatalf("concealed hint changed:\n got: %#v\nwant: %q", got, wantHint)
 	}
 }
 

@@ -59,7 +59,7 @@ func executeRootIntegration(t *testing.T, f *cmdutil.Factory, rootCmd *cobra.Com
 	t.Helper()
 	rootCmd.SetArgs(args)
 	if err := rootCmd.Execute(); err != nil {
-		return handleRootError(f, err)
+		return handleRootError(f, err, nil)
 	}
 	return 0
 }
@@ -371,10 +371,11 @@ func TestIntegration_StrictModeUser_ProfileOverride_ShortcutExplicitBotReturnsEn
 
 func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnvelope(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
-	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
+	catalog := strictModeFixtureCatalog()
+	rootCmd := buildStrictModeIntegrationRootCmdWithCatalog(t, f, &catalog)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
-		"im", "chats", "get", "--params", `{"chat_id":"oc_test"}`, "--as", "user", "--dry-run",
+		"fixture", "things", "create", "--data", `{"name":"probe"}`, "--as", "user", "--dry-run",
 	})
 
 	if code != output.ExitValidation {
@@ -504,7 +505,7 @@ func TestSetupNotices_ColdStart_NoNotice(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	notice := output.GetNotice()
 	if notice == nil {
@@ -538,7 +539,7 @@ func TestSetupNotices_InSync(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	notice := output.GetNotice()
 	if notice != nil {
@@ -571,7 +572,7 @@ func TestSetupNotices_Drift(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	notice := output.GetNotice()
 	if notice == nil {
@@ -620,7 +621,7 @@ func TestSetupNotices_BothUpdateAndSkills(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	// After setupNotices, skills pending is set (drift). Manually populate
 	// the update side so the composed envelope has both keys — the update

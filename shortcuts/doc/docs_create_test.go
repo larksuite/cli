@@ -6,9 +6,11 @@ package doc
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -63,7 +65,7 @@ func TestDocsCreateV2BotAutoGrantSuccess(t *testing.T) {
 	if grant["user_open_id"] != "ou_current_user" {
 		t.Fatalf("permission_grant.user_open_id = %#v, want %q", grant["user_open_id"], "ou_current_user")
 	}
-	if grant["message"] != "Granted the current CLI user full_access (可管理权限) on the new document." {
+	if grant["message"] != "Granted the current CLI user full_access on the new document." {
 		t.Fatalf("permission_grant.message = %#v", grant["message"])
 	}
 
@@ -173,11 +175,9 @@ func TestDocsCreateV2BotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	if grant["status"] != common.PermissionGrantFailed {
 		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
 	}
-	if !strings.Contains(grant["message"].(string), "full_access (可管理权限)") {
-		t.Fatalf("permission_grant.message = %q, want permission hint", grant["message"])
-	}
-	if !strings.Contains(grant["message"].(string), "retry later") {
-		t.Fatalf("permission_grant.message = %q, want retry guidance", grant["message"])
+	wantMessage := "Resource was created, but granting current user full_access failed: no permission. You can retry later or continue using bot identity."
+	if grant["message"] != wantMessage {
+		t.Fatalf("permission_grant.message = %q, want %q", grant["message"], wantMessage)
 	}
 	if !strings.Contains(stderr.String(), "auto-grant failed") {
 		t.Fatalf("stderr missing auto-grant failed warning; got:\n%s", stderr.String())
@@ -283,19 +283,29 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected legacy v1 flags to be rejected")
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T, want typed problem", err)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem = %s/%s, want validation/invalid_argument", problem.Category, problem.Subtype)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	if got, want := validationErr.Param, "--markdown"; got != want {
+		t.Fatalf("param = %q, want %q", got, want)
+	}
+	presented := problem.Message + "\n" + problem.Hint
 	for _, want := range []string{
 		"docs +create is v2-only",
 		"the old v1 interface has been shut down",
 		"legacy v1 flag(s) --markdown are no longer supported",
 		"--markdown -> use --content with --doc-format markdown",
-		"lark-cli skills read lark-doc references/lark-doc-create.md",
-		"lark-cli skills read lark-doc references/lark-doc-xml.md",
-		"lark-cli skills read lark-doc references/lark-doc-md.md",
-		"follow the latest format rules",
-		"MUST NOT grep/open local SKILL.md files",
 		"lark-cli docs +create --help",
 	} {
-		if !strings.Contains(err.Error(), want) {
+		if !strings.Contains(presented, want) {
 			t.Fatalf("error missing %q: %v", want, err)
 		}
 	}

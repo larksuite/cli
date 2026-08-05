@@ -5,8 +5,6 @@ package sheets
 
 import (
 	"github.com/larksuite/cli/shortcuts/common"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // Shortcuts returns all lark-sheets shortcuts. The list is grouped by
@@ -26,48 +24,29 @@ func Shortcuts() []common.Shortcut {
 		if _, ok := commandsWithSchema[all[i].Command]; ok {
 			all[i].PrintFlagSchema = printFlagSchemaFor(all[i].Command)
 		}
-		// Accept --token as a parse-time alias for --spreadsheet-token (the
-		// single highest-frequency reflex misspelling in eval traces) on every
-		// shortcut that registers --spreadsheet-token, so the typo costs zero
-		// round-trips instead of an unknown-flag failure. Wired through the
-		// existing PostMount hook and composed onto any prior PostMount, so the
-		// common framework needs no change at all.
-		if hasFlag(all[i].Flags, "spreadsheet-token") {
-			all[i].PostMount = withTokenAlias(all[i].PostMount)
-		}
+		// Accept the highest-frequency locator misspelling through the common
+		// declarative alias contract. Copy the flag slice before decorating it:
+		// shortcut values are package globals and Shortcuts may be called more
+		// than once in tests or embedders.
+		all[i].Flags = withSpreadsheetTokenAlias(all[i].Flags)
 		// Sheets-scoped flag ergonomics (unknown-flag hints with the valid
-		// flags inlined, enum vocabulary normalization) ride the same
+		// flags inlined, enum vocabulary normalization) ride the existing
 		// PostMount composition, so no other domain's behavior shifts.
 		all[i].PostMount = withFlagErgonomics(all[i].PostMount)
 	}
 	return all
 }
 
-func hasFlag(flags []common.Flag, name string) bool {
-	for _, fl := range flags {
-		if fl.Name == name {
-			return true
+func withSpreadsheetTokenAlias(flags []common.Flag) []common.Flag {
+	for i := range flags {
+		if flags[i].Name != "spreadsheet-token" {
+			continue
 		}
+		decorated := append([]common.Flag(nil), flags...)
+		decorated[i].Aliases = append(append([]string(nil), decorated[i].Aliases...), "token")
+		return decorated
 	}
-	return false
-}
-
-// withTokenAlias wraps an optional PostMount so that, after it runs, --token
-// resolves to --spreadsheet-token at parse time via pflag's normalize hook (no
-// duplicate flag in --help). It preserves any pre-existing PostMount — e.g.
-// +csv-put's --range / --start-cell flag-group setup — by running it first.
-func withTokenAlias(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) {
-	return func(cmd *cobra.Command) {
-		if prev != nil {
-			prev(cmd)
-		}
-		cmd.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
-			if name == "token" {
-				return pflag.NormalizedName("spreadsheet-token")
-			}
-			return pflag.NormalizedName(name)
-		})
-	}
+	return flags
 }
 
 func shortcutList() []common.Shortcut {

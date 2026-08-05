@@ -16,14 +16,16 @@ metadata:
 
 ## 身份
 
-日程操作默认使用 `--as user`（查看和管理当前用户的日程）。`--as bot` 只能访问 bot 自己的（空）日历，会拿到空结果——不要用 bot 身份查用户日程。
+按**日程归属**选身份：
+
+- 查看/管理登录用户本人的日程 → `--as user`（默认，绝大多数场景）。
+- 查看/管理 bot 自己创建/拥有的日程 → `--as bot` 
 
 ```bash
-# BAD — bot 身份查用户日程，返回空列表
-lark-cli calendar +agenda --as bot
-
-# GOOD — user 身份查日程
+# 用户本人日程 → user
 lark-cli calendar +agenda --as user
+# bot 自建或参与的日程 → bot
+lark-cli calendar +agenda --as bot
 ```
 
 ## Shortcuts
@@ -47,6 +49,8 @@ lark-cli calendar +agenda --as user
 # calendar_id不传，默认primary
 lark-cli calendar +get --calendar-id <calendar_id> --event-id <event_id>
 ```
+
+日程描述统一使用 `description` 一个字段，按 **Markdown** 富文本处理。读取日程时 `description` 返回 Markdown 富文本（仅有纯文本描述时返回该纯文本）；创建/更新日程时也通过 `--description` 传入 Markdown。
 
 ### `+search-event` — 按关键词、时间范围和参会人搜索日程
 
@@ -92,12 +96,12 @@ lark-cli calendar +freebusy --start 2026-03-11 --end 2026-03-12 --user-id ou_xxx
 
 ## 前置条件路由
 
+> **先判断是否重复性日程**：若操作对象是重复性日程，必须先读 [重复性日程操作规范](references/lark-calendar-recurring.md)，并在用户未明确范围时先确认「仅此次/全部/此次及后续」（不要默认仅此次），再按下表进入具体操作流程。
+
 | 场景 | 前置要求 |
 |------|----------|
 | 预约日程/会议、调整时间、查会议室 | 先读 [lark-calendar-schedule-meeting.md](references/lark-calendar-schedule-meeting.md) |
 | 仅编辑字段（标题/描述）或增删参会人 | 先定位 `event_id`，再读 [lark-calendar-update.md](references/lark-calendar-update.md) |
-| 编辑已有日程（涉及时间或会议室） | 先定位目标日程 `event_id`；若是重复性日程，必须定位到具体实例的 `event_id`（禁止使用原重复日程 ID） |
-| 编辑/删除重复性日程 | 先读 [重复性日程操作规范](references/lark-calendar-recurring.md)，按操作范围（仅此次/全部/此次及后续）执行 |
 | 调用任何 Shortcut | 先读其对应 reference 文档 |
 
 ## 写操作反馈
@@ -186,6 +190,8 @@ lark-cli contact +search-user --query <query> --as user
 lark-cli im +chat-search --query <query> --as user
 ```
 
+> 搜索用户/群不支持 bot 身份，必须用 `--as user`。**解析不到或类型不明确时，向用户澄清该参会人类型，不要靠名字形态硬猜类型。**
+
 ## 不在本 skill 范围
 
 - 查询过去的视频会议记录 → [lark-vc](../lark-vc/SKILL.md)
@@ -195,4 +201,4 @@ lark-cli im +chat-search --query <query> --as user
 - 会议室物理设施管理 → 管理员后台
 
 **注意（强制性）：**
-- 涉及日期（时间）字符串与时间戳的相互转换时，务必调用系统命令或脚本代码等外部工具进行处理，以确保转换的绝对准确。违者将导致严重的逻辑错误！
+- 涉及日期（时间）字符串与时间戳的相互转换时，务必调用系统命令或脚本代码等外部工具进行处理，以确保转换的绝对准确；换算**禁止依赖容器默认时区**（常为 UTC，会导致 8 小时偏移），必须显式指定目标时区。违者将导致严重的逻辑错误！

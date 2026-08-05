@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -82,12 +83,19 @@ func senderDisplay(sender map[string]interface{}) string {
 }
 
 func validateMessageID(input string) (string, error) {
+	return validateMessageIDForParam(input, "--message-id")
+}
+
+// validateMessageIDForParam validates a message ID and attributes failures to
+// the command flag that owns the value. Batch inputs use --message-ids while
+// single-message shortcuts use --message-id.
+func validateMessageIDForParam(input, param string) (string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "message ID cannot be empty").WithParam("--message-id")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "message ID cannot be empty").WithParam(param)
 	}
 	if !strings.HasPrefix(input, "om_") {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid message ID %q: must start with om_", input).WithParam("--message-id")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid message ID %q: must start with om_", input).WithParam(param)
 	}
 	return input, nil
 }
@@ -199,7 +207,7 @@ func startURLDownload(ctx context.Context, runtime *common.RuntimeContext, rawUR
 			WithCause(err)
 	}
 
-	httpClient, err := runtime.Factory.HttpClient()
+	httpClient, err := runtime.Factory.ExternalHTTPClient()
 	if err != nil {
 		return nil, "", errs.NewInternalError(errs.SubtypeSDKError, "http client: %v", err).WithCause(err)
 	}
@@ -451,7 +459,8 @@ func resolveThreadID(runtime *common.RuntimeContext, id string) (string, error) 
 		return id, nil
 	}
 	if !messageIDRe.MatchString(id) {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid thread ID format: must start with om_ or omt_").WithParam("--thread")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid thread ID format: must start with om_ or omt_").
+			WithParam("--thread")
 	}
 
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
@@ -1286,9 +1295,11 @@ func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, req
 	}
 	result, err := rt.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(rt.As(), rt.Config.AppID))
 	if err != nil {
-		return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "cannot verify required scope(s): %v", err).
-			WithHint("%s", flagScopeLoginHint(required)).
-			WithCause(err)
+		return recovery.Attach(
+			errs.NewAuthenticationError(errs.SubtypeTokenMissing,
+				"cannot verify required scope(s): %v", err).WithCause(err),
+			recovery.UserAuthorization(required...),
+		)
 	}
 	if result == nil || result.Scopes == "" {
 		fmt.Fprintf(rt.IO().ErrOut,
@@ -1299,13 +1310,9 @@ func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, req
 	if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
 		return errs.NewPermissionError(errs.SubtypeMissingScope, "missing required scope(s): %s", strings.Join(missing, ", ")).
 			WithMissingScopes(missing...).
-			WithHint("%s", flagScopeLoginHint(missing))
+			WithIdentity(string(rt.As()))
 	}
 	return nil
-}
-
-func flagScopeLoginHint(scopes []string) string {
-	return fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(scopes, " "))
 }
 
 // flagItem is one entry in the flags API body. The server expects numeric

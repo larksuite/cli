@@ -147,6 +147,63 @@ func TestDrivePreviewDownloadUsesResolvedTypeCodeAndRenamePolicy(t *testing.T) {
 	}
 }
 
+// TestDrivePreviewSourceFileDirectDownloadSkipsPreviewResult verifies
+// source_file downloads the source file artifact without first fetching preview
+// candidates.
+func TestDrivePreviewSourceFileDirectDownloadSkipsPreviewResult(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/medias/file_source/preview_download?preview_type=16",
+		Status: 200,
+		Body:   []byte("# markdown\n"),
+		Headers: http.Header{
+			"Content-Disposition": []string{`attachment; filename="README.md"`},
+			"Content-Type":        []string{"text/plain; charset=utf-8"},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DrivePreview, []string{
+		"+preview",
+		"--file-token", "file_source",
+		"--type", "source_file",
+		"--output", "artifacts/",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if _, ok := data["requested_type"]; ok {
+		t.Fatalf("requested_type should be omitted from execute output: %#v", data)
+	}
+	if got := data["selected_type"]; got != "source_file" {
+		t.Fatalf("selected_type=%v, want source_file", got)
+	}
+	if _, ok := data["selected_type_code"]; ok {
+		t.Fatalf("selected_type_code should be omitted from execute output: %#v", data)
+	}
+	resolvedTmpDir, err := filepath.EvalSymlinks(tmpDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks() error: %v", err)
+	}
+	wantPath := filepath.Join(resolvedTmpDir, "artifacts", "README.md")
+	if got := data["output_path"]; got != wantPath {
+		t.Fatalf("output_path=%v, want %s", got, wantPath)
+	}
+	gotBody, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", wantPath, err)
+	}
+	if string(gotBody) != "# markdown\n" {
+		t.Fatalf("saved body=%q, want markdown source", string(gotBody))
+	}
+}
+
 // TestDrivePreviewRejectsUnavailableType verifies unavailable preview types
 // return an actionable validation error.
 func TestDrivePreviewRejectsUnavailableType(t *testing.T) {
@@ -434,6 +491,72 @@ func TestDrivePreviewDryRunIncludesVersionAndMode(t *testing.T) {
 	}
 }
 
+// TestDrivePreviewDryRunSourceFileDocumentsDirectDownload verifies source_file
+// dry-run documents the direct source artifact download path.
+func TestDrivePreviewDryRunSourceFileDocumentsDirectDownload(t *testing.T) {
+	runtime := newDrivePreviewRuntime(t, "drive +preview", map[string]string{
+		"file-token": "file_source",
+		"type":       "source_file",
+		"version":    "7",
+		"output":     "source",
+	}, nil)
+
+	data := decodeDryRunOutput(t, DrivePreview.DryRun(context.Background(), runtime))
+	if got := data["mode"]; got != "download" {
+		t.Fatalf("mode=%v, want download", got)
+	}
+	if got := data["requested_type"]; got != "source_file" {
+		t.Fatalf("requested_type=%v, want source_file", got)
+	}
+	if got := data["selected_type"]; got != "source_file" {
+		t.Fatalf("selected_type=%v, want source_file", got)
+	}
+	if got := data["selected_type_code"]; got != drivePreviewTypeSourceFile {
+		t.Fatalf("selected_type_code=%v, want %s", got, drivePreviewTypeSourceFile)
+	}
+	api, _ := data["api"].([]interface{})
+	if len(api) != 1 {
+		t.Fatalf("len(api)=%d, want 1", len(api))
+	}
+	call, _ := api[0].(map[string]interface{})
+	if got := call["method"]; got != "GET" {
+		t.Fatalf("method=%v, want GET", got)
+	}
+	if got := call["url"]; got != "/open-apis/drive/v1/medias/file_source/preview_download" {
+		t.Fatalf("url=%v, want preview_download", got)
+	}
+	params, _ := call["params"].(map[string]interface{})
+	if got := params["preview_type"]; got != drivePreviewTypeSourceFile {
+		t.Fatalf("params.preview_type=%v, want %s", got, drivePreviewTypeSourceFile)
+	}
+	if got := params["version"]; got != "7" {
+		t.Fatalf("params.version=%v, want 7", got)
+	}
+}
+
+// TestDrivePreviewDryRunSourceAliasUsesPreviewCandidates verifies only the
+// explicit source_file request bypasses preview_result.
+func TestDrivePreviewDryRunSourceAliasUsesPreviewCandidates(t *testing.T) {
+	runtime := newDrivePreviewRuntime(t, "drive +preview", map[string]string{
+		"file-token": "file_source",
+		"type":       "source",
+		"output":     "source",
+	}, nil)
+
+	data := decodeDryRunOutput(t, DrivePreview.DryRun(context.Background(), runtime))
+	api, _ := data["api"].([]interface{})
+	if len(api) != 2 {
+		t.Fatalf("len(api)=%d, want 2", len(api))
+	}
+	call, _ := api[0].(map[string]interface{})
+	if got := call["url"]; got != "/open-apis/drive/v1/medias/file_source/preview_result" {
+		t.Fatalf("url=%v, want preview_result", got)
+	}
+	if _, ok := data["selected_type_code"]; ok {
+		t.Fatalf("selected_type_code should be omitted for non-source_file dry-run: %#v", data)
+	}
+}
+
 // TestDrivePreviewDryRunListOmitsBodyWithoutVersion verifies list-mode DryRun
 // omits the request body when no version is supplied.
 func TestDrivePreviewDryRunListOmitsBodyWithoutVersion(t *testing.T) {
@@ -612,6 +735,135 @@ func TestDrivePreviewNotReadyReturnsFailedPrecondition(t *testing.T) {
 	}
 }
 
+// TestDrivePreviewListOnlyErrorAddsSourceFileHint verifies preview_result API
+// failures keep server diagnostics while guiding callers to source_file.
+func TestDrivePreviewListOnlyErrorAddsSourceFileHint(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/file_markdown/preview_result",
+		Body: map[string]interface{}{
+			"code":   1,
+			"msg":    "fail:mGetFilePreviewCore failed",
+			"log_id": "log-preview-result",
+			"error": map[string]interface{}{
+				"troubleshooter": "https://open.feishu.cn/document/troubleshoot/preview-result",
+				"details": []interface{}{
+					map[string]interface{}{"value": "server preview_result detail"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePreview, []string{
+		"+preview",
+		"--file-token", "file_markdown",
+		"--list-only",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected preview_result error, got nil")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryAPI {
+		t.Fatalf("category=%q, want api", problem.Category)
+	}
+	if problem.Code != 1 {
+		t.Fatalf("code=%d, want 1", problem.Code)
+	}
+	if problem.LogID != "log-preview-result" {
+		t.Fatalf("log_id=%q, want log-preview-result", problem.LogID)
+	}
+	if problem.Troubleshooter != "https://open.feishu.cn/document/troubleshoot/preview-result" {
+		t.Fatalf("troubleshooter=%q, want passthrough", problem.Troubleshooter)
+	}
+	if !strings.Contains(problem.Hint, "server preview_result detail") {
+		t.Fatalf("hint=%q, want server detail preserved", problem.Hint)
+	}
+	if !strings.Contains(problem.Hint, "--type source_file") || !strings.Contains(problem.Hint, "--output") {
+		t.Fatalf("hint=%q, want source_file output guidance", problem.Hint)
+	}
+}
+
+// TestDrivePreviewListOnlyRateLimitKeepsOriginalHint verifies retryable API
+// errors are not reframed as source_file recovery.
+func TestDrivePreviewListOnlyRateLimitKeepsOriginalHint(t *testing.T) {
+	err := withDrivePreviewSourceFileHint(errs.NewAPIError(errs.SubtypeRateLimit, "request trigger frequency limit").WithCode(99991400).WithRetryable())
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Hint != "" {
+		t.Fatalf("hint=%q, want empty hint for rate limit", problem.Hint)
+	}
+	if !problem.Retryable {
+		t.Fatal("retryable=false, want true")
+	}
+}
+
+// TestDrivePreviewSourceFileHintGuards verifies source_file recovery guidance
+// only rewrites eligible API errors and preserves existing source_file hints.
+func TestDrivePreviewSourceFileHintGuards(t *testing.T) {
+	plainErr := errors.New("plain failure")
+	if got := withDrivePreviewSourceFileHint(plainErr); got != plainErr {
+		t.Fatalf("non-API error changed: got %T %v, want original", got, got)
+	}
+
+	for _, tt := range []struct {
+		name string
+		err  *errs.APIError
+		want string
+	}{
+		{
+			name: "already has source file hint",
+			err:  errs.NewAPIError(errs.SubtypeServerError, "preview_result failed").WithHint("rerun with --type source_file --output <path>"),
+			want: "rerun with --type source_file --output <path>",
+		},
+		{
+			name: "candidate core failure empty hint",
+			err:  errs.NewAPIError(errs.SubtypeServerError, "fail:mGetFilePreviewCore failed").WithCode(1),
+			want: drivePreviewSourceFileHint,
+		},
+		{
+			name: "candidate core failure whitespace hint",
+			err:  errs.NewAPIError(errs.SubtypeServerError, "fail:mGetFilePreviewCore failed").WithCode(1).WithHint(" \n\t "),
+			want: drivePreviewSourceFileHint,
+		},
+		{
+			name: "generic server error",
+			err:  errs.NewAPIError(errs.SubtypeServerError, "preview_result failed"),
+			want: "",
+		},
+		{
+			name: "not found",
+			err:  errs.NewAPIError(errs.SubtypeNotFound, "file not found").WithCode(1061044),
+			want: "",
+		},
+		{
+			name: "invalid parameters",
+			err:  errs.NewAPIError(errs.SubtypeInvalidParameters, "invalid file token").WithCode(1063007),
+			want: "",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			gotErr := withDrivePreviewSourceFileHint(tt.err)
+			if gotErr != tt.err {
+				t.Fatalf("API error pointer changed: got %T, want original", gotErr)
+			}
+			problem, ok := errs.ProblemOf(gotErr)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", gotErr, gotErr)
+			}
+			if problem.Hint != tt.want {
+				t.Fatalf("hint=%q, want %q", problem.Hint, tt.want)
+			}
+		})
+	}
+}
+
 // TestDriveCoverRejectsUnknownSpec verifies unsupported cover specs produce a
 // validation error with available alternatives.
 func TestDriveCoverRejectsUnknownSpec(t *testing.T) {
@@ -721,6 +973,21 @@ func TestDrivePreviewCommonHelpers(t *testing.T) {
 	if path != "cover.pdf" || fallback != nil {
 		t.Fatalf("explicit ext append = (%q, %+v), want unchanged path", path, fallback)
 	}
+
+	header = http.Header{}
+	header.Set("Content-Type", "text/plain")
+	header.Set("Content-Disposition", `attachment; filename="README.md"`)
+	path, fallback = autoAppendDrivePreviewExtension("source", header, "")
+	if path != "source.md" || fallback == nil || fallback.Source != "Content-Disposition" {
+		t.Fatalf("source_file append = (%q, %+v), want source.md from Content-Disposition", path, fallback)
+	}
+
+	header = http.Header{}
+	header.Set("Content-Type", "text/plain")
+	path, fallback = autoAppendDrivePreviewExtension("source", header, "")
+	if path != "source.txt" || fallback == nil || fallback.Source != "Content-Type" {
+		t.Fatalf("source_file content-type append = (%q, %+v), want source.txt from Content-Type", path, fallback)
+	}
 }
 
 // TestDrivePreviewMetadataAndPathResolution verifies metadata normalization
@@ -751,7 +1018,7 @@ func TestDrivePreviewMetadataAndPathResolution(t *testing.T) {
 	runtime := newDrivePreviewRuntime(t, "drive +preview", nil, nil)
 	header := http.Header{}
 	header.Set("Content-Type", "application/pdf")
-	renamed, _, err := resolveDrivePreviewOutputPath(runtime, "preview", header, ".pdf", drivePreviewIfExistsRename)
+	renamed, _, err := resolveDrivePreviewOutputPath(runtime, "preview", header, ".pdf", drivePreviewIfExistsRename, "file_preview")
 	if err != nil {
 		t.Fatalf("resolveDrivePreviewOutputPath(rename) error: %v", err)
 	}
@@ -759,7 +1026,7 @@ func TestDrivePreviewMetadataAndPathResolution(t *testing.T) {
 		t.Fatalf("renamed=%q, want preview (1).pdf suffix", renamed)
 	}
 
-	_, _, err = resolveDrivePreviewOutputPath(runtime, "preview", header, ".pdf", "keep")
+	_, _, err = resolveDrivePreviewOutputPath(runtime, "preview", header, ".pdf", "keep", "file_preview")
 	if err == nil {
 		t.Fatal("expected invalid if-exists error, got nil")
 	}
@@ -771,6 +1038,20 @@ func TestDrivePreviewMetadataAndPathResolution(t *testing.T) {
 		t.Fatalf("param=%q, want --if-exists", validationErr.Param)
 	}
 
+	if err := os.Mkdir("artifacts", 0755); err != nil {
+		t.Fatalf("Mkdir() error: %v", err)
+	}
+	sourceHeader := http.Header{}
+	sourceHeader.Set("Content-Type", "text/plain")
+	sourceHeader.Set("Content-Disposition", `attachment; filename="README.md"`)
+	dirOutput, _, err := resolveDrivePreviewOutputPath(runtime, "artifacts", sourceHeader, "", drivePreviewIfExistsError, "file_source")
+	if err != nil {
+		t.Fatalf("resolveDrivePreviewOutputPath(directory) error: %v", err)
+	}
+	if !strings.HasSuffix(dirOutput, filepath.Join("artifacts", "README.md")) {
+		t.Fatalf("dirOutput=%q, want artifacts/README.md suffix", dirOutput)
+	}
+
 	unusedPath, err := nextAvailableDrivePreviewPath(runtime.FileIO(), "fresh.pdf")
 	if err != nil {
 		t.Fatalf("nextAvailableDrivePreviewPath(unused) error: %v", err)
@@ -779,7 +1060,7 @@ func TestDrivePreviewMetadataAndPathResolution(t *testing.T) {
 		t.Fatalf("unusedPath=%q, want fresh.pdf", unusedPath)
 	}
 
-	overwritten, _, err := resolveDrivePreviewOutputPath(runtime, "preview.pdf", header, ".pdf", drivePreviewIfExistsOverwrite)
+	overwritten, _, err := resolveDrivePreviewOutputPath(runtime, "preview.pdf", header, ".pdf", drivePreviewIfExistsOverwrite, "file_preview")
 	if err != nil {
 		t.Fatalf("resolveDrivePreviewOutputPath(overwrite) error: %v", err)
 	}
@@ -791,7 +1072,7 @@ func TestDrivePreviewMetadataAndPathResolution(t *testing.T) {
 	f.FileIOProvider = &statErrorProvider{inner: f.FileIOProvider, err: fs.ErrPermission}
 	runtimeWithStatErr := newDrivePreviewRuntime(t, "drive +preview", nil, nil)
 	runtimeWithStatErr.Factory = f
-	_, _, err = resolveDrivePreviewOutputPath(runtimeWithStatErr, "blocked.pdf", header, ".pdf", drivePreviewIfExistsError)
+	_, _, err = resolveDrivePreviewOutputPath(runtimeWithStatErr, "blocked.pdf", header, ".pdf", drivePreviewIfExistsError, "file_preview")
 	if err == nil {
 		t.Fatal("expected stat permission error, got nil")
 	}
@@ -876,7 +1157,6 @@ func TestDrivePreviewAliasAndAvailabilityHelpers(t *testing.T) {
 	if got := normalizeDrivePreviewRequest(" Source File "); got != "source_file" {
 		t.Fatalf("normalizeDrivePreviewRequest()=%q, want source_file", got)
 	}
-
 	aliases := previewAliasesForCandidate(drivePreviewCandidate{TypeCode: "1"})
 	if len(aliases) == 0 || aliases[0] != "image" {
 		t.Fatalf("previewAliasesForCandidate()=%v, want image alias", aliases)

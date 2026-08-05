@@ -7,13 +7,13 @@
 ## 适用场景（重点）
 
 - 适合导入 CSV / Excel、外部系统一次性写入新数据。
-- 先把输入数据映射到合适的字段类型，再组装 `fields + rows`。
+- 先把每条输入数据映射为独立的字段对象，再组装到 `create_records`。
 
 ## 推荐命令
 
 ```bash
 lark-cli base +record-batch-create --base-token <base_token> --table-id <table_id> \
-  --json '{"fields":["标题","状态"],"rows":[["任务 A","Open"],["任务 B","Done"]]}'
+  --json '{"create_records":[{"标题":"任务 A","状态":"Open"},{"标题":"任务 B","状态":"Done"}]}'
 
 lark-cli base +record-batch-create --base-token <base_token> --table-id <table_id> --json @batch-create.json
 ```
@@ -34,23 +34,25 @@ lark-cli base +record-batch-create --base-token <base_token> --table-id <table_i
 
 本节只说明 `+record-batch-create` 的外层 JSON 形状；CellValue 统一看 [lark-base-cell-value.md](lark-base-cell-value.md)。
 
-对象形态：`{"fields":[...],"rows":[...]}`。
+对象形态：
+
+```json
+{"create_records":[{"标题":"任务 A","状态":"Open"},{"标题":"任务 B","状态":"Done"}]}
+```
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `fields` | `string[]` | 是 | 字段 ID 或字段名数组 |
-| `rows` | `CellValue[][]` | 是 | 二维数组，每一行按 `fields` 同序给 cell；单次最多 200 行 |
+| `create_records` | `Array<Map<FieldNameOrID, CellValue>>` | 是 | 记录字段对象数组；每条记录可以提交不同字段，单次最多 200 条 |
 
 ## 返回重点
 
-返回 `fields`、`field_id_list`、`record_id_list`、`data`，其中 `data` 与 `fields` 列顺序对齐。
+返回 `record_id_list` 和可选的 `ignored_fields`。
 
 ## 坑点
 
-- `fields` 与每行 `rows` 的列顺序必须一一对应。
-- 空单元格必须显式用 `null` 填充。
-- 单次最多 200 行，超出需分批写入。
-- select 写入未知选项时平台可能自动新增选项；如果不是要新增选项，先确认真实选项名。
+- 每个 `create_records` 元素都是独立的记录字段对象，只提交该记录需要写入的字段。
+- 单次最多 200 条，超出需分批写入。
+- `select` 字段只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
 
 ## 参考
 

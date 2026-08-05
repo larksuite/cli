@@ -13,6 +13,8 @@ lark-cli mail +triage
 
 # 查看收件箱未读
 lark-cli mail +triage --filter '{"folder":"inbox","is_unread":true}'
+lark-cli mail +triage --folder INBOX --is-unread
+lark-cli mail +triage --filter is_unread
 
 # 全文搜索
 lark-cli mail +triage --query "合同审批"
@@ -25,6 +27,8 @@ lark-cli mail +triage --query "项目评审" --filter '{"time_range":{"start_tim
 
 # 指定文件夹
 lark-cli mail +triage --filter '{"folder":"sent"}'
+lark-cli mail +triage --filter folder=sent
+lark-cli mail +triage --folder sent
 
 # 系统标签（可通过 folder 或 label 传入，搜索时自动转为 folder）
 lark-cli mail +triage --filter '{"folder":"flagged"}'
@@ -47,16 +51,27 @@ lark-cli mail +triage --page-size 10
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `--filter <json>` | — | 筛选条件（见下方字段说明） |
+| `--filter <filter>` | — | 筛选条件（见下方字段说明） |
+| `--folder <name-or-id>` | — | 文件夹名称或系统文件夹 ID 筛选；等价于设置 `filter.folder` |
+| `--folder-id <id>` | — | 明确的文件夹 ID 筛选；等价于设置 `filter.folder_id` |
+| `--is-unread` | — | 只看未读；等价于设置 `filter.is_unread=true` |
 | `--query <text>` | — | 全文搜索关键词 |
 | `--format <mode>` | `table` | `table` / `json` / `data`（`json` 和 `data` 均输出含分页信息的对象） |
 | `--max <n>` | `20` | 最大返回条数（1-400），内部自动分页拉取 |
-| `--page-size <n>` | — | `--max` 的别名，两者含义相同；同时指定时 `--page-size` 优先 |
+| `--page-size <n>` | — | `--max` 的别名；重复指定时后出现的值生效 |
 | `--page-token <token>` | — | 上一次响应返回的分页令牌，传入后从该位置继续拉取。令牌带 `search:` 或 `list:` 前缀，标识来源路径，不可混用 |
 | `--labels` | — | table 格式时额外显示 labels 列 |
 | `--mailbox <id>` | `me` | 邮箱地址 |
 
 ### `--filter` 支持的字段
+
+`--filter` 有三种写法：
+
+- JSON 对象：`--filter '{"folder":"INBOX","is_unread":true}'`，用于组合多个字段或传数组/对象字段
+- 单个 `key=value`：`--filter folder=INBOX`、`--filter is_unread=true`
+- 裸未读快捷写法：`--filter is_unread`
+
+多个筛选条件请使用 JSON 对象，`folder=INBOX,is_unread=true` 这种逗号拼接的 key=value 不支持。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -73,7 +88,7 @@ lark-cli mail +triage --page-size 10
 
 > **系统标签说明**：`IMPORTANT`/`FLAGGED`/`OTHER` 可通过 `folder` 或 `label` 传入（也支持中文别名 `重要邮件`/`已加旗标`/`其他邮件`、搜索名 `priority`/`flagged`/`other`）。搜索时自动转为 folder 字段，列表时自动转为 label_id。label list 接口不返回这三个系统标签。
 >
-> **⚠️ 注意**：查询未读请用 `"is_unread":true`。
+> **⚠️ 注意**：查询未读可用 `--is-unread`、`--filter is_unread`、`--filter is_unread=true` 或 JSON 写法 `"is_unread":true`。
 可运行 `mail +triage --print-filter-schema` 查看完整字段说明。
 
 ## 输出
@@ -108,7 +123,7 @@ lark-cli mail +triage --page-size 10
 
 ### `table` 格式
 
-`page_token` 信息输出在 stderr，自动携带 `--query`/`--filter`/`--mailbox` 参数方便续页：
+`page_token` 信息输出在 stderr，自动携带 `--query`/`--filter`/`--folder`/`--folder-id`/`--is-unread`/`--mailbox` 参数方便续页：
 ```text
 15 message(s)
 next page: mail +triage --query '合同审批' --page-token 'search:abc123...'

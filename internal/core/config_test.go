@@ -60,7 +60,9 @@ func TestAppConfig_LangOmitEmpty(t *testing.T) {
 }
 
 func TestMultiAppConfig_RoundTrip(t *testing.T) {
+	disabled := false
 	config := &MultiAppConfig{
+		RiskControl: &disabled,
 		Apps: []AppConfig{{
 			AppId: "cli_test", AppSecret: PlainSecret("s"),
 			Brand: BrandLark, Lang: "zh", Users: []AppUser{},
@@ -83,6 +85,9 @@ func TestMultiAppConfig_RoundTrip(t *testing.T) {
 	}
 	if got.Apps[0].Brand != BrandLark {
 		t.Errorf("Brand = %q, want %q", got.Apps[0].Brand, BrandLark)
+	}
+	if got.RiskControl == nil || *got.RiskControl {
+		t.Errorf("RiskControl = %v, want explicit false", got.RiskControl)
 	}
 }
 

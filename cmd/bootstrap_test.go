@@ -3,7 +3,10 @@
 
 package cmd
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestBootstrapInvocationContext_ProfileFlag(t *testing.T) {
 	inv, err := BootstrapInvocationContext([]string{"--profile", "target", "auth", "status"})
@@ -68,5 +71,20 @@ func TestBootstrapInvocationContext_HelpWithProfile(t *testing.T) {
 	}
 	if inv.Profile != "target" {
 		t.Fatalf("profile = %q, want %q", inv.Profile, "target")
+	}
+}
+
+func TestIsDeferredBootstrapProfileError(t *testing.T) {
+	if !isDeferredBootstrapProfileError(errors.New("flag needs an argument: --profile")) {
+		t.Fatal("missing --profile value must be deferred to the completed Cobra tree")
+	}
+	for _, err := range []error{
+		nil,
+		errors.New("flag needs an argument: --future"),
+		errors.New("invalid argument for --profile"),
+	} {
+		if isDeferredBootstrapProfileError(err) {
+			t.Fatalf("unexpected deferred bootstrap error: %v", err)
+		}
 	}
 }

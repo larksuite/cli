@@ -115,7 +115,7 @@ var SheetCreate = common.Shortcut{
 			POST("/open-apis/sheets/v3/spreadsheets").
 			Body(body)
 		if runtime.IsBot() {
-			d.Desc("After spreadsheet creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new spreadsheet.")
+			d.Desc("After spreadsheet creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new spreadsheet.")
 		}
 		return d
 	},

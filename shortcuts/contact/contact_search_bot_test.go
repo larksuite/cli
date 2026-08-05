@@ -1,0 +1,724 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package contact
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
+)
+
+func newBotSearchTestCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("query", "", "")
+	cmd.Flags().String("chat-ids", "", "")
+	cmd.Flags().Bool("has-chatted", false, "")
+	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().String("queries", "", "")
+	return cmd
+}
+
+func botSearchDefaultConfig() *core.CliConfig {
+	return &core.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+		UserOpenId: "ou_self",
+	}
+}
+
+func setBotSearchFlag(t *testing.T, cmd *cobra.Command, name, value string) {
+	t.Helper()
+	if err := cmd.Flags().Set(name, value); err != nil {
+		t.Fatalf("set --%s=%q: %v", name, value, err)
+	}
+}
+
+func assertBotSearchValidationProblem(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem: got %s/%s, want %s/%s", problem.Category, problem.Subtype, errs.CategoryValidation, errs.SubtypeInvalidArgument)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if validationErr.Param != wantParam {
+		t.Fatalf("param: got %q, want %q", validationErr.Param, wantParam)
+	}
+}
+
+// assertBotSearchValidationParams covers the errors that name several flags via
+// WithParams; those leave the single Param empty on purpose, so an agent reading
+// the envelope sees every flag that could satisfy the requirement.
+func assertBotSearchValidationParams(t *testing.T, err error, wantParams []string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem: %+v ok=%v", problem, ok)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	got := make([]string, 0, len(validationErr.Params))
+	for _, p := range validationErr.Params {
+		if p.Reason == "" {
+			t.Errorf("param %q has no reason; agents read it to pick a recovery", p.Name)
+		}
+		got = append(got, p.Name)
+	}
+	if fmt.Sprint(got) != fmt.Sprint(wantParams) {
+		t.Fatalf("params: got %v, want %v", got, wantParams)
+	}
+}
+
+func TestValidateBotSearchErrors(t *testing.T) {
+	chatIDs := make([]string, 101)
+	for i := range chatIDs {
+		chatIDs[i] = fmt.Sprintf("oc_%03d", i)
+	}
+
+	tests := []struct {
+		name        string
+		flags       map[string]string
+		wantParam   string
+		wantParams  []string // set instead of wantParam when the error names several flags
+		wantMessage string
+	}{
+		{
+			name:        "keyword missing",
+			wantParams:  []string{"--query", "--queries"},
+			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted shape a keyword search but cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
+		},
+		{
+			name:        "query over 50 characters",
+			flags:       map[string]string{"query": strings.Repeat("中", 51)},
+			wantParam:   "--query",
+			wantMessage: "--query: length must be between 1 and 50 characters",
+		},
+		{
+			name:        "chat ids parse empty",
+			flags:       map[string]string{"query": "x", "chat-ids": " , , "},
+			wantParam:   "--chat-ids",
+			wantMessage: "--chat-ids: no valid chat_id parsed from \", ,\" (separate entries with ',')",
+		},
+		{
+			name:        "over 100 chat ids",
+			flags:       map[string]string{"query": "x", "chat-ids": strings.Join(chatIDs, ",")},
+			wantParam:   "--chat-ids",
+			wantMessage: "--chat-ids: must be at most 100 entries",
+		},
+		{
+			name:        "invalid chat id",
+			flags:       map[string]string{"query": "x", "chat-ids": "bad"},
+			wantParam:   "--chat-ids",
+			wantMessage: "invalid chat ID format, should start with 'oc_' (e.g., oc_abc123)",
+		},
+		{
+			// With a keyword present the keyword errors win, exactly as +search-user
+			// orders them; the =false check must not be hoisted above these.
+			name:        "mutually exclusive keywords outrank has chatted false",
+			flags:       map[string]string{"query": "x", "queries": "y", "has-chatted": "false"},
+			wantParams:  []string{"--query", "--queries"},
+			wantMessage: "--query and --queries are mutually exclusive",
+		},
+		{
+			name:        "query length outranks has chatted false",
+			flags:       map[string]string{"query": strings.Repeat("中", 51), "has-chatted": "false"},
+			wantParam:   "--query",
+			wantMessage: "--query: length must be between 1 and 50 characters",
+		},
+		{
+			// With no keyword at all the explicit =false is the more specific mistake,
+			// so it wins over the missing-keyword error rather than costing a second
+			// round trip. Matches which error +search-user reports first.
+			name:        "has chatted false without a keyword",
+			flags:       map[string]string{"has-chatted": "false"},
+			wantParam:   "--has-chatted",
+			wantMessage: "--has-chatted: pass the flag to enable the filter; omit it to disable filtering (=false is rejected to prevent silent wrong results)",
+		},
+		{
+			name:        "has chatted false",
+			flags:       map[string]string{"query": "x", "has-chatted": "false"},
+			wantParam:   "--has-chatted",
+			wantMessage: "--has-chatted: pass the flag to enable the filter; omit it to disable filtering (=false is rejected to prevent silent wrong results)",
+		},
+		{
+			name:        "page size below one",
+			flags:       map[string]string{"query": "x", "page-size": "0"},
+			wantParam:   "--page-size",
+			wantMessage: "--page-size: must be between 1 and 30",
+		},
+		{
+			name:        "page size over 30",
+			flags:       map[string]string{"query": "x", "page-size": "31"},
+			wantParam:   "--page-size",
+			wantMessage: "--page-size: must be between 1 and 30",
+		},
+		{
+			name:        "chat ids without a keyword",
+			flags:       map[string]string{"chat-ids": "oc_a"},
+			wantParams:  []string{"--query", "--queries"},
+			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted shape a keyword search but cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
+		},
+		{
+			name:        "has chatted without a keyword",
+			flags:       map[string]string{"has-chatted": "true"},
+			wantParams:  []string{"--query", "--queries"},
+			wantMessage: "specify --query or --queries: --chat-ids and --has-chatted shape a keyword search but cannot enumerate bots on their own (the API answers a filter-only request with an empty list)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newBotSearchTestCommand()
+			for name, value := range tt.flags {
+				setBotSearchFlag(t, cmd, name, value)
+			}
+			runtime := common.TestNewRuntimeContext(cmd, botSearchDefaultConfig())
+			err := validateBotSearch(runtime)
+			if len(tt.wantParams) > 0 {
+				assertBotSearchValidationParams(t, err, tt.wantParams)
+			} else {
+				assertBotSearchValidationProblem(t, err, tt.wantParam)
+			}
+			if err.Error() != tt.wantMessage {
+				t.Fatalf("message: got %q, want %q", err.Error(), tt.wantMessage)
+			}
+		})
+	}
+}
+
+func TestValidateBotSearchPassingCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		flags map[string]string
+	}{
+		{name: "query only", flags: map[string]string{"query": "x"}},
+		{name: "query and chat ids", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b"}},
+		{name: "query and has chatted", flags: map[string]string{"query": "x", "has-chatted": "true"}},
+		{name: "all filters", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b", "has-chatted": "true"}},
+		{name: "page size upper boundary", flags: map[string]string{"query": "x", "page-size": "30"}},
+		// An explicitly blank string flag reads as "no filter", matching how
+		// +search-user treats --user-ids / --queries. Only a non-blank value that
+		// parses to zero entries is an error.
+		{name: "blank chat ids ignored", flags: map[string]string{"query": "x", "chat-ids": ""}},
+		{name: "whitespace chat ids ignored", flags: map[string]string{"query": "x", "chat-ids": "   "}},
+		// Duplicates collapse before the cap is checked, so 101 copies of one chat
+		// is one entry — matching how --user-ids is resolved for +search-user.
+		{name: "duplicate chat ids collapse under the cap", flags: map[string]string{
+			"query": "x", "chat-ids": strings.TrimSuffix(strings.Repeat("oc_a,", 101), ","),
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newBotSearchTestCommand()
+			for name, value := range tt.flags {
+				setBotSearchFlag(t, cmd, name, value)
+			}
+			runtime := common.TestNewRuntimeContext(cmd, botSearchDefaultConfig())
+			if err := validateBotSearch(runtime); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateBotSearchQueryRuneBoundary(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		query     string
+		wantError bool
+	}{
+		{name: "50 CJK characters", query: strings.Repeat("中", 50)},
+		{name: "51 CJK characters", query: strings.Repeat("中", 51), wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newBotSearchTestCommand()
+			setBotSearchFlag(t, cmd, "query", tt.query)
+			runtime := common.TestNewRuntimeContext(cmd, botSearchDefaultConfig())
+			err := validateBotSearch(runtime)
+			if tt.wantError {
+				assertBotSearchValidationProblem(t, err, "--query")
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestBuildBotSearchBody(t *testing.T) {
+	tests := []struct {
+		name     string
+		flags    map[string]string
+		wantJSON string
+	}{
+		{name: "query only", flags: map[string]string{"query": "x"}, wantJSON: `{"query":"x"}`},
+		{name: "chat ids", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"]}}`},
+		{name: "chat id URL normalized", flags: map[string]string{"query": "x", "chat-ids": "https://example.feishu.cn/foo/oc_a,oc_b"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"]}}`},
+		{name: "has chatted", flags: map[string]string{"query": "x", "has-chatted": "true"}, wantJSON: `{"query":"x","filter":{"has_chatter":true}}`},
+		{name: "all fields", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_b", "has-chatted": "true"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"],"has_chatter":true}}`},
+		// A blank --chat-ids must not materialize an empty filter object.
+		{name: "blank chat ids omit filter", flags: map[string]string{"query": "x", "chat-ids": "   "}, wantJSON: `{"query":"x"}`},
+		// Deduped after normalization, so a repeated id and a URL naming the same
+		// chat both collapse into one entry instead of burning the server's quota.
+		{name: "duplicate chat ids deduped", flags: map[string]string{"query": "x", "chat-ids": "oc_a,oc_a,oc_b"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a","oc_b"]}}`},
+		{name: "URL and bare id dedupe to one", flags: map[string]string{"query": "x", "chat-ids": "https://example.feishu.cn/foo/oc_a,oc_a"}, wantJSON: `{"query":"x","filter":{"chat_ids":["oc_a"]}}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newBotSearchTestCommand()
+			for name, value := range tt.flags {
+				setBotSearchFlag(t, cmd, name, value)
+			}
+			runtime := common.TestNewRuntimeContext(cmd, botSearchDefaultConfig())
+			body, err := buildBotSearchBody(runtime)
+			if err != nil {
+				t.Fatalf("build body: %v", err)
+			}
+			raw, err := json.Marshal(body)
+			if err != nil {
+				t.Fatalf("marshal body: %v", err)
+			}
+			if string(raw) != tt.wantJSON {
+				t.Fatalf("body: got %s, want %s", raw, tt.wantJSON)
+			}
+		})
+	}
+}
+
+func TestParseBotDisplayInfo(t *testing.T) {
+	tests := []struct {
+		name            string
+		raw             string
+		wantName        string
+		wantDescription string
+		wantSegments    []string
+	}{
+		// Whole name highlighted, description on line two.
+		{name: "whole name highlighted", raw: "<h>甲乙丙</h>\n一句话简介", wantName: "甲乙丙", wantDescription: "一句话简介", wantSegments: []string{"甲乙丙"}},
+		// Two highlighted runs split by a plain character: stripping tags has to
+		// rejoin them into one name.
+		{name: "two highlighted runs", raw: "<h>甲乙</h>丁<h>丙</h>\n另一句简介", wantName: "甲乙丁丙", wantDescription: "另一句简介", wantSegments: []string{"甲乙", "丙"}},
+		// Highlight at the end plus a trailing newline: line two exists but is empty.
+		{name: "trailing newline empty description", raw: "戊己的<h>庚辛</h>\n", wantName: "戊己的庚辛", wantSegments: []string{"庚辛"}},
+		// Single highlighted character in the middle of the name.
+		{name: "mid-name highlight", raw: "壬癸<h>子</h>丑\n第二行简介", wantName: "壬癸子丑", wantDescription: "第二行简介", wantSegments: []string{"子"}},
+		{name: "no newline", raw: "寅卯", wantName: "寅卯", wantSegments: []string{}},
+		{name: "html entities", raw: "<h>Lark</h>部门成员&amp;仓库\n来自飞书&#22810;维表格", wantName: "Lark部门成员&仓库", wantDescription: "来自飞书多维表格", wantSegments: []string{"Lark"}},
+		{name: "html entity in highlight", raw: "名称<h>&amp;</h>工具", wantName: "名称&工具", wantSegments: []string{"&"}},
+		{name: "empty", raw: "", wantSegments: []string{}},
+		{name: "first non-empty line", raw: "\n\n真名", wantName: "真名", wantSegments: []string{}},
+		// A blank first line must not make the description echo the name back and
+		// swallow the real description on the line after it.
+		{name: "blank first line keeps description", raw: "\n真名\n简介", wantName: "真名", wantDescription: "简介", wantSegments: []string{}},
+		{name: "blank first line without description", raw: "\n真名", wantName: "真名", wantSegments: []string{}},
+		// A highlight with no text carries nothing; an empty match segment is junk
+		// in the envelope. Which line the name comes from is left unchanged.
+		{name: "empty highlight yields no segment", raw: "<h></h>\n简介", wantName: "简介", wantSegments: []string{}},
+		// The non-greedy pattern pairs a stray `<h>` with the next `</h>`, so the
+		// capture can carry a tag the name and description already dropped.
+		{name: "nested highlight", raw: "<h>甲<h>乙</h></h>\n简介", wantName: "甲乙", wantDescription: "简介", wantSegments: []string{"甲乙"}},
+		{name: "dangling open tag", raw: "<h><h>甲</h>\n简介", wantName: "甲", wantDescription: "简介", wantSegments: []string{"甲"}},
+		{name: "unclosed highlight", raw: "<h>甲乙\n简介", wantName: "甲乙", wantDescription: "简介", wantSegments: []string{}},
+		// A literal `<h>` in a name arrives escaped, so it must survive: tags are
+		// stripped before unescaping. Swapping that order eats the name's own text.
+		{name: "escaped angle brackets are name text", raw: "名称&lt;h&gt;工具\n简介", wantName: "名称<h>工具", wantDescription: "简介", wantSegments: []string{}},
+		{name: "escaped angle brackets inside a highlight", raw: "<h>名称&lt;h&gt;</h>工具\n简介", wantName: "名称<h>工具", wantDescription: "简介", wantSegments: []string{"名称<h>"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, description, segments := parseBotDisplayInfo(tt.raw)
+			if name != tt.wantName || description != tt.wantDescription {
+				t.Fatalf("name/description: got %q/%q, want %q/%q", name, description, tt.wantName, tt.wantDescription)
+			}
+			if segments == nil {
+				t.Fatal("match segments must be an empty slice, not nil")
+			}
+			if fmt.Sprint(segments) != fmt.Sprint(tt.wantSegments) {
+				t.Fatalf("match segments: got %v, want %v", segments, tt.wantSegments)
+			}
+		})
+	}
+}
+
+func TestProjectBotsMapsEveryField(t *testing.T) {
+	data := &botSearchAPIData{Items: []botSearchAPIItem{
+		{
+			ID:          "ou_with_chat",
+			DisplayInfo: "<h>甲乙丙</h>\n一句话简介",
+			MetaData: botSearchAPIMeta{
+				TenantID: "1", EnableJoinGroup: true, ChatID: "oc_p2p", IsAgent: true,
+			},
+		},
+		{
+			ID:          "ou_without_chat",
+			DisplayInfo: "",
+			MetaData:    botSearchAPIMeta{TenantID: "1"},
+		},
+	}}
+
+	bots := projectBots(data)
+	if len(bots) != 2 {
+		t.Fatalf("bots: got %d, want 2", len(bots))
+	}
+	first := bots[0]
+	if first.OpenID != "ou_with_chat" || first.Name != "甲乙丙" || first.Description != "一句话简介" ||
+		first.ChatID != "oc_p2p" || !first.EnableJoinGroup || !first.IsAgent || first.TenantID != "1" ||
+		fmt.Sprint(first.MatchSegments) != "[甲乙丙]" {
+		t.Fatalf("first bot mapping: %+v", first)
+	}
+	second := bots[1]
+	if second.Name != "" || second.ChatID != "" {
+		t.Fatalf("empty source fields must stay empty: %+v", second)
+	}
+	raw, err := json.Marshal(searchBotResponse{Bots: bots})
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	if !strings.Contains(string(raw), `"chat_id":""`) {
+		t.Fatalf("empty chat_id must still be emitted: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"name":""`) {
+		t.Fatalf("empty name must not fall back to open_id: %s", raw)
+	}
+	if strings.Contains(string(raw), `"has_chatted"`) {
+		t.Fatalf("chat_id presence must not be exposed as a has_chatted signal: %s", raw)
+	}
+}
+
+func TestProjectBotsEmptySerializesAsArray(t *testing.T) {
+	bots := projectBots(&botSearchAPIData{Items: []botSearchAPIItem{}})
+	if bots == nil {
+		t.Fatal("bots must be an empty slice, not nil")
+	}
+	raw, err := json.Marshal(searchBotResponse{Bots: bots})
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	if string(raw) != `{"bots":[],"has_more":false}` {
+		t.Fatalf("response: got %s", raw)
+	}
+}
+
+func botSearchStub(url string, pageToken string) *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "POST",
+		URL:    url,
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"notice":     "The query is too long and has been truncated to the first 50 characters for search.",
+				"has_more":   true,
+				"page_token": pageToken,
+				"items": []interface{}{
+					map[string]interface{}{
+						"id":           "ou_bot",
+						"display_info": "<h>甲乙丙</h>\n一句话简介",
+						"meta_data": map[string]interface{}{
+							"tenant_id": "1", "enable_join_group": true, "chat_id": "oc_p2p", "is_agent": false,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestBotSearchIntegrationRequestAndResponsePassThrough(t *testing.T) {
+	factory, stdout, _, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	stub := botSearchStub(botSearchURL+"?page_size=25", "cursor_out")
+	registry.Register(stub)
+
+	err := mountAndRun(t, ContactSearchBot, []string{
+		"+search-bot", "--query", "甲乙", "--chat-ids", "oc_a,oc_b", "--has-chatted",
+		"--page-size", "25", "--format", "json", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	var requestBody map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &requestBody); err != nil {
+		t.Fatalf("request body: %v", err)
+	}
+	if requestBody["query"] != "甲乙" {
+		t.Fatalf("request query: got %v", requestBody["query"])
+	}
+	filter, ok := requestBody["filter"].(map[string]interface{})
+	if !ok || filter["has_chatter"] != true || fmt.Sprint(filter["chat_ids"]) != "[oc_a oc_b]" {
+		t.Fatalf("request filter: %#v", requestBody["filter"])
+	}
+
+	var envelope struct {
+		Data searchBotResponse `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("response JSON: %v\n%s", err, stdout.String())
+	}
+	if envelope.Data.Notice != "The query is too long and has been truncated to the first 50 characters for search." || !envelope.Data.HasMore {
+		t.Fatalf("response pass-through: %+v", envelope.Data)
+	}
+	if len(envelope.Data.Bots) != 1 || envelope.Data.Bots[0].OpenID != "ou_bot" || envelope.Data.Bots[0].ChatID != "oc_p2p" {
+		t.Fatalf("bots: %+v", envelope.Data.Bots)
+	}
+	registry.Verify(t)
+}
+
+func TestBotSearchIntegrationNeverSurfacesPageToken(t *testing.T) {
+	factory, stdout, _, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	// The stub returns a token; the envelope must still not carry one, matching
+	// +search-user, which decodes page_token and drops it.
+	registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
+
+	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "甲乙", "--format", "json", "--as", "user"}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("response JSON: %v", err)
+	}
+	data := envelope["data"].(map[string]interface{})
+	if _, ok := data["page_token"]; ok {
+		t.Fatalf("page_token must never be surfaced: %v", data)
+	}
+}
+
+func TestBotSearchPrettyOutputAndPaginationHint(t *testing.T) {
+	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
+
+	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "甲乙", "--format", "pretty", "--as", "user"}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	for _, column := range []string{"name", "description", "is_agent", "enable_join_group", "open_id"} {
+		if !strings.Contains(stdout.String(), column) {
+			t.Errorf("pretty output missing %q: %s", column, stdout.String())
+		}
+	}
+	for _, genericField := range []string{"bots", "has_more", "notice", "tenant_id", "chat_id", "match_segments"} {
+		if strings.Contains(stdout.String(), genericField) {
+			t.Errorf("pretty output exposed %q: %s", genericField, stdout.String())
+		}
+	}
+	// pretty stdout carries rows only, so stderr has to carry both the server
+	// notice and the pagination hint.
+	for _, want := range []string{
+		"notice: The query is too long and has been truncated to the first 50 characters for search.",
+		"hint: more matches exist; narrow with --has-chatted or a more specific --query",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("pretty stderr missing %q: %q", want, stderr.String())
+		}
+	}
+}
+
+func TestBotSearchTableUsesGenericFormatterLikeSearchUser(t *testing.T) {
+	factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
+
+	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "甲乙", "--format", "table", "--as", "user"}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	for _, field := range []string{"open_id", "tenant_id", "chat_id", "match_segments"} {
+		if !strings.Contains(stdout.String(), field) {
+			t.Errorf("table output missing %q: %s", field, stdout.String())
+		}
+	}
+	// table stdout carries rows only, so stderr has to carry both the server
+	// notice and the pagination hint.
+	for _, want := range []string{
+		"notice: The query is too long and has been truncated to the first 50 characters for search.",
+		"hint: more matches exist; narrow with --has-chatted or a more specific --query",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("table stderr missing %q: %q", want, stderr.String())
+		}
+	}
+}
+
+// The old name and assertion here pinned a bug: csv and ndjson were the two
+// formats that carried neither has_more in stdout nor a hint on stderr, so a
+// machine caller read a truncated result as the whole answer. stdout stays
+// data-only; the truncation signal belongs on stderr for every format whose
+// stdout has no envelope.
+func TestBotSearchCSVAndNDJSONCarryFullFieldsAndSignalTruncation(t *testing.T) {
+	for _, format := range []string{"csv", "ndjson"} {
+		t.Run(format, func(t *testing.T) {
+			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+			registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor_out"))
+
+			err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "甲乙", "--format", format, "--as", "user"}, factory, stdout)
+			if err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			for _, field := range []string{"open_id", "tenant_id", "chat_id", "match_segments"} {
+				if !strings.Contains(stdout.String(), field) {
+					t.Errorf("%s output missing %q: %s", format, field, stdout.String())
+				}
+			}
+			// stdout must stay data-only, so both the notice and the truncation
+			// signal have to arrive on stderr.
+			for _, want := range []string{"notice: The query is too long", "hint: more matches exist"} {
+				if !strings.Contains(stderr.String(), want) {
+					t.Fatalf("%s dropped %q from stderr: %q", format, want, stderr.String())
+				}
+			}
+			if strings.Contains(stdout.String(), "more matches exist") {
+				t.Fatalf("%s stdout must stay data-only: %s", format, stdout.String())
+			}
+		})
+	}
+}
+
+func TestBotSearchPrettyEmptyResult(t *testing.T) {
+	factory, stdout, _, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	registry.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    botSearchURL + "?page_size=20",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
+		},
+	})
+
+	err := mountAndRun(t, ContactSearchBot, []string{"+search-bot", "--query", "none", "--format", "pretty", "--as", "user"}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "No bots found.") {
+		t.Fatalf("pretty output: %q", stdout.String())
+	}
+}
+
+func TestBotSearchDryRunMirrorsRequest(t *testing.T) {
+	factory, stdout, _, _ := cmdutil.TestFactory(t, botSearchDefaultConfig())
+	err := mountAndRun(t, ContactSearchBot, []string{
+		"+search-bot", "--query", "甲乙", "--chat-ids", "oc_a", "--has-chatted",
+		"--page-size", "25", "--dry-run", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	var envelope struct {
+		Data struct {
+			API []struct {
+				Method string                 `json:"method"`
+				URL    string                 `json:"url"`
+				Params map[string]interface{} `json:"params"`
+				Body   botSearchAPIRequest    `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("dry-run JSON: %v", err)
+	}
+	if len(envelope.Data.API) != 1 {
+		t.Fatalf("api calls: got %d, want 1", len(envelope.Data.API))
+	}
+	call := envelope.Data.API[0]
+	if call.Method != "POST" || call.URL != botSearchURL || call.Params["page_size"] != float64(25) {
+		t.Fatalf("dry-run call: %+v", call)
+	}
+	if call.Body.Query != "甲乙" || call.Body.Filter == nil || fmt.Sprint(call.Body.Filter.ChatIDs) != "[oc_a]" || !call.Body.Filter.HasChatter {
+		t.Fatalf("dry-run body: %+v", call.Body)
+	}
+}
+
+func TestDecodeBotSearchAPIDataMarshalFailureTyped(t *testing.T) {
+	_, err := decodeBotSearchAPIData(map[string]interface{}{"bad": func() {}})
+	if err == nil {
+		t.Fatal("expected marshal failure")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("problem: %+v, ok=%v", problem, ok)
+	}
+}
+
+// Only the json envelope carries data.notice. If the other formats dropped it
+// silently, a caller would read a truncated or incomplete result as a complete
+// one, so every non-json format has to surface it on stderr instead.
+func TestBotSearchNoticeReachesCallerInEveryFormat(t *testing.T) {
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+	for _, format := range []string{"json", "ndjson", "csv", "table", "pretty"} {
+		t.Run(format, func(t *testing.T) {
+			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+			registry.Register(botSearchStub(botSearchURL+"?page_size=20", ""))
+			if err := mountAndRun(t, ContactSearchBot, []string{
+				"+search-bot", "--query", "甲乙", "--format", format, "--as", "user",
+			}, factory, stdout); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if strings.Contains(stdout.String(), notice) {
+				if format != "json" {
+					t.Fatalf("%s should not carry the notice in stdout: %s", format, stdout.String())
+				}
+				return
+			}
+			if !strings.Contains(stderr.String(), notice) {
+				t.Fatalf("%s dropped the notice entirely\nstdout:\n%s\nstderr:\n%s",
+					format, stdout.String(), stderr.String())
+			}
+			// stdout stays pipe-clean: the notice must not be mixed into the rows.
+			if format == "csv" && strings.Contains(stdout.String(), "notice") {
+				t.Fatalf("csv stdout must stay data-only: %s", stdout.String())
+			}
+		})
+	}
+}
+
+// has_more is the server saying "this is not the whole answer". Only the json
+// envelope carries it, so every other format has to say so on stderr or a machine
+// caller silently treats a truncated result as complete.
+func TestBotSearchTruncationReachesCallerInEveryFormat(t *testing.T) {
+	for _, format := range []string{"json", "ndjson", "csv", "table", "pretty"} {
+		t.Run(format, func(t *testing.T) {
+			factory, stdout, stderr, registry := cmdutil.TestFactory(t, botSearchDefaultConfig())
+			registry.Register(botSearchStub(botSearchURL+"?page_size=20", "cursor"))
+			if err := mountAndRun(t, ContactSearchBot, []string{
+				"+search-bot", "--query", "甲乙", "--format", format, "--as", "user",
+			}, factory, stdout); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if format == "json" {
+				if !strings.Contains(stdout.String(), `"has_more": true`) {
+					t.Fatalf("json must carry has_more in the envelope: %s", stdout.String())
+				}
+				return
+			}
+			if !strings.Contains(stderr.String(), "more matches exist") {
+				t.Fatalf("%s left the caller unable to learn the result was truncated\nstdout:\n%s\nstderr:\n%s",
+					format, stdout.String(), stderr.String())
+			}
+		})
+	}
+}

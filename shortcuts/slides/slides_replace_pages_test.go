@@ -42,7 +42,7 @@ func TestReplacePagesCreatesBeforeThenDeletesOld(t *testing.T) {
 		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"slide_id": "new2", "revision_id": 11},
+			"data": map[string]interface{}{"slide_id": "new2", "revision_id": 11, "issues": "slide schema issue"},
 		},
 		OnMatch: func(req *http.Request) {
 			requestOrder = append(requestOrder, req.Method)
@@ -64,7 +64,7 @@ func TestReplacePagesCreatesBeforeThenDeletesOld(t *testing.T) {
 	}
 	reg.Register(deleteStub)
 
-	pages := `[{"slide_id":"old2","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
+	pages := `[{"slide_id":"old2","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
 	err := runSlidesShortcut(t, f, stdout, SlidesReplacePages, []string{
 		"+replace-pages",
 		"--presentation", "pres_abc",
@@ -123,6 +123,9 @@ func TestReplacePagesCreatesBeforeThenDeletesOld(t *testing.T) {
 	if first["old_slide_id"] != "old2" || first["new_slide_id"] != "new2" || first["status"] != "replaced" {
 		t.Fatalf("result = %#v", first)
 	}
+	if first["issues"] != "slide schema issue" {
+		t.Fatalf("result.issues = %v, want slide schema issue", first["issues"])
+	}
 }
 
 func TestReplacePagesContinueOnErrorReturnsPartialFailure(t *testing.T) {
@@ -156,8 +159,8 @@ func TestReplacePagesContinueOnErrorReturnsPartialFailure(t *testing.T) {
 	})
 
 	pages := `[
-		{"slide_id":"old1","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"},
-		{"slide_id":"old2","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"}
+		{"slide_id":"old1","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"},
+		{"slide_id":"old2","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"}
 	]`
 	err := runSlidesShortcut(t, f, stdout, SlidesReplacePages, []string{
 		"+replace-pages",
@@ -219,7 +222,7 @@ func TestReplacePagesContinueOnErrorDeleteFailureIncludesNewSlideID(t *testing.T
 		},
 	})
 
-	pages := `[{"slide_id":"old1","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
+	pages := `[{"slide_id":"old1","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
 	err := runSlidesShortcut(t, f, stdout, SlidesReplacePages, []string{
 		"+replace-pages",
 		"--presentation", "pres_abc",
@@ -254,7 +257,7 @@ func TestReplacePagesDryRunPlansOnly(t *testing.T) {
 
 	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 
-	pages := `[{"slide_id":"old2","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
+	pages := `[{"slide_id":"old2","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
 	err := runSlidesShortcut(t, f, stdout, SlidesReplacePages, []string{
 		"+replace-pages",
 		"--presentation", "pres_abc",
@@ -339,4 +342,49 @@ func decodeReplacePagesEnvelope(t *testing.T, stdout interface{ Bytes() []byte }
 		t.Fatalf("missing data: %#v", env)
 	}
 	return env
+}
+
+// TestReplacePagesOutputsCarryDeprecation pins the deprecation contract: the
+// command stays executable for its deprecation window, and every output shape —
+// a real run and validate-only — names the replacement so callers that never
+// read --help still see it. Description carries the same marker for --help.
+func TestReplacePagesOutputsCarryDeprecation(t *testing.T) {
+	t.Parallel()
+
+	if !strings.HasPrefix(SlidesReplacePages.Description, "Deprecated — use +update-slide") {
+		t.Fatalf("description must lead with the deprecation, got %q", SlidesReplacePages.Description)
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"slide_id": "new1", "revision_id": 5}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"revision_id": 6}},
+	})
+	pages := `[{"slide_id":"old1","content":"<slide><data></data></slide>"}]`
+	if err := runSlidesShortcut(t, f, stdout, SlidesReplacePages, []string{
+		"+replace-pages", "--presentation", "pres_abc", "--pages", pages, "--as", "user",
+	}); err != nil {
+		t.Fatalf("deprecated command must keep working, got %v", err)
+	}
+	env := decodeReplacePagesEnvelope(t, stdout)
+	if got, _ := env.Data["deprecated"].(string); got != replacePagesDeprecationNote {
+		t.Fatalf("run output deprecated = %q, want the deprecation note", got)
+	}
+
+	f2, stdout2, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	if err := runSlidesShortcut(t, f2, stdout2, SlidesReplacePages, []string{
+		"+replace-pages", "--presentation", "pres_abc", "--pages", pages, "--validate-only", "--as", "user",
+	}); err != nil {
+		t.Fatalf("validate-only failed: %v", err)
+	}
+	env2 := decodeReplacePagesEnvelope(t, stdout2)
+	if got, _ := env2.Data["deprecated"].(string); got != replacePagesDeprecationNote {
+		t.Fatalf("validate-only output deprecated = %q, want the deprecation note", got)
+	}
 }

@@ -58,6 +58,9 @@ replace the Go tips (not merged), so keep tips in one place.
 ## Notes
 
 - Write plain prose; the only convention is wrapping command references in `[[ ]]`.
+- Treat the lead as decision context, not a second command description. The
+  shortcut or method description stays canonical; omit the lead when it would
+  only restate that description.
 - Keep it concise and high-signal — don't restate field/flag names, id types, or
   anything the schema and flags already show; the agent infers the rest.
 - Command-form headings resolve to method ids via the registry, so plural resource

@@ -12,6 +12,7 @@ func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		WhiteboardUpdate,
 		WhiteboardUpdateOld,
+		WhiteboardExport,
 		WhiteboardQuery,
 	}
 }

@@ -154,12 +154,34 @@
   "table_rule_map": {
     "订单表": {
       "perm": "edit",
-      "view_rule": { "..." : "..." },
-      "record_rule": { "..." : "..." },
-      "field_rule": { "..." : "..." }
+      "view_rule": {
+        "allow_edit": true,
+        "visibility": { "all_visible": true }
+      },
+      "record_rule": {
+        "record_operations": ["add", "delete"],
+        "other_record_all_read": true
+      },
+      "field_rule": {
+        "field_perm_mode": "all_edit"
+      }
     },
     "用户表": {
-      "perm": "read_only"
+      "perm": "read_only",
+      "view_rule": {
+        "allow_edit": false,
+        "visibility": { "all_visible": true }
+      },
+      "record_rule": {
+        "record_operations": [],
+        "other_record_all_read": true
+      },
+      "field_rule": {
+        "field_perm_mode": "all_read"
+      }
+    },
+    "内部表": {
+      "perm": "no_perm"
     }
   }
 }
@@ -172,7 +194,11 @@
 | `record_rule` | RecordRule | 记录权限配置 |
 | `field_rule` | FieldRule | 字段权限配置 |
 
-**注意**: 当 `perm` 为 `no_perm` 时，`view_rule`、`record_rule`、`field_rule` 均无须再设置。
+**`+role-create` 硬约束**:
+
+- 当 `perm` 为 `no_perm` 时，不要设置 `view_rule`、`record_rule`、`field_rule`。
+- 当 `perm` 为其他值时，必须同时提供完整的 `view_rule`、`record_rule`、`field_rule`，缺少任意一项都会导致创建失败。
+- `+role-update` 是 delta merge，只提交要修改的字段；不要为局部更新补造未变更配置。
 
 ---
 

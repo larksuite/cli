@@ -49,8 +49,8 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/pre_release", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
 		// file_count / files / total_size_bytes sit at envelope top level
 		// (not under api.0.body — manifest is dry-run metadata, not the HTTP body).
 		assert.Equal(t, int64(2), clie2e.DryRunGet(result.Stdout, "file_count").Int())
@@ -317,7 +317,7 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code",
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/pre_release",
 			clie2e.DryRunGet(result.Stdout, "api.0.url").String())
 		assert.Equal(t, int64(1), clie2e.DryRunGet(result.Stdout, "file_count").Int(),
 			"path trimming must produce the same manifest as untrimmed input")

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -98,6 +99,40 @@ func extractTasklistGuid(input string) string {
 // shared parsing logic.
 func extractTaskGuid(input string) string {
 	return extractTasklistGuid(input)
+}
+
+var taskDisplayNumberPattern = regexp.MustCompile(`^t[0-9]+$`)
+
+func parseTaskGUID(input string) (string, error) {
+	input = strings.TrimSpace(input)
+	invalid := func(format string, args ...interface{}) *errs.ValidationError {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, format, args...).
+			WithParam("--task-id").
+			WithHint("provide the Task OpenAPI GUID or a task applink containing guid=")
+	}
+
+	if input == "" {
+		return "", invalid("task ID is empty")
+	}
+
+	lowerInput := strings.ToLower(input)
+	if strings.HasPrefix(lowerInput, "http://") || strings.HasPrefix(lowerInput, "https://") {
+		u, err := url.Parse(input)
+		if err != nil {
+			return "", invalid("invalid task applink: %v", err).WithCause(err)
+		}
+		guid := strings.TrimSpace(u.Query().Get("guid"))
+		if guid == "" {
+			return "", invalid("task applink is missing a non-empty guid query parameter")
+		}
+		return guid, nil
+	}
+
+	if taskDisplayNumberPattern.MatchString(input) {
+		return "", invalid("task display number %q is not a Task OpenAPI GUID", input)
+	}
+
+	return input, nil
 }
 
 func buildTaskCreateBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {

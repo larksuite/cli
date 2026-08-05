@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -47,21 +46,7 @@ var AppsFileUpload = common.Shortcut{
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
-		f := strings.TrimSpace(rctx.Str("file"))
-		if f == "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file is required").WithParam("--file")
-		}
-		st, err := rctx.FileIO().Stat(f)
-		if err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file: %v", err).WithParam("--file").WithCause(err)
-		}
-		if st.IsDir() {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file must be a file, not a directory").WithParam("--file")
-		}
-		if st.Size() > fileUploadMaxBytes {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "file size %d bytes exceeds the 100 MB upload limit", st.Size()).WithParam("--file")
-		}
-		return nil
+		return rctx.ValidateLocalFileFlag("file", fileUploadMaxBytes)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
@@ -76,9 +61,9 @@ var AppsFileUpload = common.Shortcut{
 			return err
 		}
 		localPath := strings.TrimSpace(rctx.Str("file"))
-		content, err := cmdutil.ReadInputFile(rctx.FileIO(), localPath)
+		content, err := rctx.ReadLocalFileFlag("file", fileUploadMaxBytes)
 		if err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file: %v", err).WithParam("--file").WithCause(err)
+			return err
 		}
 		fileName := filepath.Base(localPath)
 		contentType := mimeByExt(fileName)

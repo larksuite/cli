@@ -3,7 +3,7 @@
 
 // Command lintcheck runs repository source-contract guards that golangci-lint
 // cannot express directly. It currently covers typed-error contracts and the
-// resolver-owned endpoint contract.
+// resolver-owned endpoint and approved-domain contracts.
 //
 // lintcheck lives in its own Go module under lint/ so its build-time
 // dependency on golang.org/x/tools/go/packages does not leak into the
@@ -31,6 +31,7 @@ import (
 
 	"github.com/larksuite/cli/lint/domaincontract"
 	"github.com/larksuite/cli/lint/errscontract"
+	"github.com/larksuite/cli/lint/flagcontract"
 	"github.com/larksuite/cli/lint/lintapi"
 )
 
@@ -43,8 +44,15 @@ type scanner struct {
 
 var scanners = []scanner{
 	{name: "errscontract", fn: errscontract.ScanRepoWithOptions},
-	{name: "domaincontract", fn: func(root string, _ errscontract.ScanOptions) ([]lintapi.Violation, error) {
-		return domaincontract.ScanRepo(root)
+	{name: "domaincontract", fn: func(root string, opts errscontract.ScanOptions) ([]lintapi.Violation, error) {
+		return domaincontract.ScanRepoWithOptions(root, domaincontract.ScanOptions{
+			ChangedFrom: opts.ChangedFrom,
+		})
+	}},
+	{name: "flagcontract", fn: func(root string, opts errscontract.ScanOptions) ([]lintapi.Violation, error) {
+		return flagcontract.ScanRepoWithOptions(root, flagcontract.ScanOptions{
+			ChangedFrom: opts.ChangedFrom,
+		})
 	}},
 }
 
@@ -57,7 +65,7 @@ func main() {
 				"Runs every registered lint domain against repo-root (default: current directory).\n")
 		flag.PrintDefaults()
 	}
-	flag.StringVar(&changedFrom, "changed-from", "", "base revision for incremental boundary-error checks")
+	flag.StringVar(&changedFrom, "changed-from", "", "base revision for incremental source-contract checks")
 	flag.BoolVar(&printLegacyCommandErrorCandidates, "print-legacy-command-error-candidates", false, "print existing command boundary bare errors as allowlist candidates")
 	flag.Parse()
 

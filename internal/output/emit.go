@@ -4,6 +4,7 @@
 package output
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -50,10 +51,33 @@ func wrapBlockError(alert *extcs.Alert) error {
 
 // WriteAlertWarning writes a human-readable content-safety warning to w.
 // Used by non-JSON output paths (pretty, table, csv) in warn mode.
-func WriteAlertWarning(w io.Writer, alert *extcs.Alert) {
+func WriteAlertWarning(w io.Writer, alert *extcs.Alert) error {
 	if alert == nil {
-		return
+		return nil
 	}
-	fmt.Fprintf(w, "warning: content safety alert from %s (rules: %s)\n",
+	_, err := fmt.Fprintf(w, "warning: content safety alert from %s (rules: %s)\n",
 		alert.Provider, strings.Join(alert.MatchedRules, ", "))
+	return err
+}
+
+// writePaginationDiagnostic reports a record stream's pagination outcome on the
+// diagnostics stream, as one JSON object per line.
+//
+// A record stream has no envelope to carry meta, so without this a result
+// truncated by --page-limit is byte-identical to a complete one — the reader
+// cannot tell "these are all the records" from "these are the first 500". It is
+// JSON rather than prose because the reader that needs it is a program.
+func writePaginationDiagnostic(w io.Writer, meta PaginationMeta) error {
+	payload := struct {
+		Diagnostic string `json:"_diagnostic"`
+		PaginationMeta
+	}{Diagnostic: "pagination", PaginationMeta: meta}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return wrapOutputError("render", err)
+	}
+	if _, err := fmt.Fprintf(w, "%s\n", encoded); err != nil {
+		return wrapOutputError("write", err)
+	}
+	return nil
 }

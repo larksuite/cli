@@ -23,6 +23,7 @@ type Stub struct {
 	RawBody     []byte      // raw bytes (takes precedence over Body when non-nil)
 	ContentType string      // override Content-Type header (default: application/json)
 	Headers     http.Header // optional full response headers (takes precedence over ContentType)
+	Error       error       // optional transport error returned after OnMatch
 	matched     bool
 
 	// BodyFilter (optional): match only when the captured request body satisfies
@@ -37,6 +38,10 @@ type Stub struct {
 	// Reusable (optional): when true, the stub stays available for further
 	// matches after the first hit. Each match appends to CapturedBodies.
 	Reusable bool
+
+	// Optional (optional): when true, Verify does not require this stub to be
+	// matched. Useful for negative assertions via OnMatch.
+	Optional bool
 
 	// CapturedHeaders records the request headers of the matched request.
 	// Populated after RoundTrip matches this stub.
@@ -89,6 +94,9 @@ func (r *Registry) RoundTrip(req *http.Request) (*http.Response, error) {
 		if matched.OnMatch != nil {
 			matched.OnMatch(req)
 		}
+		if matched.Error != nil {
+			return nil, matched.Error
+		}
 		resp, err := stubResponse(matched)
 		if err != nil {
 			return nil, fmt.Errorf("httpmock: stub %s %s: %w", matched.Method, matched.URL, err)
@@ -135,6 +143,9 @@ func (r *Registry) Verify(t testing.TB) {
 	defer r.mu.Unlock()
 	for _, s := range r.stubs {
 		if s.matched {
+			continue
+		}
+		if s.Optional {
 			continue
 		}
 		// Reusable stubs never set s.matched; treat any captured hit as a match.

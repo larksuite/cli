@@ -4,6 +4,7 @@
 package base
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -250,7 +251,8 @@ func TestBaseFormQuestionsExecuteList(t *testing.T) {
 				"total": 2,
 				"questions": []interface{}{
 					map[string]interface{}{"id": "q_001", "title": "您的姓名", "required": true, "description": nil},
-					map[string]interface{}{"id": "q_002", "title": "您的年龄", "required": false, "description": nil},
+					map[string]interface{}{"id": "q_002", "title": "发票抬头", "required": false, "description": nil,
+						"visible_rule": map[string]interface{}{"logic": "and", "conditions": []interface{}{[]interface{}{"q_001", "==", "是"}}}},
 				},
 			},
 		},
@@ -258,8 +260,13 @@ func TestBaseFormQuestionsExecuteList(t *testing.T) {
 	if err := runShortcut(t, BaseFormQuestionsList, []string{"+form-questions-list", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1"}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, `"q_001"`) || !strings.Contains(got, `"total": 2`) {
+	got := stdout.String()
+	if !strings.Contains(got, `"q_001"`) || !strings.Contains(got, `"total": 2`) {
 		t.Fatalf("stdout=%s", got)
+	}
+	// The list output must forward visible_rule verbatim so agents can read existing display conditions.
+	if !strings.Contains(got, `"visible_rule"`) {
+		t.Fatalf("visible_rule missing from list output: %s", got)
 	}
 }
 
@@ -296,11 +303,49 @@ func TestBaseFormQuestionsExecuteCreate(t *testing.T) {
 			t.Fatalf("expected error for invalid questions JSON")
 		}
 	})
+
+	t.Run("visible_rule passthrough", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"questions": []interface{}{
+						map[string]interface{}{"id": "q_new1", "title": "发票抬头"},
+					},
+				},
+			},
+		}
+		reg.Register(stub)
+		args := []string{"+form-questions-create", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--questions", `[{"type":"text","title":"发票抬头","visible_rule":{"logic":"and","conditions":[["是否需要发票","==","是"]]}}]`}
+		if err := runShortcut(t, BaseFormQuestionsCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		var body struct {
+			Questions []map[string]interface{} `json:"questions"`
+		}
+		if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+			t.Fatalf("captured body json err=%v body=%s", err, string(stub.CapturedBody))
+		}
+		if len(body.Questions) != 1 {
+			t.Fatalf("questions=%#v", body.Questions)
+		}
+		rule, ok := body.Questions[0]["visible_rule"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("visible_rule not forwarded verbatim: body=%s", string(stub.CapturedBody))
+		}
+		if rule["logic"] != "and" {
+			t.Fatalf("visible_rule logic not preserved: %#v", rule)
+		}
+	})
 }
 
 func TestBaseFormQuestionsExecuteUpdate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
+	stub := &httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
 		Body: map[string]interface{}{
@@ -311,14 +356,28 @@ func TestBaseFormQuestionsExecuteUpdate(t *testing.T) {
 				},
 			},
 		},
-	})
+	}
+	reg.Register(stub)
 	args := []string{"+form-questions-update", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
-		"--questions", `[{"id":"q_001","title":"更新后的问题","required":true}]`}
+		"--questions", `[{"id":"q_001","title":"更新后的问题","required":true,"visible_rule":{"logic":"and","conditions":[["q_002","==","是"]]}}]`}
 	if err := runShortcut(t, BaseFormQuestionsUpdate, args, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
 	if got := stdout.String(); !strings.Contains(got, `"questions"`) || !strings.Contains(got, `"q_001"`) {
 		t.Fatalf("stdout=%s", got)
+	}
+	// visible_rule must be forwarded verbatim to the API (transcribe faithfully).
+	var body struct {
+		Questions []map[string]interface{} `json:"questions"`
+	}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("captured body json err=%v body=%s", err, string(stub.CapturedBody))
+	}
+	if len(body.Questions) != 1 {
+		t.Fatalf("questions=%#v", body.Questions)
+	}
+	if _, ok := body.Questions[0]["visible_rule"].(map[string]interface{}); !ok {
+		t.Fatalf("visible_rule not forwarded verbatim: body=%s", string(stub.CapturedBody))
 	}
 }
 

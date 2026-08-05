@@ -443,7 +443,7 @@ func TestValidateReadModeFlagsAcceptsValidScopeOptions(t *testing.T) {
 			name: "keyword with keyword",
 			setFlags: map[string]string{
 				"scope":   "keyword",
-				"keyword": "bug|缺陷",
+				"keyword": "bug|error",
 			},
 		},
 		{
@@ -920,8 +920,6 @@ func TestDocsFetchRejectsLegacyFlags(t *testing.T) {
 				"the old v1 interface has been shut down",
 				"legacy v1 flag(s) --offset are no longer supported",
 				"--offset -> use --scope outline/range/keyword/section",
-				"lark-cli skills read lark-doc references/lark-doc-fetch.md",
-				"MUST NOT grep/open local SKILL.md files",
 				"lark-cli docs +fetch --help",
 			},
 		},
@@ -937,8 +935,13 @@ func TestDocsFetchRejectsLegacyFlags(t *testing.T) {
 				t.Fatal("expected v2-only validation error")
 			}
 			assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--offset")
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("error = %T, want typed problem", err)
+			}
+			presented := problem.Message + "\n" + problem.Hint
 			for _, want := range tt.want {
-				if !strings.Contains(err.Error(), want) {
+				if !strings.Contains(presented, want) {
 					t.Fatalf("error missing %q: %v", want, err)
 				}
 			}

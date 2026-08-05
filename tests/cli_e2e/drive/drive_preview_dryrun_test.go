@@ -93,6 +93,55 @@ func TestDrivePreviewDryRun_Download(t *testing.T) {
 	}
 }
 
+// TestDrivePreviewDryRun_SourceFile verifies source_file mode maps to a direct
+// source artifact download request.
+func TestDrivePreviewDryRun_SourceFile(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+preview",
+			"--file-token", "fileDryRunPreview",
+			"--type", "source_file",
+			"--version", "12",
+			"--output", "./artifacts/source",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 1 {
+		t.Fatalf("api count=%d, want 1\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
+		t.Fatalf("method=%q, want GET\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/medias/fileDryRunPreview/preview_download" {
+		t.Fatalf("url=%q, want preview download endpoint\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.params.preview_type").String(); got != "16" {
+		t.Fatalf("preview_type=%q, want 16\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.params.version").String(); got != "12" {
+		t.Fatalf("version=%q, want 12\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "requested_type").String(); got != "source_file" {
+		t.Fatalf("requested_type=%q, want source_file\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "selected_type").String(); got != "source_file" {
+		t.Fatalf("selected_type=%q, want source_file\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "selected_type_code").String(); got != "16" {
+		t.Fatalf("selected_type_code=%q, want 16\nstdout:\n%s", got, out)
+	}
+}
+
 // TestDriveCoverDryRun_Download verifies cover dry-run request structure for
 // download mode.
 func TestDriveCoverDryRun_Download(t *testing.T) {

@@ -17,10 +17,11 @@ import (
 var AppsGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+get",
-	Description: "Get a single app's detail by app ID (returns app_type, name, description, publish status, etc.)",
+	Description: "Get a single app's detail by app ID or meta token (returns app_type, name, description, publish status, etc.)",
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +get --app-id <app_id>",
+		"Example: lark-cli apps +get --app-id <meta_token>",
 		"Example: lark-cli apps +get --app-id <app_id> --dry-run",
 		"Tip: extract app type with --jq '.data.app.app_type'",
 	},
@@ -28,7 +29,7 @@ var AppsGet = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "app ID", Required: true},
+		{Name: "app-id", Desc: "app ID or meta token", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
@@ -40,7 +41,7 @@ var AppsGet = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			GET(fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))).
-			Desc("Get app detail (returns app_id, app_type, name, description, icon_url, created_at, updated_at, is_published)")
+			Desc("Get app detail (returns app_id, meta_token, app_type, name, description, icon_url, created_at, updated_at, is_published)")
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
@@ -54,6 +55,9 @@ var AppsGet = common.Shortcut{
 				return
 			}
 			fmt.Fprintf(w, "app_id: %v\n", app["app_id"])
+			if mt, ok := app["meta_token"].(string); ok && mt != "" {
+				fmt.Fprintf(w, "meta_token: %s\n", mt)
+			}
 			fmt.Fprintf(w, "app_type: %v\n", app["app_type"])
 			fmt.Fprintf(w, "name: %v\n", app["name"])
 			if desc, ok := app["description"].(string); ok && desc != "" {

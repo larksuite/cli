@@ -24,9 +24,12 @@ type batchCreateKR struct {
 
 // batchCreateObjective represents an objective in the batch create input.
 type batchCreateObjective struct {
-	Text    string          `json:"text"`
-	Mention []string        `json:"mention,omitempty"`
-	KRs     []batchCreateKR `json:"krs,omitempty"`
+	Text         string          `json:"text"`
+	Mention      []string        `json:"mention,omitempty"`
+	Notes        string          `json:"notes,omitempty"`
+	NotesMention []string        `json:"notes_mention,omitempty"`
+	CategoryID   string          `json:"category_id,omitempty"`
+	KRs          []batchCreateKR `json:"krs,omitempty"`
 }
 
 // createdObjective tracks a created objective and its KR IDs for output.
@@ -49,6 +52,25 @@ func parseBatchCreateInput(input string) ([]batchCreateObjective, error) {
 		if strings.TrimSpace(obj.Text) == "" {
 			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].text is required and cannot be empty", i).WithParam("--input")
 		}
+		if obj.Notes != "" && strings.TrimSpace(obj.Notes) == "" {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].notes cannot be blank when provided", i).WithParam("--input")
+		}
+		if obj.Notes == "" && len(obj.NotesMention) > 0 {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].notes is required when notes_mention is provided", i).WithParam("--input")
+		}
+		for j, mention := range obj.NotesMention {
+			if strings.TrimSpace(mention) == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].notes_mention[%d] cannot be empty", i, j).WithParam("--input")
+			}
+		}
+		if obj.CategoryID != "" {
+			if strings.TrimSpace(obj.CategoryID) == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].category_id cannot be blank when provided", i).WithParam("--input")
+			}
+			if id, err := strconv.ParseInt(obj.CategoryID, 10, 64); err != nil || id <= 0 {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].category_id must be a positive int64", i).WithParam("--input")
+			}
+		}
 		for j, kr := range obj.KRs {
 			if strings.TrimSpace(kr.Text) == "" {
 				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "objective[%d].krs[%d].text is required and cannot be empty", i, j).WithParam("--input")
@@ -59,10 +81,23 @@ func parseBatchCreateInput(input string) ([]batchCreateObjective, error) {
 }
 
 // createObjective calls the API to create an objective.
-func createObjective(ctx context.Context, runtime *common.RuntimeContext, cycleID, userIDType string, obj batchCreateObjective) (string, error) {
+func effectiveBatchObjectiveCategoryID(defaultCategoryID string, obj batchCreateObjective) string {
+	if obj.CategoryID != "" {
+		return obj.CategoryID
+	}
+	return defaultCategoryID
+}
+
+func createObjective(ctx context.Context, runtime *common.RuntimeContext, cycleID, userIDType, defaultCategoryID string, obj batchCreateObjective) (string, error) {
 	content := BuildContentBlock(obj.Text, obj.Mention)
 	body := map[string]interface{}{
 		"content": content,
+	}
+	if obj.Notes != "" {
+		body["notes"] = BuildContentBlock(obj.Notes, obj.NotesMention)
+	}
+	if categoryID := effectiveBatchObjectiveCategoryID(defaultCategoryID, obj); categoryID != "" {
+		body["category_id"] = categoryID
 	}
 	queryParams := map[string]interface{}{
 		"cycle_id":     cycleID,
@@ -156,6 +191,7 @@ var OKRBatchCreate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "cycle-id", Desc: "OKR cycle ID (int64)", Required: true},
 		{Name: "input", Desc: "JSON array of objectives: [{\"text\":\"...\",\"mention\":[\"...\"],\"krs\":[{\"text\":\"...\",\"mention\":[\"...\"]}]}]", Input: []string{common.File, common.Stdin}, Required: true},
+		{Name: "category-id", Desc: "default objective category ID for objectives that do not set category_id"},
 		{Name: "user-id-type", Default: "open_id", Desc: "user ID type: open_id | union_id | user_id"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -171,6 +207,15 @@ var OKRBatchCreate = common.Shortcut{
 		if _, err := parseBatchCreateInput(input); err != nil {
 			return err
 		}
+		categoryID := runtime.Str("category-id")
+		if categoryID != "" {
+			if err := common.RejectDangerousCharsTyped("--category-id", categoryID); err != nil {
+				return err
+			}
+			if id, err := strconv.ParseInt(categoryID, 10, 64); err != nil || id <= 0 {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--category-id must be a positive int64").WithParam("--category-id")
+			}
+		}
 
 		idType := runtime.Str("user-id-type")
 		if idType != "open_id" && idType != "union_id" && idType != "user_id" {
@@ -182,6 +227,7 @@ var OKRBatchCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		cycleID := runtime.Str("cycle-id")
 		userIDType := runtime.Str("user-id-type")
+		defaultCategoryID := runtime.Str("category-id")
 		objectives, _ := parseBatchCreateInput(runtime.Str("input"))
 
 		apis := common.NewDryRunAPI()
@@ -191,6 +237,12 @@ var OKRBatchCreate = common.Shortcut{
 			objContent := BuildContentBlock(obj.Text, obj.Mention)
 			objBody := map[string]interface{}{
 				"content": objContent,
+			}
+			if obj.Notes != "" {
+				objBody["notes"] = BuildContentBlock(obj.Notes, obj.NotesMention)
+			}
+			if categoryID := effectiveBatchObjectiveCategoryID(defaultCategoryID, obj); categoryID != "" {
+				objBody["category_id"] = categoryID
 			}
 			objParams := map[string]interface{}{
 				"cycle_id":     cycleID,
@@ -227,6 +279,7 @@ var OKRBatchCreate = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		cycleID := runtime.Str("cycle-id")
 		userIDType := runtime.Str("user-id-type")
+		defaultCategoryID := runtime.Str("category-id")
 		objectives, err := parseBatchCreateInput(runtime.Str("input"))
 		if err != nil {
 			return err
@@ -241,7 +294,7 @@ var OKRBatchCreate = common.Shortcut{
 			}
 
 			// Create objective
-			objectiveID, err := createObjective(ctx, runtime, cycleID, userIDType, obj)
+			objectiveID, err := createObjective(ctx, runtime, cycleID, userIDType, defaultCategoryID, obj)
 			if err != nil {
 				if len(created) == 0 {
 					return err

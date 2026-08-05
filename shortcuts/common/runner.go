@@ -36,20 +36,21 @@ import (
 
 // RuntimeContext provides helpers for shortcut execution.
 type RuntimeContext struct {
-	ctx           context.Context // from cmd.Context(), propagated through the call chain
-	Config        *core.CliConfig
-	Cmd           *cobra.Command
-	Format        string
-	JqExpr        string                            // --jq expression; empty = no filter
-	outputErrOnce sync.Once                         // guards first-error capture in Out()/OutFormat()
-	outputErr     error                             // deferred error from jq filtering; written at most once
-	botOnly       bool                              // set by framework for bot-only shortcuts
-	resolvedAs    core.Identity                     // effective identity resolved by framework
-	Factory       *cmdutil.Factory                  // injected by framework
-	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
-	botInfoFunc   func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
-	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
-	stdinConsumed bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
+	ctx            context.Context // from cmd.Context(), propagated through the call chain
+	Config         *core.CliConfig
+	Cmd            *cobra.Command
+	Format         string
+	JqExpr         string                            // --jq expression; empty = no filter
+	outputErrOnce  sync.Once                         // guards first-error capture in Out()/OutFormat()
+	outputErr      error                             // deferred error from jq filtering; written at most once
+	botOnly        bool                              // set by framework for bot-only shortcuts
+	resolvedAs     core.Identity                     // effective identity resolved by framework
+	declaredScopes []string                          // shortcut-declared scopes for the resolved identity
+	Factory        *cmdutil.Factory                  // injected by framework
+	apiClientFunc  func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
+	botInfoFunc    func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
+	larkSDK        *lark.Client                      // eagerly initialized in mountDeclarative
+	stdinConsumed  bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
 }
 
 // ── Identity ──
@@ -68,6 +69,20 @@ func (ctx *RuntimeContext) As() core.Identity {
 		return ctx.resolvedAs
 	}
 	return core.AsUser
+}
+
+// PresentError renders a typed producer error for this command tree before a
+// shortcut copies its fields into a result payload.
+func (ctx *RuntimeContext) PresentError(err error) error {
+	if ctx == nil {
+		return err
+	}
+	return ctx.Factory.PresentError(err, cmdutil.ErrorPresentationOptions{
+		Identity: ctx.As(),
+		DeclaredScopes: func() []string {
+			return slices.Clone(ctx.declaredScopes)
+		},
+	})
 }
 
 // IsBot returns true if current identity is bot.
@@ -242,8 +257,10 @@ func (ctx *RuntimeContext) StrSlice(name string) []string {
 	return v
 }
 
-// Changed reports whether the user explicitly set the named flag on the
-// command line, as opposed to the flag carrying its default value.
+// Changed reports whether parsing or compatibility normalization populated the
+// named flag, as opposed to the flag carrying only its default value. During a
+// Normalize hook, check legacy and canonical spellings before SetCanonical to
+// distinguish which spelling the caller supplied.
 func (ctx *RuntimeContext) Changed(name string) bool {
 	f := ctx.Cmd.Flags().Lookup(name)
 	if f == nil {
@@ -450,6 +467,12 @@ func (ctx *RuntimeContext) callRaw(method, url string, params map[string]interfa
 // Auth resolution is delegated to APIClient.DoSDKRequest to avoid duplicating
 // the identity → token logic across the generic and shortcut API paths.
 func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+	return ctx.DoAPIWithContext(ctx.ctx, req, opts...)
+}
+
+// DoAPIWithContext executes a raw Lark SDK request using callCtx for request
+// cancellation and deadlines while preserving the shortcut's resolved identity.
+func (ctx *RuntimeContext) DoAPIWithContext(callCtx context.Context, req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
 		return nil, err
@@ -457,7 +480,7 @@ func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestO
 	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
 		opts = append(opts, optFn)
 	}
-	return ac.DoSDKRequest(ctx.ctx, req, ctx.As(), opts...)
+	return ac.DoSDKRequest(callCtx, req, ctx.As(), opts...)
 }
 
 // DoAPIAsBot executes a raw Lark SDK request using bot identity (tenant access token),
@@ -665,16 +688,59 @@ func (ctx *RuntimeContext) ValidatePath(path string) error {
 
 // ── Output helpers ──
 
+func (ctx *RuntimeContext) newEmitter() *output.Emitter {
+	streams := ctx.IO()
+	return output.NewEmitter(output.EmitterConfig{
+		Out:            streams.Out,
+		ErrOut:         streams.ErrOut,
+		CommandPath:    ctx.Cmd.CommandPath(),
+		Identity:       string(ctx.As()),
+		ColorEnabled:   streams.OutIsTerminal,
+		NoticeProvider: output.GetNotice,
+	})
+}
+
+func (ctx *RuntimeContext) handleEmitterError(err error) {
+	if err == nil {
+		return
+	}
+	var cs *errs.ContentSafetyError
+	if ctx.JqExpr != "" && !errors.As(err, &cs) {
+		fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
+	}
+	ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
+}
+
+func wrapLegacyPrettyRenderer(prettyFn func(w io.Writer)) output.PrettyRenderer {
+	if prettyFn == nil {
+		return nil
+	}
+	return func(w io.Writer, _ bool) error {
+		prettyFn(w)
+		return nil
+	}
+}
+
 // Out prints a success JSON envelope to stdout.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
-	ctx.emit(data, meta, false, true)
+	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
+		Format: "",
+		Raw:    false,
+		JQ:     ctx.JqExpr,
+		Meta:   meta,
+	}))
 }
 
 // OutRaw prints a success JSON envelope to stdout with HTML escaping disabled.
 // Use this instead of Out when the data contains XML/HTML content (e.g. document bodies)
 // that should be preserved as-is in JSON output.
 func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
-	ctx.emit(data, meta, true, true)
+	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
+		Format: "",
+		Raw:    true,
+		JQ:     ctx.JqExpr,
+		Meta:   meta,
+	}))
 }
 
 // OutPartialFailure writes an ok:false multi-status result envelope to stdout
@@ -688,112 +754,42 @@ func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
 // ok:true, and the exit signal is distinct from ErrBare (the
 // stdout-carries-the-answer silent-exit signal).
 func (ctx *RuntimeContext) OutPartialFailure(data interface{}, meta *output.Meta) error {
-	ctx.emit(data, meta, false, false)
+	ctx.handleEmitterError(ctx.newEmitter().PartialFailure(data, output.EmitOptions{
+		Format: "",
+		Raw:    false,
+		JQ:     ctx.JqExpr,
+		Meta:   meta,
+	}))
 	if ctx.outputErr != nil {
 		return ctx.outputErr
 	}
 	return output.PartialFailure(output.ExitAPI)
 }
 
-// emit is the shared stdout envelope emitter; ok sets the envelope's ok field
-// (true for success, false for a partial-failure result). raw=true disables JSON
-// HTML escaping so XML/HTML payloads (e.g. DocxXML bodies) are preserved
-// verbatim; otherwise behavior
-// is identical — content-safety scanning and race-safe first-error capture via
-// outputErrOnce apply in both modes.
-func (ctx *RuntimeContext) emit(data interface{}, meta *output.Meta, raw, ok bool) {
-	scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
-	if scanResult.Blocked {
-		ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
-		return
-	}
-
-	env := output.Envelope{OK: ok, Identity: string(ctx.As()), Data: data, Meta: meta, Notice: output.GetNotice()}
-	if scanResult.Alert != nil {
-		env.ContentSafetyAlert = scanResult.Alert
-	}
-
-	if ctx.JqExpr != "" {
-		filter := output.JqFilter
-		if raw {
-			filter = output.JqFilterRaw
-		}
-		if err := filter(ctx.IO().Out, env, ctx.JqExpr); err != nil {
-			fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
-			ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
-		}
-		return
-	}
-
-	if raw {
-		enc := json.NewEncoder(ctx.IO().Out)
-		enc.SetEscapeHTML(false)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(env)
-		return
-	}
-	b, _ := json.MarshalIndent(env, "", "  ")
-	fmt.Fprintln(ctx.IO().Out, string(b))
-}
-
 // OutFormat prints output based on --format flag.
 // "json" (default) outputs JSON envelope; "pretty" calls prettyFn; others delegate to FormatValue.
-// When JqExpr is set, routes through Out() regardless of format.
-// For json/"" and jq paths, Out() handles content safety scanning.
-// For pretty/table/csv/ndjson, scanning is done here and the alert is written to stderr.
+// When JqExpr is set, envelope filtering takes precedence over format.
+// The Emitter handles content safety scanning for every format.
 func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
-	ctx.outFormat(data, meta, prettyFn, false)
+	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
+		Format: ctx.Format,
+		Raw:    false,
+		JQ:     ctx.JqExpr,
+		Meta:   meta,
+		Pretty: wrapLegacyPrettyRenderer(prettyFn),
+	}))
 }
 
 // OutFormatRaw is like OutFormat but with HTML escaping disabled in JSON output.
 // Use this when the data contains XML/HTML content that should be preserved as-is.
 func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
-	ctx.outFormat(data, meta, prettyFn, true)
-}
-
-func (ctx *RuntimeContext) outFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer), raw bool) {
-	outFn := ctx.Out
-	if raw {
-		outFn = ctx.OutRaw
-	}
-	if ctx.JqExpr != "" {
-		outFn(data, meta)
-		return
-	}
-	switch ctx.Format {
-	case "pretty":
-		scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
-		if scanResult.Blocked {
-			ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
-			return
-		}
-		if scanResult.Alert != nil {
-			output.WriteAlertWarning(ctx.IO().ErrOut, scanResult.Alert)
-		}
-		if prettyFn != nil {
-			prettyFn(ctx.IO().Out)
-		} else {
-			outFn(data, meta)
-		}
-	case "json", "":
-		outFn(data, meta)
-	default:
-		// table, csv, ndjson — pass data directly; FormatValue handles both
-		// plain arrays and maps with array fields (e.g. {"members":[…]})
-		scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
-		if scanResult.Blocked {
-			ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
-			return
-		}
-		if scanResult.Alert != nil {
-			output.WriteAlertWarning(ctx.IO().ErrOut, scanResult.Alert)
-		}
-		format, formatOK := output.ParseFormat(ctx.Format)
-		if !formatOK {
-			fmt.Fprintf(ctx.IO().ErrOut, "warning: unknown format %q, falling back to json\n", ctx.Format)
-		}
-		output.FormatValue(ctx.IO().Out, data, format)
-	}
+	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
+		Format: ctx.Format,
+		Raw:    true,
+		JQ:     ctx.JqExpr,
+		Meta:   meta,
+		Pretty: wrapLegacyPrettyRenderer(prettyFn),
+	}))
 }
 
 // ── Scope pre-check ──
@@ -828,11 +824,14 @@ func enhancePermissionError(err error, requiredScopes []string) error {
 	if !errors.As(err, &permErr) {
 		return err
 	}
-	scopeDisplay := strings.Join(requiredScopes, ", ")
-	scopeArg := strings.Join(requiredScopes, " ")
-	permErr.Hint = fmt.Sprintf(
-		"this command requires scope(s): %s\nrun `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
-		scopeDisplay, scopeArg)
+	permErr.WithMissingScopes(requiredScopes...)
+	if permErr.Identity == "" {
+		permErr.WithIdentity(string(core.AsUser))
+	}
+	// Discard any generic classifier hint now that this shortcut has supplied
+	// the authoritative scope facts. The root presenter will rebuild recovery
+	// from those facts for its own command surface.
+	permErr.Hint = ""
 	return err
 }
 
@@ -898,10 +897,12 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	if shortcut.PostMount != nil {
 		shortcut.PostMount(cmd)
 	}
+	installFlagAliases(cmd, shortcut.Flags)
 }
 
 // runShortcut is the execution pipeline for a declarative shortcut.
-// Each step is a clear phase: identity → config → scopes → context → validate → execute.
+// Each step is a clear phase: identity → config → scopes → runtime →
+// canonical validation → execute.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
 	// --print-schema short-circuits everything below: it's pure local
 	// introspection, no identity / scope / network needed. The flag is
@@ -927,7 +928,6 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 			return nil
 		}
 	}
-
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
 		return err
@@ -948,19 +948,31 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	if err != nil {
 		return err
 	}
-
-	if err := validateEnumFlags(rctx, s.Flags); err != nil {
-		return err
+	if s.Normalize != nil {
+		// Normalize is opt-in and consumes resolved values. Shortcuts without a
+		// normalizer retain the established enum-before-input execution order.
+		if err := resolveInputFlags(rctx, s.Flags); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
+		flagContext := rctx.FlagContext()
+		if err := s.Normalize(rctx.ctx, flagContext); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
 	}
-	if err := resolveInputFlags(rctx, s.Flags); err != nil {
-		return err
+	if err := validateEnumFlags(rctx, s.Flags); err != nil {
+		return attributeAliasValidationError(rctx, err)
+	}
+	if s.Normalize == nil {
+		if err := resolveInputFlags(rctx, s.Flags); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
 	}
 	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
 		return err
 	}
 	if s.Validate != nil {
 		if err := s.Validate(rctx.ctx, rctx); err != nil {
-			return err
+			return attributeAliasValidationError(rctx, err)
 		}
 	}
 
@@ -973,7 +985,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	}
 
 	if err := s.Execute(rctx.ctx, rctx); err != nil {
-		return err
+		return attributeAliasValidationError(rctx, err)
 	}
 	return rctx.outputErr
 }
@@ -1008,14 +1020,21 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 	return errs.NewPermissionError(errs.SubtypeMissingScope,
 		"missing required scope(s): %s", strings.Join(missing, ", ")).
 		WithIdentity(string(as)).
-		WithMissingScopes(missing...).
-		WithHint("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " "))
+		WithMissingScopes(missing...)
 }
 
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
-	rctx := &RuntimeContext{ctx: ctx, Config: config, Cmd: cmd, botOnly: botOnly, resolvedAs: as, Factory: f}
+	rctx := &RuntimeContext{
+		ctx:        ctx,
+		Config:     config,
+		Cmd:        cmd,
+		botOnly:    botOnly,
+		resolvedAs: as,
+		Factory:    f,
+	}
+	rctx.declaredScopes = s.DeclaredScopesForIdentity(string(rctx.As()))
 	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
 		return f.NewAPIClientWithConfig(config)
 	})

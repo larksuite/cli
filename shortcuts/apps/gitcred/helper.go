@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -66,7 +67,10 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--app-id").WithCause(err)
 	}
 	if profile.UserOpenID == "" {
-		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in").WithHint("run `lark-cli auth login --scope \"spark:app:read\"`")
+		return nil, recovery.Attach(
+			errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in"),
+			recovery.UserAuthorization("spark:app:read"),
+		)
 	}
 	unlockApp, err := lockApp(appID)
 	if err != nil {
@@ -129,7 +133,13 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 	if previous != nil && previous.PATRef != "" && previous.PATRef != ref {
 		_ = m.Secrets.Remove(previous.PATRef)
 	}
-	result := &InitResult{AppID: appID, GitHTTPURL: url, Refreshed: previous != nil}
+	result := &InitResult{
+		AppID:             appID,
+		GitHTTPURL:        url,
+		Refreshed:         previous != nil,
+		CommitAuthorName:  issued.CommitAuthorName,
+		CommitAuthorEmail: issued.CommitAuthorEmail,
+	}
 	if m.GitConfig != nil {
 		if err := m.GitConfig.SetHelper(ctx, url, appID); err != nil {
 			result.ConfigWarning = err.Error()

@@ -25,8 +25,9 @@ import (
 
 // TestSheetMediaParentType pins the token→parent_type mapping that every
 // sheets image-upload entry point funnels through. Native spreadsheet tokens
-// use "sheet_image"; imported "office" spreadsheets carry a "fake_office_" or
-// "local_office_" synthetic token and must upload with "office_sheet_file".
+// use "sheet_image"; imported "office" spreadsheets use either a legacy
+// prefix or the interleaved "OFL0X" marker and must upload with
+// "office_sheet_file".
 func TestSheetMediaParentType(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -40,6 +41,13 @@ func TestSheetMediaParentType(t *testing.T) {
 		{"fake_office token, only the prefix", fakeOfficePrefix, officeSheetFileParentType},
 		{"local_office imported token", "local_office_abc123", officeSheetFileParentType},
 		{"local_office token, only the prefix", localOfficePrefix, officeSheetFileParentType},
+		{"interleaved OFL0X office token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa", officeSheetFileParentType},
+		{"interleaved exlcn token", "abcdeefghxijkllmnopcqrstnuv", sheetImageParentType},
+		{"interleaved shtcn native token", "abcdsefghhijkltmnopcqrstnuv", sheetImageParentType},
+		{"interleaved pptcn token", "abcdpefghpijkltmnopcqrstnuv", sheetImageParentType},
+		{"interleaved wodcn token", "abcdwefghoijkldmnopcqrstnuv", sheetImageParentType},
+		{"interleaved OFL0X marker with short length", "aaaaOaaaaFaaaaLaaaa0aaaaXaa", sheetImageParentType},
+		{"interleaved OFL0X marker with long length", "aaaaOaaaaFaaaaLaaaa0aaaaXaaaa", sheetImageParentType},
 		{"fake_office prefix mid-string is not matched", "shtfake_office_abc", sheetImageParentType},
 		{"local_office prefix mid-string is not matched", "shtlocal_office_abc", sheetImageParentType},
 	}
@@ -57,7 +65,7 @@ func TestSheetMediaParentType(t *testing.T) {
 // to end (the Execute path the dry-run tests don't reach), asserting the
 // parent_type that actually goes out on the wire is derived from the token: a
 // native spreadsheet uploads as sheet_image, an imported "office" spreadsheet
-// (fake_office_-prefixed token) as office_sheet_file.
+// (legacy prefix or interleaved OFL0X marker) as office_sheet_file.
 func TestUploadSheetImage_ParentType(t *testing.T) {
 	cases := []struct {
 		name           string
@@ -67,6 +75,7 @@ func TestUploadSheetImage_ParentType(t *testing.T) {
 		{"native spreadsheet", "shtcnTOK123", sheetImageParentType},
 		{"fake_office imported spreadsheet", "fake_office_abc123", officeSheetFileParentType},
 		{"local_office imported spreadsheet", "local_office_abc123", officeSheetFileParentType},
+		{"interleaved OFL0X imported spreadsheet", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa", officeSheetFileParentType},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

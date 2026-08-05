@@ -152,6 +152,35 @@ func extractImagePlaceholderPaths(slideXMLs []string) []string {
 	return paths
 }
 
+// validateImagePlaceholderFiles checks every @-placeholder path up front:
+// exists, is a regular file, and fits the 20 MB single-part upload ceiling.
+// Callers run this during Validate so a bad path fails before any API call,
+// rather than half-way through an upload sequence.
+//
+// param names the flag the paths came from (e.g. "--slides", "--slide") so the
+// typed Param points at what the caller actually typed. The message quotes the
+// <img> element instead of writing "--slide @path", which reads as if the flag
+// argument itself were the missing image; the paths come from placeholders
+// nested inside the XML, and they resolve against the process CWD rather than
+// the directory of an @file passed to the flag.
+func validateImagePlaceholderFiles(runtime *common.RuntimeContext, param string, paths []string) error {
+	for _, path := range paths {
+		placeholder := fmt.Sprintf(`%s: <img src="@%s"> resolved from the current directory`, param, path)
+		stat, err := runtime.FileIO().Stat(path)
+		if err != nil {
+			return slidesInputStatError(err, param, placeholder)
+		}
+		if !stat.Mode().IsRegular() {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: must be a regular file", placeholder).WithParam(param)
+		}
+		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: file size %s exceeds 20 MB limit for slides image upload",
+				placeholder, common.FormatSize(stat.Size())).WithParam(param)
+		}
+	}
+	return nil
+}
+
 // xmlRootOpenTagRegex matches the first opening tag of an XML fragment:
 // skipping leading whitespace, XML declaration (<?...?>), and comments
 // (<!-- ... -->).

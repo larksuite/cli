@@ -17,7 +17,7 @@ import (
 func v2CreateFlags() []common.Flag {
 	return []common.Flag{
 		{Name: "title", Desc: "document title; when provided, the CLI prepends it to --content as <title>...</title> so the title wins over later content titles"},
-		{Name: "content", Desc: "document body; XML by default or Markdown when --doc-format markdown. " + docsContentSkillHelp + "; use --help for the latest command flags", Input: []string{common.File, common.Stdin}},
+		{Name: "content", Desc: docsCreateContentFlagBase, Input: []string{common.File, common.Stdin}},
 		{Name: "reference-map", Desc: docsReferenceMapFlagDesc, Input: []string{common.File, common.Stdin}},
 		{Name: "doc-format", Desc: "content format; xml is default and supports richer DocxXML blocks, markdown imports plain Markdown", Default: "xml", Enum: []string{"xml", "markdown"}},
 		{Name: "parent-token", Desc: "parent folder token or wiki node token; mutually exclusive with --parent-position"},
@@ -59,7 +59,7 @@ func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 	}
 	desc := "OpenAPI: create document"
 	if runtime.IsBot() {
-		desc += ". After document creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new document."
+		desc += ". After document creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new document."
 	}
 	return common.NewDryRunAPI().
 		POST("/open-apis/docs_ai/v1/documents").

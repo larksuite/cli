@@ -17,11 +17,10 @@ import (
 // TestSheets_ImageUploadDryRunParentType pins the parent_type the sheets
 // image-upload shortcuts emit in --dry-run output for native vs. imported
 // "office" spreadsheets. For native tokens parent_type must be "sheet_image";
-// for tokens prefixed with "fake_office_" (the synthetic token an imported
-// office spreadsheet carries) the backend requires "office_sheet_file". The
-// three covered entries — sheets +media-upload (backward), sheets
-// +cells-set-image, and sheets +create-float-image — are every image-upload
-// surface that the office/native split fans out to.
+// for tokens carrying the interleaved "OFL0X" marker the backend requires
+// "office_sheet_file". The covered entries — sheets +media-upload (backward),
+// sheets +cells-set-image, and sheets +float-image-create — are every
+// image-upload surface that the office/native split fans out to.
 func TestSheets_ImageUploadDryRunParentType(t *testing.T) {
 	setSheetsDryRunEnv(t)
 
@@ -50,11 +49,11 @@ func TestSheets_ImageUploadDryRunParentType(t *testing.T) {
 			name: "media-upload office",
 			args: []string{
 				"sheets", "+media-upload",
-				"--spreadsheet-token", "fake_office_dryrun",
+				"--spreadsheet-token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
 				"--file", "img.png",
 				"--dry-run",
 			},
-			token:          "fake_office_dryrun",
+			token:          "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
 			wantParentType: "office_sheet_file",
 		},
 		{
@@ -74,13 +73,30 @@ func TestSheets_ImageUploadDryRunParentType(t *testing.T) {
 			name: "cells-set-image office",
 			args: []string{
 				"sheets", "+cells-set-image",
-				"--spreadsheet-token", "fake_office_dryrun",
+				"--spreadsheet-token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
 				"--sheet-id", "sheet1",
 				"--range", "A1",
 				"--image", "img.png",
 				"--dry-run",
 			},
-			token:          "fake_office_dryrun",
+			token:          "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
+			wantParentType: "office_sheet_file",
+		},
+		{
+			name: "float-image-create office",
+			args: []string{
+				"sheets", "+float-image-create",
+				"--spreadsheet-token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
+				"--sheet-id", "sheet1",
+				"--image-name", "img.png",
+				"--image", "img.png",
+				"--position-row", "0",
+				"--position-col", "A",
+				"--size-width", "100",
+				"--size-height", "100",
+				"--dry-run",
+			},
+			token:          "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
 			wantParentType: "office_sheet_file",
 		},
 	}

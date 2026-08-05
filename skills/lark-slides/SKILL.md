@@ -1,7 +1,7 @@
 ---
 name: lark-slides
 version: 1.0.0
-description: "飞书幻灯片：创建和编辑幻灯片。创建演示文稿、读取幻灯片内容、管理幻灯片页面（创建、删除、读取、局部替换）。当用户需要创建或编辑幻灯片、读取或修改单个页面时使用。当用户给出 doubao.com 的 /slides/ URL/token 时，也应直接使用本 skill，不要因为域名不是飞书而回退到 WebFetch；路由依据是 URL 路径模式和 token，而不是域名。不负责：云文档内容编辑（走 lark-doc）、云文档里的独立画板对象（走 lark-whiteboard，注意 slide 内嵌的流程图/架构图仍属本 skill）、上传或下载普通文件（走 lark-drive）。"
+description: "飞书幻灯片：创建和编辑幻灯片。创建演示文稿、读取幻灯片内容、管理幻灯片页面（创建、删除、读取、局部替换）。当用户需要创建或编辑幻灯片、读取或修改单个页面时使用。当用户给出 doubao.com 的 /slides/ URL/token 时，也应直接使用本 skill，不要因为域名不是飞书而回退到 WebFetch；路由依据是 URL 路径模式和 token，而不是域名。不负责：云文档内容编辑（走 lark-doc）、云文档里的独立画板对象（走 lark-whiteboard）、上传或下载普通文件（走 lark-drive）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -10,28 +10,93 @@ metadata:
 
 # slides (v1)
 
-**CRITICAL — 全局硬约束：PPT 的尺寸是 960x540，确保主体内容在页面边界内。**
+> 本技能文档较长，务必使用 Read 工具阅读两次，必须阅读完整全文。
 
-**CRITICAL — 图片至关重要：必须有意识的主动多用图片！素材图使用生图工具和搜图工具，缺图时用生图工具生成配图补足；背景图必须使用生图工具，且生图指令中必须明确要求不要出现任何文字。**
+## 权威经验
 
-**CRITICAL — 防文本溢出：所有承载突出信息和密集文字的 `<content>` 必须设置 `autoFit="normal-auto-fit"`，字号会在框内自动缩排以防溢出。**
+**权威经验是全局硬约束和高频易错点，必须牢记并严格遵守。**
+
+- 你有充足的时间完成这个 PPT，质量永远比速度重要。
+- PPT 的尺寸是 960x540，必须严格确保主体内容在页面边界内。
+- !!!禁止交付无图产物!!! 必须使用大量图片增强视觉效果!!! 禁止重复使用同一张图!!!
+- 封面页的主视觉必须是 `<img>`（来自生图工具或搜图工具），不要使用 `<shape>` 或 `<icon>` 拼出封面视觉。
+- 禁止用 `<shape>` 和 `<line>` 拟形具体物项，必须使用生图工具生成的 `<img>`。
+- 禁止在 `headline` 或 `title` 下方放置用于分隔或装饰的 `rect` 或 `<line>`。
+- 禁止在任何页面内部使用无意义的装饰线条或色块条带，页面任何一边都不要使用贴边窄条。
+- 生图工具的指令参数必须以“不要出现任何文字和颜色色号”结尾，避免生成的图片上出现干扰文字。
+- 禁止使用 emoji 图标，任何位置都不能出现。
+- 字号必须显式设置 `<content>` 的 `fontSize` 属性，不要依赖 `textType` 的默认字号兜底，这些兜底值明显偏大。
+- 大数字、字号大或字数多的 `<content>` 必须设置 `wrap="true" autoFit="normal-auto-fit"` 属性自动换行和缩排，避免文字溢出。
+- 文字颜色必须用 `<content>` 的 `color` 属性而不是 `fontColor` 属性。
+- 文字行间距必须设置 `<content>` 的 `lineSpacing="multiple:xx"` 或 `lineSpacing="fixed:xx"` 而不是 `lineSpacing="xx"`。
+- 图片必须用 `<img>` 而不是 `<image>`。
+- IconPark 图标必须填充颜色（设置 `<fill><fillColor color="rgba(R,G,B,A)"/></fill>`）并和背景有足够对比。
+- 绘制图表时原生图表（柱状、条形、折线、面积、饼（环）、雷达、组合图）用 `<chart>`，其他（漏斗图、金字塔图、象限图、矩阵图等）用 `<shape>` + `<line>` 模拟。
+- 隐藏 `<chart>` 的图例只能通过不写或删除 `<chartLegend>` 实现，`<chartLegend>` 不支持 `position="none"`。
+- 表格优先用 `rect` 和 `text` 模拟，其他用 `<table>`，没有 `<shape type="table">`。
+- 必须设置 `<table>` 的 `width` 和 `height` 固定表格大小，同时设置需要保留列宽或行高的 `<col>` 的 `width` 和 `<tr>` 的 `height`，其余自动分配。
+- `<td>` 直接子元素只有 `<fill>`（背景）、`<content>`（文字）和边框配置（一般不用），不能嵌套 `<shape>`、`<img>`、`<icon>`。
+- `<shape type="rect">` 只是形状不是容器，`<icon>`、`<img>`、`<shape type="text">` 和其他 `<shape>` 必须与它平级靠坐标叠放。
+- 填充渐变颜色必须用 `<fill><fillColor color="linear-gradient(135deg, rgba(R,G,B,A) 0%, rgba(R,G,B,A) 100%)"/></fill>`。
+- 编辑页面前必须阅读 [`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)。
+- 绘制图表前必须阅读 [`slides_chart_demo.xml`](references/slides_chart_demo.xml)。
+- 当用户要求无损复述历史上下文时，必须无损复述以上权威经验、必读的技能文档（需要重新阅读）和易错元素语法（尤其是 `<table>` 和 `<chart>`）。
+
+## 豆包设计原则
+
+适用范围：
+
+- 普通内容页的设计必须以豆包设计原则为最高准则，除非用户要求使用模板或直接提供设计方案。
+- 不适用于 `title-cover`、`section-divider`、`conclusion`、`quote-highlight` 和 `big-number`。
+
+核心要求：
+
+- 必须采用信息密度极高的图文卡片布局，追求充实饱满、图文丰富、可逐行细读的版面，宁可密而满，不要空而疏。
+- **!!!信息密度极高!!! 图多!!! 卡多!!! 字多!!!**
+
+排版布局：
+
+- 卡片布局：卡片按多行网格铺满页面，版面对称、均衡、不留白。网格数、图文比例按内容变化，避免每页雷同。使用更多卡片做细分承载，避免在单张卡片里堆砌大量文字（例如 8 张 50 字卡片优于 2 张 200 字卡片），多个要点必须拆分为多张子卡片。
+- 卡片样式：方角卡片 + 半透明填充 + 无边框 + 卡片贴边窄条（可选）；所有卡片必须使用相同的配色方案（少量需强调的卡片除外），禁止同页出现彩虹卡片（卡片颜色超过 3 种）。
+- 卡片结构：视觉锚点（关键词、编号或 IconPark 图标）+ 标题 + 内容（包括文字、图片、图表、子卡片）。
+- 文字卡片：多数页面必须满足 6-8 张文字卡片、200-400 文字数量，字数不足时必须扩写成长句或段落，文字卡片不要留白，必须充实饱满。文字卡片不是短标签，而是“标题 + 完整说明”，像浓缩的分析文稿。文字内容不得不用列表、分栏、关键词或短句时，必须保证层次清晰，更建议拆分为多张子卡片。
+- 图片卡片：多数页面必须满足 1-3 张图片卡片，缺少图片时必须用生图工具补充配图，图片卡片与文字卡片组成网格，确保图文丰富。
+- 图表卡片：数据信息不要在文字卡片中罗列，必须在图表卡片中可视化（包括表格、图表、时间线、流程图等），图表卡片与其他卡片组成网格，展现数据驱动。
+- 间距要求：所有边距都要左右对称，页面和内部内容的边距至少 40px（内容不要贴边），卡片和内部文字的边距至少 5px（文字不要贴边），卡片之间保持 20-40px 的间距。
+- 文字对齐：正文默认左对齐，只在封面、结尾或大号数字场景中使用居中；表格里的文字左对齐、数字右对齐、仅关键词或短句时居中对齐。
+
+视觉风格：
+
+- 美学：干净、明亮、清爽但信息饱满；靠卡片和对齐网格在高密度下维持秩序感；同排卡片文字数量应相近以保持观感整齐。
+- 字体：全篇以无衬线体（思源黑体）为主，封面或关键强调可少量使用衬线体。
+- 字号：标题 28-36pt、正文 12-14pt、注释 10-12pt，常规关键指标 16-32pt、核心指标用 36-52pt 数字，下面配 10-14pt 标签与简短解读，需要容纳更多文字时允许使用更小的字号。
+- 图标：内嵌 IconPark 图标（可用关键词或编号替代）作为视觉锚点，让高密度文字也有图形节奏，而不是成片纯文字块。
+- 配色：克制颜色数量，确保所有页面都只使用同样的 1 个背景色（偏好浅米白）、1 个主色、1 个强调色和 1 个辅助色；偏好莫兰迪配色，禁止彩虹配色（比如蓝配橙）。
 
 ## Quick Reference
 
+**本表只定位「场景 → 用哪条命令、读哪份文档」。参数以「执行前必做」里对应的文档和 `lark-cli slides +<verb> --help` 为准，不要凭记忆或按别的命令类比补参数。**
+
 | 用户需求 | 优先动作 | 关键文档 / 命令 |
 |----------|----------|-----------------|
-| 新建 PPT | 先规划 `slide_plan.json`，再按复杂度选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`slides +create` |
-| 从模板创建或编辑已有本地 PPTX | 导入 PPTX 为 Slides | `lark-slides-pptx-template-workflows.md` |
+| 新建 PPT | 先规划 `slide_plan.json`，再按复杂度选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`lark-slides-create.md`、`slides +create`、`slides +add-slide`、`lark-slides-add-slide.md`（两步创建逐页添加） |
+| 用户要求使用模板，或提供 PPTX 文件要求修改、美化 | 将模板导入为 Slides 再编辑 | `lark-slides-pptx-template-workflows.md` |
 | 编辑单个标题、文本块、图片或局部元素 | 优先块级替换/插入，不改页序 | `slides +replace-slide`、`lark-slides-replace-slide.md` |
-| 读取或分析已有 PPT | 解析 slides/wiki token，用 shortcut 回读全文 XML 或读取单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `slides +xml-get`、`xml_presentation.slide.get` |
-| 获取幻灯片页面截图 | 用 `slide_id` 或页号指定页面，一次不超过 10 页 | `slides +screenshot`、`lark-slides-screenshot.md` |
-| 上传或使用图片 | 先上传为 `file_token`，禁止直接写 http(s) 外链 | `slides +media-upload`，或 `+create --slides` 的 `@./path` 占位符 |
-| 绘制图表 | 原生图表用 `<chart>`，其他用 `<shape>` + `<line>`，只有复杂 Mermaid、SVG 用 `<whiteboard>` | `xml-schema-quick-ref.md`、`slides_chart_demo.xml` |
+| 一页改动很多、要改背景或删除若干元素，或要整页重建一页/多页 | 在原 presentation 内按页重建，不创建新 Slides 链接 | `slides +replace-pages`、`lark-slides-replace-pages.md` |
+| 给已有 PPT 追加或插入页面 | 一次一页，`--slide` 支持 `@file` 绕开 shell 转义 | `slides +add-slide`、`lark-slides-add-slide.md` |
+| 删除页面 | 按 `slide_id` 单页删除，删前先回读确认 | `slides +delete-slide`、`lark-slides-delete-slide.md` |
+| 读取或分析已有 PPT | 解析 slides/wiki token，用 shortcut 回读全文 XML 或读取单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `slides +xml-get`、`xml_presentation.slide.get`、`lark-slides-xml-presentations-get.md` |
+| 查看或回滚历史版本 | 先用 `+history-list` 找 `history_version_id`，再 `+history-revert`，必要时 `+history-revert-status` 轮询 | [`lark-slides-history.md`](references/lark-slides-history.md) |
+| 获取幻灯片页面截图 | 按页码用 `--slide-number`，按 ID 用 `--slide-id`；单张用 `--output`，批量或全量用 `--output-dir`，每批最多 10 页串行执行；截图目录复用同一任务的 deck/task 标识，后续读取返回的实际路径 | `slides +screenshot`、`lark-slides-screenshot.md` |
+| 上传或使用图片 | 先上传为 `file_token`，禁止直接写 http(s) 外链 | `slides +media-upload`、`lark-slides-media-upload.md`，或 `+create --slides` 的 XML 里写 `<img src="@./path">` 占位符 |
+| 绘制图表 | 原生图表（柱状、条形、折线、面积、饼（环）、雷达、组合图）用 `<chart>`，其他（漏斗图、金字塔图、象限图、矩阵图等）用 `<shape>` + `<line>` 模拟 | `xml-schema-quick-ref.md`、`slides_chart_demo.xml` |
 | 绘制表格 | 优先用 `rect` 和 `text` 模拟，其他用 `<table>` | `xml-schema-quick-ref.md` |
-| 使用图标 | 禁止盲猜 `iconType`，必须先检索 IconPark，再写 `<icon iconType="...">`，图标必须填充颜色并和背景有足够对比，禁止使用 emoji 图标 | `iconpark_tool.py search → resolve`、`iconpark.md` |
+| 使用图标 | 禁止盲猜 iconType，必须先检索 IconPark，再写 `<icon iconType="...">`，图标必须填充颜色并和背景有足够对比，禁止使用 emoji 图标 | `iconpark_tool.py search → resolve`、`iconpark.md` |
 | 创建失败、空白页、3350001、布局异常 | 先回读状态，再按排障清单修复，不假设原操作原子成功 | `troubleshooting.md`、`validation-checklist.md` |
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，认证、权限和全局参数均以 lark-shared 为准。**
+
+**CRITICAL — 查看或回滚历史版本前，MUST 先读取 [`lark-slides-history.md`](references/lark-slides-history.md)。回滚接口只接受 `history_version_id`，不要把 `revision_id` 直接传给 `+history-revert`。**
 
 **CRITICAL — 生成任何 XML 之前，MUST 先用 Read 工具读取 [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md)，禁止凭记忆猜测 XML 结构。**
 
@@ -39,15 +104,19 @@ metadata:
 
 **CRITICAL — 新建演示文稿或大幅改写页面时，生成 XML 前 MUST 读取 [visual-planning.md](references/visual-planning.md)，确保 `layout_type`、`visual_focus`、`text_density` 实际改变页面几何、主视觉和文本量。**
 
-**CRITICAL — 新建演示文稿或大幅改写页面时，规划 `asset_need` MUST 遵循 [asset-planning.md](references/asset-planning.md)。**
+**CRITICAL — 新建演示文稿或大幅改写页面时，规划 `asset_need` MUST 遵循 [asset-planning.md](references/asset-planning.md)：只做元数据规划，必须有 `fallback_if_missing`，不得要求真实搜索、下载或上传素材。**
 
-**CRITICAL — 将完整 `<slide>` XML 提交给 `slides +create --slides`、`xml_presentation.slide create` 或 `slides +replace-pages` 之前，MUST 先把待提交 XML 保存到本地文件并运行 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py)；`summary.error_count` 必须为 0 才能调用接口。**
+**CRITICAL — 将完整 `<slide>` XML 提交给 `slides +create --slides`、`slides +add-slide`、`xml_presentation.slide create` 或 `slides +replace-pages` 之前，MUST 先把待提交 XML 保存到本地文件并运行唯一版式准出入口 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py)；`summary.error_count` 必须为 0 才能调用接口。**
 
-**CRITICAL — 创建或大幅改写后，MUST 按 [validation-checklist.md](references/validation-checklist.md) 做显式验证：回读全文 XML、核对页数和关键元素、检查空白/破损页、明显溢出、布局风险。**
+**CRITICAL — 创建或大幅改写后，MUST 按 [validation-checklist.md](references/validation-checklist.md) 做显式验证：回读全文 XML、核对页数和关键元素，并使用 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py) 统一检查 XML、越界、重叠、空白页和内容稀疏风险。**
 
 **CRITICAL — 创建前自检或失败排障时，MUST 按 [troubleshooting.md](references/troubleshooting.md) 检查 XML 转义、结构、shell 截断、图片 token、3350001 和布局风险。**
 
-**编辑已有幻灯片页面**：单个标题、文本块、图片或局部元素优先用 [`+replace-slide`](references/lark-slides-replace-slide.md)（块级替换/插入，不动页序）；已有 Slides 的多页大改优先用 [`+replace-pages`](references/lark-slides-replace-pages.md) 在原 presentation 内批量重建页面，避免 `slides +create` 生成新链接。选择 action 和完整读-改-写流程见 [`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)。
+**CRITICAL — 当前 Slide Engine 后端仍在灰度期间，`slides +replace-pages --help` 及其输出中的 `deprecated` 字段会提示改用 `+update-slide`，该提示在本 skill 生效期间暂不适用；MUST 忽略该提示并继续使用 `+replace-pages`，不得切换到 `+update-slide`。后端全量并由新版 skill 恢复路由后，再使用 `+update-slide`。**
+
+**编辑已有幻灯片页面**：单个标题、文本块、图片或局部元素优先用 [`+replace-slide`](references/lark-slides-replace-slide.md)（块级替换/插入，不动页序）；一页改动很多、要改背景或删除若干元素，以及一页或多页的整页重建，优先用 [`+replace-pages`](references/lark-slides-replace-pages.md) 在原 presentation 内按页重建，避免 `slides +create` 生成新链接。选择 action 和完整读-改-写流程见 [`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)。
+
+**用户要求使用模板**：按 [lark-slides-pptx-template-workflows.md](references/lark-slides-pptx-template-workflows.md) 处理。
 
 ## 身份选择
 
@@ -79,19 +148,22 @@ lark-cli auth login --domain slides
 - [asset-planning.md](references/asset-planning.md)（新建 / 大幅改写）
 - [validation-checklist.md](references/validation-checklist.md)（创建 / 大幅改写后）
 
-按需再读：
+调用相关命令前必须读取相关的文档以了解命令的使用方式：
 
-- 创建：[`lark-slides-create.md`](references/lark-slides-create.md)
+- 创建：[`lark-slides-create.md`](references/lark-slides-create.md)、[`lark-slides-add-slide.md`](references/lark-slides-add-slide.md)（逐页添加 / 给已有 PPT 追加页面）
+- 删除页面：[`lark-slides-delete-slide.md`](references/lark-slides-delete-slide.md)
+- 阅读：[`lark-slides-xml-presentations-get.md`](references/lark-slides-xml-presentations-get.md)
 - 编辑：[`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)、[`lark-slides-replace-slide.md`](references/lark-slides-replace-slide.md)、[`lark-slides-replace-pages.md`](references/lark-slides-replace-pages.md)
+- 历史版本：[`lark-slides-history.md`](references/lark-slides-history.md)
 - 截图：[`lark-slides-screenshot.md`](references/lark-slides-screenshot.md)
 - 图片：[`lark-slides-media-upload.md`](references/lark-slides-media-upload.md)
+- 图表：[`slides_chart_demo.xml`](references/slides_chart_demo.xml)
 - 图标：[`iconpark.md`](references/iconpark.md)、[`scripts/iconpark_tool.py`](scripts/iconpark_tool.py)
 - 排障：[`troubleshooting.md`](references/troubleshooting.md)
 - 完整协议：[`slides_xml_schema_definition.xml`](references/slides_xml_schema_definition.xml)
 
-## Workflow
 
-> **这是演示文稿，不是文档。** 每页 slide 是独立的视觉画面，信息密度要适当，排版要留白。
+## Workflow
 
 ### Design Ideas
 
@@ -100,107 +172,62 @@ lark-cli auth login --domain slides
 开始写 XML 前，先在 `slide_plan.json` 里确定 deck 级视觉策略：
 
 - **主题化配色**：配色必须服务本次主题、行业和受众，不要默认蓝色商务风。如果把同一套颜色换到另一个完全不同主题仍然成立，说明配色不够具体。
-- **主次比例**：选择 1 个主色承担约 60-70% 视觉权重，1-2 个辅助色承担结构和分区，1 个强调色只用于关键数字、结论或行动点。不要让所有颜色权重相同。
-- **背景一致性**：先确定全 deck 的背景策略，默认保持同一明暗基调和底色体系；只有分节、转场或强调页才有意改变背景，并必须通过相同主色、纹理、边栏或 motif 让变化看起来属于同一套设计。无论深浅，都要保证正文、图标和线条对比充足。
-- **统一 motif**：选择一个可复用视觉母题贯穿全文，例如粗侧边栏、圆形图标底、半出血图片区、编号节点、卡片左上角色块或大号数字。不要每页换一套装饰语言。
+- **主次比例**：选择 1 个主色承担约 60-70% 视觉权重，1 个辅助色承担结构和分区，1 个强调色只用于关键数字、结论或行动点。不要让所有颜色权重相同。
+- **背景一致性**：先确定全 deck 的背景策略，默认保持同一明暗基调和底色体系；无论深浅，都要保证内容和背景对比充足。
+- **统一 motif**：选择一个可复用视觉母题贯穿全文，例如编号节点、卡片处理方式、半出血图片区域、标题、页脚。不要每页换一套装饰语言。
 
-每页至少要有一个视觉元素：图片、图标、图表、表格、流程、对比结构、大号数字、示意图或由 shape 组成的抽象视觉。文本框本身不算主视觉。
+每页至少要有一个视觉元素：图片、图标、图表、表格、流程、对比结构或大号数字。文本框本身不算主视觉。
 
-可优先考虑这些页面形态：
+常见页面形态：
 
 - **双栏结构**：左文右图或左图右文，视觉区域占 35-45% 宽度。
 - **图标行**：图标在色块或圆形底中，右侧是短标题和一句解释。
-- **2x2 / 2x3 网格**：适合能力、模块、风险、行动项，每格内容保持同等层级。
-- **半出血视觉**：图片或抽象形状占据左/右半屏，文字覆盖或贴边排布。
-- **大数字卡片**：关键指标用 60-72pt 数字，下面配 10-14pt 标签。
+- **网格**：适合能力、模块、风险、行动项，每格内容保持同等层级。
+- **半出血视觉**：图片占据左/右半屏，文字覆盖或贴边排布。
+- **大数字卡片**：核心指标用大数字，下面配标签与简短解读。
 - **对比列**：before/after、方案 A/B、问题/解法用左右并列，标题和基线严格对齐。
 - **时间线/流程图**：步骤用节点和箭头表达，流程方向必须一眼可见。
-
-字体和间距建议：
-
-- 标题 36-44pt，关键结论可更大；正文 14-18pt；注释 10-12pt。
-- 正文默认左对齐；只在封面、结尾或大号数字场景中使用居中。
-- 页面边距至少 40px；内容块之间保持 24-40px 间距，并在同一 deck 内保持一致。
-- 卡片内边距要真实留出空间，不要让文字贴边；对齐 shape 和文字时要考虑文本框 padding。
 
 常见错误必须避免：
 
 - 不要所有页面复用同一种标题 + 三 bullets 版式。
 - 不要用低对比文字或低对比图标，例如浅灰字压在浅色背景上。
 - 不要让装饰线穿过文字，或让页脚、来源、编号挤压主体内容。
-- 不要把素材缺失表现为空白图片框；必须按 `fallback_if_missing` 生成 XML-native 视觉。
-- 不要留下模板占位文案、示例公司名、示例日期或与用户主题无关的原模板内容。
-- 不要使用 emoji。
-- 不要为了画出一个具象物体而堆叠 3 个以上仅用于拟形的 shape。
+- 不要把素材缺失表现为空白图片框；必须按 `fallback_if_missing` 生成替代图片。
+- 不要在任何位置使用 emoji 图标。
 
-### 创建方式选择
-
-| 场景 | 推荐方式 |
-|------|----------|
-| 简单 XML（1-3 页、结构简单、几乎无复杂中文和特殊字符） | `slides +create --slides '[...]'` 一步创建 |
-| 复杂 XML（多页、含中文、大段文本、复杂布局、嵌套引号、特殊字符较多） | **两步创建**：先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide create` 逐页添加 |
-| 已有 PPT 继续追加或插入页面 | 使用 `xml_presentation.slide create`，必要时配合 `before_slide_id` |
-
-> [!WARNING]
-> `--slides '[...]'` 的风险点主要在 shell 参数传递，而不是单纯页数。即使只有 1 页，只要 XML 足够复杂，也建议使用两步创建法。
-
-> [!IMPORTANT]
-> `slides +create --slides` 底层会逐页创建，不是原子操作。中途失败时先记录 `xml_presentation_id`，回读确认当前状态，再继续修复或追加。
 
 ### 生成流程
 
 ```text
-Step 1: 需求澄清 & 读取知识
-  - 澄清主题、受众、页数、风格；若用户上传 PPTX 作为模板，按顶部『用户自定义模板』规则处理
+Step 1: 需求分析 & 读取知识
+  - 分析主题、受众、页数、风格；
+  - 若用户要求使用模板，按 lark-slides-pptx-template-workflows.md 处理
   - 读取 xml-schema-quick-ref.md；新建 / 大幅改写时还要读取 planning-layer.md、visual-planning.md、asset-planning.md
+  - 涉及图表读取 slides_chart_demo.xml
 
-Step 2: 生成大纲 → 用户确认 → 写入 slide_plan.json
-  - 生成结构化大纲供用户确认
-  - 新建 / 大幅改写必须先创建目录并写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`
+Step 2: 生成大纲 → 写入 slide_plan.json
+  - 生成结构化大纲
+  - 新建 / 大幅改写必须先创建目录并写入 `slide_plan.json`
   - plan 字段、路径命名和 `asset_need` 结构按 planning-layer.md / asset-planning.md 执行
 
 Step 3: 按 slide_plan.json 生成 XML → 创建
   - 逐页消费 plan：key_message 定主结论，layout_type 定几何，visual_focus 定主视觉，text_density 定文本量
-  - 缺少真实素材时必须用 `fallback_if_missing` 生成 XML-native 兜底视觉；不要留空
-  - 调用创建或整页替换接口前，先保存待提交 XML 并运行 xml_text_overlap_lint.py；error_count 不为 0 必须先修
-  - 创建方式按“创建方式选择”判断；图片、复杂 XML、转义和 3350001 排查按 lark-slides-create.md、media-upload.md、troubleshooting.md 执行
+  - 缺少真实素材时必须用 `fallback_if_missing` 生成替代图片，不要留空
+  - 读 lark-slides-create.md 定一步创建还是两步创建，并据此构造 `slides +create`；两步创建再读 lark-slides-add-slide.md 用 `+add-slide` 逐页添加
+  - 图片按 lark-slides-media-upload.md 处理；复杂 XML、转义和 3350001 排查按 troubleshooting.md 执行
 
 Step 4: 审查 & 交付
-  - 创建完成后，必须用 `slides +xml-get` 读取全文 XML，并按 validation-checklist.md 做显式验证记录
+  - 创建完成后，必须用 `slides +xml-get --presentation <xml_presentation_id>` 读取全文 XML，并按 validation-checklist.md 做显式验证记录，包括 XML 文本重叠检查
   - 失败或部分成功按 troubleshooting.md 处理；局部问题优先用 `+replace-slide` 修正
-  - 没问题 → 交付：告知用户演示文稿 ID 和访问方式
-```
-
-### jq 命令模板（编辑已有 PPT 时使用）
-
-新建 PPT 推荐用 `+create --slides`。以下 jq 模板适用于向已有演示文稿追加页面的场景，可以避免手动转义双引号：
-
-```bash
-# 追加到末尾
-lark-cli slides xml_presentation.slide create \
-  --as user \
-  --params '{"xml_presentation_id":"YOUR_ID"}' \
-  --data "$(jq -n --arg content '<slide xmlns="http://www.larkoffice.com/sml/2.0">
-  <style><fill><fillColor color="BACKGROUND_COLOR"/></fill></style>
-  <data>
-    <!-- 在这里放置 shape、line、table、chart 等元素 -->
-  </data>
-</slide>' '{slide:{content:$content}}')"
-
-# 插到指定页之前：before_slide_id 必须在 --data body 里，与 slide 同级
-# ⚠️ 不要把 before_slide_id 写进 --params —— CLI 会当未知 query 参数静默下发，服务端忽略，新页跑到末尾
-lark-cli slides xml_presentation.slide create \
-  --as user \
-  --params '{"xml_presentation_id":"YOUR_ID"}' \
-  --data "$(jq -n --arg content '<slide ...>...</slide>' --arg before 'TARGET_SLIDE_ID' \
-    '{slide:{content:$content}, before_slide_id:$before}')"
+  - 没问题 → 交付：使用 NotifyHuman 工具交付 PPT 链接
 ```
 
 > 渐变色必须使用 `rgba()` 格式并带百分比停靠点，如 `linear-gradient(135deg,rgba(15,23,42,1) 0%,rgba(56,97,140,1) 100%)`。使用 `rgb()` 或省略停靠点会导致服务端回退为白色。
 
 ### 大纲模板
 
-生成大纲时使用以下格式，交给用户确认：
+生成大纲时使用以下格式：
 
 ```text
 [PPT 标题] — [定位描述]，面向 [目标受众]
@@ -224,7 +251,7 @@ N. 结尾页：[结尾文案]
 | `/slides/` | `https://example.larkoffice.com/slides/xxxxxxxxxxxxx` | `xml_presentation_id` | URL 路径中的 token 直接作为 `xml_presentation_id` 使用 |
 | `/wiki/` | `https://example.larkoffice.com/wiki/wikcnxxxxxxxxx` | `wiki_token` | ⚠️ **不能直接使用**，需要先查询获取真实的 `obj_token` |
 
-> `+replace-slide` 和 `+media-upload` shortcut 会自动解析以上两种 URL；直接调用原生 API 时仍需手动解析 wiki 链接。
+> 带 `--presentation` 的 slides shortcut 都会自动解析以上两种 URL；直接调用原生 API 时仍需手动解析 wiki 链接。
 
 ### Wiki 链接特殊处理（关键！）
 
@@ -234,7 +261,7 @@ N. 结尾页：[结尾文案]
 lark-cli wiki spaces get_node --as user --params '{"token":"wiki_token"}'
 ```
 
-Shortcut `+replace-slide` 和 `+media-upload` 会自动解析 `/wiki/` URL；手动调用 `xml_presentations.*` / `xml_presentation.slide.*` 时才需要自己做这一步。
+带 `--presentation` 的 slides shortcut 都会自动解析 `/wiki/` URL 并校验 `obj_type`；手动调用 `xml_presentations.*` / `xml_presentation.slide.*` 时才需要自己做这一步。
 
 ### 资源关系
 
@@ -256,11 +283,14 @@ Shortcut 是对常用操作的高级封装（`lark-cli slides +<verb> [flags]`�
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+create`](references/lark-slides-create.md) | 创建 PPT（可选 `--slides` 一步添加页面，支持 `<img src="@./local.png">` 占位符自动上传） |
-| [`+xml-get`](references/lark-slides-xml-get.md) | 读取全文或单页 XML，并可保存到本地文件，避免终端输出被截断 |
+| [`+create`](references/lark-slides-create.md) | 创建 PPT，可选一步添加页面 |
+| [`+add-slide`](references/lark-slides-add-slide.md) | 向已有演示文稿追加或插入**一页**（`--before-slide-id` 控制位置），XML 支持 `@file` / stdin，`<img src="@./path">` 占位符自动上传 |
+| [`+delete-slide`](references/lark-slides-delete-slide.md) | 按 `slide_id` 删除**一页** |
+| [`+xml-get`](references/lark-slides-xml-presentations-get.md) | 读取全文 XML，用 `--presentation` 指定演示文稿的 `xml_presentation_id`，用 `--output` 把 XML 存到本地文件（必须是 CWD 内的相对路径，如 `.lark-slides/plan/<deck>/readback.xml`） |
+| [`+screenshot`](references/lark-slides-screenshot.md) | 把幻灯片页面截图保存为本地图片；用 `--slide-number` 指定页码（从 1 开始，多页重复传入）或用 `--slide-id` 指定页面；单张用 `--output .lark-slides/screenshots/<deck-or-task-id>/page-01`，批量用 `--output-dir .lark-slides/screenshots/<deck-or-task-id>`（一次最多 10 页）；后续必须读取返回的 `output` / `screenshots[].path` |
 | [`+media-upload`](references/lark-slides-media-upload.md) | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |
 | [`+replace-slide`](references/lark-slides-replace-slide.md) | 对已有幻灯片页面进行块级替换/插入（`block_replace` / `block_insert`），自动注入 id 和 `<content/>`，不改变页序 |
-| [`+replace-pages`](references/lark-slides-replace-pages.md) | 在原演示文稿内批量重建多个页面：先创建新页到旧页前，再删除旧页；适合已有 Slides 的多页大改，不新建链接 |
+| [`+replace-pages`](references/lark-slides-replace-pages.md) | 在原演示文稿内重建一页或多页：先创建新页到旧页前，再删除旧页；适合已有 Slides 的整页大改，不新建链接 |
 
 没有 Shortcut 覆盖时使用原生 API。高频资源：`slides +xml-get` 读取全文；`xml_presentation.slide.create/delete/get/replace` 管理单页。
 
@@ -274,12 +304,12 @@ lark-cli slides <resource> <method> [flags] # 调用 API
 ## 核心规则
 
 1. **先规划再写 XML**：新建演示文稿或大幅改写页面时，必须先写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`；模板、风格和大纲只能作为规划输入，不能绕过规划层
-2. **创建流程**：简单短 XML（1-3 页、结构简单、特殊字符少）可用 `slides +create --slides '[...]'` 一步创建；复杂内容、含图片/中文大段文本/嵌套引号/较多特殊字符，或超过 10 页时，默认先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide.create` 逐页添加
+2. **创建流程**：新建演示文稿用 `slides +create`，一步创建还是两步创建按 [`lark-slides-create.md`](references/lark-slides-create.md) 判断
 3. **`<slide>` 直接子元素只有 `<style>`、`<data>`、`<note>`**：文本和图形必须放在 `<data>` 内
-4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内
+4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内；注意 `<content>` 只是 XML 元素，不是 `--parts` 的字段名——part 里装 XML 的字段，`block_replace` 是 `replacement`，`block_insert` 是 `insertion`
 5. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
-6. **删除谨慎**：删除操作不可逆，且至少保留一页幻灯片
-7. **编辑已有页面优先原链接更新**：修改单个 shape/img 用 `+replace-slide`（`block_replace` / `block_insert`），不要整页重建；已有 Slides 的多页整页重建用 `+replace-pages`，不要用 `slides +create` 新建整份 PPT；只有没有 shortcut 覆盖的特殊单页整页操作才手动 `slide.create` + `slide.delete`
-8. **`<img src>` 只能用上传到飞书 drive 的 `file_token`，禁止使用 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，外链 src 在 PPT 里通常不显示或显示破图。流程必须是「先把图存到本地 → 用 `slides +media-upload` 上传或 `+create --slides` 的 `@./path` 占位符自动上传 → 拿 `file_token` 写进 `<img src>`」。如果用户给了网图链接，先 `curl`/下载到 CWD 内再走上传流程，不要直接把外链 URL 塞进 `src`。**图片最大 20 MB**（slides upload API 不支持分片上传）。
+6. **删除谨慎**：删除不可逆，删前先回读确认 `slide_id`
+7. **编辑已有页面优先原链接更新**：修改单个 shape/img 用 `+replace-slide`（`block_replace` / `block_insert`），不要整页重建；一页改动很多、要改背景或删除若干元素，以及一页或多页的整页重建，用 `+replace-pages`，不要用 `slides +create` 新建整份 PPT；追加/插入单页用 `+add-slide`、删除单页用 `+delete-slide`，只有这些 shortcut 未覆盖的参数才手动调 `slide.create` / `slide.delete`
+8. **`<img src>` 只能用上传到飞书 drive 的 `file_token`，禁止使用 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，外链 src 在 PPT 里通常不显示或显示破图。流程必须是「先把图存到本地 → 用 `slides +media-upload` 上传，或在 `+create --slides` 的 XML 里写 `<img src="@./path">` 占位符自动上传 → 拿 `file_token` 写进 `<img src>`」。如果用户给了网图链接，先 `curl`/下载到 CWD 内再走上传流程，不要直接把外链 URL 塞进 `src`。**图片最大 20 MB**（slides upload API 不支持分片上传）。
 
 > **注意**：如果 md 内容与 `slides_xml_schema_definition.xml` 或 `lark-cli schema slides.<resource>.<method>` 输出不一致，以后两者为准。

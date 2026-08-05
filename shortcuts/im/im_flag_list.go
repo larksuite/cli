@@ -14,6 +14,12 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
+const (
+	flagListDefaultPageSize = 50
+	// GET /open-apis/im/v1/flags accepts page_size up to 50.
+	flagListMaxPageSize = 50
+)
+
 // ImFlagList provides the +flag-list shortcut for listing bookmarks.
 // Feed-type thread entries are auto-enriched with message content.
 var ImFlagList = common.Shortcut{
@@ -25,10 +31,10 @@ var ImFlagList = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "page-size", Type: "int", Default: "50", Desc: "page size (1-50)"},
-		{Name: "page-token", Desc: "pagination token for next page"},
-		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
-		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
+		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", flagListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", flagListMaxPageSize)},
+		{Name: "page-token", Desc: "starting pagination cursor"},
+		{Name: "page-all", Type: "bool", Desc: "automatically paginate, capped by --page-limit"},
+		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages with --page-all (default 20; configurable range 1-1000)"},
 		{Name: "enrich-feed-thread", Type: "bool", Default: "true", Desc: "fetch message content for feed-type thread entries (default true; may call messages/mget and require im:message.group_msg:get_as_user/im:message.p2p_msg:get_as_user; use --enrich-feed-thread=false to avoid extra scopes)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -50,9 +56,7 @@ var ImFlagList = common.Shortcut{
 		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		// When --page-token is explicitly provided, the user wants a specific page —
-		// no auto-pagination regardless of --page-all.
-		if runtime.Bool("page-all") && !runtime.Cmd.Flags().Changed("page-token") {
+		if runtime.Bool("page-all") {
 			return executeListAllPages(runtime)
 		}
 
@@ -71,8 +75,8 @@ var ImFlagList = common.Shortcut{
 }
 
 func validateListOptions(rt *common.RuntimeContext) error {
-	if n := rt.Int("page-size"); n < 1 || n > 50 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
+	if _, err := common.ValidatePageSizeTyped(rt, "page-size", flagListDefaultPageSize, 1, flagListMaxPageSize); err != nil {
+		return err
 	}
 	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")
@@ -236,14 +240,11 @@ func executeListAllPages(rt *common.RuntimeContext) error {
 	allDeleteFlagItems := make([]any, 0)
 	allMessages := make([]any, 0)
 	var lastHasMore bool
-	var lastPageToken string
-	prevPageToken := "__START__" // Sentinel to detect unchanged token
+	lastPageToken := rt.Str("page-token")
+	prevPageToken := lastPageToken
 
 	for page := 0; page < maxPages; page++ {
-		token := ""
-		if page > 0 {
-			token = lastPageToken
-		}
+		token := lastPageToken
 		data, err := rt.DoAPIJSONTyped("GET", "/open-apis/im/v1/flags",
 			larkcore.QueryParams{
 				"page_size":  []string{strconv.Itoa(rt.Int("page-size"))},
@@ -276,6 +277,10 @@ func executeListAllPages(rt *common.RuntimeContext) error {
 		// Detect server anomaly: same token returned twice means infinite loop
 		if lastPageToken == prevPageToken {
 			fmt.Fprintf(rt.IO().ErrOut, "warning: page_token did not change, stopping pagination to avoid infinite loop\n")
+			break
+		}
+		if page+1 >= maxPages {
+			fmt.Fprintf(rt.IO().ErrOut, "[pagination] reached page limit (%d) while has_more=true; result is incomplete. Increase --page-limit up to 1000 or resume with the page_token returned in stdout.\n", maxPages)
 			break
 		}
 		prevPageToken = lastPageToken

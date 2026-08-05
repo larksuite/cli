@@ -105,12 +105,12 @@
 "header": {
   "title": { "tag": "plain_text", "content": "卡片标题" },
   "template": "blue",
-  "icon": { "tag": "standard_icon", "token": "mail_colorful" }
+  "icon": { "tag": "standard_icon", "token": "calendar_colorful" }
 }
 ```
 
-- `token` 从 `resource/icons.md` 按场景选取；彩色图标用 `*_colorful` 后缀，单色用普通名称。
-- 常用速查：通知 `notice_colorful`、告警 `warning_colorful`、审批 `approve_colorful`、日历 `calendar_colorful`、数据 `chart_colorful`、任务 `todo_colorful`、AI `myai_colorful`。
+- `token` 必须从 `resource/icons.md` 的精确枚举中选择；禁止根据名称规律自行拼接 token。没有合适的 token 时省略 icon。
+- 场景速查：日历 `calendar_colorful`、待办 `todo_colorful`、投票 `vote_colorful`、妙记 `file-lark-minutes_colorful`、多维表格 `wiki-bitable_colorful`、表单 `file-form_colorful`、社区 `larkcommunity_colorful`、招聘 `hirelogo_colorful`、飞书品牌 `lark-logo_colorful`、Meego `meego_colorful`、AI `myai_colorful`、aPaaS `apaas_colorful`、审批 `approval_colorful`、通用 AI `ai-common_colorful`。
 
 ### 1. 配色纪律（服务 P6 语义一致）
 
@@ -212,7 +212,7 @@ header 有三层能力，**尽量用满**（至少用 `title` + `icon`；`subtit
   "title":    { "tag": "plain_text", "content": "发版审批" },
   "subtitle": { "tag": "plain_text", "content": "2026-06-25 · 后端服务" },
   "template": "blue",
-  "icon": { "tag": "standard_icon", "token": "approve_colorful" },
+  "icon": { "tag": "standard_icon", "token": "approval_colorful" },
   "text_tag_list": [
     { "tag": "text_tag", "text": { "tag": "plain_text", "content": "待审批" }, "color": "yellow" }
   ]

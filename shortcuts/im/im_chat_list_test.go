@@ -30,8 +30,13 @@ func newChatListTestRuntimeContextWithIdentity(t *testing.T, stringFlags map[str
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Int("page-delay", 200, "")
+	cmd.Flags().Bool("page-all", false, "")
+	cmd.Flags().String("sort", "create_time", "")
+	cmd.Flags().String("sort-type", "", "")
 	for name := range stringFlags {
-		if name == "page-size" {
+		if name == "page-size" || name == "page-limit" || name == "sort" || name == "sort-type" {
 			continue
 		}
 		if name == "types" {
@@ -41,6 +46,9 @@ func newChatListTestRuntimeContextWithIdentity(t *testing.T, stringFlags map[str
 		}
 	}
 	for name := range boolFlags {
+		if name == "page-all" {
+			continue
+		}
 		cmd.Flags().Bool(name, false, "")
 	}
 	if err := cmd.ParseFlags(nil); err != nil {
@@ -66,6 +74,9 @@ func newChatListTestRuntimeContextWithIdentity(t *testing.T, stringFlags map[str
 			Out:    &bytes.Buffer{},
 			ErrOut: &bytes.Buffer{},
 		},
+	}
+	if err := normalizeChatListSortCompatibility(context.Background(), rt.FlagContext()); err != nil {
+		t.Fatalf("Normalize() error = %v", err)
 	}
 	return rt
 }
@@ -296,10 +307,14 @@ func attachChatListCmd(t *testing.T, runtime *common.RuntimeContext, stringFlags
 	t.Helper()
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Int("page-delay", 200, "")
 	cmd.Flags().String("user-id-type", "open_id", "")
-	cmd.Flags().String("sort-type", "ByCreateTimeAsc", "")
+	cmd.Flags().String("sort", "create_time", "")
+	cmd.Flags().String("sort-type", "", "")
 	cmd.Flags().StringSlice("types", nil, "")
 	cmd.Flags().String("page-token", "", "")
+	cmd.Flags().Bool("page-all", false, "")
 	cmd.Flags().Bool("exclude-muted", false, "")
 	cmd.Flags().Bool("dry-run", false, "")
 	if err := cmd.ParseFlags(nil); err != nil {
@@ -316,6 +331,9 @@ func attachChatListCmd(t *testing.T, runtime *common.RuntimeContext, stringFlags
 		}
 	}
 	runtime.Cmd = cmd
+	if err := normalizeChatListSortCompatibility(context.Background(), runtime.FlagContext()); err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
 	runtime.Format = "json"
 }
 
@@ -435,8 +453,8 @@ func TestImChatList_RowRendering_P2pFields(t *testing.T) {
 
 // TestImChatList_Execute_PrettyOutputRendersP2pRow exercises the pretty-format
 // rendering closure in Execute, including the new chat_mode=="p2p" branch that
-// surfaces p2p_target_type / p2p_target_id, and the has_more footer that
-// echoes back the page_token.
+// surfaces p2p_target_type / p2p_target_id, plus the shared pagination
+// summary that carries the resume token.
 func TestImChatList_Execute_PrettyOutputRendersP2pRow(t *testing.T) {
 	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		body := `{"code":0,"msg":"ok","data":{"items":[
@@ -470,8 +488,10 @@ func TestImChatList_Execute_PrettyOutputRendersP2pRow(t *testing.T) {
 	if !strings.Contains(out, "2 chat(s) listed") {
 		t.Fatalf("pretty output missing footer count:\n%s", out)
 	}
-	if !strings.Contains(out, "next_tok") {
-		t.Fatalf("pretty output missing page_token in has_more footer:\n%s", out)
+	for _, want := range []string{"Pagination: incomplete", `resume token: "next_tok"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("pretty output missing pagination summary %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -591,6 +611,13 @@ func TestImChatList_Execute_UserMuteFiltersP2p(t *testing.T) {
 				FilteredCount int    `json:"filtered_count"`
 			} `json:"filter"`
 		} `json:"data"`
+		Meta struct {
+			Pagination struct {
+				Complete bool `json:"complete"`
+				Pages    int  `json:"pages"`
+				Items    int  `json:"items"`
+			} `json:"pagination"`
+		} `json:"meta"`
 	}
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
 		t.Fatalf("Unmarshal output failed: %v; raw: %s", err, out)
@@ -610,6 +637,9 @@ func TestImChatList_Execute_UserMuteFiltersP2p(t *testing.T) {
 	if parsed.Data.Chats[0]["chat_id"] != "oc_g" {
 		t.Fatalf("remaining chat = %v; want oc_g", parsed.Data.Chats[0]["chat_id"])
 	}
+	if !parsed.Meta.Pagination.Complete || parsed.Meta.Pagination.Pages != 1 || parsed.Meta.Pagination.Items != 1 {
+		t.Fatalf("pagination meta = %+v; want one complete page and one emitted item", parsed.Meta.Pagination)
+	}
 }
 
 func TestChatList_SortMapping(t *testing.T) {
@@ -628,9 +658,9 @@ func TestChatList_SortMapping(t *testing.T) {
 	}
 }
 
-// TestChatList_SortAliasParity proves the hidden --sort-type alias maps to the
-// exact same upstream request as the equivalent new --sort value (byte-equal).
-func TestChatList_SortAliasParity(t *testing.T) {
+// TestChatList_SortCompatibilityParity proves Normalize maps the hidden legacy
+// vocabulary to the same canonical request (byte-equal).
+func TestChatList_SortCompatibilityParity(t *testing.T) {
 	pairs := []struct{ newVal, oldVal string }{
 		{"create_time", "ByCreateTimeAsc"},
 		{"active_time", "ByActiveTimeDesc"},
@@ -662,16 +692,16 @@ func TestChatList_SortNewWins(t *testing.T) {
 
 // TestChatList_SortFlagSurface asserts the declared flag structure.
 func TestChatList_SortFlagSurface(t *testing.T) {
-	var sortFlag, aliasFlag *common.Flag
+	var sortFlag, legacyFlag *common.Flag
 	for i := range ImChatList.Flags {
 		switch ImChatList.Flags[i].Name {
 		case "sort":
 			sortFlag = &ImChatList.Flags[i]
 		case "sort-type":
-			aliasFlag = &ImChatList.Flags[i]
+			legacyFlag = &ImChatList.Flags[i]
 		}
 	}
-	if sortFlag == nil || aliasFlag == nil {
+	if sortFlag == nil || legacyFlag == nil {
 		t.Fatalf("expected both --sort and --sort-type flags declared")
 	}
 	if sortFlag.Default != "create_time" {
@@ -683,13 +713,13 @@ func TestChatList_SortFlagSurface(t *testing.T) {
 	if !strings.Contains(sortFlag.Desc, "create_time") || !strings.Contains(sortFlag.Desc, "active_time") {
 		t.Errorf("--sort Desc must document both fields/directions: %q", sortFlag.Desc)
 	}
-	if !aliasFlag.Hidden {
+	if !legacyFlag.Hidden {
 		t.Errorf("--sort-type must be Hidden")
 	}
-	if got := strings.Join(aliasFlag.Enum, ","); got != "ByCreateTimeAsc,ByActiveTimeDesc" {
+	if got := strings.Join(legacyFlag.Enum, ","); got != "ByCreateTimeAsc,ByActiveTimeDesc" {
 		t.Errorf("--sort-type Enum = %q, want ByCreateTimeAsc,ByActiveTimeDesc", got)
 	}
-	if aliasFlag.Default != "" {
-		t.Errorf("--sort-type (hidden alias) must not carry a Default, got %q", aliasFlag.Default)
+	if legacyFlag.Default != "" {
+		t.Errorf("--sort-type compatibility flag must not carry a Default, got %q", legacyFlag.Default)
 	}
 }

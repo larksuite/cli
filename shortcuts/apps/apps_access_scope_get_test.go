@@ -20,7 +20,7 @@ func TestAppsAccessScopeGet_Specific(t *testing.T) {
 			"data": map[string]interface{}{
 				"scope":       "Range",
 				"users":       []interface{}{"ou_x", "ou_y"},
-				"departments": []interface{}{"od_z"},
+				"departments": []interface{}{"od-z"},
 				"chats":       []interface{}{"oc_g"},
 				"apply_config": map[string]interface{}{
 					"enabled":   true,
@@ -39,7 +39,7 @@ func TestAppsAccessScopeGet_Specific(t *testing.T) {
 	if !strings.Contains(got, `"scope": "Range"`) {
 		t.Fatalf("scope string not preserved (expect raw \"Range\"): %s", got)
 	}
-	if !strings.Contains(got, `"ou_x"`) || !strings.Contains(got, `"od_z"`) || !strings.Contains(got, `"oc_g"`) {
+	if !strings.Contains(got, `"ou_x"`) || !strings.Contains(got, `"od-z"`) || !strings.Contains(got, `"oc_g"`) {
 		t.Fatalf("users/departments/chats fields missing in envelope: %s", got)
 	}
 	if !strings.Contains(got, `"ou_appr"`) {

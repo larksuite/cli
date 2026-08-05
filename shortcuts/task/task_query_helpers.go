@@ -24,6 +24,14 @@ func splitAndTrimCSV(input string) []string {
 	return out
 }
 
+func buildSearchPageParams(pageToken string) map[string]interface{} {
+	params := map[string]interface{}{}
+	if pageToken != "" {
+		params["page_token"] = pageToken
+	}
+	return params
+}
+
 func parseTimeRangeMillis(input string) (string, string, error) {
 	if strings.TrimSpace(input) == "" {
 		return "", "", nil

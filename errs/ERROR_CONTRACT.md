@@ -44,10 +44,9 @@ Typed errors render to **stderr** as one JSON object per process exit:
     "subtype": "missing_scope",
     "code": 99991679,
     "message": "missing scope `calendar:event:create` for app cli_xxx",
-    "hint": "run lark-cli auth login --scope calendar:event:create",
+    "hint": "run `lark-cli auth login --scope \"calendar:event:create\" --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login",
     "log_id": "20260520-0a1b2c3d",
-    "missing_scopes": ["calendar:event:create"],
-    "console_url": "https://open.feishu.cn/app/cli_xxx/auth?q=..."
+    "missing_scopes": ["calendar:event:create"]
   }
 }
 ```
@@ -65,7 +64,7 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.retryable` | wire-stable | `true` when present; omitted when `false` |
 | `error.param` | per-Subtype-stable | single offending parameter (`ValidationError`); see **Validation parameters** |
 | `error.params` | per-Subtype-stable | per-parameter validation detail array (`ValidationError`); see **Validation parameters** |
-| per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url` |
+| per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url`; `console_url` is emitted for developer/admin recovery such as `app_scope_not_applied`, not user `missing_scope` |
 
 `SecurityPolicyError` renders through the same typed envelope as every
 other category. `error.type` is `"policy"`, `error.subtype` is one of
@@ -145,6 +144,41 @@ residual Cobra usage errors (missing required flag, unknown command,
 argument validation): the latter are classified into a typed validation
 envelope (`invalid_argument`) and exit `2`, matching the explicit flag and
 subcommand guards.
+
+### Concealed commands (`validation/command_unavailable`)
+
+`command_unavailable` is emitted only by a distribution that explicitly opts
+into presenting plugin-restricted commands as absent. Direct invocation and
+`help <concealed-path>` both produce a typed validation envelope and exit `2`:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "type": "validation",
+    "subtype": "command_unavailable",
+    "message": "requested capability is not available in this CLI distribution"
+  }
+}
+```
+
+For consumers, this subtype means the capability is not part of the current
+binary's usable command surface. Do not treat it as an authentication failure,
+attempt to bypass local policy, or infer that installing credentials will make
+the command available. The distribution may customize `message`; branch only
+on `type` and `subtype`.
+
+The concealed wire shape deliberately omits `param`, `policy_source`,
+`rule_name`, and `reason_code`, so it does not disclose the plugin policy that
+removed the capability. An in-process Go caller may still observe the original
+denial through the error cause for auditing.
+
+This opt-in behavior does not change the other command-resolution contracts:
+
+- an ordinary unknown command remains `validation/invalid_argument`;
+- a restricted command in the legacy visible presentation remains
+  `validation/failed_precondition` with its policy diagnostics; and
+- the default CLI build does not emit `command_unavailable`.
 
 ### Predicate commands (`output.BareError`)
 
@@ -509,6 +543,9 @@ Rare; the existing structs cover the 9 Categories with room. If you must:
 1. In `errs/types.go`, add a new section with: the struct embedding `errs.Problem`, a nil-receiver-safe `Unwrap()` if it carries `Cause`, a `NewXxxError(subtype, format, args...)` constructor, and one chained `WithX` setter per extension field.
 2. Add an `IsXxx` predicate in `errs/predicates.go`.
 3. Add a wire-format pin in `errs/marshal_test.go` and a builder-chain pin in `errs/types_test.go`.
+4. Add the concrete type and deep-copy handling to
+   `internal/recovery.CloneTyped`, then extend
+   `TestRenderClonesEveryConcreteTypedErrorAndPreservesWireExtensions`.
 
 `CheckProblemEmbed` enforces the `Problem` embed at lint time. New
 top-level wire fields are forbidden — per-Subtype data goes into the

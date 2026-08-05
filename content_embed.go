@@ -10,7 +10,6 @@ import (
 	"os"
 
 	"github.com/larksuite/cli/cmd"
-	"github.com/larksuite/cli/internal/affordance"
 )
 
 // embeddedContentFS bundles the agent-readable content that must ship in lockstep
@@ -36,6 +35,6 @@ func init() {
 	if sub, err := fs.Sub(embeddedContentFS, "affordance"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: affordance embed assembly failed, command guidance disabled:", err)
 	} else {
-		affordance.SetSource(sub)
+		cmd.SetEmbeddedAffordanceContent(sub)
 	}
 }

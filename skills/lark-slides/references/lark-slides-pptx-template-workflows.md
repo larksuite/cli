@@ -1,12 +1,12 @@
 # PPT Template Rewrite Principles
 
-本页只约束“用户指定 PPT 模板、底稿、已有 PPTX/PDF/Slides，并要求基于它二次创作”的场景。核心原则：模板不是风格参考，而是必须沿用的编辑底稿。
+核心原则：模板不是风格参考，而是必须沿用的编辑底稿。
 
 ## Import First
 
-用户指定 PPT 模板时，先把模板导入成 Lark Slides。后续写入目标是导入后的 Slides，不是新建一个脱离模板的 deck，也不是先在本地重画 PPTX 再导入。
+如果用户提供的模板是 PPTX 格式，先把模板导入成 Lark Slides。后续写入目标是导入后的 Slides，不是新建一个脱离模板的 deck，也不是先在本地重画 PPTX 再导入。
 
-直接使用以下命令，不需要先加载 `lark-drive` skill：
+直接使用以下命令，不需要先加载 `lark-drive` Skill：
 
 ```bash
 lark-cli drive +import --as user --file "<template.pptx>" --type slides --json
@@ -18,13 +18,9 @@ lark-cli drive +import --as user --file "<template.pptx>" --type slides --json
 lark-cli drive +task_result --scenario import --ticket <TICKET>
 ```
 
-导入后必须回读 Slides 内容，理解每页的真实版式、字体、层级、图片、图表、shape、表格和文本容器。回读结果是模板二创的事实来源。
-
 ## Read Before Editing
 
-编辑任何 PPT 页面前，必须先阅读该页面。
-
-如果当前上下文中没有该页内容，必须重新读取页面；这里的“当前上下文”不包含 System Prompt。不能只凭记忆、文件名、缩略图印象或模板整体风格判断来编辑具体页面。
+导入后必须阅读 Slides 内容，理解每页的真实版式、字体、层级、图片、图表、shape、表格和文本容器。阅读结果是后续编辑的事实来源。
 
 阅读页面时至少判断：
 
@@ -47,7 +43,7 @@ lark-cli drive +task_result --scenario import --ticket <TICKET>
 
 ## Preserve Design
 
-模板二创必须严格沿用原版式和字体，只改内容，不做设计。
+编辑必须严格沿用原版式和字体，只改内容，不做设计。
 
 默认保留：
 
@@ -56,7 +52,7 @@ lark-cli drive +task_result --scenario import --ticket <TICKET>
 - 背景图、图片、logo、图表、表格、装饰形状、线条、图标和页面结构。
 - 模板中不同页型之间的差异。
 
-不要把模板页改造成统一的通用卡片、白板、标题栏、三栏、2x2 卡片或大面积遮罩。不要把模板当作背景图后另起一套设计系统。
+不要把模板页改造成统一的通用卡片、空白板式布局、标题栏、三栏、2x2 卡片或大面积遮罩。不要把模板当作背景图后另起一套设计系统。
 
 ## Content Only
 
@@ -86,4 +82,4 @@ lark-cli drive +task_result --scenario import --ticket <TICKET>
 
 发现文字溢出时，优先凝练文字或缩减字号。发现遮挡时，调整 shape 顺序、局部位置或复用原有空白区域解决。只有在这些方法都不能满足内容表达时，才做局部新增或删除。
 
-模板二创的完成标准不是“生成了一套看起来统一的新 PPT”，而是“原模板的版式、字体和视觉结构仍清晰存在，内容已经被准确替换，并且回读后没有溢出和遮挡”。
+完成标准是“原模板的版式、字体和视觉结构仍清晰存在，内容已经被准确替换，并且回读后没有溢出和遮挡”。

@@ -36,7 +36,7 @@ func TestBuildInventory_groupsByPluginName(t *testing.T) {
 		{PluginName: "a", RuleName: "a-rule", Allow: []string{"docs/**"}, MaxRisk: "read"},
 	}
 
-	inv := internalplatform.BuildInventory(plugins, r, rules)
+	inv := internalplatform.BuildInventory(plugins, r, rules, nil)
 
 	if got := len(inv.Plugins); got != 2 {
 		t.Fatalf("Plugins len = %d, want 2", got)
@@ -89,7 +89,7 @@ func TestBuildInventory_multipleRulesPerPlugin(t *testing.T) {
 		{PluginName: "a", RuleName: "im-rw", Allow: []string{"im/**"}, MaxRisk: "write"},
 	}
 
-	inv := internalplatform.BuildInventory(plugins, nil, rules)
+	inv := internalplatform.BuildInventory(plugins, nil, rules, nil)
 	a := findPlugin(inv, "a")
 	if a == nil {
 		t.Fatalf("missing entry a")
@@ -103,9 +103,42 @@ func TestBuildInventory_multipleRulesPerPlugin(t *testing.T) {
 }
 
 func TestBuildInventory_empty(t *testing.T) {
-	inv := internalplatform.BuildInventory(nil, nil, nil)
+	inv := internalplatform.BuildInventory(nil, nil, nil, nil)
 	if got := len(inv.Plugins); got != 0 {
 		t.Errorf("Plugins len = %d, want 0", got)
+	}
+}
+
+// A non-nil SkillsInventorySource must surface on the owning plugin's entry as
+// an EmbeddedSkills summary, and BuildInventory must clone the Allow/Remove
+// slices so a later mutation of the source cannot corrupt the recorded view.
+func TestBuildInventory_populatesAndClonesEmbeddedSkills(t *testing.T) {
+	plugins := []internalplatform.PluginInventorySource{{Name: "acme", Version: "1.0"}}
+	allow := []string{"lark-im"}
+	remove := []string{"lark-shared"}
+	skills := []internalplatform.SkillsInventorySource{
+		{PluginName: "acme", View: internalplatform.SkillsOverlayView{
+			Allow: allow, Remove: remove, Overlay: true, Base: false,
+		}},
+	}
+
+	inv := internalplatform.BuildInventory(plugins, nil, nil, skills)
+	entry := findPlugin(inv, "acme")
+	if entry == nil || entry.EmbeddedSkills == nil {
+		t.Fatalf("acme entry missing EmbeddedSkills: %+v", entry)
+	}
+	es := entry.EmbeddedSkills
+	if len(es.Allow) != 1 || es.Allow[0] != "lark-im" ||
+		len(es.Remove) != 1 || es.Remove[0] != "lark-shared" ||
+		!es.Overlay || es.Base {
+		t.Errorf("EmbeddedSkills summary mismatch: %+v", es)
+	}
+
+	// Mutating the source slices must not leak into the recorded view.
+	allow[0] = "MUTATED"
+	remove[0] = "MUTATED"
+	if es.Allow[0] != "lark-im" || es.Remove[0] != "lark-shared" {
+		t.Errorf("EmbeddedSkills slices not cloned; source mutation leaked: %+v", es)
 	}
 }
 

@@ -14,7 +14,8 @@ import (
 	"time"
 
 	exttransport "github.com/larksuite/cli/extension/transport"
-	internalauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/riskcontrol"
+	internaltransport "github.com/larksuite/cli/internal/transport"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -90,79 +91,107 @@ func TestRetryTransport_DefaultNoRetry(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// buildSDKTransport chain composition
+// buildSDKTransport policy behavior
 // ---------------------------------------------------------------------------
 
-func TestBuildSDKTransport_IncludesRetryTransport(t *testing.T) {
-	transport := buildSDKTransport()
+func TestBuildSDKTransportAppliesSecurityHeadersToEveryRequestClass(t *testing.T) {
+	exttransport.Register(nil)
+	received := make(chan http.Header, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		received <- req.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
 
-	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → Base
-	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
-	if !ok {
-		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
-	}
-	bh, ok := sec.Base.(*BuildHeaderTransport)
-	if !ok {
-		t.Fatalf("layer after SecurityPolicy = %T, want *BuildHeaderTransport", sec.Base)
-	}
-	ua, ok := bh.Base.(*UserAgentTransport)
-	if !ok {
-		t.Fatalf("layer after BuildHeader = %T, want *UserAgentTransport", bh.Base)
-	}
-	if _, ok := ua.Base.(*RetryTransport); !ok {
-		t.Fatalf("inner transport type = %T, want *RetryTransport", ua.Base)
+	for _, class := range []exttransport.RequestClass{
+		exttransport.RequestClassPlatform,
+		exttransport.RequestClassExternal,
+	} {
+		client := internaltransport.ClientForRequestClass(
+			&http.Client{Transport: buildSDKTransport(nil)},
+			class,
+		)
+		resp, err := client.Get(server.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+
+		headers := <-received
+		for header, values := range BaseSecurityHeaders() {
+			if len(values) == 0 {
+				continue
+			}
+			want := values[len(values)-1]
+			if got := headers.Get(header); got != want {
+				t.Fatalf("SDK %s header %s = %q, want %q", class, header, got, want)
+			}
+		}
 	}
 }
 
 func TestBuildSDKTransport_WithExtension(t *testing.T) {
-	exttransport.Register(&stubTransportProvider{})
-	t.Cleanup(func() { exttransport.Register(nil) })
+	previous := exttransport.GetProvider()
+	interceptor := &headerCapturingInterceptor{}
+	exttransport.Register(&platformOnlyStubProvider{
+		stubTransportProvider: &stubTransportProvider{interceptor: interceptor},
+	})
+	t.Cleanup(func() { exttransport.Register(previous) })
 
-	transport := buildSDKTransport()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
 
-	// Chain: extensionMiddleware → SecurityPolicy → BuildHeader → UserAgent → Retry → Base
-	mid, ok := transport.(*extensionMiddleware)
-	if !ok {
-		t.Fatalf("outer transport type = %T, want *extensionMiddleware", transport)
+	client := internaltransport.ClientForRequestClass(
+		&http.Client{Transport: buildSDKTransport(nil)},
+		exttransport.RequestClassPlatform,
+	)
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
 	}
-	sec, ok := mid.Base.(*internalauth.SecurityPolicyTransport)
-	if !ok {
-		t.Fatalf("transport type = %T, want *auth.SecurityPolicyTransport", mid.Base)
-	}
-	bh, ok := sec.Base.(*BuildHeaderTransport)
-	if !ok {
-		t.Fatalf("layer after SecurityPolicy = %T, want *BuildHeaderTransport", sec.Base)
-	}
-	ua, ok := bh.Base.(*UserAgentTransport)
-	if !ok {
-		t.Fatalf("layer after BuildHeader = %T, want *UserAgentTransport", bh.Base)
-	}
-	if _, ok := ua.Base.(*RetryTransport); !ok {
-		t.Fatalf("innermost transport type = %T, want *RetryTransport", ua.Base)
+	resp.Body.Close()
+	if !interceptor.preCalled || !interceptor.postCalled {
+		t.Fatal("SDK platform request did not execute extension pre/post hooks")
 	}
 }
 
 func TestBuildSDKTransport_WithoutExtension(t *testing.T) {
+	previous := exttransport.GetProvider()
 	exttransport.Register(nil)
+	t.Cleanup(func() { exttransport.Register(previous) })
 
-	transport := buildSDKTransport()
+	if _, ok := buildSDKTransport(nil).(*internaltransport.HTTPPolicyRouter); !ok {
+		t.Fatalf(
+			"buildSDKTransport() type = %T, want *transport.HTTPPolicyRouter",
+			buildSDKTransport(nil),
+		)
+	}
+}
 
-	// Chain: SecurityPolicy → BuildHeader → UserAgent → Retry → Base
-	sec, ok := transport.(*internalauth.SecurityPolicyTransport)
+func TestBuildSDKTransportSupportsPolicyLeafCloning(t *testing.T) {
+	previous := exttransport.GetProvider()
+	exttransport.Register(nil)
+	t.Cleanup(func() { exttransport.Register(previous) })
+
+	base := &http.Transport{}
+	client := internaltransport.ClientForRequestClass(
+		&http.Client{Transport: buildSDKTransportWithBase(base, nil)},
+		exttransport.RequestClassExternal,
+	)
+	source, ok := client.Transport.(interface {
+		CloneHTTPTransport() (http.RoundTripper, *http.Transport, bool)
+	})
 	if !ok {
-		t.Fatalf("outer transport type = %T, want *auth.SecurityPolicyTransport", transport)
+		t.Fatalf("SDK request-class transport type = %T, want clone capability", client.Transport)
 	}
-	bh, ok := sec.Base.(*BuildHeaderTransport)
-	if !ok {
-		t.Fatalf("layer after SecurityPolicy = %T, want *BuildHeaderTransport", sec.Base)
+	rebuilt, concrete, ok := source.CloneHTTPTransport()
+	if !ok || rebuilt == nil || concrete == nil {
+		t.Fatal("SDK policy graph could not clone its HTTP transport leaf")
 	}
-	ua, ok := bh.Base.(*UserAgentTransport)
-	if !ok {
-		t.Fatalf("layer after BuildHeader = %T, want *UserAgentTransport", bh.Base)
-	}
-	if _, ok := ua.Base.(*RetryTransport); !ok {
-		t.Fatalf("inner transport type = %T, want *RetryTransport", ua.Base)
+	if concrete == base {
+		t.Fatal("SDK policy graph reused the original HTTP transport")
 	}
 }
 
@@ -222,7 +251,7 @@ func TestExtensionInterceptor_ExecutionOrder(t *testing.T) {
 	var base http.RoundTripper = http.DefaultTransport
 	base = &RetryTransport{Base: base}
 	base = &SecurityHeaderTransport{Base: base}
-	transport := wrapWithExtension(base)
+	transport := internaltransport.WrapWithExtension(base)
 	client := &http.Client{Transport: transport}
 
 	req, _ := http.NewRequest("GET", srv.URL, nil)
@@ -250,26 +279,132 @@ func TestExtensionInterceptor_ExecutionOrder(t *testing.T) {
 	}
 }
 
-// buildTamperingInterceptor tries to delete and spoof X-Cli-Build via
-// PreRoundTrip. The SDK chain's BuildHeaderTransport must restore the real
-// value before the request leaves the process.
+// buildTamperingInterceptor tries to delete and spoof security headers via
+// PreRoundTrip. The SDK built-in chain must restore the real values before the
+// request leaves the process.
 type buildTamperingInterceptor struct{}
 
 func (buildTamperingInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
 	req.Header.Del(HeaderBuild)
 	req.Header.Set(HeaderBuild, "ext-tampered-build")
+	req.Header.Del(HeaderSource)
+	req.Header.Set(HeaderSource, "ext-tampered-source")
 	return nil
 }
 
+type riskHeaderTamperingInterceptor struct{}
+
+func (riskHeaderTamperingInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
+	req.Header.Set(riskcontrol.HeaderOSType, "extension-value")
+	req.Header.Set(riskcontrol.HeaderProductModel, "extension-value")
+	return nil
+}
+
+type bootstrapPolicyTamperingInterceptor struct{}
+
+func (bootstrapPolicyTamperingInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
+	req.Header.Set(HeaderSource, "extension-value")
+	req.Header.Set(riskcontrol.HeaderOSType, "extension-value")
+	return nil
+}
+
+func TestNewDefaultInstallsSDKBootstrapSecurityPolicy(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	oldTransport := http.DefaultClient.Transport
+	oldCheckRedirect := http.DefaultClient.CheckRedirect
+	t.Cleanup(func() {
+		http.DefaultClient.Transport = oldTransport
+		http.DefaultClient.CheckRedirect = oldCheckRedirect
+	})
+
+	previous := exttransport.GetProvider()
+	exttransport.Register(&platformOnlyStubProvider{
+		stubTransportProvider: &stubTransportProvider{
+			interceptor: bootstrapPolicyTamperingInterceptor{},
+		},
+	})
+	t.Cleanup(func() { exttransport.Register(previous) })
+
+	var received http.Header
+	network := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		received = req.Header.Clone()
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Body:       http.NoBody,
+			Request:    req,
+		}, nil
+	})
+	http.DefaultClient.Transport = network
+	http.DefaultClient.CheckRedirect = nil
+	_ = NewDefault(nil, InvocationContext{})
+
+	req, err := http.NewRequest(
+		http.MethodPost,
+		"https://open.feishu.cn/callback/ws/endpoint",
+		strings.NewReader(`{"app_secret":"secret"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if got := received.Get(HeaderSource); got != SourceValue {
+		t.Fatalf("%s = %q, want trusted value %q", HeaderSource, got, SourceValue)
+	}
+	if got := received.Get(riskcontrol.HeaderOSType); got != "" {
+		t.Fatalf("%s = %q, want extension value stripped", riskcontrol.HeaderOSType, got)
+	}
+	if got := received.Get(HeaderBuild); got != DetectBuildKind() {
+		t.Fatalf("%s = %q, want %q", HeaderBuild, got, DetectBuildKind())
+	}
+	if got := received.Get(HeaderUserAgent); got != UserAgentValue() {
+		t.Fatalf("%s = %q, want %q", HeaderUserAgent, got, UserAgentValue())
+	}
+}
+
+func TestBuildSDKTransport_StripsExtensionRiskHeaders(t *testing.T) {
+	previous := exttransport.GetProvider()
+	exttransport.Register(&stubTransportProvider{interceptor: riskHeaderTamperingInterceptor{}})
+	t.Cleanup(func() { exttransport.Register(previous) })
+
+	var received http.Header
+	network := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		received = req.Header.Clone()
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	req, err := http.NewRequest(http.MethodGet, "https://open.feishu.cn/open-apis/test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer token")
+
+	client := internaltransport.ClientForRequestClass(
+		&http.Client{Transport: buildSDKTransportWithBase(network, nil)},
+		exttransport.RequestClassPlatform,
+	)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if received.Get(riskcontrol.HeaderOSType) != "" || received.Get(riskcontrol.HeaderProductModel) != "" {
+		t.Fatalf("extension risk headers reached network: %v", received)
+	}
+}
+
 // TestBuildHeaderTransport_SDKChain_OverridesTamperedHeader verifies that the
-// X-Cli-Build header is force-written by BuildHeaderTransport in the SDK
-// transport chain, even when an extension tries to delete or spoof it. This
-// closes the gap where the SDK chain had no equivalent of
-// SecurityHeaderTransport (see design doc §3.3.3).
+// SDK chain restores both the build classification and the full security
+// header set after an extension runs.
 func TestBuildHeaderTransport_SDKChain_OverridesTamperedHeader(t *testing.T) {
-	var receivedBuild string
+	var receivedBuild, receivedSource string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedBuild = r.Header.Get(HeaderBuild)
+		receivedSource = r.Header.Get(HeaderSource)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -277,12 +412,13 @@ func TestBuildHeaderTransport_SDKChain_OverridesTamperedHeader(t *testing.T) {
 	exttransport.Register(&stubTransportProvider{interceptor: buildTamperingInterceptor{}})
 	t.Cleanup(func() { exttransport.Register(nil) })
 
-	// Replicate the SDK chain layering used by buildSDKTransport.
+	// Replicate the SDK built-in chain inside buildSDKTransport.
 	var base http.RoundTripper = http.DefaultTransport
 	base = &RetryTransport{Base: base}
 	base = &UserAgentTransport{Base: base}
 	base = &BuildHeaderTransport{Base: base}
-	transport := wrapWithExtension(base)
+	base = &SecurityHeaderTransport{Base: base}
+	transport := internaltransport.WrapWithExtension(base)
 	client := &http.Client{Transport: transport}
 
 	req, _ := http.NewRequest("GET", srv.URL, nil)
@@ -298,6 +434,9 @@ func TestBuildHeaderTransport_SDKChain_OverridesTamperedHeader(t *testing.T) {
 	want := DetectBuildKind()
 	if receivedBuild != want {
 		t.Fatalf("%s = %q, want %q", HeaderBuild, receivedBuild, want)
+	}
+	if receivedSource != SourceValue {
+		t.Fatalf("%s = %q, want %q", HeaderSource, receivedSource, SourceValue)
 	}
 }
 
@@ -388,7 +527,7 @@ func TestExtensionInterceptor_ContextTamperPrevented(t *testing.T) {
 		return nil
 	})
 
-	mid := &extensionMiddleware{Base: capturer, Ext: tamperIC}
+	mid := &internaltransport.ExtensionMiddleware{Base: capturer, Ext: tamperIC}
 
 	origCtx := context.WithValue(context.Background(), testKey, "original")
 	req, _ := http.NewRequestWithContext(origCtx, "GET", srv.URL, nil)
@@ -450,7 +589,7 @@ func TestExtensionMiddleware_PreRoundTripEAbort(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 		})
 
-		mid := &extensionMiddleware{Base: base, Ext: ic, ExtName: "stub"}
+		mid := &internaltransport.ExtensionMiddleware{Base: base, Ext: ic, ExtName: "stub"}
 		req, _ := http.NewRequest("GET", "http://example.invalid/", nil)
 		resp, err := mid.RoundTrip(req)
 
@@ -491,7 +630,7 @@ func TestExtensionMiddleware_PreRoundTripEAbort(t *testing.T) {
 			return nil, nil
 		})
 
-		mid := &extensionMiddleware{Base: base, Ext: ic, ExtName: "stub"}
+		mid := &internaltransport.ExtensionMiddleware{Base: base, Ext: ic, ExtName: "stub"}
 		req, _ := http.NewRequest("GET", "http://example.invalid/", nil)
 		_, err := mid.RoundTrip(req)
 
@@ -510,7 +649,7 @@ func TestExtensionMiddleware_PreRoundTripEHappyPath(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
 
-	mid := &extensionMiddleware{Base: base, Ext: ic, ExtName: "stub"}
+	mid := &internaltransport.ExtensionMiddleware{Base: base, Ext: ic, ExtName: "stub"}
 	req, _ := http.NewRequest("GET", "http://example.invalid/", nil)
 	resp, err := mid.RoundTrip(req)
 	if err != nil {

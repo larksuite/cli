@@ -3,7 +3,11 @@
 
 package core
 
-import "testing"
+import (
+	"net/url"
+	"reflect"
+	"testing"
+)
 
 func TestResolveEndpoints_Feishu(t *testing.T) {
 	ep := ResolveEndpoints(BrandFeishu)
@@ -89,5 +93,87 @@ func TestResolveEndpoints_NormalizesBrand(t *testing.T) {
 	}
 	if got := ResolveEndpoints(LarkBrand("unexpected")).Open; got != "https://open.feishu.cn" {
 		t.Errorf("ResolveEndpoints(unexpected).Open = %q, want the feishu default", got)
+	}
+}
+
+func TestIsPlatformEndpointHost_ExactMatchOnly(t *testing.T) {
+	for _, host := range []string{
+		"open.feishu.cn",
+		"accounts.feishu.cn",
+		"mcp.feishu.cn",
+		"applink.feishu.cn",
+		"open.larksuite.com",
+		"accounts.larksuite.com",
+		"mcp.larksuite.com",
+		"applink.larksuite.com",
+	} {
+		if !IsPlatformEndpointHost(host) {
+			t.Errorf("IsPlatformEndpointHost(%q) = false, want true", host)
+		}
+	}
+
+	for _, host := range []string{
+		"example.com",
+		"open.feishu.cn.example.com",
+		"notopen.feishu.cn",
+		"",
+	} {
+		if IsPlatformEndpointHost(host) {
+			t.Errorf("IsPlatformEndpointHost(%q) = true, want false", host)
+		}
+	}
+}
+
+func TestIsPlatformEndpointHost_CoversEveryResolvedEndpoint(t *testing.T) {
+	for _, brand := range []LarkBrand{BrandFeishu, BrandLark} {
+		endpoints := reflect.ValueOf(ResolveEndpoints(brand))
+		for i := 0; i < endpoints.NumField(); i++ {
+			rawURL := endpoints.Field(i).String()
+			parsed, err := url.Parse(rawURL)
+			if err != nil {
+				t.Fatalf("ResolveEndpoints(%q) field %d URL %q: %v", brand, i, rawURL, err)
+			}
+			if !IsPlatformEndpointHost(parsed.Hostname()) {
+				t.Errorf("ResolveEndpoints(%q) field %d host %q is missing from the platform transport boundary", brand, i, parsed.Hostname())
+			}
+		}
+	}
+}
+
+func TestIsPlatformEndpointURL_RequiresSecureStandardOrigin(t *testing.T) {
+	if IsPlatformEndpointURL(nil) {
+		t.Error("IsPlatformEndpointURL(nil) = true, want false")
+	}
+	uppercaseScheme := &url.URL{Scheme: "HTTPS", Host: "open.feishu.cn", Path: "/path"}
+	if !IsPlatformEndpointURL(uppercaseScheme) {
+		t.Error("IsPlatformEndpointURL() rejected uppercase HTTPS scheme")
+	}
+
+	for _, rawURL := range []string{
+		"http://open.feishu.cn/path",
+		"https://open.feishu.cn:8443/path",
+		"https://open.feishu.cn.example.com/path",
+	} {
+		candidate, err := url.Parse(rawURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if IsPlatformEndpointURL(candidate) {
+			t.Errorf("IsPlatformEndpointURL(%q) = true, want false", rawURL)
+		}
+	}
+
+	for _, rawURL := range []string{
+		"https://open.feishu.cn/path",
+		"https://open.feishu.cn:443/path",
+		"https://OPEN.FEISHU.CN/path",
+	} {
+		candidate, err := url.Parse(rawURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !IsPlatformEndpointURL(candidate) {
+			t.Errorf("IsPlatformEndpointURL(%q) = false, want true", rawURL)
+		}
 	}
 }

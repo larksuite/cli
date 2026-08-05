@@ -174,7 +174,7 @@ var CalendarSearchEvent = common.Shortcut{
 	Description: "Search calendar events by keyword, time range, and attendees",
 	Risk:        "read",
 	Scopes:      []string{"calendar:calendar.event:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},

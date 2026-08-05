@@ -6,6 +6,8 @@ package okr
 import (
 	"bytes"
 	"errors"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/spf13/cobra"
+	"github.com/tidwall/gjson"
 )
 
 func batchCreateTestConfig(t *testing.T) *core.CliConfig {
@@ -41,6 +44,15 @@ func runBatchCreateShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buff
 const validBatchCreateInput = `[
   {"text":"Objective 1","mention":["ou_123"],"krs":[{"text":"KR 1.1","mention":["ou_456"]}]},
   {"text":"Objective 2","krs":[{"text":"KR 2.1"},{"text":"KR 2.2"}]}
+]`
+
+const validBatchCreateInputWithNotes = `[
+  {"text":"Objective 1","notes":"Objective notes","notes_mention":["ou_note"],"krs":[{"text":"KR 1.1"}]}
+]`
+
+const validBatchCreateInputWithCategory = `[
+  {"text":"Objective 1","category_id":"222","krs":[{"text":"KR 1.1"}]},
+  {"text":"Objective 2","krs":[]}
 ]`
 
 // --- Validate tests ---
@@ -197,6 +209,46 @@ func TestBatchCreateValidate_EmptyKRText(t *testing.T) {
 	}
 }
 
+func TestBatchCreateValidate_EmptyObjectiveNotesMention(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, batchCreateTestConfig(t))
+	err := runBatchCreateShortcut(t, f, stdout, []string{
+		"+batch-create",
+		"--cycle-id", "123",
+		"--input", `[{"text":"Obj 1","notes":"Notes","notes_mention":[" "]}]`,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty objective notes mention")
+	}
+	validationErr, ok := err.(*errs.ValidationError)
+	if !ok || validationErr.Param != "--input" {
+		t.Fatalf("expected param --input, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "objective[0].notes_mention[0]") {
+		t.Fatalf("expected error to mention objective[0].notes_mention[0], got: %v", err)
+	}
+}
+
+func TestBatchCreateValidate_NotesMentionRequiresNotes(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, batchCreateTestConfig(t))
+	err := runBatchCreateShortcut(t, f, stdout, []string{
+		"+batch-create",
+		"--cycle-id", "123",
+		"--input", `[{"text":"Obj 1","notes_mention":["ou_note"]}]`,
+	})
+	if err == nil {
+		t.Fatal("expected error for notes_mention without notes")
+	}
+	validationErr, ok := err.(*errs.ValidationError)
+	if !ok || validationErr.Param != "--input" {
+		t.Fatalf("expected param --input, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "objective[0].notes is required when notes_mention is provided") {
+		t.Fatalf("expected error to mention missing notes, got: %v", err)
+	}
+}
+
 func TestBatchCreateValidate_InvalidUserIDType(t *testing.T) {
 	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, batchCreateTestConfig(t))
@@ -323,6 +375,49 @@ func TestBatchCreateDryRun(t *testing.T) {
 	}
 }
 
+func TestBatchCreateDryRun_WithObjectiveNotes(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, batchCreateTestConfig(t))
+	err := runBatchCreateShortcut(t, f, stdout, []string{
+		"+batch-create",
+		"--cycle-id", "123",
+		"--input", validBatchCreateInputWithNotes,
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "Objective notes") {
+		t.Fatalf("dry-run output should contain objective notes, got: %s", output)
+	}
+	if !strings.Contains(output, "ou_note") {
+		t.Fatalf("dry-run output should contain objective notes mention, got: %s", output)
+	}
+}
+
+func TestBatchCreateDryRun_WithCategoryID(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, batchCreateTestConfig(t))
+	err := runBatchCreateShortcut(t, f, stdout, []string{
+		"+batch-create",
+		"--cycle-id", "123",
+		"--category-id", "111",
+		"--input", validBatchCreateInputWithCategory,
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := stdout.String()
+	if got := gjson.Get(output, "data.api.0.body.category_id").String(); got != "222" {
+		t.Fatalf("first objective category_id = %q, want per-objective override 222; output: %s", got, output)
+	}
+	if got := gjson.Get(output, "data.api.2.body.category_id").String(); got != "111" {
+		t.Fatalf("second objective category_id = %q, want default 111; output: %s", got, output)
+	}
+}
+
 // --- Execute tests ---
 
 func TestBatchCreateExecute_Success(t *testing.T) {
@@ -377,6 +472,94 @@ func TestBatchCreateExecute_Success(t *testing.T) {
 	krs, _ := obj["krs"].([]interface{})
 	if len(krs) != 1 || krs[0] != "200" {
 		t.Fatalf("expected krs=[200], got %v", krs)
+	}
+}
+
+func TestBatchCreateExecute_ObjectiveWithNotes(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, reg := cmdutil.TestFactory(t, batchCreateTestConfig(t))
+	var objectiveBody []byte
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/okr/v2/cycles/123/objectives",
+		OnMatch: func(req *http.Request) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read objective request body: %v", err)
+			}
+			objectiveBody = body
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"objective_id": "100",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/okr/v2/objectives/100/key_results",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"key_result_id": "200",
+			},
+		},
+	})
+	err := runBatchCreateShortcut(t, f, stdout, []string{
+		"+batch-create",
+		"--cycle-id", "123",
+		"--input", validBatchCreateInputWithNotes,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !gjson.GetBytes(objectiveBody, "notes.blocks.0.paragraph.elements.0.text_run.text").Exists() {
+		t.Fatalf("objective request body missing notes: %s", string(objectiveBody))
+	}
+	if got := gjson.GetBytes(objectiveBody, "notes.blocks.0.paragraph.elements.0.text_run.text").String(); got != "Objective notes" {
+		t.Fatalf("notes text = %q, want Objective notes; body: %s", got, string(objectiveBody))
+	}
+	if got := gjson.GetBytes(objectiveBody, "notes.blocks.0.paragraph.elements.1.mention.user_id").String(); got != "ou_note" {
+		t.Fatalf("notes mention = %q, want ou_note; body: %s", got, string(objectiveBody))
+	}
+}
+
+func TestBatchCreateExecute_ObjectiveWithCategoryID(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, reg := cmdutil.TestFactory(t, batchCreateTestConfig(t))
+	var objectiveBody []byte
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/okr/v2/cycles/123/objectives",
+		OnMatch: func(req *http.Request) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read objective request body: %v", err)
+			}
+			objectiveBody = body
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"objective_id": "100",
+			},
+		},
+	})
+	err := runBatchCreateShortcut(t, f, stdout, []string{
+		"+batch-create",
+		"--cycle-id", "123",
+		"--category-id", "7249339036661170180",
+		"--input", `[{"text":"Obj 1"}]`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := gjson.GetBytes(objectiveBody, "category_id").String(); got != "7249339036661170180" {
+		t.Fatalf("category_id = %q, want 7249339036661170180; body: %s", got, string(objectiveBody))
 	}
 }
 

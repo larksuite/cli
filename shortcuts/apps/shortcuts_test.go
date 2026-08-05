@@ -20,12 +20,14 @@ import (
 //   - 3 git-credential
 //   - 5 session（create/list/get/stop/chat）+ 1 session-messages-list
 //   - 8 openapi-key（list/get/create/update/enable/disable/delete/reset）
+//   - 3 cache（get/delete/clear）
 //   - 3 plugin（install/uninstall/list）
-//   - 6 automation（list/get/create/update/enable/disable）= 70。
-func TestAppsShortcuts_Returns70(t *testing.T) {
+//   - 6 automation（list/get/create/update/enable/disable）
+//   - 9 role（role CRUD + role-member list/add/remove + role-match-list）= 82。
+func TestAppsShortcuts_Returns82(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 70 {
-		t.Fatalf("Shortcuts() returned %d entries, want 70", len(got))
+	if len(got) != 82 {
+		t.Fatalf("Shortcuts() returned %d entries, want 82", len(got))
 	}
 }
 
@@ -80,6 +82,34 @@ func TestAppsShortcuts_IncludesSessionCommands(t *testing.T) {
 	for _, sc := range Shortcuts() {
 		if _, ok := want[sc.Command]; ok {
 			want[sc.Command] = true
+		}
+	}
+	for cmd, found := range want {
+		if !found {
+			t.Errorf("Shortcuts() missing %s", cmd)
+		}
+	}
+}
+
+// 确认 role 管理命令都已挂载，避免实现存在但 shortcut 漏注册。
+func TestAppsShortcuts_IncludesRoleCommands(t *testing.T) {
+	want := map[string]bool{
+		"+role-list":          false,
+		"+role-get":           false,
+		"+role-create":        false,
+		"+role-update":        false,
+		"+role-delete":        false,
+		"+role-member-list":   false,
+		"+role-member-add":    false,
+		"+role-member-remove": false,
+		"+role-match-list":    false,
+	}
+	for _, sc := range Shortcuts() {
+		if _, ok := want[sc.Command]; ok {
+			want[sc.Command] = true
+			if sc.Hidden {
+				t.Errorf("%s must be visible", sc.Command)
+			}
 		}
 	}
 	for cmd, found := range want {

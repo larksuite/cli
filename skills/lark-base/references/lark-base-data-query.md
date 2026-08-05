@@ -79,16 +79,23 @@ lark-cli base +data-query \
 | `--base-token <token>` | 是 | Base Token（base_token） |
 | `--dsl <json>`         | 是 | LiteQuery Protocol JSON DSL 查询语句 |
 
-## 如何从链接中提取参数
+## 如何从链接中解析参数
 
 用户通常会提供如下 URL：
 
-```
-https://example.feishu.cn/base/<base_token>?table=<table_id>
+```text
+https://example.feishu.cn/base/<base_token>?table=<block_id>
 ```
 
-- `--base-token`：取 `/base/` 后面的字符串
-- DSL 中的 `tableId`：取 `table=` 后面的值
+不要直接把 URL 中的 `table=` 当成数据表 ID。它表示当前选中的 Base 顶层块，可能是数据表、仪表盘、工作流、文件夹或文档。先解析链接：
+
+```bash
+lark-cli base +url-resolve --url "<url>" --as user
+```
+
+- `--base-token`：使用返回的 `base_token`
+- 仅当返回的 `block_type` 为 `table` 时，DSL 中的 `tableId` 才使用返回的 `table_id`
+- 如果返回的是其他块类型，按 `hint.next_step` 继续处理；如果只返回中性的 `block_id`，先用 `+base-block-list` 确认块类型，再选择实际要查询的数据表
 
 ## API 入参详情
 
@@ -347,28 +354,30 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 |------|------|------|------|
 | `format` | string | 是 | 固定为 `"flat"`，表示返回扁平化的对象数组 |
 
-## API 出参详情
+## CLI 出参详情
+
+CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identity, error}`）。
 
 **成功时：**
 
 ```json
-{"code": 0, "data": {"main_data": [{"dim_city": {"value": "北京"}, "total_amount": {"value": 12345.00}}, ...]}, "msg": ""}
+{"ok": true, "identity": "user", "data": {"main_data": [{"dim_city": {"value": "北京"}, "total_amount": {"value": 12345.00}}, ...]}}
 ```
 
 **失败时：**
 
 ```json
-{"code": 800004006, "data": {"error": {"code": 800004006, ...}}, "msg": "DSL validation failed"}
+{"ok": false, "identity": "user", "error": {"type": "api", "subtype": "unknown", "code": 800004006, "message": "...does not exist in table schema", "hint": "...", "log_id": "..."}}
 ```
 
 **Response 字段：**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `code` | int | 状态码，0 为成功 |
-| `msg` | string | 错误信息 |
-| `data.main_data` | []object | 查询结果数组，每个元素为一行数据 |
-| `data.error` | object | 失败时的错误详情 |
+| `ok` | bool | 是否成功 |
+| `identity` | string | 执行身份：`user` / `bot` |
+| `data.main_data` | []object | 查询结果数组，每个元素为一行数据（成功时） |
+| `error` | object | 失败时的 typed 错误，含 `type` / `subtype` / `code` / `message` / `hint` / `log_id` |
 
 每行数据的字段值封装在 CellValue 中：
 

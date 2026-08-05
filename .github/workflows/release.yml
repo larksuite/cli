@@ -8,53 +8,558 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  goreleaser:
+  preflight:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    outputs:
+      source_sha: ${{ steps.validate.outputs.source_sha }}
+      version: ${{ steps.validate.outputs.version }}
+      channel: ${{ steps.validate.outputs.channel }}
+      prerelease: ${{ steps.validate.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          package-manager-cache: false
+
+      - name: Refuse to rebuild a published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null | grep -Fxq false; then
+            echo "Release ${TAG} is already public. Do not re-run the workflow; publish a new version instead." >&2
+            exit 1
+          fi
+
+      - name: Validate protected release tag
+        id: validate
+        env:
+          REF_PROTECTED: ${{ github.ref_protected }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$REPOSITORY" == "larksuite/cli" ]] || { echo "Release tags are accepted only from larksuite/cli." >&2; exit 1; }
+          [[ "$REF_PROTECTED" == "true" ]] || { echo "Release tag ${TAG} must be protected by a repository ruleset." >&2; exit 1; }
+
+          preflight_file="${RUNNER_TEMP}/release-preflight.json"
+          node scripts/release-preflight.js --tag "$TAG" > "$preflight_file"
+          git fetch --no-tags origin main
+          head_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          tag_sha="$(git rev-parse --verify "refs/tags/${TAG}^{commit}")"
+          [[ "$tag_sha" == "$head_sha" ]] || { echo "Tag ${TAG} does not resolve to checked-out HEAD." >&2; exit 1; }
+          main_sha="$(git rev-parse FETCH_HEAD)"
+          source_in_main=false
+          if git merge-base --is-ancestor "$head_sha" "$main_sha"; then
+            source_in_main=true
+          fi
+
+          node - "$preflight_file" "$head_sha" "$main_sha" "$source_in_main" "$GITHUB_OUTPUT" <<'NODE'
+          const fs = require("node:fs");
+          const { validateReleaseSourcePolicy } = require("./scripts/release-preflight");
+          const [file, sourceSha, mainSha, sourceInMain, output] = process.argv.slice(2);
+          const result = JSON.parse(fs.readFileSync(file, "utf8"));
+          if (result?.ok !== true || !["stable", "beta"].includes(result.data?.releaseChannel)) {
+            throw new Error("release preflight returned an invalid success payload");
+          }
+          const channel = result.data.releaseChannel;
+          const sourcePolicy = validateReleaseSourcePolicy(channel, sourceSha, mainSha, sourceInMain === "true");
+          if (!sourcePolicy.ok) {
+            throw new Error(sourcePolicy.error.message);
+          }
+          if (sourcePolicy.data.warning) {
+            console.log(`::warning title=Unexpected beta source::${sourcePolicy.data.warning}`);
+          }
+          fs.appendFileSync(output, `source_sha=${sourceSha}\nversion=${result.data.tagVersion}\nchannel=${channel}\nprerelease=${channel === "beta"}\n`);
+          NODE
+
+  build-sign-notarize:
+    needs: preflight
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    # This is the single approval boundary for the release. It grants access to
+    # Apple signing material before the candidate is built.
+    environment: npm-production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.23'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Fetch build metadata
+        run: python3 scripts/fetch_meta.py
+
+      - name: Prepare Apple notarization key
+        env:
+          MACOS_NOTARY_ISSUER_ID: ${{ vars.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ vars.MACOS_NOTARY_KEY_ID }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_TEAM_ID: ${{ vars.MACOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          set +x
+          for name in MACOS_SIGN_P12 MACOS_SIGN_PASSWORD MACOS_NOTARY_KEY MACOS_TEAM_ID MACOS_NOTARY_KEY_ID MACOS_NOTARY_ISSUER_ID; do
+            [[ -n "${!name:-}" ]] || { echo "Required Apple release input ${name} is not configured." >&2; exit 1; }
+          done
+          umask 077
+          notary_key="$(mktemp "${RUNNER_TEMP}/macos-notary-key.XXXXXX")"
+          if ! printf '%s' "$MACOS_NOTARY_KEY" | base64 --decode > "$notary_key"; then
+            rm -f -- "$notary_key"
+            echo "MACOS_NOTARY_KEY must be base64-encoded P8 content." >&2
+            exit 1
+          fi
+          chmod 0600 "$notary_key"
+          grep -Fxq -- '-----BEGIN PRIVATE KEY-----' "$notary_key" || {
+            rm -f -- "$notary_key"
+            echo "MACOS_NOTARY_KEY did not decode to a P8 private key." >&2
+            exit 1
+          }
+          printf 'MACOS_NOTARY_KEY_PATH=%s\n' "$notary_key" >> "$GITHUB_ENV"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          # v2.17.1 is the first tested version with this macOS notarization configuration.
+          version: v2.17.1
+          args: release --clean --skip=publish
+        env:
+          MACOS_NOTARY_ISSUER_ID: ${{ vars.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ vars.MACOS_NOTARY_KEY_ID }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+
+      - name: Clean up Apple notarization key
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          set +x
+          [[ -z "${MACOS_NOTARY_KEY_PATH:-}" ]] || rm -f -- "$MACOS_NOTARY_KEY_PATH"
+
+      - name: Build release candidate
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum --check checksums.txt)
+          mkdir release-candidate
+          cp dist/*.tar.gz dist/*.zip dist/checksums.txt release-candidate/
+          cp dist/CHANGELOG.md release-candidate/CHANGELOG.md
+          cp dist/checksums.txt checksums.txt
+          npm install --global npm@11.16.0
+          pack_json="$(npm pack --ignore-scripts --json --pack-destination release-candidate)"
+          node - "$pack_json" "$VERSION" <<'NODE'
+          const [payload, version] = process.argv.slice(2);
+          const packs = JSON.parse(payload);
+          if (!Array.isArray(packs) || packs.length !== 1 || packs[0]?.name !== "@larksuite/cli" || packs[0]?.version !== version || !/^[^/\\]+\.tgz$/.test(packs[0]?.filename || "")) {
+            throw new Error("npm pack did not produce the expected release package");
+          }
+          NODE
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: release-candidate/
+          if-no-files-found: error
+          overwrite: true
+
+  create-draft-release:
+    needs: [preflight, build-sign-notarize]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
           fetch-depth: 0
-
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+          persist-credentials: false
+      - name: Download release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          go-version: '1.23'
+          name: release-candidate-${{ github.run_id }}
+          path: release-candidate
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: '3.x'
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
-        with:
-          version: '~> v2'
-          args: release --clean
+      - name: Verify tag still points to source commit
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish-npm:
-    needs: goreleaser
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Download checksums from release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          gh release download "${TAG}" --pattern checksums.txt --dir .
-          test -s checksums.txt || { echo "checksums.txt missing or empty for ${TAG}"; exit 1; }
+          git fetch --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          [[ "$(git rev-parse "refs/tags/${TAG}^{commit}")" == "$SOURCE_SHA" ]] || { echo "Release tag changed after preflight." >&2; exit 1; }
 
-      - name: Publish to npm
+      - name: Create or reuse Draft Release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          release_notes=release-candidate/CHANGELOG.md
+          release_assets=(release-candidate/*.tar.gz release-candidate/*.zip release-candidate/checksums.txt)
+          release_error="$(mktemp "${RUNNER_TEMP}/release-view.XXXXXX")"
+          trap 'rm -f -- "$release_error"' EXIT
+          verify_release_metadata() {
+            node -e '
+              const [metadata, sourceSha, prerelease] = process.argv.slice(1);
+              const release = JSON.parse(metadata);
+              if (release.isDraft !== true || release.targetCommitish !== sourceSha || release.isPrerelease !== (prerelease === "true")) {
+                throw new Error("Release metadata does not match this release candidate.");
+              }
+            ' "$1" "$SOURCE_SHA" "$PRERELEASE"
+          }
+          if metadata="$(gh release view "$TAG" --json isDraft,isPrerelease,targetCommitish 2>"$release_error")"; then
+            verify_release_metadata "$metadata"
+            existing="$(mktemp -d "${RUNNER_TEMP}/draft-release.XXXXXX")"
+            trap 'rm -f -- "$release_error"; rm -rf -- "$existing"' EXIT
+            expected_names=("${release_assets[@]##*/}")
+            mapfile -t existing_names < <(gh release view "$TAG" --json assets -q '.assets[].name' | sort)
+            for name in "${existing_names[@]}"; do
+              printf '%s\n' "${expected_names[@]}" | grep -Fxq "$name" || {
+                echo "Draft Release contains unexpected asset ${name}." >&2
+                exit 1
+              }
+            done
+            if (( ${#existing_names[@]} > 0 )); then
+              gh release download "$TAG" --dir "$existing"
+              for name in "${existing_names[@]}"; do
+                if [[ "$name" == "checksums.txt" ]]; then
+                  cmp --silent release-candidate/checksums.txt "$existing/$name" || { echo "Draft Release checksums do not match the current candidate." >&2; exit 1; }
+                  continue
+                fi
+                checksum_line="$(awk -v name="$name" '$2 == name { print }' release-candidate/checksums.txt)"
+                [[ "$(printf '%s\n' "$checksum_line" | sed '/^$/d' | wc -l | tr -d '[:space:]')" == "1" ]] || { echo "Candidate has no unique checksum for ${name}." >&2; exit 1; }
+                printf '%s\n' "$checksum_line" | (cd "$existing" && sha256sum --check -)
+              done
+            fi
+            missing_assets=()
+            for asset in "${release_assets[@]}"; do
+              name="${asset##*/}"
+              printf '%s\n' "${existing_names[@]}" | grep -Fxq "$name" || missing_assets+=("$asset")
+            done
+            if (( ${#missing_assets[@]} > 0 )); then
+              gh release upload "$TAG" "${missing_assets[@]}"
+            fi
+            diff --brief \
+              <(printf '%s\n' "${expected_names[@]}" | sort) \
+              <(gh release view "$TAG" --json assets -q '.assets[].name' | sort)
+            gh release edit "$TAG" --notes-file "$release_notes"
+            exit 0
+          else
+            if ! grep -Eqi 'HTTP 404|release not found' "$release_error"; then
+              cat "$release_error" >&2
+              echo "Could not determine whether the Release already exists." >&2
+              exit 1
+            fi
+            args=("$TAG" --target "$SOURCE_SHA" --title "$TAG" --draft)
+            [[ "$PRERELEASE" != "true" ]] || args+=(--prerelease)
+            gh release create "${args[@]}" --verify-tag --notes-file "$release_notes"
+            verify_release_metadata "$(gh release view "$TAG" --json isDraft,isPrerelease,targetCommitish)"
+          fi
+          gh release edit "$TAG" --notes-file "$release_notes"
+          gh release upload "$TAG" "${release_assets[@]}"
+          diff --brief \
+            <(printf '%s\n' "${release_assets[@]##*/}" | sort) \
+            <(gh release view "$TAG" --json assets -q '.assets[].name' | sort)
+
+  verify-macos:
+    needs: [preflight, build-sign-notarize, create-draft-release]
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: amd64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Download release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: release-candidate
+      - name: Verify notarized macOS binary
+        env:
+          ARCH: ${{ matrix.arch }}
+          MACOS_TEAM_ID: ${{ vars.MACOS_TEAM_ID }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          [[ -n "$MACOS_TEAM_ID" ]] || { echo "MACOS_TEAM_ID is not configured." >&2; exit 1; }
+          archive="lark-cli-${VERSION}-darwin-${ARCH}.tar.gz"
+          awk -v archive="$archive" '$2 == archive { print }' release-candidate/checksums.txt > checksum.txt
+          [[ "$(wc -l < checksum.txt | tr -d '[:space:]')" == "1" ]] || { echo "checksums.txt must contain exactly one entry for ${archive}." >&2; exit 1; }
+          (cd release-candidate && shasum -a 256 -c ../checksum.txt)
+          work="$(mktemp -d "${RUNNER_TEMP}/macos-release.XXXXXX")"
+          trap 'rm -rf -- "$work" checksum.txt' EXIT
+          tar -xzf "release-candidate/$archive" -C "$work"
+          binary="$work/lark-cli"
+          [[ -f "$binary" && ! -L "$binary" ]] || { echo "Archive did not contain a regular lark-cli binary." >&2; exit 1; }
+          codesign --verify --strict --verbose=4 "$binary"
+          details="$(codesign -dv --verbose=4 "$binary" 2>&1)"
+          grep -Eq '^Authority=Developer ID Application: .+' <<<"$details"
+          grep -Fxq "TeamIdentifier=${MACOS_TEAM_ID}" <<<"$details"
+          grep -Eq '^CodeDirectory .*flags=0x[0-9A-Fa-f]+[(][^)]*runtime[^)]*[)]' <<<"$details"
+          grep -Eq '^Timestamp=.+' <<<"$details"
+          codesign --verify --strict --verbose=4 --check-notarization -R='notarized' "$binary"
+          escaped_version="${VERSION//./\\.}"
+          "$binary" --version | grep -Eq "(^|[^0-9A-Za-z.])${escaped_version}([^0-9A-Za-z.]|$)"
+
+  publish-github:
+    needs: [preflight, create-draft-release, verify-macos]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+      - name: Download release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: release-candidate
+      - name: Verify tag still points to source commit
+        env:
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          [[ "$(git rev-parse "refs/tags/${TAG}^{commit}")" == "$SOURCE_SHA" ]] || { echo "Release tag changed after preflight." >&2; exit 1; }
+      - name: Verify Draft assets match the candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          existing="$(mktemp -d "${RUNNER_TEMP}/draft-release.XXXXXX")"
+          trap 'rm -rf -- "$existing"' EXIT
+          gh release download "$TAG" --dir "$existing"
+          cmp --silent release-candidate/checksums.txt "$existing/checksums.txt" || { echo "Draft Release checksums do not match the verified candidate." >&2; exit 1; }
+          (cd "$existing" && sha256sum --check checksums.txt)
+          diff --brief \
+            <(find release-candidate -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name checksums.txt \) -printf '%f\n' | sort) \
+            <(gh release view "$TAG" --json assets -q '.assets[].name' | sort)
+      - name: Refuse GitHub publication if npm channel is newer
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          dist_tag=latest
+          [[ "$CHANNEL" != "beta" ]] || dist_tag=beta
+          if ! current="$(npm view @larksuite/cli "dist-tags.${dist_tag}" --json | tr -d '"[:space:]')"; then
+            echo "Could not determine the npm ${dist_tag} dist-tag before GitHub publication." >&2
+            exit 1
+          fi
+          [[ -n "$current" && "$current" != "null" ]] || exit 0
+          node - "$VERSION" "$current" "$dist_tag" <<'NODE'
+          const { compareReleaseVersions } = require("./scripts/release-publish-policy");
+          const [version, current, distTag] = process.argv.slice(2);
+          if (compareReleaseVersions(current, version) >= 0) {
+            throw new Error(`npm ${distTag} already points to ${current}; retain no GitHub Release for ${version}.`);
+          }
+          NODE
+      - name: Publish verified Draft Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release edit "$TAG" --draft=false
+
+  publish-npm:
+    needs: [preflight, build-sign-notarize, publish-github]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    concurrency:
+      group: npm-release-${{ needs.preflight.outputs.channel }}
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+      - name: Download release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: release-candidate
+      - name: Install pinned npm
+        run: npm install --global npm@11.16.0
+      - name: Verify tag still points to source commit
+        env:
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          [[ "$(git rev-parse "refs/tags/${TAG}^{commit}")" == "$SOURCE_SHA" ]] || { echo "Release tag changed after preflight." >&2; exit 1; }
+      - name: Publish or verify npm package
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=(release-candidate/*.tgz)
+          (( ${#packages[@]} == 1 )) || { echo "Expected exactly one npm package." >&2; exit 1; }
+          tgz="${packages[0]}"
+          tar -xOzf "$tgz" package/checksums.txt > "${RUNNER_TEMP}/checksums.txt"
+          cmp --silent release-candidate/checksums.txt "${RUNNER_TEMP}/checksums.txt" || { echo "npm package checksums do not match the release candidate." >&2; exit 1; }
+          integrity="$(node - "$tgz" <<'NODE'
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const hash = crypto.createHash("sha512");
+          hash.update(fs.readFileSync(process.argv[2]));
+          process.stdout.write(`sha512-${hash.digest("base64")}`);
+          NODE
+          )"
+          dist_tag=latest
+          [[ "$CHANNEL" != "beta" ]] || dist_tag=beta
+          version_exists=false
+          integrity_matches=false
+          version_error="$(mktemp "${RUNNER_TEMP}/npm-version.XXXXXX")"
+          trap 'rm -f -- "$version_error"' EXIT
+          if npm view "@larksuite/cli@${VERSION}" version --json >/dev/null 2>"$version_error"; then
+            version_exists=true
+            published="$(npm view "@larksuite/cli@${VERSION}" dist.integrity --json | tr -d '"[:space:]')"
+            [[ "$published" != "$integrity" ]] || integrity_matches=true
+          elif ! node - "$version_error" <<'NODE'
+          const fs = require("node:fs");
+          const { isNpmVersionMissing } = require("./scripts/release-publish-policy");
+          process.exit(isNpmVersionMissing(fs.readFileSync(process.argv[2], "utf8")) ? 0 : 1);
+          NODE
+          then
+            cat "$version_error" >&2
+            echo "Could not determine whether npm version ${VERSION} already exists." >&2
+            exit 1
+          fi
+          if ! current="$(npm view @larksuite/cli "dist-tags.${dist_tag}" --json | tr -d '"[:space:]')"; then
+            echo "Could not determine the npm ${dist_tag} dist-tag." >&2
+            exit 1
+          fi
+          [[ -n "$current" && "$current" != "null" ]] || current=null
+          decision="$(node - "$VERSION" "$version_exists" "$integrity_matches" "$current" <<'NODE'
+          const { decideNpmPublish } = require("./scripts/release-publish-policy");
+          const [version, versionExists, integrityMatches, channelVersion] = process.argv.slice(2);
+          process.stdout.write(JSON.stringify(decideNpmPublish({
+            version,
+            versionExists: versionExists === "true",
+            integrityMatches: integrityMatches === "true",
+            channelVersion: channelVersion === "null" ? null : channelVersion,
+          })));
+          NODE
+          )"
+          action="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).action)' "$decision")"
+          case "$action" in
+            publish)
+              npm publish "./$tgz" --access public --provenance --tag "$dist_tag"
+              ;;
+            advance-tag)
+              npm dist-tag add "@larksuite/cli@${VERSION}" "$dist_tag"
+              ;;
+            verify)
+              echo "npm ${dist_tag} already points to ${VERSION} or a newer verified version."
+              ;;
+            reject)
+              node -e 'console.error(JSON.parse(process.argv[1]).reason); process.exit(1)' "$decision"
+              ;;
+            *)
+              echo "Unexpected npm publish decision: ${action}" >&2
+              exit 1
+              ;;
+          esac
+
+  retry-guidance:
+    needs: [preflight, build-sign-notarize, create-draft-release, verify-macos, publish-github, publish-npm]
+    if: ${{ always() && (needs.preflight.result == 'failure' || needs.build-sign-notarize.result == 'failure' || needs.create-draft-release.result == 'failure' || needs.verify-macos.result == 'failure' || needs.publish-github.result == 'failure' || needs.publish-npm.result == 'failure') }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Write retry guidance
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          BUILD_RESULT: ${{ needs.build-sign-notarize.result }}
+          DRAFT_RESULT: ${{ needs.create-draft-release.result }}
+          VERIFY_RESULT: ${{ needs.verify-macos.result }}
+          GITHUB_RESULT: ${{ needs.publish-github.result }}
+          NPM_RESULT: ${{ needs.publish-npm.result }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Release retry guidance"
+            echo
+            echo "This job only records recovery guidance; it does not retry or publish anything."
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "| preflight | ${PREFLIGHT_RESULT} |"
+            echo "| build-sign-notarize | ${BUILD_RESULT} |"
+            echo "| create-draft-release | ${DRAFT_RESULT} |"
+            echo "| verify-macos | ${VERIFY_RESULT} |"
+            echo "| publish-github | ${GITHUB_RESULT} |"
+            echo "| publish-npm | ${NPM_RESULT} |"
+            printf '%s\n' \
+              '' \
+              'Select the recovery action from the failed-step diagnosis. If a Draft or public Release already exists, use **Re-run failed jobs**, not **Re-run all jobs**:' \
+              '' \
+              '- **preflight:** network or fetch failure → retry preflight. Version/tag validation failure → correct it, then create a new tag.' \
+              '- **build-sign-notarize:** transient build/service failure → retry build. Code or release configuration issue → correct it, then create a new tag.' \
+              '- **create-draft-release:** GitHub Draft Release API/upload failure → retry draft; a partial Draft is verified and only missing assets are uploaded. Release-candidate inconsistency → delete the Draft, then retry build.' \
+              '- **verify-macos:** runner or network failure → retry only the failed matrix child. Checksum, signing, notarization, or runtime failure → delete the Draft, then retry build.' \
+              '- **publish-github:** GitHub publish network failure → retry GitHub publish. If the npm channel is already newer, delete the retained Draft Release and publish a higher version. Install issue → delete the Draft, then retry build. Tag/assets inconsistency → stop and publish a new version.' \
+              '- **publish-npm:** network failure or uncertain publish outcome → retry npm only after verifying whether that version already exists. Integrity mismatch → publish a new version. If the npm channel is already newer, delete the public GitHub Release and publish a higher version.'
+          } >> "$GITHUB_STEP_SUMMARY"

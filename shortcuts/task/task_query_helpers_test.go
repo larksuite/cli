@@ -37,6 +37,31 @@ func TestSplitAndTrimCSV(t *testing.T) {
 	}
 }
 
+func TestBuildSearchPageParams(t *testing.T) {
+	tests := []struct {
+		name      string
+		pageToken string
+		wantToken string
+		wantKey   bool
+	}{
+		{name: "first page omits token"},
+		{name: "subsequent page includes token", pageToken: "pt_123", wantToken: "pt_123", wantKey: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := buildSearchPageParams(tt.pageToken)
+			got, present := params["page_token"]
+			if present != tt.wantKey {
+				t.Fatalf("page_token present = %v, want %v; params = %#v", present, tt.wantKey, params)
+			}
+			if tt.wantKey && got != tt.wantToken {
+				t.Fatalf("page_token = %v, want %q", got, tt.wantToken)
+			}
+		})
+	}
+}
+
 func TestOutputTaskSummary(t *testing.T) {
 	tests := []struct {
 		name string

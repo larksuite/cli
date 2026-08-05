@@ -32,14 +32,15 @@ type driveDeleteSpec struct {
 	FileType  string
 }
 
-// DriveDelete deletes a Drive file or folder and handles the async task
-// polling required by folder deletes.
+// DriveDelete deletes a Drive file or folder with async=true. When the response
+// includes a task_id, it performs a bounded task_check poll before returning a
+// resume command for unfinished tasks.
 var DriveDelete = common.Shortcut{
 	Service:     "drive",
 	Command:     "+delete",
 	Description: "Delete a file or folder in Drive",
 	Risk:        "high-risk-write",
-	Scopes:      []string{"space:document:delete"},
+	Scopes:      []string{"space:document:delete", "drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file-token", Desc: "file or folder token to delete", Required: true},
@@ -63,13 +64,11 @@ var DriveDelete = common.Shortcut{
 		dry.DELETE("/open-apis/drive/v1/files/:file_token").
 			Desc("[1] Delete file/folder").
 			Set("file_token", spec.FileToken).
-			Params(map[string]interface{}{"type": spec.FileType})
+			Params(driveDeleteParams(spec))
 
-		if spec.FileType == "folder" {
-			dry.GET("/open-apis/drive/v1/files/task_check").
-				Desc("[2] Poll async task status (for folder delete)").
-				Params(driveTaskCheckParams("<task_id>"))
-		}
+		dry.GET("/open-apis/drive/v1/files/task_check").
+			Desc("[2] Poll async delete task status when task_id is returned").
+			Params(driveTaskCheckParams("<task_id>"))
 
 		return dry
 	},
@@ -84,54 +83,57 @@ var DriveDelete = common.Shortcut{
 		data, err := runtime.CallAPITyped(
 			"DELETE",
 			fmt.Sprintf("/open-apis/drive/v1/files/%s", validate.EncodePathSegment(spec.FileToken)),
-			map[string]interface{}{"type": spec.FileType},
+			driveDeleteParams(spec),
 			nil,
 		)
 		if err != nil {
 			return err
 		}
 
-		if spec.FileType == "folder" {
-			taskID := common.GetString(data, "task_id")
-			if taskID == "" {
-				return errs.NewInternalError(errs.SubtypeInvalidResponse, "delete folder returned no task_id")
-			}
-
-			fmt.Fprintf(runtime.IO().ErrOut, "Folder delete is async, polling task %s...\n", taskID)
-
-			status, ready, err := pollDriveTaskCheck(runtime, taskID)
-			if err != nil {
-				return err
-			}
-
-			out := map[string]interface{}{
-				"task_id":    taskID,
-				"status":     status.StatusLabel(),
+		taskID := common.GetString(data, "task_id")
+		if taskID == "" {
+			runtime.Out(map[string]interface{}{
+				"deleted":    true,
 				"file_token": spec.FileToken,
 				"type":       spec.FileType,
-				"ready":      ready,
-			}
-			if ready {
-				out["deleted"] = true
-			}
-			if !ready {
-				nextCommand := driveTaskCheckResultCommand(taskID, string(runtime.As()))
-				fmt.Fprintf(runtime.IO().ErrOut, "Folder delete task is still in progress. Continue with: %s\n", nextCommand)
-				out["timed_out"] = true
-				out["next_command"] = nextCommand
-			}
-
-			runtime.Out(out, nil)
+			}, nil)
 			return nil
 		}
 
-		runtime.Out(map[string]interface{}{
-			"deleted":    true,
+		fmt.Fprintf(runtime.IO().ErrOut, "Delete is async, polling task %s...\n", taskID)
+
+		status, ready, err := pollDriveTaskCheck(runtime, taskID)
+		if err != nil {
+			return err
+		}
+
+		out := map[string]interface{}{
+			"task_id":    taskID,
+			"status":     status.StatusLabel(),
 			"file_token": spec.FileToken,
 			"type":       spec.FileType,
-		}, nil)
+			"ready":      ready,
+		}
+		if ready {
+			out["deleted"] = true
+		}
+		if !ready {
+			nextCommand := driveTaskCheckResultCommand(taskID, string(runtime.As()))
+			fmt.Fprintf(runtime.IO().ErrOut, "Delete task is still in progress. Continue with: %s\n", nextCommand)
+			out["timed_out"] = true
+			out["next_command"] = nextCommand
+		}
+
+		runtime.Out(out, nil)
 		return nil
 	},
+}
+
+func driveDeleteParams(spec driveDeleteSpec) map[string]interface{} {
+	return map[string]interface{}{
+		"type":  spec.FileType,
+		"async": true,
+	}
 }
 
 func validateDriveDeleteSpec(spec driveDeleteSpec) error {

@@ -19,10 +19,16 @@ import (
 type eventPayload struct {
 	Comment *struct {
 		Body string `json:"body"`
+		Path string `json:"path"`
 	} `json:"comment"`
 	Review *struct {
 		Body string `json:"body"`
 	} `json:"review"`
+}
+
+type commentContent struct {
+	Body string
+	Path string
 }
 
 func main() {
@@ -34,12 +40,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "comment-audit: --event or GITHUB_EVENT_PATH is required")
 		os.Exit(2)
 	}
-	body, err := commentBody(*eventPath)
+	diags, err := auditEvent(*eventPath, *kind)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "comment-audit: %v\n", err)
 		os.Exit(2)
 	}
-	diags := diagnostics(publiccontent.ScanComment(*kind, body))
 	if len(diags) > 0 {
 		fmt.Fprintln(os.Stderr, auditFailureSummary(len(diags)))
 	}
@@ -47,32 +52,44 @@ func main() {
 	os.Exit(report.ExitCode(diags))
 }
 
+func auditEvent(eventPath, kind string) ([]report.Diagnostic, error) {
+	content, err := commentBody(eventPath)
+	if err != nil {
+		return nil, err
+	}
+	return scanCommentContent(kind, content), nil
+}
+
+func scanCommentContent(kind string, content commentContent) []report.Diagnostic {
+	return diagnostics(publiccontent.ScanCommentAtPath(kind, content.Path, content.Body))
+}
+
 func auditFailureSummary(count int) string {
 	return fmt.Sprintf("post-publication audit found public content findings: %d", count)
 }
 
-func commentBody(path string) (string, error) {
+func commentBody(path string) (commentContent, error) {
 	safePath, err := validate.SafeInputPath(path)
 	if err != nil {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --event: %v", err).
+		return commentContent{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --event: %v", err).
 			WithParam("--event").
 			WithCause(err)
 	}
 	data, err := vfs.ReadFile(safePath)
 	if err != nil {
-		return "", err
+		return commentContent{}, err
 	}
 	var payload eventPayload
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return "", err
+		return commentContent{}, err
 	}
 	switch {
 	case payload.Comment != nil:
-		return payload.Comment.Body, nil
+		return commentContent{Body: payload.Comment.Body, Path: payload.Comment.Path}, nil
 	case payload.Review != nil:
-		return payload.Review.Body, nil
+		return commentContent{Body: payload.Review.Body}, nil
 	default:
-		return "", nil
+		return commentContent{}, nil
 	}
 }
 

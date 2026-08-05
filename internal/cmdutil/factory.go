@@ -16,10 +16,14 @@ import (
 	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
+	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/skillref"
+	"github.com/larksuite/cli/internal/transport"
 )
 
 // Factory holds shared dependencies injected into every command.
@@ -31,7 +35,7 @@ type InvocationContext struct {
 
 type Factory struct {
 	Config     func() (*core.CliConfig, error) // lazily loads app config from Credential
-	HttpClient func() (*http.Client, error)    // HTTP client for non-Lark API calls (with retry and security headers)
+	HttpClient func() (*http.Client, error)    // policy-routed HTTP client for direct requests
 	LarkClient func() (*lark.Client, error)    // Lark SDK client for all Open API calls
 	IOStreams  *IOStreams                      // stdin/stdout/stderr streams
 
@@ -45,7 +49,52 @@ type Factory struct {
 
 	FileIOProvider fileio.Provider // file transfer provider (default: local filesystem)
 
-	SkillContent fs.FS // embedded skill tree (rooted at the skill list); nil when the build embeds no skills
+	SkillContent    fs.FS               // embedded skill tree (rooted at the skill list); nil when the build embeds no skills
+	SkillReferences *skillref.Resolver  // build-local projection from canonical skill references to embedded content
+	Recovery        *recovery.Projector // build-local recovery presentation; nil means the default fully-visible surface
+}
+
+// RenderRecoveryHint renders semantic recovery against this command tree.
+// Factories created outside cmd.Build have no projector and therefore retain
+// the default fully-visible wording.
+func (f *Factory) RenderRecoveryHint(hint recovery.Hint) string {
+	if f == nil {
+		return hint.String()
+	}
+	return f.Recovery.RenderHint(hint)
+}
+
+// ResolveSkillReference projects a canonical skills-read reference into this
+// build's embedded skill tree. Concealed skills-read surfaces never expose a
+// reference, even when the underlying content remains embedded.
+func (f *Factory) ResolveSkillReference(canonical string) (string, bool) {
+	if f == nil || !f.Recovery.CanReference(recovery.TargetSkillsRead) {
+		return "", false
+	}
+	if f.SkillReferences != nil {
+		return f.SkillReferences.ResolveString(canonical)
+	}
+
+	ref, err := skillref.Parse(canonical)
+	if err != nil || f.SkillContent == nil {
+		return "", false
+	}
+	if _, err := fs.Stat(f.SkillContent, ref.StatPath()); err != nil {
+		return "", false
+	}
+	return canonical, true
+}
+
+// ExternalHTTPClient returns a clone of the existing Factory client whose
+// requests are explicitly classified as external. The underlying client,
+// redirect policy, timeout, proxy configuration, and legacy transport provider
+// behavior are preserved.
+func (f *Factory) ExternalHTTPClient() (*http.Client, error) {
+	client, err := f.HttpClient()
+	if err != nil {
+		return nil, err
+	}
+	return transport.ClientForRequestClass(client, exttransport.RequestClassExternal), nil
 }
 
 // ResolveFileIO resolves a FileIO instance using the current execution context.
@@ -170,9 +219,14 @@ func (f *Factory) ResolveStrictMode(ctx context.Context) core.StrictMode {
 func (f *Factory) CheckStrictMode(ctx context.Context, as core.Identity) error {
 	mode := f.ResolveStrictMode(ctx)
 	if mode.IsActive() && !mode.AllowsIdentity(as) {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"strict mode is %q, only %s-identity commands are available", mode, mode.ForcedIdentity()).
-			WithHint("if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)")
+		hint := recovery.Join("", recovery.Command(recovery.TargetConfigStrictMode,
+			"if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)"))
+		return recovery.Annotate(
+			errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"strict mode is %q, only %s-identity commands are available", mode, mode.ForcedIdentity()).
+				WithHint("%s", hint.String()),
+			hint,
+		)
 	}
 	return nil
 }

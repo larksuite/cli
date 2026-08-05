@@ -1,8 +1,6 @@
 
 # slides +media-upload（上传本地图片到飞书幻灯片）
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-
 把本地图片上传到指定演示文稿的 drive 媒体库，返回 `file_token`。**返回的 token 作为 `<img src="...">` 的值塞进 slide XML 即可显示图片。**
 
 ## 命令
@@ -54,30 +52,8 @@ lark-cli slides +media-upload --file ./pic.png --presentation $PRES_ID --dry-run
 
 ## 使用流程
 
-### 给已有 PPT 加带图新页
-
-```bash
-# 1) 上传图片
-TOKEN=$(lark-cli slides +media-upload --as user \
-  --file ./pic.png \
-  --presentation $PRES_ID | jq -r .data.file_token)
-
-# 2) 用 file_token 创建带图新页
-lark-cli slides xml_presentation.slide create --as user \
-  --params "{\"xml_presentation_id\":\"$PRES_ID\"}" \
-  --data "{\"slide\":{\"content\":\"<slide xmlns=\\\"http://www.larkoffice.com/sml/2.0\\\"><data><img src=\\\"$TOKEN\\\" topLeftX=\\\"100\\\" topLeftY=\\\"100\\\" width=\\\"320\\\" height=\\\"180\\\"/></data></slide>\"}}"
-```
-
-### 新建带图 PPT（推荐用 `+create --slides` 的 `@` 占位符，一步到位）
-
-```bash
-# 不需要单独 +media-upload，写 src="@<本地路径>" 即可
-lark-cli slides +create --as user --title "图测试" --slides '[
-  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><img src=\"@./pic.png\" topLeftX=\"100\" topLeftY=\"100\" width=\"320\" height=\"180\"/></data></slide>"
-]'
-```
-
-详见 [+create 文档](lark-slides-create.md#本地图片path-占位符)。
+> 新建 PPT（[`+create --slides`](lark-slides-create.md)）或给已有 PPT 加新页（[`+add-slide`](lark-slides-add-slide.md)）都不需要单独上传：XML 里把 `<img src>` 写成 `@<本地路径>`，CLI 会自动上传并替换成 `file_token`。
+> 本命令用于往**已有页**里加图，或需要自己拿着 `file_token` 拼 XML 的场景。
 
 ### 给已有 PPT 的已有页加图
 
@@ -107,7 +83,7 @@ lark-cli slides +replace-slide --as user \
 
 `+media-upload` 内部调用 `POST /open-apis/drive/v1/medias/upload_all`（单次上传，最大 20 MB），固定使用：
 
-- `parent_type=slide_file`（slides 后端唯一接受的取值，已实测验证）
+- `parent_type=slide_file`（slides 后端唯一接受的取值）
 - `parent_node=<xml_presentation_id>`
 
 **不要尝试用 `slides_image`、`slide_image` 等 parent_type**——后端会返回 1061001 / 1061002 错误。这是 slides 的特殊约定。
@@ -125,3 +101,4 @@ lark-cli slides +replace-slide --as user \
 
 - [+create](lark-slides-create.md) — 新建 PPT（支持 `@` 占位符自动上传图片）
 - [+replace-slide](lark-slides-replace-slide.md) — 给已有页加图 / 换图（`block_insert` / `block_replace`）
+- [+add-slide](lark-slides-add-slide.md) — 追加/插入单页（同样支持 `@` 占位符自动上传）

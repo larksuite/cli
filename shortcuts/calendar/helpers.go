@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -30,6 +31,26 @@ func resolveStartEnd(runtime *common.RuntimeContext) (string, string) {
 	return startInput, endInput
 }
 
+func collapseDescription(event map[string]interface{}) {
+	if event == nil {
+		return
+	}
+	rich, _ := event["description_rich"].(string)
+	plain, _ := event["description"].(string)
+	delete(event, "description_rich")
+	switch {
+	case rich != "":
+		event["description"] = rich
+	case plain != "":
+		event["description"] = plain
+	default:
+		delete(event, "description")
+	}
+}
+func descriptionToSend(runtime *common.RuntimeContext) string {
+	return runtime.Str("description")
+}
+
 func hasExplicitBotFlag(cmd *cobra.Command) bool {
 	if cmd == nil {
 		return false
@@ -46,7 +67,20 @@ func rejectCalendarAutoBotFallback(runtime *common.RuntimeContext) error {
 		return nil
 	}
 
-	msg := "calendar commands require a valid user login by default; when no valid user login state is available, auto identity falls back to bot and may operate on the bot calendar instead of your own. Run `lark-cli auth login --domain calendar` for your calendar, or rerun with `--as bot` if bot identity is intentional."
-	hint := "restore user login: `lark-cli auth login --domain calendar`\nintentional bot usage: rerun with `--as bot`"
-	return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "%s", msg).WithHint("%s", hint)
+	message := recovery.Join("",
+		recovery.Text("calendar commands require a valid user login by default; when no valid user login state is available, auto identity falls back to bot and may operate on the bot calendar instead of your own. "),
+		recovery.Command(recovery.TargetAuthLogin,
+			"Run `lark-cli auth login --domain calendar` for your calendar, "),
+		recovery.Text("or rerun with `--as bot` if bot identity is intentional."),
+	)
+	hint := recovery.Join("\n",
+		recovery.Command(recovery.TargetAuthLogin,
+			"restore user login: `lark-cli auth login --domain calendar`"),
+		recovery.Text("intentional bot usage: rerun with `--as bot`"),
+	)
+	err := recovery.Attach(
+		errs.NewAuthenticationError(errs.SubtypeTokenMissing, "%s", message.String()),
+		hint,
+	)
+	return recovery.AnnotateMessage(err, message)
 }

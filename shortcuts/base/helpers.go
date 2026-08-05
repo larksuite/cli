@@ -5,6 +5,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -386,6 +387,10 @@ func baseV3Path(parts ...string) string {
 }
 
 func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
+	return baseV3RawContext(runtime.Ctx(), runtime, method, path, params, data)
+}
+
+func baseV3RawContext(ctx context.Context, runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
 	queryParams := make(larkcore.QueryParams)
 	for k, v := range params {
 		switch val := v.(type) {
@@ -409,7 +414,7 @@ func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[s
 	}
 	h := make(http.Header)
 	h.Set("X-App-Id", runtime.Config.AppID)
-	resp, err := runtime.DoAPI(req, larkcore.WithHeaders(h))
+	resp, err := runtime.DoAPIWithContext(ctx, req, larkcore.WithHeaders(h))
 	if err != nil {
 		return nil, baseAPIBoundaryError(err, "API call failed")
 	}
@@ -501,6 +506,11 @@ func baseHTTPStatusErrorFromInvalidResponse(resp *larkcore.ApiResp, classified e
 
 func baseV3Call(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
 	result, err := baseV3Raw(runtime, method, path, params, data)
+	return handleBaseAPIResult(result, err, "API call failed")
+}
+
+func baseV3CallContext(ctx context.Context, runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
+	result, err := baseV3RawContext(ctx, runtime, method, path, params, data)
 	return handleBaseAPIResult(result, err, "API call failed")
 }
 
@@ -1038,11 +1048,23 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 					m["mode"] = strings.ToLower(strings.TrimSpace(md))
 				}
 				if sub, ok := m["sort"].(map[string]interface{}); ok {
+					sortType := ""
 					if t, ok := sub["type"].(string); ok {
-						sub["type"] = strings.ToLower(strings.TrimSpace(t))
+						sortType = strings.ToLower(strings.TrimSpace(t))
+						sub["type"] = sortType
 					}
-					if o, ok := sub["order"].(string); ok {
-						sub["order"] = strings.ToLower(strings.TrimSpace(o))
+					// Only lowercase a string order; leave a present-but-non-string
+					// order untouched so validateBlockDataConfig can reject it
+					// instead of it being silently coerced below.
+					_, hasOrderKey := sub["order"]
+					orderStr, orderIsString := sub["order"].(string)
+					if orderIsString {
+						sub["order"] = strings.ToLower(strings.TrimSpace(orderStr))
+					}
+					// Default only when the order key is truly absent. A present
+					// key (even an illegal type/value) must survive to validation.
+					if !hasOrderKey && (sortType == "group" || sortType == "view") {
+						sub["order"] = "asc"
 					}
 					m["sort"] = sub
 				}
@@ -1126,12 +1148,16 @@ func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []str
 			if sub, ok := m["sort"].(map[string]interface{}); ok {
 				t, _ := sub["type"].(string)
 				t = strings.ToLower(strings.TrimSpace(t))
-				o, _ := sub["order"].(string)
-				o = strings.ToLower(strings.TrimSpace(o))
 				if t != "group" && t != "value" && t != "view" {
 					errs = append(errs, fmt.Sprintf("group_by[%d].sort.type 仅支持 group|value|view", i))
 				}
-				if o != "asc" && o != "desc" {
+				orderRaw, hasOrder := sub["order"]
+				o, orderIsString := orderRaw.(string)
+				o = strings.ToLower(strings.TrimSpace(o))
+				switch {
+				case !hasOrder:
+					errs = append(errs, fmt.Sprintf("group_by[%d].sort.order 缺失；sort 存在时必须设置 order 为 asc 或 desc，例如 \"sort\":{\"type\":\"group\",\"order\":\"asc\"}", i))
+				case !orderIsString || (o != "asc" && o != "desc"):
 					errs = append(errs, fmt.Sprintf("group_by[%d].sort.order 仅支持 asc|desc", i))
 				}
 			}
@@ -1178,5 +1204,5 @@ func formatDataConfigErrors(problems []string) error {
 	if len(problems) == 0 {
 		return nil
 	}
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/dashboard-block-data-config.md", strings.Join(problems, "\n- "))
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/dashboard-block-data-config.md", strings.Join(problems, "\n- ")).WithParam("--data-config")
 }

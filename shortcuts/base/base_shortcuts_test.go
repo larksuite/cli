@@ -33,7 +33,11 @@ func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlag
 		cmd.Flags().String(name, "", "")
 	}
 	for name := range stringArrayFlags {
-		cmd.Flags().StringArray(name, nil, "")
+		if name == "field-names" {
+			cmd.Flags().StringSlice(name, nil, "")
+		} else {
+			cmd.Flags().StringArray(name, nil, "")
+		}
 	}
 	for name := range boolFlags {
 		cmd.Flags().Bool(name, false, "")
@@ -157,7 +161,7 @@ func TestShortcutsCatalog(t *testing.T) {
 	want := []string{
 		"+url-resolve", "+title-resolve",
 		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
-		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete",
+		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete", "+table-copy", "+table-copy-status",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
 		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-share-link-create", "+record-upload-attachment", "+record-download-attachment", "+record-remove-attachment", "+record-delete",
@@ -429,7 +433,7 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 	}
 }
 
-func TestBaseLimitPageSizeAliasIsHidden(t *testing.T) {
+func TestBaseLimitDeclaresPageSizeAlias(t *testing.T) {
 	tests := []struct {
 		name     string
 		shortcut common.Shortcut
@@ -444,18 +448,60 @@ func TestBaseLimitPageSizeAliasIsHidden(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var declared *common.Flag
+			for i := range tt.shortcut.Flags {
+				if tt.shortcut.Flags[i].Name == "limit" {
+					declared = &tt.shortcut.Flags[i]
+					break
+				}
+			}
+			if declared == nil || len(declared.Aliases) != 1 || declared.Aliases[0] != "page-size" {
+				t.Fatalf("--limit aliases = %#v, want [page-size]", declared)
+			}
+
 			parent := &cobra.Command{Use: "base"}
 			tt.shortcut.Mount(parent, &cmdutil.Factory{})
 			cmd := parent.Commands()[0]
 			flag := cmd.Flags().Lookup("page-size")
-			if flag == nil {
-				t.Fatal("flag --page-size missing")
-			}
-			if !flag.Hidden {
-				t.Fatal("flag --page-size must be hidden")
+			if flag == nil || flag.Name != "limit" {
+				t.Fatalf("Lookup(page-size) = %#v, want canonical --limit", flag)
 			}
 			if strings.Contains(cmd.Flags().FlagUsages(), "--page-size") {
-				t.Fatalf("help should not include hidden --page-size:\n%s", cmd.Flags().FlagUsages())
+				t.Fatalf("help should not list alias --page-size:\n%s", cmd.Flags().FlagUsages())
+			}
+		})
+	}
+}
+
+func TestBaseRecordProjectionAliasesAreHidden(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+	}{
+		{name: "record list", shortcut: BaseRecordList},
+		{name: "record search", shortcut: BaseRecordSearch},
+		{name: "record get", shortcut: BaseRecordGet},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+
+			primary := cmd.Flags().Lookup("field-id")
+			if primary == nil || primary.Hidden {
+				t.Fatalf("public projection flag --field-id missing or hidden: %#v", primary)
+			}
+			help := cmd.Flags().FlagUsages()
+			for _, aliasName := range []string{"fields", "field-names"} {
+				alias := cmd.Flags().Lookup(aliasName)
+				if alias == nil || !alias.Hidden {
+					t.Fatalf("projection alias --%s should exist and be hidden: %#v", aliasName, alias)
+				}
+				if strings.Contains(help, "--"+aliasName) {
+					t.Fatalf("help should not include hidden --%s:\n%s", aliasName, help)
+				}
 			}
 		})
 	}
@@ -545,6 +591,8 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 				"not table_id or field_id",
 				"dashboard-block-data-config.md as the SSOT",
 				"do not invent data_config from natural language",
+				"set the intended group_by.sort in the initial create request",
+				"do not create first and then issue a second update",
 				"sequentially",
 			},
 		},
@@ -744,6 +792,20 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			},
 		},
 		{
+			name:     "form question create visible_rule",
+			shortcut: BaseFormQuestionsCreate,
+			wantHelp: []string{
+				`"visible_rule"(display condition; same shape as view filter`,
+			},
+		},
+		{
+			name:     "form question update visible_rule",
+			shortcut: BaseFormQuestionsUpdate,
+			wantHelp: []string{
+				`"visible_rule"(display condition; same shape as view filter`,
+			},
+		},
+		{
 			name:     "record search json",
 			shortcut: BaseRecordSearch,
 			wantHelp: []string{
@@ -761,14 +823,16 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "record batch create json",
 			shortcut: BaseRecordBatchCreate,
 			wantHelp: []string{
-				`batch create JSON object, e.g. {"fields":["Name","Status"],"rows":[["Task A","Todo"],["Task B",null]]}; rows follow fields order`,
+				"create_records contains one field map per record",
+				`{"create_records":[{"Name":"Task A","Status":"Todo"},{"Name":"Task B","Score":20}]}`,
 			},
 		},
 		{
 			name:     "record batch update json",
 			shortcut: BaseRecordBatchUpdate,
 			wantHelp: []string{
-				`batch update JSON object, e.g. {"record_id_list":["rec_xxx"],"patch":{"Status":"Done"}}; same patch applies to all records`,
+				"update_records maps each record ID to its field map",
+				`{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`,
 			},
 		},
 	}
@@ -804,9 +868,13 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"does not auto-upsert by business key",
 				"use +field-list to confirm real writable fields",
 				"do not write system fields, formula, lookup, or attachment fields",
+				"Sub-record/child-record path",
+				"set that link field to a parent record reference array",
+				`{"Parent Link":[{"id":"rec_xxx"}]}`,
+				"do not look for parent_record_id or a separate child-record API",
 				"CellValue happy path: text/phone/url",
-				"select -> \"Todo\"",
-				"multi-select -> [\"Tag A\",\"Tag B\"]",
+				"select (multiple=false) -> \"Todo\"",
+				"select (multiple=true) -> [\"Tag A\",\"Tag B\"]",
 				"datetime -> \"2026-03-24 10:00:00\"",
 				"checkbox -> true/false",
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,
@@ -820,11 +888,12 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 			name:     "record batch create",
 			shortcut: BaseRecordBatchCreate,
 			wantTips: []string{
-				"Happy path fields: fields is the column order",
-				"rows is an array of row arrays",
-				"may use null for empty cells",
+				"Happy path field: create_records",
+				"create_records is an array of independent record field maps",
+				`{"create_records":[{"Name":"Task A","Status":"Todo"},{"Name":"Task B","Score":20}]}`,
 				"use +field-list to confirm real writable fields",
-				"Batch create supports max 200 rows per call",
+				"Batch create supports max 200 records per call",
+				"do not immediately +record-list the same table",
 				"CellValue happy path: text/phone/url",
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,
 				"lark-base-cell-value.md",
@@ -835,9 +904,11 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 			name:     "record batch update",
 			shortcut: BaseRecordBatchUpdate,
 			wantTips: []string{
-				"Happy path fields: record_id_list is the target record IDs",
-				"patch is a field map applied unchanged to every target record",
-				"Do not use +record-batch-update for per-row different values",
+				"Happy path field: update_records",
+				"update_records maps each record ID to its own field map",
+				`{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`,
+				"contains only optional ignored_fields",
+				"does not check whether record IDs exist",
 				"use +field-list to confirm real writable fields",
 				"Batch update supports max 200 records per call",
 				"CellValue happy path: text/phone/url",
@@ -951,17 +1022,59 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 			t.Fatalf("flag help missing %q:\n%s", want, help)
 		}
 	}
+	if strings.Contains(help, "reformat-existing-records") {
+		t.Fatalf("+field-update must not expose a --reformat-existing-records flag:\n%s", help)
+	}
 
 	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
 	wantTips := []string{
 		`lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id "Status" --json '{"name":"Status","type":"text"}' --yes`,
 		`"type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]`,
+		`Example auto_number update: lark-cli base +field-update`,
+		`When --json.type is "auto_number", updating the numbering rules also reapplies them to existing numbers`,
+		"just submit the target field definition and do not add extra low-level parameters",
 		"full field-definition PUT semantics",
 		"Read the current field first with +field-get",
 		"Type conversion is allowlist-based",
 		"web UI",
 		"Formula and lookup updates require reading the corresponding guide first.",
 		"lark-base skill's field-update guide",
+	}
+	for _, want := range wantTips {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
+	}
+	if strings.Contains(tips, "--reformat-existing-records") {
+		t.Fatalf("+field-update tips must not ask agents to pass --reformat-existing-records:\n%s", tips)
+	}
+}
+
+func TestBaseFormQuestionsUpdateHelpGuidesFullOverwrite(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseFormQuestionsUpdate.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	help := cmd.Flags().FlagUsages()
+	wantHelp := []string{
+		"Update uses full question overwrite semantics",
+		"run +form-questions-list first",
+		"include existing values you want to keep",
+		"pass null or omit to clear",
+	}
+	for _, want := range wantHelp {
+		if !strings.Contains(help, want) {
+			t.Fatalf("flag help missing %q:\n%s", want, help)
+		}
+	}
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	wantTips := []string{
+		"full question overwrite semantics, not a patch",
+		"Run +form-questions-list first",
+		"title/description/required/option_display_mode/visible_rule",
+		"Omitted fields reset to defaults",
+		"empty strings, null, and empty arrays are written as empty/clear",
 	}
 	for _, want := range wantTips {
 		if !strings.Contains(tips, want) {
@@ -1090,6 +1203,10 @@ func TestBaseFieldValidate(t *testing.T) {
 	if err := BaseFieldUpdate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "json": `{"name":"f1","type":"formula"}`}, map[string]bool{"i-have-read-guide": true}, nil)); err != nil {
 		t.Fatalf("formula update validate err=%v", err)
 	}
+	autoNumberJSON := `{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"incremental_number","length":4}]}}`
+	if err := BaseFieldUpdate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "json": autoNumberJSON}, nil, nil)); err != nil {
+		t.Fatalf("auto number update validate err=%v", err)
+	}
 }
 
 func TestBaseTableValidate(t *testing.T) {
@@ -1211,13 +1328,89 @@ func TestBaseRecordValidate(t *testing.T) {
 	)); err != nil {
 		t.Fatalf("record search json with sort-json validate err=%v", err)
 	}
-	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+	err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "keyword": "Bob"},
 		nil,
 		nil,
-	)); err == nil || !strings.Contains(err.Error(), "--json is mutually exclusive") {
-		t.Fatalf("err=%v", err)
+	))
+	assertInvalidArgumentValidation(t, err, "--json", []string{"--json", "--keyword"}, "mutually exclusive")
+	err = BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "fields": "Name"},
+		map[string][]string{"field-id": {"fld_name"}},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, err, "--json", []string{"--json", "--field-id", "--fields"}, "mutually exclusive")
+}
+
+func TestBaseRecordSearchProjectionLimit(t *testing.T) {
+	ctx := context.Background()
+	fields := make([]string, 51)
+	for i := range fields {
+		fields[i] = "Field " + strconv.Itoa(i+1)
 	}
+
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		map[string][]string{"search-field": {"Name"}, "field-id": fields[:50]},
+		nil,
+		nil,
+	)); err != nil {
+		t.Fatalf("50 projection fields should be accepted: %v", err)
+	}
+
+	err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		map[string][]string{"search-field": {"Name"}, "field-id": fields},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, err, "--field-id", []string{"--field-id"}, "maximum limit of 50")
+
+	body, marshalErr := json.Marshal(map[string]interface{}{
+		"keyword":       "Alice",
+		"search_fields": []string{"Name"},
+		"select_fields": fields,
+	})
+	if marshalErr != nil {
+		t.Fatalf("marshal search body: %v", marshalErr)
+	}
+	err = BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": string(body)},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "maximum limit of 50")
+}
+
+func TestRecordSearchJSONNullProjectionIsOmitted(t *testing.T) {
+	runtime := newBaseTestRuntime(map[string]string{
+		"json": `{"keyword":"Alice","search_fields":["Name"],"select_fields":null,"sort":{"sort_config":[{"field":"Updated","desc":true}]}}`,
+	}, nil, nil)
+	body, err := recordSearchJSONBody(runtime)
+	if err != nil {
+		t.Fatalf("recordSearchJSONBody() error = %v", err)
+	}
+	if _, exists := body["select_fields"]; exists {
+		t.Fatalf("select_fields:null must normalize to omitted, body=%#v", body)
+	}
+	if sortConfig, ok := body["sort"].([]interface{}); !ok || len(sortConfig) != 1 {
+		t.Fatalf("sort normalization must continue after omitting null select_fields, body=%#v", body)
+	}
+}
+
+func TestBaseRecordSearchJSONProjectionParamIgnoresFlagLikeFieldNames(t *testing.T) {
+	ctx := context.Background()
+	err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+		map[string]string{
+			"base-token": "b",
+			"table-id":   "tbl_1",
+			"json":       `{"keyword":"cost","search_fields":["Name"],"select_fields":["Cost--USD","Cost--USD"]}`,
+		},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "duplicate field id")
 }
 
 func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
@@ -1270,47 +1463,6 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 			param: "--limit",
 		},
 		{
-			name:     "table list page-size alias",
-			shortcut: BaseTableList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"page-size": 101}),
-			param:    "--page-size",
-		},
-		{
-			name:     "field list page-size alias",
-			shortcut: BaseFieldList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"page-size": 201}),
-			param:    "--page-size",
-		},
-		{
-			name:     "field search options page-size alias",
-			shortcut: BaseFieldSearchOptions,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "field-id": "fld_1"}, nil, map[string]int{"page-size": 201}),
-			param:    "--page-size",
-		},
-		{
-			name:     "view list page-size alias",
-			shortcut: BaseViewList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"page-size": 201}),
-			param:    "--page-size",
-		},
-		{
-			name:     "record list page-size alias",
-			shortcut: BaseRecordList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"page-size": 0}),
-			param:    "--page-size",
-		},
-		{
-			name:     "record search page-size alias",
-			shortcut: BaseRecordSearch,
-			runtime: newBaseTestRuntimeWithArrays(
-				map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
-				map[string][]string{"search-field": {"Name"}},
-				nil,
-				map[string]int{"page-size": 201},
-			),
-			param: "--page-size",
-		},
-		{
 			name:     "form list",
 			shortcut: BaseFormsList,
 			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"page-size": 101}),
@@ -1347,53 +1499,6 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 				t.Fatalf("%s missing Validate", tt.shortcut.Command)
 			}
 			assertBasePaginationValidation(t, tt.shortcut.Validate(ctx, tt.runtime), tt.param)
-		})
-	}
-}
-
-func TestBaseLimitPageSizeAliasRejectsConflict(t *testing.T) {
-	ctx := context.Background()
-	tests := []struct {
-		name     string
-		shortcut common.Shortcut
-		runtime  *common.RuntimeContext
-	}{
-		{
-			name:     "table list",
-			shortcut: BaseTableList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 50, "page-size": 50}),
-		},
-		{
-			name:     "record search",
-			shortcut: BaseRecordSearch,
-			runtime: newBaseTestRuntimeWithArrays(
-				map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
-				map[string][]string{"search-field": {"Name"}},
-				nil,
-				map[string]int{"limit": 10, "page-size": 10},
-			),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.shortcut.Validate == nil {
-				t.Fatalf("%s missing Validate", tt.shortcut.Command)
-			}
-			err := tt.shortcut.Validate(ctx, tt.runtime)
-			if err == nil {
-				t.Fatal("expected validation error, got nil")
-			}
-			var validationErr *errs.ValidationError
-			if !errors.As(err, &validationErr) {
-				t.Fatalf("expected validation error, got %T: %v", err, err)
-			}
-			if validationErr.Param != "--page-size" {
-				t.Fatalf("param=%q, want --page-size", validationErr.Param)
-			}
-			if !strings.Contains(validationErr.Message, "mutually exclusive") {
-				t.Fatalf("message=%q, want mutually exclusive", validationErr.Message)
-			}
 		})
 	}
 }
@@ -1918,8 +2023,8 @@ func TestBaseFormSubmitShortcut(t *testing.T) {
 		if s.Service != "base" {
 			t.Fatalf("Service=%q want base", s.Service)
 		}
-		if s.Risk != "write" {
-			t.Fatalf("Risk=%q want write", s.Risk)
+		if s.Risk != "high-risk-write" {
+			t.Fatalf("Risk=%q want high-risk-write", s.Risk)
 		}
 		if !s.HasFormat {
 			t.Fatal("HasFormat should be true")
@@ -2219,6 +2324,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"+form-submit",
 			"--share-token", "shr_exec1",
 			"--json", `{"fields":{"Name":"Alice","Rating":5}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2287,6 +2393,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"--share-token", "shr_exec6",
 			"--base-token", "bas_exec6",
 			"--json", `{"attachments":{"File":["./nonexistent.pdf"]}}`,
+			"--yes",
 		}
 		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
 		if err == nil {
@@ -2335,6 +2442,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"--share-token", "shr_dedup",
 			"--base-token", "bas_dedup",
 			"--json", `{"attachments":{"FieldA":["./shared.pdf"],"FieldB":["./shared.pdf"]}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2344,6 +2452,33 @@ func TestExecuteFormSubmit(t *testing.T) {
 			t.Fatalf("stdout should contain record, got: %s", got)
 		}
 	})
+}
+
+// TestFormSubmitRequiresConfirmation pins the high-risk-write classification:
+// without --yes the runner's confirmation gate must fire before Execute runs,
+// returning a typed confirmation_required error and touching no API.
+func TestFormSubmitRequiresConfirmation(t *testing.T) {
+	if BaseFormSubmit.Risk != "high-risk-write" {
+		t.Fatalf("Risk=%q want high-risk-write", BaseFormSubmit.Risk)
+	}
+
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{
+		"+form-submit",
+		"--share-token", "shr_confirm",
+		"--json", `{"fields":{"Rating":5}}`,
+	}
+	err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
+	if err == nil {
+		t.Fatal("expected confirmation_required error without --yes")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Subtype != errs.SubtypeConfirmationRequired {
+		t.Fatalf("subtype=%q want %q", problem.Subtype, errs.SubtypeConfirmationRequired)
+	}
 }
 
 func TestUploadAttachmentsParallel(t *testing.T) {
@@ -2382,6 +2517,7 @@ func TestUploadAttachmentsParallel(t *testing.T) {
 			"--share-token", "shr_para1",
 			"--base-token", "bas_para1",
 			"--json", `{"attachments":{"Doc":["./doc.txt"]}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2416,6 +2552,7 @@ func TestUploadAttachmentsParallel(t *testing.T) {
 			"--share-token", "shr_err",
 			"--base-token", "bas_err",
 			"--json", `{"attachments":{"Bad":["./bad.txt"]}}`,
+			"--yes",
 		}
 		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
 		if err == nil {

@@ -96,10 +96,12 @@ func newChatSearchNoticeTestCommand(t *testing.T, query string) *cobra.Command {
 	for _, name := range []string{"query", "search-types", "member-ids", "sort-by", "page-token"} {
 		cmd.Flags().String(name, "", "")
 	}
-	for _, name := range []string{"is-manager", "disable-search-by-user", "exclude-muted"} {
+	for _, name := range []string{"is-manager", "disable-search-by-user", "exclude-muted", common.PageAllFlagName} {
 		cmd.Flags().Bool(name, false, "")
 	}
 	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Int("page-delay", 200, "")
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}

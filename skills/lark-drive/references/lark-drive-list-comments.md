@@ -14,72 +14,10 @@
 
 ```bash
 # 推荐：直接传用户给出的完整 URL。默认只查未解决评论。
-lark-cli drive +list-comments \
-  --url "<DOCUMENT_URL>"
+lark-cli drive +list-comments --url "<DOCUMENT_URL>"
 
-# 只有用户明确要求包含已解决评论时，才查询已解决和未解决的全部评论。
-lark-cli drive +list-comments \
-  --url "<DOCUMENT_URL>" \
-  --solved-status all
-
-# 查询已解决评论。
-lark-cli drive +list-comments \
-  --url "<DOCUMENT_URL>" \
-  --solved-status true
-
-# 只查全文评论或局部评论。
-lark-cli drive +list-comments \
-  --url "<DOCUMENT_URL>" \
-  --comment-scope whole
-
-lark-cli drive +list-comments \
-  --url "<DOCUMENT_URL>" \
-  --comment-scope partial
-
-# 电子表格 URL 保留 /sheets/ 路径，直接原样传入；不要把 sheet token 拼成 /docx/<token>。
-lark-cli drive +list-comments \
-  --url "https://example.larksuite.com/sheets/<SHEET_TOKEN>"
-
-# 妙搭 apps URL 使用 /page/<token>，shortcut 会识别为 file_type=apps。
-lark-cli drive +list-comments \
-  --url "https://example.feishu.cn/page/<APPS_TOKEN>/"
-
-# wiki URL 会自动解包。
-lark-cli drive +list-comments \
-  --url "https://example.larksuite.com/wiki/<WIKI_TOKEN>"
-
-# 裸 wiki token 也支持，但必须显式声明 --type wiki。
-lark-cli drive +list-comments \
-  --token "<WIKI_TOKEN>" \
-  --type wiki
-
-# 裸 token 需要声明 token 对应类型；不要默认当作 docx。这里以 sheet 为例。
-lark-cli drive +list-comments \
-  --token "<DOCUMENT_TOKEN>" \
-  --type sheet \
-  --page-size 100
-
-# 妙搭裸 apps token 需要显式声明 --type apps。
-lark-cli drive +list-comments \
-  --token "<APPS_TOKEN>" \
-  --type apps
-
-# docx 需要评论定位关系时再带 need-relation；非 docx 会静默忽略。
-lark-cli drive +list-comments \
-  --url "https://example.larksuite.com/docx/<DOCX_TOKEN>" \
-  --need-relation
-
-# 分页续跑。
-# 先看上一页输出的 has_more；只有 has_more=true 时，才用返回的 page_token 继续。
-lark-cli drive +list-comments \
-  --url "<DOCUMENT_URL>" \
-  --page-size 100 \
-  --page-token "<NEXT_PAGE_TOKEN>"
-
-# 预览请求链路，不发真实请求。
-lark-cli drive +list-comments \
-  --url "https://example.larksuite.com/wiki/<WIKI_TOKEN>" \
-  --dry-run
+# 只有用户明确要求包含已解决评论时，才传 --solved-status all。
+lark-cli drive +list-comments --url "<DOCUMENT_URL>" --solved-status all
 ```
 
 ## 参数
@@ -103,7 +41,26 @@ lark-cli drive +list-comments \
 - URL 输入时不需要传 `--type`；如果 URL 类型和显式 `--type` 冲突，shortcut 会返回 validation error，建议移除 `--type`。
 - wiki 输入会自动解析到真实文档，再查询评论列表。JSON 输出不额外返回 wiki token 或 wiki node。
 - 输出中的 `items` 保留评论卡片字段，外层补充 `file_token`、`file_type`、`has_more`、`page_token`、`count`；`count` 是当前页返回的评论卡片数。是否继续分页以 `has_more` 为准，而不是只看 `page_token` 是否存在。
-- 如果需要批量按评论 ID 查询、获取更多回复、创建/编辑/删除回复，继续使用原生 `drive file.comments batch_query` 或 `drive file.comment.replys.*`。
+
+## 评论卡片模型
+
+- 返回的 `items` 是评论卡片列表，每个 `item` 对应用户界面中的一张评论卡片，不是平铺的互动消息列表。
+- 创建评论时会同时创建该卡片里的第一条 reply；真正承载正文的是 `item.reply_list.replies`，其中第一条 reply（根回复）在用户视角下就是这张卡片里的“评论本身”。更新根回复即改写评论正文（见 [`lark-drive-update-reply.md`](lark-drive-update-reply.md)）；删除按 reply 逐条生效，卡片在最后一条回复被删时才消失（见 [`lark-drive-delete-reply.md`](lark-drive-delete-reply.md)）。
+- `item.has_more=true` 表示该评论卡片下还有回复未包含在本次返回中；这与外层 `has_more`（是否还有下一页评论卡片）是两个不同字段。需要完整回复时继续用 `drive +list-replies --comment-id <id>` 分页拉全。
+
+## 统计口径
+
+- 统计“评论数”或“评论卡片数”：统计 `items` 长度；全量统计时对所有分页返回的 `items` 长度累加。
+- 统计“回复数”：统计所有 `item.reply_list.replies` 长度之和，再减去 `items` 长度。
+- 统计“总互动数”：统计所有 `item.reply_list.replies` 长度之和，包含每张评论卡片里的首条评论。
+- 任一 `item.has_more=true` 时，先用 `drive +list-replies --comment-id <id>` 把该卡片的回复拉全，再做回复数或总互动数统计，否则会少算。
+
+## 排序
+
+- 只有当用户明确提到“最新评论”“最后评论”“最早评论”时，才需要按 `create_time` 排序。
+- 排序前必须拉完所有评论分页，不能只取第一页。
+- “最新评论”/“最后评论”：按 `create_time` 降序取第一条。“最早评论”：按 `create_time` 升序取第一条。
+- 用户只说“第一条评论”时，直接使用返回的第一条，不需要额外排序。
 
 ## 输出
 
@@ -121,5 +78,5 @@ lark-cli drive +list-comments \
 ## 参考
 
 - [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
-- [lark-drive-comments-guide](lark-drive-comments-guide.md) -- 评论统计、回复限制和原生 API 说明
+- [lark-drive-list-replies](lark-drive-list-replies.md) -- 拉全某张卡片下的回复（统计与 `item.has_more` 补全）
 - [lark-drive-comment-location](lark-drive-comment-location.md) -- 使用 `need_relation` 定位 docx 正文

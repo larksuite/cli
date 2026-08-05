@@ -19,6 +19,7 @@ import (
 // TestDrive_PreviewAndCoverWorkflow verifies preview and cover shortcuts against
 // a live Drive workflow, skipping when required bot scopes are unavailable.
 func TestDrive_PreviewAndCoverWorkflow(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)
@@ -33,6 +34,41 @@ func TestDrive_PreviewAndCoverWorkflow(t *testing.T) {
 	writePreviewFixture(t, workDir, sourceRelPath, sourceContent)
 
 	fileToken := uploadPreviewFixture(t, parentT, ctx, workDir, folderToken, sourceRelPath, "report.txt")
+
+	t.Run("source file download", func(t *testing.T) {
+		downloadDir := t.TempDir()
+		downloadResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"drive", "+preview",
+				"--file-token", fileToken,
+				"--type", "source_file",
+				"--output", "./artifacts/report-source",
+			},
+			WorkDir:   downloadDir,
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		downloadResult.AssertExitCode(t, 0)
+		downloadResult.AssertStdoutStatus(t, true)
+
+		stdout := downloadResult.Stdout
+		if gjson.Get(stdout, "data.requested_type").Exists() {
+			t.Fatalf("requested_type should be omitted from execute output\nstdout:\n%s", stdout)
+		}
+		if got := gjson.Get(stdout, "data.selected_type").String(); got != "source_file" {
+			t.Fatalf("selected_type=%q, want source_file\nstdout:\n%s", got, stdout)
+		}
+		if gjson.Get(stdout, "data.selected_type_code").Exists() {
+			t.Fatalf("selected_type_code should be omitted from execute output\nstdout:\n%s", stdout)
+		}
+		outputPath := gjson.Get(stdout, "data.output_path").String()
+		require.NotEmpty(t, outputPath, "source file preview should return output_path")
+		data, readErr := os.ReadFile(outputPath)
+		require.NoError(t, readErr)
+		if string(data) != sourceContent {
+			t.Fatalf("source file preview content=%q want %q", string(data), sourceContent)
+		}
+	})
 
 	t.Run("preview list and download", func(t *testing.T) {
 		listResult, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
@@ -125,15 +161,7 @@ func TestDrive_PreviewAndCoverWorkflow(t *testing.T) {
 			InitialDelay:    2 * time.Second,
 			MaxDelay:        8 * time.Second,
 			BackoffMultiple: 2,
-			ShouldRetry: func(result *clie2e.Result) bool {
-				if result == nil {
-					return true
-				}
-				if result.ExitCode == 0 {
-					return false
-				}
-				return false
-			},
+			ShouldRetry:     shouldRetryCoverDownload,
 		})
 		require.NoError(t, err)
 		coverResult.AssertExitCode(t, 0)
@@ -154,6 +182,80 @@ func TestDrive_PreviewAndCoverWorkflow(t *testing.T) {
 			t.Fatalf("cover artifact should not be empty: %s", outputPath)
 		}
 	})
+}
+
+func shouldRetryCoverDownload(result *clie2e.Result) bool {
+	return result == nil || result.ExitCode != 0
+}
+
+func TestShouldRetryCoverDownload(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		result *clie2e.Result
+		want   bool
+	}{
+		{name: "nil result", result: nil, want: true},
+		{name: "successful result", result: &clie2e.Result{ExitCode: 0}, want: false},
+		{name: "failed result", result: &clie2e.Result{ExitCode: 1}, want: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldRetryCoverDownload(tt.result))
+		})
+	}
+
+	fakeCLI := writeCoverDownloadRetryFakeCLI(t)
+	for _, tt := range []struct {
+		name         string
+		succeedAfter string
+		wantCount    string
+		wantExitCode int
+	}{
+		{name: "retries after failure", succeedAfter: "2", wantCount: "2\n", wantExitCode: 0},
+		{name: "stops after success", succeedAfter: "1", wantCount: "1\n", wantExitCode: 0},
+		{name: "stops after eight failures", succeedAfter: "9", wantCount: "8\n", wantExitCode: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			statePath := filepath.Join(t.TempDir(), "attempt-count")
+			result, err := clie2e.RunCmdWithRetry(context.Background(), clie2e.Request{
+				BinaryPath: fakeCLI,
+				Args:       []string{statePath, tt.succeedAfter},
+			}, clie2e.RetryOptions{
+				Attempts:        8,
+				InitialDelay:    time.Millisecond,
+				MaxDelay:        time.Millisecond,
+				BackoffMultiple: 2,
+				ShouldRetry:     shouldRetryCoverDownload,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tt.wantExitCode, result.ExitCode)
+
+			count, err := os.ReadFile(statePath)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantCount, string(count))
+		})
+	}
+}
+
+func writeCoverDownloadRetryFakeCLI(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "fake-lark-cli")
+	script := `#!/bin/sh
+state="$1"
+succeed_after="$2"
+count=0
+if [ -f "$state" ]; then
+  count="$(cat "$state")"
+fi
+count=$((count + 1))
+echo "$count" > "$state"
+if [ "$count" -lt "$succeed_after" ]; then
+  exit 1
+fi
+exit 0
+`
+	require.NoError(t, os.WriteFile(path, []byte(script), 0o755))
+	return path
 }
 
 // writePreviewFixture writes a local fixture file used by the live workflow.

@@ -3,7 +3,10 @@
 
 package deprecation
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNoticeMessage(t *testing.T) {
 	tests := []struct {
@@ -33,6 +36,22 @@ func TestNoticeMessage(t *testing.T) {
 				t.Errorf("Message() =\n  %q\nwant\n  %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNoticeMessageWithoutUpdateAction(t *testing.T) {
+	n := &Notice{
+		Command:     "+read",
+		Replacement: "+cells-get",
+		Skill:       "lark-sheets",
+	}
+	got := n.MessageWithoutUpdateAction()
+	want := "+read is a pre-refactor compatibility alias; use +cells-get instead; update your lark-sheets skill"
+	if got != want {
+		t.Fatalf("MessageWithoutUpdateAction() = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "lark-cli update") {
+		t.Fatalf("MessageWithoutUpdateAction() contains an update command: %q", got)
 	}
 }
 

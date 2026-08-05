@@ -64,6 +64,24 @@ func TestGetFloat(t *testing.T) {
 	}
 }
 
+func TestGetFloatOKDistinguishesMalformedValuesFromZero(t *testing.T) {
+	t.Parallel()
+
+	m := map[string]interface{}{
+		"zero":   float64(0),
+		"null":   nil,
+		"string": "0",
+	}
+	if got, ok := GetFloatOK(m, "zero"); !ok || got != 0 {
+		t.Fatalf("GetFloatOK(zero) = (%v, %t), want (0, true)", got, ok)
+	}
+	for _, key := range []string{"null", "string", "missing"} {
+		if got, ok := GetFloatOK(m, key); ok || got != 0 {
+			t.Fatalf("GetFloatOK(%s) = (%v, %t), want (0, false)", key, got, ok)
+		}
+	}
+}
+
 func TestGetInt(t *testing.T) {
 	m := map[string]interface{}{
 		"count":      42,

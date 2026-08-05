@@ -20,13 +20,14 @@ var BaseRecordList = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		recordListFieldRefFlag(),
+		recordProjectionFieldFlag("field ID or name to include; repeat to project only needed fields"),
+		recordProjectionAliasFlag("fields"),
+		recordProjectionAliasFlag("field-names"),
 		recordListViewRefFlag(),
 		recordFilterFlag(),
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
-		pageSizeLimitAliasFlag(),
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
 		recordReadFormatFlag(),
 	},
 	Tips: []string{
@@ -46,16 +47,11 @@ var BaseRecordList = common.Shortcut{
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err
 		}
-		if err := validateLimitPageSizeAlias(runtime); err != nil {
-			return err
-		}
 		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200); err != nil {
 			return err
 		}
-		if runtime.Changed("page-size") {
-			if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 200); err != nil {
-				return err
-			}
+		if _, err := recordProjectionFields(runtime); err != nil {
+			return err
 		}
 		return validateRecordQueryOptions(runtime)
 	},
@@ -66,13 +62,6 @@ var BaseRecordList = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeRecordList(runtime)
 	},
-}
-
-func recordListFieldRefFlag() common.Flag {
-	flag := fieldRefFlag(false)
-	flag.Type = "string_array"
-	flag.Desc = "field ID or name to include; repeat to project only needed fields"
-	return flag
 }
 
 func recordListViewRefFlag() common.Flag {

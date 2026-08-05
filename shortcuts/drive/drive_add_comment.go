@@ -47,6 +47,14 @@ const defaultLocateDocLimit = 10
 // with `drive file.comments create_v2` against a fresh docx.
 const maxCommentTotalRunes = 10000
 
+// maxCommentReplyElements is the element-count cap declared ONLY by the
+// reply-create endpoint (POST .../comments/:comment_id/replies), whose
+// content.elements schema says "最大元素个数为100". It is enforced only by
+// +add-reply. create_v2 (+add-comment) and the reply-update endpoint
+// (+update-reply) do not declare this cap, so their inputs are not capped
+// here — see the shared parseCommentReplyElements, which stays uncapped.
+const maxCommentReplyElements = 100
+
 // The file comment API treats supported Drive file comments as full-file
 // comments in the UI, but currently rejects an empty anchor.block_id for file
 // targets. TODO: remove this placeholder after the API accepts omitting
@@ -772,7 +780,7 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 
 	var inputs []commentReplyElementInput
 	if err := json.Unmarshal([]byte(raw), &inputs); err != nil {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '[{\"type\":\"text\",\"text\":\"文本信息\"}]'", err).WithParam("--content")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '[{\"type\":\"text\",\"text\":\"Example text\"}]'", err).WithParam("--content")
 	}
 	if len(inputs) == 0 {
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must contain at least one reply element").WithParam("--content")

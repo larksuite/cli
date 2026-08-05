@@ -20,7 +20,6 @@ import (
 func buildEventData(runtime *common.RuntimeContext, startTs, endTs string) map[string]interface{} {
 	eventData := map[string]interface{}{
 		"summary":          runtime.Str("summary"),
-		"description":      runtime.Str("description"),
 		"start_time":       map[string]string{"timestamp": startTs},
 		"end_time":         map[string]string{"timestamp": endTs},
 		"attendee_ability": "can_modify_event",
@@ -32,6 +31,9 @@ func buildEventData(runtime *common.RuntimeContext, startTs, endTs string) map[s
 	}
 	if rrule := runtime.Str("rrule"); rrule != "" {
 		eventData["recurrence"] = rrule
+	}
+	if description := descriptionToSend(runtime); description != "" {
+		eventData["description_rich"] = description
 	}
 	return eventData
 }
@@ -67,6 +69,25 @@ func parseAttendees(attendeesStr string, currentUserId string) ([]map[string]str
 	return attendees, nil
 }
 
+// selfAttendeeId resolves the open_id of the identity running the command so it
+// can be auto-added to the attendee list, mirroring how a human user is joined
+// to their own events. For a user it comes from config; for a bot it is fetched
+// from /bot/v3/info. If the bot lookup fails, we warn and return "" so the event
+// is still created with the explicitly requested attendees.
+func selfAttendeeId(runtime *common.RuntimeContext) string {
+	if !runtime.IsBot() {
+		return runtime.UserOpenId()
+	}
+	info, err := runtime.BotInfo()
+	if err != nil {
+		fmt.Fprintf(runtime.IO().ErrOut,
+			"[calendar +create] warning: could not resolve bot identity to add it as an attendee (%v); proceeding without the bot\n",
+			err)
+		return ""
+	}
+	return info.OpenID
+}
+
 func attendeesIncludeRoom(attendees []map[string]string) bool {
 	for _, attendee := range attendees {
 		if attendee["type"] == "resource" || attendee["room_id"] != "" {
@@ -99,7 +120,7 @@ var CalendarCreate = common.Shortcut{
 		{Name: "summary", Desc: "event title"},
 		{Name: "start", Desc: "start time (ISO 8601)", Required: true},
 		{Name: "end", Desc: "end time (ISO 8601)", Required: true},
-		{Name: "description", Desc: "event description"},
+		{Name: "description", Desc: "event description as Markdown (@file or - for stdin); the unified description field. Supports bold/italic/underline/strikethrough, links, headings (`#`..`###`), blockquotes (`>`), ordered/unordered lists, horizontal rules (`---`), GFM tables, and images (`![name](url)`; a remote URL is used as-is, and a local image path relative to and inside the current working directory is auto-uploaded to Lark drive and rendered inline — absolute/out-of-cwd paths are rejected). A Lark doc URL (bare or as a Markdown link) is auto-resolved to an inline doc-mention chip showing its title. Inside a GFM table cell, stack multiple lines with `<br>`; each line may itself be an ordered/unordered list item, image or styled text (e.g. `1. a<br>2. b`, `- x<br>- y`, `![p](url)<br>**bold**`).", Input: []string{common.File, common.Stdin}},
 		{Name: "attendee-ids", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_, room omm_)"},
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
 		{Name: "rrule", Desc: "recurrence rule (rfc5545)"},
@@ -176,7 +197,9 @@ var CalendarCreate = common.Shortcut{
 		eventData := buildEventData(runtime, startTs, endTs)
 		attendeesStr := runtime.Str("attendee-ids")
 		if attendeesStr != "" {
-			// Note: dry-run doesn't network resolve the current user's open_id.
+			// Note: dry-run doesn't network resolve the running identity's own
+			// open_id (user from config, bot from /bot/v3/info), so the auto-joined
+			// self attendee is not shown here.
 			attendees, err := parseAttendees(attendeesStr, "")
 			if err != nil {
 				return common.NewDryRunAPI().Set("error", err.Error())
@@ -210,6 +233,9 @@ var CalendarCreate = common.Shortcut{
 		if err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
+		if err := resolveDescriptionImages(runtime, calendarId); err != nil {
+			return err
+		}
 
 		eventData := buildEventData(runtime, startTs, endTs)
 
@@ -228,11 +254,8 @@ var CalendarCreate = common.Shortcut{
 
 		// Add attendees if specified
 		if attendeesStr := runtime.Str("attendee-ids"); attendeesStr != "" {
-			currentUserId := ""
-			if !runtime.IsBot() {
-				currentUserId = runtime.UserOpenId()
-			}
-			attendees, err := parseAttendees(attendeesStr, currentUserId)
+			selfId := selfAttendeeId(runtime)
+			attendees, err := parseAttendees(attendeesStr, selfId)
 			if err != nil {
 				return withParam(err, "--attendee-ids")
 			}

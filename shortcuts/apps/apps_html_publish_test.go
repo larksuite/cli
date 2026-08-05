@@ -5,7 +5,6 @@ package apps
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,20 +22,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-type fakeAppsHTMLPublishClient struct {
-	resp  *htmlPublishResponse
-	err   error
-	calls []string
-}
-
-func (f *fakeAppsHTMLPublishClient) HTMLPublish(ctx context.Context, appID string, tarball *htmlPublishTarball) (*htmlPublishResponse, error) {
-	f.calls = append(f.calls, appID)
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.resp, nil
-}
-
 func writeAppsSampleSite(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -46,71 +31,19 @@ func writeAppsSampleSite(t *testing.T) string {
 	return dir
 }
 
-func TestRunHTMLPublish_HappyPath(t *testing.T) {
-	site := writeAppsSampleSite(t)
-	fake := &fakeAppsHTMLPublishClient{
-		resp: &htmlPublishResponse{URL: "https://miaoda/app_x"},
-	}
-	out, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
-	if err != nil {
-		t.Fatalf("err=%v", err)
-	}
-	if out["url"] != "https://miaoda/app_x" {
-		t.Fatalf("url=%v", out["url"])
-	}
-	if len(fake.calls) != 1 || fake.calls[0] != "app_x" {
-		t.Fatalf("calls=%v", fake.calls)
-	}
-}
-
-func TestRunHTMLPublish_OnlyURLInEnvelope(t *testing.T) {
-	// Pin 概要设计 §5.3 不变量 4 "同步语义不会变成异步" (legacy html path only):
-	// envelope 只含 url，未来若有人加 status / release_id 字段会被这个测试拦截。
-	site := writeAppsSampleSite(t)
-	fake := &fakeAppsHTMLPublishClient{
-		resp: &htmlPublishResponse{URL: "https://miaoda/app_x"},
-	}
-	out, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
-	if err != nil {
-		t.Fatalf("err=%v", err)
-	}
-	if len(out) != 1 {
-		t.Fatalf("envelope should only contain 'url', got %d keys: %v", len(out), out)
-	}
-	if _, ok := out["url"]; !ok {
-		t.Fatalf("envelope missing 'url': %v", out)
-	}
-}
-
-func TestRunHTMLPublish_ClientErrorPropagated(t *testing.T) {
-	site := writeAppsSampleSite(t)
-	wantErr := errors.New("server timeout")
-	fake := &fakeAppsHTMLPublishClient{err: wantErr}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: site})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("err=%v", err)
-	}
-}
-
-func TestRunHTMLPublish_PathNotFound(t *testing.T) {
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: "/nonexistent"})
+func TestPrepareHTMLPublishTarball_PathNotFound(t *testing.T) {
+	_, err := prepareHTMLPublishTarball(newTestFIO(), "/nonexistent")
 	if err == nil {
 		t.Fatalf("expected error")
 	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client should not be called when path invalid")
-	}
 }
 
-func TestRunHTMLPublish_DirRequiresIndexHTML(t *testing.T) {
-	// 目录形态：缺 index.html 应该被拦
+func TestPrepareHTMLPublishTarball_DirRequiresIndexHTML(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "foo.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), dir)
 	if err == nil {
 		t.Fatalf("expected error for missing index.html")
 	}
@@ -121,13 +54,9 @@ func TestRunHTMLPublish_DirRequiresIndexHTML(t *testing.T) {
 	if problem.Hint == "" {
 		t.Fatalf("expected non-empty hint")
 	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client should not be called when index.html missing")
-	}
 }
 
-func TestRunHTMLPublish_DirWithIndexHTMLPasses(t *testing.T) {
-	// 目录含 index.html 应该正常走完
+func TestPrepareHTMLPublishTarball_DirWithIndexHTMLPasses(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
@@ -135,57 +64,49 @@ func TestRunHTMLPublish_DirWithIndexHTMLPasses(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "extra.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
-	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
+	tarball, err := prepareHTMLPublishTarball(newTestFIO(), dir)
+	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if len(fake.calls) != 1 {
-		t.Fatalf("client should be called when index.html present")
+	if tarball == nil || tarball.Size == 0 {
+		t.Fatalf("expected non-empty tarball")
 	}
 }
 
-func TestRunHTMLPublish_SingleFileRejectedIfNotNamedIndex(t *testing.T) {
-	// 单文件形态：文件名不是 index.html 也要拦
+func TestPrepareHTMLPublishTarball_SingleFileRejectedIfNotNamedIndex(t *testing.T) {
 	dir := t.TempDir()
 	single := filepath.Join(dir, "foo.html")
 	if err := os.WriteFile(single, []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), single)
 	if err == nil {
 		t.Fatalf("single-file path 'foo.html' should be rejected (not named index.html)")
 	}
 	requireAppsValidationProblem(t, err)
-	if len(fake.calls) != 0 {
-		t.Fatalf("client must not be called when index.html missing")
-	}
 }
 
-func TestRunHTMLPublish_SingleFileNamedIndexPasses(t *testing.T) {
-	// 单文件形态：文件名恰好就是 index.html → 放行
+func TestPrepareHTMLPublishTarball_SingleFileNamedIndexPasses(t *testing.T) {
 	dir := t.TempDir()
 	single := filepath.Join(dir, "index.html")
 	if err := os.WriteFile(single, []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
-	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: single}); err != nil {
+	tarball, err := prepareHTMLPublishTarball(newTestFIO(), single)
+	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if len(fake.calls) != 1 {
-		t.Fatalf("client should be called for single index.html")
+	if tarball == nil || tarball.Size == 0 {
+		t.Fatalf("expected non-empty tarball")
 	}
 }
 
-func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
-	// 把上限调到 100 字节验证拦截，defer 恢复原值避免污染其它测试。
+func TestPrepareHTMLPublishTarball_RejectsOversizeTarball(t *testing.T) {
 	orig := maxHTMLPublishTarballBytes
 	maxHTMLPublishTarballBytes = 100
 	defer func() { maxHTMLPublishTarballBytes = orig }()
 
 	dir := t.TempDir()
-	// 写 index.html（满足新加的 index 校验）+ 大文件超 100 字节上限。
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -194,8 +115,7 @@ func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), dir)
 	if err == nil {
 		t.Fatalf("expected oversize error")
 	}
@@ -205,9 +125,6 @@ func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
 	}
 	if problem.Hint == "" {
 		t.Fatalf("expected non-empty hint")
-	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client should not be called when tarball oversize")
 	}
 }
 
@@ -264,8 +181,17 @@ func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	got := stdout.String()
-	if !strings.Contains(got, "/open-apis/spark/v1/apps/app_x/upload_and_release_html_code") {
-		t.Fatalf("dry-run missing endpoint: %s", got)
+	if !strings.Contains(got, "/open-apis/spark/v1/apps/app_x/pre_release") {
+		t.Fatalf("dry-run missing pre_release endpoint: %s", got)
+	}
+	if !strings.Contains(got, "presigned_upload_url") {
+		t.Fatalf("dry-run missing TOS PUT step: %s", got)
+	}
+	if !strings.Contains(got, "/open-apis/spark/v1/apps/app_x/releases") {
+		t.Fatalf("dry-run missing release-create endpoint: %s", got)
+	}
+	if !strings.Contains(got, "tos_path") {
+		t.Fatalf("dry-run missing tos_path in release-create body: %s", got)
 	}
 	if !strings.Contains(got, "index.html") {
 		t.Fatalf("dry-run missing file list: %s", got)
@@ -500,18 +426,13 @@ func TestRunHTMLPublish_RejectsOversizeRawCandidates(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake,
-		appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), dir)
 	if err == nil {
 		t.Fatalf("expected raw-size cap to fire")
 	}
 	problem := requireAppsValidationProblem(t, err)
 	if !strings.Contains(problem.Message, "raw") || !strings.Contains(problem.Message, "bytes") {
 		t.Fatalf("expected message to explain raw-byte cap, got %q", problem.Message)
-	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client must not be called when raw cap hit")
 	}
 }
 
@@ -555,8 +476,7 @@ func TestRunHTMLPublish_RejectsOversizeHTMLFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "big.html"), []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	_, err := prepareHTMLPublishTarball(newTestFIO(), dir)
 	if err == nil {
 		t.Fatalf("expected per-file oversize error")
 	}
@@ -567,13 +487,9 @@ func TestRunHTMLPublish_RejectsOversizeHTMLFile(t *testing.T) {
 	if problem.Hint == "" {
 		t.Fatalf("expected non-empty hint")
 	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client must not be called when an HTML file is oversize")
-	}
 }
 
-func TestRunHTMLPublish_IgnoresOversizeNonHTML(t *testing.T) {
-	// 单 .html 上限调小，但超限文件是 .png → 不被本护栏拦截，正常发布。
+func TestPrepareHTMLPublishTarball_IgnoresOversizeNonHTML(t *testing.T) {
 	orig := maxHTMLPublishSingleHTMLFileBytes
 	maxHTMLPublishSingleHTMLFileBytes = 100
 	defer func() { maxHTMLPublishSingleHTMLFileBytes = orig }()
@@ -585,12 +501,12 @@ func TestRunHTMLPublish_IgnoresOversizeNonHTML(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "big.png"), []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
-	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
+	tarball, err := prepareHTMLPublishTarball(newTestFIO(), dir)
+	if err != nil {
 		t.Fatalf("non-html oversize must not be blocked by the .html cap: %v", err)
 	}
-	if len(fake.calls) != 1 {
-		t.Fatalf("client should be called; calls=%v", fake.calls)
+	if tarball == nil || tarball.Size == 0 {
+		t.Fatalf("expected non-empty tarball")
 	}
 }
 
