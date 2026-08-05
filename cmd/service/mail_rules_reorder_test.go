@@ -171,9 +171,17 @@ func TestMailRulesReorder_DryRunCompletesPartialIDs(t *testing.T) {
 	if err := decoder.Decode(&dryRun); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
 	}
-	body, ok := dryRun["body"].(map[string]any)
+	calls, ok := dryRun["api"].([]any)
+	if !ok || len(calls) != 1 {
+		t.Fatalf("dry-run api = %#v, want one call", dryRun["api"])
+	}
+	call, ok := calls[0].(map[string]any)
 	if !ok {
-		t.Fatalf("dry-run body = %#v, want object", dryRun["body"])
+		t.Fatalf("dry-run api[0] = %#v, want object", calls[0])
+	}
+	body, ok := call["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("dry-run body = %#v, want object", call["body"])
 	}
 	if gotIDs := interfaceSliceToStrings(t, body["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r2", "r1", "r3"}) {
 		t.Fatalf("dry-run rule_ids = %#v, want [r2 r1 r3]", gotIDs)
