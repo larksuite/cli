@@ -134,6 +134,28 @@ func TestDBSyncConfig(t *testing.T) {
 		useExistingSchemaOnly := strings.Replace(validSchemaOnly, `"create"`, `"use_existing"`, 1)
 		assertDBSyncConfigValidation(t, useExistingSchemaOnly, false, "schema_only")
 	})
+
+	t.Run("update allows omitted source base_url", func(t *testing.T) {
+		// 契约：+db-sync-update 的 base_url 可选——省略时后端从原 syncTask 复用源 URL。
+		// parseDBSyncConfigFlag 不得对 base_url 做前置校验（即便 requireFieldMaps=true）。
+		noBaseURL := `{
+			"mode": "streaming",
+			"source": {"type": "base", "table": {"name": "数据表"}},
+			"target": {"type": "postgresql", "table": {"name": "orders", "action": "use_existing"}},
+			"field_maps": [{"source_field": "record_id", "target_field": "record_id", "enabled": true}]
+		}`
+		cfg, err := parseDBSyncConfigFlag(noBaseURL, true)
+		if err != nil {
+			t.Fatalf("parseDBSyncConfigFlag update without base_url = %v, want nil", err)
+		}
+		source, ok := cfg["source"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("source = %T, want map", cfg["source"])
+		}
+		if _, exists := source["base_url"]; exists {
+			t.Fatalf("source.base_url present %v, want absent (CLI must not inject default)", source["base_url"])
+		}
+	})
 }
 
 func TestDBSyncHint(t *testing.T) {
