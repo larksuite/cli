@@ -170,6 +170,19 @@ func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instance
 	return result, nil
 }
 
+// calendarEventResolutionFailure preserves the established calendar_event_id
+// and error fields while presenting the typed error before it is embedded in a
+// partial-result envelope. Existing messages remain byte-compatible, while an
+// additive hint receives centralized command-surface projection.
+func calendarEventResolutionFailure(runtime *common.RuntimeContext, instanceID string, err error) map[string]any {
+	presented := runtime.PresentError(err)
+	result := map[string]any{"calendar_event_id": instanceID, "error": presented.Error()}
+	if problem, ok := errs.ProblemOf(presented); ok && problem.Hint != "" {
+		result["hint"] = problem.Hint
+	}
+	return result
+}
+
 // extractStringSlice extracts a []string from a JSON array field in a map.
 func extractStringSlice(m map[string]any, key string) []string {
 	raw, _ := m[key].([]any)
@@ -191,7 +204,7 @@ func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeCont
 
 	relInfo, err := resolveMeetingIDsFromCalendarEvent(runtime, instanceID, calendarID, true)
 	if err != nil {
-		return map[string]any{"calendar_event_id": instanceID, "error": err.Error()}
+		return calendarEventResolutionFailure(runtime, instanceID, err)
 	}
 
 	result := map[string]any{"calendar_event_id": instanceID}

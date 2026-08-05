@@ -106,13 +106,16 @@ func TestLoginMsg_FormatStrings(t *testing.T) {
 func TestAgentTimeoutHint_CarriesKeyInfo(t *testing.T) {
 	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS} {
 		hint := getLoginMsg(lang).AgentTimeoutHint
-		for _, want := range []string{"--no-wait", "--device-code", "turn"} {
+		for _, want := range []string{"--scope", "--domain", "--recommend", "--exclude", "--no-wait", "--device-code", "turn"} {
 			if lang == i18n.LangZhCN && want == "turn" {
 				want = "本轮"
 			}
 			if !strings.Contains(hint, want) {
 				t.Errorf("%s AgentTimeoutHint missing %q: %s", lang, want, hint)
 			}
+		}
+		if strings.Contains(hint, "lark-cli auth login --no-wait --json") {
+			t.Errorf("%s AgentTimeoutHint recommends an invalid optionless retry: %s", lang, hint)
 		}
 	}
 }

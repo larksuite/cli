@@ -67,7 +67,7 @@ func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProdu
 }
 
 func TestRootErrorPresenterPreservesPermissionGuidanceWhenAuthLoginIsConcealed(t *testing.T) {
-	const authorizationFallback = "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry"
+	const authorizationFallback = "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry\ncurrent command requires scope(s): im:message"
 	tests := []struct {
 		name     string
 		subtype  errs.Subtype
@@ -135,19 +135,42 @@ func TestRootErrorPresenterPreservesPermissionGuidanceWhenAuthLoginIsConcealed(t
 }
 
 func TestRootErrorPresenterDoesNotRecommendUserLoginForBotPermission(t *testing.T) {
-	source := errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope").
-		WithMissingScopes("drive:file:download").
-		WithIdentity("bot")
+	tests := []struct {
+		subtype errs.Subtype
+		want    string
+	}{
+		{subtype: errs.SubtypeMissingScope, want: "app developer"},
+		{subtype: errs.SubtypeTokenScopeInsufficient, want: "token's granted scopes"},
+		{subtype: errs.SubtypeUserUnauthorized, want: "required bot permissions"},
+		{subtype: errs.SubtypePermissionDenied, want: "this bot"},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.subtype), func(t *testing.T) {
+			source := errs.NewPermissionError(tt.subtype, "bot permission failure").
+				WithMissingScopes("drive:file:download").
+				WithIdentity("bot")
 
-	rendered := presentRootError(
-		&cmdutil.Factory{ResolvedIdentity: core.AsBot},
-		source,
-		recovery.NewProjector(nil),
-	)
-	problem, _ := errs.ProblemOf(rendered)
-	if strings.Contains(problem.Hint, "auth login") ||
-		!strings.Contains(problem.Hint, "app developer") {
-		t.Fatalf("bot recovery = %q", problem.Hint)
+			rendered := presentRootError(
+				&cmdutil.Factory{ResolvedIdentity: core.AsBot},
+				source,
+				recovery.NewProjector(nil),
+			)
+			problem, ok := errs.ProblemOf(rendered)
+			if !ok {
+				t.Fatalf("rendered error = %T, want typed permission error", rendered)
+			}
+			for _, forbidden := range []string{"auth login", "verification_url", "device_code", "user credential"} {
+				if strings.Contains(strings.ToLower(problem.Hint), forbidden) {
+					t.Errorf("bot recovery %q contains user OAuth guidance %q", problem.Hint, forbidden)
+				}
+			}
+			if !strings.Contains(problem.Hint, tt.want) {
+				t.Errorf("bot recovery = %q, want guidance containing %q", problem.Hint, tt.want)
+			}
+			if source.Hint != "" || source.Identity != "bot" || len(source.MissingScopes) != 1 {
+				t.Errorf("presenter mutated producer: %+v", source)
+			}
+		})
 	}
 }
 

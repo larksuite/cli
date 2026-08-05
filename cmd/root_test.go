@@ -26,6 +26,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/surface"
 )
 
 // TestPersistentPreRunE_AuthCheckDisabledAnnotations verifies that
@@ -508,8 +509,8 @@ func TestHandleRootError_TypedAuthErrorWithLegacyCausePreserved(t *testing.T) {
 }
 
 // TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT pins
-// that a typed AuthenticationError carrying the need_user_authorization marker gets a
-// declared-scopes Hint appended when the current command is a registered
+// that a typed AuthenticationError carrying the need_user_authorization marker
+// gets executable scoped recovery when the current command is a registered
 // service method.
 func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -543,8 +544,13 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	resourceCmd.AddCommand(methodCmd)
 	f.CurrentCommand = methodCmd
 
-	authErr := newAuthErrorWithNeedAuthMarker()
-	rendered := presentRootError(f, authErr, recovery.NewProjector(nil))
+	source := internalauth.NewNeedUserAuthorizationError("u_service")
+	var authErr *errs.AuthenticationError
+	if !errors.As(source, &authErr) {
+		t.Fatalf("source = %T, want *errs.AuthenticationError", source)
+	}
+	originalHint := authErr.Hint
+	rendered := presentRootError(f, source, recovery.NewProjector(nil))
 	problem, ok := errs.ProblemOf(rendered)
 	if !ok {
 		t.Fatalf("rendered error = %T, want typed error", rendered)
@@ -553,8 +559,8 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	if problem.Category != errs.CategoryAuthentication {
 		t.Errorf("Category = %q, want authentication", problem.Category)
 	}
-	if problem.Subtype != errs.SubtypeUnknown {
-		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
+	if problem.Subtype != errs.SubtypeTokenMissing {
+		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeTokenMissing)
 	}
 	if !errors.Is(rendered, authErr.Cause) {
 		t.Errorf("rendered error lost need-authorization cause %v: %v", authErr.Cause, rendered)
@@ -562,11 +568,29 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	if !strings.Contains(problem.Message, "need_user_authorization") {
 		t.Errorf("Message should preserve need_user_authorization marker; got %q", problem.Message)
 	}
-	if !strings.Contains(problem.Hint, "current command requires scope(s): calendar:calendar.event:create") {
-		t.Errorf("expected declared-scope hint, got %q", problem.Hint)
+	if !strings.Contains(problem.Hint, `auth login --scope "calendar:calendar.event:create" --no-wait --json`) {
+		t.Errorf("expected scoped two-turn recovery, got %q", problem.Hint)
 	}
-	if strings.Contains(authErr.Hint, "current command requires scope(s):") {
-		t.Errorf("presenter mutated producer hint: %q", authErr.Hint)
+	if authErr.Hint != originalHint || !strings.Contains(authErr.Hint, "--recommend --no-wait --json") {
+		t.Errorf("presenter mutated producer's generic recovery: before %q, after %q", originalHint, authErr.Hint)
+	}
+
+	concealedPlan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	concealed := presentRootError(f, internalauth.NewNeedUserAuthorizationError("u_service"), recovery.NewProjector(func() *surface.Plan {
+		return concealedPlan
+	}))
+	concealedProblem, ok := errs.ProblemOf(concealed)
+	if !ok {
+		t.Fatalf("concealed rendered error = %T, want typed error", concealed)
+	}
+	wantFallback := recovery.UserAuthorization("calendar:calendar.event:create").Render(concealedPlan)
+	if concealedProblem.Hint != wantFallback {
+		t.Errorf("concealed recovery = %q, want fallback %q", concealedProblem.Hint, wantFallback)
+	}
+	if strings.Contains(concealedProblem.Hint, "auth login") {
+		t.Errorf("concealed recovery leaked auth command: %q", concealedProblem.Hint)
 	}
 }
 
@@ -600,8 +624,8 @@ func TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT(t *testi
 		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
 	}
 
-	if !strings.Contains(problem.Hint, "current command requires scope(s): docx:document:create") {
-		t.Errorf("expected shortcut scope hint, got %q", problem.Hint)
+	if !strings.Contains(problem.Hint, `auth login --scope "docx:document:create" --no-wait --json`) {
+		t.Errorf("expected shortcut scoped recovery, got %q", problem.Hint)
 	}
 }
 
@@ -635,13 +659,13 @@ func TestApplyNeedAuthorizationHint_ShortcutIncludesConditionalScopes(t *testing
 		t.Errorf("Subtype = %q, want %q", problem.Subtype, errs.SubtypeUnknown)
 	}
 
-	if !strings.Contains(problem.Hint, "current command requires scope(s): drive:drive.metadata:readonly, drive:file:download") {
-		t.Errorf("expected conditional scope hint for drive +status, got %q", problem.Hint)
+	if !strings.Contains(problem.Hint, `auth login --scope "drive:drive.metadata:readonly drive:file:download" --no-wait --json`) {
+		t.Errorf("expected conditional scoped recovery for drive +status, got %q", problem.Hint)
 	}
 }
 
 // TestApplyNeedAuthorizationHint_AppendsExistingHint pins that the
-// declared-scopes guidance is appended (separated by newline) when the typed
+// declared-scope recovery is appended (separated by newline) when the typed
 // AuthenticationError already carries a Hint from elsewhere.
 func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -675,7 +699,7 @@ func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 		t.Errorf("rendered error lost need-authorization cause %v: %v", authErr.Cause, rendered)
 	}
 
-	want := "existing hint\ncurrent command requires scope(s): docx:document:create"
+	want := "existing hint\n" + recovery.UserAuthorization("docx:document:create").String()
 	if problem.Hint != want {
 		t.Errorf("expected appended hint %q, got %q", want, problem.Hint)
 	}

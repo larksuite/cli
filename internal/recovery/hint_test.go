@@ -14,16 +14,18 @@ import (
 
 func TestUserAuthorizationGolden(t *testing.T) {
 	tests := []struct {
-		name    string
-		hint    Hint
-		visible string
+		name      string
+		hint      Hint
+		visible   string
+		concealed string
 	}{
 		{
 			name: "no scopes",
 			hint: UserAuthorization(),
-			visible: "run `lark-cli auth login --no-wait --json` to get device_code and verification_url; " +
+			visible: "run `lark-cli auth login --recommend --no-wait --json` to get device_code and verification_url; " +
 				"present verification_url to the user exactly and end this turn; after the user confirms authorization, " +
 				"run `lark-cli auth login --device-code <device_code>` in a later turn to finish login",
+			concealed: "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry",
 		},
 		{
 			name: "multiple scopes",
@@ -31,6 +33,8 @@ func TestUserAuthorizationGolden(t *testing.T) {
 			visible: "run `lark-cli auth login --scope \"docx:document drive:drive\" --no-wait --json` to get device_code and verification_url; " +
 				"present verification_url to the user exactly and end this turn; after the user confirms authorization, " +
 				"run `lark-cli auth login --device-code <device_code>` in a later turn to finish login",
+			concealed: "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry\n" +
+				"current command requires scope(s): docx:document, drive:drive",
 		},
 	}
 
@@ -40,8 +44,6 @@ func TestUserAuthorizationGolden(t *testing.T) {
 	deniedVisiblePlan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		surface.CommandAuthLogin: surface.CommandDeniedVisible,
 	})
-	const concealed = "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry"
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.hint.String(); got != tt.visible {
@@ -50,8 +52,8 @@ func TestUserAuthorizationGolden(t *testing.T) {
 			if got := tt.hint.Render(deniedVisiblePlan); got != tt.visible {
 				t.Fatalf("denied-visible hint = %q, want %q", got, tt.visible)
 			}
-			if got := tt.hint.Render(concealedPlan); got != concealed {
-				t.Fatalf("concealed hint = %q, want %q", got, concealed)
+			if got := tt.hint.Render(concealedPlan); got != tt.concealed {
+				t.Fatalf("concealed hint = %q, want %q", got, tt.concealed)
 			}
 			for _, dead := range []string{"auth login", "verification_url", "device_code"} {
 				if got := tt.hint.Render(concealedPlan); strings.Contains(got, dead) {

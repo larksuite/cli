@@ -62,6 +62,10 @@ func normalizeMCPToolResult(raw interface{}) (map[string]interface{}, error) {
 }
 
 func DoMCPCall(ctx context.Context, httpClient *http.Client, toolName string, args map[string]interface{}, accessToken string, mcpEndpoint string, isBot bool) (interface{}, error) {
+	identity := string(core.AsUser)
+	if isBot {
+		identity = string(core.AsBot)
+	}
 	body := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      uuid.NewString(),
@@ -100,7 +104,7 @@ func DoMCPCall(ctx context.Context, httpClient *http.Client, toolName string, ar
 		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to read MCP response: %v", err).WithCause(err)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, classifyMCPHTTPError(resp.StatusCode, resp.Status, respBody)
+		return nil, classifyMCPHTTPError(resp.StatusCode, resp.Status, respBody, identity)
 	}
 
 	var data map[string]interface{}
@@ -111,26 +115,34 @@ func DoMCPCall(ctx context.Context, httpClient *http.Client, toolName string, ar
 	}
 
 	if errObj, ok := data["error"]; ok {
-		return nil, classifyMCPPayloadError(errObj)
+		return nil, classifyMCPPayloadError(errObj, identity)
 	}
 
 	return UnwrapMCPResult(data["result"]), nil
 }
 
-func classifyMCPHTTPError(statusCode int, status string, body []byte) error {
+func classifyMCPHTTPError(statusCode int, status string, body []byte, identity string) error {
 	var payload map[string]interface{}
 	if err := json.Unmarshal(body, &payload); err == nil {
-		if errObj, ok := payload["error"]; ok {
-			return classifyMCPPayloadError(errObj)
+		code, msg, hasBusinessError := extractMCPBusinessError(payload)
+		if hasBusinessError {
+			if _, known := errclass.LookupCodeMeta(code); known {
+				classified := errclass.BuildAPIError(payload, errclass.ClassifyContext{Identity: identity})
+				return withMCPAuthenticationRecovery(classified, identity)
+			}
 		}
-		if code, msg, ok := extractMCPBusinessError(payload); ok {
+		if errObj, ok := payload["error"]; ok {
+			return classifyMCPPayloadError(errObj, identity)
+		}
+		if hasBusinessError {
 			return errs.NewAPIError(errs.SubtypeUnknown, "MCP HTTP %d %s: [%d] %s", statusCode, status, code, msg).WithCode(code)
 		}
 	}
 
 	bodyText := TruncateStr(strings.TrimSpace(string(body)), mcpErrorBodyLimit)
 	if statusCode == http.StatusUnauthorized {
-		return errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
+		err := errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
+		return withMCPAuthenticationRecovery(err, identity)
 	}
 	if statusCode >= 500 {
 		return errs.NewNetworkError(errs.SubtypeNetworkServer, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
@@ -138,7 +150,7 @@ func classifyMCPHTTPError(statusCode int, status string, body []byte) error {
 	return errs.NewAPIError(errs.SubtypeUnknown, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
 }
 
-func classifyMCPPayloadError(errObj interface{}) error {
+func classifyMCPPayloadError(errObj interface{}, identity string) error {
 	if errMap, ok := errObj.(map[string]interface{}); ok {
 		msg := GetString(errMap, "message")
 		if msg == "" {
@@ -149,37 +161,46 @@ func classifyMCPPayloadError(errObj interface{}) error {
 			// codes become typed (Authentication / Permission / ...) rather
 			// than generic APIError. Falls back to APIError for unknown codes.
 			payload := map[string]any{"code": int(code), "msg": msg, "error": errMap}
-			if classified := errclass.BuildAPIError(payload, errclass.ClassifyContext{}); classified != nil {
-				return classified
+			if classified := errclass.BuildAPIError(payload, errclass.ClassifyContext{Identity: identity}); classified != nil {
+				return withMCPAuthenticationRecovery(classified, identity)
 			}
 			return errs.NewAPIError(errs.SubtypeUnknown, "MCP: [%.0f] %s", code, msg).WithCode(int(code))
 		}
 		if msg != "" {
-			return classifyMCPMessageError(fmt.Sprintf("MCP: %s", msg))
+			return classifyMCPMessageError(fmt.Sprintf("MCP: %s", msg), identity)
 		}
 	}
 
 	if msg, ok := errObj.(string); ok && strings.TrimSpace(msg) != "" {
-		return classifyMCPMessageError(fmt.Sprintf("MCP: %s", msg))
+		return classifyMCPMessageError(fmt.Sprintf("MCP: %s", msg), identity)
 	}
 
 	return errs.NewAPIError(errs.SubtypeUnknown, "MCP returned an error response")
 }
 
-func classifyMCPMessageError(msg string) error {
+func classifyMCPMessageError(msg, identity string) error {
 	lower := strings.ToLower(msg)
 	switch {
 	case strings.Contains(lower, "unauthorized"),
 		strings.Contains(lower, "access token"),
 		strings.Contains(lower, "token invalid"),
 		strings.Contains(lower, "token expired"):
-		return recovery.Attach(
-			errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "%s", msg),
-			recovery.UserAuthorization(),
-		)
+		return withMCPAuthenticationRecovery(
+			errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "%s", msg), identity)
 	default:
 		return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg)
 	}
+}
+
+func withMCPAuthenticationRecovery(err error, identity string) error {
+	authErr, ok := err.(*errs.AuthenticationError) //nolint:errorlint // enrich only fresh direct MCP classifier errors, never a wrapped cause
+	if !ok || authErr.Hint != "" {
+		return err
+	}
+	if identity == string(core.AsBot) {
+		return authErr.WithHint("configure valid app credentials for the bot identity")
+	}
+	return recovery.Attach(authErr, recovery.UserAuthorization())
 }
 
 func extractMCPBusinessError(payload map[string]interface{}) (int, string, bool) {

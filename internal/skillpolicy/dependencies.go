@@ -41,7 +41,10 @@ func readSkillManifest(source fs.FS, name string) (skillManifest, error) {
 // YAML frontmatter declares no hard dependencies; malformed frontmatter that
 // purports to be structured metadata fails closed during composition.
 func parseRequiredSkills(skillName string, skillMD []byte) ([]string, error) {
-	lines := strings.Split(string(skillMD), "\n")
+	// A UTF-8 text file may begin with one BOM. Normalize it before checking
+	// the delimiter so BOM-prefixed dependency metadata cannot be skipped.
+	content := strings.TrimPrefix(string(skillMD), "\uFEFF")
+	lines := strings.Split(content, "\n")
 	if strings.TrimRight(lines[0], "\r") != "---" {
 		return nil, nil
 	}

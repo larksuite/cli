@@ -248,7 +248,7 @@ func TestCreateTasklist_PartialFailurePrettyOutput(t *testing.T) {
 		"Failed tasks:",
 		"Index",
 		"bad-task",
-		"user lacks permission",
+		"bot lacks permission",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("pretty output missing %q; got:\n%s", want, out)

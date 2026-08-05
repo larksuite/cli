@@ -285,7 +285,7 @@ func authLoginRun(opts *LoginOptions) error {
 				"**URL Output Rules:** Treat verification_url as an opaque string that cannot be modified. Do NOT URL-encode/decode or add spaces/punctuation." +
 				"For agent harnesses that only deliver final turn messages, make the QR code image (or URL) the final message of the turn and return control to the user; do not block on --device-code in the same turn. **Before ending the turn, tell the user to come back and notify you after completing authorization.**" +
 				"**After the user confirms authorization:** YOU must execute `lark-cli auth login --device-code <device_code>` yourself." +
-				"**Do NOT cache verification_url or device_code for future use.** Always run `lark-cli auth login --no-wait --json` fresh when authorization is needed.",
+				"**Do NOT cache verification_url or device_code for future use.** When authorization is needed again, rerun `lark-cli auth login` with the same `--scope`, `--domain`, or `--recommend` selection and any `--exclude` values, plus `--no-wait --json` to get a fresh link.",
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)

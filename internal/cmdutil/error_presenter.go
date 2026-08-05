@@ -4,9 +4,6 @@
 package cmdutil
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
@@ -37,7 +34,7 @@ func (f *Factory) PresentError(err error, options ErrorPresentationOptions) erro
 	}
 	rendered := projector.Render(err)
 	completePermissionRecovery(f, rendered, projector, options.Identity)
-	applyNeedAuthorizationHint(rendered, options.DeclaredScopes)
+	applyNeedAuthorizationHint(rendered, projector, options.DeclaredScopes)
 	return rendered
 }
 
@@ -72,7 +69,7 @@ func completePermissionRecovery(
 	permissionErr.Hint = projector.RenderHint(hint)
 }
 
-func applyNeedAuthorizationHint(err error, declaredScopes func() []string) {
+func applyNeedAuthorizationHint(err error, projector *recovery.Projector, declaredScopes func() []string) {
 	if err == nil || declaredScopes == nil || !internalauth.IsNeedUserAuthorizationError(err) {
 		return
 	}
@@ -88,10 +85,11 @@ func applyNeedAuthorizationHint(err error, declaredScopes func() []string) {
 	if len(scopes) == 0 {
 		return
 	}
-	scopeHint := fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
-	if authErr.Hint == "" {
-		authErr.Hint = scopeHint
+	scopedRecovery := projector.RenderHint(recovery.UserAuthorization(scopes...))
+	genericRecovery := projector.RenderHint(recovery.UserAuthorization())
+	if authErr.Hint == "" || authErr.Hint == genericRecovery {
+		authErr.Hint = scopedRecovery
 		return
 	}
-	authErr.Hint += "\n" + scopeHint
+	authErr.Hint += "\n" + scopedRecovery
 }

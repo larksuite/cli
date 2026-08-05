@@ -92,22 +92,23 @@ func (h Hint) WithFallback(text string) Hint {
 	return h
 }
 
-// UserAuthorization returns the canonical user-login recovery. Business
-// producers provide only the scopes they require; the command target,
-// standard wording, and reduced-distribution fallback stay centralized.
+// UserAuthorization returns canonical structured user-login recovery for
+// producers that opt into this helper. Producers provide only the scopes they
+// require; the command target, standard wording, and reduced-distribution
+// fallback stay centralized.
 func UserAuthorization(scopes ...string) Hint {
 	var command string
+	fallback := "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry"
 	if len(scopes) == 0 {
-		command = "run `lark-cli auth login --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login"
+		command = "run `lark-cli auth login --recommend --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login"
 	} else {
 		command = fmt.Sprintf(
 			"run `lark-cli auth login --scope \"%s\" --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login",
 			strings.Join(scopes, " "),
 		)
+		fallback += "\ncurrent command requires scope(s): " + strings.Join(scopes, ", ")
 	}
-	return Join("", Command(TargetAuthLogin, command)).WithFallback(
-		"obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry",
-	)
+	return Join("", Command(TargetAuthLogin, command)).WithFallback(fallback)
 }
 
 // String returns the hint as rendered for the default, fully visible surface.

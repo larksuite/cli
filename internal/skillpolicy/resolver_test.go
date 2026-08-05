@@ -317,6 +317,42 @@ func TestResolve_AllowIncludingRequiredSkillSucceeds(t *testing.T) {
 	}
 }
 
+func TestResolve_UTF8BOMFrontmatterRequiredSkillPresentSucceeds(t *testing.T) {
+	base := skillFS(map[string]string{
+		"lark-a/SKILL.md":      "\uFEFF---\nmetadata:\n  requires:\n    skills: [\"lark-shared\"]\n---\nbase a",
+		"lark-shared/SKILL.md": "base shared",
+	})
+
+	got := mustResolve(t, base, &platform.SkillsOverlay{
+		Allow: []string{"lark-a", "lark-shared"},
+	})
+	if want := []string{"lark-a", "lark-shared"}; !slices.Equal(topLevel(t, got), want) {
+		t.Fatalf("top level = %v, want %v", topLevel(t, got), want)
+	}
+}
+
+func TestResolve_UTF8BOMFrontmatterMissingRequiredSkillFailsClosed(t *testing.T) {
+	base := skillFS(map[string]string{
+		"lark-a/SKILL.md":      "\uFEFF---\nmetadata:\n  requires:\n    skills: [\"lark-shared\"]\n---\nbase a",
+		"lark-shared/SKILL.md": "base shared",
+	})
+
+	_, err := resolveContent(base, []PluginSkill{{
+		PluginName: "acme",
+		SkillsOverlay: &platform.SkillsOverlay{
+			Allow: []string{"lark-a"},
+		},
+	}})
+	if !errors.Is(err, ErrUnsatisfiedSkillDependency) {
+		t.Fatalf("err = %v, want ErrUnsatisfiedSkillDependency", err)
+	}
+	for _, want := range []string{"lark-a", "lark-shared"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not identify %q", err, want)
+		}
+	}
+}
+
 func TestResolve_RemoveRequiredSkillFailsClosed(t *testing.T) {
 	_, err := resolveContent(baseTreeWithRequiredShared(), []PluginSkill{{
 		PluginName: "acme",
