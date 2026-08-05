@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Lark Technologies Pte. Ltd.
+# SPDX-License-Identifier: MIT
 """Profile a candidate table range in a Lark sheet."""
 
 from __future__ import annotations

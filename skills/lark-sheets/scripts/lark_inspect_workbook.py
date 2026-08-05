@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Lark Technologies Pte. Ltd.
+# SPDX-License-Identifier: MIT
 """Inspect a Lark spreadsheet and emit a compact workbook profile."""
 
 from __future__ import annotations
