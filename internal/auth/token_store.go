@@ -5,6 +5,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,6 +26,8 @@ type StoredUAToken struct {
 }
 
 const refreshAheadMs = 5 * 60 * 1000 // 5 minutes
+
+var errStoredTokenCorrupt = errors.New("stored token data is corrupt")
 
 // accountKey generates a unique key for an account based on its AppID and UserOpenID.
 func accountKey(appId, userOpenId string) string {
@@ -48,7 +51,13 @@ func GetStoredToken(appId, userOpenId string) *StoredUAToken {
 func readStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
 	jsonStr, err := keychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
 	if err != nil {
-		return nil, err
+		storageErr := errs.NewInternalError(errs.SubtypeStorage,
+			"failed to read stored token: %v", err).
+			WithCause(err)
+		if problem, ok := errs.ProblemOf(err); ok && problem.Hint != "" {
+			storageErr.WithHint("%s", problem.Hint)
+		}
+		return nil, storageErr
 	}
 	if jsonStr == "" {
 		return nil, nil
@@ -57,7 +66,7 @@ func readStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
 	if err := json.Unmarshal([]byte(jsonStr), &token); err != nil {
 		return nil, errs.NewInternalError(errs.SubtypeStorage,
 			"failed to decode stored token: %v", err).
-			WithCause(err)
+			WithCause(errors.Join(errStoredTokenCorrupt, err))
 	}
 	return &token, nil
 }

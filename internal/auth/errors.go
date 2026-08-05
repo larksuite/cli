@@ -42,11 +42,22 @@ func (e *NeedAuthorizationError) Error() string {
 // legacy *NeedAuthorizationError sentinel is preserved in the Cause chain for
 // errors.As / errors.Is traversal.
 func NewNeedUserAuthorizationError(userOpenID string) error {
+	return newNeedUserAuthorizationError(userOpenID, nil, recovery.UserAuthorization())
+}
+
+// newNeedUserAuthorizationError preserves the missing-UAT sentinel alongside
+// an optional lower-layer cause and attaches build-local recovery metadata.
+func newNeedUserAuthorizationError(userOpenID string, cause error, hint recovery.Hint) error {
+	needAuthCause := error(&NeedAuthorizationError{UserOpenId: userOpenID})
+	if cause != nil {
+		needAuthCause = errors.Join(needAuthCause, cause)
+	}
+
 	e := errs.NewAuthenticationError(errs.SubtypeTokenMissing,
 		"%s (user: %s)", needUserAuthorizationMarker, userOpenID).
 		WithUserOpenID(userOpenID).
-		WithCause(&NeedAuthorizationError{UserOpenId: userOpenID})
-	return recovery.Attach(e, recovery.UserAuthorization())
+		WithCause(needAuthCause)
+	return recovery.Attach(e, hint)
 }
 
 // IsNeedUserAuthorizationError reports whether err represents a missing-UAT

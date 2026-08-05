@@ -257,7 +257,7 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 				if !IsNeedUserAuthorizationError(err) {
 					t.Fatalf("error = %v, want need-user-authorization sentinel", err)
 				}
-				const wantHint = "refresh state is unrecoverable because the stored token was cleared; run: lark-cli auth login to re-authorize"
+				const wantHint = "refresh state is unrecoverable because the stored token was cleared; run `lark-cli auth login` to re-authorize"
 				if problem.Hint != wantHint {
 					t.Fatalf("hint = %q, want %q", problem.Hint, wantHint)
 				}

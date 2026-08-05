@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // UATCallOptions contains options for UAT API calls.
@@ -58,6 +59,9 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 // GetValidAccessToken obtains a valid access token for the given user.
 func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
 	stored, err := readStoredToken(opts.AppId, opts.UserOpenId)
+	if errors.Is(err, errStoredTokenCorrupt) {
+		return "", newNeedUserAuthorizationError(opts.UserOpenId, err, recovery.UserAuthorization())
+	}
 	if err != nil {
 		return "", err
 	}
@@ -85,6 +89,9 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUATok
 	var refreshed *StoredUAToken
 	err := withTokenStorageLock(opts.AppId, opts.UserOpenId, func() error {
 		freshStored, err := readStoredToken(opts.AppId, opts.UserOpenId)
+		if errors.Is(err, errStoredTokenCorrupt) {
+			return newNeedUserAuthorizationError(opts.UserOpenId, err, recovery.UserAuthorization())
+		}
 		if err != nil {
 			return err
 		}
@@ -138,8 +145,8 @@ type refreshRequest struct {
 	ClientSecret string `json:"client_secret"`
 }
 
-// refreshResponse contains only fields documented by the OAuth token endpoint.
-// Pointers distinguish an omitted numeric field from a real zero value.
+// refreshResponse contains the OAuth token fields consumed by the refresh
+// flow. Pointers distinguish an omitted numeric field from a real zero value.
 type refreshResponse struct {
 	Code                  *int   `json:"code"`
 	AccessToken           string `json:"access_token"`
@@ -244,18 +251,23 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		fmt.Fprintf(errOut,
 			"[lark-cli] [WARN] uat-client: refresh failed for %s, token cleared: %v\n",
 			opts.UserOpenId, result.err)
-		// Once the credential is gone, only a known non-retryable terminal
-		// error may pass through. Every other cause needs a fresh terminal
-		// contract that directs the caller to re-authorize.
-		problem, typed := errs.ProblemOf(result.err)
-		if clearAfterUncertainResult || !typed || problem.Retryable {
-			terminalErr := NewNeedUserAuthorizationError(opts.UserOpenId)
-			needAuthCause := terminalErr.Cause
-			return nil, terminalErr.
-				WithHint("refresh state is unrecoverable because the stored token was cleared; run: lark-cli auth login to re-authorize").
-				WithCause(errors.Join(needAuthCause, result.err))
+		// Preserve a precise, terminal refresh-token classification after
+		// deletion. Other failures surface the resulting missing-token state and
+		// retain the refresh failure as a cause.
+		if problem, ok := errs.ProblemOf(result.err); ok &&
+			problem.Category == errs.CategoryAuthentication && !problem.Retryable {
+			return nil, result.err
 		}
-		return nil, result.err
+		return nil, newNeedUserAuthorizationError(
+			opts.UserOpenId,
+			result.err,
+			recovery.Join("", recovery.Command(
+				recovery.TargetAuthLogin,
+				"refresh state is unrecoverable because the stored token was cleared; run `lark-cli auth login` to re-authorize",
+			)).WithFallback(
+				"refresh state is unrecoverable because the stored token was cleared; re-authorize through this distribution's supported authorization flow",
+			),
+		)
 	}
 
 	return nil, errs.NewInternalError(errs.SubtypeUnknown,
@@ -351,7 +363,8 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 
 	code := *parsed.Code
 	if code != 0 {
-		if meta, ok := errclass.LookupCodeMeta(code); ok && meta.Category == errs.CategoryPolicy {
+		meta, knownCode := errclass.LookupCodeMeta(code)
+		if knownCode && meta.Category == errs.CategoryPolicy {
 			var policyFields struct {
 				ChallengeURL string `json:"challenge_url"`
 				CLIHint      string `json:"cli_hint"`
@@ -376,21 +389,25 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 		if message == "" {
 			message = parsed.Error
 		}
-		// BuildAPIError accepts the common OpenAPI message key; OAuth names
-		// the same value error_description.
-		apiErr := errclass.BuildAPIError(map[string]any{
-			"code": code,
-			"msg":  message,
-		}, errclass.ClassifyContext{
-			Brand:    string(opts.Domain),
-			AppID:    opts.AppId,
-			Identity: "user",
-		})
-		var authErr *errs.AuthenticationError
-		if errors.As(apiErr, &authErr) {
-			authErr.UserOpenID = opts.UserOpenId
+		if message == "" {
+			message = fmt.Sprintf("token refresh failed with code %d", code)
 		}
-		return refreshResult{action: refreshActionForCode(code), err: apiErr}
+		action := refreshActionForCode(code)
+		if knownCode && meta.Category == errs.CategoryAuthentication {
+			authErr := errs.NewAuthenticationError(meta.Subtype, "%s", message).
+				WithCode(code).
+				WithUserOpenID(opts.UserOpenId)
+			if meta.Retryable {
+				authErr.WithRetryable()
+			}
+			return refreshResult{action: action, err: authErr}
+		}
+		apiErr := errs.NewAPIError(errs.SubtypeUnknown, "%s", message).
+			WithCode(code)
+		if action == refreshRetryAndPreserve || action == refreshRetryAndClear {
+			apiErr.WithRetryable()
+		}
+		return refreshResult{action: action, err: apiErr}
 	}
 
 	if parsed.RefreshToken == "" {
@@ -429,6 +446,9 @@ func refreshActionForCode(code int) refreshAction {
 	if ok && meta.Retryable {
 		return refreshRetryAndPreserve
 	}
+	// Retryability is opt-in. Unknown and known non-retryable codes
+	// deliberately stop and clear; doRefreshToken then reports the resulting
+	// missing-credential state while retaining the API error as a cause.
 	return refreshStopAndClear
 }
 

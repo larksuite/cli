@@ -48,15 +48,15 @@ func useAuthFSStub(t *testing.T, stub authFSStub) {
 	t.Cleanup(func() { vfs.DefaultFS = previous })
 }
 
-func TestTokenStorageLockUsesGlobalSanitizedPath(t *testing.T) {
+func TestTokenStorageLockUsesWorkspaceSanitizedPath(t *testing.T) {
 	setupStoredTokenTest(t)
 	previous := core.CurrentWorkspace()
 	core.SetCurrentWorkspace(core.WorkspaceOpenClaw)
 	t.Cleanup(func() { core.SetCurrentWorkspace(previous) })
 
 	got := tokenStorageLockPath("cli/test", "ou:test")
-	if filepath.Dir(got) != filepath.Join(core.GetBaseConfigDir(), "locks") {
-		t.Fatalf("lock directory = %q, want global config lock directory", filepath.Dir(got))
+	if filepath.Dir(got) != filepath.Join(core.GetConfigDir(), "locks") {
+		t.Fatalf("lock directory = %q, want workspace config lock directory", filepath.Dir(got))
 	}
 	if filepath.Base(got) != "refresh_cli_test_ou_test.lock" {
 		t.Fatalf("lock filename = %q, want sanitized account identifiers", filepath.Base(got))

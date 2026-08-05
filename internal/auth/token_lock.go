@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	tokenStorageLockTimeout    = 30 * time.Second
+	tokenStorageLockTimeout    = 60 * time.Second
 	tokenStorageLockRetryDelay = 500 * time.Millisecond
 )
 
