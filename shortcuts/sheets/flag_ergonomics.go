@@ -137,73 +137,35 @@ var intuitiveFlagHints = map[string]map[string]string{
 	},
 }
 
-// chainFlagAliases declares two families of parse-time synonyms through the
-// common alias contract (flagalias.Bind is the single sanctioned owner of the
-// flag-name normalizer — see source-contract lint flag_alias_normalizer_owner):
-// the wire-vocabulary underscore form of any dashed flag (--sheet_name,
-// --border_styles — no sheets flag has an underscore in its canonical name),
-// and the command's intuitive-alias table (plus each alias's own underscore
-// form). Either way a habitual name parses as the real flag with zero round
-// trips. Aliases never shadow a registered flag and never appear in --help; an
-// alias whose target vanished (spec-side rename) is dropped, degrading to the
-// unknown-flag prescription. Bind chains any normalizer a prior hook installed
-// and is chained in turn by the framework's declarative Flag.Aliases (e.g.
-// --token → --spreadsheet-token), so all three layers compose.
+// chainFlagAliases installs an invisible flag-name rewrite (via
+// flagalias.InstallNormalizer — this package must not call SetNormalizeFunc
+// directly; see source-contract lint flag_alias_normalizer_owner) composing two
+// silent corrections: the wire-vocabulary underscore form of any flag
+// (--sheet_name, --border_styles — no sheets flag has an underscore in its
+// canonical name), and the command's intuitive-alias table. Either way a
+// habitual name parses as the real flag with zero round trips. Both are
+// deliberately silent — hidden from --help and absent from the exported
+// manifest, unlike the declarative Flag.Aliases the framework binds separately
+// (e.g. --token → --spreadsheet-token). Aliases never shadow a registered flag;
+// an alias whose target vanished (spec-side rename) is dropped, degrading to the
+// unknown-flag prescription.
 func chainFlagAliases(cmd *cobra.Command) {
-	// Accumulate aliases per canonical flag: Bind rejects a canonical that
-	// appears in more than one spec, so a flag that gains both an underscore
-	// form and a table alias (e.g. --source-range) must arrive as one spec.
-	byCanonical := map[string]map[string]struct{}{}
-	add := func(canonical, alias string) {
-		// Never shadow a registered flag: a real --file must win over the
-		// +csv-put --file→--csv alias, and skipping here also keeps Bind from
-		// rejecting the collision.
-		if alias == canonical || cmd.Flags().Lookup(alias) != nil {
-			return
+	aliases := commandFlagAliases[cmd.Name()]
+	usable := make(map[string]string, len(aliases))
+	for alias, target := range aliases {
+		if cmd.Flags().Lookup(alias) == nil && cmd.Flags().Lookup(target) != nil {
+			usable[alias] = target
 		}
-		set := byCanonical[canonical]
-		if set == nil {
-			set = map[string]struct{}{}
-			byCanonical[canonical] = set
-		}
-		set[alias] = struct{}{}
 	}
-
-	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		if strings.Contains(f.Name, "-") {
-			add(f.Name, strings.ReplaceAll(f.Name, "-", "_"))
+	flagalias.InstallNormalizer(cmd, func(name string) string {
+		if strings.Contains(name, "_") {
+			name = strings.ReplaceAll(name, "_", "-")
 		}
+		if target, ok := usable[name]; ok {
+			name = target
+		}
+		return name
 	})
-	for alias, target := range commandFlagAliases[cmd.Name()] {
-		if cmd.Flags().Lookup(target) == nil {
-			continue // target renamed away spec-side; degrade to prescription
-		}
-		add(target, alias)
-		if strings.Contains(alias, "-") {
-			add(target, strings.ReplaceAll(alias, "-", "_"))
-		}
-	}
-
-	if len(byCanonical) == 0 {
-		return
-	}
-	// Sort canonicals and aliases so the bound spec set is deterministic.
-	canonicals := make([]string, 0, len(byCanonical))
-	for canonical := range byCanonical {
-		canonicals = append(canonicals, canonical)
-	}
-	sort.Strings(canonicals)
-	specs := make([]flagalias.Spec, 0, len(canonicals))
-	for _, canonical := range canonicals {
-		set := byCanonical[canonical]
-		aliases := make([]string, 0, len(set))
-		for alias := range set {
-			aliases = append(aliases, alias)
-		}
-		sort.Strings(aliases)
-		specs = append(specs, flagalias.Spec{Canonical: canonical, Aliases: aliases})
-	}
-	flagalias.MustBind(cmd, specs)
 }
 
 // sheetsFlagErrorFunc overrides the root FlagErrorFunc for sheets commands.
