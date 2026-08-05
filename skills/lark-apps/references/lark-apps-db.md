@@ -110,7 +110,7 @@ Base 数据同步走 `+db-sync-*`，和本地文件导入不同：`+db-data-impo
 - `mode=batch`：一次性任务。`schema_only=true` 只建目标表；`schema_only=false` 建表或写入已有表并导入当前 Base 数据。完成后不能 enable/disable/update/delete。
 - `mode=streaming`：持续同步任务。首次同步后持续处理 Base 变化，可 enable/disable/update/delete。
 
-**配置格式**：只通过 `--config` 传完整 JSON，支持内联 JSON、`@file`、`-` stdin。配置 key 使用复数：`field_maps`、`option_mappings`、`syncable_source_fields`。不要写单数 `field_map` / `option_mapping`，CLI 会直接报 validation 错。正式 create / update 时，`field_maps` 至少要有一个映射未显式写成 `"enabled": false`；否则不会产生有效字段映射。`target.table.action` 只能是 `create` 或 `use_existing`：建表时 `pg_field` 需要完整字段定义；写已有表时通常只需目标列名。
+**配置格式**：只通过 `--config` 传完整 JSON，支持内联 JSON、`@file`、`-` stdin。配置 key 使用复数：`field_maps`、`option_mappings`、`syncable_source_fields`。不要写单数 `field_map` / `option_mapping`，CLI 会直接报 validation 错。正式 create / update 时，`field_maps` 至少要有一个映射未显式写成 `"enabled": false`；否则不会产生有效字段映射。`target.table.action` 只能是 `create` 或 `use_existing`：建表时 `pg_field` 需要完整字段定义；写已有表时通常只需目标列名。`source.base_url`（源 Base 表完整 URL）在 `+db-sync-create` 必填、由服务端强制；`+db-sync-update` 可选——省略时服务端复用原任务的源 URL，仅在换源 / 替换成另一张 Base 表时才需要传新的 `base_url`。
 
 **单数 key 恢复**：如果用户说配置里 `field_map` 是单数、`option_mapping` 是单数、或字段映射可能不生效，不要把原配置直接提交。先找到用户这份同步配置，做这三步：
 
@@ -173,6 +173,8 @@ lark-cli apps +db-sync-create --app-id app_xxx --environment dev --config @payme
 
 **修改 streaming 映射**：先用 get 导出当前配置，编辑 `field_maps` 后 update。update 是高危操作，必须经用户确认再加 `--yes`。
 
+`+db-sync-get` 返回的 `source` **不含 `base_url`**（只有 token / tableId，服务端没有 domain 拼不出完整 URL），这是正常的。原表 update 直接省略 `base_url` 即可；只有要换成另一张 Base 表时，才在 config 里显式补一个新的 `base_url`。不要为了"补全" `base_url` 而编造 domain 或拼接 URL——拿不到就省略，让服务端复用原任务的源 URL。
+
 ```bash
 lark-cli apps +db-sync-get --app-id app_xxx --task-id streaming_123 -q '.data | {mode, source, target, field_maps}' > sync.json
 lark-cli apps +db-sync-update --app-id app_xxx --task-id streaming_123 --config @sync.json --yes
@@ -197,7 +199,7 @@ lark-cli apps +db-sync-get --app-id app_xxx --task-id batch_123
 
 把 `status`、`result`、`warnings` 和目标表写入情况告诉用户。若用户要的是后续持续同步，不是“重启这个 batch”，应新建 `mode=streaming` 任务：先 `+db-sync-create --preview` 给用户确认映射和影响，再带 `--yes` 创建；不要强行 enable 已完成的 batch 任务。若此时 CLI 还缺授权，仍要先解释这个生命周期边界，再提示授权完成后用 `+db-sync-get` 查结果。
 
-**失败恢复**：看到 `warnings` 不要直接说同步成功。按 warning 或 error 的 `hint` 继续排查：常见路径是 `+log-list --keyword <target_table>` / `+log-get` 查日志，然后用 `+db-execute` 修目标表结构，或用 `+db-sync-update` 修字段映射，最后对同一 `task_id` 再 `+db-sync-get`。
+**失败恢复**：看到 `warnings` 不要直接说同步成功。按 warning 或 error 的 `hint` 继续排查：常见路径是 `+log-list --keyword <target_table>` / `+log-get` 查日志，然后用 `+db-execute` 修目标表结构，或用 `+db-sync-update` 修字段映射，最后对同一 `task_id` 再 `+db-sync-get`。若此时 CLI 还缺授权、查不到 warning 详情，也不要只给泛化的字段核对建议：先说明被授权卡住，再把上面这条固定命令链（`+log-list`/`+log-get` → `+db-execute` 或 `+db-sync-update` → 再 `+db-sync-get` 复查）作为授权完成后的下一步明确交代给用户。
 
 ### 变更追溯与审计
 
@@ -266,6 +268,7 @@ lark-cli apps +db-quota-get --app-id app_xxx --environment dev
 - 导入 / 导出的本地路径用工作目录内相对路径；超大表导出会被行数 / 体积上限拒，改用 `+db-execute` 分批。
 - Base 同步先 preview，再给用户确认映射和影响；不要跳过 preview 直接创建任务。`--config` 文件里的字段映射使用 `field_maps` / `option_mappings` 复数 key。
 - 修复 Base 同步配置时，只把 `field_map` / `option_mapping` 改成 `field_maps` / `option_mappings`，并检查至少一个 `field_maps` 映射是启用的；修完先 preview 或复用 preview 输出，再 create / update。
+- `+db-sync-update` 省略 `source.base_url` 是合法的（服务端复用原任务源 URL）；`+db-sync-get` 不返回 `base_url` 属正常，不要因此编造 domain / 拼接 URL 去"补全"，只有换源 / 替换表时才传新的 `base_url`。`+db-sync-create` 的 `base_url` 必填，缺失由服务端报错。
 - batch 同步任务不能重新 enable。遇到 operation-not-allowed 先 `+db-sync-get` 查状态和结果；要持续同步就新建 streaming 任务，走 preview -> 用户确认 -> create。
 - `+db-audit-list` 多表查询时，把结果里 `skipped` 的表（不存在 / 未开审计）连同原因一并向用户说明，不要让用户以为这些表「没有变更」。
 - 恢复是覆盖式且不可逆：`+db-recovery-apply` 前必须先 `+db-recovery-diff`，并明确告知用户会覆盖当前数据。
