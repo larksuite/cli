@@ -4,17 +4,17 @@
 
 ## 分流决策
 
-1. 明确范围：复用本次任务已有且仍可信的 `table_id`、`records_count`、字段类型和 Link 目标表；仅用 `+table-list`、`+base-block-list` 或 `+field-list` 补齐缺失信息。不要受 Base 内无关表影响。
+1. 明确范围：复用本次任务已有且仍可信的 `table_id`、`records_count`、字段类型和 Link 目标表；仅用 `+table-list`、`+base-block-list` 或 `+field-list` 补齐缺失信息。不要受 Base 内无关表影响。本地规模按各必要表经过任务语义允许的单表谓词下推后、实际需导出的完整记录数计算；多表取其中最大值，不求和，也不直接使用过滤前整表行数。最大值不超过 2000 时可继续本地分析。
 2. 先判断内置 jq 路径；同时满足以下条件时直接执行，不检查 Python：
    1. 只有一张必要表。
    2. 任务是一个短 jq 表达式可清晰完成的筛选、计数、简单分组/聚合/排序、TopN 或 record-local 集合谓词；日期日历语义、窗口、多表关联、实体消歧和需要多阶段中间结果的分析不走 jq。
-   3. 任务所需完整记录不超过 2000 条。整表 `records_count <= 2000` 时无需下推；否则组合用户任务已隐含且不改变口径的单表谓词，文本关键词用 `+record-search`，结构化条件用 `+record-list --filter-json`。先投影一个简单标量字段，以 `--limit 2000 --output <probe>.ndjson --minimal-stdout` 探测，直到 `has_more=false` 或没有可继续下推的谓词。
+   3. 该表经过任务语义允许的谓词下推后，实际需导出的完整记录不超过 2000 条。整表 `records_count <= 2000` 时无需下推；否则组合用户任务已隐含且不改变口径的单表谓词，文本关键词用 `+record-search`，结构化条件用 `+record-list --filter-json`。先投影一个简单标量字段，以 `--limit 2000 --output <probe>.ndjson --minimal-stdout` 探测，直到 `has_more=false` 或没有可继续下推的谓词。
    4. 确认范围完整后，复用相同查询参数，投影任务必要字段并用 `--jq-records '<expr>'` 返回最终小结果。jq 在 lark-cli 内执行，不要求外部 jq、共享文件系统或 Python；生成的 NDJSON 与 manifest artifact 保持原始完整内容。
 3. jq 路径不适用时，才检查 Python：
-   1. Python 可运行并能读取 lark-cli 生成的 artifact，并且每张必要表的任务所需完整记录均不超过 2000 条时，导出必要字段的 NDJSON，使用 Python 标准库或 pandas 完成单表复杂计算、多表关联、多值展开、窗口和日历分析。
+   1. Python 可运行并能读取 lark-cli 生成的 artifact，且第 1 步定义的最大单表导出量不超过 2000 条时，导出必要字段的 NDJSON，使用 Python 标准库或 pandas 完成单表复杂计算、多表关联、多值展开、窗口和日历分析。
    2. 任一表较大或 `records_count` 缺失时，按第 2 步相同的方法下推单表谓词并窄投影探测；所有必要表均达到 `has_more=false` 后再正式导出。
    3. Python 标准库足以清晰表达任务时直接使用；DataFrame 能明显简化计算时再选 pandas。若已选 pandas 但环境未安装，网络可用且存在 `uv` 或 `pip` 时按需安装；优先使用 `uv run --no-project --with pandas python analyze.py`，只有 `pip` 时在隔离的虚拟环境中安装。
-4. jq 无法完成，且 Python 不可用或任一必要表无法完整收敛到 2000 条以内时，转读 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md)。
+4. jq 无法完成，且 Python 不可用或谓词下推后的最大单表导出量仍超过 2000 条时，转读 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md)。
 5. 只把最终小结果交给模型，不把 NDJSON 正文重新放入上下文。仅在任务涉及业务键、展开、JOIN 或金额分摊时，明确目标粒度并检查与口径直接相关的空值、重复或总量守恒；不再用另一引擎重复计算同一指标。内部 ID 只用于连接或定位。
 
 `+table-list` / `+base-block-list` 返回的 `records_count` 表示整表行数；manifest 的 `records_count` 表示本次查询实际导出的行数。
