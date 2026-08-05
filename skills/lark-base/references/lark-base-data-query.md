@@ -5,7 +5,7 @@
 
 本文档是 `+data-query` JSON DSL 的单一事实来源（SSOT），用于说明完整字段、操作符、限制、返回和错误恢复。常用 fewshot 与命令选择先读 [lark-base-data-query-guide.md](lark-base-data-query-guide.md)。
 
-查询类任务还必须先遵守 [`lark-base-data-analysis-sop.md`](lark-base-data-analysis-sop.md)。`+data-query` 适合让筛选、分组、聚合、排序和 TopN 在 Base 云端查询服务中执行；不要用默认分页的 `+record-list` 或本地 `jq` 替代聚合查询。
+分析任务先按主 skill 判断本地分析环境；只有进入 Cloud 路径并选定 `+data-query` 时，才读取 [`lark-base-data-analysis-cloud.md`](lark-base-data-analysis-cloud.md) 和本文。用户直接询问 `+data-query` 命令、DSL 或 API 时可直接读取本文。`+data-query` 适合让筛选、分组、聚合、排序和 TopN 在 Base 云端查询服务中执行；不要用默认分页的 `+record-list` 或不完整的本地结果替代聚合查询。
 
 ## 限制
 
@@ -437,7 +437,7 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
 5. 若候选记录包含 link 字段，提取关联 `record_id` 后到关联表用 `+record-get` 批量读取展示字段。
 6. 最终回答业务字段，不要把内部 `record_id` 当作用户可读答案。
 
-不要把 `data-query pagination.limit` 理解为分页扫描；它只限制 Base 云端查询服务返回的聚合结果行数，不支持 offset。需要全量原始记录导出时回到 data analysis SOP 的 `+record-list` 分页规则。
+不要把 `data-query pagination.limit` 理解为分页扫描；它只限制 Base 云端查询服务返回的聚合结果行数，不支持 offset。需要逐条原始记录时按 Cloud SOP 的 `+record-list` / `+record-search` 回查规则处理。
 
 ## 坑点
 
@@ -456,6 +456,6 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
 
 - [lark-base](../SKILL.md) — 多维表格全部命令
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
-- [lark-base-data-analysis-sop.md](lark-base-data-analysis-sop.md) — 查询范围、选路、下推、分页、`+record-list` / `+record-search` 回查和关系查询 SOP
+- [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) — Cloud 路径的查询范围、下推、分页、`+record-list` / `+record-search` 回查和关系查询 SOP
 - [lark-base-cell-value.md](lark-base-cell-value.md) — CellValue 格式规范
 - [lark-base-field-json.md](lark-base-field-json.md) — 字段类型与 JSON 结构

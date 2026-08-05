@@ -1,6 +1,6 @@
-# Base data analysis SOP
+# Base cloud data analysis SOP
 
-Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、排序、Top/Bottom N、聚合统计、分组聚合、多表关联、临时分析和查询后写入前的目标定位。
+在当前 Agent 没有可用的本地数据分析环境，或 Local SOP 无法把每张必要表的完整查询结果收敛到 2000 条以内时，使用本 SOP。覆盖记录读取、筛选、排序、Top/Bottom N、聚合统计、分组聚合、多表关联和查询后写入前的目标定位。
 
 本文只管查询选路和正确性边界；具体操作前先读真实结构和现状，复杂 JSON 再跳到 reference：
 
@@ -11,7 +11,7 @@ Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、
 ## 0. Hard Rules
 
 - 全局问题不能用默认 `+record-list --limit N` 片面地回答。
-- `jq` / shell / 本地代码是在个人电脑或当前运行环境中处理已返回数据，只适合小范围结果；超过 200 行默认不推荐本地统计、排序或求极值，应改用 Base 云端查询服务的 filter/sort/aggregate。
+- `jq` / shell 直接处理 stdout 只适合小范围结果。超过 200 行时不要把原始记录放进模型上下文；使用 Base 云端 filter/sort/aggregate。
 - “最高、最低、最新、最早、Top、Bottom、总数、全部、异常、最大、最小、最多、最少、优先级最高”等全局语义，必须在 Base 云端查询服务中完成筛选、排序或聚合。
 - 一次性原始记录查询优先用 `+record-list` / `+record-search` 的 filter/sort；聚合分析优先用 `+data-query`。
 - `+record-search` 用于关键词检索字段的展示文本；金额、状态、日期、空值、关联等结构化条件继续用 `--filter-json` 表达。
@@ -191,10 +191,10 @@ lark-cli base +view-set-sort \
 
 ## 3. Range & Pagination Contract
 
-- `+record-list` 默认页、固定 `--limit`、本地 `jq`、shell 管道、手工浏览输出，都只覆盖已读取范围；超过 200 行不要把本地处理当作推荐路径。
+- `+record-list` 默认页、固定 `--limit`、本地 `jq`、shell 管道、手工浏览输出，都只覆盖已读取范围；超过 200 行不要把原始记录直接输出到模型上下文。
 - `has_more=true`、存在下一页 offset/page token、或返回行数等于 page size，都表示可能还有未读取数据。
 - 对全局问题，只有 Base 云端查询服务已经通过 filter/sort/aggregate 收敛目标范围，或 `+data-query` 已在云端完成聚合、排序和限制时，才可以用有限返回形成结论。
-- 必须全量导出时，按 `+record-list` 分页语义串行翻页；不要并发调用 `+record-list`。
+- 需要完整原始记录但云端能力无法把结果安全收敛到可返回范围时，明确说明能力边界；不要用手工分页、拆分下载或采样伪装成全局分析。
 
 ## 4. Final Answer Check
 
@@ -202,7 +202,7 @@ lark-cli base +view-set-sort \
 
 - 问题范围是局部样例、单点定位、全局原始记录、聚合分析、多表关联，还是查询后写入。
 - 筛选、排序、聚合是否发生在 Base 云端查询服务中，而不是本地 `jq` / shell 中。
-- 如果使用 `jq` / shell，本地输入是否是 200 行以内的小范围结果；超过 200 行是否已改用 Base 云端查询服务查询。
+- 如果使用 `jq` / shell 直接处理 stdout，本地输入是否是 200 行以内的小范围结果；超过 200 行是否已改用 Base 云端查询。
 - 如果使用 `+record-list` / `+record-search`，是否处理了 `has_more`，且投影包含业务 key 和解释字段。
 - 如果涉及关系查询，是否按 `record_id` 或业务 key 精确回查，交付输出是否来自关联表真实字段。
 - 交付输出能追溯到表、字段、筛选条件、排序/聚合条件和连接键。

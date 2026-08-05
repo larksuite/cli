@@ -122,7 +122,7 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 }
 ```
 
-读取、筛选、转文本等场景使用 `full_address` 字符串；只有公式能访问坐标。如果用户只给地址文本，先获取或确认坐标后再写入；不要把仅有地址文本直接当作 location CellValue。
+读取时非空 location 为 `{lng, lat, full_address}`，三个成员均非空，`full_address` 是字符串；筛选、转文本等场景使用 `full_address`，只有公式能访问坐标。如果用户只给地址文本，先获取或确认坐标后再写入；不要把仅有地址文本直接当作 location CellValue。
 
 ### 2.9 attachment（不作为普通 CellValue 写入）
 

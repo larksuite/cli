@@ -27,8 +27,11 @@ var BaseRecordList = common.Shortcut{
 		recordFilterFlag(),
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "maximum records to return; range 1-200, or 1-2000 for ndjson"},
 		recordReadFormatFlag(),
+		recordOutputFlag(),
+		recordMinimalStdoutFlag(),
+		recordOverwriteFlag(),
 	},
 	Tips: []string{
 		"Example: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
@@ -40,14 +43,19 @@ var BaseRecordList = common.Shortcut{
 		`Option intersection filter: --filter-json '{"logic":"and","conditions":[["Tags","intersects",["P0","Blocked"]]]}'`,
 		`Sort priority follows --sort-json array order: --sort-json '[{"field":"Updated","desc":true},{"field":"Title","desc":false}]'`,
 		formatRecordQueryPriorityTip(),
-		"Default output is markdown; pass --format json to get the raw JSON envelope.",
+		"Default output is markdown; pass --format json for the raw matrix, or --format ndjson/--output <file>.ndjson for a typed local artifact.",
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
+	Normalize: normalizeRecordReadOutput,
+	JQFormats: []string{"ndjson"},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err
 		}
-		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200); err != nil {
+		if err := validateRecordExportFlags(runtime); err != nil {
+			return err
+		}
+		if err := validateRecordReadLimit(runtime, 100); err != nil {
 			return err
 		}
 		if _, err := recordProjectionFields(runtime); err != nil {
@@ -74,7 +82,7 @@ func recordReadFormatFlag() common.Flag {
 	return common.Flag{
 		Name:    "format",
 		Default: "markdown",
-		Enum:    []string{"markdown", "json"},
-		Desc:    "output format: markdown (default) | json",
+		Enum:    []string{"markdown", "json", "ndjson"},
+		Desc:    "output format: markdown (default) | json | ndjson artifact",
 	}
 }

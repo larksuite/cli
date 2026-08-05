@@ -115,6 +115,59 @@ func TestBaseRecordListDryRunTreatsLeadingAtFieldNameLiterally(t *testing.T) {
 	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?field_id=%40Owner&limit=3&offset=0", gjson.Get(result.Stdout, "data.api.0.url").String(), result.Stdout)
 }
 
+func TestBaseRecordListDryRunInfersNDJSONAndCapsFirstPage(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-list",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--offset", "50",
+		"--limit", "2000",
+		"--output", "exports/records.ndjson",
+	)
+
+	out := result.Stdout
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?limit=200&offset=50", gjson.Get(out, "data.api.0.url").String(), out)
+	require.Equal(t, "ndjson", gjson.Get(out, "data.export_format").String(), out)
+	require.Equal(t, int64(2000), gjson.Get(out, "data.requested_limit").Int(), out)
+	require.Equal(t, "exports/records.ndjson", gjson.Get(out, "data.output").String(), out)
+}
+
+func TestBaseRecordSearchDryRunNDJSONCapsFirstPageAndKeepsQuery(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-search",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--keyword", "Alice",
+		"--search-field", "Name",
+		"--offset", "25",
+		"--limit", "500",
+		"--output", "search.ndjson",
+	)
+
+	out := result.Stdout
+	require.Equal(t, int64(25), gjson.Get(out, "data.api.0.body.offset").Int(), out)
+	require.Equal(t, int64(200), gjson.Get(out, "data.api.0.body.limit").Int(), out)
+	require.Equal(t, "Alice", gjson.Get(out, "data.api.0.body.keyword").String(), out)
+	require.Equal(t, "ndjson", gjson.Get(out, "data.export_format").String(), out)
+	require.Equal(t, int64(500), gjson.Get(out, "data.requested_limit").Int(), out)
+}
+
+func TestBaseRecordGetDryRunInfersNDJSON(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-get",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--record-id", "rec_x",
+		"--output", "record.ndjson",
+	)
+
+	out := result.Stdout
+	require.Equal(t, "POST", gjson.Get(out, "data.api.0.method").String(), out)
+	require.Equal(t, "rec_x", gjson.Get(out, "data.api.0.body.record_id_list.0").String(), out)
+	require.Equal(t, "ndjson", gjson.Get(out, "data.export_format").String(), out)
+	require.Equal(t, "record.ndjson", gjson.Get(out, "data.output").String(), out)
+}
+
 func TestBaseRecordSearchDryRunJSONConflictReportsActualParams(t *testing.T) {
 	result := runBaseDryRun(t, 2,
 		"base", "+record-search",
