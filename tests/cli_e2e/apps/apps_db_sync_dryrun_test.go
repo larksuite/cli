@@ -21,6 +21,8 @@ const (
 	dbSyncConfig         = `{"mode":"streaming","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_sync","action":"use_existing"}},"field_maps":[{"source_field":"Base 表记录 ID","target_field":"base_record_id","enabled":true}]}`
 	dbSyncPreviewConfig  = `{"mode":"batch","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_preview","action":"create"}}}`
 	dbSyncSingularConfig = `{"mode":"streaming","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_sync","action":"use_existing"}},"field_map":[{"source_field":"Base 表记录 ID","target_field":"base_record_id","enabled":true}]}`
+
+	dbSyncUpdateNoBaseURLConfig = `{"mode":"streaming","source":{"type":"base","table":{"name":"数据表"}},"target":{"type":"postgresql","table":{"name":"orders_sync","action":"use_existing"}},"field_maps":[{"source_field":"Base 表记录 ID","target_field":"base_record_id","enabled":true}]}`
 )
 
 func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
@@ -137,6 +139,24 @@ func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
 		assert.Equal(t, "DELETE", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_del", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
 		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").String())
+	})
+
+	t.Run("update task without base_url passes through source verbatim", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{
+			"apps", "+db-sync-update",
+			"--app-id", dbSyncDryRunAppID,
+			"--task-id", dbSyncDryRunTaskID,
+			"--config", dbSyncUpdateNoBaseURLConfig,
+			"--dry-run",
+		})
+		assert.Equal(t, "PUT", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_update", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.body.task_id").String())
+		// source 被透传
+		assert.Equal(t, "base", clie2e.DryRunGet(result.Stdout, "api.0.body.config.source.type").String())
+		assert.Equal(t, "数据表", clie2e.DryRunGet(result.Stdout, "api.0.body.config.source.table.name").String())
+		// 关键契约：CLI 未静默注入 base_url 默认值
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.config.source.base_url").Exists(), "CLI must not inject a base_url when omitted on update")
 	})
 }
 
