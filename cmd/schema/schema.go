@@ -42,7 +42,7 @@ type SchemaOptions struct {
 	Args []string
 }
 
-// NewCmdSchema creates the schema command. If runF is non-nil it is called instead of schemaRun (test hook).
+// NewCmdSchema creates the schema command. If runF is non-nil it is called instead of the default runner (test hook).
 func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Command {
 	return NewCmdSchemaWithVisibility(f, nil, runF)
 }
@@ -108,25 +108,17 @@ func completeSchemaPath(
 	}
 }
 
-func schemaRun(opts *SchemaOptions) error {
-	return schemaRunWithVisibility(opts, nil)
-}
-
 func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
 	out := opts.Factory.IOStreams.Out
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
 	return runSchemaWithVisibility(out, apicatalog.ParsePath(opts.Args), mode, visibility)
 }
 
-// runSchema resolves the path through the schema catalog and renders the
+// runSchemaWithVisibility resolves the path through the schema catalog and renders the
 // matching envelope(s). The catalog owns navigation (Resolve + MethodRefs) and
 // schema owns rendering (Envelope/Envelopes); this adapter only chooses the
 // output shape — a single resolved method renders as one envelope object,
 // anything broader as an array — and maps resolve failures to hints.
-func runSchema(out io.Writer, parts []string, mode core.StrictMode) error {
-	return runSchemaWithVisibility(out, parts, mode, nil)
-}
-
 func runSchemaWithVisibility(
 	out io.Writer,
 	parts []string,
