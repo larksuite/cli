@@ -30,7 +30,7 @@
 | 排序 / TopN 原始记录 | `+record-list --filter-json ... --sort-json ... --limit N` | 最高/最新用 `desc:true`，最低/最早用 `desc:false`；数组顺序表达优先级；最多 10 个排序条件 |
 | 聚合 / 分组 / 分组排序 | `+data-query` | 使用 filters/dimensions/measures/sort/limit |
 | 聚合后输出逐条记录 | `+data-query` 得到业务 key 或候选字段组合 -> `+record-list --filter-json` / `+record-get` 回查 | `+data-query` 维度行按字段组合去重且不返回 `record_id` |
-| 多表 / 多跳关联 | 以候选数最小的事实表为驱动表，沿业务 key 或 link `record_id` 逐跳回查 | 读出 link 单元格里的关联 `record_id` 后，到被关联表批量 `+record-get` 展示字段 |
+| 多表 / 多跳关联 | 以候选数最小的事实表为驱动表，沿业务 key 或 Link 逐跳回查 | 读出 Link 单元格的 `id`（目标表 `record_id`）后，到被关联表批量 `+record-get` 展示字段 |
 | 查询后写入 / 视图化 | 先用本 SOP 得到可复核的目标记录 id 集合 | 再进入记录写入或视图配置；高价值可复用查询可沉淀为持久视图 |
 
 ## 2. Execution Patterns
@@ -178,15 +178,15 @@ lark-cli base +view-set-sort \
 
 ### 2.5 关系查询与回查
 
-- link 单元格通常是关联表 `record_id` 数组，不是用户可读内容，只是连接键。
+- Link 单元格中的元素形如 `{"id":"rec_xxx"}`；`id` 是目标表的 `record_id`，不是用户可读内容。
 - 先用 `+field-list` 确认 link 字段的 `link_table`、业务唯一键和展示字段。
-- 从驱动表拿到候选记录后，用关联 `record_id` 到关联表 `+record-get` 批量读取记录内容。
+- 从驱动表拿到候选记录后，用 Link 元素的 `id` 到目标表 `+record-get` 批量读取记录内容。
 - 多跳关系逐跳建立 `record_id/key -> 用户可读字段` 映射；最终用户可读的信息。
 
 禁止：
 
-- 把 link `record_id` 当最终输出。
-- 用 `+record-search` 搜 link `record_id`。
+- 把 Link 元素的 `id` 当最终输出。
+- 用 `+record-search` 搜 Link 元素的 `id`。
 - 基于 ID、自增编号、link 值做语义猜测；禁止依赖字段先验、样本记忆补全交付输出。
 
 ## 3. Range & Pagination Contract
