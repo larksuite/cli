@@ -131,11 +131,11 @@ func TestAppsMemberDryRun(t *testing.T) {
 			},
 		},
 		{
-			name: "settings-set", args: []string{"apps", "+member-settings-set", "--app-id", "app_x", "--external-access", "disabled", "--copy-download-by", "full-access", "--dry-run"},
+			name: "settings-set", args: []string{"apps", "+member-settings-set", "--app-id", "app_x", "--external-access", "disabled", "--comment-by", "viewer", "--dry-run"},
 			method: "PATCH", url: "/open-apis/spark/v1/apps/app_x/member-settings",
 			assert: func(t *testing.T, out string) {
 				require.Equal(t, "disabled", clie2e.DryRunGet(out, "api.0.body.external_access").String())
-				require.Equal(t, "full-access", clie2e.DryRunGet(out, "api.0.body.copy_download_by").String())
+				require.Equal(t, "viewer", clie2e.DryRunGet(out, "api.0.body.comment_by").String())
 				require.False(t, clie2e.DryRunGet(out, "api.0.body.link_share").Exists())
 			},
 		},
@@ -219,4 +219,14 @@ func TestAppsMemberExternalInviteFailureIsActionable(t *testing.T) {
 	require.Equal(t, "feature_not_available", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
 	require.Equal(t, "--external-invite", gjson.Get(result.Stderr, "error.param").String(), "stderr:\n%s", result.Stderr)
 	require.Contains(t, gjson.Get(result.Stderr, "error.hint").String(), "--external-access", "stderr:\n%s", result.Stderr)
+}
+
+func TestAppsMemberCopyDownloadFailureIsActionable(t *testing.T) {
+	result := runAppsMemberCLI(t, "apps", "+member-settings-set", "--app-id", "app_x", "--copy-download-by", "viewer", "--dry-run")
+	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout)
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
+	require.Equal(t, "feature_not_available", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
+	require.Equal(t, "--copy-download-by", gjson.Get(result.Stderr, "error.param").String(), "stderr:\n%s", result.Stderr)
+	require.Contains(t, gjson.Get(result.Stderr, "error.hint").String(), "+member-settings-get", "stderr:\n%s", result.Stderr)
 }

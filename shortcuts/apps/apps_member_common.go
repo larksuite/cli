@@ -45,6 +45,11 @@ func normalizeMemberAPIError(err error) error {
 		problem.Message = "External collaborator invitations cannot be configured independently."
 		problem.Hint = "Set --external-access instead; external_invite follows that setting."
 		problem.Retryable = false
+	case 40007, 3340007:
+		problem.Subtype = errs.SubtypeFeatureNotAvailable
+		problem.Message = "Copy, print, and download permissions are read-only for Miaoda apps."
+		problem.Hint = "Inspect copy_download_by with +member-settings-get; do not retry this setting through lark-cli."
+		problem.Retryable = false
 	case 40400, 3340400:
 		problem.Subtype = errs.SubtypeNotFound
 	}
@@ -112,6 +117,8 @@ type memberSettingSpec struct {
 	description   string
 	allowed       []string
 	readOnly      bool
+	readOnlyError string
+	readOnlyHint  string
 	setRequest    func(*memberSettingsUpdateRequest, *string)
 	responseValue func(memberSettingsResponse) *string
 }
@@ -126,6 +133,8 @@ var memberSettingSpecs = []memberSettingSpec{
 	{
 		flag: "external-invite", field: "external_invite", description: "external collaborator invitations",
 		allowed: []string{"enabled", "disabled"}, readOnly: true,
+		readOnlyError: "--external-invite is read-only because it follows --external-access",
+		readOnlyHint:  "set --external-access instead; external_invite follows that setting",
 		setRequest:    func(req *memberSettingsUpdateRequest, value *string) { req.ExternalInvite = value },
 		responseValue: func(settings memberSettingsResponse) *string { return settings.ExternalInvite },
 	},
@@ -149,7 +158,9 @@ var memberSettingSpecs = []memberSettingSpec{
 	},
 	{
 		flag: "copy-download-by", field: "copy_download_by", description: "who can copy, print, or download",
-		allowed:       []string{"viewer", "editor", "full-access"},
+		allowed: []string{"viewer", "editor", "full-access"}, readOnly: true,
+		readOnlyError: "--copy-download-by is read-only because CCM does not support updating it for Miaoda apps",
+		readOnlyHint:  "inspect copy_download_by with +member-settings-get; do not retry this setting through lark-cli",
 		setRequest:    func(req *memberSettingsUpdateRequest, value *string) { req.CopyDownloadBy = value },
 		responseValue: func(settings memberSettingsResponse) *string { return settings.CopyDownloadBy },
 	},
@@ -371,9 +382,9 @@ func buildMemberSettingsUpdateRequest(rctx *common.RuntimeContext) (memberSettin
 		if spec.readOnly {
 			return memberSettingsUpdateRequest{}, errs.NewValidationError(
 				errs.SubtypeFeatureNotAvailable,
-				"--%s is read-only because it follows --external-access", spec.flag,
+				"%s", spec.readOnlyError,
 			).WithParam("--" + spec.flag).
-				WithHint("set --external-access instead; external_invite follows that setting")
+				WithHint(spec.readOnlyHint)
 		}
 		value := strings.TrimSpace(rctx.Str(spec.flag))
 		if !memberStringAllowed(value, spec.allowed) {
@@ -418,7 +429,6 @@ func validateMemberSettingsSet(rctx *common.RuntimeContext) error {
 			appsInvalidParam("--link-share", "not provided"),
 			appsInvalidParam("--manage-collaborators-by", "not provided"),
 			appsInvalidParam("--comment-by", "not provided"),
-			appsInvalidParam("--copy-download-by", "not provided"),
 		).
 		WithHint("pass at least one setting flag; omitted settings remain unchanged")
 }

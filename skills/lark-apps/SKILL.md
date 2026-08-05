@@ -73,6 +73,7 @@ lark-cli auth login --domain apps
 - 成员响应不包含应用详情。需要名称、类型或发布状态时单独调用 `+get --app-id <app_id>`，不要期待成员分页重复返回 `app`。
 - 收到 subtype `feature_not_available`（OpenAPI code `3340005`；直连服务可能为 `40005`）时，立即停止 CLI 自动化，不切换 `app_type`，也不尝试用 access scope、应用角色或其它成员命令绕过。向用户说明该应用暂不支持通过 lark-cli 设置协作者，并引导其在妙搭后台的权限设置中操作。
 - `external_invite` 只在 `+member-settings-get` 的响应中读取，不能独立设置；它会跟随 `external_access`。需要改变外部协作能力时只设置 `--external-access`。旧调用传入 `--external-invite` 会返回 subtype `feature_not_available`（OpenAPI code `3340006`；直连服务可能为 `40006`），此时按 hint 改用 `--external-access`，不要重试原请求。
+- `copy_download_by` 也只在 `+member-settings-get` 的响应中读取。CCM 当前明确不支持为妙搭对象写入复制、打印和下载权限；传入 `--copy-download-by` 会返回 subtype `feature_not_available`（OpenAPI code `3340007`；直连服务可能为 `40007`）。保留读取结果，不要重试写入，也不要改用其它权限字段模拟。
 
 ```bash
 # 读取协作者和当前协作策略
@@ -83,7 +84,7 @@ lark-cli apps +member-settings-get --app-id <app_id> --as user
 lark-cli apps +member-add --app-id <app_id> --member-type openid --member-id ou_xxx --perm view --dry-run --as user
 lark-cli apps +member-update --app-id <app_id> --member-type openchat --member-id oc_xxx --perm edit --dry-run --as user
 lark-cli apps +member-remove --app-id <app_id> --member-type opendepartmentid --member-id od-xxx --dry-run --as user
-lark-cli apps +member-settings-set --app-id <app_id> --external-access disabled --copy-download-by full-access --dry-run --as user
+lark-cli apps +member-settings-set --app-id <app_id> --external-access disabled --comment-by viewer --dry-run --as user
 ```
 
 ## 选择开发路径（进意图路由前先判这步）

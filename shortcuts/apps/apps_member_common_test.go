@@ -130,6 +130,16 @@ func TestAppsMemberAPIErrorNormalization(t *testing.T) {
 			wantMessage: "External collaborator invitations cannot be configured independently.",
 			wantHint:    "Set --external-access instead; external_invite follows that setting.",
 		},
+		{
+			name: "copy setting unavailable for Miaoda", code: 40007, wantSubtype: errs.SubtypeFeatureNotAvailable,
+			wantMessage: "Copy, print, and download permissions are read-only for Miaoda apps.",
+			wantHint:    "Inspect copy_download_by with +member-settings-get; do not retry this setting through lark-cli.",
+		},
+		{
+			name: "OpenAPI copy setting unavailable for Miaoda", code: 3340007, wantSubtype: errs.SubtypeFeatureNotAvailable,
+			wantMessage: "Copy, print, and download permissions are read-only for Miaoda apps.",
+			wantHint:    "Inspect copy_download_by with +member-settings-get; do not retry this setting through lark-cli.",
+		},
 		{name: "internal app not found", code: 40400, wantSubtype: errs.SubtypeNotFound},
 		{name: "OpenAPI app not found", code: 3340400, wantSubtype: errs.SubtypeNotFound},
 	}
@@ -171,7 +181,6 @@ func TestAppsMemberFlagsExposeExactEnums(t *testing.T) {
 		{AppsMemberSettingsSet, "link-share", []string{"closed", "tenant-readable", "tenant-editable", "anyone-readable"}},
 		{AppsMemberSettingsSet, "manage-collaborators-by", []string{"anyone", "same-tenant", "full-access"}},
 		{AppsMemberSettingsSet, "comment-by", []string{"viewer", "editor"}},
-		{AppsMemberSettingsSet, "copy-download-by", []string{"viewer", "editor", "full-access"}},
 	}
 
 	for _, tc := range tests {
@@ -190,25 +199,33 @@ func TestAppsMemberFlagsExposeExactEnums(t *testing.T) {
 	}
 }
 
-func TestAppsMemberExternalInviteIsHiddenAndReadOnly(t *testing.T) {
-	var inviteFlag *common.Flag
-	for index := range AppsMemberSettingsSet.Flags {
-		if AppsMemberSettingsSet.Flags[index].Name == "external-invite" {
-			inviteFlag = &AppsMemberSettingsSet.Flags[index]
-			break
-		}
+func TestAppsMemberReadOnlySettingsAreHiddenAndActionable(t *testing.T) {
+	tests := []struct{ flag, value string }{
+		{flag: "external-invite", value: "disabled"},
+		{flag: "copy-download-by", value: "viewer"},
 	}
-	if inviteFlag == nil || !inviteFlag.Hidden {
-		t.Fatalf("--external-invite flag = %#v, want hidden compatibility flag", inviteFlag)
-	}
-	rctx := newAppsMemberRuntime(t, AppsMemberSettingsSet, map[string]string{
-		"app-id": "app_test", "external-invite": "disabled",
-	})
-	err := AppsMemberSettingsSet.Validate(context.Background(), rctx)
-	problem, ok := errs.ProblemOf(err)
-	var validationErr *errs.ValidationError
-	if !ok || problem.Subtype != errs.SubtypeFeatureNotAvailable || !errors.As(err, &validationErr) || validationErr.Param != "--external-invite" || problem.Hint == "" {
-		t.Fatalf("external invite problem = %+v, ok=%t", problem, ok)
+	for _, tc := range tests {
+		t.Run(tc.flag, func(t *testing.T) {
+			var found *common.Flag
+			for index := range AppsMemberSettingsSet.Flags {
+				if AppsMemberSettingsSet.Flags[index].Name == tc.flag {
+					found = &AppsMemberSettingsSet.Flags[index]
+					break
+				}
+			}
+			if found == nil || !found.Hidden {
+				t.Fatalf("--%s flag = %#v, want hidden AI guardrail", tc.flag, found)
+			}
+			rctx := newAppsMemberRuntime(t, AppsMemberSettingsSet, map[string]string{
+				"app-id": "app_test", tc.flag: tc.value,
+			})
+			err := AppsMemberSettingsSet.Validate(context.Background(), rctx)
+			problem, ok := errs.ProblemOf(err)
+			var validationErr *errs.ValidationError
+			if !ok || problem.Subtype != errs.SubtypeFeatureNotAvailable || !errors.As(err, &validationErr) || validationErr.Param != "--"+tc.flag || problem.Hint == "" {
+				t.Fatalf("--%s problem = %+v, ok=%t", tc.flag, problem, ok)
+			}
+		})
 	}
 }
 
@@ -381,7 +398,6 @@ func TestAppsMemberSettingsSetRequiresAtLeastOneExplicitField(t *testing.T) {
 		{name: "link-share", value: "tenant-readable"},
 		{name: "manage-collaborators-by", value: "same-tenant"},
 		{name: "comment-by", value: "viewer"},
-		{name: "copy-download-by", value: "full-access"},
 	} {
 		t.Run(field.name, func(t *testing.T) {
 			rctx := newAppsMemberRuntime(t, AppsMemberSettingsSet, map[string]string{"app-id": "app_test", field.name: field.value})

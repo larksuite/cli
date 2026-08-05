@@ -323,15 +323,16 @@ func TestAppsMemberSettingsExecuteUsesTypedResponses(t *testing.T) {
 		},
 		{
 			name: "set", shortcut: AppsMemberSettingsSet,
-			values: map[string]string{"app-id": "app_x", "copy-download-by": "full-access"}, method: "PATCH",
+			values: map[string]string{"app-id": "app_x", "comment-by": "viewer"}, method: "PATCH",
 			data: map[string]interface{}{
-				"settings": map[string]interface{}{"copy_download_by": "full-access"},
-				"changes":  []interface{}{map[string]interface{}{"field": "copy_download_by", "before": "viewer", "after": "full-access"}},
+				"settings": map[string]interface{}{"comment_by": "viewer", "copy_download_by": "editor"},
+				"changes":  []interface{}{map[string]interface{}{"field": "comment_by", "before": "editor", "after": "viewer"}},
 				"changed":  true,
 			},
 			want: map[string]string{
-				"data.settings.copy_download_by": "full-access",
-				"data.changes.0.field":           "copy_download_by",
+				"data.settings.comment_by":       "viewer",
+				"data.settings.copy_download_by": "editor",
+				"data.changes.0.field":           "comment_by",
 			},
 			wantBool: map[string]bool{"data.changed": true},
 		},
