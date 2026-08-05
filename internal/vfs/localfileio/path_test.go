@@ -242,6 +242,37 @@ func TestSafeOutputPath_DeepNonExistentPathStaysInCWD(t *testing.T) {
 	}
 }
 
+func TestSafeEnvFilePath_AllowsAbsoluteFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "credential")
+	if err := os.WriteFile(path, []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := SafeEnvFilePath(path, "TEST_CREDENTIAL_FILE")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want, _ := filepath.EvalSymlinks(path)
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestSafeEnvFilePath_RejectsRelativePath(t *testing.T) {
+	_, err := SafeEnvFilePath("credential", "TEST_CREDENTIAL_FILE")
+	if err == nil {
+		t.Fatal("expected error for relative path, got nil")
+	}
+}
+
+func TestSafeEnvFilePath_RejectsDirectory(t *testing.T) {
+	_, err := SafeEnvFilePath(t.TempDir(), "TEST_CREDENTIAL_FILE")
+	if err == nil {
+		t.Fatal("expected error for directory, got nil")
+	}
+}
+
 func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 	// GIVEN: a real temp file (absolute path under os.TempDir())
 	f, err := os.CreateTemp("", "upload-test-*.bin")

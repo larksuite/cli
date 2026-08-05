@@ -30,6 +30,12 @@ func SafeEnvDirPath(path, envName string) (string, error) {
 	return localfileio.SafeEnvDirPath(path, envName)
 }
 
+// SafeEnvFilePath validates an environment-provided application file path.
+// Delegates to localfileio.SafeEnvFilePath.
+func SafeEnvFilePath(path, envName string) (string, error) {
+	return localfileio.SafeEnvFilePath(path, envName)
+}
+
 // SafeLocalFlagPath validates a flag value as a local file path.
 // Delegates to localfileio.SafeLocalFlagPath.
 func SafeLocalFlagPath(flagName, value string) (string, error) {

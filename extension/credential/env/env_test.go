@@ -6,6 +6,8 @@ package env
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -68,6 +70,31 @@ func TestResolveAccount_AppIDAndUserTokenWithoutSecret(t *testing.T) {
 	}
 }
 
+func TestResolveAccount_AppIDFileAndUserTokenFileWithoutSecret(t *testing.T) {
+	t.Setenv(envvars.CliAppIDFile, writeEnvFile(t, "app_id", "cli_file\n"))
+	t.Setenv(envvars.CliUserAccessTokenFile, writeEnvFile(t, "uat", "uat_file\n"))
+
+	acct, err := (&Provider{}).ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acct == nil {
+		t.Fatal("expected account, got nil")
+	}
+	if acct.AppID != "cli_file" {
+		t.Fatalf("AppID = %q, want cli_file", acct.AppID)
+	}
+	if acct.AppSecret != credential.NoAppSecret {
+		t.Fatalf("AppSecret = %q, want credential.NoAppSecret", acct.AppSecret)
+	}
+	if !acct.SupportedIdentities.UserOnly() {
+		t.Fatalf("expected user-only identity support, got %d", acct.SupportedIdentities)
+	}
+	if acct.DefaultAs != "user" {
+		t.Fatalf("DefaultAs = %q, want user", acct.DefaultAs)
+	}
+}
+
 func TestResolveAccount_OnlySecretSet(t *testing.T) {
 	t.Setenv(envvars.CliAppSecret, "secret_test")
 	_, err := (&Provider{}).ResolveAccount(context.Background())
@@ -87,6 +114,33 @@ func TestResolveAccount_OnlyTokenSetWithoutAppID(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), envvars.CliAppID) {
 		t.Fatalf("error = %v, want mention of %s", err, envvars.CliAppID)
+	}
+}
+
+func TestResolveAccount_OnlyTokenFileSetWithoutAppID(t *testing.T) {
+	t.Setenv(envvars.CliUserAccessTokenFile, writeEnvFile(t, "uat", "uat_test"))
+
+	_, err := (&Provider{}).ResolveAccount(context.Background())
+	var blockErr *credential.BlockError
+	if !errors.As(err, &blockErr) {
+		t.Fatalf("expected BlockError, got %v", err)
+	}
+	if !strings.Contains(err.Error(), envvars.CliAppIDFile) {
+		t.Fatalf("error = %v, want mention of %s", err, envvars.CliAppIDFile)
+	}
+}
+
+func TestResolveAccount_EnvAndFileConflictRejected(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "cli_env")
+	t.Setenv(envvars.CliAppIDFile, writeEnvFile(t, "app_id", "cli_file"))
+
+	_, err := (&Provider{}).ResolveAccount(context.Background())
+	var blockErr *credential.BlockError
+	if !errors.As(err, &blockErr) {
+		t.Fatalf("expected BlockError, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "set only one of "+envvars.CliAppID+" or "+envvars.CliAppIDFile) {
+		t.Fatalf("error = %v, want conflict message", err)
 	}
 }
 
@@ -124,6 +178,17 @@ func TestResolveToken_UATSet(t *testing.T) {
 	}
 }
 
+func TestResolveToken_UATFileSet(t *testing.T) {
+	t.Setenv(envvars.CliUserAccessTokenFile, writeEnvFile(t, "uat", "u-file\n"))
+	tok, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Value != "u-file" || tok.Source != "file:"+envvars.CliUserAccessTokenFile {
+		t.Errorf("unexpected: %+v", tok)
+	}
+}
+
 func TestResolveToken_TATSet(t *testing.T) {
 	t.Setenv(envvars.CliTenantAccessToken, "t-env")
 	tok, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT})
@@ -135,10 +200,57 @@ func TestResolveToken_TATSet(t *testing.T) {
 	}
 }
 
+func TestResolveToken_TATFileSet(t *testing.T) {
+	t.Setenv(envvars.CliTenantAccessTokenFile, writeEnvFile(t, "tat", "t-file\n"))
+	tok, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Value != "t-file" || tok.Source != "file:"+envvars.CliTenantAccessTokenFile {
+		t.Errorf("unexpected: %+v", tok)
+	}
+}
+
 func TestResolveToken_NotSet(t *testing.T) {
 	tok, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT})
 	if err != nil || tok != nil {
 		t.Errorf("expected nil, nil; got %+v, %v", tok, err)
+	}
+}
+
+func TestResolveToken_EmptyFileRejected(t *testing.T) {
+	t.Setenv(envvars.CliUserAccessTokenFile, writeEnvFile(t, "uat", "\n"))
+	_, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT})
+	var blockErr *credential.BlockError
+	if !errors.As(err, &blockErr) {
+		t.Fatalf("expected BlockError, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "file is empty") {
+		t.Fatalf("error = %v, want empty file message", err)
+	}
+}
+
+func TestResolveToken_MultilineFileRejected(t *testing.T) {
+	t.Setenv(envvars.CliUserAccessTokenFile, writeEnvFile(t, "uat", "one\ntwo"))
+	_, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT})
+	var blockErr *credential.BlockError
+	if !errors.As(err, &blockErr) {
+		t.Fatalf("expected BlockError, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "exactly one credential value") {
+		t.Fatalf("error = %v, want multiline file message", err)
+	}
+}
+
+func TestResolveToken_RelativeFileRejected(t *testing.T) {
+	t.Setenv(envvars.CliUserAccessTokenFile, "relative-token")
+	_, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT})
+	var blockErr *credential.BlockError
+	if !errors.As(err, &blockErr) {
+		t.Fatalf("expected BlockError, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "absolute path") {
+		t.Fatalf("error = %v, want absolute path message", err)
 	}
 }
 
@@ -279,4 +391,13 @@ func TestResolveAccount_InvalidDefaultAsRejected(t *testing.T) {
 	if !strings.Contains(err.Error(), envvars.CliDefaultAs) {
 		t.Fatalf("error = %v, want mention of %s", err, envvars.CliDefaultAs)
 	}
+}
+
+func writeEnvFile(t *testing.T, name, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

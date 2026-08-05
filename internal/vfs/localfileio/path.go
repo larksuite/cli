@@ -81,6 +81,33 @@ func SafeEnvDirPath(path, envName string) (string, error) {
 	return resolved, nil
 }
 
+// SafeEnvFilePath validates an environment-provided file path.
+// It requires an absolute path, rejects control characters, resolves symlinks,
+// and requires the final target to be a regular file.
+func SafeEnvFilePath(path, envName string) (string, error) {
+	if err := charcheck.RejectControlChars(path, envName); err != nil {
+		return "", err
+	}
+
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("%s must be an absolute path, got %q", envName, path)
+	}
+
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve symlinks: %w", err)
+	}
+	info, err := vfs.Stat(resolved)
+	if err != nil {
+		return "", fmt.Errorf("cannot stat %q: %w", envName, err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("%s must point to a file, got directory", envName)
+	}
+	return resolved, nil
+}
+
 // safePath is the shared implementation for SafeOutputPath and SafeInputPath.
 func safePath(raw, flagName string) (string, error) {
 	if err := charcheck.RejectControlChars(raw, flagName); err != nil {
