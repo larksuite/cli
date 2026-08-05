@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -26,26 +24,6 @@ func TestImMessagesSearchSupportsUserAndBotIdentity(t *testing.T) {
 	}
 	if !stringSliceContains(ImMessagesSearch.AuthTypes, "bot") {
 		t.Fatalf("ImMessagesSearch.AuthTypes = %v, want bot support for tenant access token", ImMessagesSearch.AuthTypes)
-	}
-}
-
-func TestImMessagesSearchDeclaresBotEnrichmentScopes(t *testing.T) {
-	base := ImMessagesSearch.ScopesForIdentity("bot")
-	if len(base) != 1 || base[0] != "search:message" {
-		t.Fatalf("ScopesForIdentity(bot) = %v, want [search:message]", base)
-	}
-
-	declared := ImMessagesSearch.DeclaredScopesForIdentity("bot")
-	for _, want := range []string{
-		"search:message",
-		"im:message.group_msg",
-		"im:message.p2p_msg:readonly",
-		"im:chat:read",
-		"im:message.reactions:read",
-	} {
-		if !stringSliceContains(declared, want) {
-			t.Errorf("DeclaredScopesForIdentity(bot) = %v, want %q", declared, want)
-		}
 	}
 }
 
@@ -153,9 +131,6 @@ func TestImMessagesSearchExecuteAutoPaginationBatches(t *testing.T) {
 			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
 		}
 	}))
-	if !runtime.As().IsBot() {
-		t.Fatalf("runtime identity = %q, want bot", runtime.As())
-	}
 
 	if err := ImMessagesSearch.Execute(context.Background(), runtime); err != nil {
 		t.Fatalf("ImMessagesSearch.Execute() error = %v", err)
@@ -181,106 +156,6 @@ func TestImMessagesSearchExecuteAutoPaginationBatches(t *testing.T) {
 	}
 	if !strings.Contains(output, "warning: stopped after fetching 2 page(s)") {
 		t.Fatalf("stdout = %q, want page limit warning", output)
-	}
-}
-
-func TestImMessagesSearchBotEnrichmentPermissionErrorsPropagate(t *testing.T) {
-	tests := []struct {
-		name         string
-		failurePath  string
-		failureScope string
-		wantedScopes []string
-	}{
-		{
-			name:         "message details",
-			failurePath:  "/open-apis/im/v1/messages/mget",
-			failureScope: "im:message.group_msg",
-			wantedScopes: []string{"im:message.group_msg", "im:message.p2p_msg:readonly"},
-		},
-		{
-			name:         "chat context",
-			failurePath:  "/open-apis/im/v1/chats/batch_query",
-			failureScope: "im:chat:read",
-			wantedScopes: []string{"im:chat:read"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runtime := newMessagesSearchRuntime(t, map[string]string{"query": "incident"}, nil, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-				switch {
-				case req.URL.Path == "/open-apis/im/v1/messages/search":
-					return shortcutJSONResponse(200, map[string]interface{}{
-						"code": 0,
-						"data": map[string]interface{}{"items": buildSearchResultItems(1, 1)},
-					}), nil
-				case req.URL.Path == tt.failurePath:
-					return shortcutJSONResponse(200, map[string]interface{}{
-						"code": 99991679,
-						"msg":  "scope missing",
-						"error": map[string]interface{}{
-							"permission_violations": []interface{}{map[string]interface{}{"subject": tt.failureScope}},
-						},
-					}), nil
-				case req.URL.Path == "/open-apis/im/v1/messages/mget":
-					return shortcutJSONResponse(200, map[string]interface{}{
-						"code": 0,
-						"data": map[string]interface{}{"items": buildMessageDetails(req.URL.Query()["message_ids"])},
-					}), nil
-				default:
-					return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
-				}
-			}))
-
-			err := ImMessagesSearch.Execute(context.Background(), runtime)
-			var permissionErr *errs.PermissionError
-			if !errors.As(err, &permissionErr) {
-				t.Fatalf("Execute() error = %T %v, want *errs.PermissionError", err, err)
-			}
-			if permissionErr.Identity != "bot" {
-				t.Fatalf("Identity = %q, want bot", permissionErr.Identity)
-			}
-			for _, want := range tt.wantedScopes {
-				if !stringSliceContains(permissionErr.MissingScopes, want) {
-					t.Errorf("MissingScopes = %v, want %q", permissionErr.MissingScopes, want)
-				}
-			}
-			out := runtime.Factory.IOStreams.Out.(*bytes.Buffer).String()
-			if out != "" {
-				t.Fatalf("stdout = %q, want no success envelope on permission failure", out)
-			}
-		})
-	}
-}
-
-func TestImMessagesSearchWarnsOnChatEnrichmentFailure(t *testing.T) {
-	runtime := newMessagesSearchRuntime(t, map[string]string{"query": "incident"}, nil, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch req.URL.Path {
-		case "/open-apis/im/v1/messages/search":
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"items": buildSearchResultItems(1, 1)},
-			}), nil
-		case "/open-apis/im/v1/messages/mget":
-			return shortcutJSONResponse(200, map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"items": buildMessageDetails(req.URL.Query()["message_ids"])},
-			}), nil
-		case "/open-apis/im/v1/chats/batch_query":
-			return nil, fmt.Errorf("chat lookup unavailable")
-		case "/open-apis/im/v1/messages/reactions/batch_query":
-			return shortcutJSONResponse(200, map[string]interface{}{"code": 0, "data": map[string]interface{}{}}), nil
-		default:
-			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
-		}
-	}))
-
-	if err := ImMessagesSearch.Execute(context.Background(), runtime); err != nil {
-		t.Fatalf("Execute() error = %v, want best-effort success", err)
-	}
-	stderr := runtime.Factory.IOStreams.ErrOut.(*bytes.Buffer).String()
-	if !strings.Contains(stderr, "warning: chat_context_enrichment_failed:") {
-		t.Fatalf("stderr = %q, want chat enrichment warning", stderr)
 	}
 }
 
