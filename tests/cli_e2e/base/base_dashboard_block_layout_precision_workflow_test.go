@@ -113,5 +113,6 @@ func TestBaseDashboardBlockLayoutPrecisionWorkflow(t *testing.T) {
 	require.NotEmpty(t, numberFormats, "number_format missing from block read-back:\n%s", getBlock.Stdout)
 	updated := numberFormats[0]
 	require.Equal(t, "dollar_rounded", updated.Get("formatName").String(), "stdout:\n%s", getBlock.Stdout)
+	require.True(t, updated.Get("precision").Exists(), "precision missing from block read-back:\n%s", getBlock.Stdout)
 	require.Equal(t, int64(0), updated.Get("precision").Int(), "stdout:\n%s", getBlock.Stdout)
 }

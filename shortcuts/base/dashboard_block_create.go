@@ -60,15 +60,16 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if runtime.Bool("no-validate") {
-			return nil
+		effective := cfg
+		if !runtime.Bool("no-validate") {
+			effective = normalizeDataConfig(cfg)
+			if errs := validateBlockDataConfig(runtime.Str("type"), effective); len(errs) > 0 {
+				return formatDataConfigErrors(errs)
+			}
 		}
-		norm := normalizeDataConfig(cfg)
-		if errs := validateBlockDataConfig(runtime.Str("type"), norm); len(errs) > 0 {
-			return formatDataConfigErrors(errs)
-		}
-		// 用规范化后的 JSON 覆写 flag，确保后续透传一致
-		b, _ := json.Marshal(norm)
+		// Fold @file input into inline JSON after the first successful parse.
+		// DryRun/Execute must not reopen a file that may have changed.
+		b, _ := json.Marshal(effective)
 		_ = runtime.Cmd.Flags().Set("data-config", string(b))
 		return nil
 	},

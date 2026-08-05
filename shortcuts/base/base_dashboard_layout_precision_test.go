@@ -5,11 +5,15 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"io"
+	"io/fs"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -176,6 +180,52 @@ func containsSubstr(errs []string, want string) bool {
 	}
 	return false
 }
+
+type changingJSONProvider struct {
+	fio *changingJSONFileIO
+}
+
+func (p changingJSONProvider) Name() string { return "changing-json" }
+
+func (p changingJSONProvider) ResolveFileIO(context.Context) fileio.FileIO {
+	return p.fio
+}
+
+type changingJSONFileIO struct {
+	contents []string
+	opens    int
+}
+
+func (f *changingJSONFileIO) Open(string) (fileio.File, error) {
+	index := f.opens
+	f.opens++
+	if index >= len(f.contents) {
+		index = len(f.contents) - 1
+	}
+	return changingJSONFile{Reader: bytes.NewReader([]byte(f.contents[index]))}, nil
+}
+
+func (*changingJSONFileIO) Stat(string) (fileio.FileInfo, error) {
+	return changingJSONFileInfo{}, nil
+}
+
+func (*changingJSONFileIO) ResolvePath(path string) (string, error) { return path, nil }
+
+func (*changingJSONFileIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveResult, error) {
+	return nil, nil
+}
+
+type changingJSONFile struct {
+	*bytes.Reader
+}
+
+func (changingJSONFile) Close() error { return nil }
+
+type changingJSONFileInfo struct{}
+
+func (changingJSONFileInfo) Size() int64       { return 0 }
+func (changingJSONFileInfo) IsDir() bool       { return false }
+func (changingJSONFileInfo) Mode() fs.FileMode { return 0 }
 
 // ── position + number_format body passthrough (Execute) ──────────────
 
@@ -571,6 +621,63 @@ func TestBaseDashboardBlockNoValidateBypass(t *testing.T) {
 			t.Fatalf("illegal number_format must pass through verbatim: body=%s", string(stub.CapturedBody))
 		}
 	})
+}
+
+// TestBaseDashboardBlockNoValidateSnapshotsDataConfigFile proves @file input is
+// parsed once and then carried inline to Execute. A changing FileIO provider
+// makes a second Open observable and would send a different request body.
+func TestBaseDashboardBlockNoValidateSnapshotsDataConfigFile(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		method   string
+		url      string
+		args     []string
+	}{
+		{
+			name:     "create",
+			shortcut: BaseDashboardBlockCreate,
+			method:   "POST",
+			url:      "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks",
+			args: []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+				"--name", "N", "--type", "statistics", "--data-config", "@payload.json", "--no-validate"},
+		},
+		{
+			name:     "update",
+			shortcut: BaseDashboardBlockUpdate,
+			method:   "PATCH",
+			url:      "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a",
+			args: []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+				"--block-id", "blk_a", "--data-config", "@payload.json", "--no-validate"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			fio := &changingJSONFileIO{contents: []string{
+				`{"marker":"validated"}`,
+				`{"marker":"changed-before-execute"}`,
+			}}
+			factory.FileIOProvider = changingJSONProvider{fio: fio}
+			stub := &httpmock.Stub{
+				Method: tc.method,
+				URL:    tc.url,
+				Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+			}
+			reg.Register(stub)
+
+			if err := runShortcut(t, tc.shortcut, tc.args, factory, stdout); err != nil {
+				t.Fatalf("run shortcut: %v", err)
+			}
+			if fio.opens != 1 {
+				t.Fatalf("data-config file opened %d times, want 1", fio.opens)
+			}
+			body := decodeCapturedBody(t, stub.CapturedBody)
+			dataConfig, _ := body["data_config"].(map[string]interface{})
+			if dataConfig["marker"] != "validated" {
+				t.Fatalf("request used a different file snapshot: body=%s", stub.CapturedBody)
+			}
+		})
+	}
 }
 
 // TestBaseDashboardBlockExecuteUpdate_PositionNumberFormatName proves a single
