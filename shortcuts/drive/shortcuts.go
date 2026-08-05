@@ -32,6 +32,7 @@ func Shortcuts() []common.Shortcut {
 		DriveVersionRevert,
 		DriveVersionDelete,
 		DriveMove,
+		DriveUpdateTitle,
 		DriveDelete,
 		DriveStatus,
 		DrivePush,

@@ -39,6 +39,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 		"+version-revert",
 		"+version-delete",
 		"+move",
+		"+update-title",
 		"+delete",
 		"+status",
 		"+push",

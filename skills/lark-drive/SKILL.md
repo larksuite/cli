@@ -52,7 +52,7 @@ metadata:
 - `drive +inspect` / `drive +upload` 遇到 `not found`、`permission denied`、`missing scope` 时，默认停止重试；只有 `rate limit` 或临时网络错误才适合有限重试。
 
 ## 修改标题
-- 使用 `drive files patch` 命令，通过new_title字段可以修改标题，支持 docx、sheet、bitable、file、wiki、folder 类型
+- 用户要**重命名 / 改标题 / 改文件名**，使用 `lark-cli drive +update-title`，用法见 [`references/lark-drive-update-title.md`](references/lark-drive-update-title.md)。
 
 ## 核心概念
 
@@ -146,6 +146,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+version-revert`](references/lark-drive-version-revert.md) | 回滚到指定历史版本。 |
 | [`+version-delete`](references/lark-drive-version-delete.md) | 删除指定历史版本。 |
 | [`+move`](references/lark-drive-move.md) | 移动 Drive 文件或文件夹；Wiki 层级移动走 `lark-wiki`。 |
+| [`+update-title`](references/lark-drive-update-title.md) | 重命名文件、文件夹、在线文档或知识库。 |
 | [`+delete`](references/lark-drive-delete.md) | 删除 Drive 文件或文件夹，文件夹删除会轮询异步任务。 |
 | [`+task_result`](references/lark-drive-task-result.md) | 查询 import/export/move/delete 等异步任务结果。 |
 | [`+inspect`](references/lark-drive-inspect.md) | 检视 URL 的类型、标题和 canonical token；wiki URL 会自动解包到底层文档。 |
@@ -173,7 +174,7 @@ lark-cli drive <resource> <method> [flags] # 调用 API
   - `copy` — 复制文件；在线文档创建副本的首选能力，完整参数见上方“快速决策”，不要用 `drive +export` / `drive +import` 绕行复制
   - `create_folder` — 新建文件夹
   - `list` — 获取文件夹下的清单；使用前阅读 [`references/lark-drive-files-list.md`](references/lark-drive-files-list.md)
-  - `patch` — 修改文件标题
+  - `patch` — 修改文件标题；优先使用 [`drive +update-title`](references/lark-drive-update-title.md) shortcut
 
 ### permission.members
 
