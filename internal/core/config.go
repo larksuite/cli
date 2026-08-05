@@ -93,6 +93,25 @@ func (m *MultiAppConfig) CurrentAppConfig(profileOverride string) *AppConfig {
 	return nil
 }
 
+// EffectiveProfile resolves which profile this invocation actually uses and
+// which channel decided that. It is the single definition of "effective" for
+// status output (config show, profile list, profile use warnings); the
+// persisted CurrentApp answers a different question — which profile applies
+// when no selector is present — and must not be conflated with it.
+//
+// A nil app with a non-empty selector means the selector is dangling; the
+// caller decides between an error (RequireAppConfig) and a warning (listing
+// commands, which are the user's recovery surface).
+func (m *MultiAppConfig) EffectiveProfile(profile string, source ProfileSource) (*AppConfig, ProfileSource) {
+	app := m.CurrentAppConfig(profile)
+	if profile != "" {
+		return app, source
+	}
+	// An empty selector value (including an explicit --profile=) defers to
+	// the persisted state, so the persisted channel is what decided.
+	return app, ProfileFromConfig
+}
+
 // FindApp looks up an app by name, then by appId. Returns nil if not found.
 // Name match takes priority: if profile A has Name "X" and profile B has AppId "X",
 // FindApp("X") returns profile A.

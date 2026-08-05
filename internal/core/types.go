@@ -6,6 +6,8 @@ package core
 import (
 	"net/url"
 	"strings"
+
+	"github.com/larksuite/cli/internal/envvars"
 )
 
 // LarkBrand represents the Lark platform brand.
@@ -38,6 +40,33 @@ const (
 	ProfileFromFlag                             // --profile on this invocation (including --profile=)
 	ProfileFromEnvironment                      // LARKSUITE_CLI_PROFILE
 )
+
+// String is the wire form used in machine-readable status output
+// (e.g. profile list's effectiveSource).
+func (s ProfileSource) String() string {
+	switch s {
+	case ProfileFromFlag:
+		return "flag"
+	case ProfileFromEnvironment:
+		return "environment"
+	default:
+		return "config"
+	}
+}
+
+// SelectorLabel returns the user-facing name of the explicit input channel —
+// the flag token or the environment variable name. Empty for the persisted
+// default, which has no selector to point at.
+func (s ProfileSource) SelectorLabel() string {
+	switch s {
+	case ProfileFromFlag:
+		return "--profile"
+	case ProfileFromEnvironment:
+		return envvars.CliProfile
+	default:
+		return ""
+	}
+}
 
 // OAuthTokenV3Path is the unified OAuth 2.0 Token Endpoint path on the accounts
 // domain. It serves every grant type (client_credentials for TAT,

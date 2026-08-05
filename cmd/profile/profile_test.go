@@ -683,3 +683,178 @@ func TestProfileListRun_InvalidConfigReturnsValidationError(t *testing.T) {
 		t.Fatal("cause = nil, want wrapped load error")
 	}
 }
+
+func TestProfileListRun_MarksEffectiveOverride(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("s1"), Brand: core.BrandFeishu},
+			{Name: "target", AppId: "app-target", AppSecret: core.PlainSecret("s2"), Brand: core.BrandFeishu},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	f.Invocation = cmdutil.InvocationContext{Profile: "target", ProfileSource: core.ProfileFromEnvironment}
+	if err := profileListRun(f); err != nil {
+		t.Fatalf("profileListRun() error = %v", err)
+	}
+
+	var got []profileListItem
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v; output=%s", err, stdout.String())
+	}
+	// Active stays on the persisted default; Effective moves with the
+	// override. Both dimensions must be visible at once — their disagreement
+	// IS the information.
+	if !got[0].Active || got[0].Effective {
+		t.Fatalf("got[0] = %#v, want persisted default active but not effective", got[0])
+	}
+	if got[1].Active || !got[1].Effective || got[1].EffectiveSource != "environment" {
+		t.Fatalf("got[1] = %#v, want effective via environment", got[1])
+	}
+	if stderr.String() != "" {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
+func TestProfileListRun_EffectiveFollowsPersistedDefault(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("s1"), Brand: core.BrandFeishu},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := profileListRun(f); err != nil {
+		t.Fatalf("profileListRun() error = %v", err)
+	}
+	var got []profileListItem
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if !got[0].Active || !got[0].Effective || got[0].EffectiveSource != "config" {
+		t.Fatalf("got[0] = %#v, want active and effective via config", got[0])
+	}
+}
+
+func TestProfileListRun_DanglingSelectorWarnsOnStderr(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("s1"), Brand: core.BrandFeishu},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	f.Invocation = cmdutil.InvocationContext{Profile: "ghost", ProfileSource: core.ProfileFromEnvironment}
+	// The list is the recovery surface for a dangling selector: it must keep
+	// rendering (exit 0) and explain on stderr why nothing is effective.
+	if err := profileListRun(f); err != nil {
+		t.Fatalf("profileListRun() error = %v", err)
+	}
+	var got []profileListItem
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	for _, item := range got {
+		if item.Effective {
+			t.Fatalf("no entry may be effective under a dangling selector: %#v", item)
+		}
+	}
+	for _, want := range []string{"Warning:", "LARKSUITE_CLI_PROFILE", `"ghost"`, "does not match any profile"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr missing %q:\n%s", want, stderr.String())
+		}
+	}
+}
+
+func TestProfileUseRun_WarnsWhenEnvironmentShadows(t *testing.T) {
+	baseConfig := func(t *testing.T) {
+		t.Helper()
+		setupProfileConfigDir(t)
+		multi := &core.MultiAppConfig{
+			CurrentApp: "default",
+			Apps: []core.AppConfig{
+				{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("s1"), Brand: core.BrandFeishu},
+				{Name: "session", AppId: "app-session", AppSecret: core.PlainSecret("s2"), Brand: core.BrandFeishu},
+				{Name: "other", AppId: "app-other", AppSecret: core.PlainSecret("s3"), Brand: core.BrandFeishu},
+			},
+		}
+		if err := core.SaveMultiAppConfig(multi); err != nil {
+			t.Fatalf("SaveMultiAppConfig() error = %v", err)
+		}
+	}
+	envInvocation := cmdutil.InvocationContext{Profile: "session", ProfileSource: core.ProfileFromEnvironment}
+
+	t.Run("already-on short circuit still warns", func(t *testing.T) {
+		baseConfig(t)
+		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+		f.Invocation = envInvocation
+		if err := profileUseRun(f, "default"); err != nil {
+			t.Fatalf("profileUseRun() error = %v", err)
+		}
+		// "Already on default" alone would be a lie for this shell: the
+		// session override decides every subsequent command.
+		if !strings.Contains(stderr.String(), `Already on profile "default"`) {
+			t.Fatalf("missing short-circuit line:\n%s", stderr.String())
+		}
+		for _, want := range []string{"Warning:", "LARKSUITE_CLI_PROFILE", `"session"`, "until you unset it"} {
+			if !strings.Contains(stderr.String(), want) {
+				t.Errorf("stderr missing %q:\n%s", want, stderr.String())
+			}
+		}
+	})
+
+	t.Run("successful switch still warns", func(t *testing.T) {
+		baseConfig(t)
+		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+		f.Invocation = envInvocation
+		if err := profileUseRun(f, "other"); err != nil {
+			t.Fatalf("profileUseRun() error = %v", err)
+		}
+		saved, err := core.LoadMultiAppConfig()
+		if err != nil || saved.CurrentApp != "other" {
+			t.Fatalf("persisted currentApp = %q (%v), want other", saved.CurrentApp, err)
+		}
+		if !strings.Contains(stderr.String(), "Switched to profile") ||
+			!strings.Contains(stderr.String(), "until you unset it") {
+			t.Errorf("switch must persist AND disclose the shadow:\n%s", stderr.String())
+		}
+	})
+
+	t.Run("no warning when environment matches the target", func(t *testing.T) {
+		baseConfig(t)
+		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+		f.Invocation = envInvocation
+		if err := profileUseRun(f, "session"); err != nil {
+			t.Fatalf("profileUseRun() error = %v", err)
+		}
+		if strings.Contains(stderr.String(), "Warning:") {
+			t.Errorf("no shadow warning expected when env matches target:\n%s", stderr.String())
+		}
+	})
+
+	t.Run("no warning without environment override", func(t *testing.T) {
+		baseConfig(t)
+		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+		if err := profileUseRun(f, "other"); err != nil {
+			t.Fatalf("profileUseRun() error = %v", err)
+		}
+		if strings.Contains(stderr.String(), "Warning:") {
+			t.Errorf("no warning expected without env override:\n%s", stderr.String())
+		}
+	})
+}

@@ -20,11 +20,12 @@ func TestExecuteProfileSelectorPrecedence(t *testing.T) {
 		envProfile  string
 		args        []string
 		wantProfile string
+		wantSource  string
 	}{
-		{"environment selects profile", "session", []string{"config", "show"}, "session"},
-		{"flag overrides environment", "session", []string{"config", "show", "--profile", "default"}, "default"},
-		{"empty flag uses persisted default", "session", []string{"config", "show", "--profile="}, "default"},
-		{"empty environment uses persisted default", "", []string{"config", "show"}, "default"},
+		{"environment selects profile", "session", []string{"config", "show"}, "session", "environment"},
+		{"flag overrides environment", "session", []string{"config", "show", "--profile", "default"}, "default", "flag"},
+		{"empty flag uses persisted default", "session", []string{"config", "show", "--profile="}, "default", "config"},
+		{"empty environment uses persisted default", "", []string{"config", "show"}, "default", "config"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tmpHome(t)
@@ -54,14 +55,18 @@ func TestExecuteProfileSelectorPrecedence(t *testing.T) {
 				t.Fatalf("ExecuteWithOptions() exit=%d stderr=%s", code, stderr)
 			}
 			var result struct {
-				Profile string `json:"profile"`
-				AppID   string `json:"appId"`
+				Profile       string `json:"profile"`
+				ProfileSource string `json:"profileSource"`
+				AppID         string `json:"appId"`
 			}
 			if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 				t.Fatalf("decode stdout: %v\nstdout: %s", err, stdout)
 			}
 			if result.Profile != tc.wantProfile || result.AppID != "app-"+tc.wantProfile {
 				t.Fatalf("config show = %+v, want profile %q", result, tc.wantProfile)
+			}
+			if result.ProfileSource != tc.wantSource {
+				t.Fatalf("profileSource = %q, want %q", result.ProfileSource, tc.wantSource)
 			}
 			saved, err := core.LoadMultiAppConfig()
 			if err != nil {

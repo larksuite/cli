@@ -158,10 +158,12 @@ func (m *MultiAppConfig) ProfileNotFoundError(profile string, source ProfileSour
 			hint,
 		)
 	}
-	selector := "--profile"
+	selector := source.SelectorLabel()
+	if selector == "" {
+		selector = "--profile" // defensive: an explicit value implies a selector channel
+	}
 	action := fmt.Sprintf("pass one of: %s", available)
 	if source == ProfileFromEnvironment {
-		selector = envvars.CliProfile
 		action = fmt.Sprintf("unset %s or set it to one of: %s", envvars.CliProfile, available)
 	}
 	hint := recovery.Join("",
