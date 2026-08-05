@@ -169,6 +169,7 @@ func TestAuthCheckRun_ConcealedLoginOmitsSuggestion(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	cfg := &core.CliConfig{
 		AppID:      "test-app",

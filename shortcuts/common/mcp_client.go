@@ -132,22 +132,46 @@ func classifyMCPHTTPError(statusCode int, status string, body []byte, identity s
 			}
 		}
 		if errObj, ok := payload["error"]; ok {
+			if statusCode == http.StatusUnauthorized && !hasKnownMCPErrorCode(errObj) {
+				return newMCPHTTPAuthenticationError(statusCode, status, body, identity)
+			}
 			return classifyMCPPayloadError(errObj, identity)
 		}
 		if hasBusinessError {
+			if statusCode == http.StatusUnauthorized {
+				return newMCPHTTPAuthenticationError(statusCode, status, body, identity)
+			}
 			return errs.NewAPIError(errs.SubtypeUnknown, "MCP HTTP %d %s: [%d] %s", statusCode, status, code, msg).WithCode(code)
 		}
 	}
 
-	bodyText := TruncateStr(strings.TrimSpace(string(body)), mcpErrorBodyLimit)
 	if statusCode == http.StatusUnauthorized {
-		err := errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
-		return withMCPAuthenticationRecovery(err, identity)
+		return newMCPHTTPAuthenticationError(statusCode, status, body, identity)
 	}
+	bodyText := TruncateStr(strings.TrimSpace(string(body)), mcpErrorBodyLimit)
 	if statusCode >= 500 {
 		return errs.NewNetworkError(errs.SubtypeNetworkServer, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
 	}
 	return errs.NewAPIError(errs.SubtypeUnknown, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
+}
+
+func hasKnownMCPErrorCode(errObj interface{}) bool {
+	errMap, ok := errObj.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	code, ok := util.ToFloat64(errMap["code"])
+	if !ok {
+		return false
+	}
+	_, known := errclass.LookupCodeMeta(int(code))
+	return known
+}
+
+func newMCPHTTPAuthenticationError(statusCode int, status string, body []byte, identity string) error {
+	bodyText := TruncateStr(strings.TrimSpace(string(body)), mcpErrorBodyLimit)
+	err := errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
+	return withMCPAuthenticationRecovery(err, identity)
 }
 
 func classifyMCPPayloadError(errObj interface{}, identity string) error {

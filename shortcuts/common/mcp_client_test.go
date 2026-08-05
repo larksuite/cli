@@ -58,6 +58,85 @@ func TestDoMCPCallUnauthorizedHTTPError(t *testing.T) {
 	}
 }
 
+func TestDoMCPCallUnauthorizedHTTPUnknownStructuredErrorUsesAuthRecovery(t *testing.T) {
+	payloads := []struct {
+		name     string
+		body     string
+		wantCode string
+	}{
+		{name: "top-level", body: `{"code":987654321,"msg":"unknown MCP auth failure"}`, wantCode: "987654321"},
+		{name: "JSON-RPC", body: `{"error":{"code":-32001,"message":"unknown MCP auth failure"}}`, wantCode: "-32001"},
+	}
+	identities := []struct {
+		name      string
+		isBot     bool
+		wantHint  string
+		forbidden string
+	}{
+		{name: "user", wantHint: "auth login --recommend --no-wait --json", forbidden: "bot identity"},
+		{name: "bot", isBot: true, wantHint: "valid app credentials for the bot identity", forbidden: "auth login"},
+	}
+
+	for _, payload := range payloads {
+		for _, identity := range identities {
+			t.Run(payload.name+"/"+identity.name, func(t *testing.T) {
+				client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: http.StatusUnauthorized,
+						Status:     "401 Unauthorized",
+						Body:       io.NopCloser(strings.NewReader(payload.body)),
+					}, nil
+				})}
+
+				_, err := DoMCPCall(context.Background(), client, "fetch-doc", nil, "token", "https://example.com/mcp", identity.isBot)
+				if got := output.ExitCodeOf(err); got != output.ExitAuth {
+					t.Fatalf("exit code = %d, want auth exit code %d", got, output.ExitAuth)
+				}
+				var authErr *errs.AuthenticationError
+				if !errors.As(err, &authErr) {
+					t.Fatalf("error = %T %v, want *errs.AuthenticationError", err, err)
+				}
+				if authErr.Subtype != errs.SubtypeTokenInvalid || authErr.Code != http.StatusUnauthorized {
+					t.Errorf("authentication error = %+v, want token_invalid code 401", authErr)
+				}
+				if !strings.Contains(authErr.Message, payload.wantCode) {
+					t.Errorf("message = %q, want upstream code %s preserved as diagnostic context", authErr.Message, payload.wantCode)
+				}
+				if !strings.Contains(authErr.Hint, identity.wantHint) || strings.Contains(authErr.Hint, identity.forbidden) {
+					t.Errorf("hint = %q, want %q and no %q", authErr.Hint, identity.wantHint, identity.forbidden)
+				}
+			})
+		}
+	}
+}
+
+func TestDoMCPCallUnauthorizedHTTPKnownNestedCodeKeepsBusinessClassification(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Status:     "401 Unauthorized",
+			Body: io.NopCloser(strings.NewReader(
+				`{"error":{"code":99991679,"message":"missing scope","permission_violations":[{"subject":"drive:file:read"}]}}`,
+			)),
+		}, nil
+	})}
+
+	_, err := DoMCPCall(context.Background(), client, "fetch-doc", nil, "token", "https://example.com/mcp", true)
+	var permission *errs.PermissionError
+	if !errors.As(err, &permission) {
+		t.Fatalf("error = %T %v, want *errs.PermissionError", err, err)
+	}
+	if permission.Subtype != errs.SubtypeMissingScope || permission.Code != 99991679 || permission.Identity != "bot" {
+		t.Fatalf("permission error = %+v, want bot missing_scope code 99991679", permission)
+	}
+	if len(permission.MissingScopes) != 1 || permission.MissingScopes[0] != "drive:file:read" {
+		t.Errorf("missing_scopes = %v, want [drive:file:read]", permission.MissingScopes)
+	}
+	if strings.Contains(permission.Hint, "auth login") || !strings.Contains(permission.Hint, "app developer") {
+		t.Errorf("bot hint = %q, want developer recovery without user OAuth", permission.Hint)
+	}
+}
+
 func TestDoMCPCallJSONRPCErrorUsesLarkClassification(t *testing.T) {
 	t.Parallel()
 
