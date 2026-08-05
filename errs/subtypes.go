@@ -58,16 +58,17 @@ const (
 
 // CategoryAPI subtypes
 const (
-	SubtypeRateLimit         Subtype = "rate_limit"         // request rate limit exceeded
-	SubtypeConflict          Subtype = "conflict"           // resource state conflict (e.g. concurrent modification)
-	SubtypeCrossTenant       Subtype = "cross_tenant"       // operation crosses tenant boundary (not supported)
-	SubtypeCrossBrand        Subtype = "cross_brand"        // operation crosses brand boundary (feishu vs lark, not supported)
-	SubtypeInvalidParameters Subtype = "invalid_parameters" // API-side parameter validation rejected the request
-	SubtypeOwnershipMismatch Subtype = "ownership_mismatch" // caller is not the resource owner
-	SubtypeNotFound          Subtype = "not_found"          // referenced resource does not exist (HTTP 404 alignment)
-	SubtypeServerError       Subtype = "server_error"       // upstream server-side transient error (HTTP 5xx alignment, retryable)
-	SubtypeQuotaExceeded     Subtype = "quota_exceeded"     // resource quota / collection size limit reached (assignees, followers, members, etc.)
-	SubtypeAlreadyExists     Subtype = "already_exists"     // idempotency violation: resource already exists in target state
+	SubtypeRateLimit           Subtype = "rate_limit"            // request rate limit exceeded
+	SubtypeConflict            Subtype = "conflict"              // resource state conflict (e.g. concurrent modification)
+	SubtypeCrossTenant         Subtype = "cross_tenant"          // operation crosses tenant boundary (not supported)
+	SubtypeCrossBrand          Subtype = "cross_brand"           // operation crosses brand boundary (feishu vs lark, not supported)
+	SubtypeInvalidParameters   Subtype = "invalid_parameters"    // API-side parameter validation rejected the request
+	SubtypeOwnershipMismatch   Subtype = "ownership_mismatch"    // caller is not the resource owner
+	SubtypeNotFound            Subtype = "not_found"             // referenced resource does not exist (HTTP 404 alignment)
+	SubtypeServerError         Subtype = "server_error"          // upstream server-side transient error (HTTP 5xx alignment, retryable)
+	SubtypeQuotaExceeded       Subtype = "quota_exceeded"        // resource quota / collection size limit reached (assignees, followers, members, etc.)
+	SubtypeAlreadyExists       Subtype = "already_exists"        // idempotency violation: resource already exists in target state
+	SubtypeFeatureNotAvailable Subtype = "feature_not_available" // the resource exists, but this integration cannot manage the requested feature
 )
 
 // CategoryPolicy subtypes (security-policy envelope shape)

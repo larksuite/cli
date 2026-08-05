@@ -1,7 +1,7 @@
 ---
 name: lark-apps
 version: 1.0.0
-description: "妙搭（Spark/Miaoda）应用开发与托管：应用创建、本地全栈开发、云端生成迭代、创意设计（UI mockup / 可交互原型 / 线框图 / 落地页 / 仪表盘 / 幻灯片 deck / 视觉探索）、AI相关能力和飞书平台能力或者其他外部能力集成、日志/Trace/监控指标/PV/UV 查询、环境变量管理、应用角色与成员管理、自动化触发器（定时/记录变更/Webhook/飞书审批）。当用户要开发/新建一个系统·工具·平台·应用，或要本地开发 / 云端开发 / 修改 / 部署 / 发布 / 上线 / 拿可分享链接，或用 HTML 做页面·网站·部署到妙搭，或要设计 / design / mockup / prototype / wireframe / 做 PPT / deck / 视觉探索，或提到妙搭/Spark/Miaoda（应用运行时域名形如 *.aiforce.cloud）、应用数据库、应用文件存储、开放 API Key、可见范围、应用角色/角色成员、线上日志、接口请求量、错误量、延迟、访问量、环境变量、给妙搭应用配自动化任务/定时触发/审批通过后自动触发时使用。不负责普通云盘文件上传（lark-drive）、飞书文档编辑（lark-doc）、原生幻灯片创建（lark-slides）。"
+description: "妙搭（Spark/Miaoda）应用开发与托管：应用创建、本地全栈开发、云端生成迭代、创意设计（UI mockup / 可交互原型 / 线框图 / 落地页 / 仪表盘 / 幻灯片 deck / 视觉探索）、AI相关能力和飞书平台能力或者其他外部能力集成、日志/Trace/监控指标/PV/UV 查询、环境变量管理、应用协作者与协作权限设置、应用角色与成员管理、自动化触发器（定时/记录变更/Webhook/飞书审批）。当用户要开发/新建一个系统·工具·平台·应用，或要本地开发 / 云端开发 / 修改 / 部署 / 发布 / 上线 / 拿可分享链接，或用 HTML 做页面·网站·部署到妙搭，或要设计 / design / mockup / prototype / wireframe / 做 PPT / deck / 视觉探索，或提到妙搭/Spark/Miaoda（应用运行时域名形如 *.aiforce.cloud）、应用数据库、应用文件存储、开放 API Key、可见范围、应用协作者/开发权限、应用角色/角色成员、线上日志、接口请求量、错误量、延迟、访问量、环境变量、给妙搭应用配自动化任务/定时触发/审批通过后自动触发时使用。不负责普通云盘文件上传（lark-drive）、飞书文档编辑（lark-doc）、原生幻灯片创建（lark-slides）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -44,6 +44,7 @@ lark-cli auth login --domain apps
 | 调试应用运行时缓存：查看/删除单个业务 key、清空指定环境缓存 | `+cache-get`/`+cache-delete`/`+cache-clear` | [`lark-apps-cache.md`](references/lark-apps-cache.md) |
 | **部署/上线应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史 | 本地开发链路先按 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) 确认本次改动已 git commit + git push，再用 `+release-create` / `+release-get`；查历史用 `+release-list` | [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md), [`lark-apps-release-create.md`](references/lark-apps-release-create.md), [`lark-apps-release-get.md`](references/lark-apps-release-get.md), [`lark-apps-release-list.md`](references/lark-apps-release-list.md) |
 | 设置或查看运行时可见范围 | `+access-scope-set`, `+access-scope-get` | 对应 access-scope reference |
+| 管理应用协作者（列出/添加/改权限/移除）或协作权限设置 | `+member-list`, `+member-add`, `+member-update`, `+member-remove`, `+member-settings-get`, `+member-settings-set` | 本文「应用协作者与协作权限设置」 |
 | 创意模式（html）应用的评论相关操作 | 创意模式应用评论走 lark-drive 文档评论体系，读取 [`../lark-drive/SKILL.md`](../lark-drive/SKILL.md) 了解评论能力 | [`../lark-drive/SKILL.md`](../lark-drive/SKILL.md) |
 | 管理 `app_...` 应用内角色、角色成员，或查询用户匹配角色 | `+role-list/get/create/update/delete`, `+role-member-list/add/remove`, `+role-match-list` | [`lark-apps-role.md`](references/lark-apps-role.md) |
 | 云端 Agent 生成/迭代应用（开发方式已定为云端后） | `+session-create` -> `+chat` -> `+session-get` | [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |
@@ -59,6 +60,30 @@ lark-cli auth login --domain apps
 - **PV/UV/访问量/活跃用户**：先解析 `app_id`，再用 `+analytics-list`，不要误用 `+metric-list`。
 - **设置环境变量**：如果用户只给应用名，仍先 `+list --keyword` 解析 app_id；设置 online 环境且用户已经明确说“确认/直接执行”时，调用 `+env-set --environment online ... --yes`，不要再次要求确认。回复和日志摘要里只提 key / env / app，不回显真实 value；需要传复杂值时优先用 `@file` 或 stdin。
 - **删除环境变量**：`+env-delete` 是破坏性操作。除非用户在同一轮已经明确确认删除这个 app/env/key，否则先向用户确认应用、环境、key 和删除后果；确认后再加 `--yes`。不要因为认证失败/重登完成就自动继续删除，必须保留确认门槛。
+
+## 应用协作者与协作权限设置
+
+这组命令管理妙搭应用的开发协作者和协作策略，不等同于 `+access-scope-*` 的运行时访问范围，也不等同于 `+role-*` 的应用内业务角色。所有命令使用 `app_...` 应用 ID 和 `--as user`。不要读取或判断 `app_type` 来预判支持范围，直接调用对应的协作者命令。
+
+- `+member-list`、`+member-settings-get` 是只读命令，需要 `spark:app:read`。
+- `+member-add`、`+member-update`、`+member-remove`、`+member-settings-set` 是高风险写命令，需要 `spark:app:write`。先用 `--dry-run` 核对目标、URL 和请求体；dry-run 不需要 `--yes`。用户已确认具体应用、成员/设置及影响，或已按下方「高影响动作：确认与预授权」对整条流程明确预授权时，真实执行加 `--yes`；否则在 dry-run 后停下请求确认。批量移除成员仍执行「禁止预授权判定底线」，不能从泛化的“直接做”推导出 `--yes`。
+- 添加、更新、移除成员时必须显式提供匹配的外部 ID 类型，禁止传内部数字 ID、猜测类型或做隐式转换：用户 `--member-type openid --member-id ou_...`；群组 `--member-type openchat --member-id oc_...`；部门 `--member-type opendepartmentid --member-id od-...`。
+- `+member-list --member-type` 的筛选枚举是响应对象类型 `user` / `department` / `chat`，与写命令的 ID 类型枚举不同。可再用 `--role view|edit|full_access` 筛选。
+- `+member-list` 只消费 `.data.items`、`.data.has_more` 和 `.data.page_token`。把 `page_token` 当作 opaque 值原样传给下一次 `--page-token`，直到 `has_more=false`；不要解析、拼接或缓存复用 token。收到 subtype `invalid_parameters`（OpenAPI code `3340004`；直连服务可能为 `40004`）时，丢弃旧 token 并从第一页重新读取。
+- 成员响应不包含应用详情。需要名称、类型或发布状态时单独调用 `+get --app-id <app_id>`，不要期待成员分页重复返回 `app`。
+- 收到 subtype `feature_not_available`（OpenAPI code `3340005`；直连服务可能为 `40005`）时，立即停止 CLI 自动化，不切换 `app_type`，也不尝试用 access scope、应用角色或其它成员命令绕过。向用户说明该应用暂不支持通过 lark-cli 设置协作者，并引导其在妙搭后台的权限设置中操作。
+
+```bash
+# 读取协作者和当前协作策略
+lark-cli apps +member-list --app-id <app_id> --as user
+lark-cli apps +member-settings-get --app-id <app_id> --as user
+
+# 写操作先预览精确的 typed-ID 字段；确认后把 --dry-run 换成 --yes
+lark-cli apps +member-add --app-id <app_id> --member-type openid --member-id ou_xxx --perm view --dry-run --as user
+lark-cli apps +member-update --app-id <app_id> --member-type openchat --member-id oc_xxx --perm edit --dry-run --as user
+lark-cli apps +member-remove --app-id <app_id> --member-type opendepartmentid --member-id od-xxx --dry-run --as user
+lark-cli apps +member-settings-set --app-id <app_id> --external-access disabled --copy-download-by full-access --dry-run --as user
+```
 
 ## 选择开发路径（进意图路由前先判这步）
 
@@ -93,7 +118,7 @@ lark-cli auth login --domain apps
 - 实现领域 SDK 时，以实际包导出的类型和应用内领域 reference 记录的入参、响应路径为准；禁止修改 ambient `.d.ts`、补造宽松类型或强制断言，让猜测的 SDK 结构仅在本地"编译通过"。
 - typecheck/build 成功不等于合同正确。交付前逐项核对每个 SDK 调用的入参、响应取值路径和策略分支；涉及更新、删除等不同动作时，分别验证各自动作所需的完整状态，不能复用更弱的前置判断。
 - 源码任务交付前确认新增页面、Controller、Module 已接入真实 router/bootstrap，并运行项目现有 typecheck/build；只创建未接线文件不算完成。
-- `+access-scope-*` 只管运行时可见范围（谁能打开应用），不是角色权限；应用协作者/开发权限仍需使用妙搭 Web。自动化触发器请用 `+automation-*`（见「意图路由」）。
+- `+access-scope-*` 只管运行时可见范围（谁能打开应用），不是角色权限；应用协作者/开发权限使用 `+member-*` 和 `+member-settings-*`，应用内业务角色使用 `+role-*`。自动化触发器请用 `+automation-*`（见「意图路由」）。
 
 ## app_id 获取
 

@@ -1,11 +1,11 @@
 # Apps CLI E2E Coverage
 
 ## Metrics
-- Denominator: 19 leaf commands in the selected apps E2E coverage set (not all 79 apps shortcuts)
-- Selected command coverage: 100% (19/19)
-- API dry-run coverage: 100% (17/17 API-backed commands)
+- Denominator: 25 leaf commands in the selected apps E2E coverage set (not all 88 apps shortcuts)
+- Selected command coverage: 100% (25/25)
+- API dry-run coverage: 100% (23/23 API-backed commands)
 - Local E2E coverage: 100% (2/2 local-only commands)
-- Live coverage: file and role workflows are fixture-gated and skipped by default CI. File upload covers absolute-path upload, metadata readback, and cleanup; role workflows cover role lifecycle and member mutations with cleanup.
+- Live coverage: file and role workflows are fixture-gated and skipped by default CI. File upload covers absolute-path upload, metadata readback, and cleanup; role workflows cover role lifecycle and member mutations with cleanup. The six Creative collaborator commands have targeted dry-run coverage; live E2E is blocked until API Meta exposes and publishes their six RPCs.
 
 ## Summary
 - `TestAppsCreateDryRun`: happy path with `--app-type html`, all-fields shape, rejection paths (missing name, missing app-type, invalid app-type, legacy uppercase `HTML`). `--app-type` is a strict lowercase enum (`html`/`full_stack`); the CLI does not normalize case — legacy uppercase compatibility is a server concern.
@@ -24,8 +24,11 @@
 - `TestAppsRoleManagementLiveWorkflow`: fixture-gated live role/member workflow against the role provided by `LARK_CLI_E2E_APPS_ROLE_ID`. It refuses to run when the selected member already exists, mutates only that member, and removes only that member during cleanup; it never changes a shared role definition or clears unrelated members.
 - `TestAppsRoleLifecycleLiveWorkflow`: creates a uniquely named transient role, independently reads it back, updates and re-reads it, adds a fixture member, clears all members and proves the role still exists, then deletes it and verifies the target `role_id` is absent. Cleanup is armed before creation and uses only environment-provided test identifiers.
 - `TestAppsRoleMatchListLiveWorkflow`: separately fixture-gated live `+role-match-list` proof against the same isolated fixture role. It also requires the selected user to be absent at baseline and removes only the user it added.
+- `TestAppsMemberDryRun`: request shapes for all six Creative collaborator commands, including typed external ID projection (`openid` -> `user_open_id`, `openchat` -> `chat_id`, `opendepartmentid` -> `department_id`), filters, pagination, and partial settings PATCH semantics.
+- `TestAppsMemberHighRiskWritesRequireYesButDryRunDoesNot`: all four collaborator/settings writes require explicit confirmation for live execution while remaining directly inspectable with `--dry-run`.
+- `TestAppsMemberValidationFailuresAreStructured`: deterministic validation envelopes for mismatched typed IDs, page bounds, invalid settings enums, and empty settings updates.
 
-Blocked: General app create live E2E is intentionally not implemented yet. Apps has no `+delete` endpoint, so a create-and-cleanup workflow would leak tenant state. File upload and selected role live workflows remain fixture-gated; each uses dedicated fixtures and cleans up the resources it mutates.
+Blocked: General app create live E2E is intentionally not implemented yet. Apps has no `+delete` endpoint, so a create-and-cleanup workflow would leak tenant state. File upload and selected role live workflows remain fixture-gated; each uses dedicated fixtures and cleans up the resources it mutates. Creative collaborator live E2E is not runnable until API Meta exposes and publishes the six member/member-settings RPCs; dry-run coverage is the current executable contract proof.
 
 ## Command Table
 
@@ -50,3 +53,9 @@ Blocked: General app create live E2E is intentionally not implemented yet. Apps 
 | ✓ | apps +role-member-add | shortcut | apps_role_management_test.go::TestAppsRoleManagementDryRun_RequestShapes | `POST /member_add`; body `users/departments/chats` open_id arrays | live covered by fixture-gated role workflow for a provided chat member when available, otherwise a user member |
 | ✓ | apps +role-member-remove | shortcut | apps_role_management_test.go::TestAppsRoleManagementDryRun_RequestShapes; apps_role_management_test.go::TestAppsRoleManagementLiveWorkflow; apps_role_management_test.go::TestAppsRoleLifecycleLiveWorkflow | `POST /member_remove`; body `users/departments/chats` open_id arrays or `all=true`; high-risk confirmation | explicit removal and `--all` both have fixture-gated live readback coverage |
 | ✓ | apps +role-match-list | shortcut | apps_role_management_test.go::TestAppsRoleManagementDryRun_RequestShapes; apps_role_management_test.go::TestAppsRoleMatchListLiveWorkflow | `POST /user_role_list`; body `target_user_id`; no `role_id`; response field is `roles` per the API contract | automated live runs only when `LARK_CLI_E2E_APPS_ROLE_MATCH_READY=1`; it reuses the role provided by `LARK_CLI_E2E_APPS_ROLE_ID` instead of creating a transient role |
+| ✓ | apps +member-list | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun | `--app-id`; optional `--role view/edit/full_access`; `--member-type user/department/chat`; page size 1-100 and opaque page token | targeted dry-run covered; live blocked until API Meta exposes/publishes the RPC |
+| ✓ | apps +member-add | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun; ../dryrun/apps_member_dryrun_test.go::TestAppsMemberHighRiskWritesRequireYesButDryRunDoesNot | typed external ID via `--member-type openid/openchat/opendepartmentid` + `--member-id`; `--perm`; optional notification | high-risk write; targeted dry-run covered; live blocked until API Meta exposes/publishes the RPC |
+| ✓ | apps +member-update | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun; ../dryrun/apps_member_dryrun_test.go::TestAppsMemberHighRiskWritesRequireYesButDryRunDoesNot | typed external ID plus required `--perm`; PATCH only the selected collaborator | high-risk write; targeted dry-run covered; live blocked until API Meta exposes/publishes the RPC |
+| ✓ | apps +member-remove | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun; ../dryrun/apps_member_dryrun_test.go::TestAppsMemberHighRiskWritesRequireYesButDryRunDoesNot | typed external ID; `POST /members/remove`; no raw/internal numeric IDs | high-risk write; targeted dry-run covered; live blocked until API Meta exposes/publishes the RPC |
+| ✓ | apps +member-settings-get | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun | `--app-id`; GET without body | targeted dry-run covered; live blocked until API Meta exposes/publishes the RPC |
+| ✓ | apps +member-settings-set | shortcut | ../dryrun/apps_member_dryrun_test.go::TestAppsMemberDryRun; ../dryrun/apps_member_dryrun_test.go::TestAppsMemberHighRiskWritesRequireYesButDryRunDoesNot | partial PATCH of external access/invite, link sharing, collaborator management, comments, and copy/download policy | high-risk write; targeted dry-run covered; live blocked until API Meta exposes/publishes the RPC |
