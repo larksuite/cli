@@ -100,3 +100,43 @@ func appendDriveExportRecoveryHint(err error, hint string) error {
 	}
 	return errs.NewInternalError(errs.SubtypeSDKError, "%s", err.Error()).WithHint(hint).WithCause(err)
 }
+
+// driveExportIsRateLimit follows the same typed-error inspection pattern as
+// driveInspectShouldRetry, but export status polling uses the signal to stop.
+// Continuing to poll after a rate-limit response only amplifies the throttling.
+func driveExportIsRateLimit(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return false
+	}
+	return problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400
+}
+
+// withDriveExportRateLimitRecovery preserves the upstream typed rate-limit
+// error while giving agents a resumable, task-aware recovery path. The export
+// task already exists at this point, so callers must reuse its ticket instead
+// of creating a duplicate task with drive +export.
+func withDriveExportRateLimitRecovery(err error, ticket, fileToken string) error {
+	if !driveExportIsRateLimit(err) {
+		return err
+	}
+
+	hint := fmt.Sprintf(
+		"export task status lookup was rate limited (ticket=%s); stop polling and wait at least 1 minute before retrying with: %s\nif rate limiting continues, use exponential backoff starting at 1 minute instead of retrying immediately; do not run `lark-cli drive +export` again because the export task already exists",
+		ticket,
+		driveExportTaskResultCommand(ticket, fileToken),
+	)
+	return appendDriveExportRecoveryHint(err, hint)
+}
+
+// withDriveExportCreateRateLimitRecovery handles throttling before the export
+// task exists. There is no ticket to resume, so callers must retry the original
+// export command after backing off instead of invoking drive +task_result.
+func withDriveExportCreateRateLimitRecovery(err error) error {
+	if !driveExportIsRateLimit(err) {
+		return err
+	}
+
+	const hint = "export task creation was rate limited before a ticket was issued; stop and wait at least 1 minute, then rerun the same `lark-cli drive +export` command\nif rate limiting continues, use exponential backoff starting at 1 minute instead of retrying immediately; do not run `lark-cli drive +task_result` because no export ticket exists yet"
+	return appendDriveExportRecoveryHint(err, hint)
+}

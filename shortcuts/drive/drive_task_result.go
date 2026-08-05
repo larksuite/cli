@@ -206,7 +206,7 @@ func queryImportTaskAndAutoGrantPermission(runtime *common.RuntimeContext, ticke
 func queryExportTask(runtime *common.RuntimeContext, ticket, fileToken string) (map[string]interface{}, error) {
 	status, err := getDriveExportStatus(runtime, fileToken, ticket)
 	if err != nil {
-		return nil, err
+		return nil, withDriveExportRateLimitRecovery(err, ticket, fileToken)
 	}
 
 	return map[string]interface{}{
