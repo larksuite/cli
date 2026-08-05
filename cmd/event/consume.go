@@ -67,7 +67,7 @@ Use 'event schema <EventKey>' for parameter details.`,
 
 	cmd.Flags().StringArrayVarP(&o.params, "param", "p", nil, "Key=value parameter (repeatable)")
 	cmd.Flags().StringVar(&o.jqExpr, "jq", "", "JQ expression to filter output")
-	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress informational messages on stderr")
+	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress routine and per-event stderr output, including ready/exit markers and drop diagnostics. This can hide event loss; omit --quiet when integrity matters")
 	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (relative paths only; absolute paths and ~ are rejected to prevent path traversal)")
 	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop. Bounded runs ignore stdin EOF.")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "Decide and preview the consume (identity, preconditions, side effects) without performing any of them, then exit")

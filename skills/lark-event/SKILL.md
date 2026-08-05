@@ -32,7 +32,7 @@ metadata:
 | `--max-events N` | Exit after N events. Default 0 = unlimited |
 | `--timeout D` | Exit after duration D (e.g. `30s`, `2m`). Default 0 = no timeout. Whichever of `--max-events` / `--timeout` fires first wins |
 | `--output-dir <dir>` | Write each event as a file (relative paths only; prevents traversal) |
-| `--quiet` | Suppress stderr diagnostics. **AI should not use this** — it silences the ready marker |
+| `--quiet` | Suppress ready/exit markers and per-event stderr diagnostics, including drop warnings. This can hide event loss. **AI should not use this** — it removes readiness and integrity signals |
 | `--as user\|bot\|auto` | Identity for the session (see lark-shared) |
 
 
