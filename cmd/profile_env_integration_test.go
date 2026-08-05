@@ -5,11 +5,13 @@ package cmd
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/output"
 )
 
 func TestExecuteProfileSelectorPrecedence(t *testing.T) {
@@ -67,6 +69,63 @@ func TestExecuteProfileSelectorPrecedence(t *testing.T) {
 			}
 			if saved.CurrentApp != "default" {
 				t.Fatalf("ephemeral selector persisted currentApp = %q", saved.CurrentApp)
+			}
+		})
+	}
+}
+
+func TestExecuteEnvironmentProfileNotFoundNamesTheVariable(t *testing.T) {
+	tmpHome(t)
+	platform.ResetForTesting()
+	t.Cleanup(platform.ResetForTesting)
+	t.Setenv(envvars.CliProfile, "ghost")
+	t.Setenv(envvars.CliAppID, "")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "1")
+	t.Setenv("LARKSUITE_CLI_NO_SKILLS_NOTIFIER", "1")
+
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("secret-default"), Brand: core.BrandFeishu},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	// config default-as previously answered this input error with the generic
+	// "no active profile" + a `config init --new` hint — active misdirection
+	// for an agent: init is a destructive OAuth setup flow while an intact
+	// profile sits in config.json. The envelope must name the environment
+	// variable and steer toward unsetting or fixing it.
+	for _, target := range [][]string{
+		{"config", "default-as"},
+		{"config", "show"},
+		{"auth", "list", "--json"},
+	} {
+		t.Run(target[len(target)-1], func(t *testing.T) {
+			code, stdout, stderr := executeWithCapturedOS(t, nil, target...)
+			if code != output.ExitAuth {
+				t.Fatalf("exit = %d, want %d\nstdout: %s\nstderr: %s", code, output.ExitAuth, stdout, stderr)
+			}
+			for _, want := range []string{
+				`profile \"ghost\" not found`,
+				`"field": "` + envvars.CliProfile + `"`,
+				"unset " + envvars.CliProfile,
+			} {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("stderr missing %q:\n%s", want, stderr)
+				}
+			}
+			if strings.Contains(stderr, "config init") {
+				t.Errorf("stderr must not steer to config init:\n%s", stderr)
+			}
+			// auth list must not disguise the input error as an empty account.
+			if strings.Contains(stdout, "not_logged_in") {
+				t.Errorf("stdout still reports not_logged_in:\n%s", stdout)
 			}
 		})
 	}

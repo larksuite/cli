@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/errs"
@@ -243,16 +242,19 @@ func RequireConfigForProfile(kc keychain.KeychainAccess, profileOverride string)
 	if err != nil || raw == nil || len(raw.Apps) == 0 {
 		return nil, NotConfiguredError()
 	}
-	return ResolveConfigFromMulti(raw, kc, profileOverride)
+	// This legacy wrapper has no channel information for its override; the
+	// flag wording is the safe default (it never misattributes to the env).
+	return ResolveConfigFromMulti(raw, kc, profileOverride, ProfileFromFlag)
 }
 
 // ResolveConfigFromMulti resolves a single-app config from an already-loaded MultiAppConfig.
 // This avoids re-reading the config file when the caller has already loaded it.
-func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, profileOverride string) (*CliConfig, error) {
-	app := raw.CurrentAppConfig(profileOverride)
-	if app == nil {
-		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found", profileOverride).
-			WithHint("available profiles: %s", formatProfileNames(raw.ProfileNames()))
+// source records which channel selected profileOverride so a resolution
+// failure can name the input the user must fix.
+func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, profileOverride string, source ProfileSource) (*CliConfig, error) {
+	app, err := raw.RequireAppConfig(profileOverride, source)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
@@ -305,12 +307,4 @@ func RequireAuthForProfile(kc keychain.KeychainAccess, profileOverride string) (
 		)
 	}
 	return cfg, nil
-}
-
-// formatProfileNames joins profile names for display.
-func formatProfileNames(names []string) string {
-	if len(names) == 0 {
-		return "(none)"
-	}
-	return strings.Join(names, ", ")
 }

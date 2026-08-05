@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -129,6 +130,20 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 		return finishDoctor(f, checks)
 	}
 	checks = append(checks, pass("app_resolved", fmt.Sprintf("app: %s (%s)", cfg.AppID, cfg.Brand)))
+
+	// An external credential provider resolves the account without consulting
+	// profiles at all, so an explicit selector is silently inert. Say so:
+	// nothing else in the session will. ProfileName is only populated by the
+	// built-in config-backed provider, which makes it the provider telltale.
+	if f.Invocation.Profile != "" && cfg.ProfileName == "" {
+		selector := "--profile"
+		if f.Invocation.ProfileSource == core.ProfileFromEnvironment {
+			selector = envvars.CliProfile
+		}
+		checks = append(checks, warn("profile_selector",
+			fmt.Sprintf("%s=%q is ignored: credentials are provided externally", selector, f.Invocation.Profile),
+			fmt.Sprintf("unset %s, or remove the external credential variables to select accounts by profile", selector)))
+	}
 
 	ep := core.ResolveEndpoints(cfg.Brand)
 

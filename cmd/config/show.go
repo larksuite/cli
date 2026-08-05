@@ -13,7 +13,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/recovery"
 	"github.com/spf13/cobra"
 )
 
@@ -54,16 +53,9 @@ func configShowRun(opts *ConfigShowOptions) error {
 	if config == nil || len(config.Apps) == 0 {
 		return core.NotConfiguredError()
 	}
-	app := config.CurrentAppConfig(f.Invocation.Profile)
-	if app == nil {
-		hint := recovery.Join("",
-			recovery.Command(recovery.TargetProfileList, "run: lark-cli profile list")).
-			WithFallback("select or configure an available profile through this distribution")
-		return recovery.Annotate(
-			errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").
-				WithHint("%s", hint.String()),
-			hint,
-		)
+	app, err := config.RequireAppConfig(f.Invocation.Profile, f.Invocation.ProfileSource)
+	if err != nil {
+		return err
 	}
 	users := "(no logged-in users)"
 	if len(app.Users) > 0 {
