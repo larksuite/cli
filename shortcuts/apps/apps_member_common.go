@@ -79,11 +79,9 @@ type memberRemoveRequest struct {
 
 type memberSettingsUpdateRequest struct {
 	ExternalAccess        *string `json:"external_access,omitempty"`
-	ExternalInvite        *string `json:"external_invite,omitempty"`
 	LinkShare             *string `json:"link_share,omitempty"`
 	ManageCollaboratorsBy *string `json:"manage_collaborators_by,omitempty"`
 	CommentBy             *string `json:"comment_by,omitempty"`
-	CopyDownloadBy        *string `json:"copy_download_by,omitempty"`
 }
 
 type memberAPIRecord struct {
@@ -116,9 +114,7 @@ type memberSettingSpec struct {
 	field         string
 	description   string
 	allowed       []string
-	readOnly      bool
-	readOnlyError string
-	readOnlyHint  string
+	writable      bool
 	setRequest    func(*memberSettingsUpdateRequest, *string)
 	responseValue func(memberSettingsResponse) *string
 }
@@ -126,42 +122,36 @@ type memberSettingSpec struct {
 var memberSettingSpecs = []memberSettingSpec{
 	{
 		flag: "external-access", field: "external_access", description: "external sharing",
-		allowed:       []string{"enabled", "disabled"},
+		allowed: []string{"enabled", "disabled"}, writable: true,
 		setRequest:    func(req *memberSettingsUpdateRequest, value *string) { req.ExternalAccess = value },
 		responseValue: func(settings memberSettingsResponse) *string { return settings.ExternalAccess },
 	},
 	{
-		flag: "external-invite", field: "external_invite", description: "external collaborator invitations",
-		allowed: []string{"enabled", "disabled"}, readOnly: true,
-		readOnlyError: "--external-invite is read-only because it follows --external-access",
-		readOnlyHint:  "set --external-access instead; external_invite follows that setting",
-		setRequest:    func(req *memberSettingsUpdateRequest, value *string) { req.ExternalInvite = value },
+		field:         "external_invite",
+		allowed:       []string{"enabled", "disabled"},
 		responseValue: func(settings memberSettingsResponse) *string { return settings.ExternalInvite },
 	},
 	{
 		flag: "link-share", field: "link_share", description: "link sharing",
-		allowed:       []string{"closed", "tenant-readable", "tenant-editable", "anyone-readable"},
+		allowed: []string{"closed", "tenant-readable", "tenant-editable", "anyone-readable"}, writable: true,
 		setRequest:    func(req *memberSettingsUpdateRequest, value *string) { req.LinkShare = value },
 		responseValue: func(settings memberSettingsResponse) *string { return settings.LinkShare },
 	},
 	{
 		flag: "manage-collaborators-by", field: "manage_collaborators_by", description: "who can manage collaborators",
-		allowed:       []string{"anyone", "same-tenant", "full-access"},
+		allowed: []string{"anyone", "same-tenant", "full-access"}, writable: true,
 		setRequest:    func(req *memberSettingsUpdateRequest, value *string) { req.ManageCollaboratorsBy = value },
 		responseValue: func(settings memberSettingsResponse) *string { return settings.ManageCollaboratorsBy },
 	},
 	{
 		flag: "comment-by", field: "comment_by", description: "who can comment",
-		allowed:       []string{"viewer", "editor"},
+		allowed: []string{"viewer", "editor"}, writable: true,
 		setRequest:    func(req *memberSettingsUpdateRequest, value *string) { req.CommentBy = value },
 		responseValue: func(settings memberSettingsResponse) *string { return settings.CommentBy },
 	},
 	{
-		flag: "copy-download-by", field: "copy_download_by", description: "who can copy, print, or download",
-		allowed: []string{"viewer", "editor", "full-access"}, readOnly: true,
-		readOnlyError: "--copy-download-by is read-only because CCM does not support updating it for Miaoda apps",
-		readOnlyHint:  "inspect copy_download_by with +member-settings-get; do not retry this setting through lark-cli",
-		setRequest:    func(req *memberSettingsUpdateRequest, value *string) { req.CopyDownloadBy = value },
+		field:         "copy_download_by",
+		allowed:       []string{"viewer", "editor", "full-access"},
 		responseValue: func(settings memberSettingsResponse) *string { return settings.CopyDownloadBy },
 	},
 }
@@ -376,15 +366,11 @@ func buildMemberRemoveRequest(rctx *common.RuntimeContext) (memberRemoveRequest,
 func buildMemberSettingsUpdateRequest(rctx *common.RuntimeContext) (memberSettingsUpdateRequest, error) {
 	var req memberSettingsUpdateRequest
 	for _, spec := range memberSettingSpecs {
-		if !rctx.Changed(spec.flag) {
+		if !spec.writable {
 			continue
 		}
-		if spec.readOnly {
-			return memberSettingsUpdateRequest{}, errs.NewValidationError(
-				errs.SubtypeFeatureNotAvailable,
-				"%s", spec.readOnlyError,
-			).WithParam("--" + spec.flag).
-				WithHint(spec.readOnlyHint)
+		if !rctx.Changed(spec.flag) {
+			continue
 		}
 		value := strings.TrimSpace(rctx.Str(spec.flag))
 		if !memberStringAllowed(value, spec.allowed) {
@@ -418,6 +404,9 @@ func validateMemberSettingsSet(rctx *common.RuntimeContext) error {
 		return err
 	}
 	for _, spec := range memberSettingSpecs {
+		if !spec.writable {
+			continue
+		}
 		if rctx.Changed(spec.flag) {
 			_, err := buildMemberSettingsUpdateRequest(rctx)
 			return err
@@ -658,11 +647,13 @@ func memberSettingsSetFlags() []common.Flag {
 	flags := make([]common.Flag, 0, len(memberSettingSpecs)+1)
 	flags = append(flags, common.Flag{Name: "app-id", Desc: "Miaoda app ID (app_...)"})
 	for _, spec := range memberSettingSpecs {
+		if !spec.writable {
+			continue
+		}
 		flags = append(flags, common.Flag{
-			Name:   spec.flag,
-			Desc:   spec.description,
-			Hidden: spec.readOnly,
-			Enum:   append([]string(nil), spec.allowed...),
+			Name: spec.flag,
+			Desc: spec.description,
+			Enum: append([]string(nil), spec.allowed...),
 		})
 	}
 	return flags

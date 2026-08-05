@@ -199,33 +199,13 @@ func TestAppsMemberFlagsExposeExactEnums(t *testing.T) {
 	}
 }
 
-func TestAppsMemberReadOnlySettingsAreHiddenAndActionable(t *testing.T) {
-	tests := []struct{ flag, value string }{
-		{flag: "external-invite", value: "disabled"},
-		{flag: "copy-download-by", value: "viewer"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.flag, func(t *testing.T) {
-			var found *common.Flag
-			for index := range AppsMemberSettingsSet.Flags {
-				if AppsMemberSettingsSet.Flags[index].Name == tc.flag {
-					found = &AppsMemberSettingsSet.Flags[index]
-					break
-				}
+func TestAppsMemberUnsupportedWriteSettingsAreNotRegistered(t *testing.T) {
+	for _, unsupported := range []string{"external-invite", "copy-download-by"} {
+		for _, flag := range AppsMemberSettingsSet.Flags {
+			if flag.Name == unsupported {
+				t.Fatalf("unsupported write flag --%s is registered", unsupported)
 			}
-			if found == nil || !found.Hidden {
-				t.Fatalf("--%s flag = %#v, want hidden AI guardrail", tc.flag, found)
-			}
-			rctx := newAppsMemberRuntime(t, AppsMemberSettingsSet, map[string]string{
-				"app-id": "app_test", tc.flag: tc.value,
-			})
-			err := AppsMemberSettingsSet.Validate(context.Background(), rctx)
-			problem, ok := errs.ProblemOf(err)
-			var validationErr *errs.ValidationError
-			if !ok || problem.Subtype != errs.SubtypeFeatureNotAvailable || !errors.As(err, &validationErr) || validationErr.Param != "--"+tc.flag || problem.Hint == "" {
-				t.Fatalf("--%s problem = %+v, ok=%t", tc.flag, problem, ok)
-			}
-		})
+		}
 	}
 }
 

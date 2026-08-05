@@ -211,22 +211,19 @@ func TestAppsMemberValidationFailuresAreStructured(t *testing.T) {
 	require.True(t, gjson.Get(result.Stderr, "error.params.#").Int() >= 1, "stderr:\n%s", result.Stderr)
 }
 
-func TestAppsMemberExternalInviteFailureIsActionable(t *testing.T) {
-	result := runAppsMemberCLI(t, "apps", "+member-settings-set", "--app-id", "app_x", "--external-invite", "disabled", "--dry-run")
-	result.AssertExitCode(t, 2)
-	require.Empty(t, result.Stdout)
-	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
-	require.Equal(t, "feature_not_available", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
-	require.Equal(t, "--external-invite", gjson.Get(result.Stderr, "error.param").String(), "stderr:\n%s", result.Stderr)
-	require.Contains(t, gjson.Get(result.Stderr, "error.hint").String(), "--external-access", "stderr:\n%s", result.Stderr)
-}
-
-func TestAppsMemberCopyDownloadFailureIsActionable(t *testing.T) {
-	result := runAppsMemberCLI(t, "apps", "+member-settings-set", "--app-id", "app_x", "--copy-download-by", "viewer", "--dry-run")
-	result.AssertExitCode(t, 2)
-	require.Empty(t, result.Stdout)
-	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
-	require.Equal(t, "feature_not_available", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
-	require.Equal(t, "--copy-download-by", gjson.Get(result.Stderr, "error.param").String(), "stderr:\n%s", result.Stderr)
-	require.Contains(t, gjson.Get(result.Stderr, "error.hint").String(), "+member-settings-get", "stderr:\n%s", result.Stderr)
+func TestAppsMemberUnsupportedWriteFlagsAreNotRegistered(t *testing.T) {
+	for _, tc := range []struct{ flag, value string }{
+		{flag: "--external-invite", value: "disabled"},
+		{flag: "--copy-download-by", value: "viewer"},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			result := runAppsMemberCLI(t, "apps", "+member-settings-set", "--app-id", "app_x", tc.flag, tc.value, "--dry-run")
+			result.AssertExitCode(t, 2)
+			require.Empty(t, result.Stdout)
+			require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
+			require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
+			require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "unknown flag", "stderr:\n%s", result.Stderr)
+			require.Equal(t, tc.flag, gjson.Get(result.Stderr, "error.params.0.name").String(), "stderr:\n%s", result.Stderr)
+		})
+	}
 }
