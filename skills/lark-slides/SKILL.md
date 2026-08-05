@@ -79,7 +79,7 @@ metadata:
 
 | 用户需求 | 优先动作 | 关键文档 / 命令 |
 |----------|----------|-----------------|
-| 新建 PPT | 先规划 `slide_plan.json`，再按复杂度选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`lark-slides-create.md`、`slides +create`、`slides +add-slide`、`lark-slides-add-slide.md`（两步创建逐页添加） |
+| 新建 PPT | 先规划 `slide_plan.json`，再按页数选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`lark-slides-create.md`、`slides +create`、`slides +add-slide`、`lark-slides-add-slide.md`（两步创建逐页添加） |
 | 用户要求使用模板，或提供 PPTX 文件要求修改、美化 | 将模板导入为 Slides 再编辑 | `lark-slides-pptx-template-workflows.md` |
 | 编辑单个标题、文本块、图片或局部元素 | 块级替换/插入，**只动点名的 block，同页其他元素不受影响**；不改页序 | `slides +replace-slide`、`lark-slides-replace-slide.md` |
 | 一页改动很多（批量字体/配色）、要改页面背景、要删掉若干元素 | 整页覆盖，`slide_id` 和页序不变；带原 `id` 写回的元素保留 id，不带 `id` 的会作为新元素插入并拿到新 id；**代价是没写进 `--content` 的元素会被删除，所以改个别元素不要用它** | `slides +update-slide`、`lark-slides-update-slide.md` |
@@ -106,7 +106,7 @@ metadata:
 
 **CRITICAL — 新建演示文稿或大幅改写页面时，规划 `asset_need` MUST 遵循 [asset-planning.md](references/asset-planning.md)：只做元数据规划，必须有 `fallback_if_missing`，不得要求真实搜索、下载或上传素材。**
 
-**CRITICAL — 将完整 `<slide>` XML 提交给 `slides +create --slides`、`slides +add-slide`、`xml_presentation.slide create` 或 `slides +update-slide` 之前，MUST 先把待提交 XML 保存到本地文件并运行唯一版式准出入口 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py)；`summary.error_count` 必须为 0 才能调用接口。**
+**CRITICAL — 将完整 `<slide>` XML 提交给 `slides +create`、`slides +add-slide` 或 `slides +update-slide` 之前，MUST 先把待提交 XML 保存到本地文件并运行唯一版式准出入口 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py)；`summary.error_count` 必须为 0 才能调用接口。**
 
 **CRITICAL — 创建、大幅改写或每次通过 `slides +update-slide` 整页写回后，MUST 按 [validation-checklist.md](references/validation-checklist.md) 做显式验证：回读全文 XML、核对页数和关键元素，并使用 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py) 统一检查 XML、越界、重叠、空白页和内容稀疏风险。**
 

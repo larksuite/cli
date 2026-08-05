@@ -12,7 +12,6 @@
 ## 最小可用示例
 
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
 <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
   <slide>
     <data>
@@ -431,7 +430,6 @@ XSD 中的 `title`、`headline`、`sub-headline`、`body`、`caption` 主要出�
 ## 完整示例
 
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
 <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
   <title>季度报告</title>
   <theme>

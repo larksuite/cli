@@ -293,8 +293,8 @@ func TestStripUTF8BOM(t *testing.T) {
 		{"only the first BOM removed", "\uFEFF\uFEFFx", "\uFEFFx"},
 	}
 	for _, c := range cases {
-		if got := stripUTF8BOM(c.in); got != c.want {
-			t.Errorf("%s: stripUTF8BOM(%q) = %q, want %q", c.name, c.in, got, c.want)
+		if got := StripUTF8BOM(c.in); got != c.want {
+			t.Errorf("%s: StripUTF8BOM(%q) = %q, want %q", c.name, c.in, got, c.want)
 		}
 	}
 }
