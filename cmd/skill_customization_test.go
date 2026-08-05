@@ -205,8 +205,12 @@ func TestBuildInternal_invalidHostBaseGuard(t *testing.T) {
 	if !errors.Is(err, skillpolicy.ErrInvalidHostBase) {
 		t.Fatalf("error does not preserve ErrInvalidHostBase: %v", err)
 	}
-	if !strings.Contains(verr.Hint, "invalid_skills_overlay") {
-		t.Errorf("hint should surface reason_code invalid_skills_overlay, got %q", verr.Hint)
+	const wantHint = "the wrapper's embedded base skill tree is invalid; fix the content passed to cmd.SetEmbeddedSkillContent (reason_code invalid_skills_overlay)"
+	if verr.Hint != wantHint {
+		t.Errorf("hint = %q, want host-base-specific recovery %q", verr.Hint, wantHint)
+	}
+	if strings.Contains(verr.Hint, "fix the plugin's EmbeddedSkills") {
+		t.Errorf("hint misattributes invalid host content to the plugin: %q", verr.Hint)
 	}
 }
 
