@@ -1,0 +1,441 @@
+.github/workflows/release.yml
+  s_5ed4643b7ed0ce::t_31eb21ffa8613f 11-14,20-24,26,29,33,35,37,41-42,45-66,69-88,91-94,96,98,101-102,105,114-144,147,149-151,153-156,158-159,162-163,165-167,170-183,185-186,188-189,193-194,196-296,299-308,310-340,342-353,359-410,412-434,437-523,525-539,542-565
+.goreleaser.yml
+  s_5ed4643b7ed0ce::t_f969805483a392 4-5,19-33,36,39
+CHANGELOG.md
+  s_5ed4643b7ed0ce::t_6e56ed4b1b1582 5-29,1801
+Makefile
+  s_5ed4643b7ed0ce::t_5bbbe5be791ced 53,55
+affordance/README.md
+  s_5ed4643b7ed0ce::t_044322e56d9b71 61-63
+affordance/docs.md
+  s_5ed4643b7ed0ce::t_cf95905076b4f7 1-56
+cmd/auth/auth.go
+  s_5ed4643b7ed0ce::t_9f85d19993c2ec 21,26-35,54,56-57
+cmd/auth/check.go
+  s_5ed4643b7ed0ce::t_fe03682a821c8a 16,28-35,45,58-61,98
+cmd/auth/check_test.go
+  s_5ed4643b7ed0ce::t_90517732ab11f4 9,17-18,168-234
+cmd/auth/list.go
+  s_5ed4643b7ed0ce::t_bd187aea1fbb26 17,28-35,45,55-58,77,96-100
+cmd/auth/list_test.go
+  s_5ed4643b7ed0ce::t_9a81d416c2a143 13-14,131-174
+cmd/auth/status.go
+  s_5ed4643b7ed0ce::t_5e64675b2589cf 14,26-33,43,54,72-75,79,121,124-128,132-136
+cmd/auth/status_test.go
+  s_5ed4643b7ed0ce::t_6c9bf0ecb043b6 21,57
+cmd/bootstrap_test.go
+  s_5ed4643b7ed0ce::t_3235152cedc35c 6-9,76-90
+cmd/build.go
+  s_5ed4643b7ed0ce::t_299ef913baf8ff 23,31-32,34-36,45-67,78,109-114,122,178,182,191-200,214-219,225-229,246-256,272-273,275-276,292,297,303-335,338-350,352-359,361-362,364,366-367,369-370,375-380
+cmd/build_api_test.go
+  s_5ed4643b7ed0ce::t_ea4f55a8595859 10,32-35
+cmd/config/bind.go
+  s_5ed4643b7ed0ce::t_ad1685ec42aa35 21,63-70,110,128-131,170,420-426,484,492-502
+cmd/config/bind_messages.go
+  s_5ed4643b7ed0ce::t_3e407cc2fe30ae 40-42,50-52,115-117,152-154
+cmd/config/bind_warning_test.go
+  s_5ed4643b7ed0ce::t_dc5e5c3a75605a 13-14,65-90
+cmd/config/config.go
+  s_5ed4643b7ed0ce::t_4483258b542581 9,15-24,40
+cmd/config/config_test.go
+  s_5ed4643b7ed0ce::t_cf9a197e6210d8 23-24,569-624
+cmd/config/init.go
+  s_5ed4643b7ed0ce::t_857b1d0f716d73 23,44-46,50-81,89,112,118-135,169-176
+cmd/config/init_guard_test.go
+  s_5ed4643b7ed0ce::t_339c91849e0b3a 12-13,49-124
+cmd/config/plugins.go
+  s_5ed4643b7ed0ce::t_f1e9ef150cda5a 88-90
+cmd/config/plugins_test.go
+  s_5ed4643b7ed0ce::t_73ea03780bdcd2 1-93
+cmd/config/policy.go
+  s_5ed4643b7ed0ce::t_3aa43c6d9f11ed 60
+cmd/config/policy_test.go
+  s_5ed4643b7ed0ce::t_864cbc43400061 65-68,86-87
+cmd/config/show.go
+  s_5ed4643b7ed0ce::t_d7a8f41aaf95b9 16,59-66
+cmd/doctor/doctor.go
+  s_5ed4643b7ed0ce::t_153ecf2a1a9046 23,37-47,55,89,95,111,125,136-139,233,246-247
+cmd/doctor/doctor_test.go
+  s_5ed4643b7ed0ce::t_098bbba0cf02ff 20-21,106-130,154,232
+cmd/error_auth_hint.go
+  s_5ed4643b7ed0ce::t_c0dd83bf777996 17-18,24-74,87-92
+cmd/error_presenter_test.go
+  s_5ed4643b7ed0ce::t_b6ee1604430287 1-139
+cmd/event/consume.go
+  s_5ed4643b7ed0ce::t_fbdffee0e960df 345,349-357,361-366,447
+cmd/event/preflight_test.go
+  s_5ed4643b7ed0ce::t_dd641fd8d51015 267-268
+cmd/flag_gate.go
+  s_5ed4643b7ed0ce::t_645c053407eafe 1-67
+cmd/notice_test.go
+  s_5ed4643b7ed0ce::t_1d51f1fdfba220 26,54
+cmd/platform_bootstrap.go
+  s_5ed4643b7ed0ce::t_7a1d1a93b31d3e 38-41,71,83,87,106-108,110-111,163-178,189-202
+cmd/platform_bootstrap_test.go
+  s_5ed4643b7ed0ce::t_ecf590592133bf 119,178,199,224,246
+cmd/platform_guards.go
+  s_5ed4643b7ed0ce::t_1d068cb2db7e14 15,112-138
+cmd/presentation.go
+  s_5ed4643b7ed0ce::t_bdef241583aaae 1-319
+cmd/presentation_options.go
+  s_5ed4643b7ed0ce::t_1802db1211e64e 1-72
+cmd/presentation_options_test.go
+  s_5ed4643b7ed0ce::t_fd7ecd16bbb864 1-73
+cmd/presentation_test.go
+  s_5ed4643b7ed0ce::t_d10e4568f8be12 1-803
+cmd/profile/profile_test.go
+  s_5ed4643b7ed0ce::t_3462be48129702 19-20,186-226
+cmd/profile/remove.go
+  s_5ed4643b7ed0ce::t_6c182d0bd67e66 17,49-54
+cmd/prune.go
+  s_5ed4643b7ed0ce::t_c26b24985b03e8 16,109-118
+cmd/prune_test.go
+  s_5ed4643b7ed0ce::t_5e1d17bdb735a6 17-18,384-428
+cmd/root.go
+  s_5ed4643b7ed0ce::t_49578d6e390bf1 10,26-27,30,45-56,58-68,71-79,83-103,107,121,126-141,146-163,167-170,172-175,182,184-194,196-202,208-212,269-273,275,280-282,284,295,588-591,609-648,668-676,706-724,761-791,797-807,811-813,821-826,830-832,836
+cmd/root_help.go
+  s_5ed4643b7ed0ce::t_862abd4fa88cbf 1-154
+cmd/root_integration_test.go
+  s_5ed4643b7ed0ce::t_42bc40fb247a16 62,508,542,575,624
+cmd/root_risk_help_test.go
+  s_5ed4643b7ed0ce::t_803a4494c5a246 8,16-19,32,46,59
+cmd/root_test.go
+  s_5ed4643b7ed0ce::t_461dcf2aae73f3 165,212,289,317,348,396,427,452,469,495
+cmd/root_upgrade.go
+  s_5ed4643b7ed0ce::t_3b013c5ca04d2a 14,32-33,57-60,70,95-99,106
+cmd/root_upgrade_test.go
+  s_5ed4643b7ed0ce::t_bd1ce906850652 18-20,128,152-179,192,229
+cmd/service/affordance.go
+  s_5ed4643b7ed0ce::t_a8cbe5e77e0829 16,31-36,71-76,149-176,201-203,206,219-221,229-234,257,281,287-288,300-315
+cmd/service/affordance_test.go
+  s_5ed4643b7ed0ce::t_3f7ebd46faa503 12,16-18,149-182,274-328,390-409
+cmd/service/paramflags_test.go
+  s_5ed4643b7ed0ce::t_1125f92c5beebe 14-15,602-633
+cmd/service/service.go
+  s_5ed4643b7ed0ce::t_9ae266ba2c7497 24,494-496,501-502,529,531,533-550,587,605
+cmd/service/service_test.go
+  s_5ed4643b7ed0ce::t_f6f900bbb3eff9 57-80
+cmd/skill_customization_test.go
+  s_5ed4643b7ed0ce::t_a94e80300fd799 1-208
+cmd/whoami/whoami.go
+  s_5ed4643b7ed0ce::t_cae3d6e44d2e12 15,58-67,73,87,110-113
+content_embed.go
+  s_5ed4643b7ed0ce::t_14127ed496fa70 38
+content_embed_affordance_test.go
+  s_5ed4643b7ed0ce::t_c9853b020d782a 1-129
+errs/ERROR_CONTRACT.md
+  s_5ed4643b7ed0ce::t_f096060473ade6 512-514
+errs/subtypes.go
+  s_5ed4643b7ed0ce::t_b01f1b473f2762 17
+extension/platform/README.md
+  s_5ed4643b7ed0ce::t_e32822bf3ca401 40-41,47-49,53,58-112,121,141,155-156,174-242,246,261-267,269-274,282,290-291,300,314-319,326-327
+extension/platform/builder.go
+  s_5ed4643b7ed0ce::t_3609e6408e7f8a 31-33,42-44,75-77,83-84,154-190,194-196,202-205,210-215,254-259,269-277
+extension/platform/builder_test.go
+  s_5ed4643b7ed0ce::t_6ab854aea52c84 17-23,35-38,220-340
+extension/platform/capabilities.go
+  s_5ed4643b7ed0ce::t_c2a8610655b5d2 16-21,49
+extension/platform/doc.go
+  s_5ed4643b7ed0ce::t_e3e0d7cd483fd9 35-37
+extension/platform/examples/readonly-policy/README.md
+  s_5ed4643b7ed0ce::t_7b6ae3bc7efd34 4-5,18,25,28-30,47-48
+extension/platform/examples/readonly-policy/main.go
+  s_5ed4643b7ed0ce::t_f7198c5482746e 6-7,14
+extension/platform/registrar.go
+  s_5ed4643b7ed0ce::t_0dd0ab740e77e2 39-59
+extension/platform/registrar_compat_test.go
+  s_5ed4643b7ed0ce::t_9cf03a765f573a 1-63
+extension/platform/rule.go
+  s_5ed4643b7ed0ce::t_cd0d5fac035e90 9-11
+extension/platform/skillsoverlay.go
+  s_5ed4643b7ed0ce::t_e447d75b1b6763 1-122
+extension/platform/source_compat_test.go
+  s_5ed4643b7ed0ce::t_feefe9adfd2c42 1-23
+internal/affordance/affordance.go
+  s_5ed4643b7ed0ce::t_bcdc3182684699 24,29-33,41,55,59-76,78,82,85-86,91
+internal/affordance/affordance_test.go
+  s_5ed4643b7ed0ce::t_7525e87d3b94a3 71-76,84,105-108,111,121-122
+internal/affordance/mdparse.go
+  s_5ed4643b7ed0ce::t_4e205e49e9aeb3 96-100,105,179,228
+internal/auth/errors.go
+  s_5ed4643b7ed0ce::t_fd9f9b0949d0b4 12,44-45,49
+internal/auth/hint_gate_test.go
+  s_5ed4643b7ed0ce::t_336e344ac3f366 1-55
+internal/client/client.go
+  s_5ed4643b7ed0ce::t_1b14ef61f73453 26,75,78-81
+internal/client/hint_gate_test.go
+  s_5ed4643b7ed0ce::t_f78f36f8c42ca9 1-53
+internal/cmdpolicy/active.go
+  s_5ed4643b7ed0ce::t_1bd16ea7137759 23-37,76-77,96-101
+internal/cmdpolicy/apply.go
+  s_5ed4643b7ed0ce::t_fcc1b7a4ce9a20 7-8,129-135
+internal/cmdpolicy/diagnostic.go
+  s_5ed4643b7ed0ce::t_58a5932046e6f5 30-40
+internal/cmdutil/factory.go
+  s_5ed4643b7ed0ce::t_d2792e8bcb8476 24,51-62,199-206
+internal/cmdutil/factory_default.go
+  s_5ed4643b7ed0ce::t_61396b454fda81 33-38
+internal/core/config.go
+  s_5ed4643b7ed0ce::t_74c9a3957060e7 17,302-305
+internal/core/notconfigured.go
+  s_5ed4643b7ed0ce::t_b03e7a175f064d 11,85-91,95-102,124-130,132-139
+internal/core/notconfigured_hint_gate_test.go
+  s_5ed4643b7ed0ce::t_d79c9370fc6e5a 1-55
+internal/credential/default_provider.go
+  s_5ed4643b7ed0ce::t_322959c3e50e25 41,44
+internal/deprecation/deprecation.go
+  s_5ed4643b7ed0ce::t_3d9f58ee2a2dbd 27-29,41,43,48-54
+internal/deprecation/deprecation_test.go
+  s_5ed4643b7ed0ce::t_baef358195624c 6-9,42-57
+internal/errclass/classify.go
+  s_5ed4643b7ed0ce::t_42bcef6d560cc0 14,235,240-242,248-257,260-262,264-266,268-271,273,294,296-315,326-327,345,406-417,421-422,424-425,427-433,435,437-441,443-447,449-450,452-453,459-460,462
+internal/errclass/classify_test.go
+  s_5ed4643b7ed0ce::t_0577e193a5d57e 101-109,431,440,449,465-466,471-473,546,558,581,592-594,613,615-616,618,723-725,734-736,836,933
+internal/errclass/hint_gate_test.go
+  s_5ed4643b7ed0ce::t_485c7c12855149 1-65
+internal/identitydiag/diagnostics.go
+  s_5ed4643b7ed0ce::t_a7d0967089dbbb 21,58-85,221,224,234,237,282,285,288,291,302,318,325,331,338,342,346,351
+internal/platform/error.go
+  s_5ed4643b7ed0ce::t_a0cc8dc9c9d56a 47-48,57-64
+internal/platform/host.go
+  s_5ed4643b7ed0ce::t_bf1a9c024aab24 14,33-36,76-77,97-99,175-183,189-190,196,220-225
+internal/platform/host_test.go
+  s_5ed4643b7ed0ce::t_70b9abe25e6aee 434-591
+internal/platform/inventory.go
+  s_5ed4643b7ed0ce::t_e14c01d516e0aa 32-35,81-96,131,185-193,295-300
+internal/platform/inventory_test.go
+  s_5ed4643b7ed0ce::t_b9819540ee31fc 39,92,106,112-144
+internal/platform/skills_remap_test.go
+  s_5ed4643b7ed0ce::t_95d58834231113 1-49
+internal/platform/staging.go
+  s_5ed4643b7ed0ce::t_9ecbc898765532 44-50,154-173,213,218-225,251-258
+internal/recovery/hint.go
+  s_5ed4643b7ed0ce::t_1b78fbddd371f0 1-232
+internal/recovery/hint_test.go
+  s_5ed4643b7ed0ce::t_f6bfc255ca22c1 1-81
+internal/recovery/projector.go
+  s_5ed4643b7ed0ce::t_6c1cefc7edabe1 1-46
+internal/recovery/render.go
+  s_5ed4643b7ed0ce::t_6c949c99a0d64b 1-161
+internal/recovery/render_test.go
+  s_5ed4643b7ed0ce::t_88b56ad4bb1b33 1-379
+internal/skillpolicy/overlay.go
+  s_5ed4643b7ed0ce::t_86806ed1f33708 1-218
+internal/skillpolicy/pluginfs.go
+  s_5ed4643b7ed0ce::t_af9ebbc32131b9 1-256
+internal/skillpolicy/resolver.go
+  s_5ed4643b7ed0ce::t_4d16d447fcbdbb 1-244
+internal/skillpolicy/resolver_test.go
+  s_5ed4643b7ed0ce::t_94c8da909faae4 1-776
+internal/skillref/ref.go
+  s_5ed4643b7ed0ce::t_0a4aba44e1cf39 1-60
+internal/skillref/ref_test.go
+  s_5ed4643b7ed0ce::t_e4d5bec47383d5 1-37
+internal/skillref/resolver.go
+  s_5ed4643b7ed0ce::t_3bea51d37ec6b0 1-131
+internal/skillref/resolver_test.go
+  s_5ed4643b7ed0ce::t_dd20b7cd2e01af 1-154
+internal/surface/plan.go
+  s_5ed4643b7ed0ce::t_c3ce0e26d4d3d7 1-110
+internal/surface/plan_test.go
+  s_5ed4643b7ed0ce::t_6d75e7aa80ceb2 1-77
+lint/errscontract/rule_structured_recovery.go
+  s_5ed4643b7ed0ce::t_4edb752af63031 1-139
+lint/errscontract/rule_structured_recovery_test.go
+  s_5ed4643b7ed0ce::t_fea703be83ccb4 1-81
+lint/errscontract/runner.go
+  s_5ed4643b7ed0ce::t_0511aa1f7a90da 36
+lint/errscontract/scan.go
+  s_5ed4643b7ed0ce::t_3f36f551333646 138
+package-lock.json
+  s_5ed4643b7ed0ce::t_562b7bfc6726f2 3,9
+package.json
+  s_5ed4643b7ed0ce::t_b9a6519496034e 3
+scripts/ci-workflow.test.sh
+  s_5ed4643b7ed0ce::t_6763ec037dff2d 240,245,255,259-260
+scripts/install.js
+  s_5ed4643b7ed0ce::t_c944cf16360b85 10,40-44,49-59,364
+scripts/install.test.js
+  s_5ed4643b7ed0ce::t_a98bf2d5f482e4 12-41
+scripts/release-preflight.js
+  s_5ed4643b7ed0ce::t_1ecca753252d13 8,10-14,21-48,65,67,69,82,84,86,88,90,102,117,138
+scripts/release-preflight.test.js
+  s_5ed4643b7ed0ce::t_9884d1db3dc932 7,38,44-100,105-106,111,120-135,140-172
+scripts/release-publish-policy.js
+  s_5ed4643b7ed0ce::t_77ac0066d6e206 1-59
+scripts/release-publish-policy.test.js
+  s_5ed4643b7ed0ce::t_30cf7f3103bb41 1-53
+scripts/release-workflow.test.sh
+  s_5ed4643b7ed0ce::t_e05e7693ed231e 1-212
+shortcuts/apps/common.go
+  s_5ed4643b7ed0ce::t_fc0a4cb16a9eeb 25-44,50-56,63-67
+shortcuts/apps/common_test.go
+  s_5ed4643b7ed0ce::t_b8dc5d342a27a2 60-107
+shortcuts/apps/git_credential.go
+  s_5ed4643b7ed0ce::t_5b4f283346ec32 30,304-307
+shortcuts/apps/gitcred/helper.go
+  s_5ed4643b7ed0ce::t_e9b2597f90ea89 16,70-73
+shortcuts/calendar/calendar_search_event.go
+  s_5ed4643b7ed0ce::t_cf2718e6a29353 177
+shortcuts/calendar/helpers.go
+  s_5ed4643b7ed0ce::t_b1433f8096153e 11,70-85
+shortcuts/common/mcp_client.go
+  s_5ed4643b7ed0ce::t_b46f3dd1558845 20,176-179
+shortcuts/common/permission_grant.go
+  s_5ed4643b7ed0ce::t_6d04d6a7cca7e6 12,37,52,58,84,101,109,120,127-139
+shortcuts/common/permission_grant_test.go
+  s_5ed4643b7ed0ce::t_bec510aef0830b 16-17,67-69,71-73,75-103
+shortcuts/common/runner.go
+  s_5ed4643b7ed0ce::t_71dbe5899be4e0 806-813,1002
+shortcuts/common/runner_scope_test.go
+  s_5ed4643b7ed0ce::t_02382434565fa9 45-49,78-80,95-96,98-99,118-119,156-157
+shortcuts/doc/docs_create_v2.go
+  s_5ed4643b7ed0ce::t_6d2f9c0b8f5a3d 20
+shortcuts/doc/docs_update_v2.go
+  s_5ed4643b7ed0ce::t_6dab19dc03f29e 36
+shortcuts/doc/shortcuts.go
+  s_5ed4643b7ed0ce::t_1e71ba6d988367 6,8-10
+shortcuts/doc/v2_only.go
+  s_5ed4643b7ed0ce::t_99c83b2724cd56 57,88,91,94
+shortcuts/drive/drive_permission_grant_test.go
+  s_5ed4643b7ed0ce::t_fe204ef77d00e6 324-326
+shortcuts/drive/drive_search.go
+  s_5ed4643b7ed0ce::t_b7f0665991edf6 19,243,246,359-369
+shortcuts/drive/drive_search_test.go
+  s_5ed4643b7ed0ce::t_f68d0c86bf3ffd 21-22,61-82
+shortcuts/drive/drive_status_test.go
+  s_5ed4643b7ed0ce::t_e55be6eb075187 341-345
+shortcuts/drive/drive_task_result.go
+  s_5ed4643b7ed0ce::t_0ec9da5e620050 282
+shortcuts/im/helpers.go
+  s_5ed4643b7ed0ce::t_7d8790dfedfed3 26,1298-1302,1313
+shortcuts/mail/mail_watch.go
+  s_5ed4643b7ed0ce::t_5db3254db91e95 10,766-772,775,782-796
+shortcuts/mail/mail_watch_test.go
+  s_5ed4643b7ed0ce::t_46b570bc124f23 16,633-639,653-668
+shortcuts/markdown/markdown_test.go
+  s_5ed4643b7ed0ce::t_54031ed219d579 965-967
+shortcuts/register.go
+  s_5ed4643b7ed0ce::t_e5ed4051f01188 43-49,157-165
+shortcuts/register_test.go
+  s_5ed4643b7ed0ce::t_c196f47fe0bbf3 171,185-189,199,217,236,244,283-289
+shortcuts/sheets/backward/lark_sheets_sheet_create_test.go
+  s_5ed4643b7ed0ce::t_7c4982886ba6b6 357-359
+shortcuts/slides/shortcuts.go
+  s_5ed4643b7ed0ce::t_7a6539d5c89968 17-18
+shortcuts/slides/shortcuts_alias_test.go
+  s_5ed4643b7ed0ce::t_a12ef53a3ad294 18-19,68-117
+shortcuts/slides/slides_add_slide.go
+  s_5ed4643b7ed0ce::t_f0974e36af1754 74-77
+shortcuts/slides/slides_add_slide_test.go
+  s_5ed4643b7ed0ce::t_17a9ad70b03305 22,164,205,363,529,579
+shortcuts/slides/slides_create.go
+  s_5ed4643b7ed0ce::t_e7bf51bf7112d5 244
+shortcuts/slides/slides_create_test.go
+  s_5ed4643b7ed0ce::t_240a8b6776e697 66-73,158-160,336,392,453,636,868-869
+shortcuts/slides/slides_replace_pages.go
+  s_5ed4643b7ed0ce::t_fcb314cd4d4f13 17-23,27-38,42,81-82,96,124,246-248
+shortcuts/slides/slides_replace_pages_test.go
+  s_5ed4643b7ed0ce::t_60a03c94bc9eb9 67,162-163,225,260,346-390
+shortcuts/slides/slides_replace_slide.go
+  s_5ed4643b7ed0ce::t_2ffb4e2895ea4a 10,53,119,156,197-201,220-227,262-403
+shortcuts/slides/slides_replace_slide_test.go
+  s_5ed4643b7ed0ce::t_d3578eb164481d 287-289,309-319,764-992
+shortcuts/slides/slides_screenshot.go
+  s_5ed4643b7ed0ce::t_27a09e4812cef2 14,31-34,50-52,63-64,70-74,84,99,103,140,149,154,200-201,219-220,248-336,378-388
+shortcuts/slides/slides_screenshot_test.go
+  s_5ed4643b7ed0ce::t_042db99dc481f4 7,10,38-319,673-699,701-732,771,843,850,864-865,871,876-918,924,962
+shortcuts/slides/slides_shared.go
+  s_5ed4643b7ed0ce::t_8d8c6fadc61eb1 1-75
+shortcuts/slides/slides_update_slide.go
+  s_5ed4643b7ed0ce::t_863e9591768bde 1-344
+shortcuts/slides/slides_update_slide_test.go
+  s_5ed4643b7ed0ce::t_6e97ae49caeb98 1-550
+shortcuts/vc/helpers.go
+  s_5ed4643b7ed0ce::t_d9cc433322e6de 33-34,39
+shortcuts/vc/helpers_test.go
+  s_5ed4643b7ed0ce::t_eb78143f3c3215 61,67,85-86,132-133
+shortcuts/wiki/wiki_node_create_test.go
+  s_5ed4643b7ed0ce::t_282668366f6c87 694-696
+skills/lark-base/SKILL.md
+  s_5ed4643b7ed0ce::t_cedd5b323f68ed 33,115
+skills/lark-base/references/lark-base-field-json.md
+  s_5ed4643b7ed0ce::t_fc6303ebcab33d 521-522
+skills/lark-slides/SKILL.md
+  s_5ed4643b7ed0ce::t_4d4b010e712637 85,90,115-117,293,309,312
+skills/lark-slides/references/lark-slides-add-slide.md
+  s_5ed4643b7ed0ce::t_fb690dd0680c6e 15,61
+skills/lark-slides/references/lark-slides-create.md
+  s_5ed4643b7ed0ce::t_51d3f2e9756418 31-32,92-93,105
+skills/lark-slides/references/lark-slides-edit-workflows.md
+  s_5ed4643b7ed0ce::t_c533d40df80ef1 3,14,36-37,142
+skills/lark-slides/references/lark-slides-replace-pages.md
+  s_5ed4643b7ed0ce::t_9ed2b68b77f324 1,3-5,34,38
+skills/lark-slides/references/lark-slides-replace-slide.md
+  s_5ed4643b7ed0ce::t_f53ac09a07d293 5-6,77-93,246-248
+skills/lark-slides/references/lark-slides-screenshot.md
+  s_5ed4643b7ed0ce::t_af9225c8b22b00 24-27,33-34,99
+skills/lark-slides/references/lark-slides-xml-presentations-get.md
+  s_5ed4643b7ed0ce::t_d9136f8acbb204 25,27,99
+skills/lark-slides/references/slides_chart_demo.xml
+  s_5ed4643b7ed0ce::t_ca092547e0d7ae 2
+skills/lark-slides/references/slides_xml_schema_definition.xml
+  s_5ed4643b7ed0ce::t_803702ad88984f 4-5,14,1055,1079,1619-1661
+skills/lark-slides/references/validation-checklist.md
+  s_5ed4643b7ed0ce::t_6b22acbb1debf5 60
+skills/lark-slides/references/xml-schema-quick-ref.md
+  s_5ed4643b7ed0ce::t_bef9c8a5ba6526 7,16,84,358-371,435,483,498
+skills/lark-slides/scripts/sxsd_validator.py
+  s_5ed4643b7ed0ce::t_974bd8d87c41d1 19-20,23,82-90,319,322,325,350-368,401-407,434-444,455,738-762,771-774,783,789-804,811-813,821-854,906-923
+skills/lark-slides/scripts/xml_text_overlap_lint.py
+  s_5ed4643b7ed0ce::t_4bb572365b744d 26,351,378,535-581,627,629-631,671,673,736-737,745,827,2128,2166,2744-2746
+skills/lark-slides/scripts/xml_text_overlap_lint_test.py
+  s_5ed4643b7ed0ce::t_b1abe3fd9a5ea8 54-81,88,116-117,132-133,167,187,204,224,226,238-260,312-329,344,353,368,381,396,410,430-431,438,459,482,504,523,539,576,597-708,718,746,768,784,804,823,844,863,886,910,933,958,988,1020,1038,1063,1077,1095,1113-1135,1139-1140,1160,1218,1241,1262-1263,1285,1329,1351,1372,1391,1413,1433,1454,1475,1501,1528,1550,1572,1599,1625,1645,1665,1685,1705,1725,1740,1756,1772,1794,1813,1835,1857,1884,1919-1920,1940,1952-1954,1962-1964,1975-1976,1989-1990,2004-2005,2018-2019,2048,2065,2086,2106,2128,2148,2165,2184,2205,2227,2246-2247,2273-2274,2336-2337,2361-2362,2382-2383,2401-2402,2418-2419,2440-2441,2464-2465,2487-2488,2514-2515,2534-2535,2602-2603,2642-2643,2656,2674,2709,2724,2768,2814,2846,2862,2881,2903,2922,2933,2957,2972,2989,3009,3035,3057,3078,3092,3112,3126,3142,3165,3184,3200,3213,3217-3235,3253,3290,3306,3330,3356,3373,3402
+tests/cli_e2e/slides/coverage.md
+  s_5ed4643b7ed0ce::t_8cdb6bc6c9ef3f 4-6,12-15,25-26
+tests/cli_e2e/slides/slides_create_workflow_test.go
+  s_5ed4643b7ed0ce::t_c95e31cd74cb73 28
+tests/cli_e2e/slides/slides_history_workflow_test.go
+  s_5ed4643b7ed0ce::t_85ac3645081eb3 10,37,87-94,97,99-100,107-108,121-122,198-203,205,209-226,247-260
+tests/cli_e2e/slides/slides_replace_slide_dryrun_test.go
+  s_5ed4643b7ed0ce::t_f53980500a903d 1-141
+tests/cli_e2e/slides/slides_screenshot_dryrun_test.go
+  s_5ed4643b7ed0ce::t_379855c7dd47cf 50-258
+tests/cli_e2e/slides/slides_screenshot_workflow_test.go
+  s_5ed4643b7ed0ce::t_c5e42ab25691c6 1-120
+tests/cli_e2e/slides/slides_slide_add_delete_dryrun_test.go
+  s_5ed4643b7ed0ce::t_30e907403b6314 27
+tests/cli_e2e/slides/slides_slide_add_delete_workflow_test.go
+  s_5ed4643b7ed0ce::t_9fecf1bb37622b 20
+tests/cli_e2e/slides/slides_update_slide_dryrun_test.go
+  s_5ed4643b7ed0ce::t_1585221624b912 1-167
+tests/plugin_e2e/harness.go
+  s_5ed4643b7ed0ce::t_50064c50aaa4f7 16-18,25,90-91,106-121,124,127,131-155,174,177,186,190-233,238-239,246-316
+tests/plugin_e2e/install_test.go
+  s_5ed4643b7ed0ce::t_7588e7ff976a4e 13-34,80,118,161,199,237,275,313
+tests/plugin_e2e/observe_wrap_test.go
+  s_5ed4643b7ed0ce::t_4a1221b20581a0 96-97,103,119
+tests/plugin_e2e/restrict_test.go
+  s_5ed4643b7ed0ce::t_027f106b381331 7,14-64,85-88,90,92-93,95-96,100,110,115,120-313,388-390,395-401,403,406-413,415-416,420-421,423,426,429-430,432,435,438-439,441,444
+tests/plugin_e2e/skills_test.go
+  s_5ed4643b7ed0ce::t_180d48d1ac20fd 1-368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e3dbd1d797abf65e226f367f9d636733b89d4528",
+  "prompts": {},
+  "sessions": {
+    "s_5ed4643b7ed0ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2575c3b-b939-4af2-95f9-229f8a0dcd25",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
