@@ -53,7 +53,7 @@ var SlidesScreenshot = common.Shortcut{
 		{Name: "content", Desc: "slide XML content to render directly instead of fetching existing slides", Input: []string{common.File, common.Stdin}},
 		{Name: "output", Desc: "preferred relative output path for a single screenshot (extension optional; .png, .jpg, or .jpeg)"},
 		{Name: "output-dir", Default: defaultSlidesScreenshotDir, Desc: "relative directory for saved screenshots"},
-		{Name: "output-name", Desc: "legacy file name stem for --content render output; prefer --output for new calls"},
+		{Name: "output-name", Desc: "file name stem for --content render output"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		renderMode := runtime.Changed("content")
