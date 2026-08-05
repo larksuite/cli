@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 )
 
@@ -542,16 +543,23 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	f.CurrentCommand = methodCmd
 
 	authErr := newAuthErrorWithNeedAuthMarker()
-	applyNeedAuthorizationHint(f, authErr)
+	rendered := presentRootError(f, authErr, recovery.NewProjector(nil))
+	problem, ok := errs.ProblemOf(rendered)
+	if !ok {
+		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
 
-	if authErr.Category != errs.CategoryAuthentication {
-		t.Errorf("Category = %q, want authentication", authErr.Category)
+	if problem.Category != errs.CategoryAuthentication {
+		t.Errorf("Category = %q, want authentication", problem.Category)
 	}
-	if !strings.Contains(authErr.Message, "need_user_authorization") {
-		t.Errorf("Message should preserve need_user_authorization marker; got %q", authErr.Message)
+	if !strings.Contains(problem.Message, "need_user_authorization") {
+		t.Errorf("Message should preserve need_user_authorization marker; got %q", problem.Message)
 	}
-	if !strings.Contains(authErr.Hint, "current command requires scope(s): calendar:calendar.event:create") {
-		t.Errorf("expected declared-scope hint, got %q", authErr.Hint)
+	if !strings.Contains(problem.Hint, "current command requires scope(s): calendar:calendar.event:create") {
+		t.Errorf("expected declared-scope hint, got %q", problem.Hint)
+	}
+	if strings.Contains(authErr.Hint, "current command requires scope(s):") {
+		t.Errorf("presenter mutated producer hint: %q", authErr.Hint)
 	}
 }
 
@@ -573,10 +581,14 @@ func TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT(t *testi
 	f.CurrentCommand = shortcutCmd
 
 	authErr := newAuthErrorWithNeedAuthMarker()
-	applyNeedAuthorizationHint(f, authErr)
+	rendered := presentRootError(f, authErr, recovery.NewProjector(nil))
+	problem, ok := errs.ProblemOf(rendered)
+	if !ok {
+		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
 
-	if !strings.Contains(authErr.Hint, "current command requires scope(s): docx:document:create") {
-		t.Errorf("expected shortcut scope hint, got %q", authErr.Hint)
+	if !strings.Contains(problem.Hint, "current command requires scope(s): docx:document:create") {
+		t.Errorf("expected shortcut scope hint, got %q", problem.Hint)
 	}
 }
 
@@ -598,10 +610,14 @@ func TestApplyNeedAuthorizationHint_ShortcutIncludesConditionalScopes(t *testing
 	f.CurrentCommand = shortcutCmd
 
 	authErr := newAuthErrorWithNeedAuthMarker()
-	applyNeedAuthorizationHint(f, authErr)
+	rendered := presentRootError(f, authErr, recovery.NewProjector(nil))
+	problem, ok := errs.ProblemOf(rendered)
+	if !ok {
+		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
 
-	if !strings.Contains(authErr.Hint, "current command requires scope(s): drive:drive.metadata:readonly, drive:file:download") {
-		t.Errorf("expected conditional scope hint for drive +status, got %q", authErr.Hint)
+	if !strings.Contains(problem.Hint, "current command requires scope(s): drive:drive.metadata:readonly, drive:file:download") {
+		t.Errorf("expected conditional scope hint for drive +status, got %q", problem.Hint)
 	}
 }
 
@@ -625,10 +641,17 @@ func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 
 	authErr := newAuthErrorWithNeedAuthMarker()
 	authErr.Hint = "existing hint"
-	applyNeedAuthorizationHint(f, authErr)
+	rendered := presentRootError(f, authErr, recovery.NewProjector(nil))
+	problem, ok := errs.ProblemOf(rendered)
+	if !ok {
+		t.Fatalf("rendered error = %T, want typed error", rendered)
+	}
 
 	want := "existing hint\ncurrent command requires scope(s): docx:document:create"
-	if authErr.Hint != want {
-		t.Errorf("expected appended hint %q, got %q", want, authErr.Hint)
+	if problem.Hint != want {
+		t.Errorf("expected appended hint %q, got %q", want, problem.Hint)
+	}
+	if authErr.Hint != "existing hint" {
+		t.Errorf("presenter mutated producer hint: %q", authErr.Hint)
 	}
 }

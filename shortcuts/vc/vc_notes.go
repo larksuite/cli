@@ -382,8 +382,9 @@ func fetchNoteByMinuteToken(ctx context.Context, runtime *common.RuntimeContext,
 	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s", validate.EncodePathSegment(minuteToken)), nil, nil)
 	if err != nil {
 		err = minutesReadError(err, minuteToken)
-		result := map[string]any{"minute_token": minuteToken, "error": err.Error()}
-		if p, ok := errs.ProblemOf(err); ok && p.Hint != "" {
+		presented := runtime.PresentError(err)
+		result := map[string]any{"minute_token": minuteToken, "error": presented.Error()}
+		if p, ok := errs.ProblemOf(presented); ok && p.Hint != "" {
 			result["hint"] = p.Hint
 		}
 		return result

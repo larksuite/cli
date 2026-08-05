@@ -5,11 +5,62 @@ package recovery
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/surface"
 )
+
+func TestUserAuthorizationGolden(t *testing.T) {
+	tests := []struct {
+		name    string
+		hint    Hint
+		visible string
+	}{
+		{
+			name: "no scopes",
+			hint: UserAuthorization(),
+			visible: "run `lark-cli auth login --no-wait --json` to get device_code and verification_url; " +
+				"present verification_url to the user exactly and end this turn; after the user confirms authorization, " +
+				"run `lark-cli auth login --device-code <device_code>` in a later turn to finish login",
+		},
+		{
+			name: "multiple scopes",
+			hint: UserAuthorization("docx:document", "drive:drive"),
+			visible: "run `lark-cli auth login --scope \"docx:document drive:drive\" --no-wait --json` to get device_code and verification_url; " +
+				"present verification_url to the user exactly and end this turn; after the user confirms authorization, " +
+				"run `lark-cli auth login --device-code <device_code>` in a later turn to finish login",
+		},
+	}
+
+	concealedPlan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	deniedVisiblePlan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandDeniedVisible,
+	})
+	const concealed = "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry"
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.hint.String(); got != tt.visible {
+				t.Fatalf("visible hint = %q, want %q", got, tt.visible)
+			}
+			if got := tt.hint.Render(deniedVisiblePlan); got != tt.visible {
+				t.Fatalf("denied-visible hint = %q, want %q", got, tt.visible)
+			}
+			if got := tt.hint.Render(concealedPlan); got != concealed {
+				t.Fatalf("concealed hint = %q, want %q", got, concealed)
+			}
+			for _, dead := range []string{"auth login", "verification_url", "device_code"} {
+				if got := tt.hint.Render(concealedPlan); strings.Contains(got, dead) {
+					t.Errorf("concealed hint %q contains dead command detail %q", got, dead)
+				}
+			}
+		})
+	}
+}
 
 func TestHintRenderFiltersOnlyUnreferenceableTargets(t *testing.T) {
 	hint := Join("; ",

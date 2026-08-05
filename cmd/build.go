@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"io/fs"
+	"strings"
 
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
@@ -276,7 +277,9 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	rootCmd.AddCommand(doctor.NewCmdDoctorWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(whoami.NewCmdWhoamiWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
-	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
+	rootCmd.AddCommand(schema.NewCmdSchemaWithVisibility(f, func(path []string) bool {
+		return runtime.surface.CanReference(surface.CommandID(strings.Join(path, "/")))
+	}, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
@@ -352,6 +355,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	}
 	f.SkillContent = skillResolution.Content
 	runtime.skillReferences = skillResolution.References
+	f.SkillReferences = skillResolution.References
 
 	// Install hooks only on business commands. The concealment-specific help
 	// command is attached afterwards, preserving Cobra's historical contract

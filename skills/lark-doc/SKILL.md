@@ -5,6 +5,7 @@ description: "飞书云文档（Docx / Wiki 文档）：读取和编辑飞书文
 metadata:
   requires:
     bins: ["lark-cli"]
+    skills: ["lark-shared"]
   cliHelp: "lark-cli docs --help;lark-cli mindnotes --help"
 ---
 

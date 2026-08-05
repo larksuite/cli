@@ -434,16 +434,15 @@ func permissionRecoveryHint(missing []string, identity string, subtype errs.Subt
 		}
 		return recovery.UserAuthorization(missing...)
 	case errs.SubtypeTokenScopeInsufficient:
-		return recovery.Join("; ",
-			recovery.Text("check the token's granted scopes"),
-			recovery.Command(recovery.TargetAuthLogin,
-				"run `lark-cli auth login` to refresh if the scope was added after the token was issued"),
+		return recovery.JoinHints("; ",
+			recovery.Join("", recovery.Text("check the token's granted scopes")),
+			recovery.UserAuthorization(missing...),
 		)
 	case errs.SubtypeUserUnauthorized:
-		return recovery.Join("; ",
-			recovery.Command(recovery.TargetAuthLogin,
-				"run `lark-cli auth login` to re-authorize this user"),
-			recovery.Text("if re-auth does not help, the operation may be blocked by external-chat or admin policy"),
+		return recovery.JoinHints("; ",
+			recovery.UserAuthorization(missing...),
+			recovery.Join("", recovery.Text(
+				"if re-auth does not help, the operation may be blocked by external-chat or admin policy")),
 		)
 	case errs.SubtypeAppUnavailable:
 		return recovery.Join("", recovery.Text(

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -281,6 +282,11 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected legacy v1 flags to be rejected")
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T, want typed problem", err)
+	}
+	presented := problem.Message + "\n" + problem.Hint
 	for _, want := range []string{
 		"docs +create is v2-only",
 		"the old v1 interface has been shut down",
@@ -288,7 +294,7 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 		"--markdown -> use --content with --doc-format markdown",
 		"lark-cli docs +create --help",
 	} {
-		if !strings.Contains(err.Error(), want) {
+		if !strings.Contains(presented, want) {
 			t.Fatalf("error missing %q: %v", want, err)
 		}
 	}

@@ -23,13 +23,15 @@ func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProdu
 		WithMissingScopes("docx:document").
 		WithIdentity("user")
 
-	visible := newRootErrorPresenter(
+	visible := presentRootError(
 		&cmdutil.Factory{ResolvedIdentity: core.AsUser},
+		source,
 		recovery.NewProjector(nil),
-	).Present(source)
+	)
 	visibleProblem, _ := errs.ProblemOf(visible)
-	if !strings.Contains(visibleProblem.Hint, `auth login --scope "docx:document"`) {
-		t.Fatalf("visible recovery = %q, want scoped auth login", visibleProblem.Hint)
+	const wantVisible = "run `lark-cli auth login --scope \"docx:document\" --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login"
+	if got, want := visibleProblem.Hint, wantVisible; got != want {
+		t.Fatalf("visible recovery = %q, want exact split-flow recovery %q", got, want)
 	}
 	if source.Hint != "" {
 		t.Fatalf("presenter mutated producer hint: %q", source.Hint)
@@ -38,10 +40,11 @@ func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProdu
 	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		surface.CommandAuthLogin: surface.CommandConcealed,
 	})
-	concealed := newRootErrorPresenter(
+	concealed := presentRootError(
 		&cmdutil.Factory{ResolvedIdentity: core.AsUser},
+		source,
 		recovery.NewProjector(func() *surface.Plan { return plan }),
-	).Present(source)
+	)
 	concealedProblem, _ := errs.ProblemOf(concealed)
 	if strings.Contains(concealedProblem.Hint, "auth login") ||
 		!strings.Contains(concealedProblem.Hint, "supported authorization flow") {
@@ -54,10 +57,11 @@ func TestRootErrorPresenterDoesNotRecommendUserLoginForBotPermission(t *testing.
 		WithMissingScopes("drive:file:download").
 		WithIdentity("bot")
 
-	rendered := newRootErrorPresenter(
+	rendered := presentRootError(
 		&cmdutil.Factory{ResolvedIdentity: core.AsBot},
+		source,
 		recovery.NewProjector(nil),
-	).Present(source)
+	)
 	problem, _ := errs.ProblemOf(rendered)
 	if strings.Contains(problem.Hint, "auth login") ||
 		!strings.Contains(problem.Hint, "app developer") {
@@ -73,10 +77,11 @@ func TestRootErrorPresenterDoesNotMutateNestedPermissionCause(t *testing.T) {
 		WithHint("retry the operation").
 		WithCause(inner)
 
-	rendered := newRootErrorPresenter(
+	rendered := presentRootError(
 		&cmdutil.Factory{ResolvedIdentity: core.AsUser},
+		outer,
 		recovery.NewProjector(nil),
-	).Present(outer)
+	)
 
 	if inner.Hint != "" {
 		t.Fatalf("presenter mutated nested producer hint: %q", inner.Hint)
@@ -99,7 +104,7 @@ func TestRootErrorPresenterDoesNotMutateNestedAuthenticationCause(t *testing.T) 
 		WithHint("retry the operation").
 		WithCause(source)
 
-	rendered := newRootErrorPresenter(f, recovery.NewProjector(nil)).Present(outer)
+	rendered := presentRootError(f, outer, recovery.NewProjector(nil))
 
 	if got := inner.Hint; got != originalHint {
 		t.Fatalf("presenter mutated nested authentication hint: got %q want %q", got, originalHint)

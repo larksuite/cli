@@ -63,6 +63,7 @@ func Command(target Target, text string) Part {
 type Hint struct {
 	separator string
 	parts     []Part
+	hints     []Hint
 	fallback  string
 }
 
@@ -71,6 +72,15 @@ type Hint struct {
 func Join(separator string, parts ...Part) Hint {
 	snapshot := append([]Part(nil), parts...)
 	return Hint{separator: separator, parts: snapshot}
+}
+
+// JoinHints composes independently renderable hints. Each child applies its
+// own target filtering and fallback before the retained children are joined,
+// allowing command-only recovery to keep a useful fallback alongside other
+// policy guidance.
+func JoinHints(separator string, hints ...Hint) Hint {
+	snapshot := append([]Hint(nil), hints...)
+	return Hint{separator: separator, hints: snapshot}
 }
 
 // WithFallback returns a copy that renders text when projection removes every
@@ -88,15 +98,15 @@ func (h Hint) WithFallback(text string) Hint {
 func UserAuthorization(scopes ...string) Hint {
 	var command string
 	if len(scopes) == 0 {
-		command = "run `lark-cli auth login` to authorize or refresh the current user"
+		command = "run `lark-cli auth login --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login"
 	} else {
 		command = fmt.Sprintf(
-			"run `lark-cli auth login --scope \"%s\"` to authorize or refresh the current user",
+			"run `lark-cli auth login --scope \"%s\" --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login",
 			strings.Join(scopes, " "),
 		)
 	}
 	return Join("", Command(TargetAuthLogin, command)).WithFallback(
-		"obtain or refresh a user credential through this distribution's supported authorization flow",
+		"obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry",
 	)
 }
 
@@ -107,6 +117,19 @@ func (h Hint) String() string {
 
 // Render filters command-targeted parts against plan without changing h.
 func (h Hint) Render(plan *surface.Plan) string {
+	if len(h.hints) > 0 {
+		retained := make([]string, 0, len(h.hints))
+		for _, child := range h.hints {
+			if rendered := child.Render(plan); rendered != "" {
+				retained = append(retained, rendered)
+			}
+		}
+		if len(retained) == 0 {
+			return h.fallback
+		}
+		return strings.Join(retained, h.separator)
+	}
+
 	retained := make([]string, 0, len(h.parts))
 	for _, part := range h.parts {
 		if part.text == "" {

@@ -43,7 +43,27 @@ func TestPermissionHint_usesBuildLocalSurface(t *testing.T) {
 		var visible *errs.PermissionError
 		if !errors.As(recovery.Render(source, nil), &visible) || !strings.Contains(visible.Hint, "auth login") {
 			t.Errorf("%s: visible render must keep auth login, got %+v", st, visible)
+		} else {
+			for _, want := range []string{
+				"--no-wait --json",
+				"verification_url",
+				"auth login --device-code <device_code>",
+				"in a later turn",
+			} {
+				if !strings.Contains(visible.Hint, want) {
+					t.Errorf("%s: OAuth recovery missing %q: %q", st, want, visible.Hint)
+				}
+			}
 		}
+	}
+
+	tokenHint := PermissionHint([]string{"im:message"}, "user", errs.SubtypeTokenScopeInsufficient, "")
+	if !strings.Contains(tokenHint, "check the token's granted scopes") {
+		t.Errorf("token-scope recovery lost token policy guidance: %q", tokenHint)
+	}
+	userHint := PermissionHint([]string{"im:message"}, "user", errs.SubtypeUserUnauthorized, "")
+	if !strings.Contains(userHint, "external-chat or admin policy") {
+		t.Errorf("user-unauthorized recovery lost external policy guidance: %q", userHint)
 	}
 
 	// Non-command recovery guidance is retained under the same plan.

@@ -4,14 +4,18 @@
 package schema
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/meta"
 )
 
 func TestSchemaCmd_FlagParsing(t *testing.T) {
@@ -252,6 +256,157 @@ func TestSchemaCmd_UnknownMethod_TypedValidation(t *testing.T) {
 	}
 }
 
-// Completion candidate generation (dotted + space forms, strict-mode filtering,
-// dotted-resource handling) now lives in internal/apicatalog and is covered by
-// apicatalog's TestComplete. cmd/schema only adapts catalog.Complete to cobra.
+// Base completion navigation (dotted + space forms, strict-mode filtering,
+// dotted-resource handling) lives in internal/apicatalog. The tests below pin
+// cmd/schema's build-local surface projection around that navigator.
+
+func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.T) {
+	catalog := schemaSurfaceCatalog()
+	visible := func(path []string) bool {
+		return strings.Join(path, "/") != "mail/user_mailbox.messages/list"
+	}
+
+	var out bytes.Buffer
+	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, visible); err != nil {
+		t.Fatalf("broad schema failed: %v", err)
+	}
+	var envelopes []map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &envelopes); err != nil {
+		t.Fatalf("broad schema output is not JSON: %v\n%s", err, out.String())
+	}
+	names := make(map[string]bool, len(envelopes))
+	for _, envelope := range envelopes {
+		name, _ := envelope["name"].(string)
+		names[name] = true
+	}
+	if names["mail user_mailbox.messages list"] {
+		t.Error("broad schema retained concealed mail messages list")
+	}
+	for _, want := range []string{"mail user_mailbox.messages get", "im messages list"} {
+		if !names[want] {
+			t.Errorf("broad schema lost visible method %q: %v", want, names)
+		}
+	}
+
+	out.Reset()
+	err := runSchemaCatalog(
+		&out,
+		[]string{"mail", "user_mailbox", "messages", "list"},
+		core.StrictModeOff,
+		catalog,
+		visible,
+	)
+	if err == nil {
+		t.Fatal("concealed exact method unexpectedly resolved")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("concealed exact method error = %T %v, want validation/invalid_argument", err, err)
+	}
+	if strings.Contains(validationErr.Hint, "list") || !strings.Contains(validationErr.Hint, "get") {
+		t.Errorf("resolve candidates were not surface-projected: %q", validationErr.Hint)
+	}
+	if out.Len() != 0 {
+		t.Errorf("concealed exact method wrote schema output: %s", out.String())
+	}
+
+	projected := projectSchemaCatalog(catalog, visible)
+	if got, _ := projected.Complete(nil, "mail.user_mailbox.messages.l", nil); len(got) != 0 {
+		t.Errorf("dotted completion exposed concealed method: %v", got)
+	}
+	if got, _ := projected.Complete(nil, "mail.user_mailbox.messages.g", nil); !reflect.DeepEqual(got, []string{"mail.user_mailbox.messages.get"}) {
+		t.Errorf("dotted completion lost visible sibling: %v", got)
+	}
+	if got, _ := projected.Complete([]string{"mail", "user_mailbox", "messages"}, "l", nil); len(got) != 0 {
+		t.Errorf("space completion exposed concealed method: %v", got)
+	}
+	if got, _ := projected.Complete([]string{"mail", "user_mailbox", "messages"}, "g", nil); !reflect.DeepEqual(got, []string{"get"}) {
+		t.Errorf("space completion lost visible sibling: %v", got)
+	}
+}
+
+func TestSchemaSurfaceProjectionDropsServiceWhenGlobConcealsAllDescendants(t *testing.T) {
+	catalog := schemaSurfaceCatalog()
+	// Mirrors a policy that retains the top-level schema command and mail group
+	// but conceals mail/**.
+	visible := func(path []string) bool {
+		return !strings.HasPrefix(strings.Join(path, "/"), "mail/")
+	}
+	projected := projectSchemaCatalog(catalog, visible)
+
+	if _, ok := projected.Service("mail"); ok {
+		t.Fatal("mail survived as an empty schema namespace after mail/** was concealed")
+	}
+	if _, ok := projected.Service("im"); !ok {
+		t.Fatal("unrelated visible service im was removed")
+	}
+	if got, _ := projected.Complete(nil, "ma", nil); len(got) != 0 {
+		t.Errorf("root dotted completion exposed concealed mail service: %v", got)
+	}
+	if got, _ := projected.Complete(nil, "im.m", nil); !reflect.DeepEqual(got, []string{"im.messages."}) {
+		t.Errorf("root dotted completion lost visible im service: %v", got)
+	}
+
+	_, err := projected.Resolve([]string{"mail", "messages", "get"})
+	var resolveErr *apicatalog.ResolveError
+	if !errors.As(err, &resolveErr) || resolveErr.Kind != apicatalog.ErrService {
+		t.Fatalf("concealed mail resolve error = %T %v, want unknown service", err, err)
+	}
+	if strings.Contains(strings.Join(resolveErr.Candidates, ","), "mail") {
+		t.Errorf("unknown-service candidates exposed concealed mail: %v", resolveErr.Candidates)
+	}
+}
+
+func TestSchemaSurfaceProjectionPreservesDefaultAndDeniedVisibleCatalog(t *testing.T) {
+	catalog := schemaSurfaceCatalog()
+	allVisible := func([]string) bool { return true }
+
+	var defaultOut, projectedOut bytes.Buffer
+	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil); err != nil {
+		t.Fatalf("default schema failed: %v", err)
+	}
+	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, allVisible); err != nil {
+		t.Fatalf("all-visible schema failed: %v", err)
+	}
+	if defaultOut.String() != projectedOut.String() {
+		t.Errorf("all-referenceable surface changed default schema output\ndefault: %s\nprojected: %s", defaultOut.String(), projectedOut.String())
+	}
+}
+
+func schemaSurfaceCatalog() apicatalog.Catalog {
+	service := func(name string, methods map[string]interface{}) meta.Service {
+		resourceName := "messages"
+		if name == "mail" {
+			resourceName = "user_mailbox.messages"
+		}
+		return meta.ServiceFromMap(map[string]interface{}{
+			"name":        name,
+			"version":     "v1",
+			"servicePath": "/open-apis/" + name + "/v1",
+			"resources": map[string]interface{}{
+				resourceName: map[string]interface{}{
+					"methods": methods,
+				},
+			},
+		})
+	}
+	method := func(id, description string) map[string]interface{} {
+		return map[string]interface{}{
+			"id":           id,
+			"path":         "/open-apis/fixture/v1/messages",
+			"httpMethod":   "GET",
+			"description":  description,
+			"risk":         "read",
+			"accessTokens": []interface{}{"tenant"},
+		}
+	}
+	return apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{
+		service("mail", map[string]interface{}{
+			"get":  method("mail.user_mailbox.messages.get", "visible mail method"),
+			"list": method("mail.user_mailbox.messages.list", "concealable mail method"),
+		}),
+		service("im", map[string]interface{}{
+			"list": method("im.messages.list", "visible im method"),
+		}),
+	})
+}

@@ -70,6 +70,15 @@ func (ctx *RuntimeContext) As() core.Identity {
 	return core.AsUser
 }
 
+// PresentError renders a typed producer error for this command tree before a
+// shortcut copies its fields into a result payload.
+func (ctx *RuntimeContext) PresentError(err error) error {
+	if ctx == nil {
+		return err
+	}
+	return ctx.Factory.PresentError(err, cmdutil.ErrorPresentationOptions{Identity: ctx.As()})
+}
+
 // IsBot returns true if current identity is bot.
 func (ctx *RuntimeContext) IsBot() bool {
 	return ctx.As().IsBot()
