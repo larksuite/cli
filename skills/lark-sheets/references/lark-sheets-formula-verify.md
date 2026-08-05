@@ -1,8 +1,8 @@
 # Lark Sheet Formula Verify（+formula-verify）
 
-> **本文定位**：飞书表格公式写入后的自检入口，也是所有写公式任务的**强制收尾步骤**。公式的书写规则与 Excel→飞书迁移的语义规则一律以 `lark-sheets-formula-translation` 为唯一权威，本文不重复；本文分别说明普通公式的 zero-error 收敛与 AI 公式的异步抽检交付。
+> **本文定位**：飞书表格"公式写入后是否真的零错误"的自检入口，也是所有写公式任务的**强制收尾步骤**。公式的书写规则与 Excel→飞书迁移的语义规则一律以 `lark-sheets-formula-translation` 为唯一权威，本文不重复；本文聚焦"写完了之后怎么用一次调用确认 zero-error"。
 >
-> **边界**：本文不讲公式怎么写（去 `lark-sheets-formula-translation`），也不讲公式怎么写入表格（去 `lark-sheets-write-cells` / `lark-sheets-batch-update`）。本文只讲公式落表后的自检：普通公式必须用 `+formula-verify` 收敛到 zero-error；AI 公式按「AI 公式校验」的异步抽检规则交付。
+> **边界**：本文不讲公式怎么写（去 `lark-sheets-formula-translation`），也不讲公式怎么写入表格（去 `lark-sheets-write-cells` / `lark-sheets-batch-update`）。本文只讲一件事：**只要任务里发生了公式落表、批量填充公式、`--copy-to-range` 扩展公式、导入含公式 workbook，收尾就必须用 `+formula-verify` 自检到 zero-error 才能交付**。
 
 ## 为什么需要自检
 
@@ -24,7 +24,6 @@
 | `--range` | 限定 A1 范围；省略则用各 sheet 的 `current_region` |
 | `--max-locations` | 每类错误样本上限，默认 20 |
 | `--exit-on-error` | `status='errors_found'` 时返回非 0 退出码（CI 网关用） |
-| `--ai-only` | 只校验 AI 公式（见「AI 公式校验」），跳过普通公式的 7 类 Excel 错误扫描；写完 AI 公式后查看计算状态用 |
 
 返回核心字段：
 
@@ -37,7 +36,7 @@
 
 ## 写入收尾收敛规则
 
-任何批量公式 / 含公式列写入完成后都应调用 `+formula-verify`。普通公式必须直到 `status='success'` 才能交付；AI 公式不等待全部异步计算完成，按「AI 公式校验」抽检后即可交付。不要等用户显式说"校验一下公式"才想到这里。触发场景：
+任何批量公式 / 含公式列写入完成后调用 `+formula-verify` 直到 `status='success'` 才能交付。不要等用户显式说"校验一下公式"才想到这里；**只要任务动作包含写公式，这一步默认就该做**。触发场景：
 
 - `+cells-set` / `+csv-put`
 - `+cells-set --copy-to-range` / 模板单元格向整列或整块扩展公式
@@ -67,30 +66,6 @@
 - 把工作簿按 `--sheet-id` / `--sheet-name` 拆成多次调用。
 - 同 sheet 内按 `--range` 切片（如先 `A1:Z200` 再 `AA1:AZ200`），逐块自检。
 - 每块都跑到 `has_more=false` 且 `status='success'` 才算通过。
-
-## AI 公式校验（`--ai-only`）
-
-飞书表格提供一个统一的 **`AI` 公式**（`=AI(prompt, [range])`，用自然语言驱动翻译 / 分类 / 情感分析 / 信息提取 / 总结 / 润色等，写法与清单见 `lark-sheets-formula-translation`）。AI 公式的写入与普通公式一致（复用 `+cells-set` / `set_cell_range`，无需特殊接口），但**计算是异步的**：写入后要等 AI 算完才有结果。普通的 `+formula-verify` 只扫本地单元格值（7 类 Excel 错误），看不到 AI 公式的计算状态。
-
-`--ai-only` 让 `+formula-verify` 只校验 AI 公式、跳过普通公式的 Excel 错误扫描，专用于写完 AI 公式后的异步状态抽检。**它必须是第一校验入口；禁止先用 `+cells-get` / `+csv-get` 轮询 AI 结果。**
-
-- **返回当前计算状态**：`+formula-verify --ai-only` 返回本次调用时 AI 公式的**当前**计算状态快照。
-- **异步预期**：少量 AI 公式通常很快算出结果；批量写入后部分公式仍为 `pending`（计算中）属于正常现象，飞书会在后台持续计算。
-- **状态三态**：至少能区分「完成」/「进行中（仍在计算）」/「失败或不支持」。仍有「进行中」时，间隔一段时间后再查一次。
-- **`--exit-on-error` 兼容**：`--ai-only --exit-on-error` 时，若仍有 AI 公式处于失败态，返回非 0 退出码，便于脚本 / CI 收敛。
-- 可与 `--sheet-id` / `--sheet-name` / `--range` 共存，表示「只在指定范围里校验 AI 公式」。
-
-交付规则：用 `--range` 选取代表性范围抽检；确认公式已写入且抽检没有明确的失败 / 不支持状态后，即使仍有 pending 也可以交付，不必轮询到全部完成。交付时必须告知用户“AI 公式仍在后台运行，结果会陆续完成”。只有发现明确失败 / 不支持状态时才先修复；`+cells-get` 仅在需要核对公式文本、样式或定位异常单元格时补充使用。
-
-**区分「写入层坏了」与「AI 失败 / 仍在算」**：若读回是 `#ERROR`，或看似被截断的字面量（残缺括号如 `E2)`、半截函数名、全角括号），说明公式串在 shell / CSV / JSON 引号层被破坏、根本没作为公式写进去——`--ai-only` 只统计「结构上仍被识别为 AI 公式」的单元格，坏掉的格不计入 `failed`，因此会出现「`failed_count=0` 却读到 `#ERROR`」的假矛盾。此时不要继续等 pending，回到 `+cells-set` 用 `\"` 转义重写该格（写入范例见 `lark-sheets-formula-translation` 的 AI 公式章节）。
-
-典型用法：
-
-```bash
-# 写入一批 AI 公式后，抽检代表性范围的计算状态
-lark-cli sheets +formula-verify --url <表URL> --sheet-name <子表名> --range <代表性范围> --ai-only
-# 没有明确失败 / 不支持状态即可交付；pending 会在后台继续计算
-```
 
 ## 常见陷阱
 
