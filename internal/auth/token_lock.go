@@ -33,7 +33,7 @@ func sanitizeID(id string) string {
 }
 
 func tokenStorageLockDir() string {
-	return filepath.Join(core.GetBaseConfigDir(), "locks")
+	return filepath.Join(core.GetConfigDir(), "locks")
 }
 
 func tokenStorageLockPath(appID, userOpenID string) string {
