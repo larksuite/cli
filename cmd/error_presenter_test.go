@@ -107,14 +107,20 @@ func TestRootErrorPresenterPreservesPermissionGuidanceWhenAuthLoginIsConcealed(t
 			if !ok {
 				t.Fatalf("rendered error = %T, want *errs.PermissionError", rendered)
 			}
+			problem, ok := errs.ProblemOf(rendered)
+			if !ok {
+				t.Fatalf("ProblemOf(%T) failed: %v", rendered, rendered)
+			}
+			if problem.Category != errs.CategoryAuthorization || problem.Subtype != tt.subtype {
+				t.Errorf("problem = %s/%s, want authorization/%s", problem.Category, problem.Subtype, tt.subtype)
+			}
 			if got := presented.Hint; got != tt.wantHint {
 				t.Fatalf("concealed recovery = %q, want exact joined recovery %q", got, tt.wantHint)
 			}
 			if strings.Contains(presented.Hint, "auth login") {
 				t.Fatalf("concealed recovery leaks unavailable auth login target: %q", presented.Hint)
 			}
-			if presented.Category != errs.CategoryAuthorization || presented.Subtype != tt.subtype ||
-				presented.Message != source.Message || presented.Identity != "user" ||
+			if presented.Message != source.Message || presented.Identity != "user" ||
 				len(presented.MissingScopes) != 1 || presented.MissingScopes[0] != "im:message" {
 				t.Fatalf("presented machine fields = %+v, source = %+v", presented, source)
 			}
