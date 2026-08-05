@@ -64,6 +64,41 @@ func TestUserAuthorizationGolden(t *testing.T) {
 	}
 }
 
+func TestUserAuthorizationUsesBuildLocalProfileForBothCommands(t *testing.T) {
+	hint := UserAuthorization("docx:document", "drive:drive")
+	projector := NewProjectorWithContext(nil, RenderContext{Profile: "team-beta"})
+
+	want := "run `lark-cli auth login --profile='team-beta' --scope \"docx:document drive:drive\" --no-wait --json` to get device_code and verification_url; " +
+		"present verification_url to the user exactly and end this turn; after the user confirms authorization, " +
+		"run `lark-cli auth login --profile='team-beta' --device-code <device_code>` in a later turn to finish login"
+	if got := projector.RenderHint(hint); got != want {
+		t.Fatalf("profile-aware hint = %q, want %q", got, want)
+	}
+
+	// The producer owns no invocation state: its default form remains byte-for-byte
+	// pinned by TestUserAuthorizationGolden after another build renders it.
+	if strings.Contains(hint.String(), "--profile") {
+		t.Fatalf("producer hint was polluted with build-local profile: %q", hint.String())
+	}
+
+	concealed := NewProjectorWithContext(func() *surface.Plan {
+		return surface.NewPlan(map[surface.CommandID]surface.CommandState{
+			surface.CommandAuthLogin: surface.CommandConcealed,
+		})
+	}, RenderContext{Profile: "team-beta"}).RenderHint(hint)
+	if strings.Contains(concealed, "team-beta") || strings.Contains(concealed, "auth login") {
+		t.Fatalf("concealed recovery leaked profile or command: %q", concealed)
+	}
+}
+
+func TestRenderContextShellQuotesProfileAsOneArgument(t *testing.T) {
+	context := RenderContext{Profile: "team'$(touch /tmp/should-not-run)"}
+	want := `lark-cli auth login --profile='team'"'"'$(touch /tmp/should-not-run)' --device-code <code>`
+	if got := context.AuthLoginCommand("--device-code <code>"); got != want {
+		t.Fatalf("AuthLoginCommand() = %q, want %q", got, want)
+	}
+}
+
 func TestHintRenderFiltersOnlyUnreferenceableTargets(t *testing.T) {
 	hint := Join("; ",
 		Command(TargetConfigInit, "run `lark-cli config init`"),

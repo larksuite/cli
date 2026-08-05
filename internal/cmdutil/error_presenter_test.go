@@ -10,6 +10,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 )
@@ -67,5 +68,38 @@ func TestFactoryPresentErrorClonesAndPreservesPermissionMachineFields(t *testing
 	}
 	if source.Hint != "" {
 		t.Fatalf("PresentError mutated producer hint: %q", source.Hint)
+	}
+}
+
+func TestFactoryPresentErrorRebuildsUnannotatedCanonicalHintWithInvocationContext(t *testing.T) {
+	canonical := errclass.PermissionHint(nil, "user", errs.SubtypeMissingScope, "")
+	source := errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope").
+		WithIdentity("user").
+		WithHint("%s", canonical)
+	projector := recovery.NewProjectorWithContext(nil, recovery.RenderContext{Profile: "team-beta"})
+	f := &Factory{ResolvedIdentity: core.AsUser, Recovery: projector}
+
+	rendered := f.PresentError(source, ErrorPresentationOptions{
+		DeclaredScopes: func() []string { return []string{"calendar:calendar.event:read"} },
+	})
+	presented, ok := rendered.(*errs.PermissionError)
+	if !ok {
+		t.Fatalf("PresentError() = %T, want *errs.PermissionError", rendered)
+	}
+	for _, want := range []string{
+		`--profile='team-beta'`,
+		`--scope "calendar:calendar.event:read"`,
+		"--no-wait --json",
+		"--device-code",
+	} {
+		if !strings.Contains(presented.Hint, want) {
+			t.Fatalf("presented hint %q does not contain %q", presented.Hint, want)
+		}
+	}
+	if strings.Contains(presented.Hint, "--recommend") {
+		t.Fatalf("presented hint retained generic recovery: %q", presented.Hint)
+	}
+	if source.Hint != canonical {
+		t.Fatalf("PresentError mutated producer hint: got %q, want %q", source.Hint, canonical)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/surface"
@@ -63,6 +64,128 @@ func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProdu
 	if strings.Contains(concealedProblem.Hint, "auth login") ||
 		!strings.Contains(concealedProblem.Hint, "supported authorization flow") {
 		t.Fatalf("concealed recovery = %q, want target-free fallback", concealedProblem.Hint)
+	}
+}
+
+func TestRootErrorPresenterUsesDeclaredScopesForCanonicalPermissionRecovery(t *testing.T) {
+	const declaredScope = "calendar:calendar.event:read"
+
+	f := &cmdutil.Factory{ResolvedIdentity: core.AsUser}
+	root := &cobra.Command{Use: "lark-cli"}
+	calendar := &cobra.Command{Use: "calendar"}
+	agenda := &cobra.Command{Use: "+agenda"}
+	root.AddCommand(calendar)
+	calendar.AddCommand(agenda)
+	f.CurrentCommand = agenda
+
+	newSource := func(t *testing.T) (error, *errs.PermissionError) {
+		t.Helper()
+		err := errclass.BuildAPIError(
+			map[string]any{"code": 230027, "msg": "operation unauthorized"},
+			errclass.ClassifyContext{Identity: "user"},
+		)
+		typed, ok := errs.UnwrapTypedError(err)
+		if !ok {
+			t.Fatalf("source = %T, want typed error", err)
+		}
+		permission, ok := typed.(*errs.PermissionError)
+		if !ok {
+			t.Fatalf("source = %T, want *errs.PermissionError", err)
+		}
+		if len(permission.MissingScopes) != 0 || !strings.Contains(permission.Hint, "--recommend") {
+			t.Fatalf("source = %+v, want canonical generic recovery without server scope facts", permission)
+		}
+		return err, permission
+	}
+
+	source, sourcePermission := newSource(t)
+	sourceHint := sourcePermission.Hint
+	visible := presentRootError(f, source, recovery.NewProjector(nil))
+	presented, ok := visible.(*errs.PermissionError)
+	if !ok {
+		t.Fatalf("visible = %T, want *errs.PermissionError", visible)
+	}
+	wantVisible := errclass.PermissionRecovery(
+		[]string{declaredScope},
+		"user",
+		errs.SubtypeUserUnauthorized,
+		"",
+	).String()
+	if presented.Hint != wantVisible {
+		t.Fatalf("visible recovery = %q, want declared-scope recovery %q", presented.Hint, wantVisible)
+	}
+	if len(presented.MissingScopes) != 0 {
+		t.Fatalf("presentation fabricated missing_scopes: %v", presented.MissingScopes)
+	}
+	if sourcePermission.Hint != sourceHint || len(sourcePermission.MissingScopes) != 0 {
+		t.Fatalf("presenter mutated producer: %+v", sourcePermission)
+	}
+
+	const serverScope = "calendar:calendar.event:read:server"
+	serverSource := errclass.BuildAPIError(
+		map[string]any{
+			"code": 99991679,
+			"msg":  "missing scope",
+			"error": map[string]any{
+				"permission_violations": []any{map[string]any{"subject": serverScope}},
+			},
+		},
+		errclass.ClassifyContext{Identity: "user"},
+	)
+	var serverProducer *errs.PermissionError
+	if !errors.As(serverSource, &serverProducer) {
+		t.Fatalf("server source = %T, want *errs.PermissionError", serverSource)
+	}
+	serverPresentedError := presentRootError(f, serverSource, recovery.NewProjector(nil))
+	serverPresented, ok := serverPresentedError.(*errs.PermissionError)
+	if !ok {
+		t.Fatalf("server presented = %T, want *errs.PermissionError", serverPresentedError)
+	}
+	wantServer := errclass.PermissionRecovery(
+		[]string{serverScope},
+		"user",
+		errs.SubtypeMissingScope,
+		"",
+	).String()
+	if serverPresented.Hint != wantServer {
+		t.Fatalf("server recovery = %q, want authoritative server scope %q", serverPresented.Hint, wantServer)
+	}
+	if len(serverPresented.MissingScopes) != 1 || serverPresented.MissingScopes[0] != serverScope {
+		t.Fatalf("presented missing_scopes = %v, want [%s]", serverPresented.MissingScopes, serverScope)
+	}
+	if len(serverProducer.MissingScopes) != 1 || serverProducer.MissingScopes[0] != serverScope {
+		t.Fatalf("presenter mutated server producer: %+v", serverProducer)
+	}
+
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	concealedSource, _ := newSource(t)
+	concealed := presentRootError(f, concealedSource, recovery.NewProjector(func() *surface.Plan { return plan }))
+	concealedPermission, ok := concealed.(*errs.PermissionError)
+	if !ok {
+		t.Fatalf("concealed = %T, want *errs.PermissionError", concealed)
+	}
+	wantConcealed := errclass.PermissionRecovery(
+		[]string{declaredScope},
+		"user",
+		errs.SubtypeUserUnauthorized,
+		"",
+	).Render(plan)
+	if concealedPermission.Hint != wantConcealed {
+		t.Fatalf("concealed recovery = %q, want declared-scope fallback %q", concealedPermission.Hint, wantConcealed)
+	}
+	if strings.Contains(concealedPermission.Hint, "auth login") || !strings.Contains(concealedPermission.Hint, declaredScope) {
+		t.Fatalf("concealed recovery leaked a command or lost scope context: %q", concealedPermission.Hint)
+	}
+
+	custom := errs.NewPermissionError(errs.SubtypeUserUnauthorized, "permission denied").
+		WithIdentity("user").
+		WithHint("ask the tenant admin to review the resource policy")
+	customPresented := presentRootError(f, custom, recovery.NewProjector(nil))
+	customProblem, _ := errs.ProblemOf(customPresented)
+	if got, want := customProblem.Hint, custom.Hint; got != want {
+		t.Fatalf("custom recovery = %q, want producer guidance %q", got, want)
 	}
 }
 

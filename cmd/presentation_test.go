@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/internal/update"
@@ -435,6 +436,58 @@ func TestRecoveryRenderingUsesExactBuildLocalSurfaceAndDoesNotMutate(t *testing.
 	visibleProblem, _ := errs.ProblemOf(visible)
 	if visibleProblem.Hint != wantHint {
 		t.Errorf("default tree lost recovery after second Build: %q", visibleProblem.Hint)
+	}
+}
+
+func TestRecoveryRenderingKeepsExplicitProfilesIsolatedAcrossBuilds(t *testing.T) {
+	tmpHome(t)
+	platform.ResetForTesting()
+	t.Cleanup(platform.ResetForTesting)
+
+	alphaInvocation := buildInvocationForTest(t)
+	alphaInvocation.Profile = "alpha"
+	alphaRuntime, _, _ := buildInternal(context.Background(), alphaInvocation, WithoutPlugins())
+
+	betaInvocation := buildInvocationForTest(t)
+	betaInvocation.Profile = "beta"
+	betaRuntime, _, _ := buildInternal(context.Background(), betaInvocation, WithoutPlugins())
+
+	source := recovery.Attach(
+		errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope").
+			WithMissingScopes("docx:document").
+			WithIdentity("user"),
+		recovery.UserAuthorization("docx:document"),
+	)
+	sourceProblem, _ := errs.ProblemOf(source)
+	if strings.Contains(sourceProblem.Hint, "--profile") {
+		t.Fatalf("producer hint unexpectedly owns an invocation profile: %q", sourceProblem.Hint)
+	}
+
+	assertProfile := func(name string, runtime *buildRuntime, want, unwanted string) {
+		t.Helper()
+		rendered := runtime.recovery.Render(source)
+		problem, ok := errs.ProblemOf(rendered)
+		if !ok {
+			t.Fatalf("%s rendered error = %T, want typed error", name, rendered)
+		}
+		for _, command := range []string{
+			"lark-cli auth login --profile='" + want + "' --scope \"docx:document\" --no-wait --json",
+			"lark-cli auth login --profile='" + want + "' --device-code <device_code>",
+		} {
+			if !strings.Contains(problem.Hint, command) {
+				t.Errorf("%s recovery missing %q: %q", name, command, problem.Hint)
+			}
+		}
+		if strings.Contains(problem.Hint, "--profile='"+unwanted+"'") {
+			t.Errorf("%s recovery leaked profile %q: %q", name, unwanted, problem.Hint)
+		}
+	}
+
+	assertProfile("alpha before beta", alphaRuntime, "alpha", "beta")
+	assertProfile("beta", betaRuntime, "beta", "alpha")
+	assertProfile("alpha after beta", alphaRuntime, "alpha", "beta")
+	if strings.Contains(sourceProblem.Hint, "--profile") {
+		t.Fatalf("build-local rendering mutated source hint: %q", sourceProblem.Hint)
 	}
 }
 

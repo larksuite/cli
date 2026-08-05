@@ -5,8 +5,10 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -1123,6 +1125,68 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 	} {
 		if strings.Contains(hint, unwanted) {
 			t.Fatalf("hint should not contain %q, got:\n%s", unwanted, hint)
+		}
+	}
+}
+
+func TestNoWaitAgentHint_DefaultBytesStable(t *testing.T) {
+	const wantSHA256 = "bd1000350f418a4353807c45c68e1ee073127366bf9d8dd8a0a0f797e0adf8b7"
+	if got := fmt.Sprintf("%x", sha256.Sum256([]byte(noWaitAgentHint(recovery.RenderContext{})))); got != wantSHA256 {
+		t.Fatalf("default no-wait hint digest = %s, want legacy %s", got, wantSHA256)
+	}
+}
+
+func TestAuthLoginRun_NoWaitJSONHintPreservesExplicitProfile(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "team-beta",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+	f.Invocation.Profile = "team-beta"
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    larkauth.PathDeviceAuthorization,
+		Body: map[string]interface{}{
+			"device_code":               "device-code",
+			"user_code":                 "user-code",
+			"verification_uri":          "https://example.com/verify",
+			"verification_uri_complete": "https://example.com/verify?code=123",
+			"expires_in":                240,
+			"interval":                  5,
+		},
+	})
+
+	if err := authLoginRun(&LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Scope:   "im:message:send",
+		NoWait:  true,
+		JSON:    true,
+	}); err != nil {
+		t.Fatalf("authLoginRun() error = %v", err)
+	}
+
+	var data map[string]interface{}
+	if err := json.NewDecoder(strings.NewReader(stdout.String())).Decode(&data); err != nil {
+		t.Fatalf("Decode(stdout) error = %v, stdout=%q", err, stdout.String())
+	}
+	hint, _ := data["hint"].(string)
+	for _, want := range []string{
+		"`lark-cli auth login --profile='team-beta' --device-code <device_code>`",
+		"rerun `lark-cli auth login --profile='team-beta'` with the same",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("profile-aware no-wait JSON hint missing %q: %s", want, hint)
+		}
+	}
+	for _, stale := range []string{
+		"`lark-cli auth login --device-code <device_code>`",
+		"rerun `lark-cli auth login` with the same",
+	} {
+		if strings.Contains(hint, stale) {
+			t.Errorf("profile-aware no-wait JSON hint retained stale command %q: %s", stale, hint)
 		}
 	}
 }

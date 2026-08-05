@@ -12,8 +12,8 @@ import (
 )
 
 // ErrorPresentationOptions supplies invocation-specific facts to PresentError.
-// DeclaredScopes is lazy because only missing-user-authorization errors need
-// command metadata resolution.
+// DeclaredScopes is lazy because only user-authorization recovery with no
+// server-reported scope facts needs command metadata resolution.
 type ErrorPresentationOptions struct {
 	Projector      *recovery.Projector
 	Identity       core.Identity
@@ -33,7 +33,7 @@ func (f *Factory) PresentError(err error, options ErrorPresentationOptions) erro
 		projector = f.Recovery
 	}
 	rendered := projector.Render(err)
-	completePermissionRecovery(f, rendered, projector, options.Identity)
+	completePermissionRecovery(f, rendered, projector, options.Identity, options.DeclaredScopes)
 	applyNeedAuthorizationHint(rendered, projector, options.DeclaredScopes)
 	return rendered
 }
@@ -43,13 +43,14 @@ func completePermissionRecovery(
 	err error,
 	projector *recovery.Projector,
 	identity core.Identity,
+	declaredScopes func() []string,
 ) {
 	typed, ok := errs.UnwrapTypedError(err)
 	if !ok {
 		return
 	}
 	permissionErr, ok := typed.(*errs.PermissionError) //nolint:errorlint // presentation must not descend into the clone's original Cause
-	if !ok || permissionErr.Hint != "" {
+	if !ok {
 		return
 	}
 	if permissionErr.Identity != "" {
@@ -60,13 +61,43 @@ func completePermissionRecovery(
 	if identity == "" {
 		identity = core.AsUser
 	}
-	hint := errclass.PermissionRecovery(
+	canonical := errclass.PermissionRecovery(
 		permissionErr.MissingScopes,
 		string(identity),
 		permissionErr.Subtype,
 		permissionErr.ConsoleURL,
 	)
+	if permissionErr.Hint != "" &&
+		permissionErr.Hint != canonical.String() &&
+		permissionErr.Hint != projector.RenderHint(canonical) {
+		return
+	}
+
+	recoveryScopes := permissionErr.MissingScopes
+	if permissionRecoveryUsesDeclaredScopes(permissionErr, identity) && declaredScopes != nil {
+		if scopes := declaredScopes(); len(scopes) > 0 {
+			recoveryScopes = scopes
+		}
+	}
+	hint := errclass.PermissionRecovery(
+		recoveryScopes,
+		string(identity),
+		permissionErr.Subtype,
+		permissionErr.ConsoleURL,
+	)
 	permissionErr.Hint = projector.RenderHint(hint)
+}
+
+func permissionRecoveryUsesDeclaredScopes(permissionErr *errs.PermissionError, identity core.Identity) bool {
+	if permissionErr == nil || identity != core.AsUser || len(permissionErr.MissingScopes) > 0 {
+		return false
+	}
+	switch permissionErr.Subtype {
+	case errs.SubtypeMissingScope, errs.SubtypeTokenScopeInsufficient, errs.SubtypeUserUnauthorized:
+		return true
+	default:
+		return false
+	}
 }
 
 func applyNeedAuthorizationHint(err error, projector *recovery.Projector, declaredScopes func() []string) {

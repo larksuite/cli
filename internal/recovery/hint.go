@@ -43,8 +43,9 @@ const (
 // target and is always retained; a command part is retained only while its
 // target remains referenceable in the current command surface.
 type Part struct {
-	text   string
-	target Target
+	text       string
+	target     Target
+	renderText func(RenderContext) string
 }
 
 // Text returns a recovery hint part that does not point to a command.
@@ -55,6 +56,10 @@ func Text(text string) Part {
 // Command returns a recovery hint part that points to target.
 func Command(target Target, text string) Part {
 	return Part{text: text, target: target}
+}
+
+func contextualCommand(target Target, render func(RenderContext) string) Part {
+	return Part{target: target, renderText: render}
 }
 
 // Hint is an immutable sequence of semantic recovery parts. separator is used
@@ -97,18 +102,22 @@ func (h Hint) WithFallback(text string) Hint {
 // require; the command target, standard wording, and reduced-distribution
 // fallback stay centralized.
 func UserAuthorization(scopes ...string) Hint {
-	var command string
+	scopes = append([]string(nil), scopes...)
 	fallback := "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry"
-	if len(scopes) == 0 {
-		command = "run `lark-cli auth login --recommend --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login"
-	} else {
-		command = fmt.Sprintf(
-			"run `lark-cli auth login --scope \"%s\" --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login",
-			strings.Join(scopes, " "),
-		)
+	if len(scopes) > 0 {
 		fallback += "\ncurrent command requires scope(s): " + strings.Join(scopes, ", ")
 	}
-	return Join("", Command(TargetAuthLogin, command)).WithFallback(fallback)
+	return Join("", contextualCommand(TargetAuthLogin, func(context RenderContext) string {
+		startArgs := "--recommend --no-wait --json"
+		if len(scopes) > 0 {
+			startArgs = fmt.Sprintf("--scope \"%s\" --no-wait --json", strings.Join(scopes, " "))
+		}
+		return fmt.Sprintf(
+			"run %s to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run %s in a later turn to finish login",
+			context.InlineAuthLoginCommand(startArgs),
+			context.InlineAuthLoginCommand("--device-code <device_code>"),
+		)
+	})).WithFallback(fallback)
 }
 
 // String returns the hint as rendered for the default, fully visible surface.
@@ -118,10 +127,14 @@ func (h Hint) String() string {
 
 // Render filters command-targeted parts against plan without changing h.
 func (h Hint) Render(plan *surface.Plan) string {
+	return h.render(plan, RenderContext{})
+}
+
+func (h Hint) render(plan *surface.Plan, context RenderContext) string {
 	if len(h.hints) > 0 {
 		retained := make([]string, 0, len(h.hints))
 		for _, child := range h.hints {
-			if rendered := child.Render(plan); rendered != "" {
+			if rendered := child.render(plan, context); rendered != "" {
 				retained = append(retained, rendered)
 			}
 		}
@@ -133,13 +146,17 @@ func (h Hint) Render(plan *surface.Plan) string {
 
 	retained := make([]string, 0, len(h.parts))
 	for _, part := range h.parts {
-		if part.text == "" {
+		text := part.text
+		if part.renderText != nil {
+			text = part.renderText(context)
+		}
+		if text == "" {
 			continue
 		}
 		if part.target != "" && !plan.CanReference(surface.CommandID(part.target)) {
 			continue
 		}
-		retained = append(retained, part.text)
+		retained = append(retained, text)
 	}
 	if len(retained) == 0 {
 		return h.fallback

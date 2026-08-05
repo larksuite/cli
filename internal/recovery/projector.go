@@ -14,12 +14,19 @@ import "github.com/larksuite/cli/internal/surface"
 // A nil Projector, nil callback, or nil Plan means the default fully-visible
 // surface.
 type Projector struct {
-	plan func() *surface.Plan
+	plan    func() *surface.Plan
+	context RenderContext
 }
 
 // NewProjector returns a projector backed by one command tree's plan callback.
 func NewProjector(plan func() *surface.Plan) *Projector {
 	return &Projector{plan: plan}
+}
+
+// NewProjectorWithContext returns a projector whose presentation is scoped to
+// both one command tree and one immutable invocation context.
+func NewProjectorWithContext(plan func() *surface.Plan, context RenderContext) *Projector {
+	return &Projector{plan: plan, context: context}
 }
 
 func (p *Projector) surfacePlan() *surface.Plan {
@@ -37,10 +44,16 @@ func (p *Projector) CanReference(target Target) bool {
 
 // Render clones and projects a typed error for this command tree.
 func (p *Projector) Render(err error) error {
-	return Render(err, p.surfacePlan())
+	if p == nil {
+		return Render(err, nil)
+	}
+	return renderWithContext(err, p.surfacePlan(), p.context)
 }
 
 // RenderHint projects one semantic hint for this command tree.
 func (p *Projector) RenderHint(hint Hint) string {
-	return hint.Render(p.surfacePlan())
+	if p == nil {
+		return hint.Render(nil)
+	}
+	return hint.render(p.surfacePlan(), p.context)
 }
