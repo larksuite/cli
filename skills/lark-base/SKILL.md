@@ -103,11 +103,11 @@ metadata:
 
 涉及统计、聚合、排序、Top/Bottom N、全局结论、多表关联或复杂行级计算时，按以下顺序执行：
 
-1. 不在主 Skill 预判本地环境；先读 [lark-base-data-analysis-local.md](references/lark-base-data-analysis-local.md)，由它统一分流。
+1. 先读 [lark-base-data-analysis-local.md](references/lark-base-data-analysis-local.md)，由它统一分流。
 2. 单表任务经过任务语义允许的谓词下推后，实际需导出的完整记录不超过 2000 条，且可由一个短 jq 表达式完成时，优先使用内置 `--jq-records`；它不要求外部 jq、共享文件系统或 Python。
-3. jq 不足以完成任务时，才检查 Python：Python 可运行并能读取 lark-cli 生成的 artifact，且各必要表经过任务语义允许的谓词下推后，实际需导出的完整记录数的最大值不超过 2000 时，使用 Python 标准库或 pandas；多表记录数不求和。
-4. 过滤前整表行数超过 2000 不会直接排除本地分析；若最大单表导出量仍不能收敛到 2000 条以内，转 [lark-base-data-analysis-cloud.md](references/lark-base-data-analysis-cloud.md)。
-5. `+record-list` 默认页和固定 `--limit` 只能证明已读取范围内的事实。`has_more=true` 或等价分页信号表示结果不完整；除非用户只要样例或前 N 条，不能据此回答全局问题。
+3. jq 不足以完成任务时，才检查 Python：Python 可运行并能读取 lark-cli 生成的 artifact，且 `local_max_records = max(各必要表经过任务语义允许的谓词下推后实际需导出的完整记录数) <= 2000` 时，使用 Python 标准库或 pandas。
+4. 本地分析以 `local_max_records` 为规模依据，允许过滤前整表行数超过 2000；`local_max_records > 2000` 时转 [lark-base-data-analysis-cloud.md](references/lark-base-data-analysis-cloud.md)。
+5. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 或等价分页信号表示当前结果仅覆盖已读取范围。
 6. 每次读取都做任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key；最终答案必须能追溯到真实范围和计算口径，并展示用户可读字段。
 
 ## 写入前置规则

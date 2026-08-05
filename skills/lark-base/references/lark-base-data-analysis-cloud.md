@@ -8,23 +8,21 @@
 - 视图筛选: [lark-base-view-set-filter.md](lark-base-view-set-filter.md)
 - 记录读取: `+record-list` / `+record-search` / `+record-get`，先确认字段 ID、字段名、分页和投影范围
 
-## 0. Hard Rules
+## 0. 执行约定
 
-- 全局问题不能用默认 `+record-list --limit N` 片面地回答。
-- 进入本 SOP 后，不再用不完整的本地记录结果形成全局结论；让 Base 云端执行 filter/sort/aggregate。
 - “最高、最低、最新、最早、Top、Bottom、总数、全部、异常、最大、最小、最多、最少、优先级最高”等全局语义，在本路径中由 Base 云端查询服务完成筛选、排序或聚合。
 - 一次性原始记录查询优先用 `+record-list` / `+record-search` 的 filter/sort；聚合分析优先用 `+data-query`。
 - `+record-search` 用于关键词检索字段的展示文本；金额、状态、日期、空值、关联等结构化条件继续用 `--filter-json` 表达。
 - 不要依赖已有视图，除非用户明确指定该视图，或你已读取并验证其 filter/sort/projection 符合当前问题。
-- 交付输出必须使用用户可读的真实字段值；内部 ID、`record_id`、关联记录 ID、open_id、编码字段只可作为连接键或定位键，不能替代最终输出，除非用户明确要求输出这些键值。
+- 内部 ID、`record_id`、关联记录 ID、open_id 和编码字段用于连接或定位；交付输出使用用户可读的真实字段值，用户明确要求 ID 时一并展示。
 - 每次读取必须做最小投影，并包含后续解释、回查或写入需要的业务 key。
 
 ## 1. Intent -> Tool Path
 
 | 用户意图 | 首选路径 | 关键规则 |
 | --- | --- | --- |
-| 看几条、预览、示例 | `+record-list --limit N --field-id ...` | 保持局部语义；不要推广为全局结论 |
-| 已知 `record_id` | `+record-get` | 直接读取；不要 search/list 反查 |
+| 看几条、预览、示例 | `+record-list --limit N --field-id ...` | 保持局部语义 |
+| 已知 `record_id` | `+record-get` | 直接读取 |
 | 明确关键词 | `+record-search --keyword ... --search-field ... --field-id ...` | 必须显式指定 `--search-field`；可叠加 `--filter-json` |
 | 按条件找原始记录 | `+record-list --filter-json ...` | `filter-json` 与视图筛选结构一致，支持文本、数字、日期、选项、人员、群组、关联等值 |
 | 排序 / TopN 原始记录 | `+record-list --filter-json ... --sort-json ... --limit N` | 最高/最新用 `desc:true`，最低/最早用 `desc:false`；数组顺序表达优先级；最多 10 个排序条件 |
@@ -122,7 +120,7 @@ lark-cli base +record-search \
   --limit 20
 ```
 
-不要把 `+record-search` 当成金额、状态、日期、空值、关联字段的结构化筛选入口；这些条件继续写成 `--filter-json`。
+金额、状态、日期、空值和关联字段等结构化条件使用 `--filter-json`；`+record-search` 处理展示文本关键词。
 
 ### 2.3 聚合分析与 TopN
 
@@ -178,32 +176,14 @@ lark-cli base +view-set-sort \
 
 ### 2.5 关系查询与回查
 
-- Link 单元格中的元素形如 `{"id":"rec_xxx"}`；`id` 是目标表的 `record_id`，不是用户可读内容。
+- Link 单元格中的元素形如 `{"id":"rec_xxx"}`；`id` 是目标表的 `record_id`，用于关系连接。
 - 先用 `+field-list` 确认 link 字段的 `link_table`、业务唯一键和展示字段。
 - 从驱动表拿到候选记录后，用 Link 元素的 `id` 到目标表 `+record-get` 批量读取记录内容。
-- 多跳关系逐跳建立 `record_id/key -> 用户可读字段` 映射；最终用户可读的信息。
-
-禁止：
-
-- 把 Link 元素的 `id` 当最终输出。
-- 用 `+record-search` 搜 Link 元素的 `id`。
-- 基于 ID、自增编号、link 值做语义猜测；禁止依赖字段先验、样本记忆补全交付输出。
+- 多跳关系逐跳建立 `record_id/key -> 用户可读字段` 映射，交付目标表返回的真实业务字段。
 
 ## 3. Range & Pagination Contract
 
-- `+record-list` 默认页、固定 `--limit` 和手工浏览输出都只覆盖已读取范围；不要把大批原始记录直接输出到模型上下文。
+- `+record-list` 默认页、固定 `--limit` 和手工浏览输出都只覆盖已读取范围；模型上下文接收云端收敛后的最终小结果。
 - `has_more=true` 说明可能还有未读取数据，需要更新 offset 后继续读取，多次读取仍未读取完成时，采用其他方法完成任务需求，避免无限循环。
 - 对全局问题，只有 Base 云端查询服务已经通过 filter/sort/aggregate 收敛目标范围，或 `+data-query` 已在云端完成聚合、排序和限制时，才可以用有限返回形成结论。
 - 需要完整原始记录但云端能力无法把结果安全收敛到可返回范围时，明确说明能力边界；不要用手工分页、拆分下载或采样伪装成全局分析。
-
-## 4. Final Answer Check
-
-形成交付输出前必须能确认：
-
-- 问题范围是局部样例、单点定位、全局原始记录、聚合分析、多表关联，还是查询后写入。
-- 统一 SOP 是否已经确认内置 jq 与 Python 路径不适用；进入本路径后，筛选、排序和聚合是否发生在 Base 云端查询服务中。
-- 如果使用 `+record-list` / `+record-search`，是否处理了 `has_more`，且投影包含业务 key 和解释字段。
-- 如果涉及关系查询，是否按 `record_id` 或业务 key 精确回查，交付输出是否来自关联表真实字段。
-- 交付输出能追溯到表、字段、筛选条件、排序/聚合条件和连接键。
-
-任一项无法确认时，继续查询或明确说明只能得到局部结论。
