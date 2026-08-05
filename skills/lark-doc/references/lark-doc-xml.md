@@ -25,7 +25,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 |-|-|-|
 | `<cite type="user">` | @人 | XML 导入时必须显式传入 `user-id`：`<cite type="user" user-id="userID"></cite>` |
 | `<cite type="doc">` | @文档 | `<cite type="doc" doc-id="docx_token"></cite>` |
-| `<cite type="citation">` | 引文引用 | 一个 `<cite>` 内放入多个 `<a>`，标准写法见「Citation 引用」 |
+| `<cite type="citation">` | 参考文献/引用列表 | 必须置于 `<p>`，子节点仅 `<a>`；详见「Citation 引用」 |
 | `<latex>` | 行内公式 | `<latex>E = mc^2</latex>` |
 | `<img>` | 图片（可独立成块或内联） | `<img width="800" height="600" caption="说明" name="图.png" href="http 或 https"/>` |
 | `<source>` | 文件附件（可独立成块或内联） | `<source name="报告.pdf"/>` |
@@ -85,27 +85,35 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 
 ## Citation 引用
 
-使用一个 `<cite type="citation">` 包裹多条引用。每个 `<a>` 表示一条引用，必须填写真实 `href`、对应的 `url-type` 和数字序号文本；不要填写 `<cite>` 的 `id`。
+`<cite type="citation">` 是段落内参考文献列表；引擎按 `<a>` 顺序渲染为 `[1] 标题 [2] 标题…`，编号无需写入。
+
+骨架：`<p>[前言]<cite type="citation"><a href="URL" url-type="N">标题</a>[更多 <a>]</cite></p>`
+
+- `<cite>` 无需 `id`，必须置于 `<p>` 且成对闭合；不得自闭合、脱离 `<p>` 成为块级兄弟，或直接置于 `<h1>`～`<h6>`、`<td>`、`<callout>` 等内部。其子节点只能是至少一个 `<a>`；空白忽略。
+- 每个 `<a>` 必须成对闭合并提供合法 `href`、下表整数 `url-type` 和非空标题。服务端不校验 URL 可达性或 `href` 与 `url-type` 是否匹配，也不从 `href` 补标题；空标题会落库并显示为空占位。
+- `href` 可为飞书内链或 HTTPS 外链；裸 `&` 可解析，序列化或回读时可能规范化为 `&amp;`。
+
+以下 6 个 `url-type` 均已实测落库：
+
+| 值 | 类型/用途 | `href` 示例 |
+|-|-|-|
+| `1` | `Docx`：飞书文档/云文档/Wiki | `https://bytedance.larkoffice.com/docx/TOKEN` |
+| `5` | `Outlink/Web`：外部网页 | `https://example.com/article` |
+| `6` | `Minutes`：飞书妙记 | `https://bytedance.larkoffice.com/minutes/TOKEN` |
+| `12` | `Base`：多维表格/Bitable | `https://bytedance.larkoffice.com/base/TOKEN` |
+| `13` | `Sheet`：电子表格/Spreadsheet | `https://bytedance.larkoffice.com/sheets/TOKEN` |
+| `14` | `Excel`：`.xlsx`/`.xls`，可为任意域名 | `https://example.com/files/data.xlsx` |
 
 ```xml
 <p>参考资料<cite type="citation">
-  <a href="https://example.com/article-1" url-type="5">1</a>
-  <a href="https://example.com/article-2" url-type="5">2</a>
-</cite>。</p>
+  <a href="https://bytedance.larkoffice.com/docx/TOKEN" url-type="1">自闭盒标签测试文档</a>
+  <a href="https://example.com/article-1" url-type="5">外部网页：Example 文章一</a>
+  <a href="https://bytedance.larkoffice.com/minutes/TOKEN" url-type="6">需求评审妙记（2026-08-01）</a>
+  <a href="https://bytedance.larkoffice.com/base/TOKEN" url-type="12">评测作业表（Bitable）</a>
+  <a href="https://bytedance.larkoffice.com/sheets/TOKEN" url-type="13">数据看板（电子表格）</a>
+  <a href="https://example.com/files/data.xlsx" url-type="14">原始数据样本.xlsx</a>
+</cite></p>
 ```
-
-URL 查询参数中的 `&` 可以直接写，SDK 会兼容解析；序列化或回读时可能规范化为 `&amp;`。
-
-常用 `url-type`：
-
-| 值 | 类型 | 说明 |
-|-|-|-|
-| `1` | `Doc` | 飞书文档 |
-| `5` | `Outlink` / `Web` | 外部网页 |
-| `6` | `Minutes` | 飞书妙记 |
-| `12` | `Base` | 多维表格 |
-| `13` | `Sheet` | 电子表格 |
-| `14` | `Excel` | Excel 文件 |
 
 ## 用户名写入规则
 
@@ -198,10 +206,7 @@ URL 查询参数中的 `&` 可以直接写，SDK 会兼容解析；序列化或�
 
 <time expire-time="1775916000000" notify-time="1775912400000" should-notify="false">时间戳毫秒</time>
 
-<cite type="citation">
-  <a href="https://example.com/article-1" url-type="5">1</a>
-  <a href="https://example.com/article-2" url-type="5">2</a>
-</cite>
+<p>参考资料<cite type="citation"><a href="https://example.com/article-1" url-type="5">文章一</a><a href="https://example.com/article-2" url-type="5">文章二</a></cite></p>
 <bookmark name="书签标题" href="https://example.com"></bookmark>
 
 <task task-id="TASK_GUID"></task>
