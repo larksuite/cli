@@ -19,7 +19,7 @@
 
 ## Manifest
 
-`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest，`--jq` 也只处理 manifest。
+`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest。`--jq` 只处理 manifest；确认本次范围完整后，可用 `--jq-records '<expr>'` 对完整导出的 records 数组执行一次查询并以结果替代 stdout，不改变两个 artifact 文件。
 
 ```json
 {
@@ -107,13 +107,20 @@
 NDJSON 每行是一条 record。单表短筛选、计数和简单聚合可直接用 jq；下面筛选“状态”包含“进行中”的记录，并统计记录数和金额合计：
 
 ```bash
-jq -s '
+lark-cli base +record-list \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --field-id 状态 \
+  --field-id 金额 \
+  --limit 2000 \
+  --output records.ndjson \
+  --jq-records '
   map(select((.["状态"] | index("进行中")) != null))
   | {
       records_count: length,
       amount_sum: (map(.["金额"] // 0) | add // 0)
     }
-' records.ndjson
+'
 ```
 
 ### 多值列：nested relation 与目标粒度

@@ -34,6 +34,7 @@ var BaseRecordSearch = common.Shortcut{
 		recordReadFormatFlag(),
 		recordOutputFlag(),
 		recordMinimalStdoutFlag(),
+		recordJQRecordsFlag(),
 		recordOverwriteFlag(),
 	},
 	Tips: []string{

@@ -42,6 +42,13 @@ func recordMinimalStdoutFlag() common.Flag {
 	}
 }
 
+func recordJQRecordsFlag() common.Flag {
+	return common.Flag{
+		Name: "jq-records",
+		Desc: "for ndjson, run a jq expression once against the exported records array and print the result; artifact files remain unchanged",
+	}
+}
+
 func recordOverwriteFlag() common.Flag {
 	return common.Flag{
 		Name: "overwrite", Type: "bool",
@@ -75,16 +82,30 @@ func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) err
 func validateRecordExportFlags(runtime *common.RuntimeContext) error {
 	format := runtime.Str("format")
 	outputPath := strings.TrimSpace(runtime.Str("output"))
+	jqRecords := strings.TrimSpace(runtime.Str("jq-records"))
 	if format != recordexport.FormatNDJSON {
 		switch {
 		case outputPath != "":
 			return baseFlagErrorf("--output requires --format ndjson")
 		case runtime.Bool("minimal-stdout"):
 			return baseFlagErrorf("--minimal-stdout requires --format ndjson")
+		case jqRecords != "":
+			return baseFlagErrorf("--jq-records requires --format ndjson")
 		case runtime.Bool("overwrite"):
 			return baseFlagErrorf("--overwrite requires --format ndjson")
 		}
 		return nil
+	}
+	if jqRecords != "" {
+		switch {
+		case runtime.JqExpr != "":
+			return baseFlagErrorf("--jq-records and --jq are mutually exclusive")
+		case runtime.Bool("minimal-stdout"):
+			return baseFlagErrorf("--jq-records and --minimal-stdout are mutually exclusive")
+		}
+		if err := output.ValidateJqExpression(jqRecords); err != nil {
+			return err
+		}
 	}
 	if outputPath != "" {
 		if filepath.Ext(outputPath) != ".ndjson" {
@@ -314,7 +335,7 @@ func finalizeRecordExport(
 	if err := saveRecordManifest(fio, paths.manifestRelative, manifest); err != nil {
 		return err
 	}
-	return outputRecordExportManifest(runtime, manifest)
+	return outputRecordExportResult(runtime, accumulator.dataset, manifest)
 }
 
 type recordExportPaths struct {
@@ -407,7 +428,23 @@ func saveRecordManifest(fio fileio.FileIO, path string, manifest recordexport.Ma
 	return nil
 }
 
-func outputRecordExportManifest(runtime *common.RuntimeContext, manifest recordexport.Manifest) error {
+func outputRecordExportResult(
+	runtime *common.RuntimeContext,
+	dataset recordexport.Dataset,
+	manifest recordexport.Manifest,
+) error {
+	if jqRecords := strings.TrimSpace(runtime.Str("jq-records")); jqRecords != "" {
+		records := make([]any, 0, len(dataset.Records))
+		for _, record := range dataset.Records {
+			object := make(map[string]any, len(dataset.Columns))
+			for columnIndex, column := range dataset.Columns {
+				object[column.Name] = record.Values[columnIndex]
+			}
+			records = append(records, object)
+		}
+		return output.JqFilter(runtime.IO().Out, records, jqRecords)
+	}
+
 	var value any = manifest
 	if runtime.Bool("minimal-stdout") {
 		value = manifest.Minimal()

@@ -31,6 +31,7 @@ var BaseRecordList = common.Shortcut{
 		recordReadFormatFlag(),
 		recordOutputFlag(),
 		recordMinimalStdoutFlag(),
+		recordJQRecordsFlag(),
 		recordOverwriteFlag(),
 	},
 	Tips: []string{

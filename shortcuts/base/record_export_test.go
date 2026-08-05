@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -314,6 +315,87 @@ func TestRecordListNDJSONJQFiltersStdoutManifest(t *testing.T) {
 	want := filepath.Join(canonicalDir, "jq.ndjson")
 	if got := strings.TrimSpace(stdout.String()); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRecordListNDJSONJQRecordsQueriesExportWithoutChangingArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	withBaseWorkingDir(t, dir)
+	factory, stdout, registry := newExecuteFactory(t)
+	registry.Register(&httpmock.Stub{
+		Method: "GET", URL: "limit=2&offset=0",
+		Body: map[string]any{"code": 0, "data": recordMatrixPage(0, 2, false, "fld_name")},
+	})
+	err := runShortcut(t, BaseRecordList, []string{
+		"+record-list", "--base-token", "app_x", "--table-id", "tbl_x",
+		"--limit", "2", "--output", "query.ndjson",
+		"--jq-records", `map(select(.Name == "Name 1")) | {records_count: length, record_ids: map(.record_id)}`,
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result["records_count"] != float64(1) || !reflect.DeepEqual(result["record_ids"], []any{"rec_0001"}) {
+		t.Fatalf("jq result = %#v", result)
+	}
+
+	records, err := os.ReadFile(filepath.Join(dir, "query.ndjson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(records), "\n") != 2 || !strings.Contains(string(records), `"record_id":"rec_0000"`) {
+		t.Fatalf("query.ndjson = %s", records)
+	}
+	manifest, err := os.ReadFile(filepath.Join(dir, "query.manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(manifest), `"records_count": 2`) {
+		t.Fatalf("query.manifest.json = %s", manifest)
+	}
+}
+
+func TestRecordListJQRecordsValidatesOutputContractBeforeRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "requires ndjson",
+			args: []string{"--format", "json", "--jq-records", "length"},
+			want: "--jq-records requires --format ndjson",
+		},
+		{
+			name: "conflicts with manifest jq",
+			args: []string{"--format", "ndjson", "--jq", ".record_file", "--jq-records", "length"},
+			want: "--jq-records and --jq are mutually exclusive",
+		},
+		{
+			name: "conflicts with minimal stdout",
+			args: []string{"--format", "ndjson", "--minimal-stdout", "--jq-records", "length"},
+			want: "--jq-records and --minimal-stdout are mutually exclusive",
+		},
+		{
+			name: "validates expression",
+			args: []string{"--format", "ndjson", "--jq-records", "invalid["},
+			want: "invalid jq expression",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			args := append([]string{
+				"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1",
+			}, tt.args...)
+			err := runShortcut(t, BaseRecordList, args, factory, stdout)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("runShortcut() error = %v, want containing %q", err, tt.want)
+			}
+		})
 	}
 }
 

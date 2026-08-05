@@ -28,6 +28,7 @@ var BaseRecordGet = common.Shortcut{
 		recordReadFormatFlag(),
 		recordOutputFlag(),
 		recordMinimalStdoutFlag(),
+		recordJQRecordsFlag(),
 		recordOverwriteFlag(),
 	},
 	Normalize: normalizeRecordReadOutput,
