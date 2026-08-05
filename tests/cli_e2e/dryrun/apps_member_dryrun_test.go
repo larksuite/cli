@@ -87,12 +87,12 @@ func TestAppsMemberDryRun(t *testing.T) {
 		assert func(*testing.T, string)
 	}{
 		{
-			name: "list", args: []string{"apps", "+member-list", "--app-id", " app_报告 ", "--member-type", "chat", "--page-size", "25", "--page-token", "opaque", "--dry-run"},
+			name: "list", args: []string{"apps", "+member-list", "--app-id", " app_报告 ", "--member-type", "chat", "--dry-run"},
 			method: "GET", url: "/open-apis/spark/v1/apps/app_%E6%8A%A5%E5%91%8A/members",
 			assert: func(t *testing.T, out string) {
 				require.Equal(t, "chat", clie2e.DryRunGet(out, "api.0.params.member_type").String())
-				require.Equal(t, int64(25), clie2e.DryRunGet(out, "api.0.params.page_size").Int())
-				require.Equal(t, "opaque", clie2e.DryRunGet(out, "api.0.params.page_token").String())
+				require.False(t, clie2e.DryRunGet(out, "api.0.params.page_size").Exists())
+				require.False(t, clie2e.DryRunGet(out, "api.0.params.page_token").Exists())
 			},
 		},
 		{
@@ -188,7 +188,6 @@ func TestAppsMemberValidationFailuresAreStructured(t *testing.T) {
 		{name: "missing-app-settings-get", args: []string{"apps", "+member-settings-get", "--dry-run"}, param: "--app-id"},
 		{name: "missing-app-settings-set", args: []string{"apps", "+member-settings-set", "--external-access", "enabled", "--dry-run"}, param: "--app-id"},
 		{name: "mismatched-member-id", args: []string{"apps", "+member-add", "--app-id", "app_x", "--member-type", "openid", "--member-id", "123456789", "--perm", "view", "--dry-run"}, param: "--member-id"},
-		{name: "page-size", args: []string{"apps", "+member-list", "--app-id", "app_x", "--page-size", "101", "--dry-run"}, param: "--page-size"},
 		{name: "setting-enum", args: []string{"apps", "+member-settings-set", "--app-id", "app_x", "--link-share", "internet-editable", "--dry-run"}, param: "--link-share"},
 	}
 	for _, tc := range tests {

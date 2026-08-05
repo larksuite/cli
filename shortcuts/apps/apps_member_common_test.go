@@ -111,14 +111,6 @@ func TestAppsMemberAPIErrorNormalization(t *testing.T) {
 		wantHint    string
 	}{
 		{
-			name: "internal invalid page token", code: 40004, wantSubtype: errs.SubtypeInvalidParameters,
-			wantHint: "discard --page-token and restart from the first page",
-		},
-		{
-			name: "OpenAPI invalid page token", code: 3340004, wantSubtype: errs.SubtypeInvalidParameters,
-			wantHint: "discard --page-token and restart from the first page",
-		},
-		{
 			name: "internal feature not available", code: 40005, wantSubtype: errs.SubtypeFeatureNotAvailable,
 			wantMessage: "Collaborator management is not available for this app via lark-cli.",
 			wantHint:    "Open this app in Miaoda and manage collaborators from its permission settings.",
@@ -239,7 +231,7 @@ func TestAppsMemberPublicCopyIsGeneric(t *testing.T) {
 
 func TestAppsMemberListValidationAndParams(t *testing.T) {
 	valid := newAppsMemberRuntime(t, AppsMemberList, map[string]string{
-		"app-id": "  app_test  ", "role": "edit", "member-type": "chat", "page-size": "100", "page-token": " next-token ",
+		"app-id": "  app_test  ", "role": "edit", "member-type": "chat",
 	})
 	if AppsMemberList.Validate == nil {
 		t.Fatal("member-list Validate must be registered")
@@ -252,16 +244,10 @@ func TestAppsMemberListValidationAndParams(t *testing.T) {
 		t.Fatalf("build params: %v", err)
 	}
 	want := map[string]interface{}{
-		"role": "edit", "member_type": "chat", "page_size": 100, "page_token": "next-token",
+		"role": "edit", "member_type": "chat",
 	}
 	if !reflect.DeepEqual(params, want) {
 		t.Fatalf("params = %#v, want %#v", params, want)
-	}
-
-	for _, pageSize := range []string{"0", "101"} {
-		rctx := newAppsMemberRuntime(t, AppsMemberList, map[string]string{"app-id": "app_test", "page-size": pageSize})
-		err := AppsMemberList.Validate(context.Background(), rctx)
-		requireAppsMemberValidationError(t, err, "--page-size")
 	}
 }
 
@@ -379,12 +365,12 @@ func TestAppsMemberSettingsSetRequiresAtLeastOneExplicitField(t *testing.T) {
 func TestAppsMemberDryRunRequestsUseExactRoutesAndTypedBodies(t *testing.T) {
 	t.Run("list", func(t *testing.T) {
 		call := appsMemberDryRunCallFor(t, AppsMemberList, map[string]string{
-			"app-id": " app_报告 ", "role": "view", "member-type": "user", "page-size": "25", "page-token": "opaque",
+			"app-id": " app_报告 ", "role": "view", "member-type": "user",
 		})
 		if call.Method != "GET" || call.URL != "/open-apis/spark/v1/apps/app_%E6%8A%A5%E5%91%8A/members" {
 			t.Fatalf("list request = %s %s", call.Method, call.URL)
 		}
-		want := map[string]interface{}{"role": "view", "member_type": "user", "page_size": float64(25), "page_token": "opaque"}
+		want := map[string]interface{}{"role": "view", "member_type": "user"}
 		if !reflect.DeepEqual(call.Params, want) || call.Body != nil {
 			t.Fatalf("list params/body = %#v / %#v, want %#v / nil", call.Params, call.Body, want)
 		}

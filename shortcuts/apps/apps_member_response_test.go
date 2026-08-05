@@ -140,7 +140,7 @@ func TestAppsMemberProjectionFailsClosedOnMalformedTypedIDs(t *testing.T) {
 
 func TestAppsMemberListExecuteUsesTypedProjectionWithoutLeakingRawFields(t *testing.T) {
 	rctx, stdout, registry := newAppsMemberAPIRuntime(t, AppsMemberList, map[string]string{
-		"app-id": "app_x", "member-type": "user", "page-size": "20",
+		"app-id": "app_x", "member-type": "user",
 	})
 	stub := &httpmock.Stub{
 		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/members",
@@ -153,8 +153,7 @@ func TestAppsMemberListExecuteUsesTypedProjectionWithoutLeakingRawFields(t *test
 						"meta_token": "sensitive-internal-token",
 					},
 				},
-				"app":      map[string]interface{}{"meta_token": "sensitive-internal-token"},
-				"has_more": true, "page_token": "opaque-next",
+				"app": map[string]interface{}{"meta_token": "sensitive-internal-token"},
 			},
 		},
 	}
@@ -173,7 +172,6 @@ func TestAppsMemberListExecuteUsesTypedProjectionWithoutLeakingRawFields(t *test
 	for path, want := range map[string]string{
 		"data.items.0.member_type": "user",
 		"data.items.0.member_id":   "ou_public",
-		"data.page_token":          "opaque-next",
 	} {
 		if got := gjson.Get(out, path).String(); got != want {
 			t.Errorf("output %s = %q, want %q: %s", path, got, want, out)
@@ -181,6 +179,9 @@ func TestAppsMemberListExecuteUsesTypedProjectionWithoutLeakingRawFields(t *test
 	}
 	if gjson.Get(out, "data.app").Exists() {
 		t.Fatalf("member output unexpectedly contains app: %s", out)
+	}
+	if gjson.Get(out, "data.page_token").Exists() || gjson.Get(out, "data.has_more").Exists() {
+		t.Fatalf("member output unexpectedly contains pagination: %s", out)
 	}
 	for _, forbidden := range []string{"collaborator_id", "user_open_id", "department_id", "chat_id", "123456789", "meta_token", "sensitive-internal-token"} {
 		if strings.Contains(out, forbidden) {
@@ -193,7 +194,7 @@ func TestAppsMemberListExecuteNeverLeaksMetaTokenAcrossFormats(t *testing.T) {
 	for _, format := range []string{"json", "table", "csv", "ndjson", "pretty"} {
 		t.Run(format, func(t *testing.T) {
 			rctx, stdout, registry := newAppsMemberAPIRuntime(t, AppsMemberList, map[string]string{
-				"app-id": "app_x", "page-size": "20",
+				"app-id": "app_x",
 			})
 			rctx.Format = format
 			registry.Register(&httpmock.Stub{

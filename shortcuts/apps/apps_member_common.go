@@ -15,11 +15,9 @@ import (
 )
 
 const (
-	memberListPath        = apiBasePath + "/apps/%s/members"
-	memberRemovePath      = apiBasePath + "/apps/%s/members/remove"
-	memberSettingsPath    = apiBasePath + "/apps/%s/member-settings"
-	defaultMemberPageSize = 20
-	maxMemberPageSize     = 100
+	memberListPath     = apiBasePath + "/apps/%s/members"
+	memberRemovePath   = apiBasePath + "/apps/%s/members/remove"
+	memberSettingsPath = apiBasePath + "/apps/%s/member-settings"
 )
 
 var (
@@ -37,9 +35,6 @@ func normalizeMemberAPIError(err error) error {
 		return err
 	}
 	switch problem.Code {
-	case 40004, 3340004:
-		problem.Subtype = errs.SubtypeInvalidParameters
-		problem.Hint = "discard --page-token and restart from the first page"
 	case 40005, 3340005:
 		problem.Subtype = errs.SubtypeFeatureNotAvailable
 		problem.Message = "Collaborator management is not available for this app via lark-cli."
@@ -161,15 +156,11 @@ type memberSettingChangeResponse struct {
 }
 
 type memberListAPIResponse struct {
-	Items     *[]memberAPIRecord `json:"items"`
-	HasMore   bool               `json:"has_more"`
-	PageToken string             `json:"page_token,omitempty"`
+	Items *[]memberAPIRecord `json:"items"`
 }
 
 type memberListOutput struct {
-	Items     []memberOutput `json:"items"`
-	HasMore   bool           `json:"has_more"`
-	PageToken string         `json:"page_token,omitempty"`
+	Items []memberOutput `json:"items"`
 }
 
 type memberAddAPIResponse struct {
@@ -259,16 +250,7 @@ func validateMemberAppID(rctx *common.RuntimeContext) error {
 }
 
 func buildMemberListParams(rctx *common.RuntimeContext) (map[string]interface{}, error) {
-	pageSize := rctx.Int("page-size")
-	if pageSize == 0 && !rctx.Changed("page-size") {
-		pageSize = defaultMemberPageSize
-	}
-	if pageSize < 1 || pageSize > maxMemberPageSize {
-		return nil, appsValidationParamError("--page-size", "--page-size must be between 1 and %d", maxMemberPageSize).
-			WithHint("use --page-size between 1 and 100")
-	}
-
-	params := map[string]interface{}{"page_size": pageSize}
+	params := make(map[string]interface{})
 	if role := strings.TrimSpace(rctx.Str("role")); role != "" {
 		if !memberStringAllowed(role, memberRoles) {
 			return nil, appsValidationParamError("--role", "--role must be one of: view, edit, full_access").
@@ -282,9 +264,6 @@ func buildMemberListParams(rctx *common.RuntimeContext) (map[string]interface{},
 				WithHint("omit --member-type to list every collaborator type")
 		}
 		params["member_type"] = memberType
-	}
-	if pageToken := strings.TrimSpace(rctx.Str("page-token")); pageToken != "" {
-		params["page_token"] = pageToken
 	}
 	return params, nil
 }
@@ -463,9 +442,6 @@ func projectMemberListData(data map[string]interface{}) (memberListOutput, error
 	if decoded.Items == nil {
 		return memberListOutput{}, memberInvalidResponse("member list response is missing items")
 	}
-	if decoded.HasMore && strings.TrimSpace(decoded.PageToken) == "" {
-		return memberListOutput{}, memberInvalidResponse("member list response has_more=true but page_token is missing")
-	}
 	items := make([]memberOutput, 0, len(*decoded.Items))
 	for _, raw := range *decoded.Items {
 		item, err := projectMemberRecord(raw)
@@ -474,11 +450,7 @@ func projectMemberListData(data map[string]interface{}) (memberListOutput, error
 		}
 		items = append(items, item)
 	}
-	return memberListOutput{
-		Items:     items,
-		HasMore:   decoded.HasMore,
-		PageToken: decoded.PageToken,
-	}, nil
+	return memberListOutput{Items: items}, nil
 }
 
 func projectMemberAddData(data map[string]interface{}) (memberAddOutput, error) {

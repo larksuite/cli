@@ -69,7 +69,7 @@ lark-cli auth login --domain apps
 - `+member-add`、`+member-update`、`+member-remove`、`+member-settings-set` 是高风险写命令，需要 `spark:app:write`。先用 `--dry-run` 核对目标、URL 和请求体；dry-run 不需要 `--yes`。用户已确认具体应用、成员/设置及影响，或已按下方「高影响动作：确认与预授权」对整条流程明确预授权时，真实执行加 `--yes`；否则在 dry-run 后停下请求确认。批量移除成员仍执行「禁止预授权判定底线」，不能从泛化的“直接做”推导出 `--yes`。
 - 添加、更新、移除成员时必须显式提供匹配的外部 ID 类型，禁止传内部数字 ID、猜测类型或做隐式转换：用户 `--member-type openid --member-id ou_...`；群组 `--member-type openchat --member-id oc_...`；部门 `--member-type opendepartmentid --member-id od-...`。
 - `+member-list --member-type` 的筛选枚举是响应对象类型 `user` / `department` / `chat`，与写命令的 ID 类型枚举不同。可再用 `--role view|edit|full_access` 筛选。
-- `+member-list` 只消费 `.data.items`、`.data.has_more` 和 `.data.page_token`。把 `page_token` 当作 opaque 值原样传给下一次 `--page-token`，直到 `has_more=false`；不要解析、拼接或缓存复用 token。收到 subtype `invalid_parameters`（OpenAPI code `3340004`；直连服务可能为 `40004`）时，丢弃旧 token 并从第一页重新读取。
+- `+member-list` 一次返回应用的全部直接协作者，不提供分页参数；可用 `--member-type` 和 `--role` 缩小结果范围。
 - 成员响应不包含应用详情。需要名称、类型或发布状态时单独调用 `+get --app-id <app_id>`，不要期待成员分页重复返回 `app`。
 - 收到 subtype `feature_not_available`（OpenAPI code `3340005`；直连服务可能为 `40005`）时，立即停止 CLI 自动化，不切换 `app_type`，也不尝试用 access scope、应用角色或其它成员命令绕过。向用户说明该应用暂不支持通过 lark-cli 设置协作者，并引导其在妙搭后台的权限设置中操作。
 

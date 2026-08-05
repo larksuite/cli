@@ -26,8 +26,6 @@ var AppsMemberList = common.Shortcut{
 		{Name: "app-id", Desc: "Miaoda app ID (app_...)"},
 		{Name: "role", Desc: "filter permission", Enum: memberRoles},
 		{Name: "member-type", Desc: "filter collaborator type", Enum: memberListTypes},
-		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-100)"},
-		{Name: "page-token", Desc: "opaque page token returned by the previous page"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if err := validateMemberAppID(rctx); err != nil {
@@ -259,9 +257,6 @@ func renderMemberListPretty(w io.Writer, out memberListOutput) {
 		)
 	}
 	_ = tw.Flush()
-	if out.HasMore {
-		fmt.Fprintf(w, "next page token: %s\n", memberDisplayValue(out.PageToken))
-	}
 }
 
 func renderMemberMutationPretty(w io.Writer, action string, member memberOutput, changed bool) {
