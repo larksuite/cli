@@ -1,8 +1,8 @@
 # Base NDJSON：Python 标准库示例
 
-仅在 Local SOP 已选择 Python 标准库后读取。本页不重复 Base 的粒度与关系规则，只展示对应实现。
+仅在统一数据分析 SOP 已选择 Python 标准库后读取。本页不重复 Base 的粒度与关系规则，只展示对应实现。
 
-示例假设 `records.ndjson` 包含 `record_id`、`日期`、`状态`、`金额`、`负责人`、`标签`、`关联客户`；`customers.ndjson` 包含 `record_id`、`客户名称`。多值列使用 Local SOP 定义的数组结构。
+示例假设 `records.ndjson` 包含 `record_id`、`日期`、`状态`、`金额`、`负责人`、`标签`、`关联客户`；`customers.ndjson` 包含 `record_id`、`客户名称`。多值列使用统一数据分析 SOP 定义的数组结构。
 
 ## 加载与日期解析
 
