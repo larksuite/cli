@@ -27,6 +27,18 @@ func ParseBrand(value string) LarkBrand {
 	return BrandFeishu
 }
 
+// ProfileSource identifies which input channel selected the invocation's
+// profile. Errors and status output use it to point at the thing the user
+// must actually fix: an argv flag they just typed, an environment variable
+// that may have been exported long ago, or the persisted config default.
+type ProfileSource uint8
+
+const (
+	ProfileFromConfig      ProfileSource = iota // no explicit selector; persisted currentApp applies
+	ProfileFromFlag                             // --profile on this invocation (including --profile=)
+	ProfileFromEnvironment                      // LARKSUITE_CLI_PROFILE
+)
+
 // OAuthTokenV3Path is the unified OAuth 2.0 Token Endpoint path on the accounts
 // domain. It serves every grant type (client_credentials for TAT,
 // authorization_code / device_code / refresh_token for UAT) and replaces the

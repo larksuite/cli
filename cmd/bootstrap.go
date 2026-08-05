@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/spf13/pflag"
 )
@@ -33,13 +34,16 @@ func BootstrapInvocationContext(args []string) (cmdutil.InvocationContext, error
 	// and remain independent of ambient environment state. An explicitly empty
 	// --profile= remains a flag selection and suppresses the environment value.
 	if fs.Changed("profile") {
-		return cmdutil.InvocationContext{Profile: globals.Profile}, nil
+		return cmdutil.InvocationContext{
+			Profile:       globals.Profile,
+			ProfileSource: core.ProfileFromFlag,
+		}, nil
 	}
 	if profile := os.Getenv(envvars.CliProfile); profile != "" {
 		return cmdutil.InvocationContext{
-			Profile:                profile,
-			ProfileFromEnvironment: true,
+			Profile:       profile,
+			ProfileSource: core.ProfileFromEnvironment,
 		}, nil
 	}
-	return cmdutil.InvocationContext{}, nil
+	return cmdutil.InvocationContext{ProfileSource: core.ProfileFromConfig}, nil
 }

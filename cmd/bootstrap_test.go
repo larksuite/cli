@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 )
 
@@ -80,16 +81,16 @@ func TestBootstrapInvocationContext_HelpWithProfile(t *testing.T) {
 
 func TestBootstrapInvocationContext_ProfilePrecedence(t *testing.T) {
 	for _, tc := range []struct {
-		name                string
-		environment         string
-		args                []string
-		wantProfile         string
-		wantFromEnvironment bool
+		name        string
+		environment string
+		args        []string
+		wantProfile string
+		wantSource  core.ProfileSource
 	}{
-		{"environment default", "session", []string{"whoami"}, "session", true},
-		{"flag overrides environment", "session", []string{"whoami", "--profile", "command"}, "command", false},
-		{"empty flag suppresses environment", "session", []string{"whoami", "--profile="}, "", false},
-		{"empty environment is unset", "", []string{"whoami"}, "", false},
+		{"environment default", "session", []string{"whoami"}, "session", core.ProfileFromEnvironment},
+		{"flag overrides environment", "session", []string{"whoami", "--profile", "command"}, "command", core.ProfileFromFlag},
+		{"empty flag suppresses environment", "session", []string{"whoami", "--profile="}, "", core.ProfileFromFlag},
+		{"empty environment is unset", "", []string{"whoami"}, "", core.ProfileFromConfig},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(envvars.CliProfile, tc.environment)
@@ -97,8 +98,8 @@ func TestBootstrapInvocationContext_ProfilePrecedence(t *testing.T) {
 			if err != nil {
 				t.Fatalf("BootstrapInvocationContext() error = %v", err)
 			}
-			if inv.Profile != tc.wantProfile || inv.ProfileFromEnvironment != tc.wantFromEnvironment {
-				t.Fatalf("profile = %q, fromEnvironment = %v", inv.Profile, inv.ProfileFromEnvironment)
+			if inv.Profile != tc.wantProfile || inv.ProfileSource != tc.wantSource {
+				t.Fatalf("profile = %q, source = %v, want %q / %v", inv.Profile, inv.ProfileSource, tc.wantProfile, tc.wantSource)
 			}
 		})
 	}
