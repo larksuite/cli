@@ -95,7 +95,11 @@ func DryRunGet(stdout, path string) gjson.Result {
 	if path == "" {
 		return gjson.Get(stdout, "data")
 	}
-	return gjson.Get(stdout, "data."+path)
+	result := gjson.Get(stdout, "data."+path)
+	if result.Exists() {
+		return result
+	}
+	return gjson.Get(stdout, path)
 }
 
 // DryRunData returns the dry-run payload for tests that assert legacy raw paths.

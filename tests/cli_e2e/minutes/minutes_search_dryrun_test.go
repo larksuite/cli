@@ -31,6 +31,7 @@ func TestMinutesSearchDryRunSupportsUserAndBotIdentity(t *testing.T) {
 			require.NoError(t, err)
 			result.AssertExitCode(t, 0)
 
+			require.Equal(t, identity, clie2e.DryRunGet(result.Stdout, "identity").String(), "stdout:\n%s", result.Stdout)
 			require.Equal(t, http.MethodPost, clie2e.DryRunGet(result.Stdout, "api.0.method").String(), "stdout:\n%s", result.Stdout)
 			require.Equal(t, "/open-apis/minutes/v1/minutes/search", clie2e.DryRunGet(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
 			require.Equal(t, "5", clie2e.DryRunGet(result.Stdout, "api.0.params.page_size").String(), "stdout:\n%s", result.Stdout)

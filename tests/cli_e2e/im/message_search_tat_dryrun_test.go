@@ -31,6 +31,7 @@ func TestIMMessagesSearchDryRunSupportsUserAndBotIdentity(t *testing.T) {
 			require.NoError(t, err)
 			result.AssertExitCode(t, 0)
 
+			require.Equal(t, identity, clie2e.DryRunGet(result.Stdout, "identity").String(), "stdout:\n%s", result.Stdout)
 			require.Equal(t, http.MethodPost, clie2e.DryRunGet(result.Stdout, "api.0.method").String(), "stdout:\n%s", result.Stdout)
 			require.Equal(t, "/open-apis/im/v1/messages/search", clie2e.DryRunGet(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
 			require.Equal(t, "incident", clie2e.DryRunGet(result.Stdout, "api.0.body.query").String(), "stdout:\n%s", result.Stdout)
