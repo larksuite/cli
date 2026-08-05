@@ -33,7 +33,7 @@ lark-cli slides +xml-get --as user \
 python3 "<lark-slides-skill-dir>/scripts/xml_text_overlap_lint.py" --input <presentation.xml>
 ```
 
-它一次检查 XML/SXSD 合法性、元素越界、文本重叠、空白页、文本高度风险、整页内容稀疏和大卡片内容覆盖率。大卡片自身 `<content>` 的估算文本面积与卡片内平级元素一起参与覆盖率并集计算。
+它一次检查 XML/SXSD 合法性、元素越界、文本重叠、线条穿字、文本越出候选卡片、空白页、文本高度风险、整页内容稀疏和大卡片内容覆盖率。大卡片自身 `<content>` 的估算文本面积与卡片内平级元素一起参与覆盖率并集计算。
 
 准出规则：
 
@@ -64,6 +64,8 @@ python3 "<lark-slides-skill-dir>/scripts/xml_text_overlap_lint.py" --input <pres
 | `icon_missing_fill_color` | 视觉规范要求 `<icon>` 设置 `<fill><fillColor color="..."/></fill>`，避免图标不可见 | 给 `<icon>` 添加显式非透明填充色，例如 `rgba(37, 99, 235, 1)` |
 | `icon_transparent_fill_color` | `<icon>` 的 `fillColor` 是透明色，不满足视觉可见性要求 | 改成与背景有足够对比的非透明颜色 |
 | `bbox_overlap` | 文本元素的估算绘制区域明显重叠 | 拉开文本坐标、缩小文本框/字号，或改成明确的分栏/分组结构 |
+| `line_crosses_text` | 线条与非空文本框的声明边界相交 | 结合截图确认是否为有意删除线；否则缩短/移动线条或移动文本 |
+| `text_outside_container` | 文本框属于候选矩形卡片，且估算的实际文字区域触碰或越过卡片底边 | 结合截图确认卡片归属与实际字形；增高卡片、上移文本或调整文字排版 |
 | `*_out_of_canvas` | 元素边界超出页面画布 | 根据 `measurement.overflow` 移回画布或缩小尺寸 |
 | `blank_slide` | 页面没有画布内可见内容 | 补充主体内容；仅有空背景或空形状不能准出 |
 | `sparse_container_content` | 大卡片内容覆盖率低于阈值 | 按元素 ID 定位卡片，结合截图判断是否补充或放大内容 |

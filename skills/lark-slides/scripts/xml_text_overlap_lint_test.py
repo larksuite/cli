@@ -1235,6 +1235,175 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertGreater(issue["measurement"]["intersection_area"], 0)
         self.assertIsNotNone(issue.get("hint"))
 
+    def test_lint_xml_warns_when_timeline_line_crosses_text(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <line id="bAi" startX="60" startY="360" endX="900" endY="360">
+                  <border color="rgba(82, 82, 91, 1)" width="2"/>
+                </line>
+                <shape id="bAR" type="rect" topLeftX="780" topLeftY="330" width="140" height="100"/>
+                <shape id="bAw" type="text" topLeftX="790" topLeftY="345" width="120" height="20">
+                  <content fontSize="16"><p>阶段总结</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issues = [issue for issue in result["slides"][0]["issues"] if issue["code"] == "line_crosses_text"]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["level"], "warning")
+        self.assertEqual(issues[0]["elements"], ["bAi", "bAw"])
+        self.assertGreater(issues[0]["measurement"]["intersection_width"], 0)
+
+    def test_lint_xml_allows_line_outside_text_bounds(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="heading" type="text" topLeftX="60" topLeftY="80" width="300" height="40">
+                  <content fontSize="24"><p>章节标题</p></content>
+                </shape>
+                <line id="underline" startX="60" startY="125" endX="160" endY="125"/>
+              </data>
+            </slide>
+            """
+        )
+        self.assertFalse(
+            any(issue["code"] == "line_crosses_text" for issue in result["slides"][0]["issues"])
+        )
+
+    def test_lint_xml_does_not_approximate_diagonal_line_as_filled_bbox(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <line id="diagonal" startX="60" startY="80" endX="360" endY="280"/>
+                <shape id="label" type="text" topLeftX="60" topLeftY="240" width="120" height="20">
+                  <content fontSize="16"><p>不在线段上</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertFalse(
+            any(issue["code"] == "line_crosses_text" for issue in result["slides"][0]["issues"])
+        )
+
+    def test_lint_xml_warns_when_estimated_text_exceeds_card_bottom(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="bPo" type="rect" topLeftX="60" topLeftY="370" width="280" height="100"/>
+                <shape id="bxb" type="text" topLeftX="80" topLeftY="455" width="240" height="20">
+                  <content fontSize="13"><p>接种流感疫苗，做好日常防护</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issues = [issue for issue in result["slides"][0]["issues"] if issue["code"] == "text_outside_container"]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["level"], "warning")
+        self.assertEqual(issues[0]["elements"], ["bPo", "bxb"])
+        self.assertEqual(issues[0]["measurement"]["overflow"], {"bottom": 2.8})
+        self.assertEqual(issues[0]["measurement"]["declared_overflow"], {"bottom": 5})
+
+    def test_lint_xml_warns_when_estimated_text_exceeds_smallest_card_bottom(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="background" type="rect" topLeftX="0" topLeftY="0" width="960" height="540"/>
+                <shape id="bWD" type="rect" topLeftX="60" topLeftY="170" width="400" height="310"/>
+                <shape id="bWa" type="text" topLeftX="80" topLeftY="470" width="360" height="20">
+                  <content fontSize="13"><p>保持规律作息，增强身体抵抗力</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issues = [issue for issue in result["slides"][0]["issues"] if issue["code"] == "text_outside_container"]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["elements"], ["bWD", "bWa"])
+        self.assertEqual(issues[0]["measurement"]["overflow"], {"bottom": 7.8})
+        self.assertEqual(issues[0]["measurement"]["declared_overflow"], {"bottom": 10})
+
+    def test_lint_xml_warns_when_estimated_text_exceeds_card_by_less_than_two_pixels(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="card" type="rect" topLeftX="300" topLeftY="245" width="360" height="120"/>
+                <shape id="caption" type="text" topLeftX="330" topLeftY="340.5" width="300" height="30">
+                  <content fontSize="19" textAlign="center" verticalAlign="middle">
+                    <p>GLYPH OVERFLOW</p>
+                  </content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issues = [issue for issue in result["slides"][0]["issues"] if issue["code"] == "text_outside_container"]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["elements"], ["card", "caption"])
+        self.assertEqual(issues[0]["measurement"]["overflow"], {"bottom": 1.9})
+
+    def test_lint_xml_warns_when_estimated_text_touches_card_bottom(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="card" type="rect" topLeftX="60" topLeftY="100" width="280" height="100"/>
+                <shape id="caption" type="text" topLeftX="80" topLeftY="184" width="240" height="20">
+                  <content fontSize="10" verticalAlign="middle"><p>边界接触</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        issues = [issue for issue in result["slides"][0]["issues"] if issue["code"] == "text_outside_container"]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["measurement"]["overflow"], {"bottom": 0})
+
+    def test_lint_xml_allows_centered_glyphs_inside_card_when_text_box_extends_five_pixels(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="case4-card" type="rect" topLeftX="300" topLeftY="245" width="360" height="120"/>
+                <shape id="case4-text" type="text" topLeftX="330" topLeftY="285" width="300" height="85">
+                  <content fontSize="19" bold="true" textAlign="center" verticalAlign="middle">
+                    <p>OVERFLOW 5 px</p>
+                  </content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertFalse(
+            any(issue["code"] == "text_outside_container" for issue in result["slides"][0]["issues"])
+        )
+
+    def test_lint_xml_allows_text_inside_card_bottom(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="card" type="rect" topLeftX="60" topLeftY="170" width="400" height="310"/>
+                <shape id="caption" type="text" topLeftX="80" topLeftY="455" width="360" height="20">
+                  <content fontSize="13"><p>完整位于卡片内部</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        self.assertFalse(
+            any(issue["code"] == "text_outside_container" for issue in result["slides"][0]["issues"])
+        )
+
     def test_lint_xml_allows_horizontal_text_with_default_wrap(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """

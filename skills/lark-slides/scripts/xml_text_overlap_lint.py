@@ -2134,6 +2134,146 @@ def line_stroke_bbox(element: dict[str, Any]) -> dict[str, Any]:
     return {**element, "width": max(element["width"], 1), "height": max(element["height"], 1)}
 
 
+def detect_lines_crossing_text(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    lines = [
+        element
+        for element in elements
+        if element["kind"] == "line"
+        and is_visually_rendered(element)
+        and (element["width"] == 0 or element["height"] == 0)
+    ]
+    texts = [
+        element
+        for element in elements
+        if is_text_element(element)
+        and is_visually_rendered(element)
+        and has_text_content(element)
+        and not is_decorative_text(element)
+    ]
+    for line in lines:
+        stroke_bbox = line_stroke_bbox(line)
+        for text in texts:
+            width = intersection_width(stroke_bbox, text)
+            height = intersection_height(stroke_bbox, text)
+            if width <= 0 or height <= 0:
+                continue
+            font_size = text["fontSize"] if isinstance(text.get("fontSize"), (int, float)) else 16
+            if max(width, height) < max(8, font_size * 0.5):
+                continue
+            issues.append(
+                {
+                    "level": "warning",
+                    "code": "line_crosses_text",
+                    "elements": [line["id"], text["id"]],
+                    "measurement": {
+                        "intersection_width": round(width, 3),
+                        "intersection_height": round(height, 3),
+                        "intersection_area": round(width * height, 3),
+                    },
+                    "message": f'line {line["id"]} crosses the declared bounds of text shape {text["id"]}',
+                    "hint": (
+                        "Inspect the rendered slide. If the line is not an intentional strike-through, shorten or "
+                        "move the line, or move the text so their bounds no longer intersect."
+                    ),
+                }
+            )
+    return issues
+
+
+TEXT_CONTAINER_ASSOCIATION_TOLERANCE = 2
+MIN_TEXT_CONTAINER_AREA = 4_000
+
+
+def text_container_bottom_overflow(
+    container: dict[str, Any], text: dict[str, Any]
+) -> dict[str, int | float] | None:
+    container_right = container["x"] + container["width"]
+    container_bottom = container["y"] + container["height"]
+    text_right = text["x"] + text["width"]
+    text_bottom = text["y"] + text["height"]
+    horizontally_contained = (
+        text["x"] >= container["x"] - TEXT_CONTAINER_ASSOCIATION_TOLERANCE
+        and text_right <= container_right + TEXT_CONTAINER_ASSOCIATION_TOLERANCE
+    )
+    starts_inside = (
+        text["y"] >= container["y"] - TEXT_CONTAINER_ASSOCIATION_TOLERANCE
+        and text["y"] < container_bottom
+    )
+    declared_overflow = text_bottom - container_bottom
+    max_plausible_overflow = max(24, text["height"] * 0.75)
+    if not horizontally_contained or not starts_inside:
+        return None
+    if declared_overflow < 0 or declared_overflow > max_plausible_overflow:
+        return None
+
+    visual_bbox = estimate_text_visual_bbox(text)
+    if visual_bbox is None:
+        return None
+    visual_overflow = visual_bbox["y"] + visual_bbox["height"] - container_bottom
+    if visual_overflow < 0:
+        return None
+    return {
+        "visual": visual_overflow,
+        "declared": declared_overflow,
+    }
+
+
+def detect_text_outside_containers(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    containers = [
+        element
+        for element in elements
+        if element["kind"] == "shape"
+        and element["type"] == "rect"
+        and is_visually_rendered(element)
+        and element_area(element) >= MIN_TEXT_CONTAINER_AREA
+    ]
+    for text in (
+        element
+        for element in elements
+        if is_text_element(element)
+        and is_visually_rendered(element)
+        and has_text_content(element)
+        and not is_decorative_text(element)
+    ):
+        candidates = [
+            (container, text_container_bottom_overflow(container, text))
+            for container in containers
+            if container["order"] < text["order"]
+        ]
+        candidates = [(container, overflow) for container, overflow in candidates if overflow is not None]
+        if not candidates:
+            continue
+        container, overflow = min(candidates, key=lambda candidate: element_area(candidate[0]))
+        visual_overflow = overflow["visual"]
+        declared_overflow = overflow["declared"]
+        issues.append(
+            {
+                "level": "warning",
+                "code": "text_outside_container",
+                "elements": [container["id"], text["id"]],
+                "measurement": {
+                    "overflow": {"bottom": round(visual_overflow, 3)},
+                    "declared_overflow": {"bottom": round(declared_overflow, 3)},
+                },
+                "message": (
+                    f'estimated text in shape {text["id"]} '
+                    + (
+                        f'touches the bottom edge of candidate container {container["id"]}'
+                        if math.isclose(visual_overflow, 0, abs_tol=1e-9)
+                        else f'extends {visual_overflow:g}px below candidate container {container["id"]}'
+                    )
+                ),
+                "hint": (
+                    "Inspect the rendered slide to confirm the card relationship. Increase the container height, "
+                    "move the text upward, or reduce the text height so it stays inside the card."
+                ),
+            }
+        )
+    return issues
+
+
 def is_slide_content_present(
     element: dict[str, Any], slide_bbox: dict[str, int | float]
 ) -> bool:
@@ -2332,6 +2472,14 @@ RULE_METADATA: dict[str, dict[str, Any]] = {
     "bbox_overlap": {
         "name": "text_visual_bounds_do_not_overlap",
         "comparison": "intersection_area == 0",
+    },
+    "line_crosses_text": {
+        "name": "line_does_not_cross_text_bounds",
+        "comparison": "intersection_area == 0",
+    },
+    "text_outside_container": {
+        "name": "text_stays_inside_candidate_container",
+        "comparison": "estimated_visual_bottom_overflow < 0",
     },
     "text_may_overflow_shape": {
         "name": "estimated_text_fits_declared_shape",
@@ -2680,6 +2828,8 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
         raw_issues = [
             *geometry["issues"],
             *extra_overflow_issues,
+            *detect_lines_crossing_text(density_elements),
+            *detect_text_outside_containers(density_elements),
             *detect_blank_slide(
                 density_elements,
                 slide_number,
