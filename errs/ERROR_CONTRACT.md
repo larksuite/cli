@@ -62,9 +62,20 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.hint` | informational | actionable recovery guidance |
 | `error.log_id` | informational | upstream request id (server-side trace) |
 | `error.retryable` | wire-stable | `true` when present; omitted when `false` |
+| `error.retry_after_seconds` | per-Subtype-stable | upstream-provided minimum delay before retry; emitted when available for retryable `api/rate_limit` errors |
 | `error.param` | per-Subtype-stable | single offending parameter (`ValidationError`); see **Validation parameters** |
 | `error.params` | per-Subtype-stable | per-parameter validation detail array (`ValidationError`); see **Validation parameters** |
 | per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url`; `console_url` is emitted for developer/admin recovery such as `app_scope_not_applied`, not user `missing_scope` |
+
+For retryable `type=api, subtype=rate_limit`, the CLI may emit
+`retry_after_seconds` when the upstream response supplies a precise delay. For
+TAT HTTP 429 responses, the delay uses Lark's `x-ogw-ratelimit-reset` header,
+then a numeric `Retry-After` value. If neither header contains a valid delay,
+the field is omitted and the hint recommends exponential backoff with jitter.
+The envelope intentionally does not expose an implementation detail such as
+`retry_after_source`, and the CLI does not automatically replay the request.
+HTTP 429 classification is currently added only to TAT fetching; other API
+transports retain their existing behavior.
 
 `SecurityPolicyError` renders through the same typed envelope as every
 other category. `error.type` is `"policy"`, `error.subtype` is one of
@@ -284,7 +295,7 @@ esac
 ```
 
 Unknown fields are forward-compatible additions: ignore, don't fail.
-Branch only on `type`, `subtype`, `code`, `retryable`, and declared
+Branch only on `type`, `subtype`, `code`, `retryable`, `retry_after_seconds`, and declared
 extension fields — `message` is human-readable prose that may be
 reworded without notice.
 
