@@ -29,10 +29,6 @@ var SlashCommandDelete = common.Shortcut{
 		{Name: "command-id", Desc: "target command_id; mutually exclusive with --command"},
 		{Name: "command", Desc: "target command name WITHOUT leading slash (resolved via live list, needs read scope); mutually exclusive with --command-id"},
 	},
-	Tips: []string{
-		"lark-cli application +slash-command-delete --command greet --yes --as bot",
-		"deleted commands may linger in clients for ~5 minutes (client cache)",
-	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		id := strings.TrimSpace(runtime.Str("command-id"))
 		name := strings.TrimSpace(runtime.Str("command"))

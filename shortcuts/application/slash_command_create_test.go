@@ -109,6 +109,10 @@ func TestSlashCommandCreate_ConflictNoForce(t *testing.T) {
 	if !strings.Contains(p.Hint, "--force") || !strings.Contains(p.Hint, "+slash-command-update") {
 		t.Fatalf("hint must offer --force and update, got %q", p.Hint)
 	}
+	if !strings.Contains(p.Hint, "do not add --force unless the user explicitly intends") ||
+		!strings.Contains(p.Hint, "idempotent rerun") {
+		t.Fatalf("hint must prevent mechanical --force recovery, got %q", p.Hint)
+	}
 	var apiErr *errs.APIError
 	if !errors.As(err, &apiErr) {
 		t.Fatalf("rewrapped error must be *errs.APIError, got %T", err)
