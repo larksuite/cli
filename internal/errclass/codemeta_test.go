@@ -70,6 +70,22 @@ func TestLookupCodeMeta_TaskPermissionDenied_MergedViaInit(t *testing.T) {
 	}
 }
 
+func TestLookupCodeMeta_BasePermissionDenied_MergedViaInit(t *testing.T) {
+	got, ok := LookupCodeMeta(91403)
+	if !ok {
+		t.Fatalf("LookupCodeMeta(91403) ok=false, want true (base sub-table init merge)")
+	}
+	if got.Category != errs.CategoryAuthorization {
+		t.Errorf("Category = %q, want %q", got.Category, errs.CategoryAuthorization)
+	}
+	if got.Subtype != errs.SubtypePermissionDenied {
+		t.Errorf("Subtype = %q, want %q", got.Subtype, errs.SubtypePermissionDenied)
+	}
+	if got.Retryable {
+		t.Errorf("Retryable = true, want false")
+	}
+}
+
 func TestLookupCodeMeta_MinutesEndpointSpecificCode_NotGlobal(t *testing.T) {
 	if got, ok := LookupCodeMeta(2091001); ok {
 		t.Fatalf("LookupCodeMeta(2091001) = %+v, want unregistered; minutes endpoints use this code for different failures", got)

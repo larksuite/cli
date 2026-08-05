@@ -118,6 +118,37 @@ func TestHandleBaseAPIResultClassifiesKnownPermissionCode(t *testing.T) {
 	}
 }
 
+func TestHandleBaseAPIResultAddsGuidanceForBasePermissionCode91403(t *testing.T) {
+	result := map[string]interface{}{
+		"code": 91403,
+		"msg":  "Forbidden",
+		"data": map[string]interface{}{},
+	}
+
+	_, err := handleBaseAPIResultAny(result, nil, "list records")
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if p.Code != 91403 {
+		t.Fatalf("code=%d", p.Code)
+	}
+	if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied {
+		t.Fatalf("category/subtype=%s/%s", p.Category, p.Subtype)
+	}
+	for _, want := range []string{
+		"lark-cli auth login --domain all",
+		"lark-cli config default-as user",
+		"lark-cli auth status --json --verify",
+		"Base collaborator",
+		"base:app",
+	} {
+		if !strings.Contains(p.Hint, want) {
+			t.Fatalf("hint=%q missing %q", p.Hint, want)
+		}
+	}
+}
+
 func TestAttachBaseResponseLogIDFromHeader(t *testing.T) {
 	result := map[string]interface{}{
 		"code": 91402,
