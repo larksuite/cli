@@ -45,7 +45,7 @@ lark-cli slides +screenshot --as user \
 lark-cli slides +screenshot --as user \
   --presentation slides_example_presentation_id \
   --slide-number 1 \
-  --output .lark-slides/screenshots/demo/cover.jpg
+  --output .lark-slides/screenshots/example-deck-task/page-01
 ```
 
 按 `slide_id` 选择单页时同样使用 `--output`：
@@ -54,7 +54,7 @@ lark-cli slides +screenshot --as user \
 lark-cli slides +screenshot --as user \
   --presentation slides_example_presentation_id \
   --slide-id slide_example_id \
-  --output .lark-slides/screenshots/demo/cover.jpg
+  --output .lark-slides/screenshots/example-deck-task/page-01
 ```
 
 ### 多页截图
@@ -66,7 +66,7 @@ lark-cli slides +screenshot --as user \
   --presentation slides_example_presentation_id \
   --slide-number 1 \
   --slide-number 2 \
-  --output-dir .lark-slides/screenshots/demo
+  --output-dir .lark-slides/screenshots/example-deck-task
 ```
 
 ### 渲染 XML 预览
@@ -74,7 +74,7 @@ lark-cli slides +screenshot --as user \
 ```bash
 lark-cli slides +screenshot --as user \
   --content @.lark-slides/out/demo/slide.xml \
-  --output .lark-slides/screenshots/demo/preview.png
+  --output .lark-slides/screenshots/example-deck-task/preview
 ```
 
 ## 返回值
@@ -87,13 +87,13 @@ lark-cli slides +screenshot --as user \
   "identity": "user",
   "data": {
     "xml_presentation_id": "slides_example_presentation_id",
-    "output": "/abs/path/.lark-slides/screenshots/demo/cover.jpg",
+    "output": "/abs/path/.lark-slides/screenshots/example-deck-task/page-01.jpg",
     "screenshots": [
       {
         "slide_id": "slide_example_id",
         "slide_number": 1,
         "format": "jpeg",
-        "path": "/abs/path/.lark-slides/screenshots/demo/cover.jpg",
+        "path": "/abs/path/.lark-slides/screenshots/example-deck-task/page-01.jpg",
         "size": 12345
       }
     ]
@@ -108,7 +108,7 @@ lark-cli slides +screenshot --as user \
 3. 本地 XML 预览时，传 `--content @file` 或 `--content -`，内容应为单个 `<slide>` XML 片段；此时不要传 `--presentation` / `--slide-id` / `--slide-number`。
 4. `slide_id` 是页面 short ID，页码请用 `--slide-number`。
 5. list 模式下 `--slide-id` 与 `--slide-number` 必须二选一；同一类型 selector 一次最多传 10 个，更多页面请分批截图。
-6. 单张且需要调用方统一路径和命名时使用 `--output`；多张时使用 `--output-dir`，由 CLI 按页面信息生成文件名。不要为批量截图循环传同一个 `--output`。
+6. 单张使用 `--output`，多张使用 `--output-dir`，由 CLI 按页面信息生成文件名。新建或大幅改写 Deck 时，截图目录复用 planning 阶段的 `<deck-or-task-id>`；已有 Deck 没有 task ID 时，使用 presentation ID 作为目录名。
 7. CLI 不转换图片格式，也不要求模型预判服务端格式。未写扩展名时自动追加真实扩展名；请求扩展名与真实格式不一致时保留目录和名称、修正扩展名，例如请求 `slide3.png` 而服务端返回 JPEG 时实际保存为 `slide3.jpg`。
 8. 发生扩展名修正或同名避让时会返回原始 `requested_output`、实际绝对路径 `output` 和 `output_adjusted: true`；后续必须使用 `output` / `screenshots[].path`，不要继续猜测请求路径。
 9. list 模式默认文件名包含 presentation ID、页码和/或 slide ID。
