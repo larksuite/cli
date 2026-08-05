@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -71,27 +70,29 @@ func callTool(
 		return nil, err
 	}
 
-	raw, err := runtime.RawAPI("POST", toolInvokePath(token, kind), nil, body)
+	data, err := runtime.CallAPITyped("POST", toolInvokePath(token, kind), nil, body)
 	if err != nil {
+		// A classified business error (non-zero API code) carries the tool's
+		// own code and raw msg. Preserve callTool's long-standing shape by
+		// rewriting the typed error in place: flattenToolErrorMsg unwraps
+		// batch_update's double-escaped failures payload, and Subtype is
+		// pinned to SubtypeServerError so the batch recovery prescription and
+		// the CategoryAPI/SubtypeServerError contract hold no matter how the
+		// raw code classified (most sheet-ai codes aren't in the code table
+		// and would otherwise land on SubtypeUnknown). Mutating in place keeps
+		// the classifier's log_id / hint / retryable, which a rebuilt error
+		// would drop. Transport, HTTP-status, and auth errors are already
+		// correctly typed by CallAPITyped, so they pass through untouched.
+		if p, ok := errs.ProblemOf(err); ok && p.Category == errs.CategoryAPI {
+			// The recovery prescription depends on the execution mode the batch
+			// was sent with; non-batch tools simply lack the key (false).
+			continueOnError, _ := input["continue_on_error"].(bool)
+			flat := flattenToolErrorMsg(p.Message, continueOnError, callerAuthoredOperations(runtime.Command()))
+			p.Subtype = errs.SubtypeServerError
+			p.Message = fmt.Sprintf("tool %q failed: [%d] %s", toolName, p.Code, flat)
+		}
 		return nil, err
 	}
-
-	envelope, ok := raw.(map[string]interface{})
-	if !ok {
-		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
-			"tool %q: unexpected non-JSON-object response: %v", toolName, raw)
-	}
-	code, _ := util.ToFloat64(envelope["code"])
-	if code != 0 {
-		msg, _ := envelope["msg"].(string)
-		// The recovery prescription depends on the execution mode the batch
-		// was sent with; non-batch tools simply lack the key (false).
-		continueOnError, _ := input["continue_on_error"].(bool)
-		flat := flattenToolErrorMsg(msg, continueOnError, callerAuthoredOperations(runtime.Command()))
-		return nil, errs.NewAPIError(errs.SubtypeServerError, "tool %q failed: [%d] %s", toolName, int(code), flat).
-			WithCode(int(code))
-	}
-	data, _ := envelope["data"].(map[string]interface{})
 	rawOutput, _ := data["output"].(string)
 	if rawOutput == "" {
 		return nil, nil

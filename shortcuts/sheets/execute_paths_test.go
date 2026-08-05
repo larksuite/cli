@@ -43,9 +43,10 @@ func TestExecute_WorkbookInfo_ToolError(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
 		Body: map[string]interface{}{
-			"code": 1310201,
-			"msg":  "spreadsheet not found",
-			"data": map[string]interface{}{},
+			"code":   1310201,
+			"msg":    "spreadsheet not found",
+			"log_id": "sheetai-log-1",
+			"data":   map[string]interface{}{},
 		},
 	}
 	_, _, err := func() (string, string, error) {
@@ -58,6 +59,9 @@ func TestExecute_WorkbookInfo_ToolError(t *testing.T) {
 	p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "")
 	if !strings.Contains(p.Message, "1310201") && !strings.Contains(p.Message, "not found") {
 		t.Errorf("expected error code or message in problem; got message=%q", p.Message)
+	}
+	if p.LogID != "sheetai-log-1" {
+		t.Errorf("LogID = %q, want %q (callTool's in-place rewrite must keep the classifier's log_id)", p.LogID, "sheetai-log-1")
 	}
 }
 
