@@ -30,7 +30,8 @@ import (
 // All function fields are lazily initialized and cached after first call.
 // In tests, replace any field to stub out external dependencies.
 type InvocationContext struct {
-	Profile string
+	Profile                string
+	ProfileFromEnvironment bool // distinguishes ambient input for distribution capability gating
 }
 
 type Factory struct {

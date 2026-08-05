@@ -357,6 +357,15 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	runtime.skillReferences = skillResolution.References
 	f.SkillReferences = skillResolution.References
 
+	// Global flags and their environment equivalents belong to the same
+	// distribution capability. Flag tokens are rejected by applyPluginFlagGate;
+	// install the equivalent guard for an environment-origin profile before
+	// hooks, Startup, or business commands can observe the invocation.
+	if installEnvironmentProfileGate(rootCmd, inv, runtime.surface) {
+		recordInventory(installResult)
+		return finalizeFailedBuild(runtime, rootCmd)
+	}
+
 	// Install hooks only on business commands. The concealment-specific help
 	// command is attached afterwards, preserving Cobra's historical contract
 	// that help is not observed or wrapped by plugins.

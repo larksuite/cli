@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/skillscheck"
@@ -640,6 +641,48 @@ func TestExecuteProfileBootstrapPreservesDefaultAndDefersOnlyForOptIn(t *testing
 			t.Fatalf("concealed --profile: exit=%d stderr=%s", code, stderr)
 		}
 	})
+}
+
+func TestExecuteEnvironmentProfileConcealmentFailsBeforeLifecycle(t *testing.T) {
+	tmpHome(t)
+	t.Setenv(envvars.CliProfile, "session")
+	t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "1")
+	t.Setenv("LARKSUITE_CLI_NO_SKILLS_NOTIFIER", "1")
+
+	var startups, shutdowns int
+	registerRestriction(t, []string{"profile", "profile/**"}, func(builder *platform.Builder) *platform.Builder {
+		return builder.
+			On(platform.Startup, "startup", func(context.Context, *platform.LifecycleContext) error {
+				startups++
+				return nil
+			}).
+			On(platform.Shutdown, "shutdown", func(context.Context, *platform.LifecycleContext) error {
+				shutdowns++
+				return nil
+			})
+	})
+
+	code, stdout, stderr := executeWithCapturedOS(
+		t,
+		[]BuildOption{ConcealRestrictedCommands()},
+		"--version",
+	)
+	if code != output.ExitValidation || stdout != "" {
+		t.Fatalf("environment profile gate: exit=%d stdout=%q stderr=%s", code, stdout, stderr)
+	}
+	for _, want := range []string{
+		`"subtype": "invalid_argument"`,
+		`"param": "` + envvars.CliProfile + `"`,
+		`environment variable \"` + envvars.CliProfile + `\" is not supported by this build`,
+		`remove ` + envvars.CliProfile + ` from the process environment and retry`,
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
+	if startups != 0 || shutdowns != 0 {
+		t.Fatalf("invalid environment profile emitted lifecycle events: startup=%d shutdown=%d", startups, shutdowns)
+	}
 }
 
 func TestExecuteWithOptionsAppliesEachBuildOptionOnce(t *testing.T) {

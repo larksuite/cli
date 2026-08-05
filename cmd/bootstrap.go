@@ -6,8 +6,10 @@ package cmd
 import (
 	"errors"
 	"io"
+	"os"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/spf13/pflag"
 )
 
@@ -26,5 +28,18 @@ func BootstrapInvocationContext(args []string) (cmdutil.InvocationContext, error
 	if err := fs.Parse(args); err != nil && !errors.Is(err, pflag.ErrHelp) {
 		return cmdutil.InvocationContext{}, err
 	}
-	return cmdutil.InvocationContext{Profile: globals.Profile}, nil
+	// Resolve the session-level default only at the process boundary. Core
+	// config and credential packages consume the immutable invocation context
+	// and remain independent of ambient environment state. An explicitly empty
+	// --profile= remains a flag selection and suppresses the environment value.
+	if fs.Changed("profile") {
+		return cmdutil.InvocationContext{Profile: globals.Profile}, nil
+	}
+	if profile := os.Getenv(envvars.CliProfile); profile != "" {
+		return cmdutil.InvocationContext{
+			Profile:                profile,
+			ProfileFromEnvironment: true,
+		}, nil
+	}
+	return cmdutil.InvocationContext{}, nil
 }

@@ -6,10 +6,12 @@ package cmd
 import (
 	"errors"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-
-	"github.com/larksuite/cli/internal/surface"
 )
 
 // globalFlagTargets maps each root persistent flag to the command capability
@@ -41,6 +43,34 @@ func applyPluginFlagGate(root *cobra.Command, plan *surface.Plan) {
 		fl.Annotations[flagGateAnnotation] = []string{"true"}
 		fl.Value = &gatedFlagValue{name: flagName, inner: fl.Value}
 	}
+}
+
+// installEnvironmentProfileGate applies the profile capability decision to
+// the environment equivalent of --profile. A gated pflag Value can reject an
+// argv token, but an environment selector has no token for Cobra to parse, so
+// it needs an invocation guard of its own. The return value reports whether a
+// guard was installed so Build can stop before plugin Startup.
+func installEnvironmentProfileGate(
+	root *cobra.Command,
+	inv cmdutil.InvocationContext,
+	plan *surface.Plan,
+) bool {
+	if !inv.ProfileFromEnvironment ||
+		plan.CanReference(surface.CommandProfile) {
+		return false
+	}
+
+	makeErr := func() error {
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"environment variable %q is not supported by this build",
+			envvars.CliProfile,
+		).
+			WithParam(envvars.CliProfile).
+			WithHint("remove %s from the process environment and retry", envvars.CliProfile)
+	}
+	installFatalGuard(root, makeErr)
+	return true
 }
 
 func isPolicyGatedFlag(fl *pflag.Flag) bool {

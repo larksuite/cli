@@ -6,6 +6,8 @@ package cmd
 import (
 	"errors"
 	"testing"
+
+	"github.com/larksuite/cli/internal/envvars"
 )
 
 func TestBootstrapInvocationContext_ProfileFlag(t *testing.T) {
@@ -45,6 +47,7 @@ func TestBootstrapInvocationContext_MissingProfileValue(t *testing.T) {
 }
 
 func TestBootstrapInvocationContext_HelpFlag(t *testing.T) {
+	t.Setenv(envvars.CliProfile, "")
 	inv, err := BootstrapInvocationContext([]string{"--help"})
 	if err != nil {
 		t.Fatalf("--help should not error, got: %v", err)
@@ -55,6 +58,7 @@ func TestBootstrapInvocationContext_HelpFlag(t *testing.T) {
 }
 
 func TestBootstrapInvocationContext_ShortHelp(t *testing.T) {
+	t.Setenv(envvars.CliProfile, "")
 	inv, err := BootstrapInvocationContext([]string{"-h"})
 	if err != nil {
 		t.Fatalf("-h should not error, got: %v", err)
@@ -71,6 +75,32 @@ func TestBootstrapInvocationContext_HelpWithProfile(t *testing.T) {
 	}
 	if inv.Profile != "target" {
 		t.Fatalf("profile = %q, want %q", inv.Profile, "target")
+	}
+}
+
+func TestBootstrapInvocationContext_ProfilePrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		environment         string
+		args                []string
+		wantProfile         string
+		wantFromEnvironment bool
+	}{
+		{"environment default", "session", []string{"whoami"}, "session", true},
+		{"flag overrides environment", "session", []string{"whoami", "--profile", "command"}, "command", false},
+		{"empty flag suppresses environment", "session", []string{"whoami", "--profile="}, "", false},
+		{"empty environment is unset", "", []string{"whoami"}, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envvars.CliProfile, tc.environment)
+			inv, err := BootstrapInvocationContext(tc.args)
+			if err != nil {
+				t.Fatalf("BootstrapInvocationContext() error = %v", err)
+			}
+			if inv.Profile != tc.wantProfile || inv.ProfileFromEnvironment != tc.wantFromEnvironment {
+				t.Fatalf("profile = %q, fromEnvironment = %v", inv.Profile, inv.ProfileFromEnvironment)
+			}
+		})
 	}
 }
 
