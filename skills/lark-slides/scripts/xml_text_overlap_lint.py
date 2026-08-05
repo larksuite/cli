@@ -807,72 +807,39 @@ def attach_source_xml_paths(
         offsets[kind] = max(offsets.get(kind, 0), offset + 1)
 
 
-def extract_nested_id_elements(slide_xml: str, slide_number: int) -> list[dict[str, Any]]:
+def extract_source_id_elements(slide_xml: str, slide_number: int) -> list[dict[str, Any]]:
     root = ET.fromstring(slide_xml)
     elements: list[dict[str, Any]] = []
+    root_path = f"slide[{slide_number}]"
 
-    note_index = 0
-    for child in root:
-        if xml_local_name(child.tag) != "note":
-            continue
-        note_index += 1
-        source_id = extract_attribute(
-            ET.tostring(child, encoding="unicode").split(">", 1)[0], "id"
-        )
-        if not source_id:
-            continue
-        xml_path = f"slide[{slide_number}]/note[{note_index}]"
-        elements.append(
-            {
-                "id": source_id,
-                "_source_id": source_id,
-                "kind": "note",
-                "type": "note",
-                "xml_path": xml_path,
-                "_ref": xml_path,
-                "_slide_number": slide_number,
-            }
-        )
-
-    data = next((child for child in root if xml_local_name(child.tag) == "data"), None)
-    if data is None:
-        return elements
-
-    table_index = 0
-    for table in data:
-        if xml_local_name(table.tag) != "table":
-            continue
-        table_index += 1
-        row_index = 0
-        for row in table:
-            if xml_local_name(row.tag) != "tr":
-                continue
-            row_index += 1
-            cell_index = 0
-            for cell in row:
-                if xml_local_name(cell.tag) != "td":
-                    continue
-                cell_index += 1
-                source_id = extract_attribute(
-                    ET.tostring(cell, encoding="unicode").split(">", 1)[0], "id"
-                )
-                if not source_id:
-                    continue
-                xml_path = (
-                    f"slide[{slide_number}]/data/table[{table_index}]"
-                    f"/tr[{row_index}]/td[{cell_index}]"
-                )
+    def walk(parent: ET.Element, parent_path: str) -> None:
+        child_counts: dict[str, int] = {}
+        for child in parent:
+            kind = xml_local_name(child.tag)
+            child_counts[kind] = child_counts.get(kind, 0) + 1
+            xml_path = (
+                f"{parent_path}/data"
+                if parent is root and kind == "data"
+                else f"{parent_path}/{kind}[{child_counts[kind]}]"
+            )
+            source_id = extract_attribute(
+                ET.tostring(child, encoding="unicode").split(">", 1)[0], "id"
+            )
+            if source_id:
                 elements.append(
                     {
                         "id": source_id,
                         "_source_id": source_id,
-                        "kind": "td",
-                        "type": "td",
+                        "kind": kind,
+                        "type": child.attrib.get("type") or kind,
                         "xml_path": xml_path,
                         "_ref": xml_path,
                         "_slide_number": slide_number,
                     }
                 )
+            walk(child, xml_path)
+
+    walk(root, root_path)
     return elements
 
 
@@ -2821,6 +2788,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
     slide_roots = presentation["slide_roots"]
     slides: list[dict[str, Any]] = []
     presentation_id_elements: list[dict[str, Any]] = []
+    presentation_elements_by_ref: dict[str, dict[str, Any]] = {}
     for index, slide_xml in enumerate(presentation["slides"]):
         slide_number = index + 1
         slide_root = slide_roots[index]
@@ -2855,10 +2823,7 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             presentation["height"],
         )
         density_elements = extract_density_elements(slide_xml, slide_number)
-        id_elements = [
-            *density_elements,
-            *extract_nested_id_elements(slide_xml, slide_number),
-        ]
+        id_elements = extract_source_id_elements(slide_xml, slide_number)
         presentation_id_elements.extend(id_elements)
         extra_elements = [
             element for element in density_elements if element["kind"] in {"icon", "polyline", "line"}
@@ -2867,14 +2832,19 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             element_ref(element): element for element in density_elements
         }
         visible_element_count = len(elements_by_ref)
-        elements_by_ref.update(
-            {element_ref(element): element for element in id_elements}
-        )
+        for element in id_elements:
+            elements_by_ref.setdefault(element_ref(element), element)
         # geometry["elements"] are the exact objects should_flag_overlap/detect_elements_out_of_canvas
         # selected inside lint_slide; prefer them so measurement/related_objects stay consistent
         # with whatever actually triggered the issue, instead of density_elements' separate re-parse.
         elements_by_ref.update(
             {element_ref(element): element for element in geometry["elements"]}
+        )
+        presentation_elements_by_ref.update(
+            {
+                element_ref(element): elements_by_ref[element_ref(element)]
+                for element in id_elements
+            }
         )
         extra_overflow_issues = detect_elements_out_of_canvas(
             extra_elements,
@@ -2926,9 +2896,6 @@ def lint_xml(xml: str, source_path: str | None = None) -> dict[str, Any]:
             }
         )
 
-    presentation_elements_by_ref = {
-        element_ref(element): element for element in presentation_id_elements
-    }
     top_level_issues.extend(
         normalize_issue(issue, None, presentation_elements_by_ref)
         for issue in detect_duplicate_element_ids(

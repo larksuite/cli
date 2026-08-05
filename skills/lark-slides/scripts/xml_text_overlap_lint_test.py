@@ -2443,6 +2443,44 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             ["slide[1]/data/shape[1]", "slide[1]/data/table[1]/tr[1]/td[1]"],
         )
 
+    def test_lint_xml_blocks_duplicate_id_shared_by_shape_and_undefined(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide xmlns="https://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape id="dup" type="rect" topLeftX="40" topLeftY="40" width="80" height="80"/>
+                <undefined id="dup" type="video"/>
+              </data>
+            </slide>
+            """
+        )
+
+        issue = next(
+            issue
+            for issue in result["slides"][0]["issues"]
+            if issue["code"] == "duplicate_element_id"
+        )
+        self.assertFalse(result["summary"]["release_ready"])
+        self.assertEqual(issue["element_ids"], ["dup", "dup"])
+        self.assertEqual(
+            issue["related_objects"],
+            [
+                {
+                    "element_id": "dup",
+                    "kind": "shape",
+                    "type": "rect",
+                    "bbox": {"x": 40, "y": 40, "width": 80, "height": 80},
+                    "xml_path": "slide[1]/data/shape[1]",
+                },
+                {
+                    "element_id": "dup",
+                    "kind": "undefined",
+                    "type": "video",
+                    "xml_path": "slide[1]/data/undefined[1]",
+                },
+            ],
+        )
+
     def test_lint_xml_does_not_report_unique_table_cell_and_note_ids(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
@@ -2489,8 +2527,60 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertFalse(result["summary"]["release_ready"])
         self.assertEqual(issue["element_ids"], ["dup", "dup"])
         self.assertEqual(
-            [obj["xml_path"] for obj in issue["related_objects"]],
-            ["slide[1]/data/shape[1]", "slide[2]/data/shape[1]"],
+            issue["related_objects"],
+            [
+                {
+                    "element_id": "dup",
+                    "kind": "shape",
+                    "type": "rect",
+                    "bbox": {"x": 40, "y": 40, "width": 80, "height": 80},
+                    "xml_path": "slide[1]/data/shape[1]",
+                },
+                {
+                    "element_id": "dup",
+                    "kind": "shape",
+                    "type": "rect",
+                    "bbox": {"x": 140, "y": 40, "width": 80, "height": 80},
+                    "xml_path": "slide[2]/data/shape[1]",
+                },
+            ],
+        )
+
+    def test_lint_xml_does_not_treat_slide_ids_as_element_ids(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" width="960" height="540">
+              <slide id="dup"><data/></slide>
+              <slide id="dup"><data/></slide>
+            </presentation>
+            """
+        )
+
+        self.assertNotIn(
+            "duplicate_element_id",
+            [issue["code"] for issue in result["document"]["errors"]],
+        )
+
+    def test_lint_xml_does_not_treat_presentation_id_as_element_id(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <presentation xmlns="https://www.larkoffice.com/sml/2.0" id="dup" width="960" height="540">
+              <slide>
+                <data><undefined id="dup" type="video"/></data>
+              </slide>
+            </presentation>
+            """
+        )
+
+        self.assertNotIn(
+            "duplicate_element_id",
+            [
+                issue["code"]
+                for issue in [
+                    *result["document"]["errors"],
+                    *result["slides"][0]["errors"],
+                ]
+            ],
         )
 
     def test_lint_xml_blocks_duplicate_note_ids_across_slides(self) -> None:
