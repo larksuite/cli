@@ -171,9 +171,9 @@ func TestMailRulesReorder_DryRunCompletesPartialIDs(t *testing.T) {
 	if err := decoder.Decode(&dryRun); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
 	}
-	calls, ok := dryRun["api"].([]any)
+	calls, ok := dryRunAPICalls(dryRun)
 	if !ok || len(calls) != 1 {
-		t.Fatalf("dry-run api = %#v, want one call", dryRun["api"])
+		t.Fatalf("dry-run api = %#v, want one call", dryRun)
 	}
 	call, ok := calls[0].(map[string]any)
 	if !ok {
@@ -186,6 +186,18 @@ func TestMailRulesReorder_DryRunCompletesPartialIDs(t *testing.T) {
 	if gotIDs := interfaceSliceToStrings(t, body["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r2", "r1", "r3"}) {
 		t.Fatalf("dry-run rule_ids = %#v, want [r2 r1 r3]", gotIDs)
 	}
+}
+
+func dryRunAPICalls(dryRun map[string]any) ([]any, bool) {
+	if calls, ok := dryRun["api"].([]any); ok {
+		return calls, true
+	}
+	data, ok := dryRun["data"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	calls, ok := data["api"].([]any)
+	return calls, ok
 }
 
 func TestMailRulesReorder_ValidationErrorsDoNotCallAPIs(t *testing.T) {
