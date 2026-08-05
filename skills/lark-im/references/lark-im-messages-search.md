@@ -6,7 +6,7 @@ Search Feishu messages across conversations. This shortcut automatically perform
 
 By default each result message also carries a `reactions` block (counts + details from `im.reactions.batch_query`) when the server has reactions for it, and `update_time` for messages that were actually edited. With `--page-all`, every page is enriched; pass `--no-reactions` to skip the extra round-trip. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
 
-> **User identity only** (`--as user`). Bot identity is not supported.
+> **Supports both `--as user` (default) and `--as bot`.** Bot identity uses the application's tenant access token.
 
 This skill maps to the shortcut: `lark-cli im +messages-search` (internally calls `POST /open-apis/im/v1/messages/search` + batched `GET /open-apis/im/v1/messages/mget`, then batch-fetches chat context).
 
@@ -15,6 +15,9 @@ This skill maps to the shortcut: `lark-cli im +messages-search` (internally call
 ```bash
 # Search by keyword
 lark-cli im +messages-search --query "project progress"
+
+# Search with application/bot identity
+lark-cli im +messages-search --as bot --query "project progress"
 
 # Restrict search to a specific group chat
 lark-cli im +messages-search --query "weekly report" --chat-id oc_xxx
@@ -84,7 +87,7 @@ lark-cli im +messages-search --query "test" --dry-run
 | `--page-all` | No | Automatically paginate through all result pages (up to 40 pages) |
 | `--page-limit <n>` | No | Max pages to fetch when auto-pagination is enabled (default 20, max 40). Setting it explicitly also enables auto-pagination |
 | `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
-| `--as <identity>` | No | Identity type (defaults to and only supports `user`) |
+| `--as <identity>` | No | Identity type: `user` (default) or `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
 ## Core Constraints
@@ -102,6 +105,8 @@ The shortcut automatically performs:
 3. Chat context lookup is fetched in batch and attached to each message
 
 The user does not need to manage the orchestration manually. When search results span multiple pages, the shortcut can also paginate automatically with `--page-all` or `--page-limit`.
+
+For bot identity, non-empty results require the application's message-read scopes `im:message.group_msg` and `im:message.p2p_msg:readonly` for mget enrichment, plus `im:chat:read` for chat context. Reaction enrichment additionally requires `im:message.reactions:read`; pass `--no-reactions` when reactions are not needed. These are application scopes and cannot be granted through `auth login`.
 
 ### 3. Conversation context is enriched automatically
 
@@ -225,8 +230,9 @@ lark-cli im +messages-search --query "" --chat-id oc_xxx --sender ou_me --start 
 | Symptom | Root Cause | Solution |
 |---------|---------|---------|
 | Too few results | The time range is too narrow or the keyword is too specific | Expand the time range and try broader keywords |
-| No results | Missing permission or no match | Confirm `search:message` is authorized and relax the filters |
-| Permission denied | Search scope not authorized | Run `auth login --scope "search:message"` |
+| No results | Missing permission or no match | Confirm the current identity has `search:message`, then relax the filters |
+| Permission denied (`--as user`) | User authorization is missing | Run `auth login --scope "search:message"`; include the message-read, chat, or reaction scope named by the error when enrichment fails |
+| Permission denied (`--as bot`) | The application lacks a required scope or the TAT is unavailable | Check the tenant access token and enable the scope named by the error in the developer console; do not use `auth login` for bot application scopes |
 
 ## References
 

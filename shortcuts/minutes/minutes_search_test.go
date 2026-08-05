@@ -213,6 +213,63 @@ func TestMinutesSearchValidationMeOwnerID(t *testing.T) {
 	}
 }
 
+func TestMinutesSearchRejectsMeForBotIdentity(t *testing.T) {
+	tests := []struct {
+		name string
+		flag string
+	}{
+		{name: "owner ids", flag: "owner-ids"},
+		{name: "participant ids", flag: "participant-ids"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newMinutesSearchTestCommand()
+			_ = cmd.Flags().Set(tt.flag, "Me")
+			runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), core.AsBot)
+
+			err := MinutesSearch.Validate(context.Background(), runtime)
+			if err == nil {
+				t.Fatal("expected bot identity to reject me")
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if validationErr.Param != "--"+tt.flag {
+				t.Fatalf("Param = %q, want --%s", validationErr.Param, tt.flag)
+			}
+			if !strings.Contains(validationErr.Hint, "ou_xxx") {
+				t.Fatalf("Hint = %q, want explicit open_id recovery", validationErr.Hint)
+			}
+		})
+	}
+}
+
+func TestMinutesSearchBotIdentityAcceptsExplicitOpenIDs(t *testing.T) {
+	cmd := newMinutesSearchTestCommand()
+	_ = cmd.Flags().Set("owner-ids", "ou_owner")
+	_ = cmd.Flags().Set("participant-ids", "ou_participant")
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), core.AsBot)
+
+	if err := MinutesSearch.Validate(context.Background(), runtime); err != nil {
+		t.Fatalf("expected explicit open_ids to pass for bot identity, got: %v", err)
+	}
+	body, err := buildMinutesSearchBody(runtime, "", "")
+	if err != nil {
+		t.Fatalf("buildMinutesSearchBody() error = %v", err)
+	}
+	filter, _ := body["filter"].(map[string]interface{})
+	owners, _ := filter["owner_ids"].([]string)
+	participants, _ := filter["participant_ids"].([]string)
+	if len(owners) != 1 || owners[0] != "ou_owner" {
+		t.Fatalf("owner_ids = %v, want [ou_owner]", owners)
+	}
+	if len(participants) != 1 || participants[0] != "ou_participant" {
+		t.Fatalf("participant_ids = %v, want [ou_participant]", participants)
+	}
+}
+
 // TestMinutesSearchValidationMeRequiresResolvableUser verifies me fails without a resolvable open_id.
 func TestMinutesSearchValidationMeRequiresResolvableUser(t *testing.T) {
 	t.Parallel()

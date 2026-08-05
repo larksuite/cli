@@ -5,6 +5,7 @@ package im
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,8 +33,15 @@ var ImMessagesSearch = common.Shortcut{
 	Description: "Search messages across chats (supports keyword, sender, time range filters) with user or bot identity; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
 	Risk:        "read",
 	Scopes:      []string{"search:message", "im:message.reactions:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	BotScopes:   []string{"search:message"},
+	ConditionalBotScopes: []string{
+		"im:message.group_msg",
+		"im:message.p2p_msg:readonly",
+		chatBatchQueryScope,
+		"im:message.reactions:read",
+	},
+	AuthTypes: []string{"user", "bot"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "query", Aliases: []string{"keyword"}, Desc: "search keyword"},
 		{Name: "chat-id", Desc: "limit to chat IDs, comma-separated"},
@@ -127,6 +135,10 @@ var ImMessagesSearch = common.Shortcut{
 		// ── Step 2: Batch fetch message details (mget) ──
 		msgItems, err := batchMGetMessages(runtime, messageIds)
 		if err != nil {
+			if permissionErr := annotateMessagesSearchPermissionError(runtime, err, messagesSearchMGetScopes(runtime)...); permissionErr != nil {
+				return permissionErr
+			}
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: message_detail_enrichment_failed: %v\n", err)
 			// Fallback when mget fails: return ID list only
 			outData := map[string]interface{}{
 				"message_ids": messageIds,
@@ -161,7 +173,13 @@ var ImMessagesSearch = common.Shortcut{
 		}
 		chatContexts := map[string]map[string]interface{}{}
 		if len(chatIds) > 0 {
-			chatContexts = batchQueryChatContexts(runtime, chatIds)
+			chatContexts, err = batchQueryChatContextsWithError(runtime, chatIds)
+			if err != nil {
+				if permissionErr := annotateMessagesSearchPermissionError(runtime, err, chatBatchQueryScope); permissionErr != nil {
+					return permissionErr
+				}
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: chat_context_enrichment_failed: %v\n", err)
+			}
 		}
 
 		// ── Step 4: Format message content + attach chat context ──
@@ -471,14 +489,42 @@ func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]i
 	return items, nil
 }
 
+func messagesSearchMGetScopes(runtime *common.RuntimeContext) []string {
+	if runtime.As().IsBot() {
+		return []string{"im:message.group_msg", "im:message.p2p_msg:readonly"}
+	}
+	return []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user"}
+}
+
+func annotateMessagesSearchPermissionError(runtime *common.RuntimeContext, err error, requiredScopes ...string) error {
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) {
+		return nil
+	}
+	permissionErr.WithMissingScopes(requiredScopes...)
+	if permissionErr.Identity == "" {
+		permissionErr.WithIdentity(string(runtime.As()))
+	}
+	return err
+}
+
 // batchQueryChatContexts fetches chat metadata best-effort for message rows.
 func batchQueryChatContexts(runtime *common.RuntimeContext, chatIds []string) map[string]map[string]interface{} {
-	chatContexts := map[string]map[string]interface{}{}
-	// Best-effort: a failed chunk only loses its own entries.
-	for _, batch := range chunkStrings(chatIds, chatBatchQuerySize) {
-		_ = queryChatBatch(runtime, batch, chatContexts)
-	}
+	chatContexts, _ := batchQueryChatContextsWithError(runtime, chatIds)
 	return chatContexts
+}
+
+// batchQueryChatContextsWithError returns the first failed chunk while preserving
+// any chat contexts fetched successfully by other chunks.
+func batchQueryChatContextsWithError(runtime *common.RuntimeContext, chatIds []string) (map[string]map[string]interface{}, error) {
+	chatContexts := map[string]map[string]interface{}{}
+	var firstErr error
+	for _, batch := range chunkStrings(chatIds, chatBatchQuerySize) {
+		if err := queryChatBatch(runtime, batch, chatContexts); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return chatContexts, firstErr
 }
 
 // chunkStrings splits a string slice into fixed-size batches.

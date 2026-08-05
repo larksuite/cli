@@ -93,6 +93,10 @@ func buildTimeFilter(startTime, endTime string) map[string]interface{} {
 
 // buildMinutesSearchFilter builds the filter object for the API request body.
 func buildMinutesSearchFilter(runtime *common.RuntimeContext, startTime, endTime string) (map[string]interface{}, error) {
+	if err := validateMinutesSearchIdentityFilters(runtime); err != nil {
+		return nil, err
+	}
+
 	filter := map[string]interface{}{}
 
 	ownerIDs, err := common.ResolveOpenIDsTyped("--owner-ids", common.SplitCSV(runtime.Str("owner-ids")), runtime)
@@ -119,6 +123,23 @@ func buildMinutesSearchFilter(runtime *common.RuntimeContext, startTime, endTime
 		return nil, nil
 	}
 	return filter, nil
+}
+
+func validateMinutesSearchIdentityFilters(runtime *common.RuntimeContext) error {
+	if !runtime.As().IsBot() {
+		return nil
+	}
+	for _, flag := range []string{"owner-ids", "participant-ids"} {
+		for _, id := range common.SplitCSV(runtime.Str(flag)) {
+			if strings.EqualFold(strings.TrimSpace(id), "me") {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"--%s does not support \"me\" with bot identity", flag).
+					WithParam("--" + flag).
+					WithHint("pass an explicit user open_id such as ou_xxx")
+			}
+		}
+	}
+	return nil
 }
 
 // buildMinutesSearchBody builds the POST body for the minutes search API.
@@ -237,6 +258,9 @@ var MinutesSearch = common.Shortcut{
 		{Name: "page-size", Default: "15", Desc: "page size, 1-30 (default 15)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateMinutesSearchIdentityFilters(runtime); err != nil {
+			return err
+		}
 		if _, _, err := parseTimeRange(runtime); err != nil {
 			return err
 		}
