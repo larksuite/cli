@@ -120,6 +120,16 @@ func TestAppsMemberAPIErrorNormalization(t *testing.T) {
 			wantMessage: "Collaborator management is not available for this app via lark-cli.",
 			wantHint:    "Open this app in Miaoda and manage collaborators from its permission settings.",
 		},
+		{
+			name: "external invite follows external access", code: 40006, wantSubtype: errs.SubtypeFeatureNotAvailable,
+			wantMessage: "External collaborator invitations cannot be configured independently.",
+			wantHint:    "Set --external-access instead; external_invite follows that setting.",
+		},
+		{
+			name: "OpenAPI external invite follows external access", code: 3340006, wantSubtype: errs.SubtypeFeatureNotAvailable,
+			wantMessage: "External collaborator invitations cannot be configured independently.",
+			wantHint:    "Set --external-access instead; external_invite follows that setting.",
+		},
 		{name: "internal app not found", code: 40400, wantSubtype: errs.SubtypeNotFound},
 		{name: "OpenAPI app not found", code: 3340400, wantSubtype: errs.SubtypeNotFound},
 	}
@@ -158,7 +168,6 @@ func TestAppsMemberFlagsExposeExactEnums(t *testing.T) {
 		{AppsMemberUpdate, "perm", []string{"view", "edit", "full_access"}},
 		{AppsMemberRemove, "member-type", []string{"openid", "openchat", "opendepartmentid"}},
 		{AppsMemberSettingsSet, "external-access", []string{"enabled", "disabled"}},
-		{AppsMemberSettingsSet, "external-invite", []string{"enabled", "disabled"}},
 		{AppsMemberSettingsSet, "link-share", []string{"closed", "tenant-readable", "tenant-editable", "anyone-readable"}},
 		{AppsMemberSettingsSet, "manage-collaborators-by", []string{"anyone", "same-tenant", "full-access"}},
 		{AppsMemberSettingsSet, "comment-by", []string{"viewer", "editor"}},
@@ -178,6 +187,28 @@ func TestAppsMemberFlagsExposeExactEnums(t *testing.T) {
 				t.Fatalf("%s --%s enum = %#v, want %#v", tc.shortcut.Command, tc.flag, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestAppsMemberExternalInviteIsHiddenAndReadOnly(t *testing.T) {
+	var inviteFlag *common.Flag
+	for index := range AppsMemberSettingsSet.Flags {
+		if AppsMemberSettingsSet.Flags[index].Name == "external-invite" {
+			inviteFlag = &AppsMemberSettingsSet.Flags[index]
+			break
+		}
+	}
+	if inviteFlag == nil || !inviteFlag.Hidden {
+		t.Fatalf("--external-invite flag = %#v, want hidden compatibility flag", inviteFlag)
+	}
+	rctx := newAppsMemberRuntime(t, AppsMemberSettingsSet, map[string]string{
+		"app-id": "app_test", "external-invite": "disabled",
+	})
+	err := AppsMemberSettingsSet.Validate(context.Background(), rctx)
+	problem, ok := errs.ProblemOf(err)
+	var validationErr *errs.ValidationError
+	if !ok || problem.Subtype != errs.SubtypeFeatureNotAvailable || !errors.As(err, &validationErr) || validationErr.Param != "--external-invite" || problem.Hint == "" {
+		t.Fatalf("external invite problem = %+v, ok=%t", problem, ok)
 	}
 }
 
@@ -347,7 +378,6 @@ func TestAppsMemberSettingsSetRequiresAtLeastOneExplicitField(t *testing.T) {
 
 	for _, field := range []struct{ name, value string }{
 		{name: "external-access", value: "enabled"},
-		{name: "external-invite", value: "disabled"},
 		{name: "link-share", value: "tenant-readable"},
 		{name: "manage-collaborators-by", value: "same-tenant"},
 		{name: "comment-by", value: "viewer"},

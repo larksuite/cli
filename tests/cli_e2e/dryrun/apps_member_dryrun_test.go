@@ -210,3 +210,13 @@ func TestAppsMemberValidationFailuresAreStructured(t *testing.T) {
 	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
 	require.True(t, gjson.Get(result.Stderr, "error.params.#").Int() >= 1, "stderr:\n%s", result.Stderr)
 }
+
+func TestAppsMemberExternalInviteFailureIsActionable(t *testing.T) {
+	result := runAppsMemberCLI(t, "apps", "+member-settings-set", "--app-id", "app_x", "--external-invite", "disabled", "--dry-run")
+	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout)
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
+	require.Equal(t, "feature_not_available", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
+	require.Equal(t, "--external-invite", gjson.Get(result.Stderr, "error.param").String(), "stderr:\n%s", result.Stderr)
+	require.Contains(t, gjson.Get(result.Stderr, "error.hint").String(), "--external-access", "stderr:\n%s", result.Stderr)
+}

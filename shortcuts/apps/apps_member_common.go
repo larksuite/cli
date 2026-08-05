@@ -40,6 +40,11 @@ func normalizeMemberAPIError(err error) error {
 		problem.Message = "Collaborator management is not available for this app via lark-cli."
 		problem.Hint = "Open this app in Miaoda and manage collaborators from its permission settings."
 		problem.Retryable = false
+	case 40006, 3340006:
+		problem.Subtype = errs.SubtypeFeatureNotAvailable
+		problem.Message = "External collaborator invitations cannot be configured independently."
+		problem.Hint = "Set --external-access instead; external_invite follows that setting."
+		problem.Retryable = false
 	case 40400, 3340400:
 		problem.Subtype = errs.SubtypeNotFound
 	}
@@ -106,6 +111,7 @@ type memberSettingSpec struct {
 	field         string
 	description   string
 	allowed       []string
+	readOnly      bool
 	setRequest    func(*memberSettingsUpdateRequest, *string)
 	responseValue func(memberSettingsResponse) *string
 }
@@ -119,7 +125,7 @@ var memberSettingSpecs = []memberSettingSpec{
 	},
 	{
 		flag: "external-invite", field: "external_invite", description: "external collaborator invitations",
-		allowed:       []string{"enabled", "disabled"},
+		allowed: []string{"enabled", "disabled"}, readOnly: true,
 		setRequest:    func(req *memberSettingsUpdateRequest, value *string) { req.ExternalInvite = value },
 		responseValue: func(settings memberSettingsResponse) *string { return settings.ExternalInvite },
 	},
@@ -362,6 +368,13 @@ func buildMemberSettingsUpdateRequest(rctx *common.RuntimeContext) (memberSettin
 		if !rctx.Changed(spec.flag) {
 			continue
 		}
+		if spec.readOnly {
+			return memberSettingsUpdateRequest{}, errs.NewValidationError(
+				errs.SubtypeFeatureNotAvailable,
+				"--%s is read-only because it follows --external-access", spec.flag,
+			).WithParam("--" + spec.flag).
+				WithHint("set --external-access instead; external_invite follows that setting")
+		}
 		value := strings.TrimSpace(rctx.Str(spec.flag))
 		if !memberStringAllowed(value, spec.allowed) {
 			return memberSettingsUpdateRequest{}, appsValidationParamError("--"+spec.flag, "invalid value %q for --%s", value, spec.flag).
@@ -402,7 +415,6 @@ func validateMemberSettingsSet(rctx *common.RuntimeContext) error {
 	return appsValidationError("at least one collaborator setting must be provided").
 		WithParams(
 			appsInvalidParam("--external-access", "not provided"),
-			appsInvalidParam("--external-invite", "not provided"),
 			appsInvalidParam("--link-share", "not provided"),
 			appsInvalidParam("--manage-collaborators-by", "not provided"),
 			appsInvalidParam("--comment-by", "not provided"),
@@ -637,9 +649,10 @@ func memberSettingsSetFlags() []common.Flag {
 	flags = append(flags, common.Flag{Name: "app-id", Desc: "Miaoda app ID (app_...)"})
 	for _, spec := range memberSettingSpecs {
 		flags = append(flags, common.Flag{
-			Name: spec.flag,
-			Desc: spec.description,
-			Enum: append([]string(nil), spec.allowed...),
+			Name:   spec.flag,
+			Desc:   spec.description,
+			Hidden: spec.readOnly,
+			Enum:   append([]string(nil), spec.allowed...),
 		})
 	}
 	return flags
