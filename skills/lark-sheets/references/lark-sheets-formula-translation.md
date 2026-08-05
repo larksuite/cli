@@ -27,7 +27,7 @@
 
 1. 按本文完成公式改写后，用 `lark-sheets-write-cells` / `lark-sheets-batch-update` 把公式真实写入表格。
 2. 公式一旦落表，就默认进入 `lark-sheets-formula-verify` 的收尾阶段。
-3. 最终必须跑 `+formula-verify` 收敛到 `status='success'`；`errors_found` / `partial` 都不算完成。
+3. 普通公式最终必须跑 `+formula-verify` 收敛到 `status='success'`；AI 公式采用本节的异步抽检与交付规则。
 
 ## AI 公式（`AI` 函数）
 
@@ -84,7 +84,7 @@ AI 公式的质量高度依赖提示词。推荐：
 
 对整列逐行跑 AI，推荐**模板单元格 + `--copy-to-range` 向下扩展**：在种子单元格写 `=AI("<提示词>", A2)`，再用 `--copy-to-range` 扩展到整列，相对引用会随行自增（`A2` → `A3` → …）。这样每行独立计算、行为可预测，比依赖单条公式一次铺开整列更稳。
 
-**写完 AI 公式后的校验**：AI 公式异步计算，少量公式通常很快就能算出结果；一次批量写入较多公式时，部分公式在校验时仍处于计算中（pending）属于正常现象。写完后用 `lark-sheets-formula-verify` 的 `+formula-verify --ai-only` 查看 AI 公式计算状态，直到不再有 pending 即算完成。细节见 `lark-sheets-formula-verify`。
+**写完 AI 公式后的校验与交付**：AI 公式异步计算，批量写入后出现 pending 属于正常现象。第一校验入口必须是 `lark-sheets-formula-verify` 的 `+formula-verify --ai-only --range <代表性范围>`，禁止先用 `+cells-get` 轮询结果。确认公式已写入且抽检没有明确的失败 / 不支持状态后，即使仍有 pending 也可以交付；飞书会在后台继续计算。交付时告知用户“AI 公式仍在后台运行，结果会陆续完成”。`+cells-get` 只用于补充核对公式文本、样式或定位异常单元格。细节见 `lark-sheets-formula-verify`。
 
 ## 决策流程
 

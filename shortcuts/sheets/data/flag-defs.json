@@ -57,7 +57,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Only verify AI formulas (the unified =AI(prompt, [range]) function that drives translation / classification / sentiment / extraction / summary / rewrite via natural language), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously: small batches settle quickly, while a larger batch legitimately returns some pending (still computing) - re-check later."
+        "desc": "Only verify AI formulas (=AI(prompt, [range])), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously: use this flag with --range as the first post-write sample check, not cells-get polling; if the sample has no explicit failed/unsupported state, delivery may proceed with pending formulas while telling the user that computation continues in the background."
       }
     ]
   },
