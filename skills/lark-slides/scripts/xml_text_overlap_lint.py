@@ -72,6 +72,7 @@ LINE_MIN_VISIBLE_ALPHA = 0.08
 # Sub-pixel canvas overflow is floating-point rounding noise (e.g. rotated-bbox math), not a
 # visible defect; keep this well under 1px so real overflow is still always caught.
 CANVAS_OVERFLOW_TOLERANCE = 0.5
+XML_PATH_HINT_PREFIX = "Locate via related_objects[].xml_path."
 _SXSD_TAG_ATTRIBUTES_CACHE: dict[str, set[str]] | None = None
 _ICONPARK_ICON_TYPES_CACHE: set[str] | None = None
 
@@ -2374,7 +2375,7 @@ def detect_duplicate_element_ids(
             "hint": (
                 "Do not invent replacement IDs. For newly authored elements, remove the id attribute. "
                 "When updating read-back XML, keep the server ID on the original element only and remove it "
-                "from copied or new elements. Use xml_path to edit the correct nodes."
+                "from copied or new elements."
             ),
         }
         for source_id, duplicates in elements_by_source_id.items()
@@ -2631,6 +2632,10 @@ def normalize_issue(
     normalized.setdefault(
         "hint", "Inspect the reported elements and adjust them to satisfy the rule comparison."
     )
+    if any(related.get("xml_path") for related in normalized["related_objects"]):
+        hint = normalized["hint"]
+        if not hint.startswith(XML_PATH_HINT_PREFIX):
+            normalized["hint"] = f"{XML_PATH_HINT_PREFIX} {hint}"
     return normalized
 
 

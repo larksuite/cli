@@ -217,6 +217,8 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertIsInstance(issue["line"], int)
         self.assertIsInstance(issue["column"], int)
         self.assertIn("Broken XML", issue["context"])
+        self.assertEqual(issue["related_objects"], [])
+        self.assertNotIn("Locate via related_objects[].xml_path.", issue["hint"])
 
     def test_lint_xml_rejects_prefixed_sml_tags(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
@@ -2352,15 +2354,21 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
                 }
             ],
         )
+        self.assertTrue(
+            canvas_issue["hint"].startswith(
+                "Locate via related_objects[].xml_path. "
+            )
+        )
         duplicate_issue = next(
             issue for issue in result["slides"][0]["issues"]
             if issue["code"] == "duplicate_element_id"
         )
         self.assertEqual(
             duplicate_issue["hint"],
+            "Locate via related_objects[].xml_path. "
             "Do not invent replacement IDs. For newly authored elements, remove the id attribute. "
             "When updating read-back XML, keep the server ID on the original element only and remove it "
-            "from copied or new elements. Use xml_path to edit the correct nodes.",
+            "from copied or new elements.",
         )
         self.assertEqual(duplicate_issue["element_ids"], ["dup", "dup"])
         self.assertEqual(
@@ -2428,6 +2436,38 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
             [obj["xml_path"] for obj in duplicate_issue["related_objects"]],
             ["slide[1]/data/shape[1]", "slide[1]/data/img[1]"],
         )
+
+    def test_normalize_issue_does_not_repeat_xml_path_hint_prefix(self) -> None:
+        xml_path = "slide[1]/data/shape[1]"
+        element = {
+            "id": "box",
+            "_source_id": "box",
+            "_ref": xml_path,
+            "xml_path": xml_path,
+            "kind": "shape",
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "width": 40,
+            "height": 40,
+        }
+        prefix = "Locate via related_objects[].xml_path."
+
+        issue = xml_text_overlap_lint.normalize_issue(
+            {
+                "level": "error",
+                "code": "shape_out_of_canvas",
+                "elements": [xml_path],
+                "canvas": {"width": 960, "height": 540},
+                "bbox": {"x": -10, "y": 0, "width": 40, "height": 40},
+                "overflow": {"left": 10, "top": 0, "right": 0, "bottom": 0},
+                "hint": f"{prefix} Move the shape inside the canvas.",
+            },
+            1,
+            {xml_path: element},
+        )
+
+        self.assertEqual(issue["hint"].count(prefix), 1)
 
     def test_lint_xml_reports_duplicate_ids_for_every_linted_element_kind(self) -> None:
         duplicate_pairs = {
@@ -2500,6 +2540,9 @@ class XmlTextOverlapLintGeometryTest(unittest.TestCase):
         self.assertEqual(
             issue["related_objects"][0]["xml_path"],
             "slide[1]/data/shape[1]",
+        )
+        self.assertTrue(
+            issue["hint"].startswith("Locate via related_objects[].xml_path. ")
         )
         self.assertNotIn(
             "duplicate_element_id",
