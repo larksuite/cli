@@ -26,7 +26,7 @@ metadata:
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+search`](references/lark-minutes-search.md) | 按关键词、所有者、参与者、时间范围搜索妙记 |
+| [`+search`](references/lark-minutes-search.md) | 按关键词、所有者、参与者、时间范围搜索妙记；支持 user/bot 身份 |
 | [`+detail`](references/lark-minutes-detail.md) | 查询妙记详情(标题和关联的纪要note_id)，按需获取 AI 产物（总结、待办、章节、逐字稿、关键词） |
 | [`+download`](references/lark-minutes-download.md) | 下载妙记音视频媒体文件 |
 | [`+upload`](references/lark-minutes-upload.md) | 上传 file_token 生成妙记 |

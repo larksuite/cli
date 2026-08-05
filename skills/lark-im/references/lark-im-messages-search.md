@@ -163,7 +163,7 @@ Use `im +messages-resources-download` if you need to fetch the underlying image 
 
 Use `--query` only for real message keywords. If the user asks for activity review such as "最近一周我和哪些 Bot 有过交互" or "整理我和某人的聊天记录", and the useful constraints are sender type, chat, person, or time range, keep `--query ""` and rely on those filters. Do not put generic instruction words such as "看看", "总结", "交互内容", or "聊天记录" into `--query`; those words often over-constrain message search and hide the relevant messages.
 
-This guidance applies only when using user identity. `im +messages-search` is user-only; if the user explicitly asks for application/bot identity, do not try `--as bot`. For bot identity with a named group and history/listing intent, resolve the group with `im +chat-search --as bot`, then list messages with `im +chat-messages-list --as bot --chat-id <chat_id>`.
+This guidance applies to both user and bot identity. If the user explicitly asks for application/bot identity, run `im +messages-search --as bot`; for named-group history/listing intents where search is not needed, resolving the group with `im +chat-search --as bot` and listing messages with `im +chat-messages-list --as bot --chat-id <chat_id>` is still a good narrower path.
 
 ```bash
 # Review recent bot interactions without forcing a keyword

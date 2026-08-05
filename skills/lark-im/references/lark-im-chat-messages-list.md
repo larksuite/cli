@@ -156,7 +156,7 @@ lark-cli api GET /open-apis/im/v1/messages \
    lark-cli im +chat-search --as bot --query "<chat name keyword>" --format json
    lark-cli im +chat-messages-list --as bot --chat-id <chat_id> --page-size 50 --format json
    ```
-   Do not use `im +messages-search --as bot`; `+messages-search` is user-only. Continue with `--page-token` if `has_more=true`.
+   If the request is keyword search across message content, `im +messages-search --as bot` is also supported. Continue with `--page-token` if `has_more=true`.
 
 ## References
 
