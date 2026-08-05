@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -108,7 +107,7 @@ func TestMailRulesReorder_CompletesPartialIDsBeforeReorder(t *testing.T) {
 	})
 	registerMailRulesReorder(reg, "shared@example.com", func(req *http.Request, got map[string]interface{}) {
 		reorderMailbox = req.URL.Path
-		gotRuleIDs = interfaceSliceToStrings(got["rule_ids"])
+		gotRuleIDs = interfaceSliceToStrings(t, got["rule_ids"])
 	}, map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{"ok": true}})
 
 	cmd.setArgs([]string{
@@ -139,7 +138,7 @@ func TestMailRulesReorder_FullIDsRemainInRequestedOrder(t *testing.T) {
 		"has_more": false,
 	}, nil)
 	registerMailRulesReorder(reg, "me", func(req *http.Request, got map[string]interface{}) {
-		gotRuleIDs = interfaceSliceToStrings(got["rule_ids"])
+		gotRuleIDs = interfaceSliceToStrings(t, got["rule_ids"])
 	}, map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}})
 
 	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r3","r1","r2"]}`})
@@ -176,7 +175,7 @@ func TestMailRulesReorder_DryRunCompletesPartialIDs(t *testing.T) {
 	if !ok {
 		t.Fatalf("dry-run body = %#v, want object", dryRun["body"])
 	}
-	if gotIDs := interfaceSliceToStrings(body["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r2", "r1", "r3"}) {
+	if gotIDs := interfaceSliceToStrings(t, body["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r2", "r1", "r3"}) {
 		t.Fatalf("dry-run rule_ids = %#v, want [r2 r1 r3]", gotIDs)
 	}
 }
@@ -261,7 +260,7 @@ func TestMailRulesReorder_ListPaginationFetchesAllRules(t *testing.T) {
 		tokens = append(tokens, req.URL.Query().Get("page_token"))
 	})
 	registerMailRulesReorder(reg, "me", func(req *http.Request, got map[string]interface{}) {
-		gotRuleIDs = interfaceSliceToStrings(got["rule_ids"])
+		gotRuleIDs = interfaceSliceToStrings(t, got["rule_ids"])
 	}, map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}})
 
 	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r2"]}`})
@@ -330,11 +329,19 @@ func assertServiceAPIError(t *testing.T, err error, wantCode int, wantSubstr str
 	}
 }
 
-func interfaceSliceToStrings(v interface{}) []string {
-	items, _ := v.([]interface{})
+func interfaceSliceToStrings(t *testing.T, v interface{}) []string {
+	t.Helper()
+	items, ok := v.([]interface{})
+	if !ok {
+		t.Fatalf("rule_ids = %#v, want []interface{}", v)
+	}
 	out := make([]string, 0, len(items))
-	for _, item := range items {
-		out = append(out, fmt.Sprint(item))
+	for i, item := range items {
+		s, ok := item.(string)
+		if !ok {
+			t.Fatalf("rule_ids[%d] = %#v, want string", i, item)
+		}
+		out = append(out, s)
 	}
 	return out
 }
