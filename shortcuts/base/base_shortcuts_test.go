@@ -1214,9 +1214,8 @@ func TestBaseTableValidate(t *testing.T) {
 	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": "{"}, nil, nil)); err != nil {
 		t.Fatalf("invalid fields json should bypass CLI validate, err=%v", err)
 	}
-	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "view": `[1]`}, nil, nil)); err != nil {
-		t.Fatalf("invalid view json should bypass CLI validate, err=%v", err)
-	}
+	err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "view": `[1]`}, nil, nil))
+	assertInvalidArgumentValidation(t, err, "--view", []string{"--view"}, "item 1 must be an object")
 	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": `[{"name":"Name","type":"text"}]`, "view": `{"name":"Main"}`}, nil, nil)); err != nil {
 		t.Fatalf("create validate err=%v", err)
 	}
@@ -1508,6 +1507,8 @@ func TestBaseViewValidate(t *testing.T) {
 	if err := BaseViewCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"name":"Main"}`}, nil, nil)); err != nil {
 		t.Fatalf("create validate err=%v", err)
 	}
+	err := BaseViewCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `[]`}, nil, nil))
+	assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "at least one view")
 	if err := BaseViewSetGroup.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "view-id": "Main", "json": `[{"field":"fld_1"}]`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") {
 		t.Fatalf("err=%v", err)
 	}

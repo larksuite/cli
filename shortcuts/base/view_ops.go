@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -139,8 +140,14 @@ func wrapViewPropertyBody(raw interface{}, key string) interface{} {
 
 func validateViewCreate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	_, err := parseObjectList(pc, runtime.Str("json"), "json")
-	return err
+	items, err := parseObjectList(pc, runtime.Str("json"), "json")
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		return baseFlagErrorf("--json must contain at least one view object")
+	}
+	return nil
 }
 
 func validateViewJSONObject(runtime *common.RuntimeContext) error {
@@ -186,16 +193,73 @@ func executeViewCreate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	created := []interface{}{}
-	for _, body := range viewItems {
-		data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables", tableIDValue, "views"), nil, body)
-		if err != nil {
-			return err
+	created, failedIndex, err := createViews(runtime, baseToken, tableIDValue, viewItems)
+	if err != nil {
+		if len(created) > 0 {
+			return viewCreateProgressError(runtime, err, created, failedIndex)
 		}
-		created = append(created, data)
+		return err
 	}
 	runtime.Out(map[string]interface{}{"views": created}, nil)
 	return nil
+}
+
+func createViews(runtime *common.RuntimeContext, baseToken, tableIDValue string, viewItems []map[string]interface{}) ([]interface{}, int, error) {
+	created := []interface{}{}
+	for index, body := range viewItems {
+		data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables", tableIDValue, "views"), nil, body)
+		if err != nil {
+			return created, index + 1, err
+		}
+		newViewID := viewID(data)
+		if newViewID == "" {
+			err := errs.NewValidationError(errs.SubtypeFailedPrecondition, "view create response omitted the new view ID; creation state is unknown").
+				WithHint("Do not retry or configure a same-name view. If verification is required and read permission is available, run +view-list to reconcile the view IDs.")
+			return created, index + 1, err
+		}
+		// Normalize the alternate API response key so callers can always use
+		// views[].id without a second lookup.
+		data["id"] = newViewID
+		created = append(created, data)
+	}
+	return created, 0, nil
+}
+
+func viewCreateProgressError(runtime *common.RuntimeContext, err error, created []interface{}, failedIndex int) error {
+	return runtime.OutPartialFailure(viewCreateProgressPayload(err, created, failedIndex), nil)
+}
+
+func viewCreateProgressPayload(err error, created []interface{}, failedIndex int) map[string]interface{} {
+	failure := map[string]interface{}{
+		"index": failedIndex,
+		"error": err.Error(),
+	}
+	if problem, ok := errs.ProblemOf(err); ok {
+		failure["type"] = string(problem.Category)
+		failure["subtype"] = string(problem.Subtype)
+		if problem.Code != 0 {
+			failure["code"] = problem.Code
+		}
+		if problem.LogID != "" {
+			failure["log_id"] = problem.LogID
+		}
+		if problem.Hint != "" {
+			failure["hint"] = problem.Hint
+		}
+		if problem.Troubleshooter != "" {
+			failure["troubleshooter"] = problem.Troubleshooter
+		}
+		if problem.Retryable {
+			failure["retryable"] = true
+		}
+	}
+	payload := map[string]interface{}{
+		"message": fmt.Sprintf("view creation failed at item %d after %d view(s) succeeded: %v", failedIndex, len(created), err),
+		"views":   created,
+		"failed":  []map[string]interface{}{failure},
+		"hint":    "Earlier views were created. Do not retry them; inspect the failed item before deciding whether to retry it.",
+	}
+	return payload
 }
 
 func executeViewDelete(runtime *common.RuntimeContext) error {

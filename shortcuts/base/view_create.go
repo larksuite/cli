@@ -26,6 +26,7 @@ var BaseViewCreate = common.Shortcut{
 		`Minimal: --json '{"name":"Main"}' creates a grid view.`,
 		"Do not pass form as a view type; form views are managed through form commands.",
 		`Use +view-set-visible-fields after creation when the user needs a specific field order or visibility.`,
+		"For a request to create a new view, use the returned views[].id; do not fall back to a pre-existing same-name view.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewCreate(runtime)

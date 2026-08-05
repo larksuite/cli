@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -30,11 +31,21 @@ func dryRunTableGet(_ context.Context, runtime *common.RuntimeContext) *common.D
 }
 
 func dryRunTableCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	viewItems, err := parseObjectList(newParseCtx(runtime), runtime.Str("view"), "view")
+	if err != nil {
+		return common.NewDryRunAPI().Desc(fmt.Sprintf("dry-run validation failed: %v", err))
+	}
 	body := dryRunTableCreateBody(runtime, runtime.Str("name"))
 	d := common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables").
 		Body(body).
 		Set("base_token", runtime.Str("base-token"))
+	if len(viewItems) > 0 {
+		d.Set("created_table_id", "<created_table_id>")
+		for _, view := range viewItems {
+			d.POST("/open-apis/base/v3/bases/:base_token/tables/:created_table_id/views").Body(view)
+		}
+	}
 	return d
 }
 
@@ -54,7 +65,8 @@ func dryRunTableDelete(_ context.Context, runtime *common.RuntimeContext) *commo
 }
 
 func validateTableCreate(runtime *common.RuntimeContext) error {
-	return nil
+	_, err := parseObjectList(newParseCtx(runtime), runtime.Str("view"), "view")
+	return err
 }
 
 func executeTableList(runtime *common.RuntimeContext) error {
@@ -104,31 +116,38 @@ func executeTableCreate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	viewItems, err := parseObjectList(pc, runtime.Str("view"), "view")
+	if err != nil {
+		return err
+	}
 	created, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables"), nil, body)
 	if err != nil {
 		return err
 	}
 	result := map[string]interface{}{"table": created}
 	tableIDValue := tableID(created)
-	if tableIDValue != "" && runtime.Str("fields") != "" {
+	if tableIDValue == "" {
+		result["message"] = "table create response omitted the new table ID; creation state is unknown"
+		result["hint"] = "The table may have been created. Do not retry it blindly; use +table-list to reconcile the result before retrying or creating views."
+		return runtime.OutPartialFailure(result, nil)
+	}
+	if runtime.Str("fields") != "" {
 		if fields, ok := created["fields"]; ok {
 			result["fields"] = fields
 		}
 	}
-	if tableIDValue != "" && runtime.Str("view") != "" {
-		viewItems, err := parseObjectList(pc, runtime.Str("view"), "view")
-		if err != nil {
-			return err
-		}
-		createdViews := []interface{}{}
-		for _, body := range viewItems {
-			viewData, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables", tableIDValue, "views"), nil, body)
-			if err != nil {
-				return err
-			}
-			createdViews = append(createdViews, viewData)
-		}
+	if len(viewItems) > 0 {
+		createdViews, failedIndex, err := createViews(runtime, baseToken, tableIDValue, viewItems)
 		result["views"] = createdViews
+		if err != nil {
+			payload := viewCreateProgressPayload(err, createdViews, failedIndex)
+			for key, value := range result {
+				payload[key] = value
+			}
+			payload["message"] = fmt.Sprintf("table was created, but view creation failed at item %d after %d view(s) succeeded: %v", failedIndex, len(createdViews), err)
+			payload["hint"] = "The table and any earlier views were created. Do not retry the table or successful views; inspect the failed view item before deciding whether to retry it."
+			return runtime.OutPartialFailure(payload, nil)
+		}
 	}
 	runtime.Out(result, nil)
 	return nil

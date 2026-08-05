@@ -2,13 +2,14 @@
 
 ## Metrics
 - Denominator: 87 leaf commands
-- Covered: 28
-- Coverage: 32.2%
+- Covered: 29
+- Coverage: 33.3%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
 - TestBaseBlockDryRun: proves the five `+base-block-*` shortcuts request shapes without touching live data.
 - TestBaseFieldCreateDryRunArrayCompat: proves `+field-create` dry-run request shape for the internal JSON-array compatibility path.
+- TestBaseViewCreateDryRun: proves `+view-create` request shape and empty-batch validation.
 - TestBaseFormQuestionsCreateDryRun: proves `+form-questions-create` preserves its POST body and renders the existing-question guard in command help.
 - TestBaseFormDetailDryRun / TestBaseFormSubmitDryRun: prove shared-form detail and submission request shapes.
 - TestBaseDashboardBlockGetDataDryRun: proves dashboard block data request shapes and identifier handling.
@@ -18,7 +19,7 @@
 - TestBaseFormListDryRun_UsesBaseAndTableIdentifiers: proves `+form-list` dry-run request shape uses Base and table identifiers in the endpoint.
 - TestBaseFormQuestionsCreateVisibleRuleDryRun / TestBaseFormQuestionsUpdateVisibleRuleDryRun: prove `+form-questions-create` / `+form-questions-update` dry-run request shape and that the optional `visible_rule` display condition is transcribed verbatim into the request body.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
-- Blocked area: dashboard, field, most record operations, form, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
+- Blocked area: dashboard, field, most record operations, form, remaining view operations, and workflow operations still lack deterministic create/read/update workflows in this suite.
 
 ## Command Table
 
@@ -88,7 +89,7 @@
 | ✕ | base +table-update | shortcut |  | none | no rename workflow yet |
 | ✕ | base +title-resolve | shortcut |  | none | resolver workflow not covered |
 | ✕ | base +url-resolve | shortcut |  | none | resolver workflow not covered |
-| ✕ | base +view-create | shortcut |  | none | view workflows not covered |
+| ✓ | base +view-create | shortcut | base_view_create_dryrun_test.go::TestBaseViewCreateDryRun | `--base-token`; `--table-id`; `--json`; dry-run only | request shape and empty-batch validation |
 | ✕ | base +view-delete | shortcut |  | none | view workflows not covered |
 | ✕ | base +view-get | shortcut |  | none | view workflows not covered |
 | ✕ | base +view-get-card | shortcut |  | none | view workflows not covered |
