@@ -6,15 +6,19 @@ package mail
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	internaltransport "github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -115,6 +119,47 @@ func TestContentTypeFromFilename(t *testing.T) {
 	}
 }
 
+func TestDownloadSignatureImageUsesExternalRequestClass(t *testing.T) {
+	const payload = `{"code":21000,"msg":"application-defined response","data":{"cli_hint":"external"}}`
+	platform := signatureRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusBadGateway,
+			Header:     make(http.Header),
+			Body:       http.NoBody,
+			Request:    req,
+		}, nil
+	})
+	external := signatureRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(payload)),
+			Request:    req,
+		}, nil
+	})
+	client := &http.Client{Transport: internaltransport.NewHTTPPolicyRouter(
+		&auth.SecurityPolicyTransport{Base: platform},
+		external,
+	)}
+	factory := &cmdutil.Factory{
+		HttpClient: func() (*http.Client, error) { return client, nil },
+	}
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), &cobra.Command{}, nil)
+	runtime.Factory = factory
+
+	data, contentType, err := downloadSignatureImage(
+		runtime,
+		"https://open.feishu.cn/signature.png",
+		"signature.png",
+	)
+	if err != nil {
+		t.Fatalf("downloadSignatureImage() error = %v, want external response passthrough", err)
+	}
+	if string(data) != payload || contentType != "application/json" {
+		t.Fatalf("download = %q (%s), want external response", data, contentType)
+	}
+}
+
 func TestSignatureCIDsNilSig(t *testing.T) {
 	if cids := signatureCIDs(nil); cids != nil {
 		t.Fatalf("expected nil slice for nil sig, got %v", cids)
@@ -204,6 +249,12 @@ func stubSigListResponse(reg *httpmock.Registry, mailboxID string, sigs []map[st
 			},
 		},
 	})
+}
+
+type signatureRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f signatureRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func TestAutoResolveSignatureID_APIFailureReturnsEmpty(t *testing.T) {

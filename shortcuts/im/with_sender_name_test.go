@@ -14,7 +14,7 @@ import (
 // never appear (AC1/AC5). Covers chat-messages-list, threads-messages-list, and the
 // shared mget URL used by messages-mget and messages-search.
 func TestReadRequestsSendWithSenderName(t *testing.T) {
-	if got := buildChatMessageListParams("desc", "50", "oc_x")["with_sender_name"]; len(got) != 1 || got[0] != "true" {
+	if got := buildChatMessageListParams("desc", 50, "oc_x")["with_sender_name"]; len(got) != 1 || got[0] != "true" {
 		t.Fatalf("chat-messages-list with_sender_name = %#v, want [true]", got)
 	}
 	if got := buildThreadsMessagesListParams("desc", "t_x", 50, "")["with_sender_name"]; len(got) != 1 || got[0] != "true" {

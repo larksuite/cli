@@ -46,7 +46,7 @@ func TestTestFactory_ReplacesGlobals(t *testing.T) {
 		URL:  "/test",
 		Body: "ok",
 	})
-	// Use the stub via Factory HttpClient
+	// Use the stub via Factory HttpClient.
 	httpClient, err := f.HttpClient()
 	if err != nil {
 		t.Fatalf("HttpClient() error: %v", err)

@@ -497,24 +497,30 @@ func TestBaseURLResolveValidationErrors(t *testing.T) {
 	}
 }
 
-func TestBaseResolveInputXOR(t *testing.T) {
+func TestBaseResolveAliasesUseCanonicalRepeatedFlagSemantics(t *testing.T) {
 	t.Run("url resolve", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
-			"+url-resolve", "--url", "https://example.com/base/bas1", "--query", "https://example.com/base/bas2", "--as", "user",
+			"+url-resolve", "--url", "https://example.com/base/bas1", "--query", "https://example.com/base/bas2", "--as", "user", "--dry-run",
 		}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-			t.Fatalf("err=%v, want xor validation", err)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, "bas2") || strings.Contains(got, "bas1") {
+			t.Fatalf("alias should be the last occurrence: %s", got)
 		}
 	})
 
 	t.Run("title resolve", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcutWithAuthTypes(t, BaseTitleResolve, nil, []string{
-			"+title-resolve", "--title", "Pipeline", "--query", "Sales", "--as", "user",
+			"+title-resolve", "--title", "Pipeline", "--query", "Sales", "--as", "user", "--dry-run",
 		}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-			t.Fatalf("err=%v, want xor validation", err)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, "Sales") || strings.Contains(got, "Pipeline") {
+			t.Fatalf("alias should be the last occurrence: %s", got)
 		}
 	})
 }
@@ -556,8 +562,8 @@ func TestBaseResolveHelpFlags(t *testing.T) {
 			}
 			for _, aliasFlag := range tc.aliasFlags {
 				alias := cmd.Flags().Lookup(aliasFlag)
-				if alias == nil || !alias.Hidden {
-					t.Fatalf("alias flag %q should exist and be hidden: %#v", aliasFlag, alias)
+				if alias != primary {
+					t.Fatalf("Lookup(%q) = %#v, want canonical %#v", aliasFlag, alias, primary)
 				}
 			}
 		})

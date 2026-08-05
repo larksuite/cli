@@ -179,8 +179,8 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	}
 
 	// Step 1: Request app registration (begin)
-	// Use the shared proxy-plugin-aware transport so registration traffic is not
-	// a bypass of proxy plugin mode.
+	// Registration is platform traffic, so it must use the provider-aware
+	// transport as well as the shared proxy configuration.
 	httpClient := transport.NewHTTPClient(0)
 	authResp, err := larkauth.RequestAppRegistration(ctx, httpClient, larkBrand, f.IOStreams.ErrOut)
 	if err != nil {

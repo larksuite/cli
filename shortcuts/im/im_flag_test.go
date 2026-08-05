@@ -1541,6 +1541,49 @@ func TestExecuteListAllPages(t *testing.T) {
 	}
 }
 
+func TestExecuteListAllPages_ContinuesFromPageToken(t *testing.T) {
+	var tokens []string
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/open-apis/im/v1/flags") {
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.Path)
+		}
+		token := req.URL.Query().Get("page_token")
+		tokens = append(tokens, token)
+		hasMore := token == "resume"
+		next := ""
+		if hasMore {
+			next = "next"
+		}
+		return shortcutJSONResponse(200, map[string]any{
+			"code": 0,
+			"data": map[string]any{
+				"flag_items":        []any{},
+				"delete_flag_items": []any{},
+				"messages":          []any{},
+				"has_more":          hasMore,
+				"page_token":        next,
+			},
+		}), nil
+	}))
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 50, "")
+	cmd.Flags().String("page-token", "", "")
+	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Bool("enrich-feed-thread", false, "")
+	if err := cmd.ParseFlags([]string{"--page-token", "resume"}); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	setRuntimeField(t, rt, "Cmd", cmd)
+
+	if err := executeListAllPages(rt); err != nil {
+		t.Fatalf("executeListAllPages() error = %v", err)
+	}
+	if got := strings.Join(tokens, ","); got != "resume,next" {
+		t.Fatalf("page_token queries = %q, want resume,next", got)
+	}
+}
+
 func TestExecuteListAllPages_EnrichFeedThread(t *testing.T) {
 	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if strings.Contains(req.URL.Path, "/open-apis/im/v1/flags") {

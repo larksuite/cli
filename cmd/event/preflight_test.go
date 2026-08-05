@@ -264,18 +264,9 @@ func TestPreflightEventTypes_CallbackAllSubscribed_Passes(t *testing.T) {
 	}
 }
 
-func TestScopeRemediationHint_ByIdentity(t *testing.T) {
-	// bot: scan-to-enable link (adds scopes to app manifest)
-	bot := scopeRemediationHint(core.BrandFeishu, "cli_x", core.AsBot, []string{"im:message"})
+func TestBotScopeRemediationHintUsesScanLink(t *testing.T) {
+	bot := botScopeRemediationHint(core.BrandFeishu, "cli_x", []string{"im:message"})
 	if !strings.Contains(bot, "/page/launcher?clientID=cli_x&addons=") {
 		t.Errorf("bot hint should give the scan link, got: %s", bot)
-	}
-	// user: re-login (scan link cannot grant scopes to the user's own token)
-	user := scopeRemediationHint(core.BrandFeishu, "cli_x", core.AsUser, []string{"im:message"})
-	if !strings.Contains(user, "auth login --scope") {
-		t.Errorf("user hint should direct to auth login, got: %s", user)
-	}
-	if strings.Contains(user, "/page/launcher") {
-		t.Errorf("user hint must NOT use the scan link, got: %s", user)
 	}
 }

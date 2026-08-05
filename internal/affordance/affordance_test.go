@@ -68,6 +68,12 @@ func TestFor(t *testing.T) {
 	if _, ok := For("approval", "instances.get"); !ok {
 		t.Error("second lookup in a cached service should still resolve")
 	}
+	if skill, ok := DomainSkill("approval"); !ok || skill != "lark-approval" {
+		t.Errorf("DomainSkill(approval) = %q, %v; want lark-approval, true", skill, ok)
+	}
+	if skill, ok := DomainSkill("no_such_service"); ok || skill != "" {
+		t.Errorf("DomainSkill(no_such_service) = %q, %v; want empty, false", skill, ok)
+	}
 }
 
 // Non-bullet paragraph lines under any section are preserved as items, not
@@ -75,7 +81,7 @@ func TestFor(t *testing.T) {
 func TestParseDomainMD_ParagraphNotDropped(t *testing.T) {
 	md := "# d\n\n## foo bar\nwhat it does.\n\n### Tips\n- a bullet\nplain paragraph note.\n\n### See also\nrun [[other cmd]] first.\n"
 	got := parseDomainMD([]byte(md), nil) // nil resolver -> space->dot, "foo bar" -> "foo.bar"
-	a, ok := got["foo.bar"]
+	a, ok := got.methods["foo.bar"]
 	if !ok {
 		t.Fatal("method not parsed")
 	}
@@ -96,10 +102,13 @@ func TestParseDomainMD_SkillsMerge(t *testing.T) {
 		"## bar\ndoes bar.\n"
 	got := parseDomainMD([]byte(md), nil)
 
-	if a := got["foo"]; len(a.Skills) != 2 || a.Skills[0] != "lark-d" || a.Skills[1] != "lark-workflow" {
+	if got.skill != "lark-d" {
+		t.Errorf("domain skill = %q, want lark-d", got.skill)
+	}
+	if a := got.methods["foo"]; len(a.Skills) != 2 || a.Skills[0] != "lark-d" || a.Skills[1] != "lark-workflow" {
 		t.Errorf("foo skills = %v, want [lark-d lark-workflow] (domain first, deduped)", a.Skills)
 	}
-	if a := got["bar"]; len(a.Skills) != 1 || a.Skills[0] != "lark-d" {
+	if a := got.methods["bar"]; len(a.Skills) != 1 || a.Skills[0] != "lark-d" {
 		t.Errorf("bar skills = %v, want [lark-d] (domain default inherited)", a.Skills)
 	}
 }
@@ -109,8 +118,8 @@ func TestParseDomainMD_SkillsMerge(t *testing.T) {
 func TestParseDomainMD_ShortcutHeadingVerbatim(t *testing.T) {
 	md := "# d\n\n## +create\ncreate via shortcut.\n"
 	got := parseDomainMD([]byte(md), nil)
-	if _, ok := got["+create"]; !ok {
-		t.Errorf("shortcut heading should key as %q; got keys %v", "+create", keysOf(got))
+	if _, ok := got.methods["+create"]; !ok {
+		t.Errorf("shortcut heading should key as %q; got keys %v", "+create", keysOf(got.methods))
 	}
 }
 

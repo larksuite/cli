@@ -23,7 +23,7 @@ func TestComposePendingNoticeDeprecatedCommand(t *testing.T) {
 		Skill:       "lark-sheets",
 	})
 
-	got := composePendingNotice()
+	got := composePendingNotice(nil)
 	if got == nil {
 		t.Fatal("composePendingNotice() = nil, want deprecated_command entry")
 	}
@@ -51,7 +51,7 @@ func TestComposePendingNoticeEmpty(t *testing.T) {
 	t.Cleanup(func() { deprecation.SetPending(nil) })
 	deprecation.SetPending(nil)
 
-	if got := composePendingNotice(); got != nil {
+	if got := composePendingNotice(nil); got != nil {
 		// update/skills pending are process-global; only assert the absence of
 		// our own key to stay robust against unrelated pending state.
 		if _, ok := got["deprecated_command"]; ok {

@@ -17,6 +17,8 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 )
 
 func TestNewCmdDoctor_FlagParsing(t *testing.T) {
@@ -101,6 +103,31 @@ func TestNetworkChecks_Offline(t *testing.T) {
 	}
 }
 
+func TestDoctorRunDoesNotFetchUpdateWhenCommandIsConcealed(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	oldFetch := fetchLatestForDoctor
+	t.Cleanup(func() { fetchLatestForDoctor = oldFetch })
+
+	fetches := 0
+	fetchLatestForDoctor = func() (string, error) {
+		fetches++
+		return "9.9.9", nil
+	}
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandUpdate: surface.CommandConcealed,
+	})
+	projector := recovery.NewProjector(func() *surface.Plan { return plan })
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	_ = doctorRun(&DoctorOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+	}, projector)
+	if fetches != 0 {
+		t.Fatalf("concealed update triggered %d npm fetch(es)", fetches)
+	}
+}
+
 func TestDoctorRun_SplitsBotAndMissingUserIdentity(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
@@ -124,7 +151,7 @@ func TestDoctorRun_SplitsBotAndMissingUserIdentity(t *testing.T) {
 		Factory: f,
 		Ctx:     context.Background(),
 		Offline: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("doctorRun() error = %v", err)
 	}
@@ -202,7 +229,7 @@ func TestDoctor_ExternalProvider_IdentityReadyHintNotBlockedCommand(t *testing.T
 		IOStreams:  &cmdutil.IOStreams{Out: out, ErrOut: &bytes.Buffer{}},
 	}
 
-	if err := doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}); err == nil {
+	if err := doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil); err == nil {
 		t.Fatalf("doctorRun() = nil, want failure when no identity is available")
 	}
 	var got struct {

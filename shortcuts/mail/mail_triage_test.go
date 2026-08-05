@@ -224,6 +224,187 @@ func TestParseTriageFilterUnknownFieldHintUnread(t *testing.T) {
 	}
 }
 
+func TestParseTriageFilterRejectsUnknownTimeRangeField(t *testing.T) {
+	_, err := parseTriageFilter(`{"time_range":{"start":"2026-01-01T00:00:00+08:00"}}`)
+	if err == nil {
+		t.Fatalf("expected error for unknown time_range field")
+	}
+	assertTriageFilterValidationError(t, err, "--filter")
+	if !strings.Contains(err.Error(), `did you mean "time_range.start_time"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseTriageFilterNormalizesReadStatusInputs(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want *bool
+	}{
+		{name: "json is_read false means unread", raw: `{"is_read":false}`, want: boolPtr(true)},
+		{name: "json is_unread true means unread", raw: `{"is_unread":true}`, want: boolPtr(true)},
+		{name: "alias is_unread means unread", raw: `is_unread`, want: boolPtr(true)},
+		{name: "kv is_read false means unread", raw: `is_read=false`, want: boolPtr(true)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseTriageFilter(tt.raw)
+			if err != nil {
+				t.Fatalf("parseTriageFilter(%q) error = %v", tt.raw, err)
+			}
+			if (got.IsUnread == nil) != (tt.want == nil) {
+				t.Fatalf("is_unread = %v, want %v", got.IsUnread, tt.want)
+			}
+			if got.IsUnread != nil && *got.IsUnread != *tt.want {
+				t.Fatalf("is_unread = %v, want %v", *got.IsUnread, *tt.want)
+			}
+		})
+	}
+}
+
+func TestParseTriageFilterRejectsReadStatusInputs(t *testing.T) {
+	tests := []string{
+		`{"is_read":true}`,
+		`{"is_unread":false}`,
+		`is_read`,
+		`is_unread=false`,
+	}
+	for _, raw := range tests {
+		t.Run(raw, func(t *testing.T) {
+			_, err := parseTriageFilter(raw)
+			if err == nil {
+				t.Fatalf("expected error for %q", raw)
+			}
+			assertTriageFilterValidationError(t, err, "--filter")
+			if !strings.Contains(err.Error(), "only is_unread=true or is_read=false queries are supported") {
+				t.Fatalf("error %q does not explain supported unread filtering", err.Error())
+			}
+		})
+	}
+}
+
+func TestParseTriageFilterJSONCompatibilityAndKV(t *testing.T) {
+	jsonFilter, err := parseTriageFilter(`{"folder":"INBOX","is_read":false,"subject":"report"}`)
+	if err != nil {
+		t.Fatalf("json compatibility parse failed: %v", err)
+	}
+	if jsonFilter.Folder != "INBOX" || jsonFilter.Subject != "report" || jsonFilter.IsUnread == nil || !*jsonFilter.IsUnread {
+		t.Fatalf("json filter mismatch: %+v", jsonFilter)
+	}
+
+	kvFolder, err := parseTriageFilter(`folder=INBOX`)
+	if err != nil {
+		t.Fatalf("kv folder parse failed: %v", err)
+	}
+	if kvFolder.Folder != "INBOX" {
+		t.Fatalf("folder = %q, want INBOX", kvFolder.Folder)
+	}
+
+	kvFolderID, err := parseTriageFilter(`folder_id=DRAFT`)
+	if err != nil {
+		t.Fatalf("kv folder_id parse failed: %v", err)
+	}
+	if kvFolderID.FolderID != "DRAFT" {
+		t.Fatalf("folder_id = %q, want DRAFT", kvFolderID.FolderID)
+	}
+}
+
+func TestParseTriageFilterRejectsInvalidShorthands(t *testing.T) {
+	tests := []struct {
+		name       string
+		raw        string
+		wantSubstr string
+	}{
+		{name: "unknown kv", raw: "unknown=value", wantSubstr: "--print-filter-schema"},
+		{name: "invalid bool", raw: "is_unread=maybe", wantSubstr: "must be true or false"},
+		{name: "invalid alias", raw: "not-json", wantSubstr: "JSON, key=value, is_read, or is_unread"},
+		{name: "comma-separated kv", raw: "folder=INBOX,is_unread=true", wantSubstr: "comma-separated key=value filters are not supported"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseTriageFilter(tt.raw)
+			if err == nil {
+				t.Fatalf("expected error for %q", tt.raw)
+			}
+			assertTriageFilterValidationError(t, err, "--filter")
+			if !strings.Contains(err.Error(), tt.wantSubstr) {
+				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantSubstr)
+			}
+		})
+	}
+}
+
+func TestParseTriageFilterReadStatusErrorIsDeterministic(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		_, err := parseTriageFilter(`{"is_read":true,"is_unread":true}`)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		assertTriageFilterValidationError(t, err, "--filter")
+		if !strings.Contains(err.Error(), "only is_unread=true or is_read=false queries are supported") {
+			t.Fatalf("error %q does not explain supported unread filtering", err.Error())
+		}
+	}
+}
+
+func TestBuildTriageFilterMergesIndependentFlags(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, map[string]string{
+		"filter":    "is_unread",
+		"folder":    "INBOX",
+		"folder-id": "DRAFT",
+	})
+	got, err := buildTriageFilter(rt)
+	if err != nil {
+		t.Fatalf("buildTriageFilter failed: %v", err)
+	}
+	if got.Folder != "INBOX" || got.FolderID != "DRAFT" || got.IsUnread == nil || !*got.IsUnread {
+		t.Fatalf("merged filter mismatch: %+v", got)
+	}
+}
+
+func TestBuildTriageFilterRejectsIndependentFlagConflicts(t *testing.T) {
+	tests := []struct {
+		name      string
+		values    map[string]string
+		wantParam string
+	}{
+		{name: "folder conflict", values: map[string]string{"filter": "folder=SENT", "folder": "INBOX"}, wantParam: "--folder"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := buildTriageFilter(runtimeForMailTriageTest(t, tt.values))
+			if err == nil {
+				t.Fatal("expected conflict error")
+			}
+			assertTriageFilterValidationError(t, err, tt.wantParam)
+			if !strings.Contains(err.Error(), "conflict") {
+				t.Fatalf("expected conflict error, got %v", err)
+			}
+		})
+	}
+}
+
+func assertTriageFilterValidationError(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Param != wantParam {
+		t.Fatalf("param = %q, want %s", validationErr.Param, wantParam)
+	}
+}
+
 func TestBuildSearchParamsDoesNotSetUserMailboxIDInBody(t *testing.T) {
 	runtime := runtimeForMailTriageTest(t, map[string]string{"query": "hello"})
 	params, body, err := buildSearchParams(runtime, "", runtime.Str("query"), triageFilter{}, 15, "", true)
@@ -306,6 +487,23 @@ func TestMailTriageDryRunListPathCapsPageSizeAtAPILimit(t *testing.T) {
 	}
 	if int(got) != 20 {
 		t.Fatalf("page_size should be capped at 20, got %#v", got)
+	}
+}
+
+func TestMailTriageDryRunRejectsReadStatusFilter(t *testing.T) {
+	runtime := runtimeForMailTriageTest(t, map[string]string{
+		"filter": `{"is_read":true}`,
+		"folder": "INBOX",
+	})
+
+	dry := MailTriage.DryRun(context.Background(), runtime)
+	b, _ := json.Marshal(dry)
+	s := string(b)
+	if !strings.Contains(s, "filter_error") {
+		t.Fatalf("expected filter_error for read filtering, got %s", s)
+	}
+	if !strings.Contains(s, "only is_unread=true or is_read=false queries are supported") {
+		t.Fatalf("dry-run output %q does not explain supported unread filtering", s)
 	}
 }
 
@@ -1051,7 +1249,7 @@ func TestBuildSearchParamsAllFilterFields(t *testing.T) {
 		BCC:           []string{"bcc@d.com"},
 		Subject:       "report",
 		HasAttachment: boolPtr(true),
-		IsUnread:      boolPtr(false),
+		IsUnread:      boolPtr(true),
 	}
 	resolved, _ := resolveSearchFilter(rt, "me", f, true)
 	_, body, err := buildSearchParams(rt, "me", "keyword", resolved, 10, "tok", true)
@@ -1065,7 +1263,7 @@ func TestBuildSearchParamsAllFilterFields(t *testing.T) {
 	if fb["has_attachment"] != true {
 		t.Fatalf("has_attachment mismatch: %v", fb["has_attachment"])
 	}
-	if fb["is_unread"] != false {
+	if fb["is_unread"] != true {
 		t.Fatalf("is_unread mismatch: %v", fb["is_unread"])
 	}
 	if body["query"] != "keyword" {
@@ -1081,11 +1279,16 @@ func TestBuildSearchParamsPageToken(t *testing.T) {
 	}
 }
 
-// --- resolveTriagePageSize ---
+// --- max normalization ---
+
+func effectiveTriageMax(t *testing.T, runtime *common.RuntimeContext) int {
+	t.Helper()
+	return normalizeTriageMax(runtime.Int("max"))
+}
 
 func TestResolveTriagePageSizeDefaultMax(t *testing.T) {
 	rt := runtimeForMailTriageTest(t, nil) // max=0 (unset) → normalizeTriageMax returns 20
-	got := resolveTriagePageSize(rt)
+	got := effectiveTriageMax(t, rt)
 	if got != 20 {
 		t.Fatalf("expected 20, got %d", got)
 	}
@@ -1093,31 +1296,15 @@ func TestResolveTriagePageSizeDefaultMax(t *testing.T) {
 
 func TestResolveTriagePageSizeFromMax(t *testing.T) {
 	rt := runtimeForMailTriageTest(t, map[string]string{"max": "30"})
-	got := resolveTriagePageSize(rt)
+	got := effectiveTriageMax(t, rt)
 	if got != 30 {
 		t.Fatalf("expected 30, got %d", got)
 	}
 }
 
-func TestResolveTriagePageSizeFromPageSize(t *testing.T) {
-	rt := runtimeForMailTriageTest(t, map[string]string{"page-size": "10"})
-	got := resolveTriagePageSize(rt)
-	if got != 10 {
-		t.Fatalf("expected 10, got %d", got)
-	}
-}
-
-func TestResolveTriagePageSizePageSizeOverridesMax(t *testing.T) {
-	rt := runtimeForMailTriageTest(t, map[string]string{"max": "30", "page-size": "5"})
-	got := resolveTriagePageSize(rt)
-	if got != 5 {
-		t.Fatalf("expected page-size=5 to override max=30, got %d", got)
-	}
-}
-
 func TestResolveTriagePageSizeClamped(t *testing.T) {
-	rt := runtimeForMailTriageTest(t, map[string]string{"page-size": "999"})
-	got := resolveTriagePageSize(rt)
+	rt := runtimeForMailTriageTest(t, map[string]string{"max": "999"})
+	got := effectiveTriageMax(t, rt)
 	if got != 400 {
 		t.Fatalf("expected clamped to 400, got %d", got)
 	}
@@ -1219,13 +1406,12 @@ func TestPageTokenBareTokenRejected(t *testing.T) {
 	}
 }
 
-// --- DryRun with page-size ---
+// --- DryRun with max ---
 
-func TestMailTriageDryRunPageSizeOverridesMax(t *testing.T) {
+func TestMailTriageDryRunUsesMax(t *testing.T) {
 	runtime := runtimeForMailTriageTest(t, map[string]string{
-		"max":       "50",
-		"page-size": "8",
-		"filter":    `{"folder_id":"INBOX"}`,
+		"max":    "8",
+		"filter": `{"folder_id":"INBOX"}`,
 	})
 	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
 	if len(apis) < 1 {
@@ -1236,14 +1422,14 @@ func TestMailTriageDryRunPageSizeOverridesMax(t *testing.T) {
 		t.Fatalf("page_size type mismatch, got %#v", apis[0].Params["page_size"])
 	}
 	if int(got) != 8 {
-		t.Fatalf("expected page_size=8 (from --page-size), got %d", int(got))
+		t.Fatalf("expected page_size=8 (from --max), got %d", int(got))
 	}
 }
 
 func TestMailTriageDryRunSearchPathCapsPageSizeAt15(t *testing.T) {
 	runtime := runtimeForMailTriageTest(t, map[string]string{
-		"query":     "hello",
-		"page-size": "30",
+		"query": "hello",
+		"max":   "30",
 	})
 	apis := dryRunAPIsForMailTriageTest(t, MailTriage.DryRun(context.Background(), runtime))
 	if len(apis) < 1 {
@@ -1415,15 +1601,22 @@ func TestMailTriageDryRunNoPageTokenOmitsParam(t *testing.T) {
 
 // --- Flag definition checks ---
 
-func TestMailTriageFlagsIncludePageTokenAndPageSize(t *testing.T) {
-	flagNames := make(map[string]bool)
+func TestMailTriageDeclaresPageSizeAliasForMax(t *testing.T) {
+	flagNames := make(map[string]common.Flag)
 	for _, fl := range MailTriage.Flags {
-		flagNames[fl.Name] = true
+		flagNames[fl.Name] = fl
 	}
-	for _, name := range []string{"page-token", "page-size", "max"} {
-		if !flagNames[name] {
+	for _, name := range []string{"page-token", "max"} {
+		if _, ok := flagNames[name]; !ok {
 			t.Fatalf("expected flag --%s to be defined", name)
 		}
+	}
+	if _, ok := flagNames["page-size"]; ok {
+		t.Fatal("--page-size must not be registered as an independent flag")
+	}
+	maxFlag := flagNames["max"]
+	if len(maxFlag.Aliases) != 1 || maxFlag.Aliases[0] != "page-size" {
+		t.Fatalf("--max aliases = %v, want [page-size]", maxFlag.Aliases)
 	}
 }
 
@@ -1703,6 +1896,39 @@ func TestMailTriageTableOutputPreservesMailboxContext(t *testing.T) {
 				t.Fatalf("stderr should contain mail +message tip, got:\n%s", errOut)
 			}
 		})
+	}
+}
+
+func TestMailTriageNextPageHintPreservesIndependentFilterFlags(t *testing.T) {
+	f, stdout, stderr, reg := mailShortcutTestFactory(t)
+	defer reg.Verify(t)
+
+	registerMailTriageListStub(reg, "me", []string{"msg_001"}, true, "next_page_token")
+	registerMailTriageBatchStub(reg, "me", []map[string]interface{}{
+		mailTriageBatchMessage("msg_001", "Table message"),
+	})
+
+	if err := runMountedMailShortcut(t, MailTriage, []string{
+		"+triage",
+		"--max", "1",
+		"--filter", "is_unread",
+		"--folder-id", "DRAFT",
+		"--is-unread=true",
+	}, f, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	errOut := stderr.String()
+	for _, want := range []string{
+		"next page: mail +triage",
+		"--filter 'is_unread'",
+		"--folder-id 'DRAFT'",
+		"--is-unread='true'",
+		"--page-token 'list:next_page_token'",
+	} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("stderr should contain %q, got:\n%s", want, errOut)
+		}
 	}
 }
 

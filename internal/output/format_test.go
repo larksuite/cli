@@ -5,7 +5,9 @@ package output
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 )
@@ -50,6 +52,51 @@ func TestFormatValue_NDJSON(t *testing.T) {
 			t.Errorf("each NDJSON line should be valid JSON: %s", line)
 		}
 	}
+}
+
+func TestRecordFormatsExpandTypedSlicesNestedInGenericMap(t *testing.T) {
+	data := map[string]interface{}{
+		"chats": []map[string]interface{}{
+			{"chat_id": "oc_first"},
+			{"chat_id": "oc_second"},
+		},
+	}
+
+	t.Run("ndjson", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := WriteFormatted(&buf, data, FormatNDJSON); err != nil {
+			t.Fatalf("WriteFormatted() error = %v", err)
+		}
+		decoder := json.NewDecoder(&buf)
+		var records []map[string]interface{}
+		for {
+			var record map[string]interface{}
+			if err := decoder.Decode(&record); err != nil {
+				if err == io.EOF {
+					break
+				}
+				t.Fatalf("decode NDJSON: %v", err)
+			}
+			records = append(records, record)
+		}
+		if len(records) != 2 || records[0]["chat_id"] != "oc_first" || records[1]["chat_id"] != "oc_second" {
+			t.Fatalf("NDJSON records = %#v", records)
+		}
+	})
+
+	t.Run("csv", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := WriteFormatted(&buf, data, FormatCSV); err != nil {
+			t.Fatalf("WriteFormatted() error = %v", err)
+		}
+		records, err := csv.NewReader(&buf).ReadAll()
+		if err != nil {
+			t.Fatalf("decode CSV: %v", err)
+		}
+		if len(records) != 3 || records[0][0] != "chat_id" || records[1][0] != "oc_first" || records[2][0] != "oc_second" {
+			t.Fatalf("CSV records = %#v", records)
+		}
+	})
 }
 
 func TestFormatValue_Table(t *testing.T) {

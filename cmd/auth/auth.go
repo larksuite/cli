@@ -18,10 +18,21 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // NewCmdAuth creates the auth command with subcommands.
 func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
+	return newCmdAuth(f, nil)
+}
+
+// NewCmdAuthWithRecovery creates the auth command with a build-local recovery
+// presenter while preserving NewCmdAuth's established function signature.
+func NewCmdAuthWithRecovery(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
+	return newCmdAuth(f, projector)
+}
+
+func newCmdAuth(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "OAuth credentials and authorization management",
@@ -40,10 +51,10 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.AddCommand(NewCmdAuthLogin(f, nil))
 	cmd.AddCommand(NewCmdAuthLogout(f, nil))
-	cmd.AddCommand(NewCmdAuthStatus(f, nil))
+	cmd.AddCommand(newCmdAuthStatus(f, nil, projector))
 	cmd.AddCommand(NewCmdAuthScopes(f, nil))
-	cmd.AddCommand(NewCmdAuthList(f, nil))
-	cmd.AddCommand(NewCmdAuthCheck(f, nil))
+	cmd.AddCommand(newCmdAuthList(f, nil, projector))
+	cmd.AddCommand(newCmdAuthCheck(f, nil, projector))
 	cmd.AddCommand(NewCmdAuthQRCode(f, nil))
 	return cmd
 }

@@ -135,6 +135,7 @@ func ScanRepoWithOptions(root string, opts ScanOptions) ([]Violation, error) {
 		all = append(all, CheckNoLegacyEnvelopeLiteral(rel, string(src))...)
 		all = append(all, CheckNoLegacyRuntimeAPICall(rel, string(src))...)
 		all = append(all, CheckNoLegacyCommonHelperCall(rel, string(src))...)
+		all = append(all, CheckStructuredRecovery(rel, string(src))...)
 		commandErrorViolations := CheckNoBareCommandErrorWithOptions(rel, string(src), commandErrorOptions)
 		for _, violation := range commandErrorViolations {
 			if violation.Rule == "no_bare_command_error" {

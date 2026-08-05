@@ -243,8 +243,10 @@ func (ctx *RuntimeContext) StrSlice(name string) []string {
 	return v
 }
 
-// Changed reports whether the user explicitly set the named flag on the
-// command line, as opposed to the flag carrying its default value.
+// Changed reports whether parsing or compatibility normalization populated the
+// named flag, as opposed to the flag carrying only its default value. During a
+// Normalize hook, check legacy and canonical spellings before SetCanonical to
+// distinguish which spelling the caller supplied.
 func (ctx *RuntimeContext) Changed(name string) bool {
 	f := ctx.Cmd.Flags().Lookup(name)
 	if f == nil {
@@ -451,6 +453,12 @@ func (ctx *RuntimeContext) callRaw(method, url string, params map[string]interfa
 // Auth resolution is delegated to APIClient.DoSDKRequest to avoid duplicating
 // the identity → token logic across the generic and shortcut API paths.
 func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+	return ctx.DoAPIWithContext(ctx.ctx, req, opts...)
+}
+
+// DoAPIWithContext executes a raw Lark SDK request using callCtx for request
+// cancellation and deadlines while preserving the shortcut's resolved identity.
+func (ctx *RuntimeContext) DoAPIWithContext(callCtx context.Context, req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
 		return nil, err
@@ -458,7 +466,7 @@ func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestO
 	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
 		opts = append(opts, optFn)
 	}
-	return ac.DoSDKRequest(ctx.ctx, req, ctx.As(), opts...)
+	return ac.DoSDKRequest(callCtx, req, ctx.As(), opts...)
 }
 
 // DoAPIAsBot executes a raw Lark SDK request using bot identity (tenant access token),
@@ -802,11 +810,14 @@ func enhancePermissionError(err error, requiredScopes []string) error {
 	if !errors.As(err, &permErr) {
 		return err
 	}
-	scopeDisplay := strings.Join(requiredScopes, ", ")
-	scopeArg := strings.Join(requiredScopes, " ")
-	permErr.Hint = fmt.Sprintf(
-		"this command requires scope(s): %s\nrun `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
-		scopeDisplay, scopeArg)
+	permErr.WithMissingScopes(requiredScopes...)
+	if permErr.Identity == "" {
+		permErr.WithIdentity(string(core.AsUser))
+	}
+	// Discard any generic classifier hint now that this shortcut has supplied
+	// the authoritative scope facts. The root presenter will rebuild recovery
+	// from those facts for its own command surface.
+	permErr.Hint = ""
 	return err
 }
 
@@ -872,10 +883,12 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	if shortcut.PostMount != nil {
 		shortcut.PostMount(cmd)
 	}
+	installFlagAliases(cmd, shortcut.Flags)
 }
 
 // runShortcut is the execution pipeline for a declarative shortcut.
-// Each step is a clear phase: identity → config → scopes → context → validate → execute.
+// Each step is a clear phase: identity → config → scopes → runtime →
+// canonical validation → execute.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
 	// --print-schema short-circuits everything below: it's pure local
 	// introspection, no identity / scope / network needed. The flag is
@@ -901,7 +914,6 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 			return nil
 		}
 	}
-
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
 		return err
@@ -922,19 +934,31 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	if err != nil {
 		return err
 	}
-
-	if err := validateEnumFlags(rctx, s.Flags); err != nil {
-		return err
+	if s.Normalize != nil {
+		// Normalize is opt-in and consumes resolved values. Shortcuts without a
+		// normalizer retain the established enum-before-input execution order.
+		if err := resolveInputFlags(rctx, s.Flags); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
+		flagContext := rctx.FlagContext()
+		if err := s.Normalize(rctx.ctx, flagContext); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
 	}
-	if err := resolveInputFlags(rctx, s.Flags); err != nil {
-		return err
+	if err := validateEnumFlags(rctx, s.Flags); err != nil {
+		return attributeAliasValidationError(rctx, err)
+	}
+	if s.Normalize == nil {
+		if err := resolveInputFlags(rctx, s.Flags); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
 	}
 	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
 		return err
 	}
 	if s.Validate != nil {
 		if err := s.Validate(rctx.ctx, rctx); err != nil {
-			return err
+			return attributeAliasValidationError(rctx, err)
 		}
 	}
 
@@ -947,7 +971,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	}
 
 	if err := s.Execute(rctx.ctx, rctx); err != nil {
-		return err
+		return attributeAliasValidationError(rctx, err)
 	}
 	return rctx.outputErr
 }
@@ -982,8 +1006,7 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 	return errs.NewPermissionError(errs.SubtypeMissingScope,
 		"missing required scope(s): %s", strings.Join(missing, ", ")).
 		WithIdentity(string(as)).
-		WithMissingScopes(missing...).
-		WithHint("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " "))
+		WithMissingScopes(missing...)
 }
 
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {

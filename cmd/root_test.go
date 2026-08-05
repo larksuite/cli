@@ -162,7 +162,7 @@ func TestHandleRootError_SecurityPolicyCanonicalEnvelope(t *testing.T) {
 			ChallengeURL: "https://example.com/challenge",
 		}
 
-		gotExit := handleRootError(f, spErr)
+		gotExit := handleRootError(f, spErr, nil)
 		if gotExit != int(output.ExitContentSafety) {
 			t.Errorf("exit code = %d, want %d (ExitContentSafety)", gotExit, output.ExitContentSafety)
 		}
@@ -209,7 +209,7 @@ func TestHandleRootError_SecurityPolicyCanonicalEnvelope(t *testing.T) {
 			},
 		}
 
-		gotExit := handleRootError(f, spErr)
+		gotExit := handleRootError(f, spErr, nil)
 		if gotExit != int(output.ExitContentSafety) {
 			t.Errorf("exit code = %d, want %d", gotExit, output.ExitContentSafety)
 		}
@@ -286,7 +286,7 @@ func TestHandleRootError_DeprecatedAliasMissingFlagStructured(t *testing.T) {
 	})
 	// The bare error shape cobra's ValidateRequiredFlags produces: not a typed
 	// errs.* error, so it reaches the deprecation fallback.
-	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
+	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"), nil)
 
 	out := errOut.String()
 	if strings.HasPrefix(strings.TrimSpace(out), "Error:") {
@@ -314,7 +314,7 @@ func TestHandleRootError_AuthConfigWireGolden(t *testing.T) {
 		errOut := &bytes.Buffer{}
 		f.IOStreams.ErrOut = errOut
 
-		exit := handleRootError(f, internalauth.NewNeedUserAuthorizationError("u_golden"))
+		exit := handleRootError(f, internalauth.NewNeedUserAuthorizationError("u_golden"), nil)
 		if exit != int(output.ExitAuth) {
 			t.Errorf("exit = %d, want %d (ExitAuth)", exit, int(output.ExitAuth))
 		}
@@ -345,7 +345,7 @@ func TestHandleRootError_AuthConfigWireGolden(t *testing.T) {
 		errOut := &bytes.Buffer{}
 		f.IOStreams.ErrOut = errOut
 
-		exit := handleRootError(f, core.NotConfiguredError())
+		exit := handleRootError(f, core.NotConfiguredError(), nil)
 		if exit != int(output.ExitAuth) {
 			t.Errorf("exit = %d, want %d (config shares ExitAuth)", exit, int(output.ExitAuth))
 		}
@@ -393,7 +393,7 @@ func TestHandleRootError_NoDeprecationTypesUsageError(t *testing.T) {
 	errOut := &bytes.Buffer{}
 	f.IOStreams.ErrOut = errOut
 
-	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
+	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"), nil)
 
 	out := errOut.String()
 	if strings.HasPrefix(strings.TrimSpace(out), "Error:") {
@@ -424,7 +424,7 @@ func TestHandleRootError_LeakedUntypedErrorBecomesInternal(t *testing.T) {
 	errOut := &bytes.Buffer{}
 	f.IOStreams.ErrOut = errOut
 
-	exit := handleRootError(f, fmt.Errorf("upstream helper exploded: %w", io.ErrUnexpectedEOF))
+	exit := handleRootError(f, fmt.Errorf("upstream helper exploded: %w", io.ErrUnexpectedEOF), nil)
 
 	errObj := decodeErrorEnvelope(t, errOut.Bytes())
 	if got := errObj["type"]; got != "internal" {
@@ -449,7 +449,7 @@ func TestHandleRootError_PartialWritePreservesExitCode(t *testing.T) {
 	f.IOStreams.ErrOut = w
 
 	err := errs.NewAuthenticationError(errs.SubtypeTokenExpired, "token expired")
-	exit := handleRootError(f, err)
+	exit := handleRootError(f, err, nil)
 	if exit != int(output.ExitAuth) {
 		t.Errorf("exit = %d, want %d (typed exit code preserved despite write failure)", exit, int(output.ExitAuth))
 	}
@@ -466,7 +466,7 @@ func TestHandleRootError_BareErrorExitCodeNoStderr(t *testing.T) {
 	errOut := &bytes.Buffer{}
 	f.IOStreams.ErrOut = errOut
 
-	exit := handleRootError(f, output.ErrBare(output.ExitAuth))
+	exit := handleRootError(f, output.ErrBare(output.ExitAuth), nil)
 	if exit != int(output.ExitAuth) {
 		t.Errorf("exit = %d, want %d (BareError code propagated)", exit, int(output.ExitAuth))
 	}
@@ -492,7 +492,7 @@ func TestHandleRootError_TypedAuthErrorWithLegacyCausePreserved(t *testing.T) {
 		WithHint("custom producer hint").
 		WithCause(innerLegacy)
 
-	exit := handleRootError(f, outer)
+	exit := handleRootError(f, outer, nil)
 	if exit != int(output.ExitAuth) {
 		t.Errorf("exit = %d, want %d (ExitAuth)", exit, int(output.ExitAuth))
 	}

@@ -6,10 +6,7 @@ package slides
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -17,22 +14,39 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const replacePagesInitialRevisionID = -1
+
+// replacePagesDeprecationNote is surfaced in every +replace-pages output —
+// dry-run, validate-only and real runs — so callers that never read --help
+// still see the deprecation and the replacement.
+const replacePagesDeprecationNote = "+replace-pages is deprecated: it recreates each page, changing slide_id and every element id, and the old-page delete is irreversible. Use `slides +update-slide` once per page instead — it rewrites the page in place, keeping slide_id and page order; elements written back in --content with their original ids keep those ids"
+
 // SlidesReplacePages rebuilds multiple pages inside an existing presentation.
 // It deliberately creates the new page before deleting the old one so a create
 // failure cannot remove existing user content. The operation is not atomic.
-const replacePagesInitialRevisionID = -1
-
+//
+// Deprecated: use `slides +update-slide` once per page instead — it rewrites
+// the page in place, keeping slide_id and page order; elements carried over in
+// --content with their original ids keep them (omitted elements are deleted,
+// id-less ones are inserted fresh). Going through create+delete here changes
+// slide_id and regenerates all element ids, which breaks comments and deep
+// links anchored to them, and the delete is not reversible. The lark-slides skill no longer routes here; the command
+// itself stays for a deprecation window so existing callers keep working —
+// every run says so in --help, in its description and in the output envelope.
+// Delete the file once the window closes; the shared XML/revision helpers
+// already live in slides_shared.go so +add-slide / +delete-slide survive that
+// removal.
 var SlidesReplacePages = common.Shortcut{
 	Service:     "slides",
 	Command:     "+replace-pages",
-	Description: "Batch rebuild pages inside an existing Slides presentation (create before old page, then delete old page; not atomic)",
+	Description: "Deprecated — use +update-slide once per page (in place: keeps slide_id and page order; elements written back with their original ids keep them). This rebuild changes slide_id and every element id; not atomic",
 	Risk:        "write",
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 		{Name: "pages", Desc: "JSON array of page replacements (each: {slide_id, content}); supports @file or -", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "continue-on-error", Type: "bool", Desc: "continue with later pages after a create/delete failure; default false"},
 		{Name: "validate-only", Type: "bool", Desc: "validate input and build the create/delete plan without write calls"},
@@ -64,7 +78,8 @@ var SlidesReplacePages = common.Shortcut{
 			Set("xml_presentation_id", resolved.PresentationID).
 			Set("pages_count", len(resolved.Plan)).
 			Set("plan", replacePagesPlanOutput(resolved.Plan)).
-			Set("note", "dry-run built a create/delete plan from slide_id inputs; no Slides presentation get/create/delete calls were executed")
+			Set("note", "dry-run built a create/delete plan from slide_id inputs; no Slides presentation get/create/delete calls were executed").
+			Set("deprecated", replacePagesDeprecationNote)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		resolved, err := prepareReplacePages(runtime)
@@ -78,6 +93,7 @@ var SlidesReplacePages = common.Shortcut{
 				"plan":                replacePagesPlanOutput(resolved.Plan),
 				"status":              "validated",
 				"note":                "validate-only checked input and built the create/delete plan; no Slides presentation get/create/delete calls were executed",
+				"deprecated":          replacePagesDeprecationNote,
 			}, nil)
 			return nil
 		}
@@ -105,6 +121,7 @@ var SlidesReplacePages = common.Shortcut{
 			"status":              "completed",
 			"summary":             replacePagesSummaryOutput(results),
 			"note":                "batch replace is not atomic; each page was created before its old page was deleted",
+			"deprecated":          replacePagesDeprecationNote,
 		}
 		if revisionID != replacePagesInitialRevisionID {
 			out["revision_id"] = revisionID
@@ -226,50 +243,9 @@ func validateReplacePagesInput(pages []replacePageInput) error {
 	return nil
 }
 
-func validateCompleteSlideXML(content string) error {
-	dec := xml.NewDecoder(strings.NewReader(content))
-	depth := 0
-	seenRoot := false
-	for {
-		tok, err := dec.Token()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			if depth == 0 {
-				if seenRoot {
-					return invalidSlideXMLStructureError("multiple root elements")
-				}
-				if t.Name.Local != "slide" {
-					return invalidSlideXMLStructureError("root element is <%s>, want <slide>", t.Name.Local)
-				}
-				seenRoot = true
-			}
-			depth++
-		case xml.EndElement:
-			depth--
-		case xml.CharData:
-			if depth == 0 && strings.TrimSpace(string(t)) != "" {
-				return invalidSlideXMLStructureError("non-whitespace text outside root element")
-			}
-		}
-	}
-	if !seenRoot {
-		return invalidSlideXMLStructureError("missing root element")
-	}
-	if depth != 0 {
-		return invalidSlideXMLStructureError("unclosed XML element")
-	}
-	return nil
-}
-
-func invalidSlideXMLStructureError(format string, args ...interface{}) error {
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, format, args...)
-}
+// validateCompleteSlideXML, invalidSlideXMLStructureError and revisionFromData
+// live in slides_shared.go: +add-slide and +delete-slide use them too, and they
+// must survive this file's eventual removal.
 
 func buildReplacePagesPlan(pages []replacePageInput) ([]replacePagePlanItem, error) {
 	plan := make([]replacePagePlanItem, 0, len(pages))
@@ -358,13 +334,6 @@ func replaceOnePage(runtime *common.RuntimeContext, presentationID string, item 
 	}
 	result.Status = "replaced"
 	return result, nil
-}
-
-func revisionFromData(data map[string]interface{}) (int, bool) {
-	if _, ok := data["revision_id"]; !ok {
-		return 0, false
-	}
-	return int(common.GetFloat(data, "revision_id")), true
 }
 
 func replacePagesPlanOutput(plan []replacePagePlanItem) []map[string]interface{} {

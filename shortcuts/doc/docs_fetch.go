@@ -22,7 +22,6 @@ var DocsFetch = common.Shortcut{
 	Scopes:      []string{"docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	PostMount:   installDocsShortcutHelp("+fetch"),
 	Flags: concatFlags(
 		[]common.Flag{
 			docsAPIVersionCompatFlag(),

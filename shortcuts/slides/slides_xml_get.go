@@ -29,7 +29,7 @@ var SlidesXMLGet = common.Shortcut{
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 		{Name: "output", Desc: "local XML output path; must be a relative path within the current directory; existing file is overwritten; omit to return XML in the JSON envelope"},
 		{Name: "raw", Type: "bool", Desc: "print raw XML to stdout instead of the JSON envelope; incompatible with --output and --jq"},
 		{Name: "slide-id", Desc: "slide page identifier; omit both slide selectors to fetch full presentation XML"},
