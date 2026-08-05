@@ -66,6 +66,68 @@ func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProdu
 	}
 }
 
+func TestRootErrorPresenterPreservesPermissionGuidanceWhenAuthLoginIsConcealed(t *testing.T) {
+	const authorizationFallback = "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry"
+	tests := []struct {
+		name     string
+		subtype  errs.Subtype
+		wantHint string
+	}{
+		{
+			name:     "token scope insufficient",
+			subtype:  errs.SubtypeTokenScopeInsufficient,
+			wantHint: "check the token's granted scopes; " + authorizationFallback,
+		},
+		{
+			name:     "user unauthorized",
+			subtype:  errs.SubtypeUserUnauthorized,
+			wantHint: authorizationFallback + "; if re-auth does not help, the operation may be blocked by external-chat or admin policy",
+		},
+	}
+
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	projector := recovery.NewProjector(func() *surface.Plan { return plan })
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cause := errors.New("permission cause")
+			source := errs.NewPermissionError(tt.subtype, "permission denied").
+				WithMissingScopes("im:message").
+				WithIdentity("user").
+				WithCause(cause)
+
+			rendered := presentRootError(
+				&cmdutil.Factory{ResolvedIdentity: core.AsUser},
+				source,
+				projector,
+			)
+			presented, ok := rendered.(*errs.PermissionError)
+			if !ok {
+				t.Fatalf("rendered error = %T, want *errs.PermissionError", rendered)
+			}
+			if got := presented.Hint; got != tt.wantHint {
+				t.Fatalf("concealed recovery = %q, want exact joined recovery %q", got, tt.wantHint)
+			}
+			if strings.Contains(presented.Hint, "auth login") {
+				t.Fatalf("concealed recovery leaks unavailable auth login target: %q", presented.Hint)
+			}
+			if presented.Category != errs.CategoryAuthorization || presented.Subtype != tt.subtype ||
+				presented.Message != source.Message || presented.Identity != "user" ||
+				len(presented.MissingScopes) != 1 || presented.MissingScopes[0] != "im:message" {
+				t.Fatalf("presented machine fields = %+v, source = %+v", presented, source)
+			}
+			if !errors.Is(rendered, cause) {
+				t.Fatalf("rendered error lost cause %v: %v", cause, rendered)
+			}
+			if source.Hint != "" {
+				t.Fatalf("presenter mutated producer hint: %q", source.Hint)
+			}
+		})
+	}
+}
+
 func TestRootErrorPresenterDoesNotRecommendUserLoginForBotPermission(t *testing.T) {
 	source := errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope").
 		WithMissingScopes("drive:file:download").

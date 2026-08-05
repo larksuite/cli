@@ -354,6 +354,44 @@ func TestForkSkillsBaseReplacementAndReferenceRemapWithoutHostBase(t *testing.T)
 		t.Fatalf("remapped pointer unreadable: exit=%d stdout=%s stderr=%s",
 			read.exit, read.stdout, read.stderr)
 	}
+
+	configDir := t.TempDir()
+	writeFile(t, filepath.Join(configDir, "config.json"),
+		`{"apps":[{"appId":"cli_plugin_e2e","appSecret":"secret","brand":"feishu","users":[]}]}`)
+	legacyEnv := append(baseEnv(),
+		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
+		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
+		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
+		"LARKSUITE_CLI_REMOTE_META=off",
+	)
+	legacy := runWithEnv(t, bin, legacyEnv,
+		"docs", "+update", "--doc", "doccn-plugin-e2e", "--mode", "replace", "--as", "user")
+	if legacy.exit != 2 || !gjson.Valid(legacy.stderr) {
+		t.Fatalf("remapped v2-only error: exit=%d stdout=%s stderr=%s",
+			legacy.exit, legacy.stdout, legacy.stderr)
+	}
+	if got := gjson.Get(legacy.stderr, "error.subtype").String(); got != "invalid_argument" {
+		t.Fatalf("remapped v2-only subtype=%q want invalid_argument; stderr=%s",
+			got, legacy.stderr)
+	}
+	if got := gjson.Get(legacy.stderr, "error.param").String(); got != "--mode" {
+		t.Fatalf("remapped v2-only param=%q want --mode; stderr=%s",
+			got, legacy.stderr)
+	}
+	hint := gjson.Get(legacy.stderr, "error.hint").String()
+	for _, want := range []string{
+		"`lark-cli skills read acme-docx`",
+		"`lark-cli skills read acme-docx/references/lark-doc-update.md`",
+		"`lark-cli skills read acme-docx/references/lark-doc-xml.md`",
+		"`lark-cli skills read acme-docx/references/lark-doc-md.md`",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("remapped v2-only hint missing %q: %q", want, hint)
+		}
+	}
+	if strings.Contains(hint, "lark-cli skills read lark-doc") {
+		t.Errorf("remapped v2-only hint leaked canonical skill reference: %q", hint)
+	}
 }
 
 func TestForkRemovingDocsSkillDropsPointersButKeepsStandaloneGuidance(t *testing.T) {
