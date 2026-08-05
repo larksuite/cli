@@ -33,6 +33,19 @@
 
 飞书表格提供一个统一的 **`AI` 公式**：用自然语言描述需求，AI 返回文本结果。AI 公式的**写入方式与普通公式完全一致**（复用 `lark-sheets-write-cells` 的 `+cells-set` / `set_cell_range`，无需特殊接口），只是计算是**异步**的——写入后要等 AI 算完才有结果。
 
+**AI 公式几乎必然含逗号 + 双引号（如 `=AI("翻译成中文", E2)`），默认走 `+cells-set` 的 JSON `formula` 字段，不要走 `+csv-put`**：`+csv-put` 会按逗号把公式拆列、写坏（详见 `lark-sheets-write-cells`）。`+cells-set` 里公式内部的双引号写成 `\"`。整列填充用模板 + `--copy-to-range`：
+
+```bash
+# 种子格写一条 AI 公式（内部引号用 \" 转义），再向下铺满整列
+lark-cli sheets +cells-set --url <表URL> --sheet-name <子表名> \
+  --range D2 --cells '[[{"formula":"=AI(\"翻译成中文\", E2)"}]]' \
+  --copy-to-range "D2:D107"
+# 写完只用 --ai-only 抽检异步状态，禁止先用 +cells-get / +csv-get 轮询结果
+lark-cli sheets +formula-verify --url <表URL> --sheet-name <子表名> --range D2:D107 --ai-only
+```
+
+**校验纪律**：AI 公式计算是异步的，写完的**第一校验入口必须是 `+formula-verify --ai-only`**，禁止先用 `+cells-get` / `+csv-get` 轮询结果——`--ai-only` 没有明确失败 / 不支持状态时允许带 pending 交付并告知用户后台仍在计算。若读回是 `#ERROR` 或残缺字面量（半截括号 / 全角括号），那是公式串在写入层被转义写坏了、不是 AI 失败，回到 `+cells-set` 用 `\"` 重写（详见 `lark-sheets-formula-verify`）。
+
 ### 语法
 
 ```
@@ -83,6 +96,8 @@ AI 公式的质量高度依赖提示词。推荐：
 ### 用 CLI 对一列逐行处理
 
 对整列逐行跑 AI，推荐**模板单元格 + `--copy-to-range` 向下扩展**：在种子单元格写 `=AI("<提示词>", A2)`，再用 `--copy-to-range` 扩展到整列，相对引用会随行自增（`A2` → `A3` → …）。这样每行独立计算、行为可预测，比依赖单条公式一次铺开整列更稳。
+
+**行数多时分批串行**：AI 公式是异步计算，一次扩展的行数越多越容易触发超时。单次 `--copy-to-range` 最多铺 1000 行；超过 1000 行必须按 ≤1000 行分批、**串行**扩展（写完一批、`+formula-verify --ai-only` 抽检确认这批已进入计算后再铺下一批），不要一次铺全列，也不要多批并发。
 
 **写完 AI 公式后的校验与交付**：AI 公式异步计算，批量写入后出现 pending 属于正常现象。第一校验入口必须是 `lark-sheets-formula-verify` 的 `+formula-verify --ai-only --range <代表性范围>`，禁止先用 `+cells-get` 轮询结果。确认公式已写入且抽检没有明确的失败 / 不支持状态后，即使仍有 pending 也可以交付；飞书会在后台继续计算。交付时告知用户“AI 公式仍在后台运行，结果会陆续完成”。`+cells-get` 只用于补充核对公式文本、样式或定位异常单元格。细节见 `lark-sheets-formula-verify`。
 
