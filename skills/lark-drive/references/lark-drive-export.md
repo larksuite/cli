@@ -164,9 +164,6 @@ lark-cli drive +task_result \
   --ticket "<TICKET>" \
   --file-token "<DOCX_TOKEN>"
 
-# 如果返回 rate_limit / 99991400：不要立即重试，也不要重新创建导出任务；
-# 至少等待 1 分钟后重试上面的 +task_result。若仍限频，以 1 分钟为起点继续指数退避。
-
 # 查到 file_token 后下载
 lark-cli drive +export-download \
   --file-token "<EXPORTED_FILE_TOKEN>" \

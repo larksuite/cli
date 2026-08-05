@@ -330,7 +330,7 @@ lark-cli drive +export --token <SOURCE_DOC_TOKEN> --doc-type docx --file-extensi
 lark-cli drive +task_result --scenario export --ticket <EXPORT_TICKET> --file-token <SOURCE_DOC_TOKEN>
 
 # 如果返回 rate_limit / 99991400：至少等待 1 分钟后重试同一条 +task_result；
-# 若仍限频，以 1 分钟为起点继续指数退避。不要重新执行 +export，复用原 ticket。
+# 若仍限频，以 1 分钟为起点继续指数退避。
 
 # 3. 拿到 file_token 后下载
 lark-cli drive +export-download --file-token <EXPORTED_FILE_TOKEN>
