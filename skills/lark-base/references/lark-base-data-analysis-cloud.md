@@ -192,7 +192,7 @@ lark-cli base +view-set-sort \
 ## 3. Range & Pagination Contract
 
 - `+record-list` 默认页、固定 `--limit`、本地 `jq`、shell 管道、手工浏览输出，都只覆盖已读取范围；超过 200 行不要把原始记录直接输出到模型上下文。
-- `has_more=true`、存在下一页 offset/page token、或返回行数等于 page size，都表示可能还有未读取数据。
+- `has_more=true` 说明可能还有未读取数据，需要更新 offset 后继续读取，多次读取仍未读取完成时，采用其他方法完成任务需求，避免无限循环。
 - 对全局问题，只有 Base 云端查询服务已经通过 filter/sort/aggregate 收敛目标范围，或 `+data-query` 已在云端完成聚合、排序和限制时，才可以用有限返回形成结论。
 - 需要完整原始记录但云端能力无法把结果安全收敛到可返回范围时，明确说明能力边界；不要用手工分页、拆分下载或采样伪装成全局分析。
 
