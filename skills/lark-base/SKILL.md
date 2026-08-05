@@ -102,7 +102,7 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 ## Dashboard Block
 
-Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题，`+dashboard-arrange` 统一编排内部组件布局。
+Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题。`+dashboard-arrange` 是服务端智能重排，只在用户明确要求重排/美化，或本次会话从零新建且没有为任何组件显式使用 `--position` 时执行；只要任一组件使用了 `--position`，不要自动重排，除非用户明确同意放弃精确布局。
 
 容器内部的图表、指标卡和文本等组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。内部 Block 分为三条操作路径：
 
@@ -110,7 +110,7 @@ Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主�
 2. **写入配置：** `+dashboard-block-create` / `+dashboard-block-update` / `+dashboard-block-delete` 管理组件，`data_config` 定义数据源、维度、指标、聚合或文本内容。
 3. **读取内容：** `+dashboard-block-get-data` 读取图表、指标卡等数据组件的计算结果。
 
-创建或更新组件时可选 `--position`，使用 12 列栅格 `{x,y,w,h}` 精确布局；坐标只解析形状、不校验取值，越界会原样透传。`statistics` 的 `data_config.number_format` 支持 `formatName` 和 `precision`，create/update 都会做本地校验，非 statistics 类型会拒绝该字段。具体规则读取 [Dashboard](references/lark-base-dashboard.md) 和 [Dashboard Block 配置](references/lark-base-dashboard-block-config.md)。
+创建或更新组件时可选 `--position`，使用 12 列栅格 `{x,y,w,h}` 精确布局；不要把 `+dashboard-arrange` 当作等价实现，它无法指定坐标。坐标只解析完整数值形状、不校验取值并原样透传；服务端如何处理越界或重叠坐标尚未验证。`statistics` 的 `data_config.number_format` 支持 `formatName` 和 `precision`，create/update 都会做本地校验，非 statistics 类型会拒绝该字段。具体规则读取 [Dashboard](references/lark-base-dashboard.md) 和 [Dashboard Block 配置](references/lark-base-dashboard-block-config.md)。
 
 操作内部 Block 前先读 [Dashboard](references/lark-base-dashboard.md)，由该入口继续路由组件配置和结果协议。
 

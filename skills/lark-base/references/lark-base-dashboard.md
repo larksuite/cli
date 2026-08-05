@@ -42,7 +42,7 @@ create/update 可选 `--position`，用 12 列栅格坐标精确指定单个组�
 - 聚合方式：创建指标卡或分布图时优先把聚合写进 `data_config`，只有 Top N、字段取值探索、复杂筛选校验或 helper 汇总表场景才先用 `+data-query`。
 - Dry-run 边界：已按模板构造的简单指标卡、分布图、趋势图不需要逐个 `--dry-run` 后再真实创建；只有在调试 JSON、检查请求体、复杂自造 `data_config` 或处理 API validation 错误时才 dry-run。
 - 验证方式：创建接口成功返回即表示写入成功。只有结果不确定时才用一次 `+dashboard-get` 或 `+dashboard-block-list` 确认仪表盘和组件存在；不要仅为确认创建而逐组件调用 `+dashboard-block-get-data`。
-- 布局方式：`+dashboard-arrange` 仅两种情况使用：① 用户明确要求美化/重排；② 本次会话中从零新建的仪表盘，建完组件后做一次性布局整理。不是创建成功的必要步骤。
+- 布局方式：`+dashboard-arrange` 仅两种情况使用：① 用户明确要求美化/重排；② 本次会话中从零新建的仪表盘、且没有任何组件使用显式 `--position`，建完组件后做一次性布局整理。只要任一组件使用了 `--position`，就不要再自动执行智能重排，除非用户明确同意放弃精确布局。
 
 示例：搭建一个销售数据分析仪表盘
 
@@ -80,9 +80,10 @@ lark-cli base +dashboard-block-create \
 
 # 继续创建其他组件...
 
-# 第 5 步：组件创建完成后，使用 arrange 命令智能重排布局（可选但推荐）
+# 第 5 步：组件创建完成后，可按需使用 arrange 智能重排（未使用 --position 时可选）
 # 默认布局可能不够美观，arrange 会根据组件数量和类型自动优化布局
-# 若用户没有要求美化/重排，可先跳过此步骤；这不影响仪表盘和组件是否已创建成功
+# 若任一组件使用了显式 --position，跳过此步骤；除非用户明确同意放弃精确布局
+# 若用户没有要求美化/重排，也可跳过；这不影响仪表盘和组件是否已创建成功
 lark-cli base +dashboard-arrange \
   --base-token xxx \
   --dashboard-id blk_xxx
