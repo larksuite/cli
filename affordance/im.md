@@ -476,9 +476,9 @@ Use this raw method only for standalone message ids; message-reading shortcuts a
 
 ### Examples
 
-**Query reactions for two messages**
+**Query the first page of reactions for two messages**
 ```bash
-lark-cli im reactions batch_query --params '{"user_id_type":"open_id"}' --data '{"queries":[{"message_id":"om_xxx"},{"message_id":"om_yyy","page_token":"<PAGE_TOKEN>"}],"page_size_per_message":10,"reaction_type":"LAUGH"}'
+lark-cli im reactions batch_query --params '{"user_id_type":"open_id"}' --data '{"queries":[{"message_id":"om_xxx"},{"message_id":"om_yyy"}],"page_size_per_message":10,"reaction_type":"LAUGH"}'
 ```
 
 ### Skills

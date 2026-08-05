@@ -67,7 +67,13 @@ var imAffordanceExamples = []imAffordanceExample{
 	{method: "reactions.create", command: `lark-cli im reactions create --params '{"message_id":"om_xxx"}' --data '{"reaction_type":{"emoji_type":"SMILE"}}'`, source: "lark-im/references/lark-im-reactions.md"},
 	{method: "reactions.list", command: `lark-cli im reactions list --params '{"message_id":"om_xxx"}'`, source: "lark-im/references/lark-im-reactions.md"},
 	{method: "reactions.delete", command: `lark-cli im reactions delete --params '{"message_id":"om_xxx","reaction_id":"ZCaCIjUBVVWSrm5L-3ZTw_xxx"}'`, source: "lark-im/references/lark-im-reactions.md"},
-	{method: "reactions.batch_query", command: `lark-cli im reactions batch_query --params '{"user_id_type":"open_id"}' --data '{"queries":[{"message_id":"om_xxx"},{"message_id":"om_yyy","page_token":"<PAGE_TOKEN>"}],"page_size_per_message":10,"reaction_type":"LAUGH"}'`, source: "lark-im/references/lark-im-reactions.md"},
+	{
+		method:        "reactions.batch_query",
+		command:       `lark-cli im reactions batch_query --params '{"user_id_type":"open_id"}' --data '{"queries":[{"message_id":"om_xxx"},{"message_id":"om_yyy"}],"page_size_per_message":10,"reaction_type":"LAUGH"}'`,
+		source:        "lark-im/references/lark-im-reactions.md",
+		sourceCommand: `lark-cli im reactions batch_query --params '{"user_id_type":"open_id"}' --data '{"queries":[{"message_id":"om_xxx"},{"message_id":"om_yyy","page_token":"<PAGE_TOKEN>"}],"page_size_per_message":10,"reaction_type":"LAUGH"}'`,
+		derivation:    "first-page",
+	},
 }
 
 func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
@@ -137,6 +143,8 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 						t.Fatal("derived --as user is not backed by the source identity contract")
 					}
 					materialized = strings.Replace(materialized, "+messages-search", "+messages-search --as user", 1)
+				case "first-page":
+					materialized = strings.Replace(materialized, `,"page_token":"<PAGE_TOKEN>"`, "", 1)
 				default:
 					t.Fatalf("unknown audited derivation %q", tt.derivation)
 				}
