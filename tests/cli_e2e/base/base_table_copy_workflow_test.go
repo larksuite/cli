@@ -32,7 +32,7 @@ func TestBaseTableCopyWorkflow(t *testing.T) {
 		ctx,
 		baseToken,
 		"Copy source "+clie2e.GenerateSuffix(),
-		`[{"name":"Name","type":"text"}]`,
+		`[{"name":"Name","type":"text"},{"name":"Copy schema probe","type":"text"}]`,
 		`{"name":"Main","type":"grid"}`,
 	)
 
@@ -75,6 +75,20 @@ func TestBaseTableCopyWorkflow(t *testing.T) {
 		result.AssertStdoutStatus(t, true)
 		return gjson.Get(result.Stdout, "data.record_id_list.#").Int()
 	}
+	assertCopiedSchema := func(tableID string) {
+		t.Helper()
+		result, runErr := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"base", "+table-get", "--base-token", baseToken, "--table-id", tableID},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, runErr)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+
+		probeField := gjson.Get(result.Stdout, `data.fields.#(name=="Copy schema probe")`)
+		require.True(t, probeField.Exists(), "copied schema is missing probe field: %s", result.Stdout)
+		require.Equal(t, "text", probeField.Get("type").String(), result.Stdout)
+	}
 
 	t.Run("schema default", func(t *testing.T) {
 		result, runErr := clie2e.RunCmd(ctx, clie2e.Request{
@@ -93,6 +107,7 @@ func TestBaseTableCopyWorkflow(t *testing.T) {
 		require.Equal(t, "success", gjson.Get(result.Stdout, "data.state").String(), result.Stdout)
 		targetID := gjson.Get(result.Stdout, "data.table.id").String()
 		cleanupCopiedTable(targetID)
+		assertCopiedSchema(targetID)
 		require.Equal(t, int64(0), countRecords(targetID))
 	})
 
