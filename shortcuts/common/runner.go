@@ -101,6 +101,15 @@ func (ctx *RuntimeContext) Command() string {
 	return ctx.Cmd.Name()
 }
 
+// CommandPath returns the full command path as Cobra knows it. Consumers that
+// expose command identity externally can normalize the binary name as needed.
+func (ctx *RuntimeContext) CommandPath() string {
+	if ctx == nil || ctx.Cmd == nil {
+		return ""
+	}
+	return ctx.Cmd.CommandPath()
+}
+
 // UserOpenId returns the current user's open_id from config.
 func (ctx *RuntimeContext) UserOpenId() string { return ctx.Config.UserOpenId }
 

@@ -14,6 +14,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/fileevent"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -136,7 +137,7 @@ var DriveUpload = common.Shortcut{
 			Desc("multipart/form-data upload (files > 20MB use chunked 3-step upload), then fetch the real Drive URL via metadata").
 			POST(driveUploadAllPath).
 			Body(body)
-		common.AppendUploadFileEventDryRun(d, runtime, common.LarkCLIFileEventMeta{
+		fileevent.AppendUploadDryRun(d, runtime, fileevent.UploadMeta{
 			APIPath:      driveUploadAllPath,
 			UploadMode:   "singlepart",
 			ResourceType: "file",
@@ -274,7 +275,7 @@ func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, file
 	}
 	fd.AddFile("file", f)
 
-	meta := common.LarkCLIFileEventMeta{
+	meta := fileevent.UploadMeta{
 		APIPath:      driveUploadAllPath,
 		UploadMode:   "singlepart",
 		ResourceType: "file",
@@ -288,21 +289,21 @@ func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, file
 	}, larkcore.WithFileUpload())
 	if err != nil {
 		if errs.IsTyped(err) {
-			return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, err, meta)
+			return driveUploadResult{}, fileevent.ReportUploadError(runtime, err, meta)
 		}
-		return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, wrapDriveNetworkErr(err, "upload failed: %v", err), meta)
+		return driveUploadResult{}, fileevent.ReportUploadError(runtime, wrapDriveNetworkErr(err, "upload failed: %v", err), meta)
 	}
 
 	data, err := runtime.ClassifyAPIResponse(apiResp)
 	if err != nil {
-		return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, err, meta)
+		return driveUploadResult{}, fileevent.ReportUploadError(runtime, err, meta)
 	}
 	fileToken := common.GetString(data, "file_token")
 	if fileToken == "" {
-		return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, errs.NewInternalError(errs.SubtypeInvalidResponse, "upload failed: no file_token returned"), meta)
+		return driveUploadResult{}, fileevent.ReportUploadError(runtime, errs.NewInternalError(errs.SubtypeInvalidResponse, "upload failed: no file_token returned"), meta)
 	}
 	meta.FileToken = fileToken
-	common.ReportUploadFileEvent(runtime, meta)
+	fileevent.ReportUpload(runtime, meta)
 	return driveUploadResult{
 		FileToken: fileToken,
 		Version:   driveUploadVersionFromData(data),
@@ -325,7 +326,7 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 		prepareBody["file_token"] = existingFileToken
 	}
 
-	meta := common.LarkCLIFileEventMeta{
+	meta := fileevent.UploadMeta{
 		APIPath:      driveUploadPreparePath,
 		UploadMode:   "multipart",
 		ResourceType: "file",
@@ -334,7 +335,7 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 
 	prepareResult, err := runtime.CallAPITyped("POST", driveUploadPreparePath, nil, prepareBody)
 	if err != nil {
-		return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, err, meta)
+		return driveUploadResult{}, fileevent.ReportUploadError(runtime, err, meta)
 	}
 
 	uploadID := common.GetString(prepareResult, "upload_id")
@@ -344,7 +345,7 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 	blockNum := int(blockNumF)
 
 	if uploadID == "" || blockSize <= 0 || blockNum <= 0 {
-		return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, errs.NewInternalError(errs.SubtypeInvalidResponse,
+		return driveUploadResult{}, fileevent.ReportUploadError(runtime, errs.NewInternalError(errs.SubtypeInvalidResponse,
 			"upload_prepare returned invalid data: upload_id=%q, block_size=%d, block_num=%d",
 			uploadID, blockSize, blockNum), meta)
 	}
@@ -363,7 +364,7 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 
 		partFile, err := runtime.FileIO().Open(filePath)
 		if err != nil {
-			return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, driveInputStatError(err), meta)
+			return driveUploadResult{}, fileevent.ReportUploadError(runtime, driveInputStatError(err), meta)
 		}
 
 		fd := larkcore.NewFormdata()
@@ -380,13 +381,13 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 		partFile.Close()
 		if err != nil {
 			if errs.IsTyped(err) {
-				return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, err, meta)
+				return driveUploadResult{}, fileevent.ReportUploadError(runtime, err, meta)
 			}
-			return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, wrapDriveNetworkErr(err, "upload part %d/%d failed: %v", seq+1, blockNum, err), meta)
+			return driveUploadResult{}, fileevent.ReportUploadError(runtime, wrapDriveNetworkErr(err, "upload part %d/%d failed: %v", seq+1, blockNum, err), meta)
 		}
 
 		if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
-			return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, err, meta)
+			return driveUploadResult{}, fileevent.ReportUploadError(runtime, err, meta)
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, blockNum, common.FormatSize(partSize))
@@ -400,16 +401,16 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 	}
 	finishResult, err := runtime.CallAPITyped("POST", driveUploadFinishPath, nil, finishBody)
 	if err != nil {
-		return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, err, meta)
+		return driveUploadResult{}, fileevent.ReportUploadError(runtime, err, meta)
 	}
 
 	fileToken := common.GetString(finishResult, "file_token")
 	if fileToken == "" {
-		return driveUploadResult{}, common.ReportUploadFileEventOnError(runtime, errs.NewInternalError(errs.SubtypeInvalidResponse, "upload_finish succeeded but no file_token returned"), meta)
+		return driveUploadResult{}, fileevent.ReportUploadError(runtime, errs.NewInternalError(errs.SubtypeInvalidResponse, "upload_finish succeeded but no file_token returned"), meta)
 	}
 
 	meta.FileToken = fileToken
-	common.ReportUploadFileEvent(runtime, meta)
+	fileevent.ReportUpload(runtime, meta)
 	return driveUploadResult{
 		FileToken: fileToken,
 		Version:   driveUploadVersionFromData(finishResult),

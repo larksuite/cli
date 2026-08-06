@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/fileevent"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -272,7 +273,7 @@ func appendDriveImportUploadReportDryRun(dry *common.DryRunAPI, runtime *common.
 		apiPath = "/open-apis/drive/v1/medias/upload_finish"
 		uploadMode = "multipart"
 	}
-	common.AppendUploadFileEventDryRun(dry, runtime, common.LarkCLIFileEventMeta{
+	fileevent.AppendUploadDryRun(dry, runtime, fileevent.UploadMeta{
 		APIPath:      apiPath,
 		UploadMode:   uploadMode,
 		ResourceType: "media",

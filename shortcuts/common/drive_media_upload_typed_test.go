@@ -10,8 +10,11 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/fileevent"
 	"github.com/larksuite/cli/internal/httpmock"
 )
+
+const driveMediaTestCapacityExpansionURL = "https://example.com/space/upload/pay/prepare"
 
 // TestUploadDriveMediaAllTypedWithInMemoryContent verifies single-part uploads from in-memory content.
 func TestUploadDriveMediaAllTypedWithInMemoryContent(t *testing.T) {
@@ -329,7 +332,7 @@ func registerDriveMediaReportStubWithMsg(t *testing.T, reg *httpmock.Registry, m
 	}
 	stub := &httpmock.Stub{
 		Method:   "POST",
-		URL:      larkCLIReportFileEventPath,
+		URL:      fileevent.ReportPath,
 		Body:     body,
 		Reusable: true,
 	}
@@ -345,14 +348,19 @@ func assertSingleReport(t *testing.T, reportStub *httpmock.Stub, wantStatus stri
 		t.Fatalf("report call count = %d, want 1", len(reportStub.CapturedBodies))
 	}
 	body := decodeCapturedDriveMediaJSONBody(t, reportStub)
-	assertReportEnvelope(t, body)
+	if body["file_scene"] != "lark-cli" || body["scene"] != "upload" || body["operation"] != "upload" {
+		t.Fatalf("unexpected report envelope: %#v", body)
+	}
 	if _, ok := body["user_id"]; ok {
 		t.Fatalf("user_id must be omitted, got %v", body["user_id"])
 	}
 	if _, ok := body["tenant_id"]; ok {
 		t.Fatalf("tenant_id must be omitted, got %v", body["tenant_id"])
 	}
-	tags := assertTagsObject(t, body)
+	tags, ok := body["tags"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("tags = %#v, want object", body["tags"])
+	}
 	if got := tags["status"]; got != wantStatus {
 		t.Fatalf("tags.status = %v, want %s", got, wantStatus)
 	}
@@ -389,7 +397,7 @@ func TestUploadDriveMediaAllTypedReportsFileEventOnSuccess(t *testing.T) {
 		t.Fatalf("fileToken = %q, want file_ok", fileToken)
 	}
 
-	tags := assertSingleReport(t, reportStub, uploadFileEventStatusSuccess)
+	tags := assertSingleReport(t, reportStub, fileevent.StatusSuccess)
 	if got := tags["api_path"]; got != "/open-apis/drive/v1/medias/upload_all" {
 		t.Fatalf("tags.api_path = %v", got)
 	}
@@ -435,7 +443,7 @@ func TestUploadDriveMediaAllTypedReportsFileEventOnError(t *testing.T) {
 		t.Fatalf("expected typed api error code 999, got %T (%v)", err, err)
 	}
 
-	tags := assertSingleReport(t, reportStub, uploadFileEventStatusError)
+	tags := assertSingleReport(t, reportStub, fileevent.StatusError)
 	if got := tags["code"]; got != "999" {
 		t.Fatalf("tags.code = %v, want 999", got)
 	}
@@ -447,7 +455,7 @@ func TestUploadDriveMediaAllTypedReportFailureKeepsUploadError(t *testing.T) {
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
 	reg.Register(&httpmock.Stub{
 		Method:   "POST",
-		URL:      larkCLIReportFileEventPath,
+		URL:      fileevent.ReportPath,
 		Body:     map[string]interface{}{"code": 500, "msg": "report rejected"},
 		Reusable: true,
 	})
@@ -487,7 +495,7 @@ func TestUploadDriveMediaAllTypedReportFailureKeepsUploadError(t *testing.T) {
 func TestUploadDriveMediaMultipartTypedReportsFileEventOnPrepareError(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
-	reportStub := registerDriveMediaReportStubWithMsg(t, reg, testCapacityExpansionURL)
+	reportStub := registerDriveMediaReportStubWithMsg(t, reg, driveMediaTestCapacityExpansionURL)
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -510,11 +518,11 @@ func TestUploadDriveMediaMultipartTypedReportsFileEventOnPrepareError(t *testing
 	if !ok || p.Code != 1061101 {
 		t.Fatalf("expected typed api error code 1061101, got %T (%v)", err, err)
 	}
-	if !strings.Contains(p.Hint, testCapacityExpansionURL) {
+	if !strings.Contains(p.Hint, driveMediaTestCapacityExpansionURL) {
 		t.Fatalf("hint = %q, want capacity expansion URL", p.Hint)
 	}
 
-	tags := assertSingleReport(t, reportStub, uploadFileEventStatusError)
+	tags := assertSingleReport(t, reportStub, fileevent.StatusError)
 	if got := tags["upload_mode"]; got != "multipart" {
 		t.Fatalf("tags.upload_mode = %v, want multipart", got)
 	}
@@ -576,7 +584,7 @@ func TestUploadDriveMediaMultipartTypedReportsFileEventOnSuccess(t *testing.T) {
 		t.Fatalf("fileToken = %q, want file_multi_ok", fileToken)
 	}
 
-	tags := assertSingleReport(t, reportStub, uploadFileEventStatusSuccess)
+	tags := assertSingleReport(t, reportStub, fileevent.StatusSuccess)
 	if got := tags["upload_mode"]; got != "multipart" {
 		t.Fatalf("tags.upload_mode = %v, want multipart", got)
 	}
