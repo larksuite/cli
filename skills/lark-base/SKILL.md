@@ -49,6 +49,7 @@ metadata:
 
 | 用户目标 | 优先命令 | 何时读 reference |
 |---|---|---|
+| 速览 / 理解 / 总结 Base 内容（尤其跨数据表） | `drive +fetch --url "<原 URL>"` | 直接传原 URL 并读 [lark-drive-fetch.md](../lark-drive/references/lark-drive-fetch.md)，不先 `+url-resolve`；精确记录 / 字段、筛选 / 统计、关联查询或全局结论仍走 Base 原生命令 |
 | 查 Base 本体 | `+base-get` | 用返回确认 Base 名称、owner、权限和可继续操作的 token |
 | 创建/复制 Base | `+base-create` / `+base-copy` | 新建时强烈推荐用 `--table-name` + `--fields` 同时配置新 Base 里唯一一个初始数据表的 name 和 schema；写入后报告新 Base 标识和 `permission_grant` |
 | Base 文件导入/导出 | 转 `lark-drive` | 文件格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责；在线复制走 `+base-copy` |
@@ -109,6 +110,7 @@ metadata:
 5. 最终答案必须能追溯到真实表、真实字段、查询范围、筛选/排序/聚合条件和必要的连接键。
 6. 一次性原始记录查询优先用 `+record-list` / `+record-search` 的 filter/sort；聚合分析优先用 `+data-query`；要把结果长期显示在表里，才考虑新增 `formula` / `lookup` 字段。
 7. `+data-query` 可返回聚合结果或维度字段行，但维度行按字段组合去重且不返回 `record_id`；需要逐条记录、记录定位或完整行级字段时，再用 `+record-list` / `+record-search` / `+record-get` 回查。
+8. 整份 Base 的速览 / 理解 / 总结用 `drive +fetch`；精确记录、字段、筛选、统计、关联查询或全局结论仍按以上规则走 Base 原生命令。
 
 ## 写入前置规则
 

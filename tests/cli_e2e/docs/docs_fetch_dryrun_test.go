@@ -42,6 +42,62 @@ func TestDocsFetchDryRunIgnoresAPIVersionCompatFlag(t *testing.T) {
 	}
 }
 
+func TestDocsFetchDryRunRejectsInvalidPageSize(t *testing.T) {
+	for _, value := range []string{"-1", "2147483648"} {
+		t.Run(value, func(t *testing.T) {
+			setDocsDryRunEnv(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{"docs", "+fetch", "--doc", "doxcnPage", "--doc-format", "markdown",
+					"--page-size", value, "--dry-run"},
+				DefaultAs: "bot",
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 2)
+			require.Contains(t, result.Stderr, "--page-size")
+		})
+	}
+}
+
+func TestDocsFetchDryRunMarkdownWholeDocForwardsPagination(t *testing.T) {
+	setDocsDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"docs", "+fetch",
+			"--doc", "doxcnPagination",
+			"--doc-format", "markdown",
+			"--page-token", "tok-1",
+			"--page-size", "5",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/search/v2/knowledge_qa/fetch_doc_info" {
+		t.Fatalf("url=%q, want paginated fetch endpoint\nstdout:\n%s", got, out)
+	}
+	if !clie2e.DryRunGet(out, "api.0.body.with_block_id").Bool() {
+		t.Fatalf("with_block_id=false, want true\nstdout:\n%s", out)
+	}
+	if !clie2e.DryRunGet(out, "api.0.body.enable_pagination").Bool() {
+		t.Fatalf("enable_pagination=false, want true\nstdout:\n%s", out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.body.page_token").String(); got != "tok-1" {
+		t.Fatalf("page_token=%q, want tok-1\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.body.page_size").Int(); got != 5 {
+		t.Fatalf("page_size=%d, want 5\nstdout:\n%s", got, out)
+	}
+}
+
 func TestDocsFetchDryRunSelectionAnchorFragmentBecomesRangeStart(t *testing.T) {
 	setDocsDryRunEnv(t)
 

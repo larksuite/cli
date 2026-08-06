@@ -46,7 +46,8 @@ metadata:
 | 我的妙记 / 搜索妙记 / 某段时间的妙记 | `+search` |
 | 妙记基础信息：标题 / 时长 / 封面 / 链接 | `minutes get` |
 | 下载妙记音视频文件、获取媒体下载链接 | `+download`（仅媒体；要妙记内容用 `+detail`） |
-| 妙记总结 / 章节 / 待办 / 关键词 / 逐字稿 | `+detail --minute-tokens <token>` + 显式产物 flag |
+| 速览一条妙记已有的总结 / 章节 / 待办 / 关键词 | `drive +fetch --url "<原 URL>" --as user`，返回连续 Markdown；详见 [`lark-drive-fetch.md`](../lark-drive/references/lark-drive-fetch.md) |
+| 读取指定的总结 / 章节 / 待办 / 关键词 / 逐字稿产物 | `+detail --minute-tokens <token>` + 显式产物 flag |
 | 基于妙记**提炼/总结/分析/回顾**会议 | `+detail --minute-tokens <token> --transcript`，再独立分析（**禁止照搬 AI 总结**） |
 | 拿这条妙记关联的纪要文档（`note_doc_token` / `verbatim_doc_token` / `shared_doc_tokens`） | `+detail` 取顶层 `note_id` → [`note +detail --note-id`](../lark-note/SKILL.md) |
 | 把本地音视频转纪要 / 逐字稿 / 文字稿 | `drive +upload` 取 `file_token` → `+upload` 生成 `minute_url` → `+detail` 拿产物 |

@@ -11,6 +11,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -28,6 +29,7 @@ func (w contractFailingWriter) Write([]byte) (int, error) {
 
 type contractSafetyProvider struct {
 	alert *extcs.Alert
+	calls atomic.Int32
 }
 
 func (p *contractSafetyProvider) Name() string {
@@ -35,6 +37,7 @@ func (p *contractSafetyProvider) Name() string {
 }
 
 func (p *contractSafetyProvider) Scan(context.Context, extcs.ScanRequest) (*extcs.Alert, error) {
+	p.calls.Add(1)
 	return p.alert, nil
 }
 
@@ -181,6 +184,102 @@ func TestEmitterPaginationMetadataByFormat(t *testing.T) {
 				t.Fatalf("pagination diagnostic = %+v", diagnostic)
 			}
 		})
+	}
+}
+
+func TestEmitterSuccessReusesSafetyResultFromOriginalData(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
+	provider := &contractSafetyProvider{alert: &extcs.Alert{
+		Provider:     "emitter-contract",
+		MatchedRules: []string{"fixture-rule"},
+	}}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	original := map[string]interface{}{"content": "original large response"}
+	scanResult := output.ScanForSafety("lark-cli fixture +emit", original, io.Discard)
+	if got := provider.calls.Load(); got != 1 {
+		t.Fatalf("scan calls after pre-scan = %d, want 1", got)
+	}
+
+	compact := map[string]interface{}{"content_file": map[string]interface{}{"path": "/tmp/result.md"}}
+	stdout := &bytes.Buffer{}
+	emitter := output.NewEmitter(output.EmitterConfig{
+		Out:         stdout,
+		ErrOut:      io.Discard,
+		CommandPath: "lark-cli fixture +emit",
+	})
+	if err := emitter.Success(compact, output.EmitOptions{
+		Format:       "json",
+		SafetyResult: &scanResult,
+	}); err != nil {
+		t.Fatalf("Emitter.Success() error = %v", err)
+	}
+	if got := provider.calls.Load(); got != 1 {
+		t.Fatalf("scan calls after emission = %d, want 1", got)
+	}
+
+	var envelope struct {
+		Data               map[string]interface{} `json:"data"`
+		ContentSafetyAlert *extcs.Alert           `json:"_content_safety_alert"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal envelope: %v", err)
+	}
+	if envelope.ContentSafetyAlert == nil || envelope.ContentSafetyAlert.Provider != "emitter-contract" {
+		t.Fatalf("content safety alert = %#v, want pre-scanned alert", envelope.ContentSafetyAlert)
+	}
+	if _, ok := envelope.Data["content_file"]; !ok {
+		t.Fatalf("data = %#v, want compact content_file output", envelope.Data)
+	}
+	if _, ok := envelope.Data["content"]; ok {
+		t.Fatalf("data = %#v, original content should not be emitted", envelope.Data)
+	}
+}
+
+func TestEmitterSuccessDoesNotRescanAnyFormatWithSafetyResult(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
+	provider := &contractSafetyProvider{alert: &extcs.Alert{
+		Provider:     "emitter-contract",
+		MatchedRules: []string{"unexpected-scan"},
+	}}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	scanResult := output.ScanResult{}
+	tests := []struct {
+		name string
+		opts output.EmitOptions
+	}{
+		{name: "json", opts: output.EmitOptions{Format: "json"}},
+		{name: "jq", opts: output.EmitOptions{JQ: ".data.id"}},
+		{name: "pretty", opts: output.EmitOptions{
+			Format: "pretty",
+			Pretty: func(w io.Writer, _ bool) error {
+				_, err := io.WriteString(w, "fixture\n")
+				return err
+			},
+		}},
+		{name: "table", opts: output.EmitOptions{Format: "table"}},
+		{name: "csv", opts: output.EmitOptions{Format: "csv"}},
+		{name: "ndjson", opts: output.EmitOptions{Format: "ndjson"}},
+		{name: "unknown format fallback", opts: output.EmitOptions{Format: "yaml"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.opts.SafetyResult = &scanResult
+			emitter := output.NewEmitter(output.EmitterConfig{
+				Out:         &bytes.Buffer{},
+				ErrOut:      io.Discard,
+				CommandPath: "lark-cli fixture +emit",
+			})
+			if err := emitter.Success(map[string]interface{}{"id": "1"}, tt.opts); err != nil {
+				t.Fatalf("Emitter.Success() error = %v", err)
+			}
+		})
+	}
+	if got := provider.calls.Load(); got != 0 {
+		t.Fatalf("content safety provider calls = %d, want 0", got)
 	}
 }
 

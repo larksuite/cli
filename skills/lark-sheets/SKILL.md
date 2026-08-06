@@ -54,6 +54,7 @@ metadata:
 
 | 你要做的事 | ✅ 正确写法 | 动手前读 | ❌ 不存在（会被 cobra 拒） |
 | --- | --- | --- | --- |
+| 速览 / 理解 / 总结整份工作簿（尤其跨子表） | `drive +fetch --url "<原 URL>"` 直接读取 Markdown；精确取值、指定范围、全量统计、筛选 / 排序 / 去重 / 分组仍走 Sheets 原生命令 | [`lark-drive-fetch`](../lark-drive/references/lark-drive-fetch.md) | 把每表默认最多 50 行的 Markdown 当作全量数据 |
 | 读数据（纯值 / CSV） | `+csv-get`（范围用 `--range`） | `lark-sheets-read-data` | `+get-range`、`+range-get`、`+cells-read` |
 | 读值 + 公式 / 样式 / 批注 | `+cells-get --include value,formula,style,comment,data_validation` | `lark-sheets-read-data` | `+get-cell`、`+cell-get`、`--with-styles`、`--with-merges`、`--include-merged-cells` |
 | 写纯文本值（整块 CSV 平铺；列里**没有**需字面保真的数值 / 日期标签 / 编号——点分日期 `12.10`、编号 `001` 会被 csv-put 数值化，不算纯文本） | `+csv-put`（定位用 `--start-cell`，单个左上角锚点格；也接受 `--range` 别名，区间自动取左上角） | `lark-sheets-write-cells` | 把含点分日期(`12.10`)/编号(`001`)的列裸灌 `+csv-put`——会被数值化（`12.10`→`12.1`、`001`→`1`，尾零/前导零丢失），改用 `+table-put` 声明 `dtypes:object` |
@@ -94,7 +95,8 @@ metadata:
 | 用户需求 | 读取路径 |
 |---|---|
 | "完善 / 补齐 / 填空 / 修正所有 XX"、分析 / 清洗 / 大数据 | 原生优先（公式 / `+pivot` / `+filter`）；表达不了再分批 `+csv-get` 导出 + 脚本处理 + 分批回写（默认覆盖所有对应数据行，不以用户选区为准） |
-| "查一下 / 看看 / 统计 / 汇总"等只读 | `+csv-get` 读到上下文 |
+| 速览 / 理解 / 总结整份工作簿（尤其跨子表） | `drive +fetch --url "<原 URL>"` 直接读取 Markdown |
+| 查询指定子表 / 范围，或精确取值 / 统计 / 汇总 | 走 Sheets 原生命令；纯值优先 `+csv-get`，按列类型结构化读整表用 `+table-get` |
 | 需要公式 / 样式 / 批注 | `+cells-get` |
 | 续写 / 扩展已有内容 | `+csv-get` 看结构 + `+cells-get` 读源区样式 + `+sheet-info --include row_heights,merges`（见准则 5） |
 

@@ -51,6 +51,11 @@ type EmitOptions struct {
 	DryRun          bool
 	Pretty          PrettyRenderer
 	JQSafetyWarning bool
+	// SafetyResult supplies a content-safety result computed from the original
+	// response before a caller transforms it for output (for example, replacing
+	// a large inline body with an artifact reference). When set, Success reuses
+	// this result instead of scanning the transformed value.
+	SafetyResult *ScanResult
 }
 
 // StreamOptions describes one streamed page's wire representation. Streaming
@@ -118,7 +123,7 @@ func (e *Emitter) Success(data interface{}, opts EmitOptions) error {
 	case FormatJSON:
 		return e.emitEnvelope(data, true, opts)
 	case FormatTable, FormatCSV, FormatNDJSON:
-		return e.emitFormatted(data, format, opts.Meta)
+		return e.emitFormatted(data, format, opts)
 	default:
 		return errs.NewInternalError(errs.SubtypeUnknown,
 			"unsupported output format %q", format)
@@ -189,7 +194,7 @@ func (e *Emitter) StreamPage(data interface{}, opts StreamOptions) error {
 }
 
 func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) error {
-	scanResult := ScanForSafety(e.commandPath, data, e.errOut)
+	scanResult := e.scanForSafety(data, opts)
 	if scanResult.Blocked {
 		return scanResult.BlockErr
 	}
@@ -244,7 +249,7 @@ func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) erro
 }
 
 func (e *Emitter) emitPretty(data interface{}, opts EmitOptions) error {
-	scanResult := ScanForSafety(e.commandPath, data, e.errOut)
+	scanResult := e.scanForSafety(data, opts)
 	if scanResult.Blocked {
 		return scanResult.BlockErr
 	}
@@ -271,8 +276,8 @@ func (e *Emitter) emitPretty(data interface{}, opts EmitOptions) error {
 // emitFormatted handles only non-envelope formats. JSON, jq, and unknown-format
 // fallback are resolved by Success before reaching this function, so there is
 // exactly one JSON success contract: the standard Envelope.
-func (e *Emitter) emitFormatted(data interface{}, format Format, meta *Meta) error {
-	scanResult := ScanForSafety(e.commandPath, data, e.errOut)
+func (e *Emitter) emitFormatted(data interface{}, format Format, opts EmitOptions) error {
+	scanResult := e.scanForSafety(data, opts)
 	if scanResult.Blocked {
 		return scanResult.BlockErr
 	}
@@ -288,7 +293,7 @@ func (e *Emitter) emitFormatted(data interface{}, format Format, meta *Meta) err
 			if err := WriteFormatted(w, data, format); err != nil {
 				return err
 			}
-			return writePaginationSummary(w, meta)
+			return writePaginationSummary(w, opts.Meta)
 		})
 	case FormatCSV, FormatNDJSON:
 		if err := e.emit(func(w io.Writer) error {
@@ -296,14 +301,21 @@ func (e *Emitter) emitFormatted(data interface{}, format Format, meta *Meta) err
 		}); err != nil {
 			return err
 		}
-		if meta == nil || meta.Pagination == nil {
+		if opts.Meta == nil || opts.Meta.Pagination == nil {
 			return nil
 		}
-		return writePaginationDiagnostic(e.errOut, *meta.Pagination)
+		return writePaginationDiagnostic(e.errOut, *opts.Meta.Pagination)
 	default:
 		return errs.NewInternalError(errs.SubtypeUnknown,
 			"non-envelope emitter received unsupported format %q", format)
 	}
+}
+
+func (e *Emitter) scanForSafety(data interface{}, opts EmitOptions) ScanResult {
+	if opts.SafetyResult != nil {
+		return *opts.SafetyResult
+	}
+	return ScanForSafety(e.commandPath, data, e.errOut)
 }
 
 func writePaginationSummary(w io.Writer, meta *Meta) error {

@@ -1,9 +1,9 @@
 # Drive CLI E2E Coverage
 
 ## Metrics
-- Denominator: 40 leaf commands
-- Covered: 22
-- Coverage: 55.0%
+- Denominator: 41 leaf commands
+- Covered: 23
+- Coverage: 56.1%
 
 ## Summary
 - TestDrive_FilesCreateFolderWorkflow: proves `drive files create_folder` in `create_folder as bot`; helper asserts the returned folder token and registers best-effort cleanup via `drive files delete`.
@@ -19,6 +19,7 @@
 - TestDriveCommentOpsWorkflow: opt-in self-contained live workflow for the comment operation shortcuts, gated by `LARK_DRIVE_MD_COMMENT_E2E=1`; creates a Markdown file + file comment fixture, then `+batch-query-comments` finds it by ID, `+add-reply` attaches a reply, `+list-replies` surfaces it, `+update-reply` rewrites its content (confirmed by polling `+list-replies` until the new text lands), `+react-reply` attaches then removes a THUMBSUP reaction (confirmed by polling `+list-replies --need-reaction`, judging presence by count>0 because deleted reactions linger as count=0 entries), `+resolve-comment` marks it solved and `+restore-comment` reopens it (with polling reads between state flips to absorb rate limiting), `+delete-reply --yes` removes the created reply, and cleanup deletes the file.
 - TestDrive_SecureLabelDryRun: dry-run coverage for `drive +secure-label-list` and `drive +secure-label-update`; asserts label-list query params and update URL→type inference, request method/URL/type query, and `label-id` body shape. Runs without hitting live APIs because update can trigger document-level security approval flows.
 - TestDriveExportDryRun_FileNameMetadata / TestDriveExportDryRun_WikiURLPlansResolveBeforeExportTask / TestDriveExportDryRun_WikiTokenTypePlansResolveBeforeExportTask / TestDriveExportDryRun_MarkdownFetchAPI / TestDriveExportDryRun_BitableBaseOnlySchema: dry-run coverage for `drive +export`; asserts export task request shape, Wiki URL and `--doc-type wiki` token `get_node -> export_tasks` planning, markdown fetch request shape without docs fetch `extra_param`, local `--file-name` / `--output-dir` metadata, and `bitable` `.base` `only_schema` request body without calling live APIs.
+- TestDrive_FetchFullAutomaticSpillWorkflow creates a Docx fixture larger than 24 KiB, fetches it with `drive +fetch --full`, and verifies automatic temporary-file delivery through `content_file`, including its tail content.
 - TestDriveDeleteDryRunAsyncParams / TestDrive_DeleteAsyncWorkflow: dry-run coverage for `drive +delete` pins `DELETE /drive/v1/files/:file_token` params with `type` plus `async=true` and the follow-up `task_check` plan; live workflow creates and deletes a docx, an empty folder, and a non-empty folder, converging every delete outcome to the resource-gone terminal state: async deletes (non-empty `task_id`) are verified via `drive +task_result --scenario task_check`, sync deletes (empty `task_id`) assert `deleted=true`, and the one verified backend transient (`server_error: "drive task failed"`) passes once the target is confirmed gone (retried up to 3 times otherwise); any other delete failure stays fatal.
 - TestDrive_PullDryRun / TestDrive_PullDryRunAcceptsDuplicateRemoteStrategies: dry-run coverage for `drive +pull`; asserts the list-files request shape, Validate-stage safety guards, and acceptance of `--on-duplicate-remote=rename|newest|oldest` by the real CLI binary.
 - TestDrive_PushDryRun / TestDrive_PushDryRunAcceptsDuplicateRemoteStrategies: dry-run coverage for `drive +push`; asserts the list-files request shape, Validate-stage safety guards, conditional delete preflight, and acceptance of `--on-duplicate-remote=newest|oldest` by the real CLI binary.
@@ -45,6 +46,7 @@
 | ✓ | drive +download | shortcut | drive_download_dryrun_test.go::TestDriveDownloadDryRun_DefaultNamePlansMetadataBeforeDownload; drive_download_dryrun_test.go::TestDriveDownloadDryRun_ExplicitOutputSkipsMetadata; drive_upload_workflow_test.go::TestDrive_UploadWorkflow | omitted `--output` plans `metas.batch_query` before file download; explicit `--output` skips metadata; live workflow downloads an uploaded file both with explicit output and with default remote-name output | dry-run plus live fixture coverage |
 | ✓ | drive +export | shortcut | drive_export_dryrun_test.go::TestDriveExportDryRun_FileNameMetadata + TestDriveExportDryRun_WikiURLPlansResolveBeforeExportTask + TestDriveExportDryRun_WikiTokenTypePlansResolveBeforeExportTask + TestDriveExportDryRun_MarkdownFetchAPI + TestDriveExportDryRun_BitableBaseOnlySchema | `--url`; `--token`; `--doc-type`; `--file-extension`; `--file-name`; `--output-dir`; `--only-schema`; Wiki URL / `--doc-type wiki` resolve step; markdown fetch omits docs fetch `extra_param` | dry-run only; no live export workflow yet |
 | ✕ | drive +export-download | shortcut |  | none | no export-download workflow yet |
+| ✓ | drive +fetch | shortcut | drive_fetch_dryrun_test.go; drive_fetch_workflow_test.go::TestDrive_FetchFullAutomaticSpillWorkflow | `--token`; `--type docx`; `--full` | dry-run covers routing and pagination flags; live workflow verifies stdout omits `content`, returns a temporary `content_file`, and preserves the fixture tail in the saved Markdown |
 | ✕ | drive +import | shortcut |  | none | no import workflow yet |
 | ✕ | drive +move | shortcut |  | none | no move workflow yet |
 | ✓ | drive +pull | shortcut | drive_pull_dryrun_test.go::TestDrive_PullDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; `--on-duplicate-remote=rename\|newest\|oldest`; `--delete-local --yes` guard | dry-run locks flag/validate shape; live workflow proves duplicate fail-fast and rename recovery |
