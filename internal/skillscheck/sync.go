@@ -34,11 +34,12 @@ type SyncInput struct {
 }
 
 type SyncPlan struct {
-	Version        string
-	OfficialSkills []string
-	ToUpdate       []string
-	Added          []string
-	SkippedDeleted []string
+	Version         string
+	OfficialSkills  []string
+	CleanupOfficial []string
+	ToUpdate        []string
+	Added           []string
+	SkippedDeleted  []string
 }
 
 func stripANSI(s string) string {
@@ -193,23 +194,25 @@ func isGlobalSkillsSectionHeader(line string) bool {
 
 func PlanSync(input SyncInput) SyncPlan {
 	official := uniqueSorted(input.OfficialSkills)
+	previousOfficial := []string{}
+	if input.StateReadable && input.PreviousState != nil {
+		previousOfficial = input.PreviousState.OfficialSkills
+	}
+	cleanupOfficial := uniqueSorted(append(append([]string{}, official...), previousOfficial...))
 	if input.Force {
 		return SyncPlan{
-			Version:        input.Version,
-			OfficialSkills: official,
-			ToUpdate:       official,
-			Added:          []string{},
-			SkippedDeleted: []string{},
+			Version:         input.Version,
+			OfficialSkills:  official,
+			CleanupOfficial: cleanupOfficial,
+			ToUpdate:        official,
+			Added:           []string{},
+			SkippedDeleted:  []string{},
 		}
 	}
 
 	officialSet := toSet(official)
 	installedOfficial := intersection(input.LocalSkills, officialSet)
 
-	previousOfficial := []string{}
-	if input.StateReadable && input.PreviousState != nil {
-		previousOfficial = input.PreviousState.OfficialSkills
-	}
 	previousSet := toSet(previousOfficial)
 
 	newAddedOfficial := []string{}
@@ -234,11 +237,12 @@ func PlanSync(input SyncInput) SyncPlan {
 	}
 
 	return SyncPlan{
-		Version:        input.Version,
-		OfficialSkills: official,
-		ToUpdate:       toUpdate,
-		Added:          uniqueSorted(newAddedOfficial),
-		SkippedDeleted: skipped,
+		Version:         input.Version,
+		OfficialSkills:  official,
+		CleanupOfficial: cleanupOfficial,
+		ToUpdate:        toUpdate,
+		Added:           uniqueSorted(newAddedOfficial),
+		SkippedDeleted:  skipped,
 	}
 }
 

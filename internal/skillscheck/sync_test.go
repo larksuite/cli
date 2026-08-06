@@ -542,6 +542,35 @@ func TestSyncSkillsSuiteStagesCropsAndRemovesSeparate(t *testing.T) {
 	assertStrings(t, state.SkippedDeletedSkills, []string{"lark-mail"})
 }
 
+func TestSyncSkillsSwitchToSuiteRemovesPreviouslyOfficialSkillMissingFromIndex(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:        "1.0.32",
+		Layout:         LayoutSeparate,
+		OfficialSkills: []string{"lark-calendar", "lark-retired"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		stageChildren: map[string][]string{"primary": {"lark-calendar"}},
+		globalJSON:    globalSkillsJSONOutput("lark-calendar", "lark-retired", "lark-user-owned"),
+	}
+
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSuite, Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if len(runner.removals) != 1 {
+		t.Fatalf("removals = %v, want one removal call", runner.removals)
+	}
+	assertStrings(t, runner.removals[0], []string{"lark-calendar", "lark-retired"})
+}
+
 func TestPrepareSuiteCropsRoutesKeywordsAndReferences(t *testing.T) {
 	suite := t.TempDir()
 	for _, name := range []string{"lark-calendar", "lark-mail"} {

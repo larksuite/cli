@@ -48,7 +48,7 @@ func ResolveLayout(requested Layout, state *SkillsState, readable bool) (Layout,
 }
 
 func syncSuite(runner SkillsRunner, source string, plan SyncPlan, installed []installedSkill) error {
-	installedSeparate := installedOfficialNames(installed, plan.OfficialSkills)
+	installedSeparate := installedOfficialNames(installed, plan.CleanupOfficial)
 	if len(plan.ToUpdate) == 0 {
 		remove := append(installedSeparate, installedNameIfPresent(installed, "lark-suite")...)
 		return removeSkills(runner, remove)

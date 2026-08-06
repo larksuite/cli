@@ -110,6 +110,22 @@ func successfulSkillsCommand() func(args ...string) *selfupdate.NpmResult {
 	}
 }
 
+func skillsFailureUpdater(detect selfupdate.DetectResult) *selfupdate.Updater {
+	u := selfupdate.New()
+	u.DetectOverride = func() selfupdate.DetectResult { return detect }
+	u.NpmInstallOverride = func(string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
+	u.VerifyOverride = func(string) error { return nil }
+	u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
+		return &selfupdate.NpmResult{Err: fmt.Errorf("index unavailable")}
+	}
+	u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
+		r := &selfupdate.NpmResult{Err: fmt.Errorf("exit status 127")}
+		r.Stderr.WriteString("npx: command not found")
+		return r
+	}
+	return u
+}
+
 func mockSkillsSync(t *testing.T) {
 	t.Helper()
 	origNew := newUpdater
@@ -1058,24 +1074,7 @@ func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
 
 	origNew := newUpdater
 	newUpdater = func() *selfupdate.Updater {
-		u := selfupdate.New()
-		u.DetectOverride = func() selfupdate.DetectResult {
-			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
-		}
-		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
-		u.VerifyOverride = func(string) error { return nil }
-		u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
-			r := &selfupdate.NpmResult{}
-			r.Err = fmt.Errorf("index unavailable")
-			return r
-		}
-		u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
-			r := &selfupdate.NpmResult{}
-			r.Stderr.WriteString("npx: command not found")
-			r.Err = fmt.Errorf("exit status 127")
-			return r
-		}
-		return u
+		return skillsFailureUpdater(selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true})
 	}
 	defer func() { newUpdater = origNew }()
 
@@ -1084,8 +1083,13 @@ func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
 		t.Fatal("expected skills sync failure")
 	}
 	out := stdout.String()
-	if !strings.Contains(out, `"ok": false`) || !strings.Contains(out, `"type": "skills_update_error"`) {
-		t.Errorf("expected structured skills update error, got: %s", out)
+	for _, want := range []string{
+		`"ok": false`, `"type": "skills_update_error"`, `"action": "updated"`,
+		`"previous_version": "1.0.0"`, `"current_version": "2.0.0"`, `"skills_action": "failed"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %s in partial update output, got: %s", want, out)
+		}
 	}
 }
 
@@ -1104,24 +1108,7 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 
 	origNew := newUpdater
 	newUpdater = func() *selfupdate.Updater {
-		u := selfupdate.New()
-		u.DetectOverride = func() selfupdate.DetectResult {
-			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
-		}
-		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
-		u.VerifyOverride = func(string) error { return nil }
-		u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
-			r := &selfupdate.NpmResult{}
-			r.Err = fmt.Errorf("index unavailable")
-			return r
-		}
-		u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
-			r := &selfupdate.NpmResult{}
-			r.Stderr.WriteString("npx: command not found")
-			r.Err = fmt.Errorf("exit status 127")
-			return r
-		}
-		return u
+		return skillsFailureUpdater(selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true})
 	}
 	defer func() { newUpdater = origNew }()
 
@@ -1129,8 +1116,71 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "skills update failed") {
 		t.Fatalf("error = %v, want skills update failure", err)
 	}
+	if !strings.Contains(stderr.String(), "lark-cli binary updated from 1.0.0 to 2.0.0") {
+		t.Errorf("must report the completed binary update before the skills error: %s", stderr.String())
+	}
 	if strings.Contains(stderr.String(), "Successfully updated") {
 		t.Errorf("must not report full success after skills failure: %s", stderr.String())
+	}
+}
+
+func TestUpdateManual_SkillsFail_JSONStillReportsManualUpdate(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		return skillsFailureUpdater(selfupdate.DetectResult{Method: selfupdate.InstallManual, ResolvedPath: "/usr/local/bin/lark-cli"})
+	}
+	defer func() { newUpdater = origNew }()
+
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected skills sync failure")
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`"ok": false`, `"type": "skills_update_error"`, `"action": "manual_required"`,
+		`"previous_version": "1.0.0"`, `"latest_version": "2.0.0"`, `"skills_action": "failed"`,
+		"releases/tag/v2.0.0",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %s in manual update output, got: %s", want, out)
+		}
+	}
+}
+
+func TestUpdateManual_SkillsFail_HumanStillReportsManualUpdate(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		return skillsFailureUpdater(selfupdate.DetectResult{Method: selfupdate.InstallManual, ResolvedPath: "/usr/local/bin/lark-cli"})
+	}
+	defer func() { newUpdater = origNew }()
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "skills update failed") {
+		t.Fatalf("error = %v, want skills update failure", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "Automatic update unavailable") || !strings.Contains(out, "releases/tag/v2.0.0") {
+		t.Errorf("must report manual update instructions before the skills error: %s", out)
 	}
 }
 

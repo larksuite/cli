@@ -204,10 +204,18 @@ func resolveSkillsBrand(f *cmdutil.Factory, errOut stdio.Writer) core.LarkBrand 
 // error's exit code bare; human mode returns the typed error for the
 // dispatcher to render.
 func reportError(opts *UpdateOptions, io *cmdutil.IOStreams, errType string, typedErr errs.TypedError) error {
+	return reportErrorWithFields(opts, io, errType, typedErr, nil)
+}
+
+func reportErrorWithFields(opts *UpdateOptions, io *cmdutil.IOStreams, errType string, typedErr errs.TypedError, fields map[string]interface{}) error {
 	if opts.JSON {
-		output.PrintJson(io.Out, map[string]interface{}{
-			"ok": false, "error": map[string]interface{}{"type": errType, "message": typedErr.ProblemDetail().Message},
-		})
+		out := make(map[string]interface{}, len(fields)+2)
+		for key, value := range fields {
+			out[key] = value
+		}
+		out["ok"] = false
+		out["error"] = map[string]interface{}{"type": errType, "message": typedErr.ProblemDetail().Message}
+		output.PrintJson(io.Out, out)
 		return output.ErrBare(output.ExitCodeOf(typedErr))
 	}
 	return typedErr
@@ -239,10 +247,6 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 
 func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
 	skillsResult := runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout)
-	if err := reportSkillsFailure(opts, io, skillsResult); err != nil {
-		return err
-	}
-
 	reason := detect.ManualReason()
 	if opts.JSON {
 		out := map[string]interface{}{
@@ -252,6 +256,9 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 			"url":     releaseURL(latest), "changelog": changelogURL(),
 		}
 		applySkillsResult(out, skillsResult)
+		if err := reportSkillsFailureWithFields(opts, io, skillsResult, out); err != nil {
+			return err
+		}
 		output.PrintJson(io.Out, out)
 		return nil
 	}
@@ -263,6 +270,9 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 		fmt.Fprintf(io.ErrOut, "\nOr install via pnpm (note: skills will not be synced):\n  pnpm add -g %s@%s\n  pnpm dlx skills add larksuite/cli -y -g   # sync skills separately\n", selfupdate.NpmPackage, latest)
 	} else {
 		fmt.Fprintf(io.ErrOut, "\nOr install via npm (note: skills will not be synced):\n  npm install -g %s@%s\n  npx skills add larksuite/cli -y -g   # sync skills separately\n", selfupdate.NpmPackage, latest)
+	}
+	if err := reportSkillsFailure(opts, io, skillsResult); err != nil {
+		return err
 	}
 	emitSkillsTextHints(io, skillsResult)
 	return nil
@@ -332,8 +342,19 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 	}
 
 	skillsResult := runSkillsAndState(updater, io, latest, opts.Force, opts.SkillsLayout)
-	if err := reportSkillsFailure(opts, io, skillsResult); err != nil {
-		return err
+	if skillsResult != nil && skillsResult.Err != nil {
+		fields := map[string]interface{}{
+			"previous_version": cur, "current_version": latest,
+			"latest_version": latest, "action": "updated",
+			"message": fmt.Sprintf("lark-cli updated from %s to %s, but skills update failed", cur, latest),
+			"url":     releaseURL(latest), "changelog": changelogURL(),
+		}
+		applySkillsResult(fields, skillsResult)
+		if !opts.JSON {
+			fmt.Fprintf(io.ErrOut, "\n%s lark-cli binary updated from %s to %s\n", symOK(), cur, latest)
+			fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
+		}
+		return reportSkillsFailureWithFields(opts, io, skillsResult, fields)
 	}
 
 	if opts.JSON {
@@ -403,13 +424,17 @@ func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, state
 }
 
 func reportSkillsFailure(opts *UpdateOptions, io *cmdutil.IOStreams, result *skillscheck.SyncResult) error {
+	return reportSkillsFailureWithFields(opts, io, result, nil)
+}
+
+func reportSkillsFailureWithFields(opts *UpdateOptions, io *cmdutil.IOStreams, result *skillscheck.SyncResult, fields map[string]interface{}) error {
 	if result == nil || result.Err == nil {
 		return nil
 	}
 	typedErr := errs.NewInternalError(errs.SubtypeUnknown, "skills update failed: %s", result.Err).
 		WithHint("retry with `lark-cli update --force`").
 		WithCause(result.Err)
-	return reportError(opts, io, "skills_update_error", typedErr)
+	return reportErrorWithFields(opts, io, "skills_update_error", typedErr, fields)
 }
 
 // reportAlreadyUpToDate emits the JSON / pretty output for the
