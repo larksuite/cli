@@ -101,12 +101,21 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 		}
 	})
 
-	t.Run("all-zero freeze rejected", func(t *testing.T) {
+	t.Run("all-zero freeze means unfreeze on an existing sheet", func(t *testing.T) {
+		// Freeze is full-state replacement, so {rows:0} (cols omitted → 0) on an
+		// existing sheet states "nothing frozen" — the same request +dim-freeze
+		// --rows 0 --cols 0 sends. Only the create path rejects all-zero.
 		t.Parallel()
-		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{map[string]interface{}{"name": "S1", "freeze": map[string]interface{}{"rows": float64(0)}}},
 		}), testToken)
-		requireValidation(t, err, "at least one dimension")
+		if err != nil || len(ops) != 1 {
+			t.Fatalf("ops=%d err=%v, want one unfreeze op", len(ops), err)
+		}
+		input := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+		if input["operation"] != "unfreeze" {
+			t.Fatalf("operation = %v, want unfreeze", input["operation"])
+		}
 	})
 
 	t.Run("range prefixed with another sheet rejected", func(t *testing.T) {

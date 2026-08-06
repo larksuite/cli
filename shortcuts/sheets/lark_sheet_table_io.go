@@ -63,7 +63,7 @@ var TablePut = common.Shortcut{
 		// --styles is parsed (and aligned against the payload's sheets) up front
 		// so a malformed style item fails before any write lands — mirroring
 		// +workbook-create's Validate.
-		styles, err := parseWorkbookCreateSheetStyles(runtime, payload)
+		styles, err := parseWorkbookCreateSheetStyles(runtime, payload, true)
 		if err != nil {
 			return err
 		}
@@ -81,7 +81,7 @@ var TablePut = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		styles, err := parseWorkbookCreateSheetStyles(runtime, payload)
+		styles, err := parseWorkbookCreateSheetStyles(runtime, payload, true)
 		if err != nil {
 			return err
 		}
@@ -1116,7 +1116,7 @@ func tablePutDryRun(runtime *common.RuntimeContext) *common.DryRunAPI {
 	if err != nil {
 		return dry
 	}
-	sheetStyles, _ := parseWorkbookCreateSheetStyles(runtime, payload)
+	sheetStyles, _ := parseWorkbookCreateSheetStyles(runtime, payload, true)
 	for i := range payload.Sheets {
 		s := &payload.Sheets[i]
 		matrix, _ := buildSheetMatrix(s, headerOn(s))

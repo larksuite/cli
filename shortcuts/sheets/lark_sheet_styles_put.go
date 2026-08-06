@@ -120,7 +120,7 @@ func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) 
 			continue
 		}
 		seenName[name] = true
-		payload, itemProbs := parseWorkbookCreateStyleItem(item, path)
+		payload, itemProbs := parseWorkbookCreateStyleItem(item, path, true)
 		if len(itemProbs) > 0 {
 			probs = append(probs, itemProbs...)
 			continue

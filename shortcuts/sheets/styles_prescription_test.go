@@ -433,7 +433,7 @@ func TestFreezeAliasConflictRejected(t *testing.T) {
 		for i := 0; i < 200; i++ {
 			_, err := parseWorkbookCreateFreezeOp(map[string]interface{}{
 				"cols": float64(1), "columns": float64(2),
-			}, "--styles.styles[0].freeze")
+			}, "--styles.styles[0].freeze", false)
 			if err == nil {
 				t.Fatalf("iteration %d: conflicting cols/columns must be rejected", i)
 			}
@@ -444,7 +444,7 @@ func TestFreezeAliasConflictRejected(t *testing.T) {
 		t.Parallel()
 		got, err := parseWorkbookCreateFreezeOp(map[string]interface{}{
 			"cols": float64(2), "columns": float64(2),
-		}, "p")
+		}, "p", false)
 		if err != nil || got.Cols != 2 {
 			t.Fatalf("got=%+v err=%v, want Cols=2", got, err)
 		}
@@ -453,10 +453,76 @@ func TestFreezeAliasConflictRejected(t *testing.T) {
 	t.Run("either alias alone still works", func(t *testing.T) {
 		t.Parallel()
 		for _, key := range []string{"cols", "columns"} {
-			got, err := parseWorkbookCreateFreezeOp(map[string]interface{}{key: float64(3)}, "p")
+			got, err := parseWorkbookCreateFreezeOp(map[string]interface{}{key: float64(3)}, "p", false)
 			if err != nil || got.Cols != 3 {
 				t.Fatalf("%s: got=%+v err=%v, want Cols=3", key, got, err)
 			}
+		}
+	})
+}
+
+// TestFreezeAllZeroUnfreeze pins the carrier split for {rows:0, cols:0}:
+// freeze is full-state replacement server-side, so on an existing sheet the
+// all-zero state means "unfreeze both axes" (the same request +dim-freeze
+// --rows 0 --cols 0 sends), while on the create path a new sheet starts
+// unfrozen and all-zero stays a rejected no-op.
+func TestFreezeAllZeroUnfreeze(t *testing.T) {
+	t.Parallel()
+
+	t.Run("create path still rejects all-zero", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseWorkbookCreateFreezeOp(map[string]interface{}{
+			"rows": float64(0), "cols": float64(0),
+		}, "p", false)
+		if err == nil || !strings.Contains(err.Error(), "must freeze at least one dimension") {
+			t.Fatalf("create-path all-zero must be rejected, got err=%v", err)
+		}
+	})
+
+	t.Run("existing-sheet path accepts all-zero", func(t *testing.T) {
+		t.Parallel()
+		got, err := parseWorkbookCreateFreezeOp(map[string]interface{}{
+			"rows": float64(0), "cols": float64(0),
+		}, "p", true)
+		if err != nil || got == nil || got.Rows != 0 || got.Cols != 0 {
+			t.Fatalf("got=%+v err=%v, want an accepted {0,0} op", got, err)
+		}
+	})
+
+	t.Run("styles-put all-zero freeze emits the bare unfreeze operation", func(t *testing.T) {
+		t.Parallel()
+		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{
+				"name":   "s",
+				"freeze": map[string]interface{}{"rows": float64(0), "cols": float64(0)},
+			}},
+		}), testToken)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(ops) != 1 {
+			t.Fatalf("ops = %d, want exactly the unfreeze: %v", len(ops), ops)
+		}
+		op := ops[0].(map[string]interface{})
+		if op["tool_name"] != "modify_sheet_structure" {
+			t.Fatalf("tool_name = %v, want modify_sheet_structure", op["tool_name"])
+		}
+		input := op["input"].(map[string]interface{})
+		if input["operation"] != "unfreeze" {
+			t.Fatalf("operation = %v, want unfreeze", input["operation"])
+		}
+		// The bare unfreeze carries no counts — same shape as +dim-freeze's.
+		for _, k := range []string{"freeze_rows", "freeze_columns"} {
+			if _, has := input[k]; has {
+				t.Fatalf("unfreeze must not carry %s: %v", k, input)
+			}
+		}
+	})
+
+	t.Run("all-zero describes as unfreeze", func(t *testing.T) {
+		t.Parallel()
+		if got := (workbookCreateStyleOp{Kind: "freeze"}).describe(); got != "unfreeze" {
+			t.Fatalf("describe = %q, want %q", got, "unfreeze")
 		}
 	})
 }

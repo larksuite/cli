@@ -604,7 +604,7 @@ var WorkbookCreate = common.Shortcut{
 			if err != nil {
 				return err
 			}
-			styles, err := parseWorkbookCreateSheetStyles(runtime, payload)
+			styles, err := parseWorkbookCreateSheetStyles(runtime, payload, false)
 			if err != nil {
 				return err
 			}
@@ -786,7 +786,7 @@ func workbookCreateData(runtime *common.RuntimeContext) (*tablePayload, *workboo
 		if err != nil {
 			return nil, nil, err
 		}
-		styles, err := parseWorkbookCreateSheetStyles(runtime, payload)
+		styles, err := parseWorkbookCreateSheetStyles(runtime, payload, false)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -927,8 +927,9 @@ type workbookCreateStylePayload struct {
 // Zero means "that axis ends up UNFROZEN", not "leave it alone": freeze is
 // full-state replacement server-side (see workbookCreateVisualOpInput's freeze
 // branch), so a declarative spec that omits an axis is stating it should not be
-// frozen. parseWorkbookCreateFreezeOp rejects an all-zero op, so at least one
-// axis is always positive here.
+// frozen. All-zero means "unfreeze both axes" and is only accepted on carriers
+// targeting an existing sheet (parseWorkbookCreateFreezeOp rejects it on the
+// create path, where a new sheet starts unfrozen anyway).
 type workbookCreateFreezeOp struct {
 	Rows int
 	Cols int
@@ -983,7 +984,7 @@ func parseWorkbookCreateStyles(runtime flagView) (*workbookCreateStylePayload, e
 	if len(items) != 1 {
 		return nil, common.ValidationErrorf("--styles.styles must contain exactly one item when using --values")
 	}
-	payload, probs := parseWorkbookCreateStyleItem(items[0], "--styles.styles[0]")
+	payload, probs := parseWorkbookCreateStyleItem(items[0], "--styles.styles[0]", false)
 	if err := joinStyleValidationErrors(probs); err != nil {
 		return nil, err
 	}
@@ -993,7 +994,10 @@ func parseWorkbookCreateStyles(runtime flagView) (*workbookCreateStylePayload, e
 // parseWorkbookCreateSheetStyles parses --styles for the typed --sheets path.
 // The outer protocol is always {"styles":[...]}, and the array is aligned with
 // --sheets.sheets. Each item must name the same sheet at the same index.
-func parseWorkbookCreateSheetStyles(runtime flagView, payload *tablePayload) (*workbookCreateSheetStyles, error) {
+// existingSheet says whether the carrier targets an existing spreadsheet
+// (+table-put) rather than one being created (+workbook-create) — it gates
+// whether an all-zero freeze may express "unfreeze both axes".
+func parseWorkbookCreateSheetStyles(runtime flagView, payload *tablePayload, existingSheet bool) (*workbookCreateSheetStyles, error) {
 	if strings.TrimSpace(runtime.Str("styles")) == "" {
 		return nil, nil
 	}
@@ -1021,7 +1025,7 @@ func parseWorkbookCreateSheetStyles(runtime flagView, payload *tablePayload) (*w
 			probs = append(probs, common.ValidationErrorf("--styles.styles[%d].name %q must match --sheets.sheets[%d].name %q", i, name, i, payload.Sheets[i].Name))
 			continue
 		}
-		style, itemProbs := parseWorkbookCreateStyleItem(item, fmt.Sprintf("--styles.styles[%d]", i))
+		style, itemProbs := parseWorkbookCreateStyleItem(item, fmt.Sprintf("--styles.styles[%d]", i), existingSheet)
 		if len(itemProbs) > 0 {
 			probs = append(probs, itemProbs...)
 			continue
@@ -1069,7 +1073,7 @@ func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, er
 // +table-put / +styles-put).
 var workbookCreateStyleItemKeys = []string{"name", "cell_styles", "row_sizes", "col_sizes", "cell_merges", "freeze"}
 
-func parseWorkbookCreateStyleItem(item map[string]interface{}, path string) (*workbookCreateStylePayload, []error) {
+func parseWorkbookCreateStyleItem(item map[string]interface{}, path string, existingSheet bool) (*workbookCreateStylePayload, []error) {
 	payload := &workbookCreateStylePayload{}
 	var probs []error
 	// Reject unknown top-level keys first: a typo like "freezee" would
@@ -1126,7 +1130,7 @@ func parseWorkbookCreateStyleItem(item map[string]interface{}, path string) (*wo
 		probs = append(probs, errsHere...)
 	}
 	if raw, ok := item["freeze"]; ok {
-		freeze, err := parseWorkbookCreateFreezeOp(raw, path+".freeze")
+		freeze, err := parseWorkbookCreateFreezeOp(raw, path+".freeze", existingSheet)
 		if err != nil {
 			probs = append(probs, err)
 		} else {
@@ -1210,10 +1214,14 @@ func normalizeStyleItemRangePrefixes(item map[string]interface{}, path, name str
 	return probs
 }
 
-// parseWorkbookCreateFreezeOp parses a {rows, cols} freeze section. At least
-// one dimension must be positive — an all-zero freeze is a no-op the caller
-// almost certainly didn't mean.
-func parseWorkbookCreateFreezeOp(raw interface{}, path string) (*workbookCreateFreezeOp, error) {
+// parseWorkbookCreateFreezeOp parses a {rows, cols} freeze section. Freeze is
+// full-state replacement server-side, so on a carrier that targets an EXISTING
+// sheet (existingSheet true: +styles-put, +table-put) an explicit all-zero op
+// states "both axes unfrozen" and emits the bare unfreeze operation — the same
+// state +dim-freeze --rows 0 --cols 0 expresses. On a create-path carrier
+// (+workbook-create) a new sheet starts unfrozen, so all-zero is a no-op the
+// caller almost certainly didn't mean and is rejected.
+func parseWorkbookCreateFreezeOp(raw interface{}, path string, existingSheet bool) (*workbookCreateFreezeOp, error) {
 	obj, ok := raw.(map[string]interface{})
 	if !ok {
 		return nil, common.ValidationErrorf("%s must be an object like {\"rows\":1} or {\"rows\":1,\"cols\":2}", path)
@@ -1251,8 +1259,8 @@ func parseWorkbookCreateFreezeOp(raw interface{}, path string) (*workbookCreateF
 			return nil, common.ValidationErrorf("%s.%s is not a supported field (want rows/cols)", path, k)
 		}
 	}
-	if out.Rows == 0 && out.Cols == 0 {
-		return nil, common.ValidationErrorf("%s must freeze at least one dimension (rows or cols > 0)", path)
+	if out.Rows == 0 && out.Cols == 0 && !existingSheet {
+		return nil, common.ValidationErrorf("%s must freeze at least one dimension (rows or cols > 0) — a newly created sheet starts unfrozen", path)
 	}
 	return out, nil
 }
@@ -1897,6 +1905,9 @@ func (op workbookCreateStyleOp) describe() string {
 	if op.Kind != "freeze" {
 		return op.Kind + " " + op.Range
 	}
+	if op.FreezeRows == 0 && op.FreezeCols == 0 {
+		return "unfreeze"
+	}
 	parts := make([]string, 0, 2)
 	if op.FreezeRows > 0 {
 		parts = append(parts, fmt.Sprintf("rows=%d", op.FreezeRows))
@@ -1944,10 +1955,15 @@ func workbookCreateVisualOpInput(token, sheetID, sheetName string, op workbookCr
 		// frozen_row_count 0 / frozen_column_count 2, the second call having
 		// silently dropped the first axis. One call carrying both lands 1/2.
 		// By the same rule an omitted axis is unfrozen, which is what a
-		// declarative --styles spec should mean.
+		// declarative --styles spec should mean. An all-zero target is the bare
+		// "unfreeze" operation, which carries no counts and clears everything —
+		// the same request +dim-freeze --rows 0 --cols 0 sends.
 		input := map[string]interface{}{
 			"excel_id":  token,
-			"operation": "freeze",
+			"operation": "unfreeze",
+		}
+		if op.FreezeRows > 0 || op.FreezeCols > 0 {
+			input["operation"] = "freeze"
 		}
 		sheetSelectorForToolInput(input, sheetID, sheetName)
 		if op.FreezeRows > 0 {

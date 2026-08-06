@@ -708,7 +708,7 @@ func TestStyleItemRangePrefixNormalization(t *testing.T) {
 			"row_sizes":   []interface{}{map[string]interface{}{"range": "Summary!2:3", "type": "pixel", "size": float64(32)}},
 			"col_sizes":   []interface{}{map[string]interface{}{"range": "'Summary'!A:C", "type": "pixel", "size": float64(120)}},
 		}
-		payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]")
+		payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]", false)
 		if len(probs) > 0 {
 			t.Fatalf("a redundant own-sheet prefix must be accepted: %v", probs)
 		}
@@ -732,7 +732,7 @@ func TestStyleItemRangePrefixNormalization(t *testing.T) {
 			"cell_styles": []interface{}{map[string]interface{}{"range": "Detail!A1:D1", "font_weight": "bold"}},
 			"row_sizes":   []interface{}{map[string]interface{}{"range": "2:3", "type": "custom", "size": float64(32)}},
 		}
-		_, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]")
+		_, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]", false)
 		joined := make([]string, 0, len(probs))
 		for _, p := range probs {
 			joined = append(joined, p.Error())
@@ -759,7 +759,7 @@ func TestStyleItemRangePrefixNormalization(t *testing.T) {
 			"cell_styles": []interface{}{map[string]interface{}{"range": "Sheet1!A1:D1", "font_weight": "bold"}},
 			"row_sizes":   []interface{}{map[string]interface{}{"range": "Sheet1!1:1", "size": float64(30)}},
 		}
-		payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]")
+		payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]", false)
 		if len(probs) > 0 {
 			t.Fatalf("unexpected probs: %v", probs)
 		}
@@ -784,7 +784,7 @@ func TestStyleItemRangePrefixNormalization(t *testing.T) {
 			if name != "" {
 				item["name"] = name
 			}
-			payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]")
+			payload, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]", false)
 			if len(probs) > 0 {
 				t.Fatalf("name=%q: unexpected probs: %v", name, probs)
 			}
