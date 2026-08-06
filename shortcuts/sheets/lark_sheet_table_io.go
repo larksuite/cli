@@ -902,6 +902,22 @@ func writeTypedSheets(ctx context.Context, runtime *common.RuntimeContext, token
 			if err := renameSheet(ctx, runtime, token, adoptSheetID, first); err != nil {
 				return nil, fmt.Errorf("adopting the default sheet as %q failed: %w", first, err) //nolint:forbidigo // intermediate error; surfaced as a partial_success message string via tablePutPartial, not a typed final error
 			}
+			// The adopted sheet's OLD name must stop resolving: a later payload
+			// sheet named "Sheet1" would otherwise match the stale entry and
+			// silently overwrite the first sheet's data (live-verified: a
+			// [Sales, Sheet1] payload wrote both into one sheet, destroying
+			// Sales, while reporting both as written). Its grid dims move to
+			// the new name so append-mode's lastDataRow probe keeps its
+			// full-grid anchor.
+			for name, id := range byName {
+				if id == adoptSheetID && name != first {
+					delete(byName, name)
+					if d, ok := dimsByName[name]; ok {
+						dimsByName[first] = d
+						delete(dimsByName, name)
+					}
+				}
+			}
 			byName[first] = adoptSheetID
 		}
 	}
@@ -950,7 +966,7 @@ func renameSheet(ctx context.Context, runtime *common.RuntimeContext, token, she
 func tablePutWrite(ctx context.Context, runtime *common.RuntimeContext, token string, payload *tablePayload, styles *workbookCreateSheetStyles) error {
 	written, err := writeTypedSheets(ctx, runtime, token, payload, "", styles)
 	if err != nil {
-		return tablePutPartial(runtime, token, nil, written, err.Error())
+		return tablePutPartial(runtime, token, nil, written, err)
 	}
 	runtime.Out(map[string]interface{}{
 		"spreadsheet_token": token,
@@ -960,10 +976,11 @@ func tablePutWrite(ctx context.Context, runtime *common.RuntimeContext, token st
 }
 
 // createSheet appends a new sub-sheet sized to hold the spec, then resolves its
-// id. The backend's default sheet (20 cols × 200 rows) is too small for wide or
-// long tables (e.g. a 37-column quarter matrix), so the create request sizes the
-// sheet to the write range up front — otherwise the follow-up set_cell_range
-// fails with "range … exceeds sheet bounds". modify_workbook_structure's create
+// id. Sizing up front is a courtesy, not a correctness requirement: the backend
+// auto-expands the grid when set_cell_range writes past it (live-verified
+// 2026-08-06 — a 200×20 default sheet grew to 251×30 under an oversized write),
+// but pre-sizing makes the created sheet's grid match the payload immediately
+// instead of relying on implicit expansion. modify_workbook_structure's create
 // output shape isn't relied upon — the id is read back by name, which is robust
 // across tool-response variations.
 func createSheet(ctx context.Context, runtime *common.RuntimeContext, token, name string, rows, cols int) (string, error) {
@@ -989,12 +1006,12 @@ func createSheet(ctx context.Context, runtime *common.RuntimeContext, token, nam
 }
 
 // sheetCreateDims sizes a to-be-created sheet to the spec's write range so the
-// follow-up set_cell_range can't exceed sheet bounds. It accounts for the
-// start_cell offset, the optional header row, and any --styles extent (so a
-// cell_styles / merge / resize op past the data still fits the grid). The
-// backend's 20×200 defaults are kept as floors (ordinary small tables are
-// created exactly as before) and its hard limits (200 cols, 50000 rows) as
-// ceilings.
+// grid matches the payload from the start (the backend would also auto-expand
+// on write; see createSheet). It accounts for the start_cell offset, the
+// optional header row, and any --styles extent (so a cell_styles / merge /
+// resize op past the data still fits the grid). The backend's 20×200 defaults
+// are kept as floors (ordinary small tables are created exactly as before) and
+// its hard limits (200 cols, 50000 rows) as ceilings.
 func sheetCreateDims(s *tableSheetSpec, styles *workbookCreateStylePayload) (rows, cols int) {
 	_, col0, row0, _ := sheetAnchor(s)
 	cols = col0 + len(s.Columns)
@@ -1082,8 +1099,26 @@ func listSheetIDsByName(ctx context.Context, runtime *common.RuntimeContext, tok
 // signal — callers can retry the rest or delete the workbook. When nothing landed
 // — the first or only sheet failed — it is a plain failure, so we return a typed
 // errs.APIError rather than misleadingly claiming "some sheets were written".
-func tablePutPartial(runtime *common.RuntimeContext, token string, spreadsheet interface{}, written []interface{}, reason string) error {
+func tablePutPartial(runtime *common.RuntimeContext, token string, spreadsheet interface{}, written []interface{}, cause error) error {
+	reason := ""
+	if cause != nil {
+		reason = cause.Error()
+	}
 	if len(written) == 0 {
+		// Nothing landed: pass the typed error through (mutated in place per
+		// the house idiom) so subtype / code / log_id survive — rebuilding a
+		// server_error from the flattened string erased them (live-verified:
+		// the same structure failure carried code 40400 + log_id through
+		// +workbook-info but neither through +table-put). reason includes the
+		// caller's wrapping context ("writing sheet %q failed: …"), which the
+		// typed error's own Message lacks.
+		if p, ok := errs.ProblemOf(cause); ok {
+			p.Message = fmt.Sprintf("table-put failed on %s: %s", token, reason)
+			if p.Hint == "" {
+				p.Hint = "no sheets were written; fix the cause and retry"
+			}
+			return cause
+		}
 		return errs.NewAPIError(errs.SubtypeServerError, "table-put failed on %s: %s", token, reason).
 			WithHint("no sheets were written; fix the cause and retry")
 	}
@@ -1300,18 +1335,13 @@ func tableGetTargets(ctx context.Context, runtime *common.RuntimeContext, token 
 
 	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_workbook_structure", map[string]interface{}{"excel_id": token})
 	if err != nil {
-		// Single-sheet selector path can degrade gracefully without dimensions
-		// (the probe falls back to the A1 anchor); the whole-workbook path can't
-		// enumerate sheets without the structure, so it must surface the error.
-		// Name doubles as id for --sheet-id so the output spec is never nameless
-		// (an empty name would break +table-get → +table-put round-trip — the
-		// writer requires a non-empty sheet name).
-		if id != "" {
-			return []tableGetSheet{{id: id, name: id}}, nil
-		}
-		if name != "" {
-			return []tableGetSheet{{name: name}}, nil
-		}
+		// Surface the typed error instead of degrading to a dimensionless
+		// target: without grid dims the used-range probe anchors at A1, and
+		// current_region under an A1 anchor stops at the first fully-empty row
+		// (live-verified: rows 1-2 + blank row 3 + rows 4-5 read back as A1:B2)
+		// — the read would SILENTLY return a truncated sheet with no
+		// incomplete marker. A transient failure here (rate limit, 5xx) is
+		// retryable; a silently short read is not diagnosable.
 		return nil, err
 	}
 	m, _ := out.(map[string]interface{})
@@ -1697,21 +1727,26 @@ func inferColumnType(dataRows [][]map[string]interface{}, c int) (string, string
 	}
 }
 
-// isDateNumberFormat reports whether a number_format denotes a date/time. Date
-// formats carry a year token (Excel's 'yy' or 'yyyy'); pure numeric formats
-// (#,##0, 0.00, 0.00%, @) do not.
+// isDateNumberFormat reports whether a number_format denotes a date/time.
+// Two rules, both applied to the effective characters only (the scanner skips
+// double-quoted literals ("Yen "), backslash escapes (\y), and [...] sections
+// ([Red], [$EUR-2]) so currency / unit text cannot fire tokens):
 //
-// Token-aware so currency / unit prefixes that happen to contain a lone 'y' or
-// 'Y' — most notably "JPY #,##0" — are not misread as dates. The scanner skips:
-//   - characters inside double-quoted literals  ("Yen ")
-//   - the character following a backslash escape (\y)
-//   - characters inside [...] sections          ([Red], [$EUR-2])
-//
-// and only fires on an unquoted/unescaped/unbracketed 'yy' (a single 'y' is
-// not a year token in Excel; "JPY 0" has 'Y' but never 'yy').
+//  1. An unquoted 'yy' anywhere → date. (A single 'y' is not a year token in
+//     Excel; "JPY 0" has 'Y' but never 'yy'.)
+//  2. Year-less date/time presets — m/d, mm-dd, h:mm, hh:mm:ss AM/PM — carry
+//     no 'yy', so ONLY when every effective character is a date-token
+//     character or separator (y m d h s, am/pm letters, digits, / - : . , and
+//     space) AND at least one letter token (y/m/d/h/s) is present → date.
+//     Purely numeric formats (#,##0, 0.00%, 0.00E+00, @) contain characters
+//     outside that set (# % e @) and unquoted unit text ("USD #,##0") is
+//     excluded by its own letters (u), so neither can slip through.
+//     (Previously only rule 1 existed, so m/d-formatted columns were inferred
+//     as number and read back as raw serials — live-verified 2026-08-06.)
 func isDateNumberFormat(nf string) bool {
 	s := strings.ToLower(nf)
 	inQuote, inBracket, escape := false, false, false
+	sawDateLetter, allDateChars, sawEffective := false, true, false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if escape {
@@ -1731,9 +1766,19 @@ func isDateNumberFormat(nf string) bool {
 			if c == 'y' && i+1 < len(s) && s[i+1] == 'y' {
 				return true
 			}
+			sawEffective = true
+			switch {
+			case c == 'y' || c == 'm' || c == 'd' || c == 'h' || c == 's':
+				sawDateLetter = true
+			case c == 'a' || c == 'p' || (c >= '0' && c <= '9') ||
+				c == '/' || c == '-' || c == ':' || c == '.' || c == ',' || c == ' ':
+				// separator / am-pm letter / digit: allowed, not a token
+			default:
+				allDateChars = false
+			}
 		}
 	}
-	return false
+	return sawEffective && allDateChars && sawDateLetter
 }
 
 // isTextNumberFormat reports whether a number_format is Excel/Lark text format

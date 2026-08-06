@@ -136,6 +136,24 @@ func TestSheets_WorkbookCreateTypedWorkflow(t *testing.T) {
 	require.Equal(t, "销售", gjson.Get(createRes.Stdout, "data.sheets.0.name").String(),
 		"workbook-create should adopt the default sheet under the payload sheet name; stdout:\n%s", createRes.Stdout)
 
+	// The workbook must hold EXACTLY the payload's sheets: a stray default
+	// Sheet1 beside them would mean the adopt didn't happen, and a smaller
+	// count would mean two payload sheets landed on one physical sheet
+	// (the stale-mapping double-write destroyed data while reporting success).
+	infoRes, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"sheets", "+workbook-info",
+			"--spreadsheet-token", spreadsheetToken,
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	infoRes.AssertExitCode(t, 0)
+	require.Equal(t, int64(1), gjson.Get(infoRes.Stdout, "data.sheets.#").Int(),
+		"workbook must hold exactly the payload's one sheet; stdout:\n%s", infoRes.Stdout)
+	require.Equal(t, "销售", gjson.Get(infoRes.Stdout, "data.sheets.0.title").String(),
+		"the only sheet must be the adopted payload sheet; stdout:\n%s", infoRes.Stdout)
+
 	// Round-trip read confirms the typed contract held through create+write.
 	getRes, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{

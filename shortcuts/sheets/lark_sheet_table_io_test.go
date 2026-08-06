@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -693,6 +694,109 @@ func TestTablePut_ExecuteCreatesWideSheetWithDims(t *testing.T) {
 	}
 }
 
+// TestWorkbookCreate_StylesAnchorFailsBeforeCreate pins that a cell_styles
+// range left of / above the write anchor fails in Validate — with NO API call.
+// The check used to live only in the write phase, after the workbook-create
+// call, stranding an orphan workbook (live-verified 2026-08-06: the envelope
+// read "spreadsheet … created but initial fill failed"). No stubs are
+// registered, so reaching Execute would fail with "no stub" instead of the
+// validation message this test requires.
+func TestWorkbookCreate_StylesAnchorFailsBeforeCreate(t *testing.T) {
+	t.Parallel()
+	// Only the typed --sheets path can move the anchor (per-sheet start_cell);
+	// --values always writes from A1, where no range can be left of / above.
+	_, _, err := runShortcutCapturingErr(t, WorkbookCreate, []string{
+		"--title", "T",
+		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
+		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
+	})
+	requireValidation(t, err, "starts outside the write range")
+}
+
+// TestTableGet_StructureErrorSurfaces pins that a failed get_workbook_structure
+// read is a typed error, not a silent degradation: the dimensionless fallback
+// anchored the used-range probe at A1, whose current_region stops at the first
+// fully-empty row — the read then silently returned a truncated sheet with no
+// incomplete marker (live-verified 2026-08-06).
+func TestTableGet_StructureErrorSurfaces(t *testing.T) {
+	t.Parallel()
+	structureErr := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+		Body:   map[string]interface{}{"code": 99991400, "msg": "rate limited"},
+	}
+	out, err := runShortcutWithStubs(t, TableGet,
+		[]string{"--url", testURL, "--sheet-name", "数据"},
+		structureErr)
+	if err == nil {
+		t.Fatalf("structure failure must surface, got success: %s", out)
+	}
+	p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeRateLimit, "get_workbook_structure")
+	if !p.Retryable {
+		t.Errorf("rate-limited structure read should stay retryable, got %+v", p)
+	}
+}
+
+// TestWorkbookCreate_AdoptPurgesStaleDefaultMapping is the regression test for
+// the adopt double-write bug: after the default "Sheet1" is renamed to the
+// first payload sheet, a later payload sheet literally named "Sheet1" must get
+// its OWN freshly created sheet — the stale byName["Sheet1"] entry used to
+// route it into the adopted (renamed) sheet, silently destroying the first
+// sheet's data while reporting both as written (live-verified 2026-08-06).
+func TestWorkbookCreate_AdoptPurgesStaleDefaultMapping(t *testing.T) {
+	t.Parallel()
+	createWorkbook := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v3/spreadsheets",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"spreadsheet": map[string]interface{}{"spreadsheet_token": testToken}},
+		},
+	}
+	defaultOnly := `{"sheets":[{"sheet_id":"` + testSheetID + `","sheet_name":"Sheet1","index":0,"row_count":200,"column_count":20}]}`
+	afterCreate := `{"sheets":[{"sheet_id":"` + testSheetID + `","sheet_name":"Sales","index":0,"row_count":200,"column_count":20},{"sheet_id":"` + testSheetID2 + `","sheet_name":"Sheet1","index":1,"row_count":200,"column_count":20}]}`
+	firstLookup := toolOutputStub(testToken, "read", defaultOnly)    // lookupFirstSheetID
+	listByName := toolOutputStub(testToken, "read", defaultOnly)     // writeTypedSheets' listSheetIDsByName
+	renameStub := toolOutputStub(testToken, "write", `{"ok":true}`)  // rename Sheet1 → Sales
+	salesWrite := toolOutputStub(testToken, "write", `{"ok":true}`)  // set_cell_range for Sales
+	createStub := toolOutputStub(testToken, "write", `{"ok":true}`)  // modify_workbook_structure create for Sheet1
+	postCreate := toolOutputStub(testToken, "read", afterCreate)     // createSheet's id read-back
+	sheet1Write := toolOutputStub(testToken, "write", `{"ok":true}`) // set_cell_range for Sheet1
+
+	out, err := runShortcutWithStubs(t, WorkbookCreate,
+		[]string{"--title", "T", "--sheets",
+			`{"sheets":[{"name":"Sales","columns":["a"],"data":[["s"]]},{"name":"Sheet1","columns":["b"],"data":[["x"]]}]}`},
+		createWorkbook, firstLookup, listByName, renameStub, salesWrite, createStub, postCreate, sheet1Write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	// The 5th tool call must be a CREATE for "Sheet1" — with the stale mapping
+	// it was a set_cell_range into the adopted sheet instead.
+	var wire map[string]interface{}
+	if err := json.Unmarshal(createStub.CapturedBody, &wire); err != nil {
+		t.Fatalf("decode create body: %v", err)
+	}
+	var input map[string]interface{}
+	if err := json.Unmarshal([]byte(wire["input"].(string)), &input); err != nil {
+		t.Fatalf("decode create tool input: %v", err)
+	}
+	if input["operation"] != "create" || input["sheet_name"] != "Sheet1" {
+		t.Fatalf("expected a create op for Sheet1, got %#v", input)
+	}
+
+	data := decodeEnvelopeData(t, out)
+	sheets, _ := data["sheets"].([]interface{})
+	if len(sheets) != 2 {
+		t.Fatalf("want 2 written sheets, got %d: %s", len(sheets), out)
+	}
+	id0 := sheets[0].(map[string]interface{})["sheet_id"]
+	id1 := sheets[1].(map[string]interface{})["sheet_id"]
+	if id0 == id1 {
+		t.Fatalf("both payload sheets landed on the same sheet_id %v — stale adopt mapping", id0)
+	}
+}
+
 // TestTablePut_ExecutePartialFailure covers the partial-success error path:
 // a set_cell_range write fails mid-import and the structured error surfaces.
 // TestTablePut_ExecuteTotalFailure: a single sheet whose write fails landed
@@ -717,6 +821,20 @@ func TestTablePut_ExecuteTotalFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed") && !strings.Contains(out, "no sheets were written") {
 		t.Errorf("expected plain-failure message; got err=%v out=%s", err, out)
+	}
+	// The typed error passes through (mutated in place), so classifier
+	// metadata survives — rebuilding from err.Error() erased code and log_id
+	// (live-verified: the same failure carried code 40400 + log_id through
+	// +workbook-info but neither through +table-put).
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("total failure must stay a typed error, got %T: %v", err, err)
+	}
+	if p.Code != 1254000 {
+		t.Errorf("Code = %d, want 1254000 preserved through tablePutPartial", p.Code)
+	}
+	if !strings.Contains(p.Message, "table-put failed on") || !strings.Contains(p.Message, "boom") {
+		t.Errorf("message should carry the table-put context and the cause, got %q", p.Message)
 	}
 }
 
@@ -1080,7 +1198,14 @@ func TestTableGet_SerialRoundTrip(t *testing.T) {
 
 func TestTableGet_IsDateNumberFormat(t *testing.T) {
 	t.Parallel()
-	for _, nf := range []string{"yyyy-mm-dd", "yyyy-mm", "yyyy/m/d", "YYYY/MM/DD", "yy-mm-dd", "[Red]yyyy-mm-dd", `"At "yyyy`} {
+	for _, nf := range []string{
+		"yyyy-mm-dd", "yyyy-mm", "yyyy/m/d", "YYYY/MM/DD", "yy-mm-dd", "[Red]yyyy-mm-dd", `"At "yyyy`,
+		// Year-less date/time presets carry no 'yy' and were previously
+		// inferred as number — the column then read back raw serials
+		// (live-verified 2026-08-06: m/d → float64, same serial with
+		// yyyy-mm-dd → datetime64).
+		"m/d", "mm-dd", "d-m", "h:mm", "hh:mm:ss", "h:mm am/pm", "mm/dd hh:mm",
+	} {
 		if !isDateNumberFormat(nf) {
 			t.Errorf("%q should be a date format", nf)
 		}
@@ -1093,7 +1218,10 @@ func TestTableGet_IsDateNumberFormat(t *testing.T) {
 	for _, nf := range []string{
 		"#,##0", "0.00", "0.00%", "@", "",
 		"JPY #,##0", "JPY 0", `"YEN "#,##0`, "[$JPY-411] #,##0",
-		`\y\y`, // escaped letters, not a year token
+		`\y\y`,     // escaped letters, not a year token
+		"General",  // letters outside the date-token set
+		"0.00E+00", // scientific: 'e' is not a date token
+		"USD #,##0",
 	} {
 		if isDateNumberFormat(nf) {
 			t.Errorf("%q should NOT be a date format", nf)
