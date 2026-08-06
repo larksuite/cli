@@ -11,7 +11,7 @@
 - `<latex>E = mc^2</latex>`：适用行内公式，也适用于上标、下标写法。
 - `<ol><li>第一项<ul><li>子项</li></ul></li><li>第二项</li></ol>`：子列表放在 `<li>` 内；新增列表项必须放在 `<ul>` 或 `<ol>` 内。
 - `<pre lang="go" caption="示例"><code>fmt.Println(&quot;hello&quot;)</code></pre>`：代码必须放在 `<code>` 内，禁止直接放在 `<pre>` 下；`caption` 可省略。
-- `<img path="@./photo.png"/>`：上传当前工作目录内的本地图片。也可用 `<img href="URL"/>` 上传公开 HTTP(S) 网络图片，或用 `<img src="token"/>` 复制原始图片；三者任选一个，可选 `width`、`height`、`caption`、`name`。使用 `href` 时，CLI 会先把图片下载到进程内存，全部下载成功后再创建或更新文档并上传图片；响应须为 PNG、JPEG、GIF 或 WebP，单图不超过 20MiB。内部网络图片须先下载到本地再使用 `path`。
+- `<img path="@./photo.png"/>`：上传当前工作目录内的本地图片。也可用 `<img href="URL"/>` 上传公开 HTTP(S) 网络图片，或用 `<img src="token"/>` 复制原始图片；三者任选一个，可选 `width`、`height`、`caption`、`name`。使用 `href` 时，CLI 会将远程图片转为本地资源并完成上传；响应须为 PNG、JPEG、GIF 或 WebP，单图不超过 20MiB。内部网络图片须先下载到本地再使用 `path`。
 - `<source path="@./report.pdf" name="报告.pdf"/>`：上传本地附件；也可使用 `<source token="token" name="xx"/>` 复制已有附件。可独立使用、放入 `<p>` 作为行内附件，或写成 `<figure view-type="Card|Preview"><source/></figure>`；
 - `<checkbox done="true|false">todo</checkbox>`
 - `p, h1-h9, li, checkbox, title` 支持可选属性 `align`，可选值为 `left`、`center`、`right`，例如 `<p align="center">居中正文</p>`。
