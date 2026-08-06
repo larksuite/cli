@@ -112,7 +112,8 @@ lark-cli wiki <resource> <method> [flags]  # 调用 API
 
 ## 不在本 skill 范围
 
-- 上传 / 下载文件到知识库节点下 → [`lark-drive`](../lark-drive/SKILL.md)（`drive +upload --wiki-token`）
+- 上传文件到知识库节点下 → [`lark-drive`](../lark-drive/SKILL.md)（`drive +upload --wiki-token`）
+- 下载 Wiki 节点对应的文件（底层 `obj_type` 为 `file`）→ [`lark-drive`](../lark-drive/SKILL.md)：`drive +download --wiki-token <node_token>` 或 `drive +download --url <wiki_url>`（CLI 会先把 Wiki 节点解析到底层文件再下载）；底层是 `docx`/`sheet`/`bitable`/`slides` 等在线文档时改用 `drive +export`
 - 编辑文档正文内容 → [`lark-doc`](../lark-doc/SKILL.md)
 - 表格 / 多维表格数据操作 → [`lark-sheets`](../lark-sheets/SKILL.md) / [`lark-base`](../lark-base/SKILL.md)
 - 按名称搜索文档 / Wiki / 表格文件、评论与权限管理 → [`lark-drive`](../lark-drive/SKILL.md)

@@ -109,3 +109,121 @@ func TestDriveDownloadDryRun_ExplicitOutputSkipsMetadata(t *testing.T) {
 		t.Fatalf("output=%q, want explicit output\nstdout:\n%s", got, out)
 	}
 }
+
+// TestDriveDownloadDryRun_WikiURLResolvesBeforeDownload verifies a /wiki/ URL
+// prepends a get_node resolution step ahead of the metadata + download steps.
+func TestDriveDownloadDryRun_WikiURLResolvesBeforeDownload(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+download",
+			"--url", "https://example.feishu.cn/wiki/wikiDryRunDownload",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 4 {
+		t.Fatalf("api count=%d, want 4 (get_node + permission auth + metadata + download)\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
+		t.Fatalf("api.0.method=%q, want GET\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
+		t.Fatalf("api.0.url=%q, want wiki get_node\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.params.token").String(); got != "wikiDryRunDownload" {
+		t.Fatalf("api.0.params.token=%q, want wiki token\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "wiki_token").String(); got != "wikiDryRunDownload" {
+		t.Fatalf("wiki_token=%q, want wiki token\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/permissions/obj_token_from_wiki_node/members/auth" {
+		t.Fatalf("api.1.url=%q, want permission auth on resolved token\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.2.url").String(); got != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("api.2.url=%q, want metadata batch_query\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.3.url").String(); got != "/open-apis/drive/v1/files/obj_token_from_wiki_node/download" {
+		t.Fatalf("api.3.url=%q, want download from resolved token\nstdout:\n%s", got, out)
+	}
+}
+
+// TestDriveDownloadDryRun_WikiTokenExplicitOutput verifies --wiki-token with an
+// explicit output plans get_node then the permission check and download,
+// skipping the metadata lookup.
+func TestDriveDownloadDryRun_WikiTokenExplicitOutput(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+download",
+			"--wiki-token", "wikiDryRunDownload",
+			"--output", "./artifacts/report.bin",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 3 {
+		t.Fatalf("api count=%d, want 3 (get_node + permission auth + download)\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
+		t.Fatalf("api.0.url=%q, want wiki get_node\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/permissions/obj_token_from_wiki_node/members/auth" {
+		t.Fatalf("api.1.url=%q, want permission auth on resolved token\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.2.url").String(); got != "/open-apis/drive/v1/files/obj_token_from_wiki_node/download" {
+		t.Fatalf("api.2.url=%q, want download from resolved token\nstdout:\n%s", got, out)
+	}
+}
+
+// TestDriveDownloadDryRun_RejectsMutuallyExclusiveInputs verifies passing more
+// than one source flag fails validation instead of silently picking one.
+func TestDriveDownloadDryRun_RejectsMutuallyExclusiveInputs(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+download",
+			"--file-token", "fileDryRunDownload",
+			"--wiki-token", "wikiDryRunDownload",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	if result.Stdout != "" {
+		t.Fatalf("stdout must stay empty on validation failure, got:\n%s", result.Stdout)
+	}
+	if got := clie2e.DryRunGet(result.Stderr, "error.type").String(); got != "validation" {
+		t.Fatalf("error.type=%q, want validation\nstderr:\n%s", got, result.Stderr)
+	}
+	if got := clie2e.DryRunGet(result.Stderr, "error.subtype").String(); got != "invalid_argument" {
+		t.Fatalf("error.subtype=%q, want invalid_argument\nstderr:\n%s", got, result.Stderr)
+	}
+	if got := clie2e.DryRunGet(result.Stderr, "error.param").String(); got != "--file-token" {
+		t.Fatalf("error.param=%q, want --file-token\nstderr:\n%s", got, result.Stderr)
+	}
+	if got := clie2e.DryRunGet(result.Stderr, "error.message").String(); got == "" {
+		t.Fatalf("error.message must be non-empty\nstderr:\n%s", result.Stderr)
+	}
+}

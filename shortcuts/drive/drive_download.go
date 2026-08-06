@@ -112,26 +112,32 @@ var DriveDownload = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"drive:file:download", common.DrivePermissionMemberAuthScope},
 	// Metadata is only required when --output is omitted and the CLI needs the
-	// remote title as the pre-download fallback filename.
-	ConditionalScopes: []string{driveMetadataReadScope},
+	// remote title as the pre-download fallback filename. The wiki scope is only
+	// required when the caller passes a wiki node (--wiki-token or a /wiki/ URL)
+	// that must be resolved to the underlying file token.
+	ConditionalScopes: []string{driveMetadataReadScope, driveWikiNodeRetrieveScope},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file-token", Desc: "file token", Required: true},
+		{Name: "file-token", Desc: "Drive file token"},
+		{Name: "url", Desc: "Drive file URL, or a wiki node URL that wraps an uploaded file (resolved to the underlying file token)"},
+		{Name: "wiki-token", Desc: "wiki node token wrapping an uploaded file (resolved to the underlying file token)"},
 		{Name: "output", Desc: "local save path"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		fileToken := runtime.Str("file-token")
-		outputPath := runtime.Str("output")
-
-		if err := validate.ResourceName(fileToken, "--file-token"); err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
+		source, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
+		if err != nil {
+			return err
 		}
-		if outputPath == "" {
-			if err := runtime.EnsureScopes([]string{driveMetadataReadScope}); err != nil {
+		if source.NeedsWikiResolution() {
+			if err := runtime.EnsureScopes([]string{driveWikiNodeRetrieveScope}); err != nil {
 				return err
 			}
-			return nil
+		}
+
+		outputPath := runtime.Str("output")
+		if outputPath == "" {
+			return runtime.EnsureScopes([]string{driveMetadataReadScope})
 		}
 		if _, resolveErr := runtime.ResolveSavePath(outputPath); resolveErr != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", resolveErr).WithParam("--output")
@@ -139,20 +145,38 @@ var DriveDownload = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		fileToken := runtime.Str("file-token")
+		source, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
+		if err != nil {
+			return common.NewDryRunAPI().Set("error", err.Error())
+		}
+
 		outputPath := runtime.Str("output")
-		plan := common.AddDriveFileExportPermissionDryRun(
-			common.NewDryRunAPI(),
+		plan := common.NewDryRunAPI()
+		step := 1
+
+		fileToken := source.FileToken
+		if source.NeedsWikiResolution() {
+			plan.GET("/open-apis/wiki/v2/spaces/get_node").
+				Desc(fmt.Sprintf("[%d] Resolve wiki node to the underlying Drive file token (obj_type must be file)", step)).
+				Params(map[string]interface{}{"token": source.WikiToken})
+			plan.Set("wiki_token", source.WikiToken)
+			fileToken = "obj_token_from_wiki_node"
+			step++
+		}
+
+		common.AddDriveFileExportPermissionDryRun(
+			plan,
 			fileToken,
-			"[1] Check whether the current identity can export the Drive file",
+			fmt.Sprintf("[%d] Check whether the current identity can export the Drive file", step),
 		)
-		downloadDesc := "[2] Download file bytes to the explicit output path"
+		step++
+
+		downloadDesc := fmt.Sprintf("[%d] Download file bytes to the explicit output path", step)
 		if outputPath == "" {
 			outputPath = "<Content-Disposition filename | metadata title | token>"
-			downloadDesc = "[3] Download file bytes; Content-Disposition filename wins over metadata title when present"
 			plan.
 				POST("/open-apis/drive/v1/metas/batch_query").
-				Desc("[2] Resolve metadata title before downloading; fails before the download request if metadata scope is missing").
+				Desc(fmt.Sprintf("[%d] Resolve metadata title before downloading; fails before the download request if metadata scope is missing", step)).
 				Body(map[string]interface{}{
 					"request_docs": []map[string]interface{}{
 						{
@@ -161,6 +185,8 @@ var DriveDownload = common.Shortcut{
 						},
 					},
 				})
+			step++
+			downloadDesc = fmt.Sprintf("[%d] Download file bytes; Content-Disposition filename wins over metadata title when present", step)
 		}
 		return plan.
 			GET("/open-apis/drive/v1/files/:file_token/download").
@@ -169,7 +195,22 @@ var DriveDownload = common.Shortcut{
 			Set("output", outputPath)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		fileToken := runtime.Str("file-token")
+		source, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
+		if err != nil {
+			return err
+		}
+
+		fileToken := source.FileToken
+		var wikiResolution driveFileWikiResolution
+		if source.NeedsWikiResolution() {
+			resolvedToken, resolution, resolveErr := resolveDriveFileWikiSource(ctx, runtime, source)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			fileToken = resolvedToken
+			wikiResolution = resolution
+		}
+
 		outputPath := runtime.Str("output")
 		overwrite := runtime.Bool("overwrite")
 
@@ -244,10 +285,10 @@ var DriveDownload = common.Shortcut{
 		if savedPath == "" {
 			savedPath = outputPath
 		}
-		runtime.Out(map[string]interface{}{
+		runtime.Out(annotateDriveFileWikiOutput(map[string]interface{}{
 			"saved_path": savedPath,
 			"size_bytes": result.Size(),
-		}, nil)
+		}, wikiResolution), nil)
 		return nil
 	},
 }
