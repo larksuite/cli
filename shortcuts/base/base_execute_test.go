@@ -1679,7 +1679,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
-			URL:    "field_id=Name&field_id=Age&limit=2&offset=0",
+			URL:    "field_id=Name&field_id=Age&field_id=Formula&limit=2&offset=0",
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
@@ -1695,11 +1695,15 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 						"record_scope": "all_records",
 						"field_scope":  "selected_fields",
 					},
-					"ignored_fields": []interface{}{"Formula"},
+					"ignored_fields": []interface{}{map[string]interface{}{
+						"id":     "fld_formula",
+						"name":   "Formula",
+						"reason": "UNSUPPORTED: formula field cannot be read through OpenAPI because this base uses an old schema version without backend formula computation.",
+					}},
 				},
 			},
 		})
-		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "2", "--field-id", "Name", "--field-id", "Age"}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "2", "--field-id", "Name", "--field-id", "Age", "--field-id", "Formula"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
 		got := stdout.String()
@@ -1708,7 +1712,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"| _record_id | Name | Age |",
 			"| rec_1 | Alice | 18 |",
 			"Meta: count=2; has_more=false; record_scope=all_records; field_scope=selected_fields; ignored_fields=1",
-			"Ignored fields: Formula",
+			`Ignored fields: {"id":"fld_formula","name":"Formula","reason":"UNSUPPORTED: formula field cannot be read through OpenAPI because this base uses an old schema version without backend formula computation."}`,
 		} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("stdout missing %q:\n%s", want, got)
@@ -2465,11 +2469,15 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"ignored_fields": []interface{}{"Formula"},
+					"ignored_fields": []interface{}{map[string]interface{}{
+						"id":     "fld_formula",
+						"name":   "Formula",
+						"reason": "READONLY: formula field cannot be written through OpenAPI.",
+					}},
 				},
 			},
 		})
-		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"update_records":{"rec_1":{"Status":["Done"]}}}`}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"update_records":{"rec_1":{"Status":["Done"],"Formula":"ignored"}}}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
 		if got := stdout.String(); !strings.Contains(got, `"ignored_fields"`) || !strings.Contains(got, `"Formula"`) {
