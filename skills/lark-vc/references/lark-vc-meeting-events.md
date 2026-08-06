@@ -114,7 +114,7 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 - `--format pretty`：默认推荐格式，输出当前身份和逐条时间线，适合快速理解“发生了什么”。
 - `--format ndjson`：输出事件行，并带 metadata 行，适合流式消费。
 
-**选型原则**：只在 `pretty`、`json`、`ndjson` 之间选择。目标是告诉用户“发生了什么”时，用 `--page-all --format pretty`；需要稳定字段给 agent 做结构化消费、总结、转发或二次处理时用 `--format json`；需要流式消费时用 `--format ndjson`。
+**选型原则**：只在 `pretty`、`json`、`ndjson` 之间选择。默认优先用 `--format pretty`；用户明确要求 json / 结构化字段，或需要完整保真字段时，建议用 `--format json`；需要流式消费时用 `--format ndjson`。
 
 > **注意**：pretty 输出中的正文文本会做单行转义，真实换行会显示为 `\n`，避免打乱时间线布局。
 
