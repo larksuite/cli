@@ -14,12 +14,12 @@ metadata:
 
 `lark-suite` 不直接承载具体 API 操作步骤。除非对应子能力已被读取，否则不要仅根据本文件拼命令、猜参数或执行复杂操作。
 
-所有子能力统一收纳在当前 skill 的 `references/subskills/` 目录。选择 `lark-foo` 后，直接读取 `references/subskills/lark-foo/SKILL.md`；不要再次调用 `Skill(lark-foo)`，也不要使用 Find/Glob 遍历或探测整个 subskills 目录。
+所有子能力统一收纳在当前 skill 的 `references/` 目录。选择 `lark-foo` 后，直接读取 `references/lark-foo/SKILL.md`；不要再次调用 `Skill(lark-foo)`，也不要使用 Find/Glob 遍历或探测整个 references 目录。
 
 ## 使用流程
 
 1. 根据用户意图从下方路由表选择一个或多个子能力；即使用户尚未提供链接、ID 或具体工作表，也先选择能力，再由子能力询问缺失信息。
-2. 直接读取 `references/subskills/<skill-name>/SKILL.md` 加载所选子能力，不要把收纳后的子能力当作独立 skill 再次调用。
+2. 直接读取 `references/<skill-name>/SKILL.md` 加载所选子能力，不要把收纳后的子能力当作独立 skill 再次调用。
 3. 仅使用本文件列出的路由与对应子能力入口，不要遍历或探测其他技能目录。
 4. 如果目标能力未列出，返回无法路由的明确提示。
 5. 仅读取当前已选子能力明确要求的前置文件。
