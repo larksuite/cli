@@ -2,8 +2,8 @@
 
 ## Metrics
 - Denominator: 12 leaf commands
-- Covered: 7
-- Coverage: 58.3%
+- Covered: 9
+- Coverage: 75.0%
 
 ## Summary
 - TestDocs_CreateAndFetchWorkflow: proves `docs +create` and `docs +fetch`; key `t.Run(...)` proof points are `create as bot` and `fetch as bot`.
@@ -17,8 +17,9 @@
 - TestDocsScriptPresentationDecisionListCountsULAndOL proves the compatibility-only `list` requirement aggregates `<ul>` and `<ol>` block counts.
 - TestDocs_DryRunDefaultsToV2OpenAPI also proves `docs +history-list`, `docs +history-revert`, and `docs +history-revert-status` dry-run endpoint and query/body shapes.
 - TestDocs_HistoryWorkflow proves the guarded live history flow (`LARK_DOC_HISTORY_E2E=1`): create, update, list prior revisions, revert, poll status when needed, and fetch to verify reverted content.
+- TestDocs_MediaDownloadWorkflow proves `docs +media-insert` and `docs +media-download`: it creates a temporary folder and document, writes a deterministic PNG fixture, inserts it, downloads it by the returned media token, verifies the saved bytes, and cleans up the document and folder.
 - Setup note: docs workflows create a Drive folder through `drive files create_folder` in `helpers_test.go`; that helper is external to the docs domain and is not counted here.
-- Blocked area: standalone media and search shortcuts still need dedicated deterministic workflows; local resource authoring through create/update is covered.
+- Blocked area: media preview, search, and whiteboard update still need deterministic fixtures or DSL-specific orchestration; local resource authoring through create/update is covered.
 
 ## Command Table
 
@@ -30,8 +31,8 @@
 | ✓ | docs +history-revert | shortcut | docs_update_dryrun_test.go::TestDocs_DryRunDefaultsToV2OpenAPI/history revert; docs_history_workflow_test.go::TestDocs_HistoryWorkflow | `--doc`; `--history-version-id`; `--wait-timeout-ms` | live workflow gated by `LARK_DOC_HISTORY_E2E=1` |
 | ✓ | docs +history-revert-status | shortcut | docs_update_dryrun_test.go::TestDocs_DryRunDefaultsToV2OpenAPI/history revert status; docs_history_workflow_test.go::TestDocs_HistoryWorkflow | `--doc`; `--task-id` | live workflow polls only when revert returns `running` |
 | ✓ | docs +script | shortcut | docs_script_test.go::TestDocsScriptPresentationDecisionListCountsULAndOL; docs_script_test.go::TestDocsScriptInitDraftCreatesUniqueWorkspacesWithoutXML; docs_script_test.go::TestDocsScriptInitDraftDryRunDoesNotWrite; docs_script_test.go::TestDocsScriptFileNameFlagIsRemoved; docs_script_test.go::TestDocsScriptInitializedDraftAutomaticallyValidatesPresentationDecision; docs_script_test.go::TestDocsScriptInitializedDraftPreflightsBlockedRemoteImage; docs_script_test.go::TestDocsScriptParseRepairsMalformedXMLForProfile; docs_script_test.go::TestDocsScriptStrictFlagIsRemoved; docs_script_test.go::TestDocsScriptMarkdownToXMLIsRemoved; docs_script_test.go::TestDocsScriptCreateTempXMLIsRemoved; docs_script_test.go::TestDocsScriptParseRejectsMarkdownFromFile; docs_create_fetch_test.go::TestDocs_CreateAndFetchWorkflowAsBot/script parse by token | `--command init-draft` with `--presentation-decision <JSON>`, `@file`, or `-`; `--command parse --content @file`; `--doc <URL/token>`; local/online dry-run | initializes `draft_<random>_folder/draft.xml` and reserves the uncreated XML path; validates word-count and planned block minimums; treats compatibility type `list` as the combined `<ul>` and `<ol>` count; preflights local/remote resources; returns `ok:true` with `assessment.status:failed` and structured diagnostics when checks do not pass; deduplicates same-cause image failures into `image_indices[]`; requires normal authentication for local parse, rejects Markdown input, and fetches online input as XML |
-| ✕ | docs +media-download | shortcut |  | none | no media fixture workflow yet |
-| ✕ | docs +media-insert | shortcut |  | none | requires deterministic upload fixture and rollback assertions |
+| ✓ | docs +media-download | shortcut | docs_media_download_dryrun_test.go::TestDocsMediaDownloadDryRun_PlansExportAuthBeforeMediaDownload; docs_media_download_dryrun_test.go::TestDocsMediaDownloadDryRun_WhiteboardSkipsExportAuth; docs_media_download_workflow_test.go::TestDocs_MediaDownloadWorkflow | `--token`; `--output`; `--type whiteboard` dry-run | dry-run pins permission-check ordering and whiteboard bypass; live workflow creates a media fixture and verifies downloaded bytes |
+| ✓ | docs +media-insert | shortcut | docs_media_download_workflow_test.go::TestDocs_MediaDownloadWorkflow | `--doc`; `--file`; `--type image` | live workflow asserts the returned media token and uses it to retrieve the inserted image |
 | ✕ | docs +media-preview | shortcut |  | none | requires deterministic media fixture |
 | ✕ | docs +search | shortcut |  | none | search results are ambient and not yet stabilized for E2E |
 | ✓ | docs +update | shortcut | docs_update_test.go::TestDocs_UpdateWorkflow/update-title-and-content as bot; docs_local_resources_workflow_test.go::testDocsLocalResourcesWorkflow/append, block_replace, and overwrite image/source; docs_local_resources_dryrun_test.go::TestDocs_LocalResourcesDryRun/update append, overwrite, and block_replace; docs_update_dryrun_test.go::TestDocs_DryRunDefaultsToV2OpenAPI/update | `--doc`; `--command overwrite`, `append`, or `block_replace`; `--doc-format markdown` or `--doc-format xml`; `--content`; local `<img path>` / `<source path>`; optional `--reference-map` -> body `reference_map` | local resources are covered under both bot and user identities |

@@ -30,29 +30,41 @@ func TestDriveDownloadDryRun_DefaultNamePlansMetadataBeforeDownload(t *testing.T
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 2 {
-		t.Fatalf("api count=%d, want 2\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 3 {
+		t.Fatalf("api count=%d, want 3\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "POST" {
-		t.Fatalf("api.0.method=%q, want POST\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
+		t.Fatalf("api.0.method=%q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/metas/batch_query" {
-		t.Fatalf("api.0.url=%q, want metas batch_query\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/permissions/fileDryRunDownload/members/auth" {
+		t.Fatalf("api.0.url=%q, want permission auth\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.body.request_docs.0.doc_token").String(); got != "fileDryRunDownload" {
-		t.Fatalf("api.0.body.request_docs.0.doc_token=%q, want file token\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.params.type").String(); got != "file" {
+		t.Fatalf("api.0.params.type=%q, want file\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.body.request_docs.0.doc_type").String(); got != "file" {
-		t.Fatalf("api.0.body.request_docs.0.doc_type=%q, want file\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.params.action").String(); got != "export" {
+		t.Fatalf("api.0.params.action=%q, want export\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.1.method").String(); got != "GET" {
-		t.Fatalf("api.1.method=%q, want GET\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.1.method").String(); got != "POST" {
+		t.Fatalf("api.1.method=%q, want POST\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/files/fileDryRunDownload/download" {
-		t.Fatalf("api.1.url=%q, want file download endpoint\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("api.1.url=%q, want metas batch_query\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.1.desc").String(); got != "[2] Download file bytes; Content-Disposition filename wins over metadata title when present" {
-		t.Fatalf("api.1.desc=%q, want metadata-aware step 2\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.1.body.request_docs.0.doc_token").String(); got != "fileDryRunDownload" {
+		t.Fatalf("api.1.body.request_docs.0.doc_token=%q, want file token\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.1.body.request_docs.0.doc_type").String(); got != "file" {
+		t.Fatalf("api.1.body.request_docs.0.doc_type=%q, want file\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.2.method").String(); got != "GET" {
+		t.Fatalf("api.2.method=%q, want GET\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.2.url").String(); got != "/open-apis/drive/v1/files/fileDryRunDownload/download" {
+		t.Fatalf("api.2.url=%q, want file download endpoint\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.2.desc").String(); got != "[3] Download file bytes; Content-Disposition filename wins over metadata title when present" {
+		t.Fatalf("api.2.desc=%q, want metadata-aware step 3\nstdout:\n%s", got, out)
 	}
 	if got := clie2e.DryRunGet(out, "output").String(); got != "<Content-Disposition filename | metadata title | token>" {
 		t.Fatalf("output=%q, want filename priority placeholder\nstdout:\n%s", got, out)
@@ -78,17 +90,20 @@ func TestDriveDownloadDryRun_ExplicitOutputSkipsMetadata(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 1 {
-		t.Fatalf("api count=%d, want 1\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 2 {
+		t.Fatalf("api count=%d, want 2\nstdout:\n%s", got, out)
 	}
 	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 		t.Fatalf("api.0.method=%q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/files/fileDryRunDownload/download" {
-		t.Fatalf("api.0.url=%q, want file download endpoint\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/permissions/fileDryRunDownload/members/auth" {
+		t.Fatalf("api.0.url=%q, want permission auth\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.desc").String(); got != "[1] Download file bytes to the explicit output path" {
-		t.Fatalf("api.0.desc=%q, want explicit-output step 1\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/files/fileDryRunDownload/download" {
+		t.Fatalf("api.1.url=%q, want file download endpoint\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.1.desc").String(); got != "[2] Download file bytes to the explicit output path" {
+		t.Fatalf("api.1.desc=%q, want explicit-output step 2\nstdout:\n%s", got, out)
 	}
 	if got := clie2e.DryRunGet(out, "output").String(); got != "./artifacts/report.bin" {
 		t.Fatalf("output=%q, want explicit output\nstdout:\n%s", got, out)

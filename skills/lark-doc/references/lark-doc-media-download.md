@@ -41,7 +41,8 @@ lark-cli docs +media-download --type whiteboard --token "wbcnxxxxxxxx" --output 
 
 ## 排障
 
-- 如果报错返回的信息包含 `HTTP 403`，且目标是图片/文件素材，可以改成调用 [`docs +media-preview`](lark-doc-media-preview.md) 看是否能先预览内容
+- 如果返回 `permission_denied`，或最终下载返回 `HTTP 403`，按错误 `hint` 改用 [`docs +media-preview`](lark-doc-media-preview.md) 预览内容。
+- 如果返回限流错误，停止立即重试，稍后按指数退避重试。
 
 ## 参考
 

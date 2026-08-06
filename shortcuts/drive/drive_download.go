@@ -110,7 +110,7 @@ var DriveDownload = common.Shortcut{
 	Command:     "+download",
 	Description: "Download a file from Drive to local",
 	Risk:        "read",
-	Scopes:      []string{"drive:file:download"},
+	Scopes:      []string{"drive:file:download", common.DrivePermissionMemberAuthScope},
 	// Metadata is only required when --output is omitted and the CLI needs the
 	// remote title as the pre-download fallback filename.
 	ConditionalScopes: []string{driveMetadataReadScope},
@@ -141,14 +141,18 @@ var DriveDownload = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		fileToken := runtime.Str("file-token")
 		outputPath := runtime.Str("output")
-		plan := common.NewDryRunAPI()
-		downloadDesc := "[1] Download file bytes to the explicit output path"
+		plan := common.AddDriveFileExportPermissionDryRun(
+			common.NewDryRunAPI(),
+			fileToken,
+			"[1] Check whether the current identity can export the Drive file",
+		)
+		downloadDesc := "[2] Download file bytes to the explicit output path"
 		if outputPath == "" {
 			outputPath = "<Content-Disposition filename | metadata title | token>"
-			downloadDesc = "[2] Download file bytes; Content-Disposition filename wins over metadata title when present"
+			downloadDesc = "[3] Download file bytes; Content-Disposition filename wins over metadata title when present"
 			plan.
 				POST("/open-apis/drive/v1/metas/batch_query").
-				Desc("[1] Resolve metadata title before downloading; fails before the download request if metadata scope is missing").
+				Desc("[2] Resolve metadata title before downloading; fails before the download request if metadata scope is missing").
 				Body(map[string]interface{}{
 					"request_docs": []map[string]interface{}{
 						{
@@ -179,6 +183,14 @@ var DriveDownload = common.Shortcut{
 			}
 		}
 
+		allowed, err := common.CheckDriveFileExportPermission(runtime, fileToken)
+		if err != nil {
+			return withDriveDownloadRecoveryHint(err, fileToken)
+		}
+		if !allowed {
+			return driveDownloadPermissionDeniedError()
+		}
+
 		var metadataTitle string
 		if outputPath == "" {
 			title, err := common.FetchDriveMetaTitle(runtime, fileToken, "file")
@@ -202,7 +214,7 @@ var DriveDownload = common.Shortcut{
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
 		})
 		if err != nil {
-			return withDriveDownloadForbiddenPreviewHint(wrapDriveNetworkErr(err, "download failed: %s", err), fileToken)
+			return withDriveDownloadRecoveryHint(wrapDriveNetworkErr(err, "download failed: %s", err), fileToken)
 		}
 		defer resp.Body.Close()
 

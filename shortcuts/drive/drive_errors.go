@@ -42,9 +42,46 @@ func withDriveDownloadForbiddenPreviewHint(err error, _ string) error {
 	return err
 }
 
+// withDriveDownloadRecoveryHint preserves the final download error while
+// attaching an actionable recovery path for permission and throttling failures.
+func withDriveDownloadRecoveryHint(err error, fileToken string) error {
+	err = withDriveDownloadForbiddenPreviewHint(err, fileToken)
+	if !driveDownloadIsRateLimit(err) {
+		return err
+	}
+
+	problem, _ := errs.ProblemOf(err)
+	if strings.Contains(problem.Hint, "exponential backoff") {
+		return err
+	}
+	const hint = "Drive download was rate limited; stop immediate retries and retry later with exponential backoff."
+	return appendDriveExportRecoveryHint(err, hint)
+}
+
+func driveDownloadIsRateLimit(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return false
+	}
+	return problem.Subtype == errs.SubtypeRateLimit ||
+		problem.Code == 99991400 ||
+		problem.Code == http.StatusTooManyRequests
+}
+
 func driveDownloadForbiddenPreviewHint() string {
 	const tokenArg = "<FILE_TOKEN>"
-	return fmt.Sprintf("Direct Drive download returned HTTP 403. To view file content through preview artifacts, try `lark-cli drive +preview --file-token %s --type source_file --output <path>`; for PDF/text/image preview choices, run `lark-cli drive +preview --file-token %s --list-only`.", tokenArg, tokenArg)
+	return fmt.Sprintf("Direct Drive download returned HTTP 403. To view file content through preview artifacts, try `lark-cli drive +preview --file-token %s --type source_file --output <path>`.", tokenArg)
+}
+
+func driveDownloadPermissionDeniedError() error {
+	const tokenArg = "<FILE_TOKEN>"
+	return errs.NewPermissionError(
+		errs.SubtypePermissionDenied,
+		"current identity does not have export permission for this Drive file",
+	).WithHint(
+		"Direct Drive download is unavailable. To view file content through preview artifacts, try `lark-cli drive +preview --file-token %s --type source_file --output <path>`.",
+		tokenArg,
+	)
 }
 
 // driveInputStatError maps a FileIO.Stat/Open error for input file validation
