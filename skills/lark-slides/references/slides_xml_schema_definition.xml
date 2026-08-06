@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <xs:schema
         xmlns:xs="http://www.w3.org/2001/XMLSchema"
-        xmlns:sml="http://www.larkoffice.com/sml/2.0"
-        targetNamespace="http://www.larkoffice.com/sml/2.0"
+        xmlns:sml="https://www.larkoffice.com/sml/2.0"
+        targetNamespace="https://www.larkoffice.com/sml/2.0"
         elementFormDefault="qualified"
         attributeFormDefault="unqualified">
     <xs:annotation>
@@ -11,7 +11,7 @@
 
             版本信息：
             - Schema 版本: 2.0.0
-            - 命名空间: http://www.larkoffice.com/sml/2.0
+            - 命名空间: https://www.larkoffice.com/sml/2.0
             - 发布日期: 2025-11-03
         </xs:documentation>
     </xs:annotation>
@@ -1052,7 +1052,7 @@
                 单页幻灯片结构
                 子元素:
                 - style: 页面样式(背景色等), style的fill默认颜色为白色rgba(255, 255, 255, 1)
-                - data: 页面元素容器(shape/line/polyline/img/table/icon/chart/undefined)
+                - data: 页面元素容器(shape/line/polyline/img/table/icon/embed/chart/undefined)
                 - note: 演讲者备注
             </xs:documentation>
         </xs:annotation>
@@ -1076,6 +1076,7 @@
                         <xs:element ref="sml:img"/>
                         <xs:element ref="sml:table"/>
                         <xs:element ref="sml:icon"/>
+                        <xs:element ref="sml:embed"/>
                         <xs:element ref="sml:chart"/>
                         <xs:element ref="sml:undefined"/>
                     </xs:choice>
@@ -1611,6 +1612,49 @@
 
             <xs:attribute name="id" type="xs:string" use="optional"/>
             <xs:attribute name="iconType" type="xs:string" use="optional" default="iconpark/Base/setting.svg"/>
+            <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
+            <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
+            <xs:attribute name="width" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="height" type="sml:PositiveSize" use="required"/>
+            <xs:attribute name="rotation" type="sml:RotationType" use="optional" default="0"/>
+            <xs:attribute name="flipX" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="flipY" type="xs:boolean" use="optional" default="false"/>
+            <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1"/>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 嵌入内容元素 -->
+    <xs:element name="embed">
+        <xs:annotation>
+            <xs:documentation>
+                嵌入内容容器, 外层承载 Slides 摆放和效果属性, 内层承载外部标准内容。
+                当前内层内容为标准 SVG, 必须使用 http://www.w3.org/2000/svg 命名空间。
+                后续可扩展承载 HTML 等其他外部内容。
+
+                必需属性:
+                - topLeftX/topLeftY: 左上角坐标
+                - width/height: 显示尺寸
+
+                可选属性:
+                - id: 唯一标识符
+                - rotation: 旋转角度[0, 360)
+                - flipX/flipY: 水平/垂直翻转
+                - alpha: 不透明度[0,1]
+
+                子元素:
+                - svg: 标准 SVG 根元素, 仅描述嵌入内容, 不承载 Slides 布局属性
+                - reflection: 倒影样式, 无reflection标签代表无倒影, 空reflection标签代表使用默认样式
+                - shadow: 阴影样式, 无shadow标签代表无阴影, 空shadow标签代表使用默认样式
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:sequence>
+                <xs:any namespace="http://www.w3.org/2000/svg" processContents="lax" minOccurs="1" maxOccurs="1"/>
+                <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
+                <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+            </xs:sequence>
+
+            <xs:attribute name="id" type="xs:string" use="optional"/>
             <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
             <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
             <xs:attribute name="width" type="sml:PositiveSize" use="required"/>

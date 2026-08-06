@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/util"
 )
 
@@ -71,10 +72,13 @@ func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (s
 // for the defensive empty-token branch) and is preserved for errors.Is /
 // errors.Unwrap traversal without being serialized on the wire.
 func newTokenMissingError(as core.Identity, cause error) error {
-	return errs.NewAuthenticationError(errs.SubtypeTokenMissing,
+	e := errs.NewAuthenticationError(errs.SubtypeTokenMissing,
 		"no access token available for %s", as).
-		WithHint("run: lark-cli auth login to re-authorize").
 		WithCause(cause)
+	if as == core.AsUser {
+		return recovery.Attach(e, recovery.UserAuthorization())
+	}
+	return e.WithHint("configure valid app credentials for the bot identity")
 }
 
 // buildApiReq converts a RawApiRequest into SDK types and collects

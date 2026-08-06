@@ -30,6 +30,12 @@ import (
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
 )
 
+func init() {
+	// Stable package wiring: assign once during initialization rather than on
+	// every Build/NewDefault call.
+	keychain.RuntimeDirFunc = core.GetRuntimeDir
+}
+
 // NewDefault creates a production Factory with cached closures.
 // Initialization follows a credential-first order:
 //
@@ -64,10 +70,6 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		)
 	})
 
-	// Inject workspace-aware dir into keychain's log system.
-	// This breaks the core↔keychain import cycle by using a function variable.
-	keychain.RuntimeDirFunc = core.GetRuntimeDir
-
 	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
 
@@ -77,10 +79,11 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	// Phase 2: Credential (sole data source)
 	// Keychain is read via closure so callers can replace f.Keychain after construction.
 	f.Credential = buildCredentialProvider(credentialDeps{
-		Keychain:   func() keychain.KeychainAccess { return f.Keychain },
-		Profile:    inv.Profile,
-		HttpClient: f.HttpClient,
-		ErrOut:     f.IOStreams.ErrOut,
+		Keychain:      func() keychain.KeychainAccess { return f.Keychain },
+		Profile:       inv.Profile,
+		ProfileSource: inv.ProfileSource,
+		HttpClient:    f.HttpClient,
+		ErrOut:        f.IOStreams.ErrOut,
 	})
 
 	// Phase 3: Runtime config contains resolved account data only.
@@ -270,15 +273,16 @@ func buildSDKHTTPTransport(base http.RoundTripper, platform bool) http.RoundTrip
 }
 
 type credentialDeps struct {
-	Keychain   func() keychain.KeychainAccess
-	Profile    string
-	HttpClient func() (*http.Client, error)
-	ErrOut     io.Writer
+	Keychain      func() keychain.KeychainAccess
+	Profile       string
+	ProfileSource core.ProfileSource
+	HttpClient    func() (*http.Client, error)
+	ErrOut        io.Writer
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
 	providers := extcred.Providers()
-	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile)
+	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile, deps.ProfileSource)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
 	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
 	// happens before the command runs, so any plain-text warning written

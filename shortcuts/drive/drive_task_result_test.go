@@ -154,6 +154,49 @@ func TestDriveTaskResultDryRunExportIncludesTokenParam(t *testing.T) {
 	}
 }
 
+func TestDriveTaskResultExportRateLimitSuggestsOneMinuteBackoff(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_export_limited",
+		Body: map[string]interface{}{
+			"code": 99991400,
+			"msg":  "request trigger frequency limit",
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveTaskResult, []string{
+		"+task_result",
+		"--scenario", "export",
+		"--ticket", "tk_export_limited",
+		"--file-token", "docx123",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected rate-limit error, got nil")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout should stay empty on rate limit: %s", stdout.String())
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed rate-limit error, got %T (%v)", err, err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 99991400 || !problem.Retryable {
+		t.Fatalf("problem = %+v, want api/rate_limit code 99991400 retryable", problem)
+	}
+	for _, want := range []string{
+		"wait at least 1 minute",
+		"exponential backoff starting at 1 minute",
+		"lark-cli drive +task_result --scenario export --ticket tk_export_limited --file-token docx123",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint missing %q: %q", want, problem.Hint)
+		}
+	}
+}
+
 func TestDriveTaskResultImportIncludesReadyFlags(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{

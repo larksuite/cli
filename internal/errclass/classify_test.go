@@ -98,6 +98,15 @@ func matchesTypedError(err error, wantTyped string) bool {
 	return false
 }
 
+func requirePermissionError(t *testing.T, err error) *errs.PermissionError {
+	t.Helper()
+	var permission *errs.PermissionError
+	if !errors.As(err, &permission) {
+		t.Fatalf("expected *errs.PermissionError in error chain, got %T", err)
+	}
+	return permission
+}
+
 func TestBuildAPIError_ExitCodeMatrix(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -419,10 +428,7 @@ func TestRetryableEnvelope_TrueOnly(t *testing.T) {
 func TestConsoleURL_FeishuBrand(t *testing.T) {
 	resp := appScopeNotAppliedResp("docx:document")
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "feishu", AppID: "cli_a123", Identity: "bot"})
-	pe, ok := err.(*errs.PermissionError)
-	if !ok {
-		t.Fatalf("expected *errs.PermissionError, got %T", err)
-	}
+	pe := requirePermissionError(t, err)
 	if !strings.Contains(pe.ConsoleURL, "open.feishu.cn/page/scope-apply?clientID=cli_a123") {
 		t.Fatalf("ConsoleURL = %q, want open.feishu.cn scope-apply page", pe.ConsoleURL)
 	}
@@ -431,10 +437,7 @@ func TestConsoleURL_FeishuBrand(t *testing.T) {
 func TestConsoleURL_LarkBrand(t *testing.T) {
 	resp := appScopeNotAppliedResp("docx:document")
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "lark", AppID: "cli_a123", Identity: "bot"})
-	pe, ok := err.(*errs.PermissionError)
-	if !ok {
-		t.Fatalf("expected *errs.PermissionError, got %T", err)
-	}
+	pe := requirePermissionError(t, err)
 	if !strings.Contains(pe.ConsoleURL, "open.larksuite.com/page/scope-apply?clientID=cli_a123") {
 		t.Fatalf("ConsoleURL = %q, want open.larksuite.com scope-apply page", pe.ConsoleURL)
 	}
@@ -443,7 +446,7 @@ func TestConsoleURL_LarkBrand(t *testing.T) {
 func TestConsoleURL_EmptyAppID(t *testing.T) {
 	resp := appScopeNotAppliedResp("docx:document")
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "feishu", AppID: "", Identity: "bot"})
-	pe := err.(*errs.PermissionError)
+	pe := requirePermissionError(t, err)
 	if pe.ConsoleURL != "" {
 		t.Errorf("ConsoleURL with empty AppID should be empty; got %q", pe.ConsoleURL)
 	}
@@ -459,13 +462,15 @@ func TestConsoleURL_EmptyAppID(t *testing.T) {
 func TestConsoleURL_AttachedOnlyForAppScopeNotApplied(t *testing.T) {
 	cc := errclass.ClassifyContext{Brand: "feishu", AppID: "cli_a123", Identity: "bot"}
 
-	bot := errclass.BuildAPIError(appScopeNotAppliedResp("docx:document"), cc).(*errs.PermissionError)
+	bot := requirePermissionError(t,
+		errclass.BuildAPIError(appScopeNotAppliedResp("docx:document"), cc))
 	if bot.ConsoleURL == "" {
 		t.Errorf("SubtypeAppScopeNotApplied envelope must carry ConsoleURL; got empty")
 	}
 
-	user := errclass.BuildAPIError(missingScopeResp("docx:document"),
-		errclass.ClassifyContext{Brand: "feishu", AppID: "cli_a123", Identity: "user"}).(*errs.PermissionError)
+	user := requirePermissionError(t, errclass.BuildAPIError(
+		missingScopeResp("docx:document"),
+		errclass.ClassifyContext{Brand: "feishu", AppID: "cli_a123", Identity: "user"}))
 	if user.ConsoleURL != "" {
 		t.Errorf("SubtypeMissingScope envelope must NOT carry ConsoleURL; got %q", user.ConsoleURL)
 	}
@@ -538,7 +543,7 @@ func TestConsoleURL_EscapesDangerousChars(t *testing.T) {
 func TestPermissionError_DefaultIdentity(t *testing.T) {
 	resp := missingScopeResp("docx:document")
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "feishu", AppID: "cli_a123" /* no Identity */})
-	pe := err.(*errs.PermissionError)
+	pe := requirePermissionError(t, err)
 	if pe.Identity != "user" {
 		t.Errorf("default Identity should be \"user\"; got %q", pe.Identity)
 	}
@@ -550,7 +555,7 @@ func TestPermissionError_NoViolations(t *testing.T) {
 	// SubtypeAppScopeNotApplied envelope since that is where ConsoleURL rides.
 	resp := map[string]any{"code": 99991672, "msg": "x"}
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "feishu", AppID: "cli_a123", Identity: "bot"})
-	pe := err.(*errs.PermissionError)
+	pe := requirePermissionError(t, err)
 	if pe.MissingScopes != nil {
 		t.Errorf("MissingScopes should be nil; got %v", pe.MissingScopes)
 	}
@@ -573,7 +578,7 @@ func TestExtractMissingScopes_Dedup(t *testing.T) {
 		},
 	}
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "feishu", AppID: "cli_a123", Identity: "user"})
-	pe := err.(*errs.PermissionError)
+	pe := requirePermissionError(t, err)
 	if got, want := len(pe.MissingScopes), 2; got != want {
 		t.Fatalf("MissingScopes len = %d, want %d (raw: %v)", got, want, pe.MissingScopes)
 	}
@@ -584,12 +589,9 @@ func TestExtractMissingScopes_Dedup(t *testing.T) {
 // converges with the envelope produced by the direct-construction path used
 // in cmd/service/service.go's checkServiceScopes pre-flight check.
 //
-// Both paths now share the same canonical helpers in internal/errclass for
-// Message (CanonicalPermissionMessage), Hint (PermissionHint), and
-// ConsoleURL (ConsoleURL); MissingScopes and Identity are filled identically.
-// A future drift on either side (e.g. a new extension field on
-// PermissionError that only BuildAPIError populates, or service.go inlining
-// its own message string again) fails this test loudly.
+// Both paths now share the same production constructor in internal/errclass.
+// A future drift in subtype-specific field gating therefore fails this test
+// without the test hand-copying either implementation.
 //
 // One upstream-derived field is a documented exception: `code` (the Lark
 // API numeric code). The pre-flight check runs against a locally cached
@@ -608,21 +610,12 @@ func TestServiceShortcutEnvelopeConverge(t *testing.T) {
 	// Path A: dispatcher — BuildAPIError parsing a Lark API response.
 	resp := missingScopeResp(missing[0])
 	dispatcherErr := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: brand, AppID: appID, Identity: identity})
-	if _, ok := dispatcherErr.(*errs.PermissionError); !ok {
-		t.Fatalf("BuildAPIError did not return *PermissionError, got %T", dispatcherErr)
-	}
+	requirePermissionError(t, dispatcherErr)
 
-	// Path B: direct construction — exercises the same helpers that
-	// cmd/service/service.go's newPreflightMissingScopeError uses. Keep this
-	// in lock-step with that helper; if either drifts the byte-comparison
-	// fails. ConsoleURL is intentionally NOT set on either path for
+	// Path B: the production constructor used by cmd/service's local
+	// preflight. ConsoleURL is intentionally NOT set on either path for
 	// SubtypeMissingScope — see the gating rationale in buildPermissionError.
-	consoleURL := errclass.ConsoleURL(brand, appID, missing)
-	directErr := errs.NewPermissionError(errs.SubtypeMissingScope,
-		"%s", errclass.CanonicalPermissionMessage(errs.SubtypeMissingScope, appID, missing, "")).
-		WithHint("%s", errclass.PermissionHint(missing, identity, errs.SubtypeMissingScope, consoleURL)).
-		WithMissingScopes(missing...).
-		WithIdentity(identity)
+	directErr := errclass.NewMissingScopeError(brand, appID, identity, missing)
 
 	var bufA, bufB bytes.Buffer
 	if ok := output.WriteTypedErrorEnvelope(&bufA, dispatcherErr, identity); !ok {
@@ -727,10 +720,9 @@ func TestBuildAPIError_LogIDTopLevel(t *testing.T) {
 
 func TestBuildPermissionHint_MissingScopeRoutesToAuthLogin(t *testing.T) {
 	// missing_scope means the user authorized the app but did not grant
-	// this scope — recoverable by re-running `auth login`. Both user and
-	// bot identities route the same way because the recovery action is
-	// user-initiated either way.
-	for _, identity := range []string{"user", "bot", ""} {
+	// this scope — recoverable by re-running `auth login`. An empty identity
+	// retains the historical user default.
+	for _, identity := range []string{"user", ""} {
 		got := errclass.PermissionHint([]string{"docx:document", "im:message"}, identity, errs.SubtypeMissingScope, "")
 		if !strings.Contains(got, "lark-cli auth login") {
 			t.Errorf("identity=%q: hint should suggest `lark-cli auth login`; got %q", identity, got)
@@ -738,6 +730,9 @@ func TestBuildPermissionHint_MissingScopeRoutesToAuthLogin(t *testing.T) {
 		if !strings.Contains(got, "docx:document") || !strings.Contains(got, "im:message") {
 			t.Errorf("identity=%q: hint should include missing scopes; got %q", identity, got)
 		}
+	}
+	if got := errclass.PermissionHint([]string{"docx:document"}, "bot", errs.SubtypeMissingScope, ""); strings.Contains(got, "auth login") || !strings.Contains(got, "app developer") {
+		t.Errorf("bot missing-scope recovery must not recommend user login; got %q", got)
 	}
 }
 
@@ -771,6 +766,135 @@ func TestBuildPermissionHint_AppMissingScopeRoutesToConsole(t *testing.T) {
 		if strings.Contains(got, "auth login") {
 			t.Errorf("identity=%q: hint must not suggest `auth login`; got %q", identity, got)
 		}
+	}
+}
+
+// TestBuildAPIError_BotPermissionRecoveryFamily pins the complete dispatcher
+// contract for bot callers across the three permission codes that can otherwise
+// be mistaken for user OAuth failures. Recovery guidance must name only actors
+// that can fix a bot call; user-login commands would send an agent through an
+// irrelevant device-authorization round trip without repairing the bot call.
+func TestBuildAPIError_BotPermissionRecoveryFamily(t *testing.T) {
+	const (
+		appID = "cli_bot"
+		scope = "im:message"
+	)
+	cases := []struct {
+		name          string
+		code          int
+		wantSubtype   errs.Subtype
+		wantMessage   string
+		wantMissing   []string
+		wantHintParts []string
+	}{
+		{
+			name:          "99991679 missing_scope",
+			code:          99991679,
+			wantSubtype:   errs.SubtypeMissingScope,
+			wantMessage:   "unauthorized: bot identity does not have the required scope(s): " + scope,
+			wantMissing:   []string{scope},
+			wantHintParts: []string{"app developer", "developer console"},
+		},
+		{
+			name:          "99991676 token_scope_insufficient",
+			code:          99991676,
+			wantSubtype:   errs.SubtypeTokenScopeInsufficient,
+			wantMessage:   "token has no permission for this operation; required scope is missing",
+			wantMissing:   []string{scope},
+			wantHintParts: []string{"token's granted scopes", "app developer", "developer console"},
+		},
+		{
+			name:          "230027 user_unauthorized",
+			code:          230027,
+			wantSubtype:   errs.SubtypeUserUnauthorized,
+			wantMessage:   "access denied for this bot operation",
+			wantHintParts: []string{"required bot permissions", "target tenant", "target resource", "tenant admin", "policy restrictions"},
+		},
+		{
+			name:          "1470403 permission_denied",
+			code:          1470403,
+			wantSubtype:   errs.SubtypePermissionDenied,
+			wantMessage:   "bot lacks permission for the requested resource",
+			wantHintParts: []string{"resource owner", "this bot"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := map[string]any{
+				"code": tc.code,
+				"msg":  "upstream permission failure",
+			}
+			if len(tc.wantMissing) > 0 {
+				resp["error"] = map[string]any{
+					"permission_violations": []any{map[string]any{"subject": scope}},
+				}
+			}
+
+			err := errclass.BuildAPIError(resp, errclass.ClassifyContext{
+				Brand:    "feishu",
+				AppID:    appID,
+				Identity: "bot",
+			})
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf returned !ok, err = %T", err)
+			}
+			if problem.Category != errs.CategoryAuthorization {
+				t.Errorf("Category = %q, want %q", problem.Category, errs.CategoryAuthorization)
+			}
+			if problem.Subtype != tc.wantSubtype {
+				t.Errorf("Subtype = %q, want %q", problem.Subtype, tc.wantSubtype)
+			}
+			if problem.Code != tc.code {
+				t.Errorf("Code = %d, want %d", problem.Code, tc.code)
+			}
+			if problem.Message != tc.wantMessage {
+				t.Errorf("Message = %q, want %q", problem.Message, tc.wantMessage)
+			}
+
+			permission := requirePermissionError(t, err)
+			if permission.Identity != "bot" {
+				t.Errorf("Identity = %q, want bot", permission.Identity)
+			}
+			if len(permission.MissingScopes) != len(tc.wantMissing) {
+				t.Fatalf("MissingScopes = %v, want %v", permission.MissingScopes, tc.wantMissing)
+			}
+			for i := range tc.wantMissing {
+				if permission.MissingScopes[i] != tc.wantMissing[i] {
+					t.Errorf("MissingScopes = %v, want %v", permission.MissingScopes, tc.wantMissing)
+				}
+			}
+			if permission.ConsoleURL != "" {
+				t.Errorf("ConsoleURL = %q, want empty machine field for subtype %q", permission.ConsoleURL, tc.wantSubtype)
+			}
+
+			hint := strings.ToLower(problem.Hint)
+			message := strings.ToLower(problem.Message)
+			for _, part := range tc.wantHintParts {
+				if !strings.Contains(hint, strings.ToLower(part)) {
+					t.Errorf("Hint %q missing bot recovery guidance %q", problem.Hint, part)
+				}
+			}
+			for _, forbidden := range []string{
+				"auth login",
+				"--no-wait",
+				"verification_url",
+				"device_code",
+				"authorize or refresh",
+				"current user",
+				"re-authorize this user",
+				"user credential",
+				"target chat",
+				"external chats",
+			} {
+				if strings.Contains(hint, forbidden) {
+					t.Errorf("bot Hint %q must not contain user OAuth guidance %q", problem.Hint, forbidden)
+				}
+				if strings.Contains(message, forbidden) {
+					t.Errorf("bot Message %q must not contain user-specific guidance %q", problem.Message, forbidden)
+				}
+			}
+		})
 	}
 }
 
@@ -838,10 +962,7 @@ func TestBuildPermissionError_CanonicalMessage(t *testing.T) {
 				"error": map[string]any{"permission_violations": []any{map[string]any{"subject": "contact:contact"}}},
 			}
 			err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "feishu", AppID: appID, Identity: "user"})
-			pe, ok := err.(*errs.PermissionError)
-			if !ok {
-				t.Fatalf("expected *PermissionError, got %T", err)
-			}
+			pe := requirePermissionError(t, err)
 			if pe.Subtype != tc.wantSubtype {
 				t.Errorf("Subtype = %q, want %q", pe.Subtype, tc.wantSubtype)
 			}
@@ -938,9 +1059,7 @@ func TestBuildAPIError_JSONNumberCode(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for json.Number-encoded code")
 	}
-	if _, ok := err.(*errs.PermissionError); !ok {
-		t.Errorf("expected *errs.PermissionError, got %T", err)
-	}
+	requirePermissionError(t, err)
 }
 
 // TestBuildAPIError_SecurityPolicyExtractsChallenge pins that policy responses

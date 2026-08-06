@@ -57,4 +57,52 @@ func TestWithAppsHint(t *testing.T) {
 			t.Fatalf("withAppsHint(plain) = %v, want unchanged plain error", out)
 		}
 	})
+
+	t.Run("no-database code rewrites message and forces cloud-dev hint", func(t *testing.T) {
+		// Raw upstream carries internal-term message and no hint. A concrete
+		// subtype (not Unknown) lets us prove the override leaves classification
+		// intact while only rewriting Message/Hint.
+		in := errs.NewAPIError(errs.SubtypeNotFound, "workspace has no db branch").WithCode(appNoDatabaseCode)
+		out := withAppsHint(in, "generic db hint")
+		// The helper must mutate in place and hand back the same error value,
+		// not a replacement that would drop the cause chain.
+		if out != in {
+			t.Fatalf("withAppsHint returned a different error value: got %p, want original %p", out, in)
+		}
+		p, ok := errs.ProblemOf(out)
+		if !ok {
+			t.Fatalf("returned error is not typed: %T", out)
+		}
+		if p.Message != appNoDatabaseMessage {
+			t.Errorf("Message = %q, want rewritten %q", p.Message, appNoDatabaseMessage)
+		}
+		if p.Hint != appNoDatabaseHint {
+			t.Errorf("Hint = %q, want cloud-dev hint (not the generic caller hint)", p.Hint)
+		}
+		// Classification and code are the source-specific discriminators the
+		// error envelope keys on; the override must not touch them.
+		if p.Code != appNoDatabaseCode {
+			t.Errorf("Code mutated: got %d, want %d", p.Code, appNoDatabaseCode)
+		}
+		if p.Category != errs.CategoryAPI {
+			t.Errorf("Category mutated: got %q, want %q", p.Category, errs.CategoryAPI)
+		}
+		if p.Subtype != errs.SubtypeNotFound {
+			t.Errorf("Subtype mutated: got %q, want %q", p.Subtype, errs.SubtypeNotFound)
+		}
+	})
+
+	t.Run("no-database code overrides even a preexisting upstream hint", func(t *testing.T) {
+		// An upstream hint must NOT win here: the recovery flow is more actionable.
+		in := errs.NewAPIError(errs.SubtypeUnknown, "internal msg").
+			WithCode(appNoDatabaseCode).WithHint("upstream hint")
+		out := withAppsHint(in, "generic db hint")
+		p, _ := errs.ProblemOf(out)
+		if p.Hint != appNoDatabaseHint {
+			t.Errorf("Hint = %q, want cloud-dev hint to override upstream hint", p.Hint)
+		}
+		if p.Message != appNoDatabaseMessage {
+			t.Errorf("Message = %q, want %q", p.Message, appNoDatabaseMessage)
+		}
+	})
 }

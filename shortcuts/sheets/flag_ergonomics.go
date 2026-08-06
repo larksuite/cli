@@ -23,9 +23,8 @@ import (
 // --file for --csv) whose unknown-flag error only points at --help, and
 // enum values imported from CSS / Excel vocabulary ("center" for the
 // vertical alignment Lark spells "middle"). Both fixes are wired through
-// the existing PostMount hook — composed onto any prior PostMount in
-// Shortcuts(), same pattern as withTokenAlias — so the common framework
-// needs no change at all and no other domain's behavior shifts.
+// the existing PostMount hook and composed onto any prior PostMount in
+// Shortcuts(); exact flag-name aliases use common.Flag.Aliases separately.
 
 // withFlagErgonomics wraps an optional PostMount so that, after it runs,
 // the command gets the sheets-specific unknown-flag error (valid flags

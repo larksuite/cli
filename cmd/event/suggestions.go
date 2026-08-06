@@ -9,14 +9,14 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
-	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/suggest"
 )
 
 const maxSuggestions = 3
 
 // suggestEventKeys returns up to maxSuggestions keys resembling input (substring match beats edit distance).
-func suggestEventKeys(input string) []string {
+func suggestEventKeys(snap *catalog.Snapshot, input string) []string {
 	type match struct {
 		key  string
 		dist int
@@ -24,13 +24,13 @@ func suggestEventKeys(input string) []string {
 	var hits []match
 	threshold := max(2, len(input)/5)
 
-	for _, def := range eventlib.ListAll() {
-		if strings.Contains(def.Key, input) {
-			hits = append(hits, match{def.Key, 0})
+	for _, key := range snap.Keys() {
+		if strings.Contains(key, input) {
+			hits = append(hits, match{key, 0})
 			continue
 		}
-		if d := suggest.Levenshtein(input, def.Key); d <= threshold {
-			hits = append(hits, match{def.Key, d})
+		if d := suggest.Levenshtein(input, key); d <= threshold {
+			hits = append(hits, match{key, d})
 		}
 	}
 	sort.Slice(hits, func(i, j int) bool { return hits[i].dist < hits[j].dist })
@@ -59,9 +59,9 @@ func formatSuggestions(keys []string) string {
 }
 
 // unknownEventKeyErr builds the shared "unknown EventKey" error with a suggestion tail when available.
-func unknownEventKeyErr(key string) error {
+func unknownEventKeyErr(snap *catalog.Snapshot, key string) error {
 	msg := fmt.Sprintf("unknown EventKey: %s", key)
-	if guesses := suggestEventKeys(key); len(guesses) > 0 {
+	if guesses := suggestEventKeys(snap, key); len(guesses) > 0 {
 		msg += " — did you mean " + formatSuggestions(guesses) + "?"
 	}
 	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg).

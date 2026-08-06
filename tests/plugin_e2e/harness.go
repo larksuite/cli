@@ -13,14 +13,16 @@
 //  1. `git archive HEAD` a clean tree containing only committed files (so the
 //     fork embeds the tracked meta_data stub, reproducing the bare-module state).
 //  2. Generate a customer module: go.mod (cli's requires + `replace` to the
-//     archived tree) + go.sum copy + main.go (blank-imports the plugin package)
-//     + plugin package (its init() calls platform.Register).
+//     archived tree) + go.sum copy + main.go (blank-imports the plugin package
+//     and wires its own embedded skill base) + plugin package (its init() calls
+//     platform.Register).
 //  3. `go build` the fork (offline-capable via the warm module cache), then run
 //     it as a subprocess and assert.
 package plugin_e2e
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -30,6 +32,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // cleanTree is the git-archived, committed-only source tree of the repo under
@@ -85,7 +89,8 @@ func gitArchive(root, dst string) error {
 	return nil
 }
 
-// builtForks caches fork binaries by name so identical forks are built once.
+// builtForks caches fork binaries by their complete generated source so
+// same-named variants cannot accidentally reuse a stale executable.
 // builtForksMu guards it: no test in this package uses t.Parallel() today, but
 // that is an implicit convention a future test could silently break, and an
 // unguarded map write would then be a runtime panic. The lock is held across
@@ -100,15 +105,59 @@ var (
 // builds the fork, and returns the binary path. Forks are cached by name.
 func buildFork(t *testing.T, name, pluginSrc string) string {
 	t.Helper()
+	return buildForkWithMain(t, name, pluginSrc, customerMain)
+}
+
+// buildConcealedFork uses the same real external-module path as buildFork, but
+// opts the wrapper host into distribution concealment. Keeping this choice in
+// main (rather than the Restrict plugin) is the compatibility boundary under
+// test: the same plugin retains its established behavior under buildFork.
+func buildConcealedFork(t *testing.T, name, pluginSrc string) string {
+	t.Helper()
+	return buildForkWithMain(t, name, pluginSrc, customerMainConcealed)
+}
+
+func buildForkWithMain(t *testing.T, name, pluginSrc, mainSrc string) string {
+	t.Helper()
+	sum := sha256.Sum256([]byte(name + "\x00" + pluginSrc + "\x00" + mainSrc + "\x00" + customerAffordanceDocs))
+	cacheKey := fmt.Sprintf("%s-%x", name, sum[:8])
 	builtForksMu.Lock()
 	defer builtForksMu.Unlock()
-	if bin, ok := builtForks[name]; ok {
+	if bin, ok := builtForks[cacheKey]; ok {
 		return bin
 	}
-	mod := filepath.Join(baseDir, "fork-"+name)
+	mod := filepath.Join(baseDir, "fork-"+cacheKey)
 	if err := os.MkdirAll(filepath.Join(mod, "plugin"), 0o755); err != nil {
 		t.Fatalf("mkdir customer module: %v", err)
 	}
+	for _, name := range []string{"lark-a", "lark-b", "lark-doc", "lark-shared"} {
+		if err := vfs.MkdirAll(filepath.Join(mod, "skills", name), 0o755); err != nil {
+			t.Fatalf("mkdir customer skill %q: %v", name, err)
+		}
+		skillMD := "---\nname: " + name + "\ndescription: plugin e2e base skill\n---\n"
+		if name == "lark-doc" {
+			skillMD = "---\nname: lark-doc\ndescription: plugin e2e base skill\nmetadata:\n  requires:\n    skills: [\"lark-shared\"]\n---\n"
+		}
+		writeFile(t, filepath.Join(mod, "skills", name, "SKILL.md"), skillMD)
+	}
+	if err := os.MkdirAll(filepath.Join(mod, "skills", "lark-doc", "references"), 0o755); err != nil {
+		t.Fatalf("mkdir customer lark-doc references: %v", err)
+	}
+	for _, reference := range []string{
+		"lark-doc-create.md",
+		"lark-doc-fetch.md",
+		"lark-doc-history.md",
+		"lark-doc-md.md",
+		"lark-doc-update.md",
+		"lark-doc-xml.md",
+	} {
+		writeFile(t, filepath.Join(mod, "skills", "lark-doc", "references", reference),
+			"# Plugin E2E "+reference+"\n")
+	}
+	if err := os.MkdirAll(filepath.Join(mod, "affordance"), 0o755); err != nil {
+		t.Fatalf("mkdir customer affordance: %v", err)
+	}
+	writeFile(t, filepath.Join(mod, "affordance", "docs.md"), customerAffordanceDocs)
 
 	// go.mod: reuse cli's require graph, rename the module, replace cli with the
 	// local archived tree. This avoids `go mod tidy` (no network at test time).
@@ -127,10 +176,10 @@ func buildFork(t *testing.T, name, pluginSrc string) string {
 	}
 	writeFile(t, filepath.Join(mod, "go.sum"), string(rawSum))
 
-	writeFile(t, filepath.Join(mod, "main.go"), customerMain)
+	writeFile(t, filepath.Join(mod, "main.go"), mainSrc)
 	writeFile(t, filepath.Join(mod, "plugin", "plugin.go"), pluginSrc)
 
-	bin := filepath.Join(mod, "fork-bin")
+	bin := filepath.Join(mod, "lark-cli")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = mod
 	// -mod=mod fixes require annotations copied from cli's go.mod; the default
@@ -139,21 +188,137 @@ func buildFork(t *testing.T, name, pluginSrc string) string {
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fork %q failed: %v\n%s", name, err, out)
 	}
-	builtForks[name] = bin
+	builtForks[cacheKey] = bin
 	return bin
 }
+
+const customerAffordanceDocs = `# docs
+> skill: lark-doc
+
+## +create
+Create a document.
+### Tips
+- Match --doc-format to the payload.
+- Prefer @file or stdin for multiline content.
+### Skills
+- lark-doc/references/lark-doc-create.md
+- lark-doc/references/lark-doc-xml.md
+- lark-doc/references/lark-doc-md.md
+
+## +fetch
+Fetch a document.
+### Skills
+- lark-doc/references/lark-doc-fetch.md
+
+## +update
+Update a document.
+### Tips
+- Prefer targeted edits over overwrite.
+- Fetch block IDs before block edits.
+### Skills
+- lark-doc/references/lark-doc-update.md
+- lark-doc/references/lark-doc-xml.md
+- lark-doc/references/lark-doc-md.md
+
+## +history-list
+List history.
+### Skills
+- lark-doc/references/lark-doc-history.md
+
+## +history-revert
+Revert history.
+### Skills
+- lark-doc/references/lark-doc-history.md
+
+## +history-revert-status
+Check revert status.
+### Skills
+- lark-doc/references/lark-doc-history.md
+`
 
 const customerMain = `// Code generated by plugin_e2e; DO NOT EDIT.
 package main
 
 import (
+	"embed"
+	"io/fs"
 	"os"
 
 	"github.com/larksuite/cli/cmd"
 	_ "larkcustomer/plugin" // blank import triggers plugin init() -> platform.Register
 )
 
-func main() { os.Exit(cmd.Execute()) }
+//go:embed skills affordance
+var embeddedContent embed.FS
+
+func main() {
+	skillTree, err := fs.Sub(embeddedContent, "skills")
+	if err != nil {
+		panic(err)
+	}
+	affordanceTree, err := fs.Sub(embeddedContent, "affordance")
+	if err != nil {
+		panic(err)
+	}
+	cmd.SetEmbeddedSkillContent(skillTree)
+	cmd.SetEmbeddedAffordanceContent(affordanceTree)
+	os.Exit(cmd.Execute())
+}
+`
+
+const customerMainConcealed = `// Code generated by plugin_e2e; DO NOT EDIT.
+package main
+
+import (
+	"embed"
+	"io/fs"
+	"os"
+
+	"github.com/larksuite/cli/cmd"
+	_ "larkcustomer/plugin"
+)
+
+//go:embed skills affordance
+var embeddedContent embed.FS
+
+func main() {
+	skillTree, err := fs.Sub(embeddedContent, "skills")
+	if err != nil {
+		panic(err)
+	}
+	affordanceTree, err := fs.Sub(embeddedContent, "affordance")
+	if err != nil {
+		panic(err)
+	}
+	cmd.SetEmbeddedSkillContent(skillTree)
+	cmd.SetEmbeddedAffordanceContent(affordanceTree)
+	os.Exit(cmd.ExecuteWithOptions(cmd.ConcealRestrictedCommands()))
+}
+`
+
+const customerMainWithoutSkills = `// Code generated by plugin_e2e; DO NOT EDIT.
+package main
+
+import (
+	"embed"
+	"io/fs"
+	"os"
+
+	"github.com/larksuite/cli/cmd"
+	_ "larkcustomer/plugin"
+)
+
+//go:embed affordance
+var embeddedAffordance embed.FS
+
+func main() {
+	affordanceTree, err := fs.Sub(embeddedAffordance, "affordance")
+	if err != nil {
+		panic(err)
+	}
+	cmd.SetEmbeddedAffordanceContent(affordanceTree)
+	os.Exit(cmd.Execute())
+}
 `
 
 // result is a subprocess run outcome.

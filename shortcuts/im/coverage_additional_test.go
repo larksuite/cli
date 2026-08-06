@@ -194,8 +194,8 @@ func TestValidateExplicitMsgType(t *testing.T) {
 func TestBuildChatMessageListRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
-			"sort":       "asc",
-			"page-size":  "80",
+			"order":      "asc",
+			"page-size":  "50",
 			"page-token": "next",
 			"start":      "2026-03-01T00:00:00+08:00",
 			"end":        "2026-03-02T23:59:59+08:00",
@@ -245,7 +245,7 @@ func TestBuildChatMessageListRequest(t *testing.T) {
 }
 
 func TestChatMessageListOnlyThreadRootMessagesParams(t *testing.T) {
-	got := buildChatMessageListParams("desc", "20", "oc_123")
+	got := buildChatMessageListParams("desc", 20, "oc_123")
 	if vals := got["only_thread_root_messages"]; !reflect.DeepEqual(vals, []string{"true"}) {
 		t.Fatalf("only_thread_root_messages = %#v, want true", vals)
 	}
@@ -341,7 +341,7 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 			"exclude-sender-type":     "bot",
 			"start":                   "2026-03-01T00:00:00+08:00",
 			"end":                     "2026-03-02T23:59:59+08:00",
-			"page-size":               "80",
+			"page-size":               "50",
 			"page-token":              "next-token",
 		}, map[string]bool{
 			"at-all": true,
@@ -435,7 +435,7 @@ func TestBuildSearchChatBodyAdditionalBranches(t *testing.T) {
 		"query":        "team-alpha",
 		"search-types": "private,external",
 		"member-ids":   "ou_1,ou_2",
-		"sort-by":      "member_count",
+		"sort":         "member_count",
 		"page-size":    "0",
 		"page-token":   "next-page",
 	}, map[string]bool{
@@ -452,7 +452,7 @@ func TestBuildSearchChatBodyAdditionalBranches(t *testing.T) {
 			"is_manager":             true,
 			"disable_search_by_user": true,
 		},
-		"sorter": "member_count",
+		"sorter": "member_count_desc",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("buildSearchChatBody() = %#v, want %#v", got, want)

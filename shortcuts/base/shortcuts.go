@@ -20,6 +20,8 @@ func Shortcuts() []common.Shortcut {
 		BaseTableCreate,
 		BaseTableUpdate,
 		BaseTableDelete,
+		BaseTableCopy,
+		BaseTableCopyStatus,
 		BaseFieldList,
 		BaseFieldGet,
 		BaseFieldCreate,

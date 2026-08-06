@@ -295,6 +295,9 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 
 		status, err := getDriveExportStatus(runtime, spec.Token, ticket)
 		if err != nil {
+			if driveExportIsRateLimit(err) {
+				return withDriveExportRateLimitRecovery(err, ticket, spec.Token)
+			}
 			// Treat polling failures as transient so short-lived backend hiccups
 			// do not immediately fail an otherwise healthy export task.
 			lastPollErr = err

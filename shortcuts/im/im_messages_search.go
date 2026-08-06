@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	messagesSearchDefaultPageSize  = 20
+	messagesSearchDefaultPageSize = 20
+	// POST /open-apis/im/v1/messages/search accepts page_size up to 50.
 	messagesSearchMaxPageSize      = 50
 	messagesSearchDefaultPageLimit = 20
 	messagesSearchMaxPageLimit     = 40
@@ -28,13 +29,13 @@ const (
 var ImMessagesSearch = common.Shortcut{
 	Service:     "im",
 	Command:     "+messages-search",
-	Description: "Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
+	Description: "Search messages across chats (supports keyword, sender, time range filters) with user or bot identity; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
 	Risk:        "read",
 	Scopes:      []string{"search:message", "im:message.reactions:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "query", Desc: "search keyword"},
+		{Name: "query", Aliases: []string{"keyword"}, Desc: "search keyword"},
 		{Name: "chat-id", Desc: "limit to chat IDs, comma-separated"},
 		{Name: "sender", Desc: "sender open_ids, comma-separated"},
 		{Name: "include-attachment-type", Desc: "include attachment type filter", Enum: []string{"file", "image", "video", "link"}},
@@ -45,8 +46,8 @@ var ImMessagesSearch = common.Shortcut{
 		{Name: "at-chatter-ids", Desc: "filter by @mentioned user open_ids, comma-separated (also matches messages that @all)"},
 		{Name: "start", Desc: "start time(ISO 8601) with local timezone offset (e.g. 2026-03-24T00:00:00+08:00)"},
 		{Name: "end", Desc: "end time(ISO 8601) with local timezone offset (e.g. 2026-03-25T23:59:59+08:00)"},
-		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-50)"},
-		{Name: "page-token", Desc: "page token"},
+		{Name: "page-size", Aliases: []string{"limit"}, Type: "int", Default: fmt.Sprintf("%d", messagesSearchDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", messagesSearchMaxPageSize)},
+		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate search results"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max search pages when auto-pagination is enabled (default 20, max 40)"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
@@ -365,12 +366,9 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 		body["filter"] = filter
 	}
 
-	pageSize := runtime.Int("page-size")
-	if pageSize < 1 {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
-	}
-	if pageSize > messagesSearchMaxPageSize {
-		pageSize = messagesSearchMaxPageSize
+	pageSize, err := common.ValidatePageSizeTyped(runtime, "page-size", messagesSearchDefaultPageSize, 1, messagesSearchMaxPageSize)
+	if err != nil {
+		return nil, err
 	}
 
 	params := larkcore.QueryParams{

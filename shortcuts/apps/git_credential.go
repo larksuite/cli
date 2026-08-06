@@ -27,6 +27,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/apps/gitcred"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -300,8 +301,10 @@ func (i factoryIssuer) Issue(ctx context.Context, appID string, profile gitcred.
 		return nil, err
 	}
 	if cfg.UserOpenId == "" {
-		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in").
-			WithHint("run `lark-cli auth login --scope \"spark:app:read\"`")
+		return nil, recovery.Attach(
+			errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in"),
+			recovery.UserAuthorization("spark:app:read"),
+		)
 	}
 	ac, err := i.f.NewAPIClientWithConfig(cfg)
 	if err != nil {

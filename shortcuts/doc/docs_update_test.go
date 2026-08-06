@@ -221,11 +221,6 @@ func TestDocsUpdateRejectsLegacyFlags(t *testing.T) {
 				"the old v1 interface has been shut down",
 				"legacy v1 flag(s) --mode are no longer supported",
 				"--mode -> use --command",
-				"lark-cli skills read lark-doc references/lark-doc-update.md",
-				"lark-cli skills read lark-doc references/lark-doc-xml.md",
-				"lark-cli skills read lark-doc references/lark-doc-md.md",
-				"follow the latest format rules",
-				"MUST NOT grep/open local SKILL.md files",
 				"lark-cli docs +update --help",
 			},
 		},
@@ -240,8 +235,23 @@ func TestDocsUpdateRejectsLegacyFlags(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected v2-only validation error")
 			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("error = %T, want typed problem", err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %s/%s, want validation/invalid_argument", problem.Category, problem.Subtype)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if got, want := validationErr.Param, "--mode"; got != want {
+				t.Fatalf("param = %q, want %q", got, want)
+			}
+			presented := problem.Message + "\n" + problem.Hint
 			for _, want := range tt.want {
-				if !strings.Contains(err.Error(), want) {
+				if !strings.Contains(presented, want) {
 					t.Fatalf("error missing %q: %v", want, err)
 				}
 			}

@@ -59,7 +59,7 @@ func executeRootIntegration(t *testing.T, f *cmdutil.Factory, rootCmd *cobra.Com
 	t.Helper()
 	rootCmd.SetArgs(args)
 	if err := rootCmd.Execute(); err != nil {
-		return handleRootError(f, err)
+		return handleRootError(f, err, nil)
 	}
 	return 0
 }
@@ -229,8 +229,8 @@ func TestIntegration_StrictModeBot_ProfileOverride_HidesCommandsInHelp(t *testin
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
 	}
-	if strings.Contains(stdout.String(), "+messages-search") {
-		t.Fatalf("im --help should hide +messages-search in bot mode, got:\n%s", stdout.String())
+	if !strings.Contains(stdout.String(), "+messages-search") {
+		t.Fatalf("im --help should keep +messages-search in bot mode, got:\n%s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "+chat-create") {
 		t.Fatalf("im --help should keep +chat-create in bot mode, got:\n%s", stdout.String())
@@ -314,22 +314,27 @@ func assertCheckStrictModeEnvelope(t *testing.T, env typedErrorEnvelope, wantMes
 	}
 }
 
-func TestIntegration_StrictModeBot_ProfileOverride_DirectUserShortcutReturnsEnvelope(t *testing.T) {
+func TestIntegration_StrictModeBot_ProfileOverride_MessagesSearchDryRunSucceeds(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
-		"im", "+messages-search", "--chat-id", "oc_xxx", "--query", "hello",
+		"im", "+messages-search", "--chat-id", "oc_xxx", "--query", "hello", "--dry-run",
 	})
 
-	if code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
 	}
-	if stdout.Len() != 0 {
-		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
 	}
-	env := parseTypedEnvelope(t, stderr)
-	assertStrictModeDenialEnvelope(t, env, strictModeBotMessage)
+	out := stdout.String()
+	if !strings.Contains(out, `"/open-apis/im/v1/messages/search"`) {
+		t.Fatalf("messages-search dry-run did not include search API; stdout:\n%s", out)
+	}
+	if !strings.Contains(out, `"identity":"bot"`) && !strings.Contains(out, `"identity": "bot"`) {
+		t.Fatalf("messages-search dry-run did not run as bot; stdout:\n%s", out)
+	}
 }
 
 func TestIntegration_StrictModeUser_ProfileOverride_ChatCreateDryRunSucceeds(t *testing.T) {
@@ -505,7 +510,7 @@ func TestSetupNotices_ColdStart_NoNotice(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	notice := output.GetNotice()
 	if notice == nil {
@@ -539,7 +544,7 @@ func TestSetupNotices_InSync(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	notice := output.GetNotice()
 	if notice != nil {
@@ -572,7 +577,7 @@ func TestSetupNotices_Drift(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	notice := output.GetNotice()
 	if notice == nil {
@@ -621,7 +626,7 @@ func TestSetupNotices_BothUpdateAndSkills(t *testing.T) {
 		output.PendingNotice = nil
 	})
 
-	setupNotices()
+	setupNotices(nil)
 
 	// After setupNotices, skills pending is set (drift). Manually populate
 	// the update side so the composed envelope has both keys — the update

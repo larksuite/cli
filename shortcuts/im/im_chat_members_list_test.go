@@ -290,6 +290,39 @@ func TestFetchChatMembers_PageAllMergesBucketsAndTruncations(t *testing.T) {
 	}
 }
 
+func TestFetchChatMembers_PageAllContinuesFromPageToken(t *testing.T) {
+	var tokens []string
+	rt := shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		token := req.URL.Query().Get("page_token")
+		tokens = append(tokens, token)
+		if token == "resume" {
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": cmlPage(us("u1"), nil, nil, true, "next"),
+			}), nil
+		}
+		return shortcutJSONResponse(200, map[string]interface{}{
+			"code": 0,
+			"data": cmlPage(us("u2"), nil, nil, false, ""),
+		}), nil
+	})
+	runtime := newChatMembersTestRuntime(t, rt,
+		map[string]string{"chat-id": "oc_test", "page-token": "resume"},
+		map[string]bool{"page-all": true},
+		map[string]int{"page-delay": 0})
+
+	res, err := fetchChatMembers(context.Background(), runtime, "oc_test")
+	if err != nil {
+		t.Fatalf("fetchChatMembers: %v", err)
+	}
+	if got := strings.Join(tokens, ","); got != "resume,next" {
+		t.Fatalf("page_token queries = %q, want resume,next", got)
+	}
+	if len(res.users) != 2 || res.hasMore || res.pageToken != "" {
+		t.Fatalf("result = %+v, want complete two-page result", res)
+	}
+}
+
 // TestFetchChatMembers_PageLimitStops verifies --page-limit caps the loop and
 // leaves has_more=true so the caller knows the result is incomplete.
 func TestFetchChatMembers_PageLimitStops(t *testing.T) {

@@ -98,10 +98,6 @@
     "table_with_safety_warning": {
       "stdout": "id  name \n──  ─────\n1   Alice\n",
       "stderr": "warning: content safety alert from emitter-oracle (rules: fixture-rule)\n"
-    },
-    "unknown_format_data_envelope_notice": {
-      "stdout": "{\n  \"_notice\": {\n    \"skills\": {\n      \"current\": \"1.0.0\"\n    }\n  },\n  \"ok\": true,\n  \"value\": \"fixture\"\n}\n",
-      "stderr": "warning: unknown format \"yaml\", falling back to json\n"
     }
   }
 }

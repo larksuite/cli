@@ -27,3 +27,14 @@ var diagnosticPaths = map[string]bool{
 func IsDiagnosticPath(path string) bool {
 	return diagnosticPaths[path]
 }
+
+// DiagnosticPaths returns the exempt self-inspection command paths for a
+// build-local presentation projection. Enforcement always leaves these
+// operator escape hatches available.
+func DiagnosticPaths() []string {
+	out := make([]string, 0, len(diagnosticPaths))
+	for p := range diagnosticPaths {
+		out = append(out, p)
+	}
+	return out
+}

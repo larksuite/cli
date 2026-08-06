@@ -374,11 +374,6 @@ jobs:
     if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) && needs.unit-test.result == 'success' && needs.lint.result == 'success' && needs.script-test.result == 'success' && needs.deterministic-gate.result == 'success' && needs.e2e-dry-run.result == 'success' && (needs.e2e-dry-run.outputs.mode == 'full' || needs.e2e-dry-run.outputs.mode == 'subset') && needs.e2e-dry-run.outputs.live_packages != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Live E2E uses one repository-wide execution slot.
-    concurrency:
-      group: lark-cli-e2e-live
-      cancel-in-progress: false
-      queue: max
     permissions:
       actions: read
       contents: read

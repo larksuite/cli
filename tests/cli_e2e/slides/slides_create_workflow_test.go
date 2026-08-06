@@ -25,7 +25,7 @@ func TestSlides_CreateWorkflowAsUser(t *testing.T) {
 	title := "slides-e2e-" + suffix
 	slideTitle := "Overview " + suffix
 	slideBody := "Body " + suffix
-	slideXML := `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data><shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>` + slideTitle + `</p></content></shape><shape type="text" topLeftX="80" topLeftY="200" width="800" height="180"><content textType="body"><p>` + slideBody + `</p></content></shape></data></slide>`
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data><shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>` + slideTitle + `</p></content></shape><shape type="text" topLeftX="80" topLeftY="200" width="800" height="180"><content textType="body"><p>` + slideBody + `</p></content></shape></data></slide>`
 
 	var presentationID string
 

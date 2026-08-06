@@ -4,48 +4,33 @@
 package cmd
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/apicatalog"
-	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
 )
 
-// applyNeedAuthorizationHint augments a typed *errs.AuthenticationError with a
-// "current command requires scope(s): X, Y" hint when the underlying error is
-// a need_user_authorization signal AND the current command declares scopes
-// locally (via shortcut registration or service-method metadata). Existing
-// Hint text is preserved; scopes are appended on a new line.
-func applyNeedAuthorizationHint(f *cmdutil.Factory, err error) {
-	if err == nil || f == nil {
-		return
+// presentRootError uses the same build-local presenter as shortcut result
+// sinks, adding only the root command's lazy declared-scope resolver.
+func presentRootError(f *cmdutil.Factory, err error, projector *recovery.Projector) error {
+	identity := core.Identity("")
+	if f != nil {
+		identity = f.ResolvedIdentity
 	}
-	if !internalauth.IsNeedUserAuthorizationError(err) {
-		return
-	}
-	var authErr *errs.AuthenticationError
-	if !errors.As(err, &authErr) {
-		return
-	}
-	scopes := resolveDeclaredScopesForCurrentCommand(f)
-	if len(scopes) == 0 {
-		return
-	}
-	scopeHint := fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
-	if authErr.Hint == "" {
-		authErr.Hint = scopeHint
-		return
-	}
-	authErr.Hint += "\n" + scopeHint
+	return f.PresentError(err, cmdutil.ErrorPresentationOptions{
+		Projector: projector,
+		Identity:  identity,
+		DeclaredScopes: func() []string {
+			return resolveDeclaredScopesForCurrentCommand(f)
+		},
+	})
 }
 
 // resolveDeclaredScopesForCurrentCommand returns the scopes declared by the

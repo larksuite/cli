@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/cmd/event/render"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/appmeta"
 	"github.com/larksuite/cli/internal/auth"
@@ -23,8 +24,10 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
+	appconsume "github.com/larksuite/cli/internal/event/application/consume"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/consume"
-	"github.com/larksuite/cli/internal/event/transport"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 )
@@ -37,9 +40,10 @@ type consumeCmdOpts struct {
 
 	maxEvents int
 	timeout   time.Duration
+	dryRun    bool
 }
 
-func NewCmdConsume(f *cmdutil.Factory) *cobra.Command {
+func NewCmdConsume(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 	var o consumeCmdOpts
 
 	cmd := &cobra.Command{
@@ -57,15 +61,16 @@ Use 'event list' to see all available EventKeys.
 Use 'event schema <EventKey>' for parameter details.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConsume(cmd, f, args[0], o)
+			return runConsume(cmd, f, snap, args[0], o)
 		},
 	}
 
 	cmd.Flags().StringArrayVarP(&o.params, "param", "p", nil, "Key=value parameter (repeatable)")
 	cmd.Flags().StringVar(&o.jqExpr, "jq", "", "JQ expression to filter output")
-	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress informational messages on stderr")
+	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress routine and per-event stderr output, including ready/exit markers and drop diagnostics. This can hide event loss; omit --quiet when integrity matters")
 	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (relative paths only; absolute paths and ~ are rejected to prevent path traversal)")
 	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop. Bounded runs ignore stdin EOF.")
+	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "Decide and preview the consume (identity, preconditions, side effects) without performing any of them, then exit")
 	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout'). Bounded runs ignore stdin EOF.")
 	cmd.Flags().String("as", "auto", "identity type: user | bot | auto (must match EventKey's declared AuthTypes)")
 	_ = cmd.RegisterFlagCompletionFunc("as", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -76,7 +81,7 @@ Use 'event schema <EventKey>' for parameter details.`,
 	return cmd
 }
 
-func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consumeCmdOpts) error {
+func runConsume(cmd *cobra.Command, f *cmdutil.Factory, snap *catalog.Snapshot, eventKey string, o consumeCmdOpts) error {
 	// Pipe-close (e.g. `... | head -n 1`) must reach the EPIPE error path in the loop, not SIGPIPE-kill.
 	ignoreBrokenPipe()
 
@@ -90,10 +95,11 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		return err
 	}
 
-	keyDef, ok := eventlib.Lookup(eventKey)
+	entry, ok := snap.Resolve(eventKey)
 	if !ok {
-		return unknownEventKeyErr(eventKey)
+		return unknownEventKeyErr(snap, eventKey)
 	}
+	keyDef := entry.Definition()
 
 	identity, err := resolveIdentity(cmd, f, keyDef)
 	if err != nil {
@@ -120,9 +126,16 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 
 	domain := core.ResolveEndpoints(cfg.Brand).Open
 
-	// Surface auth errors before forking the bus daemon.
+	// Surface auth errors before forking the bus daemon. A dry run instead
+	// reports the unusable credential as a blocked precondition: the caller
+	// asked what would happen, and "a real run would refuse to authenticate"
+	// is a legitimate part of that answer.
+	var tokenErr error
 	if _, err := resolveTenantToken(cmd.Context(), f, cfg.AppID); err != nil {
-		return err
+		if !o.dryRun {
+			return err
+		}
+		tokenErr = err
 	}
 
 	apiClient, err := f.NewAPIClient()
@@ -169,11 +182,31 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		appVer:              appVer,
 		subscribedCallbacks: subscribedCallbacks,
 	}
-	if err := preflightEventTypes(pf); err != nil {
+
+	svc := &appconsume.Service{
+		Strategies: consumeStrategies,
+		Identity:   identityResolverFunc(func(context.Context, *catalog.Entry) (string, error) { return string(identity), nil }),
+		Preflight: preflightReaderFunc(func(ctx context.Context, _ *catalog.Entry, _ string) ([]appconsume.Precondition, error) {
+			return readPreconditions(ctx, pf, appVerErr, tokenErr), nil
+		}),
+	}
+	req := appconsume.Request{
+		EventKey:  eventKey,
+		Params:    paramMap,
+		JQExpr:    o.jqExpr,
+		OutputDir: outputDir,
+		DryRun:    o.dryRun,
+		MaxEvents: o.maxEvents,
+		Timeout:   o.timeout,
+		IsTTY:     f.IOStreams.IsTerminal,
+	}
+	decision, err := svc.Decide(cmd.Context(), entry, req, appconsume.ExecutionContext{API: runtime})
+	if err != nil {
 		return err
 	}
-	if err := preflightScopes(cmd.Context(), pf); err != nil {
-		return err
+
+	if o.dryRun {
+		return render.WriteDecisionJSON(f.IOStreams.Out, f.IOStreams.ErrOut, string(identity), decision.View())
 	}
 
 	ctx, cancel := context.WithCancel(cmd.Context())
@@ -198,29 +231,56 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		errOut = io.Discard
 	}
 
-	// Non-TTY unbounded consumers use stdin EOF as shutdown for subprocess callers.
-	// Bounded runs already have --max-events/--timeout as their lifecycle control.
-	if shouldWatchStdinEOF(f.IOStreams.IsTerminal, o.maxEvents, o.timeout) {
-		watchStdinEOF(os.Stdin, cancel, errOut)
-	}
+	runner := streamRunnerFunc(func(ctx context.Context, prepare appconsume.PrepareFunc) error {
+		// Non-TTY unbounded consumers use stdin EOF as shutdown for subprocess
+		// callers. Bounded runs already have --max-events/--timeout as their
+		// lifecycle control.
+		//
+		// The watcher starts here rather than before the decision is executed:
+		// a blocked decision never reaches this point, and starting it earlier
+		// announced "stdin closed — shutting down" on a run that was actually
+		// refused for an unmet precondition, pointing the caller at the wrong
+		// cause.
+		if shouldWatchStdinEOF(f.IOStreams.IsTerminal, o.maxEvents, o.timeout) {
+			watchStdinEOF(os.Stdin, cancel, errOut)
+		}
 
-	if err := consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
-		EventKey:        eventKey,
-		Params:          paramMap,
-		JQExpr:          o.jqExpr,
-		Quiet:           o.quiet,
-		OutputDir:       outputDir,
-		Runtime:         runtime,
-		Out:             f.IOStreams.Out,
-		ErrOut:          errOut,
-		RemoteAPIClient: botRuntime,
-		MaxEvents:       o.maxEvents,
-		Timeout:         o.timeout,
-		IsTTY:           f.IOStreams.IsTerminal,
-	}); err != nil {
-		return err
-	}
-	return nil
+		return consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain,
+			applyDecision(consume.Options{
+				EventKey:        eventKey,
+				Def:             keyDef,
+				JQExpr:          o.jqExpr,
+				Quiet:           o.quiet,
+				OutputDir:       outputDir,
+				Runtime:         runtime,
+				Out:             f.IOStreams.Out,
+				ErrOut:          errOut,
+				RemoteAPIClient: botRuntime,
+				MaxEvents:       o.maxEvents,
+				Timeout:         o.timeout,
+				IsTTY:           f.IOStreams.IsTerminal,
+			}, decision, prepare))
+	})
+	return svc.Execute(ctx, entry, decision, runner, appconsume.ExecutionContext{API: runtime})
+}
+
+// applyDecision transfers the decided parts of a consume onto the host's
+// options. It exists as a named function because these three assignments are
+// couplings the command alone can get wrong, and a test can only pin them where
+// they are written.
+//
+// The parameters and the flag travel together: the deciding layer already ran
+// the normalizer on exactly these values to compute the subscription identity.
+// The flag without the values would leave the host normalizing input the bus
+// was never told about; the values without the flag would run a
+// once-per-consumer hook a second time. Prepare carries the strategy the
+// decision settled on, so what was decided is what executes instead of the
+// declaration's own hook.
+func applyDecision(opts consume.Options, decision *appconsume.Decision, prepare appconsume.PrepareFunc) consume.Options {
+	opts.Params = decision.NormalizedParams()
+	opts.ParamsNormalized = true
+	opts.Prepare = prepare
+	return opts
 }
 
 // resolveIdentity resolves the session identity and enforces keyDef.AuthTypes as a whitelist.
@@ -248,10 +308,14 @@ type preflightCtx struct {
 	subscribedCallbacks []string
 }
 
-// preflightScopes compares required scopes against session-available scopes (user: UAT stored; bot: appVer.TenantScopes).
-func preflightScopes(ctx context.Context, pf *preflightCtx) error {
+// preflightScopes compares required scopes against session-available scopes
+// (user: UAT stored; bot: appVer.TenantScopes). checked reports whether a
+// comparison actually happened: "the ledger was unavailable" and "the check
+// passed" are different answers, and only the caller can decide how loudly to
+// say the first one.
+func preflightScopes(ctx context.Context, pf *preflightCtx) (checked bool, err error) {
 	if len(pf.keyDef.Scopes) == 0 || pf.identity == "" {
-		return nil
+		return true, nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -261,44 +325,45 @@ func preflightScopes(ctx context.Context, pf *preflightCtx) error {
 	switch {
 	case pf.identity.IsBot():
 		if pf.appVer == nil {
-			return nil
+			return false, nil
 		}
 		storedScopes = strings.Join(pf.appVer.TenantScopes, " ")
 	case pf.identity == core.AsUser:
 		result, err := pf.factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(pf.identity, pf.appID))
 		if err != nil || result == nil || result.Scopes == "" {
-			return nil //nolint:nilerr // best-effort: bus handshake will surface real auth error
+			return false, nil //nolint:nilerr // best-effort: the bus handshake surfaces the real auth error
 		}
 		storedScopes = result.Scopes
 	default:
-		return nil
+		return false, nil
 	}
 
 	missing := auth.MissingScopes(storedScopes, pf.keyDef.Scopes)
 	if len(missing) == 0 {
-		return nil
+		return true, nil
 	}
-	return errs.NewPermissionError(errs.SubtypeMissingScope,
+	permissionErr := errs.NewPermissionError(errs.SubtypeMissingScope,
 		"missing required scopes for EventKey %s (as %s): %s",
 		pf.eventKey, pf.identity, strings.Join(missing, ", ")).
 		WithIdentity(string(pf.identity)).
-		WithMissingScopes(missing...).
-		WithHint("%s", scopeRemediationHint(pf.brand, pf.appID, pf.identity, missing))
+		WithMissingScopes(missing...)
+	if pf.identity.IsBot() {
+		permissionErr.WithHint("%s", botScopeRemediationHint(pf.brand, pf.appID, missing))
+	}
+	// The scope check itself completed, so the precondition is answered even
+	// though it answered "missing". A user-identity hint is deliberately left
+	// unset: the root presenter generates it from the identity and missing
+	// scopes, projected onto the commands this distribution actually ships.
+	return true, permissionErr
 }
 
 // scopeRemediationHint returns an identity-appropriate fix for missing scopes.
-// Bot: the scan-to-enable link adds the scopes to the app manifest, after which
-// the tenant token carries them. User: the scan link only updates the app
-// manifest — the user's own token still lacks the scopes until it is
-// re-authorized — so direct the user to re-login instead.
-func scopeRemediationHint(brand core.LarkBrand, appID string, identity core.Identity, missing []string) string {
-	if identity.IsBot() {
-		return fmt.Sprintf("grant these scopes by scanning: %s",
-			addonsHintURL(brand, appID, missingScopeAddons(identity, missing)))
-	}
-	return fmt.Sprintf(
-		"run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
-		strings.Join(missing, " "))
+// The bot-specific scan-to-enable link adds the scopes to the app manifest,
+// after which the tenant token carries them. User recovery is generated from
+// the PermissionError's identity and missing_scopes by the root presenter.
+func botScopeRemediationHint(brand core.LarkBrand, appID string, missing []string) string {
+	return fmt.Sprintf("grant these scopes by scanning: %s",
+		addonsHintURL(brand, appID, missingScopeAddons(core.AsBot, missing)))
 }
 
 // preflightEventTypes verifies every RequiredConsoleEvents entry is subscribed
@@ -379,7 +444,7 @@ func resolveTenantToken(ctx context.Context, f *cmdutil.Factory, appID string) (
 	if result == nil || result.Token == "" {
 		return "", errs.NewAuthenticationError(errs.SubtypeTokenMissing,
 			"no tenant access token available for app %s", appID).
-			WithHint("Check that app_secret is configured (lark-cli config show) and try 'lark-cli auth login'.")
+			WithHint("check that app_secret is configured for this distribution")
 	}
 	return result.Token, nil
 }

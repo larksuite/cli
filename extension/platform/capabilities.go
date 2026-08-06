@@ -13,11 +13,12 @@ const (
 	// where missing audit data is preferable to a broken CLI.
 	FailOpen FailurePolicy = iota
 
-	// FailClosed — abort the entire CLI startup. Required for any
-	// plugin that contributes Restrict() (a missing policy plugin =
-	// missing security boundary) or that owns any safety-sensitive
-	// concern. Enforced by the framework: Capabilities.Restricts=true
-	// must pair with FailurePolicy=FailClosed.
+	// FailClosed — abort the entire CLI startup. Required for any plugin
+	// that contributes Restrict() (a missing policy plugin = missing
+	// security boundary), EmbeddedSkills() (silently dropping distribution
+	// assets would violate build integrity), or any other safety-sensitive
+	// concern. The Builder sets it automatically for Restrict and
+	// EmbeddedSkills; the host validates hand-written plugins after staging.
 	FailClosed
 )
 
@@ -45,6 +46,6 @@ type Capabilities struct {
 
 	// FailurePolicy decides what happens on install failure. See the
 	// constants above; the framework requires FailClosed whenever
-	// Restricts=true.
+	// Restricts=true or Install contributes EmbeddedSkills.
 	FailurePolicy FailurePolicy
 }

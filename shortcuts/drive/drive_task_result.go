@@ -206,7 +206,7 @@ func queryImportTaskAndAutoGrantPermission(runtime *common.RuntimeContext, ticke
 func queryExportTask(runtime *common.RuntimeContext, ticket, fileToken string) (map[string]interface{}, error) {
 	status, err := getDriveExportStatus(runtime, fileToken, ticket)
 	if err != nil {
-		return nil, err
+		return nil, withDriveExportRateLimitRecovery(err, ticket, fileToken)
 	}
 
 	return map[string]interface{}{
@@ -279,8 +279,7 @@ func requireDriveScopes(storedScopes string, required []string) error {
 
 	return errs.NewPermissionError(errs.SubtypeMissingScope,
 		"missing required scope(s): %s", strings.Join(missing, ", ")).
-		WithMissingScopes(missing...).
-		WithHint("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " "))
+		WithMissingScopes(missing...)
 }
 
 func missingDriveScopes(storedScopes string, required []string) []string {

@@ -5,8 +5,10 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -19,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/zalando/go-keyring"
@@ -329,6 +332,63 @@ func TestAuthLoginRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 			t.Errorf("expected stderr to mention %q, got: %s", want, stderrStr)
 		}
 	}
+}
+
+func TestGenericUserAuthorizationStartCommandPassesLoginValidation(t *testing.T) {
+	const startCommand = "lark-cli auth login --recommend --no-wait --json"
+	if hint := recovery.UserAuthorization().String(); !strings.Contains(hint, startCommand) {
+		t.Fatalf("generic recovery = %q, want executable start command %q", hint, startCommand)
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    larkauth.PathDeviceAuthorization,
+		Body: map[string]interface{}{
+			"device_code":               "device-code",
+			"user_code":                 "user-code",
+			"verification_uri":          "https://example.com/verify",
+			"verification_uri_complete": "https://example.com/verify?code=123",
+			"expires_in":                240,
+			"interval":                  5,
+		},
+	})
+
+	err := authLoginRun(&LoginOptions{
+		Factory:   f,
+		Ctx:       context.Background(),
+		Recommend: true,
+		NoWait:    true,
+		JSON:      true,
+	})
+	if err != nil {
+		t.Fatalf("generic recovery start command failed before returning a verification URL: %v", err)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("decode login response: %v\nstdout=%s", err, stdout.String())
+	}
+	if got := payload["verification_url"]; got != "https://example.com/verify?code=123" {
+		t.Fatalf("verification_url = %#v, want mocked URL", got)
+	}
+	hint, ok := payload["hint"].(string)
+	if !ok {
+		t.Fatalf("hint = %#v, want string", payload["hint"])
+	}
+	if strings.Contains(hint, "lark-cli auth login --no-wait --json") {
+		t.Errorf("successful start response recommends an invalid optionless retry: %q", hint)
+	}
+	for _, want := range []string{"same `--scope`, `--domain`, or `--recommend` selection", "any `--exclude` values", "`--no-wait --json`"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint = %q, want executable fresh-login guidance containing %q", hint, want)
+		}
+	}
+	reg.Verify(t)
 }
 
 func TestEnsureRequestedScopesGranted(t *testing.T) {
@@ -1050,7 +1110,9 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 		"YOU must execute",
 		"lark-cli auth login --device-code <device_code>",
 		"Do NOT cache",
-		"lark-cli auth login --no-wait --json",
+		"same `--scope`, `--domain`, or `--recommend` selection",
+		"any `--exclude` values",
+		"`--no-wait --json`",
 	} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("hint missing %q, got:\n%s", want, hint)
@@ -1059,9 +1121,72 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 	for _, unwanted := range []string{
 		"Then immediately execute",
 		"Do not instruct the user to run this command themselves",
+		"lark-cli auth login --no-wait --json",
 	} {
 		if strings.Contains(hint, unwanted) {
 			t.Fatalf("hint should not contain %q, got:\n%s", unwanted, hint)
+		}
+	}
+}
+
+func TestNoWaitAgentHint_DefaultBytesStable(t *testing.T) {
+	const wantSHA256 = "bd1000350f418a4353807c45c68e1ee073127366bf9d8dd8a0a0f797e0adf8b7"
+	if got := fmt.Sprintf("%x", sha256.Sum256([]byte(noWaitAgentHint(recovery.RenderContext{})))); got != wantSHA256 {
+		t.Fatalf("default no-wait hint digest = %s, want legacy %s", got, wantSHA256)
+	}
+}
+
+func TestAuthLoginRun_NoWaitJSONHintPreservesExplicitProfile(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "team-beta",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+	f.Invocation.Profile = "team-beta"
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    larkauth.PathDeviceAuthorization,
+		Body: map[string]interface{}{
+			"device_code":               "device-code",
+			"user_code":                 "user-code",
+			"verification_uri":          "https://example.com/verify",
+			"verification_uri_complete": "https://example.com/verify?code=123",
+			"expires_in":                240,
+			"interval":                  5,
+		},
+	})
+
+	if err := authLoginRun(&LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Scope:   "im:message:send",
+		NoWait:  true,
+		JSON:    true,
+	}); err != nil {
+		t.Fatalf("authLoginRun() error = %v", err)
+	}
+
+	var data map[string]interface{}
+	if err := json.NewDecoder(strings.NewReader(stdout.String())).Decode(&data); err != nil {
+		t.Fatalf("Decode(stdout) error = %v, stdout=%q", err, stdout.String())
+	}
+	hint, _ := data["hint"].(string)
+	for _, want := range []string{
+		"`lark-cli auth login --profile='team-beta' --device-code <device_code>`",
+		"rerun `lark-cli auth login --profile='team-beta'` with the same",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("profile-aware no-wait JSON hint missing %q: %s", want, hint)
+		}
+	}
+	for _, stale := range []string{
+		"`lark-cli auth login --device-code <device_code>`",
+		"rerun `lark-cli auth login` with the same",
+	} {
+		if strings.Contains(hint, stale) {
+			t.Errorf("profile-aware no-wait JSON hint retained stale command %q: %s", stale, hint)
 		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/spf13/cobra"
 
@@ -17,7 +18,63 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/skillref"
+	"github.com/larksuite/cli/internal/surface"
 )
+
+func TestFactoryResolveSkillReference(t *testing.T) {
+	content := fstest.MapFS{
+		"lark-doc/SKILL.md": {Data: []byte("canonical")},
+		"acme-doc/SKILL.md": {Data: []byte("remapped")},
+	}
+	from, err := skillref.Parse("lark-doc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	to, err := skillref.Parse("acme-doc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := skillref.New(content, []skillref.Mapping{{From: from, To: to}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("explicit remap", func(t *testing.T) {
+		f := &Factory{SkillContent: content, SkillReferences: resolver}
+		if got, ok := f.ResolveSkillReference("lark-doc"); !ok || got != "acme-doc" {
+			t.Fatalf("ResolveSkillReference() = %q, %v; want acme-doc, true", got, ok)
+		}
+	})
+
+	t.Run("identity fallback", func(t *testing.T) {
+		f := &Factory{SkillContent: content}
+		if got, ok := f.ResolveSkillReference("lark-doc"); !ok || got != "lark-doc" {
+			t.Fatalf("ResolveSkillReference() = %q, %v; want lark-doc, true", got, ok)
+		}
+		if got, ok := f.ResolveSkillReference("missing"); ok || got != "" {
+			t.Fatalf("missing ResolveSkillReference() = %q, %v; want empty, false", got, ok)
+		}
+		if got, ok := f.ResolveSkillReference("../invalid"); ok || got != "" {
+			t.Fatalf("invalid ResolveSkillReference() = %q, %v; want empty, false", got, ok)
+		}
+	})
+
+	t.Run("concealed skills read", func(t *testing.T) {
+		plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+			surface.CommandSkillsRead: surface.CommandConcealed,
+		})
+		f := &Factory{
+			SkillContent:    content,
+			SkillReferences: resolver,
+			Recovery:        recovery.NewProjector(func() *surface.Plan { return plan }),
+		}
+		if got, ok := f.ResolveSkillReference("lark-doc"); ok || got != "" {
+			t.Fatalf("concealed ResolveSkillReference() = %q, %v; want empty, false", got, ok)
+		}
+	})
+}
 
 // newCmdWithAsFlag creates a cobra.Command with a --as string flag for testing.
 func newCmdWithAsFlag(asValue string, changed bool) *cobra.Command {

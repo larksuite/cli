@@ -110,7 +110,7 @@ var SlidesHistoryList = common.Shortcut{
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 		{Name: "page-size", Type: "int", Default: "20", Desc: "history entries to return, range 1-20"},
 		{Name: "page-token", Desc: "pagination token from the previous page's page_token"},
 	},
@@ -173,7 +173,7 @@ var SlidesHistoryRevert = common.Shortcut{
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 		{Name: "history-version-id", Desc: "history_version_id from slides +history-list to revert to", Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -236,7 +236,7 @@ var SlidesHistoryRevertStatus = common.Shortcut{
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
+		requiredPresentationRefFlag(),
 		{Name: "task-id", Desc: "task_id returned by slides +history-revert", Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

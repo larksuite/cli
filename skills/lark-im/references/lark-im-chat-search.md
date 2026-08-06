@@ -33,6 +33,9 @@ lark-cli im +chat-search --query "project" --page-size 10
 # Pagination
 lark-cli im +chat-search --query "project" --page-token "xxx"
 
+# Fetch multiple pages automatically, up to 10 pages by default
+lark-cli im +chat-search --query "project" --page-all
+
 # JSON output
 lark-cli im +chat-search --query "project" --format json
 
@@ -52,12 +55,16 @@ lark-cli im +chat-search --query "project" --dry-run
 | `--disable-search-by-user` | No | - | Disable member-name-based matching and search by group name only |
 | `--sort <field>` | No | `create_time`, `update_time`, `member_count` | Sort field (always descending) |
 | `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
-| `--page-token <token>` | No | - | Pagination token from the previous response |
+| `--page-token <token>` | No | - | Starting cursor, normally returned by a previous response |
+| `--page-all` | No | - | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
+| `--page-limit <n>` | No | 1-1000, default 10 | Maximum pages fetched by `--page-all` |
 | `--exclude-muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under `--as bot`, the flag is silently inactive (mute is a per-user setting); see "Filtering muted chats" below |
 | `--format json` | No | - | Output as JSON |
 | `--dry-run` | No | - | Preview the request without executing it |
 
 > **Note:** Supports both `--as user` (default) and `--as bot`. When using bot identity, the app must have bot capability enabled.
+
+With `--page-all`, `--page-token` sets the starting cursor. If `meta.pagination.complete=false`, resume from `meta.pagination.next_token` or raise `--page-limit`.
 
 > **CAUTION:** `--sort` is **always descending** — the search API only ranks the chosen field high-to-low (e.g. `member_count` = most members first). There is no ascending option. If the user asks for "fewest first / ascending / 从少到多", tell them the search API does not support ascending order; any low-to-high view requires re-sorting the fetched page client-side and is not an upstream sort. Do **not** invent values like `member_count_asc` or pass `asc` (they are rejected).
 
@@ -121,7 +128,7 @@ lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Today's progress update"
 |---------|---------|---------|
 | `--query and --member-ids cannot both be empty` | Both were omitted | Provide at least `--query` or `--member-ids` |
 | Empty results | No visible chats matched the keyword or filters | Relax the keyword or filters and try again |
-| `--page-size must be an integer between 1 and 100` | page-size is out of range or not an integer | Use an integer between 1 and 100 |
+| `invalid --page-size 101: must be between 1 and 100` | page-size is out of range | Use an integer between 1 and 100 |
 | Permission denied (99991672) | The bot app does not have `im:chat:read` TAT permission enabled | Enable the permission for the app in the Open Platform console |
 | Permission denied (99991679) with `--as user` | UAT is not authorized for `im:chat:read` | Run `lark-cli auth login --scope "im:chat:read"` |
 | `Bot ability is not activated` (232025) | The app does not have bot capability enabled | Enable bot capability in the Open Platform console |
