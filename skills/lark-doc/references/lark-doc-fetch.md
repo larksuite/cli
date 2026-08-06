@@ -10,6 +10,9 @@ lark-cli docs +fetch --doc "https://xxx.feishu.cn/docx/Z1Fj...tnAc"
 # Markdown 格式
 lark-cli docs +fetch --doc Z1Fj...tnAc --doc-format markdown
 
+# Markdown 整篇读取返回 has_more=true 时续读下一页
+lark-cli docs +fetch --doc Z1Fj...tnAc --doc-format markdown --page-token "<next_page_token>"
+
 # 带 block ID（用于后续 block 级更新）
 lark-cli docs +fetch --doc Z1Fj...tnAc --detail with-ids
 
@@ -32,6 +35,8 @@ lark-cli docs +fetch --doc Z1Fj...tnAc \
 ```
 
 ## 选 `--detail`（每块详细度）
+
+> `--detail with-ids/full` 仅支持 XML；分页参数 `--full` 是另一个独立参数。
 
 | 意图 | `--detail` | 说明 |
 |------|-----------|------|
@@ -103,6 +108,10 @@ lark-cli docs +fetch --doc Z1Fj...tnAc \
 
 `content` 的格式由 `--doc-format` 决定。`reference_map` 是正文引用数据的结构化 sidecar：一级键 `block_type` 表示引用所在的块类型，二级键 `ref` 对应正文中的临时引用；每个引用的值是由 `real-attr-key` 和 `real-attr-value` 组成的真实属性映射，具体属性由块类型决定。没有提取数据时，`reference_map` 可能为空。`content` 和 `reference_map` 属于同一份响应，保留或回放内容时应配套处理。`tips` 给出安全回放或降级提示。`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。
 
+仅当 `--doc-format markdown` 且未指定 `--scope` 时，整篇读取才使用分页；服务端分页时响应包含 `has_more` 和 `next_page_token`，服务端不分页时首次读取即返回全部内容。
+
+分页 Markdown 整篇读取不支持历史版本或显式 `--lang`。
+
 ## 参数
 
 | 参数 | 必填 | 说明 |
@@ -118,6 +127,10 @@ lark-cli docs +fetch --doc Z1Fj...tnAc \
 | `--context-before` | 否 | 命中前拉几个兄弟块（仅对顶层单元生效，默认 `0`） |
 | `--context-after` | 否 | 命中后拉几个兄弟块（仅对顶层单元生效，默认 `0`） |
 | `--max-depth` | 否 | `outline` = 标题层级上限；其它 = 子树深度（`-1` 不限，默认） |
+| `--full` | 否 | 仅 Markdown 整篇读取：关闭自动分页，一次返回全部内容；不能与 `--page-token` / `--page-size` 同用 |
+| `--page-token` | 否 | 仅 Markdown 整篇读取：传入上次返回的 `next_page_token` 续读 |
+| `--page-size` | 否 | 仅 Markdown 整篇读取：每页大小提示（默认 0 = 服务端默认） |
+| `--embed-max-rows` | 否 | 仅 Markdown：每个表格最多返回 N 行（默认 50，0 = 不限） |
 | `--format` | 否 | `json`（默认）\| `pretty` |
 
 ## 图片、文件、画板的处理

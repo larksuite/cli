@@ -135,3 +135,63 @@ func ParseResourceURL(rawURL string) (ResourceRef, bool) {
 
 	return ResourceRef{}, false
 }
+
+// ResourceURLOrBuild preserves URL inputs and builds a brand URL for bare
+// tokens. Unknown kinds remain unchanged so the backend can reject them.
+func ResourceURLOrBuild(brand core.LarkBrand, kind, input string) string {
+	input = strings.TrimSpace(input)
+	if input == "" || strings.Contains(input, "://") {
+		return input
+	}
+	if built := BuildResourceURL(brand, kind, input); built != "" {
+		return built
+	}
+	return input
+}
+
+// FetchURLResolution includes the Wiki probe state behind a resolved fetch URL.
+// Callers that need the underlying type can reuse WikiNode; WikiProbeAttempted
+// also distinguishes "not probed" from a failed probe so they do not retry it.
+type FetchURLResolution struct {
+	URL                string
+	WikiNode           *WikiNode
+	WikiProbeAttempted bool
+}
+
+// ResolveFetchURLDetailed resolves a URL or bare token for the fetch API and
+// includes the bare-token Wiki probe result. Real URLs do not need a probe. A
+// bare token is probed exactly once; both successful and failed attempts are
+// recorded for downstream reuse.
+func ResolveFetchURLDetailed(runtime *RuntimeContext, declaredKind, input string) FetchURLResolution {
+	input = strings.TrimSpace(input)
+	if input == "" || strings.Contains(input, "://") {
+		return FetchURLResolution{URL: input}
+	}
+	if node, err := ResolveWikiNode(runtime, input); err == nil {
+		if u := wikiNodeURL(runtime.Config.Brand, node); u != "" {
+			return FetchURLResolution{URL: u, WikiNode: node, WikiProbeAttempted: true}
+		}
+		return FetchURLResolution{
+			URL:                ResourceURLOrBuild(runtime.Config.Brand, declaredKind, input),
+			WikiNode:           node,
+			WikiProbeAttempted: true,
+		}
+	}
+	return FetchURLResolution{
+		URL:                ResourceURLOrBuild(runtime.Config.Brand, declaredKind, input),
+		WikiProbeAttempted: true,
+	}
+}
+
+// wikiNodeURL builds the /wiki/<token> URL a resolved wiki node reads as:
+// node_token, except for a shortcut node (node_type=shortcut) where it follows
+// origin_node_token to the real node so the fetch reads the original doc, not the
+// shortcut. Returns "" when node_token is absent (BuildResourceURL returns "" for
+// an empty token).
+func wikiNodeURL(brand core.LarkBrand, node *WikiNode) string {
+	nodeToken := node.NodeToken
+	if strings.EqualFold(node.NodeType, "shortcut") && node.OriginNodeToken != "" {
+		nodeToken = node.OriginNodeToken
+	}
+	return BuildResourceURL(brand, "wiki", nodeToken)
+}

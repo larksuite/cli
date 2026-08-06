@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/larksuite/cli/shortcuts/common/contentread"
 	"github.com/spf13/cobra"
 )
 
@@ -686,7 +687,9 @@ func TestDocsFetchIMMarkdownIgnoresHTML5BlockInsideCodeFence(t *testing.T) {
 func TestDocsFetchMarkdownDetailDowngradesToSimple(t *testing.T) {
 	t.Parallel()
 
-	for _, format := range []string{"markdown", "im-markdown"} {
+	// Markdown whole-document reads use the anchored Markdown path; cover the
+	// document API's detail downgrade through im-markdown.
+	for _, format := range []string{"im-markdown"} {
 		for _, detail := range []string{"with-ids", "full"} {
 			t.Run(format+"/"+detail, func(t *testing.T) {
 				t.Parallel()
@@ -721,26 +724,22 @@ func TestDocsFetchMarkdownDetailDowngradesToSimple(t *testing.T) {
 func TestDocsFetchMarkdownDetailDowngradeWarnsInOutput(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-detail-warning"))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-detail-warning"))
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/docs_ai/v1/documents/doxcnFetchWarning/fetch",
+		URL:    contentread.Path,
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
 			"data": map[string]interface{}{
-				"document": map[string]interface{}{
-					"document_id": "doxcnFetchWarning",
-					"revision_id": float64(1),
-					"content":     "# hello",
-				},
+				"full_content": "<h1>hello</h1>",
 			},
 		},
 	})
 
 	err := mountAndRunDocs(t, DocsFetch, []string{
 		"+fetch",
-		"--doc", "doxcnFetchWarning",
+		"--doc", "https://example.feishu.cn/docx/doxcnFetchWarning",
 		"--doc-format", "markdown",
 		"--detail", "with-ids",
 		"--as", "bot",
@@ -756,10 +755,13 @@ func TestDocsFetchMarkdownDetailDowngradeWarnsInOutput(t *testing.T) {
 	data, _ := envelope["data"].(map[string]interface{})
 	warnings, _ := data["warnings"].([]interface{})
 	if len(warnings) != 1 {
-		t.Fatalf("warnings = %#v, want one downgrade warning", data["warnings"])
+		t.Fatalf("warnings = %#v, want one detail warning", data["warnings"])
 	}
 	if got, _ := warnings[0].(string); !strings.Contains(got, "returning markdown output") || !strings.Contains(got, "ignoring the unsupported detail option") {
 		t.Fatalf("unexpected warning: %q", got)
+	}
+	if strings.Contains(stderr.String(), "expected next_page_token") {
+		t.Fatalf("unexpected pagination warning: %q", stderr.String())
 	}
 }
 
@@ -769,23 +771,19 @@ func TestDocsFetchMarkdownDetailDowngradeWarnsInPrettyOutput(t *testing.T) {
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-detail-pretty-warning"))
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/docs_ai/v1/documents/doxcnFetchPrettyWarning/fetch",
+		URL:    contentread.Path,
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "ok",
 			"data": map[string]interface{}{
-				"document": map[string]interface{}{
-					"document_id": "doxcnFetchPrettyWarning",
-					"revision_id": float64(1),
-					"content":     "# hello",
-				},
+				"full_content": "<h1>hello</h1>",
 			},
 		},
 	})
 
 	err := mountAndRunDocs(t, DocsFetch, []string{
 		"+fetch",
-		"--doc", "doxcnFetchPrettyWarning",
+		"--doc", "https://example.feishu.cn/docx/doxcnFetchPrettyWarning",
 		"--doc-format", "markdown",
 		"--detail", "full",
 		"--format", "pretty",
@@ -795,7 +793,7 @@ func TestDocsFetchMarkdownDetailDowngradeWarnsInPrettyOutput(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if got := stdout.String(); got != "# hello\n" {
+	if got := stdout.String(); got != "# hello\n\n" {
 		t.Fatalf("stdout = %q, want markdown content only", got)
 	}
 	if got := stderr.String(); !strings.Contains(got, "warning: --detail full is only supported with --doc-format xml") ||
@@ -1021,6 +1019,9 @@ func newFetchShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[s
 	cmd.Flags().Int("max-depth", fetchDefaultInt("max-depth"), "")
 	cmd.Flags().String("offset", "", "")
 	cmd.Flags().String("limit", "", "")
+	cmd.Flags().Bool("full", false, "")
+	cmd.Flags().String("page-token", "", "")
+	cmd.Flags().Int("page-size", 0, "")
 	if apiVersion != "" {
 		if err := cmd.Flags().Set("api-version", apiVersion); err != nil {
 			t.Fatalf("set api-version: %v", err)
@@ -1055,4 +1056,45 @@ func newUpdateBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd.Flags().String("block-id", "", "")
 	cmd.Flags().String("src-block-ids", "", "")
 	return common.TestNewRuntimeContextWithCtx(ctx, cmd, nil)
+}
+
+func TestAnchoredMarkdownRevisionAndLangUseDocumentAPI(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name                string
+		flags               map[string]string
+		useAnchoredMarkdown bool
+	}{
+		{"markdown full uses anchored Markdown", map[string]string{"doc-format": "markdown"}, true}, // scope defaults to full
+		{"historical revision uses document API", map[string]string{"doc-format": "markdown", "revision-id": "42"}, false},
+		{"explicit lang uses document API", map[string]string{"doc-format": "markdown", "lang": "ja-JP"}, false},
+		{"xml uses document API", map[string]string{"doc-format": "xml"}, false},
+		{"partial scope uses document API", map[string]string{"doc-format": "markdown", "scope": "outline"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			rt := newFetchShortcutTestRuntime(t, "", tc.flags)
+			got := useAnchoredMarkdownRead(rt)
+			if got != tc.useAnchoredMarkdown {
+				t.Fatalf("useAnchoredMarkdownRead()=%v, want %v (flags=%v)", got, tc.useAnchoredMarkdown, tc.flags)
+			}
+		})
+	}
+}
+
+func TestValidatePaginatedReadFlagsRevisionConflict(t *testing.T) {
+	t.Parallel()
+	rt := newFetchShortcutTestRuntime(t, "", map[string]string{
+		"doc-format":  "markdown",
+		"revision-id": "42",
+		"full":        "true",
+	})
+	err := validatePaginatedReadFlags(rt)
+	if err == nil {
+		t.Fatal("expected conflict error for --full + historical --revision-id")
+	}
+	if !strings.Contains(err.Error(), "revision-id") {
+		t.Fatalf("error should blame --revision-id, got: %v", err)
+	}
 }

@@ -42,6 +42,12 @@ type FileIO interface {
 	Save(path string, opts SaveOptions, body io.Reader) (SaveResult, error)
 }
 
+// LocalTemporaryFileSupport is an optional capability for runtimes that allow
+// commands to create files in the local temporary directory.
+type LocalTemporaryFileSupport interface {
+	SupportsLocalTemporaryFiles() bool
+}
+
 // FileInfo is a minimal subset of os.FileInfo covering actual CLI usage.
 // os.FileInfo satisfies this interface.
 type FileInfo interface {

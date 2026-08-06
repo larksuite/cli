@@ -688,6 +688,15 @@ func (ctx *RuntimeContext) ValidatePath(path string) error {
 
 // ── Output helpers ──
 
+// ScanOutputForSafety scans the original response before a caller performs an
+// output-only transformation that would hide part of it from the emitter. A
+// caller that observes Blocked must stop before creating files or performing
+// any other output side effect, and return BlockErr.
+func (ctx *RuntimeContext) ScanOutputForSafety(data any) output.ScanResult {
+	streams := ctx.IO()
+	return output.ScanForSafety(ctx.Cmd.CommandPath(), data, streams.ErrOut)
+}
+
 func (ctx *RuntimeContext) newEmitter() *output.Emitter {
 	streams := ctx.IO()
 	return output.NewEmitter(output.EmitterConfig{
@@ -789,6 +798,21 @@ func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, pre
 		JQ:     ctx.JqExpr,
 		Meta:   meta,
 		Pretty: wrapLegacyPrettyRenderer(prettyFn),
+	}))
+}
+
+// OutFormatRawWithSafety is like OutFormatRaw but reuses a content-safety
+// result computed from the original response. This keeps alerts and blocks
+// associated with that response while avoiding a second scan of transformed
+// output data.
+func (ctx *RuntimeContext) OutFormatRawWithSafety(data interface{}, meta *output.Meta, prettyFn func(w io.Writer), scanResult output.ScanResult) {
+	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
+		Format:       ctx.Format,
+		Raw:          true,
+		JQ:           ctx.JqExpr,
+		Meta:         meta,
+		Pretty:       wrapLegacyPrettyRenderer(prettyFn),
+		SafetyResult: &scanResult,
 	}))
 }
 

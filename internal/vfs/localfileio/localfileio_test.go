@@ -47,6 +47,13 @@ func TestProvider_ResolveFileIO(t *testing.T) {
 	}
 }
 
+func TestLocalFileIOSupportsLocalTemporaryFiles(t *testing.T) {
+	var support fileio.LocalTemporaryFileSupport = &LocalFileIO{}
+	if !support.SupportsLocalTemporaryFiles() {
+		t.Fatal("SupportsLocalTemporaryFiles() = false, want true")
+	}
+}
+
 // ── Open ──
 
 func TestLocalFileIO_Open_ValidFile(t *testing.T) {

@@ -53,6 +53,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 		"+secure-label-update",
 		"+search",
 		"+inspect",
+		"+fetch",
 	}
 
 	if len(got) != len(want) {

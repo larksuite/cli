@@ -30,6 +30,10 @@ func init() {
 // and atomic writes are handled internally.
 type LocalFileIO struct{}
 
+// SupportsLocalTemporaryFiles reports that this implementation and the process
+// share the same local filesystem.
+func (*LocalFileIO) SupportsLocalTemporaryFiles() bool { return true }
+
 // Open opens a local file for reading after validating the path.
 func (l *LocalFileIO) Open(name string) (fileio.File, error) {
 	safePath, err := SafeInputPath(name)
