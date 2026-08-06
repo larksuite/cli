@@ -455,6 +455,7 @@ func (ctx *RuntimeContext) StreamPages(method, url string, params map[string]int
 	}, opts)
 }
 
+// buildRequest converts shortcut inputs into the raw request consumed by APIClient.
 func (ctx *RuntimeContext) buildRequest(method, url string, params map[string]interface{}, data interface{}) client.RawApiRequest {
 	req := client.RawApiRequest{
 		Method: method,
@@ -469,6 +470,7 @@ func (ctx *RuntimeContext) buildRequest(method, url string, params map[string]in
 	return req
 }
 
+// callRaw executes a shortcut request and returns the unprojected API response.
 func (ctx *RuntimeContext) callRaw(method, url string, params map[string]interface{}, data interface{}) (interface{}, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
@@ -732,6 +734,7 @@ func (ctx *RuntimeContext) newEmitter() *output.Emitter {
 	})
 }
 
+// handleEmitterError records output failures without corrupting the command data stream.
 func (ctx *RuntimeContext) handleEmitterError(err error) {
 	if err == nil {
 		return
@@ -750,6 +753,7 @@ func (ctx *RuntimeContext) OutputError() error {
 	return ctx.outputErr
 }
 
+// wrapLegacyPrettyRenderer adapts a writer-only renderer to the current output contract.
 func wrapLegacyPrettyRenderer(prettyFn func(w io.Writer)) output.PrettyRenderer {
 	if prettyFn == nil {
 		return nil
@@ -881,12 +885,14 @@ func (s Shortcut) Mount(parent *cobra.Command, f *cmdutil.Factory) {
 	s.MountWithContext(context.Background(), parent, f)
 }
 
+// MountWithContext registers a shortcut while preserving the caller-provided context.
 func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	if s.Execute != nil {
 		s.mountDeclarative(ctx, parent, f)
 	}
 }
 
+// mountDeclarative builds and registers the Cobra command described by a Shortcut.
 func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	shortcut := s
 	if len(shortcut.AuthTypes) == 0 {
@@ -1029,6 +1035,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	return rctx.outputErr
 }
 
+// resolveShortcutIdentity selects the effective identity for a shortcut invocation.
 func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
 	// Step 1: determine identity (--as > default-as > auto-detect).
 	asFlag, _ := cmd.Flags().GetString("as")
@@ -1045,6 +1052,7 @@ func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 	return as, nil
 }
 
+// checkShortcutScopes verifies that the selected identity satisfies the shortcut scope contract.
 func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identity, config *core.CliConfig, scopes []string) error {
 	if len(scopes) == 0 {
 		return nil
@@ -1062,6 +1070,7 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 		WithMissingScopes(missing...)
 }
 
+// newRuntimeContext assembles the dependencies and resolved identity for one shortcut execution.
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
@@ -1203,6 +1212,7 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 	return nil
 }
 
+// validateEnumFlags rejects shortcut flag values outside their declared enum choices.
 func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 	for _, fl := range flags {
 		if len(fl.Enum) == 0 {
@@ -1227,6 +1237,7 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 	return nil
 }
 
+// handleShortcutDryRun renders a shortcut plan without sending its API requests.
 func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut) error {
 	if s.DryRun == nil {
 		return ValidationErrorf("--dry-run is not supported for %s %s", s.Service, s.Command).
@@ -1260,6 +1271,7 @@ func rejectPositionalArgs() cobra.PositionalArgs {
 	}
 }
 
+// registerShortcutFlags adds the shortcut's declared flags to its Cobra command.
 func registerShortcutFlags(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	registerShortcutFlagsWithContext(context.Background(), cmd, f, s)
 }
@@ -1333,6 +1345,7 @@ func applyJSONShorthand(cmd *cobra.Command, s *Shortcut) {
 	}
 }
 
+// registerShortcutFlagsWithContext registers shortcut flags using the supplied command context.
 func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	for _, fl := range s.Flags {
 		desc := fl.Desc

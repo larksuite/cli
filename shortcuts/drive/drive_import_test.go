@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// TestImportDefaultFileName verifies filename derivation for supported import sources.
 func TestImportDefaultFileName(t *testing.T) {
 	t.Parallel()
 
@@ -211,6 +212,7 @@ func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunReturnsErrorForUnsafePath verifies rejection of unsafe import paths.
 func TestDriveImportDryRunReturnsErrorForUnsafePath(t *testing.T) {
 	t.Parallel()
 
@@ -253,6 +255,7 @@ func TestDriveImportDryRunReturnsErrorForUnsafePath(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunReturnsErrorForOversizedMarkdown verifies the Markdown import size limit.
 func TestDriveImportDryRunReturnsErrorForOversizedMarkdown(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -307,6 +310,7 @@ func TestDriveImportDryRunReturnsErrorForOversizedMarkdown(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunReturnsErrorForDirectoryInput verifies rejection of directory inputs.
 func TestDriveImportDryRunReturnsErrorForDirectoryInput(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -354,6 +358,7 @@ func TestDriveImportDryRunReturnsErrorForDirectoryInput(t *testing.T) {
 	}
 }
 
+// TestDriveImportCreateTaskBodyKeepsEmptyMountKeyForRoot verifies the root import task contract.
 func TestDriveImportCreateTaskBodyKeepsEmptyMountKeyForRoot(t *testing.T) {
 	t.Parallel()
 
@@ -391,6 +396,7 @@ func TestDriveImportCreateTaskBodyKeepsEmptyMountKeyForRoot(t *testing.T) {
 	}
 }
 
+// TestDriveImportCreateTaskBodyWithTargetToken verifies Base import task targeting.
 func TestDriveImportCreateTaskBodyWithTargetToken(t *testing.T) {
 	t.Parallel()
 
@@ -510,6 +516,7 @@ func TestDriveImportDryRunWithTargetToken(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunTargetTokenRejectedForSheet verifies target-token validation for sheet imports.
 func TestDriveImportDryRunTargetTokenRejectedForSheet(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -602,6 +609,7 @@ func driveImportTestConfig(suffix string, brands ...core.LarkBrand) *core.CliCon
 	}
 }
 
+// TestDriveImportFallbackURLWhenBackendOmitsIt verifies client-side URL construction.
 func TestDriveImportFallbackURLWhenBackendOmitsIt(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("missing-url"))
 	driveImportMockEnv(t, reg, "ticket_fallback", map[string]interface{}{
@@ -634,6 +642,7 @@ func TestDriveImportFallbackURLWhenBackendOmitsIt(t *testing.T) {
 	}
 }
 
+// TestDriveImportPreservesBackendURL verifies that a server-provided URL is returned unchanged.
 func TestDriveImportPreservesBackendURL(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("preserve-url"))
 	driveImportMockEnv(t, reg, "ticket_preserve", map[string]interface{}{
@@ -665,6 +674,7 @@ func TestDriveImportPreservesBackendURL(t *testing.T) {
 	}
 }
 
+// TestDriveImportFallbackURLWhenServerURLIsWhitespace verifies fallback for blank server URLs.
 func TestDriveImportFallbackURLWhenServerURLIsWhitespace(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("whitespace-url"))
 	driveImportMockEnv(t, reg, "ticket_whitespace", map[string]interface{}{
@@ -696,6 +706,7 @@ func TestDriveImportFallbackURLWhenServerURLIsWhitespace(t *testing.T) {
 	}
 }
 
+// TestDriveImportFallbackURLForLarkBrand verifies fallback URL construction for Lark tenants.
 func TestDriveImportFallbackURLForLarkBrand(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("lark-brand", core.BrandLark))
 	driveImportMockEnv(t, reg, "ticket_lark", map[string]interface{}{
@@ -727,6 +738,7 @@ func TestDriveImportFallbackURLForLarkBrand(t *testing.T) {
 	}
 }
 
+// TestDriveImportFallbackURLWhenServerTypeIsAlias verifies normalization of server document-type aliases.
 func TestDriveImportFallbackURLWhenServerTypeIsAlias(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("alias-type"))
 	driveImportMockEnv(t, reg, "ticket_alias", map[string]interface{}{
@@ -759,6 +771,7 @@ func TestDriveImportFallbackURLWhenServerTypeIsAlias(t *testing.T) {
 	}
 }
 
+// TestDriveImportFallbackURLForSlides verifies fallback URL construction for imported slides.
 func TestDriveImportFallbackURLForSlides(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("slides"))
 	driveImportMockEnv(t, reg, "ticket_slides", map[string]interface{}{

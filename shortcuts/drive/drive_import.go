@@ -61,6 +61,7 @@ type ImportParams struct {
 	FileExtension string
 }
 
+// spec projects public import parameters into the internal execution model.
 func (p ImportParams) spec() driveImportSpec {
 	return driveImportSpec{
 		FilePath:     p.File,

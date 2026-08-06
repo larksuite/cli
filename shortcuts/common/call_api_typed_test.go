@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
+// newCallAPITypedRuntime creates an isolated runtime for typed API-call tests.
 func newCallAPITypedRuntime(t *testing.T) (*RuntimeContext, *httpmock.Registry) {
 	t.Helper()
 	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_x"}
@@ -162,6 +163,7 @@ func TestDoAPIJSONTyped_HTTPErrorWithZeroBodyCodeNotSwallowed(t *testing.T) {
 	}
 }
 
+// TestCallAPITyped_NonJSON5xx verifies classification of non-JSON server failures.
 func TestCallAPITyped_NonJSON5xx(t *testing.T) {
 	rt, reg := newCallAPITypedRuntime(t)
 	reg.Register(&httpmock.Stub{
@@ -253,6 +255,7 @@ func TestDoAPIJSONTyped_Success(t *testing.T) {
 	}
 }
 
+// TestDoAPIJSONTyped_RawClientErrorBecomesTypedInternal verifies classification of raw client failures.
 func TestDoAPIJSONTyped_RawClientErrorBecomesTypedInternal(t *testing.T) {
 	rt := TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+x"}, &core.CliConfig{}, nil, core.AsUser)
 	rt.apiClientFunc = func() (*client.APIClient, error) {

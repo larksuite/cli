@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
+// TestUploadDriveMediaAllTypedWithInMemoryContent verifies single-part uploads from in-memory content.
 func TestUploadDriveMediaAllTypedWithInMemoryContent(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -52,6 +53,7 @@ func TestUploadDriveMediaAllTypedWithInMemoryContent(t *testing.T) {
 	}
 }
 
+// TestUploadDriveMediaAllTypedClassifiesAPIFailure verifies typed classification of upload API errors.
 func TestUploadDriveMediaAllTypedClassifiesAPIFailure(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -91,6 +93,7 @@ func TestUploadDriveMediaAllTypedClassifiesAPIFailure(t *testing.T) {
 	}
 }
 
+// TestUploadDriveMediaAllTypedFileOpenFailure verifies typed handling of local file-open errors.
 func TestUploadDriveMediaAllTypedFileOpenFailure(t *testing.T) {
 	runtime, _ := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -111,6 +114,7 @@ func TestUploadDriveMediaAllTypedFileOpenFailure(t *testing.T) {
 	}
 }
 
+// TestUploadDriveMediaMultipartTypedBuildsPreparePartsAndFinish verifies the complete multipart request sequence.
 func TestUploadDriveMediaMultipartTypedBuildsPreparePartsAndFinish(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -160,6 +164,7 @@ func TestUploadDriveMediaMultipartTypedBuildsPreparePartsAndFinish(t *testing.T)
 	}
 }
 
+// TestParseDriveMediaMultipartUploadSessionTypedValidatesResponseFields verifies required prepare-response fields.
 func TestParseDriveMediaMultipartUploadSessionTypedValidatesResponseFields(t *testing.T) {
 	t.Parallel()
 

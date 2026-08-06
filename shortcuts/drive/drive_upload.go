@@ -48,6 +48,7 @@ type driveUploadResult struct {
 	Version   string
 }
 
+// newDriveUploadSpec captures upload flags in the internal execution model.
 func newDriveUploadSpec(runtime *common.RuntimeContext) driveUploadSpec {
 	return driveUploadSpec{
 		FilePath:    runtime.Str("file"),
@@ -58,6 +59,7 @@ func newDriveUploadSpec(runtime *common.RuntimeContext) driveUploadSpec {
 	}
 }
 
+// FileName returns the explicit remote name or derives it from the local path.
 func (s driveUploadSpec) FileName() string {
 	if s.Name != "" {
 		return s.Name
@@ -65,6 +67,7 @@ func (s driveUploadSpec) FileName() string {
 	return filepath.Base(s.FilePath)
 }
 
+// Target returns the Drive or Wiki destination represented by the upload flags.
 func (s driveUploadSpec) Target() driveUploadTarget {
 	if s.WikiToken != "" {
 		return driveUploadTarget{
@@ -78,6 +81,7 @@ func (s driveUploadSpec) Target() driveUploadTarget {
 	}
 }
 
+// Label returns a human-readable description of the upload destination.
 func (t driveUploadTarget) Label() string {
 	switch t.ParentType {
 	case driveUploadParentTypeWiki:
@@ -204,6 +208,7 @@ var DriveUpload = common.Shortcut{
 	},
 }
 
+// validateDriveUploadSpec validates local input and mutually exclusive upload targets.
 func validateDriveUploadSpec(runtime *common.RuntimeContext, spec driveUploadSpec) error {
 	if driveUploadFlagExplicitlyEmpty(runtime, "file-token") {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-token cannot be empty; omit --file-token for a new upload or pass an existing file token to overwrite").WithParam("--file-token")
@@ -411,6 +416,7 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 	}, nil
 }
 
+// driveUploadVersionFromData extracts the upload version from supported response aliases.
 func driveUploadVersionFromData(data map[string]interface{}) string {
 	version := common.GetString(data, "version")
 	if version == "" {
