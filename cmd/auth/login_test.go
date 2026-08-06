@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/shortcuts"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/zalando/go-keyring"
 )
@@ -306,6 +307,54 @@ func TestGetDomainMetadata_HasTitleAndDescription(t *testing.T) {
 	for _, dm := range domains {
 		if dm.Title == "" {
 			t.Errorf("domain %q has empty Title", dm.Name)
+		}
+	}
+}
+
+// TestEveryRegisteredDomain_HasBilingualDescription reconciles every registered
+// business domain against service_descriptions.json.
+//
+// TestGetDomainMetadata_HasTitleAndDescription does not cover this. It asserts on
+// buildDomainMeta's output, which falls back to the typed service spec when the
+// config has no entry — and that spec carries one string for both languages. So a
+// domain missing from the config still passes it, while rendering (for example) a
+// Chinese description in English `--help`. attendance and mindnotes shipped that
+// way. Asserting on the registry getters checks the config itself, before any
+// fallback can paper over the gap.
+//
+// EmbeddedServicesTyped is the overlay-free parse, so this stays deterministic
+// whatever ~/.lark-cli/cache/remote_meta.json happens to hold on the machine.
+// A domain that only ever arrives via remote overlay is out of reach here.
+func TestEveryRegisteredDomain_HasBilingualDescription(t *testing.T) {
+	origin := make(map[string]string) // domain name → where it is registered
+	for _, svc := range registry.EmbeddedServicesTyped() {
+		origin[svc.Name] = "embedded API meta"
+	}
+	for _, sc := range shortcuts.AllShortcuts() {
+		if _, ok := origin[sc.Service]; !ok {
+			origin[sc.Service] = "shortcut registration"
+		}
+	}
+	if len(origin) == 0 {
+		t.Fatal("no registered domains found — the reconciliation would be vacuous")
+	}
+
+	names := make([]string, 0, len(origin))
+	for name := range origin {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		for _, lang := range []string{"en", "zh"} {
+			if registry.GetServiceTitle(name, lang) == "" {
+				t.Errorf("domain %q (registered via %s) has no %s title in service_descriptions.json",
+					name, origin[name], lang)
+			}
+			if registry.GetServiceDescription(name, lang) == "" {
+				t.Errorf("domain %q (registered via %s) has no %s description in service_descriptions.json",
+					name, origin[name], lang)
+			}
 		}
 	}
 }
