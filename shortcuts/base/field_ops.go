@@ -32,7 +32,7 @@ func dryRunFieldGet(_ context.Context, runtime *common.RuntimeContext) *common.D
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime)).
-		Set("field_id", runtime.Str("field-id"))
+		Set("field_id", fieldGetRef(runtime))
 }
 
 func dryRunFieldCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -147,7 +147,7 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 func executeFieldGet(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
-	fieldRef := runtime.Str("field-id")
+	fieldRef := fieldGetRef(runtime)
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldRef), nil, nil)
 	if err != nil {
 		return err

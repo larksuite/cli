@@ -507,6 +507,37 @@ func TestBaseRecordProjectionAliasesAreHidden(t *testing.T) {
 	}
 }
 
+func TestBaseFieldGetAliasIsHidden(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseFieldGet.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+	flag := cmd.Flags().Lookup("field-id-or-name")
+	if flag == nil {
+		t.Fatal("flag --field-id-or-name missing")
+	}
+	if !flag.Hidden {
+		t.Fatal("flag --field-id-or-name must be hidden")
+	}
+	if strings.Contains(cmd.Flags().FlagUsages(), "--field-id-or-name") {
+		t.Fatalf("help should not include hidden --field-id-or-name:\n%s", cmd.Flags().FlagUsages())
+	}
+	if err := cmd.ParseFlags([]string{"--base-token", "b", "--table-id", "t"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	if err := cmd.ValidateFlagGroups(); err == nil || !strings.Contains(err.Error(), "at least one of the flags") {
+		t.Fatalf("expected field selector one-required group error, got %v", err)
+	}
+	if err := cmd.Flags().Set("field-id", "fld_1"); err != nil {
+		t.Fatalf("set field-id: %v", err)
+	}
+	if err := cmd.Flags().Set("field-id-or-name", "Amount"); err != nil {
+		t.Fatalf("set field-id-or-name: %v", err)
+	}
+	if err := cmd.ValidateFlagGroups(); err == nil || !strings.Contains(err.Error(), "none of the others can be") {
+		t.Fatalf("expected field selector mutual exclusion group error, got %v", err)
+	}
+}
+
 func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1178,6 +1209,15 @@ func assertHelpOrder(t *testing.T, help string, before string, after string) {
 
 func TestBaseFieldValidate(t *testing.T) {
 	ctx := context.Background()
+	if err := BaseFieldGet.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--field-id is required") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseFieldGet.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id-or-name": "Amount"}, nil, nil)); err != nil {
+		t.Fatalf("field get alias validate err=%v", err)
+	}
+	if err := BaseFieldGet.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "field-id-or-name": "Amount"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("err=%v", err)
+	}
 	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": "{"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json invalid JSON object") {
 		t.Fatalf("err=%v", err)
 	}

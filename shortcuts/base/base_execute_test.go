@@ -1290,6 +1290,24 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 	})
 
+	t.Run("get alias", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/Amount",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_amount", "name": "Amount", "type": "number"},
+			},
+		})
+		if err := runShortcut(t, BaseFieldGet, []string{"+field-get", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id-or-name", "Amount"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"field"`) || !strings.Contains(got, `"Amount"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
 	t.Run("create", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{

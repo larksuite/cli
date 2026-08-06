@@ -85,6 +85,12 @@ func TestDryRunFieldOps(t *testing.T) {
 		map[string]int{"offset": 3, "limit": 30},
 	)
 	assertDryRunContains(t, dryRunFieldGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1")
+	fieldGetAliasRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "field-id-or-name": "Amount"},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunFieldGet(ctx, fieldGetAliasRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/Amount")
 	assertDryRunContains(t, dryRunFieldCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/fields")
 
 	arrayRT := newBaseTestRuntime(
