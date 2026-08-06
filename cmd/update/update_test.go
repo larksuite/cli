@@ -89,7 +89,7 @@ func mockDetectAndPnpm(t *testing.T, result selfupdate.DetectResult, pnpmFn func
 func successfulSkillsIndexFetch() func() *selfupdate.NpmResult {
 	return func() *selfupdate.NpmResult {
 		r := &selfupdate.NpmResult{}
-		r.Stdout.WriteString(`{"skills":[{"name":"lark-calendar"},{"name":"lark-mail"}]}`)
+		r.Stdout.WriteString(`{"skills":[{"name":"lark-calendar","type":"archive","url":"./lark-calendar.tar.gz","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"name":"lark-mail","type":"archive","url":"./lark-mail.tar.gz","digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}`)
 		return r
 	}
 }
@@ -1080,23 +1080,12 @@ func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
 	defer func() { newUpdater = origNew }()
 
 	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected skills sync failure")
 	}
 	out := stdout.String()
-	// CLI update should still succeed (ok:true)
-	if !strings.Contains(out, `"ok": true`) {
-		t.Errorf("expected ok:true despite skills failure, got: %s", out)
-	}
-	if !strings.Contains(out, `"action": "updated"`) {
-		t.Errorf("expected action:updated despite skills failure, got: %s", out)
-	}
-	// Should have skills_warning with detail
-	if !strings.Contains(out, "skills_warning") {
-		t.Errorf("expected skills_warning in output, got: %s", out)
-	}
-	if !strings.Contains(out, "skills_summary") {
-		t.Errorf("expected skills_summary in output, got: %s", out)
+	if !strings.Contains(out, `"ok": false`) || !strings.Contains(out, `"type": "skills_update_error"`) {
+		t.Errorf("expected structured skills update error, got: %s", out)
 	}
 }
 
@@ -1137,20 +1126,11 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 	defer func() { newUpdater = origNew }()
 
 	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "skills update failed") {
+		t.Fatalf("error = %v, want skills update failure", err)
 	}
-	out := stderr.String()
-	// CLI update should still show success
-	if !strings.Contains(out, "Successfully updated") {
-		t.Errorf("expected CLI success message, got: %s", out)
-	}
-	// Skills warning should be shown
-	if !strings.Contains(out, "Skills update failed") {
-		t.Errorf("expected skills failure warning, got: %s", out)
-	}
-	if !strings.Contains(out, "lark-cli update --force") {
-		t.Errorf("expected force retry hint, got: %s", out)
+	if strings.Contains(stderr.String(), "Successfully updated") {
+		t.Errorf("must not report full success after skills failure: %s", stderr.String())
 	}
 }
 
@@ -1171,12 +1151,46 @@ func TestRunSkillsAndState_DedupHit(t *testing.T) {
 			return &selfupdate.NpmResult{}
 		},
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "")
 	if got != nil {
 		t.Errorf("runSkillsAndState() = %+v, want nil for dedup hit", got)
 	}
 	if called {
 		t.Error("SkillsCommandOverride called, want skipped due to dedup")
+	}
+}
+
+func TestRunSkillsAndState_RequestedLayoutBypassesVersionDedup(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.21", Layout: skillscheck.LayoutSeparate}); err != nil {
+		t.Fatal(err)
+	}
+	originalSync := syncSkills
+	defer func() { syncSkills = originalSync }()
+	called := false
+	syncSkills = func(opts skillscheck.SyncOptions) *skillscheck.SyncResult {
+		called = true
+		if opts.Layout != skillscheck.LayoutSuite {
+			t.Fatalf("layout = %q, want suite", opts.Layout)
+		}
+		return &skillscheck.SyncResult{Action: "synced", Layout: skillscheck.LayoutSuite}
+	}
+
+	got := runSkillsAndState(&selfupdate.Updater{}, newTestIO(), "1.0.21", false, "suite")
+	if !called || got == nil || got.Err != nil {
+		t.Fatalf("runSkillsAndState() = %+v, called = %v", got, called)
+	}
+}
+
+func TestUpdateRejectsInvalidSkillsLayout(t *testing.T) {
+	f, _, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--skills-layout", "hybrid"})
+	err := cmd.Execute()
+	problem, ok := errs.ProblemOf(err)
+	var validation *errs.ValidationError
+	if !ok || problem.Subtype != errs.SubtypeInvalidArgument || !errors.As(err, &validation) || validation.Param != "--skills-layout" {
+		t.Fatalf("problem = %+v, ok = %v", problem, ok)
 	}
 }
 
@@ -1193,7 +1207,7 @@ func TestRunSkillsAndState_DedupForceBypass(t *testing.T) {
 			return successfulSkillsCommand()(args...)
 		},
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", true)
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", true, "")
 	if got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndState(force=true) = %+v, want successful result", got)
 	}
@@ -1208,7 +1222,7 @@ func TestRunSkillsAndState_SuccessWritesState(t *testing.T) {
 		SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
 		SkillsCommandOverride:    successfulSkillsCommand(),
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "")
 	if got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with nil Err", got)
 	}
@@ -1234,7 +1248,7 @@ func TestRunSkillsAndState_FailureKeepsOldState(t *testing.T) {
 			return r
 		},
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "")
 	if got == nil || got.Err == nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with non-nil Err", got)
 	}
@@ -1527,7 +1541,7 @@ func TestRunSkillsAndState_StateWriteFailureWarns(t *testing.T) {
 	t.Cleanup(func() { syncSkills = origSync })
 
 	f, _, stderr := newTestFactory(t)
-	got := runSkillsAndState(&selfupdate.Updater{}, f.IOStreams, "1.0.21", false)
+	got := runSkillsAndState(&selfupdate.Updater{}, f.IOStreams, "1.0.21", false, "")
 	if got == nil || got.Err == nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with write error", got)
 	}
@@ -1626,9 +1640,9 @@ func TestPrepareLiveSkillsIntegration(t *testing.T) {
 	})
 }
 
-// seedLiveSkillsGlobal verifies the real npx skills CLI is reachable, installs
-// lark-calendar into the isolated global skills dir, and returns the parsed
-// global skills list. The caller opted in explicitly, so every missing
+// seedLiveSkillsGlobal verifies the real npx skills CLI and the v0.2 source are
+// reachable, installs lark-calendar into the isolated global skills dir, and
+// returns the parsed global skills list. The caller opted in explicitly, so every missing
 // precondition is a hard failure — skipping would report "nothing verified"
 // as a green run.
 func seedLiveSkillsGlobal(t *testing.T) []string {
@@ -1641,10 +1655,10 @@ func seedLiveSkillsGlobal(t *testing.T) []string {
 	// the generous side.
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
-	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn", "--list").Run(); err != nil {
+	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn/lark-cli", "--list").Run(); err != nil {
 		t.Fatalf("live skills tests opted in but real skills CLI unavailable: %v", err)
 	}
-	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn", "-s", "lark-calendar", "-g", "-y").Run(); err != nil {
+	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn/lark-cli", "-s", "lark-calendar", "-g", "-y").Run(); err != nil {
 		t.Fatalf("failed to seed isolated global skills: %v", err)
 	}
 	globalOut, err := exec.CommandContext(ctx, "npx", "-y", "skills", "ls", "-g").Output()

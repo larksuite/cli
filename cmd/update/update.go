@@ -88,10 +88,11 @@ func symArrow() string {
 
 // UpdateOptions holds inputs for the update command.
 type UpdateOptions struct {
-	Factory *cmdutil.Factory
-	JSON    bool
-	Force   bool
-	Check   bool
+	Factory      *cmdutil.Factory
+	JSON         bool
+	Force        bool
+	Check        bool
+	SkillsLayout string
 }
 
 // NewCmdUpdate creates the update command.
@@ -118,6 +119,7 @@ Use --check to only check for updates without installing.`,
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "force reinstall even if already up to date")
 	cmd.Flags().BoolVar(&opts.Check, "check", false, "only check for updates, do not install")
+	cmd.Flags().StringVar(&opts.SkillsLayout, "skills-layout", "", "skills layout: separate or suite")
 	cmdutil.SetRisk(cmd, "high-risk-write")
 
 	return cmd
@@ -125,6 +127,10 @@ Use --check to only check for updates without installing.`,
 
 func updateRun(opts *UpdateOptions) error {
 	io := opts.Factory.IOStreams
+	if _, err := skillscheck.ParseLayout(opts.SkillsLayout); err != nil {
+		return reportError(opts, io, "validation",
+			errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout must be one of separate or suite").WithParam("--skills-layout"))
+	}
 	cur := currentVersion()
 	updater := newUpdater()
 	// Brand only steers skills sync. updateRun skips that resolution in --check,
@@ -152,7 +158,10 @@ func updateRun(opts *UpdateOptions) error {
 	if !opts.Force && !update.IsNewer(latest, cur) {
 		var skillsResult *skillscheck.SyncResult
 		if !opts.Check {
-			skillsResult = runSkillsAndState(updater, io, cur, opts.Force)
+			skillsResult = runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout)
+			if err := reportSkillsFailure(opts, io, skillsResult); err != nil {
+				return err
+			}
 		}
 		return reportAlreadyUpToDate(opts, io, cur, latest, skillsResult, opts.Check)
 	}
@@ -229,7 +238,10 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 }
 
 func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
-	skillsResult := runSkillsAndState(updater, io, cur, opts.Force)
+	skillsResult := runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout)
+	if err := reportSkillsFailure(opts, io, skillsResult); err != nil {
+		return err
+	}
 
 	reason := detect.ManualReason()
 	if opts.JSON {
@@ -319,7 +331,10 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 		return output.ErrBare(output.ExitAPI)
 	}
 
-	skillsResult := runSkillsAndState(updater, io, latest, opts.Force)
+	skillsResult := runSkillsAndState(updater, io, latest, opts.Force, opts.SkillsLayout)
+	if err := reportSkillsFailure(opts, io, skillsResult); err != nil {
+		return err
+	}
 
 	if opts.JSON {
 		result := map[string]interface{}{
@@ -366,14 +381,18 @@ func verificationFailureHint(updater *selfupdate.Updater, latest, pm string) str
 	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && npx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
 }
 
-func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool) *skillscheck.SyncResult {
+func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool, requestedLayout string) *skillscheck.SyncResult {
+	layout, _ := skillscheck.ParseLayout(requestedLayout)
 	if !force {
-		if existing, ok := skillscheck.ReadSyncedVersion(); ok && normalizeVersion(existing) == normalizeVersion(stateVersion) {
-			return nil
+		if state, ok, err := skillscheck.ReadState(); err == nil && ok && normalizeVersion(state.Version) == normalizeVersion(stateVersion) {
+			if layout == "" || skillscheck.EffectiveLayout(state) == layout {
+				return nil
+			}
 		}
 	}
 	result := syncSkills(skillscheck.SyncOptions{
 		Version: stateVersion,
+		Layout:  layout,
 		Force:   force,
 		Runner:  updater,
 	})
@@ -381,6 +400,16 @@ func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, state
 		fmt.Fprintf(io.ErrOut, "warning: %v\n", result.Err)
 	}
 	return result
+}
+
+func reportSkillsFailure(opts *UpdateOptions, io *cmdutil.IOStreams, result *skillscheck.SyncResult) error {
+	if result == nil || result.Err == nil {
+		return nil
+	}
+	typedErr := errs.NewInternalError(errs.SubtypeUnknown, "skills update failed: %s", result.Err).
+		WithHint("retry with `lark-cli update --force`").
+		WithCause(result.Err)
+	return reportError(opts, io, "skills_update_error", typedErr)
 }
 
 // reportAlreadyUpToDate emits the JSON / pretty output for the
@@ -429,6 +458,7 @@ func applySkillsStatus(env map[string]interface{}, target string) {
 	if len(state.SkippedDeletedSkills) > 0 {
 		status["skipped_deleted"] = state.SkippedDeletedSkills
 	}
+	status["layout"] = skillscheck.EffectiveLayout(state)
 	env["skills_status"] = status
 }
 
@@ -443,6 +473,9 @@ func applySkillsResult(env map[string]interface{}, r *skillscheck.SyncResult) {
 	default:
 		env["skills_action"] = "synced"
 		env["skills_summary"] = skillsSummary(r)
+		if r.Warning != "" {
+			env["skills_warning"] = r.Warning
+		}
 	}
 }
 
@@ -452,6 +485,7 @@ func skillsSummary(r *skillscheck.SyncResult) map[string]interface{} {
 		"updated":         len(r.Updated),
 		"added":           len(r.Added),
 		"skipped_deleted": len(r.SkippedDeleted),
+		"layout":          r.Layout,
 	}
 	if len(r.Failed) > 0 {
 		summary["failed"] = r.Failed
@@ -468,10 +502,13 @@ func emitSkillsTextHints(io *cmdutil.IOStreams, r *skillscheck.SyncResult) {
 			fmt.Fprintf(io.ErrOut, "  Failed skills: %s\n", strings.Join(r.Failed, ", "))
 		}
 		fmt.Fprintf(io.ErrOut, "  To retry all official skills: lark-cli update --force\n")
+	case r.Warning != "":
+		fmt.Fprintf(io.ErrOut, "%s Skills updated using %s layout\n", symOK(), r.Layout)
+		fmt.Fprintf(io.ErrOut, "%s %s\n", symWarn(), r.Warning)
 	case r.Force:
-		fmt.Fprintf(io.ErrOut, "%s Skills updated: restored all %d official skills\n", symOK(), len(r.Official))
+		fmt.Fprintf(io.ErrOut, "%s Skills updated using %s layout: restored all %d official skills\n", symOK(), r.Layout, len(r.Official))
 	default:
-		fmt.Fprintf(io.ErrOut, "%s Skills updated: %d official, %d updated, %d added, %d skipped because deleted locally\n", symOK(), len(r.Official), len(r.Updated), len(r.Added), len(r.SkippedDeleted))
+		fmt.Fprintf(io.ErrOut, "%s Skills updated using %s layout: %d official, %d updated, %d added, %d skipped because deleted locally\n", symOK(), r.Layout, len(r.Official), len(r.Updated), len(r.Added), len(r.SkippedDeleted))
 		if len(r.SkippedDeleted) > 0 {
 			fmt.Fprintf(io.ErrOut, "  To restore all official skills: lark-cli update --force\n")
 		}

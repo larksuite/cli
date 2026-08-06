@@ -23,6 +23,7 @@ var ErrUnreadableState = errors.New("skills state is unreadable")
 
 type SkillsState struct {
 	Version              string   `json:"version"`
+	Layout               Layout   `json:"layout,omitempty"`
 	OfficialSkills       []string `json:"official_skills"`
 	UpdatedSkills        []string `json:"updated_skills"`
 	AddedOfficialSkills  []string `json:"added_official_skills"`

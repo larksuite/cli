@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -182,11 +183,11 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 		want string
 	}{
 		{
-			name: "list official primary",
+			name: "stage suite",
 			run: func(u *Updater) *NpmResult {
-				return u.runSkillsListOfficial("https://open.feishu.cn")
+				return u.StageSuite("https://open.feishu.cn/lark-cli", ".")
 			},
-			want: "-y skills add https://open.feishu.cn --list",
+			want: "-y skills add https://open.feishu.cn/lark-cli/isolated-skills -s lark-suite -y",
 		},
 		{
 			name: "list global",
@@ -249,7 +250,7 @@ func TestListOfficialSkillsIndexSuccess(t *testing.T) {
 	officialSkillsIndexURL = server.URL
 	t.Cleanup(func() { officialSkillsIndexURL = oldURL })
 
-	result := New().ListOfficialSkillsIndex()
+	result := New().FetchSkillsIndex("https://open.feishu.cn/lark-cli")
 	if result.Err != nil {
 		t.Fatalf("ListOfficialSkillsIndex() err = %v, want nil", result.Err)
 	}
@@ -268,7 +269,7 @@ func TestListOfficialSkillsIndexHTTPError(t *testing.T) {
 	officialSkillsIndexURL = server.URL
 	t.Cleanup(func() { officialSkillsIndexURL = oldURL })
 
-	result := New().ListOfficialSkillsIndex()
+	result := New().FetchSkillsIndex("https://open.feishu.cn/lark-cli")
 	if result.Err == nil || !strings.Contains(result.Err.Error(), "HTTP 404") {
 		t.Fatalf("ListOfficialSkillsIndex() err = %v, want HTTP 404", result.Err)
 	}
@@ -284,7 +285,7 @@ func TestListOfficialSkillsIndexBodyTooLarge(t *testing.T) {
 	officialSkillsIndexURL = server.URL
 	t.Cleanup(func() { officialSkillsIndexURL = oldURL })
 
-	result := New().ListOfficialSkillsIndex()
+	result := New().FetchSkillsIndex("https://open.feishu.cn/lark-cli")
 	if result.Err == nil || !strings.Contains(result.Err.Error(), "exceeds") {
 		t.Fatalf("ListOfficialSkillsIndex() err = %v, want exceeds", result.Err)
 	}
@@ -309,7 +310,7 @@ func TestListOfficialSkillsIndexTimeout(t *testing.T) {
 		skillsIndexFetchTimeout = oldTimeout
 	})
 
-	result := New().ListOfficialSkillsIndex()
+	result := New().FetchSkillsIndex("https://open.feishu.cn/lark-cli")
 	var netErr net.Error
 	if result.Err == nil || (!errors.Is(result.Err, context.DeadlineExceeded) && !(errors.As(result.Err, &netErr) && netErr.Timeout())) {
 		t.Fatalf("ListOfficialSkillsIndex() err = %v, want timeout error", result.Err)
@@ -326,7 +327,7 @@ func TestListOfficialSkillsIndexRejectsNonHTTPSRedirect(t *testing.T) {
 	officialSkillsIndexURL = server.URL
 	t.Cleanup(func() { officialSkillsIndexURL = oldURL })
 
-	result := New().ListOfficialSkillsIndex()
+	result := New().FetchSkillsIndex("https://open.feishu.cn/lark-cli")
 	if result.Err == nil || !strings.Contains(result.Err.Error(), "non-HTTPS") {
 		t.Fatalf("ListOfficialSkillsIndex() err = %v, want non-HTTPS redirect", result.Err)
 	}
@@ -337,39 +338,12 @@ func TestListOfficialSkillsIndexUsesOverride(t *testing.T) {
 		r := &NpmResult{}
 		r.Stdout.WriteString(`{"skills":[{"name":"override-skill"}]}`)
 		return r
-	}}).ListOfficialSkillsIndex()
+	}}).FetchSkillsIndex("https://open.feishu.cn/lark-cli")
 	if result.Err != nil {
 		t.Fatalf("ListOfficialSkillsIndex() err = %v, want nil", result.Err)
 	}
 	if !strings.Contains(result.Stdout.String(), "override-skill") {
 		t.Fatalf("ListOfficialSkillsIndex() stdout = %q, want override result", result.Stdout.String())
-	}
-}
-
-func TestListOfficialSkillsFallsBack(t *testing.T) {
-	called := []string{}
-	updater := &Updater{
-		SkillsCommandOverride: func(args ...string) *NpmResult {
-			called = append(called, strings.Join(args, " "))
-			r := &NpmResult{}
-			if strings.Contains(strings.Join(args, " "), "https://open.feishu.cn") {
-				r.Err = fmt.Errorf("primary failed")
-				return r
-			}
-			r.Stdout.WriteString("lark-calendar\n")
-			return r
-		},
-	}
-
-	result := updater.ListOfficialSkills()
-	if result.Err != nil {
-		t.Fatalf("ListOfficialSkills() err = %v, want nil", result.Err)
-	}
-	if len(called) != 2 {
-		t.Fatalf("called %d commands, want 2: %#v", len(called), called)
-	}
-	if !strings.Contains(called[1], "larksuite/cli --list") {
-		t.Fatalf("fallback call = %q, want larksuite/cli --list", called[1])
 	}
 }
 
@@ -519,20 +493,16 @@ func TestDetectInstallMethod_Caches(t *testing.T) {
 
 func TestSkillsBrandHosts(t *testing.T) {
 	cases := []struct {
-		brand      core.LarkBrand
-		wantIndex  string
-		wantSource string
+		brand       core.LarkBrand
+		wantSources []string
 	}{
-		{core.BrandFeishu, "https://open.feishu.cn/.well-known/skills/index.json", "https://open.feishu.cn"},
-		{core.BrandLark, "https://open.larksuite.com/.well-known/skills/index.json", "https://open.larksuite.com"},
+		{core.BrandFeishu, []string{"https://open.feishu.cn/lark-cli", "https://open.larksuite.com/lark-cli"}},
+		{core.BrandLark, []string{"https://open.larksuite.com/lark-cli", "https://open.feishu.cn/lark-cli"}},
 	}
 	for _, c := range cases {
 		u := &Updater{Brand: c.brand}
-		if got := u.skillsIndexURL(); got != c.wantIndex {
-			t.Errorf("brand %q: skillsIndexURL = %q, want %q", c.brand, got, c.wantIndex)
-		}
-		if got := u.skillsSource(); got != c.wantSource {
-			t.Errorf("brand %q: skillsSource = %q, want %q", c.brand, got, c.wantSource)
+		if got := u.SkillsSources(); !reflect.DeepEqual(got, c.wantSources) {
+			t.Errorf("brand %q: SkillsSources = %q, want %q", c.brand, got, c.wantSources)
 		}
 	}
 }
