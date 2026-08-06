@@ -151,7 +151,13 @@ func TestSheets_WorkbookCreateTypedWorkflow(t *testing.T) {
 	infoRes.AssertExitCode(t, 0)
 	require.Equal(t, int64(1), gjson.Get(infoRes.Stdout, "data.sheets.#").Int(),
 		"workbook must hold exactly the payload's one sheet; stdout:\n%s", infoRes.Stdout)
-	require.Equal(t, "销售", gjson.Get(infoRes.Stdout, "data.sheets.0.title").String(),
+	// The structure API surfaces the display name as sheet_name in some
+	// payload shapes and title in others (tableGetSheetMeta accepts both).
+	sheetName := gjson.Get(infoRes.Stdout, "data.sheets.0.sheet_name").String()
+	if sheetName == "" {
+		sheetName = gjson.Get(infoRes.Stdout, "data.sheets.0.title").String()
+	}
+	require.Equal(t, "销售", sheetName,
 		"the only sheet must be the adopted payload sheet; stdout:\n%s", infoRes.Stdout)
 
 	// Round-trip read confirms the typed contract held through create+write.
