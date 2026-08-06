@@ -95,27 +95,72 @@ func TestWithAppsHint(t *testing.T) {
 	// The server has renumbered this case before (500002759 → 400002465). Both the
 	// legacy code and an unrecognized future code must still enter the recovery
 	// flow, so detection is code-OR-message rather than a single literal.
+	// assertClassificationIntact checks the discriminators the error envelope keys
+	// on. Rewriting Message/Hint must never change how the failure is classified,
+	// and the helper must hand back the same error value so the cause chain
+	// survives — a replacement error would otherwise pass a Message-only check.
+	assertClassificationIntact := func(t *testing.T, label string, in error, out error, wantSubtype errs.Subtype, wantCode int) {
+		t.Helper()
+		if out != in {
+			t.Fatalf("%s: returned a different error value: got %p, want original %p", label, out, in)
+		}
+		p, ok := errs.ProblemOf(out)
+		if !ok {
+			t.Fatalf("%s: returned error is not typed: %T", label, out)
+		}
+		if p.Category != errs.CategoryAPI {
+			t.Errorf("%s: Category = %q, want %q", label, p.Category, errs.CategoryAPI)
+		}
+		if p.Subtype != wantSubtype {
+			t.Errorf("%s: Subtype = %q, want %q", label, p.Subtype, wantSubtype)
+		}
+		if p.Code != wantCode {
+			t.Errorf("%s: Code = %d, want %d", label, p.Code, wantCode)
+		}
+	}
+
 	t.Run("legacy no-database code still enters the recovery flow", func(t *testing.T) {
-		in := errs.NewAPIError(errs.SubtypeUnknown, "workspace has no db branch").
+		in := errs.NewAPIError(errs.SubtypeNotFound, "workspace has no db branch").
 			WithCode(appNoDatabaseLegacyCode)
-		p, _ := errs.ProblemOf(withAppsHint(in, "generic db hint"))
+		out := withAppsHint(in, "generic db hint")
+		p, _ := errs.ProblemOf(out)
 		if p.Message != appNoDatabaseMessage || p.Hint != appNoDatabaseHint {
 			t.Errorf("legacy code not detected: Message=%q Hint=%q", p.Message, p.Hint)
 		}
+		assertClassificationIntact(t, "legacy code", in, out, errs.SubtypeNotFound, appNoDatabaseLegacyCode)
 	})
 
 	t.Run("unknown code is detected by server message", func(t *testing.T) {
 		// Codes the CLI has never seen: only the raw message identifies the case.
+		// A concrete subtype (not Unknown) proves classification survives the rewrite.
 		for _, msg := range []string{
 			"get workspace id failed by app id",
 			"Get Workspace Id Failed By App Id", // case-insensitive
 			"workspace ws_x has no db branch",   // substring, not whole-string
 		} {
-			in := errs.NewAPIError(errs.SubtypeUnknown, msg).WithCode(999999999)
-			p, _ := errs.ProblemOf(withAppsHint(in, "generic db hint"))
+			in := errs.NewAPIError(errs.SubtypeNotFound, msg).WithCode(999999999)
+			out := withAppsHint(in, "generic db hint")
+			p, _ := errs.ProblemOf(out)
 			if p.Message != appNoDatabaseMessage || p.Hint != appNoDatabaseHint {
 				t.Errorf("message %q not detected: Message=%q Hint=%q", msg, p.Message, p.Hint)
 			}
+			assertClassificationIntact(t, "message "+msg, in, out, errs.SubtypeNotFound, 999999999)
+		}
+	})
+
+	t.Run("no-database rewrite preserves the wrapped cause", func(t *testing.T) {
+		// The recovery flow replaces Message wholesale; if it ever swapped the error
+		// value instead of mutating in place, callers would silently lose errors.Is.
+		cause := errors.New("upstream transport failure")
+		in := errs.NewAPIError(errs.SubtypeNotFound, "workspace has no db branch").
+			WithCode(appNoDatabaseCode).WithCause(cause)
+		out := withAppsHint(in, "generic db hint")
+		if !errors.Is(out, cause) {
+			t.Errorf("cause chain lost: errors.Is(out, cause) = false")
+		}
+		p, _ := errs.ProblemOf(out)
+		if p.Message != appNoDatabaseMessage {
+			t.Errorf("Message = %q, want %q", p.Message, appNoDatabaseMessage)
 		}
 	})
 
@@ -123,14 +168,16 @@ func TestWithAppsHint(t *testing.T) {
 		// Guards against an over-broad matcher hijacking neighbouring db errors:
 		// "invalid db branch" (env-pull's dev-branch case) must NOT be swallowed.
 		for _, msg := range []string{"invalid db branch: dev", "数据表格不存在", "permission denied"} {
-			in := errs.NewAPIError(errs.SubtypeUnknown, msg).WithCode(400002469)
-			p, _ := errs.ProblemOf(withAppsHint(in, "generic db hint"))
+			in := errs.NewAPIError(errs.SubtypeNotFound, msg).WithCode(400002469)
+			out := withAppsHint(in, "generic db hint")
+			p, _ := errs.ProblemOf(out)
 			if p.Message != msg {
 				t.Errorf("message %q was rewritten to %q; matcher is too broad", msg, p.Message)
 			}
 			if p.Hint != "generic db hint" {
 				t.Errorf("message %q got hint %q, want the caller hint", msg, p.Hint)
 			}
+			assertClassificationIntact(t, "unrelated "+msg, in, out, errs.SubtypeNotFound, 400002469)
 		}
 	})
 
@@ -147,4 +194,14 @@ func TestWithAppsHint(t *testing.T) {
 			t.Errorf("Message = %q, want %q", p.Message, appNoDatabaseMessage)
 		}
 	})
+}
+
+// TestIsAppNoDatabaseError_NilProblem covers the defensive nil guard, which
+// withAppsHint itself cannot reach (ProblemOf returns ok=false for an untyped
+// error, so the predicate is never called with nil from there). The guard exists
+// because the predicate is package-level and a future caller could pass nil.
+func TestIsAppNoDatabaseError_NilProblem(t *testing.T) {
+	if isAppNoDatabaseError(nil) {
+		t.Error("isAppNoDatabaseError(nil) = true, want false")
+	}
 }
