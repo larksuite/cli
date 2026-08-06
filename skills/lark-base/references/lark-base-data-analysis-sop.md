@@ -1,6 +1,6 @@
-# Base 数据分析 SOP
+# Base 数据表查询与分析 SOP
 
-所有表格数据分析先读本 SOP，按任务所需数据规模与计算复杂度，依次选择 lark-cli 内置 jq、Python 或 Base Cloud。
+除已知 `record_id` 的单条 `+record-get` 外，所有数据表记录查询和分析任务先读本 SOP，包括多记录预览、`+record-list`、`+record-search`、`+data-query`、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、全局结论和查询后写入。按任务所需数据规模与计算复杂度，依次选择 lark-cli 内置 jq、Python 或 Base Cloud。
 
 ## 分流决策
 
@@ -15,7 +15,12 @@
    2. 任一表较大或 `records_count` 缺失时，按第 2 步相同的方法下推单表谓词并窄投影探测；所有必要表均达到 `has_more=false` 后再正式导出。
    3. Python 标准库足以清晰表达任务时直接使用；DataFrame 能明显简化计算时再选 pandas。若已选 pandas 但环境未安装，网络可用且存在 `uv` 或 `pip` 时按需安装；优先使用 `uv run --no-project --with pandas python analyze.py`，只有 `pip` 时在隔离的虚拟环境中安装。
 4. jq 无法完成，且 Python 不可用或谓词下推后的最大单表导出量仍超过 2000 条时，转读 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md)。
-5. 模型上下文仅接收最终小结果，NDJSON 正文保留在 artifact 文件中。任务涉及业务键、展开、JOIN 或金额分摊时，明确目标粒度并检查与口径直接相关的空值、重复或总量守恒；选定一个分析引擎完成计算。内部 ID 用于连接或定位。
+5. 执行与交付：
+   1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
+   2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 表示当前结果仅覆盖已读取范围。
+   3. 选定一个分析引擎完成计算；模型上下文仅接收最终小结果，NDJSON 正文保留在 artifact 文件中。
+   4. 任务涉及业务键、展开、JOIN 或金额分摊时，明确目标粒度并检查与口径直接相关的空值、重复或总量守恒。
+   5. 最终结果保留真实表、查询范围和计算口径，展示用户可读字段；内部 ID 用于连接或定位。
 
 `+table-list` / `+base-block-list` 返回的 `records_count` 表示整表行数；manifest 的 `records_count` 表示本次查询实际导出的行数。
 

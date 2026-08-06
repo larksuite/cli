@@ -32,7 +32,7 @@ metadata:
 - 执行 update 前必须先查当前 shortcut 的 `--help` 或对应 reference。若命令要求完整配置，首次请求必须基于可信的当前配置执行 read-modify-write：只修改用户明确指定的内容，保留其他仍适用的可写配置，并按命令要求的结构提交。若命令支持局部／delta update，按其契约提交最小合法 payload；不得以不完整请求试错补参。
 - Base CLI/OpenAPI 当前不支持视图行高、冻结列、列宽等 UI-only 外观设置。遇到这类需求，说明能力边界并停止，不要猜测未文档化参数或改走 raw API。
 - 本地文件与 Base 之间的导入/导出转 `lark-drive`，具体格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责；导入完成后再回到 Base 命令。
-- `+record-list` / `+record-search --output <path>.ndjson` 是本地数据分析的记录 artifact，不是 Base 文件导出；按 Local Data Analysis SOP 继续使用 Base shortcut，不转 `lark-drive`。
+- `+record-list` / `+record-search --output <path>.ndjson` 是数据分析的记录 artifact，不是 Base 文件导出；按 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md) 继续使用 Base shortcut，不转 `lark-drive`。
 - 在线复制 Base 使用 `+base-copy`，不要绕行导出/导入。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
 
@@ -59,12 +59,12 @@ metadata:
 | 复制 Base 内单张数据表 | `+table-copy` / `+table-copy-status` | 默认只复制结构；只有用户明确要求复制全表、数据、行或记录时才传 `--range all`；异步任务按返回的 `task_id` 查询或续等 |
 | 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段 |
 | 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
-| 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 普通明细、预览和已知 ID 直接读取；识别为表格数据分析时先读统一入口 [lark-base-data-analysis-local.md](references/lark-base-data-analysis-local.md)，由该 SOP 选择内置 jq、Python 或 Cloud |
+| 读取已知记录 | `+record-get` | 已知 `record_id` 的单条读取直接执行 |
+| 查询或分析数据表记录 | 由 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md) 选择 | 除已知 `record_id` 的单条读取外，所有数据表记录查询和分析任务先读 SOP |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
 | 附件字段 | `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` | 附件不要伪造成普通 CellValue；上传走本地文件，下载/删除按 file token 或字段定位 |
 | 删除记录 / 分享记录链接 / 历史 | `+record-delete` / `+record-share-link-create` / `+record-history-list` | 删除前确认 record；分享链接最多 100 条；历史读 [lark-base-record-history-list.md](references/lark-base-record-history-list.md)，只查单条记录，不做整表审计 |
 | 管理视图 | `+view-*` | `+view-set-filter` 读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)（filter 条件结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md)）；其余配置先 get 现状，再按返回结构更新 |
-| 一次性聚合统计 | 内置 jq、Python 或 `+data-query` | 先读统一入口 [lark-base-data-analysis-local.md](references/lark-base-data-analysis-local.md)；只有该 SOP 转入 Cloud 并选择 `+data-query` 时才读 [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md)，完整 DSL 再读 [lark-base-data-query.md](references/lark-base-data-query.md) |
 | 公式字段 | `+field-create/update --json '{"type":"formula",...}'` | 必读 [formula-field-guide.md](references/formula-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
 | Lookup 字段 | `+field-create/update --json '{"type":"lookup",...}'` | 必读 [lookup-field-guide.md](references/lookup-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
 | 表单提交 | `+form-submit` | 先读 [lark-base-form-detail.md](references/lark-base-form-detail.md) 获取题目、filter 和附件所需 `base_token`；提交 JSON 读 [lark-base-form-submit.md](references/lark-base-form-submit.md) |
@@ -85,10 +85,8 @@ metadata:
 - `+table-copy` 的安全默认值是只复制表结构；用户没有明确要求记录时省略 `--range`，明确要求包含记录时才传 `--range all`。`--table-id` 可直接使用当前 Base 中的表 ID 或表名。
 - 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
 - 存储字段可写；系统字段、`formula`、`lookup` 只读；附件字段走专用 attachment 命令。
-- 一次性数据分析先读统一数据分析 SOP，由任务规模与复杂度依次选择内置 jq、Python 或 Cloud；需要长期显示在表中时，才新增 `formula` / `lookup` 字段。
 - `formula` 适合常规计算、条件判断、文本/日期处理和长期派生指标；`lookup` 适合明确的跨表查找、筛选后取值或聚合引用。
-- 写入、分析、公式、lookup、workflow、dashboard 前，先读取真实结构：表、字段、视图、关联表和 dashboard block 名称都以命令返回为准。
-- 跨表场景必须读取目标表结构，最终回答要回查并展示用户可读字段。
+- 写入、公式、lookup、workflow、dashboard 前，先读取真实结构：表、字段、视图、关联表和 dashboard block 名称都以命令返回为准。
 
 ## 身份与权限降级
 
@@ -98,17 +96,6 @@ metadata:
 - user 身份报资源级无访问且无授权恢复提示时，才可用 `--as bot` 重试一次；bot 仍失败就停止重试并按权限错误处理。
 - `91403` 或明确不可访问错误不要循环换身份重试。
 - `+base-create` / `+base-copy` 若用 bot 身份执行，关注返回中的 `permission_grant`，并把用户是否可打开新 Base 告知用户。
-
-## 数据分析入口与公共规则
-
-涉及统计、聚合、排序、Top/Bottom N、全局结论、多表关联或复杂行级计算时，按以下顺序执行：
-
-1. 先读 [lark-base-data-analysis-local.md](references/lark-base-data-analysis-local.md)，由它统一分流。
-2. 单表任务经过任务语义允许的谓词下推后，实际需导出的完整记录不超过 2000 条，且可由一个短 jq 表达式完成时，优先使用内置 `--jq-records`；它不要求外部 jq、共享文件系统或 Python。
-3. jq 不足以完成任务时，才检查 Python：Python 可运行并能读取 lark-cli 生成的 artifact，且 `local_max_records = max(各必要表经过任务语义允许的谓词下推后实际需导出的完整记录数) <= 2000` 时，使用 Python 标准库或 pandas。
-4. 本地分析以 `local_max_records` 为规模依据，允许过滤前整表行数超过 2000；`local_max_records > 2000` 时转 [lark-base-data-analysis-cloud.md](references/lark-base-data-analysis-cloud.md)。
-5. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 或等价分页信号表示当前结果仅覆盖已读取范围。
-6. 每次读取都做任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key；最终答案必须能追溯到真实范围和计算口径，并展示用户可读字段。
 
 ## 写入前置规则
 
@@ -160,7 +147,7 @@ metadata:
 
 ## 保留 Reference
 
-- [lark-base-data-analysis-local.md](references/lark-base-data-analysis-local.md)：所有表格数据分析的统一入口；依次选择内置 jq、Python 或 Cloud
+- [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md)：所有数据表记录查询和分析的统一入口；依次选择内置 jq、Python 或 Cloud
 - [Python 标准库](references/lark-base-data-analysis-python-stdlib.md) / [pandas](references/lark-base-data-analysis-pandas.md)：统一数据分析 SOP 选定 Python 实现后按需读取的同场景示例
 - [lark-base-data-analysis-cloud.md](references/lark-base-data-analysis-cloud.md)：统一 SOP 判定内置 jq 与 Python 路径均不适用时的云端查询 SOP
 - [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md) / [lark-base-data-query.md](references/lark-base-data-query.md)：聚合查询入口 fewshot 与 DSL SSOT；`+data-query` 的 `filters` 结构是独立对象 DSL，不使用公共 tuple filter 协议

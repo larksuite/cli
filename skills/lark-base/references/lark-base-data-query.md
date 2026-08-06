@@ -5,7 +5,7 @@
 
 本文档是 `+data-query` JSON DSL 的单一事实来源（SSOT），用于说明完整字段、操作符、限制、返回和错误恢复。常用 fewshot 与命令选择先读 [lark-base-data-query-guide.md](lark-base-data-query-guide.md)。
 
-分析任务先按主 skill 的统一数据分析 SOP 分流；进入 Cloud 路径并选定 `+data-query` 时，读取 [`lark-base-data-analysis-cloud.md`](lark-base-data-analysis-cloud.md) 和本文。用户直接询问 `+data-query` 命令、DSL 或 API 时可直接读取本文。`+data-query` 让筛选、分组、聚合、排序和 TopN 在 Base 云端查询服务中执行。
+数据表记录查询和分析任务先读 [`lark-base-data-analysis-sop.md`](lark-base-data-analysis-sop.md)；进入 Cloud 路径并选定 `+data-query` 时，读取 [`lark-base-data-analysis-cloud.md`](lark-base-data-analysis-cloud.md) 和本文。用户直接询问 `+data-query` 命令、DSL 或 API 时可直接读取本文。`+data-query` 让筛选、分组、聚合、排序和 TopN 在 Base 云端查询服务中执行。
 
 ## 限制
 
