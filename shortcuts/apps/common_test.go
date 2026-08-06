@@ -92,6 +92,48 @@ func TestWithAppsHint(t *testing.T) {
 		}
 	})
 
+	// The server has renumbered this case before (500002759 → 400002465). Both the
+	// legacy code and an unrecognized future code must still enter the recovery
+	// flow, so detection is code-OR-message rather than a single literal.
+	t.Run("legacy no-database code still enters the recovery flow", func(t *testing.T) {
+		in := errs.NewAPIError(errs.SubtypeUnknown, "workspace has no db branch").
+			WithCode(appNoDatabaseLegacyCode)
+		p, _ := errs.ProblemOf(withAppsHint(in, "generic db hint"))
+		if p.Message != appNoDatabaseMessage || p.Hint != appNoDatabaseHint {
+			t.Errorf("legacy code not detected: Message=%q Hint=%q", p.Message, p.Hint)
+		}
+	})
+
+	t.Run("unknown code is detected by server message", func(t *testing.T) {
+		// Codes the CLI has never seen: only the raw message identifies the case.
+		for _, msg := range []string{
+			"get workspace id failed by app id",
+			"Get Workspace Id Failed By App Id", // case-insensitive
+			"workspace ws_x has no db branch",   // substring, not whole-string
+		} {
+			in := errs.NewAPIError(errs.SubtypeUnknown, msg).WithCode(999999999)
+			p, _ := errs.ProblemOf(withAppsHint(in, "generic db hint"))
+			if p.Message != appNoDatabaseMessage || p.Hint != appNoDatabaseHint {
+				t.Errorf("message %q not detected: Message=%q Hint=%q", msg, p.Message, p.Hint)
+			}
+		}
+	})
+
+	t.Run("unrelated failure keeps the caller hint", func(t *testing.T) {
+		// Guards against an over-broad matcher hijacking neighbouring db errors:
+		// "invalid db branch" (env-pull's dev-branch case) must NOT be swallowed.
+		for _, msg := range []string{"invalid db branch: dev", "数据表格不存在", "permission denied"} {
+			in := errs.NewAPIError(errs.SubtypeUnknown, msg).WithCode(400002469)
+			p, _ := errs.ProblemOf(withAppsHint(in, "generic db hint"))
+			if p.Message != msg {
+				t.Errorf("message %q was rewritten to %q; matcher is too broad", msg, p.Message)
+			}
+			if p.Hint != "generic db hint" {
+				t.Errorf("message %q got hint %q, want the caller hint", msg, p.Hint)
+			}
+		}
+	})
+
 	t.Run("no-database code overrides even a preexisting upstream hint", func(t *testing.T) {
 		// An upstream hint must NOT win here: the recovery flow is more actionable.
 		in := errs.NewAPIError(errs.SubtypeUnknown, "internal msg").
