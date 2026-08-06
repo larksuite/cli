@@ -73,22 +73,26 @@ func callTool(
 	data, err := runtime.CallAPITyped("POST", toolInvokePath(token, kind), nil, body)
 	if err != nil {
 		// A classified business error (non-zero API code) carries the tool's
-		// own code and raw msg. Preserve callTool's long-standing shape by
-		// rewriting the typed error in place: flattenToolErrorMsg unwraps
-		// batch_update's double-escaped failures payload, and Subtype is
-		// pinned to SubtypeServerError so the batch recovery prescription and
-		// the CategoryAPI/SubtypeServerError contract hold no matter how the
-		// raw code classified (most sheet-ai codes aren't in the code table
-		// and would otherwise land on SubtypeUnknown). Mutating in place keeps
-		// the classifier's log_id / hint / retryable, which a rebuilt error
-		// would drop. Transport, HTTP-status, and auth errors are already
-		// correctly typed by CallAPITyped, so they pass through untouched.
+		// own code and raw msg. Rewrite the typed error in place: the Message
+		// gains tool context and flattenToolErrorMsg unwraps batch_update's
+		// double-escaped failures payload. The classified Subtype passes
+		// through untouched — rate_limit / invalid_parameters / not_found are
+		// facts an agent routes on, and stamping them server_error would
+		// misread them as backend faults. Only SubtypeUnknown (codes absent
+		// from the code table, i.e. most of sheet-ai's own code space) is
+		// pinned to SubtypeServerError, preserving callTool's long-standing
+		// envelope for those. Mutating in place keeps the classifier's
+		// log_id / hint / retryable, which a rebuilt error would drop.
+		// Transport, HTTP-status, and auth errors are already correctly typed
+		// by CallAPITyped, so they pass through untouched.
 		if p, ok := errs.ProblemOf(err); ok && p.Category == errs.CategoryAPI {
 			// The recovery prescription depends on the execution mode the batch
 			// was sent with; non-batch tools simply lack the key (false).
 			continueOnError, _ := input["continue_on_error"].(bool)
 			flat := flattenToolErrorMsg(p.Message, continueOnError, callerAuthoredOperations(runtime.Command()))
-			p.Subtype = errs.SubtypeServerError
+			if p.Subtype == errs.SubtypeUnknown {
+				p.Subtype = errs.SubtypeServerError
+			}
 			p.Message = fmt.Sprintf("tool %q failed: [%d] %s", toolName, p.Code, flat)
 		}
 		return nil, err

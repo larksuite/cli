@@ -65,6 +65,50 @@ func TestExecute_WorkbookInfo_ToolError(t *testing.T) {
 	}
 }
 
+// TestExecute_ToolError_KnownSubtypePassthrough pins that callTool's rewrite
+// only pins SubtypeUnknown to server_error: a code the table classifies
+// (rate_limit, invalid_parameters, …) keeps its subtype — an agent routes on
+// it, and stamping server_error would misread rate limiting or a bad
+// parameter as a backend fault. The Message still gains the tool context.
+func TestExecute_ToolError_KnownSubtypePassthrough(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name          string
+		code          int
+		msg           string
+		wantSubtype   errs.Subtype
+		wantRetryable bool
+	}{
+		{name: "rate limit", code: 99991400, msg: "rate limited", wantSubtype: errs.SubtypeRateLimit, wantRetryable: true},
+		{name: "invalid parameters", code: 1310246, msg: "bad range", wantSubtype: errs.SubtypeInvalidParameters},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stub := &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+				Body: map[string]interface{}{
+					"code": tc.code,
+					"msg":  tc.msg,
+					"data": map[string]interface{}{},
+				},
+			}
+			parent, _, _, reg := newTestRig(t, WorkbookInfo)
+			reg.Register(stub)
+			parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+			err := parent.Execute()
+			p := requireProblem(t, err, errs.CategoryAPI, tc.wantSubtype, tc.msg)
+			if !strings.Contains(p.Message, "workbook_info") && !strings.Contains(p.Message, "tool ") {
+				t.Errorf("message should carry the tool context, got %q", p.Message)
+			}
+			if p.Retryable != tc.wantRetryable {
+				t.Errorf("Retryable = %v, want %v (classifier metadata must survive the rewrite)", p.Retryable, tc.wantRetryable)
+			}
+		})
+	}
+}
+
 // TestExecute_WikiURLResolvesToSheet covers the two-step wiki path: a /wiki/
 // URL is resolved via get_node to its spreadsheet obj_token, which then feeds
 // the tool invoke. The tool stub is keyed on the resolved obj_token, so the
