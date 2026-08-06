@@ -4,8 +4,8 @@
 package im
 
 import (
+	"bytes"
 	"context"
-	"crypto/md5"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,7 +76,9 @@ func TestIM_MessageResourceDownloadWorkflowAsBot(t *testing.T) {
 
 		got, readErr := os.ReadFile(filepath.Join(downloadDir, "downloaded.bin"))
 		require.NoError(t, readErr)
-		require.Equal(t, md5.Sum(payload), md5.Sum(got),
+		require.Equal(t, len(payload), len(got),
+			"downloaded size must match the uploaded fixture")
+		require.True(t, bytes.Equal(payload, got),
 			"downloaded bytes must match the uploaded fixture byte for byte")
 	})
 }

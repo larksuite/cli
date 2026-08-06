@@ -337,12 +337,7 @@ func TestOpenResumesFromResponseRanges(t *testing.T) {
 
 func TestOpenRejectsResponseAtWrongOffset(t *testing.T) {
 	payload := []byte("abcdefgh")
-	requests := 0
-	stream, err := openTest(context.Background(), func(_ context.Context, req Request) (*http.Response, error) {
-		requests++
-		if requests == 1 {
-			return testPartial(payload[:4], 0, 3, int64(len(payload)), `"v1"`), nil
-		}
+	stream, err := openTest(context.Background(), func(_ context.Context, _ Request) (*http.Response, error) {
 		return testPartial(payload[:4], 0, 3, int64(len(payload)), `"v1"`), nil
 	}, testOptions())
 	if err != nil {
@@ -503,7 +498,7 @@ func TestOpenTreats200WithIfRangeAsRepresentationChange(t *testing.T) {
 	}
 	defer stream.Body.Close()
 	_, err = io.ReadAll(stream.Body)
-	requireProblem(t, err, errs.SubtypeRepresentationChanged, true, "validator")
+	requireProblem(t, err, errs.SubtypeNetworkRepresentationChanged, true, "validator")
 }
 
 func TestOpenTreatsUnvalidatedTotalChangeAsRepresentationChange(t *testing.T) {
@@ -523,29 +518,19 @@ func TestOpenTreatsUnvalidatedTotalChangeAsRepresentationChange(t *testing.T) {
 	}
 	defer stream.Body.Close()
 	_, err = io.ReadAll(stream.Body)
-	requireProblem(t, err, errs.SubtypeRepresentationChanged, true, "resource size changed")
+	requireProblem(t, err, errs.SubtypeNetworkRepresentationChanged, true, "resource size changed")
 }
 
 func TestOpenRejectsBodyLengthContradiction(t *testing.T) {
-	tests := []struct {
-		name string
-		body []byte
-	}{
-		{name: "long", body: []byte("abcde")},
+	stream, err := openTest(context.Background(), func(_ context.Context, _ Request) (*http.Response, error) {
+		return testPartial([]byte("abcde"), 0, 3, 8, `"v1"`), nil
+	}, testOptions())
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			stream, err := openTest(context.Background(), func(_ context.Context, _ Request) (*http.Response, error) {
-				return testPartial(tt.body, 0, 3, 8, `"v1"`), nil
-			}, testOptions())
-			if err != nil {
-				t.Fatalf("Open() error = %v", err)
-			}
-			defer stream.Body.Close()
-			_, err = io.ReadAll(stream.Body)
-			requireProblem(t, err, errs.SubtypeNetworkProtocol, false, "range response delivered")
-		})
-	}
+	defer stream.Body.Close()
+	_, err = io.ReadAll(stream.Body)
+	requireProblem(t, err, errs.SubtypeNetworkProtocol, false, "range response delivered")
 }
 
 func TestOpenCapsResponseAmplification(t *testing.T) {
@@ -763,7 +748,7 @@ func TestOpenRejectsInvalidFollowupResponses(t *testing.T) {
 		{name: "unexpected status", firstETag: `"v1"`, second: testResponse(http.StatusTeapot, nil, nil), subtype: errs.SubtypeNetworkProtocol, message: "status 418"},
 		{name: "invalid content range", firstETag: `"v1"`, second: testResponse(http.StatusPartialContent, []byte("efgh"), nil), subtype: errs.SubtypeNetworkProtocol, message: "content-range is empty"},
 		{name: "validator disappeared", firstETag: `"v1"`, second: testPartial([]byte("efgh"), 4, 7, 8, ""), subtype: errs.SubtypeNetworkProtocol, message: "no usable validator"},
-		{name: "validator changed", firstETag: `"v1"`, second: testPartial([]byte("efgh"), 4, 7, 8, `"v2"`), subtype: errs.SubtypeRepresentationChanged, retryable: true, message: "carries validator"},
+		{name: "validator changed", firstETag: `"v1"`, second: testPartial([]byte("efgh"), 4, 7, 8, `"v2"`), subtype: errs.SubtypeNetworkRepresentationChanged, retryable: true, message: "carries validator"},
 		{name: "if-range ignored", firstETag: `"v1"`, second: testPartial([]byte("efgh"), 4, 7, 9, `"v1"`), subtype: errs.SubtypeNetworkProtocol, message: "ignored If-Range"},
 	}
 	for _, tt := range tests {
@@ -794,7 +779,7 @@ func TestOpenFullResponseContinuationFailures(t *testing.T) {
 		retryable bool
 		message   string
 	}{
-		{name: "size changed", full: testResponse(http.StatusOK, []byte("123456789"), nil), subtype: errs.SubtypeRepresentationChanged, retryable: true, message: "full response has 9 bytes"},
+		{name: "size changed", full: testResponse(http.StatusOK, []byte("123456789"), nil), subtype: errs.SubtypeNetworkRepresentationChanged, retryable: true, message: "full response has 9 bytes"},
 		{name: "short prefix", full: testUnknownLengthResponse(http.StatusOK, []byte("ab"), nil), subtype: errs.SubtypeNetworkProtocol, message: "ended before byte 4"},
 	}
 	for _, tt := range tests {

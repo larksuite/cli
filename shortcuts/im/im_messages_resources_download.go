@@ -142,19 +142,19 @@ var imMimeToExt = map[string]string{
 }
 
 func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType, outputPath string, preserveBasename bool) (string, int64, error) {
-	download, err := openIMResourceDownload(ctx, runtime, messageID, fileKey, fileType)
+	stream, err := openIMResourceDownload(ctx, runtime, messageID, fileKey, fileType)
 	if err != nil {
 		return "", 0, err
 	}
-	defer download.Body.Close()
+	defer stream.Body.Close()
 
-	finalPath := resolveIMResourceDownloadPath(outputPath, download.Header.Get("Content-Type"), download.Header.Get("Content-Disposition"), preserveBasename)
-	sizeBytes := download.ContentLength
+	finalPath := resolveIMResourceDownloadPath(outputPath, stream.Header.Get("Content-Type"), stream.Header.Get("Content-Disposition"), preserveBasename)
+	sizeBytes := stream.ContentLength
 
 	result, err := runtime.FileIO().Save(finalPath, fileio.SaveOptions{
-		ContentType:   download.Header.Get("Content-Type"),
+		ContentType:   stream.Header.Get("Content-Type"),
 		ContentLength: sizeBytes,
-	}, download.Body)
+	}, stream.Body)
 	if err != nil {
 		return "", 0, common.WrapSaveErrorTyped(err)
 	}

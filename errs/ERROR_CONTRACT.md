@@ -321,7 +321,7 @@ legal for framework dynamic paths (e.g. classifier fanout) but the lint
 | Local config missing | `errs.NewConfigError(errs.SubtypeNotConfigured, msg)` |
 | Transport failure | `errs.NewNetworkError(errs.SubtypeNetworkTimeout, msg).WithCause(err)` (subtype: `timeout` / `tls` / `dns` / `server_error` / `transport` / `protocol`) |
 | Peer answered but broke the protocol | `errs.NewNetworkError(errs.SubtypeNetworkProtocol, msg)` — e.g. a `206` whose `Content-Range` is not the range the transfer resumed from. Never retryable: replaying the same request cannot change the answer. |
-| Resource changed mid-transfer | `errs.NewNetworkError(errs.SubtypeRepresentationChanged, msg).WithRetryable().WithHint(...)` — the peer behaved correctly, so starting the transfer over reads the current version. |
+| Resource changed mid-transfer | `errs.NewNetworkError(errs.SubtypeNetworkRepresentationChanged, msg).WithRetryable().WithHint(...)` — the peer behaved correctly, so starting the transfer over reads the current version. |
 | Lark API error | `errclass.BuildAPIError(resp, ctx)` |
 | SDK / decode bug | `errs.NewInternalError(errs.SubtypeSDKError, msg).WithCause(err)` |
 | Policy block | `errs.NewSecurityPolicyError(subtype, msg).WithChallengeURL(url)` or `errs.NewContentSafetyError(subtype, msg).WithRules(...)` |

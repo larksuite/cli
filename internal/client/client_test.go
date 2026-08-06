@@ -553,8 +553,9 @@ func TestDoStreamHonorsCallerDeadline(t *testing.T) {
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("DoStream() error = %v, want caller deadline", err)
 	}
-	if errs.IsRetryable(err) {
-		t.Fatalf("DoStream() error = %v, caller deadline must not be retryable", err)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTimeout || problem.Retryable {
+		t.Fatalf("DoStream() problem = %#v, %v; want non-retryable network timeout", problem, ok)
 	}
 }
 
@@ -574,8 +575,11 @@ func TestDoStreamRequestTimeoutIsRetryableWhileCallerIsActive(t *testing.T) {
 		ApiPath:    "/open-apis/im/v1/messages/message_id/resources/file_key",
 	}, core.AsBot, WithTimeout(time.Millisecond), WithReplaySafe())
 	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Subtype != errs.SubtypeNetworkTimeout || !problem.Retryable {
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTimeout || !problem.Retryable {
 		t.Fatalf("DoStream() problem = %#v, %v; want retryable timeout", problem, ok)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("DoStream() error = %v, want request deadline cause", err)
 	}
 }
 
@@ -706,8 +710,9 @@ func TestDoStream_TransportFailureSplitsSubtype(t *testing.T) {
 }
 
 func TestDoStreamTLSFailureIsNotRetryable(t *testing.T) {
+	tlsErr := errors.New("tls: certificate verification failed")
 	rt := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
-		return nil, errors.New("tls: certificate verification failed")
+		return nil, tlsErr
 	})
 	ac := &APIClient{
 		HTTP:       &http.Client{Transport: rt},
@@ -720,8 +725,11 @@ func TestDoStreamTLSFailureIsNotRetryable(t *testing.T) {
 		ApiPath:    "/open-apis/im/v1/messages/message_id/resources/file_key",
 	}, core.AsBot, WithReplaySafe())
 	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Subtype != errs.SubtypeNetworkTLS || problem.Retryable {
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTLS || problem.Retryable {
 		t.Fatalf("DoStream() problem = %#v, %v; want non-retryable TLS failure", problem, ok)
+	}
+	if !errors.Is(err, tlsErr) {
+		t.Fatalf("DoStream() error = %v, want original TLS cause", err)
 	}
 }
 

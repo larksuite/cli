@@ -91,9 +91,14 @@ func TestIM_MessagesResourcesDownloadDryRun(t *testing.T) {
 					"--output", tt.outputPath,
 				)
 				require.Equal(t, 2, result.ExitCode, "stdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+				require.Empty(t, result.Stdout, "stdout must stay reserved for program data")
 				require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(),
 					"stderr:\n%s", result.Stderr)
 				require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(),
+					"stderr:\n%s", result.Stderr)
+				require.Equal(t, "--output", gjson.Get(result.Stderr, "error.param").String(),
+					"stderr:\n%s", result.Stderr)
+				require.NotEmpty(t, gjson.Get(result.Stderr, "error.message").String(),
 					"stderr:\n%s", result.Stderr)
 			})
 		}

@@ -380,11 +380,7 @@ func (r *sequentialPartReader) Read(p []byte) (int, error) {
 				if r.chunkRead != r.chunkWant {
 					shortErr := io.ErrUnexpectedEOF
 					if r.partRetries < r.maxPartRetries {
-						r.retryErr = r.readFailure(shortErr, closeErr)
-						r.partRetries++
-						r.retryPending = true
-						r.chunkRead = 0
-						r.chunkWant = 0
+						r.beginPartRetry(r.readFailure(shortErr, closeErr))
 						if n > 0 {
 							return n, nil
 						}
@@ -410,11 +406,7 @@ func (r *sequentialPartReader) Read(p []byte) (int, error) {
 				r.current = nil
 				failure := r.readFailure(err, closeErr)
 				if r.canRetryBody(failure) && r.partRetries < r.maxPartRetries {
-					r.retryErr = failure
-					r.partRetries++
-					r.retryPending = true
-					r.chunkRead = 0
-					r.chunkWant = 0
+					r.beginPartRetry(failure)
 					if n > 0 {
 						return n, nil
 					}
@@ -448,6 +440,14 @@ func (r *sequentialPartReader) Read(p []byte) (int, error) {
 			return 0, err
 		}
 	}
+}
+
+func (r *sequentialPartReader) beginPartRetry(failure error) {
+	r.retryErr = failure
+	r.partRetries++
+	r.retryPending = true
+	r.chunkRead = 0
+	r.chunkWant = 0
 }
 
 func (r *sequentialPartReader) openNext() error {
@@ -601,7 +601,7 @@ func protocolError(format string, args ...interface{}) *errs.NetworkError {
 }
 
 func representationChanged(format string, args ...interface{}) *errs.NetworkError {
-	return errs.NewNetworkError(errs.SubtypeRepresentationChanged, format, args...).
+	return errs.NewNetworkError(errs.SubtypeNetworkRepresentationChanged, format, args...).
 		WithRetryable().
 		WithHint("run the command again to download the current version")
 }

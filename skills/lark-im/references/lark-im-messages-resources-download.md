@@ -44,6 +44,7 @@ When downloading large files, the command automatically uses **HTTP Range reques
 
 | Behavior | Details |
 |----------|---------|
+| Applies to | `--type file` only; `--type image` uses a single full response |
 | First part | Up to 8 MiB to discover the total representation size |
 | Subsequent parts | Exact, non-overlapping ranges of up to 8 MiB |
 | Workers | Single-threaded sequential download (ensures reliability) |
