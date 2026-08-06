@@ -244,6 +244,12 @@ func TestRetryDelayUsesServerMinimumAndLocalBackoff(t *testing.T) {
 	}
 }
 
+func TestOptionsSelectRetryDelayDefault(t *testing.T) {
+	if got := (Options{}).withDefaults().RetryDelay; got != DefaultRetryDelay {
+		t.Fatalf("RetryDelay = %s, want %s", got, DefaultRetryDelay)
+	}
+}
+
 func TestRetryJitterNeverShortensDelay(t *testing.T) {
 	const delay = 8 * time.Second
 	for range 100 {

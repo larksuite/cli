@@ -236,14 +236,14 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 				WithCode(resp.StatusCode).
 				WithRetryable().
 				WithRetryAfterSeconds(retryAfterSeconds)
+			hint := "retry with exponential backoff and jitter"
 			if retryAfterSeconds > 0 {
-				apiErr.WithHint("wait at least %d seconds before retrying; use exponential backoff with jitter if throttling continues", retryAfterSeconds)
-			} else {
-				apiErr.WithHint("retry with exponential backoff and jitter")
+				hint = fmt.Sprintf("wait at least %d seconds before retrying; use exponential backoff with jitter if throttling continues", retryAfterSeconds)
 			}
 			if rate.Limit > 0 {
-				apiErr.Hint += fmt.Sprintf("; gateway request-window quota is %d", rate.Limit)
+				hint += fmt.Sprintf("; gateway request-window quota is %d", rate.Limit)
 			}
+			apiErr.WithHint("%s", hint)
 			if logID := streamLogID(resp.Header); logID != "" {
 				apiErr.WithLogID(logID)
 			}

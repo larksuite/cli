@@ -615,8 +615,8 @@ func TestDoStreamRateLimitCarriesGatewayPacing(t *testing.T) {
 	if apiErr.RetryAfterSeconds != 8 || apiErr.LogID != "log-rate-limit" {
 		t.Fatalf("retry_after=%d log_id=%q, want 8 and log-rate-limit", apiErr.RetryAfterSeconds, apiErr.LogID)
 	}
-	if !strings.Contains(apiErr.Hint, "quota is 100") {
-		t.Fatalf("hint = %q, want gateway quota diagnostic", apiErr.Hint)
+	if !strings.Contains(apiErr.Hint, "wait at least 8 seconds") || !strings.Contains(apiErr.Hint, "quota is 100") {
+		t.Fatalf("hint = %q, want pacing and gateway quota diagnostics", apiErr.Hint)
 	}
 }
 

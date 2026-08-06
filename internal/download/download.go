@@ -20,13 +20,15 @@ import (
 )
 
 const (
-	// DefaultPartSize is the default byte-range size.
+	// DefaultPartSize keeps a 100 MiB object near 13 requests while capping replay at 8 MiB.
 	DefaultPartSize = int64(8 * 1024 * 1024)
-	// DefaultPartRetries bounds retries for each range.
+	// DefaultPartRetries tolerates three transient failures without prolonged retrying.
 	DefaultPartRetries = 3
-	// DefaultRetryWaitBudget bounds retry sleeps for one download.
+	// DefaultRetryDelay keeps three local backoffs below one second before jitter.
+	DefaultRetryDelay = 100 * time.Millisecond
+	// DefaultRetryWaitBudget caps cumulative local sleep for interactive callers.
 	DefaultRetryWaitBudget = 3 * time.Second
-	// DefaultIdleTimeout bounds a stalled header or body read without limiting total transfer time.
+	// DefaultIdleTimeout detects a dead connection within a minute without limiting slow progress.
 	DefaultIdleTimeout = 60 * time.Second
 )
 
@@ -71,7 +73,7 @@ type Options struct {
 	MaxResponses int
 	// MaxPartRetries bounds retries per range. Zero selects the default.
 	MaxPartRetries int
-	// RetryDelay is the base exponential backoff.
+	// RetryDelay is the base exponential backoff. Zero selects the default.
 	RetryDelay time.Duration
 	// RetryWaitBudget bounds cumulative retry sleeps. Zero selects the default.
 	RetryWaitBudget time.Duration
@@ -254,6 +256,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.MaxPartRetries == 0 {
 		o.MaxPartRetries = DefaultPartRetries
+	}
+	if o.RetryDelay == 0 {
+		o.RetryDelay = DefaultRetryDelay
 	}
 	if o.RetryWaitBudget == 0 {
 		o.RetryWaitBudget = DefaultRetryWaitBudget
@@ -600,11 +605,11 @@ func unexpectedStatus(status int) error {
 	return protocolError("transport returned unexpected HTTP status %d", status).WithCode(status)
 }
 
-func protocolError(format string, args ...interface{}) *errs.NetworkError {
+func protocolError(format string, args ...any) *errs.NetworkError {
 	return errs.NewNetworkError(errs.SubtypeNetworkProtocol, format, args...)
 }
 
-func representationChanged(format string, args ...interface{}) *errs.NetworkError {
+func representationChanged(format string, args ...any) *errs.NetworkError {
 	return errs.NewNetworkError(errs.SubtypeNetworkRepresentationChanged, format, args...).
 		WithRetryable().
 		WithHint("run the command again to download the current version")
