@@ -375,11 +375,9 @@ func TestDocsScriptParseAcceptsServerSDKAttributeAmpersand(t *testing.T) {
 	require.Equal(t, int64(1), gjson.Get(result.Stdout, "data.profile.block_count").Int())
 }
 
-func TestDocsScriptParseMarkdownFromFile(t *testing.T) {
+func TestDocsScriptParseRejectsMarkdownFromFile(t *testing.T) {
 	workDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workDir, "draft.md"), []byte("# 标题\n\n- item"), 0o600); err != nil {
-		t.Fatalf("write draft: %v", err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "draft.md"), []byte("# 标题\n\n- item"), 0o600))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -394,10 +392,10 @@ func TestDocsScriptParseMarkdownFromFile(t *testing.T) {
 		Env:       docsScriptE2EEnv(t),
 	})
 	require.NoError(t, err)
-	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, true)
-	require.Equal(t, int64(3), gjson.Get(result.Stdout, "data.profile.block_count").Int())
-	require.False(t, gjson.Get(result.Stdout, "data.profile.breakdown").Exists())
+	result.AssertExitCode(t, 2)
+	require.False(t, gjson.Get(result.Stderr, "ok").Bool())
+	require.Equal(t, "--content", gjson.Get(result.Stderr, "error.param").String())
+	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "as LarkOpenCLI XML")
 }
 
 func TestDocsScriptInitDraftCreatesUniqueWorkspacesWithoutXML(t *testing.T) {

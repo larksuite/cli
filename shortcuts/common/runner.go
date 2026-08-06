@@ -49,7 +49,7 @@ type RuntimeContext struct {
 	Factory        *cmdutil.Factory                  // injected by framework
 	apiClientFunc  func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
 	botInfoFunc    func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
-	larkSDK        *lark.Client                      // initialized for non-local shortcut execution
+	larkSDK        *lark.Client                      // eagerly initialized in mountDeclarative
 	stdinConsumed  bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
 }
 
@@ -195,7 +195,7 @@ func (ctx *RuntimeContext) AccessToken() (string, error) {
 	return result.Token, nil
 }
 
-// LarkSDK returns the initialized Lark SDK client for non-local execution.
+// LarkSDK returns the eagerly-initialized Lark SDK client.
 func (ctx *RuntimeContext) LarkSDK() *lark.Client {
 	return ctx.larkSDK
 }
@@ -950,29 +950,23 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 			return nil
 		}
 	}
-	local := s.Local != nil && s.Local(cmd)
-	var (
-		as     core.Identity
-		config *core.CliConfig
-		err    error
-	)
-	if local {
-		as, err = resolveLocalShortcutIdentity(cmd, f, s)
-		config = &core.CliConfig{}
-	} else {
-		as, err = resolveShortcutIdentity(cmd, f, s)
-		if err == nil {
-			config, err = f.Config()
-		}
-		if err == nil {
-			err = checkShortcutScopes(f, cmd.Context(), as, config, s.ScopesForIdentity(string(as)))
-		}
-	}
+	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
 		return err
 	}
 
-	rctx, err := newRuntimeContext(cmd, f, s, config, as, botOnly, !local)
+	config, err := f.Config()
+	if err != nil {
+		return err
+	}
+	// Identity info is now included in the JSON envelope; skip stderr printing.
+	// cmdutil.PrintIdentity(f.IOStreams.ErrOut, as, config, false)
+
+	if err := checkShortcutScopes(f, cmd.Context(), as, config, s.ScopesForIdentity(string(as))); err != nil {
+		return err
+	}
+
+	rctx, err := newRuntimeContext(cmd, f, s, config, as, botOnly)
 	if err != nil {
 		return err
 	}
@@ -1034,24 +1028,6 @@ func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 	return as, nil
 }
 
-func resolveLocalShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
-	f.IdentityAutoDetected = false
-	asFlag, _ := cmd.Flags().GetString("as")
-	as := core.AsBot
-	if !slices.Contains(s.AuthTypes, string(core.AsBot)) && len(s.AuthTypes) > 0 {
-		as = core.Identity(s.AuthTypes[0])
-	}
-	if cmd.Flags().Changed("as") && core.Identity(asFlag) != core.AsAuto && strings.TrimSpace(asFlag) != "" {
-		as = core.Identity(asFlag)
-	} else {
-		f.IdentityAutoDetected = true
-	}
-	if err := f.CheckIdentity(as, s.AuthTypes); err != nil {
-		return "", err
-	}
-	return as, nil
-}
-
 func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identity, config *core.CliConfig, scopes []string) error {
 	if len(scopes) == 0 {
 		return nil
@@ -1069,7 +1045,7 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 		WithMissingScopes(missing...)
 }
 
-func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly, initializeLarkSDK bool) (*RuntimeContext, error) {
+func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
 	rctx := &RuntimeContext{
@@ -1086,13 +1062,11 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	})
 	rctx.botInfoFunc = sync.OnceValues(rctx.fetchBotInfo)
 
-	if initializeLarkSDK {
-		sdk, err := f.LarkClient()
-		if err != nil {
-			return nil, err
-		}
-		rctx.larkSDK = sdk
+	sdk, err := f.LarkClient()
+	if err != nil {
+		return nil, err
 	}
+	rctx.larkSDK = sdk
 
 	applyJSONShorthand(cmd, s)
 	rctx.Format = rctx.Str("format")

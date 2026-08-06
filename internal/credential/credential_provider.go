@@ -139,7 +139,6 @@ type CredentialProvider struct {
 	accountOnce    sync.Once
 	account        *Account
 	accountErr     error
-	selectedMu     sync.RWMutex
 	selectedSource credentialSource
 
 	hintOnce sync.Once
@@ -192,7 +191,7 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 				internal.UserOpenId = ""
 				internal.UserName = ""
 			}
-			p.setSelectedCredentialSource(source)
+			p.selectedSource = source
 			return internal, nil
 		}
 	}
@@ -201,7 +200,7 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 		if err != nil {
 			return nil, err
 		}
-		p.setSelectedCredentialSource(defaultTokenSource{resolver: p.defaultToken})
+		p.selectedSource = defaultTokenSource{resolver: p.defaultToken}
 		return acct, nil
 	}
 	return nil, core.NotConfiguredError()
@@ -240,8 +239,8 @@ func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account, 
 }
 
 func (p *CredentialProvider) selectedCredentialSource(ctx context.Context) (credentialSource, error) {
-	if source := p.getSelectedCredentialSource(); source != nil {
-		return source, nil
+	if p.selectedSource != nil {
+		return p.selectedSource, nil
 	}
 	if p.defaultAcct == nil {
 		return nil, nil
@@ -249,23 +248,10 @@ func (p *CredentialProvider) selectedCredentialSource(ctx context.Context) (cred
 	if _, err := p.ResolveAccount(ctx); err != nil {
 		return nil, err
 	}
-	source := p.getSelectedCredentialSource()
-	if source == nil {
+	if p.selectedSource == nil {
 		return nil, fmt.Errorf("credential provider resolved an account without selecting a token source")
 	}
-	return source, nil
-}
-
-func (p *CredentialProvider) getSelectedCredentialSource() credentialSource {
-	p.selectedMu.RLock()
-	defer p.selectedMu.RUnlock()
-	return p.selectedSource
-}
-
-func (p *CredentialProvider) setSelectedCredentialSource(source credentialSource) {
-	p.selectedMu.Lock()
-	defer p.selectedMu.Unlock()
-	p.selectedSource = source
+	return p.selectedSource, nil
 }
 
 func resolveTokenFromSource(ctx context.Context, source credentialSource, req TokenSpec) (*TokenResult, error) {

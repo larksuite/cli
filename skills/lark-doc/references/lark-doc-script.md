@@ -47,13 +47,12 @@ lark-cli docs +script --command init-draft \
 | 参数 | 必填 | 用法 |
 |-|-|-|
 | `--command parse` | 是 | 选择本脚本。 |
-| `--content` | 二选一 | 本地 XML/Markdown 的字面内容、`@./document.xml` 形式的 CWD 下相对路径或 `-`（stdin）。 |
+| `--content` | 二选一 | 本地 XML 的字面内容、`@./document.xml` 形式的 CWD 下相对路径或 `-`（stdin）。 |
 | `--doc` | 二选一 | 在线 Docx/Wiki URL 或 token；与 `--content` 互斥。 |
 | `--presentation-decision` | 否 | 用于检查当前输入的完整决策 JSON；支持内联、`@./decision.json` 形式的 CWD 下相对路径或 `-`。 |
 
 ```bash
 lark-cli docs +script --command parse --content "@./document.xml" --format json
-lark-cli docs +script --command parse --content "@./document.md" --format json
 lark-cli docs +script --command parse --doc "<Docx/Wiki URL 或 token>" --format json
 lark-cli docs +script --command parse --content "@./document.xml" --presentation-decision '<JSON>' --format json
 ```

@@ -24,7 +24,7 @@
 
 下表文件均位于当前 Skill 的 `references/genres/` 目录。
 
-- 读取高置信命中的最多一个 Profile 和最多一个 Adapter；记录路由表中的固定短名。未命中时，`genre_contract` 和 `adapter` 均可使用 `"none"` 或 `null`。
+- 路由表仅用于选择候选，不代替 contract。高置信命中后必须读取对应 Profile / Adapter，并按其中的路由与消歧规则复核；未读取不得确定该值或进入 Step 3。确认后记录固定短名，最多各读取一个；未命中时，`genre_contract` 和 `adapter` 均可使用 `"none"` 或 `null`。
 - contract 决定内容任务、证据和体裁边界；adapter 只调整与所选 contract 兼容的平台结构、写作风格和组件约束。
 
    | Content Profile | 独特专业任务 |

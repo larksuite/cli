@@ -645,8 +645,8 @@ func parseAttributes(source string) map[string]string {
 }
 
 // parseStrictAttributes implements the quoted attribute grammar accepted by
-// XML. parseAttributes remains intentionally permissive for the Markdown
-// container extension, whose input is Markdown rather than an XML document.
+// XML. parseAttributes remains intentionally permissive for compatibility
+// recovery of malformed authoring output.
 func parseStrictAttributes(source string) (map[string]string, bool) {
 	attrs := map[string]string{}
 	for i := 0; i < len(source); {

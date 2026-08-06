@@ -57,7 +57,7 @@ var DocsScript = common.Shortcut{
 		},
 		{
 			Name:  "content",
-			Desc:  "local XML or Markdown content for parse; use @relative-file or - for stdin; mutually exclusive with --doc",
+			Desc:  "local XML content for parse; use @relative-file or - for stdin; mutually exclusive with --doc",
 			Input: []string{common.File, common.Stdin},
 		},
 		{
@@ -73,16 +73,10 @@ var DocsScript = common.Shortcut{
 	Tips: []string{
 		"parse preflights draft resources when a Presentation Decision is loaded, repairs common malformed XML in memory, and returns the text and block profile",
 	},
-	Local:     docsScriptRunsLocally,
 	PostMount: installDocsScriptHelp,
 	Validate:  validateDocsScript,
 	DryRun:    dryRunDocsScript,
 	Execute:   executeDocsScript,
-}
-
-func docsScriptRunsLocally(cmd *cobra.Command) bool {
-	doc, _ := cmd.Flags().GetString("doc")
-	return strings.TrimSpace(doc) == ""
 }
 
 type docsScriptParseResult struct {
@@ -247,14 +241,14 @@ func dryRunDocsScript(_ context.Context, runtime *common.RuntimeContext) *common
 		return dry
 	}
 	dry := common.NewDryRunAPI().
-		Desc("Local LarkOpenCLI document parsing; no OpenAPI call is made").
+		Desc("LarkOpenCLI XML parsing; no OpenAPI call is made").
 		Set("command", runtime.Str("command")).
 		Set("input_bytes", len(runtime.Str("content")))
 	hasDecision := docsScriptHasPresentationDecision(runtime)
 	network := hasDecision && docsScriptHasRemoteImagePreflight(runtime, runtime.Str("content"))
 	dry.Set("network", network)
 	if network {
-		dry.Desc("Local LarkOpenCLI document parsing; remote image availability preflight makes ranged network requests but does not buffer image bodies")
+		dry.Desc("LarkOpenCLI XML parsing; remote image availability preflight makes ranged network requests but does not buffer image bodies")
 	}
 	if hasDecision {
 		dry.Set("presentation_decision", true)
@@ -280,10 +274,10 @@ func executeDocsScript(_ context.Context, runtime *common.RuntimeContext) error 
 			inputParam = "--doc"
 			inputLabel = "fetched document content"
 		}
-		profile, err := docxparse.ParseAuto(content)
+		profile, err := docxparse.ParseCompatibleXML(content)
 		if err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"could not parse %s as LarkOpenCLI XML or Markdown: %s", inputLabel, err).
+				"could not parse %s as LarkOpenCLI XML: %s", inputLabel, err).
 				WithParam(inputParam).
 				WithCause(err)
 		}
@@ -319,7 +313,7 @@ func executeDocsScript(_ context.Context, runtime *common.RuntimeContext) error 
 }
 
 func docsScriptResourceWarnings(runtime *common.RuntimeContext, content string) []string {
-	input, err := prepareDocsV2WriteInputForFormat(runtime, string(docxparse.DetectFormat(content)), docsV2WriteInput{Content: content})
+	input, err := prepareDocsV2WriteInputForFormat(runtime, string(docxparse.FormatXML), docsV2WriteInput{Content: content})
 	if err != nil {
 		return []string{docsScriptResourceWarning(err)}
 	}
@@ -342,7 +336,7 @@ func docsScriptHasPresentationDecision(runtime *common.RuntimeContext) bool {
 }
 
 func docsScriptHasRemoteImagePreflight(runtime *common.RuntimeContext, content string) bool {
-	input, err := prepareDocsV2WriteInputForFormat(runtime, string(docxparse.DetectFormat(content)), docsV2WriteInput{Content: content})
+	input, err := prepareDocsV2WriteInputForFormat(runtime, string(docxparse.FormatXML), docsV2WriteInput{Content: content})
 	if err != nil {
 		return false
 	}

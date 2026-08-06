@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -562,6 +564,46 @@ func TestDownloadRemoteDocImageContentSupportsWebPDimensions(t *testing.T) {
 	}
 	if download.Width <= 0 || download.Height <= 0 || download.FileName != "image.webp" || !bytes.Equal(download.Content, payload) {
 		t.Fatalf("WebP download = %#v", download)
+	}
+}
+
+func TestDownloadRemoteDocImageContentSupportsBMPAndTIFFDimensions(t *testing.T) {
+	runtime := newLocalDocResourceTestRuntime(t, nil)
+
+	originalDo := doRemoteDocImageRequest
+	t.Cleanup(func() { doRemoteDocImageRequest = originalDo })
+
+	tests := []struct {
+		name        string
+		contentType string
+		payload     []byte
+		width       int
+		height      int
+		ext         string
+	}{
+		{name: "BMP", contentType: "image/bmp", payload: testBMPImage(2, 3), width: 2, height: 3, ext: ".bmp"},
+		{name: "TIFF", contentType: "image/tiff", payload: testTIFFImage(4, 5), width: 4, height: 5, ext: ".tiff"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doRemoteDocImageRequest = func(_ remoteDocImageHTTPDoer, req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode:    http.StatusOK,
+					Header:        http.Header{"Content-Type": []string{tt.contentType}},
+					Body:          io.NopCloser(bytes.NewReader(tt.payload)),
+					ContentLength: int64(len(tt.payload)),
+					Request:       req,
+				}, nil
+			}
+
+			download, err := downloadRemoteDocImageContent(runtime, "https://93.184.216.34/image"+tt.ext, 1)
+			if err != nil {
+				t.Fatalf("downloadRemoteDocImageContent() error = %v", err)
+			}
+			if download.Width != tt.width || download.Height != tt.height || download.FileName != "image"+tt.ext || !bytes.Equal(download.Content, tt.payload) {
+				t.Fatalf("download = %#v", download)
+			}
+		})
 	}
 }
 
@@ -1115,14 +1157,26 @@ func TestUploadLocalDocResourceUsesExplicitSourceName(t *testing.T) {
 }
 
 func TestUploadRemoteDocImagesUsesBoundedConcurrency(t *testing.T) {
-	factory, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("remote-image-concurrent-upload"))
-	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, docsTestConfigWithAppID("remote-image-concurrent-upload"), factory, core.AsUser)
+	config := docsTestConfigWithAppID("remote-image-concurrent-upload")
+	factory, _, _, reg := cmdutil.TestFactory(t, config)
+	var credentialReady atomic.Bool
+	factory.Credential = credential.NewCredentialProvider(
+		nil,
+		&remoteImageTestAccountResolver{config: config},
+		&remoteImageTestTokenResolver{resolved: &credentialReady},
+		nil,
+	)
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, config, factory, core.AsUser)
 	payload := []byte(localDocResourcePNG(t, 20, 10))
 	originalDownload := downloadRemoteDocImage
 	t.Cleanup(func() { downloadRemoteDocImage = originalDownload })
 	var downloadMu sync.Mutex
 	downloads := 0
+	var downloadBeforeCredential atomic.Bool
 	downloadRemoteDocImage = func(_ *common.RuntimeContext, _ string, _ int) (remoteDocImageDownload, error) {
+		if !credentialReady.Load() {
+			downloadBeforeCredential.Store(true)
+		}
 		downloadMu.Lock()
 		downloads++
 		downloadMu.Unlock()
@@ -1195,6 +1249,9 @@ func TestUploadRemoteDocImagesUsesBoundedConcurrency(t *testing.T) {
 	if gotDownloads != len(outcomes) {
 		t.Fatalf("remote image downloads = %d, want %d", gotDownloads, len(outcomes))
 	}
+	if downloadBeforeCredential.Load() {
+		t.Fatal("remote image worker started before credentials were resolved")
+	}
 	if maxActiveUploads < 2 {
 		t.Fatalf("max active remote image uploads = %d, want at least 2", maxActiveUploads)
 	}
@@ -1209,6 +1266,23 @@ func TestUploadRemoteDocImagesUsesBoundedConcurrency(t *testing.T) {
 			t.Fatalf("remote image #%d retained %d buffered bytes after upload", outcome.Resource.Occurrence, len(outcome.Resource.Content))
 		}
 	}
+}
+
+type remoteImageTestAccountResolver struct {
+	config *core.CliConfig
+}
+
+func (r *remoteImageTestAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return credential.AccountFromCliConfig(r.config), nil
+}
+
+type remoteImageTestTokenResolver struct {
+	resolved *atomic.Bool
+}
+
+func (r *remoteImageTestTokenResolver) ResolveToken(context.Context, credential.TokenSpec) (*credential.TokenResult, error) {
+	r.resolved.Store(true)
+	return &credential.TokenResult{Token: "test-token"}, nil
 }
 
 func TestUploadLocalDocResourcesRetriesConflictAndSerializes(t *testing.T) {

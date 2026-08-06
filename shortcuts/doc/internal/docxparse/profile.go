@@ -6,7 +6,6 @@ package docxparse
 import (
 	"fmt"
 	"math"
-	"regexp"
 	"sort"
 	"strings"
 )
@@ -48,160 +47,42 @@ type TextBreakdown struct {
 	SymbolChars         int `json:"symbol_chars"`
 }
 
-// Parse checks XML syntax or converts Markdown to DocxXML, then builds its
-// structure and visible-text profile. XML business semantics are deliberately
-// left to the document writer and service.
+// Parse checks XML syntax, then builds its structure and visible-text profile.
+// XML business semantics are deliberately left to the document writer and
+// service.
 func Parse(source string, format Format) (ParseResult, error) {
-	var (
-		nodes     []*Node
-		outputXML string
-		err       error
-	)
-	switch format {
-	case FormatXML:
-		nodes, err = parseXML(source)
-		outputXML = source
-	case FormatMarkdown:
-		nodes, err = parseMarkdown(source)
-	default:
+	if format != FormatXML {
 		return ParseResult{}, newParseError("unsupported input format %q", format)
 	}
+	nodes, err := parseXML(source)
 	if err != nil {
 		return ParseResult{}, err
 	}
 	if err := validateNestingDepth(nodes); err != nil {
 		return ParseResult{}, err
 	}
-	if format == FormatMarkdown {
-		outputXML = renderNodes(nodes)
-	}
-
 	return ParseResult{
 		Format:  format,
-		XML:     outputXML,
+		XML:     source,
 		Profile: buildProfile(nodes),
 	}, nil
 }
 
-// ParseAuto detects XML versus Markdown from the content and returns only the
-// document profile. XML-like input uses deterministic compatibility recovery;
-// all other input is interpreted as Markdown.
-func ParseAuto(source string) (Profile, error) {
+// ParseCompatibleXML builds a profile after deterministic recovery of common
+// malformed XML emitted while authoring a draft.
+func ParseCompatibleXML(source string) (Profile, error) {
 	if err := validateSource(source); err != nil {
 		return Profile{}, err
 	}
-	format := DetectFormat(source)
-	if format == FormatXML {
-		nodes, err := parseXMLCompatible(source)
-		if err != nil {
-			return Profile{}, err
-		}
-		return buildProfile(nodes), nil
+	trimmed := strings.TrimSpace(strings.TrimPrefix(source, "\uFEFF"))
+	if !strings.HasPrefix(trimmed, "<") {
+		return Profile{}, newParseError("XML input must begin with '<'")
 	}
-
-	result, err := Parse(source, format)
+	nodes, err := parseXMLCompatible(source)
 	if err != nil {
 		return Profile{}, err
 	}
-	return result.Profile, nil
-}
-
-// DetectFormat applies the same XML-versus-Markdown detection used by ParseAuto.
-func DetectFormat(source string) Format {
-	return detectFormat(source)
-}
-
-func detectFormat(source string) Format {
-	trimmed := strings.TrimSpace(strings.TrimPrefix(source, "\uFEFF"))
-	if isMarkdownAutolinkPrefix(trimmed) {
-		return FormatMarkdown
-	}
-	if strings.HasPrefix(trimmed, "<") {
-		if containsMarkdownBlockSyntax(trimmed) {
-			// A Markdown-aware container can also be perfectly valid inline XML,
-			// for example <div>plain text</div>. Only select Markdown when its
-			// line-oriented container parser can consume the complete source;
-			// otherwise preserve the XML interpretation.
-			if _, err := parseMarkdown(trimmed); err == nil {
-				return FormatMarkdown
-			}
-		}
-		return FormatXML
-	}
-	return FormatMarkdown
-}
-
-func containsMarkdownBlockSyntax(source string) bool {
-	stack := make([]string, 0, 4)
-	offset := 0
-	for offset < len(source) {
-		relative := strings.IndexByte(source[offset:], '<')
-		if relative < 0 {
-			return markdownTextIsActive(stack) && strings.TrimSpace(source[offset:]) != ""
-		}
-		start := offset + relative
-		if markdownTextIsActive(stack) && strings.TrimSpace(source[offset:start]) != "" {
-			return true
-		}
-
-		token, end, state := scanXMLToken(source, start)
-		if end <= start {
-			end = start + 1
-		}
-		switch state {
-		case tokenComment, tokenProcessingInstruction, tokenCDATA:
-			offset = end
-			continue
-		case tokenIncomplete:
-			return false
-		}
-		if token.name == "" {
-			offset = end
-			continue
-		}
-
-		tag := strings.ToLower(token.name)
-		if token.closing {
-			if len(stack) > 0 && stack[len(stack)-1] == tag {
-				stack = stack[:len(stack)-1]
-			} else {
-				// The tolerant XML parser will recover mismatched closes. Resetting
-				// here keeps auto-detection linear without guessing an ancestor.
-				stack = stack[:0]
-			}
-		} else if !token.selfClosing && !isVoidTag(tag) {
-			if len(stack) >= MaxNestingDepth {
-				return false
-			}
-			stack = append(stack, tag)
-		}
-		offset = end
-	}
-	return false
-}
-
-func markdownTextIsActive(stack []string) bool {
-	if len(stack) == 0 {
-		return true
-	}
-	return containerSpecs[stack[len(stack)-1]] != nil
-}
-
-var (
-	markdownURIAutolink   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\x00-\x20]*$`)
-	markdownEmailAutolink = regexp.MustCompile(`^[^<>\s@]+@[^<>\s@]+$`)
-)
-
-func isMarkdownAutolinkPrefix(source string) bool {
-	if !strings.HasPrefix(source, "<") {
-		return false
-	}
-	closeAt := strings.IndexByte(source, '>')
-	if closeAt <= 1 {
-		return false
-	}
-	candidate := source[1:closeAt]
-	return markdownURIAutolink.MatchString(candidate) || markdownEmailAutolink.MatchString(candidate)
+	return buildProfile(nodes), nil
 }
 
 func validateNestingDepth(nodes []*Node) error {

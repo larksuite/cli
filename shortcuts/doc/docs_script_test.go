@@ -16,13 +16,11 @@ import (
 	"strings"
 	"testing"
 
-	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/doc/internal/docxparse"
@@ -112,53 +110,6 @@ func TestDocsScriptParsesAndProfilesXML(t *testing.T) {
 	}
 	if got := blockCount(profile.Blocks, "p"); got != 1 {
 		t.Fatalf("p count = %d, want 1", got)
-	}
-}
-
-func TestDocsScriptLocalOperationsDoNotLoadLarkConfiguration(t *testing.T) {
-	workDir := t.TempDir()
-	withDocsWorkingDir(t, workDir)
-	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-local-no-config"))
-	configCalls := 0
-	sdkCalls := 0
-	f.Config = func() (*core.CliConfig, error) {
-		configCalls++
-		return nil, errors.New("Lark configuration must not be loaded for local docs +script operations")
-	}
-	f.LarkClient = func() (*lark.Client, error) {
-		sdkCalls++
-		return nil, errors.New("Lark SDK must not be initialized for local docs +script operations")
-	}
-
-	tests := []struct {
-		name string
-		args []string
-	}{
-		{
-			name: "parse local content",
-			args: []string{"+script", "--command", docsScriptParse, "--content", `<p>local</p>`},
-		},
-		{
-			name: "initialize local draft workspace",
-			args: []string{
-				"+script", "--command", docsScriptInitDraft,
-				"--presentation-decision", `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			stdout.Reset()
-			if err := mountAndRunDocs(t, DocsScript, test.args, f, stdout); err != nil {
-				t.Fatalf("execute docs +script: %v", err)
-			}
-		})
-	}
-	if configCalls != 0 {
-		t.Fatalf("Factory.Config() calls = %d, want 0 for local docs +script operations", configCalls)
-	}
-	if sdkCalls != 0 {
-		t.Fatalf("Factory.LarkClient() calls = %d, want 0 for local docs +script operations", sdkCalls)
 	}
 }
 
@@ -698,8 +649,8 @@ func TestDocsScriptPresentationBlockPlanUsesProfileCatalogGenerically(t *testing
 	}
 }
 
-func TestDocsScriptParseAutoDetectsMarkdown(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-auto-markdown"))
+func TestDocsScriptRejectsMarkdownContent(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-reject-markdown"))
 
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
@@ -707,18 +658,11 @@ func TestDocsScriptParseAutoDetectsMarkdown(t *testing.T) {
 		"--content", "# 标题\n\n- item",
 		"--as", "bot",
 	}, f, stdout)
-	if err != nil {
-		t.Fatalf("execute docs +script: %v", err)
-	}
-
-	var envelope struct {
-		Data docsScriptParseResult `json:"data"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode stdout: %v\n%s", err, stdout)
-	}
-	if envelope.Data.Profile.BlockCount != 3 {
-		t.Fatalf("profile = %+v, want 3 blocks", envelope.Data.Profile)
+	problem, ok := errs.ProblemOf(err)
+	var validationErr *errs.ValidationError
+	if !ok || problem.Subtype != errs.SubtypeInvalidArgument ||
+		!errors.As(err, &validationErr) || validationErr.Param != "--content" {
+		t.Fatalf("error = %T %v, problem = %#v, validation = %#v", err, err, problem, validationErr)
 	}
 }
 

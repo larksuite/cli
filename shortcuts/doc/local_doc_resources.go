@@ -438,7 +438,7 @@ func rewriteRawLocalResourceTag(runtime *common.RuntimeContext, raw, name string
 			tag.renameAttr("alt", "caption")
 		}
 		if err := normalizeLocalDocImagePresentation(runtime, &tag, &resource); err != nil {
-			return "", localDocResource{}, false, localResourceValidationErrorWithCause(kind, occurrence, "file is not a supported GIF, JPEG, PNG, or WebP image", err)
+			return "", localDocResource{}, false, localResourceValidationErrorWithCause(kind, occurrence, "file is not a supported BMP, GIF, JPEG, PNG, TIFF, or WebP image", err)
 		}
 		resource.captureImagePresentation(tag)
 	} else if rawName, hasName := tag.attr("name"); hasName {
@@ -910,7 +910,7 @@ func newLocalDocResource(runtime *common.RuntimeContext, kind localDocResourceKi
 			if err == nil {
 				err = invalidLocalDocImageDimensionsError()
 			}
-			return localDocResource{}, localResourceValidationErrorWithCause(kind, occurrence, "file is not a supported GIF, JPEG, PNG, or WebP image", err)
+			return localDocResource{}, localResourceValidationErrorWithCause(kind, occurrence, "file is not a supported BMP, GIF, JPEG, PNG, TIFF, or WebP image", err)
 		}
 	}
 
@@ -1225,6 +1225,15 @@ func uploadLocalDocResources(runtime *common.RuntimeContext, documentKey string,
 
 func uploadRemoteDocImages(runtime *common.RuntimeContext, documentKey string, outcomes []*localDocResourceOutcome) {
 	if len(outcomes) == 0 {
+		return
+	}
+	// Resolve credentials before fan-out so lazy credential-source selection
+	// completes on the caller goroutine. Upload requests still resolve the
+	// current token through the standard API path.
+	if _, err := runtime.AccessToken(); err != nil {
+		for _, outcome := range outcomes {
+			markLocalDocResourceUploadFailed(outcome, err)
+		}
 		return
 	}
 	workerCount := min(remoteDocImageUploadConcurrency, len(outcomes))
