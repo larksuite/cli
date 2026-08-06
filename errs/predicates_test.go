@@ -4,11 +4,35 @@
 package errs_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 )
+
+func TestRetryAfter(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want time.Duration
+		ok   bool
+	}{
+		{name: "api", err: errs.NewAPIError(errs.SubtypeRateLimit, "slow down").WithRetryAfterSeconds(8), want: 8 * time.Second, ok: true},
+		{name: "wrapped network", err: fmt.Errorf("download: %w", errs.NewNetworkError(errs.SubtypeNetworkServer, "busy").WithRetryAfterSeconds(4)), want: 4 * time.Second, ok: true},
+		{name: "absent", err: errs.NewNetworkError(errs.SubtypeNetworkServer, "busy")},
+		{name: "untyped", err: errors.New("busy")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := errs.RetryAfter(tt.err)
+			if got != tt.want || ok != tt.ok {
+				t.Fatalf("RetryAfter() = %s, %v; want %s, %v", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
 
 func TestIsRetryable(t *testing.T) {
 	tests := []struct {

@@ -62,20 +62,22 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.hint` | informational | actionable recovery guidance |
 | `error.log_id` | informational | upstream request id (server-side trace) |
 | `error.retryable` | wire-stable | `true` when present; omitted when `false` |
-| `error.retry_after_seconds` | per-Subtype-stable | upstream-provided minimum delay before retry; emitted when available for retryable `api/rate_limit` errors |
+| `error.retry_after_seconds` | per-Subtype-stable | upstream-provided minimum delay before retry; emitted when available for retryable `api/rate_limit` and HTTP-backed `network` errors |
 | `error.param` | per-Subtype-stable | single offending parameter (`ValidationError`); see **Validation parameters** |
 | `error.params` | per-Subtype-stable | per-parameter validation detail array (`ValidationError`); see **Validation parameters** |
 | per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url`; `console_url` is emitted for developer/admin recovery such as `app_scope_not_applied`, not user `missing_scope` |
 
-For retryable `type=api, subtype=rate_limit`, the CLI may emit
-`retry_after_seconds` when the upstream response supplies a precise delay. For
-TAT HTTP 429 responses, the delay uses Lark's `x-ogw-ratelimit-reset` header,
-then a numeric `Retry-After` value. If neither header contains a valid delay,
-the field is omitted and the hint recommends exponential backoff with jitter.
-The envelope intentionally does not expose an implementation detail such as
-`retry_after_source`, and the CLI does not automatically replay the request.
-HTTP 429 classification is currently added only to TAT fetching; other API
-transports retain their existing behavior.
+For retryable `type=api, subtype=rate_limit`, and for a retryable HTTP-backed
+`network` error, the CLI may emit `retry_after_seconds` when the upstream
+response supplies a precise delay. Replay-safe Lark OpenAPI streaming requests
+prefer the gateway's `x-ogw-ratelimit-reset` remaining-seconds header, then
+standard `Retry-After`. Other streaming requests retain their existing
+terminal error behavior. If neither header contains a valid delay, the field
+is omitted and the hint recommends exponential backoff with jitter. The
+envelope intentionally does not expose an implementation detail such as
+`retry_after_source`. Generic command dispatch does not replay a request
+automatically; a bounded operation such as multipart download may consume this
+field under its own idempotency and retry budget.
 
 `SecurityPolicyError` renders through the same typed envelope as every
 other category. `error.type` is `"policy"`, `error.subtype` is one of
@@ -317,7 +319,9 @@ legal for framework dynamic paths (e.g. classifier fanout) but the lint
 | Login required | `errs.NewAuthenticationError(errs.SubtypeTokenMissing, msg)` |
 | Token lacks scope | `errclass.BuildAPIError(resp, ctx)` |
 | Local config missing | `errs.NewConfigError(errs.SubtypeNotConfigured, msg)` |
-| Transport failure | `errs.NewNetworkError(errs.SubtypeNetworkTimeout, msg).WithCause(err)` (subtype: `timeout` / `tls` / `dns` / `server_error` / `transport`) |
+| Transport failure | `errs.NewNetworkError(errs.SubtypeNetworkTimeout, msg).WithCause(err)` (subtype: `timeout` / `tls` / `dns` / `server_error` / `transport` / `protocol`) |
+| Peer answered but broke the protocol | `errs.NewNetworkError(errs.SubtypeNetworkProtocol, msg)` — e.g. a `206` whose `Content-Range` is not the range the transfer resumed from. Never retryable: replaying the same request cannot change the answer. |
+| Resource changed mid-transfer | `errs.NewNetworkError(errs.SubtypeRepresentationChanged, msg).WithRetryable().WithHint(...)` — the peer behaved correctly, so starting the transfer over reads the current version. |
 | Lark API error | `errclass.BuildAPIError(resp, ctx)` |
 | SDK / decode bug | `errs.NewInternalError(errs.SubtypeSDKError, msg).WithCause(err)` |
 | Policy block | `errs.NewSecurityPolicyError(subtype, msg).WithChallengeURL(url)` or `errs.NewContentSafetyError(subtype, msg).WithRules(...)` |

@@ -138,13 +138,15 @@ func TestConfigError_MarshalJSON(t *testing.T) {
 
 func TestNetworkError_MarshalJSON(t *testing.T) {
 	ne := &NetworkError{
-		Problem: Problem{Category: CategoryNetwork, Subtype: SubtypeNetworkTimeout, Message: "dial timeout"},
+		Problem:           Problem{Category: CategoryNetwork, Subtype: SubtypeNetworkTimeout, Message: "dial timeout"},
+		RetryAfterSeconds: 4,
 	}
 	b, _ := json.Marshal(ne)
 	s := string(b)
 	for _, want := range []string{
 		`"type":"network"`,
 		`"subtype":"timeout"`,
+		`"retry_after_seconds":4`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in %s", want, s)

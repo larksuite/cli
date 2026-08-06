@@ -5,7 +5,27 @@ package errs
 
 import (
 	"errors"
+	"math"
+	"time"
 )
+
+type retryAfterCarrier interface {
+	retryAfterSeconds() int
+}
+
+func (e *NetworkError) retryAfterSeconds() int {
+	if e == nil {
+		return 0
+	}
+	return e.RetryAfterSeconds
+}
+
+func (e *APIError) retryAfterSeconds() int {
+	if e == nil {
+		return 0
+	}
+	return e.RetryAfterSeconds
+}
 
 // ProblemOf extracts the embedded Problem via the non-exported problemCarrier interface.
 // This is the supported way to read shared fields without depending on a specific typed error.
@@ -52,6 +72,23 @@ func IsRetryable(err error) bool {
 		return p.Retryable
 	}
 	return false
+}
+
+// RetryAfter returns an upstream-provided minimum retry delay carried by a
+// typed error. It follows wrapped errors and saturates instead of overflowing.
+func RetryAfter(err error) (time.Duration, bool) {
+	var carrier retryAfterCarrier
+	if !errors.As(err, &carrier) {
+		return 0, false
+	}
+	seconds := carrier.retryAfterSeconds()
+	if seconds <= 0 {
+		return 0, false
+	}
+	if int64(seconds) > math.MaxInt64/int64(time.Second) {
+		return time.Duration(math.MaxInt64), true
+	}
+	return time.Duration(seconds) * time.Second, true
 }
 
 // IsValidation reports whether err is a *ValidationError.

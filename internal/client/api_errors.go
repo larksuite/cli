@@ -5,6 +5,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,33 @@ import (
 
 	"github.com/larksuite/cli/errs"
 )
+
+// wrapTransportError classifies one HTTP transport failure. Replay-safe,
+// transient failures are retryable while the caller context is active.
+func wrapTransportError(ctx context.Context, err error, replaySafe bool, format string, args ...any) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := errs.ProblemOf(err); ok {
+		return err
+	}
+
+	subtype := classifyNetworkSubtype(err)
+	networkErr := errs.NewNetworkError(subtype, format, args...).WithCause(err)
+	if replaySafe && ctx.Err() == nil && !errors.Is(err, context.Canceled) && transientNetworkSubtype(subtype) {
+		networkErr.WithRetryable()
+	}
+	return networkErr
+}
+
+func transientNetworkSubtype(subtype errs.Subtype) bool {
+	switch subtype {
+	case errs.SubtypeNetworkTimeout, errs.SubtypeNetworkDNS, errs.SubtypeNetworkTransport:
+		return true
+	default:
+		return false
+	}
+}
 
 // rawAPIJSONHint guides users when an SDK or response body parse fails. The
 // most common cause is a non-JSON payload (file download endpoint hit without

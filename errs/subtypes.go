@@ -54,6 +54,11 @@ const (
 	SubtypeNetworkTLS       Subtype = "tls"          // TLS handshake / cert failure
 	SubtypeNetworkDNS       Subtype = "dns"          // DNS resolution failure
 	SubtypeNetworkServer    Subtype = "server_error" // upstream HTTP 5xx
+	SubtypeNetworkProtocol  Subtype = "protocol"     // peer answered but broke the HTTP contract (e.g. a 206 whose Content-Range is not the range we resumed from); retrying the same request cannot help
+	// SubtypeRepresentationChanged marks a transfer abandoned because the
+	// resource changed while it was being read. The peer behaved correctly, so
+	// this is retryable: starting the transfer over reads the current version.
+	SubtypeRepresentationChanged Subtype = "representation_changed"
 )
 
 // CategoryAPI subtypes
