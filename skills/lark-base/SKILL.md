@@ -147,9 +147,9 @@ metadata:
 
 ## 保留 Reference
 
-- [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md)：所有数据表记录查询和分析的统一入口；依次选择内置 jq、Python 或 Cloud
+- [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md)：所有数据表记录查询和分析的统一入口；依次选择 jq、Python 或 Cloud
 - [Python 标准库](references/lark-base-data-analysis-python-stdlib.md) / [pandas](references/lark-base-data-analysis-pandas.md)：统一数据分析 SOP 选定 Python 实现后按需读取的同场景示例
-- [lark-base-data-analysis-cloud.md](references/lark-base-data-analysis-cloud.md)：统一 SOP 判定内置 jq 与 Python 路径均不适用时的云端查询 SOP
+- [lark-base-data-analysis-cloud.md](references/lark-base-data-analysis-cloud.md)：统一 SOP 判定 jq 与 Python 路径均不适用时的云端查询 SOP
 - [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md) / [lark-base-data-query.md](references/lark-base-data-query.md)：聚合查询入口 fewshot 与 DSL SSOT；`+data-query` 的 `filters` 结构是独立对象 DSL，不使用公共 tuple filter 协议
 - [lark-base-cell-value.md](references/lark-base-cell-value.md)：记录 CellValue 构造
 - [lark-base-field-json.md](references/lark-base-field-json.md)：字段 JSON 构造

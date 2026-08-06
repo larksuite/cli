@@ -1,32 +1,39 @@
 # Base 数据表查询与分析 SOP
 
-除已知 `record_id` 的单条 `+record-get` 外，所有数据表记录查询和分析任务先读本 SOP，包括多记录预览、`+record-list`、`+record-search`、`+data-query`、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、全局结论和查询后写入。按任务所需数据规模与计算复杂度，依次选择 lark-cli 内置 jq、Python 或 Base Cloud。
+除已知 `record_id` 的单条 `+record-get` 外，所有数据表记录查询和分析任务先读本 SOP，包括多记录预览、`+record-list`、`+record-search`、`+data-query`、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、全局结论和查询后写入。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按任务所需数据规模与计算复杂度选择对应路径。
 
 ## 分流决策
 
-1. 明确范围：任务范围只包含必要表；复用本次任务已有且仍可信的 `table_id`、`records_count`、字段类型和 Link 目标表，仅用 `+table-list`、`+base-block-list` 或 `+field-list` 补齐缺失信息。定义 `local_max_records = max(各必要表经过任务语义允许的单表谓词下推后实际需导出的完整记录数)`；`local_max_records <= 2000` 时可继续本地分析。
-2. 先判断内置 jq 路径；同时满足以下条件时直接执行：
-   1. 只有一张必要表。
-   2. 任务是一个短 jq 表达式可清晰完成的筛选、计数、简单分组/聚合/排序、TopN 或 record-local 集合谓词；日期日历语义、窗口、多表关联、实体消歧和需要多阶段中间结果的分析不走 jq。
-   3. 该表经过任务语义允许的谓词下推后，实际需导出的完整记录不超过 2000 条。整表 `records_count <= 2000` 时直接导出；否则组合用户任务已隐含且保持任务语义等价的单表谓词，文本关键词用 `+record-search`，结构化条件用 `+record-list --filter-json`。先投影一个简单标量字段，以 `--limit 2000 --output <probe>.ndjson --minimal-stdout` 探测，直到 `has_more=false` 或没有可继续下推的谓词。
-   4. 确认范围完整后，复用相同查询参数，投影任务必要字段并用 `--jq-records '<expr>'` 返回最终小结果。jq 在 lark-cli 内执行，不要求外部 jq、共享文件系统或 Python；生成的 NDJSON 与 manifest artifact 保持原始完整内容。
-3. jq 路径不适用时，才检查 Python：
-   1. Python 可运行并能读取 lark-cli 生成的 artifact，且第 1 步定义的最大单表导出量不超过 2000 条时，导出必要字段的 NDJSON，使用 Python 标准库或 pandas 完成单表复杂计算、多表关联、多值展开、窗口和日历分析。
-   2. 任一表较大或 `records_count` 缺失时，按第 2 步相同的方法下推单表谓词并窄投影探测；所有必要表均达到 `has_more=false` 后再正式导出。
-   3. Python 标准库足以清晰表达任务时直接使用；DataFrame 能明显简化计算时再选 pandas。若已选 pandas 但环境未安装，网络可用且存在 `uv` 或 `pip` 时按需安装；优先使用 `uv run --no-project --with pandas python analyze.py`，只有 `pip` 时在隔离的虚拟环境中安装。
-4. jq 无法完成，且 Python 不可用或谓词下推后的最大单表导出量仍超过 2000 条时，转读 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md)。
-5. 执行与交付：
-   1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
-   2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 表示当前结果仅覆盖已读取范围。
-   3. 选定一个分析引擎完成计算；模型上下文仅接收最终小结果，NDJSON 正文保留在 artifact 文件中。
-   4. 任务涉及业务键、展开、JOIN 或金额分摊时，明确目标粒度并检查与口径直接相关的空值、重复或总量守恒。
-   5. 最终结果保留真实表、查询范围和计算口径，展示用户可读字段；内部 ID 用于连接或定位。
+1. 明确所有需要参与分析的表及其 `records_count`。
+2. 如果结论必须依赖 LLM 理解原始内容，例如开放文本打标、情绪或意图识别、主题归纳、语义分类、相似性判断或实体消歧，进入下文“LLM 语义分析”路径。
+3. 对于其余确定性查询，任一分析表超过 2000 行时，先从任务意图中为所有大表提取可在单表内独立执行的谓词，例如日期范围、状态和关键词，再按下文将谓词逐表下推，并用 `--field-id '<一个简单标量字段>' --limit 2000 --output <probe>.ndjson --minimal-stdout` 探测。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) 用云端的数据分析能力。
+4. 所有分析表都不超过 2000 行后：若只有一张表且短 jq 可清晰完成筛选、计数、简单分组/聚合/排序、TopN 可以使用 jq。
+5. 其余确定性任务比如多表、日历计算和复杂数据分析，在 Python 可用时使用 Python，否则用云端的数据分析能力。
+
+## 执行与交付
+
+缩小大表记录范围时，展示文本关键词用 `+record-search`，日期、状态、数字、空值、选项、人员和关联等结构化条件用 `+record-list --filter-json`。
+
+1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
+2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 表示当前结果仅覆盖已读取范围。
+3. 确定性分析选定一个分析引擎完成计算；模型上下文仅接收最终小结果，NDJSON 正文保留在 artifact 文件中。
+4. 任务涉及业务键、展开、JOIN 或金额分摊时，明确目标粒度并检查与口径直接相关的空值、重复或总量守恒。
+5. 最终结果保留真实表、查询范围和计算口径，展示用户可读字段；内部 ID 用于连接或定位。
 
 `+table-list` / `+base-block-list` 返回的 `records_count` 表示整表行数；manifest 的 `records_count` 表示本次查询实际导出的行数。
 
+## LLM 语义分析
+
+开放文本打标、情绪或意图识别、主题归纳、语义分类、相似性判断和实体消歧等任务必须理解原文，最终判断由当前 LLM 在本地上下文中逐条完成。代码只用于确定性范围筛选、分批、结果持久化和最终汇总；除非用户明确要求规则法，不用关键词命中、词频、正则或规则打分替代语义判断。
+
+1. 先把日期、状态、来源等不改变任务语义的确定性范围条件下推到 Base，只导出 `record_id`、判断所需原文和最终解释所需的最小字段集。
+2. 在读取正文前，用 manifest 的 `records_count` 以及所选字符串列的 `null_count`、`max_length` 估算上下文规模；`Σ((records_count - null_count) × max_length)` 可作为原始文本字符数的保守上界，并为任务说明、推理过程和最终输出预留上下文。
+3. 规模可控时，将必要记录读入上下文并直接完成语义分析。
+4. 规模过大时，先向用户说明该任务为什么必须由 LLM 阅读原文、预计会更耗时，并在用户确认后按文本体量分批处理，如果具备 sub agent 并发能力，最好使用多个同时工作的 agent 并行完成分片分析。各批沿用同一判断口径，将 `record_id`、结构化判断和必要依据持续写入本地 artifact，最后统一汇总，避免单批占满上下文。
+
 ## Manifest
 
-`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest。`--jq` 只处理 manifest；确认本次范围完整后，可用 `--jq-records '<expr>'` 对完整导出的 records 数组执行一次查询并以结果替代 stdout，不改变两个 artifact 文件。
+`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest，`--minimal-stdout` 只保留文件位置、`records_count` 和 `has_more` 等必要信息。
 
 ```json
 {
@@ -110,6 +117,8 @@
 
 两份示例使用相同的五类场景：加载与日期解析、集合谓词、单数组展开、Link JOIN、多数组共现。场景语义和粒度规则以本 SOP 为准，示例只提供对应实现的最短代码。
 
+标准库足以清晰表达任务时直接使用；DataFrame 能明显简化计算时再选 pandas。已选择 pandas 但环境未安装时，网络可用且存在 `uv` 或 `pip` 才按需安装，优先使用 `uv run --no-project --with pandas python analyze.py`。
+
 将 Base 反范式宽表映射为关系模型时，可将标量列视为 record attributes，将多值列视为以 `record_id` 为关联键的 nested relation，将 Link 视为跨表 adjacency list。多值列通过 lateral `explode` / `UNNEST` 切换粒度；Link 规范化为 bridge relation 后再 `merge` / `join` / `JOIN`；同类来源表先投影到 conformed fact schema，再用 `concat` / `UNION ALL` 纵向合并。
 
 ## 常见分析模式
@@ -117,6 +126,8 @@
 ### 单表简单筛选与统计：jq
 
 NDJSON 每行是一条 record。单表短筛选、计数和简单聚合可直接用 jq；下面筛选“状态”包含“进行中”的记录，并统计记录数和金额合计：
+
+默认导出后使用本地 `jq -s`，同一 artifact 可反复查询而无需重新下载。表达式很短且只执行一次，或本地 jq 不可用时，可改用 `--jq-records '<expr>'` 等价 `js -s '<expr>' records.ndjson`；注意：通用的 `--jq` 只处理 stdout 里的内容，`--jq-records` 才能处理 NDJSON 文件内容。
 
 ```bash
 lark-cli base +record-list \
@@ -126,7 +137,8 @@ lark-cli base +record-list \
   --field-id 金额 \
   --limit 2000 \
   --output records.ndjson \
-  --jq-records '
+  --minimal-stdout &&
+jq -s '
   map(select((.["状态"] | index("进行中")) != null)) as $records
   | ($records | map(.["金额"] | select(. != null))) as $amounts
   | {
@@ -135,7 +147,7 @@ lark-cli base +record-list \
         if ($amounts | length) > 0 then ($amounts | add) else null end
       )
     }
-'
+' records.ndjson
 ```
 
 ### 多值列：nested relation 与目标粒度
