@@ -1845,7 +1845,7 @@ func checkSheetStyleAnchors(s *tableSheetSpec, sp *workbookCreateStylePayload, c
 	}
 	_, col0, row0, err := sheetAnchor(s)
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // a malformed start_cell is the payload parser's to report with row/column context; this check only compares bounds
 	}
 	for j, op := range sp.CellStyles {
 		startCol, startRow, _, _, err := workbookCreateStyleRangeBounds(op.Range)
