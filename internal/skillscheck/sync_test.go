@@ -511,6 +511,9 @@ func TestSyncSkillsMissingSuiteIsReinstalled(t *testing.T) {
 	}
 	assertStrings(t, result.Updated, []string{"lark-calendar", "lark-mail"})
 	assertStrings(t, runner.stages, []string{"primary"})
+	if runner.localSuite == "" {
+		t.Fatal("missing suite was not reinstalled")
+	}
 }
 
 func TestSyncSkillsSuiteStagesCropsAndRemovesSeparate(t *testing.T) {
