@@ -507,6 +507,37 @@ func TestBaseRecordProjectionAliasesAreHidden(t *testing.T) {
 	}
 }
 
+func TestBaseFieldGetAliasIsHidden(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseFieldGet.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+	flag := cmd.Flags().Lookup("field-id-or-name")
+	if flag == nil {
+		t.Fatal("flag --field-id-or-name missing")
+	}
+	if !flag.Hidden {
+		t.Fatal("flag --field-id-or-name must be hidden")
+	}
+	if strings.Contains(cmd.Flags().FlagUsages(), "--field-id-or-name") {
+		t.Fatalf("help should not include hidden --field-id-or-name:\n%s", cmd.Flags().FlagUsages())
+	}
+	if err := cmd.ParseFlags([]string{"--base-token", "b", "--table-id", "t"}); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	if err := cmd.ValidateFlagGroups(); err == nil || !strings.Contains(err.Error(), "at least one of the flags") {
+		t.Fatalf("expected field selector one-required group error, got %v", err)
+	}
+	if err := cmd.Flags().Set("field-id", "fld_1"); err != nil {
+		t.Fatalf("set field-id: %v", err)
+	}
+	if err := cmd.Flags().Set("field-id-or-name", "Amount"); err != nil {
+		t.Fatalf("set field-id-or-name: %v", err)
+	}
+	if err := cmd.ValidateFlagGroups(); err == nil || !strings.Contains(err.Error(), "none of the others can be") {
+		t.Fatalf("expected field selector mutual exclusion group error, got %v", err)
+	}
+}
+
 func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1024,14 +1055,12 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 	help := cmd.Flags().FlagUsages()
 	wantHelp := []string{
 		"complete field definition JSON object; update uses full PUT semantics, not a patch",
+		"auto_number only: regenerate existing record numbers",
 	}
 	for _, want := range wantHelp {
 		if !strings.Contains(help, want) {
 			t.Fatalf("flag help missing %q:\n%s", want, help)
 		}
-	}
-	if strings.Contains(help, "reformat-existing-records") {
-		t.Fatalf("+field-update must not expose a --reformat-existing-records flag:\n%s", help)
 	}
 
 	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
@@ -1039,8 +1068,9 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 		`lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id "Status" --json '{"name":"Status","type":"text"}' --yes`,
 		`"type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]`,
 		`Example auto_number update: lark-cli base +field-update`,
-		`When --json.type is "auto_number", updating the numbering rules also reapplies them to existing numbers`,
-		"just submit the target field definition and do not add extra low-level parameters",
+		"--reformat-existing-records",
+		`When --json.type is "auto_number", pass --reformat-existing-records to also regenerate existing record numbers`,
+		"do not put low-level reformat_existing_records inside --json",
 		"full field-definition PUT semantics",
 		"Read the current field first with +field-get",
 		"Type conversion is allowlist-based",
@@ -1052,9 +1082,6 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 		if !strings.Contains(tips, want) {
 			t.Fatalf("tips missing %q:\n%s", want, tips)
 		}
-	}
-	if strings.Contains(tips, "--reformat-existing-records") {
-		t.Fatalf("+field-update tips must not ask agents to pass --reformat-existing-records:\n%s", tips)
 	}
 }
 
@@ -1178,6 +1205,15 @@ func assertHelpOrder(t *testing.T, help string, before string, after string) {
 
 func TestBaseFieldValidate(t *testing.T) {
 	ctx := context.Background()
+	if err := BaseFieldGet.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--field-id is required") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseFieldGet.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id-or-name": "Amount"}, nil, nil)); err != nil {
+		t.Fatalf("field get alias validate err=%v", err)
+	}
+	if err := BaseFieldGet.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "field-id-or-name": "Amount"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("err=%v", err)
+	}
 	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": "{"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json invalid JSON object") {
 		t.Fatalf("err=%v", err)
 	}
@@ -1214,6 +1250,15 @@ func TestBaseFieldValidate(t *testing.T) {
 	autoNumberJSON := `{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"incremental_number","length":4}]}}`
 	if err := BaseFieldUpdate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "json": autoNumberJSON}, nil, nil)); err != nil {
 		t.Fatalf("auto number update validate err=%v", err)
+	}
+	if err := BaseFieldUpdate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "json": autoNumberJSON}, map[string]bool{"reformat-existing-records": true}, nil)); err != nil {
+		t.Fatalf("auto number reformat validate err=%v", err)
+	}
+	if err := BaseFieldUpdate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "json": `{"name":"Amount","type":"number"}`}, map[string]bool{"reformat-existing-records": true}, nil)); err == nil || !strings.Contains(err.Error(), "--json.type") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseFieldUpdate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "field-id": "fld_1", "json": `{"name":"编号","type":"auto_number","style":{"rules":[],"reformat_existing_records":true}}`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--reformat-existing-records") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

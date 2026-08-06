@@ -21,6 +21,7 @@ var BaseFieldUpdate = common.Shortcut{
 		tableRefFlag(true),
 		fieldRefFlag(true),
 		{Name: "json", Desc: "complete field definition JSON object; update uses full PUT semantics, not a patch", Required: true},
+		{Name: "reformat-existing-records", Type: "bool", Desc: "auto_number only: regenerate existing record numbers when updating numbering rules; do not put reformat_existing_records inside --json"},
 		{Name: "i-have-read-guide", Type: "bool", Desc: "acknowledge reading formula/lookup guide before creating or updating those field types", Hidden: true},
 	},
 	Tips: []string{
@@ -28,8 +29,9 @@ var BaseFieldUpdate = common.Shortcut{
 		`Example text: lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id "Status" --json '{"name":"Status","type":"text"}' --yes`,
 		`Example select: lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id "Status" --json '{"name":"Status","type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]}' --yes`,
 		`Example auto_number update: lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id "编号" --json '{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}' --yes`,
+		`Example auto_number reformat existing records: lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id "编号" --json '{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}' --reformat-existing-records --yes`,
 		"Update uses full field-definition PUT semantics. Read the current field first with +field-get, then send the target state.",
-		`When --json.type is "auto_number", updating the numbering rules also reapplies them to existing numbers; just submit the target field definition and do not add extra low-level parameters.`,
+		`When --json.type is "auto_number", pass --reformat-existing-records to also regenerate existing record numbers; do not put low-level reformat_existing_records inside --json.`,
 		"Type conversion is allowlist-based: only use CLI for safe conversions; otherwise migrate through a new field, or ask the user to finish high-risk conversions in the web UI.",
 		"Formula and lookup updates require reading the corresponding guide first.",
 		"Agent hint: use the lark-base skill's field-update guide for JSON shape, type-conversion rules, and limits.",

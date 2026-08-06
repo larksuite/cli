@@ -906,7 +906,7 @@ func TestFieldUpdateResultAlwaysRecommendsReadback(t *testing.T) {
 	}
 }
 
-func TestBaseFieldExecuteUpdateNoopReturnsAPIError(t *testing.T) {
+func TestBaseFieldExecuteUpdateNoop(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
@@ -916,23 +916,17 @@ func TestBaseFieldExecuteUpdateNoopReturnsAPIError(t *testing.T) {
 			"msg":  "no operation produced",
 		},
 	})
-	err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `{"name":"Amount","type":"number"}`, "--yes"}, factory, stdout)
-	if err == nil {
-		t.Fatal("expected the API no-op response to surface as an error, got nil")
+	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `{"name":"Amount","type":"number"}`, "--yes"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
 	}
-	p, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("expected a typed API error, got %T %v", err, err)
+	got := stdout.String()
+	for _, want := range []string{`"updated": false`, `"noop": true`, `"field_ref": "fld_x"`, `"current_matches_submitted": true`, `"field_get_recommended": false`, `"field_get_required": false`, `"next_step": "done"`, `"verification_hint"`, `"submitted_field"`, `"name": "Amount"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, got)
+		}
 	}
-	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeUnknown || p.Code != 800070003 {
-		t.Fatalf("category/subtype/code=%s/%s/%d", p.Category, p.Subtype, p.Code)
-	}
-	var apiErr *errs.APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatalf("expected APIError, got %T %v", err, err)
-	}
-	if got := stdout.String(); strings.TrimSpace(got) != "" {
-		t.Fatalf("no success envelope should be emitted on a no-op API error:\n%s", got)
+	if strings.Contains(got, `"id": "fld_x"`) {
+		t.Fatalf("stdout must not synthesize a field id from --field-id:\n%s", got)
 	}
 }
 
@@ -983,53 +977,114 @@ func TestBaseFieldExecuteUpdateAutoNumberUsesV3FieldJSON(t *testing.T) {
 	}
 }
 
-func TestBaseFieldExecuteUpdateDoesNotRejectExtraJSONKeys(t *testing.T) {
+func TestBaseFieldExecuteUpdateReformatExistingAutoNumber(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	stub := &httpmock.Stub{
 		Method: "PUT",
-		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
+		URL:    "/open-apis/bitable/v1/apps/app_x/tables/tbl_x/fields/fld_x",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"id": "fld_x", "name": "编号", "type": "auto_number"},
+			"data": map[string]interface{}{
+				"field": map[string]interface{}{"field_id": "fld_x", "field_name": "编号", "type": 1005},
+			},
 		},
 	}
 	reg.Register(stub)
-	// Unknown v3 keys are forwarded unchanged; the server remains the source of
-	// truth for whether a field-update property is supported.
-	jsonBody := `{"name":"编号","type":"auto_number","style":{"rules":[{"type":"incremental_number","length":4}]},"reformat_existing_records":true}`
-	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", jsonBody, "--yes"}, factory, stdout); err != nil {
+	jsonBody := `{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}`
+	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", jsonBody, "--reformat-existing-records", "--yes"}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if gotBody := string(stub.CapturedBody); !strings.Contains(gotBody, `"reformat_existing_records":true`) {
-		t.Fatalf("request body must preserve unknown v3 key:\n%s", gotBody)
+	gotBody := string(stub.CapturedBody)
+	for _, want := range []string{
+		`"field_name":"编号"`,
+		`"type":1005`,
+		`"reformat_existing_records":true`,
+		`"type":"system_number"`,
+		`"value":"4"`,
+	} {
+		if !strings.Contains(gotBody, want) {
+			t.Fatalf("request body missing %q:\n%s", want, gotBody)
+		}
 	}
-	if got := stdout.String(); !strings.Contains(got, `"updated": true`) {
-		t.Fatalf("expected successful update, got: %s", got)
+	got := stdout.String()
+	for _, want := range []string{`"updated": true`, `"reformat_existing_records": true`, `"fld_x"`, `"field_get_recommended": false`, `"field_get_required": false`, `"next_step": "done"`, `"verification_hint"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, got)
+		}
 	}
 }
 
-func TestBaseFieldValidateAllowsRatingMaxAboveLimit(t *testing.T) {
-	ctx := context.Background()
+func TestBaseFieldExecuteUpdateReformatExistingAutoNumberRejectsUnsupportedDateFormat(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	jsonBody := `{"name":"编号","type":"auto_number","style":{"rules":[{"type":"created_time","date_format":"yyMM"},{"type":"incremental_number","length":4}]}}`
+	err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", jsonBody, "--reformat-existing-records", "--yes"}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("category/subtype=%s/%s", p.Category, p.Subtype)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T %v", err, err)
+	}
+	if validationErr.Param != "--json" {
+		t.Fatalf("param=%q, want --json", validationErr.Param)
+	}
+	if !strings.Contains(err.Error(), "use yyyyMMdd or yyyyMM") {
+		t.Fatalf("error did not include recovery hint: %v", err)
+	}
+}
+
+func TestBaseFieldExecuteRejectsRatingMaxAboveLimit(t *testing.T) {
 	tests := []struct {
 		name     string
 		shortcut common.Shortcut
-		runtime  *common.RuntimeContext
+		args     []string
 	}{
 		{
 			name:     "create",
 			shortcut: BaseFieldCreate,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_x", "json": `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`}, nil, nil),
+			args:     []string{"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`},
 		},
 		{
 			name:     "update",
 			shortcut: BaseFieldUpdate,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_x", "field-id": "fld_x", "json": `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`}, nil, nil),
+			args:     []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`, "--yes"},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.shortcut.Validate(ctx, tc.runtime); err != nil {
-				t.Fatalf("rating max above 10 should not be blocked by CLI validation: %v", err)
+			factory, stdout, _ := newExecuteFactory(t)
+			err := runShortcut(t, tc.shortcut, tc.args, factory, stdout)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed problem, got %T %v", err, err)
+			}
+			if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("category/subtype=%s/%s", p.Category, p.Subtype)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected ValidationError, got %T %v", err, err)
+			}
+			if validationErr.Param != "--json" {
+				t.Fatalf("param=%q, want --json", validationErr.Param)
+			}
+			for _, want := range []string{"rating max must be <= 10", "plain number/progress field"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error missing %q: %v", want, err)
+				}
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout must stay empty on validation failure, got %s", stdout.String())
 			}
 		})
 	}

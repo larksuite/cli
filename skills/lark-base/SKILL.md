@@ -28,9 +28,9 @@ metadata:
 
 ## 使用边界
 
-- Base 业务操作只使用 `lark-cli base +...` shortcut，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`。
+- Base 业务只用 `lark-cli base +...` shortcut，不查旧聚合命令、`lark-cli schema`、bytedcli 或裸 API；无对应 shortcut 先判不支持。
 - 执行 update 前必须先查当前 shortcut 的 `--help` 或对应 reference。若命令要求完整配置，首次请求必须基于可信的当前配置执行 read-modify-write：只修改用户明确指定的内容，保留其他仍适用的可写配置，并按命令要求的结构提交。若命令支持局部／delta update，按其契约提交最小合法 payload；不得以不完整请求试错补参。
-- Base CLI/OpenAPI 当前不支持视图行高、冻结列、列宽等 UI-only 外观设置。遇到这类需求，说明能力边界并停止，不要猜测未文档化参数或改走 raw API。
+- Base CLI/OpenAPI 当前不支持视图行高、记录高度、密度、冻结列、列宽、TableManager 等 UI-only 外观设置。遇到这类需求，定位表/视图后说明能力边界并停止，不要猜测未文档化参数或改走 raw API。
 - 本地文件与 Base 之间的导入/导出转 `lark-drive`，具体格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责；导入完成后再回到 Base 命令。
 - 在线复制 Base 使用 `+base-copy`，不要绕行导出/导入。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
