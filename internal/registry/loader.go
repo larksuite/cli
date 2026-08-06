@@ -30,17 +30,25 @@ var embeddedMetaJSON []byte
 var embeddedBuiltinJSON []byte
 
 var (
-	embeddedServices       []meta.Service          // parsed once, sorted by name (no overlay)
+	embeddedServices       []meta.Service          // from meta_data.json, sorted by name (no overlay, no built-ins)
 	embeddedServicesByName map[string]meta.Service // same, keyed by name
+	builtinServices        []meta.Service          // from meta_data_builtin.json, sorted by name
+	embeddedSpecServices   []meta.Service          // embeddedServices + built-ins, sorted by name
 	embeddedVersion        string                  // version from embedded meta_data.json
 	embeddedParseOnce      sync.Once
 )
 
-// parseEmbedded decodes the embedded meta_data.json into the typed model exactly
-// once. It is the single parse of the embedded bytes: both the overlay-free
-// envelope path (EmbeddedServicesTyped) and the merged command/scope path
-// (loadEmbeddedIntoMerged) build from this result, so the JSON is never parsed
-// twice and no map round-trip is needed downstream.
+// parseEmbedded decodes the embedded meta_data.json and the built-in
+// meta_data_builtin.json into the typed model exactly once. It is the single
+// parse of both byte slices: the overlay-free envelope path
+// (EmbeddedServicesTyped), the merged command/scope path
+// (loadEmbeddedIntoMerged) and the built-in overlay (loadBuiltinIntoMerged) all
+// build from this result, so neither document is parsed twice and no map
+// round-trip is needed downstream.
+//
+// The two channels stay separate: embeddedServices alone answers "was metadata
+// compiled into this binary" (hasEmbeddedMeta) and seeds the merged registry,
+// while embeddedSpecServices is the combined view embedded-spec consumers read.
 func parseEmbedded() {
 	embeddedParseOnce.Do(func() {
 		reg, _ := meta.Parse(embeddedMetaJSON)
@@ -51,15 +59,64 @@ func parseEmbedded() {
 		for _, svc := range embeddedServices {
 			embeddedServicesByName[svc.Name] = svc
 		}
+
+		// Built-in services (e.g. hire) the remote api_definition endpoint does
+		// not serve. Their version is deliberately ignored: embeddedVersion
+		// gates the remote overlay and must describe the generated metadata only.
+		builtin, _ := meta.Parse(embeddedBuiltinJSON)
+		builtinServices = builtin.Services
+		sort.Slice(builtinServices, func(i, j int) bool { return builtinServices[i].Name < builtinServices[j].Name })
+
+		embeddedSpecServices = make([]meta.Service, 0, len(embeddedServices)+len(builtinServices))
+		embeddedSpecServices = append(embeddedSpecServices, embeddedServices...)
+		for _, svc := range builtinServices {
+			if svc.Name == "" {
+				continue
+			}
+			// Generated metadata wins: once the endpoint serves a service, the
+			// hand-maintained built-in copy must not shadow it.
+			if _, ok := embeddedServicesByName[svc.Name]; ok {
+				continue
+			}
+			embeddedSpecServices = append(embeddedSpecServices, svc)
+		}
+		sort.Slice(embeddedSpecServices, func(i, j int) bool { return embeddedSpecServices[i].Name < embeddedSpecServices[j].Name })
 	})
 }
 
 // EmbeddedServicesTyped returns the embedded services (no remote overlay) as the
-// typed meta model, sorted by name. This is the overlay-free parse boundary the
-// schema envelope builds from — deterministic across machines.
+// typed meta model, sorted by name — the generated metadata plus the built-in
+// services, so the schema command and other embedded-spec consumers see both.
+// This is the overlay-free parse boundary the schema envelope builds from —
+// deterministic across machines.
 func EmbeddedServicesTyped() []meta.Service {
 	parseEmbedded()
-	return embeddedServices
+	return embeddedSpecServices
+}
+
+// hasEmbeddedMeta reports whether generated metadata is compiled into this
+// binary. It deliberately ignores the built-in services: those ship in every
+// build, so the combined embedded view can never answer this question and
+// bare-module plugin builds would stop falling back to the runtime catalog.
+func hasEmbeddedMeta() bool {
+	parseEmbedded()
+	return len(embeddedServices) > 0
+}
+
+// BuiltinServiceNames returns the names of the built-in services compiled into
+// every binary (meta_data_builtin.json), sorted. Callers that must tell "this
+// binary has the generated metadata" apart from "it only has the built-ins"
+// need this, because a non-empty catalog no longer implies the former.
+func BuiltinServiceNames() []string {
+	parseEmbedded()
+	names := make([]string, 0, len(builtinServices))
+	for _, svc := range builtinServices {
+		if svc.Name == "" {
+			continue
+		}
+		names = append(names, svc.Name)
+	}
+	return names
 }
 
 var (
@@ -120,17 +177,21 @@ func InitWithBrand(brand core.LarkBrand) {
 	})
 }
 
-// loadBuiltinIntoMerged parses the embedded meta_data_builtin.json and overlays
-// its services (e.g. hire) into mergedServices. No-op if not compiled in.
+// loadBuiltinIntoMerged overlays the built-in services (e.g. hire) into
+// mergedServices, filling gaps only: a service the generated metadata or a newer
+// remote overlay already defines keeps its entry, so the hand-maintained
+// built-in copy can never shadow fresher data. No-op if none are compiled in.
 func loadBuiltinIntoMerged() {
-	if len(embeddedBuiltinJSON) == 0 {
-		return
+	parseEmbedded()
+	for _, svc := range builtinServices {
+		if svc.Name == "" {
+			continue
+		}
+		if _, ok := mergedServices[svc.Name]; ok {
+			continue
+		}
+		mergedServices[svc.Name] = svc
 	}
-	var reg MergedRegistry
-	if err := json.Unmarshal(embeddedBuiltinJSON, &reg); err != nil {
-		return
-	}
-	overlayMergedServices(&reg)
 }
 
 // loadEmbeddedIntoMerged seeds mergedServices from the embedded typed services

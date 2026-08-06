@@ -219,7 +219,10 @@ func TestIMImageUploadExamplesPreserveIdentityChoice(t *testing.T) {
 }
 
 func TestIMImageUploadMetadataSupportsBothIdentities(t *testing.T) {
-	if len(registry.EmbeddedServicesTyped()) == 0 {
+	// Check for the service this test resolves, not for a non-empty embedded
+	// view: built-in services are compiled into every binary, so the view is
+	// never empty even when no generated metadata was fetched.
+	if _, ok := registry.EmbeddedCatalog().Service("im"); !ok {
 		t.Skip("generated API metadata is not embedded in this bare-module test run")
 	}
 	target, err := registry.EmbeddedCatalog().Resolve([]string{"im", "images", "create"})

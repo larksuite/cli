@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/registry"
 )
 
 func TestSchemaCmd_FlagParsing(t *testing.T) {
@@ -253,6 +254,130 @@ func TestSchemaCmd_UnknownMethod_TypedValidation(t *testing.T) {
 	}
 	if !strings.Contains(ve.Hint, "Available:") {
 		t.Errorf("expected hint listing available methods, got: %q", ve.Hint)
+	}
+}
+
+// The tests below pin the metadata-missing degrade path against the built-in
+// service channel. Built-in services (meta_data_builtin.json) are compiled into
+// every binary, so `len(catalog.Services()) == 0` no longer answers "did the
+// generated metadata ever arrive" and the #1764 contract needs its own coverage.
+
+// builtinOnlyCatalog builds a catalog holding just the built-in services, each
+// with one resolvable method — the shape a bare-module plugin build sees before
+// any metadata is fetched. It reads the names from the registry rather than
+// hardcoding them so the tests keep holding if more built-ins are added.
+func builtinOnlyCatalog(t *testing.T) apicatalog.Catalog {
+	t.Helper()
+	names := registry.BuiltinServiceNames()
+	if len(names) == 0 {
+		t.Skip("no built-in services compiled into this build")
+	}
+	services := make([]meta.Service, 0, len(names))
+	for _, name := range names {
+		services = append(services, meta.ServiceFromMap(map[string]interface{}{
+			"name":        name,
+			"version":     "v1",
+			"servicePath": "/open-apis/" + name + "/v1",
+			"resources": map[string]interface{}{
+				"jobs": map[string]interface{}{
+					"methods": map[string]interface{}{
+						"list": map[string]interface{}{
+							"id":           name + ".jobs.list",
+							"path":         "/open-apis/" + name + "/v1/jobs",
+							"httpMethod":   "GET",
+							"description":  "built-in method",
+							"risk":         "read",
+							"accessTokens": []interface{}{"tenant"},
+						},
+					},
+				},
+			},
+		}))
+	}
+	return apicatalog.New(apicatalog.SourceEmbedded, services)
+}
+
+// assertNoMetadataError pins the typed graceful-degrade envelope: a validation
+// error with subtype failed_precondition whose hint names the one remedy. A
+// narrower resolve failure (invalid_argument) must fail the assertion — that is
+// exactly the regression these tests exist to catch.
+func assertNoMetadataError(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected the metadata-missing error, got nil")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
+	}
+	if validationErr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("Subtype = %q, want %q (a resolve failure must not stand in for it)",
+			validationErr.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if !strings.Contains(err.Error(), "No API metadata available") {
+		t.Errorf("message = %q, want it to state that no API metadata is available", err.Error())
+	}
+	if !strings.Contains(validationErr.Hint, "no embedded API metadata") {
+		t.Errorf("hint = %q, want the fetch-once remedy", validationErr.Hint)
+	}
+}
+
+func TestRunSchemaCatalog_BuiltinOnly_BroadListingDegrades(t *testing.T) {
+	var out bytes.Buffer
+	err := runSchemaCatalog(&out, nil, core.StrictModeOff, builtinOnlyCatalog(t), nil)
+	assertNoMetadataError(t, err)
+	if out.Len() != 0 {
+		t.Errorf("broad listing wrote output instead of degrading: %s", out.String())
+	}
+}
+
+func TestRunSchemaCatalog_BuiltinOnly_UnresolvablePathDegrades(t *testing.T) {
+	var out bytes.Buffer
+	err := runSchemaCatalog(&out, []string{"im", "messages", "reply"}, core.StrictModeOff, builtinOnlyCatalog(t), nil)
+	assertNoMetadataError(t, err)
+	if out.Len() != 0 {
+		t.Errorf("unresolvable path wrote output instead of degrading: %s", out.String())
+	}
+}
+
+// TestRunSchemaCatalog_BuiltinOnly_ResolvablePathIsServed pins the other half of
+// the contract: built-in commands run in such a build, so their schema must be
+// readable. Degrading here would leave `hire job list` executable but
+// undocumentable.
+func TestRunSchemaCatalog_BuiltinOnly_ResolvablePathIsServed(t *testing.T) {
+	name := registry.BuiltinServiceNames()[0]
+	var out bytes.Buffer
+	if err := runSchemaCatalog(&out, []string{name, "jobs", "list"}, core.StrictModeOff, builtinOnlyCatalog(t), nil); err != nil {
+		t.Fatalf("resolvable built-in path failed: %v", err)
+	}
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("output is not a JSON envelope: %v\n%s", err, out.String())
+	}
+	if got := envelope["name"]; got != name+" jobs list" {
+		t.Errorf("envelope name = %v, want %q", got, name+" jobs list")
+	}
+}
+
+// TestRunSchemaCatalog_GeneratedMetadata_UnknownPathStaysResolveError guards the
+// blast radius: once real services are present, an unknown path must keep its
+// precise invalid_argument hint instead of collapsing into the metadata-missing
+// envelope.
+func TestRunSchemaCatalog_GeneratedMetadata_UnknownPathStaysResolveError(t *testing.T) {
+	var out bytes.Buffer
+	err := runSchemaCatalog(&out, []string{"im", "messages", "nonexistent_method"}, core.StrictModeOff, schemaSurfaceCatalog(), nil)
+	if err == nil {
+		t.Fatal("expected an error for the unknown method")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
+	}
+	if validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if !strings.Contains(validationErr.Hint, "Available:") {
+		t.Errorf("hint = %q, want it to list the available methods", validationErr.Hint)
 	}
 }
 
