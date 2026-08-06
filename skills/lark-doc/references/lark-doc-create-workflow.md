@@ -22,6 +22,8 @@
 
 ### Step 2：选择 genre content contract。
 
+下表文件均位于当前 Skill 的 `references/genres/` 目录。
+
 - 读取高置信命中的最多一个 Profile 和最多一个 Adapter；记录路由表中的固定短名。未命中时，`genre_contract` 和 `adapter` 均可使用 `"none"` 或 `null`。
 - contract 决定内容任务、证据和体裁边界；adapter 只调整与所选 contract 兼容的平台结构、写作风格和组件约束。
 
