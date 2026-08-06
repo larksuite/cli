@@ -36,7 +36,7 @@ metadata:
 
 | 场景 | 行动 | 写入方式 | 对原内容 |
 |---|---|---|---|
-| 用户**已提供** Mermaid/PlantUML/SVG 代码，或明确指定用该格式 | 使用该代码 → [`+update --input_format mermaid/plantuml/svg`](references/lark-whiteboard-update.md) | overwrite / append | 按用户要求 |
+| 用户**已提供** Mermaid/PlantUML/SVG 代码，或明确指定用该格式 | 使用该代码 → [`+update`](references/lark-whiteboard-update.md)，`--input_format` 取单值 `mermaid` / `plantuml` / `svg`；写入非空已有画板并需要 overwrite 时，先确认会整板重建；若 SVG 用于修改已有画板，先走 [`routes/svg-edit.md`](routes/svg-edit.md) 有损确认 | overwrite / append | 按用户要求 |
 | 从零新建复杂图表（架构/流程/组织等） | → **[§ 创作 Workflow](references/lark-whiteboard-workflow.md#创作-workflow)** | 首次写入 | — |
 | 修改 / 增补已有画板 | → **[§ 编辑 Workflow](references/lark-whiteboard-workflow.md#编辑-workflow)** | 见该表 | 见该表 |
 

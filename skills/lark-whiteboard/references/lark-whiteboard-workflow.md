@@ -31,7 +31,7 @@
 
 | 路径 | 命中条件 | 怎么改 | 写入方式 | 是否有损 |
 |---|---|---|---|---|
-| ①源码重构 | `+export source` 返回单一 Mermaid/PlantUML（即画板由代码绘制） | 在源码上改 → `+update --input_format mermaid/plantuml` | overwrite（整板重建） | ⚠️ **非严格无损，执行前确认** |
+| ①源码重构 | `+export source` 返回单一 Mermaid/PlantUML（即画板由代码绘制） | 在源码上改 → 按源码类型用 `+update --input_format mermaid` 或 `+update --input_format plantuml` | overwrite（整板重建） | ⚠️ **非严格无损，执行前确认** |
 | ②属性微调 | 只改已有节点的文字/颜色 | `+export --output-type raw --output <file>`（**必须写入文件**）→ 编辑文件中目标节点字段；如只能用 `+update --input_format raw --source @<file> --overwrite` 写回，先说明会整板重建并等待用户确认 | overwrite（整板重建） | ⚠️ **有损风险，未确认不得执行** |
 | ③增量追加 | 在原图基础上新增图/元素，保留原内容 | `+export --output-type preview` → 理解原图 → `+export --output-type raw` → 确定新节点坐标 → [§ 渲染 & 写入画板](#渲染--写入画板) 创作&写入 | append（**不加 `--overwrite`**） | 无损（原节点不动） |
 | ④结构重绘 | 需几何变动/增删元素/结构调整/混合编辑 | [`../routes/svg-edit.md`](../routes/svg-edit.md) | overwrite（清空重来） | ⚠️ **有损，必须先经用户确认** |
@@ -83,7 +83,7 @@ diagram.png           ← 渲染结果
 
 写入画板时按最终产物类型选择 `+update --input_format`：
 
-- Mermaid / PlantUML / SVG 产物直接用对应的 `mermaid` / `plantuml` / `svg` 写入。
+- Mermaid / PlantUML / SVG 产物直接写入时，`--input_format` 取单值 `mermaid` / `plantuml` / `svg`；写入非空已有画板并需要 overwrite 时，先确认会整板重建；SVG 修改已有画板时先走 [`../routes/svg-edit.md`](../routes/svg-edit.md) 的确认 workflow。
 - 只有 DSL 产物或已明确需要 OpenAPI 原生节点格式时，才先用 `npx -y @larksuite/whiteboard-cli@^0.2.13 --to openapi --format json` 转换，再用 `raw` 写入。
 
 具体命令示例、`--overwrite`、`--idempotent-token` 和 `--as user/bot` 的使用方式，统一参考 [`whiteboard +update`](./lark-whiteboard-update.md)。
