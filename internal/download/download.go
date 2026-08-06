@@ -403,15 +403,14 @@ func (r *sequentialPartReader) Read(p []byte) (int, error) {
 				closeErr := r.current.Close()
 				r.current = nil
 				if r.chunkRead != r.chunkWant {
-					shortErr := io.ErrUnexpectedEOF
-					if r.partRetries < r.maxPartRetries {
-						r.beginPartRetry(r.readFailure(shortErr, closeErr))
+					failure := r.readFailure(io.ErrUnexpectedEOF, closeErr)
+					if r.scheduleBodyRetry(failure) {
 						if n > 0 {
 							return n, nil
 						}
 						continue
 					}
-					return n, r.readFailure(shortErr, closeErr)
+					return n, failure
 				}
 				// Closing cannot invalidate a complete framed response.
 				r.partRetries = 0
@@ -430,8 +429,7 @@ func (r *sequentialPartReader) Read(p []byte) (int, error) {
 				closeErr := r.current.Close()
 				r.current = nil
 				failure := r.readFailure(err, closeErr)
-				if r.canRetryBody(failure) && r.partRetries < r.maxPartRetries {
-					r.beginPartRetry(failure)
+				if r.scheduleBodyRetry(failure) {
 					if n > 0 {
 						return n, nil
 					}
@@ -467,12 +465,16 @@ func (r *sequentialPartReader) Read(p []byte) (int, error) {
 	}
 }
 
-func (r *sequentialPartReader) beginPartRetry(failure error) {
+func (r *sequentialPartReader) scheduleBodyRetry(failure error) bool {
+	if !r.canRetryBody(failure) || r.partRetries >= r.maxPartRetries {
+		return false
+	}
 	r.retryErr = failure
 	r.partRetries++
 	r.retryPending = true
 	r.chunkRead = 0
 	r.chunkWant = 0
+	return true
 }
 
 func (r *sequentialPartReader) openNext() error {

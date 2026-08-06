@@ -454,23 +454,33 @@ func TestOpenMutableSmallObjectNeedsNoValidator(t *testing.T) {
 }
 
 func TestOpenMutableWithoutValidatorDoesNotResumeInterruptedBody(t *testing.T) {
-	requests := 0
-	stream, err := Open(context.Background(), MutableSource(func(_ context.Context, _ Request) (*http.Response, error) {
-		requests++
-		return &http.Response{
-			StatusCode: http.StatusPartialContent,
-			Header:     http.Header{"Content-Range": {"bytes 0-3/4"}},
-			Body:       &scriptedBody{payload: []byte("ab"), readErr: io.ErrUnexpectedEOF},
-		}, nil
-	}), Options{PartSize: 4, MaxPartRetries: 1})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer stream.Body.Close()
-	_, err = io.ReadAll(stream.Body)
-	requireProblem(t, err, errs.SubtypeNetworkTransport, true, "range response body ended")
-	if requests != 1 {
-		t.Fatalf("requests = %d, mutable source without a validator must restart as a new transfer", requests)
+	for _, tt := range []struct {
+		name    string
+		readErr error
+	}{
+		{name: "same read", readErr: io.ErrUnexpectedEOF},
+		{name: "subsequent EOF"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			requests := 0
+			stream, err := Open(context.Background(), MutableSource(func(_ context.Context, _ Request) (*http.Response, error) {
+				requests++
+				return &http.Response{
+					StatusCode: http.StatusPartialContent,
+					Header:     http.Header{"Content-Range": {"bytes 0-3/4"}},
+					Body:       &scriptedBody{payload: []byte("ab"), readErr: tt.readErr},
+				}, nil
+			}), Options{PartSize: 4, MaxPartRetries: 1})
+			if err != nil {
+				t.Fatalf("Open() error = %v", err)
+			}
+			defer stream.Body.Close()
+			_, err = io.ReadAll(stream.Body)
+			requireProblem(t, err, errs.SubtypeNetworkTransport, true, "range response body ended")
+			if requests != 1 {
+				t.Fatalf("requests = %d, mutable source without a validator must restart as a new transfer", requests)
+			}
+		})
 	}
 }
 
@@ -502,44 +512,54 @@ func TestOpenContinuesWithoutValidator(t *testing.T) {
 }
 
 func TestOpenRetriesInterruptedBodyFromDeliveredOffset(t *testing.T) {
-	payload := []byte("abcdefgh")
-	requests := 0
-	var ranges []ByteRange
-	opts := testOptions()
-	opts.MaxPartRetries = 1
-	stream, err := openTest(context.Background(), func(_ context.Context, req Request) (*http.Response, error) {
-		requests++
-		ranges = append(ranges, *req.Range)
-		switch requests {
-		case 1:
-			return &http.Response{
-				StatusCode: http.StatusPartialContent,
-				Header:     http.Header{"Content-Range": {"bytes 0-3/8"}, "Etag": {`"v1"`}},
-				Body:       &scriptedBody{payload: []byte("ab"), readErr: io.ErrUnexpectedEOF},
-			}, nil
-		default:
-			if req.IfRange != `"v1"` {
-				t.Fatalf("If-Range = %q, want v1", req.IfRange)
+	for _, tt := range []struct {
+		name    string
+		readErr error
+	}{
+		{name: "same read", readErr: io.ErrUnexpectedEOF},
+		{name: "subsequent EOF"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := []byte("abcdefgh")
+			requests := 0
+			var ranges []ByteRange
+			opts := testOptions()
+			opts.MaxPartRetries = 1
+			stream, err := openTest(context.Background(), func(_ context.Context, req Request) (*http.Response, error) {
+				requests++
+				ranges = append(ranges, *req.Range)
+				switch requests {
+				case 1:
+					return &http.Response{
+						StatusCode: http.StatusPartialContent,
+						Header:     http.Header{"Content-Range": {"bytes 0-3/8"}, "Etag": {`"v1"`}},
+						Body:       &scriptedBody{payload: []byte("ab"), readErr: tt.readErr},
+					}, nil
+				default:
+					if req.IfRange != `"v1"` {
+						t.Fatalf("If-Range = %q, want v1", req.IfRange)
+					}
+					start := req.Range.Start
+					end := min(req.Range.End, int64(len(payload))-1)
+					return testPartial(payload[start:end+1], start, end, int64(len(payload)), `"v1"`), nil
+				}
+			}, opts)
+			if err != nil {
+				t.Fatalf("Open() error = %v", err)
 			}
-			start := req.Range.Start
-			end := min(req.Range.End, int64(len(payload))-1)
-			return testPartial(payload[start:end+1], start, end, int64(len(payload)), `"v1"`), nil
-		}
-	}, opts)
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer stream.Body.Close()
-	got, err := io.ReadAll(stream.Body)
-	if err != nil {
-		t.Fatalf("ReadAll() error = %v", err)
-	}
-	if !bytes.Equal(got, payload) {
-		t.Fatalf("payload = %q, want %q", got, payload)
-	}
-	want := []ByteRange{{Start: 0, End: 3}, {Start: 2, End: 5}, {Start: 6, End: 7}}
-	if fmt.Sprint(ranges) != fmt.Sprint(want) {
-		t.Fatalf("ranges = %v, want exact resume ranges %v", ranges, want)
+			defer stream.Body.Close()
+			got, err := io.ReadAll(stream.Body)
+			if err != nil {
+				t.Fatalf("ReadAll() error = %v", err)
+			}
+			if !bytes.Equal(got, payload) {
+				t.Fatalf("payload = %q, want %q", got, payload)
+			}
+			want := []ByteRange{{Start: 0, End: 3}, {Start: 2, End: 5}, {Start: 6, End: 7}}
+			if fmt.Sprint(ranges) != fmt.Sprint(want) {
+				t.Fatalf("ranges = %v, want exact resume ranges %v", ranges, want)
+			}
+		})
 	}
 }
 
