@@ -64,6 +64,7 @@ Markdown 格式支持通过 URL 插入网络图片，图片将自动从 HTTP 下
 ```
 - `alt text` 为图片描述（可选，可留空）
 - URL 支持 `http://` 和 `https://` 协议
+- 目前不支持将 Base64 Data URI（如 `data:image/png;base64,...`）直接作为图片地址传入；请先将图片上传为可访问的 HTTP(S) URL
 - 对应的 XML 格式为：`<img href="https://example.com/photo.png"/>`
 
 ## Markdown 不支持的 Block 类型
