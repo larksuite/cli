@@ -608,7 +608,10 @@ var WorkbookCreate = common.Shortcut{
 			if err != nil {
 				return err
 			}
-			return payload.checkCellBudgetWithStyles(styles)
+			if err := payload.checkCellBudgetWithStyles(styles); err != nil {
+				return err
+			}
+			return checkStylesAnchors(payload, styles)
 		}
 		// Untyped --values path: parse (and validate) --styles as a single sheet
 		// style item, then synthesize --values into a type-less typed payload —
@@ -618,10 +621,11 @@ var WorkbookCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if _, err := buildValuesPayload(runtime, sheetStyles); err != nil {
+		payload, err := buildValuesPayload(runtime, sheetStyles)
+		if err != nil {
 			return err
 		}
-		return nil
+		return checkStylesAnchors(payload, sheetStyles)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := map[string]interface{}{"title": strings.TrimSpace(runtime.Str("title"))}
@@ -1793,6 +1797,42 @@ func padMatrixForStyles(rows [][]interface{}, styles *workbookCreateStylePayload
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// checkStylesAnchors rejects cell_styles ranges whose top-left falls left of /
+// above the sheet's write anchor — matrix padding cannot reach them, so the
+// write phase would fail. Validate-time twin of the bounds check inside
+// applyWorkbookCreateStylesToMatrix: running it BEFORE the workbook-create API
+// call means the failure cannot strand an orphan workbook (live-verified: a
+// start_cell B2 payload with a cell_styles range A1 used to create the
+// workbook and then fail the fill). Anchor / range parse errors are skipped —
+// the payload and styles parsers already report those with richer context.
+func checkStylesAnchors(payload *tablePayload, styles *workbookCreateSheetStyles) error {
+	if payload == nil || styles == nil {
+		return nil
+	}
+	for i := range payload.Sheets {
+		s := &payload.Sheets[i]
+		sp := styles.styleFor(i)
+		if sp == nil {
+			continue
+		}
+		_, col0, row0, err := sheetAnchor(s)
+		if err != nil {
+			continue
+		}
+		for j, op := range sp.CellStyles {
+			startCol, startRow, _, _, err := workbookCreateStyleRangeBounds(op.Range)
+			if err != nil {
+				continue
+			}
+			if startCol < col0 || startRow < row0 {
+				return common.ValidationErrorf("--styles for sheet %q[%d].range %q starts outside the write range (its top-left must be at or after %s%d)",
+					s.Name, j, op.Range, columnIndexToLetter(col0), row0+1)
+			}
+		}
+	}
+	return nil
 }
 
 // applyWorkbookCreateStylesToMatrix pads the matrix to cover the cell_styles
