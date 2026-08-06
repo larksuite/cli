@@ -76,7 +76,7 @@ func handlePaginatedReadFailure(runtime *common.RuntimeContext, continuation boo
 
 // emitPaginatedMarkdown emits Markdown and pagination metadata. Oversized
 // --full reads may replace inline content with a local file descriptor.
-func emitPaginatedMarkdown(runtime *common.RuntimeContext, content, title string, updateTime int64, hasMore bool, nextPageToken string) error {
+func emitPaginatedMarkdown(runtime *common.RuntimeContext, content, title string, updateTime int64, hasMore bool, nextPageToken string, hints []string) error {
 	nextPageToken = strings.TrimSpace(nextPageToken)
 	data := map[string]interface{}{
 		"document": map[string]interface{}{
@@ -92,6 +92,16 @@ func emitPaginatedMarkdown(runtime *common.RuntimeContext, content, title string
 	cursorHint := contentread.PaginationCursorHint(hasMore, nextPageToken)
 	if cursorHint != "" {
 		appendDocWarning(data, cursorHint)
+	}
+	for _, h := range hints {
+		appendDocWarning(data, h)
+	}
+	if runtime.Format == "pretty" {
+		for _, hint := range hints {
+			if hint = strings.TrimSpace(hint); hint != "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "[fetch] warning: %s\n", hint)
+			}
+		}
 	}
 	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" && runtime.Format == "pretty" {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
@@ -152,7 +162,7 @@ func runAnchoredMarkdownFetch(ctx context.Context, runtime *common.RuntimeContex
 	if ferr != nil {
 		return false, ferr
 	}
-	if err := emitPaginatedMarkdown(runtime, result.Content, result.Title, result.UpdateTime, result.HasMore, result.NextPageToken); err != nil {
+	if err := emitPaginatedMarkdown(runtime, result.Content, result.Title, result.UpdateTime, result.HasMore, result.NextPageToken, result.Hints); err != nil {
 		return true, err
 	}
 	return true, nil

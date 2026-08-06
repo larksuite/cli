@@ -36,6 +36,7 @@ type FetchResult struct {
 	UpdateTime    int64
 	HasMore       bool
 	NextPageToken string
+	Hints         []string
 }
 
 // FetchMarkdown reads and renders a URL-addressed non-document resource.

@@ -33,7 +33,7 @@ func FetchAnchoredMarkdown(ctx context.Context, runtime *common.RuntimeContext, 
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
 			"document read returned no anchored content")
 	}
-	md, rerr := RenderAnchoredMarkdown(resp, opts.MaxRows)
+	md, hints, rerr := RenderAnchoredMarkdown(resp, opts.MaxRows)
 	if rerr != nil {
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
 			"could not render anchored Markdown: %v", rerr).WithCause(rerr)
@@ -48,21 +48,22 @@ func FetchAnchoredMarkdown(ctx context.Context, runtime *common.RuntimeContext, 
 		UpdateTime:    resp.UpdateTime,
 		HasMore:       resp.HasMore,
 		NextPageToken: resp.NextPageToken,
+		Hints:         hints,
 	}, nil
 }
 
 // RenderAnchoredMarkdown converts anchored XML to readable Markdown and limits
 // materialized tables to maxRows.
-func RenderAnchoredMarkdown(resp *Response, maxRows int) (string, error) {
+func RenderAnchoredMarkdown(resp *Response, maxRows int) (string, []string, error) {
 	if resp == nil || strings.TrimSpace(resp.FullContent) == "" {
-		return "", nil
+		return "", nil, nil
 	}
 	return renderAnchoredMarkdown(resp.FullContent, resp.ImageMetaMap, maxRows)
 }
 
 var anchoredMarkdownBlankRunRe = regexp.MustCompile(`\n{3,}`)
 
-func renderAnchoredMarkdown(xmlContent string, metas map[string]*ImageMeta, maxRows int) (string, error) {
+func renderAnchoredMarkdown(xmlContent string, metas map[string]*ImageMeta, maxRows int) (string, []string, error) {
 	r := &anchoredMarkdownRenderer{metas: metas}
 	// Content-read returns an XML fragment with occasional HTML constructs and
 	// unescaped text, so normalize it and decode under a synthetic root.
@@ -72,16 +73,17 @@ func renderAnchoredMarkdown(xmlContent string, metas map[string]*ImageMeta, maxR
 	dec.Entity = xml.HTMLEntity
 
 	if err := r.renderChildren(dec, ""); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	md := anchoredMarkdownBlankRunRe.ReplaceAllString(r.out.String(), "\n\n")
 	md = TruncateGFMTables(md, maxRows, "")
-	return strings.TrimSpace(md) + "\n", nil
+	return strings.TrimSpace(md) + "\n", r.hints, nil
 }
 
 type anchoredMarkdownRenderer struct {
 	metas map[string]*ImageMeta
 	out   strings.Builder
+	hints []string
 }
 
 func (r *anchoredMarkdownRenderer) renderChildren(dec *xml.Decoder, parentName string) error {
@@ -225,8 +227,12 @@ func (r *anchoredMarkdownRenderer) renderEmbedTable(dec *xml.Decoder, start xml.
 		r.out.WriteString("\n")
 		return nil
 	}
-	r.out.WriteString("**" + resTokenLink(embedLabel(start.Name.Local), token) + "**" + idSuffix(id) + "\n")
-	r.out.WriteString("> 内容可能未展开" + embedSkillHint(start.Name.Local) + "\n\n")
+	label := embedLabel(start.Name.Local)
+	r.out.WriteString("**" + resTokenLink(label, token) + "**" + idSuffix(id) + "\n")
+	r.out.WriteString("> 内容可能未展开\n\n")
+	if advice := embedHint(start.Name.Local, id); advice != "" {
+		r.hints = append(r.hints, formatEmbedHint(label, id, advice))
+	}
 	return nil
 }
 
@@ -245,15 +251,25 @@ func embedLabel(tag string) string {
 	}
 }
 
-func embedSkillHint(tag string) string {
+func embedHint(tag, id string) string {
 	switch tag {
 	case "sheet":
-		return "，用 sheets +cells-get 取"
+		return "用 sheets +cells-get 取"
 	case "bitable":
-		return "，用 base +record-list 取"
+		return "用 base +record-list 取"
 	default:
-		return ""
+		if id == "" {
+			return ""
+		}
+		return "可按该 block ID 局部重读"
 	}
+}
+
+func formatEmbedHint(label, id, advice string) string {
+	if id != "" {
+		return label + "（" + id + "）可能未展开，" + advice
+	}
+	return label + "可能未展开，" + advice
 }
 
 // collectRows supports both nested HTML tables and text-only embeds.

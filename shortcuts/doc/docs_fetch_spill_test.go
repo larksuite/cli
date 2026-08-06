@@ -193,3 +193,100 @@ func assertDocsSpillFile(t *testing.T, document map[string]interface{}, wantCont
 		t.Fatalf("content_preview length = %d, want 1..512", len(preview))
 	}
 }
+
+// An unexpanded embed must keep only a placeholder in the body and route the
+// follow-up read advice into data.warnings.
+func TestDocsFetchAnchoredEmbedHintRoutesToWarnings(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+
+	const blockID = "FFCMdpgxXod0EZxrWNccslOCn2f"
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-embed-hint"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    contentread.Path,
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"title":        "Embed Hint Doc",
+				"full_content": `<component id="` + blockID + `"></component>`,
+			},
+		},
+	})
+
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "https://example.feishu.cn/docx/doxcnEmbedHint",
+		"--doc-format", "markdown",
+		"--full",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("docs +fetch error = %v", err)
+	}
+
+	data, document := decodeDocsSpillEnvelope(t, stdout.Bytes())
+	body, _ := document["content"].(string)
+	if !strings.Contains(body, "**引用内容** {#"+blockID+"}") {
+		t.Errorf("want placeholder header in body, got:\n%s", body)
+	}
+	if strings.Contains(body, "range") {
+		t.Errorf("range advice must not leak into body, got:\n%s", body)
+	}
+	want := "引用内容（" + blockID + "）可能未展开，可按该 block ID 局部重读"
+	warnings, _ := data["warnings"].([]interface{})
+	if len(warnings) == 0 {
+		t.Fatalf("want local reread hint in warnings, got data: %#v", data)
+	}
+	var joined strings.Builder
+	for _, w := range warnings {
+		if s, ok := w.(string); ok {
+			joined.WriteString(s)
+			joined.WriteByte('\n')
+		}
+	}
+	if !strings.Contains(joined.String(), want) {
+		t.Errorf("warnings = %#v, want hint %q", warnings, want)
+	}
+}
+
+func TestDocsFetchAnchoredEmbedHintWarnsInPrettyOutput(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+
+	const blockID = "FFCMdpgxXod0EZxrWNccslOCn2f"
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-embed-hint-pretty"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    contentread.Path,
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"title":        "Embed Hint Doc",
+				"full_content": `<component id="` + blockID + `"></component>`,
+			},
+		},
+	})
+
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "https://example.feishu.cn/docx/doxcnEmbedHintPretty",
+		"--doc-format", "markdown",
+		"--full",
+		"--format", "pretty",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("docs +fetch error = %v", err)
+	}
+
+	want := "[fetch] warning: 引用内容（" + blockID + "）可能未展开，可按该 block ID 局部重读"
+	if !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want hint %q", stderr.String(), want)
+	}
+	if !strings.Contains(stdout.String(), "> 内容可能未展开") {
+		t.Errorf("stdout missing placeholder: %q", stdout.String())
+	}
+}

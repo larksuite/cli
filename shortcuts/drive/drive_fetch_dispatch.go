@@ -55,6 +55,7 @@ func dispatchDriveFetch(ctx context.Context, runtime *common.RuntimeContext, in 
 			updateTime: result.UpdateTime,
 			hasMore:    result.HasMore,
 			nextToken:  result.NextPageToken,
+			warnings:   result.Hints,
 		}, nil
 
 	case "sheet", "bitable", "slides", "file":

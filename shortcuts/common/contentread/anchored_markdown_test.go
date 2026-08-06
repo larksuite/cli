@@ -10,11 +10,20 @@ import (
 
 func mustRenderAnchoredMarkdown(t *testing.T, xmlContent string, metas map[string]*ImageMeta, maxRows int) string {
 	t.Helper()
-	md, err := renderAnchoredMarkdown(xmlContent, metas, maxRows)
+	md, _, err := renderAnchoredMarkdown(xmlContent, metas, maxRows)
 	if err != nil {
 		t.Fatalf("renderAnchoredMarkdown error: %v", err)
 	}
 	return md
+}
+
+func mustRenderAnchoredMarkdownHints(t *testing.T, xmlContent string, metas map[string]*ImageMeta, maxRows int) (string, []string) {
+	t.Helper()
+	md, hints, err := renderAnchoredMarkdown(xmlContent, metas, maxRows)
+	if err != nil {
+		t.Fatalf("renderAnchoredMarkdown error: %v", err)
+	}
+	return md, hints
 }
 
 func TestRenderAnchoredMarkdown_HeadingsAnchorParagraphsDont(t *testing.T) {
@@ -198,16 +207,23 @@ func TestRenderAnchoredMarkdown_SheetTruncation(t *testing.T) {
 func TestRenderAnchoredMarkdown_EmbeddedBitablePlaceholder(t *testing.T) {
 	t.Parallel()
 	xml := `<bitable id="blk_bt" token="bbl_secret" table-id="tblX" source-doc-id="docY"></bitable>`
-	got := mustRenderAnchoredMarkdown(t, xml, nil, 0)
+	got, hints := mustRenderAnchoredMarkdownHints(t, xml, nil, 0)
 
 	if !strings.Contains(got, "**[多维表格](token=bbl_secret)** {#blk_bt}") {
 		t.Errorf("bitable placeholder wrong:\n%s", got)
 	}
-	if !strings.Contains(got, "内容可能未展开，用 base +record-list 取") {
-		t.Errorf("want 'may not be expanded, fetch via base' hint, got:\n%s", got)
+	if !strings.Contains(got, "内容可能未展开") {
+		t.Errorf("want 'may not be expanded' placeholder, got:\n%s", got)
 	}
-	if strings.Contains(got, "docY") {
-		t.Errorf("source-doc-id must not leak, got:\n%s", got)
+	if strings.Contains(got, "base +record-list") {
+		t.Errorf("follow-up advice must move to hints, not body, got:\n%s", got)
+	}
+	joined := strings.Join(hints, "\n")
+	if !strings.Contains(joined, "多维表格（blk_bt）可能未展开，用 base +record-list 取") {
+		t.Errorf("want base follow-up hint, got:\n%s", joined)
+	}
+	if strings.Contains(joined, "docY") {
+		t.Errorf("source-doc-id must not leak, got:\n%s", joined)
 	}
 }
 
@@ -281,6 +297,45 @@ func TestRenderAnchoredMarkdown_EmbeddedComponentMarkdown(t *testing.T) {
 	}
 	if strings.Contains(got, "base 技能") {
 		t.Errorf("expanded component must not be a placeholder, got:\n%s", got)
+	}
+}
+
+func TestRenderAnchoredMarkdown_EmbeddedComponentPlaceholderLocalReadHint(t *testing.T) {
+	t.Parallel()
+	xml := `<component id="FFCMdpgxXod0EZxrWNccslOCn2f"></component>`
+	got, hints := mustRenderAnchoredMarkdownHints(t, xml, nil, 0)
+
+	if !strings.Contains(got, "**引用内容** {#FFCMdpgxXod0EZxrWNccslOCn2f}") {
+		t.Errorf("component placeholder header wrong:\n%s", got)
+	}
+	if strings.Contains(got, "range") {
+		t.Errorf("range advice must move to hints, not body, got:\n%s", got)
+	}
+	joined := strings.Join(hints, "\n")
+	if !strings.Contains(joined, "引用内容（FFCMdpgxXod0EZxrWNccslOCn2f）可能未展开，可按该 block ID 局部重读") {
+		t.Errorf("want local reread hint for unexpanded component, got:\n%s", joined)
+	}
+}
+
+func TestRenderAnchoredMarkdown_EmbeddedSyncedPlaceholderLocalReadHint(t *testing.T) {
+	t.Parallel()
+	xml := `<synced id="blk_syn"></synced>`
+	got, hints := mustRenderAnchoredMarkdownHints(t, xml, nil, 0)
+
+	if !strings.Contains(got, "**同步块** {#blk_syn}") {
+		t.Errorf("synced placeholder header wrong:\n%s", got)
+	}
+	joined := strings.Join(hints, "\n")
+	if !strings.Contains(joined, "同步块（blk_syn）可能未展开，可按该 block ID 局部重读") {
+		t.Errorf("want local reread hint for unexpanded synced block, got:\n%s", joined)
+	}
+}
+
+func TestRenderAnchoredMarkdown_EmbeddedPlaceholderNoIDNoLocalReadHint(t *testing.T) {
+	t.Parallel()
+	_, hints := mustRenderAnchoredMarkdownHints(t, `<component></component>`, nil, 0)
+	if len(hints) != 0 {
+		t.Errorf("component without id must not get a local reread hint:\n%s", hints)
 	}
 }
 
@@ -374,10 +429,10 @@ func TestRenderAnchoredMarkdown_HTMLishTableTolerated(t *testing.T) {
 
 func TestRenderAnchoredMarkdown_NilOrEmptyResp(t *testing.T) {
 	t.Parallel()
-	if got, err := RenderAnchoredMarkdown(nil, 0); err != nil || got != "" {
-		t.Errorf("nil resp: got (%q, %v), want (\"\", nil)", got, err)
+	if got, hints, err := RenderAnchoredMarkdown(nil, 0); err != nil || got != "" || hints != nil {
+		t.Errorf("nil resp: got (%q, %v, %v), want (\"\", nil, nil)", got, hints, err)
 	}
-	if got, err := RenderAnchoredMarkdown(&Response{}, 0); err != nil || got != "" {
-		t.Errorf("empty resp: got (%q, %v), want (\"\", nil)", got, err)
+	if got, hints, err := RenderAnchoredMarkdown(&Response{}, 0); err != nil || got != "" || hints != nil {
+		t.Errorf("empty resp: got (%q, %v, %v), want (\"\", nil, nil)", got, hints, err)
 	}
 }

@@ -220,6 +220,40 @@ func TestRunFetchWikiLegacyDocPreservesTypeAndURL(t *testing.T) {
 	}
 }
 
+func TestRunFetchDocPassesEmbedHintsToWarnings(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+	const blockID = "blkEmbeddedComponent"
+
+	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_x"}
+	factory, stdout, _, registry := cmdutil.TestFactory(t, cfg)
+	cmd := &cobra.Command{Use: "+fetch"}
+	for _, name := range []string{"url", "token", "type", "page-token", "include"} {
+		cmd.Flags().String(name, "", "")
+	}
+	cmd.Flags().Bool("full", false, "")
+	cmd.Flags().Int("page-size", 0, "")
+	cmd.Flags().Int("embed-max-rows", 50, "")
+	_ = cmd.Flags().Set("url", "https://www.feishu.cn/docx/doxcnEmbedHint")
+	_ = cmd.Flags().Set("full", "true")
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, core.AsUser)
+
+	registry.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    contentread.Path,
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"full_content": `<component id="` + blockID + `"></component>`,
+		}},
+	})
+
+	if err := RunFetch(context.Background(), runtime); err != nil {
+		t.Fatalf("RunFetch: %v", err)
+	}
+	want := "引用内容（" + blockID + "）可能未展开，可按该 block ID 局部重读"
+	if got := gjson.Get(stdout.String(), "data.warnings.0").String(); got != want {
+		t.Fatalf("warning = %q, want %q\noutput=%s", got, want, stdout.String())
+	}
+}
+
 func TestRunFetch_WikiGetNodeFailPaginatesViaDirectFetch(t *testing.T) {
 	rt, reg := newDriveFetchTestRuntime(t)
 	reg.Register(&httpmock.Stub{
