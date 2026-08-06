@@ -85,6 +85,52 @@ func TestCellsSetWrites(t *testing.T) {
 		}
 	})
 
+	t.Run("explicit --allow-overwrite=false reaches every item", func(t *testing.T) {
+		t.Parallel()
+		// The per-item flag view falls back to the declared default (true), so
+		// an explicit top-level false must be written into items that don't
+		// carry their own — otherwise the batch silently overwrites cells the
+		// caller asked to protect.
+		stdout, _, err := writes(`[{"sheet_name":"S1","range":"A1","cells":[[{"value":"x"}]]}]`,
+			"--allow-overwrite=false")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(stdout, "allow_overwrite") {
+			t.Fatalf("dry-run body missing allow_overwrite:false: %s", stdout[:min(len(stdout), 400)])
+		}
+	})
+
+	t.Run("item-level allow_overwrite wins over the top-level flag", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := writes(`[
+			{"sheet_name":"S1","range":"A1","cells":[[{"value":"x"}]],"allow_overwrite":true},
+			{"sheet_name":"S1","range":"B1","cells":[[{"value":"y"}]]}
+		]`, "--allow-overwrite=false")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Item 0 opts back in (true → key omitted on the wire); item 1 inherits
+		// the explicit false. Any allow_overwrite in the output must be false.
+		if strings.Contains(stdout, `allow_overwrite\":true`) || strings.Contains(stdout, `"allow_overwrite": true`) {
+			t.Fatalf("item-level true must be omitted on the wire, not serialized: %s", stdout[:min(len(stdout), 600)])
+		}
+		if !strings.Contains(stdout, "allow_overwrite") {
+			t.Fatalf("item without override must inherit the explicit false: %s", stdout[:min(len(stdout), 600)])
+		}
+	})
+
+	t.Run("default overwrite omits the key entirely", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := writes(`[{"sheet_name":"S1","range":"A1","cells":[[{"value":"x"}]]}]`)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if strings.Contains(stdout, "allow_overwrite") {
+			t.Fatalf("default run must not emit allow_overwrite: %s", stdout[:min(len(stdout), 400)])
+		}
+	})
+
 	t.Run("cannot nest inside batch-update", func(t *testing.T) {
 		t.Parallel()
 		_, err := translateBatchOp(subOp("+cells-set", map[string]interface{}{

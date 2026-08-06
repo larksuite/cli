@@ -160,9 +160,9 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 			probs = append(probs, common.ValidationErrorf("--writes[%d]: %v", i, err))
 			continue
 		}
-		if topLevelOverwrite {
+		if runtime.Changed("allow-overwrite") {
 			if _, has := item["allow_overwrite"]; !has {
-				item["allow_overwrite"] = true
+				item["allow_overwrite"] = topLevelOverwrite
 			}
 		}
 		fv := newMapFlagViewForCommand("+cells-set", item)
