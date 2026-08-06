@@ -10,32 +10,24 @@ NDJSON 每行是一条独立 JSON record；按行读取即可，不要先把文�
 
 ```python
 import json
-from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import date, datetime
 
 
 def read_ndjson(path):
     with open(path, encoding="utf-8") as stream:
         for line in stream:
             if line.strip():
-                yield json.loads(line, parse_float=Decimal)
-
-
-def as_decimal(value):
-    return Decimal(str(value)) if value is not None else Decimal("0")
-
-
-def round_money(value):
-    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                yield json.loads(line)
 
 
 records = list(read_ndjson("records.ndjson"))
 for record in records:
-    value = record["日期"]
-    record["日期"] = datetime.fromisoformat(value) if value else None
+    raw_date = record["日期"]
+    record["日期_local"] = date.fromisoformat(raw_date[:10]) if raw_date else None
+    record["日期_instant"] = datetime.fromisoformat(raw_date) if raw_date else None
 ```
 
-金额分摊使用 `Decimal` 并只在最终输出字段处调用 `round_money`；不要在中间分摊时提前舍入。
+按来源 Base 的日、周、月分组使用 `日期_local`；计算真实时长、排序或跨时区比较使用 `日期_instant`。实际任务只需构造所需的一项。
 
 ## 集合谓词：保持 record 粒度
 
@@ -43,11 +35,10 @@ for record in records:
 
 ```python
 active = [record for record in records if "进行中" in record["状态"]]
+amounts = [record["金额"] for record in active if record["金额"] is not None]
 summary = {
     "records_count": len(active),
-    "amount_sum": sum(
-        (as_decimal(record["金额"]) for record in active), Decimal("0")
-    ),
+    "amount_sum": sum(amounts) if amounts else None,
 }
 ```
 

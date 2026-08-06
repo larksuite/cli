@@ -48,24 +48,28 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 
 ### 2.3 select（单选/多选）
 
-`select` 字段用 `multiple` 区分单选和多选：`multiple=false` 时传选项名字符串，`multiple=true` 时传选项名数组。只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
+`select` 字段统一传选项名称数组。`multiple=false` 时数组只能包含一个元素，`multiple=true` 时可以包含多个元素。只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
 
 ```json
 {
-    "单选": "Todo",
+    "单选": ["Todo"],
     "多选": ["后端", "高优"]
 }
 ```
 
+读取单元格时与写入的数据结构一致。
+
 ### 2.4 datetime
 
-优先用 `YYYY-MM-DD HH:mm:ss` 字符串，这是最稳妥的写法，也和常见 API 输出更容易对齐。不要写相对时间（如“明天上午”）。
+写入可省略时区偏移量，系统会按 Base 时区解析输入字符串；优先使用 `YYYY-MM-DD HH:mm`。Base 默认按分钟展示，但底层以毫秒级精度存储时间
 
 ```json
 {
-    "截止时间": "2026-03-24 10:00:00"
+    "截止时间": "2026-03-24 10:00"
 }
 ```
+
+读取单元格时，日期时间输出为标准 RFC3339 字符串并固定保留三位毫秒，例如 `"2026-03-24T10:00:00.000+08:00"`。
 
 ### 2.5 checkbox
 
@@ -79,7 +83,7 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 
 ### 2.6 user / group_chat
 
-用对象数组，元素至少包含 `id`。人员字段传用户 ID（如 `ou_xxx`），群字段传群 ID（如 `oc_xxx`）；单值/多值都统一使用数组。
+`user` 和 `group_chat` 字段统一传对象数组。`multiple=false` 时数组只能包含一个元素，`multiple=true` 时可以包含多个元素。每个元素至少包含 `id`；人员字段传用户 ID（如 `ou_xxx`），群字段传群 ID（如 `oc_xxx`）。
 
 > **人员字段：不要猜 ID。** 不知道 `open_id` 时，先用 `lark-contact` 查 id：`lark-cli contact +search-user --query "<姓名/邮箱/手机号>" --as user`。
 
@@ -97,6 +101,8 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 }
 ```
 
+读取单元格时仍为对象数组，每个元素为 `{id, name}`，例如 `[{"id":"ou_xxx","name":"张三"}]`。
+
 ### 2.7 link
 
 用对象数组，元素包含 `id`，值为目标记录的 `record_id`。不要传记录标题；先用 `+record-list` / `+record-search` 找到目标记录 ID。
@@ -108,6 +114,8 @@ text 字段的 `style.type` 影响单元格检查逻辑：
     ]
 }
 ```
+
+读取单元格时与写入的数据结构一致。
 
 ### 2.8 location
 
@@ -122,9 +130,11 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 }
 ```
 
-读取时非空 location 为 `{lng, lat, full_address}`，三个成员均非空，`full_address` 是字符串；筛选、转文本等场景使用 `full_address`，只有公式能访问坐标。如果用户只给地址文本，先获取或确认坐标后再写入；不要把仅有地址文本直接当作 location CellValue。
+读取单元格时，非空 location 为 `{lng, lat, full_address}`，三个成员均非空，`full_address` 是字符串；筛选、转文本等场景使用 `full_address`，只有公式能访问坐标。如果用户只给地址文本，先获取或确认坐标后再写入；不要把仅有地址文本直接当作 location CellValue。
 
 ### 2.9 attachment（不作为普通 CellValue 写入）
+
+读取单元格时，附件为数组，每个元素为 `{file_token, size, name}`，例如 `[{"file_token":"box_xxx","size":1024,"name":"report.pdf"}]`。
 
 - 追加附件：使用 `lark-cli base +record-upload-attachment --record-id <record_id> --field-id <field_id> --file <path>`；可重复 `--file` 一次追加多个附件，不能用普通记录操作接口写附件值。
 - 删除附件：使用 `lark-cli base +record-remove-attachment --record-id <record_id> --field-id <field_id> --file-token <file_token> --yes`；可重复 `--file-token` 一次删除同一单元格里的多个附件。
@@ -141,6 +151,8 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 
 写入只读字段通常不会更新数据；返回里可能出现 `ignored_fields`，reason 会说明 `READONLY`。看到这种返回时，不要重试同一 payload，应移除只读字段，只写存储字段。
 
+读取单元格时，`auto_number`、`formula`、`lookup` 为 `string|null`；`created_at`、`updated_at` 为标准 RFC3339 字符串或 `null`；`created_by`、`updated_by` 为 `array<{id, name}>`。
+
 ## 4. 完整示例
 
 ```json
@@ -149,7 +161,7 @@ text 字段的 `style.type` 影响单元格检查逻辑：
     "状态": "Todo",
     "标签": ["高优", "外部依赖"],
     "工时": 8,
-    "截止时间": "2026-03-24 10:00:00",
+    "截止时间": "2026-03-24 10:00",
     "已完成": false,
     "负责人": [{ "id": "ou_123" }],
     "关联任务": [{ "id": "rec_456" }],

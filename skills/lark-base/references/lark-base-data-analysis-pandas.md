@@ -10,10 +10,16 @@
 import pandas as pd
 
 records = pd.read_json("records.ndjson", lines=True)
-records["日期"] = pd.to_datetime(
-    records["日期"], format="ISO8601", errors="coerce"
+raw_dates = records["日期"].astype("string")
+records["日期_local"] = pd.to_datetime(
+    raw_dates.str.slice(0, 10), format="%Y-%m-%d", errors="coerce"
+)
+records["日期_instant"] = pd.to_datetime(
+    raw_dates, format="ISO8601", utc=True, errors="coerce"
 )
 ```
+
+按来源 Base 的日、周、月分组使用 `日期_local`；计算真实时长、排序或跨时区比较使用 `日期_instant`。实际任务只需构造所需的一列。
 
 ## 集合谓词：保持 record 粒度
 

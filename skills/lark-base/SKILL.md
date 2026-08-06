@@ -138,7 +138,7 @@ metadata:
 | `1254015` 字段值类型不匹配 | 先 `+field-list`，再按 [lark-base-cell-value.md](references/lark-base-cell-value.md) 构造 CellValue |
 | `Invalid discriminator value`（字段写入缺 `type`） | 按完整提交规则读取当前字段，只改目标内容后提交；不要只补 `type` 重试 |
 | filter 报 `value of type array` / `Only string values` | 用 record/view 的 tuple `--filter-json`（非 `+data-query` 对象型），value 按字段 type 选标量或数组；见 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md) |
-| 日期 / 人员 / 超链接字段报格式错误 | 日期用 `YYYY-MM-DD HH:mm:ss`；人员用 `[{ "id": "ou_xxx" }]`；超链接用 URL 或 markdown link 字符串 |
+| 日期 / 人员 / 超链接字段报格式错误 | 日期用 `YYYY-MM-DD HH:mm`；人员用 `[{ "id": "ou_xxx" }]`；超链接用 URL 或 markdown link 字符串 |
 | formula / lookup 创建失败 | 先读 [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)，再按 guide 重建请求 |
 | `ignored_fields` / `READONLY` | 移除只读字段，只写存储字段 |
 | `1254104` | 批量超过 200，分批调用 |

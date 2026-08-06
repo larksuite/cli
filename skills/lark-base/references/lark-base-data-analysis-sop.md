@@ -73,7 +73,7 @@
 - NDJSON 业务列一律使用字段 `name` 作为 key，不使用 `field_id`；字段重命名会改变 key，对应的 `field_id` 仅记录在 manifest 列元数据中。
 - 除 `record_id` 外，不假设任何列满足 `NOT NULL`、`UNIQUE` 或业务键约束；仅当某列实际作为业务键参与关联或去重时处理空值和重复值。
 - checkbox 在 NDJSON 中始终为 `true` 或 `false`，上游空值会在导出时规范化为 `false`；其他标量列可空并使用 `null`。多值列始终非空，没有元素时用 `[]`；这些是序列化契约，不是业务约束。
-- 业务字段沿用 `lark-base-cell-value.md` 定义的同一套 Base CellValue 结构；formula 和 lookup 在当前 NDJSON 中统一为字符串，不保留计算结果的原始类型。
+- NDJSON 的读取结构以 manifest `physical_type` 和下表为准，不等同于写记录时的 CellValue；`lark-base-cell-value.md` 在读写形态不一致的类型下提供对照说明。formula 和 lookup 在当前 NDJSON 中统一为字符串，不保留计算结果的原始类型。
 - 将 `physical_type` 和上述 CellValue 结构视为输入契约；一次性分析代码直接读取，不再逐格验证 `record_id`、数组或 struct 的运行时形状。
 - 未显式指定 sort 时不保证行顺序。
 
@@ -83,10 +83,10 @@
 | --- | --- | --- |
 | 系统 `record_id` | `string` | `"rec_xxx"`；系统主键 |
 | `text`、`formula`、`lookup`、`auto_number`、`not_support` | `string|null` | `"进行中"`；formula、lookup 不保留结果的原始类型 |
-| `datetime`、`created_at`、`updated_at` | `string|null` | `"2026-08-05T10:30:00+08:00"`；RFC3339 |
+| `datetime`、`created_at`、`updated_at` | `string|null` | `"2026-08-05T10:30:00.000+08:00"`；RFC3339，固定三位毫秒 |
 | `number` | `number|null` | `12.5`；JSON 整数和小数均为 number |
 | `checkbox` | `boolean` | `true`；上游空值已规范化为 `false` |
-| `select` | `array<string>` | `["进行中", "高优"]`；单选、多选读取均为名称数组，不含 option id |
+| `select` | `array<string>` | `["进行中", "高优"]`；单选、多选读取均为名称数组 |
 | `location` | `struct<lng number, lat number, full_address string>|null` | `{"lng":116.39,"lat":39.90,"full_address":"北京市"}`；非空 Location 的三个成员均非空 |
 | `user`、`group_chat`、`created_by`、`updated_by` | `array<struct<id string, name string>>` | `[{"id":"ou_xxx","name":"张三"}]` |
 | `link` | `array<struct<id string>>` | `[{"id":"rec_xxx"}]`；schema 的 `table_id` 指定目标表，`id` 是目标 `record_id` |
@@ -94,7 +94,12 @@
 
 ### 日期字段读取
 
-日期字段以带 offset 的 RFC3339 字符串序列化。参与日历、区间、排序或窗口计算时，将它转换为所用语言的原生或事实标准日期类型；在数据分析引擎中转换为具备 datetime 功能的列。按日/月分组直接使用值中表达的 Base 本地日期，不按 manifest `timezone` 重新换算。
+日期字段以带 offset 的 RFC3339 字符串序列化，并有两种分析语义：
+
+- **instant semantics**：计算真实时长、先后顺序或跨时区比较时，解析完整 RFC3339 值，以其表示的绝对时刻计算。
+- **local-calendar semantics**：按来源 Base 的日、周、月等本地日历分组时，使用序列化值中的本地日期，不先转 UTC，也不按 manifest `timezone` 重复换算。
+
+例如，`2026-03-20T23:30:00.000-05:00` 与 `2026-03-21T12:30:00.000+08:00` 表示同一时刻；前者若是来源 Base 的值，本地日报归入 3 月 20 日，而时长或排序计算应把它解析为绝对时刻。只构造任务实际需要的日期表示，并在分析引擎中使用具备 datetime 功能的列。
 
 ## 读取与关系建模
 
@@ -122,21 +127,24 @@ lark-cli base +record-list \
   --limit 2000 \
   --output records.ndjson \
   --jq-records '
-  map(select((.["状态"] | index("进行中")) != null))
+  map(select((.["状态"] | index("进行中")) != null)) as $records
+  | ($records | map(.["金额"] | select(. != null))) as $amounts
   | {
-      records_count: length,
-      amount_sum: (map(.["金额"] // 0) | add // 0)
+      records_count: ($records | length),
+      amount_sum: (
+        if ($amounts | length) > 0 then ($amounts | add) else null end
+      )
     }
 '
 ```
 
 ### 多值列：nested relation 与目标粒度
 
-Base 的反范式宽表会把零到多个 Select、人员、群组、Link 或附件元素嵌入一条 source record。分析时将数组视为以 `record_id` 为 correlation key 的 nested relation，并先确定 target grain：
+Base 的反范式宽表会把零到多个 Select、人员、群组、Link 或附件元素嵌入一条 source record。多值单元格默认按无重复、无序集合建模：元素顺序不承担稳定业务语义，同一 source record 内可将元素视为唯一，因此其元素数等于去重元素数；跨 source record 出现的同一元素仍是不同事实或关系边。分析时将数组视为以 `record_id` 为 correlation key 的 nested relation，并先确定 target grain：
 
 - **record grain**：包含、交集、子集和元素数量等问题直接使用集合谓词，不做 expansion。
 - **record-element grain**：通过 lateral `explode` / `UNNEST` 规范化为 `(source_record_id, element)` bridge relation。inner expansion 会丢弃空数组来源，outer expansion 会保留来源 record；回到 record 口径时按 `source_record_id` 聚合或去重。
-- **entity grain**：两侧分别规范化为 bridge relation，再按稳定 element key JOIN。人员和群组以 `id` 连接、以 `name` 展示；Select 只有名称而没有 option id，仅当字段共享同一业务值域时才可按名称连接。
+- **entity grain**：两侧分别规范化为 bridge relation，再按稳定 element key JOIN。人员和群组以 `id` 连接、以 `name` 展示；Select 以名称作为元素键，仅当字段共享同一业务值域时才可连接。
 
 使用列 `stats` 中的 `empty_count`、`avg_length` 和 `max_length` 做 expansion cardinality 与数据倾斜预估：单数组 inner expansion 的估算行数为 `records_count × avg_length`，outer expansion 还需加上 `empty_count`；结合 `max_length` 识别极端 fan-out 或 hot record。任务确实需要元素粒度且估算规模可控时，可以直接展开。
 
@@ -144,7 +152,7 @@ Base 的反范式宽表会把零到多个 Select、人员、群组、Link 或附
 
 同一 source record 中的独立数组默认建立为彼此独立的 lateral pipeline，分别展开并聚合回 target grain 后再连接，避免 many-to-many fan-out 和重复计量。只有问题明确要求分析元素组合或共现时，才同时展开形成 row-local Cartesian product。
 
-两个数组同时展开的准确 cardinality 为 `Σᵢ(|Aᵢ| × |Bᵢ|)`；可用 `records_count × avg_length_a × avg_length_b` 估算执行规模，并结合两列的 `max_length` 判断极端 fan-out。平均长度乘积不反映列间相关性，只用于成本估算。仅当 schema 明确声明两个数组具有位置对应语义时，才按 ordinality ZIP。
+两个数组同时展开的准确 cardinality 为 `Σᵢ(|Aᵢ| × |Bᵢ|)`；可用 `records_count × avg_length_a × avg_length_b` 估算执行规模，并结合两列的 `max_length` 判断极端 fan-out。平均长度乘积不反映列间相关性，只用于成本估算。Base schema 不提供不同多值列之间的 positional contract；仅当额外业务契约明确声明位置对应语义时，才按 ordinality ZIP。
 
 ### Link：跨表 adjacency list
 
