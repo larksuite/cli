@@ -18,7 +18,6 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-// newCallAPITypedRuntime creates an isolated runtime for typed API-call tests.
 func newCallAPITypedRuntime(t *testing.T) (*RuntimeContext, *httpmock.Registry) {
 	t.Helper()
 	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_x"}
@@ -126,7 +125,10 @@ func TestAPIClassifyContext(t *testing.T) {
 	}
 }
 
-// TestDoAPIJSONTyped_HTTPErrorWithZeroBodyCodeNotSwallowed pins that an HTTP status
+// TestCallAPITyped_NonJSON5xx pins that a non-JSON HTTP 5xx (e.g. a gateway 502
+// text/html page) is a retryable network/server_error carrying the header
+// log_id — not a mis-parsed internal/invalid_response.
+// TestDoAPIJSON_HTTPErrorWithZeroBodyCodeNotSwallowed pins that an HTTP status
 // error whose body omits a non-zero business code (e.g. 400 + {"code":0,...})
 // still surfaces a typed error. BuildAPIError treats code 0 as success and
 // returns nil, so the HTTP-status fallback must kick in — otherwise a 4xx
@@ -160,7 +162,6 @@ func TestDoAPIJSONTyped_HTTPErrorWithZeroBodyCodeNotSwallowed(t *testing.T) {
 	}
 }
 
-// TestCallAPITyped_NonJSON5xx verifies classification of non-JSON server failures.
 func TestCallAPITyped_NonJSON5xx(t *testing.T) {
 	rt, reg := newCallAPITypedRuntime(t)
 	reg.Register(&httpmock.Stub{
@@ -252,7 +253,6 @@ func TestDoAPIJSONTyped_Success(t *testing.T) {
 	}
 }
 
-// TestDoAPIJSONTyped_RawClientErrorBecomesTypedInternal verifies classification of raw client failures.
 func TestDoAPIJSONTyped_RawClientErrorBecomesTypedInternal(t *testing.T) {
 	rt := TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+x"}, &core.CliConfig{}, nil, core.AsUser)
 	rt.apiClientFunc = func() (*client.APIClient, error) {
@@ -286,21 +286,5 @@ func TestDoAPIJSONTyped_NonZeroCode(t *testing.T) {
 	}
 	if p.LogID != "lz" {
 		t.Errorf("LogID = %q, want lz", p.LogID)
-	}
-}
-
-// TestRuntimeContextMarkFileEventReported verifies that a runtime records the file event only once.
-func TestRuntimeContextMarkFileEventReported(t *testing.T) {
-	rt := &RuntimeContext{}
-	if !rt.MarkFileEventReported() {
-		t.Fatal("first mark should report")
-	}
-	if rt.MarkFileEventReported() {
-		t.Fatal("second mark should be skipped")
-	}
-
-	var nilRT *RuntimeContext
-	if nilRT.MarkFileEventReported() {
-		t.Fatal("nil receiver should not report")
 	}
 }

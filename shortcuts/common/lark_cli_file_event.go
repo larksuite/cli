@@ -60,9 +60,9 @@ func IsTenantCapacityExceeded(err error) bool {
 	}
 }
 
-// ReportUploadFileEvent best-effort reports a successful upload file event once
-// per RuntimeContext. The report call's failure is swallowed; it never affects
-// the caller's success path.
+// ReportUploadFileEvent best-effort reports a successful upload file event. The
+// report call's failure is swallowed; it never affects the caller's success
+// path.
 func ReportUploadFileEvent(runtime *RuntimeContext, meta LarkCLIFileEventMeta) {
 	if runtime == nil {
 		return
@@ -70,18 +70,15 @@ func ReportUploadFileEvent(runtime *RuntimeContext, meta LarkCLIFileEventMeta) {
 	if strings.TrimSpace(meta.Status) == "" {
 		meta.Status = uploadFileEventStatusSuccess
 	}
-	if !runtime.MarkFileEventReported() {
-		return
-	}
 	_ = postUploadFileEvent(runtime, meta)
 }
 
-// ReportUploadFileEventOnError best-effort reports a failed upload once per
-// RuntimeContext, then returns the original uploadErr. The report call's own
-// failure never replaces uploadErr. When uploadErr is a tenant-capacity-exceeded
-// error, the capacity-expansion URL carried by the report response's msg is
-// appended to its .hint (only when the report returns a non-empty msg), without
-// altering type / subtype / code / message.
+// ReportUploadFileEventOnError best-effort reports a failed upload, then returns
+// the original uploadErr. The report call's own failure never replaces
+// uploadErr. When uploadErr is a tenant-capacity-exceeded error, the
+// capacity-expansion URL carried by the report response's msg is appended to
+// its .hint (only when the report returns a non-empty msg), without altering
+// type / subtype / code / message.
 func ReportUploadFileEventOnError(runtime *RuntimeContext, uploadErr error, meta LarkCLIFileEventMeta) error {
 	if uploadErr == nil {
 		return nil
@@ -95,7 +92,7 @@ func ReportUploadFileEventOnError(runtime *RuntimeContext, uploadErr error, meta
 		}
 	}
 	var reportMsg string
-	if runtime != nil && runtime.MarkFileEventReported() {
+	if runtime != nil {
 		reportMsg = postUploadFileEvent(runtime, meta)
 	}
 	return appendTenantCapacityHint(uploadErr, reportMsg)

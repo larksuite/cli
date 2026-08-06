@@ -88,8 +88,8 @@ func TestIsTenantCapacityExceeded(t *testing.T) {
 	}
 }
 
-// TestReportUploadFileEvent_Success_ReportsOnceWithMinimalBody verifies the successful report contract and once-only behavior.
-func TestReportUploadFileEvent_Success_ReportsOnceWithMinimalBody(t *testing.T) {
+// TestReportUploadFileEvent_Success_ReportsEveryCallWithMinimalBody verifies the successful report contract without command-level deduplication.
+func TestReportUploadFileEvent_Success_ReportsEveryCallWithMinimalBody(t *testing.T) {
 	runtime, reg := newUploadFileEventRuntime(t)
 	reportStub := registerReportStub(t, reg, 0)
 
@@ -104,8 +104,8 @@ func TestReportUploadFileEvent_Success_ReportsOnceWithMinimalBody(t *testing.T) 
 	ReportUploadFileEvent(runtime, meta)
 	ReportUploadFileEvent(runtime, meta)
 
-	if len(reportStub.CapturedBodies) != 1 {
-		t.Fatalf("report call count = %d, want 1", len(reportStub.CapturedBodies))
+	if len(reportStub.CapturedBodies) != 2 {
+		t.Fatalf("report call count = %d, want 2", len(reportStub.CapturedBodies))
 	}
 	body := decodeCapturedDriveMediaJSONBody(t, reportStub)
 	assertReportEnvelope(t, body)
@@ -170,8 +170,8 @@ func TestReportUploadFileEventOnError_ReportsAndPreservesError(t *testing.T) {
 	if returned != uploadErr {
 		t.Fatalf("second call changed error: got %v want original %v", returned, uploadErr)
 	}
-	if len(reportStub.CapturedBodies) != 1 {
-		t.Fatalf("report call count = %d, want 1", len(reportStub.CapturedBodies))
+	if len(reportStub.CapturedBodies) != 2 {
+		t.Fatalf("report call count = %d, want 2", len(reportStub.CapturedBodies))
 	}
 	tags := assertTagsObject(t, decodeCapturedDriveMediaJSONBody(t, reportStub))
 	if got := tags["status"]; got != uploadFileEventStatusError {
@@ -308,14 +308,10 @@ func TestReportUploadFileEventOnError_NonQuotaErrorKeepsHint(t *testing.T) {
 func TestReportUploadFileEventOnError_NilErrorIsNoop(t *testing.T) {
 	runtime, _ := newUploadFileEventRuntime(t)
 
-	// No report stub is registered: a nil upload error must not attempt a
-	// report at all (an unexpected POST would fail with "no stub").
+	// No report stub is registered: a nil upload error must return before
+	// attempting any report request.
 	if err := ReportUploadFileEventOnError(runtime, nil, LarkCLIFileEventMeta{}); err != nil {
 		t.Fatalf("nil upload error should return nil, got %v", err)
-	}
-	// The reporting mark must remain unconsumed, proving no report fired.
-	if !runtime.MarkFileEventReported() {
-		t.Fatal("nil error path must not consume the file-event report mark")
 	}
 }
 
