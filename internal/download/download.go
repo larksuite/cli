@@ -26,6 +26,8 @@ const (
 	DefaultPartRetries = 3
 	// DefaultRetryWaitBudget bounds retry sleeps for one download.
 	DefaultRetryWaitBudget = 3 * time.Second
+	// DefaultIdleTimeout bounds a stalled header or body read without limiting total transfer time.
+	DefaultIdleTimeout = 60 * time.Second
 )
 
 // ByteRange is an inclusive HTTP byte range.
@@ -58,8 +60,9 @@ func (r Request) Headers() http.Header {
 	return headers
 }
 
-// Transport performs one replay-safe fetch. Non-successful HTTP responses
-// must be returned as typed errors with retryability decided at this boundary.
+// Transport performs one replay-safe fetch and binds ctx to the response body.
+// Non-successful HTTP responses must be returned as typed errors with
+// retryability decided at this boundary.
 type Transport func(context.Context, Request) (*http.Response, error)
 
 // Options controls multipart behavior. Zero values select production defaults.
@@ -72,6 +75,9 @@ type Options struct {
 	RetryDelay time.Duration
 	// RetryWaitBudget bounds cumulative retry sleeps. Zero selects the default.
 	RetryWaitBudget time.Duration
+	// IdleTimeout bounds waiting for response headers or one body read. Time
+	// between caller reads does not count. Zero selects the default.
+	IdleTimeout time.Duration
 	// DisableMultipart forces one full response.
 	DisableMultipart bool
 }
@@ -143,7 +149,7 @@ func rangeProbeRejected(err error) bool {
 func fetchWithRetry(ctx context.Context, fetch Transport, request Request, opts Options, retryWait *retryWaitBudget) (*http.Response, error) {
 	var lastErr error
 	for attempt := 0; attempt <= opts.MaxPartRetries; attempt++ {
-		resp, err := fetch(ctx, request)
+		resp, err := fetchWithIdleTimeout(ctx, fetch, request, opts.IdleTimeout)
 		if err == nil {
 			return resp, nil
 		}
@@ -252,6 +258,9 @@ func (o Options) withDefaults() Options {
 	if o.RetryWaitBudget == 0 {
 		o.RetryWaitBudget = DefaultRetryWaitBudget
 	}
+	if o.IdleTimeout == 0 {
+		o.IdleTimeout = DefaultIdleTimeout
+	}
 	return o
 }
 
@@ -273,6 +282,9 @@ func validateOptions(source Source, opts Options) error {
 	}
 	if opts.RetryWaitBudget < 0 {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download retry wait budget cannot be negative, got %s", opts.RetryWaitBudget)
+	}
+	if opts.IdleTimeout < 0 {
+		return errs.NewInternalError(errs.SubtypeUnknown, "download idle timeout cannot be negative, got %s", opts.IdleTimeout)
 	}
 	return nil
 }

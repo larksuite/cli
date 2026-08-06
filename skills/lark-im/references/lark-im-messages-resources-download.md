@@ -49,6 +49,7 @@ When downloading large files, the command automatically uses **HTTP Range reques
 | Subsequent parts | Exact, non-overlapping ranges of up to 8 MiB |
 | Workers | Single-threaded sequential download (ensures reliability) |
 | Retries | Up to 3 retries for transient request or body failures, with exponential backoff |
+| Idle timeout | 60 seconds without response headers or body progress; slow transfers continue while bytes arrive |
 
 **Benefits:**
 - Reduces the impact of transient request failures during large downloads

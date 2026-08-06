@@ -665,6 +665,7 @@ func TestOpenRejectsInvalidConfiguration(t *testing.T) {
 		{name: "negative part retries", source: immutableSource(unusedFetch), opts: Options{MaxPartRetries: -1}},
 		{name: "negative retry delay", source: immutableSource(unusedFetch), opts: Options{RetryDelay: -time.Second}},
 		{name: "negative retry wait budget", source: immutableSource(unusedFetch), opts: Options{RetryWaitBudget: -time.Second}},
+		{name: "negative idle timeout", source: immutableSource(unusedFetch), opts: Options{IdleTimeout: -time.Second}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
