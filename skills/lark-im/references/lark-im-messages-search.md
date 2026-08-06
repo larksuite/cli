@@ -6,8 +6,6 @@ Search Feishu messages across conversations. This shortcut automatically perform
 
 By default each result message also carries a `reactions` block (counts + details from `im.reactions.batch_query`) when the server has reactions for it, and `update_time` for messages that were actually edited. With `--page-all`, every page is enriched; pass `--no-reactions` to skip the extra round-trip. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
 
-> **User identity only** (`--as user`). Bot identity is not supported.
-
 This skill maps to the shortcut: `lark-cli im +messages-search` (internally calls `POST /open-apis/im/v1/messages/search` + batched `GET /open-apis/im/v1/messages/mget`, then batch-fetches chat context).
 
 ## Commands
@@ -84,7 +82,7 @@ lark-cli im +messages-search --query "test" --dry-run
 | `--page-all` | No | Automatically paginate through all result pages (up to 40 pages) |
 | `--page-limit <n>` | No | Max pages to fetch when auto-pagination is enabled (default 20, max 40). Setting it explicitly also enables auto-pagination |
 | `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
-| `--as <identity>` | No | Identity type (defaults to and only supports `user`) |
+| `--as <identity>` | No | Identity type: `user` or `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
 ## Core Constraints

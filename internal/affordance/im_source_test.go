@@ -32,13 +32,7 @@ var imAffordanceExamples = []imAffordanceExample{
 	{method: "+messages-mget", command: "lark-cli im +messages-mget --message-ids om_xxx", source: "lark-im/references/lark-im-messages-mget.md"},
 	{method: "+messages-reply", command: `lark-cli im +messages-reply --message-id om_xxx --text "Received"`, source: "lark-im/references/lark-im-messages-reply.md"},
 	{method: "+messages-resources-download", command: "lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_xxx --type image", source: "lark-im/references/lark-im-messages-resources-download.md"},
-	{
-		method:        "+messages-search",
-		command:       `lark-cli im +messages-search --as user --query "project progress"`,
-		source:        "lark-im/references/lark-im-messages-search.md",
-		sourceCommand: `lark-cli im +messages-search --query "project progress"`,
-		derivation:    "explicit-user",
-	},
+	{method: "+messages-search", command: `lark-cli im +messages-search --query "project progress"`, source: "lark-im/references/lark-im-messages-search.md"},
 	{method: "+messages-send", command: `lark-cli im +messages-send --chat-id oc_xxx --text "Hello"`, source: "lark-im/references/lark-im-messages-send.md"},
 	{method: "+threads-messages-list", command: "lark-cli im +threads-messages-list --thread omt_xxx", source: "lark-im/references/lark-im-threads-messages-list.md"},
 	{method: "+flag-create", command: "lark-cli im +flag-create --as user --message-id om_xxx", source: "lark-im/references/lark-im-flag-create.md"},
@@ -138,11 +132,6 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 				switch tt.derivation {
 				case "materialize-chat-id":
 					materialized = strings.ReplaceAll(materialized, "<chat_id from step 2>", "oc_xxx")
-				case "explicit-user":
-					if !strings.Contains(string(source), "User identity only") {
-						t.Fatal("derived --as user is not backed by the source identity contract")
-					}
-					materialized = strings.Replace(materialized, "+messages-search", "+messages-search --as user", 1)
 				case "first-page":
 					materialized = strings.Replace(materialized, `,"page_token":"<PAGE_TOKEN>"`, "", 1)
 				default:

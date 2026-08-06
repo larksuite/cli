@@ -142,13 +142,13 @@ lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_x
 - `lark-im/references/lark-im-messages-resources-download.md`
 
 ## +messages-search
-Use this user-only shortcut to find messages across conversations by keyword or structured filters.
+Use this to find messages across conversations by keyword or structured filters.
 
 ### Examples
 
 **Search messages by keyword**
 ```bash
-lark-cli im +messages-search --as user --query "project progress"
+lark-cli im +messages-search --query "project progress"
 ```
 
 ### Skills
