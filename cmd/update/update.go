@@ -385,7 +385,7 @@ func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, state
 	layout, _ := skillscheck.ParseLayout(requestedLayout)
 	if !force {
 		if state, ok, err := skillscheck.ReadState(); err == nil && ok && normalizeVersion(state.Version) == normalizeVersion(stateVersion) {
-			if layout == "" || skillscheck.EffectiveLayout(state) == layout {
+			if !state.OfficialSkillsUnknown && (layout == "" || skillscheck.EffectiveLayout(state) == layout) {
 				return nil
 			}
 		}
@@ -447,9 +447,11 @@ func applySkillsStatus(env map[string]interface{}, target string) {
 	status := map[string]interface{}{
 		"current": state.Version,
 		"target":  target,
-		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target),
+		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target) && !state.OfficialSkillsUnknown,
 	}
-	if len(state.OfficialSkills) > 0 {
+	if state.OfficialSkillsUnknown {
+		status["official_unknown"] = true
+	} else if len(state.OfficialSkills) > 0 {
 		status["official"] = len(state.OfficialSkills)
 	}
 	if len(state.UpdatedSkills) > 0 {
@@ -481,11 +483,15 @@ func applySkillsResult(env map[string]interface{}, r *skillscheck.SyncResult) {
 
 func skillsSummary(r *skillscheck.SyncResult) map[string]interface{} {
 	summary := map[string]interface{}{
-		"official":        len(r.Official),
 		"updated":         len(r.Updated),
 		"added":           len(r.Added),
 		"skipped_deleted": len(r.SkippedDeleted),
 		"layout":          r.Layout,
+	}
+	if r.OfficialUnknown {
+		summary["official_unknown"] = true
+	} else {
+		summary["official"] = len(r.Official)
 	}
 	if len(r.Failed) > 0 {
 		summary["failed"] = r.Failed

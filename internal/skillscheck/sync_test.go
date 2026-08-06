@@ -324,6 +324,48 @@ func TestSyncSkillsSeparateUsesGitHubLast(t *testing.T) {
 		t.Fatalf("result = %+v, want warned success", result)
 	}
 	assertStrings(t, runner.installs, []string{"larksuite/cli:*"})
+	if !result.OfficialUnknown || len(result.Official) != 0 {
+		t.Fatalf("result = %+v, want unknown official skills", result)
+	}
+	state, ok, err := ReadState()
+	if err != nil || !ok {
+		t.Fatalf("ReadState() = (%+v, %v, %v)", state, ok, err)
+	}
+	if !state.OfficialSkillsUnknown || len(state.OfficialSkills) != 0 {
+		t.Fatalf("state = %+v, want unknown official skills", state)
+	}
+}
+
+func TestSyncSkillsRetriesOfficialSourcesAfterUnknownFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:               "1.0.33",
+		Layout:                LayoutSeparate,
+		OfficialSkillsUnknown: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    globalSkillsJSONOutput("lark-calendar"),
+	}
+
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	assertStrings(t, runner.installs, []string{"primary:lark-calendar,lark-mail"})
+	if result.OfficialUnknown {
+		t.Fatalf("result = %+v, want trusted official skills", result)
+	}
+	state, _, _ := ReadState()
+	if state.OfficialSkillsUnknown {
+		t.Fatalf("state = %+v, want trusted official skills", state)
+	}
 }
 
 func TestSyncSkillsSuiteDoesNotUseGitHub(t *testing.T) {
@@ -409,6 +451,66 @@ func TestSyncSkillsSuiteFailureKeepsPreviousState(t *testing.T) {
 	if string(afterRaw) != string(beforeRaw) {
 		t.Fatalf("state file changed after failed sync:\ngot  %s\nwant %s", afterRaw, beforeRaw)
 	}
+}
+
+func TestSyncSkillsUnreadableSuiteIsReinstalled(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:        "1.0.32",
+		Layout:         LayoutSuite,
+		OfficialSkills: []string{"lark-calendar", "lark-mail"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	missingSuite := filepath.Join(t.TempDir(), "missing-lark-suite")
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    fmt.Sprintf(`[{"name":"lark-suite","path":%q,"scope":"global"}]`, missingSuite),
+	}
+
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	assertStrings(t, result.Updated, []string{"lark-calendar", "lark-mail"})
+	assertStrings(t, runner.stages, []string{"primary"})
+	if runner.localSuite == "" {
+		t.Fatal("damaged suite was not reinstalled")
+	}
+	state, _, _ := ReadState()
+	if state.Layout != LayoutSuite || state.OfficialSkillsUnknown {
+		t.Fatalf("state = %+v, want trusted suite state", state)
+	}
+}
+
+func TestSyncSkillsMissingSuiteIsReinstalled(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:        "1.0.32",
+		Layout:         LayoutSuite,
+		OfficialSkills: []string{"lark-calendar", "lark-mail"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    `[]`,
+	}
+
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	assertStrings(t, result.Updated, []string{"lark-calendar", "lark-mail"})
+	assertStrings(t, runner.stages, []string{"primary"})
 }
 
 func TestSyncSkillsSuiteStagesCropsAndRemovesSeparate(t *testing.T) {

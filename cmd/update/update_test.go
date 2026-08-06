@@ -1182,6 +1182,42 @@ func TestRunSkillsAndState_RequestedLayoutBypassesVersionDedup(t *testing.T) {
 	}
 }
 
+func TestRunSkillsAndState_UnknownOfficialSkillsBypassesVersionDedup(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{
+		Version:               "1.0.21",
+		Layout:                skillscheck.LayoutSeparate,
+		OfficialSkillsUnknown: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	originalSync := syncSkills
+	defer func() { syncSkills = originalSync }()
+	called := false
+	syncSkills = func(opts skillscheck.SyncOptions) *skillscheck.SyncResult {
+		called = true
+		return &skillscheck.SyncResult{Action: "synced", Layout: skillscheck.LayoutSeparate}
+	}
+
+	got := runSkillsAndState(&selfupdate.Updater{}, newTestIO(), "1.0.21", false, "")
+	if !called || got == nil || got.Err != nil {
+		t.Fatalf("runSkillsAndState() = %+v, called = %v", got, called)
+	}
+}
+
+func TestSkillsSummaryMarksUnknownOfficialSkills(t *testing.T) {
+	summary := skillsSummary(&skillscheck.SyncResult{
+		Layout:          skillscheck.LayoutSeparate,
+		OfficialUnknown: true,
+	})
+	if summary["official_unknown"] != true {
+		t.Fatalf("summary = %+v, want official_unknown=true", summary)
+	}
+	if _, ok := summary["official"]; ok {
+		t.Fatalf("summary = %+v, official count must be omitted when unknown", summary)
+	}
+}
+
 func TestUpdateRejectsInvalidSkillsLayout(t *testing.T) {
 	f, _, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)

@@ -263,17 +263,18 @@ type SyncOptions struct {
 }
 
 type SyncResult struct {
-	Action         string
-	Official       []string
-	Updated        []string
-	Added          []string
-	SkippedDeleted []string
-	Failed         []string
-	Err            error
-	Detail         string
-	Warning        string
-	Layout         Layout
-	Force          bool
+	Action          string
+	Official        []string
+	OfficialUnknown bool
+	Updated         []string
+	Added           []string
+	SkippedDeleted  []string
+	Failed          []string
+	Err             error
+	Detail          string
+	Warning         string
+	Layout          Layout
+	Force           bool
 }
 
 func SyncSkills(opts SyncOptions) *SyncResult {
@@ -299,7 +300,17 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 	}
 	localOfficial, err := localOfficialSkills(installed, previous, readable)
 	if err != nil {
-		return &SyncResult{Action: "failed", Layout: targetLayout, Err: err}
+		// A suite whose installed path or references cannot be read is treated as
+		// absent. Planning from the old state would otherwise produce no updates
+		// and leave the damaged installation in place.
+		localOfficial = nil
+		readable = false
+		previous = nil
+	} else if readable && previous != nil && previous.OfficialSkillsUnknown {
+		// A cold GitHub fallback installed content without a trustworthy official
+		// list. Retry the official sources as a cold sync, even at the same version.
+		readable = false
+		previous = nil
 	}
 
 	reasons := []string{}
@@ -324,7 +335,7 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 			reasons = append(reasons, source+": "+syncErr.Error())
 			continue
 		}
-		return finishSync(opts, targetLayout, plan, "", "")
+		return finishSync(opts, targetLayout, plan, "", "", false)
 	}
 
 	if targetLayout == LayoutSuite {
@@ -395,7 +406,7 @@ func localOfficialSkills(installed []installedSkill, previous *SkillsState, read
 		}
 		return listDirectSubdirs(filepath.Join(skill.Path, "references"))
 	}
-	return []string{}, nil
+	return nil, fmt.Errorf("cannot inspect installed lark-suite: skill is not installed")
 }
 
 func listDirectSubdirs(root string) ([]string, error) {
@@ -445,6 +456,7 @@ func fallbackSeparate(opts SyncOptions, previous *SkillsState, readable bool, lo
 	}
 
 	var installResult *selfupdate.NpmResult
+	officialUnknown := plan == nil
 	if plan == nil {
 		installResult = opts.Runner.InstallAllSkills(githubSkillsSource)
 	} else if len(plan.ToUpdate) > 0 {
@@ -470,31 +482,33 @@ func fallbackSeparate(opts SyncOptions, previous *SkillsState, readable bool, lo
 		plan = &empty
 	}
 	warning := "used the GitHub legacy fallback; installed Skill content may be incomplete because the legacy protocol can ignore individual file download failures"
-	return finishSync(opts, LayoutSeparate, *plan, "fallback_synced", warning)
+	return finishSync(opts, LayoutSeparate, *plan, "fallback_synced", warning, officialUnknown)
 }
 
-func finishSync(opts SyncOptions, layout Layout, plan SyncPlan, action, warning string) *SyncResult {
+func finishSync(opts SyncOptions, layout Layout, plan SyncPlan, action, warning string, officialUnknown bool) *SyncResult {
 	if action == "" {
 		action = "synced"
 	}
 	result := &SyncResult{
-		Action:         action,
-		Official:       plan.OfficialSkills,
-		Updated:        plan.ToUpdate,
-		Added:          plan.Added,
-		SkippedDeleted: plan.SkippedDeleted,
-		Warning:        warning,
-		Layout:         layout,
-		Force:          opts.Force,
+		Action:          action,
+		Official:        plan.OfficialSkills,
+		OfficialUnknown: officialUnknown,
+		Updated:         plan.ToUpdate,
+		Added:           plan.Added,
+		SkippedDeleted:  plan.SkippedDeleted,
+		Warning:         warning,
+		Layout:          layout,
+		Force:           opts.Force,
 	}
 	state := SkillsState{
-		Version:              opts.Version,
-		Layout:               layout,
-		OfficialSkills:       plan.OfficialSkills,
-		UpdatedSkills:        plan.ToUpdate,
-		AddedOfficialSkills:  plan.Added,
-		SkippedDeletedSkills: plan.SkippedDeleted,
-		UpdatedAt:            opts.Now().UTC().Format(time.RFC3339),
+		Version:               opts.Version,
+		Layout:                layout,
+		OfficialSkills:        plan.OfficialSkills,
+		OfficialSkillsUnknown: officialUnknown,
+		UpdatedSkills:         plan.ToUpdate,
+		AddedOfficialSkills:   plan.Added,
+		SkippedDeletedSkills:  plan.SkippedDeleted,
+		UpdatedAt:             opts.Now().UTC().Format(time.RFC3339),
 	}
 	if err := WriteState(state); err != nil {
 		result.Action = "failed"
