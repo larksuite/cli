@@ -564,6 +564,7 @@ payload = {"sheets": [df_to_sheet(df1, "销售"),
 >                        **json.loads(df.to_json(orient="split", date_format="iso"))}]}
 > ```
 > **别把 `to_json + json.loads` 换成 `df.to_dict(orient="split")`**：会留 `numpy.int64` 让 `json.dumps` 后续报 "not serializable"——这一步是清洗的关键。
+> **列名必须是字符串**：整数列名（如未指定表头时 pandas 默认的 0/1/2）会以 JSON 数字进入 `columns` 被 CLI 拒收；inline 写法要先 `df.columns = df.columns.map(str)`。`df_to_sheet` 已自动完成这一步。
 
 不用 pandas 也行——typed 协议就是纯 JSON。手写场景：
 
