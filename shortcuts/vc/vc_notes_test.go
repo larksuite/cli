@@ -22,9 +22,75 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/note"
 )
+
+func TestNotes_UserMissingScopeProjectsInlineHintWithoutChangingExit(t *testing.T) {
+	tests := []struct {
+		name string
+		plan *surface.Plan
+	}{
+		{name: "visible"},
+		{
+			name: "concealed",
+			plan: surface.NewPlan(map[surface.CommandID]surface.CommandState{
+				surface.CommandAuthLogin: surface.CommandConcealed,
+			}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+			f.Recovery = recovery.NewProjector(func() *surface.Plan { return tt.plan })
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/minutes/v1/minutes/tokscope",
+				Body: map[string]interface{}{
+					"code": 99991679,
+					"msg":  "missing scope",
+					"error": map[string]interface{}{
+						"permission_violations": []interface{}{
+							map[string]interface{}{"subject": "minutes:minutes:readonly"},
+						},
+					},
+				},
+			})
+
+			// minute_token itself remains a usable routing payload, so preserve the
+			// command's established ok:true / nil-error behavior.
+			if err := mountAndRun(t, VCNotes, []string{
+				"+notes", "--minute-tokens", "tokscope", "--as", "user", "--format", "json",
+			}, f, stdout); err != nil {
+				t.Fatalf("unexpected exit behavior change: %v", err)
+			}
+
+			var envelope struct {
+				OK   bool `json:"ok"`
+				Data struct {
+					Notes []map[string]interface{} `json:"notes"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatalf("unmarshal stdout: %v\n%s", err, stdout.String())
+			}
+			if !envelope.OK || len(envelope.Data.Notes) != 1 {
+				t.Fatalf("envelope = %#v, want ok:true with one note", envelope)
+			}
+			note := envelope.Data.Notes[0]
+			if got, want := note["hint"], recovery.UserAuthorization("minutes:minutes:readonly").Render(tt.plan); got != want {
+				t.Errorf("note hint = %q, want %q", got, want)
+			}
+			if tt.plan != nil && strings.Contains(note["hint"].(string), "auth login") {
+				t.Errorf("concealed hint leaked auth command: %q", note["hint"])
+			}
+		})
+	}
+}
 
 // ---------------------------------------------------------------------------
 // helpers

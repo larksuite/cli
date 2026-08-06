@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -131,6 +132,7 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 	}
 	msg := getLoginMsg(lang)
+	renderContext := recovery.RenderContext{Profile: f.Invocation.Profile}
 
 	log := func(format string, a ...interface{}) {
 		if !opts.JSON {
@@ -279,13 +281,7 @@ func authLoginRun(opts *LoginOptions) error {
 			"verification_url": authResp.VerificationUriComplete,
 			"device_code":      authResp.DeviceCode,
 			"expires_in":       authResp.ExpiresIn,
-			"hint": "**MUST generate QR code AND display it:** You MUST call lark-cli auth qrcode to convert verification_url into a QR code. This is a required step, do NOT skip it. Prefer PNG QR code (--output); use ASCII (--ascii) only when the user explicitly requests it." +
-				"**CRITICAL: You MUST include the QR image in your response.** Generating the file alone is NOT enough—use image tags, inline images, or file attachments to display it." +
-				"**Display order:** Output the URL first, then place the QR code image below the URL." +
-				"**URL Output Rules:** Treat verification_url as an opaque string that cannot be modified. Do NOT URL-encode/decode or add spaces/punctuation." +
-				"For agent harnesses that only deliver final turn messages, make the QR code image (or URL) the final message of the turn and return control to the user; do not block on --device-code in the same turn. **Before ending the turn, tell the user to come back and notify you after completing authorization.**" +
-				"**After the user confirms authorization:** YOU must execute `lark-cli auth login --device-code <device_code>` yourself." +
-				"**Do NOT cache verification_url or device_code for future use.** Always run `lark-cli auth login --no-wait --json` fresh when authorization is needed.",
+			"hint":             noWaitAgentHint(renderContext),
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
@@ -308,7 +304,7 @@ func authLoginRun(opts *LoginOptions) error {
 			"verification_uri_complete": authResp.VerificationUriComplete,
 			"user_code":                 authResp.UserCode,
 			"expires_in":                authResp.ExpiresIn,
-			"agent_hint":                msg.AgentTimeoutHint,
+			"agent_hint":                msg.AgentTimeoutHint(renderContext),
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
@@ -319,7 +315,7 @@ func authLoginRun(opts *LoginOptions) error {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", authResp.VerificationUriComplete)
 		if f.IOStreams != nil && !f.IOStreams.IsTerminal {
-			fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint)
+			fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(renderContext))
 		}
 	}
 
@@ -412,7 +408,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	// when running on an interactive terminal — the agent-oriented
 	// instructions only matter for piped / harness environments.
 	if !opts.JSON && f.IOStreams != nil && !f.IOStreams.IsTerminal {
-		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint)
+		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(recovery.RenderContext{Profile: f.Invocation.Profile}))
 	}
 	log(msg.WaitingAuth)
 	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,

@@ -4,9 +4,11 @@
 package doc
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -81,20 +83,36 @@ func validateDocsV2Only(runtime *common.RuntimeContext, shortcut string, legacyF
 	if len(replacements) > 0 {
 		detail += "; " + strings.Join(replacements, "; ")
 	}
-	return docsV2OnlyError(shortcut, detail, used[0])
+	return docsV2OnlyError(runtime, shortcut, detail, used[0])
 }
 
-func docsV2OnlyError(shortcut, detail, param string) error {
+func docsV2OnlyError(runtime *common.RuntimeContext, shortcut, detail, param string) error {
 	helpCommand := "lark-cli docs " + shortcut + " --help"
 	err := errs.NewValidationError(
 		errs.SubtypeInvalidArgument,
-		"docs %s is v2-only; %s. Run `%s` for the latest command flags",
+		"docs %s is v2-only; %s",
 		shortcut,
 		detail,
-		helpCommand,
 	)
 	if param != "" {
 		err = err.WithParam(param)
 	}
-	return err
+
+	parts := []recovery.Part{
+		recovery.Text(fmt.Sprintf("run `%s` for the latest command flags", helpCommand)),
+	}
+	if runtime != nil {
+		if refs := runtime.ResolveAffordanceSkillReferences(); len(refs) > 0 {
+			commands := make([]string, 0, len(refs))
+			for _, ref := range refs {
+				commands = append(commands, "`lark-cli skills read "+ref+"`")
+			}
+			parts = append(parts, recovery.Command(
+				recovery.TargetSkillsRead,
+				"read the version-matched embedded guidance before retrying: "+strings.Join(commands, ", ")+
+					"; do not inspect another local SKILL.md copy",
+			))
+		}
+	}
+	return recovery.Attach(err, recovery.Join("; ", parts...))
 }

@@ -6,7 +6,6 @@ package auth
 import (
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -170,6 +169,7 @@ func TestAuthCheckRun_ConcealedLoginOmitsSuggestion(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	cfg := &core.CliConfig{
 		AppID:      "test-app",
@@ -203,8 +203,9 @@ func TestAuthCheckRun_ConcealedLoginOmitsSuggestion(t *testing.T) {
 	if err := json.Unmarshal(visibleStdout.Bytes(), &visiblePayload); err != nil {
 		t.Fatalf("default stdout must be valid JSON: %v", err)
 	}
-	if suggestion, _ := visiblePayload["suggestion"].(string); !strings.Contains(suggestion, "auth login") {
-		t.Fatalf("default output lost established login suggestion: %#v", visiblePayload)
+	const wantSuggestion = "run `lark-cli auth login --scope \"calendar:calendar:read\" --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login"
+	if suggestion, _ := visiblePayload["suggestion"].(string); suggestion != wantSuggestion {
+		t.Fatalf("default suggestion = %q, want executable split-flow recovery %q", suggestion, wantSuggestion)
 	}
 
 	f, stdout, stderr, _ := cmdutil.TestFactory(t, cfg)

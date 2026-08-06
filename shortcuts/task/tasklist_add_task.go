@@ -73,17 +73,18 @@ var AddTaskToTasklist = common.Shortcut{
 
 			data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/"+url.PathEscape(taskId)+"/add_tasklist", params, body)
 			if err != nil {
+				presented := runtime.PresentError(err)
 				failDetail := map[string]interface{}{
 					"guid": taskId,
 				}
-				if p, ok := errs.ProblemOf(err); ok {
+				if p, ok := errs.ProblemOf(presented); ok {
 					failDetail["type"] = string(p.Subtype)
 					failDetail["code"] = p.Code
 					failDetail["message"] = p.Message
 					failDetail["hint"] = p.Hint
 				} else {
 					failDetail["type"] = "api_error"
-					failDetail["message"] = err.Error()
+					failDetail["message"] = presented.Error()
 				}
 				failed = append(failed, failDetail)
 			} else {

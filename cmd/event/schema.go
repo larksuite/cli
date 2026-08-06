@@ -11,75 +11,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	eventlib "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/schemas"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/output"
 )
 
-// resolveSchemaJSON returns the final JSON Schema for an EventKey (reflected base, V2-wrapped for Native, overlay applied); orphans lists unresolved FieldOverrides pointers.
-func resolveSchemaJSON(def *eventlib.KeyDefinition) (json.RawMessage, []string, error) {
-	spec, isNative := pickSpec(def.Schema)
-	if spec == nil {
-		return nil, nil, nil
-	}
-
-	base, err := renderSpec(spec)
-	if err != nil {
-		return nil, nil, err
-	}
-	if base == nil {
-		return nil, nil, nil
-	}
-
-	if isNative {
-		base = schemas.WrapV2Envelope(base)
-	}
-
-	if len(def.Schema.FieldOverrides) > 0 {
-		var parsed map[string]interface{}
-		if err := json.Unmarshal(base, &parsed); err != nil {
-			return nil, nil, errs.NewInternalError(errs.SubtypeUnknown,
-				"parse base schema for field overrides: %s", err).WithCause(err)
-		}
-		orphans := schemas.ApplyFieldOverrides(parsed, def.Schema.FieldOverrides)
-		out, err := json.Marshal(parsed)
-		if err != nil {
-			return nil, nil, errs.NewInternalError(errs.SubtypeUnknown,
-				"serialize schema with field overrides: %s", err).WithCause(err)
-		}
-		return out, orphans, nil
-	}
-
-	return base, nil, nil
-}
-
-// pickSpec returns the non-nil spec and whether it is Native (requires V2 envelope wrap).
-func pickSpec(s eventlib.SchemaDef) (*eventlib.SchemaSpec, bool) {
-	if s.Native != nil {
-		return s.Native, true
-	}
-	if s.Custom != nil {
-		return s.Custom, false
-	}
-	return nil, false
-}
-
-// renderSpec produces a JSON Schema from Type (reflected) or Raw (copied).
-func renderSpec(s *eventlib.SchemaSpec) (json.RawMessage, error) {
-	if s.Type != nil {
-		return schemas.FromType(s.Type), nil
-	}
-	if len(s.Raw) > 0 {
-		buf := make(json.RawMessage, len(s.Raw))
-		copy(buf, s.Raw)
-		return buf, nil
-	}
-	return nil, errs.NewInternalError(errs.SubtypeUnknown, "schemaSpec has neither Type nor Raw")
-}
-
-func NewCmdSchema(f *cmdutil.Factory) *cobra.Command {
+func NewCmdSchema(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "schema <EventKey>",
@@ -87,7 +25,7 @@ func NewCmdSchema(f *cmdutil.Factory) *cobra.Command {
 		Long:  "Display detailed information about an EventKey including type, events, parameters, and response schema. Use --json for machine-readable output.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSchema(f, args[0], asJSON)
+			return runSchema(f, snap, args[0], asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the EventKey definition + resolved schema as JSON (for AI / scripts)")
@@ -95,14 +33,15 @@ func NewCmdSchema(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
-	def, ok := eventlib.Lookup(key)
+func runSchema(f *cmdutil.Factory, snap *catalog.Snapshot, key string, asJSON bool) error {
+	entry, ok := snap.Resolve(key)
 	if !ok {
-		return unknownEventKeyErr(key)
+		return unknownEventKeyErr(snap, key)
 	}
+	def := entry.Definition()
 
 	if asJSON {
-		return writeSchemaJSON(f, def)
+		return writeSchemaJSON(f, entry)
 	}
 
 	out := f.IOStreams.Out
@@ -170,10 +109,7 @@ func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
 		}
 	}
 
-	resolved, _, err := resolveSchemaJSON(def)
-	if err != nil {
-		return err
-	}
+	resolved := entry.Output().SchemaJSON
 	if resolved != nil {
 		fmt.Fprintf(out, "\nOutput Schema:\n")
 		printIndentedJSON(out, resolved)
@@ -202,30 +138,22 @@ func printIndentedJSON(out io.Writer, raw json.RawMessage) {
 	fmt.Fprintf(out, "  %s\n", string(formatted))
 }
 
+// schemaPayload is the JSON shape of `event schema --json`. It is a named
+// type (not a function-local literal) so the render contract test can walk
+// its fields and reject accidental additions to the public output.
+type schemaPayload struct {
+	*eventlib.KeyDefinition
+	ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
+	JQRootPath     string          `json:"jq_root_path,omitempty"`
+}
+
 // writeSchemaJSON emits the EventKey definition plus resolved schema; jq_root_path tells callers whether fields live at `.` or `.event`.
-func writeSchemaJSON(f *cmdutil.Factory, def *eventlib.KeyDefinition) error {
-	type payload struct {
-		*eventlib.KeyDefinition
-		ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
-		JQRootPath     string          `json:"jq_root_path,omitempty"`
-	}
-	resolved, _, err := resolveSchemaJSON(def)
-	if err != nil {
-		return err
-	}
-	var jqRootPath string
-	if resolved != nil {
-		// Native → V2 envelope ⇒ `.event.xxx`; Custom → flat ⇒ `.`.
-		_, isNative := pickSpec(def.Schema)
-		jqRootPath = "."
-		if isNative {
-			jqRootPath = ".event"
-		}
-	}
-	output.PrintJson(f.IOStreams.Out, payload{
-		KeyDefinition:  def,
-		ResolvedSchema: resolved,
-		JQRootPath:     jqRootPath,
+func writeSchemaJSON(f *cmdutil.Factory, entry *catalog.Entry) error {
+	contract := entry.Output()
+	output.PrintJson(f.IOStreams.Out, schemaPayload{
+		KeyDefinition:  entry.Definition(),
+		ResolvedSchema: contract.SchemaJSON,
+		JQRootPath:     contract.JQRootPath,
 	})
 	return nil
 }

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 func TestKeysBotMenuMetadata(t *testing.T) {
@@ -51,14 +53,15 @@ func TestKeysBotMenuMetadata(t *testing.T) {
 
 func TestBotMenuRegistersCleanly(t *testing.T) {
 	const key = eventTypeBotMenuV6
-	event.UnregisterKeyForTest(key)
-	t.Cleanup(func() { event.UnregisterKeyForTest(key) })
-
-	for _, def := range Keys() {
-		event.RegisterKey(def)
+	snap, err := catalog.Compile(Keys(), catalog.StrategyRefs{
+		catalog.StrategyNone,
+		catalog.StrategyLegacyPreConsume,
+	})
+	if err != nil {
+		t.Fatalf("catalog.Compile(Keys()): %v", err)
 	}
-	if _, ok := event.Lookup(key); !ok {
-		t.Fatalf("event.Lookup(%q) not registered", key)
+	if _, ok := snap.Resolve(key); !ok {
+		t.Fatalf("snap.Resolve(%q): key missing from compiled catalog", key)
 	}
 }
 
@@ -199,12 +202,40 @@ func TestProcessBotMenuMalformedPayload(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 	got, err := processBotMenu(context.Background(), nil, raw, nil)
-	if err != nil {
-		t.Fatalf("Process should swallow parse errors, got %v", err)
+	if !processing.IsDropMalformed(err) {
+		t.Fatalf("malformed payload must be dropped with a malformed marker, got err=%v", err)
 	}
-	if string(got) != "not json" {
-		t.Errorf("malformed fallback output = %q, want original bytes", string(got))
+	if got != nil {
+		t.Errorf("malformed payload must be dropped without output, got %q", string(got))
 	}
+}
+
+// fillCanonicalFromHeader copies the payload envelope header metadata onto
+// the RawEvent canonical fields. Process handlers read event_id, create_time,
+// app_id, and tenant_key from the RawEvent, which the consume pipeline fills
+// from the envelope header before dispatch; tests that hand-build a RawEvent
+// must mirror that so both views agree.
+func fillCanonicalFromHeader(t *testing.T, raw *event.RawEvent) {
+	t.Helper()
+	var envelope struct {
+		Header struct {
+			EventID    string `json:"event_id"`
+			EventType  string `json:"event_type"`
+			CreateTime string `json:"create_time"`
+			AppID      string `json:"app_id"`
+			TenantKey  string `json:"tenant_key"`
+		} `json:"header"`
+	}
+	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
+		t.Fatalf("parse envelope header: %v", err)
+	}
+	raw.EventID = envelope.Header.EventID
+	if envelope.Header.EventType != "" {
+		raw.EventType = envelope.Header.EventType
+	}
+	raw.SourceTime = envelope.Header.CreateTime
+	raw.AppID = envelope.Header.AppID
+	raw.TenantKey = envelope.Header.TenantKey
 }
 
 func runBotMenu(t *testing.T, payload string) BotMenuOutput {
@@ -215,6 +246,7 @@ func runBotMenu(t *testing.T, payload string) BotMenuOutput {
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processBotMenu(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("processBotMenu: %v", err)

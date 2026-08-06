@@ -9,16 +9,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/itchyny/gojq"
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // consumeLoop reads events and dispatches to workers; cancels on terminal sink errors.
@@ -197,11 +200,51 @@ func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *e
 	return nil
 }
 
+// diagnosticErrMaxLen caps how much of a Process error text reaches stderr.
+// Error strings routinely embed input fragments (a parse error quoting the
+// payload, an API response echo), so the diagnostic keeps only a bounded
+// prefix of them.
+const diagnosticErrMaxLen = 200
+
+// truncateDiagnostic bounds s to diagnosticErrMaxLen bytes, backing off to
+// the previous rune boundary so the cut never emits invalid UTF-8, and marks
+// the cut explicitly.
+func truncateDiagnostic(s string) string {
+	if len(s) <= diagnosticErrMaxLen {
+		return s
+	}
+	cut := diagnosticErrMaxLen
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "...(truncated)"
+}
+
 // processAndOutput returns (wrote, err); err non-nil only for sink.Write failures.
 func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *protocol.Event, opts Options, sink Sink, jqCode *gojq.Code) (bool, error) {
-	raw := &event.RawEvent{
-		EventType: evt.EventType,
-		Payload:   evt.Payload,
+	raw := restoreCanonicalEvent(evt, opts.ErrOut, opts.Quiet)
+
+	// On a legacy connection the frame cannot speak to every canonical fact,
+	// so the missing ones are derived from the payload header first — a fact
+	// the header cannot legitimately claim is a conflict like any other.
+	conflict := ""
+	if opts.legacy.enabled {
+		conflict = restoreLegacyMetadata(raw, opts.legacy.appID)
+	}
+
+	// Validate before any domain work: a payload header that contradicts the
+	// canonical metadata means the two sources of truth diverged somewhere on
+	// the delivery path — deliver neither. The diagnostic names identity
+	// facts only; payload content never reaches stderr.
+	if conflict == "" {
+		conflict = checkCanonicalConflict(raw, opts.legacy.enabled)
+	}
+	if conflict != "" {
+		if !opts.Quiet {
+			fmt.Fprintf(opts.ErrOut, "WARN: event %s (%s) dropped: payload header conflicts with canonical metadata (field=%s)\n",
+				raw.EventID, raw.EventType, conflict)
+		}
+		return false, nil
 	}
 
 	// Synchronous Match filter runs before any work (Process / sink write).
@@ -216,7 +259,12 @@ func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *pro
 		result, err = keyDef.Process(ctx, opts.Runtime, raw, opts.Params)
 		if err != nil {
 			if !opts.Quiet {
-				fmt.Fprintf(opts.ErrOut, "WARN: Process error: %v\n", err)
+				if processing.IsDropMalformed(err) {
+					fmt.Fprintf(opts.ErrOut, "WARN: event %s (%s) dropped: malformed payload\n",
+						raw.EventID, raw.EventType)
+				} else {
+					fmt.Fprintf(opts.ErrOut, "WARN: Process error: %s\n", truncateDiagnostic(err.Error()))
+				}
 			}
 			return false, nil
 		}
@@ -245,6 +293,35 @@ func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *pro
 		return false, err
 	}
 	return true, nil
+}
+
+// restoreCanonicalEvent rebuilds the canonical event from the wire frame in
+// full. Every fact the ingress parsed must survive into the domain hooks —
+// restoring only a subset is how processors historically ended up re-parsing
+// the payload header as a second source of truth.
+func restoreCanonicalEvent(evt *protocol.Event, errOut io.Writer, quiet bool) *event.RawEvent {
+	var observed time.Time
+	if evt.ObservedAt != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, evt.ObservedAt); err == nil {
+			observed = parsed
+		} else if !quiet {
+			// A non-empty observed_at that fails to parse is a delivery
+			// defect of the same class as a canonical-metadata conflict:
+			// surface it, keep the event (empty means "missing upstream
+			// timestamp" and stays silent by design).
+			fmt.Fprintf(errOut, "WARN: event %s (%s): malformed observed_at %q ignored: %v\n",
+				evt.EventID, evt.EventType, evt.ObservedAt, err)
+		}
+	}
+	return &event.RawEvent{
+		EventID:    evt.EventID,
+		EventType:  evt.EventType,
+		SourceTime: evt.SourceTime,
+		AppID:      evt.AppID,
+		TenantKey:  evt.TenantKey,
+		Payload:    evt.Payload,
+		Timestamp:  observed,
+	}
 }
 
 // isTerminalSinkError reports if the output channel is permanently broken (EPIPE/ErrClosed).

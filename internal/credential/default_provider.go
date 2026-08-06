@@ -62,15 +62,16 @@ func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) e
 
 // DefaultAccountProvider resolves account from config.json via keychain.
 type DefaultAccountProvider struct {
-	keychain func() keychain.KeychainAccess
-	profile  string
+	keychain      func() keychain.KeychainAccess
+	profile       string
+	profileSource core.ProfileSource
 }
 
-func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string) *DefaultAccountProvider {
+func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string, source core.ProfileSource) *DefaultAccountProvider {
 	if kc == nil {
 		kc = keychain.Default
 	}
-	return &DefaultAccountProvider{keychain: kc, profile: profile}
+	return &DefaultAccountProvider{keychain: kc, profile: profile, profileSource: source}
 }
 
 func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, error) {
@@ -80,7 +81,7 @@ func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, 
 		return nil, core.NotConfiguredError()
 	}
 
-	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile)
+	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile, p.profileSource)
 	if err != nil {
 		return nil, err
 	}

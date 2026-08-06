@@ -316,7 +316,9 @@ These codes remain available to in-process hosts through the wrapped
 rule and shipped-tree summary. Agents consuming a host that explicitly
 enabled concealment should match `error.type == "validation"` and
 `error.subtype == "command_unavailable"` instead of branching on a
-rule-specific reason.
+rule-specific reason. The canonical
+[`validation/command_unavailable` contract](../../errs/ERROR_CONTRACT.md#concealed-commands-validationcommand_unavailable)
+defines its exit code, wire fields, and consumer behavior.
 
 ## Where to go next
 

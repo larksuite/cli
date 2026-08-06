@@ -43,6 +43,12 @@ var ErrNoBaseSkillContent = errors.New("build embeds no base skill content")
 // can direct the integrator to the correct owner.
 var ErrInvalidHostBase = errors.New("host embedded skill content is invalid")
 
+// ErrUnsatisfiedSkillDependency reports that a skill retained by the final
+// composed manifest declares another skill that the manifest does not retain.
+// The resolver never widens Allow or overrides Remove to repair this: an
+// incomplete distribution is a build-integrity error.
+var ErrUnsatisfiedSkillDependency = errors.New("composed skill tree has an unsatisfied required skill")
+
 // Resolution is the build-local result of composing embedded skill assets.
 // Content serves `skills list`/`read`; References projects canonical
 // CLI-authored pointers onto that same tree.
@@ -106,7 +112,11 @@ func ResolveWithReferences(base fs.FS, specs []PluginSkill) (Resolution, error) 
 	if lower == nil && upper == nil {
 		content = nil
 	} else {
-		content = newOverlayFS(lowerSnapshot, upperSnapshot, spec.Remove, spec.Allow)
+		composed := newOverlayFS(lowerSnapshot, upperSnapshot, spec.Remove, spec.Allow)
+		if err := validateRequiredSkills(composed); err != nil {
+			return Resolution{}, fmt.Errorf("plugin %q skill spec: %w", owner, err)
+		}
+		content = composed
 	}
 	refs, err := resolveReferences(content, spec.ReferenceRemaps)
 	if err != nil {
@@ -147,14 +157,14 @@ func distinctOwners(specs []PluginSkill) []string {
 
 type skillTreeSnapshot struct {
 	source fs.FS
-	skills map[string]struct{}
+	skills map[string]skillManifest
 }
 
 // scanSkillTree validates and snapshots a skill tree's top level in one
 // pass. The returned set is the only source used by validation and overlay
 // composition, so a mutable FS cannot swap unvalidated names between phases.
 func scanSkillTree(label string, source fs.FS) (skillTreeSnapshot, error) {
-	snapshot := skillTreeSnapshot{source: source, skills: map[string]struct{}{}}
+	snapshot := skillTreeSnapshot{source: source, skills: map[string]skillManifest{}}
 	if source == nil {
 		return snapshot, nil
 	}
@@ -177,7 +187,11 @@ func scanSkillTree(label string, source fs.FS) (skillTreeSnapshot, error) {
 		if !ok {
 			return snapshot, fmt.Errorf("%s: skill %q is missing SKILL.md", label, name)
 		}
-		snapshot.skills[name] = struct{}{}
+		manifest, err := readSkillManifest(source, name)
+		if err != nil {
+			return snapshot, fmt.Errorf("%s: skill %q has invalid metadata: %w", label, name, err)
+		}
+		snapshot.skills[name] = manifest
 	}
 	return snapshot, nil
 }

@@ -12,7 +12,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -288,9 +288,10 @@ func errorAs(err error, target interface{}) bool {
 
 func TestNewCmdFactories_WireFlags(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "cli_XXXXXXXXXXXXXXXX"})
+	snap := compileCatalog()
 
 	t.Run("consume", func(t *testing.T) {
-		cmd := NewCmdConsume(f)
+		cmd := NewCmdConsume(f, snap)
 		for _, flag := range []string{"param", "jq", "quiet", "output-dir", "max-events", "timeout", "as"} {
 			if cmd.Flags().Lookup(flag) == nil {
 				t.Errorf("consume missing --%s flag", flag)
@@ -320,14 +321,22 @@ func TestNewCmdFactories_WireFlags(t *testing.T) {
 	})
 
 	t.Run("list", func(t *testing.T) {
-		cmd := NewCmdList(f)
+		cmd := NewCmdList(f, snap)
 		if cmd.Flags().Lookup("json") == nil {
 			t.Error("list missing --json flag")
+		}
+		domainFlag := cmd.Flags().Lookup("domain")
+		if domainFlag == nil {
+			t.Fatal("list missing --domain flag")
+		}
+		wantUsage := "Only list EventKeys of this domain. Valid domains: " + strings.Join(snap.Domains(), ", ")
+		if domainFlag.Usage != wantUsage {
+			t.Errorf("--domain usage = %q, want %q", domainFlag.Usage, wantUsage)
 		}
 	})
 
 	t.Run("bus", func(t *testing.T) {
-		cmd := NewCmdBus(f)
+		cmd := NewCmdBus(f, snap)
 		if !cmd.Hidden {
 			t.Error("bus should be hidden (internal daemon entrypoint)")
 		}

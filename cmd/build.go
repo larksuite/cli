@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"io/fs"
+	"strings"
 
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
@@ -20,7 +21,6 @@ import (
 	"github.com/larksuite/cli/cmd/skill"
 	cmdupdate "github.com/larksuite/cli/cmd/update"
 	"github.com/larksuite/cli/cmd/whoami"
-	_ "github.com/larksuite/cli/events"
 	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
@@ -224,9 +224,9 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	}
 	f.SkillContent = embeddedSkillContent
 	runtime := &buildRuntime{Factory: f}
-	runtime.recovery = recovery.NewProjector(func() *surface.Plan {
+	runtime.recovery = recovery.NewProjectorWithContext(func() *surface.Plan {
 		return runtime.surface
-	})
+	}, recovery.RenderContext{Profile: inv.Profile})
 	f.Recovery = runtime.recovery
 	rootCmd := &cobra.Command{
 		Use:     "lark-cli",
@@ -276,7 +276,9 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	rootCmd.AddCommand(doctor.NewCmdDoctorWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(whoami.NewCmdWhoamiWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
-	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
+	rootCmd.AddCommand(schema.NewCmdSchemaWithVisibility(f, func(path []string) bool {
+		return runtime.surface.CanReference(surface.CommandID(strings.Join(path, "/")))
+	}, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
@@ -352,6 +354,16 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	}
 	f.SkillContent = skillResolution.Content
 	runtime.skillReferences = skillResolution.References
+	f.SkillReferences = skillResolution.References
+
+	// Global flags and their environment equivalents belong to the same
+	// distribution capability. Flag tokens are rejected by applyPluginFlagGate;
+	// install the equivalent guard for an environment-origin profile before
+	// hooks, Startup, or business commands can observe the invocation.
+	if installEnvironmentProfileGate(rootCmd, inv, runtime.surface) {
+		recordInventory(installResult)
+		return finalizeFailedBuild(runtime, rootCmd)
+	}
 
 	// Install hooks only on business commands. The concealment-specific help
 	// command is attached afterwards, preserving Cobra's historical contract

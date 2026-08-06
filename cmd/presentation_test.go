@@ -6,6 +6,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -19,7 +20,9 @@ import (
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/internal/update"
@@ -438,6 +441,58 @@ func TestRecoveryRenderingUsesExactBuildLocalSurfaceAndDoesNotMutate(t *testing.
 	}
 }
 
+func TestRecoveryRenderingKeepsExplicitProfilesIsolatedAcrossBuilds(t *testing.T) {
+	tmpHome(t)
+	platform.ResetForTesting()
+	t.Cleanup(platform.ResetForTesting)
+
+	alphaInvocation := buildInvocationForTest(t)
+	alphaInvocation.Profile = "alpha"
+	alphaRuntime, _, _ := buildInternal(context.Background(), alphaInvocation, WithoutPlugins())
+
+	betaInvocation := buildInvocationForTest(t)
+	betaInvocation.Profile = "beta"
+	betaRuntime, _, _ := buildInternal(context.Background(), betaInvocation, WithoutPlugins())
+
+	source := recovery.Attach(
+		errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope").
+			WithMissingScopes("docx:document").
+			WithIdentity("user"),
+		recovery.UserAuthorization("docx:document"),
+	)
+	sourceProblem, _ := errs.ProblemOf(source)
+	if strings.Contains(sourceProblem.Hint, "--profile") {
+		t.Fatalf("producer hint unexpectedly owns an invocation profile: %q", sourceProblem.Hint)
+	}
+
+	assertProfile := func(name string, runtime *buildRuntime, want, unwanted string) {
+		t.Helper()
+		rendered := runtime.recovery.Render(source)
+		problem, ok := errs.ProblemOf(rendered)
+		if !ok {
+			t.Fatalf("%s rendered error = %T, want typed error", name, rendered)
+		}
+		for _, command := range []string{
+			"lark-cli auth login --profile='" + want + "' --scope \"docx:document\" --no-wait --json",
+			"lark-cli auth login --profile='" + want + "' --device-code <device_code>",
+		} {
+			if !strings.Contains(problem.Hint, command) {
+				t.Errorf("%s recovery missing %q: %q", name, command, problem.Hint)
+			}
+		}
+		if strings.Contains(problem.Hint, "--profile='"+unwanted+"'") {
+			t.Errorf("%s recovery leaked profile %q: %q", name, unwanted, problem.Hint)
+		}
+	}
+
+	assertProfile("alpha before beta", alphaRuntime, "alpha", "beta")
+	assertProfile("beta", betaRuntime, "beta", "alpha")
+	assertProfile("alpha after beta", alphaRuntime, "alpha", "beta")
+	if strings.Contains(sourceProblem.Hint, "--profile") {
+		t.Fatalf("build-local rendering mutated source hint: %q", sourceProblem.Hint)
+	}
+}
+
 func TestConcurrentBuildsKeepIndependentSurfacePlans(t *testing.T) {
 	tmpHome(t)
 	registerRestriction(t, []string{"config/init"}, nil)
@@ -587,6 +642,63 @@ func TestExecuteProfileBootstrapPreservesDefaultAndDefersOnlyForOptIn(t *testing
 			t.Fatalf("concealed --profile: exit=%d stderr=%s", code, stderr)
 		}
 	})
+}
+
+func TestExecuteEnvironmentProfileConcealmentFailsBeforeLifecycle(t *testing.T) {
+	tmpHome(t)
+	t.Setenv(envvars.CliProfile, "session")
+	t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "1")
+	t.Setenv("LARKSUITE_CLI_NO_SKILLS_NOTIFIER", "1")
+
+	var startups, shutdowns int
+	registerRestriction(t, []string{"profile", "profile/**"}, func(builder *platform.Builder) *platform.Builder {
+		return builder.
+			On(platform.Startup, "startup", func(context.Context, *platform.LifecycleContext) error {
+				startups++
+				return nil
+			}).
+			On(platform.Shutdown, "shutdown", func(context.Context, *platform.LifecycleContext) error {
+				shutdowns++
+				return nil
+			})
+	})
+
+	code, stdout, stderr := executeWithCapturedOS(
+		t,
+		[]BuildOption{ConcealRestrictedCommands()},
+		"--version",
+	)
+	if code != output.ExitValidation || stdout != "" {
+		t.Fatalf("environment profile gate: exit=%d stdout=%q stderr=%s", code, stdout, stderr)
+	}
+	var envelope struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Type    errs.Category `json:"type"`
+			Subtype errs.Subtype  `json:"subtype"`
+			Message string        `json:"message"`
+			Hint    string        `json:"hint"`
+			Param   string        `json:"param"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(stderr), &envelope); err != nil {
+		t.Fatalf("stderr is not a JSON envelope: %v\n%s", err, stderr)
+	}
+	if envelope.OK ||
+		envelope.Error.Type != errs.CategoryValidation ||
+		envelope.Error.Subtype != errs.SubtypeInvalidArgument ||
+		envelope.Error.Param != envvars.CliProfile {
+		t.Errorf("envelope = %+v, want ok=false validation/invalid_argument param=%s", envelope, envvars.CliProfile)
+	}
+	if want := `environment variable "` + envvars.CliProfile + `" is not supported by this build`; !strings.Contains(envelope.Error.Message, want) {
+		t.Errorf("message = %q, missing %q", envelope.Error.Message, want)
+	}
+	if want := "remove " + envvars.CliProfile + " from the process environment and retry"; !strings.Contains(envelope.Error.Hint, want) {
+		t.Errorf("hint = %q, missing %q", envelope.Error.Hint, want)
+	}
+	if startups != 0 || shutdowns != 0 {
+		t.Fatalf("invalid environment profile emitted lifecycle events: startup=%d shutdown=%d", startups, shutdowns)
+	}
 }
 
 func TestExecuteWithOptionsAppliesEachBuildOptionOnce(t *testing.T) {

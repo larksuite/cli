@@ -144,7 +144,7 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 		if err := m.GitConfig.SetHelper(ctx, url, appID); err != nil {
 			result.ConfigWarning = err.Error()
 		} else if previous != nil && previous.GitHTTPURL != "" && previous.GitHTTPURL != url {
-			if err := m.GitConfig.UnsetHelper(ctx, previous.GitHTTPURL); err != nil {
+			if err := m.GitConfig.UnsetHelper(ctx, previous.GitHTTPURL, previous.AppID); err != nil {
 				result.ConfigWarning = err.Error()
 			}
 		}
@@ -175,7 +175,7 @@ func (m *Manager) Remove(ctx context.Context, profile ProfileContext, appID stri
 			return nil, err
 		}
 		if m.GitConfig != nil {
-			if err := m.GitConfig.UnsetHelper(ctx, record.GitHTTPURL); err != nil {
+			if err := m.GitConfig.UnsetHelper(ctx, record.GitHTTPURL, record.AppID); err != nil {
 				result.ConfigWarning = err.Error()
 			}
 		}

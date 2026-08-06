@@ -132,8 +132,20 @@ func TestConfigShowRun_NoActiveProfileReturnsStructuredError(t *testing.T) {
 	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
 		t.Errorf("exit code = %d, want %d", gotCode, output.ExitAuth)
 	}
-	if !strings.Contains(err.Error(), "no active profile") {
-		t.Fatalf("error = %v, want to contain 'no active profile'", err)
+	// The dangling persisted reference must be named — the generic
+	// "no active profile" wording hid which input was broken.
+	if !strings.Contains(err.Error(), `profile "missing" not found`) {
+		t.Fatalf("error = %v, want the dangling currentApp named", err)
+	}
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("expected *errs.ConfigError, got %T", err)
+	}
+	if cfgErr.Field != "currentApp" {
+		t.Errorf("field = %q, want currentApp", cfgErr.Field)
+	}
+	if strings.Contains(cfgErr.Hint, "config init") {
+		t.Errorf("hint = %q, must not suggest config init while intact profiles exist", cfgErr.Hint)
 	}
 }
 
@@ -609,7 +621,7 @@ func TestConfigShowRun_ProfileHintUsesBuildLocalSurface(t *testing.T) {
 		t.Fatal("Render must clone the typed error")
 	}
 	if strings.Contains(concealed.Hint, "profile list") ||
-		!strings.Contains(concealed.Hint, "select or configure an available profile") {
+		!strings.Contains(concealed.Hint, "select an available profile") {
 		t.Errorf("concealed hint = %q, want target-free profile recovery", concealed.Hint)
 	}
 

@@ -221,6 +221,10 @@ func TestSlidesScreenshotAttributesMixedSelectorAliasesToCallerInput(t *testing.
 			if err == nil {
 				t.Fatal("expected validation error")
 			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
+			}
 			var validationErr *errs.ValidationError
 			if !errors.As(err, &validationErr) {
 				t.Fatalf("error type = %T, want *errs.ValidationError", err)
@@ -466,6 +470,470 @@ func TestSlidesScreenshotListBySlideNumber(t *testing.T) {
 	path := filepath.Join(dir, defaultSlidesScreenshotDir, "pres_abc_p002.png")
 	if _, err := os.ReadFile(path); err != nil {
 		t.Fatalf("read screenshot without slide_id: %v", err)
+	}
+}
+
+func TestSlidesScreenshotOutputWritesRequestedSingleListPath(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	imageBytes := []byte("jpeg-bytes")
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_images": []map[string]interface{}{
+					{
+						"slide_number": 2,
+						"format":       2,
+						"data":         base64.StdEncoding.EncodeToString(imageBytes),
+					},
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "2",
+		"--output", "shots/cover.jpeg",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	path := filepath.Join(dir, "shots", "cover.jpeg")
+	gotBytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read requested output: %v", err)
+	}
+	if string(gotBytes) != string(imageBytes) {
+		t.Fatalf("written bytes = %q, want %q", gotBytes, imageBytes)
+	}
+
+	data := decodeShortcutData(t, stdout)
+	items, ok := data["screenshots"].([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("screenshots = %#v, want one item", data["screenshots"])
+	}
+	item, _ := items[0].(map[string]interface{})
+	gotPath := item["path"].(string)
+	if !filepath.IsAbs(gotPath) || !strings.HasSuffix(gotPath, filepath.Join("shots", "cover.jpeg")) {
+		t.Fatalf("path = %q, want absolute path ending in shots/cover.jpeg", gotPath)
+	}
+	if got := data["output"]; got != gotPath {
+		t.Fatalf("output = %v, want actual path %q", got, gotPath)
+	}
+	if _, ok := data["requested_output"]; ok {
+		t.Fatalf("requested_output must be omitted when the requested path is unchanged: %#v", data)
+	}
+	if _, ok := data["output_adjusted"]; ok {
+		t.Fatalf("output_adjusted must be omitted when the requested path is unchanged: %#v", data)
+	}
+	if _, ok := data["output_dir"]; ok {
+		t.Fatalf("output_dir must be omitted when --output is used: %#v", data)
+	}
+}
+
+func TestSlidesScreenshotOutputRejectsMultipleSelectors(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "1,2",
+		"--output", "shots/cover.jpg",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Param != "--output" {
+		t.Fatalf("error = %#v, want --output validation error", err)
+	}
+	if !strings.Contains(err.Error(), "exactly one slide") {
+		t.Fatalf("error = %v, want single-slide guidance", err)
+	}
+}
+
+func TestSlidesScreenshotOutputRejectsConflictingNamingFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "output-dir",
+			args: []string{"--presentation", "pres_abc", "--slide-number", "1", "--output", "cover.jpg", "--output-dir", "shots"},
+		},
+		{
+			name: "output-name",
+			args: []string{"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`, "--output", "cover.png", "--output-name", "preview"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			args := append([]string{"+screenshot"}, tt.args...)
+			args = append(args, "--as", "user")
+			err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, args)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) || validationErr.Param != "--output" {
+				t.Fatalf("error = %#v, want --output validation error", err)
+			}
+			if !strings.Contains(err.Error(), "cannot be combined") {
+				t.Fatalf("error = %v, want naming flag conflict", err)
+			}
+		})
+	}
+}
+
+func TestSlidesScreenshotOutputRejectsInvalidPath(t *testing.T) {
+	tests := []struct {
+		name            string
+		output          string
+		createDirectory bool
+		wantDirHint     bool
+	}{
+		{name: "unsupported extension", output: "shots/cover.gif"},
+		{name: "path escapes working directory", output: "../cover.jpg"},
+		{name: "directory suffix", output: "shots/", wantDirHint: true},
+		{name: "existing directory", output: "shots", createDirectory: true, wantDirHint: true},
+		{name: "leading whitespace", output: " shots/cover.png"},
+		{name: "trailing whitespace", output: "shots/cover.png "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			withSlidesTestWorkingDir(t, dir)
+			if tt.createDirectory {
+				if err := os.MkdirAll(filepath.Join(dir, tt.output), 0o755); err != nil {
+					t.Fatalf("create output directory: %v", err)
+				}
+			}
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+				"+screenshot",
+				"--presentation", "pres_abc",
+				"--slide-number", "1",
+				"--output", tt.output,
+				"--as", "user",
+			})
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) || validationErr.Param != "--output" {
+				t.Fatalf("error = %#v, want --output validation error", err)
+			}
+			if tt.wantDirHint && !strings.Contains(validationErr.Hint, "--output-dir") {
+				t.Fatalf("hint = %q, want --output-dir guidance", validationErr.Hint)
+			}
+		})
+	}
+}
+
+func TestSlidesScreenshotOutputAdjustsExtensionToResponseFormat(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_images": []map[string]interface{}{
+					{
+						"slide_number": 1,
+						"format":       2,
+						"data":         base64.StdEncoding.EncodeToString([]byte("jpeg-bytes")),
+					},
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "1",
+		"--output", "shots/cover.png",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	actualPath := filepath.Join(dir, "shots", "cover.jpg")
+	if got, readErr := os.ReadFile(actualPath); readErr != nil || string(got) != "jpeg-bytes" {
+		t.Fatalf("adjusted output = %q, err=%v", got, readErr)
+	}
+	actualPath = canonicalSlidesScreenshotTestPath(t, actualPath)
+	if _, statErr := os.Stat(filepath.Join(dir, "shots", "cover.png")); !os.IsNotExist(statErr) {
+		t.Fatalf("requested .png path unexpectedly exists, stat error = %v", statErr)
+	}
+	data := decodeShortcutData(t, stdout)
+	if got := data["requested_output"]; got != "shots/cover.png" {
+		t.Fatalf("requested_output = %v, want shots/cover.png", got)
+	}
+	if got := data["output"]; got != actualPath {
+		t.Fatalf("output = %v, want %q", got, actualPath)
+	}
+	if got := data["output_adjusted"]; got != true {
+		t.Fatalf("output_adjusted = %v, want true", got)
+	}
+}
+
+func TestSlidesScreenshotOutputAppendsResponseExtensionWhenMissing(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_images": []map[string]interface{}{{
+					"slide_number": 1,
+					"format":       1,
+					"data":         base64.StdEncoding.EncodeToString([]byte("png-bytes")),
+				}},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "1",
+		"--output", "shots/cover",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	actualPath := filepath.Join(dir, "shots", "cover.png")
+	if got, readErr := os.ReadFile(actualPath); readErr != nil || string(got) != "png-bytes" {
+		t.Fatalf("output = %q, err=%v", got, readErr)
+	}
+	actualPath = canonicalSlidesScreenshotTestPath(t, actualPath)
+	data := decodeShortcutData(t, stdout)
+	if data["requested_output"] != "shots/cover" || data["output"] != actualPath || data["output_adjusted"] != true {
+		t.Fatalf("adjusted output metadata = %#v", data)
+	}
+}
+
+func TestSlidesScreenshotOutputAvoidsExistingPath(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, "shots"), 0o755); err != nil {
+		t.Fatalf("create output dir: %v", err)
+	}
+	existingPath := filepath.Join(dir, "shots", "cover.jpg")
+	if err := os.WriteFile(existingPath, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("write existing output: %v", err)
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_images": []map[string]interface{}{
+					{
+						"slide_number": 1,
+						"format":       2,
+						"data":         base64.StdEncoding.EncodeToString([]byte("new-jpeg")),
+					},
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "1",
+		"--output", "shots/cover.jpg",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, err := os.ReadFile(existingPath); err != nil || string(got) != "existing" {
+		t.Fatalf("existing output = %q, err=%v", got, err)
+	}
+	actualPath := filepath.Join(dir, "shots", "cover_2.jpg")
+	if got, readErr := os.ReadFile(actualPath); readErr != nil || string(got) != "new-jpeg" {
+		t.Fatalf("deduplicated output = %q, err=%v", got, readErr)
+	}
+	actualPath = canonicalSlidesScreenshotTestPath(t, actualPath)
+	data := decodeShortcutData(t, stdout)
+	if data["requested_output"] != "shots/cover.jpg" || data["output"] != actualPath || data["output_adjusted"] != true {
+		t.Fatalf("adjusted output metadata = %#v", data)
+	}
+}
+
+func TestSlidesScreenshotOutputAdjustsFormatBeforeAvoidingExistingPath(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, "shots"), 0o755); err != nil {
+		t.Fatalf("create output dir: %v", err)
+	}
+	existingPath := filepath.Join(dir, "shots", "cover.png")
+	if err := os.WriteFile(existingPath, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("write existing output: %v", err)
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_images": []map[string]interface{}{{
+					"slide_number": 1,
+					"format":       1,
+					"data":         base64.StdEncoding.EncodeToString([]byte("new-png")),
+				}},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "1",
+		"--output", "shots/cover.jpg",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, err := os.ReadFile(existingPath); err != nil || string(got) != "existing" {
+		t.Fatalf("existing output = %q, err=%v", got, err)
+	}
+	actualPath := filepath.Join(dir, "shots", "cover_2.png")
+	if got, readErr := os.ReadFile(actualPath); readErr != nil || string(got) != "new-png" {
+		t.Fatalf("deduplicated output = %q, err=%v", got, readErr)
+	}
+	actualPath = canonicalSlidesScreenshotTestPath(t, actualPath)
+	data := decodeShortcutData(t, stdout)
+	if data["requested_output"] != "shots/cover.jpg" || data["output"] != actualPath || data["output_adjusted"] != true {
+		t.Fatalf("adjusted output metadata = %#v", data)
+	}
+}
+
+func TestSetSlidesScreenshotResultOutputUsesPreResolvedRequestedPath(t *testing.T) {
+	result := map[string]interface{}{}
+	target := slidesScreenshotOutputTarget{
+		requested:         "shots/cover.png",
+		requestedResolved: filepath.Join(string(filepath.Separator), "work", "shots", "cover.png"),
+	}
+	actualPath := filepath.Join(string(filepath.Separator), "work", "shots", "cover.jpg")
+	setSlidesScreenshotResultOutput(result, target, []map[string]interface{}{{"path": actualPath}})
+
+	if result["output"] != actualPath || result["requested_output"] != target.requested || result["output_adjusted"] != true {
+		t.Fatalf("result = %#v, want adjustment metadata from pre-resolved requested path", result)
+	}
+}
+
+func canonicalSlidesScreenshotTestPath(t *testing.T, path string) string {
+	t.Helper()
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatalf("canonicalize %s: %v", path, err)
+	}
+	return canonical
+}
+
+func TestSlidesScreenshotOutputNameRejectsListMode(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "1",
+		"--output-name", "cover",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem = %#v, want validation/invalid_argument", problem)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Param != "--output-name" {
+		t.Fatalf("error = %#v, want --output-name validation error", err)
+	}
+	if !strings.Contains(err.Error(), "--output") {
+		t.Fatalf("error = %v, want migration guidance", err)
+	}
+}
+
+func TestSlidesScreenshotOutputRejectsMultipleResponseImagesBeforeWriting(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_images": []map[string]interface{}{
+					{"slide_number": 1, "format": 2, "data": base64.StdEncoding.EncodeToString([]byte("one"))},
+					{"slide_number": 2, "format": 2, "data": base64.StdEncoding.EncodeToString([]byte("two"))},
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "1",
+		"--output", "shots/cover.jpg",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected invalid response error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("problem = %#v, want api/invalid_response", problem)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "shots", "cover.jpg")); !os.IsNotExist(statErr) {
+		t.Fatalf("output file exists after multi-image response, stat error = %v", statErr)
 	}
 }
 
@@ -835,6 +1303,49 @@ func TestSlidesScreenshotRenderContentWritesFile(t *testing.T) {
 	}
 }
 
+func TestSlidesScreenshotOutputWritesRequestedRenderPath(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	imageBytes := []byte("rendered-png")
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/slide_image/render",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"slide_image": map[string]interface{}{
+					"format": 1,
+					"data":   base64.StdEncoding.EncodeToString(imageBytes),
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+		"--output", "shots/preview.jpg",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	actualPath := filepath.Join(dir, "shots", "preview.png")
+	if got, err := os.ReadFile(actualPath); err != nil || string(got) != string(imageBytes) {
+		t.Fatalf("render output = %q, err=%v", got, err)
+	}
+	actualPath = canonicalSlidesScreenshotTestPath(t, actualPath)
+	data := decodeShortcutData(t, stdout)
+	if data["requested_output"] != "shots/preview.jpg" || data["output"] != actualPath || data["output_adjusted"] != true {
+		t.Fatalf("adjusted render output metadata = %#v", data)
+	}
+	if _, ok := data["output_dir"]; ok {
+		t.Fatalf("output_dir must be omitted with --output: %#v", data)
+	}
+}
+
 func TestSlidesScreenshotRenderRejectsSlideSelectors(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 
@@ -960,6 +1471,7 @@ func TestSlidesScreenshotDryRunSelectsListOrRenderAPI(t *testing.T) {
 		err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
 			"+screenshot",
 			"--content", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data></data></slide>`,
+			"--output", "shots/preview.png",
 			"--dry-run",
 			"--as", "user",
 		})
@@ -973,7 +1485,34 @@ func TestSlidesScreenshotDryRunSelectsListOrRenderAPI(t *testing.T) {
 		if !strings.Contains(out, "base64_output") {
 			t.Fatalf("dry-run missing base64 suppression note: %s", out)
 		}
+		if !strings.Contains(out, `"output": "shots/preview.png"`) {
+			t.Fatalf("dry-run missing requested output: %s", out)
+		}
+		if strings.Contains(out, `"output_dir"`) {
+			t.Fatalf("dry-run output_dir must be omitted with --output: %s", out)
+		}
 	})
+}
+
+func TestSlidesScreenshotDryRunReportsRequestedOutput(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "2",
+		"--output", "shots/cover.jpg",
+		"--dry-run",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"output": "shots/cover.jpg"`) {
+		t.Fatalf("dry-run output = %s, want requested output path", stdout.String())
+	}
+	if strings.Contains(stdout.String(), `"output_dir"`) {
+		t.Fatalf("dry-run output = %s, output_dir must be omitted with --output", stdout.String())
+	}
 }
 
 func TestSlidesScreenshotRejectsBadOutputDir(t *testing.T) {

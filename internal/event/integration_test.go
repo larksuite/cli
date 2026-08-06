@@ -20,17 +20,31 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 	"github.com/larksuite/cli/internal/event/bus"
-	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/source"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/testutil"
-	"github.com/larksuite/cli/internal/event/transport"
 )
 
 type integTestOut struct{ A string }
 
 func integNativeSchema() event.SchemaDef {
 	return event.SchemaDef{Native: &event.SchemaSpec{Type: reflect.TypeOf(integTestOut{})}}
+}
+
+// compileTestSnapshot compiles synthetic declarations into the snapshot a
+// bus or consumer under test is handed, replacing the removed global registry.
+func compileTestSnapshot(t *testing.T, defs ...event.KeyDefinition) *catalog.Snapshot {
+	t.Helper()
+	snap, err := catalog.Compile(defs, catalog.StrategyRefs{
+		catalog.StrategyNone,
+		catalog.StrategyLegacyPreConsume,
+	})
+	if err != nil {
+		t.Fatalf("compile test catalog: %v", err)
+	}
+	return snap
 }
 
 func waitForBusReady(t *testing.T, tr transport.IPC, addr string) {
@@ -69,7 +83,7 @@ type mockIntegSource struct {
 
 func (s *mockIntegSource) Name() string { return "mock-integration" }
 
-func (s *mockIntegSource) Start(ctx context.Context, _ []string, emit func(*event.RawEvent), _ source.StatusNotifier) error {
+func (s *mockIntegSource) Start(ctx context.Context, _ []string, emit func(*event.RawEvent), _ func(state, detail string)) error {
 	s.mu.Lock()
 	s.emitFn = emit
 	s.mu.Unlock()
@@ -87,17 +101,14 @@ func (s *mockIntegSource) emit(e *event.RawEvent) {
 }
 
 func TestIntegration_BusToConsume(t *testing.T) {
-	event.ResetRegistryForTest()
-	source.ResetForTest()
 
-	event.RegisterKey(event.KeyDefinition{
+	snap := compileTestSnapshot(t, event.KeyDefinition{
 		Key:       "test.event.v1",
 		EventType: "test.event.v1",
 		Schema:    integNativeSchema(),
 	})
 
 	mockSrc := &mockIntegSource{}
-	source.Register(mockSrc)
 
 	dir := t.TempDir()
 	addr := filepath.Join(dir, "t.sock")
@@ -106,7 +117,7 @@ func TestIntegration_BusToConsume(t *testing.T) {
 	logger := log.New(os.Stderr, "[test-bus] ", log.LstdFlags)
 
 	testTr := testutil.NewWrappedFake(tr, addr)
-	b := bus.NewBus("test-app", "test-secret", "", testTr, logger)
+	b := bus.NewBus("test-app", "test-secret", "", testTr, logger, snap, mockSrc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -185,17 +196,14 @@ func TestIntegration_BusToConsume(t *testing.T) {
 }
 
 func TestIntegration_MultipleConsumers(t *testing.T) {
-	event.ResetRegistryForTest()
-	source.ResetForTest()
 
-	event.RegisterKey(event.KeyDefinition{
+	snap := compileTestSnapshot(t, event.KeyDefinition{
 		Key:       "multi.event.v1",
 		EventType: "multi.event.v1",
 		Schema:    integNativeSchema(),
 	})
 
 	mockSrc := &mockIntegSource{}
-	source.Register(mockSrc)
 
 	dir := t.TempDir()
 	addr := filepath.Join(dir, "m.sock")
@@ -203,7 +211,7 @@ func TestIntegration_MultipleConsumers(t *testing.T) {
 	logger := log.New(os.Stderr, "[test-multi] ", log.LstdFlags)
 
 	testTr := testutil.NewWrappedFake(tr, addr)
-	b := bus.NewBus("test-multi", "test-secret", "", testTr, logger)
+	b := bus.NewBus("test-multi", "test-secret", "", testTr, logger, snap, mockSrc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -279,17 +287,14 @@ func TestIntegration_MultipleConsumers(t *testing.T) {
 }
 
 func TestIntegration_DedupFilter(t *testing.T) {
-	event.ResetRegistryForTest()
-	source.ResetForTest()
 
-	event.RegisterKey(event.KeyDefinition{
+	snap := compileTestSnapshot(t, event.KeyDefinition{
 		Key:       "dedup.event.v1",
 		EventType: "dedup.event.v1",
 		Schema:    integNativeSchema(),
 	})
 
 	mockSrc := &mockIntegSource{}
-	source.Register(mockSrc)
 
 	dir := t.TempDir()
 	addr := filepath.Join(dir, "d.sock")
@@ -297,7 +302,7 @@ func TestIntegration_DedupFilter(t *testing.T) {
 	logger := log.New(os.Stderr, "[test-dedup] ", log.LstdFlags)
 
 	testTr := testutil.NewWrappedFake(tr, addr)
-	b := bus.NewBus("test-dedup", "test-secret", "", testTr, logger)
+	b := bus.NewBus("test-dedup", "test-secret", "", testTr, logger, snap, mockSrc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

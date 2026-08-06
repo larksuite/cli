@@ -36,21 +36,22 @@ import (
 
 // RuntimeContext provides helpers for shortcut execution.
 type RuntimeContext struct {
-	ctx           context.Context // from cmd.Context(), propagated through the call chain
-	Config        *core.CliConfig
-	Cmd           *cobra.Command
-	Format        string
-	JqExpr        string                            // --jq expression; empty = no filter
-	outputErrOnce sync.Once                         // guards first-error capture in Out()/OutFormat()
-	outputErr     error                             // deferred error from jq filtering; written at most once
-	botOnly       bool                              // set by framework for bot-only shortcuts
-	resolvedAs    core.Identity                     // effective identity resolved by framework
-	Factory       *cmdutil.Factory                  // injected by framework
-	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
-	botInfoFunc   func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
-	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
-	stdinConsumed bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
-	inputResolved map[string]bool                   // flags whose value was replaced by @file / stdin content in resolveInputFlags; see InputResolvedFromSource
+	ctx            context.Context // from cmd.Context(), propagated through the call chain
+	Config         *core.CliConfig
+	Cmd            *cobra.Command
+	Format         string
+	JqExpr         string                            // --jq expression; empty = no filter
+	outputErrOnce  sync.Once                         // guards first-error capture in Out()/OutFormat()
+	outputErr      error                             // deferred error from jq filtering; written at most once
+	botOnly        bool                              // set by framework for bot-only shortcuts
+	resolvedAs     core.Identity                     // effective identity resolved by framework
+	declaredScopes []string                          // shortcut-declared scopes for the resolved identity
+	Factory        *cmdutil.Factory                  // injected by framework
+	apiClientFunc  func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
+	botInfoFunc    func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
+	larkSDK        *lark.Client                      // eagerly initialized in mountDeclarative
+	stdinConsumed  bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
+	inputResolved  map[string]bool                   // flags whose value was replaced by @file / stdin content in resolveInputFlags; see InputResolvedFromSource
 }
 
 // ── Identity ──
@@ -69,6 +70,20 @@ func (ctx *RuntimeContext) As() core.Identity {
 		return ctx.resolvedAs
 	}
 	return core.AsUser
+}
+
+// PresentError renders a typed producer error for this command tree before a
+// shortcut copies its fields into a result payload.
+func (ctx *RuntimeContext) PresentError(err error) error {
+	if ctx == nil {
+		return err
+	}
+	return ctx.Factory.PresentError(err, cmdutil.ErrorPresentationOptions{
+		Identity: ctx.As(),
+		DeclaredScopes: func() []string {
+			return slices.Clone(ctx.declaredScopes)
+		},
+	})
 }
 
 // IsBot returns true if current identity is bot.
@@ -1012,7 +1027,15 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
-	rctx := &RuntimeContext{ctx: ctx, Config: config, Cmd: cmd, botOnly: botOnly, resolvedAs: as, Factory: f}
+	rctx := &RuntimeContext{
+		ctx:        ctx,
+		Config:     config,
+		Cmd:        cmd,
+		botOnly:    botOnly,
+		resolvedAs: as,
+		Factory:    f,
+	}
+	rctx.declaredScopes = s.DeclaredScopesForIdentity(string(rctx.As()))
 	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
 		return f.NewAPIClientWithConfig(config)
 	})

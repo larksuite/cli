@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/errs"
@@ -92,6 +91,25 @@ func (m *MultiAppConfig) CurrentAppConfig(profileOverride string) *AppConfig {
 		return &m.Apps[0]
 	}
 	return nil
+}
+
+// EffectiveProfile resolves which profile this invocation actually uses and
+// which channel decided that. It is the single definition of "effective" for
+// status output (config show, profile list, profile use warnings); the
+// persisted CurrentApp answers a different question — which profile applies
+// when no selector is present — and must not be conflated with it.
+//
+// A nil app with a non-empty selector means the selector is dangling; the
+// caller decides between an error (RequireAppConfig) and a warning (listing
+// commands, which are the user's recovery surface).
+func (m *MultiAppConfig) EffectiveProfile(profile string, source ProfileSource) (*AppConfig, ProfileSource) {
+	app := m.CurrentAppConfig(profile)
+	if profile != "" {
+		return app, source
+	}
+	// An empty selector value (including an explicit --profile=) defers to
+	// the persisted state, so the persisted channel is what decided.
+	return app, ProfileFromConfig
 }
 
 // FindApp looks up an app by name, then by appId. Returns nil if not found.
@@ -243,16 +261,19 @@ func RequireConfigForProfile(kc keychain.KeychainAccess, profileOverride string)
 	if err != nil || raw == nil || len(raw.Apps) == 0 {
 		return nil, NotConfiguredError()
 	}
-	return ResolveConfigFromMulti(raw, kc, profileOverride)
+	// This legacy wrapper has no channel information for its override; the
+	// flag wording is the safe default (it never misattributes to the env).
+	return ResolveConfigFromMulti(raw, kc, profileOverride, ProfileFromFlag)
 }
 
 // ResolveConfigFromMulti resolves a single-app config from an already-loaded MultiAppConfig.
 // This avoids re-reading the config file when the caller has already loaded it.
-func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, profileOverride string) (*CliConfig, error) {
-	app := raw.CurrentAppConfig(profileOverride)
-	if app == nil {
-		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found", profileOverride).
-			WithHint("available profiles: %s", formatProfileNames(raw.ProfileNames()))
+// source records which channel selected profileOverride so a resolution
+// failure can name the input the user must fix.
+func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, profileOverride string, source ProfileSource) (*CliConfig, error) {
+	app, err := raw.RequireAppConfig(profileOverride, source)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
@@ -305,12 +326,4 @@ func RequireAuthForProfile(kc keychain.KeychainAccess, profileOverride string) (
 		)
 	}
 	return cfg, nil
-}
-
-// formatProfileNames joins profile names for display.
-func formatProfileNames(names []string) string {
-	if len(names) == 0 {
-		return "(none)"
-	}
-	return strings.Join(names, ", ")
 }

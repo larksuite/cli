@@ -6,10 +6,9 @@ package vc
 import (
 	"context"
 	"encoding/json"
-	"strconv"
-	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // VCRecordingStartedOutput is the flattened shape for vc.recording.recording_started_v1.
@@ -21,64 +20,20 @@ type VCRecordingStartedOutput struct {
 	Source    string `json:"source,omitempty"     desc:"Recording source; always recording_bean"`
 }
 
-type recordingStartedEnvelope struct {
-	Header struct {
-		EventID    string `json:"event_id"`
-		EventType  string `json:"event_type"`
-		CreateTime string `json:"create_time"`
-	} `json:"header"`
-	Event recordingStartedEvent `json:"event"`
-}
-
-type recordingStartedEvent struct {
-	UniqueKey string `json:"unique_key"`
-	Source    string `json:"source"`
-}
-
 func processVCRecordingStarted(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
-	envelope, ok := parseRecordingStartedEnvelope(raw)
+	body, ok := decodeEventBody[recordingBeanEventBody](raw)
 	if !ok {
-		return raw.Payload, nil
+		return nil, processing.DropMalformed(raw.EventType)
 	}
-	if !isRecordingStartedBeanEvent(envelope) {
+	if body.Source != recordingBeanSource {
 		return nil, nil
 	}
 	out := &VCRecordingStartedOutput{
-		Type:      recordingStartedEventType(envelope, raw),
-		EventID:   envelope.Header.EventID,
-		EventTime: recordingStartedEventTime(envelope.Header.CreateTime),
-		UniqueKey: envelope.Event.UniqueKey,
-		Source:    envelope.Event.Source,
+		Type:      raw.EventType,
+		EventID:   raw.EventID,
+		EventTime: millisToLocalRFC3339(raw.SourceTime),
+		UniqueKey: body.UniqueKey,
+		Source:    body.Source,
 	}
 	return json.Marshal(out)
-}
-
-func parseRecordingStartedEnvelope(raw *event.RawEvent) (*recordingStartedEnvelope, bool) {
-	var envelope recordingStartedEnvelope
-	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return nil, false
-	}
-	return &envelope, true
-}
-
-func isRecordingStartedBeanEvent(envelope *recordingStartedEnvelope) bool {
-	return envelope != nil && envelope.Event.Source == "recording_bean"
-}
-
-func recordingStartedEventType(envelope *recordingStartedEnvelope, raw *event.RawEvent) string {
-	if envelope != nil && envelope.Header.EventType != "" {
-		return envelope.Header.EventType
-	}
-	return raw.EventType
-}
-
-func recordingStartedEventTime(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	millis, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return ""
-	}
-	return time.UnixMilli(millis).Local().Format(time.RFC3339)
 }

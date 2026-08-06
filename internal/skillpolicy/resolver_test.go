@@ -35,6 +35,14 @@ func baseTree() fstest.MapFS {
 	})
 }
 
+func baseTreeWithRequiredShared() fstest.MapFS {
+	return skillFS(map[string]string{
+		"lark-a/SKILL.md":      "---\nmetadata:\n  requires:\n    skills: [\"lark-shared\"]\n---\nbase a",
+		"lark-b/SKILL.md":      "base b",
+		"lark-shared/SKILL.md": "base shared",
+	})
+}
+
 // topLevel returns the sorted top-level skill names of fsys.
 func topLevel(t *testing.T, fsys fs.FS) []string {
 	t.Helper()
@@ -280,6 +288,158 @@ func TestResolve_Allow_KeepsOnlyListed(t *testing.T) {
 	// Kept skills still read from base, references included.
 	if c := readFile(t, got, "lark-a/references/x.md"); c != "base a ref" {
 		t.Errorf("kept skill content = %q, want base content", c)
+	}
+}
+
+func TestResolve_AllowMissingRequiredSkillFailsClosed(t *testing.T) {
+	_, err := resolveContent(baseTreeWithRequiredShared(), []PluginSkill{{
+		PluginName: "acme",
+		SkillsOverlay: &platform.SkillsOverlay{
+			Allow: []string{"lark-a"},
+		},
+	}})
+	if !errors.Is(err, ErrUnsatisfiedSkillDependency) {
+		t.Fatalf("err = %v, want ErrUnsatisfiedSkillDependency", err)
+	}
+	for _, want := range []string{"lark-a", "lark-shared"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not identify %q", err, want)
+		}
+	}
+}
+
+func TestResolve_AllowIncludingRequiredSkillSucceeds(t *testing.T) {
+	got := mustResolve(t, baseTreeWithRequiredShared(), &platform.SkillsOverlay{
+		Allow: []string{"lark-a", "lark-shared"},
+	})
+	if want := []string{"lark-a", "lark-shared"}; !slices.Equal(topLevel(t, got), want) {
+		t.Fatalf("top level = %v, want %v", topLevel(t, got), want)
+	}
+}
+
+func TestResolve_UTF8BOMFrontmatterRequiredSkillPresentSucceeds(t *testing.T) {
+	base := skillFS(map[string]string{
+		"lark-a/SKILL.md":      "\uFEFF---\nmetadata:\n  requires:\n    skills: [\"lark-shared\"]\n---\nbase a",
+		"lark-shared/SKILL.md": "base shared",
+	})
+
+	got := mustResolve(t, base, &platform.SkillsOverlay{
+		Allow: []string{"lark-a", "lark-shared"},
+	})
+	if want := []string{"lark-a", "lark-shared"}; !slices.Equal(topLevel(t, got), want) {
+		t.Fatalf("top level = %v, want %v", topLevel(t, got), want)
+	}
+}
+
+func TestResolve_UTF8BOMFrontmatterMissingRequiredSkillFailsClosed(t *testing.T) {
+	base := skillFS(map[string]string{
+		"lark-a/SKILL.md":      "\uFEFF---\nmetadata:\n  requires:\n    skills: [\"lark-shared\"]\n---\nbase a",
+		"lark-shared/SKILL.md": "base shared",
+	})
+
+	_, err := resolveContent(base, []PluginSkill{{
+		PluginName: "acme",
+		SkillsOverlay: &platform.SkillsOverlay{
+			Allow: []string{"lark-a"},
+		},
+	}})
+	if !errors.Is(err, ErrUnsatisfiedSkillDependency) {
+		t.Fatalf("err = %v, want ErrUnsatisfiedSkillDependency", err)
+	}
+	for _, want := range []string{"lark-a", "lark-shared"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not identify %q", err, want)
+		}
+	}
+}
+
+func TestResolve_RemoveRequiredSkillFailsClosed(t *testing.T) {
+	_, err := resolveContent(baseTreeWithRequiredShared(), []PluginSkill{{
+		PluginName: "acme",
+		SkillsOverlay: &platform.SkillsOverlay{
+			Remove: []string{"lark-shared"},
+		},
+	}})
+	if !errors.Is(err, ErrUnsatisfiedSkillDependency) {
+		t.Fatalf("err = %v, want ErrUnsatisfiedSkillDependency", err)
+	}
+}
+
+func TestResolve_OverlayReplacementUsesReplacementDependencies(t *testing.T) {
+	overlay := skillFS(map[string]string{
+		"lark-a/SKILL.md": "replacement a without dependencies",
+	})
+	got := mustResolve(t, baseTreeWithRequiredShared(), &platform.SkillsOverlay{
+		Allow:   []string{"lark-a"},
+		Overlay: overlay,
+	})
+	if want := []string{"lark-a"}; !slices.Equal(topLevel(t, got), want) {
+		t.Fatalf("top level = %v, want %v", topLevel(t, got), want)
+	}
+}
+
+func TestResolve_OverlayReplacementMissingOwnDependencyFailsClosed(t *testing.T) {
+	overlay := skillFS(map[string]string{
+		"lark-a/SKILL.md": "---\nmetadata:\n  requires:\n    skills: [\"acme-runtime\"]\n---\nreplacement a",
+	})
+	_, err := resolveContent(baseTreeWithRequiredShared(), []PluginSkill{{
+		PluginName: "acme",
+		SkillsOverlay: &platform.SkillsOverlay{
+			Allow:   []string{"lark-a"},
+			Overlay: overlay,
+		},
+	}})
+	if !errors.Is(err, ErrUnsatisfiedSkillDependency) {
+		t.Fatalf("err = %v, want ErrUnsatisfiedSkillDependency", err)
+	}
+	if !strings.Contains(err.Error(), "acme-runtime") {
+		t.Fatalf("error does not identify replacement dependency: %v", err)
+	}
+}
+
+func TestResolve_DoesNotInferDependenciesFromMarkdownLinks(t *testing.T) {
+	base := skillFS(map[string]string{
+		"lark-a/SKILL.md": "Read [missing](../lark-missing/SKILL.md) when useful.",
+	})
+	got := mustResolve(t, base, &platform.SkillsOverlay{Allow: []string{"lark-a"}})
+	if want := []string{"lark-a"}; !slices.Equal(topLevel(t, got), want) {
+		t.Fatalf("top level = %v, want %v", topLevel(t, got), want)
+	}
+}
+
+func TestResolve_UnclosedFrontmatterFailsClosed(t *testing.T) {
+	base := skillFS(map[string]string{
+		"lark-a/SKILL.md": "---\nmetadata:\n  requires:\n    skills: [\"lark-shared\"]\nbase a",
+	})
+	_, err := resolveContent(base, []PluginSkill{{
+		PluginName:    "acme",
+		SkillsOverlay: &platform.SkillsOverlay{Allow: []string{"lark-a"}},
+	}})
+	if !errors.Is(err, ErrInvalidHostBase) {
+		t.Fatalf("err = %v, want ErrInvalidHostBase", err)
+	}
+	for _, want := range []string{"lark-a", "invalid metadata", "frontmatter is not closed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not identify %q", err, want)
+		}
+	}
+}
+
+func TestResolve_InvalidRequiredSkillNameFailsClosed(t *testing.T) {
+	base := skillFS(map[string]string{
+		"lark-a/SKILL.md": "---\nmetadata:\n  requires:\n    skills: [\"../escape\"]\n---\nbase a",
+	})
+	_, err := resolveContent(base, []PluginSkill{{
+		PluginName:    "acme",
+		SkillsOverlay: &platform.SkillsOverlay{Allow: []string{"lark-a"}},
+	}})
+	if !errors.Is(err, ErrInvalidHostBase) {
+		t.Fatalf("err = %v, want ErrInvalidHostBase", err)
+	}
+	for _, want := range []string{"lark-a", "invalid metadata", "../escape"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not identify %q", err, want)
+		}
 	}
 }
 

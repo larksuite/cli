@@ -32,6 +32,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // cleanTree is the git-archived, committed-only source tree of the repo under
@@ -128,12 +130,15 @@ func buildForkWithMain(t *testing.T, name, pluginSrc, mainSrc string) string {
 	if err := os.MkdirAll(filepath.Join(mod, "plugin"), 0o755); err != nil {
 		t.Fatalf("mkdir customer module: %v", err)
 	}
-	for _, name := range []string{"lark-a", "lark-b", "lark-doc"} {
-		if err := os.MkdirAll(filepath.Join(mod, "skills", name), 0o755); err != nil {
+	for _, name := range []string{"lark-a", "lark-b", "lark-doc", "lark-shared"} {
+		if err := vfs.MkdirAll(filepath.Join(mod, "skills", name), 0o755); err != nil {
 			t.Fatalf("mkdir customer skill %q: %v", name, err)
 		}
-		writeFile(t, filepath.Join(mod, "skills", name, "SKILL.md"),
-			"---\nname: "+name+"\ndescription: plugin e2e base skill\n---\n")
+		skillMD := "---\nname: " + name + "\ndescription: plugin e2e base skill\n---\n"
+		if name == "lark-doc" {
+			skillMD = "---\nname: lark-doc\ndescription: plugin e2e base skill\nmetadata:\n  requires:\n    skills: [\"lark-shared\"]\n---\n"
+		}
+		writeFile(t, filepath.Join(mod, "skills", name, "SKILL.md"), skillMD)
 	}
 	if err := os.MkdirAll(filepath.Join(mod, "skills", "lark-doc", "references"), 0o755); err != nil {
 		t.Fatalf("mkdir customer lark-doc references: %v", err)

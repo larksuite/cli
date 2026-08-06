@@ -561,6 +561,8 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"lark-cli base +dashboard-block-list --base-token <base_token> --dashboard-id <dashboard_id>",
 				"Use returned block_id and type values",
+				"--page-size 100",
+				"until has_more=false",
 			},
 		},
 		{
@@ -569,6 +571,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"lark-cli base +dashboard-block-get --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id>",
 				"metadata such as name, type, layout, and data_config",
+				"Text block content is stored in data_config.text",
 				"computed chart result",
 			},
 		},
@@ -579,6 +582,11 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 				"lark-cli base +dashboard-block-get-data --base-token <base_token> --block-id <block_id>",
 				"does not need --dashboard-id",
 				"computed chart protocol JSON",
+				"complete dashboard export",
+				"data_config.text",
+				"does not support computed data",
+				"use +data-query",
+				"do not omit the block or guess values",
 			},
 		},
 		{

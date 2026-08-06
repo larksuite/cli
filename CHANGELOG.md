@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.84] - 2026-08-05
+
+### Features
+
+- **calendar**: allow bot auth for search-event (#2186)
+- **extension**: present restricted commands as absent and trim skills (#1837)
+- add Base table copy shortcuts (#2019)
+- **slides**: support explicit screenshot output paths (#2180)
+- profile selection from environment with source-aware errors (#2198)
+- migrate application and IM guidance to affordance (#2199)
+
+### Bug Fixes
+
+- **slides**: bind lint issues to source XML nodes (#2179)
+- **drive**: stop export polling on rate limits (#2192)
+- make agent recovery and concealment reliable (#2189)
+- surface retry metadata for TAT rate limits (#2200)
+
+### Documentation
+
+- **slides**: temporarily route skill guidance back to +replace-pages (#2187)
+- **calendar**: clarify attendee resolution to avoid type guessing (#2195)
+- **wiki**: route node resolution through shortcut (#2132)
+
 ## [v1.0.83] - 2026-08-04
 
 ### Features
@@ -1798,6 +1822,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.84]: https://github.com/larksuite/cli/releases/tag/v1.0.84
 [v1.0.83]: https://github.com/larksuite/cli/releases/tag/v1.0.83
 [v1.0.82]: https://github.com/larksuite/cli/releases/tag/v1.0.82
 [v1.0.81]: https://github.com/larksuite/cli/releases/tag/v1.0.81

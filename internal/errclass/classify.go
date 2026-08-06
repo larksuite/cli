@@ -318,7 +318,7 @@ func buildPermissionErrorFromFacts(p errs.Problem, missing []string, cc Classify
 		identity = "user"
 	}
 	consoleURL := ConsoleURL(cc.Brand, cc.AppID, missing)
-	p.Message = CanonicalPermissionMessage(p.Subtype, cc.AppID, missing, p.Message)
+	p.Message = canonicalPermissionMessageForIdentity(p.Subtype, identity, cc.AppID, missing, p.Message)
 	// Permission categories have authoritative recovery guidance (scopes to
 	// grant, console URL), so the curated PermissionHint deliberately overrides
 	// any server detail lifted into p.Hint (the opposite precedence from the
@@ -331,22 +331,23 @@ func buildPermissionErrorFromFacts(p errs.Problem, missing []string, cc Classify
 		Identity:      identity,
 	}
 	// ConsoleURL is the developer-console deep-link an app developer follows to
-	// apply for a missing scope. That action only resolves SubtypeAppScopeNotApplied,
-	// which is bot-perspective. The other authorization subtypes route to a
-	// different actor: SubtypeMissingScope / SubtypeTokenScopeInsufficient /
-	// SubtypeUserUnauthorized recover via `lark-cli auth login`; SubtypeAppUnavailable
-	// / SubtypeAppDisabled require tenant admin. Carrying ConsoleURL on those
-	// envelopes is dead weight and risks pointing an end user at a console they
-	// cannot modify; the URL is still computed so the hint composer can use it
-	// where appropriate.
+	// apply for a missing scope. The typed machine field is attached only to
+	// SubtypeAppScopeNotApplied, whose primary recovery is developer action.
+	// Other authorization subtypes route according to identity: user calls may
+	// recover through `lark-cli auth login`, while bot calls must stay on
+	// token/app/bot/admin recovery paths. For bot scope failures the URL may
+	// still be embedded in the human hint, but carrying it as a machine field on
+	// every permission envelope risks pointing an end user at a console they
+	// cannot modify. SubtypeAppUnavailable / SubtypeAppDisabled require tenant
+	// admin.
 	if p.Subtype == errs.SubtypeAppScopeNotApplied {
 		permErr.ConsoleURL = consoleURL
 	}
 	return recovery.Annotate(permErr, hint)
 }
 
-// CanonicalPermissionMessage returns the CLI-side canonical wording for a
-// typed PermissionError, preserving the Lark official-API phrasing
+// CanonicalPermissionMessage returns the default user-facing CLI wording for
+// a typed PermissionError, preserving the Lark official-API phrasing
 // ("access denied" / "unauthorized" / "token has no permission") and
 // enhancing it with CLI context (app ID, missing scope list). Subtypes
 // outside the known set fall through to fallback so the upstream message
@@ -390,14 +391,37 @@ func CanonicalPermissionMessage(subtype errs.Subtype, appID string, missing []st
 	return fallback
 }
 
+// canonicalPermissionMessageForIdentity removes user-specific claims from
+// bot errors while preserving CanonicalPermissionMessage as the default user
+// contract. Category, subtype, identity, and other machine fields are
+// unaffected; error.message is informational by contract.
+func canonicalPermissionMessageForIdentity(subtype errs.Subtype, identity, appID string, missing []string, fallback string) string {
+	message := CanonicalPermissionMessage(subtype, appID, missing, fallback)
+	if identity != "bot" {
+		return message
+	}
+	switch subtype {
+	case errs.SubtypeMissingScope:
+		if len(missing) > 0 {
+			return fmt.Sprintf("unauthorized: bot identity does not have the required scope(s): %s", strings.Join(missing, ", "))
+		}
+		return "unauthorized: bot identity does not have the required scope"
+	case errs.SubtypeUserUnauthorized:
+		return "access denied for this bot operation"
+	case errs.SubtypePermissionDenied:
+		return "bot lacks permission for the requested resource"
+	default:
+		return message
+	}
+}
+
 // PermissionHint returns the canonical per-subtype recovery hint for a typed
 // PermissionError. The hint distinguishes authorization subtypes routing
 // to different recovery paths: developer console for app_scope_not_applied,
-// user re-login for missing_scope / token_scope_insufficient / user_unauthorized,
-// and tenant admin for app_unavailable / app_disabled. The subtype
-// argument is the primary discriminator; identity is retained for the
-// generic permission_denied fallback so callers that do not yet route on
-// subtype still get a sensible hint.
+// identity-specific user or bot recovery for missing_scope /
+// token_scope_insufficient / user_unauthorized, and tenant admin for
+// app_unavailable / app_disabled. The subtype and identity together select
+// the actor that can resolve the failure.
 //
 // Exported so direct construction sites (cmd/service/service.go's
 // checkServiceScopes) can produce hints that match the dispatcher path
@@ -414,6 +438,15 @@ func PermissionRecovery(missing []string, identity string, subtype errs.Subtype,
 	return permissionRecoveryHint(missing, identity, subtype, consoleURL)
 }
 
+func botScopeRecoveryHint(consoleURL string) recovery.Hint {
+	if consoleURL != "" {
+		return recovery.Join("", recovery.Text(fmt.Sprintf(
+			"the app developer must verify and grant the required scope(s) for the bot identity at the developer console: %s", consoleURL)))
+	}
+	return recovery.Join("", recovery.Text(
+		"the app developer must verify and grant the required scope(s) to the bot identity"))
+}
+
 func permissionRecoveryHint(missing []string, identity string, subtype errs.Subtype, consoleURL string) recovery.Hint {
 	switch subtype {
 	case errs.SubtypeAppScopeNotApplied:
@@ -425,25 +458,27 @@ func permissionRecoveryHint(missing []string, identity string, subtype errs.Subt
 			"the app developer must apply for the required scope(s) at the developer console"))
 	case errs.SubtypeMissingScope:
 		if identity == "bot" {
-			if consoleURL != "" {
-				return recovery.Join("", recovery.Text(fmt.Sprintf(
-					"the app developer must apply for the required scope(s) at the developer console: %s", consoleURL)))
-			}
-			return recovery.Join("", recovery.Text(
-				"the app developer must grant the required scope(s) to the bot identity"))
+			return botScopeRecoveryHint(consoleURL)
 		}
 		return recovery.UserAuthorization(missing...)
 	case errs.SubtypeTokenScopeInsufficient:
-		return recovery.Join("; ",
-			recovery.Text("check the token's granted scopes"),
-			recovery.Command(recovery.TargetAuthLogin,
-				"run `lark-cli auth login` to refresh if the scope was added after the token was issued"),
+		tokenCheck := recovery.Join("", recovery.Text("check the token's granted scopes"))
+		if identity == "bot" {
+			return recovery.JoinHints("; ", tokenCheck, botScopeRecoveryHint(consoleURL))
+		}
+		return recovery.JoinHints("; ",
+			tokenCheck,
+			recovery.UserAuthorization(missing...),
 		)
 	case errs.SubtypeUserUnauthorized:
-		return recovery.Join("; ",
-			recovery.Command(recovery.TargetAuthLogin,
-				"run `lark-cli auth login` to re-authorize this user"),
-			recovery.Text("if re-auth does not help, the operation may be blocked by external-chat or admin policy"),
+		if identity == "bot" {
+			return recovery.Join("", recovery.Text(
+				"check that the app has the required bot permissions, is installed and available to the target tenant, and the bot can access the target resource; if those checks pass, ask the tenant admin to inspect app and resource policy restrictions"))
+		}
+		return recovery.JoinHints("; ",
+			recovery.UserAuthorization(missing...),
+			recovery.Join("", recovery.Text(
+				"if re-auth does not help, the operation may be blocked by external-chat or admin policy")),
 		)
 	case errs.SubtypeAppUnavailable:
 		return recovery.Join("", recovery.Text(
