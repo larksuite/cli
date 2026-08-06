@@ -4,7 +4,7 @@
 
 ## 何时用
 
-用来创建应用资产并拿到 `app_id`。它不负责把自然语言需求交给云端 Agent：用户要“帮我生成/迭代应用”时，先创建 `full_stack` app，再进入 [`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md) 用 `+session-create` / `+chat` 提交需求。
+用来创建应用资产并拿到 `app_id`。它不负责把自然语言需求交给云端 Agent：用户要“帮我生成/迭代应用”时，先按 SKILL.md「选择开发路径」判定的 `--app-type`（有数据库需求→`full_stack`，纯前端交互未提数据库→默认 `frontend`）创建 app，再进入 [`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md) 用 `+session-create` / `+chat` 提交需求。
 
 ## 命令骨架
 
