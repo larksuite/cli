@@ -108,14 +108,16 @@ func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
 		result := runDBSyncDryRun(t, []string{"apps", "+db-sync-enable", "--app-id", dbSyncDryRunAppID, "--task-id", dbSyncDryRunTaskID, "--dry-run"})
 		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_enable", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
-		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").Exists())
+		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.body.task_id").String())
 	})
 
 	t.Run("disable task", func(t *testing.T) {
 		result := runDBSyncDryRun(t, []string{"apps", "+db-sync-disable", "--app-id", dbSyncDryRunAppID, "--task-id", dbSyncDryRunTaskID, "--dry-run"})
 		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_disable", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
-		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").Exists())
+		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.body.task_id").String())
 	})
 
 	t.Run("update task", func(t *testing.T) {
@@ -138,9 +140,10 @@ func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
 
 	t.Run("delete task", func(t *testing.T) {
 		result := runDBSyncDryRun(t, []string{"apps", "+db-sync-delete", "--app-id", dbSyncDryRunAppID, "--task-id", dbSyncDryRunTaskID, "--dry-run"})
-		assert.Equal(t, "DELETE", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_db_sync_e2e/db/sync_del", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
-		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params.task_id").Exists())
+		assert.Equal(t, dbSyncDryRunTaskID, clie2e.DryRunGet(result.Stdout, "api.0.body.task_id").String())
 	})
 
 	t.Run("update task without base_url passes through source verbatim", func(t *testing.T) {
