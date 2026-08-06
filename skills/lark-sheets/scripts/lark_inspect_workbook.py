@@ -75,10 +75,14 @@ def inspect_workbook(args) -> tuple[dict[str, Any], list[str]]:
             timeout=args.timeout,
         )
     )
+    # An explicit selector must resolve: without require_one a typo'd
+    # --sheet-id/--sheet-name silently yields sheet_count 0, which reads as
+    # "empty workbook" instead of a locator error.
     target_sheets = resolve_target_sheets(
         workbook,
         sheet_id=args.sheet_id,
         sheet_name=args.sheet_name,
+        require_one=bool(args.sheet_id or args.sheet_name),
     )
     if args.max_sheets < 1:
         raise LarkCliError("--max-sheets must be at least 1")
