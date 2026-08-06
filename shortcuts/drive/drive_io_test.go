@@ -34,12 +34,14 @@ import (
 
 type driveRoundTripFunc func(*http.Request) (*http.Response, error)
 
+// RoundTrip delegates an HTTP request to the test transport function.
 func (fn driveRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
 
 var driveTaskCheckPollMu sync.Mutex
 
+// driveTestConfig returns isolated credentials for Drive command tests.
 func driveTestConfig() *core.CliConfig {
 	return &core.CliConfig{
 		AppID: "drive-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -59,11 +61,13 @@ func registerDriveDownloadExportAuth(reg *httpmock.Registry, fileToken string, a
 	return stub
 }
 
+// mountAndRunDrive executes a mounted Drive command with a background context.
 func mountAndRunDrive(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
 	return mountAndRunDriveWithContext(t, context.Background(), s, args, f, stdout)
 }
 
+// mountAndRunDriveWithContext executes a mounted Drive command with the supplied context.
 func mountAndRunDriveWithContext(t *testing.T, ctx context.Context, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
 	parent := &cobra.Command{Use: "drive"}
@@ -78,6 +82,7 @@ func mountAndRunDriveWithContext(t *testing.T, ctx context.Context, s common.Sho
 	return parent.Execute()
 }
 
+// withSingleDriveTaskCheckPoll limits task-result polling to one attempt for a test.
 func withSingleDriveTaskCheckPoll(t *testing.T) {
 	t.Helper()
 	driveTaskCheckPollMu.Lock()
@@ -90,6 +95,7 @@ func withSingleDriveTaskCheckPoll(t *testing.T) {
 	})
 }
 
+// withDriveWorkingDir changes into dir and restores the original directory during cleanup.
 func withDriveWorkingDir(t *testing.T, dir string) {
 	t.Helper()
 	cwd, err := os.Getwd()
@@ -106,6 +112,7 @@ func withDriveWorkingDir(t *testing.T, dir string) {
 	})
 }
 
+// TestDriveUploadLargeFileUsesMultipart verifies large uploads use the multipart workflow.
 func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 	// Use a distinct AppID to avoid Lark SDK global token cache collision with other tests.
 	uploadTestConfig := &core.CliConfig{
@@ -185,6 +192,7 @@ func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 	}
 }
 
+// TestDriveUploadLargeFileToWikiUsesMultipart verifies large Wiki uploads use multipart requests.
 func TestDriveUploadLargeFileToWikiUsesMultipart(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-large-wiki-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -262,6 +270,7 @@ func TestDriveUploadLargeFileToWikiUsesMultipart(t *testing.T) {
 	}
 }
 
+// TestDriveUploadLargeFileOverwriteUsesMultipart verifies large overwrites retain multipart semantics.
 func TestDriveUploadLargeFileOverwriteUsesMultipart(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-large-overwrite-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -332,6 +341,7 @@ func TestDriveUploadLargeFileOverwriteUsesMultipart(t *testing.T) {
 	}
 }
 
+// TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinish verifies the finish response version is returned.
 func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinish(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-large-overwrite-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -397,6 +407,7 @@ func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinish(t *testing.
 	}
 }
 
+// TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinishAlias verifies the version alias is accepted.
 func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinishAlias(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-large-overwrite-data-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -462,6 +473,7 @@ func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinishAlias(t *tes
 	}
 }
 
+// TestDriveUploadSmallFile verifies the single-part Drive upload flow.
 func TestDriveUploadSmallFile(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -501,6 +513,7 @@ func TestDriveUploadSmallFile(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileOverwriteUsesFileToken verifies overwrite requests preserve the target token.
 func TestDriveUploadSmallFileOverwriteUsesFileToken(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-overwrite-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -547,6 +560,7 @@ func TestDriveUploadSmallFileOverwriteUsesFileToken(t *testing.T) {
 	}
 }
 
+// TestDriveUploadReturnsVersionFromDataVersionAlias verifies upload responses accept the data version alias.
 func TestDriveUploadReturnsVersionFromDataVersionAlias(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-data-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -588,6 +602,7 @@ func TestDriveUploadReturnsVersionFromDataVersionAlias(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileToWiki verifies a small file can target a Wiki parent.
 func TestDriveUploadSmallFileToWiki(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-wiki-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -638,6 +653,7 @@ func TestDriveUploadSmallFileToWiki(t *testing.T) {
 	}
 }
 
+// TestDriveUploadUsesMetaURLForExplorerParent verifies Explorer URLs resolve through Drive metadata.
 func TestDriveUploadUsesMetaURLForExplorerParent(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-explorer-meta-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -689,6 +705,7 @@ func TestDriveUploadUsesMetaURLForExplorerParent(t *testing.T) {
 	}
 }
 
+// TestDriveUploadUsesMetaURLForWikiParent verifies Wiki URLs resolve through Drive metadata.
 func TestDriveUploadUsesMetaURLForWikiParent(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-wiki-meta-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -737,6 +754,7 @@ func TestDriveUploadUsesMetaURLForWikiParent(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileAPIError verifies upload API failures remain typed errors.
 func TestDriveUploadSmallFileAPIError(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -773,6 +791,7 @@ func TestDriveUploadSmallFileAPIError(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileNoToken verifies a successful response without a token is rejected.
 func TestDriveUploadSmallFileNoToken(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-notoken", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -810,6 +829,7 @@ func TestDriveUploadSmallFileNoToken(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileInvalidJSON verifies malformed upload responses are rejected.
 func TestDriveUploadSmallFileInvalidJSON(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-json", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -844,6 +864,7 @@ func TestDriveUploadSmallFileInvalidJSON(t *testing.T) {
 	}
 }
 
+// TestDriveUploadPrepareInvalidResponse verifies malformed multipart prepare responses are rejected.
 func TestDriveUploadPrepareInvalidResponse(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-prepare-bad", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -890,6 +911,7 @@ func TestDriveUploadPrepareInvalidResponse(t *testing.T) {
 	}
 }
 
+// TestDriveUploadPartAPIError verifies multipart part failures remain typed errors.
 func TestDriveUploadPartAPIError(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-part-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -952,6 +974,7 @@ func TestDriveUploadPartAPIError(t *testing.T) {
 	}
 }
 
+// TestDriveUploadPartInvalidJSON verifies malformed multipart part responses are rejected.
 func TestDriveUploadPartInvalidJSON(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-part-json", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -1004,6 +1027,7 @@ func TestDriveUploadPartInvalidJSON(t *testing.T) {
 	}
 }
 
+// TestDriveUploadFinishNoToken verifies multipart completion requires a returned file token.
 func TestDriveUploadFinishNoToken(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-finish-notoken", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -1318,6 +1342,7 @@ func TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint(t *testing.T) {
 	}
 }
 
+// TestDriveUploadTargetLabel verifies upload target labels describe the resolved destination.
 func TestDriveUploadTargetLabel(t *testing.T) {
 	t.Parallel()
 
@@ -1370,6 +1395,7 @@ func TestDriveUploadTargetLabel(t *testing.T) {
 	}
 }
 
+// TestDriveUploadValidateRejectsConflictingTargets verifies mutually exclusive upload targets are rejected.
 func TestDriveUploadValidateRejectsConflictingTargets(t *testing.T) {
 	t.Parallel()
 
@@ -1404,6 +1430,7 @@ func TestDriveUploadValidateRejectsConflictingTargets(t *testing.T) {
 	}
 }
 
+// TestDriveUploadValidateRejectsExplicitEmptyWikiToken verifies an explicitly empty Wiki token is rejected.
 func TestDriveUploadValidateRejectsExplicitEmptyWikiToken(t *testing.T) {
 	t.Parallel()
 
@@ -1425,6 +1452,7 @@ func TestDriveUploadValidateRejectsExplicitEmptyWikiToken(t *testing.T) {
 	assertDriveValidationParam(t, err, "--wiki-token", "--wiki-token cannot be empty")
 }
 
+// TestDriveUploadValidateRejectsExplicitEmptyFileToken verifies an explicitly empty file token is rejected.
 func TestDriveUploadValidateRejectsExplicitEmptyFileToken(t *testing.T) {
 	t.Parallel()
 
@@ -1446,6 +1474,7 @@ func TestDriveUploadValidateRejectsExplicitEmptyFileToken(t *testing.T) {
 	assertDriveValidationParam(t, err, "--file-token", "--file-token cannot be empty")
 }
 
+// TestDriveUploadValidateRejectsExplicitEmptyFolderToken verifies an explicitly empty folder token is rejected.
 func TestDriveUploadValidateRejectsExplicitEmptyFolderToken(t *testing.T) {
 	t.Parallel()
 
@@ -1486,6 +1515,7 @@ func assertDriveValidationParam(t *testing.T, err error, wantParam, wantMsg stri
 	}
 }
 
+// TestDriveUploadValidateRejectsInvalidTargetTokens verifies unsafe upload target tokens are rejected.
 func TestDriveUploadValidateRejectsInvalidTargetTokens(t *testing.T) {
 	t.Parallel()
 
@@ -1541,6 +1571,7 @@ func TestDriveUploadValidateRejectsInvalidTargetTokens(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadRejectsOverwriteWithoutFlag verifies existing output is protected by default.
 func TestDriveDownloadRejectsOverwriteWithoutFlag(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -1565,6 +1596,7 @@ func TestDriveDownloadRejectsOverwriteWithoutFlag(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadAllowsOverwriteFlag verifies the overwrite flag permits replacing output.
 func TestDriveDownloadAllowsOverwriteFlag(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadExportAuth(reg, "file_123", true)
@@ -1606,6 +1638,7 @@ func TestDriveDownloadAllowsOverwriteFlag(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadHTTP403SuggestsPreview verifies forbidden downloads suggest the preview workflow.
 func TestDriveDownloadHTTP403SuggestsPreview(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadExportAuth(reg, "file_403", true)
@@ -1655,6 +1688,7 @@ func TestDriveDownloadHTTP403SuggestsPreview(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadHTTP404DoesNotSuggestPreview verifies missing files do not receive permission guidance.
 func TestDriveDownloadHTTP404DoesNotSuggestPreview(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadExportAuth(reg, "file_missing", true)
@@ -1864,6 +1898,7 @@ func TestDriveDownloadTypedRateLimitSuggestsBackoff(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadDefaultOutputPathSanitizesSlashOnlyNames verifies slash-only names fall back safely.
 func TestDriveDownloadDefaultOutputPathSanitizesSlashOnlyNames(t *testing.T) {
 	header := http.Header{
 		"Content-Disposition": []string{`attachment; filename="////"`},
@@ -1877,6 +1912,7 @@ func TestDriveDownloadDefaultOutputPathSanitizesSlashOnlyNames(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadDefaultOutputPathSanitizesWindowsReservedCharacters verifies reserved characters are sanitized.
 func TestDriveDownloadDefaultOutputPathSanitizesWindowsReservedCharacters(t *testing.T) {
 	header := http.Header{
 		"Content-Disposition": []string{`attachment; filename="Q1: forecast?.txt"`},
@@ -1894,6 +1930,7 @@ func TestDriveDownloadDefaultOutputPathSanitizesWindowsReservedCharacters(t *tes
 	}
 }
 
+// TestDriveDownloadDefaultOutputPathRejectsWindowsReservedDeviceNames verifies reserved device names are rejected.
 func TestDriveDownloadDefaultOutputPathRejectsWindowsReservedDeviceNames(t *testing.T) {
 	header := http.Header{
 		"Content-Disposition": []string{`attachment; filename="CON.txt"`},
@@ -1911,6 +1948,7 @@ func TestDriveDownloadDefaultOutputPathRejectsWindowsReservedDeviceNames(t *test
 	}
 }
 
+// TestDriveDownloadDefaultOutputPathFallsBackWhenHeaderCandidateFailsPathValidation verifies invalid header names use a safe fallback.
 func TestDriveDownloadDefaultOutputPathFallsBackWhenHeaderCandidateFailsPathValidation(t *testing.T) {
 	validatePath := func(path string) error {
 		_, err := validate.SafeOutputPath(path)
@@ -1938,6 +1976,7 @@ func TestDriveDownloadDefaultOutputPathFallsBackWhenHeaderCandidateFailsPathVali
 	}
 }
 
+// mustDriveDownloadDefaultOutputPath resolves a default download path or fails the test.
 func mustDriveDownloadDefaultOutputPath(t *testing.T, header http.Header, title, fileToken string, validatePath driveDownloadOutputPathValidator) string {
 	t.Helper()
 	got, err := driveDownloadDefaultOutputPath(header, title, fileToken, validatePath)
@@ -1947,6 +1986,7 @@ func mustDriveDownloadDefaultOutputPath(t *testing.T, header http.Header, title,
 	return got
 }
 
+// TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted verifies default naming plans a metadata lookup.
 func TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -1986,6 +2026,7 @@ func TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadDryRunExplicitOutputSkipsMetadata verifies explicit output avoids metadata lookup.
 func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -2021,6 +2062,7 @@ func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadOmittedOutputRequiresMetadataScope verifies default naming declares its metadata scope.
 func TestDriveDownloadOmittedOutputRequiresMetadataScope(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:file:download " + common.DrivePermissionMemberAuthScope}, nil)
@@ -2055,6 +2097,7 @@ func TestDriveDownloadDeclaresPermissionMemberAuthScope(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadRejectsInvalidFileToken verifies unsafe download tokens are rejected.
 func TestDriveDownloadRejectsInvalidFileToken(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -2080,6 +2123,7 @@ func TestDriveDownloadRejectsInvalidFileToken(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadRejectsUnsafeExplicitOutput verifies unsafe output paths are rejected.
 func TestDriveDownloadRejectsUnsafeExplicitOutput(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -2105,6 +2149,7 @@ func TestDriveDownloadRejectsUnsafeExplicitOutput(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadExplicitOutputSkipsMetadataScope verifies explicit output does not declare metadata scope.
 func TestDriveDownloadExplicitOutputSkipsMetadataScope(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:file:download " + common.DrivePermissionMemberAuthScope}, nil)
@@ -2134,6 +2179,7 @@ func TestDriveDownloadExplicitOutputSkipsMetadataScope(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadRejectsExistingDefaultOutputWithoutOverwrite verifies default output also respects overwrite protection.
 func TestDriveDownloadRejectsExistingDefaultOutputWithoutOverwrite(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadExportAuth(reg, "file_existing_title", true)
@@ -2184,6 +2230,7 @@ func TestDriveDownloadRejectsExistingDefaultOutputWithoutOverwrite(t *testing.T)
 	}
 }
 
+// TestDriveDownloadUsesContentDispositionWhenOutputOmitted verifies response filenames take precedence.
 func TestDriveDownloadUsesContentDispositionWhenOutputOmitted(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	authStub := registerDriveDownloadExportAuth(reg, "file_named", true)
@@ -2243,6 +2290,7 @@ func TestDriveDownloadUsesContentDispositionWhenOutputOmitted(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadFallsBackToMetadataTitleWhenOutputOmitted verifies metadata supplies the default filename.
 func TestDriveDownloadFallsBackToMetadataTitleWhenOutputOmitted(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadExportAuth(reg, "file_title", true)
@@ -2293,6 +2341,7 @@ func TestDriveDownloadFallsBackToMetadataTitleWhenOutputOmitted(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadFallsBackToTokenWhenOutputOmittedAndMetadataEmpty verifies the token is the final filename fallback.
 func TestDriveDownloadFallsBackToTokenWhenOutputOmittedAndMetadataEmpty(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadExportAuth(reg, "file_empty", true)
@@ -2337,6 +2386,7 @@ func TestDriveDownloadFallsBackToTokenWhenOutputOmittedAndMetadataEmpty(t *testi
 	}
 }
 
+// TestDriveDownloadMetadataNonPermissionErrorContinuesWithTokenFallback verifies recoverable metadata failures use the token.
 func TestDriveDownloadMetadataNonPermissionErrorContinuesWithTokenFallback(t *testing.T) {
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadExportAuth(reg, "file_rate_limited", true)
@@ -2385,6 +2435,7 @@ func TestDriveDownloadMetadataNonPermissionErrorContinuesWithTokenFallback(t *te
 	}
 }
 
+// TestDriveDownloadTypedMetadataTimeoutFallsBack verifies typed metadata timeouts use fallback naming.
 func TestDriveDownloadTypedMetadataTimeoutFallsBack(t *testing.T) {
 	err := errs.NewNetworkError(errs.SubtypeNetworkTimeout, "metadata lookup timed out")
 	if driveDownloadShouldFailOnMetadataTitleError(context.Background(), err) {
@@ -2392,6 +2443,7 @@ func TestDriveDownloadTypedMetadataTimeoutFallsBack(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadMetadataContextErrorStopsBeforeDownload verifies command cancellation prevents the download request.
 func TestDriveDownloadMetadataContextErrorStopsBeforeDownload(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -2484,6 +2536,7 @@ func TestDriveDownloadMetadataContextErrorStopsBeforeDownload(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadMetadataErrorBeforeDownloadWhenOutputOmitted verifies permission failures stop before downloading.
 func TestDriveDownloadMetadataErrorBeforeDownloadWhenOutputOmitted(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	registerDriveDownloadExportAuth(reg, "file_no_meta", true)

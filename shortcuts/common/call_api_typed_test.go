@@ -126,10 +126,7 @@ func TestAPIClassifyContext(t *testing.T) {
 	}
 }
 
-// TestCallAPITyped_NonJSON5xx pins that a non-JSON HTTP 5xx (e.g. a gateway 502
-// text/html page) is a retryable network/server_error carrying the header
-// log_id — not a mis-parsed internal/invalid_response.
-// TestDoAPIJSON_HTTPErrorWithZeroBodyCodeNotSwallowed pins that an HTTP status
+// TestDoAPIJSONTyped_HTTPErrorWithZeroBodyCodeNotSwallowed pins that an HTTP status
 // error whose body omits a non-zero business code (e.g. 400 + {"code":0,...})
 // still surfaces a typed error. BuildAPIError treats code 0 as success and
 // returns nil, so the HTTP-status fallback must kick in — otherwise a 4xx

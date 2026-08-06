@@ -722,6 +722,7 @@ func (ctx *RuntimeContext) ValidatePath(path string) error {
 
 // ── Output helpers ──
 
+// newEmitter creates an output emitter configured for the active runtime.
 func (ctx *RuntimeContext) newEmitter() *output.Emitter {
 	streams := ctx.IO()
 	return output.NewEmitter(output.EmitterConfig{
