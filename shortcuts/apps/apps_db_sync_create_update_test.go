@@ -54,8 +54,11 @@ func TestAppsDBSyncCreatePreviewDryRun(t *testing.T) {
 	if a.Method != "POST" || a.URL != dbSyncURL {
 		t.Fatalf("dry-run = %s %s", a.Method, a.URL)
 	}
-	if a.Params["env"] != "dev" {
-		t.Fatalf("dry-run params = %v", a.Params)
+	if a.Body["env"] != "dev" {
+		t.Fatalf("dry-run body.env = %v", a.Body["env"])
+	}
+	if _, ok := a.Params["env"]; ok {
+		t.Fatalf("env must be in body, not query params: %v", a.Params)
 	}
 	if _, ok := a.Params["preview"]; ok {
 		t.Fatalf("preview must be in body, not query params: %v", a.Params)
@@ -87,8 +90,11 @@ func TestAppsDBSyncCreateCommitDryRun(t *testing.T) {
 	if a.Method != "POST" || a.URL != dbSyncURL {
 		t.Fatalf("dry-run = %s %s", a.Method, a.URL)
 	}
-	if a.Params["env"] != "online" {
-		t.Fatalf("env missing from dry-run params: %v", a.Params)
+	if a.Body["env"] != "online" {
+		t.Fatalf("env missing from dry-run body: %v", a.Body["env"])
+	}
+	if _, ok := a.Params["env"]; ok {
+		t.Fatalf("env must be in body, not query params: %v", a.Params)
 	}
 	if _, ok := a.Params["preview"]; ok {
 		t.Fatalf("commit dry-run must not include preview param: %v", a.Params)
@@ -277,8 +283,11 @@ func TestAppsDBSyncUpdateDryRun(t *testing.T) {
 	if _, ok := a.Params["task_id"]; ok {
 		t.Fatalf("task_id must be in body, not query params: %v", a.Params)
 	}
-	if a.Params["env"] != "dev" {
-		t.Fatalf("dry-run params.env = %v", a.Params["env"])
+	if a.Body["env"] != "dev" {
+		t.Fatalf("dry-run body.env = %v", a.Body["env"])
+	}
+	if _, ok := a.Params["env"]; ok {
+		t.Fatalf("env must be in body, not query params: %v", a.Params)
 	}
 	config := a.Body["config"].(map[string]interface{})
 	if config["mode"] != "streaming" || config["field_maps"] == nil {

@@ -45,6 +45,16 @@ func dbEnvParams(rctx *common.RuntimeContext, params map[string]interface{}) map
 	return params
 }
 
+// dbEnvBody 把 env 并入请求体顶层：sync_create/sync_update 从 body 读 env（与 config/preview 平级），
+// 不是从 query。语义与 dbEnvParams 一致——仅在显式指定环境（非空）时带 env 键，未指定时省略、
+// 由服务端按应用多环境状态自动选分支。原样返回同一个 map 便于链式。
+func dbEnvBody(rctx *common.RuntimeContext, body map[string]interface{}) map[string]interface{} {
+	if env := dbEnv(rctx); env != "" {
+		body["env"] = env
+	}
+	return body
+}
+
 // rejectLegacyEnvFlag 在 Validate 阶段拦截已移除的 --env：显式传了就报清晰的 validation 错，指向 --environment。
 func rejectLegacyEnvFlag(rctx *common.RuntimeContext) error {
 	if rctx.Changed("env") {

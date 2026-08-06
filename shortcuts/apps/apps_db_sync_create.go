@@ -57,8 +57,7 @@ var AppsDBSyncCreate = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST(appDbSyncCreatePath(appID)).
 			Desc("Preview or create Base data sync task").
-			Params(dbSyncCreateParams(rctx)).
-			Body(dbSyncCreateBody(config, rctx.Bool("preview")))
+			Body(dbSyncCreateBody(rctx, config, rctx.Bool("preview")))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, err := requireAppID(rctx.Str("app-id"))
@@ -69,7 +68,7 @@ var AppsDBSyncCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPITyped("POST", appDbSyncCreatePath(appID), dbSyncCreateParams(rctx), dbSyncCreateBody(config, rctx.Bool("preview")))
+		data, err := rctx.CallAPITyped("POST", appDbSyncCreatePath(appID), nil, dbSyncCreateBody(rctx, config, rctx.Bool("preview")))
 		if err != nil {
 			return withDBSyncHint(err, dbSyncFallbackHint)
 		}
@@ -82,15 +81,16 @@ var AppsDBSyncCreate = common.Shortcut{
 	PostMount: allowDBSyncPreviewWithoutConfirmation,
 }
 
-func dbSyncCreateParams(rctx *common.RuntimeContext) map[string]interface{} {
-	return dbEnvParams(rctx, map[string]interface{}{})
-}
-
-func dbSyncCreateBody(config map[string]interface{}, preview bool) map[string]interface{} {
-	return map[string]interface{}{
+func dbSyncCreateBody(rctx *common.RuntimeContext, config map[string]interface{}, preview bool) map[string]interface{} {
+	body := map[string]interface{}{
 		"config":  config,
 		"preview": preview,
 	}
+	// The sync_create endpoint reads env from the request body (peer of config/preview),
+	// not the query string; an absent/empty body env makes the server treat the request as
+	// online and reject DDL. Only attach env when the caller specified one, mirroring
+	// dbEnvParams' omit-empty contract so auto-select (server picks dev/online) still works.
+	return dbEnvBody(rctx, body)
 }
 
 func allowDBSyncPreviewWithoutConfirmation(cmd *cobra.Command) {
