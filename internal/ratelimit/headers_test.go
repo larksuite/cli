@@ -50,3 +50,15 @@ func TestRetryAfterSecondsRoundsUp(t *testing.T) {
 		t.Fatalf("RetryAfterSeconds() = %d, want 2", got)
 	}
 }
+
+func TestParseStandardHeadersIgnoresGatewayHeaders(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 12, 0, 0, 0, time.UTC)
+	got := ParseStandardHeaders(http.Header{
+		HeaderReset:   {"8"},
+		HeaderLimit:   {"100"},
+		"Retry-After": {"3"},
+	}, now)
+	if got.RetryAfter != 3*time.Second || got.Limit != 0 {
+		t.Fatalf("ParseStandardHeaders() = %+v", got)
+	}
+}

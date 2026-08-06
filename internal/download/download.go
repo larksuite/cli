@@ -268,6 +268,9 @@ func validateOptions(source Source, opts Options) error {
 	if source.transport == nil {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download requires a configured transport")
 	}
+	if source.representation != immutableRepresentation && source.representation != mutableRepresentation {
+		return errs.NewInternalError(errs.SubtypeUnknown, "download requires an explicit representation contract")
+	}
 	if opts.PartSize <= 0 {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download part size must be positive, got %d", opts.PartSize)
 	}
@@ -325,6 +328,11 @@ func openPartial(ctx context.Context, source Source, opts Options, retryWait *re
 	}
 
 	session := newRepresentationSession(source, first, resp.Header)
+	completeInFirstResponse := first.end == first.total-1
+	if !completeInFirstResponse && !session.multipartAllowed() {
+		resp.Body.Close()
+		return openFull(ctx, source.transport, opts, retryWait)
+	}
 
 	limit := opts.MaxResponses
 	if limit == 0 {
@@ -478,8 +486,7 @@ func (r *sequentialPartReader) openNext() error {
 
 	r.responses++
 	if resp.StatusCode == http.StatusOK {
-		resp.Body.Close()
-		return r.reopenFullResponse()
+		return r.continueFullResponse(resp)
 	}
 	if resp.StatusCode != http.StatusPartialContent {
 		resp.Body.Close()
@@ -510,23 +517,8 @@ func (r *sequentialPartReader) openNext() error {
 	return nil
 }
 
-// reopenFullResponse continues from a peer that stops honoring Range.
-func (r *sequentialPartReader) reopenFullResponse() error {
-	if r.responses >= r.maxResponses {
-		return protocolError("server split the resource into more than %d responses", r.maxResponses)
-	}
-	resp, err := fetchWithRetry(r.ctx, r.session.transport, Request{}, r.opts, r.retryWait)
-	if err != nil {
-		return err
-	}
-	if resp == nil || resp.Body == nil {
-		return protocolError("full-response continuation returned an empty response")
-	}
-	r.responses++
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return protocolError("full-response continuation returned HTTP %d, want 200", resp.StatusCode)
-	}
+// continueFullResponse uses a peer's full response after it stops honoring Range.
+func (r *sequentialPartReader) continueFullResponse(resp *http.Response) error {
 	if err := validateResponseEncoding(resp); err != nil {
 		resp.Body.Close()
 		return err
@@ -550,7 +542,7 @@ func (r *sequentialPartReader) reopenFullResponse() error {
 }
 
 func (r *sequentialPartReader) canRetryBody(err error) bool {
-	return downloadRetryable(r.ctx, err)
+	return r.session.multipartAllowed() && downloadRetryable(r.ctx, err)
 }
 
 func (r *sequentialPartReader) readFailure(readErr, closeErr error) error {

@@ -35,6 +35,15 @@ func ParseHeaders(header http.Header, now time.Time) Info {
 		info.RetryAfter = delay
 		return info
 	}
+	standard := ParseStandardHeaders(header, now)
+	info.RetryAfter = standard.RetryAfter
+	return info
+}
+
+// ParseStandardHeaders reads the standard Retry-After delta-seconds or
+// HTTP-date form.
+func ParseStandardHeaders(header http.Header, now time.Time) Info {
+	var info Info
 	if delay, ok := deltaSeconds(header.Get("Retry-After")); ok {
 		info.RetryAfter = delay
 		return info

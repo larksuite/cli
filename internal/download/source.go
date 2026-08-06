@@ -7,18 +7,33 @@ import (
 	"net/http"
 )
 
-// Source is one immutable downloadable representation.
+type representationContract uint8
+
+const (
+	representationUnspecified representationContract = iota
+	immutableRepresentation
+	mutableRepresentation
+)
+
+// Source binds a transport to its representation stability.
 type Source struct {
-	transport Transport
+	transport      Transport
+	representation representationContract
 }
 
 // ImmutableSource allows multipart reads without a validator.
 func ImmutableSource(transport Transport) Source {
-	return Source{transport: transport}
+	return Source{transport: transport, representation: immutableRepresentation}
+}
+
+// MutableSource requires a strong ETag before combining responses.
+func MutableSource(transport Transport) Source {
+	return Source{transport: transport, representation: mutableRepresentation}
 }
 
 type representationSession struct {
 	transport    Transport
+	contract     representationContract
 	totalSize    int64
 	validator    string
 	hasValidator bool
@@ -28,10 +43,15 @@ func newRepresentationSession(source Source, first contentRange, header http.Hea
 	validator, hasValidator := strongETag(header)
 	return &representationSession{
 		transport:    source.transport,
+		contract:     source.representation,
 		totalSize:    first.total,
 		validator:    validator,
 		hasValidator: hasValidator,
 	}
+}
+
+func (s *representationSession) multipartAllowed() bool {
+	return s.contract == immutableRepresentation || s.hasValidator
 }
 
 func (s *representationSession) request(byteRange ByteRange) Request {

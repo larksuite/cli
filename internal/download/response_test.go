@@ -186,8 +186,6 @@ func TestOpenRejectsEncodedFullResponseContinuation(t *testing.T) {
 		switch calls {
 		case 1:
 			return testPartial(payload[:4], 0, 3, int64(len(payload)), ""), nil
-		case 2:
-			return testResponse(http.StatusOK, payload, nil), nil
 		default:
 			return testResponse(http.StatusOK, payload, http.Header{"Content-Encoding": {"gzip"}}), nil
 		}
@@ -208,8 +206,6 @@ func TestOpenClassifiesFullContinuationPrefixFailure(t *testing.T) {
 		switch calls {
 		case 1:
 			return testPartial(payload[:4], 0, 3, int64(len(payload)), ""), nil
-		case 2:
-			return testResponse(http.StatusOK, payload, nil), nil
 		default:
 			return &http.Response{
 				StatusCode:    http.StatusOK,

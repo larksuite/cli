@@ -379,6 +379,95 @@ func TestOpenImmutableWithoutValidatorUsesExactRanges(t *testing.T) {
 	}
 }
 
+func TestOpenMutableWithoutValidatorFallsBackBeforeDelivery(t *testing.T) {
+	payload := []byte("abcdefgh")
+	var requests []Request
+	stream, err := Open(context.Background(), MutableSource(func(_ context.Context, req Request) (*http.Response, error) {
+		requests = append(requests, req)
+		if req.Range != nil {
+			return testPartial(payload[:4], 0, 3, int64(len(payload)), ""), nil
+		}
+		return testResponse(http.StatusOK, payload, nil), nil
+	}), testOptions().Options)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer stream.Body.Close()
+	got, err := io.ReadAll(stream.Body)
+	if err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("ReadAll() = %q, %v; want %q", got, err, payload)
+	}
+	if len(requests) != 2 || requests[0].Range == nil || requests[1].Range != nil {
+		t.Fatalf("requests = %#v, want range probe then full request", requests)
+	}
+}
+
+func TestOpenMutableWithStrongETagUsesMultipart(t *testing.T) {
+	payload := []byte("abcdefgh")
+	var requests []Request
+	stream, err := Open(context.Background(), MutableSource(func(_ context.Context, req Request) (*http.Response, error) {
+		requests = append(requests, req)
+		if req.Range == nil {
+			t.Fatal("validated mutable source unexpectedly used a full request")
+		}
+		start := req.Range.Start
+		end := min(req.Range.End, int64(len(payload))-1)
+		return testPartial(payload[start:end+1], start, end, int64(len(payload)), `"v1"`), nil
+	}), testOptions().Options)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer stream.Body.Close()
+	got, err := io.ReadAll(stream.Body)
+	if err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("ReadAll() = %q, %v; want %q", got, err, payload)
+	}
+	if len(requests) != 2 || requests[1].IfRange != `"v1"` {
+		t.Fatalf("requests = %#v, want validated continuation", requests)
+	}
+}
+
+func TestOpenMutableSmallObjectNeedsNoValidator(t *testing.T) {
+	payload := []byte("tiny")
+	requests := 0
+	stream, err := Open(context.Background(), MutableSource(func(_ context.Context, req Request) (*http.Response, error) {
+		requests++
+		if req.Range == nil {
+			t.Fatal("single-response object unexpectedly used a full request")
+		}
+		return testPartial(payload, 0, int64(len(payload)-1), int64(len(payload)), ""), nil
+	}), Options{PartSize: 8})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer stream.Body.Close()
+	got, err := io.ReadAll(stream.Body)
+	if err != nil || !bytes.Equal(got, payload) || requests != 1 {
+		t.Fatalf("ReadAll() = %q, %v; requests = %d", got, err, requests)
+	}
+}
+
+func TestOpenMutableWithoutValidatorDoesNotResumeInterruptedBody(t *testing.T) {
+	requests := 0
+	stream, err := Open(context.Background(), MutableSource(func(_ context.Context, _ Request) (*http.Response, error) {
+		requests++
+		return &http.Response{
+			StatusCode: http.StatusPartialContent,
+			Header:     http.Header{"Content-Range": {"bytes 0-3/4"}},
+			Body:       &scriptedBody{payload: []byte("ab"), readErr: io.ErrUnexpectedEOF},
+		}, nil
+	}), Options{PartSize: 4, MaxPartRetries: 1})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer stream.Body.Close()
+	_, err = io.ReadAll(stream.Body)
+	requireProblem(t, err, errs.SubtypeNetworkTransport, true, "range response body ended")
+	if requests != 1 {
+		t.Fatalf("requests = %d, mutable source without a validator must restart as a new transfer", requests)
+	}
+}
+
 func TestOpenContinuesWithoutValidator(t *testing.T) {
 	payload := []byte("abcdefgh")
 	var ifRanges []string
@@ -456,14 +545,8 @@ func TestOpenUsesValidatedMidstreamFullResponse(t *testing.T) {
 		if requests == 1 {
 			return testPartial(payload[:4], 0, 3, int64(len(payload)), ""), nil
 		}
-		if requests == 2 {
-			if req.Range == nil || req.Range.Start != 4 {
-				t.Fatalf("follow-up request = %#v, want exact range from byte 4", req)
-			}
-			return testResponse(http.StatusOK, payload, nil), nil
-		}
-		if req.Range != nil {
-			t.Fatalf("reopened request = %#v, want unbounded full request", req)
+		if req.Range == nil || req.Range.Start != 4 {
+			t.Fatalf("follow-up request = %#v, want exact range from byte 4", req)
 		}
 		return testResponse(http.StatusOK, payload, nil), nil
 	}, testOptions())
@@ -477,6 +560,9 @@ func TestOpenUsesValidatedMidstreamFullResponse(t *testing.T) {
 	}
 	if !bytes.Equal(got, payload) {
 		t.Fatalf("payload = %q, want %q", got, payload)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want the existing full response to be reused", requests)
 	}
 }
 
@@ -660,6 +746,7 @@ func TestOpenRejectsInvalidConfiguration(t *testing.T) {
 		opts   Options
 	}{
 		{name: "unconfigured source"},
+		{name: "unspecified representation", source: Source{transport: unusedFetch}},
 		{name: "negative part size", source: immutableSource(unusedFetch), opts: Options{PartSize: -1}},
 		{name: "negative max responses", source: immutableSource(unusedFetch), opts: Options{MaxResponses: -1}},
 		{name: "negative part retries", source: immutableSource(unusedFetch), opts: Options{MaxPartRetries: -1}},

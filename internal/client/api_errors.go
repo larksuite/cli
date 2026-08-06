@@ -35,6 +35,12 @@ func wrapTransportError(ctx context.Context, err error, replaySafe bool, format 
 	return networkErr
 }
 
+// WrapReplaySafeTransportError classifies a failed request that is safe to
+// replay. It does not perform a retry.
+func WrapReplaySafeTransportError(ctx context.Context, err error, format string, args ...any) error {
+	return wrapTransportError(ctx, err, true, format, args...)
+}
+
 func transientNetworkSubtype(subtype errs.Subtype) bool {
 	switch subtype {
 	case errs.SubtypeNetworkTimeout, errs.SubtypeNetworkDNS, errs.SubtypeNetworkTransport:
