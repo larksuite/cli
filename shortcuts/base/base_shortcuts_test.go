@@ -1220,9 +1220,14 @@ func TestBaseFieldValidate(t *testing.T) {
 func TestBaseTableValidate(t *testing.T) {
 	ctx := context.Background()
 	// --fields carries the whole table schema, so it is parsed at validate time:
-	// an unusable schema must fail before the table exists, not after.
-	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": "{"}, nil, nil)); err == nil {
-		t.Fatal("invalid fields json should fail CLI validate")
+	// an unusable schema must fail before the table exists, not after. The
+	// rejection has to stay machine-readable, so assert the typed metadata and
+	// the preserved parse cause rather than the message alone.
+	err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": "{"}, nil, nil))
+	assertInvalidArgumentValidation(t, err, "--fields", []string{"--fields"}, "invalid JSON array")
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("invalid fields json must preserve the json parse cause, err=%v", err)
 	}
 	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": `[{"name":"Name","type":"text"}]`, "view": `[1]`}, nil, nil)); err != nil {
 		t.Fatalf("invalid view json should bypass CLI validate, err=%v", err)

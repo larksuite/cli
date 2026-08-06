@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -29,6 +30,12 @@ func TestBaseTableCreateDeclaresFieldsRequired(t *testing.T) {
 	}
 }
 
+// A missing flag fails inside cobra's ValidateRequiredFlags, which emits a plain
+// error — the typed envelope is applied later by the dispatcher, whose
+// classification of "required flag(s)" is pinned in cmd/root_test.go. So this
+// test asserts the text contract the dispatcher keys on, and pins the layer
+// boundary itself; asserting errs metadata here would test a promise this layer
+// does not make.
 func TestBaseTableCreateRejectsMissingFields(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 
@@ -38,6 +45,9 @@ func TestBaseTableCreateRejectsMissingFields(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `required flag(s) "fields" not set`) {
 		t.Fatalf("err=%v, want cobra required-flag error for fields", err)
+	}
+	if _, typed := errs.ProblemOf(err); typed {
+		t.Fatal("cobra required-flag errors reach the dispatcher untyped; if that changed, assert the typed metadata here instead")
 	}
 }
 
