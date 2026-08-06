@@ -1065,6 +1065,7 @@ func TestDriveUploadFinishNoToken(t *testing.T) {
 	}
 }
 
+// TestDriveUploadWithCustomName verifies that an explicit remote name is preserved.
 func TestDriveUploadWithCustomName(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-name-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -1104,6 +1105,7 @@ func TestDriveUploadWithCustomName(t *testing.T) {
 	}
 }
 
+// TestDriveUploadDryRunUsesWikiTarget verifies the wiki mount point in the upload plan.
 func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	t.Parallel()
 
@@ -1165,6 +1167,7 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	}
 }
 
+// TestNewDriveUploadSpecPreservesPathAndName verifies the upload specification mirrors its flags.
 func TestNewDriveUploadSpecPreservesPathAndName(t *testing.T) {
 	t.Parallel()
 
@@ -1209,6 +1212,7 @@ func TestNewDriveUploadSpecPreservesPathAndName(t *testing.T) {
 	}
 }
 
+// TestDriveUploadDryRunIncludesFileToken verifies overwrite tokens in the upload plan.
 func TestDriveUploadDryRunIncludesFileToken(t *testing.T) {
 	t.Parallel()
 
@@ -1262,6 +1266,7 @@ func TestDriveUploadDryRunIncludesFileToken(t *testing.T) {
 	}
 }
 
+// TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint verifies that bot overwrites omit the grant hint.
 func TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint(t *testing.T) {
 	t.Parallel()
 
@@ -2516,6 +2521,7 @@ type capturedDriveMultipart struct {
 	Files  map[string][]byte
 }
 
+// decodeDriveMultipartBody decodes one captured multipart request for assertions.
 func decodeDriveMultipartBody(t *testing.T, stub *httpmock.Stub) capturedDriveMultipart {
 	t.Helper()
 
@@ -2607,6 +2613,7 @@ func decodeDriveReportTags(t *testing.T, stub *httpmock.Stub) map[string]interfa
 	return tags
 }
 
+// TestDriveUploadSmallFileReportFileEventOnSuccess verifies reporting after a small Drive upload succeeds.
 func TestDriveUploadSmallFileReportFileEventOnSuccess(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-report-small-ok", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -2656,6 +2663,7 @@ func TestDriveUploadSmallFileReportFileEventOnSuccess(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileReportFileEventOnError verifies reporting after a small Drive upload fails.
 func TestDriveUploadSmallFileReportFileEventOnError(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-report-small-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -2700,6 +2708,7 @@ func TestDriveUploadSmallFileReportFileEventOnError(t *testing.T) {
 	}
 }
 
+// TestDriveUploadLargeFileReportFileEventOnPrepareError verifies reporting when multipart preparation fails.
 func TestDriveUploadLargeFileReportFileEventOnPrepareError(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-report-large-prepare-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -2757,6 +2766,7 @@ func TestDriveUploadLargeFileReportFileEventOnPrepareError(t *testing.T) {
 	}
 }
 
+// TestDriveUploadReportFileEventFailureKeepsUploadError verifies that reporting cannot replace the Drive upload error.
 func TestDriveUploadReportFileEventFailureKeepsUploadError(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-report-keeps-err", AppSecret: "test-secret", Brand: core.BrandFeishu,

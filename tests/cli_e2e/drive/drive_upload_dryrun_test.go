@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestDriveUploadDryRun_WikiTarget verifies upload-report planning for a wiki target.
 func TestDriveUploadDryRun_WikiTarget(t *testing.T) {
 	setDriveDryRunConfigEnv(t)
 
@@ -43,6 +44,7 @@ func TestDriveUploadDryRun_WikiTarget(t *testing.T) {
 	assertDriveUploadReportDryRun(t, result.Stdout, "wiki")
 }
 
+// TestDriveUploadDryRun_WithFileToken verifies upload-report planning for overwrite uploads.
 func TestDriveUploadDryRun_WithFileToken(t *testing.T) {
 	setDriveDryRunConfigEnv(t)
 
@@ -71,6 +73,7 @@ func TestDriveUploadDryRun_WithFileToken(t *testing.T) {
 	assertDriveUploadReportDryRun(t, result.Stdout, "explorer")
 }
 
+// TestDriveUploadDryRunRejectsEmptyWikiToken verifies validation of explicitly empty wiki targets.
 func TestDriveUploadDryRunRejectsEmptyWikiToken(t *testing.T) {
 	setDriveDryRunConfigEnv(t)
 
@@ -91,6 +94,7 @@ func TestDriveUploadDryRunRejectsEmptyWikiToken(t *testing.T) {
 	assert.Contains(t, result.Stderr, "--wiki-token cannot be empty")
 }
 
+// setDriveDryRunConfigEnv configures deterministic credentials for Drive dry-run tests.
 func setDriveDryRunConfigEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())

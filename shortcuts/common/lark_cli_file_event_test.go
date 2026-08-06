@@ -65,6 +65,7 @@ func registerReportStubWithBody(t *testing.T, reg *httpmock.Registry, body map[s
 	return stub
 }
 
+// TestIsTenantCapacityExceeded verifies recognition of tenant-capacity API errors.
 func TestIsTenantCapacityExceeded(t *testing.T) {
 	if !IsTenantCapacityExceeded(errs.NewAPIError(errs.SubtypeQuotaExceeded, "quota exceeded").WithCode(1061101)) {
 		t.Fatal("code 1061101 should be recognized as tenant capacity exceeded")
@@ -87,6 +88,7 @@ func TestIsTenantCapacityExceeded(t *testing.T) {
 	}
 }
 
+// TestReportUploadFileEvent_Success_ReportsOnceWithMinimalBody verifies the successful report contract and once-only behavior.
 func TestReportUploadFileEvent_Success_ReportsOnceWithMinimalBody(t *testing.T) {
 	runtime, reg := newUploadFileEventRuntime(t)
 	reportStub := registerReportStub(t, reg, 0)
@@ -137,6 +139,7 @@ func TestReportUploadFileEvent_Success_ReportsOnceWithMinimalBody(t *testing.T) 
 	}
 }
 
+// TestBuildUploadReportRequest_CommandOmitsBinaryName verifies that report commands omit the executable name.
 func TestBuildUploadReportRequest_CommandOmitsBinaryName(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli"}
 	drive := &cobra.Command{Use: "drive"}
@@ -151,6 +154,7 @@ func TestBuildUploadReportRequest_CommandOmitsBinaryName(t *testing.T) {
 	}
 }
 
+// TestReportUploadFileEventOnError_ReportsAndPreservesError verifies error reporting without replacing the upload error.
 func TestReportUploadFileEventOnError_ReportsAndPreservesError(t *testing.T) {
 	runtime, reg := newUploadFileEventRuntime(t)
 	reportStub := registerReportStub(t, reg, 0)
@@ -178,6 +182,7 @@ func TestReportUploadFileEventOnError_ReportsAndPreservesError(t *testing.T) {
 	}
 }
 
+// TestReportUploadFileEventOnError_ReportFailureDoesNotReplaceUploadError verifies best-effort report failure isolation.
 func TestReportUploadFileEventOnError_ReportFailureDoesNotReplaceUploadError(t *testing.T) {
 	runtime, reg := newUploadFileEventRuntime(t)
 	reg.Register(&httpmock.Stub{
@@ -193,6 +198,7 @@ func TestReportUploadFileEventOnError_ReportFailureDoesNotReplaceUploadError(t *
 	}
 }
 
+// TestReportUploadFileEventOnError_AppendsCapacityExpansionHint verifies that quota errors receive the expansion URL hint.
 func TestReportUploadFileEventOnError_AppendsCapacityExpansionHint(t *testing.T) {
 	runtime, reg := newUploadFileEventRuntime(t)
 	registerReportStubWithBody(t, reg, map[string]interface{}{
@@ -221,6 +227,7 @@ func TestReportUploadFileEventOnError_AppendsCapacityExpansionHint(t *testing.T)
 	}
 }
 
+// TestReportUploadFileEventOnError_TopLevelSuccessMsgDoesNotBecomeHint verifies that generic success text is not used as a URL hint.
 func TestReportUploadFileEventOnError_TopLevelSuccessMsgDoesNotBecomeHint(t *testing.T) {
 	runtime, reg := newUploadFileEventRuntime(t)
 	registerReportStubWithMsg(t, reg, 0, "success")
@@ -237,6 +244,7 @@ func TestReportUploadFileEventOnError_TopLevelSuccessMsgDoesNotBecomeHint(t *tes
 	}
 }
 
+// TestReportUploadFileEventOnError_InvalidURLInDataMsgIsIgnored verifies that malformed expansion URLs are ignored.
 func TestReportUploadFileEventOnError_InvalidURLInDataMsgIsIgnored(t *testing.T) {
 	runtime, reg := newUploadFileEventRuntime(t)
 	registerReportStubWithBody(t, reg, map[string]interface{}{
@@ -259,6 +267,7 @@ func TestReportUploadFileEventOnError_InvalidURLInDataMsgIsIgnored(t *testing.T)
 	}
 }
 
+// TestReportUploadFileEventOnError_EmptyReportMsgYieldsNoHint verifies that an empty report message leaves the hint unchanged.
 func TestReportUploadFileEventOnError_EmptyReportMsgYieldsNoHint(t *testing.T) {
 	runtime, reg := newUploadFileEventRuntime(t)
 	// report returns code 0 but no msg: no capacity-expansion URL to surface.
@@ -279,6 +288,7 @@ func TestReportUploadFileEventOnError_EmptyReportMsgYieldsNoHint(t *testing.T) {
 	}
 }
 
+// TestReportUploadFileEventOnError_NonQuotaErrorKeepsHint verifies that non-quota errors retain their original hint.
 func TestReportUploadFileEventOnError_NonQuotaErrorKeepsHint(t *testing.T) {
 	runtime, reg := newUploadFileEventRuntime(t)
 	registerReportStubWithMsg(t, reg, 0, testCapacityExpansionURL)
@@ -294,6 +304,7 @@ func TestReportUploadFileEventOnError_NonQuotaErrorKeepsHint(t *testing.T) {
 	}
 }
 
+// TestReportUploadFileEventOnError_NilErrorIsNoop verifies that a nil upload error causes no report or mutation.
 func TestReportUploadFileEventOnError_NilErrorIsNoop(t *testing.T) {
 	runtime, _ := newUploadFileEventRuntime(t)
 
@@ -317,6 +328,7 @@ func (contextBlockingRoundTripper) RoundTrip(req *http.Request) (*http.Response,
 	return nil, req.Context().Err()
 }
 
+// TestPostUploadFileEventWithTimeout_BoundsBestEffortRequest verifies that a stalled report respects its timeout.
 func TestPostUploadFileEventWithTimeout_BoundsBestEffortRequest(t *testing.T) {
 	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_x"}
 	f, _, _, _ := cmdutil.TestFactory(t, cfg)

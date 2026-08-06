@@ -289,6 +289,7 @@ func TestDoAPIJSONTyped_NonZeroCode(t *testing.T) {
 	}
 }
 
+// TestRuntimeContextMarkFileEventReported verifies that a runtime records the file event only once.
 func TestRuntimeContextMarkFileEventReported(t *testing.T) {
 	rt := &RuntimeContext{}
 	if !rt.MarkFileEventReported() {

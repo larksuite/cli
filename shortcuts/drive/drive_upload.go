@@ -243,12 +243,14 @@ func validateDriveUploadSpec(runtime *common.RuntimeContext, spec driveUploadSpe
 	return nil
 }
 
+// driveUploadFlagExplicitlyEmpty reports whether a target flag was supplied with an empty value.
 func driveUploadFlagExplicitlyEmpty(runtime *common.RuntimeContext, flagName string) bool {
 	return runtime.Cmd != nil &&
 		runtime.Cmd.Flags().Changed(flagName) &&
 		strings.TrimSpace(runtime.Str(flagName)) == ""
 }
 
+// uploadFileToDrive selects the appropriate upload mode and reports the resulting file event.
 func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName string, target driveUploadTarget, fileSize int64, existingFileToken string) (driveUploadResult, error) {
 	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {

@@ -60,6 +60,7 @@ func TestImportDefaultFileName(t *testing.T) {
 	}
 }
 
+// TestImportTargetFileName verifies explicit and inferred import target names.
 func TestImportTargetFileName(t *testing.T) {
 	t.Parallel()
 
@@ -71,6 +72,7 @@ func TestImportTargetFileName(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunUsesExtensionlessDefaultName verifies the default imported document name.
 func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -143,6 +145,7 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunShowsMultipartUploadForLargeFile verifies the multipart plan for oversized single-part inputs.
 func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -414,6 +417,7 @@ func TestDriveImportCreateTaskBodyWithTargetToken(t *testing.T) {
 	}
 }
 
+// TestDriveImportCreateTaskBodyTargetTokenIgnoredForNonBitable verifies that only Base imports use target tokens.
 func TestDriveImportCreateTaskBodyTargetTokenIgnoredForNonBitable(t *testing.T) {
 	t.Parallel()
 
@@ -439,6 +443,7 @@ func TestDriveImportCreateTaskBodyTargetTokenIgnoredForNonBitable(t *testing.T) 
 	}
 }
 
+// TestDriveImportDryRunWithTargetToken verifies that a target token is preserved in the import plan.
 func TestDriveImportDryRunWithTargetToken(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)

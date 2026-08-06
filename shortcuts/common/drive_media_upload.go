@@ -261,6 +261,7 @@ func uploadDriveMediaMultipartPartsTyped(runtime *RuntimeContext, cfg DriveMedia
 	return nil
 }
 
+// uploadDriveMediaMultipartPartTyped uploads one indexed block of a multipart media upload.
 func uploadDriveMediaMultipartPartTyped(runtime *RuntimeContext, uploadID string, seq int, chunk []byte) error {
 	fd := larkcore.NewFormdata()
 	fd.AddField("upload_id", uploadID)
@@ -283,6 +284,7 @@ func uploadDriveMediaMultipartPartTyped(runtime *RuntimeContext, uploadID string
 	return nil
 }
 
+// finishDriveMediaMultipartUploadTyped completes a multipart media upload and returns its file token.
 func finishDriveMediaMultipartUploadTyped(runtime *RuntimeContext, uploadID string, blockNum int) (string, error) {
 	data, err := runtime.CallAPITyped("POST", driveMediaUploadFinishPath, nil, map[string]interface{}{
 		"upload_id": uploadID,

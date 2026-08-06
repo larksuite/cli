@@ -15,6 +15,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// TestDrive_ImportWorkflow exercises the complete Drive import workflow against the live API.
 func TestDrive_ImportWorkflow(t *testing.T) {
 	clie2e.SkipWithoutTenantAccessToken(t)
 

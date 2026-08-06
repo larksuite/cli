@@ -204,6 +204,7 @@ func TestParseDriveMediaMultipartUploadSessionTypedValidatesResponseFields(t *te
 	}
 }
 
+// TestUploadDriveMediaMultipartTypedPartAPIFailure verifies typed errors from multipart part uploads.
 func TestUploadDriveMediaMultipartTypedPartAPIFailure(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -251,6 +252,7 @@ func TestUploadDriveMediaMultipartTypedPartAPIFailure(t *testing.T) {
 	}
 }
 
+// TestUploadDriveMediaMultipartTypedFinishRequiresFileToken verifies that the finish response must include a file token.
 func TestUploadDriveMediaMultipartTypedFinishRequiresFileToken(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -352,6 +354,7 @@ func assertSingleReport(t *testing.T, reportStub *httpmock.Stub, wantStatus stri
 	return tags
 }
 
+// TestUploadDriveMediaAllTypedReportsFileEventOnSuccess verifies reporting after a single-part upload succeeds.
 func TestUploadDriveMediaAllTypedReportsFileEventOnSuccess(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -399,6 +402,7 @@ func TestUploadDriveMediaAllTypedReportsFileEventOnSuccess(t *testing.T) {
 	}
 }
 
+// TestUploadDriveMediaAllTypedReportsFileEventOnError verifies reporting after a single-part upload fails.
 func TestUploadDriveMediaAllTypedReportsFileEventOnError(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -432,6 +436,7 @@ func TestUploadDriveMediaAllTypedReportsFileEventOnError(t *testing.T) {
 	}
 }
 
+// TestUploadDriveMediaAllTypedReportFailureKeepsUploadError verifies that reporting cannot replace the upload error.
 func TestUploadDriveMediaAllTypedReportFailureKeepsUploadError(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -473,6 +478,7 @@ func TestUploadDriveMediaAllTypedReportFailureKeepsUploadError(t *testing.T) {
 	}
 }
 
+// TestUploadDriveMediaMultipartTypedReportsFileEventOnPrepareError verifies reporting when multipart preparation fails.
 func TestUploadDriveMediaMultipartTypedReportsFileEventOnPrepareError(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
@@ -515,6 +521,7 @@ func TestUploadDriveMediaMultipartTypedReportsFileEventOnPrepareError(t *testing
 	}
 }
 
+// TestUploadDriveMediaMultipartTypedReportsFileEventOnSuccess verifies reporting after a multipart upload succeeds.
 func TestUploadDriveMediaMultipartTypedReportsFileEventOnSuccess(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestDriveImportDryRunFolderTokenWikiProbe verifies folder-token resolution before import planning.
 func TestDriveImportDryRunFolderTokenWikiProbe(t *testing.T) {
 	setDriveDryRunConfigEnv(t)
 

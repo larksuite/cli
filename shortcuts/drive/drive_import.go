@@ -200,6 +200,7 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 	return nil
 }
 
+// preflightDriveImportFile validates the import source and returns its size.
 func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, error) {
 	// Keep dry-run and execution aligned on path normalization, file existence,
 	// and format-specific size limits before planning the upload path.
@@ -216,6 +217,7 @@ func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, 
 	return info.Size(), nil
 }
 
+// appendDriveImportUploadDryRun adds the selected single-part or multipart upload steps to an import plan.
 func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, fileSize int64) {
 	extra, err := buildImportMediaExtra(spec.FileExtension(), spec.DocType)
 	if err != nil {
