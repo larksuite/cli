@@ -746,7 +746,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "table create fields",
 			shortcut: BaseTableCreate,
 			wantHelp: []string{
-				`field JSON array for create, e.g. [{"name":"Title","type":"text"}`,
+				`field JSON array defining the table schema; must hold at least one field, e.g. [{"name":"Title","type":"text"}`,
 			},
 		},
 		{
@@ -1219,10 +1219,12 @@ func TestBaseFieldValidate(t *testing.T) {
 
 func TestBaseTableValidate(t *testing.T) {
 	ctx := context.Background()
-	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": "{"}, nil, nil)); err != nil {
-		t.Fatalf("invalid fields json should bypass CLI validate, err=%v", err)
+	// --fields carries the whole table schema, so it is parsed at validate time:
+	// an unusable schema must fail before the table exists, not after.
+	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": "{"}, nil, nil)); err == nil {
+		t.Fatal("invalid fields json should fail CLI validate")
 	}
-	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "view": `[1]`}, nil, nil)); err != nil {
+	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": `[{"name":"Name","type":"text"}]`, "view": `[1]`}, nil, nil)); err != nil {
 		t.Fatalf("invalid view json should bypass CLI validate, err=%v", err)
 	}
 	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": `[{"name":"Name","type":"text"}]`, "view": `{"name":"Main"}`}, nil, nil)); err != nil {

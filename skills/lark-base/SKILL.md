@@ -54,7 +54,7 @@ metadata:
 | Base 文件导入/导出 | 转 `lark-drive` | 文件格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责；在线复制走 `+base-copy` |
 | 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系和 fewshot 看 `--help` |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
-| 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
+| 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除；`+table-create` 必须传 `--fields` 一次性定义表结构，字段 JSON 读 [lark-base-field-json.md](references/lark-base-field-json.md) |
 | 复制 Base 内单张数据表 | `+table-copy` / `+table-copy-status` | 默认只复制结构；只有用户明确要求复制全表、数据、行或记录时才传 `--range all`；异步任务按返回的 `task_id` 查询或续等 |
 | 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段 |
 | 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
@@ -81,6 +81,7 @@ metadata:
 - `base-block` 只负责资源目录管理，包括创建资源、移动到 folder、重命名和删除；具体资源内容仍走 table/dashboard/workflow 命令。
 - 新建 Base 时，强烈推荐一次性执行 `lark-cli base +base-create --name "<base>" --table-name "<table>" --fields '<field-json-array>'`，同时配置新 Base 里唯一一个初始数据表的 name 和 schema；使用 `--fields` 前先读 [lark-base-field-json.md](references/lark-base-field-json.md) 或复用 `+field-create` 的字段 JSON 形状，不要猜字段属性。
 - `+base-create` 不传 `--table-name` 和 `--fields` 时，会创建一个默认 schema 的初始数据表。
+- 在已有 Base 中建表时，`+table-create` 的 `--fields` 是必填项：一次性传完整字段数组，不要先建空表再逐个补字段。省略 `--fields` 建出来的表带平台默认 schema，那些默认字段会和你后补的字段并存。
 - `+table-copy` 的安全默认值是只复制表结构；用户没有明确要求记录时省略 `--range`，明确要求包含记录时才传 `--range all`。`--table-id` 可直接使用当前 Base 中的表 ID 或表名。
 - 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
 - 存储字段可写；系统字段、`formula`、`lookup` 只读；附件字段走专用 attachment 命令。
