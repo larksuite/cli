@@ -44,13 +44,14 @@ When downloading large files, the command automatically uses **HTTP Range reques
 
 | Behavior | Details |
 |----------|---------|
-| Probe chunk | First 128 KB to detect file size and Content-Type |
-| Chunk size | 8 MB per subsequent request |
+| First part | Up to 8 MiB to discover the total representation size |
+| Subsequent parts | Exact, non-overlapping ranges of up to 8 MiB |
 | Workers | Single-threaded sequential download (ensures reliability) |
-| Retries | Up to 2 retries for transient request failures, with exponential backoff |
+| Retries | Up to 3 retries for transient request or body failures, with exponential backoff |
 
 **Benefits:**
 - Reduces the impact of transient request failures during large downloads
+- Treats the message resource key as an immutable identity; if a strong ETag is published, later requests bind to it automatically with `If-Range`
 - Preserves the server's original filename via `Content-Disposition` (supports RFC 5987 UTF-8 encoding); falls back to `Content-Type`-based extension inference
 - Validates file size integrity after download completion
 
