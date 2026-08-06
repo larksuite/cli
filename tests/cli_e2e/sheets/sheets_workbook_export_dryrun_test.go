@@ -5,8 +5,11 @@ package sheets
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/tidwall/gjson"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
@@ -100,5 +103,15 @@ func TestSheets_WorkbookExportDryRun(t *testing.T) {
 		require.NotEqual(t, 0, result.ExitCode,
 			"csv export without --sheet-id should surface a validation error; stdout:\n%s\nstderr:\n%s",
 			result.Stdout, result.Stderr)
+		// A bare non-zero exit would also pass on a panic or an unrelated
+		// failure — pin the typed validation envelope and the prescription.
+		envelope := result.Stderr
+		if !strings.Contains(envelope, `"error"`) {
+			envelope = result.Stdout
+		}
+		require.Equal(t, "validation", gjson.Get(envelope, "error.type").String(),
+			"want a typed validation error; stdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+		require.Contains(t, gjson.Get(envelope, "error.message").String(), "--sheet-id",
+			"the error must name the missing flag; stdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
 	})
 }
