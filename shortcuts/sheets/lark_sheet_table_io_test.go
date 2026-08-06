@@ -710,7 +710,7 @@ func TestWorkbookCreate_StylesAnchorFailsBeforeCreate(t *testing.T) {
 		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
 		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
 	})
-	requireValidation(t, err, "starts outside the write range")
+	requireValidation(t, err, "starts left of the write range")
 }
 
 // TestTablePut_StylesAnchorFailsBeforeWrite pins that +table-put rejects an
@@ -726,7 +726,37 @@ func TestTablePut_StylesAnchorFailsBeforeWrite(t *testing.T) {
 		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
 		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
 	})
-	requireValidation(t, err, "starts outside the write range")
+	requireValidation(t, err, "starts left of the write range")
+}
+
+// TestTablePut_AppendStylesAnchorSkipsRowCheck pins the append-mode carve-out:
+// the contract ignores start_cell's row (the base row comes from the sheet's
+// existing data at execute time), so Validate must not compare style rows
+// against the ignored static row — data ending at row 5 with start_cell B10
+// appends at row 6, making a B6 style legal. The COLUMN is still static and
+// still enforced. (dry-run-reproduced regression: B6 was rejected as "must be
+// at or after B10".)
+func TestTablePut_AppendStylesAnchorSkipsRowCheck(t *testing.T) {
+	t.Parallel()
+	t.Run("row above the ignored static anchor row passes Validate", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, TablePut, []string{"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"B6","font_weight":"bold"}]}]}`,
+		})
+		if len(calls) == 0 {
+			t.Fatal("append payload with a legal style range must produce a dry-run plan, not a validation error")
+		}
+	})
+	t.Run("column left of the anchor still rejected", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A6","font_weight":"bold"}]}]}`,
+		})
+		requireValidation(t, err, "starts left of the write range")
+	})
 }
 
 // TestTableGet_StructureErrorSurfaces pins that a failed get_workbook_structure

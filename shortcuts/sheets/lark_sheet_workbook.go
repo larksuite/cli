@@ -1807,6 +1807,13 @@ func padMatrixForStyles(rows [][]interface{}, styles *workbookCreateStylePayload
 // start_cell B2 payload with a cell_styles range A1 used to create the
 // workbook and then fail the fill). Anchor / range parse errors are skipped —
 // the payload and styles parsers already report those with richer context.
+//
+// In append mode only the COLUMN is checked: the contract ignores start_cell's
+// row (the base row is resolved from the sheet's existing data at execute
+// time), so comparing style rows against the ignored static row misfires —
+// data ending at row 5 with start_cell B10 appends at row 6, making a B6
+// style legal even though it sits "above B10". The write-phase check covers
+// the row dimension with the real base row.
 func checkStylesAnchors(payload *tablePayload, styles *workbookCreateSheetStyles) error {
 	if payload == nil || styles == nil {
 		return nil
@@ -1821,12 +1828,17 @@ func checkStylesAnchors(payload *tablePayload, styles *workbookCreateSheetStyles
 		if err != nil {
 			continue
 		}
+		appendMode := s.Mode == "append"
 		for j, op := range sp.CellStyles {
 			startCol, startRow, _, _, err := workbookCreateStyleRangeBounds(op.Range)
 			if err != nil {
 				continue
 			}
-			if startCol < col0 || startRow < row0 {
+			if startCol < col0 {
+				return common.ValidationErrorf("--styles for sheet %q[%d].range %q starts left of the write range (its column must be at or after %s)",
+					s.Name, j, op.Range, columnIndexToLetter(col0))
+			}
+			if !appendMode && startRow < row0 {
 				return common.ValidationErrorf("--styles for sheet %q[%d].range %q starts outside the write range (its top-left must be at or after %s%d)",
 					s.Name, j, op.Range, columnIndexToLetter(col0), row0+1)
 			}
