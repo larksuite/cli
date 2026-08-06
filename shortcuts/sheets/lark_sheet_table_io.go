@@ -74,7 +74,7 @@ var TablePut = common.Shortcut{
 		// MISSING sheet used to create it before the write phase rejected the
 		// out-of-anchor style range — reporting "no sheets were written" while
 		// leaving the newly created empty sheet behind.
-		return checkStylesAnchors(payload, styles)
+		return checkStylesAnchors(payload, styles, false)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return tablePutDryRun(runtime)
@@ -934,6 +934,15 @@ func writeTypedSheets(ctx context.Context, runtime *common.RuntimeContext, token
 		s := &payload.Sheets[i]
 		sheetID, ok := byName[s.Name]
 		if !ok {
+			// The missing target will be created EMPTY, so append resolves its
+			// base row to the static anchor — validate style anchors (row
+			// included) BEFORE the create. Validate could not run this check
+			// for append (an existing sheet's base row is dynamic), and
+			// skipping it here would strand a freshly created empty sheet
+			// behind a "no sheets were written" failure.
+			if err := checkSheetStyleAnchors(s, styles.styleFor(i), true); err != nil {
+				return written, err
+			}
 			rows, cols := sheetCreateDims(s, styles.styleFor(i))
 			sheetID, err = createSheet(ctx, runtime, token, s.Name, rows, cols)
 			if err != nil {

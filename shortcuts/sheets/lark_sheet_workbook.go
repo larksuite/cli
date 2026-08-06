@@ -611,7 +611,7 @@ var WorkbookCreate = common.Shortcut{
 			if err := payload.checkCellBudgetWithStyles(styles); err != nil {
 				return err
 			}
-			return checkStylesAnchors(payload, styles)
+			return checkStylesAnchors(payload, styles, true)
 		}
 		// Untyped --values path: parse (and validate) --styles as a single sheet
 		// style item, then synthesize --values into a type-less typed payload —
@@ -625,7 +625,7 @@ var WorkbookCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		return checkStylesAnchors(payload, sheetStyles)
+		return checkStylesAnchors(payload, sheetStyles, true)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := map[string]interface{}{"title": strings.TrimSpace(runtime.Str("title"))}
@@ -1808,40 +1808,57 @@ func padMatrixForStyles(rows [][]interface{}, styles *workbookCreateStylePayload
 // workbook and then fail the fill). Anchor / range parse errors are skipped —
 // the payload and styles parsers already report those with richer context.
 //
-// In append mode only the COLUMN is checked: the contract ignores start_cell's
-// row (the base row is resolved from the sheet's existing data at execute
-// time), so comparing style rows against the ignored static row misfires —
-// data ending at row 5 with start_cell B10 appends at row 6, making a B6
-// style legal even though it sits "above B10". The write-phase check covers
-// the row dimension with the real base row.
-func checkStylesAnchors(payload *tablePayload, styles *workbookCreateSheetStyles) error {
+// For append mode against a sheet that may already hold data, only the COLUMN
+// is checked at Validate time: the contract ignores start_cell's row (the base
+// row is resolved from the sheet's existing data at execute time), so
+// comparing style rows against the ignored static row misfires — data ending
+// at row 5 with start_cell B10 appends at row 6, making a B6 style legal even
+// though it sits "above B10". newSheets says every payload sheet writes into a
+// KNOWN-EMPTY sheet (+workbook-create: the workbook is being created), where
+// append resolves its base row to the static anchor — the row check then
+// applies to append too. For +table-put (newSheets false) the missing-target
+// case is covered pre-creation by checkSheetStyleAnchors in writeTypedSheets;
+// existing sheets keep the write-phase check with the real base row.
+func checkStylesAnchors(payload *tablePayload, styles *workbookCreateSheetStyles, newSheets bool) error {
 	if payload == nil || styles == nil {
 		return nil
 	}
 	for i := range payload.Sheets {
 		s := &payload.Sheets[i]
-		sp := styles.styleFor(i)
-		if sp == nil {
-			continue
+		checkRow := newSheets || s.Mode != "append"
+		if err := checkSheetStyleAnchors(s, styles.styleFor(i), checkRow); err != nil {
+			return err
 		}
-		_, col0, row0, err := sheetAnchor(s)
+	}
+	return nil
+}
+
+// checkSheetStyleAnchors is the per-sheet core of checkStylesAnchors. It is
+// also called by writeTypedSheets (with checkRow true) right before CREATING a
+// missing target sheet: the fresh sheet is empty, so even append resolves its
+// base row to the static anchor — checking first keeps a bad style range from
+// stranding a newly created empty sheet behind a "no sheets were written"
+// failure.
+func checkSheetStyleAnchors(s *tableSheetSpec, sp *workbookCreateStylePayload, checkRow bool) error {
+	if sp == nil {
+		return nil
+	}
+	_, col0, row0, err := sheetAnchor(s)
+	if err != nil {
+		return nil
+	}
+	for j, op := range sp.CellStyles {
+		startCol, startRow, _, _, err := workbookCreateStyleRangeBounds(op.Range)
 		if err != nil {
 			continue
 		}
-		appendMode := s.Mode == "append"
-		for j, op := range sp.CellStyles {
-			startCol, startRow, _, _, err := workbookCreateStyleRangeBounds(op.Range)
-			if err != nil {
-				continue
-			}
-			if startCol < col0 {
-				return common.ValidationErrorf("--styles for sheet %q[%d].range %q starts left of the write range (its column must be at or after %s)",
-					s.Name, j, op.Range, columnIndexToLetter(col0))
-			}
-			if !appendMode && startRow < row0 {
-				return common.ValidationErrorf("--styles for sheet %q[%d].range %q starts outside the write range (its top-left must be at or after %s%d)",
-					s.Name, j, op.Range, columnIndexToLetter(col0), row0+1)
-			}
+		if startCol < col0 {
+			return common.ValidationErrorf("--styles for sheet %q[%d].range %q starts left of the write range (its column must be at or after %s)",
+				s.Name, j, op.Range, columnIndexToLetter(col0))
+		}
+		if checkRow && startRow < row0 {
+			return common.ValidationErrorf("--styles for sheet %q[%d].range %q starts outside the write range (its top-left must be at or after %s%d)",
+				s.Name, j, op.Range, columnIndexToLetter(col0), row0+1)
 		}
 	}
 	return nil

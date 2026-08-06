@@ -757,6 +757,28 @@ func TestTablePut_AppendStylesAnchorSkipsRowCheck(t *testing.T) {
 		})
 		requireValidation(t, err, "starts left of the write range")
 	})
+
+	t.Run("missing append target fails before the sheet is created", func(t *testing.T) {
+		// Execute path (not just dry-run): the missing target would be created
+		// EMPTY, so append resolves its base row to the static anchor and the
+		// B6 style is genuinely unreachable — but the failure must land BEFORE
+		// the create. Only the structure-read stub is registered: reaching the
+		// modify_workbook_structure create would fail with "no stub" instead
+		// of the anchor message this test requires.
+		t.Parallel()
+		structure := toolOutputStub(testToken, "read", `{"sheets":[{"sheet_id":"`+testSheetID+`","sheet_name":"Other","index":0}]}`)
+		out, err := runShortcutWithStubs(t, TablePut,
+			[]string{"--url", testURL,
+				"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+				"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"B6","font_weight":"bold"}]}]}`},
+			structure)
+		if err == nil {
+			t.Fatalf("expected the pre-create anchor failure, got success: %s", out)
+		}
+		if !strings.Contains(err.Error(), "starts outside the write range") && !strings.Contains(out, "starts outside the write range") {
+			t.Fatalf("want the anchor message before any mutation; err=%v out=%s", err, out)
+		}
+	})
 }
 
 // TestTableGet_StructureErrorSurfaces pins that a failed get_workbook_structure
