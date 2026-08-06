@@ -713,6 +713,22 @@ func TestWorkbookCreate_StylesAnchorFailsBeforeCreate(t *testing.T) {
 	requireValidation(t, err, "starts outside the write range")
 }
 
+// TestTablePut_StylesAnchorFailsBeforeWrite pins that +table-put rejects an
+// out-of-anchor cell_styles range in Validate, with NO API call: a payload
+// targeting a missing sheet used to CREATE that sheet before the write phase
+// rejected the range — leaving a stray empty sheet behind while reporting
+// "no sheets were written". No stubs are registered, so reaching Execute
+// would fail with "no stub" instead of the required validation message.
+func TestTablePut_StylesAnchorFailsBeforeWrite(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+		"--url", testURL,
+		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
+		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
+	})
+	requireValidation(t, err, "starts outside the write range")
+}
+
 // TestTableGet_StructureErrorSurfaces pins that a failed get_workbook_structure
 // read is a typed error, not a silent degradation: the dimensionless fallback
 // anchored the used-range probe at A1, whose current_region stops at the first

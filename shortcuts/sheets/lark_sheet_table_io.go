@@ -67,7 +67,14 @@ var TablePut = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		return payload.checkCellBudgetWithStyles(styles)
+		if err := payload.checkCellBudgetWithStyles(styles); err != nil {
+			return err
+		}
+		// Anchor bounds too (same as +workbook-create): a payload targeting a
+		// MISSING sheet used to create it before the write phase rejected the
+		// out-of-anchor style range — reporting "no sheets were written" while
+		// leaving the newly created empty sheet behind.
+		return checkStylesAnchors(payload, styles)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return tablePutDryRun(runtime)
