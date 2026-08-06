@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -28,14 +29,74 @@ const (
 	StatusSuccess = "success"
 	StatusError   = "error"
 
-	reportTimeout = 3 * time.Second
+	reportTimeout         = 3 * time.Second
+	capacityReportTimeout = 3 * time.Second
 )
+
+// Budget caps synchronous upload-report latency across one command. Ordinary
+// reports share a cumulative allowance; a tenant-capacity error gets one
+// separate bounded attempt because its response may contain a recovery URL.
+type Budget struct {
+	regularMu         sync.Mutex
+	mu                sync.Mutex
+	remaining         time.Duration
+	capacityTimeout   time.Duration
+	capacityAttempted bool
+}
+
+// NewBudget creates the production reporting budget for one command.
+func NewBudget() *Budget {
+	return newBudget(reportTimeout, capacityReportTimeout)
+}
+
+func newBudget(total, capacityTimeout time.Duration) *Budget {
+	return &Budget{
+		remaining:       total,
+		capacityTimeout: capacityTimeout,
+	}
+}
+
+// begin reserves the next synchronous reporting attempt. Ordinary attempts
+// are serialized so their elapsed times cannot overrun the shared allowance.
+func (b *Budget) begin(capacity bool) (time.Duration, func(), bool) {
+	if b == nil {
+		return 0, nil, false
+	}
+	if capacity {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if b.capacityAttempted || b.capacityTimeout <= 0 {
+			return 0, nil, false
+		}
+		b.capacityAttempted = true
+		return b.capacityTimeout, func() {}, true
+	}
+
+	b.regularMu.Lock()
+	b.mu.Lock()
+	remaining := b.remaining
+	b.mu.Unlock()
+	if remaining <= 0 {
+		b.regularMu.Unlock()
+		return 0, nil, false
+	}
+
+	started := time.Now()
+	return remaining, func() {
+		elapsed := time.Since(started)
+		b.mu.Lock()
+		b.remaining -= elapsed
+		b.mu.Unlock()
+		b.regularMu.Unlock()
+	}, true
+}
 
 // Runtime is the subset of shortcut runtime behavior needed for reporting.
 type Runtime interface {
 	Ctx() context.Context
 	Command() string
 	CommandPath() string
+	FileEventBudget() *Budget
 	DoAPIWithContext(context.Context, *larkcore.ApiReq, ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error)
 }
 
@@ -59,7 +120,7 @@ type UploadMeta struct {
 }
 
 type reportResponse struct {
-	Code int    `json:"code"`
+	Code *int   `json:"code"`
 	Msg  string `json:"msg"`
 	Data struct {
 		Msg string `json:"msg"`
@@ -82,7 +143,7 @@ func ReportUpload(runtime Runtime, meta UploadMeta) {
 	if strings.TrimSpace(meta.Status) == "" {
 		meta.Status = StatusSuccess
 	}
-	_ = postUpload(runtime, meta)
+	_ = postUpload(runtime, meta, false)
 }
 
 // ReportUploadError best-effort reports a failed upload, then returns the
@@ -102,7 +163,7 @@ func ReportUploadError(runtime Runtime, uploadErr error, meta UploadMeta) error 
 	}
 	var reportMsg string
 	if !runtimeIsNil(runtime) {
-		reportMsg = postUpload(runtime, meta)
+		reportMsg = postUpload(runtime, meta, IsTenantCapacityExceeded(uploadErr))
 	}
 	return appendTenantCapacityHint(uploadErr, reportMsg)
 }
@@ -122,9 +183,14 @@ func AppendUploadDryRun(dry *cmdutil.DryRunAPI, runtime Runtime, meta UploadMeta
 		Body(buildUploadReportRequest(runtime, meta))
 }
 
-// postUpload sends a report using the production timeout.
-func postUpload(runtime Runtime, meta UploadMeta) string {
-	return postUploadWithTimeout(runtime, meta, reportTimeout)
+// postUpload sends a report within the command-scoped reporting budget.
+func postUpload(runtime Runtime, meta UploadMeta, capacity bool) string {
+	timeout, done, ok := runtime.FileEventBudget().begin(capacity)
+	if !ok {
+		return ""
+	}
+	defer done()
+	return postUploadWithTimeout(runtime, meta, timeout)
 }
 
 // postUploadWithTimeout sends a report within timeout and returns a validated
@@ -141,8 +207,11 @@ func postUploadWithTimeout(runtime Runtime, meta UploadMeta, timeout time.Durati
 	if err != nil || resp == nil {
 		return ""
 	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return ""
+	}
 	var envelope reportResponse
-	if err := json.Unmarshal(resp.RawBody, &envelope); err != nil || envelope.Code != 0 {
+	if err := json.Unmarshal(resp.RawBody, &envelope); err != nil || envelope.Code == nil || *envelope.Code != 0 {
 		return ""
 	}
 	return extractCapacityExpansionURL(envelope)

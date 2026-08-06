@@ -28,6 +28,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/fileevent"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -46,6 +47,8 @@ type RuntimeContext struct {
 	botOnly        bool                              // set by framework for bot-only shortcuts
 	resolvedAs     core.Identity                     // effective identity resolved by framework
 	declaredScopes []string                          // shortcut-declared scopes for the resolved identity
+	reportOnce     sync.Once                         // lazily initializes the command-scoped upload report budget
+	reportBudget   *fileevent.Budget                 // shared by every upload report in this command
 	Factory        *cmdutil.Factory                  // injected by framework
 	apiClientFunc  func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
 	botInfoFunc    func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
@@ -108,6 +111,18 @@ func (ctx *RuntimeContext) CommandPath() string {
 		return ""
 	}
 	return ctx.Cmd.CommandPath()
+}
+
+// FileEventBudget returns the reporting budget shared by every upload within
+// this command invocation.
+func (ctx *RuntimeContext) FileEventBudget() *fileevent.Budget {
+	if ctx == nil {
+		return nil
+	}
+	ctx.reportOnce.Do(func() {
+		ctx.reportBudget = fileevent.NewBudget()
+	})
+	return ctx.reportBudget
 }
 
 // UserOpenId returns the current user's open_id from config.

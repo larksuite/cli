@@ -25,6 +25,7 @@ type fakeRuntime struct {
 	response    *larkcore.ApiResp
 	err         error
 	doAPI       func(context.Context, *larkcore.ApiReq) (*larkcore.ApiResp, error)
+	budget      *Budget
 }
 
 func newFakeRuntime(body string) *fakeRuntime {
@@ -34,12 +35,14 @@ func newFakeRuntime(body string) *fakeRuntime {
 			StatusCode: http.StatusOK,
 			RawBody:    []byte(body),
 		},
+		budget: NewBudget(),
 	}
 }
 
-func (r *fakeRuntime) Ctx() context.Context { return r.ctx }
-func (r *fakeRuntime) Command() string      { return r.command }
-func (r *fakeRuntime) CommandPath() string  { return r.commandPath }
+func (r *fakeRuntime) Ctx() context.Context     { return r.ctx }
+func (r *fakeRuntime) Command() string          { return r.command }
+func (r *fakeRuntime) CommandPath() string      { return r.commandPath }
+func (r *fakeRuntime) FileEventBudget() *Budget { return r.budget }
 
 func (r *fakeRuntime) DoAPIWithContext(ctx context.Context, req *larkcore.ApiReq, _ ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	r.requests = append(r.requests, req)
@@ -153,6 +156,38 @@ func TestReportUploadErrorReportFailureDoesNotReplaceUploadError(t *testing.T) {
 	}
 }
 
+func TestReportUploadErrorRejectsInvalidExpansionResponses(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+	}{
+		{
+			name:       "HTTP error with success body",
+			statusCode: http.StatusInternalServerError,
+			body:       `{"code":0,"msg":"` + testCapacityExpansionURL + `"}`,
+		},
+		{
+			name:       "missing business code",
+			statusCode: http.StatusOK,
+			body:       `{"msg":"` + testCapacityExpansionURL + `"}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := newFakeRuntime(test.body)
+			runtime.response.StatusCode = test.statusCode
+			uploadErr := errs.NewAPIError(errs.SubtypeQuotaExceeded, "quota exceeded").WithCode(1061101)
+
+			returned := ReportUploadError(runtime, uploadErr, UploadMeta{})
+			problem, _ := errs.ProblemOf(returned)
+			if problem.Hint != "" {
+				t.Fatalf("invalid report response changed hint to %q", problem.Hint)
+			}
+		})
+	}
+}
+
 func TestReportUploadErrorAppendsCapacityExpansionHint(t *testing.T) {
 	runtime := newFakeRuntime(`{"code":0,"msg":"success","data":{"msg":"` + testCapacityExpansionURL + `"}}`)
 	uploadErr := errs.NewAPIError(errs.SubtypeQuotaExceeded, "quota exceeded").WithCode(1061101)
@@ -225,19 +260,36 @@ func TestReportUploadTypedNilRuntimeIsNoop(t *testing.T) {
 	}
 }
 
-func TestPostUploadWithTimeoutBoundsBestEffortRequest(t *testing.T) {
+func TestReportUploadUsesCommandScopedTotalBudget(t *testing.T) {
 	runtime := newFakeRuntime("")
+	runtime.budget = newBudget(20*time.Millisecond, 10*time.Millisecond)
 	runtime.doAPI = func(ctx context.Context, _ *larkcore.ApiReq) (*larkcore.ApiResp, error) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
 
-	started := time.Now()
-	if got := postUploadWithTimeout(runtime, UploadMeta{}, 10*time.Millisecond); got != "" {
-		t.Fatalf("postUploadWithTimeout() = %q, want empty result on timeout", got)
+	ReportUpload(runtime, UploadMeta{})
+	ReportUpload(runtime, UploadMeta{})
+	if len(runtime.requests) != 1 {
+		t.Fatalf("report request count = %d, want 1 after shared budget expires", len(runtime.requests))
 	}
-	if elapsed := time.Since(started); elapsed > time.Second {
-		t.Fatalf("best-effort report took %s, want it bounded by the request context", elapsed)
+}
+
+func TestTenantCapacityReportGetsOneSeparateAttempt(t *testing.T) {
+	runtime := newFakeRuntime(`{"code":0,"msg":"` + testCapacityExpansionURL + `"}`)
+	runtime.budget = newBudget(0, 20*time.Millisecond)
+	uploadErr := errs.NewAPIError(errs.SubtypeQuotaExceeded, "quota exceeded").WithCode(1061101)
+
+	first := ReportUploadError(runtime, uploadErr, UploadMeta{})
+	second := ReportUploadError(runtime, uploadErr, UploadMeta{})
+	if len(runtime.requests) != 1 {
+		t.Fatalf("capacity report request count = %d, want 1", len(runtime.requests))
+	}
+	for _, returned := range []error{first, second} {
+		problem, _ := errs.ProblemOf(returned)
+		if !strings.Contains(problem.Hint, testCapacityExpansionURL) {
+			t.Fatalf("hint = %q, want capacity expansion URL retained", problem.Hint)
+		}
 	}
 }
 
