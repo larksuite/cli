@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -20,7 +21,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/doc/internal/docxparse"
 )
@@ -667,7 +667,7 @@ func removeDocsScriptWorkspace(path, resolvedPath string) error {
 			"refusing to remove unexpected resolved draft workspace path %s", filepath.Dir(cleanResolvedPath))
 	}
 	resolvedDirectory := filepath.Dir(cleanResolvedPath)
-	if err := vfs.RemoveAll(resolvedDirectory); err != nil {
+	if err := os.RemoveAll(resolvedDirectory); err != nil { //nolint:forbidigo // FileIO has no remove operation; resolvedDirectory is strictly validated above.
 		return errs.NewInternalError(errs.SubtypeFileIO,
 			"remove failed draft workspace %s: %s", resolvedDirectory, err).
 			WithCause(err)

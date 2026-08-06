@@ -284,6 +284,7 @@ func TestDocs_CreateEmptyContentFileReportsActionableError(t *testing.T) {
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout, "stdout must stay reserved for program data")
 	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
 	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
 	require.Equal(t, "--content", gjson.Get(result.Stderr, "error.param").String())

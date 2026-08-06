@@ -118,7 +118,7 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
 
 |返回内容|处理方式|
 |-|-|
-|`<img>`、`<source>`|有 `url` 时直接 HTTP GET；否则提取 `token`，预览用 `docs +media-preview`，下载用 `docs +media-download`|
+|`<img>`、`<source>`|有 `url` 时仅下载可信的公开 HTTPS URL：拒绝 userinfo 及解析到 private、loopback、link-local、multicast、unspecified 地址的 host，并逐次校验重定向；不满足时禁止请求。无 `url` 时提取 `token`，预览用 `docs +media-preview`，下载用 `docs +media-download`|
 |`<whiteboard>`|提取 `token`，使用 `docs +media-download`|
 |`<sheet>`、`<cite file-type="sheets">`|提取 `token` 和 `sheet-id`，转到 [`lark-sheets`](../../lark-sheets/SKILL.md)|
 |`<bitable>`、`<cite file-type="bitable">`|提取 `token` 和 `table-id`，转到 [`lark-base`](../../lark-base/SKILL.md)|
