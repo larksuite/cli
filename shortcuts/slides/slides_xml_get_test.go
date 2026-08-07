@@ -198,6 +198,22 @@ func TestSlidesXMLGetPrintsRawContentWhenRaw(t *testing.T) {
 	}
 }
 
+func TestSlidesXMLGetSkillReferenceDocumentsEveryPublicFlag(t *testing.T) {
+	b, err := os.ReadFile("../../skills/lark-slides/references/lark-slides-xml-presentations-get.md")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	doc := string(b)
+	for _, flag := range SlidesXMLGet.Flags {
+		if flag.Hidden {
+			continue
+		}
+		if !strings.Contains(doc, "| `--"+flag.Name+"` |") {
+			t.Errorf("xml-get skill reference does not document public flag --%s", flag.Name)
+		}
+	}
+}
+
 func TestSlidesXMLGetFetchesSingleSlideByIDToFile(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)
