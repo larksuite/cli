@@ -308,7 +308,7 @@ func TestDownloadIMResourceToPathSuccess(t *testing.T) {
 	if gotHeaders.Get(cmdutil.HeaderExecutionId) != "exec-123" {
 		t.Fatalf("%s = %q, want %q", cmdutil.HeaderExecutionId, gotHeaders.Get(cmdutil.HeaderExecutionId), "exec-123")
 	}
-	if gotHeaders.Get("Range") != "bytes=0-8388607" {
+	if gotHeaders.Get("Range") != "bytes=0-33554431" {
 		t.Fatalf("initial Range header = %q, want bounded probe", gotHeaders.Get("Range"))
 	}
 }
@@ -488,7 +488,7 @@ func TestDownloadIMResourceToPathResumesInterruptedPartWithETag(t *testing.T) {
 		requests++
 		switch requests {
 		case 1:
-			if got := req.Header.Get("Range"); got != "bytes=0-8388607" {
+			if got := req.Header.Get("Range"); got != "bytes=0-33554431" {
 				t.Fatalf("initial Range = %q, want bounded probe", got)
 			}
 			return &http.Response{
@@ -544,7 +544,7 @@ func TestDownloadIMResourceToPathContinuesWithoutValidator(t *testing.T) {
 		requests++
 		switch requests {
 		case 1:
-			if got := req.Header.Get("Range"); got != "bytes=0-8388607" {
+			if got := req.Header.Get("Range"); got != "bytes=0-33554431" {
 				t.Fatalf("initial Range = %q", got)
 			}
 			return shortcutRawResponse(http.StatusPartialContent, payload[:4], http.Header{

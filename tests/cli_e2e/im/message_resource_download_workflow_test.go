@@ -19,7 +19,7 @@ import (
 
 // The download always starts with a bounded Range request. This fixture keeps
 // the live round trip cheap; unit tests cover continuation across multiple
-// parts because doing so here would require uploading more than 8 MiB.
+// parts because doing so here would require uploading more than 32 MiB.
 //
 // What this test can prove is that a real upload/download round trip returns the
 // exact bytes. It cannot prove which path ran: nothing in the command output

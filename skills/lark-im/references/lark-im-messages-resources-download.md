@@ -45,8 +45,8 @@ When downloading large files, the command automatically uses **HTTP Range reques
 | Behavior | Details |
 |----------|---------|
 | Applies to | `--type file` only; `--type image` uses a single full response |
-| First part | Up to 8 MiB to discover the total representation size |
-| Subsequent parts | Exact, non-overlapping ranges of up to 8 MiB |
+| First part | Up to 32 MiB to discover the total representation size |
+| Subsequent parts | Exact, non-overlapping ranges of up to 32 MiB |
 | Workers | Single-threaded sequential download (ensures reliability) |
 | Retries | Up to 3 retries for transient request or body failures, with exponential backoff |
 | Idle timeout | 60 seconds without response headers or body progress; slow transfers continue while bytes arrive |

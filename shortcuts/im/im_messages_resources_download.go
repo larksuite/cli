@@ -106,6 +106,7 @@ func normalizeDownloadOutputPath(fileKey, outputPath string) (string, error) {
 }
 
 const (
+	imDownloadPartSize   = 32 * 1024 * 1024
 	imPartRetries        = download.DefaultPartRetries
 	imDownloadRetryDelay = 300 * time.Millisecond
 )
@@ -171,7 +172,7 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 func openIMResourceDownload(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType string) (*download.Stream, error) {
 	source := imResourceDownloadSource(runtime, messageID, fileKey, fileType)
 	return download.Open(ctx, source, download.Options{
-		PartSize:         download.DefaultPartSize,
+		PartSize:         imDownloadPartSize,
 		MaxPartRetries:   imPartRetries,
 		RetryDelay:       imDownloadRetryDelay,
 		DisableMultipart: fileType != "file",
