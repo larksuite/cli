@@ -47,7 +47,7 @@ func TestDocsScriptParseXMLFromFile(t *testing.T) {
 	require.False(t, gjson.Get(result.Stdout, "data.profile.compatibility").Exists())
 }
 
-func TestDocsScriptLocalParseWithoutLarkConfiguration(t *testing.T) {
+func TestDocsScriptLocalParseWithAuthenticatedBot(t *testing.T) {
 	workDir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(workDir, "local.xml"), []byte(`<p>local only</p>`), 0o600))
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -58,13 +58,9 @@ func TestDocsScriptLocalParseWithoutLarkConfiguration(t *testing.T) {
 			"--command", "parse",
 			"--content", "@local.xml",
 		},
-		WorkDir: workDir,
-		Env: map[string]string{
-			"LARKSUITE_CLI_APP_ID":     "",
-			"LARKSUITE_CLI_APP_SECRET": "",
-			"LARKSUITE_CLI_BRAND":      "",
-			"LARKSUITE_CLI_CONFIG_DIR": t.TempDir(),
-		},
+		DefaultAs: "bot",
+		WorkDir:   workDir,
+		Env:       docsScriptE2EEnv(t),
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
