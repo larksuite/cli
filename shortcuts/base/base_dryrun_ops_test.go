@@ -40,6 +40,24 @@ func TestDryRunTableOps(t *testing.T) {
 	assertDryRunContains(t, dryRunTableDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1")
 }
 
+func TestDryRunTemplateCenterOps(t *testing.T) {
+	ctx := context.Background()
+
+	assertDryRunContains(t, dryRunTemplateCategories(ctx, newBaseTestRuntime(nil, nil, nil)), "GET /open-apis/base/v3/bases/templates/category")
+
+	listRT := newBaseTestRuntime(map[string]string{"category-key": "office", "offset": "cursor_1"}, nil, map[string]int{"limit": 20})
+	assertDryRunContains(t, dryRunTemplateList(ctx, listRT), "GET /open-apis/base/v3/bases/templates", "category_key=office", "limit=20", "offset=cursor_1")
+
+	recommendedRT := newBaseTestRuntime(map[string]string{}, nil, map[string]int{"limit": 10})
+	listOut := dryRunTemplateList(ctx, recommendedRT).Format()
+	if strings.Contains(listOut, "category_key") {
+		t.Fatalf("recommended template list must omit category_key when unset:\n%s", listOut)
+	}
+
+	searchRT := newBaseTestRuntime(map[string]string{"keyword": " AI ", "offset": "cursor_2"}, nil, map[string]int{"limit": 10})
+	assertDryRunContains(t, dryRunTemplateSearch(ctx, searchRT), "GET /open-apis/base/v3/bases/templates/search", "keyword=AI", "limit=10", "offset=cursor_2")
+}
+
 func TestDryRunBaseBlockOps(t *testing.T) {
 	ctx := context.Background()
 
