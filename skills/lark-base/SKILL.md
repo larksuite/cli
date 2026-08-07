@@ -1,7 +1,7 @@
 ---
 name: lark-base
 version: 1.2.4
-description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、workflow、角色权限；遇到 Base/多维表格/bitable 或 /base/ 链接时使用。文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
+description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、workflow、角色权限、多维表格模板中心（浏览/搜索多维表格模板并基于模板创建 Base）；遇到 Base/多维表格/bitable 或 /base/ 链接时使用。文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -18,6 +18,7 @@ metadata:
 - 用户要在 Base 内建表、改表、管理字段、写记录、查记录、配视图。
 - 用户要在 Base 内做公式字段、lookup 字段、跨表计算、派生指标、筛选聚合、TopN、统计分析。
 - 用户要管理 Base 表单、仪表盘、workflow、高级权限或角色。
+- 用户要查找模板中心里的 Base 模板，并基于模板复制创建新的 Base。
 - 用户要把旧 Base 聚合式命令或旧写法迁移到当前 `lark-cli base +...` shortcut。
 
 不要使用本 skill：
@@ -51,6 +52,7 @@ metadata:
 |---|---|---|
 | 查 Base 本体 | `+base-get` | 用返回确认 Base 名称、owner、权限和可继续操作的 token |
 | 创建/复制 Base | `+base-create` / `+base-copy` | 新建时强烈推荐用 `--table-name` + `--fields` 同时配置新 Base 里唯一一个初始数据表的 name 和 schema；写入后报告新 Base 标识和 `permission_grant` |
+| 查找模板中心模板 | `+template-categories` / `+template-list` / `+template-search` | 用户有创建新 Base 的意图且没有“我的/最近访问/已有对象”锚点时使用；先读 [lark-base-template-center.md](references/lark-base-template-center.md)。返回的 `templates[].token` 是模板 Base token，基于模板创建时接 `+base-copy --base-token <token>` |
 | Base 文件导入/导出 | 转 `lark-drive` | 文件格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责；在线复制走 `+base-copy` |
 | 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系和 fewshot 看 `--help` |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
@@ -81,6 +83,8 @@ metadata:
 - `base-block` 只负责资源目录管理，包括创建资源、移动到 folder、重命名和删除；具体资源内容仍走 table/dashboard/workflow 命令。
 - 新建 Base 时，强烈推荐一次性执行 `lark-cli base +base-create --name "<base>" --table-name "<table>" --fields '<field-json-array>'`，同时配置新 Base 里唯一一个初始数据表的 name 和 schema；使用 `--fields` 前先读 [lark-base-field-json.md](references/lark-base-field-json.md) 或复用 `+field-create` 的字段 JSON 形状，不要猜字段属性。
 - `+base-create` 不传 `--table-name` 和 `--fields` 时，会创建一个默认 schema 的初始数据表。
+- 模板中心是公开模板数据集，不是用户云空间搜索。用户要“找一个可用模板/按类目浏览模板/根据关键词搜模板”时用 `+template-*`；用户要“我的模板/最近访问/已有 Base”时不要走模板中心，回到 URL、标题或 Drive/Base 搜索路径。
+- 模板对象的唯一标识是 `token`，表示模板 Base token。不要把模板 token 改名为 `id` 或 `key`；分类才使用 `category_key`。
 - `+table-copy` 的安全默认值是只复制表结构；用户没有明确要求记录时省略 `--range`，明确要求包含记录时才传 `--range all`。`--table-id` 可直接使用当前 Base 中的表 ID 或表名。
 - 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
 - 存储字段可写；系统字段、`formula`、`lookup` 只读；附件字段走专用 attachment 命令。
@@ -162,6 +166,7 @@ metadata:
 ## 保留 Reference
 
 - [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md)：查询/统计/全局结论的选路 SOP
+- [lark-base-template-center.md](references/lark-base-template-center.md)：模板中心分类、列表、搜索和基于模板复制创建多维表格的完整流程
 - [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md) / [lark-base-data-query.md](references/lark-base-data-query.md)：聚合查询入口 fewshot 与 DSL SSOT；`+data-query` 的 `filters` 结构是独立对象 DSL，不使用公共 tuple filter 协议
 - [lark-base-cell-value.md](references/lark-base-cell-value.md)：记录 CellValue 构造
 - [lark-base-field-json.md](references/lark-base-field-json.md)：字段 JSON 构造

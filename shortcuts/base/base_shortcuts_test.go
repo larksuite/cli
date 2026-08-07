@@ -167,6 +167,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-share-link-create", "+record-upload-attachment", "+record-download-attachment", "+record-remove-attachment", "+record-delete",
 		"+record-history-list",
 		"+base-get", "+base-copy", "+base-create",
+		"+template-categories", "+template-list", "+template-search",
 		"+role-create", "+role-delete", "+role-update", "+role-list", "+role-get", "+advperm-enable", "+advperm-disable",
 		"+workflow-list", "+workflow-get", "+workflow-create", "+workflow-update", "+workflow-enable", "+workflow-disable",
 		"+data-query",
@@ -288,6 +289,26 @@ func TestBaseFieldCreateTipsGuideTypeSelectionByStoredValue(t *testing.T) {
 }
 
 func TestBaseFieldCreateHelpDocumentsBatchAndHidesReadGuideFlag(t *testing.T) {
+func TestTemplateCenterShortcutContract(t *testing.T) {
+	ctx := context.Background()
+
+	for _, shortcut := range []common.Shortcut{BaseTemplateCategories, BaseTemplateList, BaseTemplateSearch} {
+		if shortcut.Risk != "read" {
+			t.Fatalf("%s risk=%q, want read", shortcut.Command, shortcut.Risk)
+		}
+		if !reflect.DeepEqual(shortcut.Scopes, []string{templateReadScope}) {
+			t.Fatalf("%s scopes=%v, want [%s]", shortcut.Command, shortcut.Scopes, templateReadScope)
+		}
+		if !reflect.DeepEqual(shortcut.AuthTypes, authTypes()) {
+			t.Fatalf("%s authTypes=%v, want %v", shortcut.Command, shortcut.AuthTypes, authTypes())
+		}
+	}
+
+	err := BaseTemplateSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"keyword": "   "}, nil, map[string]int{"limit": 10}))
+	assertInvalidArgumentValidation(t, err, "--keyword", nil, "must not be blank")
+}
+
+func TestBaseFieldCreateHelpHidesReadGuideFlag(t *testing.T) {
 	parent := &cobra.Command{Use: "base"}
 	BaseFieldCreate.Mount(parent, &cmdutil.Factory{})
 	cmd := parent.Commands()[0]
@@ -446,6 +467,8 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 		help       string
 	}{
 		{name: "table list", shortcut: BaseTableList, flag: "limit", defaultVal: "50", help: "pagination size, range 1-100"},
+		{name: "template list", shortcut: BaseTemplateList, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
+		{name: "template search", shortcut: BaseTemplateSearch, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
 		{name: "field list", shortcut: BaseFieldList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
 		{name: "field search options", shortcut: BaseFieldSearchOptions, flag: "limit", defaultVal: "30", help: "pagination size, range 1-200"},
 		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
@@ -490,6 +513,8 @@ func TestBaseLimitDeclaresPageSizeAlias(t *testing.T) {
 		shortcut common.Shortcut
 	}{
 		{name: "table list", shortcut: BaseTableList},
+		{name: "template list", shortcut: BaseTemplateList},
+		{name: "template search", shortcut: BaseTemplateSearch},
 		{name: "field list", shortcut: BaseFieldList},
 		{name: "field search options", shortcut: BaseFieldSearchOptions},
 		{name: "record list", shortcut: BaseRecordList},
@@ -1484,6 +1509,18 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 			name:     "table list",
 			shortcut: BaseTableList,
 			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 101}),
+			param:    "--limit",
+		},
+		{
+			name:     "template list",
+			shortcut: BaseTemplateList,
+			runtime:  newBaseTestRuntime(map[string]string{"category-key": "office"}, nil, map[string]int{"limit": 101}),
+			param:    "--limit",
+		},
+		{
+			name:     "template search",
+			shortcut: BaseTemplateSearch,
+			runtime:  newBaseTestRuntime(map[string]string{"keyword": "project"}, nil, map[string]int{"limit": 101}),
 			param:    "--limit",
 		},
 		{

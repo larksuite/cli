@@ -1,9 +1,9 @@
 # Base CLI E2E Coverage
 
 ## Metrics
-- Denominator: 89 leaf commands
-- Covered: 30
-- Coverage: 33.7%
+- Denominator: 92 leaf commands
+- Covered: 33
+- Coverage: 35.9%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
@@ -19,6 +19,7 @@
 - TestBaseFormQuestionsCreateVisibleRuleDryRun / TestBaseFormQuestionsUpdateVisibleRuleDryRun: prove `+form-questions-create` / `+form-questions-update` dry-run request shape and that the optional `visible_rule` display condition is transcribed verbatim into the request body.
 - TestBaseTableCopyDryRun: proves `+table-copy` and `+table-copy-status` request shapes, including the schema-safe default, table-name path escaping, explicit all+wait orchestration, Cobra duration parsing, and the opaque task ID body.
 - TestBaseTableCopyWorkflow: feature-gated by `LARK_CLI_E2E_BASE_TABLE_COPY_READY=1` until the OpenAPI is deployed; creates a source table and record, proves schema-only copy, all no-wait plus status, all wait, record inclusion, and cleanup.
+- TestBaseTemplateCenterDryRun: proves `+template-categories`, `+template-list`, and `+template-search` request shapes, including cursor pagination and the `--page-size` alias.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
 - Blocked area: table-copy live integration remains deployment-gated; dashboard, field, most record operations, most form operations, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
 
@@ -36,6 +37,9 @@
 | ✓ | base +base-block-list | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/list all,list folder | `--base-token`; optional `--parent-id`; optional `--type`; dry-run only | request shape only |
 | ✓ | base +base-block-move | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/move root,move after | `--base-token`; `--block-id`; optional `--parent-id`; `--after-id`; dry-run only | request shape only |
 | ✓ | base +base-block-rename | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/rename | `--base-token`; `--block-id`; `--name`; dry-run only | request shape only |
+| ✓ | base +template-categories | shortcut | base_template_center_dryrun_test.go::TestBaseTemplateCenterDryRun/categories | dry-run only | request shape only |
+| ✓ | base +template-list | shortcut | base_template_center_dryrun_test.go::TestBaseTemplateCenterDryRun/list | `--category-key`; `--limit`/`--page-size`; `--offset`; dry-run only | request shape only |
+| ✓ | base +template-search | shortcut | base_template_center_dryrun_test.go::TestBaseTemplateCenterDryRun/search | `--keyword`; `--limit`; dry-run only | request shape only; blank keyword validation covered |
 | ✕ | base +dashboard-arrange | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-block-create | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-block-delete | shortcut |  | none | dashboard workflows not covered |
