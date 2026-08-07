@@ -38,17 +38,17 @@
 使用 `+record-list` 的 filter/sort 路径：
 
 1. `+field-list` 确认筛选字段、排序字段、展示字段、业务 key。
-2. 筛选只用 `--filter-json` 或 `--filter-json @file`。
+2. 筛选使用 `--filter-json '<filter-json>'`。
 3. 排序用 `--sort-json`。
 4. `--field-id` 做最小投影，`--limit` 控制返回数量。
 
-Example: string/number 条件 + TopN：
+Example: 结构化筛选 + TopN；示例展示文本包含、数字比较和 Select 集合相交三个常用谓词：
 
 ```bash
 lark-cli base +record-list \
   --base-token <base_token> \
   --table-id <table_id> \
-  --filter-json '{"logic":"and","conditions":[["Title","==","Launch plan"],["Score",">=",80]]}' \
+  --filter-json '{"logic":"and","conditions":[["Title","intersects","Launch plan"],["Score",">=",80],["Status","intersects",["Doing"]]]}' \
   --sort-json '[{"field":"Updated","desc":true}]' \
   --field-id Name \
   --field-id Title \
@@ -56,50 +56,7 @@ lark-cli base +record-list \
   --limit 20
 ```
 
-Example: 复杂筛选从文件读取：
-
-```bash
-lark-cli base +record-list \
-  --base-token <base_token> \
-  --table-id <table_id> \
-  --filter-json @filter.json \
-  --sort-json '[{"field":"Priority","desc":true}]' \
-  --field-id Name \
-  --field-id Tags \
-  --limit 50
-```
-
-`filter-json` 与视图筛选结构一致。下面只列常用 fewshot；字段类型、operator、value 形状拿不准，或需要人员、群组、关联、空值、地理位置、formula / lookup 等完整筛选时，先读 [lark-base-view-set-filter.md](lark-base-view-set-filter.md)，再把同样的 filter JSON 传给 `--filter-json`。
-
-文本 `==`：字段值等于目标文本。
-```json
-{"logic":"and","conditions":[["Title","==","Launch plan"]]}
-```
-
-文本包含 / like：文本字段包含目标片段；operator 写 `intersects`。
-```json
-{"logic":"and","conditions":[["Title","intersects","urgent"]]}
-```
-
-数字 `==`：字段值等于目标数字。
-```json
-{"logic":"and","conditions":[["Score","==",95]]}
-```
-
-日期 `==`：字段值等于目标日期；datetime / created_at / updated_at 用 `ExactDate(...)`。
-```json
-{"logic":"and","conditions":[["Due Date","==","ExactDate(2026-06-02)"]]}
-```
-
-选项 `==`：字段值匹配单个选项；选项值使用选项名数组，单个选项也写数组。
-```json
-{"logic":"and","conditions":[["Priority","==",["P0"]]]}
-```
-
-选项 `intersects`：字段值与给定选项集合有交集，常用于多选或“命中任一选项”。
-```json
-{"logic":"and","conditions":[["Tags","intersects",["P0","Blocked"]]]}
-```
+常用 `filter-json` condition fewshot 统一见 [Base 数据表查询与分析 SOP](lark-base-data-analysis-sop.md)；完整协议见 [Base Filter 条件结构](lark-base-filter-condition.md)。
 
 `--sort-json` 传排序数组，数组顺序就是优先级，`desc:true` 为降序，`desc:false` 为升序，最多 10 个排序条件。
 
@@ -113,7 +70,7 @@ lark-cli base +record-search \
   --table-id <table_id> \
   --keyword Alice \
   --search-field Name \
-  --filter-json '{"logic":"and","conditions":[["Status","!=","Done"]]}' \
+  --filter-json '{"logic":"and","conditions":[["Status","intersects",["Doing"]]]}' \
   --sort-json '[{"field":"Updated","desc":true}]' \
   --field-id Name \
   --field-id Status \
@@ -140,12 +97,12 @@ lark-cli base +data-query \
   --dsl '{"datasource":{"type":"table","table":{"tableId":"<table_id>"}},"dimensions":[{"field_name":"Status","alias":"status"}],"measures":[{"field_name":"Status","aggregation":"count","alias":"count"}],"shaper":{"format":"flat"}}'
 ```
 
-Example: 过滤后汇总并取 TopN：
+Example: 汇总后取 TopN；需要过滤时按 `+data-query` 的 LiteQuery DSL reference 增加 `filters`：
 
 ```bash
 lark-cli base +data-query \
   --base-token <base_token> \
-  --dsl '{"datasource":{"type":"table","table":{"tableId":"<table_id>"}},"dimensions":[{"field_name":"Owner","alias":"owner"}],"measures":[{"field_name":"Amount","aggregation":"sum","alias":"total_amount"}],"filters":{"type":1,"conjunction":"and","conditions":[{"field_name":"Status","operator":"is","value":["Done"]}]},"sort":[{"field_name":"total_amount","order":"desc"}],"pagination":{"limit":10},"shaper":{"format":"flat"}}'
+  --dsl '{"datasource":{"type":"table","table":{"tableId":"<table_id>"}},"dimensions":[{"field_name":"Owner","alias":"owner"}],"measures":[{"field_name":"Amount","aggregation":"sum","alias":"total_amount"}],"sort":[{"field_name":"total_amount","order":"desc"}],"pagination":{"limit":10},"shaper":{"format":"flat"}}'
 ```
 
 ### 2.4 视图化与复用
@@ -159,7 +116,7 @@ lark-cli base +view-set-filter \
   --base-token <base_token> \
   --table-id <table_id> \
   --view-id <view_id> \
-  --json @filter.json
+  --json '{"logic":"and","conditions":[["Priority","intersects",["P0"]]]}'
 
 lark-cli base +view-set-sort \
   --base-token <base_token> \

@@ -16,6 +16,30 @@
 
 缩小大表记录范围时，展示文本关键词用 `+record-search`，日期、状态、数字、空值、选项、人员和关联等结构化条件用 `+record-list --filter-json`。
 
+### 单表谓词下推常用 example
+
+`+record-list` / `+record-search` 的 `--filter-json '<filter-json>'` 支持使用 tuple condition 下推单表谓词。以下示例用注释说明各条件的含义；实际传参时删除注释并使用标准 JSON：
+
+```jsonc
+{
+  "logic": "and", // 所有 conditions 同时成立；任意一个成立时使用 "or"
+  "conditions": [
+    ["标题", "==", "Launch plan"], // 文本全等
+    ["标题", "intersects", "urgent"], // 文本包含目标片段
+    ["金额", ">=", 100], // 数字比较；支持 ==、!=、>、>=、<、<=
+    ["状态", "intersects", ["进行中", "暂停"]], // Select 集合相交：包含“进行中”或“暂停”任意一个选项
+    ["状态", "disjoint", ["已终止"]], // Select 集合无交集
+    ["已完成", "==", true], // Checkbox
+    ["负责人", "intersects", [{"id": "ou_xxx"}]], // 负责人包含某个人；intersects 表示包含数组中任意一个人员
+    ["关联项目", "intersects", [{"id": "rec_xxx"}]], // 关联项目包含某个 record_id；intersects 表示包含数组中任意一条关联
+    ["备注", "non_empty"], // 非空判断；标量 null 和多值空数组都是空
+    ["业务日期", "==", "ExactDate(2026-08-07)"], // 具体一天：按 Base 时区匹配 2026-08-07 当天
+    ["发生时间", ">", "ExactDate(2026-08-06 23:59:59)"], // 2026-08-07 全天范围下界：用 > 前一天 23:59:59 模拟
+    ["发生时间", "<", "ExactDate(2026-08-08 00:00:00)"] // 2026-08-07 全天范围上界：小于下一天零点
+  ]
+}
+```
+
 全表分析的常规资源链路是 `+table-list` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再用 `+record-list` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
 
 1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
