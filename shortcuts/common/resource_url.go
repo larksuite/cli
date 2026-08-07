@@ -42,6 +42,8 @@ func BuildResourceURL(brand core.LarkBrand, kind, token string) string {
 		return host + "/sheets/" + token
 	case "bitable":
 		return host + "/base/" + token
+	case "base_workspace":
+		return host + "/base/workspace/" + token
 	case "wiki":
 		return host + "/wiki/" + token
 	case "file":
@@ -76,6 +78,7 @@ var urlPathToType = []struct {
 	{"/drive/file/", "file"},
 	{"/drive/shr/", "folder"},
 	{"/chat/drive/", "folder"},
+	{"/base/workspace/", "base_workspace"},
 	{"/docx/", "docx"},
 	{"/doc/", "doc"},
 	{"/sheets/", "sheet"},

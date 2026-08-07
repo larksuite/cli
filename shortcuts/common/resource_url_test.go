@@ -19,10 +19,11 @@ func TestParseResourceURL(t *testing.T) {
 		wantToken string
 		wantOK    bool
 	}{
-		// All 9 supported types
+		// All supported types
 		{"docx", "https://xxx.feishu.cn/docx/doxcnABC", "docx", "doxcnABC", true},
 		{"doc", "https://xxx.feishu.cn/doc/doccnABC", "doc", "doccnABC", true},
 		{"sheet", "https://xxx.feishu.cn/sheets/shtcnABC", "sheet", "shtcnABC", true},
+		{"base workspace", "https://xxx.feishu.cn/base/workspace/wsABC", "base_workspace", "wsABC", true},
 		{"bitable via /base/", "https://xxx.feishu.cn/base/bascnABC", "bitable", "bascnABC", true},
 		{"bitable via /bitable/", "https://xxx.feishu.cn/bitable/bascnABC", "bitable", "bascnABC", true},
 		{"wiki", "https://xxx.feishu.cn/wiki/wikcnABC", "wiki", "wikcnABC", true},
@@ -85,7 +86,7 @@ func TestParseResourceURL(t *testing.T) {
 func TestParseResourceURL_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	types := []string{"docx", "doc", "sheet", "bitable", "wiki", "file", "folder", "mindnote", "slides"}
+	types := []string{"docx", "doc", "sheet", "bitable", "base_workspace", "wiki", "file", "folder", "mindnote", "slides"}
 	token := "testTOKEN123"
 
 	for _, kind := range types {
@@ -122,12 +123,14 @@ func TestBuildResourceURL(t *testing.T) {
 		{"feishu doc legacy", core.BrandFeishu, "doc", "doccnABC", "https://www.feishu.cn/doc/doccnABC"},
 		{"feishu sheet", core.BrandFeishu, "sheet", "shtcnABC", "https://www.feishu.cn/sheets/shtcnABC"},
 		{"feishu bitable", core.BrandFeishu, "bitable", "bascnABC", "https://www.feishu.cn/base/bascnABC"},
+		{"feishu base workspace", core.BrandFeishu, "base_workspace", "wsABC", "https://www.feishu.cn/base/workspace/wsABC"},
 		{"feishu wiki", core.BrandFeishu, "wiki", "wikcnABC", "https://www.feishu.cn/wiki/wikcnABC"},
 		{"feishu file", core.BrandFeishu, "file", "boxcnABC", "https://www.feishu.cn/file/boxcnABC"},
 		{"feishu folder", core.BrandFeishu, "folder", "fldcnABC", "https://www.feishu.cn/drive/folder/fldcnABC"},
 		{"feishu mindnote", core.BrandFeishu, "mindnote", "mncnABC", "https://www.feishu.cn/mindnote/mncnABC"},
 		{"feishu slides", core.BrandFeishu, "slides", "slkcnABC", "https://www.feishu.cn/slides/slkcnABC"},
 		{"lark docx", core.BrandLark, "docx", "doxcnABC", "https://www.larksuite.com/docx/doxcnABC"},
+		{"lark base workspace", core.BrandLark, "base_workspace", "wsABC", "https://www.larksuite.com/base/workspace/wsABC"},
 		{"lark wiki", core.BrandLark, "wiki", "wikcnABC", "https://www.larksuite.com/wiki/wikcnABC"},
 		{"empty brand defaults to feishu", core.LarkBrand(""), "docx", "doxcnABC", "https://www.feishu.cn/docx/doxcnABC"},
 		{"kind case-insensitive", core.BrandFeishu, "DOCX", "doxcnABC", "https://www.feishu.cn/docx/doxcnABC"},

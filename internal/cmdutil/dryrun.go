@@ -33,11 +33,12 @@ type DryRunOutputOptions struct {
 
 // DryRunAPICall describes a single API call in dry-run output.
 type DryRunAPICall struct {
-	Desc   string                 `json:"desc,omitempty"`
-	Method string                 `json:"method"`
-	URL    string                 `json:"url"`
-	Params map[string]interface{} `json:"params,omitempty"`
-	Body   interface{}            `json:"body,omitempty"`
+	Desc    string                 `json:"desc,omitempty"`
+	Method  string                 `json:"method"`
+	URL     string                 `json:"url"`
+	Headers map[string]string      `json:"headers,omitempty"`
+	Params  map[string]interface{} `json:"params,omitempty"`
+	Body    interface{}            `json:"body,omitempty"`
 }
 
 // DryRunContext is the execution context shared by every dry-run preview:
@@ -96,6 +97,17 @@ func (d *DryRunAPI) Params(params map[string]interface{}) *DryRunAPI {
 	return d
 }
 
+// Header adds one request header to the last added call.
+func (d *DryRunAPI) Header(name, value string) *DryRunAPI {
+	if n := len(d.calls); n > 0 {
+		if d.calls[n-1].Headers == nil {
+			d.calls[n-1].Headers = map[string]string{}
+		}
+		d.calls[n-1].Headers[name] = value
+	}
+	return d
+}
+
 // Desc sets a description on the last added call.
 // If no calls exist yet, sets the top-level description.
 func (d *DryRunAPI) Desc(desc string) *DryRunAPI {
@@ -140,11 +152,12 @@ func (d *DryRunAPI) MarshalJSON() ([]byte, error) {
 	resolved := make([]DryRunAPICall, len(d.calls))
 	for i, c := range d.calls {
 		resolved[i] = DryRunAPICall{
-			Desc:   c.Desc,
-			Method: c.Method,
-			URL:    d.resolveURL(c.URL),
-			Params: c.Params,
-			Body:   c.Body,
+			Desc:    c.Desc,
+			Method:  c.Method,
+			URL:     d.resolveURL(c.URL),
+			Headers: c.Headers,
+			Params:  c.Params,
+			Body:    c.Body,
 		}
 	}
 	m := make(map[string]interface{}, len(d.extra)+3)
@@ -191,6 +204,21 @@ func (d *DryRunAPI) Format() string {
 		b.WriteByte(' ')
 		b.WriteString(u)
 		b.WriteByte('\n')
+
+		if len(c.Headers) > 0 {
+			keys := make([]string, 0, len(c.Headers))
+			for key := range c.Headers {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				b.WriteString("  ")
+				b.WriteString(key)
+				b.WriteString(": ")
+				b.WriteString(c.Headers[key])
+				b.WriteByte('\n')
+			}
+		}
 
 		if !util.IsNil(c.Body) {
 			j, _ := json.Marshal(c.Body)

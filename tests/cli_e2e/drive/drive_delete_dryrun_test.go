@@ -57,3 +57,37 @@ func TestDriveDeleteDryRunAsyncParams(t *testing.T) {
 		t.Fatalf("api.1.params.task_id=%q, want placeholder\nstdout:\n%s", got, out)
 	}
 }
+
+func TestDriveDeleteDryRunBaseAppUsesBitableWireType(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+delete",
+			"--file-token", "baseAppDryRunDelete",
+			"--type", "baseapp",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "DELETE" {
+		t.Fatalf("api.0.method=%q, want DELETE\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/files/baseAppDryRunDelete" {
+		t.Fatalf("api.0.url=%q, want delete files endpoint\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.params.type").String(); got != "bitable" {
+		t.Fatalf("api.0.params.type=%q, want bitable\nstdout:\n%s", got, out)
+	}
+	async := clie2e.DryRunGet(out, "api.0.params.async")
+	if !async.Exists() || !async.Bool() {
+		t.Fatalf("api.0.params.async=%v, want true\nstdout:\n%s", async.Value(), out)
+	}
+}

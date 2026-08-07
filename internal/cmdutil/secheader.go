@@ -195,7 +195,16 @@ func ShortcutHeaderOpts(ctx context.Context) larkcore.RequestOptionFunc {
 	if h == nil {
 		return nil
 	}
-	return larkcore.WithHeaders(h)
+	return func(option *larkcore.RequestOption) {
+		if option.Header == nil {
+			option.Header = make(http.Header)
+		}
+		for key, values := range h {
+			for _, value := range values {
+				option.Header.Add(key, value)
+			}
+		}
+	}
 }
 
 // ShortcutHeaders extracts Shortcut info from the context and returns

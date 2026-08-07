@@ -81,6 +81,17 @@ func runShortcutWithAuthTypes(t *testing.T, shortcut common.Shortcut, authTypes 
 	return parent.ExecuteContext(context.Background())
 }
 
+func registerEmptyAppBlockList(reg *httpmock.Registry, appToken, pageID string) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/" + appToken + "/pages/" + pageID + "/blocks?page_size=100",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
+		},
+	})
+}
+
 func assertInvalidArgumentValidation(t *testing.T, err error, wantParam string, wantParams []string, messageContains string) {
 	t.Helper()
 	if err == nil {
@@ -109,6 +120,92 @@ func assertInvalidArgumentValidation(t *testing.T, err error, wantParam string, 
 	}
 	if messageContains != "" && !strings.Contains(err.Error(), messageContains) {
 		t.Fatalf("err=%v, want message containing %q", err, messageContains)
+	}
+}
+
+func TestBaseWorkspaceCreateOutputIncludesURL(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/workspaces",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"workspace_token": "ws_x",
+				"name":            "Growth",
+			},
+		},
+	})
+	if err := runShortcut(t, BaseWorkspaceCreate, []string{"+workspace-create", "--name", "Growth"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	if data["created"] != true {
+		t.Fatalf("created = %#v, want true", data["created"])
+	}
+	if data["workspace_token"] != "ws_x" {
+		t.Fatalf("workspace_token = %#v, want ws_x", data["workspace_token"])
+	}
+	wantURL := "https://www.feishu.cn/base/workspace/ws_x"
+	if data["workspace_url"] != wantURL || data["url"] != wantURL {
+		t.Fatalf("workspace urls = %#v, want %q", data, wantURL)
+	}
+	workspace, _ := data["workspace"].(map[string]interface{})
+	if common.GetString(workspace, "url") != wantURL {
+		t.Fatalf("workspace.url = %#v, want %q", workspace["url"], wantURL)
+	}
+}
+
+func TestBaseWorkspaceEntityListOutputIncludesURL(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/workspaces/ws_x/entities?page_size=100",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"entities": []interface{}{},
+				"has_more": false,
+			},
+		},
+	})
+	if err := runShortcut(t, BaseWorkspaceEntityList, []string{"+workspace-entity-list", "--workspace-token", "ws_x"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	wantURL := "https://www.feishu.cn/base/workspace/ws_x"
+	if data["workspace_token"] != "ws_x" || data["workspace_url"] != wantURL || data["url"] != wantURL {
+		t.Fatalf("workspace reference fields = %#v, want token ws_x and url %q", data, wantURL)
+	}
+	if data["has_more"] != false {
+		t.Fatalf("has_more = %#v, want false", data["has_more"])
+	}
+}
+
+func TestBaseWorkspaceMoveInReturnsServerDataWithoutSyntheticSuccess(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/workspaces/ws_x/move_in",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"entity_token": "bas_x",
+			},
+		},
+	})
+	if err := runShortcut(t, BaseWorkspaceMoveIn, []string{"+workspace-move-in", "--workspace-token", "ws_x", "--entity-token", "bas_x"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	if data["entity_token"] != "bas_x" {
+		t.Fatalf("data=%#v, want server move-in data", data)
+	}
+	if _, exists := data["moved_in"]; exists {
+		t.Fatalf("data=%#v, must not contain synthetic moved_in", data)
 	}
 }
 
@@ -161,6 +258,211 @@ func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	if body["member_type"] != "openid" || body["member_id"] != "ou_testuser" || body["perm"] != "full_access" || body["type"] != "user" {
 		t.Fatalf("unexpected permission request body: %#v", body)
 	}
+}
+
+func TestBaseAppCreateIsAtomic(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/base_apps",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "workspace_token": "ws_x"},
+		},
+	})
+	if err := runShortcut(t, BaseAppCreate, []string{"+app-create", "--name", "Sales", "--workspace-token", "ws_x"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if data["created"] != true || data["workspace_token"] != "ws_x" {
+		t.Fatalf("unexpected result: %#v", data)
+	}
+	app, _ := data["app"].(map[string]interface{})
+	if common.GetString(app, "app_token") != "app_x" {
+		t.Fatalf("app=%#v", app)
+	}
+}
+
+func TestBaseAppBlockGetDataSendsAppTokenHeader(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x/blocks/cht_x/data?base_token=bas_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"main_data": []interface{}{}},
+		},
+	}
+	reg.Register(stub)
+
+	err := runShortcut(t, BaseAppBlockGetData, []string{
+		"+app-block-get-data",
+		"--app-token", "app_x",
+		"--base-token", "bas_x",
+		"--block-id", "cht_x",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := stub.CapturedHeaders.Get(appTokenPersistHeader); got != "app_x" {
+		t.Fatalf("%s=%q, want app_x", appTokenPersistHeader, got)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if _, ok := data["main_data"]; !ok {
+		t.Fatalf("unexpected response: %#v", data)
+	}
+}
+
+func TestBaseAppBlockCreateUsesWorkspaceIDAsWorkspaceToken(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	registerEmptyAppBlockList(reg, "app_x", "pge_x")
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "workspace_id": "ws_x"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/workspaces/ws_x/entities?entity_type=base&page_size=100",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{map[string]interface{}{"token": "bas_x"}},
+			},
+		},
+	})
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_x", "type": "list", "sub_type": "card"},
+		},
+	}
+	reg.Register(createStub)
+
+	err := runShortcut(t, BaseAppBlockCreate, []string{
+		"+app-block-create",
+		"--app-token", "app_x",
+		"--page-id", "pge_x",
+		"--name", "Cards",
+		"--type", "list",
+		"--sub-type", "card",
+		"--data-config", `{"base_token":"bas_x","table_name":"Orders","fields":[],"card_config":{}}`,
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if data["created"] != true {
+		t.Fatalf("created=%#v, want true", data["created"])
+	}
+	body := decodeCapturedJSONBody(t, createStub)
+	config, _ := body["data_config"].(map[string]interface{})
+	if config["base_token"] != "bas_x" || config["table_name"] != "Orders" {
+		t.Fatalf("data_config=%#v", config)
+	}
+	fields, ok := config["fields"].([]interface{})
+	if !ok || len(fields) != 0 {
+		t.Fatalf("explicit fields must be preserved: %#v", config["fields"])
+	}
+}
+
+func TestBaseAppListCreateOmitsUnspecifiedOptionalFields(t *testing.T) {
+	for _, tc := range []struct {
+		subType     string
+		optionalKey string
+	}{
+		{subType: "standard", optionalKey: "columns"},
+		{subType: "grouped", optionalKey: "columns"},
+		{subType: "collapsible", optionalKey: "columns"},
+		{subType: "card", optionalKey: "fields"},
+		{subType: "detail", optionalKey: "fields"},
+	} {
+		t.Run(tc.subType, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			registerEmptyAppBlockList(reg, "app_x", "pge_x")
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/base/v3/base_apps/app_x",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"app_token": "app_x",
+						"ref": map[string]interface{}{
+							"bas_x": []interface{}{"Orders"},
+						},
+					},
+				},
+			})
+			createStub := &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"block_id": "blk_x"},
+				},
+			}
+			reg.Register(createStub)
+
+			err := runShortcut(t, BaseAppBlockCreate, []string{
+				"+app-block-create",
+				"--app-token", "app_x",
+				"--page-id", "pge_x",
+				"--name", "Orders",
+				"--type", "list",
+				"--sub-type", tc.subType,
+				"--data-config", `{"base_token":"bas_x","table_name":"Orders"}`,
+			}, factory, stdout)
+			if err != nil {
+				t.Fatalf("err=%v", err)
+			}
+			body := decodeCapturedJSONBody(t, createStub)
+			config, _ := body["data_config"].(map[string]interface{})
+			if _, exists := config[tc.optionalKey]; exists {
+				t.Fatalf("unspecified %s must be omitted: %#v", tc.optionalKey, config)
+			}
+		})
+	}
+}
+
+func TestBaseAppBlockCreateRejectsDuplicateNameAcrossPagination(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks?page_size=100",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items":           []interface{}{map[string]interface{}{"block_id": "blk_1", "name": "Other"}},
+				"has_more":        true,
+				"next_page_token": "next_x",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks?page_size=100&page_token=next_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"block_id": "blk_2", "name": " cards "}},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := runShortcut(t, BaseAppBlockCreate, []string{
+		"+app-block-create",
+		"--app-token", "app_x",
+		"--page-id", "pge_x",
+		"--name", "Cards",
+		"--type", "text",
+	}, factory, stdout)
+	assertInvalidArgumentValidation(t, err, "--name", nil, "组件名称必须唯一")
 }
 
 func TestBaseWorkspaceExecuteCreateWithFields(t *testing.T) {

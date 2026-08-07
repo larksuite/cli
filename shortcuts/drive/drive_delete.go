@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const driveDeleteSupportedTypes = "file, docx, bitable, base, baseapp, doc, sheet, mindnote, folder, shortcut, slides"
+
 var driveDeleteAllowedTypes = map[string]bool{
 	"file":     true,
 	"docx":     true,
@@ -32,37 +34,31 @@ type driveDeleteSpec struct {
 	FileType  string
 }
 
-// DriveDelete deletes a Drive file or folder with async=true. When the response
+// DriveDelete deletes a Drive resource with async=true. When the response
 // includes a task_id, it performs a bounded task_check poll before returning a
 // resume command for unfinished tasks.
 var DriveDelete = common.Shortcut{
 	Service:     "drive",
 	Command:     "+delete",
-	Description: "Delete a file or folder in Drive",
+	Description: "Delete a Drive resource",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"space:document:delete", "drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file-token", Desc: "file or folder token to delete", Required: true},
-		{Name: "type", Desc: "file type (file, docx, bitable, doc, sheet, mindnote, folder, shortcut, slides)", Required: true},
+		{Name: "file-token", Desc: "Drive resource token to delete; for BaseApp pass app_token", Required: true},
+		{Name: "type", Desc: "file type (file, docx, bitable, base, baseapp, doc, sheet, mindnote, folder, shortcut, slides); base/baseapp are sent as bitable", Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return validateDriveDeleteSpec(driveDeleteSpec{
-			FileToken: runtime.Str("file-token"),
-			FileType:  strings.ToLower(runtime.Str("type")),
-		})
+		return validateDriveDeleteSpec(newDriveDeleteSpec(runtime))
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		spec := driveDeleteSpec{
-			FileToken: runtime.Str("file-token"),
-			FileType:  strings.ToLower(runtime.Str("type")),
-		}
+		spec := newDriveDeleteSpec(runtime)
 
 		dry := common.NewDryRunAPI().
-			Desc("Delete file or folder in Drive")
+			Desc("Delete Drive resource")
 
 		dry.DELETE("/open-apis/drive/v1/files/:file_token").
-			Desc("[1] Delete file/folder").
+			Desc("[1] Delete Drive resource").
 			Set("file_token", spec.FileToken).
 			Params(driveDeleteParams(spec))
 
@@ -73,10 +69,7 @@ var DriveDelete = common.Shortcut{
 		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		spec := driveDeleteSpec{
-			FileToken: runtime.Str("file-token"),
-			FileType:  strings.ToLower(runtime.Str("type")),
-		}
+		spec := newDriveDeleteSpec(runtime)
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Deleting %s %s...\n", spec.FileType, common.MaskToken(spec.FileToken))
 
@@ -129,6 +122,22 @@ var DriveDelete = common.Shortcut{
 	},
 }
 
+func newDriveDeleteSpec(runtime *common.RuntimeContext) driveDeleteSpec {
+	return driveDeleteSpec{
+		FileToken: runtime.Str("file-token"),
+		FileType:  normalizeDriveDeleteFileType(runtime.Str("type")),
+	}
+}
+
+func normalizeDriveDeleteFileType(fileType string) string {
+	switch normalized := strings.TrimSpace(strings.ToLower(fileType)); normalized {
+	case "base", "baseapp":
+		return "bitable"
+	default:
+		return normalized
+	}
+}
+
 func driveDeleteParams(spec driveDeleteSpec) map[string]interface{} {
 	return map[string]interface{}{
 		"type":  spec.FileType,
@@ -137,6 +146,7 @@ func driveDeleteParams(spec driveDeleteSpec) map[string]interface{} {
 }
 
 func validateDriveDeleteSpec(spec driveDeleteSpec) error {
+	spec.FileType = normalizeDriveDeleteFileType(spec.FileType)
 	if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 	}
@@ -144,7 +154,7 @@ func validateDriveDeleteSpec(spec driveDeleteSpec) error {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file type: wiki. This shortcut only supports Drive files and folders; wiki documents are not supported").WithParam("--type")
 	}
 	if !driveDeleteAllowedTypes[spec.FileType] {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file type: %s. Supported types: file, docx, bitable, doc, sheet, mindnote, folder, shortcut, slides", spec.FileType).WithParam("--type")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file type: %s. Supported types: %s", spec.FileType, driveDeleteSupportedTypes).WithParam("--type")
 	}
 	return nil
 }

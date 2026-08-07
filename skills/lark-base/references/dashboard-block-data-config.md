@@ -29,7 +29,7 @@ text: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
 number: is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
 select（multiple=false）: is, isNot, isEmpty, isNotEmpty
 select（multiple=true）: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
-datetime: is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty
+datetime: is, isGreater, isLess, isEmpty, isNotEmpty
 checkbox: is (value: true/false)
 user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 ```
@@ -156,12 +156,42 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | `number` | number | is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"金额","operator":"isGreater","value":0}` |
 | `select` (`multiple=false`) | string（选项名） | is, isNot, isEmpty, isNotEmpty | `{"field_name":"状态","operator":"is","value":"已完成"}` |
 | `select` (`multiple=true`) | string[]（选多个）/ string（选单个） | is, isNot, contains, doesNotContain, isEmpty, isNotEmpty | 多选传数组如 `["标签1","标签2"]`；单选传单个字符串 |
-| `datetime` / `created_at` / `updated_at` | number（Unix 毫秒时间戳，13位） | is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"创建日期","operator":"isGreater","value":1704038400000}` |
+| `datetime` / `created_at` / `updated_at` | `["ExactDate", Unix 毫秒时间戳]` | is, isGreater, isLess, isEmpty, isNotEmpty | `{"field_name":"创建日期","operator":"isGreater","value":["ExactDate",1704038400000]}` |
 | `checkbox` | boolean | is | `{"field_name":"已审核","operator":"is","value":true}` |
 | `user` / `created_by` / `updated_by` | string 或 string[]（用户 ID，格式 `ou_xxx`）。不知道 `open_id` 时先用 `lark-cli contact +search-user --query "<姓名/邮箱/手机号>" --as user` 查 id。 | is, isNot, isEmpty, isNotEmpty | `{"field_name":"负责人","operator":"is","value":"ou_xxxxxxxxxxxxxxxx"}` |
 | 所有类型（为空/不为空） | 不需要 value | isEmpty, isNotEmpty | `{"field_name":"备注","operator":"isEmpty"}` |
 
-> `value` 类型为 `string | number | boolean | string[]`，需根据字段类型匹配正确格式
+> `value` 类型因字段而异，可为 `string | number | boolean | string[] | ["ExactDate", number]`，需按上表构造。
+
+### 日期筛选
+
+图表 `data_config.filter` 筛选 `datetime` / `created_at` / `updated_at` 字段时：
+
+- 有值条件只能使用 `is`、`isGreater` 或 `isLess`，不得使用 `isGreaterEqual` 或 `isLessEqual`。
+- `value` 必须写成 `["ExactDate", <Unix 毫秒时间戳>]`，不得直接传裸时间戳。
+- `isEmpty` / `isNotEmpty` 不传 `value`。
+
+日期区间示例：
+
+```json
+{
+  "filter": {
+    "conjunction": "and",
+    "conditions": [
+      {
+        "field_name": "派单日期",
+        "operator": "isGreater",
+        "value": ["ExactDate", 1785686400000]
+      },
+      {
+        "field_name": "派单日期",
+        "operator": "isLess",
+        "value": ["ExactDate", 1786032000000]
+      }
+    ]
+  }
+}
+```
 
 ## 约束与本地校验
 

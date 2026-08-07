@@ -83,6 +83,53 @@ func TestDriveDeleteDryRunIncludesAsyncAndTaskCheckParams(t *testing.T) {
 	}
 }
 
+func TestDriveDeleteBaseAppDryRunUsesBitableWireType(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "drive +delete"}
+	cmd.Flags().String("file-token", "", "")
+	cmd.Flags().String("type", "", "")
+	if err := cmd.Flags().Set("file-token", "app_token_test"); err != nil {
+		t.Fatalf("set --file-token: %v", err)
+	}
+	if err := cmd.Flags().Set("type", "BaseApp"); err != nil {
+		t.Fatalf("set --type: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContext(cmd, nil)
+	dry := DriveDelete.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API []struct {
+			Method string                 `json:"method"`
+			Params map[string]interface{} `json:"params"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if len(got.API) != 2 {
+		t.Fatalf("expected 2 API calls, got %d", len(got.API))
+	}
+	if got.API[0].Method != "DELETE" {
+		t.Fatalf("first method = %q, want DELETE", got.API[0].Method)
+	}
+	if got.API[0].Params["type"] != "bitable" {
+		t.Fatalf("delete params = %#v, want type=bitable for BaseApp", got.API[0].Params)
+	}
+	if got.API[0].Params["async"] != true {
+		t.Fatalf("delete params = %#v, want async=true", got.API[0].Params)
+	}
+}
+
 func TestDriveDeleteScopesIncludeTaskCheckReadScope(t *testing.T) {
 	t.Parallel()
 
@@ -98,6 +145,47 @@ func TestDriveDeleteScopesIncludeTaskCheckReadScope(t *testing.T) {
 	for scope, seen := range wantScopes {
 		if !seen {
 			t.Fatalf("DriveDelete.Scopes missing %q: %#v", scope, DriveDelete.Scopes)
+		}
+	}
+}
+
+func TestDriveDeleteBaseAppSuccessUsesBitableWireType(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/app_token_test",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+		OnMatch: func(req *http.Request) {
+			query := req.URL.Query()
+			if got := query.Get("type"); got != "bitable" {
+				t.Errorf("delete query type=%q, want bitable", got)
+			}
+			if got := query.Get("async"); got != "true" {
+				t.Errorf("delete query async=%q, want true", got)
+			}
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveDelete, []string{
+		"+delete",
+		"--file-token", "app_token_test",
+		"--type", "baseapp",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, needle := range []string{
+		`"deleted": true`,
+		`"file_token": "app_token_test"`,
+		`"type": "bitable"`,
+	} {
+		if !bytes.Contains(stdout.Bytes(), []byte(needle)) {
+			t.Fatalf("stdout missing %q: %s", needle, stdout.String())
 		}
 	}
 }

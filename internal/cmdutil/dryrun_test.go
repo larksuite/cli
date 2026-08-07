@@ -41,6 +41,31 @@ func TestDryRunAPI_WithParams(t *testing.T) {
 	}
 }
 
+func TestDryRunAPI_WithHeader(t *testing.T) {
+	dr := NewDryRunAPI().
+		GET("/open-apis/test").
+		Header("X-Test-Context", "ctx_123")
+
+	text := dr.Format()
+	if !strings.Contains(text, "X-Test-Context: ctx_123") {
+		t.Fatalf("expected header in text output, got: %s", text)
+	}
+
+	data, err := json.Marshal(dr)
+	if err != nil {
+		t.Fatalf("MarshalJSON failed: %v", err)
+	}
+	var result struct {
+		API []DryRunAPICall `json:"api"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(result.API) != 1 || result.API[0].Headers["X-Test-Context"] != "ctx_123" {
+		t.Fatalf("unexpected headers: %#v", result.API)
+	}
+}
+
 func TestDryRunAPI_WithBody(t *testing.T) {
 	dr := NewDryRunAPI().
 		POST("/open-apis/test").
