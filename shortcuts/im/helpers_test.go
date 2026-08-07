@@ -536,39 +536,90 @@ func TestDownloadIMResourceToPathHTTPClientError(t *testing.T) {
 	}
 }
 
-func TestParseTotalSize(t *testing.T) {
+func TestParseContentRange(t *testing.T) {
 	tests := []struct {
 		name         string
 		contentRange string
-		want         int64
+		want         contentRange
 		wantErr      string
 	}{
-		{name: "normal", contentRange: "bytes 0-131071/104857600", want: 104857600},
-		{name: "single probe chunk", contentRange: "bytes 0-131071/131072", want: 131072},
-		{name: "single small chunk", contentRange: "bytes 0-15/16", want: 16},
+		{name: "normal", contentRange: "bytes 0-131071/104857600", want: contentRange{start: 0, end: 131071, total: 104857600}},
+		// RFC 9110 14.1 spells bytes-unit as a plain ABNF string, so the unit
+		// matches either case.
+		{name: "uppercase unit", contentRange: "Bytes 0-9/10", want: contentRange{start: 0, end: 9, total: 10}},
+		{name: "mixed case unit", contentRange: "BYTES 0-9/10", want: contentRange{start: 0, end: 9, total: 10}},
+		{name: "unknown unit", contentRange: "pages 0-9/10", wantErr: `unsupported content-range: "pages 0-9/10"`},
+		{name: "mid file slice", contentRange: "bytes 131072-262143/104857600", want: contentRange{start: 131072, end: 262143, total: 104857600}},
+		{name: "single small chunk", contentRange: "bytes 0-15/16", want: contentRange{start: 0, end: 15, total: 16}},
 		{name: "empty", contentRange: "", wantErr: "content-range is empty"},
 		{name: "invalid prefix", contentRange: "items 0-15/16", wantErr: `unsupported content-range: "items 0-15/16"`},
 		{name: "missing total", contentRange: "bytes 0-15/", wantErr: `unsupported content-range: "bytes 0-15/"`},
-		{name: "wildcard", contentRange: "bytes */16", wantErr: `unsupported content-range: "bytes */16"`},
+		{name: "missing slash", contentRange: "bytes 0-15", wantErr: `unsupported content-range: "bytes 0-15"`},
+		{name: "missing range end", contentRange: "bytes 0-/16", wantErr: `unsupported content-range: "bytes 0-/16"`},
+		{name: "wildcard range", contentRange: "bytes */16", wantErr: `unsupported content-range: "bytes */16"`},
 		{name: "unknown total size", contentRange: "bytes 0-99/*", wantErr: `unknown total size in content-range: "bytes 0-99/*"`},
+		{name: "invalid start", contentRange: "bytes nope-15/16", wantErr: "parse range start:"},
+		{name: "invalid end", contentRange: "bytes 0-nope/16", wantErr: "parse range end:"},
 		{name: "invalid total", contentRange: "bytes 0-15/not-a-number", wantErr: "parse total size:"},
+		{name: "start after end", contentRange: "bytes 16-15/32", wantErr: "invalid content range: start 16 is after end 15"},
 		{name: "zero total size", contentRange: "bytes 0-0/0", wantErr: "invalid total size: 0"},
+		{name: "end reaches total", contentRange: "bytes 0-16/16", wantErr: "invalid content range: end 16 is outside total 16"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseTotalSize(tt.contentRange)
+			got, err := parseContentRange(tt.contentRange)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("parseTotalSize() error = %v, want substring %q", err, tt.wantErr)
+					t.Fatalf("parseContentRange() error = %v, want substring %q", err, tt.wantErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseTotalSize() unexpected error = %v", err)
+				t.Fatalf("parseContentRange() unexpected error = %v", err)
 			}
 			if got != tt.want {
-				t.Fatalf("parseTotalSize() = %d, want %d", got, tt.want)
+				t.Fatalf("parseContentRange() = %+v, want %+v", got, tt.want)
+			}
+			if gotLen := got.length(); gotLen != tt.want.end-tt.want.start+1 {
+				t.Fatalf("length() = %d, want %d", gotLen, tt.want.end-tt.want.start+1)
+			}
+		})
+	}
+}
+
+func TestRangeValidator(t *testing.T) {
+	tests := []struct {
+		name   string
+		header http.Header
+		want   string
+	}{
+		{name: "strong etag", header: http.Header{"Etag": {`"abc"`}, "Last-Modified": {"Wed, 21 Oct 2015 07:28:00 GMT"}}, want: `"abc"`},
+		{name: "surrounding whitespace tolerated", header: http.Header{"Etag": {`  "abc"  `}}, want: `"abc"`},
+		// RFC 9110 8.8.3: opaque-tag = DQUOTE *etagc DQUOTE. A value that is not
+		// a well-formed entity-tag identifies nothing, so it must not be used to
+		// tie two range responses together.
+		{name: "bare string is not an entity-tag", header: http.Header{"Etag": {"not-a-valid-entity-tag"}}, want: ""},
+		{name: "unterminated quote", header: http.Header{"Etag": {`"abc`}}, want: ""},
+		{name: "missing opening quote", header: http.Header{"Etag": {`abc"`}}, want: ""},
+		// RFC 9110 8.8.3 lists `ETag: ""` among its valid examples.
+		{name: "empty opaque-tag is valid", header: http.Header{"Etag": {`""`}}, want: `""`},
+		{name: "embedded quote", header: http.Header{"Etag": {`"ab"c"`}}, want: ""},
+		{name: "control character", header: http.Header{"Etag": {"\"a\tb\""}}, want: ""},
+		{name: "several values", header: http.Header{"Etag": {`"abc"`, `"def"`}}, want: ""},
+		{name: "obs-text is allowed", header: http.Header{"Etag": {"\"a\xc3\xa9\""}}, want: "\"a\xc3\xa9\""},
+		// RFC 9110 13.1.5: a weak entity-tag must not be sent in If-Range, and
+		// holding any entity-tag rules out sending a date instead.
+		{name: "weak etag is unusable", header: http.Header{"Etag": {`W/"abc"`}, "Last-Modified": {"Wed, 21 Oct 2015 07:28:00 GMT"}}, want: ""},
+		// A date alone cannot be shown to be a strong validator from the response.
+		{name: "last-modified alone is unusable", header: http.Header{"Last-Modified": {"Wed, 21 Oct 2015 07:28:00 GMT"}}, want: ""},
+		{name: "no validator", header: http.Header{}, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := rangeValidator(tt.header); got != tt.want {
+				t.Fatalf("rangeValidator() = %q, want %q", got, tt.want)
 			}
 		})
 	}
