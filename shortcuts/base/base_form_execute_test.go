@@ -341,6 +341,37 @@ func TestBaseFormQuestionsExecuteCreate(t *testing.T) {
 			t.Fatalf("visible_rule logic not preserved: %#v", rule)
 		}
 	})
+
+	t.Run("use existing field passthrough", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"questions": []interface{}{
+						map[string]interface{}{"id": "fldEmail", "title": "你的邮箱"},
+					},
+				},
+			},
+		}
+		reg.Register(stub)
+		args := []string{"+form-questions-create", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--questions", `[{"use_existing_field":true,"field_id":"fldEmail","title":"你的邮箱","required":true}]`}
+		if err := runShortcut(t, BaseFormQuestionsCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := decodeCapturedJSONBody(t, stub)
+		questions, _ := body["questions"].([]interface{})
+		if len(questions) != 1 {
+			t.Fatalf("questions=%#v", body["questions"])
+		}
+		question, _ := questions[0].(map[string]interface{})
+		if question["use_existing_field"] != true || question["field_id"] != "fldEmail" {
+			t.Fatalf("existing field question not forwarded: body=%s", string(stub.CapturedBody))
+		}
+	})
 }
 
 func TestBaseFormQuestionsExecuteUpdate(t *testing.T) {
@@ -395,6 +426,28 @@ func TestBaseFormQuestionsExecuteDelete(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 		if got := stdout.String(); !strings.Contains(got, `"deleted": true`) || !strings.Contains(got, `"q_001"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("keep field", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "DELETE",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(stub)
+		args := []string{"+form-questions-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--question-ids", `["fldEmail"]`, "--keep-field", "--yes"}
+		if err := runShortcut(t, BaseFormQuestionsDelete, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := decodeCapturedJSONBody(t, stub)
+		if body["keep_field"] != true {
+			t.Fatalf("keep_field not forwarded: body=%s", string(stub.CapturedBody))
+		}
+		if got := stdout.String(); !strings.Contains(got, `"keep_field": true`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})

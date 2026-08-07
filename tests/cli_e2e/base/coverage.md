@@ -25,6 +25,7 @@
 - TestBaseFormQuestionsCreateVisibleRuleDryRun / TestBaseFormQuestionsUpdateVisibleRuleDryRun: prove `+form-questions-create` / `+form-questions-update` dry-run request shape and that the optional `visible_rule` display condition is transcribed verbatim into the request body.
 - TestBaseTableCopyDryRun: proves `+table-copy` and `+table-copy-status` request shapes, including the schema-safe default, table-name path escaping, explicit all+wait orchestration, Cobra duration parsing, and the opaque task ID body.
 - TestBaseTableCopyWorkflow: feature-gated by `LARK_CLI_E2E_BASE_TABLE_COPY_READY=1` until the OpenAPI is deployed; creates a source table and record, proves schema-only copy, all no-wait plus status, all wait, record inclusion, and cleanup.
+- TestBaseTemplateCenterDryRun: proves `+template-categories`, `+template-list`, and `+template-search` request shapes; the list case covers category, limit, and offset parameters.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
 - Blocked area: table-copy live integration remains deployment-gated; dashboard, field, most record operations, most form operations, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
 
@@ -42,6 +43,9 @@
 | ✓ | base +base-block-list | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/list all,list folder | `--base-token`; optional `--parent-id`; optional `--type`; dry-run only | request shape only |
 | ✓ | base +base-block-move | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/move root,move after | `--base-token`; `--block-id`; optional `--parent-id`; `--after-id`; dry-run only | request shape only |
 | ✓ | base +base-block-rename | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/rename | `--base-token`; `--block-id`; `--name`; dry-run only | request shape only |
+| ✓ | base +template-categories | shortcut | base_template_center_dryrun_test.go::TestBaseTemplateCenterDryRun/categories | dry-run only | request shape only |
+| ✓ | base +template-list | shortcut | base_template_center_dryrun_test.go::TestBaseTemplateCenterDryRun/list | `--category-key`; `--limit`/`--page-size`; `--offset`; dry-run only | request shape only |
+| ✓ | base +template-search | shortcut | base_template_center_dryrun_test.go::TestBaseTemplateCenterDryRun/search | `--keyword`; `--limit`; dry-run only | request shape only; blank keyword validation covered |
 | ✕ | base +dashboard-arrange | shortcut |  | none | dashboard workflows not covered |
 | ✓ | base +dashboard-block-create | shortcut | base_dashboard_block_layout_precision_dryrun_test.go::TestBaseDashboardBlockCreateDryRun_PositionAndNumberFormat; base_dashboard_block_layout_precision_workflow_test.go::TestBaseDashboardBlockLayoutPrecisionWorkflow | `--position` top-level; `--data-config.number_format`; dry-run + live | request shape plus live statistics block creation |
 | ✓ | base +dashboard-block-delete | shortcut | base_dashboard_block_layout_precision_workflow_test.go::TestBaseDashboardBlockLayoutPrecisionWorkflow (cleanup) | `--base-token`; `--dashboard-id`; `--block-id`; `--yes`; live cleanup | deletes the temporary block |
