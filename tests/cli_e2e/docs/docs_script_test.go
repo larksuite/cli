@@ -107,13 +107,9 @@ func TestDocsScriptRemoteImagePreflightDryRunDeclaresNetwork(t *testing.T) {
 			"--presentation-decision", decision,
 			"--dry-run",
 		},
-		WorkDir: t.TempDir(),
-		Env: map[string]string{
-			"LARKSUITE_CLI_APP_ID":     "",
-			"LARKSUITE_CLI_APP_SECRET": "",
-			"LARKSUITE_CLI_BRAND":      "",
-			"LARKSUITE_CLI_CONFIG_DIR": t.TempDir(),
-		},
+		WorkDir:   t.TempDir(),
+		DefaultAs: "bot",
+		Env:       docsScriptE2EEnv(t),
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
