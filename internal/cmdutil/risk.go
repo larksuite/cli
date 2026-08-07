@@ -10,6 +10,11 @@ import (
 
 const riskLevelAnnotationKey = "risk_level"
 
+// Risk is re-exported from core so command code gets the risk vocabulary, the
+// type and the SetRisk/GetRisk helpers from one package. core stays the single
+// source of truth — this is an alias, not a second type.
+type Risk = core.Risk
+
 // Risk level constants — aliases of the canonical core.Risk* values, re-exported
 // here so command code gets the risk vocabulary and the SetRisk/GetRisk helpers
 // from one package. core is the single source of truth.
@@ -24,22 +29,32 @@ const (
 // shortcuts/common. Levels follow the three-tier convention: RiskRead |
 // RiskWrite | RiskHighRiskWrite. Framework-level confirmation gating only
 // acts on RiskHighRiskWrite.
-func SetRisk(cmd *cobra.Command, level string) {
+//
+// The parameter is typed: a misspelled level cannot reach the annotation from
+// Go code. Values arriving as strings (generated service metadata, plugin
+// manifests) must go through core.ParseRisk at that boundary.
+func SetRisk(cmd *cobra.Command, level Risk) {
 	if level == "" {
 		return
 	}
 	if cmd.Annotations == nil {
 		cmd.Annotations = map[string]string{}
 	}
-	cmd.Annotations[riskLevelAnnotationKey] = level
+	cmd.Annotations[riskLevelAnnotationKey] = level.String()
 }
 
 // GetRisk returns the static risk level. ok is true when the command has a
 // risk annotation.
-func GetRisk(cmd *cobra.Command) (level string, ok bool) {
+//
+// The annotation map is a string boundary, so the stored value is not
+// necessarily in the closed taxonomy — a command mounted from generated
+// metadata or replaced by a policy stub can carry anything. ok only reports
+// presence; callers that gate on the value must check level.IsValid() and
+// fail closed, never treat an unrecognised level as the lowest tier.
+func GetRisk(cmd *cobra.Command) (level Risk, ok bool) {
 	if cmd.Annotations == nil {
 		return "", false
 	}
-	level, ok = cmd.Annotations[riskLevelAnnotationKey]
-	return level, ok && level != ""
+	raw, ok := cmd.Annotations[riskLevelAnnotationKey]
+	return Risk(raw), ok && raw != ""
 }

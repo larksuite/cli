@@ -23,7 +23,7 @@ var AppsList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+list",
 	Description: "List apps visible to the calling user (cursor pagination)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +list",
 		"Example: lark-cli apps +list --keyword <keyword>",

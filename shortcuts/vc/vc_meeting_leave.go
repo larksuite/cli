@@ -18,7 +18,7 @@ var VCMeetingLeave = common.Shortcut{
 	Service:     "vc",
 	Command:     "+meeting-leave",
 	Description: "Leave a meeting by meeting ID",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"vc:meeting.bot.join:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

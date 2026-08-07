@@ -19,7 +19,7 @@ var BaseRoleDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+role-delete",
 	Description: "Delete a custom role (system roles cannot be deleted)",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:role:delete"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

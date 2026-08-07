@@ -18,7 +18,7 @@ var OKRDeleteProgressRecord = common.Shortcut{
 	Service:     "okr",
 	Command:     "+progress-delete",
 	Description: "Delete an OKR progress by ID",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"okr:okr.progress:delete"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

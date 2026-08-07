@@ -22,7 +22,7 @@ var AppsAnalyticsList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+analytics-list",
 	Description: "List online app user and page-view analytics",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +analytics-list --app-id <app_id> --analytics users --granularity week",
 		"Tip: analytics timestamps use nanoseconds; use +metric-list for request/runtime metrics.",

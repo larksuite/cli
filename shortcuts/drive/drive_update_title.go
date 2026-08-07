@@ -76,7 +76,7 @@ var DriveUpdateTitle = common.Shortcut{
 	Service:     "drive",
 	Command:     "+update-title",
 	Description: "Rename a Drive file, folder, online document (docx/sheet/base/slides), or wiki node",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	// Keep auth-domain recommendations narrow: drive:file:upload is broadly used
 	// by Drive shortcuts, while the endpoint's type-specific any-of scopes and the
 	// extension guard's metadata scope are requested only when an API response or

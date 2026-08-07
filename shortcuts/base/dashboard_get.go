@@ -13,7 +13,7 @@ var BaseDashboardGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-get",
 	Description: "Get a dashboard by ID",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:dashboard:read"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

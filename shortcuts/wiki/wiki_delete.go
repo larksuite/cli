@@ -35,7 +35,7 @@ var WikiDeleteSpace = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+delete-space",
 	Description: "Delete a wiki space, polling the async delete task when needed",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"wiki:space:write_only", "wiki:space:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

@@ -18,7 +18,7 @@ var AppsOpenAPIKeyGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+openapi-key-get",
 	Description: "Get an open API key detail (secret redacted)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +openapi-key-get --app-id <app_id> --key-id <key_id>",
 	},

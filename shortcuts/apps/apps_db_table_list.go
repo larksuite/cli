@@ -31,7 +31,7 @@ var AppsDBTableList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-table-list",
 	Description: "List tables in an app database (cursor pagination)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +db-table-list --app-id <app_id>",
 		"Tip: filter fields with --jq, e.g. -q '.data.items[].name'",

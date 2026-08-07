@@ -13,7 +13,7 @@ var BaseRecordHistoryList = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-history-list",
 	Description: "List record change history",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:history:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

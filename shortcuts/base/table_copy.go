@@ -25,7 +25,7 @@ var BaseTableCopy = common.Shortcut{
 	Service:     "base",
 	Command:     "+table-copy",
 	Description: "Copy a table by ID or name; structure only by default",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{tableCopyScope},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
@@ -55,7 +55,7 @@ var BaseTableCopyStatus = common.Shortcut{
 	Service:     "base",
 	Command:     "+table-copy-status",
 	Description: "Get one table copy task status",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{tableCopyScope},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

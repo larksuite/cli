@@ -20,7 +20,7 @@ var OKRCycleDetail = common.Shortcut{
 	Service:     "okr",
 	Command:     "+cycle-detail",
 	Description: "List objectives and key results under an OKR cycle",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"okr:okr.content:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

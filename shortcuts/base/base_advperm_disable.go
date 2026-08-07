@@ -19,7 +19,7 @@ var BaseAdvpermDisable = common.Shortcut{
 	Service:     "base",
 	Command:     "+advperm-disable",
 	Description: "Disable advanced permissions for a Base",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:app:update"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

@@ -94,7 +94,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 	}
 	// --json is a no-op (list is always JSON), accepted only to stay symmetric with read.
 	cmd.Flags().Bool("json", false, "no-op (list output is always JSON)")
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 	cmdutil.DisableAuthCheck(cmd)
 	return cmd
 }
@@ -151,7 +151,7 @@ func newReadCmd(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "output as a JSON envelope instead of raw markdown")
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 	cmdutil.DisableAuthCheck(cmd)
 	return cmd
 }

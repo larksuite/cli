@@ -13,7 +13,7 @@ var BaseViewGetVisibleFields = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-get-visible-fields",
 	Description: "Get view visible fields configuration",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:view:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},

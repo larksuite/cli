@@ -18,7 +18,7 @@ var BaseFormQuestionsCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-questions-create",
 	Description: "Create questions for a form in a Base table",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:form:update"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

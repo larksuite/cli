@@ -42,7 +42,7 @@ var SlidesReplaceSlide = common.Shortcut{
 	Service:     "slides",
 	Command:     "+replace-slide",
 	Description: "Replace elements on a slide via block_replace / block_insert parts (auto-injects id + <content/> on shape elements)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},

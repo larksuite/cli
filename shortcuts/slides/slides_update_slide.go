@@ -41,7 +41,7 @@ var SlidesUpdateSlide = common.Shortcut{
 	Service:     "slides",
 	Command:     "+update-slide",
 	Description: "Apply a full <slide> XML to an existing slide, replacing the page in one request (keeps slide_id and page order)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},

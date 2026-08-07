@@ -20,7 +20,7 @@ var BaseRoleUpdate = common.Shortcut{
 	Service:     "base",
 	Command:     "+role-update",
 	Description: "Update a role config (delta merge, only changed fields needed)",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:role:update"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

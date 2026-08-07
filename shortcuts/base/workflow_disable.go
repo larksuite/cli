@@ -14,7 +14,7 @@ var BaseWorkflowDisable = common.Shortcut{
 	Service:     "base",
 	Command:     "+workflow-disable",
 	Description: "Disable a workflow in a base",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:workflow:update"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

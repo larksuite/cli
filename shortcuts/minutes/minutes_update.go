@@ -21,7 +21,7 @@ var MinutesUpdate = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+update",
 	Description: "Update a minute's title",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"minutes:minutes:update"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

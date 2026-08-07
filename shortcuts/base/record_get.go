@@ -14,7 +14,7 @@ var BaseRecordGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-get",
 	Description: "Get one or more records by ID",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:record:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

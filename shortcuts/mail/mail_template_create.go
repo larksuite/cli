@@ -16,7 +16,7 @@ var MailTemplateCreate = common.Shortcut{
 	Service:     "mail",
 	Command:     "+template-create",
 	Description: "Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

@@ -155,7 +155,7 @@ var DriveApplyPermission = common.Shortcut{
 	Service:     "drive",
 	Command:     "+apply-permission",
 	Description: "Apply to the owner for view or edit permission on a Drive resource",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"docs:permission.member:apply"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{

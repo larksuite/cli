@@ -46,7 +46,7 @@ func newCmdAuthStatus(
 
 	cmd.Flags().BoolVar(&opts.Verify, "verify", false, "verify token against server (requires network)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 
 	return cmd
 }

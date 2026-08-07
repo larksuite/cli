@@ -13,7 +13,7 @@ var BaseRecordUpsert = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-upsert",
 	Description: "Create or update a record",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:record:create", "base:record:update"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

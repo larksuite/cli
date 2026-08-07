@@ -145,7 +145,7 @@ func buildInputSchema(m meta.Method) *InputSchema {
 	addInputObject(is, "data", "", m.Data(), false, "--data")
 	addInputObject(is, "file", "Binary file uploads. Each property is a file field with format:binary; CLI maps each to --file <key>=<path>.", m.Files(), false, "--file")
 
-	if m.Risk == core.RiskHighRiskWrite {
+	if core.Risk(m.Risk) == core.RiskHighRiskWrite {
 		falseVal := false
 		is.Properties.Set("yes", Property{
 			Type:        "boolean",
@@ -206,7 +206,7 @@ func buildMeta(m meta.Method) *Meta {
 	if m.Risk != "" {
 		out.Risk = m.Risk
 	} else {
-		out.Risk = core.RiskRead
+		out.Risk = core.RiskRead.String()
 	}
 	if m.DocURL != "" {
 		out.DocURL = m.DocURL

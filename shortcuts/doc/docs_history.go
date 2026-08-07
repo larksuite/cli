@@ -99,7 +99,7 @@ var DocsHistoryList = common.Shortcut{
 	Service:     "docs",
 	Command:     "+history-list",
 	Description: "List Lark document history versions",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -152,7 +152,7 @@ var DocsHistoryRevert = common.Shortcut{
 	Service:     "docs",
 	Command:     "+history-revert",
 	Description: "Revert a Lark document to a historical version",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -208,7 +208,7 @@ var DocsHistoryRevertStatus = common.Shortcut{
 	Service:     "docs",
 	Command:     "+history-revert-status",
 	Description: "Get Lark document history revert task status",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

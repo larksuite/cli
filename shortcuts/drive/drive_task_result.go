@@ -29,7 +29,7 @@ var DriveTaskResult = common.Shortcut{
 	Service:     "drive",
 	Command:     "+task_result",
 	Description: "Poll async task result for import, export, drive move/delete, wiki move, wiki move-to-drive, or wiki delete operations",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	// This shortcut multiplexes multiple backend APIs with different scope
 	// requirements, so scenario-specific prechecks are handled in Validate.
 	Scopes:    []string{},

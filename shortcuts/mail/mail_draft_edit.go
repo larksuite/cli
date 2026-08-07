@@ -22,7 +22,7 @@ var MailDraftEdit = common.Shortcut{
 	Service:     "mail",
 	Command:     "+draft-edit",
 	Description: "Use when updating an existing mail draft without sending it. Prefer this shortcut over calling raw drafts.get or drafts.update directly, because it performs draft-safe MIME read/patch/write editing while preserving unchanged structure, attachments, and headers where possible.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

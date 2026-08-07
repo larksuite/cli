@@ -21,7 +21,7 @@ var WikiMemberAdd = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+member-add",
 	Description: "Add a member to a wiki space",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	// The API also accepts wiki:wiki, but the framework's preflight does
 	// exact-string scope matching (see +space-list), so declare the narrowest
 	// scope so tokens that only carry wiki:member:create aren't false-rejected.

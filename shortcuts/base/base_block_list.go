@@ -13,7 +13,7 @@ var BaseBaseBlockList = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-block-list",
 	Description: "List blocks in a base",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:block:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

@@ -13,7 +13,7 @@ var BaseBaseBlockDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-block-delete",
 	Description: "Delete a block",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:block:delete"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

@@ -113,7 +113,7 @@ var OKRCreateProgressRecord = common.Shortcut{
 	Service:     "okr",
 	Command:     "+progress-create",
 	Description: "Create an OKR progress",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"okr:okr.progress:writeonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

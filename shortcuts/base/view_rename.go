@@ -13,7 +13,7 @@ var BaseViewRename = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-rename",
 	Description: "Rename a view by ID or name",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

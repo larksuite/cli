@@ -15,7 +15,7 @@ var MailMessage = common.Shortcut{
 	Service:     "mail",
 	Command:     "+message",
 	Description: "Use only when reading full content for one email by one message ID. For multiple message IDs, use mail +messages; do not loop mail +message. Returns normalized body content plus attachments metadata, including inline images.",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

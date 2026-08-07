@@ -125,7 +125,7 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 		Service:     "sheets",
 		Command:     spec.commandPrefix + "-create",
 		Description: "Create a " + strings.TrimPrefix(spec.commandPrefix, "+") + " object via the manage_*_object tool.",
-		Risk:        "write",
+		Risk:        common.RiskWrite,
 		Scopes:      []string{"sheets:spreadsheet:write_only"},
 		AuthTypes:   []string{"user", "bot"},
 		HasFormat:   true,
@@ -222,7 +222,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 		Service:     "sheets",
 		Command:     spec.commandPrefix + "-update",
 		Description: "Update an existing " + strings.TrimPrefix(spec.commandPrefix, "+") + " object (read-modify-write; consult --list first).",
-		Risk:        "write",
+		Risk:        common.RiskWrite,
 		Scopes:      []string{"sheets:spreadsheet:write_only"},
 		AuthTypes:   []string{"user", "bot"},
 		HasFormat:   true,
@@ -306,7 +306,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 		Service:     "sheets",
 		Command:     spec.commandPrefix + "-delete",
 		Description: "Delete a " + strings.TrimPrefix(spec.commandPrefix, "+") + " object (irreversible).",
-		Risk:        "high-risk-write",
+		Risk:        common.RiskHighRiskWrite,
 		Scopes:      []string{"sheets:spreadsheet:write_only"},
 		AuthTypes:   []string{"user", "bot"},
 		HasFormat:   true,
@@ -825,9 +825,9 @@ func floatImageProperties(runtime flagView, uploadedImageToken string, requireIm
 }
 
 func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isHighRisk bool) common.Shortcut {
-	risk := "write"
+	risk := common.RiskWrite
 	if isHighRisk {
-		risk = "high-risk-write"
+		risk = common.RiskHighRiskWrite
 	}
 	flags := flagsFor(command)
 	return common.Shortcut{
@@ -1007,7 +1007,7 @@ var FilterCreate = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+filter-create",
 	Description: "Create a sheet-level filter (one per sheet).",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
@@ -1082,7 +1082,7 @@ var FilterUpdate = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+filter-update",
 	Description: "Update the sheet-level filter (overwrite rules + range).",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
@@ -1150,7 +1150,7 @@ var FilterDelete = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+filter-delete",
 	Description: "Remove the sheet-level filter (irreversible).",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

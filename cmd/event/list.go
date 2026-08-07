@@ -33,7 +33,7 @@ func NewCmdList(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 		"Only list EventKeys of this domain. Valid domains: %s",
 		strings.Join(snap.Domains(), ", "),
 	))
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 	return cmd
 }
 

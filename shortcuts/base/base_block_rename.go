@@ -13,7 +13,7 @@ var BaseBaseBlockRename = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-block-rename",
 	Description: "Rename a block",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:block:update"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

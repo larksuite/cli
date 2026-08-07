@@ -46,7 +46,7 @@ var HistoryList = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+history-list",
 	Description: "List a spreadsheet's edit history versions (history_version_id, create_time, action, all_block_revision).",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

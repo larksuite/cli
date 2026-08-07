@@ -44,7 +44,7 @@ var AppsGitCredentialInit = common.Shortcut{
 	Service:     appsService,
 	Command:     "+git-credential-init",
 	Description: "Initialize Git credentials and a URL-scoped Git helper for an app repository",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +git-credential-init --app-id <app_id>",
 	},
@@ -130,7 +130,7 @@ var AppsGitCredentialRemove = common.Shortcut{
 	Service:     appsService,
 	Command:     "+git-credential-remove",
 	Description: "Remove local Git credentials and the URL-scoped Git helper for an app repository",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +git-credential-remove --app-id <app_id>",
 	},
@@ -204,7 +204,7 @@ var AppsGitCredentialList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+git-credential-list",
 	Description: "List local Git credentials for app repositories",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +git-credential-list",
 	},

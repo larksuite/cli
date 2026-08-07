@@ -46,7 +46,7 @@ var CalendarFreebusy = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+freebusy",
 	Description: "Query user free/busy and RSVP status",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"calendar:calendar.free_busy:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

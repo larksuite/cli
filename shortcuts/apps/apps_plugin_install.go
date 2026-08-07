@@ -29,7 +29,7 @@ var AppsPluginInstall = common.Shortcut{
 	Service:           appsService,
 	Command:           "+plugin-install",
 	Description:       "Install a plugin package (download, extract, update package.json)",
-	Risk:              "write",
+	Risk:              common.RiskWrite,
 	ConditionalScopes: []string{"spark:app:read"},
 	Scopes:            []string{},
 	AuthTypes:         []string{"user"},

@@ -46,7 +46,7 @@ var BaseRecordUploadAttachment = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-upload-attachment",
 	Description: "Upload one or more local files and append the returned file_token values to a Base attachment cell",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:record:update", "base:field:read", "docs:document.media:upload"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
@@ -75,7 +75,7 @@ var BaseRecordDownloadAttachment = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-download-attachment",
 	Description: "Download Base record attachments by record-id, optionally filtering by file-token",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:record:read", "docs:document.media:download"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
@@ -105,7 +105,7 @@ var BaseRecordRemoveAttachment = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-remove-attachment",
 	Description: "Remove one or more file_token values from a Base record attachment cell",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:record:update", "base:field:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

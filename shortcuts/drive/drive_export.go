@@ -40,7 +40,7 @@ var DriveExport = common.Shortcut{
 	Service:     "drive",
 	Command:     "+export",
 	Description: "Export a doc/docx/sheet/bitable/slides or wiki document to a local file with limited polling",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes: []string{
 		"docs:document.content:read",
 		"docs:document:export",

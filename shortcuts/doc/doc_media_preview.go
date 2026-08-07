@@ -22,7 +22,7 @@ var DocMediaPreview = common.Shortcut{
 	Service:     "docs",
 	Command:     "+media-preview",
 	Description: "Preview document media file (auto-detects extension)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"docs:document.media:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

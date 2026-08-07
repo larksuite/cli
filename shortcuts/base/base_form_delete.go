@@ -13,7 +13,7 @@ var BaseFormDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-delete",
 	Description: "Delete a form in a Base table",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:form:delete"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

@@ -226,7 +226,7 @@ var OKRWeight = common.Shortcut{
 	Service:     "okr",
 	Command:     "+weight",
 	Description: "Adjust the weight of OKR objectives or key results",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"okr:okr.content:writeonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

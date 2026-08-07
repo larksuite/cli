@@ -21,7 +21,7 @@ var MinutesSummary = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+summary",
 	Description: "Replace the AI summary of a minute",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"minutes:minutes:update"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

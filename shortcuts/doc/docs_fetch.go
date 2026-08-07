@@ -18,7 +18,7 @@ var DocsFetch = common.Shortcut{
 	Service:     "docs",
 	Command:     "+fetch",
 	Description: "Fetch Lark document content",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

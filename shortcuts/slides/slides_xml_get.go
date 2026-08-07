@@ -23,7 +23,7 @@ var SlidesXMLGet = common.Shortcut{
 	Service:     "slides",
 	Command:     "+xml-get",
 	Description: "Fetch presentation XML or one slide XML",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"slides:presentation:read"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},

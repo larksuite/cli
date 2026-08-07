@@ -20,7 +20,7 @@ var DriveImport = common.Shortcut{
 	Service:     "drive",
 	Command:     "+import",
 	Description: "Import a local file to Drive as a cloud document (docx, sheet, bitable, slides)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes: []string{
 		"docs:document.media:upload",
 		"docs:document:import",

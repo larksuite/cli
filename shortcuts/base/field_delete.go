@@ -13,7 +13,7 @@ var BaseFieldDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+field-delete",
 	Description: "Delete a field by ID or name",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:field:delete"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true)},

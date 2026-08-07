@@ -36,7 +36,7 @@ func newCmdConfigPolicyShow(f *cmdutil.Factory) *cobra.Command {
 			return runConfigPolicyShow(f)
 		},
 	}
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 	return cmd
 }
 

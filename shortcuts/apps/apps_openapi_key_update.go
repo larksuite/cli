@@ -15,7 +15,7 @@ var AppsOpenAPIKeyUpdate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+openapi-key-update",
 	Description: "Update an open API key's name and/or scope",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +openapi-key-update --app-id <app_id> --key-id <key_id> --name partner-prod",
 	},

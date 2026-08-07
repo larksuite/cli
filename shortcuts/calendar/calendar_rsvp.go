@@ -17,7 +17,7 @@ var CalendarRsvp = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+rsvp",
 	Description: "Reply to a calendar event (accept/decline/tentative)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"calendar:calendar.event:reply"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   false,

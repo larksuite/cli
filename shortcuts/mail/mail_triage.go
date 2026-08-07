@@ -53,7 +53,7 @@ var MailTriage = common.Shortcut{
 	Service:     "mail",
 	Command:     "+triage",
 	Description: `List mail summaries (date/from/subject/message_id). Use --query for full-text search, --filter for exact-match conditions.`,
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

@@ -23,7 +23,7 @@ var SheetInfo = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+info",
 	Description: "View spreadsheet metadata and sheet information",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet.meta:read", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -82,7 +82,7 @@ var SheetCreate = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+create",
 	Description: "Create a spreadsheet (optional header row and initial data)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:create", "sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -197,7 +197,7 @@ var SheetExport = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+export",
 	Description: "Export a spreadsheet (async task polling + optional download)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"docs:document:export", "drive:file:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

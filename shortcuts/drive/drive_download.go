@@ -109,7 +109,7 @@ var DriveDownload = common.Shortcut{
 	Service:     "drive",
 	Command:     "+download",
 	Description: "Download a file from Drive to local",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"drive:file:download"},
 	// Metadata is only required when --output is omitted and the CLI needs the
 	// remote title as the pre-download fallback filename.

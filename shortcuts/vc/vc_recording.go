@@ -89,7 +89,7 @@ var VCRecording = common.Shortcut{
 	Service:     "vc",
 	Command:     "+recording",
 	Description: "Query minute_token from meeting-ids or calendar-event-ids",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"vc:record:readonly"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

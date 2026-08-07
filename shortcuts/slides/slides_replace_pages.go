@@ -40,7 +40,7 @@ var SlidesReplacePages = common.Shortcut{
 	Service:     "slides",
 	Command:     "+replace-pages",
 	Description: "Deprecated — use +update-slide once per page (in place: keeps slide_id and page order; elements written back with their original ids keep them). This rebuild changes slide_id and every element id; not atomic",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},

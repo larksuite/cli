@@ -51,7 +51,7 @@ var DriveCopy = common.Shortcut{
 	Service:              "drive",
 	Command:              "+copy",
 	Description:          "Copy a Drive resource into a target folder; wiki token/URL sources are unwrapped automatically",
-	Risk:                 "write",
+	Risk:                 common.RiskWrite,
 	Scopes:               []string{"docs:document:copy"},
 	ConditionalScopes:    []string{"drive:drive.metadata:readonly", "wiki:node:retrieve"},
 	ConditionalBotScopes: []string{"drive:drive.metadata:readonly", "wiki:node:retrieve", "docs:permission.member:create"},

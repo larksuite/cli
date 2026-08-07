@@ -13,7 +13,7 @@ var BaseBaseBlockMove = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-block-move",
 	Description: "Move a block",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:block:update"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

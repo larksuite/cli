@@ -43,7 +43,7 @@ func NewCmdAuthScopes(f *cmdutil.Factory, runF func(*ScopesOptions) error) *cobr
 
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json (default) | pretty")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 
 	return cmd
 }

@@ -29,7 +29,7 @@ func NewCmdSchema(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the EventKey definition + resolved schema as JSON (for AI / scripts)")
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 	return cmd
 }
 

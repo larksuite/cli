@@ -20,6 +20,13 @@ const (
 	// Content safety scanning mode
 	CliContentSafetyMode = "LARKSUITE_CLI_CONTENT_SAFETY_MODE"
 
+	// Escape hatch for the risk-declaration gate: when set to a truthy value,
+	// a command whose declared risk is outside the closed taxonomy is treated
+	// as the highest tier (confirmation still required) instead of being
+	// refused outright. It can only soften "refuse" into "confirm" — there is
+	// no value that lets an unrecognised risk run unconfirmed.
+	CliAllowInvalidRisk = "LARKSUITE_CLI_ALLOW_INVALID_RISK"
+
 	CliAgentName  = "LARKSUITE_CLI_AGENT_NAME"
 	CliAgentTrace = "LARKSUITE_CLI_AGENT_TRACE"
 

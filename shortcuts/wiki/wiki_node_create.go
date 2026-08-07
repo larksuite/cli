@@ -52,7 +52,7 @@ var WikiNodeCreate = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+node-create",
 	Description: "Create a wiki node with automatic space resolution",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"wiki:node:create", "wiki:node:read", "wiki:space:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

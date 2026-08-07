@@ -13,7 +13,7 @@ var BaseRecordShareLinkCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-share-link-create",
 	Description: "Generate share links for one or more records (max 100 per request)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:record:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

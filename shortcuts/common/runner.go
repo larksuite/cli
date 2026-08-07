@@ -980,8 +980,12 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		return handleShortcutDryRun(f, rctx, s)
 	}
 
-	if s.Risk == "high-risk-write" && !rctx.Bool("yes") {
-		return cmdutil.RequireConfirmation(s.Service + " " + s.Command)
+	action := s.Service + " " + s.Command
+	if err := cmdutil.EnforceRiskDeclaration(action, s.Risk); err != nil {
+		return err
+	}
+	if cmdutil.RequiresConfirmation(s.Risk) && !rctx.Bool("yes") {
+		return cmdutil.RequireConfirmation(action)
 	}
 
 	if err := s.Execute(rctx.ctx, rctx); err != nil {
@@ -1338,7 +1342,9 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 		})
 	}
 	ensureJSONShorthand(cmd, s)
-	if s.Risk == "high-risk-write" {
+	// An invalid declaration also gets --yes registered: without the flag the
+	// operator who downgrades the refusal would have no way to confirm.
+	if cmdutil.RequiresConfirmation(s.Risk) {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
 	if s.PrintFlagSchema != nil {

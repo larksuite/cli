@@ -17,7 +17,7 @@ var ReopenTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+reopen",
 	Description: "reopen a completed task",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:task:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

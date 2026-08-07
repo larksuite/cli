@@ -26,7 +26,7 @@ var ImFlagList = common.Shortcut{
 	Service:     "im",
 	Command:     "+flag-list",
 	Description: "List bookmarks; user-only; auto-enriches feed-type thread entries with message content; supports `--page-all` auto-pagination",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	UserScopes:  []string{flagReadScope},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

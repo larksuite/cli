@@ -13,7 +13,7 @@ var BaseViewSetCard = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-set-card",
 	Description: "Set view card configuration",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

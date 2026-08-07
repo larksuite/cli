@@ -16,7 +16,7 @@ var CommentTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+comment",
 	Description: "add a comment to a task",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:comment:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

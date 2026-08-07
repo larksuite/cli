@@ -13,7 +13,7 @@ var BaseViewGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-get",
 	Description: "Get a view by ID or name",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:view:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},

@@ -13,7 +13,7 @@ var BaseBaseGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-get",
 	Description: "Get a base resource",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:app:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true)},

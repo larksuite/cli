@@ -15,7 +15,7 @@ var BaseDataQuery = common.Shortcut{
 	Service:     "base",
 	Command:     "+data-query",
 	Description: "Query and analyze Base data with JSON DSL (aggregation, filter, sort)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:table:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

@@ -116,7 +116,7 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 	cmd.Flags().StringVar(&opts.Identity, "identity", "", "identity preset (bot-only|user-default); defaults to bot-only in flag mode (safer: no impersonation)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "confirm a risky transition (currently: bot-only → user-default identity change in flag mode)")
 	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference (e.g. zh or zh_cn)")
-	cmdutil.SetRisk(cmd, "write")
+	cmdutil.SetRisk(cmd, cmdutil.RiskWrite)
 
 	return cmd
 }

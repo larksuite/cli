@@ -27,7 +27,7 @@ var ImThreadsMessagesList = common.Shortcut{
 	Service:     "im",
 	Command:     "+threads-messages-list",
 	Description: "List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports --order asc/desc sorting, auto-pagination",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"im:message:readonly"},
 	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
 	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read"},

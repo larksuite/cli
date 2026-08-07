@@ -85,7 +85,7 @@ var ContactSearchBot = common.Shortcut{
 	Service:     "contact",
 	Command:     "+search-bot",
 	Description: "Search bots (apps) by keyword — across the tenant, or inside specific chats (requires --as user)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"search:bot"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{

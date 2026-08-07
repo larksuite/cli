@@ -13,7 +13,7 @@ var BaseTableCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+table-create",
 	Description: "Create a table and optional fields/views",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:table:create", "base:field:read", "base:field:create", "base:field:update", "base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

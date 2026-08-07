@@ -80,7 +80,7 @@ func newCmdWhoami(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Comm
 	// mode exists.
 	cmd.Flags().Bool("json", true, "deprecated: output is always JSON")
 	_ = cmd.Flags().MarkHidden("json")
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 	return cmd
 }
 

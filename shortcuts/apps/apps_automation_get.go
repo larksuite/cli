@@ -17,7 +17,7 @@ var AppsAutomationGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+automation-get",
 	Description: "Get an automation trigger's config (webhook Bearer Token redacted)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +automation-get --app-id <app_id> --name <trigger_name>",
 	},

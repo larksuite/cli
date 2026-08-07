@@ -46,7 +46,7 @@ var MailThread = common.Shortcut{
 	Service:     "mail",
 	Command:     "+thread",
 	Description: "Use when querying a full mail conversation/thread by thread ID. Returns all messages in chronological order, including replies and drafts, with body content and attachments metadata, including inline images.",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

@@ -26,7 +26,7 @@ var VCMeetingJoin = common.Shortcut{
 	Service:     "vc",
 	Command:     "+meeting-join",
 	Description: "Join a meeting by meeting number (bot join)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"vc:meeting.bot.join:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

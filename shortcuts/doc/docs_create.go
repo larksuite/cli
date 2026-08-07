@@ -18,7 +18,7 @@ var DocsCreate = common.Shortcut{
 	Service:     "docs",
 	Command:     "+create",
 	Description: "Create a Lark document",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	AuthTypes:   []string{"user", "bot"},
 	Scopes:      []string{"docx:document:create"},
 	Flags: concatFlags(

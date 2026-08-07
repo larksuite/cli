@@ -26,7 +26,7 @@ var RevisionGet = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+revision-get",
 	Description: "Get the spreadsheet's current document revision (version number).",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

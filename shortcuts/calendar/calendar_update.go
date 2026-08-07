@@ -21,7 +21,7 @@ var CalendarUpdate = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+update",
 	Description: "Update a calendar event and incrementally add or remove attendees",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"calendar:calendar.event:update"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

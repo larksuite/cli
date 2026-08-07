@@ -17,7 +17,7 @@ var AppsOpenAPIKeyReset = common.Shortcut{
 	Service:     appsService,
 	Command:     "+openapi-key-reset",
 	Description: "Reset (rotate) an open API key; returns a new raw secret once",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +openapi-key-reset --app-id <app_id> --key-id <key_id> --yes",
 		"Preview: add --dry-run to see the request without rotating",

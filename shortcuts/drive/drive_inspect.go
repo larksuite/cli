@@ -25,7 +25,7 @@ var DriveInspect = common.Shortcut{
 	Service:           "drive",
 	Command:           "+inspect",
 	Description:       "Inspect a Lark document URL to get its type, title, and canonical token (with wiki unwrapping)",
-	Risk:              "read",
+	Risk:              common.RiskRead,
 	Scopes:            []string{"drive:drive.metadata:readonly"},
 	ConditionalScopes: []string{"wiki:node:retrieve"},
 	AuthTypes:         []string{"user", "bot"},

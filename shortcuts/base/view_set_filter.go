@@ -13,7 +13,7 @@ var BaseViewSetFilter = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-set-filter",
 	Description: "Set view filter configuration",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

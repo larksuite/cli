@@ -17,7 +17,7 @@ var DriveExportDownload = common.Shortcut{
 	Service:     "drive",
 	Command:     "+export-download",
 	Description: "Download an exported file by file_token",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes: []string{
 		"docs:document:export",
 	},

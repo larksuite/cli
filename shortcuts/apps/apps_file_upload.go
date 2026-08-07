@@ -30,7 +30,7 @@ var AppsFileUpload = common.Shortcut{
 	Service:     appsService,
 	Command:     "+file-upload",
 	Description: "Upload a local file to an app's storage",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +file-upload --app-id <app_id> --file ./logo.png",
 		"Example: lark-cli apps +file-upload --app-id <app_id> --file ./report.pdf -q '.path'   # print the platform-generated file path",

@@ -40,7 +40,7 @@ var ImChatMembersList = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-members-list",
 	Description: "List members of a chat; returns separate users[] / bots[] buckets; callable as user or bot; --member-types filters which kinds to return; --page-all pagination; surfaces truncations[] when the server caps a bucket",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	// Declare the narrowest scope the API accepts so tokens carrying only
 	// im:chat.members:read are honored (same rationale as +chat-list).
 	Scopes:    []string{"im:chat.members:read"},

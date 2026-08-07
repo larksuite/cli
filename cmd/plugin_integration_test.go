@@ -93,7 +93,7 @@ func syntheticTree() (*cobra.Command, *cobra.Command) {
 		Use:  "+write",
 		RunE: func(*cobra.Command, []string) error { return nil },
 	}
-	cmdutil.SetRisk(leaf, "write")
+	cmdutil.SetRisk(leaf, cmdutil.RiskWrite)
 	group.AddCommand(leaf)
 	return root, leaf
 }

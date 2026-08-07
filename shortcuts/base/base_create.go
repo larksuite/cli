@@ -13,7 +13,7 @@ var BaseBaseCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-create",
 	Description: "Create a new base resource",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	UserScopes: []string{
 		"base:app:create",
 		"base:table:read",

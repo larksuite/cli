@@ -63,7 +63,7 @@ var DriveMemberAdd = common.Shortcut{
 	Service:     "drive",
 	Command:     "+member-add",
 	Description: "Add a collaborator/member permission to a Drive resource",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"docs:permission.member:create"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

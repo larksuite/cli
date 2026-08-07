@@ -18,7 +18,7 @@ var SlashCommandCreate = common.Shortcut{
 	Service:     "application",
 	Command:     "+slash-command-create",
 	Description: "Register a slash command (/ command) on the current bound Open Platform app; --force converts a name collision into an update (idempotent re-run)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"application:app_slash_command:write"},
 	ConditionalScopes: []string{
 		"application:app_slash_command:read", // only the --force collision path lists to resolve the id

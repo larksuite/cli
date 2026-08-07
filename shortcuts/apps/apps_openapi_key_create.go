@@ -18,7 +18,7 @@ var AppsOpenAPIKeyCreate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+openapi-key-create",
 	Description: "Create an open API key (returns the raw secret once)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +openapi-key-create --app-id <app_id> --name partner-test",
 		"Example: lark-cli apps +openapi-key-create --app-id <app_id> --name orders-readonly --scope-api 'GET /openapi/orders'",

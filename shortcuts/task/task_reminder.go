@@ -20,7 +20,7 @@ var ReminderTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+reminder",
 	Description: "manage task reminders",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:task:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

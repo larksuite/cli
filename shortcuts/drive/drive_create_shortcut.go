@@ -53,7 +53,7 @@ var DriveCreateShortcut = common.Shortcut{
 	Service:     "drive",
 	Command:     "+create-shortcut",
 	Description: "Create a Drive shortcut in another folder",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"space:document:shortcut"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

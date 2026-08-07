@@ -39,7 +39,7 @@ var UploadAttachmentTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+upload-attachment",
 	Description: "upload a local file as an attachment to a task",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:attachment:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

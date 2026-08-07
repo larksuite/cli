@@ -21,7 +21,7 @@ var NoteDetail = common.Shortcut{
 	Service:     "note",
 	Command:     "+detail",
 	Description: "Get note detail (display type, document tokens) by note_id",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"vc:note:read"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{

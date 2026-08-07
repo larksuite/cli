@@ -16,7 +16,7 @@ var ImFeedShortcutRemove = common.Shortcut{
 	Service:     "im",
 	Command:     "+feed-shortcut-remove",
 	Description: "Remove chats from the user's feed shortcuts; user-only; batch up to 10 chat IDs per call; per-item failures return ok:false with failed_shortcuts",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	UserScopes:  []string{feedShortcutWriteScope},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

@@ -25,7 +25,7 @@ var AppsAccessScopeSet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+access-scope-set",
 	Description: "Set app access scope (specific / public / tenant)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		`Example: lark-cli apps +access-scope-set --app-id <app_id> --scope tenant`,
 		`Example: lark-cli apps +access-scope-set --app-id <app_id> --scope public --require-login`,

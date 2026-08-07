@@ -29,7 +29,7 @@ var ImFeedGroupListItem = common.Shortcut{
 	Service:     "im",
 	Command:     "+feed-group-list-item",
 	Description: "List feed cards in a feed group (tag); user-only; enriches each item with chat_name resolved from feed_id; supports --page-all auto-pagination",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	UserScopes:  []string{feedGroupReadScope, chatReadScope},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

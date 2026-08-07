@@ -16,7 +16,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-block-create",
 	Description: "Create a block in a dashboard",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:dashboard:create"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

@@ -41,7 +41,7 @@ var WikiMove = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+move",
 	Description: "Move a wiki node, or move a Drive document into Wiki",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"wiki:node:move", "wiki:node:read", "wiki:space:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

@@ -36,7 +36,7 @@ var MinutesTodo = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+todo",
 	Description: "Add, update, or delete todo item(s) on a minute",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"minutes:minutes:update"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

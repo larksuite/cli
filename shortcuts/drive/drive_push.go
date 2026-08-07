@@ -76,7 +76,7 @@ var DrivePush = common.Shortcut{
 	Service:     "drive",
 	Command:     "+push",
 	Description: "File-level mirror of a local directory onto a Drive folder (local → Drive; remote-only directories are not removed)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	// Narrowed scopes follow the precedent set by drive +status / +pull:
 	// drive:drive is policy-disabled in some tenants, so this shortcut sticks
 	// to the smallest set the *core* path needs. space:folder:create is

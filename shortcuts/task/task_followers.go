@@ -19,7 +19,7 @@ var FollowersTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+followers",
 	Description: "manage task followers",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:task:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

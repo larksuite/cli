@@ -222,7 +222,7 @@ var DrivePermissionGetSetting = common.Shortcut{
 	Service:     "drive",
 	Command:     "+permission-get-setting",
 	Description: "Get public access, sharing, collaborator management, security, and comment permission settings",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"docs:permission.setting:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

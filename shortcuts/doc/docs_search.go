@@ -23,7 +23,7 @@ var DocsSearch = common.Shortcut{
 	Service:     "docs",
 	Command:     "+search",
 	Description: "Search Lark docs, Wiki, and spreadsheet files (Search v2: doc_wiki/search)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"search:docs:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

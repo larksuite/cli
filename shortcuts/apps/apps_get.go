@@ -18,7 +18,7 @@ var AppsGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+get",
 	Description: "Get a single app's detail by app ID or meta token (returns app_type, name, description, publish status, etc.)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +get --app-id <app_id>",
 		"Example: lark-cli apps +get --app-id <meta_token>",

@@ -18,7 +18,7 @@ var AppsOpenAPIKeyList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+openapi-key-list",
 	Description: "List an app's open API keys (secrets redacted)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +openapi-key-list --app-id <app_id>",
 		"Example: lark-cli apps +openapi-key-list --app-id <app_id> --limit 10",

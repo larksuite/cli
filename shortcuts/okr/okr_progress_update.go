@@ -85,7 +85,7 @@ var OKRUpdateProgressRecord = common.Shortcut{
 	Service:     "okr",
 	Command:     "+progress-update",
 	Description: "Update an OKR progress",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"okr:okr.progress:writeonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

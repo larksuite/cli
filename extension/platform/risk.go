@@ -3,7 +3,7 @@
 
 package platform
 
-import "fmt"
+import "github.com/larksuite/cli/internal/core"
 
 // Risk is the three-tier risk taxonomy declared on every command.
 //
@@ -12,21 +12,25 @@ import "fmt"
 // Crossing the string boundary (yaml, cobra annotation) goes through
 // ParseRisk so typos surface as `risk_invalid` rather than silently
 // flowing through.
+//
+// This stays a plugin-SDK type of its own — the exported signature does not
+// change — but the taxonomy itself is no longer defined twice: the constants
+// below are derived from internal/core, and Core/FromCore convert between the
+// two. A consistency test pins the two value sets together.
 type Risk string
 
 const (
-	RiskRead          Risk = "read"
-	RiskWrite         Risk = "write"
-	RiskHighRiskWrite Risk = "high-risk-write"
+	RiskRead          = Risk(core.RiskRead)
+	RiskWrite         = Risk(core.RiskWrite)
+	RiskHighRiskWrite = Risk(core.RiskHighRiskWrite)
 )
 
-// riskOrder maps the Risk taxonomy to a comparable rank. The pruning
-// engine compares ranks for the MaxRisk axis.
-var riskOrder = map[Risk]int{
-	RiskRead:          0,
-	RiskWrite:         1,
-	RiskHighRiskWrite: 2,
-}
+// Core converts to the internal taxonomy. The two types carry identical
+// values, so the conversion is total in both directions.
+func (r Risk) Core() core.Risk { return core.Risk(r) }
+
+// FromCore converts an internal Risk into the SDK-facing type.
+func FromCore(r core.Risk) Risk { return Risk(r) }
 
 // ParseRisk converts a raw string (yaml, cobra annotation) into a Risk.
 //
@@ -43,28 +47,19 @@ var riskOrder = map[Risk]int{
 // annotation is developer code, not user input — strict matching is
 // the typo-catch mechanism, not a normalisation opportunity.
 func ParseRisk(s string) (Risk, error) {
-	if s == "" {
-		return "", nil
+	r, err := core.ParseRisk(s)
+	if err != nil {
+		return "", err
 	}
-	r := Risk(s)
-	if _, ok := riskOrder[r]; !ok {
-		return "", fmt.Errorf("invalid risk %q: must be read|write|high-risk-write", s)
-	}
-	return r, nil
+	return Risk(r), nil
 }
 
 // IsValid reports whether r is one of the three recognised values.
-func (r Risk) IsValid() bool {
-	_, ok := riskOrder[r]
-	return ok
-}
+func (r Risk) IsValid() bool { return core.Risk(r).IsValid() }
 
 // Rank returns the comparable rank of r. ok=false when r is not in the
-// closed taxonomy.
-func (r Risk) Rank() (rank int, ok bool) {
-	rank, ok = riskOrder[r]
-	return rank, ok
-}
+// closed taxonomy. The pruning engine compares ranks for the MaxRisk axis.
+func (r Risk) Rank() (rank int, ok bool) { return core.Risk(r).Rank() }
 
 // String returns the underlying string. Useful for yaml/json output
 // and cobra annotation injection.

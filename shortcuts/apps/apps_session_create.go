@@ -18,7 +18,7 @@ var AppsSessionCreate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+session-create",
 	Description: "Create a session under an app",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +session-create --app-id <app_id>",
 	},

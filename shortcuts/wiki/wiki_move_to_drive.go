@@ -40,7 +40,7 @@ var WikiMoveToDrive = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+move-to-drive",
 	Description: "Move a wiki node to a Drive folder, polling the async task until it finishes",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	// The move endpoint's wiki:wiki / wiki:node:move /
 	// space:document:move list is an OR-set, while Shortcut.Scopes is an
 	// ALL-required preflight. Use the registry's highest-priority candidate

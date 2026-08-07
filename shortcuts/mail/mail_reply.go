@@ -20,7 +20,7 @@ var MailReply = common.Shortcut{
 	Service:     "mail",
 	Command:     "+reply",
 	Description: "Reply to a message and save as draft (default). Use --confirm-send to send immediately after user confirmation. Sets Re: subject, In-Reply-To, and References headers automatically.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

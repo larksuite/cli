@@ -68,7 +68,7 @@ explicit user confirmation — never run on your own initiative.`,
 
 	cmd.Flags().BoolVar(&global, "global", false, "set at global level (applies to all profiles)")
 	cmd.Flags().BoolVar(&reset, "reset", false, "reset profile setting to inherit global")
-	cmdutil.SetRisk(cmd, "write")
+	cmdutil.SetRisk(cmd, cmdutil.RiskWrite)
 
 	return cmd
 }

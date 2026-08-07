@@ -19,7 +19,7 @@ var AppsDBQuotaGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-quota-get",
 	Description: "Get an app's database storage usage",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +db-quota-get --app-id <app_id>",
 		"Example: lark-cli apps +db-quota-get --app-id <app_id> --environment dev",

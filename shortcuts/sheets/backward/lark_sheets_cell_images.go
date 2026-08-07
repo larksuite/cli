@@ -21,7 +21,7 @@ var SheetWriteImage = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+write-image",
 	Description: "Write an image into a spreadsheet cell",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

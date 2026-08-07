@@ -65,7 +65,7 @@ const (
 // engine and hook selectors.
 type Meta struct {
 	Domain     string
-	Risk       string
+	Risk       cmdutil.Risk
 	Identities []string
 }
 
@@ -208,7 +208,7 @@ func Generated(cmd *cobra.Command) bool {
 // ok=false signals "unknown" -- the policy engine treats this as
 // fail-closed (deny with risk_not_annotated) whenever a Rule without
 // AllowUnannotated=true is active, and as allow otherwise.
-func Risk(cmd *cobra.Command) (level string, ok bool) {
+func Risk(cmd *cobra.Command) (level cmdutil.Risk, ok bool) {
 	for c := cmd; c != nil; c = c.Parent() {
 		if level, ok = cmdutil.GetRisk(c); ok {
 			return level, true

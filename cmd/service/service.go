@@ -190,7 +190,7 @@ type methodCommandSpec struct {
 	method      meta.Method
 	schemaPath  string       // "service.resource.method", for the --help hint
 	servicePath string       // service HTTP base path
-	risk        string       // RiskRead | RiskWrite | RiskHighRiskWrite
+	risk        cmdutil.Risk // RiskRead | RiskWrite | RiskHighRiskWrite; see newMethodCommandSpec for the string boundary
 	restricts   bool         // method declares accessTokens (identity-restricted)
 	identities  []string     // permitted --as values; empty when unrestricted
 	params      []meta.Field // path/query params -> typed flags
@@ -204,6 +204,22 @@ type methodCommandSpec struct {
 	declaresBody bool
 	paginates    bool   // method accepts a page_token param (so --page-all is meaningful)
 	serviceName  string // owning service name (e.g. "approval"), for the lazy affordance lookup
+}
+
+// methodRisk converts the generated catalog's risk string into the typed
+// taxonomy. The catalog is generated data, so this is a string boundary and
+// goes through core.ParseRisk rather than a bare conversion.
+//
+// A value outside the taxonomy is kept as-is instead of being normalised
+// away: the command then carries an invalid declaration, which the runtime
+// gate (cmdutil.EnforceRiskDeclaration) refuses. Substituting a default here
+// would silently repair a catalog bug at the worst possible place — the one
+// that decides whether a destructive call needs confirmation.
+func methodRisk(m meta.Method) cmdutil.Risk {
+	if risk, err := core.ParseRisk(m.Risk); err == nil {
+		return risk
+	}
+	return cmdutil.Risk(m.Risk)
 }
 
 // methodPaginates reports whether a method takes a page_token param, the signal
@@ -224,7 +240,7 @@ func newMethodCommandSpec(ref apicatalog.MethodRef) methodCommandSpec {
 		schemaPath:   ref.SchemaPath(),
 		servicePath:  ref.Service.ServicePath,
 		serviceName:  ref.Service.Name,
-		risk:         m.Risk,
+		risk:         methodRisk(m),
 		restricts:    m.RestrictsIdentity(),
 		identities:   m.Identities(),
 		params:       m.Params(),
@@ -304,7 +320,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	cmd.Flags().Bool("json", false, "shorthand for --format json")
 	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
-	if spec.risk == cmdutil.RiskHighRiskWrite {
+	if cmdutil.RequiresConfirmation(spec.risk) {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
 	// --file only for body methods that actually declare file-type fields.
@@ -409,7 +425,11 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		return serviceDryRun(f, request, config, opts)
 	}
 
-	if opts.Method.Risk == cmdutil.RiskHighRiskWrite {
+	risk := methodRisk(opts.Method)
+	if err := cmdutil.EnforceRiskDeclaration(opts.SchemaPath, risk); err != nil {
+		return err
+	}
+	if cmdutil.RequiresConfirmation(risk) {
 		if yes, _ := opts.Cmd.Flags().GetBool("yes"); !yes {
 			return cmdutil.RequireConfirmation(opts.SchemaPath)
 		}

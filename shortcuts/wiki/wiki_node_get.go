@@ -53,7 +53,7 @@ var WikiNodeGet = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+node-get",
 	Description: "Get wiki node details by node_token, obj_token, or Lark URL",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"wiki:node:retrieve"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

@@ -18,7 +18,7 @@ var DocsUpdate = common.Shortcut{
 	Service:     "docs",
 	Command:     "+update",
 	Description: "Update a Lark document",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: concatFlags(

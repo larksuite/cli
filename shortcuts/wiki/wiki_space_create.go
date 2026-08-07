@@ -23,7 +23,7 @@ var WikiSpaceCreate = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+space-create",
 	Description: "Create a wiki space",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	// The API accepts wiki:wiki or wiki:space:write_only. The framework's
 	// scope preflight does exact-string matching (see +space-list), so
 	// declare the narrowest form the API takes to avoid false-rejecting

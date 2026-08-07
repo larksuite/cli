@@ -17,7 +17,7 @@ var ContactGetUser = common.Shortcut{
 	Service:     "contact",
 	Command:     "+get-user",
 	Description: "Get user info (omit user_id for self; provide user_id for specific user)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	UserScopes:  []string{"contact:user.basic_profile:readonly"},
 	BotScopes:   []string{"contact:user.base:readonly", "contact:contact.base:readonly"},
 	AuthTypes:   []string{"user", "bot"},

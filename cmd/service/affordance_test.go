@@ -197,7 +197,7 @@ func TestPrepareShortcutHelp(t *testing.T) {
 	sc := &cobra.Command{Use: "+create", Short: "Create an event"}
 	cmdmeta.SetSource(sc, cmdmeta.SourceShortcut, false)
 	cmdmeta.SetAffordanceRef(sc, "calendar", "+create")
-	cmdutil.SetRisk(sc, "write")
+	cmdutil.SetRisk(sc, cmdutil.RiskWrite)
 	cmdutil.SetTips(sc, []string{"start/end 收 ISO 8601"})
 
 	if !PrepareShortcutHelp(sc, nil) {

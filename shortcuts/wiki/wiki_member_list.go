@@ -27,7 +27,7 @@ var WikiMemberList = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+member-list",
 	Description: "List members of a wiki space",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	// Same exact-match-scope rationale as +space-list: declare the narrowest
 	// scope the API takes so tokens carrying only wiki:member:retrieve are
 	// accepted.

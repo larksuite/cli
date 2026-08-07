@@ -13,7 +13,7 @@ var BaseBaseBlockCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-block-create",
 	Description: "Create a block",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:block:create"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

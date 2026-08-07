@@ -38,6 +38,6 @@ func NewCmdCompletion(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 	return cmd
 }

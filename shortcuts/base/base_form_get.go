@@ -15,7 +15,7 @@ var BaseFormGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-get",
 	Description: "Get a form in a Base table",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:form:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

@@ -18,7 +18,7 @@ var DocMediaUpload = common.Shortcut{
 	Service:     "docs",
 	Command:     "+media-upload",
 	Description: "Upload media file (image/attachment) to a document block",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"docs:document.media:upload"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

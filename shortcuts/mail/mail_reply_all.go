@@ -20,7 +20,7 @@ var MailReplyAll = common.Shortcut{
 	Service:     "mail",
 	Command:     "+reply-all",
 	Description: "Reply to all recipients and save as draft (default). Use --confirm-send to send immediately after user confirmation. Includes all original To and CC automatically.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

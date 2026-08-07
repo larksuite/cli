@@ -355,7 +355,7 @@ func TestStrictModeStub_PreservesOriginalMetadata(t *testing.T) {
 		RunE:  func(*cobra.Command, []string) error { return nil },
 	}
 	cmdutil.SetSupportedIdentities(userOnly, []string{"user"})
-	cmdutil.SetRisk(userOnly, "read")
+	cmdutil.SetRisk(userOnly, cmdutil.RiskRead)
 	svc.AddCommand(userOnly)
 
 	pruneForStrictMode(root, core.StrictModeBot)

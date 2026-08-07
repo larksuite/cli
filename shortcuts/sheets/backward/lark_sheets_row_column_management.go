@@ -16,7 +16,7 @@ var SheetAddDimension = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+add-dimension",
 	Description: "Add rows or columns at the end of a sheet",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -75,7 +75,7 @@ var SheetInsertDimension = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+insert-dimension",
 	Description: "Insert rows or columns at a specified position",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -148,7 +148,7 @@ var SheetUpdateDimension = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+update-dimension",
 	Description: "Update row or column properties (visibility, size)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -237,7 +237,7 @@ var SheetMoveDimension = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+move-dimension",
 	Description: "Move rows or columns to a new position",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -309,7 +309,7 @@ var SheetDeleteDimension = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+delete-dimension",
 	Description: "Delete rows or columns",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

@@ -52,7 +52,7 @@ var AppsDBExecute = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-execute",
 	Description: "Execute SQL (SELECT / DML / DDL) against a Miaoda app database",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Tips: []string{
 		`Example: lark-cli apps +db-execute --app-id <app_id> --sql "SELECT * FROM orders LIMIT 10" --yes`,
 		`Example: lark-cli apps +db-execute --app-id <app_id> --environment dev --file ./migration.sql --yes`,

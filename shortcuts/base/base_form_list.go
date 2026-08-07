@@ -16,7 +16,7 @@ var BaseFormsList = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-list",
 	Description: "List all forms in a Base table (auto-paginated)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:form:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

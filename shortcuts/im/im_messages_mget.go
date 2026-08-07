@@ -21,7 +21,7 @@ var ImMessagesMGet = common.Shortcut{
 	Service:     "im",
 	Command:     "+messages-mget",
 	Description: "Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"im:message:readonly"},
 	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
 	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read"},

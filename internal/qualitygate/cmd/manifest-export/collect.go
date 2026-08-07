@@ -102,7 +102,7 @@ func commandFromCobra(c *cobra.Command, defaultFields map[string][]string) manif
 		DefaultFields: defaultFields[path],
 	}
 	if risk, ok := cmdmeta.Risk(c); ok {
-		entry.Risk = risk
+		entry.Risk = risk.String()
 	}
 
 	c.Flags().VisitAll(func(f *pflag.Flag) {

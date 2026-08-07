@@ -13,7 +13,7 @@ var BaseFieldSearchOptions = common.Shortcut{
 	Service:     "base",
 	Command:     "+field-search-options",
 	Description: "Search select options of a field",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:field:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

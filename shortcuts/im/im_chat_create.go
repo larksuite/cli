@@ -25,7 +25,7 @@ var ImChatCreate = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-create",
 	Description: "Create a group chat or topic chat; user/bot; --chat-mode group|topic; private/public; invites users/bots; optionally sets bot manager",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	UserScopes:  []string{"im:chat:create_by_user"},
 	BotScopes:   []string{"im:chat:create"},
 	AuthTypes:   []string{"bot", "user"},

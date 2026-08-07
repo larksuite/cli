@@ -283,7 +283,7 @@ var MinutesDetail = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+detail",
 	Description: "Query minute details with selective artifact flags (summary, todo, chapter, transcript, keyword)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"minutes:minutes.basic:read", "minutes:minutes.artifacts:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

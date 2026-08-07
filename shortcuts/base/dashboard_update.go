@@ -13,7 +13,7 @@ var BaseDashboardUpdate = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-update",
 	Description: "Update a dashboard",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:dashboard:update"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

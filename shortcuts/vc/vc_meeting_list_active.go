@@ -22,7 +22,7 @@ var VCMeetingListActive = common.Shortcut{
 	Service:     "vc",
 	Command:     "+meeting-list-active",
 	Description: "List active meetings for the current identity or target user",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	// UAT exposes user-granted scopes, so the framework can preflight the user
 	// recommendation. TAT has no scope metadata; keep the bot recommendation
 	// conditional so it is available to diagnostics without a local preflight.

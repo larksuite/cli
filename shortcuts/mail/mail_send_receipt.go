@@ -67,7 +67,7 @@ var MailSendReceipt = common.Shortcut{
 	Service:     "mail",
 	Command:     "+send-receipt",
 	Description: "Send a read-receipt reply for an incoming message that requested one (i.e. carries the READ_RECEIPT_REQUEST label). Body is auto-generated (subject / recipient / send time / read time) to match the Lark client's receipt format — callers cannot customize it, matching the industry norm that read-receipt bodies are system-generated templates, not free-form replies. Intended for agent use after the user confirms.",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes: []string{
 		"mail:user_mailbox.message:send",
 		"mail:user_mailbox.message:modify",

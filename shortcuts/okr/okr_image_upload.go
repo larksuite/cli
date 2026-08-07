@@ -30,7 +30,7 @@ var OKRUploadImage = common.Shortcut{
 	Service:     "okr",
 	Command:     "+upload-image",
 	Description: "Upload an image for use in OKR progress rich text",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"okr:okr.progress.file:upload"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

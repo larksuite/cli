@@ -17,7 +17,7 @@ var SetAncestorTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+set-ancestor",
 	Description: "set or clear a task ancestor",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:task:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

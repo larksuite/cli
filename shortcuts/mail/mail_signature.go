@@ -18,7 +18,7 @@ var MailSignature = common.Shortcut{
 	Service:     "mail",
 	Command:     "+signature",
 	Description: "List or view email signatures with default usage info.",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

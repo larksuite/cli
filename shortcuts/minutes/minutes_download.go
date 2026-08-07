@@ -41,7 +41,7 @@ var MinutesDownload = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+download",
 	Description: "Download audio/video media file of a minute",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"minutes:minutes.media:export"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

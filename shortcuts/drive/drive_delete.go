@@ -39,7 +39,7 @@ var DriveDelete = common.Shortcut{
 	Service:     "drive",
 	Command:     "+delete",
 	Description: "Delete a file or folder in Drive",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"space:document:delete", "drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

@@ -14,7 +14,7 @@ var BaseDashboardList = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-list",
 	Description: "List dashboards in a base",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:dashboard:read"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

@@ -23,7 +23,7 @@ var AppsFileSign = common.Shortcut{
 	Service:     appsService,
 	Command:     "+file-sign",
 	Description: "Generate a temporary signed download URL for a file",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +file-sign --app-id <app_id> --path /1858537546760216.png",
 		"Tip: curl the signed_url directly to download.",

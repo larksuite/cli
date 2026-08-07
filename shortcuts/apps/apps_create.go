@@ -20,7 +20,7 @@ var AppsCreate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+create",
 	Description: "Create a new app",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		`Example: lark-cli apps +create --name "审批系统" --app-type full_stack`,
 		`Example: lark-cli apps +create --name "工具页" --app-type frontend --description "纯前端工具"`,

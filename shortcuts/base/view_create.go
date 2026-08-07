@@ -13,7 +13,7 @@ var BaseViewCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-create",
 	Description: "Create one or more views",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

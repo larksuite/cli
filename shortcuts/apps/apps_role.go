@@ -25,7 +25,7 @@ var AppsRoleList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+role-list",
 	Description: "List app roles",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +role-list --app-id <app_id>",
 		"Example: lark-cli apps +role-list --app-id <app_id> --name Admin --page-size 20",
@@ -78,7 +78,7 @@ var AppsRoleGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+role-get",
 	Description: "Get an app role",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +role-get --app-id <app_id> --role-id <role_id>",
 		"--role-id is not a human-readable role name; if only a name is known, run +role-list --name <exact_name> and use its unique returned role_id before calling +role-get",
@@ -119,7 +119,7 @@ var AppsRoleCreate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+role-create",
 	Description: "Create an app role",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +role-create --app-id <app_id> --name Admin",
 		"Example: lark-cli apps +role-create --app-id <app_id> --name Admin --description 'Can manage orders'",
@@ -185,7 +185,7 @@ var AppsRoleUpdate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+role-update",
 	Description: "Update an app role",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +role-update --app-id <app_id> --role-id <role_id> --name Operator",
 	},
@@ -244,7 +244,7 @@ var AppsRoleDelete = common.Shortcut{
 	Service:     appsService,
 	Command:     "+role-delete",
 	Description: "Delete an app role",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +role-delete --app-id <app_id> --role-id <role_id> --yes",
 		"A delete request alone is not explicit confirmation: first show the exact app, role, current member scope, and irreversible impact; use --yes only after the user confirms that impact",

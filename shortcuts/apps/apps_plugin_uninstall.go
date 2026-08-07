@@ -19,7 +19,7 @@ var AppsPluginUninstall = common.Shortcut{
 	Service:     appsService,
 	Command:     "+plugin-uninstall",
 	Description: "Uninstall a plugin package (remove from node_modules and package.json)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{},
 	Tips: []string{
 		"Run in project root (like npm); does NOT take --app-id",

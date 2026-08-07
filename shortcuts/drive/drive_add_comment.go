@@ -130,7 +130,7 @@ var DriveAddComment = common.Shortcut{
 	Service:     "drive",
 	Command:     "+add-comment",
 	Description: "Add a comment to doc/docx/file/sheet/slides/base(bitable); file targets support selected extensions and full comments only",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes: []string{
 		"drive:drive.metadata:readonly",
 		"docx:document:readonly",

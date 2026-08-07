@@ -20,7 +20,7 @@ var AppsRoleMemberList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+role-member-list",
 	Description: "List app role members",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +role-member-list --app-id <app_id> --role-id <role_id>",
 		"Example: lark-cli apps +role-member-list --app-id <app_id> --role-id <role_id> --member-type user",
@@ -89,7 +89,7 @@ var AppsRoleMemberAdd = common.Shortcut{
 	Service:     appsService,
 	Command:     "+role-member-add",
 	Description: "Add app role members",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +role-member-add --app-id <app_id> --role-id <role_id> --users ou_x",
 		"Example: lark-cli apps +role-member-add --app-id <app_id> --role-id <role_id> --users ou_x,ou_y --departments od-x --chats oc_x",
@@ -145,7 +145,7 @@ var AppsRoleMemberRemove = common.Shortcut{
 	Service:     appsService,
 	Command:     "+role-member-remove",
 	Description: "Remove app role members",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +role-member-remove --app-id <app_id> --role-id <role_id> --users ou_x --yes",
 		"Example: lark-cli apps +role-member-remove --app-id <app_id> --role-id <role_id> --all --yes",
@@ -203,7 +203,7 @@ var AppsRoleMatchList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+role-match-list",
 	Description: "List app roles matching a user",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +role-match-list --app-id <app_id> --user-id <user_open_id>",
 	},

@@ -107,7 +107,7 @@ var SheetSetDropdown = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+set-dropdown",
 	Description: "Set dropdown list on a cell range",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -168,7 +168,7 @@ var SheetUpdateDropdown = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+update-dropdown",
 	Description: "Update dropdown list settings",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -235,7 +235,7 @@ var SheetGetDropdown = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+get-dropdown",
 	Description: "Get dropdown list settings for a range",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -279,7 +279,7 @@ var SheetDeleteDropdown = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+delete-dropdown",
 	Description: "Delete dropdown list from cell ranges",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

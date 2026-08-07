@@ -19,7 +19,7 @@ var MembersTasklist = common.Shortcut{
 	Service:     "task",
 	Command:     "+tasklist-members",
 	Description: "manage tasklist members",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:tasklist:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

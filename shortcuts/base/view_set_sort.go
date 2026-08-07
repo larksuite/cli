@@ -13,7 +13,7 @@ var BaseViewSetSort = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-set-sort",
 	Description: "Set view sort configuration",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

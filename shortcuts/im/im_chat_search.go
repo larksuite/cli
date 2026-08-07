@@ -73,7 +73,7 @@ var ImChatSearch = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-search",
 	Description: "Search visible group chats by --query keyword and/or --member-ids; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, auto-pagination, and --exclude-muted (user identity only)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"im:chat:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

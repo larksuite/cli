@@ -51,7 +51,7 @@ var SlashCommandUpdate = common.Shortcut{
 	Service:     "application",
 	Command:     "+slash-command-update",
 	Description: "Update description / localized descriptions / icon of a slash command on the current bound app, addressed by --command-id or by name via --command",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"application:app_slash_command:write"},
 	ConditionalScopes: []string{
 		"application:app_slash_command:read", // only the --command by-name path lists to resolve the id

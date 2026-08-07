@@ -14,7 +14,7 @@ var BaseFormQuestionsDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-questions-delete",
 	Description: "Delete questions from a form in a Base table",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:form:update"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

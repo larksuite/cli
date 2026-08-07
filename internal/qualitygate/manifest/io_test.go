@@ -79,6 +79,33 @@ func TestValidateRejectsInvalidSource(t *testing.T) {
 	}
 }
 
+// The manifest is exported from the live command tree, so this check sees
+// every mounted command's real annotation — including the ones whose risk
+// arrived as a string and never met the Go type.
+func TestValidateRejectsRiskOutsideTaxonomy(t *testing.T) {
+	for _, risk := range []string{"high-risk-wrtie", "Read", "READ", "danger", " read "} {
+		m := Manifest{SchemaVersion: 1, Commands: []Command{
+			{Path: "docs +fetch", CanonicalPath: "docs +fetch", Source: SourceShortcut, Risk: risk},
+		}}
+		if err := m.Validate(KindCommandManifest); err == nil {
+			t.Errorf("risk %q passed validation, want rejection", risk)
+		}
+	}
+}
+
+func TestValidateAcceptsTaxonomyRisks(t *testing.T) {
+	// Empty stays legal: an unannotated command is a known, separate state
+	// (the policy engine reports it as risk_not_annotated).
+	for _, risk := range []string{"", "read", "write", "high-risk-write"} {
+		m := Manifest{SchemaVersion: 1, Commands: []Command{
+			{Path: "docs +fetch", CanonicalPath: "docs +fetch", Source: SourceShortcut, Risk: risk},
+		}}
+		if err := m.Validate(KindCommandManifest); err != nil {
+			t.Errorf("risk %q rejected: %v", risk, err)
+		}
+	}
+}
+
 func TestReadFileValidatesInput(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "manifest.json")
 	if err := os.WriteFile(path, []byte(`{"schema_version":999,"commands":[]}`), 0o644); err != nil {

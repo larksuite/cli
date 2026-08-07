@@ -64,7 +64,7 @@ func TestWikiMemberShortcutsDeclareRiskAndAuth(t *testing.T) {
 	cases := []struct {
 		name     string
 		shortcut common.Shortcut
-		risk     string
+		risk     common.Risk
 	}{
 		{"+member-add", WikiMemberAdd, "write"},
 		{"+member-remove", WikiMemberRemove, "write"},

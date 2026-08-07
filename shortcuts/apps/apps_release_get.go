@@ -18,7 +18,7 @@ var AppsReleaseGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+release-get",
 	Description: "Get a single release's status/detail by release ID",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +release-get --app-id <app_id> --release-id <release_id>",
 	},

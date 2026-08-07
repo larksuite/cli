@@ -51,7 +51,7 @@ var DocResourceDownload = common.Shortcut{
 	Service:     "docs",
 	Command:     "+resource-download",
 	Description: "Download a document resource (type=cover downloads the cover image content)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"docx:document:readonly", "docs:document.media:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -150,7 +150,7 @@ var DocResourceUpdate = common.Shortcut{
 	Service:     "docs",
 	Command:     "+resource-update",
 	Description: "Upload and update a document resource (type=cover)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"docx:document:readonly", "docx:document:write_only", "docs:document.media:upload"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -252,7 +252,7 @@ var DocResourceDelete = common.Shortcut{
 	Service:     "docs",
 	Command:     "+resource-delete",
 	Description: "Delete a document resource (type=cover is idempotent when empty)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"docx:document:readonly", "docx:document:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

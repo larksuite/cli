@@ -122,7 +122,7 @@ var CalendarMeeting = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+meeting",
 	Description: "Get meeting info for calendar events (meeting_id, meeting_note)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"calendar:calendar.event:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

@@ -19,7 +19,7 @@ var AppsAccessScopeGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+access-scope-get",
 	Description: "Get app access scope configuration",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +access-scope-get --app-id <app_id>",
 	},

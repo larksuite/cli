@@ -46,7 +46,7 @@ func newCmdAuthList(
 		},
 	}
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 
 	return cmd
 }

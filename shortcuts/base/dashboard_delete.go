@@ -13,7 +13,7 @@ var BaseDashboardDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-delete",
 	Description: "Delete a dashboard",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:dashboard:delete"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

@@ -29,7 +29,7 @@ var ChangesetGet = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+changeset-get",
 	Description: "Fetch the raw changeset (edit actions) between two versions, to review whether an AI edit fulfilled the request.",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

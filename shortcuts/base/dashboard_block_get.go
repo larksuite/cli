@@ -14,7 +14,7 @@ var BaseDashboardBlockGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-block-get",
 	Description: "Get a dashboard block by ID",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:dashboard:read"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

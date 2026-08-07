@@ -19,7 +19,7 @@ var DriveMove = common.Shortcut{
 	Service:     "drive",
 	Command:     "+move",
 	Description: "Move a file or folder to another location in Drive",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"space:document:move"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

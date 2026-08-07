@@ -157,7 +157,7 @@ var OKRPatch = common.Shortcut{
 	Service:     "okr",
 	Command:     "+patch",
 	Description: "Patch an OKR objective or key result (content, notes, score, deadline)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"okr:okr.content:writeonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

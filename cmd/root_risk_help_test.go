@@ -32,7 +32,7 @@ func TestHelpFunc_RendersRiskLineWhenAnnotated(t *testing.T) {
 	installTipsHelpFunc(root, nilSkills, nil, nil)
 
 	child := &cobra.Command{Use: "delete", Short: "delete a file"}
-	cmdutil.SetRisk(child, "high-risk-write")
+	cmdutil.SetRisk(child, cmdutil.RiskHighRiskWrite)
 	root.AddCommand(child)
 
 	out := rendersHelp(t, child)
@@ -59,7 +59,7 @@ func TestHelpFunc_RiskLinePrecedesTips(t *testing.T) {
 	installTipsHelpFunc(root, nilSkills, nil, nil)
 
 	child := &cobra.Command{Use: "delete", Short: "delete a file"}
-	cmdutil.SetRisk(child, "high-risk-write")
+	cmdutil.SetRisk(child, cmdutil.RiskHighRiskWrite)
 	cmdutil.SetTips(child, []string{"use --yes to confirm"})
 	root.AddCommand(child)
 

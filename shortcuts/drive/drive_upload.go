@@ -89,7 +89,7 @@ var DriveUpload = common.Shortcut{
 	Service:     "drive",
 	Command:     "+upload",
 	Description: "Upload a local file to Drive",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"drive:file:upload", "drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

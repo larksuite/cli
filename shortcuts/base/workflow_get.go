@@ -14,7 +14,7 @@ var BaseWorkflowGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+workflow-get",
 	Description: "Get a single workflow definition (including steps) from a base",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:workflow:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

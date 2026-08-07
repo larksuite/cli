@@ -39,7 +39,7 @@ var DriveUpdateReply = common.Shortcut{
 	Service:           "drive",
 	Command:           "+update-reply",
 	Description:       "Update the content of a comment reply on doc/docx/sheet/file/slides/base(bitable)/apps, with URL parsing and Wiki token unwrapping",
-	Risk:              "write",
+	Risk:              common.RiskWrite,
 	Scopes:            []string{"docs:document.comment:write_only"},
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},

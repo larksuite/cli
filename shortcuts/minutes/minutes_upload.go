@@ -23,7 +23,7 @@ var MinutesUpload = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+upload",
 	Description: "Upload a media file token to generate a minute",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"minutes:minutes.upload:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

@@ -24,7 +24,7 @@ var MinutesSpeakerReplace = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+speaker-replace",
 	Description: "Replace a speaker in a minute's transcript (rebind from one user to another)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"minutes:minutes:readonly", "minutes:minutes:update"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

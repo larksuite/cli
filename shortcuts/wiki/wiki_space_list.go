@@ -26,7 +26,7 @@ var WikiSpaceList = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+space-list",
 	Description: "List wiki spaces accessible to the caller",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	// Declare the narrowest valid scope: the upstream API accepts any of
 	// wiki:wiki / wiki:wiki:readonly / wiki:space:retrieve, but the
 	// framework's preflight does exact-string scope matching (see

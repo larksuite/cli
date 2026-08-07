@@ -27,7 +27,7 @@ var SlidesDeleteSlide = common.Shortcut{
 	Service:     "slides",
 	Command:     "+delete-slide",
 	Description: "Delete one page from a presentation by slide_id",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},

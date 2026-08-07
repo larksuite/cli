@@ -20,7 +20,7 @@ var AppsCacheGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+cache-get",
 	Description: "Get a business cache key's value and metadata",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +cache-get --app-id <app_id> --key spotbonus:2026:winners:list:v1",
 		"Example: lark-cli apps +cache-get --app-id <app_id> --environment online --key <key>",

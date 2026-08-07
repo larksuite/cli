@@ -18,7 +18,7 @@ var AppsUpdate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+update",
 	Description: "Partially update an app (only provided fields are sent)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		`Example: lark-cli apps +update --app-id <app_id> --name "新名称"`,
 		`Example: lark-cli apps +update --app-id <app_id> --description "..."`,

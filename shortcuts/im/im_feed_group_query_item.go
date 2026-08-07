@@ -19,7 +19,7 @@ var ImFeedGroupQueryItem = common.Shortcut{
 	Service:     "im",
 	Command:     "+feed-group-query-item",
 	Description: "Look up specific feed cards in a feed group (tag) by ID; user-only; enriches each item with chat_name resolved from feed_id",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	UserScopes:  []string{feedGroupReadScope, chatReadScope},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

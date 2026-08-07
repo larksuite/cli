@@ -19,7 +19,7 @@ var AppsFileGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+file-get",
 	Description: "Get a single file's metadata by path",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +file-get --app-id <app_id> --path /1858537546760216.png",
 		"Tip: extract a single field with --jq, e.g. -q '.size_bytes' or -q '.download_url'",

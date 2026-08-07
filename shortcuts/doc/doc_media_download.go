@@ -20,7 +20,7 @@ var DocMediaDownload = common.Shortcut{
 	Service:     "docs",
 	Command:     "+media-download",
 	Description: "Download document media or whiteboard thumbnail (auto-detects extension)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"docs:document.media:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

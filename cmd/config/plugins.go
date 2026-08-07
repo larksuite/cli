@@ -56,7 +56,7 @@ the plugin name as the prefix at registration time, so an entry
 			return runConfigPluginsShow(f)
 		},
 	}
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 	return cmd
 }
 

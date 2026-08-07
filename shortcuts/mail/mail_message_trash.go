@@ -16,7 +16,7 @@ var MailMessageTrash = common.Shortcut{
 	Service:     "mail",
 	Command:     "+message-trash",
 	Description: "Soft-delete existing mail messages. Batches message IDs in groups of 20 and calls batch_trash sequentially. Requires --yes.",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"mail:user_mailbox.message:modify"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

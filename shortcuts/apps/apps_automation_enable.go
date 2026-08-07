@@ -17,7 +17,7 @@ var AppsAutomationEnable = common.Shortcut{
 	Service:     appsService,
 	Command:     "+automation-enable",
 	Description: "Enable (activate) an automation trigger",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips:        []string{"Example: lark-cli apps +automation-enable --app-id <id> --name <trigger_name>"},
 	Scopes:      []string{"spark:app:write"},
 	AuthTypes:   []string{"user"},

@@ -37,7 +37,7 @@ var SlidesAddSlide = common.Shortcut{
 	Service:     "slides",
 	Command:     "+add-slide",
 	Description: "Add one page to an existing presentation (<img src=\"@./local.png\"> placeholders are auto-uploaded and replaced with file_token)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// Both extras are path-dependent, so they stay conditional rather than
 	// gating every call: wiki:node:read only when --presentation is a wiki URL,

@@ -18,7 +18,7 @@ var ImFlagCancel = common.Shortcut{
 	Service:     "im",
 	Command:     "+flag-cancel",
 	Description: "Cancel (remove) a bookmark. When no --flag-type is given, best-effort double-cancel: removes message layer and (when chat_type is determinable) feed layer",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	UserScopes:  flagWriteLookupScopes,
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

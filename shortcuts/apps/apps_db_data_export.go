@@ -34,7 +34,7 @@ var AppsDBDataExport = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-data-export",
 	Description: "Export rows from a Miaoda app table to a local file (csv/json/sql)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +db-data-export --app-id <app_id> --table orders --output ./orders.csv",
 		"Format follows the --output extension: .csv / .json / .sql (default csv).",

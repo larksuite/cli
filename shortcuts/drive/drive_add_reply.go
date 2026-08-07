@@ -43,7 +43,7 @@ var DriveAddReply = common.Shortcut{
 	Service:           "drive",
 	Command:           "+add-reply",
 	Description:       "Add a reply to an existing comment on doc/docx/sheet/file/slides/base(bitable)/apps, with URL parsing and Wiki token unwrapping",
-	Risk:              "write",
+	Risk:              common.RiskWrite,
 	Scopes:            []string{"docs:document.comment:create"},
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},

@@ -17,7 +17,7 @@ var DrivePreview = common.Shortcut{
 	Service:     "drive",
 	Command:     "+preview",
 	Description: "View or download Drive file content, or list and fetch available preview artifacts",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"drive:file:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

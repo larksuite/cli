@@ -24,7 +24,7 @@ var MailMessages = common.Shortcut{
 	Service:     "mail",
 	Command:     "+messages",
 	Description: "Use when reading full content for multiple emails by message ID. You may pass more than 20 IDs; the CLI handles them in batches of 20 and merges output while preserving request order.",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

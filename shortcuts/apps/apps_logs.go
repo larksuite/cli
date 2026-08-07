@@ -38,7 +38,7 @@ var AppsLogList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+log-list",
 	Description: "Search online app logs with observability filters",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +log-list --app-id <app_id> --level error --keyword timeout --since 1h",
 		"Tip: use --page-token from the response to fetch the next page.",
@@ -100,7 +100,7 @@ var AppsLogGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+log-get",
 	Description: "Get one online app log by log ID",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +log-get --app-id <app_id> --log-id <log_id>",
 		"Tip: +log-get searches online logs with limit=1; use +log-list first if the log ID is unknown.",

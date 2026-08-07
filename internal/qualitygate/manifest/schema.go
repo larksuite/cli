@@ -6,6 +6,8 @@ package manifest
 import (
 	"fmt"
 	"strings"
+
+	"github.com/larksuite/cli/internal/core"
 )
 
 type Source string
@@ -130,6 +132,15 @@ func validateCommand(kind string, i int, cmd Command) error {
 	}
 	if err := validateString(prefix+".risk", cmd.Risk, false); err != nil {
 		return err
+	}
+	// risk is a closed enum, not free text. The manifest is exported from the
+	// live command tree, so this is the check that sees every mounted
+	// command's real annotation — including commands whose risk arrived as a
+	// string (generated service metadata) and therefore never met the Go
+	// type. A misspelled level fails the gate here instead of silently
+	// downgrading a destructive command to the lowest tier at runtime.
+	if _, err := core.ParseRisk(cmd.Risk); err != nil {
+		return fmt.Errorf("%s.risk is invalid: %q must be one of read|write|high-risk-write", prefix, cmd.Risk)
 	}
 	switch cmd.Source {
 	case SourceBuiltin, SourceShortcut, SourceService:

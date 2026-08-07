@@ -24,7 +24,7 @@ var AppsFileDownload = common.Shortcut{
 	Service:     appsService,
 	Command:     "+file-download",
 	Description: "Download a file to a local path (via a signed URL)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +file-download --app-id <app_id> --path /1858537546760216.png --output ./logo.png",
 		"Example (omit --output): lark-cli apps +file-download --app-id <app_id> --path /1858537546760216.png   # saves to ./1858537546760216.png",

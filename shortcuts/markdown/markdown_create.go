@@ -17,7 +17,7 @@ var MarkdownCreate = common.Shortcut{
 	Service:     "markdown",
 	Command:     "+create",
 	Description: "Create a Markdown file in Drive",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"drive:file:upload", "drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

@@ -37,7 +37,7 @@ var MailDraftCreate = common.Shortcut{
 	Service:     "mail",
 	Command:     "+draft-create",
 	Description: "Create a brand-new mail draft from scratch (NOT for reply or forward). For reply drafts use +reply; for forward drafts use +forward. Only use +draft-create when composing a new email with no parent message.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

@@ -66,7 +66,7 @@ var OKRIndicatorUpdate = common.Shortcut{
 	Service:     "okr",
 	Command:     "+indicator-update",
 	Description: "Update the indicator current value for an objective or key result",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"okr:okr.content:writeonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

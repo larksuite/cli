@@ -13,7 +13,7 @@ var BaseFieldGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+field-get",
 	Description: "Get a field by ID or name",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:field:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true)},

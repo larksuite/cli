@@ -453,7 +453,7 @@ var SheetCreateSheet = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+create-sheet",
 	Description: "Create a sheet in an existing spreadsheet",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -504,7 +504,7 @@ var SheetCopySheet = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+copy-sheet",
 	Description: "Copy a sheet within a spreadsheet",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -578,7 +578,7 @@ var SheetDeleteSheet = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+delete-sheet",
 	Description: "Delete a sheet from a spreadsheet",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -618,7 +618,7 @@ var SheetUpdateSheet = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+update-sheet",
 	Description: "Update sheet properties",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

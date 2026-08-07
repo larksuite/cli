@@ -184,7 +184,7 @@ var OKRBatchCreate = common.Shortcut{
 	Service:     "okr",
 	Command:     "+batch-create",
 	Description: "Batch create OKR objectives and key results with rollback on failure",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"okr:okr.content:writeonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

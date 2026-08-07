@@ -19,7 +19,7 @@ var BaseRoleList = common.Shortcut{
 	Service:     "base",
 	Command:     "+role-list",
 	Description: "List all roles in a Base",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:role:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

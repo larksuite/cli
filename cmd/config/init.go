@@ -110,7 +110,7 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference (e.g. zh or zh_cn)")
 	cmd.Flags().StringVar(&opts.ProfileName, "name", "", "create or update a named profile (append instead of replace)")
 	cmd.Flags().BoolVar(&opts.ForceInit, "force-init", false, forceInitUsageWithBind)
-	cmdutil.SetRisk(cmd, "write")
+	cmdutil.SetRisk(cmd, cmdutil.RiskWrite)
 
 	return cmd
 }

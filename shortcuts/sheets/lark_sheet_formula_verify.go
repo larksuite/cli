@@ -28,7 +28,7 @@ var FormulaVerify = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+formula-verify",
 	Description: "Scan formulas / cell errors and return a recalc.py-shaped status report (success / errors_found / partial). Use --ai-only to poll AI-formula compute status only.",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

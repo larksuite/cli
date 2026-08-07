@@ -36,7 +36,7 @@ func NewCmdAuthLogout(f *cmdutil.Factory, runF func(*LogoutOptions) error) *cobr
 		},
 	}
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
-	cmdutil.SetRisk(cmd, "write")
+	cmdutil.SetRisk(cmd, cmdutil.RiskWrite)
 
 	return cmd
 }

@@ -30,7 +30,7 @@ var DriveDeleteReply = common.Shortcut{
 	Service:           "drive",
 	Command:           "+delete-reply",
 	Description:       "Delete a reply of a comment on doc/docx/sheet/file/slides/base(bitable)/apps, with URL parsing and Wiki token unwrapping",
-	Risk:              "high-risk-write",
+	Risk:              common.RiskHighRiskWrite,
 	Scopes:            []string{"docs:document.comment:write_only"},
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},

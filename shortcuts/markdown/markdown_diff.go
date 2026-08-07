@@ -433,7 +433,7 @@ var MarkdownDiff = common.Shortcut{
 	Service:     "markdown",
 	Command:     "+diff",
 	Description: "Compare remote Markdown versions or compare remote Markdown against a local file",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"drive:file:download"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

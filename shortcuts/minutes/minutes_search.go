@@ -223,7 +223,7 @@ var MinutesSearch = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+search",
 	Description: "Search minutes by keyword, owners, participants, and time range with user or bot identity",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"minutes:minutes.search:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

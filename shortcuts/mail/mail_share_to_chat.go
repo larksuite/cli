@@ -23,7 +23,7 @@ var MailShareToChat = common.Shortcut{
 	Service:     "mail",
 	Command:     "+share-to-chat",
 	Description: "Share an email or thread as a card to a Lark IM chat.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes: []string{
 		"mail:user_mailbox.message:readonly",
 		"im:message",

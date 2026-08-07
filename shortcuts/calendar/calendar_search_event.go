@@ -172,7 +172,7 @@ var CalendarSearchEvent = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+search-event",
 	Description: "Search calendar events by keyword, time range, and attendees",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"calendar:calendar.event:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

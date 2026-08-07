@@ -179,7 +179,7 @@ var CalendarGet = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+get",
 	Description: "Get a single calendar event detail by calendar-id and event-id",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"calendar:calendar.event:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

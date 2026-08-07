@@ -87,7 +87,7 @@ var OKRListCycles = common.Shortcut{
 	Service:     "okr",
 	Command:     "+cycle-list",
 	Description: "List okr cycles of a certain user",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"okr:okr.period:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

@@ -27,7 +27,7 @@ var ImChatMessageList = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-messages-list",
 	Description: "List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range, --order asc/desc sorting, auto-pagination",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"im:message:readonly"},
 	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
 	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read"},

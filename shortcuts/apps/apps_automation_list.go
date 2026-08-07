@@ -18,7 +18,7 @@ var AppsAutomationList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+automation-list",
 	Description: "List a Miaoda app's automation triggers (cron/record-change/webhook/feishu-approval)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +automation-list --app-id <app_id>",
 		"Example: lark-cli apps +automation-list --app-id <app_id> --trigger-type webhook",

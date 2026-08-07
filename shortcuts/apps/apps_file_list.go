@@ -37,7 +37,7 @@ var AppsFileList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+file-list",
 	Description: "List files in a Miaoda app's storage (cursor pagination)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +file-list --app-id <app_id>",
 		"Tip: filter fields with --jq, e.g. -q '.data.items[].path'",

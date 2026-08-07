@@ -14,7 +14,7 @@ var BaseRecordSearch = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-search",
 	Description: "Search records in a table",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:record:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

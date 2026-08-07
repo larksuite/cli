@@ -26,7 +26,7 @@ var BaseURLResolve = common.Shortcut{
 	Service:     "base",
 	Command:     "+url-resolve",
 	Description: "Resolve a Base-related URL into Base coordinates",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{},
 	ConditionalScopes: []string{
 		"base:block:read",
@@ -102,7 +102,7 @@ var BaseTitleResolve = common.Shortcut{
 	Service:     "base",
 	Command:     "+title-resolve",
 	Description: "Resolve a Base title or keyword through Drive search",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"search:docs:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

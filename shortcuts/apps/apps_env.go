@@ -23,7 +23,7 @@ var AppsEnvVarList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+env-list",
 	Description: "List app environment variables",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +env-list --app-id <app_id>",
 	},
@@ -74,7 +74,7 @@ var AppsEnvVarSet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+env-set",
 	Description: "Set an app environment variable",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +env-set --app-id <app_id> --key FOO --value bar",
 	},
@@ -158,7 +158,7 @@ var AppsEnvVarDelete = common.Shortcut{
 	Service:     appsService,
 	Command:     "+env-delete",
 	Description: "Delete app environment variables",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +env-delete --app-id <app_id> --key FOO --yes",
 	},

@@ -13,7 +13,7 @@ var BaseTableGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+table-get",
 	Description: "Get a table by ID or name",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:table:read", "base:field:read", "base:view:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true)},

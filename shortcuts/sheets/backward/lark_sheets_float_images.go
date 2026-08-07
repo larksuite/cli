@@ -66,7 +66,7 @@ var SheetMediaUpload = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+media-upload",
 	Description: "Upload a local image for use as a floating image and return the file_token",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"docs:document.media:upload"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -316,7 +316,7 @@ var SheetCreateFloatImage = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+create-float-image",
 	Description: "Create a floating image on a sheet",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -369,7 +369,7 @@ var SheetUpdateFloatImage = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+update-float-image",
 	Description: "Update a floating image",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -418,7 +418,7 @@ var SheetGetFloatImage = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+get-float-image",
 	Description: "Get a floating image by ID",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -452,7 +452,7 @@ var SheetListFloatImages = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+list-float-images",
 	Description: "List all floating images in a sheet",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -485,7 +485,7 @@ var SheetDeleteFloatImage = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+delete-float-image",
 	Description: "Delete a floating image",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

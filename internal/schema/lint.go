@@ -81,7 +81,8 @@ func lintEnvelope(env Envelope) []error {
 	}
 
 	// ---- L3: cross-field self-consistency ----
-	dangerExpected := env.Meta.Risk == core.RiskWrite || env.Meta.Risk == core.RiskHighRiskWrite
+	envRisk := core.Risk(env.Meta.Risk)
+	dangerExpected := envRisk == core.RiskWrite || envRisk == core.RiskHighRiskWrite
 	if env.Meta.Danger != dangerExpected {
 		errs = append(errs, fmt.Errorf("L3: _meta.danger=%v inconsistent with risk=%q", env.Meta.Danger, env.Meta.Risk))
 	}
@@ -92,7 +93,7 @@ func lintEnvelope(env Envelope) []error {
 	if env.InputSchema != nil && env.InputSchema.Properties != nil {
 		_, hasYes = env.InputSchema.Properties.Map["yes"]
 	}
-	wantYes := env.Meta.Risk == core.RiskHighRiskWrite
+	wantYes := envRisk == core.RiskHighRiskWrite
 	if hasYes != wantYes {
 		errs = append(errs, fmt.Errorf("L3: inputSchema `yes` property=%v inconsistent with risk=%q", hasYes, env.Meta.Risk))
 	}

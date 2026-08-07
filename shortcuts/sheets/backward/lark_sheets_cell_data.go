@@ -28,7 +28,7 @@ var SheetRead = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+read",
 	Description: "Read spreadsheet cell values",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -104,7 +104,7 @@ var SheetWrite = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+write",
 	Description: "Write to spreadsheet cells (overwrite mode)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -186,7 +186,7 @@ var SheetAppend = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+append",
 	Description: "Append rows to a spreadsheet",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -266,7 +266,7 @@ var SheetFind = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+find",
 	Description: "Find cells in a spreadsheet",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -350,7 +350,7 @@ var SheetReplace = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+replace",
 	Description: "Find and replace cell values in a spreadsheet",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

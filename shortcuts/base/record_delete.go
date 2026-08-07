@@ -13,7 +13,7 @@ var BaseRecordDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-delete",
 	Description: "Delete one or more records by ID",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:record:delete"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

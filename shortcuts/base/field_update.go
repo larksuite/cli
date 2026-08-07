@@ -13,7 +13,7 @@ var BaseFieldUpdate = common.Shortcut{
 	Service:     "base",
 	Command:     "+field-update",
 	Description: "Update a field by ID or name",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:field:update"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

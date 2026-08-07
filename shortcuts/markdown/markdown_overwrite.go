@@ -16,7 +16,7 @@ var MarkdownOverwrite = common.Shortcut{
 	Service:     "markdown",
 	Command:     "+overwrite",
 	Description: "Overwrite an existing Markdown file in Drive",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"drive:file:upload", "drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

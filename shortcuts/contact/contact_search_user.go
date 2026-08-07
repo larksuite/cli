@@ -134,7 +134,7 @@ var ContactSearchUser = common.Shortcut{
 	Service:     "contact",
 	Command:     "+search-user",
 	Description: "Search Lark/Feishu users by keyword, open_id list, or filter (requires --as user)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"contact:user:search"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

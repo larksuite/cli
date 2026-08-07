@@ -17,7 +17,7 @@ var ImFlagCreate = common.Shortcut{
 	Service:     "im",
 	Command:     "+flag-create",
 	Description: "Create a bookmark on a message; user-only; defaults to message-layer flag; use --flag-type feed for feed-layer flag (item_type auto-detected from chat mode)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	UserScopes:  flagWriteLookupScopes,
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

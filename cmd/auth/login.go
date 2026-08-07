@@ -69,7 +69,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 		},
 	}
 	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
-	cmdutil.SetRisk(cmd, "write")
+	cmdutil.SetRisk(cmd, cmdutil.RiskWrite)
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")

@@ -13,7 +13,7 @@ var BaseFieldList = common.Shortcut{
 	Service:     "base",
 	Command:     "+field-list",
 	Description: "List fields in a table",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:field:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

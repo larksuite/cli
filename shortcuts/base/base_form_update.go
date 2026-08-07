@@ -15,7 +15,7 @@ var BaseFormUpdate = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-update",
 	Description: "Update a form in a Base table",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:form:update"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

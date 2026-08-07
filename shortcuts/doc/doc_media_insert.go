@@ -47,7 +47,7 @@ var DocMediaInsert = common.Shortcut{
 	Service:     "docs",
 	Command:     "+media-insert",
 	Description: "Insert a local image or file into a Lark document (4-step orchestration + auto-rollback); appends to end by default, or inserts relative to a text selection with --selection-with-ellipsis",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"docs:document.media:upload", "docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

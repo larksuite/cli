@@ -134,8 +134,8 @@ func (e *Engine) EvaluateOne(cmd *cobra.Command) Decision {
 	//
 	// The "absent" case (no risk_level annotation at all) is per-rule:
 	// each rule's AllowUnannotated decides, so it lives inside evalRule.
-	cmdRiskStr, hasRisk := cmdmeta.Risk(cmd)
-	cmdRisk := platform.Risk(cmdRiskStr)
+	cmdRiskRaw, hasRisk := cmdmeta.Risk(cmd)
+	cmdRisk := platform.FromCore(cmdRiskRaw)
 	var (
 		cmdRank   int
 		cmdRankOk bool
@@ -146,7 +146,7 @@ func (e *Engine) EvaluateOne(cmd *cobra.Command) Decision {
 			return Decision{
 				Allowed:    false,
 				ReasonCode: "risk_invalid",
-				Reason:     fmt.Sprintf("invalid risk %q; did you mean %q?", cmdRiskStr, suggestRisk(cmdRiskStr)),
+				Reason:     fmt.Sprintf("invalid risk %q; did you mean %q?", cmdRiskRaw, suggestRisk(cmdRiskRaw.String())),
 			}
 		}
 	}

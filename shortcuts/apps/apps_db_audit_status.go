@@ -19,7 +19,7 @@ var AppsDBAuditStatus = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-audit-status",
 	Description: "Show table audit (row-change tracking) status",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +db-audit-status --app-id <app_id>",
 		"Check one table: --table orders",

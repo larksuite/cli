@@ -13,7 +13,7 @@ var BaseFormDetail = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-detail",
 	Description: "Get form detail by share token",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:form:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

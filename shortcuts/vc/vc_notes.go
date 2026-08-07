@@ -548,7 +548,7 @@ var VCNotes = common.Shortcut{
 	Service:     "vc",
 	Command:     "+notes",
 	Description: "Query meeting notes (via meeting-ids, minute-tokens, or calendar-event-ids)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"vc:note:read"}, // minimum scope; additional per-flag scopes checked in Validate
 	AuthTypes:   []string{"user"},
 	Hidden:      true, // hidden from --help; prefer vc +detail, minutes +detail, or note +detail

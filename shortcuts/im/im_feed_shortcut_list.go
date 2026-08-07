@@ -25,7 +25,7 @@ var ImFeedShortcutList = common.Shortcut{
 	Service:               "im",
 	Command:               "+feed-shortcut-list",
 	Description:           "List one page of the user's feed shortcuts; user-only; first call omits --page-token, subsequent calls pass the previous response's page_token; each entry is auto-enriched with the full per-type info object attached as `detail` (pass --no-detail to skip)",
-	Risk:                  "read",
+	Risk:                  common.RiskRead,
 	UserScopes:            []string{feedShortcutReadScope},
 	ConditionalUserScopes: []string{chatBatchQueryScope},
 	AuthTypes:             []string{"user"},

@@ -13,7 +13,7 @@ var BaseRecordBatchCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-batch-create",
 	Description: "Batch create records",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:record:create"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

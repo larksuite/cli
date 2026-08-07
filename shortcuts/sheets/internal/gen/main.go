@@ -21,6 +21,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/larksuite/cli/internal/core"
 )
 
 type flagDef struct {
@@ -145,6 +147,13 @@ func genFlagDefs(dir string) {
 		cd := defs[k]
 		fmt.Fprintf(&b, "%q: {\n", k)
 		if cd.Risk != "" {
+			// flag-defs.json is hand-maintained data, so risk crosses a
+			// string boundary here. Reject a value outside the taxonomy at
+			// generation time rather than emitting it into Go source, where
+			// the untyped literal would convert silently.
+			if _, err := core.ParseRisk(cd.Risk); err != nil {
+				log.Fatalf("data/flag-defs.json: %q: %v", k, err)
+			}
 			fmt.Fprintf(&b, "Risk: %q,\n", cd.Risk)
 		}
 		if cd.Flags != nil {

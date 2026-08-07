@@ -16,7 +16,7 @@ var BaseFormQuestionsList = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-questions-list",
 	Description: "List questions of a form in a Base table",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:form:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

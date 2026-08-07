@@ -44,7 +44,7 @@ reports "already downgraded" and exits 0.`,
 			return configKeychainDowngradeRun(f)
 		},
 	}
-	cmdutil.SetRisk(cmd, "write")
+	cmdutil.SetRisk(cmd, cmdutil.RiskWrite)
 	return cmd
 }
 

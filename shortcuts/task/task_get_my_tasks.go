@@ -21,7 +21,7 @@ var GetMyTasks = common.Shortcut{
 	Service:     "task",
 	Command:     "+get-my-tasks",
 	Description: "List tasks assigned to me",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"task:task:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

@@ -14,7 +14,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 	Service:     "base",
 	Command:     "+workflow-update",
 	Description: "Replace a workflow's full definition (title and/or steps) in a base",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:workflow:update"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

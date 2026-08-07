@@ -19,7 +19,7 @@ var AppsSessionGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+session-get",
 	Description: "Read a session's current status, queued turns, and latest turn",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +session-get --app-id <app_id> --session-id <session_id>",
 	},

@@ -57,7 +57,7 @@ var DriveStatus = common.Shortcut{
 	Service:           "drive",
 	Command:           "+status",
 	Description:       "Compare a local directory with a Drive folder by exact hash or quick modified_time",
-	Risk:              "read",
+	Risk:              common.RiskRead,
 	Scopes:            []string{"drive:drive.metadata:readonly"},
 	ConditionalScopes: []string{"drive:file:download"},
 	AuthTypes:         []string{"user", "bot"},

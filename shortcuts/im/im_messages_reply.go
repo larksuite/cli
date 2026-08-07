@@ -18,7 +18,7 @@ var ImMessagesReply = common.Shortcut{
 	Service:     "im",
 	Command:     "+messages-reply",
 	Description: "Reply to a message (supports thread replies); user/bot; supports text/markdown/post/media replies, reply-in-thread, idempotency key",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"im:message:send_as_bot"},
 	UserScopes:  []string{"im:message.send_as_user", "im:message"},
 	BotScopes:   []string{"im:message:send_as_bot"},

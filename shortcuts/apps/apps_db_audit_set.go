@@ -24,7 +24,7 @@ var AppsDBAuditEnable = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-audit-enable",
 	Description: "Enable row-change audit logging for a table",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +db-audit-enable --app-id <app_id> --table orders --retention 30d",
 	},
@@ -86,7 +86,7 @@ var AppsDBAuditDisable = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-audit-disable",
 	Description: "Disable row-change audit logging for a table",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +db-audit-disable --app-id <app_id> --table orders",
 	},

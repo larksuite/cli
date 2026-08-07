@@ -54,7 +54,7 @@ var NoteTranscript = common.Shortcut{
 	Service:     "note",
 	Command:     "+transcript",
 	Description: "Fetch the unified note transcript and save it to a file",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"vc:note:read"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{

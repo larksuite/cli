@@ -26,7 +26,7 @@ var AppsDBTableGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-table-get",
 	Description: "Get a table's structure: columns, indexes and constraints",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +db-table-get --app-id <app_id> --table <table>",
 		"Tip: filter fields with --jq (json format), e.g. -q '.data.columns[].name'",

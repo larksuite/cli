@@ -18,7 +18,7 @@ var AppsPluginList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+plugin-list",
 	Description: "List locally installed plugin packages and their installation status",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{},
 	Tips: []string{
 		"Run in project root (like npm); does NOT take --app-id",

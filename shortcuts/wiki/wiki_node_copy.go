@@ -19,7 +19,7 @@ var WikiNodeCopy = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+node-copy",
 	Description: "Copy a wiki node to a target space or parent node",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"wiki:node:copy"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

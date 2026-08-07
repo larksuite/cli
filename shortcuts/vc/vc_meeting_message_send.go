@@ -27,7 +27,7 @@ var VCMeetingMessageSend = common.Shortcut{
 	Service:     "vc",
 	Command:     "+meeting-message-send",
 	Description: "Send an in-meeting text message or reaction emoji",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"vc:meeting.message:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

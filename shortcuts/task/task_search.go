@@ -24,7 +24,7 @@ var SearchTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+search",
 	Description: "search tasks",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"task:task:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

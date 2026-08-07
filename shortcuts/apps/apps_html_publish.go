@@ -23,7 +23,7 @@ var AppsHTMLPublish = common.Shortcut{
 	Service:     appsService,
 	Command:     "+html-publish",
 	Description: "Publish HTML to an app (returns url or release_id depending on app type)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./dist",
 		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./site --dry-run",

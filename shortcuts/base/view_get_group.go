@@ -13,7 +13,7 @@ var BaseViewGetGroup = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-get-group",
 	Description: "Get view group configuration",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:view:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},

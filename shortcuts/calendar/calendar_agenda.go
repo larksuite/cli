@@ -169,7 +169,7 @@ var CalendarAgenda = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+agenda",
 	Description: "View calendar agenda (defaults to today)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"calendar:calendar.event:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

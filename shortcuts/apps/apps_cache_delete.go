@@ -19,7 +19,7 @@ var AppsCacheDelete = common.Shortcut{
 	Service:     appsService,
 	Command:     "+cache-delete",
 	Description: "Delete a single business cache key (idempotent)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +cache-delete --app-id <app_id> --environment dev --key <key>",
 	},

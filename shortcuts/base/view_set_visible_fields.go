@@ -13,7 +13,7 @@ var BaseViewSetVisibleFields = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-set-visible-fields",
 	Description: "Set view visible fields",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

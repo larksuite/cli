@@ -19,7 +19,7 @@ var AddTaskToTasklist = common.Shortcut{
 	Service:     "task",
 	Command:     "+tasklist-task-add",
 	Description: "add tasks to a tasklist",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:task:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

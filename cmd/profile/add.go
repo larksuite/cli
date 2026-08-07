@@ -47,7 +47,7 @@ func NewCmdProfileAdd(f *cmdutil.Factory) *cobra.Command {
 
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("app-id")
-	cmdutil.SetRisk(cmd, "write")
+	cmdutil.SetRisk(cmd, cmdutil.RiskWrite)
 
 	return cmd
 }

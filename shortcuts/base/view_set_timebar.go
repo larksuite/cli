@@ -13,7 +13,7 @@ var BaseViewSetTimebar = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-set-timebar",
 	Description: "Set view timebar configuration",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

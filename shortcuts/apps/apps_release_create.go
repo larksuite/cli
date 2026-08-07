@@ -18,7 +18,7 @@ var AppsReleaseCreate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+release-create",
 	Description: "Create a release for an app (returns release_id for status polling)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +release-create --app-id <app_id>",
 		"Example: lark-cli apps +release-create --app-id <app_id> --branch sprint/default --dry-run",

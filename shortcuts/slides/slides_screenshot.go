@@ -40,7 +40,7 @@ var SlidesScreenshot = common.Shortcut{
 	Service:     "slides",
 	Command:     "+screenshot",
 	Description: "Save up to 10 slide screenshots to local files without printing Base64 image data",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"slides:presentation:screenshot"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},

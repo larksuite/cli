@@ -24,7 +24,7 @@ var SearchTasklist = common.Shortcut{
 	Service:     "task",
 	Command:     "+tasklist-search",
 	Description: "search tasklists",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"task:tasklist:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

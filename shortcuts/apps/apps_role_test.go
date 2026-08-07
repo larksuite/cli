@@ -30,7 +30,7 @@ func TestAppsRoleMetadata(t *testing.T) {
 	tests := []struct {
 		name    string
 		command string
-		risk    string
+		risk    common.Risk
 		scopes  []string
 	}{
 		{"list", AppsRoleList.Command, AppsRoleList.Risk, AppsRoleList.Scopes},
@@ -46,7 +46,7 @@ func TestAppsRoleMetadata(t *testing.T) {
 		"update": "+role-update",
 		"delete": "+role-delete",
 	}
-	wantRisks := map[string]string{
+	wantRisks := map[string]common.Risk{
 		"list":   "read",
 		"get":    "read",
 		"create": "write",

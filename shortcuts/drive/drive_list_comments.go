@@ -49,7 +49,7 @@ var DriveListComments = common.Shortcut{
 	Service:           "drive",
 	Command:           "+list-comments",
 	Description:       "List comments for doc/docx/sheet/file/slides/base(bitable)/apps, with URL parsing and Wiki token unwrapping",
-	Risk:              "read",
+	Risk:              common.RiskRead,
 	Scopes:            []string{"docs:document.comment:read"},
 	ConditionalScopes: []string{"wiki:node:retrieve"},
 	AuthTypes:         []string{"user", "bot"},

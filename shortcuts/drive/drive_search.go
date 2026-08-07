@@ -71,7 +71,7 @@ var DriveSearch = common.Shortcut{
 	Service:     "drive",
 	Command:     "+search",
 	Description: "Search Lark docs, Wiki, and spreadsheet files with flat filters (Search v2: doc_wiki/search)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"search:docs:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

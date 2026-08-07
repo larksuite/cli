@@ -18,7 +18,7 @@ var DriveCover = common.Shortcut{
 	Service:     "drive",
 	Command:     "+cover",
 	Description: "List or download stable cover presets for a Drive file",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"drive:file:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

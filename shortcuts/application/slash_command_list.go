@@ -16,7 +16,7 @@ var SlashCommandList = common.Shortcut{
 	Service:     "application",
 	Command:     "+slash-command-list",
 	Description: "List all slash commands (/ commands) registered on the currently bound Open Platform app; source of command_id for update/delete",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"application:app_slash_command:read"},
 	AuthTypes:   []string{"bot", "user"},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

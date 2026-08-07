@@ -14,7 +14,7 @@ var BaseWorkflowList = common.Shortcut{
 	Service:     "base",
 	Command:     "+workflow-list",
 	Description: "List all workflows in a base (auto-paginated)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:workflow:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

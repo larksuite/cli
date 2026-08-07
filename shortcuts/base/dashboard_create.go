@@ -13,7 +13,7 @@ var BaseDashboardCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-create",
 	Description: "Create a dashboard in a base",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:dashboard:create"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

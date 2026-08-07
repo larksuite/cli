@@ -26,7 +26,7 @@ var BaseFormSubmit = common.Shortcut{
 	Service:     "base",
 	Command:     "+form-submit",
 	Description: "Submit a form (fill and submit form data)",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:form:update", "docs:document.media:upload"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

@@ -13,7 +13,7 @@ var BaseTableUpdate = common.Shortcut{
 	Service:     "base",
 	Command:     "+table-update",
 	Description: "Rename a table by ID or name",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:table:update"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

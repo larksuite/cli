@@ -19,7 +19,7 @@ var CompleteTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+complete",
 	Description: "mark a task as complete",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:task:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

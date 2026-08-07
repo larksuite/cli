@@ -103,7 +103,7 @@ var AppsInit = common.Shortcut{
 	Service:     appsService,
 	Command:     "+init",
 	Description: "Initialize an app's code and local development environment",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +init --app-id <app_id> --dir <dir>",
 		"Example: lark-cli apps +init --app-id <app_id> --dir <dir> --dry-run",

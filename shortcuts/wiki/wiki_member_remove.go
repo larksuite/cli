@@ -21,7 +21,7 @@ var WikiMemberRemove = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+member-remove",
 	Description: "Remove a member from a wiki space",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	// The API also accepts wiki:wiki; we declare the narrowest valid scope so
 	// tokens carrying only wiki:member:update aren't false-rejected by the
 	// exact-string scope preflight (see +space-list for the full reasoning).

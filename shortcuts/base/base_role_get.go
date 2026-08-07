@@ -19,7 +19,7 @@ var BaseRoleGet = common.Shortcut{
 	Service:     "base",
 	Command:     "+role-get",
 	Description: "Get full config of a role",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:role:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

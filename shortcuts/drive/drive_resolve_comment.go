@@ -83,7 +83,7 @@ func newDriveCommentSolvedShortcut(cfg driveCommentSolvedConfig) common.Shortcut
 		Service:           "drive",
 		Command:           cfg.Command,
 		Description:       cfg.Description,
-		Risk:              "write",
+		Risk:              common.RiskWrite,
 		Scopes:            []string{"docs:document.comment:write_only"},
 		ConditionalScopes: []string{"wiki:node:read"},
 		AuthTypes:         []string{"user", "bot"},

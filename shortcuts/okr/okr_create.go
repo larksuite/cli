@@ -236,7 +236,7 @@ var OKRCreate = common.Shortcut{
 	Service:     "okr",
 	Command:     "+create",
 	Description: "Create a single OKR objective or key result",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"okr:okr.content:writeonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

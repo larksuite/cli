@@ -19,7 +19,7 @@ var OKRListProgress = common.Shortcut{
 	Service:     "okr",
 	Command:     "+progress-list",
 	Description: "List progress for an objective or key result",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"okr:okr.progress:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

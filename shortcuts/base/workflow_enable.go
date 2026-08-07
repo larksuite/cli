@@ -14,7 +14,7 @@ var BaseWorkflowEnable = common.Shortcut{
 	Service:     "base",
 	Command:     "+workflow-enable",
 	Description: "Enable a workflow in a base",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:workflow:update"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

@@ -20,7 +20,7 @@ var AppsSessionStop = common.Shortcut{
 	Service:     appsService,
 	Command:     "+session-stop",
 	Description: "Stop (interrupt) the running turn of a session",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +session-stop --app-id <app_id> --session-id <session_id> --turn-id <turn_id>",
 	},

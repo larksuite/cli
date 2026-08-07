@@ -13,7 +13,7 @@ var BaseViewList = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-list",
 	Description: "List views in a table",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:view:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

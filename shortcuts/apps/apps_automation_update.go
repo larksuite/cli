@@ -24,7 +24,7 @@ var AppsAutomationUpdate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+automation-update",
 	Description: "Update a trigger's condition/description, or manage webhook URL/Token via dedicated flags",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +automation-update --app-id <id> --name t1 --trigger-type cron --cron '0 10 * * *' --yes",
 		"Example: lark-cli apps +automation-update --app-id <id> --name rc1 --trigger-type record-change --table <tbl> --event UPDATE --fields '[\"fld1\"]' --yes",

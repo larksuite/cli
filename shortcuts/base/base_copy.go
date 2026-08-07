@@ -13,7 +13,7 @@ var BaseBaseCopy = common.Shortcut{
 	Service:     "base",
 	Command:     "+base-copy",
 	Description: "Copy a base resource",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	UserScopes:  []string{"base:app:copy"},
 	BotScopes:   []string{"base:app:copy", "docs:permission.member:create"},
 	AuthTypes:   authTypes(),

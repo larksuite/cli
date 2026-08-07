@@ -112,7 +112,7 @@ var CalendarCreate = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+create",
 	Description: "Create a calendar event and optionally invite attendees",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"calendar:calendar.event:create", "calendar:calendar.event:update"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

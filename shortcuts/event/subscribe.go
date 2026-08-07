@@ -84,7 +84,7 @@ var EventSubscribe = common.Shortcut{
 	Service:     "event",
 	Command:     "+subscribe",
 	Description: "Subscribe to Lark events via WebSocket (NDJSON output)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{}, // no direct OAPI; scopes depend on subscribed event types
 	AuthTypes:   []string{"bot"},
 	// Hidden: superseded by `event consume`. Kept executable so existing

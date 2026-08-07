@@ -282,7 +282,7 @@ var CalendarRoomFind = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+room-find",
 	Description: "Find available meeting room candidates for one or more event time slots",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"calendar:calendar.free_busy:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

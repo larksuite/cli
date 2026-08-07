@@ -19,7 +19,7 @@ var AppsFileQuotaGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+file-quota-get",
 	Description: "Get an app's file-storage usage",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +file-quota-get --app-id <app_id>",
 		"Tip: get just the usage percent with -q '.usage_percent'",

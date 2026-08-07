@@ -18,7 +18,7 @@ var ImFeedShortcutCreate = common.Shortcut{
 	Service:     "im",
 	Command:     "+feed-shortcut-create",
 	Description: "Add chats to the user's feed shortcuts; user-only; batch up to 10 chat IDs per call; --head/--tail controls insertion order",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	UserScopes:  []string{feedShortcutWriteScope},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

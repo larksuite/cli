@@ -48,7 +48,7 @@ func newCmdAuthCheck(
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to check (space-separated)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.MarkFlagRequired("scope")
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 
 	return cmd
 }

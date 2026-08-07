@@ -55,7 +55,7 @@ var DriveSync = common.Shortcut{
 	Service:     "drive",
 	Command:     "+sync",
 	Description: "Two-way sync between a local directory and a Drive folder",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"drive:drive.metadata:readonly"},
 	ConditionalScopes: []string{
 		"drive:file:download",

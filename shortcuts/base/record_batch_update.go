@@ -13,7 +13,7 @@ var BaseRecordBatchUpdate = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-batch-update",
 	Description: "Batch update records with record-specific fields",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:record:update"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

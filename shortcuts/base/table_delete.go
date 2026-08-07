@@ -13,7 +13,7 @@ var BaseTableDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+table-delete",
 	Description: "Delete a table by ID or name",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:table:delete"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true)},

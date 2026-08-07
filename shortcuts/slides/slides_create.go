@@ -26,7 +26,7 @@ var SlidesCreate = common.Shortcut{
 	Service:     "slides",
 	Command:     "+create",
 	Description: "Create a Lark Slides presentation",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	AuthTypes:   []string{"user", "bot"},
 	// docs:document.media:upload is required by the @-placeholder upload path.
 	// Declared up-front (matching the convention used by other multi-API shortcuts

@@ -58,7 +58,7 @@ func newCmdDoctor(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Comm
 	}
 	cmdutil.DisableAuthCheck(cmd)
 	cmd.Flags().BoolVar(&opts.Offline, "offline", false, "skip network checks (only verify local state)")
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 
 	return cmd
 }

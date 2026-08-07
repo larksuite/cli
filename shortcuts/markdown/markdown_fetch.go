@@ -18,7 +18,7 @@ var MarkdownFetch = common.Shortcut{
 	Service:     "markdown",
 	Command:     "+fetch",
 	Description: "Fetch a Markdown file from Drive",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"drive:file:download"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

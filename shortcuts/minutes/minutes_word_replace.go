@@ -31,7 +31,7 @@ var MinutesWordReplace = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+word-replace",
 	Description: "Batch replace words in a minute's transcript",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"minutes:minutes:update"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

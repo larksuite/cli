@@ -48,7 +48,7 @@ var ImChatList = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-list",
 	Description: "List chats the current user/bot is a member of; defaults to groups; pass --types=p2p,group to include p2p single chats (user-only); user/bot; supports sorting, auto-pagination, --exclude-muted (user-only)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"im:chat:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

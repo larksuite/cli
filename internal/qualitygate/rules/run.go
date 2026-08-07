@@ -93,6 +93,13 @@ func Run(ctx context.Context, opts Options) ([]report.Diagnostic, facts.Facts, e
 	diags = append(diags, dryDiags...)
 	outputDiags, outputFacts := CheckDefaultOutput(m)
 	diags = append(diags, outputDiags...)
+	// Full-tree, not incremental: the risk taxonomy is at zero literals, so
+	// the check is self-consistent with no baseline to maintain.
+	riskLitDiags, err := CheckRiskLiterals(opts.Repo)
+	if err != nil {
+		return nil, facts.Facts{}, err
+	}
+	diags = append(diags, riskLitDiags...)
 	errorFacts, errorDiags, err := CollectRepoErrorFacts(opts.Repo, changed, opts.ChangedFrom != "")
 	if err != nil {
 		return nil, facts.Facts{}, err

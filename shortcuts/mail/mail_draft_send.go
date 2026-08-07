@@ -87,7 +87,7 @@ var MailDraftSend = common.Shortcut{
 		"failures, and aggregates the results. Use after the drafts have " +
 		"already been created (via the Lark client, +draft-create, or the " +
 		"drafts.create API).",
-	Risk:      "high-risk-write",
+	Risk:      common.RiskHighRiskWrite,
 	Scopes:    []string{"mail:user_mailbox.message:send"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,

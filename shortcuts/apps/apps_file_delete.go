@@ -23,7 +23,7 @@ var AppsFileDelete = common.Shortcut{
 	Service:     appsService,
 	Command:     "+file-delete",
 	Description: "Delete one or more files by remote path (batch)",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +file-delete --app-id <app_id> --path /1858537546760216.png --yes",
 		"Repeat --path for batch delete.",

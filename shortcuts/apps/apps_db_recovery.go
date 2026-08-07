@@ -24,7 +24,7 @@ var AppsDBRecoveryDiff = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-recovery-diff",
 	Description: "Preview restoring the database to a point in time (PITR diff)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +db-recovery-diff --app-id <app_id> --target 2h",
 		"Apply with +db-recovery-apply --target <same> --yes.",
@@ -77,7 +77,7 @@ var AppsDBRecoveryApply = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-recovery-apply",
 	Description: "Restore the database to a point in time (overwrites current data, irreversible)",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +db-recovery-apply --app-id <app_id> --target 2026-04-15T10:00:00Z --yes",
 		"Preview first with +db-recovery-diff.",

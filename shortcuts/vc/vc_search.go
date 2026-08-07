@@ -173,7 +173,7 @@ var VCSearch = common.Shortcut{
 	Service:     "vc",
 	Command:     "+search",
 	Description: "Search meeting records by keyword, time range, participant, organizer, or meeting room (requires at least one filter)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"vc:meeting.search:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

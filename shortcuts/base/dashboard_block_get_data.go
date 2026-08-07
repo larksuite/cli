@@ -13,7 +13,7 @@ var BaseDashboardBlockGetData = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-block-get-data",
 	Description: "Get computed data for a dashboard chart block",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:dashboard:read"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

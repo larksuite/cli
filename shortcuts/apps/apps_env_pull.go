@@ -34,7 +34,7 @@ var AppsEnvPull = common.Shortcut{
 	Service:     appsService,
 	Command:     "+env-pull",
 	Description: "Pull app startup env vars into the local project .env.local",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +env-pull --app-id <app_id>",
 	},

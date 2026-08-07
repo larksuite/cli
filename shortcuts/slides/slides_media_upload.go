@@ -34,7 +34,7 @@ var SlidesMediaUpload = common.Shortcut{
 	Service:     "slides",
 	Command:     "+media-upload",
 	Description: "Upload a local image to a slides presentation and return the file_token (use as <img src=...>)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	// wiki:node:read is required by the wiki-URL resolution path. Declared
 	// up-front (matching the convention used by other multi-API shortcuts) so
 	// users without it get the standard auth login --scope hint at pre-flight.

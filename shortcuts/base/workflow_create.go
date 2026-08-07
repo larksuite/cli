@@ -14,7 +14,7 @@ var BaseWorkflowCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+workflow-create",
 	Description: "Create a new workflow in a base",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:workflow:create"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

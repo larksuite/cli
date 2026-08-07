@@ -21,7 +21,7 @@ var AppsSessionMessagesList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+session-messages-list",
 	Description: "List the reply messages of a session turn (page_token pagination)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +session-messages-list --app-id <app_id> --session-id <session_id> --turn-id <turn_id>",
 		"Tip: turn_id comes from `+session-get` latest_turn.turn_id; page with --page-token <next_page_token>",

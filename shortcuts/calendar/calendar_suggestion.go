@@ -191,7 +191,7 @@ var CalendarSuggestion = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+suggestion",
 	Description: "Intelligently suggest available time blocks based on unclear time ranges",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"calendar:calendar.free_busy:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

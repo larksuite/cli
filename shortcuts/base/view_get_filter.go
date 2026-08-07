@@ -13,7 +13,7 @@ var BaseViewGetFilter = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-get-filter",
 	Description: "Get view filter configuration",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:view:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},

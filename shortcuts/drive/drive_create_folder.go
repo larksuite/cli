@@ -38,7 +38,7 @@ var DriveCreateFolder = common.Shortcut{
 	Service:     "drive",
 	Command:     "+create-folder",
 	Description: "Create a folder in Drive",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"space:folder:create"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

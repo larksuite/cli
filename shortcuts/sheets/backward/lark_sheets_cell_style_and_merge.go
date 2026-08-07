@@ -59,7 +59,7 @@ var SheetSetStyle = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+set-style",
 	Description: "Set cell style for a range",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -141,7 +141,7 @@ var SheetBatchSetStyle = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+batch-set-style",
 	Description: "Batch set cell styles for multiple ranges",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -227,7 +227,7 @@ var SheetMergeCells = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+merge-cells",
 	Description: "Merge cells in a spreadsheet",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
@@ -292,7 +292,7 @@ var SheetUnmergeCells = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+unmerge-cells",
 	Description: "Unmerge (split) cells in a spreadsheet",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

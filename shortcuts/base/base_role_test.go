@@ -210,7 +210,7 @@ func TestBaseRoleShortcutMetadata(t *testing.T) {
 		name    string
 		s       common.Shortcut
 		command string
-		risk    string
+		risk    common.Risk
 		scopes  []string
 	}{
 		{"create", BaseRoleCreate, "+role-create", "write", []string{"base:role:create"}},

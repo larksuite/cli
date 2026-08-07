@@ -20,7 +20,7 @@ var BaseRoleCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+role-create",
 	Description: "Create a custom role in a Base",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:role:create"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

@@ -245,7 +245,7 @@ var OKRReorder = common.Shortcut{
 	Service:     "okr",
 	Command:     "+reorder",
 	Description: "Adjust the position (order) of OKR objectives or key results",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"okr:okr.content:writeonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

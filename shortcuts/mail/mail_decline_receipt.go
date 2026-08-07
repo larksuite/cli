@@ -26,7 +26,7 @@ var MailDeclineReceipt = common.Shortcut{
 	Service:     "mail",
 	Command:     "+decline-receipt",
 	Description: "Dismiss the read-receipt request banner on an incoming mail by clearing its READ_RECEIPT_REQUEST label, without sending a receipt. Use when the user wants to silence the prompt but refuse to confirm they have read it. Idempotent — safe to re-run.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes: []string{
 		"mail:user_mailbox.message:modify",
 		"mail:user_mailbox.message:readonly",

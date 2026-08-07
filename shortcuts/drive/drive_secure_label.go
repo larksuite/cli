@@ -72,7 +72,7 @@ var DriveSecureLabelList = common.Shortcut{
 	Service:     "drive",
 	Command:     "+secure-label-list",
 	Description: "List secure labels available to the current user",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{secureLabelReadScope},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
@@ -116,7 +116,7 @@ var DriveSecureLabelUpdate = common.Shortcut{
 	Service:     "drive",
 	Command:     "+secure-label-update",
 	Description: "Update the secure label on a Drive file or document",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{secureLabelUpdateScope},
 	AuthTypes:   []string{"user"},
 	Tips: []string{

@@ -71,7 +71,7 @@ var DrivePull = common.Shortcut{
 	Service:     "drive",
 	Command:     "+pull",
 	Description: "One-way file-level mirror of a Drive folder onto a local directory (Drive → local)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"drive:drive.metadata:readonly", "drive:file:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

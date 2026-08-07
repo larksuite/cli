@@ -21,7 +21,7 @@ var UpdateTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+update",
 	Description: "update task attributes",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:task:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

@@ -39,7 +39,7 @@ func newObjectListShortcut(spec objectListSpec) common.Shortcut {
 		Service:     "sheets",
 		Command:     spec.command,
 		Description: spec.description,
-		Risk:        "read",
+		Risk:        common.RiskRead,
 		Scopes:      []string{"sheets:spreadsheet:read"},
 		AuthTypes:   []string{"user", "bot"},
 		HasFormat:   true,

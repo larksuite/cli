@@ -24,7 +24,7 @@ var AppsTraceList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+trace-list",
 	Description: "Search online app traces with observability filters",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +trace-list --app-id <app_id> --trace-id <trace_id>",
 		"Tip: use --page-token from the response to fetch the next page.",
@@ -80,7 +80,7 @@ var AppsTraceGet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+trace-get",
 	Description: "Get one online app trace by trace ID",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +trace-get --app-id <app_id> --trace-id <trace_id>",
 		"Tip: use +trace-list first if the trace ID is unknown.",

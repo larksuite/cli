@@ -33,7 +33,7 @@ var ImFeedGroupList = common.Shortcut{
 	Service:     "im",
 	Command:     "+feed-group-list",
 	Description: "List the caller's feed groups (tags); user-only; supports `--page-all` auto-pagination",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	UserScopes:  []string{feedGroupReadScope},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

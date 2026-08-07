@@ -19,7 +19,7 @@ var ImChatUpdate = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-update",
 	Description: "Update group chat name or description; user/bot; updates a chat's name or description",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"im:chat:update"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

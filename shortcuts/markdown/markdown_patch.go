@@ -31,7 +31,7 @@ var MarkdownPatch = common.Shortcut{
 	Service:     "markdown",
 	Command:     "+patch",
 	Description: "Patch a Markdown file in Drive via fetch-local-replace-overwrite",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"drive:file:download", "drive:file:upload", "drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

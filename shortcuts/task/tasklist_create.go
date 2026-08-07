@@ -21,7 +21,7 @@ var CreateTasklist = common.Shortcut{
 	Service:     "task",
 	Command:     "+tasklist-create",
 	Description: "create a tasklist and optionally add tasks",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"task:tasklist:write", "task:task:write"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

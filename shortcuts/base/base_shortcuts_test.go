@@ -207,7 +207,7 @@ func TestBaseFieldUpdateRisk(t *testing.T) {
 }
 
 func TestBaseDeleteShortcutsRisk(t *testing.T) {
-	cases := map[string]string{
+	cases := map[string]common.Risk{
 		BaseFieldDelete.Command:            BaseFieldDelete.Risk,
 		BaseViewDelete.Command:             BaseViewDelete.Risk,
 		BaseRecordDelete.Command:           BaseRecordDelete.Risk,

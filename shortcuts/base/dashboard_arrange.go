@@ -13,7 +13,7 @@ var BaseDashboardArrange = common.Shortcut{
 	Service:     "base",
 	Command:     "+dashboard-arrange",
 	Description: "Auto-arrange dashboard blocks layout (server-side smart layout)",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:dashboard:update"},
 	AuthTypes:   authTypes(),
 	HasFormat:   true,

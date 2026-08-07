@@ -27,7 +27,7 @@ var AppsMetricList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+metric-list",
 	Description: "List online app request, latency, CPU, and memory metrics",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +metric-list --app-id <app_id> --metric requests --series total --since 1d",
 		"Tip: metric timestamps use seconds; use +analytics-list for PV/UV-style analytics.",

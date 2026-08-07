@@ -23,7 +23,7 @@ var AppsDBChangelogList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-changelog-list",
 	Description: "List a Miaoda app database's DDL change history (cursor pagination)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +db-changelog-list --app-id <app_id>",
 		"Pin a single change with --change-id; filter time with --since 7d / --until 2026-04-15.",

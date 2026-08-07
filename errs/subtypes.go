@@ -84,6 +84,11 @@ const (
 	SubtypeFileIO          Subtype = "file_io"          // local file I/O failure (mkdir / write / read)
 	SubtypeExternalTool    Subtype = "external_tool"    // an external tool the CLI shells out to (git, npx) failed at runtime; the tool output is in the message
 	SubtypeStorage         Subtype = "storage"          // local persistence failure (e.g. config file save)
+	// SubtypeInvalidRiskDeclaration marks a command whose declared risk level
+	// is outside the closed read|write|high-risk-write taxonomy. It is a
+	// declaration bug, not a user error: the command is refused rather than
+	// run at an unknown risk level.
+	SubtypeInvalidRiskDeclaration Subtype = "invalid_risk_declaration"
 	// Generic untyped error lifted to InternalError uses SubtypeUnknown.
 )
 

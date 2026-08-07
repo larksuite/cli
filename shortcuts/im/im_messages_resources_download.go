@@ -25,7 +25,7 @@ var ImMessagesResourcesDownload = common.Shortcut{
 	Service:     "im",
 	Command:     "+messages-resources-download",
 	Description: "Download images/files from a message; user/bot; downloads image/file resources by message-id and file-key to a safe relative output path",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"im:message:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

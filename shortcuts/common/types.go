@@ -6,7 +6,22 @@ package common
 import (
 	"context"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/spf13/cobra"
+)
+
+// Risk is re-exported from core so shortcut declarations get the type and the
+// vocabulary from the package they already import. core stays the single
+// source of truth — this is an alias, not a second type.
+type Risk = core.Risk
+
+// Risk level constants — re-exported from core so shortcut declarations get
+// the vocabulary from the package they already import. core is the single
+// source of truth; these are aliases, not a second definition.
+const (
+	RiskRead          = core.RiskRead
+	RiskWrite         = core.RiskWrite
+	RiskHighRiskWrite = core.RiskHighRiskWrite
 )
 
 // Flag.Input source constants.
@@ -33,10 +48,10 @@ type Shortcut struct {
 	Service     string
 	Command     string
 	Description string
-	Risk        string   // "read" | "write" | "high-risk-write" (empty defaults to "read")
-	Scopes      []string // unconditional pre-flight scopes (fallback when UserScopes/BotScopes are empty)
-	UserScopes  []string // optional: user-identity unconditional scopes (overrides Scopes when non-empty)
-	BotScopes   []string // optional: bot-identity unconditional scopes (overrides Scopes when non-empty)
+	Risk        core.Risk // RiskRead | RiskWrite | RiskHighRiskWrite (empty defaults to RiskRead)
+	Scopes      []string  // unconditional pre-flight scopes (fallback when UserScopes/BotScopes are empty)
+	UserScopes  []string  // optional: user-identity unconditional scopes (overrides Scopes when non-empty)
+	BotScopes   []string  // optional: bot-identity unconditional scopes (overrides Scopes when non-empty)
 
 	// ConditionalScopes are additional scopes that only some execution paths
 	// need (for example a default mode vs. a lighter --quick mode, or a

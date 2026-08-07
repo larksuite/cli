@@ -19,7 +19,7 @@ var AppsReleaseList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+release-list",
 	Description: "List an app's release history (most recent first)",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Tips: []string{
 		"Example: lark-cli apps +release-list --app-id <app_id>",
 		"Tip: filter fields with --jq, e.g. -q '.data.releases[].release_id'",

@@ -35,7 +35,7 @@ func NewCmdConfigShow(f *cmdutil.Factory, runF func(*ConfigShowOptions) error) *
 			return configShowRun(opts)
 		},
 	}
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 
 	return cmd
 }

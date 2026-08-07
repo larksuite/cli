@@ -24,7 +24,7 @@ var GetRelatedTasks = common.Shortcut{
 	Service:     "task",
 	Command:     "+get-related-tasks",
 	Description: "list tasks related to me",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"task:task:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

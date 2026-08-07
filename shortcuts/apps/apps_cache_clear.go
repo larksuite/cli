@@ -19,7 +19,7 @@ var AppsCacheClear = common.Shortcut{
 	Service:     appsService,
 	Command:     "+cache-clear",
 	Description: "Clear all cache entries for the app in the given environment",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +cache-clear --app-id <app_id> --environment dev --yes",
 	},

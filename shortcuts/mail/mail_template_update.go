@@ -17,7 +17,7 @@ var MailTemplateUpdate = common.Shortcut{
 	Service:     "mail",
 	Command:     "+template-update",
 	Description: "Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins).",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

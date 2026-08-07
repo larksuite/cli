@@ -32,7 +32,7 @@ var MailLintHTML = common.Shortcut{
 	Service:     "mail",
 	Command:     "+lint-html",
 	Description: "Lint mail HTML body for compatibility / safety / Larksuite-native rules. Returns warnings/errors and (always) auto-fixed cleaned_html. Read-only: no draft, no API call. Use this BEFORE creating a draft to preview what the writing-path lint would change.",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	// No API call → no scope requirement.
 	Scopes: []string{},
 	// Identity-agnostic: lint is local pure-CPU. Both user and bot

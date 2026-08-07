@@ -19,7 +19,7 @@ var AppsAutomationCreate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+automation-create",
 	Description: "Create an automation trigger (cron/record-change/webhook/feishu-approval); created disabled",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Tips: []string{
 		"Example: lark-cli apps +automation-create --app-id <id> --name daily --trigger-type cron --cron '0 9 * * *'",
 		"Example: lark-cli apps +automation-create --app-id <id> --name onUpd --trigger-type record-change --table <tbl> --event UPDATE",

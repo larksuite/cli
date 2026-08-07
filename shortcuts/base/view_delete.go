@@ -13,7 +13,7 @@ var BaseViewDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-delete",
 	Description: "Delete a view by ID or name",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},

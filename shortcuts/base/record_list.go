@@ -14,7 +14,7 @@ var BaseRecordList = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-list",
 	Description: "List records in a table",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:record:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

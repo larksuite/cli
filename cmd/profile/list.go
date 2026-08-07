@@ -42,7 +42,7 @@ func NewCmdProfileList(f *cmdutil.Factory) *cobra.Command {
 			return profileListRun(f)
 		},
 	}
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 	return cmd
 }
 

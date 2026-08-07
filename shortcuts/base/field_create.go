@@ -13,7 +13,7 @@ var BaseFieldCreate = common.Shortcut{
 	Service:     "base",
 	Command:     "+field-create",
 	Description: "Create a field",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"base:field:create"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

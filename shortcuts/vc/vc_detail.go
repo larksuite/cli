@@ -162,7 +162,7 @@ var VCDetail = common.Shortcut{
 	Service:     "vc",
 	Command:     "+detail",
 	Description: "Get meeting details including note_id and minute_token by meeting IDs",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"vc:meeting.meetingevent:read", "vc:record:readonly"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

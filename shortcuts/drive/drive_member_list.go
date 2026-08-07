@@ -237,7 +237,7 @@ var DriveMemberList = common.Shortcut{
 	Service:     "drive",
 	Command:     "+member-list",
 	Description: "List collaborator/member permissions on a Drive resource",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"docs:permission.member:retrieve"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

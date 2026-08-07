@@ -74,7 +74,7 @@ func fakeTree(t *testing.T) *cobra.Command {
 	return root
 }
 
-func addLeaf(parent *cobra.Command, use, risk string) {
+func addLeaf(parent *cobra.Command, use string, risk cmdutil.Risk) {
 	leaf := &cobra.Command{
 		Use:  use,
 		RunE: func(*cobra.Command, []string) error { return nil },

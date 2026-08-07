@@ -47,7 +47,7 @@ var WikiNodeDelete = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+node-delete",
 	Description: "Delete a wiki node, polling the async delete task when needed",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	// API spec lists wiki:node:create as the only declared scope for the
 	// delete endpoint. Naming is unfortunate, but the scope-preflight needs
 	// the literal string.

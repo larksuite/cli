@@ -19,7 +19,7 @@ var OKRGetProgressRecord = common.Shortcut{
 	Service:     "okr",
 	Command:     "+progress-get",
 	Description: "Get an OKR progress by ID",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"okr:okr.progress:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

@@ -33,7 +33,7 @@ var SheetInfo = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+sheet-info",
 	Description: "Get a sub-sheet's layout metadata: row heights, column widths, hidden rows/cols, merges, groups, freeze.",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
@@ -123,7 +123,7 @@ var DimInsert = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dim-insert",
 	Description: "Insert blank rows or columns at a given position.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
@@ -198,7 +198,7 @@ var DimDelete = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dim-delete",
 	Description: "Delete rows or columns (irreversible).",
-	Risk:        "high-risk-write",
+	Risk:        common.RiskHighRiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
@@ -287,7 +287,7 @@ var DimFreeze = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dim-freeze",
 	Description: "Freeze the first N rows or columns; --count 0 unfreezes the chosen dimension.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
@@ -377,7 +377,7 @@ func dimRangeOpInput(runtime flagView, token, sheetID, sheetName, op string) (ma
 }
 
 // newDimRangeOpShortcut builds the shared shape for hide / unhide.
-func newDimRangeOpShortcut(command, desc, op, risk string) common.Shortcut {
+func newDimRangeOpShortcut(command, desc, op string, risk common.Risk) common.Shortcut {
 	return common.Shortcut{
 		Service:     "sheets",
 		Command:     command,
@@ -426,7 +426,7 @@ func newDimGroupShortcut(command, desc, op string) common.Shortcut {
 		Service:     "sheets",
 		Command:     command,
 		Description: desc,
-		Risk:        "write",
+		Risk:        common.RiskWrite,
 		Scopes:      []string{"sheets:spreadsheet:write_only"},
 		AuthTypes:   []string{"user", "bot"},
 		HasFormat:   true,
@@ -569,7 +569,7 @@ var DimMove = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dim-move",
 	Description: "Move a contiguous block of rows or columns to a new position (re-numbers neighbors).",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,

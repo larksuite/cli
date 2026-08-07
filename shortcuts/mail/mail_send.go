@@ -19,7 +19,7 @@ var MailSend = common.Shortcut{
 	Service:     "mail",
 	Command:     "+send",
 	Description: "Compose a new email and save as draft (default). Use --confirm-send to send immediately after user confirmation.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"mail:user_mailbox.message:send", "mail:user_mailbox.message:modify", "mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,

@@ -13,7 +13,7 @@ var BaseTableList = common.Shortcut{
 	Service:     "base",
 	Command:     "+table-list",
 	Description: "List tables in a base",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	Scopes:      []string{"base:table:read"},
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{

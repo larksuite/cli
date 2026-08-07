@@ -25,7 +25,7 @@ var MailMessageModify = common.Shortcut{
 	Service:     "mail",
 	Command:     "+message-modify",
 	Description: "Modify existing mail messages by adding/removing label IDs or moving them to a folder. Batches message IDs in groups of 20 and keeps output compact.",
-	Risk:        "write",
+	Risk:        common.RiskWrite,
 	Scopes:      []string{"mail:user_mailbox.message:modify"},
 	ConditionalScopes: []string{
 		"mail:user_mailbox.folder:read",

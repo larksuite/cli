@@ -26,7 +26,7 @@ var WikiNodeList = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+node-list",
 	Description: "List wiki nodes in a space or under a parent node",
-	Risk:        "read",
+	Risk:        common.RiskRead,
 	// Same exact-match-scope reasoning as +space-list: declare the
 	// narrowest scope the upstream API accepts so we don't false-reject
 	// tokens that only carry wiki:node:retrieve.
