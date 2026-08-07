@@ -295,7 +295,6 @@ func TestBaseFieldCreateTipsGuideTypeSelectionByStoredValue(t *testing.T) {
 	}
 }
 
-func TestBaseFieldCreateHelpDocumentsBatchAndHidesReadGuideFlag(t *testing.T) {
 func TestTemplateCenterShortcutContract(t *testing.T) {
 	ctx := context.Background()
 

@@ -43,11 +43,7 @@ func executeTemplateList(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	projected, err := projectTemplateListResponse(data)
-	if err != nil {
-		return err
-	}
-	runtime.Out(projected, nil)
+	runtime.Out(projectTemplateListResponse(data), nil)
 	return nil
 }
 

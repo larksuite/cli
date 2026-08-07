@@ -36,10 +36,6 @@ func executeTemplateCategories(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	projected, err := projectTemplateCategoriesResponse(data)
-	if err != nil {
-		return err
-	}
-	runtime.Out(projected, nil)
+	runtime.Out(projectTemplateCategoriesResponse(data), nil)
 	return nil
 }
