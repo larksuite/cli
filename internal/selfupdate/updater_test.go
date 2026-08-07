@@ -185,9 +185,9 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 		{
 			name: "stage suite",
 			run: func(u *Updater) *NpmResult {
-				return u.StageSuite("https://open.feishu.cn/lark-cli", ".")
+				return u.StageSuite("https://open.feishu.cn/lark-cli/skills/regular", ".")
 			},
-			want: "-y skills add https://open.feishu.cn/lark-cli/isolated-skills -s lark-suite -y",
+			want: "-y skills add https://open.feishu.cn/lark-cli/skills/isolated -s lark-suite -y",
 		},
 		{
 			name: "list global",
@@ -496,8 +496,8 @@ func TestSkillsBrandHosts(t *testing.T) {
 		brand       core.LarkBrand
 		wantSources []string
 	}{
-		{core.BrandFeishu, []string{"https://open.feishu.cn/lark-cli", "https://open.larksuite.com/lark-cli"}},
-		{core.BrandLark, []string{"https://open.larksuite.com/lark-cli", "https://open.feishu.cn/lark-cli"}},
+		{core.BrandFeishu, []string{"https://open.feishu.cn/lark-cli/skills/regular", "https://open.larksuite.com/lark-cli/skills/regular"}},
+		{core.BrandLark, []string{"https://open.larksuite.com/lark-cli/skills/regular", "https://open.feishu.cn/lark-cli/skills/regular"}},
 	}
 	for _, c := range cases {
 		u := &Updater{Brand: c.brand}

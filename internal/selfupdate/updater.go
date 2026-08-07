@@ -153,8 +153,8 @@ func (u *Updater) SkillsSources() []string {
 		secondary = core.BrandFeishu
 	}
 	return []string{
-		core.ResolveEndpoints(primary).Open + "/lark-cli",
-		core.ResolveEndpoints(secondary).Open + "/lark-cli",
+		core.ResolveEndpoints(primary).Open + "/lark-cli/skills/regular",
+		core.ResolveEndpoints(secondary).Open + "/lark-cli/skills/regular",
 	}
 }
 
@@ -342,7 +342,7 @@ func (u *Updater) InstallAllSkills(source string) *NpmResult {
 }
 
 func (u *Updater) StageSuite(source, dir string) *NpmResult {
-	suiteSource := strings.TrimRight(source, "/") + "/isolated-skills"
+	suiteSource := strings.TrimSuffix(strings.TrimRight(source, "/"), "/regular") + "/isolated"
 	return u.runSkillsCommandInDir(dir, "-y", "skills", "add", suiteSource, "-s", "lark-suite", "-y")
 }
 

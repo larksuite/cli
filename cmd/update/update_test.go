@@ -1741,10 +1741,10 @@ func seedLiveSkillsGlobal(t *testing.T) []string {
 	// the generous side.
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
-	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn/lark-cli", "--list").Run(); err != nil {
+	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn/lark-cli/skills/regular", "--list").Run(); err != nil {
 		t.Fatalf("live skills tests opted in but real skills CLI unavailable: %v", err)
 	}
-	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn/lark-cli", "-s", "lark-calendar", "-g", "-y").Run(); err != nil {
+	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn/lark-cli/skills/regular", "-s", "lark-calendar", "-g", "-y").Run(); err != nil {
 		t.Fatalf("failed to seed isolated global skills: %v", err)
 	}
 	globalOut, err := exec.CommandContext(ctx, "npx", "-y", "skills", "ls", "-g").Output()
