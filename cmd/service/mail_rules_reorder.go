@@ -130,6 +130,7 @@ func listAllMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderReques
 	}
 	var allIDs []string
 	pageToken := ""
+	seenPageTokens := map[string]struct{}{}
 	for {
 		pageRequest := listRequest
 		pageRequest.Params = copyRequestParamsWithoutPageToken(listRequest.Params)
@@ -158,6 +159,10 @@ func listAllMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderReques
 		if !hasMore {
 			break
 		}
+		if _, seen := seenPageTokens[nextToken]; seen {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response repeated page token %q", nextToken)
+		}
+		seenPageTokens[nextToken] = struct{}{}
 		pageToken = nextToken
 	}
 	return allIDs, nil

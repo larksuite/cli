@@ -25,9 +25,9 @@ metadata:
 ## 快速决策
 
 - 用户要**整理 / 盘点 / 归类 / 重构知识库、个人文档库、文档库目录或 Wiki 节点结构**，或要生成整理方案、目标目录树、移动计划时，不要只使用 Wiki 节点 API。必须先阅读 [`../lark-drive/references/lark-drive-workflow-knowledge-organize.md`](../lark-drive/references/lark-drive-workflow-knowledge-organize.md)，该 workflow 负责 Drive / Wiki / 个人文档库的统一入口解析、资源盘点、分类计划、写前确认和结果验证。
-- 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先调用 `lark-cli wiki +node-get --node-token <wiki_url> --as user --format json` 获取 `space_id`，后续成员接口统一使用 `space_id`。
+- 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先调用 `lark-cli wiki +node-get --node-token '<wiki_url>' --as user --format json` 获取 `space_id`，后续成员接口统一使用 `space_id`。
 - 用户要**删除**知识空间（`wiki +delete-space`）但只给了名称或 URL：**不能**把名称 / URL 原样传给 `--space-id`，必须先解析出真实 `space_id`。解析方式：
-  - URL（`.../wiki/<token>`）：`lark-cli wiki +node-get --node-token <wiki_url> --as user --format json`，读 `data.node.space_id`。
+  - URL（`.../wiki/<token>`）：`lark-cli wiki +node-get --node-token '<wiki_url>' --as user --format json`，读 `data.space_id`。
   - 只知名称：`lark-cli wiki spaces list --format json`，边翻页边收集 items 并按 `name` 精确匹配；**一旦任一页累计到至少 1 条精确匹配就停止翻页**。只有当翻完所有页（`has_more=false`）仍无精确匹配时，才对已收集的全量 items 做宽松匹配（`name` trim 空格、大小写不敏感、子串包含）。
   - **关键安全约束**：无论精确还是模糊，**无论命中 1 条还是多条，发起删除前都必须把候选（`name` + `space_id` + `description` + `space_type`）列给用户，由用户明确选定一个 `space_id` 再执行**。不要因为"只命中一条"就自动执行删除。
   - 命中 0 条：停下来问用户是名称拼错了还是调用方无权限；**不要**自行改名字重试。

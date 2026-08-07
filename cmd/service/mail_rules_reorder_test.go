@@ -297,6 +297,77 @@ func TestMailRulesReorder_ListMissingNextPageTokenDoesNotCallReorder(t *testing.
 	}
 }
 
+func TestMailRulesReorder_ListRepeatedPageTokenDoesNotCallReorder(t *testing.T) {
+	_, _, reg, cmd := newMailRulesReorderCommand(t)
+	registerMailRulesListPage(reg, "me", map[string]interface{}{
+		"items":      []interface{}{map[string]interface{}{"rule_id": "r1"}},
+		"has_more":   true,
+		"page_token": "next-1",
+	}, nil)
+	registerMailRulesListPage(reg, "me", map[string]interface{}{
+		"items":      []interface{}{map[string]interface{}{"rule_id": "r2"}},
+		"has_more":   true,
+		"page_token": "next-1",
+	}, nil)
+	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r1"]}`})
+
+	err := cmd.execute()
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("expected internal error, got %T: %v", err, err)
+	}
+	requireProblem(t, err, errs.CategoryInternal, errs.SubtypeInvalidResponse, 0)
+	if !strings.Contains(err.Error(), "repeated page token") {
+		t.Fatalf("internal error = %q, want repeated page token", err.Error())
+	}
+}
+
+func TestMailRulesReorder_ListPageTokenCycleDoesNotCallReorder(t *testing.T) {
+	_, _, reg, cmd := newMailRulesReorderCommand(t)
+	registerMailRulesListPage(reg, "me", map[string]interface{}{
+		"items":      []interface{}{map[string]interface{}{"rule_id": "r1"}},
+		"has_more":   true,
+		"page_token": "next-1",
+	}, nil)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules?page_token=next-1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"rule_id": "r2"}},
+				"has_more":   true,
+				"page_token": "next-2",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules?page_token=next-2",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"rule_id": "r3"}},
+				"has_more":   true,
+				"page_token": "next-1",
+			},
+		},
+	})
+	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r1"]}`})
+
+	err := cmd.execute()
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("expected internal error, got %T: %v", err, err)
+	}
+	requireProblem(t, err, errs.CategoryInternal, errs.SubtypeInvalidResponse, 0)
+	if !strings.Contains(err.Error(), "repeated page token") {
+		t.Fatalf("internal error = %q, want repeated page token", err.Error())
+	}
+}
+
 func TestMailRulesReorder_ReorderFailureIsSurfaced(t *testing.T) {
 	_, _, reg, cmd := newMailRulesReorderCommand(t)
 	registerMailRulesListPage(reg, "me", map[string]interface{}{
