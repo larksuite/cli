@@ -27,10 +27,9 @@ var BaseTableCreate = common.Shortcut{
 		baseTokenFlag(true),
 		{Name: "name", Desc: "table name", Required: true},
 		{Name: "view", Desc: "view JSON object/array for create"},
-		{Name: "fields", Required: true, Desc: `field JSON array defining the table schema; must hold at least one field, e.g. [{"name":"Title","type":"text"},{"name":"Status","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Done","hue":"Green","lightness":"Light"}]}]`},
+		{Name: "fields", Required: true, Desc: `field JSON array defining the table schema; must hold at least one field, e.g. [{"name":"Title","type":"text"},{"name":"Status","type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]}]`},
 	},
 	Tips: []string{
-		`Example: lark-cli base +table-create --base-token <base_token> --name "Tasks" --fields '[{"name":"Title","type":"text"},{"name":"Status","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Done","hue":"Green","lightness":"Light"}]}]'`,
 		"Before using --fields, read lark-base-field-json.md or rely on the same field JSON shape used by +field-create; do not invent field properties.",
 		"The first --fields item becomes the primary field.",
 	},
