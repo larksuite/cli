@@ -50,3 +50,27 @@ func TestBaseFieldUpdateDryRunAllowsRatingMaxAboveLimit(t *testing.T) {
 	require.Equal(t, "rating", gjson.Get(out, "data.api.0.body.style.type").String(), out)
 	require.Equal(t, int64(20), gjson.Get(out, "data.api.0.body.style.max").Int(), out)
 }
+
+func TestBaseFieldUpdateButtonDryRunNormalizesTriggerPayload(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+field-update",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--field-id", "fld_x",
+		"--json", `{"name":"同步到 CRM","type":"button","button":{"title":"同步到 CRM","color":0},"trigger":{"type":"automation","workflow_id":"wkf_x"}}`,
+		"--yes",
+	)
+
+	out := result.Stdout
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x", gjson.Get(out, "data.api.0.url").String(), out)
+	require.Equal(t, "PUT", gjson.Get(out, "data.api.0.method").String(), out)
+	require.Equal(t, "同步到 CRM", gjson.Get(out, "data.api.0.body.name").String(), out)
+	require.Equal(t, int64(3001), gjson.Get(out, "data.api.0.body.type").Int(), out)
+	require.Equal(t, "Button", gjson.Get(out, "data.api.0.body.fieldUIType").String(), out)
+	require.Equal(t, "同步到 CRM", gjson.Get(out, "data.api.0.body.property.button.title").String(), out)
+	require.Equal(t, int64(0), gjson.Get(out, "data.api.0.body.property.button.color").Int(), out)
+	require.Equal(t, int64(1), gjson.Get(out, "data.api.0.body.property.trigger.type").Int(), out)
+	require.Equal(t, "wkf_x", gjson.Get(out, "data.api.0.body.property.trigger.config.id").String(), out)
+	require.False(t, gjson.Get(out, "data.api.0.body.button").Exists(), out)
+	require.False(t, gjson.Get(out, "data.api.0.body.trigger").Exists(), out)
+}

@@ -27,6 +27,13 @@ lark-cli base +field-update \
   --field-id <field_id> \
   --json '{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}' \
   --yes
+
+lark-cli base +field-update \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --field-id <field_id> \
+  --json '{"name":"同步到 CRM","type":"button","button":{"title":"同步到 CRM","color":0},"trigger":{"type":"automation","workflow_id":"wkf_xxx"}}' \
+  --yes
 ```
 
 ## 参数
@@ -62,6 +69,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
 - `auto_number` 更新的 `style.rules` 支持 `text`、`created_time`、`incremental_number`。
+- `button` 更新时：使用与创建相同的 friendly JSON 结构；必须保留 `button` 和 `trigger`，并把目标 Workflow 写在 `trigger.workflow_id`。如果只是重绑 Workflow，也仍然要按 PUT 语义提交完整按钮字段定义。
 
 **推荐更新示例**
 
@@ -90,13 +98,30 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 }
 ```
 
+**按钮字段重绑示例**
+
+```json
+{
+  "name": "同步到 CRM",
+  "type": "button",
+  "button": {
+    "title": "同步到 CRM",
+    "color": 0
+  },
+  "trigger": {
+    "type": "automation",
+    "workflow_id": "wkf_xxx"
+  }
+}
+```
+
 ## 返回重点
 
 - 返回 `field` 和 `updated: true`。
 - `updated:true` 只表示更新请求成功，不表示字段结构、已有记录值或下游能力已经完成验证。`+field-update` 无法知道更新前的字段类型，因此成功响应会推荐执行 `+field-get`；若发生类型转换，还要抽样读取记录值。
 - 如果响应中的 `field.type` 与提交的 `type` 不一致，必须把它当作待核验的类型不匹配；不能返回完成态，也不能只根据其中任一类型推断更新成功。
 - 如果 API 报告本次更新没有产生任何变更（no-op），命令会如实返回该错误；这通常说明目标字段已是期望状态，不要机械重试同一份 `+field-update`。需要确认当前字段完整状态时执行 `+field-get`。
-- 如果返回 `field_get_recommended:true` 或 `next_step:"field_get"`，按提示读回字段；`auto_number` 更新后还应抽样读记录值确认编号已按新规则生成。
+- 如果返回 `field_get_recommended:true` 或 `next_step:"field_get"`，按提示读回字段；`auto_number` 更新后还应抽样读记录值确认编号已按新规则生成，`button` 更新后还应确认服务端最终返回的按钮和 trigger 绑定关系。
 
 ## 工作流
 
@@ -104,7 +129,8 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 1. 建议先用 `+field-get` 拉现状，再做最小化修改。
 2. `formula/lookup` 类型更新前先阅读对应指南。
 3. 如果更新 `auto_number`，理解为“更新编号规则，同时把新规则应用到已有编号”；执行后按返回提示读回字段并在必要时抽样记录值。
-4. 如果这次更新会改变字段 `type` 先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
+4. 如果更新 `button`，先确保目标 Workflow 已创建，再按完整按钮字段定义提交；不要只传新的 `workflow_id` 片段。
+5. 如果这次更新会改变字段 `type` 先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
 
 ## 字段类型变更规则
 
@@ -180,6 +206,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
 - ⚠️ 这是高风险写入操作，执行时必须带 `--yes`。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
+- ⚠️ 当 `type` 是 `button` 时，必须先创建目标 Workflow；不要猜 `workflow_id`，也不要把顶层 `button`/`trigger` 改写成底层 `property` 结构。
 
 ## 参考
 

@@ -109,3 +109,37 @@ func TestBaseCreateDryRunFieldsOnlyUsesDefaultTableName(t *testing.T) {
 	require.Equal(t, "Table 1", clie2e.DryRunGet(out, "api.2.body.name").String(), out)
 	require.Equal(t, "Title", clie2e.DryRunGet(out, "api.2.body.fields.0.name").String(), out)
 }
+
+func TestBaseCreateDryRunFieldsButtonNormalizesTriggerPayload(t *testing.T) {
+	setBaseDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"base", "+base-create",
+			"--name", "Project Tracker",
+			"--table-name", "Tasks",
+			"--fields", `[{"name":"同步到 CRM","type":"button","button":{"title":"同步到 CRM","color":0},"trigger":{"type":"automation","workflow_id":"wkf_x"}}]`,
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	require.Equal(t, "/open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables", clie2e.DryRunGet(out, "api.2.url").String(), out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.2.method").String(), out)
+	require.Equal(t, "Tasks", clie2e.DryRunGet(out, "api.2.body.name").String(), out)
+	require.Equal(t, "同步到 CRM", clie2e.DryRunGet(out, "api.2.body.fields.0.name").String(), out)
+	require.Equal(t, int64(3001), clie2e.DryRunGet(out, "api.2.body.fields.0.type").Int(), out)
+	require.Equal(t, "Button", clie2e.DryRunGet(out, "api.2.body.fields.0.fieldUIType").String(), out)
+	require.Equal(t, "同步到 CRM", clie2e.DryRunGet(out, "api.2.body.fields.0.property.button.title").String(), out)
+	require.Equal(t, int64(0), clie2e.DryRunGet(out, "api.2.body.fields.0.property.button.color").Int(), out)
+	require.Equal(t, int64(1), clie2e.DryRunGet(out, "api.2.body.fields.0.property.trigger.type").Int(), out)
+	require.Equal(t, "wkf_x", clie2e.DryRunGet(out, "api.2.body.fields.0.property.trigger.config.id").String(), out)
+	require.False(t, clie2e.DryRunGet(out, "api.2.body.fields.0.button").Exists(), out)
+	require.False(t, clie2e.DryRunGet(out, "api.2.body.fields.0.trigger").Exists(), out)
+}

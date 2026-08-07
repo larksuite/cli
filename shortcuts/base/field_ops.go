@@ -14,6 +14,13 @@ import (
 
 var fieldCreateBatchDelay = time.Second
 
+const (
+	buttonFieldFriendlyType = "button"
+	buttonFieldLowLevelType = 3001
+	buttonFieldUIType       = "Button"
+	buttonTriggerAutomation = 1
+)
+
 func dryRunFieldList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	offset := runtime.Int("offset")
 	if offset < 0 {
@@ -52,7 +59,7 @@ func dryRunFieldCreate(_ context.Context, runtime *common.RuntimeContext) *commo
 
 func dryRunFieldUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	body, err := parseFieldJSONObject(pc, runtime.Str("json"))
 	if err != nil {
 		return common.NewDryRunAPI().Desc(fmt.Sprintf("dry-run validation failed: %v", err))
 	}
@@ -90,8 +97,7 @@ func dryRunFieldSearchOptions(_ context.Context, runtime *common.RuntimeContext)
 }
 
 func validateFieldJSON(runtime *common.RuntimeContext) (map[string]interface{}, error) {
-	pc := newParseCtx(runtime)
-	return parseJSONObject(pc, runtime.Str("json"), "json")
+	return parseFieldJSONObject(newParseCtx(runtime), runtime.Str("json"))
 }
 
 func validateFormulaLookupGuideAck(runtime *common.RuntimeContext, command string, body map[string]interface{}) error {
@@ -188,6 +194,13 @@ func parseFieldCreateBodies(pc *parseCtx, raw string) ([]map[string]interface{},
 	if len(bodies) == 0 {
 		return nil, baseFlagErrorf("--json must contain at least one field JSON object")
 	}
+	for i, body := range bodies {
+		normalized, normalizeErr := normalizeFieldBody(body)
+		if normalizeErr != nil {
+			return nil, baseValidationErrorf("--json item %d: %s", i+1, normalizeErr.Error())
+		}
+		bodies[i] = normalized
+	}
 	return bodies, nil
 }
 
@@ -195,7 +208,7 @@ func executeFieldUpdate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
-	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	body, err := parseFieldJSONObject(pc, runtime.Str("json"))
 	if err != nil {
 		return err
 	}
@@ -232,7 +245,7 @@ func fieldCreateBatchResult(result map[string]interface{}, submitted []map[strin
 
 func fieldUpdateResult(result map[string]interface{}, submitted map[string]interface{}) map[string]interface{} {
 	returnedType := normalizeFieldType(fieldResultType(result["field"]))
-	submittedType := normalizeFieldType(common.GetString(submitted, "type"))
+	submittedType := normalizeFieldType(fieldResultType(submitted))
 	readbackRecommended, reason := fieldUpdateReadbackRecommendation(returnedType, submittedType)
 	return attachFieldReadbackRecommendation(result, readbackRecommended, reason)
 }
@@ -264,14 +277,14 @@ func attachFieldReadbackRecommendation(result map[string]interface{}, readbackRe
 }
 
 func fieldWriteReadbackRecommendation(submitted map[string]interface{}, operation string) (bool, string) {
-	fieldType := normalizeFieldType(common.GetString(submitted, "type"))
+	fieldType := normalizeFieldType(fieldResultType(submitted))
 	return fieldTypeReadbackRecommendation(fieldType, operation)
 }
 
 func fieldTypeReadbackRecommendation(fieldType, operation string) (bool, string) {
 	fieldType = normalizeFieldType(fieldType)
 	switch fieldType {
-	case "formula", "lookup", "auto_number", "link":
+	case "formula", "lookup", "auto_number", "link", buttonFieldFriendlyType:
 		return true, fmt.Sprintf("computed, linked, or generated field %s should be verified with +field-get before declaring completion", operation)
 	case "text", "number", "select", "datetime", "checkbox", "user", "group_chat", "attachment", "location":
 		return false, fmt.Sprintf("simple field %s returned successfully; use +field-get only when extra properties or explicit verification are needed", operation)
@@ -289,6 +302,9 @@ func fieldResultType(value interface{}) string {
 	if !ok {
 		return ""
 	}
+	if looksLikeButtonField(field) {
+		return buttonFieldFriendlyType
+	}
 	if fieldType := strings.ToLower(strings.TrimSpace(common.GetString(field, "type"))); fieldType != "" {
 		return fieldType
 	}
@@ -296,7 +312,115 @@ func fieldResultType(value interface{}) string {
 	if !ok {
 		return ""
 	}
+	if looksLikeButtonField(nested) {
+		return buttonFieldFriendlyType
+	}
 	return strings.ToLower(strings.TrimSpace(common.GetString(nested, "type")))
+}
+
+func parseFieldJSONObject(pc *parseCtx, raw string) (map[string]interface{}, error) {
+	body, err := parseJSONObject(pc, raw, "json")
+	if err != nil {
+		return nil, err
+	}
+	return normalizeFieldBody(body)
+}
+
+func normalizeFieldBody(body map[string]interface{}) (map[string]interface{}, error) {
+	cloned := cloneMap(body)
+	if normalizeFieldType(common.GetString(cloned, "type")) != buttonFieldFriendlyType {
+		return cloned, nil
+	}
+	return normalizeButtonFieldBody(cloned)
+}
+
+func normalizeButtonFieldBody(body map[string]interface{}) (map[string]interface{}, error) {
+	name := strings.TrimSpace(common.GetString(body, "name"))
+	if name == "" {
+		return nil, baseValidationErrorf("button field requires non-empty string \"name\"")
+	}
+
+	button, ok := body["button"].(map[string]interface{})
+	if !ok {
+		return nil, baseValidationErrorf("button field requires object \"button\"")
+	}
+	button = cloneMap(button)
+	title := strings.TrimSpace(common.GetString(button, "title"))
+	if title == "" {
+		title = name
+	}
+	button["title"] = title
+	if _, exists := button["color"]; !exists {
+		button["color"] = 0
+	}
+
+	trigger, ok := body["trigger"].(map[string]interface{})
+	if !ok {
+		return nil, baseValidationErrorf("button field requires object \"trigger\"")
+	}
+	trigger = cloneMap(trigger)
+	triggerType := normalizeFieldType(common.GetString(trigger, "type"))
+	if triggerType == "" {
+		triggerType = "automation"
+	}
+	if triggerType != "automation" {
+		return nil, baseValidationErrorf("button field only supports trigger.type %q", "automation")
+	}
+	workflowID := strings.TrimSpace(common.GetString(trigger, "workflow_id"))
+	if workflowID == "" {
+		config, ok := trigger["config"].(map[string]interface{})
+		if ok {
+			workflowID = strings.TrimSpace(common.GetString(config, "id"))
+		}
+	}
+	if workflowID == "" {
+		return nil, baseValidationErrorf("button field requires non-empty string \"trigger.workflow_id\"")
+	}
+
+	normalized := cloneMap(body)
+	normalized["type"] = buttonFieldLowLevelType
+	normalized["fieldUIType"] = buttonFieldUIType
+	delete(normalized, "trigger")
+	delete(normalized, "button")
+
+	property, _ := normalized["property"].(map[string]interface{})
+	property = cloneMap(property)
+	if property == nil {
+		property = map[string]interface{}{}
+	}
+	property["button"] = button
+	property["trigger"] = map[string]interface{}{
+		"type":   buttonTriggerAutomation,
+		"config": map[string]interface{}{"id": workflowID},
+	}
+	normalized["property"] = property
+	return normalized, nil
+}
+
+func looksLikeButtonField(field map[string]interface{}) bool {
+	if strings.EqualFold(strings.TrimSpace(common.GetString(field, "fieldUIType")), buttonFieldUIType) {
+		return true
+	}
+	if fieldType, ok := field["type"].(int); ok && fieldType == buttonFieldLowLevelType {
+		return true
+	}
+	if fieldType, ok := common.GetFloatOK(field, "type"); ok && int(fieldType) == buttonFieldLowLevelType {
+		return true
+	}
+	property, _ := field["property"].(map[string]interface{})
+	if property == nil {
+		return false
+	}
+	_, hasButton := property["button"].(map[string]interface{})
+	trigger, hasTrigger := property["trigger"].(map[string]interface{})
+	if !hasButton || !hasTrigger {
+		return false
+	}
+	config, ok := trigger["config"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	return strings.TrimSpace(common.GetString(config, "id")) != ""
 }
 
 func executeFieldDelete(runtime *common.RuntimeContext) error {

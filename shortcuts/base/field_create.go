@@ -25,6 +25,7 @@ var BaseFieldCreate = common.Shortcut{
 	Tips: []string{
 		`Example text: lark-cli base +field-create --base-token <base_token> --table-id <table_id> --json '{"name":"Status","type":"text"}'`,
 		`Example select: lark-cli base +field-create --base-token <base_token> --table-id <table_id> --json '{"name":"Status","type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]}'`,
+		`Example button: create the workflow first, then bind it with lark-cli base +field-create --base-token <base_token> --table-id <table_id> --json '{"name":"Sync to CRM","type":"button","button":{"title":"Sync to CRM","color":0},"trigger":{"type":"automation","workflow_id":"wkf_xxx"}}'`,
 		"Agent hint: use the lark-base skill's field-create guide for usage and limits.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

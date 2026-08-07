@@ -857,6 +857,83 @@ func TestBaseFieldExecuteUpdate(t *testing.T) {
 	}
 }
 
+func TestBaseFieldExecuteUpdateButtonUsesLowLevelTriggerPayload(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"id":          "fld_x",
+				"name":        "同步到 CRM",
+				"type":        buttonFieldLowLevelType,
+				"fieldUIType": buttonFieldUIType,
+				"property": map[string]interface{}{
+					"button": map[string]interface{}{"title": "同步到 CRM", "color": 0},
+					"trigger": map[string]interface{}{
+						"type":   buttonTriggerAutomation,
+						"config": map[string]interface{}{"id": "wkf_x"},
+					},
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	jsonBody := `{"name":"同步到 CRM","type":"button","button":{"title":"同步到 CRM","color":0},"trigger":{"type":"automation","workflow_id":"wkf_x"}}`
+	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", jsonBody, "--yes"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	body := decodeCapturedJSONBody(t, stub)
+	if body["name"] != "同步到 CRM" {
+		t.Fatalf("request body=%#v", body)
+	}
+	if body["type"] != float64(buttonFieldLowLevelType) {
+		t.Fatalf("request body.type=%#v, want %d", body["type"], buttonFieldLowLevelType)
+	}
+	if body["fieldUIType"] != buttonFieldUIType {
+		t.Fatalf("request body.fieldUIType=%#v, want %q", body["fieldUIType"], buttonFieldUIType)
+	}
+	if _, ok := body["button"]; ok {
+		t.Fatalf("request body must not keep top-level button: %#v", body)
+	}
+	if _, ok := body["trigger"]; ok {
+		t.Fatalf("request body must not keep top-level trigger: %#v", body)
+	}
+
+	property, ok := body["property"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("request body.property=%#v", body["property"])
+	}
+	button, ok := property["button"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("request body.property.button=%#v", property["button"])
+	}
+	trigger, ok := property["trigger"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("request body.property.trigger=%#v", property["trigger"])
+	}
+	config, ok := trigger["config"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("request body.property.trigger.config=%#v", trigger["config"])
+	}
+	if common.GetString(button, "title") != "同步到 CRM" || button["color"] != float64(0) {
+		t.Fatalf("request body.property.button=%#v", button)
+	}
+	if trigger["type"] != float64(buttonTriggerAutomation) || common.GetString(config, "id") != "wkf_x" {
+		t.Fatalf("request body.property.trigger=%#v", trigger)
+	}
+
+	got := stdout.String()
+	for _, want := range []string{`"updated": true`, `"field_get_recommended": true`, `"next_step": "field_get"`, `"verification_hint"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestFieldUpdateResultAlwaysRecommendsReadback(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -887,6 +964,32 @@ func TestFieldUpdateResultAlwaysRecommendsReadback(t *testing.T) {
 			field:        map[string]interface{}{"id": "fld_x"},
 			submitted:    map[string]interface{}{"name": "Amount"},
 			hintContains: []string{"unknown or uncommon field type", "+field-get"},
+		},
+		{
+			name: "button field still recommends readback",
+			field: map[string]interface{}{
+				"type":        buttonFieldLowLevelType,
+				"fieldUIType": buttonFieldUIType,
+				"property": map[string]interface{}{
+					"button": map[string]interface{}{"title": "同步到 CRM", "color": 0},
+					"trigger": map[string]interface{}{
+						"type":   buttonTriggerAutomation,
+						"config": map[string]interface{}{"id": "wkf_x"},
+					},
+				},
+			},
+			submitted: map[string]interface{}{
+				"type":        buttonFieldLowLevelType,
+				"fieldUIType": buttonFieldUIType,
+				"property": map[string]interface{}{
+					"button": map[string]interface{}{"title": "同步到 CRM", "color": 0},
+					"trigger": map[string]interface{}{
+						"type":   buttonTriggerAutomation,
+						"config": map[string]interface{}{"id": "wkf_x"},
+					},
+				},
+			},
+			hintContains: []string{"generated field update", "+field-get"},
 		},
 	}
 
@@ -1326,6 +1429,83 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 		got := stdout.String()
 		for _, want := range []string{`"created": true`, `"fld_auto"`, `"field_get_recommended": true`, `"next_step": "field_get"`, `"verification_hint"`} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("stdout missing %q:\n%s", want, got)
+			}
+		}
+	})
+
+	t.Run("create button field normalizes to low-level payload", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		createStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"id":          "fld_btn",
+					"name":        "同步到 CRM",
+					"type":        buttonFieldLowLevelType,
+					"fieldUIType": buttonFieldUIType,
+					"property": map[string]interface{}{
+						"button": map[string]interface{}{"title": "同步到 CRM", "color": 0},
+						"trigger": map[string]interface{}{
+							"type":   buttonTriggerAutomation,
+							"config": map[string]interface{}{"id": "wkf_x"},
+						},
+					},
+				},
+			},
+		}
+		reg.Register(createStub)
+
+		jsonBody := `{"name":"同步到 CRM","type":"button","button":{"title":"同步到 CRM","color":0},"trigger":{"type":"automation","workflow_id":"wkf_x"}}`
+		if err := runShortcut(t, BaseFieldCreate, []string{"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", jsonBody}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		body := decodeCapturedJSONBody(t, createStub)
+		if body["name"] != "同步到 CRM" {
+			t.Fatalf("request body=%#v", body)
+		}
+		if body["type"] != float64(buttonFieldLowLevelType) {
+			t.Fatalf("request body.type=%#v, want %d", body["type"], buttonFieldLowLevelType)
+		}
+		if body["fieldUIType"] != buttonFieldUIType {
+			t.Fatalf("request body.fieldUIType=%#v, want %q", body["fieldUIType"], buttonFieldUIType)
+		}
+		if _, ok := body["button"]; ok {
+			t.Fatalf("request body must not keep top-level button: %#v", body)
+		}
+		if _, ok := body["trigger"]; ok {
+			t.Fatalf("request body must not keep top-level trigger: %#v", body)
+		}
+
+		property, ok := body["property"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("request body.property=%#v", body["property"])
+		}
+		button, ok := property["button"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("request body.property.button=%#v", property["button"])
+		}
+		trigger, ok := property["trigger"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("request body.property.trigger=%#v", property["trigger"])
+		}
+		config, ok := trigger["config"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("request body.property.trigger.config=%#v", trigger["config"])
+		}
+		if common.GetString(button, "title") != "同步到 CRM" || button["color"] != float64(0) {
+			t.Fatalf("request body.property.button=%#v", button)
+		}
+		if trigger["type"] != float64(buttonTriggerAutomation) || common.GetString(config, "id") != "wkf_x" {
+			t.Fatalf("request body.property.trigger=%#v", trigger)
+		}
+
+		got := stdout.String()
+		for _, want := range []string{`"created": true`, `"fld_btn"`, `"field_get_recommended": true`, `"next_step": "field_get"`, `"verification_hint"`} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("stdout missing %q:\n%s", want, got)
 			}
