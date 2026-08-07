@@ -689,7 +689,7 @@ func isoDateToSerial(s string) (float64, error) {
 		base := s[:i]
 		date, err := time.Parse("2006-01-02", base)
 		if err != nil {
-			return 0, fmt.Errorf("date %q must be ISO yyyy-mm-dd: %w", base, err)
+			return 0, fmt.Errorf("date %q must be ISO yyyy-mm-dd: %w", base, err) //nolint:forbidigo // intermediate parse error; caller wraps it with typed validation context
 		}
 		var parsed time.Time
 		clock := s[i:]
@@ -699,7 +699,7 @@ func isoDateToSerial(s string) (float64, error) {
 			parsed, err = time.Parse("2006-01-02T15:04:05.999999999", s)
 		}
 		if err != nil {
-			return 0, fmt.Errorf("datetime %q must be ISO: %w", s, err)
+			return 0, fmt.Errorf("datetime %q must be ISO: %w", s, err) //nolint:forbidigo // intermediate parse error; caller wraps it with typed validation context
 		}
 		if parsed.Location() != time.UTC {
 			// Keep the wall-clock time supplied by the caller; Excel serials do
@@ -800,7 +800,7 @@ func writeSheetData(ctx context.Context, runtime *common.RuntimeContext, token, 
 		// header:false with no data rows — visual operations still carry user
 		// intent, so apply freeze/merge/resize even when there is no cell matrix.
 		if err := applyWorkbookCreateVisualOps(ctx, runtime, token, sheetID, styles); err != nil {
-			return nil, fmt.Errorf("applying visual styles: %w", err)
+			return nil, errs.NewInternalError(errs.SubtypeFileIO, "applying visual styles: %s", err).WithCause(err)
 		}
 		return map[string]interface{}{
 			"name": s.Name, "sheet_id": sheetID, "range": "",
