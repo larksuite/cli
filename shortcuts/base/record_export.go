@@ -275,11 +275,17 @@ func executeRecordSearchNDJSON(runtime *common.RuntimeContext, requestBody map[s
 	return finalizeRecordExport(runtime, accumulator, startOffset, requestedLimit)
 }
 
-func executeRecordGetNDJSON(runtime *common.RuntimeContext, data map[string]any) error {
+func executeRecordGetNDJSON(runtime *common.RuntimeContext, data map[string]any, requestedRecordCount int) error {
 	page, err := parseRecordExportPage(data)
 	if err != nil {
 		return err
 	}
+	page.QueryContext = cloneMap(page.QueryContext)
+	if page.QueryContext == nil {
+		page.QueryContext = make(map[string]any, 2)
+	}
+	page.QueryContext["record_scope"] = "selected_record_ids"
+	page.QueryContext["requested_record_count"] = requestedRecordCount
 	accumulator := &recordExportAccumulator{}
 	if err := appendRecordExportPage(accumulator, page); err != nil {
 		return err

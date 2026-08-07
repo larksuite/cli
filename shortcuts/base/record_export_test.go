@@ -477,6 +477,9 @@ func TestRecordGetNDJSONWritesArtifact(t *testing.T) {
 			"field_type_list": []any{"text"},
 			"record_id_list":  []any{"rec_1"},
 			"data":            []any{[]any{"Alice"}},
+			"query_context": map[string]any{
+				"record_scope": "all_records", "field_scope": "all_fields",
+			},
 		}},
 	})
 	err := runShortcut(t, BaseRecordGet, []string{
@@ -492,6 +495,20 @@ func TestRecordGetNDJSONWritesArtifact(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"record_id":"rec_1"`) || !strings.Contains(string(data), `"Name":"Alice"`) {
 		t.Fatalf("get.ndjson = %s", data)
+	}
+	manifestData, err := os.ReadFile(filepath.Join(dir, "get.manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	queryContext := manifest["query_context"].(map[string]any)
+	if queryContext["record_scope"] != "selected_record_ids" ||
+		queryContext["requested_record_count"] != float64(1) ||
+		queryContext["field_scope"] != "all_fields" {
+		t.Fatalf("query_context = %#v", queryContext)
 	}
 }
 

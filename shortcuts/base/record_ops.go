@@ -600,7 +600,7 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 		return outputRecordGetMarkdown(runtime, data)
 	}
 	if runtime.Str("format") == "ndjson" {
-		return executeRecordGetNDJSON(runtime, data)
+		return executeRecordGetNDJSON(runtime, data, len(selection.recordIDs))
 	}
 	runtime.Out(data, nil)
 	return nil
