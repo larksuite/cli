@@ -150,17 +150,8 @@ func TestMailRulesReorder_FullIDsRemainInRequestedOrder(t *testing.T) {
 	}
 }
 
-func TestMailRulesReorder_DryRunCompletesPartialIDs(t *testing.T) {
-	_, stdout, reg, cmd := newMailRulesReorderCommand(t)
-	registerMailRulesListPage(reg, "me", map[string]interface{}{
-		"items": []interface{}{
-			map[string]interface{}{"rule_id": "r1"},
-			map[string]interface{}{"rule_id": "r2"},
-			map[string]interface{}{"rule_id": "r3"},
-		},
-		"has_more": false,
-	}, nil)
-
+func TestMailRulesReorder_DryRunDoesNotFetchRules(t *testing.T) {
+	_, stdout, _, cmd := newMailRulesReorderCommand(t)
 	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r2"]}`, "--dry-run"})
 	if err := cmd.execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -183,8 +174,8 @@ func TestMailRulesReorder_DryRunCompletesPartialIDs(t *testing.T) {
 	if !ok {
 		t.Fatalf("dry-run body = %#v, want object", call["body"])
 	}
-	if gotIDs := interfaceSliceToStrings(t, body["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r2", "r1", "r3"}) {
-		t.Fatalf("dry-run rule_ids = %#v, want [r2 r1 r3]", gotIDs)
+	if gotIDs := interfaceSliceToStrings(t, body["rule_ids"]); !reflect.DeepEqual(gotIDs, []string{"r2"}) {
+		t.Fatalf("dry-run rule_ids = %#v, want [r2]", gotIDs)
 	}
 }
 
@@ -205,8 +196,12 @@ func TestMailRulesReorder_ValidationErrorsDoNotCallAPIs(t *testing.T) {
 		name    string
 		data    string
 		wantMsg string
+		param   string
 	}{
+		{name: "non object body", data: `["r1"]`, wantMsg: "requires a JSON object body", param: "--data"},
 		{name: "empty", data: `{"rule_ids":[]}`, wantMsg: "at least one"},
+		{name: "not array", data: `{"rule_ids":"r1"}`, wantMsg: "rule_ids must be an array"},
+		{name: "item not string", data: `{"rule_ids":["r1",1]}`, wantMsg: "rule_ids[1] must be a string"},
 		{name: "duplicate", data: `{"rule_ids":["r1","r1"]}`, wantMsg: "duplicate rule_id: r1"},
 		{name: "empty string", data: `{"rule_ids":[""]}`, wantMsg: "empty string"},
 	}
@@ -215,7 +210,11 @@ func TestMailRulesReorder_ValidationErrorsDoNotCallAPIs(t *testing.T) {
 			_, _, _, cmd := newMailRulesReorderCommand(t)
 			cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", tt.data})
 			err := cmd.execute()
-			assertServiceValidationError(t, err, tt.wantMsg)
+			wantParam := tt.param
+			if wantParam == "" {
+				wantParam = "rule_ids"
+			}
+			assertServiceValidationErrorWithParam(t, err, tt.wantMsg, wantParam)
 		})
 	}
 }
@@ -229,6 +228,17 @@ func TestMailRulesReorder_UnknownIDDoesNotCallReorder(t *testing.T) {
 
 	err := cmd.execute()
 	assertServiceValidationError(t, err, "unknown rule_id: missing")
+}
+
+func TestMailRulesReorder_EmptyRuleListReturnsValidationError(t *testing.T) {
+	_, _, reg, cmd := newMailRulesReorderCommand(t)
+	registerMailRulesListPage(reg, "me", map[string]interface{}{
+		"has_more": false,
+	}, nil)
+	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r1"]}`})
+
+	err := cmd.execute()
+	assertServiceValidationError(t, err, "unknown rule_id: r1")
 }
 
 func TestMailRulesReorder_ListFailureDoesNotCallReorder(t *testing.T) {
@@ -245,6 +255,46 @@ func TestMailRulesReorder_ListFailureDoesNotCallReorder(t *testing.T) {
 
 	err := cmd.execute()
 	assertServiceAPIError(t, err, 999, "list failed")
+}
+
+func TestMailRulesReorder_ListLaterPageFailureDoesNotCallReorder(t *testing.T) {
+	_, _, reg, cmd := newMailRulesReorderCommand(t)
+	registerMailRulesListPage(reg, "me", map[string]interface{}{
+		"items":      []interface{}{map[string]interface{}{"rule_id": "r1"}},
+		"has_more":   true,
+		"page_token": "next-1",
+	}, nil)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules?page_token=next-1",
+		Body: map[string]interface{}{
+			"code": 999,
+			"msg":  "second page failed",
+		},
+	})
+	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r1"]}`})
+
+	err := cmd.execute()
+	assertServiceAPIError(t, err, 999, "second page failed")
+}
+
+func TestMailRulesReorder_ListMissingNextPageTokenDoesNotCallReorder(t *testing.T) {
+	_, _, reg, cmd := newMailRulesReorderCommand(t)
+	registerMailRulesListPage(reg, "me", map[string]interface{}{
+		"items":    []interface{}{map[string]interface{}{"rule_id": "r1"}},
+		"has_more": true,
+	}, nil)
+	cmd.setArgs([]string{"--as", "bot", "--params", `{"user_mailbox_id":"me"}`, "--data", `{"rule_ids":["r1"]}`})
+
+	err := cmd.execute()
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("expected internal error, got %T: %v", err, err)
+	}
+	requireProblem(t, err, errs.CategoryInternal, errs.SubtypeInvalidResponse, 0)
+	if !strings.Contains(err.Error(), "missing next page token") {
+		t.Fatalf("internal error = %q, want missing next page token", err.Error())
+	}
 }
 
 func TestMailRulesReorder_ReorderFailureIsSurfaced(t *testing.T) {
@@ -324,13 +374,18 @@ func TestMailRulesReorder_ListUsesRulesBaseWhenReorderHasSubpath(t *testing.T) {
 
 func assertServiceValidationError(t *testing.T, err error, wantSubstr string) {
 	t.Helper()
+	assertServiceValidationErrorWithParam(t, err, wantSubstr, "rule_ids")
+}
+
+func assertServiceValidationErrorWithParam(t *testing.T, err error, wantSubstr, wantParam string) {
+	t.Helper()
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected validation error, got %T: %v", err, err)
 	}
 	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, 0)
-	if validationErr.Param != "rule_ids" {
-		t.Fatalf("validation error param = %q, want rule_ids", validationErr.Param)
+	if validationErr.Param != wantParam {
+		t.Fatalf("validation error param = %q, want %q", validationErr.Param, wantParam)
 	}
 	if !strings.Contains(err.Error(), wantSubstr) {
 		t.Fatalf("validation error = %q, want substring %q", err.Error(), wantSubstr)

@@ -128,18 +128,39 @@ func listAllMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderReques
 		Params: copyRequestParamsWithoutPageToken(reorderRequest.Params),
 		As:     reorderRequest.As,
 	}
-	result, err := ac.PaginateAll(ctx, listRequest, client.PaginationOptions{
-		PageLimit: 0,
-		PageDelay: -1,
-		Identity:  reorderRequest.As,
-	})
-	if err != nil {
-		return nil, err
+	var allIDs []string
+	pageToken := ""
+	for {
+		pageRequest := listRequest
+		pageRequest.Params = copyRequestParamsWithoutPageToken(listRequest.Params)
+		if pageToken != "" {
+			pageRequest.Params["page_token"] = pageToken
+		}
+
+		result, err := ac.CallAPI(ctx, pageRequest)
+		if err != nil {
+			return nil, err
+		}
+		if apiErr := checkErr(result, reorderRequest.As); apiErr != nil {
+			return nil, apiErr
+		}
+
+		ids, err := extractMailRuleIDs(result)
+		if err != nil {
+			return nil, err
+		}
+		allIDs = append(allIDs, ids...)
+
+		nextToken, hasMore, err := nextMailRulesPageToken(result)
+		if err != nil {
+			return nil, err
+		}
+		if !hasMore {
+			break
+		}
+		pageToken = nextToken
 	}
-	if apiErr := checkErr(result, reorderRequest.As); apiErr != nil {
-		return nil, apiErr
-	}
-	return extractMailRuleIDs(result)
+	return allIDs, nil
 }
 
 func mailRulesListURL(reorderURL string) string {
@@ -162,12 +183,16 @@ func extractMailRuleIDs(result any) ([]string, error) {
 	if !ok {
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing data")
 	}
-	rules, ok := data["items"].([]any)
+	rawRules, ok := data["items"]
 	if !ok {
-		rules, ok = data["rules"].([]any)
+		rawRules, ok = data["rules"]
 	}
+	if !ok || rawRules == nil {
+		return []string{}, nil
+	}
+	rules, ok := rawRules.([]any)
 	if !ok {
-		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing items")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response items is not an array")
 	}
 
 	ids := make([]string, 0, len(rules))
@@ -186,6 +211,24 @@ func extractMailRuleIDs(result any) ([]string, error) {
 		ids = append(ids, id)
 	}
 	return ids, nil
+}
+
+func nextMailRulesPageToken(result any) (string, bool, error) {
+	data, ok := nestedMap(result, "data")
+	if !ok {
+		return "", false, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing data")
+	}
+	hasMore, _ := data["has_more"].(bool)
+	if !hasMore {
+		return "", false, nil
+	}
+	if token, ok := data["page_token"].(string); ok && token != "" {
+		return token, true, nil
+	}
+	if token, ok := data["next_page_token"].(string); ok && token != "" {
+		return token, true, nil
+	}
+	return "", false, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing next page token")
 }
 
 func nestedMap(result any, key string) (map[string]any, bool) {
