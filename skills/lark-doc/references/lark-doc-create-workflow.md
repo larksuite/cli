@@ -108,7 +108,7 @@ lark-cli docs +script --command init-draft --presentation-decision '<上方完�
 
 ### Step 6：执行 Draft Profile Check。
 
-1. 执行 `lark-cli docs +script --command parse --content "@./<draft_path>" --format json`，用于容错提取 block / 字数画像、检查 Presentation Decision，并预检资源。顶层 `ok` 只表示命令是否成功执行；以 `data.assessment.status` 判断 Profile Check 是否通过。状态为 `failed` 时根据 `data.diagnostics[]` 的 `code`、`expected` / `actual`、`image_indices` 和 `suggested` 只修改对应的最小片段；仅当草稿为空、截断或无法形成有效文档结构时才全文重建。该命令不是严格 XML schema 校验，状态为 `passed` 也不表示 XML 一定能被写入服务端。
+1. 执行 `lark-cli docs +script --command parse --content "@./<draft_path>" --format json`。顶层 `ok` 仅表示命令执行成功，是否通过看 `data.assessment.status`。失败时按 `data.diagnostics[]` 局部修复；只有草稿为空、截断或结构无效时才全文重建。`parse` 不替代 XML 规则或服务端校验。
 2. Profile Check 通过后，按 [`lark-doc-xml.md`](lark-doc-xml.md) 复查标签、属性和值，并依据 Philosophy 检查事实与来源、用户硬约束、适用 contract / adapter 以及 `visual_plan`。最终 XML 能否写入以 `docs +create` 的服务端结果为准。
 
 ### Step 7：创建文档并处理局部失败。
