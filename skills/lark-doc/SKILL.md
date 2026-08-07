@@ -1,7 +1,7 @@
 ---
 name: lark-doc
 version: 2.0.0
-description: "飞书云文档（Docx / Wiki 文档）：读取和编辑飞书文档内容。当用户给出文档 URL 或 token，或需要查看、创建、编辑文档、插入或下载文档图片附件时使用。文档中嵌入的电子表格、多维表格、画板，先用本 skill 提取 token 再切到对应 skill。当用户给出 doubao.com 的 /docx/ 或 /wiki/ URL/token 时，也应直接使用本 skill；路由依据是 URL 路径模式和 token，而不是域名。不负责文档评论管理，也不负责表格或 Base 的数据操作。当用户明确要操作飞书思维笔记时，也使用本 skill。"
+description: "飞书云文档（Docx）：仅用于明确 Docx 资源：/docx/ URL、Docx token。读取、创建和编辑 Docx 文档内容，插入或下载文档图片附件。文档中嵌入电子表格、多维表格或画板时，提取 token 后切换到对应 Skill。当用户给出 doubao.com 的 /docx/ URL/token 时，也应直接使用本 Skill；路由依据是 URL 路径模式和 token，而不是域名。不负责文档评论管理，也不负责表格或 Base 的数据操作。当用户明确要操作飞书思维笔记时，也使用本 Skill。"
 metadata:
   requires:
     bins: ["lark-cli"]

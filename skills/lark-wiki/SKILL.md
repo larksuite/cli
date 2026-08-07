@@ -1,7 +1,7 @@
 ---
 name: lark-wiki
 version: 1.0.3
-description: "飞书知识库：管理知识空间、空间成员和文档节点。创建和查询知识空间、查看和管理空间成员、管理节点层级结构、在知识库中组织文档和快捷方式。当用户需要在知识库中查找或创建文档、浏览知识空间结构、查看或管理空间成员、移动或复制节点时使用。当用户给出 doubao.com 的 /wiki/ URL/token 时，也应直接使用本 skill，不要因为域名不是飞书而回退到 WebFetch；路由依据是 URL 路径模式和 token，而不是域名。不负责：上传文件到知识库节点下（走 lark-drive）、编辑文档/表格/Base 内容（走 lark-doc / lark-sheets / lark-base）。"
+description: "飞书知识库：/wiki/ URL 或 Wiki token 的唯一初始路由入口；读取、总结或编辑其内容时，先用本 Skill 解析真实资源类型和 token，再路由到对应业务 Skill。创建和查询知识空间、查看和管理空间成员、管理节点层级结构、在知识库中组织文档和快捷方式，当用户需要在知识库中查找或创建文档、浏览知识空间结构、移动或复制节点时使用。doubao.com 的 /wiki/ URL/token 同样适用。不负责：上传文件到知识库节点下（走 lark-drive）、编辑文档/表格/Base 内容（走 lark-doc / lark-sheets / lark-base）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -24,6 +24,7 @@ metadata:
 
 ## 快速决策
 
+- 用户给出 `/wiki/` URL/token 并要求总结、读取、编辑等内容操作时，先按「身份选择」确定 `--as`（默认 user；用户明确要求 bot 时用 bot），再使用 `lark-cli wiki +node-get --node-token "<wiki_url_or_token>" --as "<selected_identity>" --format json` 识别真实 `obj_type` / `obj_token`，再按真实类型切到对应业务 skill；移动、复制、删除、成员、层级等 Wiki 节点操作继续使用 Wiki node_token 和 `lark-wiki` 命令。
 - 用户要**按特定主题 / 关键词 / 内容线索查找资料并收集到知识库节点或新建知识库节点下**，必须先阅读 [`../lark-drive/references/lark-drive-workflow.md`](../lark-drive/references/lark-drive-workflow.md)，再按其中 `Workflow Registry` 进入 [`topic_move_collector`](../lark-drive/references/lark-drive-workflow-topic-move-collector.md) workflow。该 workflow 使用 Drive 全量搜索召回，再按 Wiki 目标解析、确认和移动；不要只用 Wiki 节点列表做局部遍历。
 - 用户要**整理 / 盘点 / 归类 / 重构知识库、个人文档库、文档库目录或 Wiki 节点结构**，或要生成整理方案、目标目录树、移动计划时，不要只使用 Wiki 节点 API。必须先阅读 [`../lark-drive/references/lark-drive-workflow.md`](../lark-drive/references/lark-drive-workflow.md)，再按其中 `Workflow Registry` 进入 [`knowledge_organize`](../lark-drive/references/lark-drive-workflow-knowledge-organize.md) workflow；该 workflow 负责 Drive / Wiki / 个人文档库的统一入口解析、资源盘点、分类计划、写前确认和结果验证。
 - 用户要把**已有 Wiki 节点移出知识库，放到 Drive 文件夹或“我的空间”根目录**：使用 `wiki +move-to-drive`，不要使用 `wiki +move` 或 `drive +move`。这是会改变节点归属和权限继承的写操作，执行前确认源节点与目标位置。
@@ -60,7 +61,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli wiki +<verb> [flags]`）�
 | [`+space-create`](references/lark-wiki-space-create.md) | Create a wiki space (user identity only) |
 | [`+node-list`](references/lark-wiki-node-list.md) | List wiki nodes in a space or under a parent node (supports pagination) |
 | [`+node-copy`](references/lark-wiki-node-copy.md) | Copy a wiki node to a target space or parent node |
-| [`+node-get`](references/lark-wiki-node-get.md) | Get a wiki node's details by node_token / obj_token / Lark URL |
+| [`+node-get`](references/lark-wiki-node-get.md) | Get a wiki node's details by node_token / obj_token / Lark URL, including true obj_type / obj_token |
 | [`+node-delete`](references/lark-wiki-node-delete.md) | Delete a wiki node, polling the async delete task when needed |
 | [`+member-add`](references/lark-wiki-member-add.md) | Add a member to a wiki space |
 | [`+member-remove`](references/lark-wiki-member-remove.md) | Remove a member from a wiki space |
