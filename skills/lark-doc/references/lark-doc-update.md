@@ -122,6 +122,8 @@ lark-cli docs +update --doc "<doc_id>" --command block_replace \
   --content '<p>替换后的段落内容</p>'
 ```
 
+投票 block 也使用 `block_replace` 做整块替换：replacement 中的新 `<poll>` 会创建新的投票 block，不继承旧投票的 block id、option id、票数、投票人、发布时间或当前用户选择；如需把投票改成普通内容，直接把 `--content` 写成目标 XML。
+
 ### block_delete — 删除指定 block
 
 ```bash

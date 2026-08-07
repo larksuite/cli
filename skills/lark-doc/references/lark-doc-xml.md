@@ -9,6 +9,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 |-|-|-|
 | `<title>` | 文档标题（每篇唯一）| `align` |
 | `<checkbox>` | 待办项| `done="true"\|"false"` |
+| `<poll>` | 投票块，支持创建草稿、可选创建后发布 | `poll-type`, `is-anonymous`, `enable-due-time`, `due-time`, `publish-on-create` |
 
 ## 容器标签
 |标签|说明|关键属性|
@@ -48,6 +49,44 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 - `<sub-page-list>` — `<sub-page-list></sub-page-list>` 子页面列表块；仅 wiki 文档可插入
 - `<html5-block>`、`<okr>` — 前者在飞书文档「HTML 块」iframe 中加载单文件 HTML，内容可用 HTML 渲染时直接使用；后者创建时仅支持 root-only `<okr cycle-id="..."/>` 挂载已有 OKR。完整语法与字段规则见 [`lark-doc-xml-extended-blocks.md`](lark-doc-xml-extended-blocks.md)。
 - bitable、base_ref、synced_reference、synced_source — 不可创建，仅支持移动
+
+## 投票 block
+
+投票使用结构化 XML 表达。默认创建未发布草稿：空标题、两个空选项、单选、实名、无截止时间、结果策略固定为投票后可见。
+
+```xml
+<poll></poll>
+```
+
+带内容创建：
+
+```xml
+<poll poll-type="single" is-anonymous="false">
+  <poll-title>午饭吃什么？</poll-title>
+  <poll-option>米饭</poll-option>
+  <poll-option>面条</poll-option>
+</poll>
+```
+
+创建后尝试发布：
+
+```xml
+<poll publish-on-create="true">
+  <poll-title>午饭吃什么？</poll-title>
+  <poll-option>米饭</poll-option>
+  <poll-option>面条</poll-option>
+</poll>
+```
+
+`publish-on-create` 会先创建草稿，再尝试发布。发布失败不会回滚正文：新投票会保留为草稿，命令结果会返回 warning。调用方应检查 warning；需要确认最终状态时，重新读取并检查 `is-published`。
+
+公开可写属性只有：`poll-type="single|multiple"`、`is-anonymous="true|false"`、`enable-due-time="true|false"`、`due-time="毫秒时间戳"`、`publish-on-create="true|false"`。不要写入 `when-result-visible`、`option-id`、票数、投票人或当前用户投票状态。
+
+读取已发布投票时，XML 可能带只读结果字段，例如 `is-published`、`result-visible`、`user-count`、`poll-option count/percent/selected/voters-ref`。这些字段只用于展示，重新导入或 `block_replace` 时会被忽略；匿名投票不会通过 `reference_map` 暴露真实投票人。`voters-ref` 是读取详情的 opaque handle，不是投票操作入口。
+
+若读取结果的 `tips` 包含 `poll_detail_unavailable`，表示正文中的静态投票结构可用，但动态发布状态、进展或 voters 获取失败，本次结果不应被当作完整投票详情。
+
+修改投票配置、替换已发布投票、把投票替换成普通内容，都使用 `block_replace`，语义是删除旧 block 并插入 replacement。新 `<poll>` 会创建新的投票 block，不继承旧 block id、option id、票数、投票人、发布时间或当前用户选择。
 
 # 四、块级复制与移动
 
