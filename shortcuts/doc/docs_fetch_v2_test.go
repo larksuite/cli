@@ -572,11 +572,14 @@ func TestBuildFetchBodyIncludesFetchExtraParamByDefault(t *testing.T) {
 	if got["return_html5_block_data"] != true {
 		t.Fatalf("return_html5_block_data = %#v, want true in %#v", got["return_html5_block_data"], got)
 	}
+	if got["return_isv_block_data"] != true {
+		t.Fatalf("return_isv_block_data = %#v, want true in %#v", got["return_isv_block_data"], got)
+	}
 	if _, ok := got["reference_map_mode"]; ok {
 		t.Fatalf("extra_param should not use legacy reference_map_mode: %#v", got)
 	}
-	if len(got) != 2 {
-		t.Fatalf("extra_param should only contain fetch reference_map and html5 data toggles: %#v", got)
+	if len(got) != 3 {
+		t.Fatalf("extra_param should only contain fetch reference_map, html5 data, and isv data toggles: %#v", got)
 	}
 }
 

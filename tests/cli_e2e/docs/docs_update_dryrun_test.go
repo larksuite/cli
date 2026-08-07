@@ -60,7 +60,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--dry-run",
 			},
 			wantContains:   []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/fetch"},
-			wantExtraParam: `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`,
+			wantExtraParam: `{"enable_user_cite_reference_map":true,"return_html5_block_data":true,"return_isv_block_data":true}`,
 		},
 		{
 			name: "update",

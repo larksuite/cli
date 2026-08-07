@@ -31,11 +31,17 @@ const (
 	whiteboardTag      = "whiteboard"
 	whiteboardTypeAttr = "type"
 	whiteboardPathAttr = "path"
+
+	isvBlockTag       = "isv-block"
+	isvBlockTypeAttr  = "type"
+	isvBlockRefPrefix = "isv"
 )
 
 var (
 	html5BlockStartTagPattern = regexp.MustCompile(`(?is)<html5-block\b[^>]*>`)
 	html5BlockElementPattern  = regexp.MustCompile(`(?is)<html5-block\b[^>]*>(.*?)</html5-block>`)
+	isvBlockStartTagPattern   = regexp.MustCompile(`(?is)<isv-block\b[^>]*>`)
+	isvBlockElementPattern    = regexp.MustCompile(`(?is)<isv-block\b[^>]*>(.*?)</isv-block>`)
 	html5BlockSafeNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 	whiteboardElementPattern  = regexp.MustCompile(`(?is)<whiteboard\b[^>]*(?:/>|>.*?</whiteboard>)`)
 )
@@ -137,6 +143,19 @@ func prepareDocsV2WriteInput(runtime *common.RuntimeContext, input docsV2WriteIn
 		return docsV2WriteInput{}, err
 	}
 	refMap = mergeHTML5ReferenceMap(refMap, html5RefMap)
+
+	isvRefMap, err := isvReferenceMapFromObject(refMap)
+	if err != nil {
+		return docsV2WriteInput{}, err
+	}
+	content, isvRefMap, err = prepareISVBlockWriteContent(runtime, runtime.Str("doc-format"), content, isvRefMap)
+	if err != nil {
+		return docsV2WriteInput{}, err
+	}
+	if err := resolveISVReferenceMapPaths(runtime, isvRefMap); err != nil {
+		return docsV2WriteInput{}, err
+	}
+	refMap = mergeISVReferenceMap(refMap, isvRefMap)
 	return docsV2WriteInput{
 		Content:      content,
 		ReferenceMap: refMap,
@@ -517,6 +536,119 @@ func validateHTML5BlockWriteElementBodies(format string, content string) error {
 	return validateErr
 }
 
+func prepareISVBlockWriteContent(runtime *common.RuntimeContext, format string, content string, refMap html5BlockReferenceMap) (string, html5BlockReferenceMap, error) {
+	if !strings.Contains(content, "<isv-block") {
+		return content, compactReferenceMap(refMap), nil
+	}
+	if err := validateISVBlockWriteElementBodies(format, content); err != nil {
+		return "", nil, err
+	}
+
+	refMap = cloneReferenceMap(refMap)
+	if refMap == nil {
+		refMap = html5BlockReferenceMap{}
+	}
+	ensureReferenceGroup(refMap, isvBlockTag)
+	nextRef := nextISVBlockRef(refMap)
+
+	rewrite := func(segment string) (string, error) {
+		return rewriteISVBlockStartTags(segment, func(raw string) (string, error) {
+			tag, err := parseISVBlockStartTag(raw)
+			if err != nil {
+				return "", common.ValidationErrorf("invalid isv-block type tag for reference_map.isv-block.<ref>: %v", err).WithParam("isv-block")
+			}
+			if !tag.hasAttr(isvBlockTypeAttr) {
+				return "", common.ValidationErrorf("isv-block requires type attribute before using path or reference_map.isv-block.<ref>").WithParam("type")
+			}
+			if tag.hasAttr(html5BlockDataAttr) {
+				return "", common.ValidationErrorf("isv-block type data is reserved for SDK internals; use data-ref with reference_map.isv-block.<ref> or path=\"@relative.data\"").WithParam("isv-block")
+			}
+
+			pathValue, hasPath := tag.attr(html5BlockPathAttr)
+			dataRef, hasDataRef := tag.attr(html5BlockDataRefAttr)
+			if hasPath && hasDataRef {
+				return "", common.ValidationErrorf("isv-block type cannot contain both path and data-ref; use either path or reference_map.isv-block.<ref>").WithParam("isv-block")
+			}
+			if hasDataRef {
+				ref := strings.TrimSpace(dataRef)
+				if ref == "" {
+					return "", common.ValidationErrorf("isv-block type data-ref cannot be empty; expected reference_map.isv-block.<ref>").WithParam("data-ref")
+				}
+				if _, ok := refMap[isvBlockTag][ref]; !ok {
+					return "", common.ValidationErrorf("reference_map.%s.%s is required for isv-block type data-ref", isvBlockTag, ref).WithParam("reference_map")
+				}
+				return tag.renderTag(isvBlockTag, false), nil
+			}
+			if !hasPath {
+				return "", common.ValidationErrorf("isv-block type requires path=\"@relative.data\" or data-ref with reference_map.isv-block.<ref>").WithParam("isv-block")
+			}
+
+			data, err := readISVBlockPath(runtime, pathValue, "isv-block type path")
+			if err != nil {
+				return "", err
+			}
+			ref := nextRef()
+			refMap[isvBlockTag][ref] = html5BlockReferenceEntry{Data: data}
+			tag.removeAttrs(html5BlockPathAttr, html5BlockDataRefAttr, html5BlockDataAttr)
+			tag.Attrs = append(tag.Attrs, html5BlockAttr{Name: html5BlockDataRefAttr, Value: ref})
+			return tag.renderTag(isvBlockTag, false), nil
+		})
+	}
+
+	var (
+		out string
+		err error
+	)
+	if strings.TrimSpace(format) == "markdown" {
+		out = applyOutsideCodeFences(content, func(segment string) string {
+			if err != nil {
+				return segment
+			}
+			outSegment, rewriteErr := rewrite(segment)
+			if rewriteErr != nil {
+				err = rewriteErr
+				return segment
+			}
+			return outSegment
+		})
+	} else {
+		out, err = rewrite(content)
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	return out, compactReferenceMap(refMap), nil
+}
+
+func validateISVBlockWriteElementBodies(format string, content string) error {
+	validateSegment := func(segment string) error {
+		matches := isvBlockElementPattern.FindAllStringSubmatchIndex(segment, -1)
+		for _, match := range matches {
+			if len(match) < 4 || match[2] < 0 || match[3] < 0 {
+				continue
+			}
+			if strings.TrimSpace(segment[match[2]:match[3]]) != "" {
+				return common.ValidationErrorf("isv-block type content must be loaded from path=\"@relative.data\" or reference_map.isv-block.<ref>; remove content between <isv-block> and </isv-block>").WithParam("isv-block")
+			}
+		}
+		return nil
+	}
+
+	if strings.TrimSpace(format) != "markdown" {
+		return validateSegment(content)
+	}
+
+	var validateErr error
+	_ = applyOutsideCodeFences(content, func(segment string) string {
+		if validateErr != nil {
+			return segment
+		}
+		validateErr = validateSegment(segment)
+		return segment
+	})
+	return validateErr
+}
+
 func processHTML5BlockReferenceMapForFetch(runtime *common.RuntimeContext, format string, docToken string, data map[string]interface{}) error {
 	doc, _ := data["document"].(map[string]interface{})
 	if doc == nil {
@@ -560,6 +692,49 @@ func processHTML5BlockReferenceMapForFetch(runtime *common.RuntimeContext, forma
 	return nil
 }
 
+func processISVBlockReferenceMapForFetch(runtime *common.RuntimeContext, format string, docToken string, data map[string]interface{}) error {
+	doc, _ := data["document"].(map[string]interface{})
+	if doc == nil {
+		return nil
+	}
+	content, _ := doc["content"].(string)
+	if !hasProcessableISVBlock(format, content) {
+		return nil
+	}
+
+	refMap, err := referenceMapFromDocumentForBlock(doc, isvBlockTag)
+	if err != nil {
+		return err
+	}
+	group := refMap[isvBlockTag]
+	if group == nil {
+		return common.ValidationErrorf("document.reference_map.%s is required for fetched isv-block type content", isvBlockTag).WithParam("reference_map")
+	}
+
+	if err := validateFetchedISVBlockRefs(format, content, refMap); err != nil {
+		return err
+	}
+
+	changed := false
+	for ref, entry := range group {
+		if entry.Data == "" || len([]byte(entry.Data)) <= html5BlockReferenceMaxRaw {
+			continue
+		}
+		relPath, err := writeISVBlockReferenceFile(runtime, docToken, ref, entry.Data)
+		if err != nil {
+			return err
+		}
+		entry.Data = ""
+		entry.Path = "@" + filepath.ToSlash(relPath)
+		group[ref] = entry
+		changed = true
+	}
+	if changed {
+		doc["reference_map"] = refMap
+	}
+	return nil
+}
+
 func referenceMapFromDocument(doc map[string]interface{}) (html5BlockReferenceMap, error) {
 	raw, ok := doc["reference_map"]
 	if !ok || raw == nil {
@@ -571,6 +746,21 @@ func referenceMapFromDocument(doc map[string]interface{}) (html5BlockReferenceMa
 	}
 	if len(refMap) == 0 {
 		return nil, common.ValidationErrorf("document.reference_map is required for fetched html5-block content").WithParam("reference_map")
+	}
+	return refMap, nil
+}
+
+func referenceMapFromDocumentForBlock(doc map[string]interface{}, blockTag string) (html5BlockReferenceMap, error) {
+	raw, ok := doc["reference_map"]
+	if !ok || raw == nil {
+		return nil, common.ValidationErrorf("document.reference_map.%s is required for fetched %s content", blockTag, blockTag).WithParam("reference_map")
+	}
+	refMap, err := referenceMapFromValue(raw, "document.reference_map")
+	if err != nil {
+		return nil, err
+	}
+	if len(refMap) == 0 {
+		return nil, common.ValidationErrorf("document.reference_map.%s is required for fetched %s content", blockTag, blockTag).WithParam("reference_map")
 	}
 	return refMap, nil
 }
@@ -620,6 +810,43 @@ func validateFetchedHTML5BlockRefs(format string, content string, refMap html5Bl
 	return validateErr
 }
 
+func validateFetchedISVBlockRefs(format string, content string, refMap html5BlockReferenceMap) error {
+	validateSegment := func(segment string) error {
+		_, err := rewriteISVBlockStartTags(segment, func(raw string) (string, error) {
+			tag, parseErr := parseISVBlockStartTag(raw)
+			if parseErr != nil {
+				return raw, common.ValidationErrorf("invalid isv-block type tag in fetched content for reference_map.isv-block.<ref>: %v", parseErr).WithParam("isv-block")
+			}
+			if !tag.hasAttr(isvBlockTypeAttr) {
+				return raw, common.ValidationErrorf("fetched isv-block is missing type; cannot resolve reference_map.isv-block.<ref>").WithParam("type")
+			}
+			ref, ok := tag.attr(html5BlockDataRefAttr)
+			if !ok || strings.TrimSpace(ref) == "" {
+				return raw, common.ValidationErrorf("fetched isv-block type is missing data-ref; cannot resolve reference_map.isv-block.<ref>").WithParam("isv-block")
+			}
+			ref = strings.TrimSpace(ref)
+			if _, ok := refMap[isvBlockTag][ref]; !ok {
+				return raw, common.ValidationErrorf("document.reference_map.%s.%s is missing; cannot resolve isv-block type. Re-run fetch or check that the upstream document.reference_map field includes this ref.", isvBlockTag, ref).WithParam("reference_map")
+			}
+			return raw, nil
+		})
+		return err
+	}
+
+	if strings.TrimSpace(format) != "markdown" {
+		return validateSegment(content)
+	}
+	var validateErr error
+	_ = applyOutsideCodeFences(content, func(segment string) string {
+		if validateErr != nil {
+			return segment
+		}
+		validateErr = validateSegment(segment)
+		return segment
+	})
+	return validateErr
+}
+
 func resolveReferenceMapPaths(runtime *common.RuntimeContext, refMap html5BlockReferenceMap) error {
 	for typ, group := range refMap {
 		for ref, entry := range group {
@@ -637,6 +864,26 @@ func resolveReferenceMapPaths(runtime *common.RuntimeContext, refMap html5BlockR
 			entry.Path = ""
 			group[ref] = entry
 		}
+	}
+	return nil
+}
+
+func resolveISVReferenceMapPaths(runtime *common.RuntimeContext, refMap html5BlockReferenceMap) error {
+	group := refMap[isvBlockTag]
+	for ref, entry := range group {
+		if strings.TrimSpace(entry.Path) == "" {
+			continue
+		}
+		if entry.Data != "" {
+			return common.ValidationErrorf("reference_map.%s.%s must use either data or path, not both, for isv-block type", isvBlockTag, ref).WithParam("reference_map")
+		}
+		data, err := readISVBlockPath(runtime, entry.Path, fmt.Sprintf("reference_map.%s.%s.path for isv-block type", isvBlockTag, ref))
+		if err != nil {
+			return err
+		}
+		entry.Data = data
+		entry.Path = ""
+		group[ref] = entry
 	}
 	return nil
 }
@@ -664,6 +911,29 @@ func readHTML5BlockPath(runtime *common.RuntimeContext, pathValue string, label 
 	return string(data), nil
 }
 
+func readISVBlockPath(runtime *common.RuntimeContext, pathValue string, label string) (string, error) {
+	pathRaw := strings.TrimSpace(pathValue)
+	if !strings.HasPrefix(pathRaw, "@") {
+		return "", common.ValidationErrorf("%s %q must start with @, for example @payload.data; use reference_map.isv-block.<ref>.data for inline data", label, pathValue).WithParam("path")
+	}
+	relPath := strings.TrimSpace(strings.TrimPrefix(pathRaw, "@"))
+	if relPath == "" {
+		return "", common.ValidationErrorf("%s cannot be empty after @; expected reference_map.isv-block.<ref>.data or path=\"@relative.data\"", label).WithParam("path")
+	}
+	clean := filepath.Clean(relPath)
+	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", common.ValidationErrorf("%s %q must be a relative path within the current working directory for reference_map.isv-block.<ref>", label, pathValue).WithParam("path")
+	}
+	if strings.ToLower(filepath.Ext(clean)) != ".data" {
+		return "", common.ValidationErrorf("%s %q must point to a .data file for reference_map.isv-block.<ref>", label, pathValue).WithParam("path")
+	}
+	data, err := cmdutil.ReadInputFile(runtime.FileIO(), clean)
+	if err != nil {
+		return "", common.ValidationErrorf("%s %q cannot be read from the current working directory; check that the file exists relative to where lark-cli is running and matches reference_map.isv-block.<ref>: %v", label, clean, err).WithParam("path").WithCause(err)
+	}
+	return string(data), nil
+}
+
 func hasProcessableHTML5Block(format string, content string) bool {
 	if !strings.Contains(content, "<html5-block") {
 		return false
@@ -674,6 +944,23 @@ func hasProcessableHTML5Block(format string, content string) bool {
 	found := false
 	_ = applyOutsideCodeFences(content, func(segment string) string {
 		if strings.Contains(segment, "<html5-block") {
+			found = true
+		}
+		return segment
+	})
+	return found
+}
+
+func hasProcessableISVBlock(format string, content string) bool {
+	if !strings.Contains(content, "<isv-block") {
+		return false
+	}
+	if strings.TrimSpace(format) != "markdown" {
+		return true
+	}
+	found := false
+	_ = applyOutsideCodeFences(content, func(segment string) string {
+		if strings.Contains(segment, "<isv-block") {
 			found = true
 		}
 		return segment
@@ -756,6 +1043,17 @@ func html5ReferenceMapFromObject(refMap map[string]interface{}) (html5BlockRefer
 	return referenceMapFromValue(map[string]interface{}{html5BlockTag: group}, "reference_map."+html5BlockTag)
 }
 
+func isvReferenceMapFromObject(refMap map[string]interface{}) (html5BlockReferenceMap, error) {
+	if len(refMap) == 0 {
+		return nil, nil
+	}
+	group, ok := refMap[isvBlockTag]
+	if !ok || group == nil {
+		return nil, nil
+	}
+	return referenceMapFromValue(map[string]interface{}{isvBlockTag: group}, "reference_map."+isvBlockTag)
+}
+
 func mergeHTML5ReferenceMap(refMap map[string]interface{}, html5RefMap html5BlockReferenceMap) map[string]interface{} {
 	group := html5RefMap[html5BlockTag]
 	if len(group) == 0 {
@@ -765,6 +1063,18 @@ func mergeHTML5ReferenceMap(refMap map[string]interface{}, html5RefMap html5Bloc
 		refMap = map[string]interface{}{}
 	}
 	refMap[html5BlockTag] = group
+	return refMap
+}
+
+func mergeISVReferenceMap(refMap map[string]interface{}, isvRefMap html5BlockReferenceMap) map[string]interface{} {
+	group := isvRefMap[isvBlockTag]
+	if len(group) == 0 {
+		return refMap
+	}
+	if refMap == nil {
+		refMap = map[string]interface{}{}
+	}
+	refMap[isvBlockTag] = group
 	return refMap
 }
 
@@ -804,6 +1114,19 @@ func nextHTML5BlockRef(refMap html5BlockReferenceMap) func() string {
 	}
 }
 
+func nextISVBlockRef(refMap html5BlockReferenceMap) func() string {
+	next := 1
+	return func() string {
+		for {
+			ref := fmt.Sprintf("%s_%d", isvBlockRefPrefix, next)
+			next++
+			if _, exists := refMap[isvBlockTag][ref]; !exists {
+				return ref
+			}
+		}
+	}
+}
+
 func writeHTML5BlockReferenceFile(runtime *common.RuntimeContext, docToken string, ref string, html string) (string, error) {
 	if !isSafeHTML5BlockResourceName(docToken) {
 		return "", common.ValidationErrorf("document_id %q cannot be used as a resource directory name", docToken).WithParam("document_id")
@@ -822,6 +1145,28 @@ func writeHTML5BlockReferenceFile(runtime *common.RuntimeContext, docToken strin
 			return "", common.ValidationErrorf("cannot write html5-block reference file %q: %v", relPath, err).WithParam("reference_map").WithCause(err)
 		}
 		return "", errs.NewInternalError(errs.SubtypeFileIO, "cannot write html5-block reference file %q: %v", relPath, err).WithCause(err)
+	}
+	return relPath, nil
+}
+
+func writeISVBlockReferenceFile(runtime *common.RuntimeContext, docToken string, ref string, data string) (string, error) {
+	if !isSafeHTML5BlockResourceName(docToken) {
+		return "", common.ValidationErrorf("document_id %q cannot be used as a resource directory name for isv-block type reference_map.isv-block.<ref>", docToken).WithParam("document_id")
+	}
+	if !isSafeHTML5BlockResourceName(ref) {
+		return "", common.ValidationErrorf("isv-block type data-ref %q cannot be used as a file name for reference_map.isv-block.<ref>", ref).WithParam("data-ref")
+	}
+	relPath := filepath.Join(html5BlockReferenceRoot, docToken, ref+".data")
+	raw := []byte(data)
+	_, err := runtime.FileIO().Save(relPath, fileio.SaveOptions{
+		ContentType:   "application/octet-stream",
+		ContentLength: int64(len(raw)),
+	}, bytes.NewReader(raw))
+	if err != nil {
+		if errors.Is(err, fileio.ErrPathValidation) {
+			return "", common.ValidationErrorf("cannot write isv-block type reference_map.isv-block.<ref> file %q: %v", relPath, err).WithParam("reference_map").WithCause(err)
+		}
+		return "", errs.NewInternalError(errs.SubtypeFileIO, "cannot write isv-block reference file %q: %v", relPath, err).WithCause(err)
 	}
 	return relPath, nil
 }
@@ -849,7 +1194,34 @@ func rewriteHTML5BlockStartTags(content string, fn func(raw string) (string, err
 	return out, nil
 }
 
+func rewriteISVBlockStartTags(content string, fn func(raw string) (string, error)) (string, error) {
+	var rewriteErr error
+	out := isvBlockStartTagPattern.ReplaceAllStringFunc(content, func(raw string) string {
+		if rewriteErr != nil {
+			return raw
+		}
+		rewritten, err := fn(raw)
+		if err != nil {
+			rewriteErr = err
+			return raw
+		}
+		return rewritten
+	})
+	if rewriteErr != nil {
+		return "", rewriteErr
+	}
+	return out, nil
+}
+
 func parseHTML5BlockStartTag(raw string) (html5BlockStartTag, error) {
+	return parseBlockStartTag(raw, html5BlockTag)
+}
+
+func parseISVBlockStartTag(raw string) (html5BlockStartTag, error) {
+	return parseBlockStartTag(raw, isvBlockTag)
+}
+
+func parseBlockStartTag(raw string, expectedTag string) (html5BlockStartTag, error) {
 	trimmed := strings.TrimSpace(raw)
 	selfClosing := strings.HasSuffix(trimmed, "/>")
 	decoder := xml.NewDecoder(strings.NewReader(raw))
@@ -865,8 +1237,8 @@ func parseHTML5BlockStartTag(raw string) (html5BlockStartTag, error) {
 		if !ok {
 			continue
 		}
-		if start.Name.Local != html5BlockTag {
-			return html5BlockStartTag{}, fmt.Errorf("expected <%s>, got <%s>", html5BlockTag, start.Name.Local) //nolint:forbidigo // intermediate parse helper; callers wrap with typed validation errors.
+		if start.Name.Local != expectedTag {
+			return html5BlockStartTag{}, fmt.Errorf("expected <%s>, got <%s>", expectedTag, start.Name.Local) //nolint:forbidigo // intermediate parse helper; callers wrap with typed validation errors.
 		}
 		attrs := make([]html5BlockAttr, 0, len(start.Attr))
 		for _, attr := range start.Attr {
@@ -969,9 +1341,13 @@ func (t *whiteboardStartTag) setAttr(name string, value string) {
 }
 
 func (t html5BlockStartTag) render(selfClosing bool) string {
+	return t.renderTag(html5BlockTag, selfClosing)
+}
+
+func (t html5BlockStartTag) renderTag(tag string, selfClosing bool) string {
 	var b strings.Builder
 	b.WriteByte('<')
-	b.WriteString(html5BlockTag)
+	b.WriteString(tag)
 	for _, attr := range t.Attrs {
 		b.WriteByte(' ')
 		b.WriteString(attr.Name)
@@ -986,7 +1362,7 @@ func (t html5BlockStartTag) render(selfClosing bool) string {
 	}
 	if t.SelfClosing && !selfClosing {
 		b.WriteString("</")
-		b.WriteString(html5BlockTag)
+		b.WriteString(tag)
 		b.WriteByte('>')
 	}
 	return b.String()

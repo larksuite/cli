@@ -28,7 +28,13 @@ func (p *countingFileIOProvider) ResolveFileIO(context.Context) fileio.FileIO {
 	return &localfileio.LocalFileIO{}
 }
 
+func disableRemoteMetaForFactoryTest(t *testing.T) {
+	t.Helper()
+	t.Setenv("LARKSUITE_CLI_REMOTE_META", "off")
+}
+
 func TestNewDefault_InvocationProfileUsedByStrictModeAndConfig(t *testing.T) {
+	disableRemoteMetaForFactoryTest(t)
 	t.Setenv(envvars.CliAppID, "")
 	t.Setenv(envvars.CliAppSecret, "")
 	t.Setenv(envvars.CliUserAccessToken, "")
@@ -77,6 +83,7 @@ func TestNewDefault_InvocationProfileUsedByStrictModeAndConfig(t *testing.T) {
 }
 
 func TestNewDefault_InvocationProfileMissingSticksAcrossEarlyStrictMode(t *testing.T) {
+	disableRemoteMetaForFactoryTest(t)
 	t.Setenv(envvars.CliAppID, "")
 	t.Setenv(envvars.CliAppSecret, "")
 	t.Setenv(envvars.CliUserAccessToken, "")
@@ -118,6 +125,7 @@ func TestNewDefault_InvocationProfileMissingSticksAcrossEarlyStrictMode(t *testi
 }
 
 func TestNewDefault_ResolveAs_UsesDefaultAsFromEnvAccount(t *testing.T) {
+	disableRemoteMetaForFactoryTest(t)
 	t.Setenv(envvars.CliAppID, "env-app")
 	t.Setenv(envvars.CliAppSecret, "env-secret")
 	t.Setenv(envvars.CliDefaultAs, "user")
@@ -138,6 +146,7 @@ func TestNewDefault_ResolveAs_UsesDefaultAsFromEnvAccount(t *testing.T) {
 }
 
 func TestNewDefault_ConfigReturnsCliConfigCopyOfCredentialAccount(t *testing.T) {
+	disableRemoteMetaForFactoryTest(t)
 	t.Setenv(envvars.CliAppID, "env-app")
 	t.Setenv(envvars.CliAppSecret, "env-secret")
 	t.Setenv(envvars.CliDefaultAs, "")
@@ -163,6 +172,7 @@ func TestNewDefault_ConfigReturnsCliConfigCopyOfCredentialAccount(t *testing.T) 
 }
 
 func TestNewDefault_ConfigUsesRuntimePlaceholderForTokenOnlyEnvAccount(t *testing.T) {
+	disableRemoteMetaForFactoryTest(t)
 	t.Setenv(envvars.CliAppID, "env-app")
 	t.Setenv(envvars.CliAppSecret, "")
 	t.Setenv(envvars.CliDefaultAs, "")

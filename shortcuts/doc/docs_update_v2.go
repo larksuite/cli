@@ -152,9 +152,44 @@ func executeUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if err := ensureDocsUpdateResultSucceeded(data); err != nil {
+		return err
+	}
 
 	runtime.OutRaw(data, nil)
 	return nil
+}
+
+func ensureDocsUpdateResultSucceeded(data map[string]interface{}) error {
+	result, _ := data["result"].(string)
+	if !strings.EqualFold(strings.TrimSpace(result), "failed") {
+		return nil
+	}
+	return errs.NewAPIError(errs.SubtypeServerError, "docs update result=failed: %s", docsUpdateFailureDetail(data))
+}
+
+func docsUpdateFailureDetail(data map[string]interface{}) string {
+	for _, key := range []string{"warnings", "error", "message", "msg"} {
+		if detail := docsUpdateFailureValue(data[key]); detail != "" {
+			return fmt.Sprintf("%s=%s", key, detail)
+		}
+	}
+	return "backend accepted the request but did not apply the operation"
+}
+
+func docsUpdateFailureValue(value interface{}) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(typed)
+	default:
+		raw, err := json.Marshal(typed)
+		if err == nil {
+			return string(raw)
+		}
+		return fmt.Sprint(typed)
+	}
 }
 
 func buildUpdateBody(runtime *common.RuntimeContext) map[string]interface{} {

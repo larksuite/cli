@@ -64,15 +64,19 @@ func assertValidationContract(t *testing.T, err error, wantSubtype errs.Subtype,
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf() ok = false for %T (%v)", err, err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Errorf("category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != wantSubtype {
+		t.Errorf("subtype = %q, want %q", problem.Subtype, wantSubtype)
+	}
 	var ve *errs.ValidationError
 	if !errors.As(err, &ve) {
 		t.Fatalf("error type = %T, want *errs.ValidationError (%v)", err, err)
-	}
-	if ve.Category != errs.CategoryValidation {
-		t.Errorf("category = %q, want %q", ve.Category, errs.CategoryValidation)
-	}
-	if ve.Subtype != wantSubtype {
-		t.Errorf("subtype = %q, want %q", ve.Subtype, wantSubtype)
 	}
 	if ve.Param != wantParam {
 		t.Errorf("param = %q, want %q", ve.Param, wantParam)
