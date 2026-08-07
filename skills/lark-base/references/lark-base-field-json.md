@@ -39,6 +39,7 @@
 | `formula` | `type` `name` `expression` | 无 |
 | `lookup` | `type` `name` `from` `select` `where` | `aggregate` |
 | `auto_number` | `type` `name` | `style.rules` |
+| `button` | `type` `name` `button` `trigger` | `button.title` `button.color` |
 | `attachment` / `location` / `checkbox` | `type` `name` | 无 |
 
 所有类型都可额外传 `description`；上表的“常见补充字段”只列类型特有配置。
@@ -493,7 +494,39 @@
 }
 ```
 
-### 3.12 attachment / location / checkbox
+### 3.12 button
+
+按钮字段；用于在单元格内展示一个按钮，并绑定到自动化 Workflow。使用前先创建一个带按钮触发器的 Workflow，再把它的 `workflow_id` 绑定到字段上。
+
+支持字段：`button`、`trigger`
+
+默认值 / 约束：
+- `button` 必填，结构是 `{title, color?}`
+- `button.title` 默认回退到字段 `name`
+- `button.color` 默认 `0`
+- `trigger` 必填，结构是 `{type, workflow_id}`
+- `trigger.type` 当前只支持 `automation`；省略时默认 `automation`
+- `trigger.workflow_id` 必填；也可兼容传 `trigger.config.id`，但 SSOT 推荐始终写 `workflow_id`
+- CLI 会把这个 friendly JSON 归一化成底层 OpenAPI payload：`type:3001`、`fieldUIType:\"Button\"`、`property.button`、`property.trigger.type:1`、`property.trigger.config.id`
+
+推荐写法：
+
+```json
+{
+  "type": "button",
+  "name": "同步到 CRM",
+  "button": {
+    "title": "同步到 CRM",
+    "color": 0
+  },
+  "trigger": {
+    "type": "automation",
+    "workflow_id": "wkf_xxx"
+  }
+}
+```
+
+### 3.13 attachment / location / checkbox
 
 ```json
 { "type": "attachment", "name": "附件" }
@@ -513,10 +546,13 @@
 
 - `+field-create`：按目标字段配置直接构造 `--json`。
 - `+field-update`：使用同样的 JSON 结构，但语义是 `PUT`；建议先 `+field-get`，再按目标完整状态提交，并带 `--yes`。当 `type` 是 `auto_number` 时，更新编号规则本身就会把新规则应用到已有编号，无需额外参数，也不要在 JSON 里塞额外的底层实现参数。
+- `type=button` 时，先创建 Workflow，再创建或更新按钮字段绑定 `workflow_id`。按钮字段属于生成/联动型字段，创建或更新成功后都建议执行 `+field-get` 确认服务端最终结构。
 
 ## 5. 暂不支持字段
 
-Object（对象字段）、Button（按钮字段）、Stage（流程字段）暂时都没有被 CLI 支持。这些字段会展示为 `not_support` 字段并被保护：不允许修改，不允许读取内容。
+Object（对象字段）和 Stage（流程字段）暂时都没有被 CLI 支持。这些字段会展示为 `not_support` 字段并被保护：不允许修改，不允许读取内容。
+
+Button（按钮字段）已经支持，按本文档的 friendly JSON 写法创建或更新即可；不要手写底层 `type:3001` / `fieldUIType:"Button"` 结构，除非是在调试服务端原始返回。
 
 遇到暂不支持的字段类型时，直接说明 Base CLI 当前不支持并停止；不要猜测未注册的字段 JSON、service 或 schema，也不要用其他字段类型冒充目标能力。
 
@@ -526,4 +562,5 @@ Object（对象字段）、Button（按钮字段）、Stage（流程字段）暂
 - `number` 的精度、货币、进度、评分配置都放在 `style` 下，不要写顶层 `precision`。
 - `datetime` 是手动日期字段；系统时间请改用 `created_at` / `updated_at`。
 - `formula` / `lookup` 没读 guide 前不要直接写。
+- `button` 必须先有 Workflow；不要把未创建的 `workflow_id` 写进字段 JSON，也不要把 `button` / `trigger` 同时再塞进底层 `property`。
 - 只有 `text`、`number`、静态 `select`、`datetime`、`user` 支持 `default_value`；清空统一传 `"default_value": null`。其他字段类型不要配置默认值。

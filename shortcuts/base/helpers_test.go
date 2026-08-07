@@ -173,6 +173,144 @@ func TestBuildTableFieldBodies(t *testing.T) {
 	}
 }
 
+func TestNormalizeButtonFieldBody(t *testing.T) {
+	body, err := normalizeFieldBody(map[string]interface{}{
+		"name": "同步到 CRM",
+		"type": "button",
+		"button": map[string]interface{}{
+			"title": "同步到 CRM",
+			"color": float64(2),
+		},
+		"trigger": map[string]interface{}{
+			"type":        "automation",
+			"workflow_id": "wkf_sync",
+		},
+	})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := body["type"]; got != buttonFieldLowLevelType {
+		t.Fatalf("type=%v, want %d", got, buttonFieldLowLevelType)
+	}
+	if got := body["fieldUIType"]; got != buttonFieldUIType {
+		t.Fatalf("fieldUIType=%v, want %q", got, buttonFieldUIType)
+	}
+	property, _ := body["property"].(map[string]interface{})
+	if property == nil {
+		t.Fatalf("property missing: %#v", body)
+	}
+	button, _ := property["button"].(map[string]interface{})
+	if button == nil || button["title"] != "同步到 CRM" || toInt(button["color"]) != 2 {
+		t.Fatalf("button=%#v", button)
+	}
+	trigger, _ := property["trigger"].(map[string]interface{})
+	if trigger == nil || toInt(trigger["type"]) != buttonTriggerAutomation {
+		t.Fatalf("trigger=%#v", trigger)
+	}
+	config, _ := trigger["config"].(map[string]interface{})
+	if config == nil || config["id"] != "wkf_sync" {
+		t.Fatalf("config=%#v", config)
+	}
+	if _, exists := body["button"]; exists {
+		t.Fatalf("friendly button payload should be normalized away: %#v", body)
+	}
+	if _, exists := body["trigger"]; exists {
+		t.Fatalf("friendly trigger payload should be normalized away: %#v", body)
+	}
+}
+
+func TestNormalizeButtonFieldBodyDefaultsAndErrors(t *testing.T) {
+	body, err := normalizeFieldBody(map[string]interface{}{
+		"name": "同步到 CRM",
+		"type": "button",
+		"button": map[string]interface{}{},
+		"trigger": map[string]interface{}{
+			"config": map[string]interface{}{"id": "wkf_sync"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	property, _ := body["property"].(map[string]interface{})
+	button, _ := property["button"].(map[string]interface{})
+	if button["title"] != "同步到 CRM" || toInt(button["color"]) != 0 {
+		t.Fatalf("button defaults=%#v", button)
+	}
+	trigger, _ := property["trigger"].(map[string]interface{})
+	if toInt(trigger["type"]) != buttonTriggerAutomation {
+		t.Fatalf("trigger default=%#v", trigger)
+	}
+
+	tests := []struct {
+		name string
+		body map[string]interface{}
+		want string
+	}{
+		{
+			name: "missing button",
+			body: map[string]interface{}{
+				"name": "同步到 CRM",
+				"type": "button",
+				"trigger": map[string]interface{}{"workflow_id": "wkf_sync"},
+			},
+			want: `requires object "button"`,
+		},
+		{
+			name: "missing workflow_id",
+			body: map[string]interface{}{
+				"name": "同步到 CRM",
+				"type": "button",
+				"button": map[string]interface{}{},
+				"trigger": map[string]interface{}{"type": "automation"},
+			},
+			want: `requires non-empty string "trigger.workflow_id"`,
+		},
+		{
+			name: "unsupported trigger type",
+			body: map[string]interface{}{
+				"name": "同步到 CRM",
+				"type": "button",
+				"button": map[string]interface{}{},
+				"trigger": map[string]interface{}{"type": "url", "workflow_id": "wkf_sync"},
+			},
+			want: `only supports trigger.type "automation"`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := normalizeFieldBody(tc.body)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err=%v, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestFieldResultTypeRecognizesButtonField(t *testing.T) {
+	if got := fieldResultType(map[string]interface{}{
+		"type":        float64(buttonFieldLowLevelType),
+		"fieldUIType": buttonFieldUIType,
+		"property": map[string]interface{}{
+			"button":  map[string]interface{}{"title": "同步到 CRM", "color": float64(0)},
+			"trigger": map[string]interface{}{"type": float64(buttonTriggerAutomation), "config": map[string]interface{}{"id": "wkf_sync"}},
+		},
+	}); got != buttonFieldFriendlyType {
+		t.Fatalf("fieldResultType(button)=%q", got)
+	}
+	if got := fieldResultType(map[string]interface{}{
+		"field": map[string]interface{}{
+			"type":        float64(buttonFieldLowLevelType),
+			"fieldUIType": buttonFieldUIType,
+			"property": map[string]interface{}{
+				"button":  map[string]interface{}{"title": "同步到 CRM", "color": float64(0)},
+				"trigger": map[string]interface{}{"type": float64(buttonTriggerAutomation), "config": map[string]interface{}{"id": "wkf_sync"}},
+			},
+		},
+	}); got != buttonFieldFriendlyType {
+		t.Fatalf("fieldResultType(nested button)=%q", got)
+	}
+}
+
 func TestBaseV3Helpers(t *testing.T) {
 	if baseV3Path("/bases/", "app_1", "/tables/", "tbl_1") != "/open-apis/base/v3/bases/app_1/tables/tbl_1" {
 		t.Fatalf("baseV3Path mismatch")

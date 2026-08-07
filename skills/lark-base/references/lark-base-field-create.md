@@ -29,6 +29,15 @@ lark-cli base +field-create \
   --base-token <base_token> \
   --table-id <table_id> \
   --json '{"name":"负责人","type":"user","multiple":false,"default_value":[{"$slot":"current_user"}],"description":"用于标记记录的直接负责人；协作约定可参考[团队字段约定](https://example.com/field-spec)"}'
+
+lark-cli base +workflow-create \
+  --base-token <base_token> \
+  --json '<button-trigger-workflow-json>'
+
+lark-cli base +field-create \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --json '{"name":"同步到 CRM","type":"button","button":{"title":"同步到 CRM","color":0},"trigger":{"type":"automation","workflow_id":"wkf_xxx"}}'
 ```
 
 ## 参数
@@ -57,6 +66,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
   - `link`：必须有 `link_table`，可选 `bidirectional`、`bidirectional_link_field_name`。
   - `formula`：必须有 `expression`；先读 formula guide，再创建。
   - `lookup`：必须有 `from`、`select`、`where`；先读 lookup guide，再创建。
+  - `button`：必须有 `button` 和 `trigger`；其中 `trigger.type` 只支持 `automation`，并且必须先创建 Workflow 再写入 `trigger.workflow_id`。
 
 **正确（base +field-create）**
 
@@ -84,22 +94,41 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 }
 ```
 
+**按钮字段示例**
+
+```json
+{
+  "name": "同步到 CRM",
+  "type": "button",
+  "button": {
+    "title": "同步到 CRM",
+    "color": 0
+  },
+  "trigger": {
+    "type": "automation",
+    "workflow_id": "wkf_xxx"
+  }
+}
+```
+
 ## 返回重点
 
 - 返回 `field` 和 `created: true`。
 - 如果返回 `field_get_recommended:false` 且 `next_step:"done"`，表示本次是简单字段创建，通常不需要立刻执行 `+field-get`。
-- 如果返回 `field_get_recommended:true` 或 `next_step:"field_get"`，按 `verification_hint` 读回字段；`formula`、`lookup`、`link`、`auto_number` 等计算、关联或生成型字段更适合读回确认服务端最终结构。
+- 如果返回 `field_get_recommended:true` 或 `next_step:"field_get"`，按 `verification_hint` 读回字段；`formula`、`lookup`、`link`、`auto_number`、`button` 等计算、关联或生成型字段更适合读回确认服务端最终结构。
 
 ## 工作流
 
 
 1. formula / lookup 字段必须先阅读对应指南；没读之前不要直接创建。
-2. 创建简单字段时，优先相信命令返回；只有用户要求精确核对额外属性，或返回建议读回时，才继续执行 `+field-get`。
+2. 如果创建 `button` 字段，先创建带按钮触发器的 Workflow，再把它的 `workflow_id` 写入字段 JSON。
+3. 创建简单字段时，优先相信命令返回；只有用户要求精确核对额外属性，或返回建议读回时，才继续执行 `+field-get`。
 
 ## 坑点
 
 - ⚠️ 这是写入操作，执行前必须确认。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先读对应 guide，再创建。
+- ⚠️ 当 `type` 是 `button` 时，必须先创建 Workflow；不要猜测 `workflow_id`，也不要直接手写底层 `type:3001` 结构。
 - ⚠️ 不要把“每次创建后都 `+field-get`”当作固定流程；按返回里的 `field_get_recommended` 和 `next_step` 决定是否读回。
 
 ## 参考

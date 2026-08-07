@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -144,9 +145,15 @@ func buildTableCreateBody(runtime *common.RuntimeContext, pc *parseCtx, tableNam
 		return nil, err
 	}
 	for idx, item := range fieldItems {
-		if _, ok := item.(map[string]interface{}); !ok {
+		fieldBody, ok := item.(map[string]interface{})
+		if !ok {
 			return nil, baseValidationErrorf("--fields item %d must be an object", idx+1)
 		}
+		normalized, normalizeErr := normalizeFieldBody(fieldBody)
+		if normalizeErr != nil {
+			return nil, baseValidationErrorf("--fields item %d: %s", idx+1, normalizeErr.Error())
+		}
+		fieldItems[idx] = normalized
 	}
 	if len(fieldItems) > 0 {
 		body["fields"] = fieldItems
@@ -163,6 +170,19 @@ func dryRunTableCreateBody(runtime *common.RuntimeContext, tableName string) map
 	if err != nil {
 		body["fields"] = "<invalid_fields_json>"
 		return body
+	}
+	for idx, item := range fieldItems {
+		fieldBody, ok := item.(map[string]interface{})
+		if !ok {
+			body["fields"] = "<invalid_fields_json>"
+			return body
+		}
+		normalized, normalizeErr := normalizeFieldBody(fieldBody)
+		if normalizeErr != nil {
+			body["fields"] = fmt.Sprintf("<invalid_fields_json: item %d: %s>", idx+1, normalizeErr.Error())
+			return body
+		}
+		fieldItems[idx] = normalized
 	}
 	body["fields"] = fieldItems
 	return body
