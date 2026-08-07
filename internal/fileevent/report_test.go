@@ -72,7 +72,6 @@ func TestReportUploadReportsEveryCallWithMinimalBody(t *testing.T) {
 	meta := UploadMeta{
 		APIPath:      "/open-apis/drive/v1/medias/upload_all",
 		Command:      "drive +upload",
-		UploadMode:   "singlepart",
 		ResourceType: "media",
 		ParentType:   "docx_file",
 		FileToken:    "boxcnabc123",
@@ -95,7 +94,6 @@ func TestReportUploadReportsEveryCallWithMinimalBody(t *testing.T) {
 		"status":        StatusSuccess,
 		"api_path":      meta.APIPath,
 		"command":       meta.Command,
-		"upload_mode":   meta.UploadMode,
 		"resource_type": meta.ResourceType,
 		"mount_point":   meta.ParentType,
 		"file_token":    meta.FileToken,
@@ -105,6 +103,9 @@ func TestReportUploadReportsEveryCallWithMinimalBody(t *testing.T) {
 		if got := tags[key]; got != want {
 			t.Fatalf("tags.%s = %q, want %q", key, got, want)
 		}
+	}
+	if _, ok := tags["upload_mode"]; ok {
+		t.Fatal("tags.upload_mode must be omitted")
 	}
 	if _, ok := body["user_id"]; ok {
 		t.Fatal("user_id must be omitted")

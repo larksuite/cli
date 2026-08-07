@@ -401,8 +401,8 @@ func TestUploadDriveMediaAllTypedReportsFileEventOnSuccess(t *testing.T) {
 	if got := tags["api_path"]; got != "/open-apis/drive/v1/medias/upload_all" {
 		t.Fatalf("tags.api_path = %v", got)
 	}
-	if got := tags["upload_mode"]; got != "singlepart" {
-		t.Fatalf("tags.upload_mode = %v, want singlepart", got)
+	if _, ok := tags["upload_mode"]; ok {
+		t.Fatal("tags.upload_mode must be omitted")
 	}
 	if got := tags["resource_type"]; got != "media" {
 		t.Fatalf("tags.resource_type = %v, want media", got)
@@ -523,8 +523,8 @@ func TestUploadDriveMediaMultipartTypedReportsFileEventOnPrepareError(t *testing
 	}
 
 	tags := assertSingleReport(t, reportStub, fileevent.StatusError)
-	if got := tags["upload_mode"]; got != "multipart" {
-		t.Fatalf("tags.upload_mode = %v, want multipart", got)
+	if _, ok := tags["upload_mode"]; ok {
+		t.Fatal("tags.upload_mode must be omitted")
 	}
 	if got := tags["api_path"]; got != "/open-apis/drive/v1/medias/upload_prepare" {
 		t.Fatalf("tags.api_path = %v, want upload_prepare", got)
@@ -585,8 +585,8 @@ func TestUploadDriveMediaMultipartTypedReportsFileEventOnSuccess(t *testing.T) {
 	}
 
 	tags := assertSingleReport(t, reportStub, fileevent.StatusSuccess)
-	if got := tags["upload_mode"]; got != "multipart" {
-		t.Fatalf("tags.upload_mode = %v, want multipart", got)
+	if _, ok := tags["upload_mode"]; ok {
+		t.Fatal("tags.upload_mode must be omitted")
 	}
 	if got := tags["api_path"]; got != "/open-apis/drive/v1/medias/upload_finish" {
 		t.Fatalf("tags.api_path = %v, want upload_finish", got)

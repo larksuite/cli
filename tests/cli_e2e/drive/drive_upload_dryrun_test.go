@@ -119,7 +119,6 @@ func assertDriveUploadReportDryRun(t *testing.T, out, mountPoint string) {
 		"api.1.body.operation":          "upload",
 		"api.1.body.tags.api_path":      "/open-apis/drive/v1/files/upload_all",
 		"api.1.body.tags.command":       "drive +upload",
-		"api.1.body.tags.upload_mode":   "singlepart",
 		"api.1.body.tags.resource_type": "file",
 		"api.1.body.tags.status":        "success",
 		"api.1.body.tags.mount_point":   mountPoint,
@@ -129,5 +128,8 @@ func assertDriveUploadReportDryRun(t *testing.T, out, mountPoint string) {
 		if got := clie2e.DryRunGet(out, path).String(); got != want {
 			t.Fatalf("data.%s = %q, want %q\nstdout:\n%s", path, got, want, out)
 		}
+	}
+	if clie2e.DryRunGet(out, "api.1.body.tags.upload_mode").Exists() {
+		t.Fatalf("data.api.1.body.tags.upload_mode must be omitted\nstdout:\n%s", out)
 	}
 }

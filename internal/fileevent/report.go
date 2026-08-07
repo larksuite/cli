@@ -106,7 +106,6 @@ type Runtime interface {
 type UploadMeta struct {
 	APIPath      string
 	Command      string
-	UploadMode   string
 	ResourceType string
 	Status       string
 	Code         string
@@ -258,7 +257,6 @@ func buildUploadReportRequest(runtime Runtime, meta UploadMeta) map[string]inter
 		"code":          strings.TrimSpace(meta.Code),
 		"api_path":      strings.TrimSpace(meta.APIPath),
 		"command":       command,
-		"upload_mode":   strings.TrimSpace(meta.UploadMode),
 		"resource_type": strings.TrimSpace(meta.ResourceType),
 		"status":        strings.TrimSpace(meta.Status),
 		"mount_point":   strings.TrimSpace(meta.ParentType),

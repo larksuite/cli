@@ -64,7 +64,6 @@ func TestDriveImportDryRunFolderTokenWikiProbe(t *testing.T) {
 		"api.2.body.operation":          "upload",
 		"api.2.body.tags.api_path":      "/open-apis/drive/v1/medias/upload_all",
 		"api.2.body.tags.command":       "drive +import",
-		"api.2.body.tags.upload_mode":   "singlepart",
 		"api.2.body.tags.resource_type": "media",
 		"api.2.body.tags.status":        "success",
 		"api.2.body.tags.mount_point":   "ccm_import_open",
@@ -74,6 +73,9 @@ func TestDriveImportDryRunFolderTokenWikiProbe(t *testing.T) {
 		if got := clie2e.DryRunGet(out, path).String(); got != want {
 			t.Fatalf("data.%s = %q, want %q\nstdout:\n%s", path, got, want, out)
 		}
+	}
+	if clie2e.DryRunGet(out, "api.2.body.tags.upload_mode").Exists() {
+		t.Fatalf("data.api.2.body.tags.upload_mode must be omitted\nstdout:\n%s", out)
 	}
 	if got := clie2e.DryRunGet(out, "api.3.body.point.mount_key").String(); got != "fldcnImportDryRunTarget" {
 		t.Fatalf("data.api.3.body.point.mount_key = %q, want fldcnImportDryRunTarget\nstdout:\n%s", got, out)

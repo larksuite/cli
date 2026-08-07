@@ -139,7 +139,6 @@ var DriveUpload = common.Shortcut{
 			Body(body)
 		fileevent.AppendUploadDryRun(d, runtime, fileevent.UploadMeta{
 			APIPath:      driveUploadAllPath,
-			UploadMode:   "singlepart",
 			ResourceType: "file",
 			ParentType:   target.ParentType,
 			FileToken:    "<file_token from upload response>",
@@ -277,7 +276,6 @@ func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, file
 
 	meta := fileevent.UploadMeta{
 		APIPath:      driveUploadAllPath,
-		UploadMode:   "singlepart",
 		ResourceType: "file",
 		ParentType:   target.ParentType,
 	}
@@ -328,7 +326,6 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 
 	meta := fileevent.UploadMeta{
 		APIPath:      driveUploadPreparePath,
-		UploadMode:   "multipart",
 		ResourceType: "file",
 		ParentType:   target.ParentType,
 	}

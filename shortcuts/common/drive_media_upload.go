@@ -93,7 +93,6 @@ func UploadDriveMediaAllTyped(runtime *RuntimeContext, cfg DriveMediaUploadAllCo
 
 	meta := fileevent.UploadMeta{
 		APIPath:      driveMediaUploadAllPath,
-		UploadMode:   "singlepart",
 		ResourceType: "media",
 		ParentType:   cfg.ParentType,
 	}
@@ -141,7 +140,6 @@ func UploadDriveMediaMultipartTyped(runtime *RuntimeContext, cfg DriveMediaMulti
 
 	meta := fileevent.UploadMeta{
 		APIPath:      driveMediaUploadPreparePath,
-		UploadMode:   "multipart",
 		ResourceType: "media",
 		ParentType:   cfg.ParentType,
 	}

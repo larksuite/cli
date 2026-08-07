@@ -268,14 +268,11 @@ func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, 
 // import dry-run plan, matching the single-part or multipart upload path.
 func appendDriveImportUploadReportDryRun(dry *common.DryRunAPI, runtime *common.RuntimeContext, fileSize int64) {
 	apiPath := "/open-apis/drive/v1/medias/upload_all"
-	uploadMode := "singlepart"
 	if fileSize > common.MaxDriveMediaUploadSinglePartSize {
 		apiPath = "/open-apis/drive/v1/medias/upload_finish"
-		uploadMode = "multipart"
 	}
 	fileevent.AppendUploadDryRun(dry, runtime, fileevent.UploadMeta{
 		APIPath:      apiPath,
-		UploadMode:   uploadMode,
 		ResourceType: "media",
 		ParentType:   "ccm_import_open",
 		FileToken:    "<file_token from upload response>",

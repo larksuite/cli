@@ -2702,8 +2702,8 @@ func TestDriveUploadSmallFileReportFileEventOnSuccess(t *testing.T) {
 	if got := tags["api_path"]; got != "/open-apis/drive/v1/files/upload_all" {
 		t.Fatalf("tags.api_path = %v", got)
 	}
-	if got := tags["upload_mode"]; got != "singlepart" {
-		t.Fatalf("tags.upload_mode = %v, want singlepart", got)
+	if _, ok := tags["upload_mode"]; ok {
+		t.Fatal("tags.upload_mode must be omitted")
 	}
 	if got := tags["resource_type"]; got != "file" {
 		t.Fatalf("tags.resource_type = %v, want file", got)
@@ -2811,8 +2811,8 @@ func TestDriveUploadLargeFileReportFileEventOnPrepareError(t *testing.T) {
 	if got := tags["status"]; got != "error" {
 		t.Fatalf("tags.status = %v, want error", got)
 	}
-	if got := tags["upload_mode"]; got != "multipart" {
-		t.Fatalf("tags.upload_mode = %v, want multipart", got)
+	if _, ok := tags["upload_mode"]; ok {
+		t.Fatal("tags.upload_mode must be omitted")
 	}
 	if got := tags["api_path"]; got != "/open-apis/drive/v1/files/upload_prepare" {
 		t.Fatalf("tags.api_path = %v, want upload_prepare", got)
