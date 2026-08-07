@@ -1,7 +1,7 @@
 ---
 name: lark-base
-version: 1.2.5
-description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、workflow、角色权限；遇到 Base/多维表格/bitable 或 /base/ 链接时使用。文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
+version: 1.2.6
+description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限；遇到 Base/多维表格/bitable、BaseApp/AppMode，或带 /base/、base/workspace 上下文的 /app/ 链接时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -18,6 +18,8 @@ metadata:
 - 用户要在 Base 内建表、改表、管理字段、写记录、查记录、配视图。
 - 用户要在 Base 内做公式字段、lookup 字段、跨表计算、派生指标、筛选聚合、TopN、统计分析。
 - 用户要管理 Base 表单、仪表盘、workflow、高级权限或角色。
+- 用户要用应用模式（BaseApp）：新建应用、管理应用页面、在页面上加图表/列表/富文本组件，或整理 Workspace 目录。
+- 用户明确提到 BaseApp / AppMode / 应用模式 / Workspace 内应用，或 `/app/` 链接同时带有 `/base/workspace/` 上下文，并要查询页面或组件；这类应用属于 Base，不走 `lark-apps`。
 - 用户要把旧 Base 聚合式命令或旧写法迁移到当前 `lark-cli base +...` shortcut。
 
 不要使用本 skill：
@@ -28,6 +30,7 @@ metadata:
 
 ## 使用边界
 
+- BaseApp 复制是明确的停止边界：本期没有 BaseApp 复制命令。识别到复制 / 克隆应用模式的诉求后，直接说明当前 CLI 无法完成并停止，不要调用 `+base-copy`（包括 `--help` / `--dry-run`）、`+app-create`、Drive copy 或任何写命令试探、拼装替代方案。
 - Base 业务操作只使用 `lark-cli base +...` shortcut，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`。
 - 执行 update 前必须先查当前 shortcut 的 `--help` 或对应 reference。若命令要求完整配置，首次请求必须基于可信的当前配置执行 read-modify-write：只修改用户明确指定的内容，保留其他仍适用的可写配置，并按命令要求的结构提交。若命令支持局部／delta update，按其契约提交最小合法 payload；不得以不完整请求试错补参。
 - Base CLI/OpenAPI 当前不支持视图行高、冻结列、列宽等 UI-only 外观设置。遇到这类需求，说明能力边界并停止，不要猜测未文档化参数或改走 raw API。
@@ -40,7 +43,8 @@ metadata:
 
 进入任何需要目标 Base 的 shortcut 前，必须先拿到可用的 `base_token`，以及当前任务需要的 `table_id` / `view_id` / `record_id` / `form_id` / `dashboard_id` / `workflow_id` 等真实 ID；不要把完整 URL、wiki token、workspace token 或孤立 raw token 直接当作 `--base-token`。
 
-- 用户输入 URL 或分享链接：先运行 `lark-cli base +url-resolve --url "<url>" --as user`，用返回的 `base_token` 和相关 ID 继续后续命令。
+- 用户输入 URL 或分享链接：先运行 `lark-cli base +url-resolve --url "<url>" --as user`。Base URL 返回 `base_token` 和相关 ID；BaseApp `/app/` URL 返回 `app_token`，并在原链接携带时返回 `workspace_token` 和 `page_id`。
+- 用户要查询既有 BaseApp，但当前输入和当前会话可信命令返回中都没有真实 `/app/` 链接或 `app_token`，也没有可供 `+workspace-entity-list --type baseapp` 定位的 `workspace_token`，且用户未明确要求读取含这些标识的当前文件：无需调用任何工具；先明确说明当前任务没有提供应用链接或 Workspace 信息、无法可靠定位目标 BaseApp，再请用户补充并停止。不要在此前后调用 `lark-apps`、`+title-resolve`、Drive 搜索、浏览器或其他全局名称发现，不要默认选择同名候选，也不要把 `base_token` 当作 `app_token`。
 - Base/Wiki URL 的 `table=` query 参数实际表示当前选中的顶层 block，可能是数据表、仪表盘或 workflow；不要按参数名自行当成 `table_id`。以 `+url-resolve` 返回的 `block_type` 以及 `table_id` / `dashboard_id` / `workflow_id` 为准；`selection_source=url_query` 只说明 URL 当前选中了该 block，不代表它覆盖用户明确点名的目标。若用户点名的 dashboard 与 `block_name` 不一致，先用 `+dashboard-list` 按名称匹配；若只返回中性 `block_id`，按 hint 用 `+base-block-list` 确认类型。
 - 用户输入 Base 标题、关键词或不确定名称：先运行 `lark-cli base +title-resolve --title "<keyword>" --as user`；`--title` 传入标题中的短关键词，不超过 30 个字符；过长标题先取最有区分度的短关键词；多候选时先让用户消歧，不要猜。
 - 文档嵌入 Base 标签：直接读取 `<bitable>` / `<base_refer>` 的 `token` 作为 `--base-token`，`table-id` 作为 `--table-id`，`view-id` 作为 `--view-id`；孤立 raw token 不走 `+url-resolve`。
@@ -73,6 +77,10 @@ metadata:
 | Base 内表单管理 | `+form-list/get/create/update/delete` / `+form-questions-list/delete` | 缺少或不确定归属时，先用 `+table-list` 或 `+base-block-list` 取得真实 `table_id`；这些命令使用 `--base-token + --table-id` 并在整个工作流中复用同一 `table_id`，删除前确认目标表单 |
 | 分享表单详情 | `+form-detail --share-token <share_token>` | 使用表单分享链接里的 `share_token`；提交前读 [lark-base-form-detail.md](references/lark-base-form-detail.md) |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取一个或多个图表计算结果用 `+dashboard-block-get-data`；读取完整仪表盘时按 block 类型分流，文本和不支持直接取数的图表按 reference 恢复 |
+| 查询 BaseApp 与关联 Base | `+url-resolve` → `+app-get` → `+base-get` | 只把 `/app/` URL 传给 `+url-resolve`，不要把 `/base/workspace/` URL 传给它；用 `+app-get ref` 的 key 作为 `base_token` 再调用 `+base-get`。最终答复忠实保留应用 `name` / `app_token`，以及每个关联 Base 的 `name` / `base_token` |
+| 管理应用模式（BaseApp/AppMode）页面与组件 | `+app-page-*` / `+app-block-*` | BaseApp/AppMode、Workspace 内应用或带 base/workspace 上下文的 `/app/` 链接直接走本路由，不走 `lark-apps`；没有 `+app-list`，列 Workspace 内应用必须用 `+workspace-entity-list --workspace-token <token> --type baseapp`；先读 [lark-base-app.md](references/lark-base-app.md)。组件 `data_config` 读 [lark-base-app-block-data-config.md](references/lark-base-app-block-data-config.md)；`+app-block-get-data` 除 `app_token` 外还需要图表数据源的 `base_token` |
+| 复制 Page / 设置页面图标 | 当前不支持 | 不产生任何写入，不得用 `+app-page-create` 冒充完整复制；单独说明“可新建空 Page”仅是替代能力，须等用户明确要求后再执行 |
+| Workspace 目录 | `+workspace-create` / `+workspace-entity-list` / `+workspace-move-in` | 新建 Workspace、列出或移入其中的 Base/应用；移出或移除请求必须先用 `+workspace-entity-list` 只读定位并忠实报告实际名称，再按 [lark-base-app.md](references/lark-base-app.md) 说明不支持并停止；`drive +move` 不改变 Workspace 归属 |
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；角色 create/update 或解读完整配置再读权限 JSON SSOT [role-config.md](references/role-config.md)；关闭高级权限会影响自定义角色 |
 
@@ -126,6 +134,12 @@ metadata:
 - Dashboard shortcut 不支持指定组件的 `x/y/w/h`、精确位置或尺寸，不能把 `+dashboard-arrange` 静默当作等价实现。用户只要求一般性重排/美化时可执行一次智能重排；用户要求精确结果时先说明限制并询问是否接受自适应布局，接受后才执行。不要探测 raw `lark-cli api`、源码或未公开布局参数。
 - 创建接口成功返回即表示写入成功；只有结果不确定时才额外执行一次 `+dashboard-get` 或 `+dashboard-block-list`。不要仅为确认创建而逐组件调用 `+dashboard-block-get-data`。
 - 用户要读取多个组件的计算结果时，先完整列出组件（`+dashboard-block-list --page-size 100`；若 `has_more=true`，继续把返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`），再按 [lark-base-dashboard-block-get-data.md](references/lark-base-dashboard-block-get-data.md) 在一个 shell 工具调用内串行读取；不要把每个 block 拆成独立模型轮次。
+- BaseApp（应用模式）把 Base 数据组织成页面和组件。`+app-create` 是只创建 App 的原子命令，必须传目标 `workspace_token`；Workspace 选择以及是否创建备用 Base 由 [lark-base-app.md](references/lark-base-app.md) 的自然语言流程编排。应用查询使用 `+app-get`，页面使用 `+app-page-*`。页面命令使用 `app_token`，组件命令使用 `app_token + page_id`；表、字段和记录命令使用 `base_token`。`+app-block-get-data` 是组件命令中的例外：使用 `app_token + base_token + chart_token`，其中 `base_token` 来自该图表的 `data_config.base_token`，`chart_token` 通过 `--block-id` 传入。不要把组件的普通 `block_id` 传给该命令。同一 Page 内组件名称必须唯一；列表使用 `type=list + sub_type`，每个列表至多一个同 Workspace Base。组件配置详见 [lark-base-app-block-data-config.md](references/lark-base-app-block-data-config.md)。
+- `+app-block-list` 返回 `type=unsupported` 时，只能报告该组件存在且当前 CLI 不支持读取或修改；不得继续调用 `+app-block-get`、`+app-block-get-data` 或 `+app-block-update`，这些请求会报错。
+- `+app-page-list` 返回的 Page 若 `name=""`，表示当前用户对该 Page 无权限，不是无标题页面；报告该权限状态，不要将其作为后续页面或组件操作的目标。
+- 复用现有 BaseApp block 的 `data_config` 只能作为结构模板，首次 Create/Update 前仍要逐项对齐用户显式要求；用户要求排序时必须显式写 `group_by[].sort.order` 或顶层 `sort.order`，不能用旧配置省略的方向或当前 `get-data` 结果顺序代替。
+- 本期不支持 Page 复制和页面图标。识别到任一需求后不得产生写入，也不得调用 `+app-page-create` 冒充完整复制。最终答复先明确“不支持且未执行写入”，再单独总结替代能力：“当前 CLI 可以新建空 Page，但不会复制原 Page 的内容、组件或图标；如需新建，请另行明确要求。”在用户后续明确要求前，不得执行该替代方案。
+- 应用页面的 block 与仪表盘的 block 是同一套底层实体，但 ID 体系不通用：`+app-block-*` 的 `block_id` 不要拿去打 `+dashboard-block-*`，反之亦然。图表类 `data_config` 两边同构，列表类和富文本是应用模式独有。
 - Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
 - Role 的复杂点是权限 JSON。角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；`+role-create` 只支持自定义角色；`+role-update` 是 delta merge；角色 create/update 或解读完整配置时读权限 JSON SSOT [role-config.md](references/role-config.md)。`+role-delete` 只适用于自定义角色，系统角色不可删除；删除角色和关闭高级权限前必须确认目标和影响。
 
@@ -160,5 +174,6 @@ metadata:
 - [lark-base-filter-condition.md](references/lark-base-filter-condition.md)：视图 filter、记录 `--filter-json`、表单 `visible_rule` 的 tuple 条件结构公共协议 SSOT
 - [lark-base-form-detail.md](references/lark-base-form-detail.md) / [lark-base-form-submit.md](references/lark-base-form-submit.md) / [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)：表单详情、提交和复杂 JSON
 - [lark-base-dashboard.md](references/lark-base-dashboard.md) / [dashboard-block-data-config.md](references/dashboard-block-data-config.md) / [lark-base-dashboard-block-get-data.md](references/lark-base-dashboard-block-get-data.md)：仪表盘、组件配置与图表结果协议
+- [lark-base-app.md](references/lark-base-app.md) / [lark-base-app-block-data-config.md](references/lark-base-app-block-data-config.md)：应用模式（Workspace / 应用 / 页面 / 组件）入口与组件配置 SSOT
 - [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) / [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)：workflow 入口与 steps JSON SSOT
 - [lark-base-role-guide.md](references/lark-base-role-guide.md) / [role-config.md](references/role-config.md)：角色入口与权限 JSON SSOT
