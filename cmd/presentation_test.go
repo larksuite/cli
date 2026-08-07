@@ -8,6 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	configpkg "github.com/larksuite/cli/internal/config"
+	identitypkg "github.com/larksuite/cli/internal/identity"
+	"github.com/larksuite/cli/internal/workspace"
 	"os"
 	"strings"
 	"sync"
@@ -18,7 +21,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/cmdpolicy"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/output"
@@ -392,9 +394,9 @@ func TestConcealedBuildOmitsEmptyRootGroup(t *testing.T) {
 
 func TestRecoveryRenderingUsesExactBuildLocalSurfaceAndDoesNotMutate(t *testing.T) {
 	tmpHome(t)
-	previousWorkspace := core.CurrentWorkspace()
-	core.SetCurrentWorkspace(core.WorkspaceLocal)
-	t.Cleanup(func() { core.SetCurrentWorkspace(previousWorkspace) })
+	previousWorkspace := workspace.CurrentWorkspace()
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLocal)
+	t.Cleanup(func() { workspace.SetCurrentWorkspace(previousWorkspace) })
 
 	registerRestriction(t, []string{"config/init"}, nil)
 	concealedRuntime, _, _ := buildInternal(
@@ -417,7 +419,7 @@ func TestRecoveryRenderingUsesExactBuildLocalSurfaceAndDoesNotMutate(t *testing.
 		t.Fatal("exact leaf concealment incorrectly removed config/strict-mode")
 	}
 
-	original := core.NotConfiguredError()
+	original := configpkg.NotConfiguredError()
 	originalProblem, ok := errs.ProblemOf(original)
 	if !ok || originalProblem.Hint == "" {
 		t.Fatalf("invalid test error: %v", original)
@@ -800,7 +802,7 @@ func TestConcealedCommandLeavesFlagAndPositionalCompletion(t *testing.T) {
 
 func TestApplyStrictStubWinsOverPluginDenial(t *testing.T) {
 	root := newTestTree()
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identitypkg.StrictModeBot)
 	stub := findCmd(root, "auth", "login")
 	if stub == nil {
 		t.Fatal("auth/login strict stub missing")
@@ -823,7 +825,7 @@ func TestApplyStrictStubWinsOverPluginDenial(t *testing.T) {
 
 func TestPluginConcealmentProjectsStrictStubWithoutRelabelingEnforcement(t *testing.T) {
 	root := newTestTree()
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identitypkg.StrictModeBot)
 	stub := findCmd(root, "auth", "login")
 	if stub == nil {
 		t.Fatal("auth/login strict stub missing")

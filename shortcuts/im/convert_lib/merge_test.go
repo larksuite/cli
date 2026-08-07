@@ -357,3 +357,65 @@ func TestFormatMergeForwardSubTreeInteractiveCardUsesMentions(t *testing.T) {
 		t.Fatalf("FormatMergeForwardSubTree(interactive card) = %s", got)
 	}
 }
+
+// TestConvertBodyContentEmptyMergeForwardStaysEmpty pins the empty-content
+// guard that sits above the merge_forward dispatch. A merge_forward item whose
+// body.content is an empty string (recalled/edited containers come back this
+// way) must convert to "" — the same as every other message type — and must
+// not reach the converter at all: reaching it would render a
+// <forwarded_messages> tree from a prefetched cache, or issue a
+// GET /open-apis/im/v1/messages/{id} when no prefetch is present.
+func TestConvertBodyContentEmptyMergeForwardStaysEmpty(t *testing.T) {
+	prefetch := map[string][]map[string]interface{}{
+		"om_root": {
+			{
+				"message_id":  "om_child",
+				"msg_type":    "text",
+				"create_time": "1710500000000",
+				"sender":      map[string]interface{}{"id": "ou_alice", "name": "Alice"},
+				"body":        map[string]interface{}{"content": `{"text":"hello"}`},
+			},
+		},
+	}
+
+	if got := ConvertBodyContent("merge_forward", &ConvertContext{
+		MessageID:            "om_root",
+		MergeForwardSubItems: prefetch,
+	}); got != "" {
+		t.Fatalf("ConvertBodyContent(merge_forward, empty content, prefetch hit) = %q, want empty", got)
+	}
+
+	item := map[string]interface{}{
+		"message_id":  "om_root",
+		"msg_type":    "merge_forward",
+		"create_time": "1710500000000",
+		"body":        map[string]interface{}{"content": ""},
+	}
+	msg := FormatMessageItemWithMergePrefetch(item, nil, nil, prefetch)
+	if got, _ := msg["content"].(string); got != "" {
+		t.Fatalf("FormatMessageItem(merge_forward, empty content, prefetch hit) content = %q, want empty", got)
+	}
+}
+
+// TestConvertBodyContentEmptyMergeForwardIssuesNoRequest is the network half of
+// the guard: with no prefetch and a live runtime, an empty-content
+// merge_forward must not fall into the inline-fetch slow path.
+func TestConvertBodyContentEmptyMergeForwardIssuesNoRequest(t *testing.T) {
+	var requests int
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requests++
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+	}))
+
+	got := ConvertBodyContent("merge_forward", &ConvertContext{
+		MessageID:   "om_root",
+		Runtime:     runtime,
+		SenderNames: map[string]string{},
+	})
+	if got != "" {
+		t.Fatalf("ConvertBodyContent(merge_forward, empty content, runtime set) = %q, want empty", got)
+	}
+	if requests != 0 {
+		t.Fatalf("ConvertBodyContent(merge_forward, empty content) issued %d HTTP request(s), want 0", requests)
+	}
+}

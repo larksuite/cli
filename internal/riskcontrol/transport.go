@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 )
 
@@ -111,10 +111,10 @@ type origin struct {
 }
 
 var officialFeishuOrigins = [...]origin{
-	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).Open),
-	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).Open),
-	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).Accounts),
-	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).Accounts),
+	apiOrigin(brandpkg.Feishu, brandpkg.ResolveEndpoints(brandpkg.Feishu).Open),
+	apiOrigin(brandpkg.Lark, brandpkg.ResolveEndpoints(brandpkg.Lark).Open),
+	apiOrigin(brandpkg.Feishu, brandpkg.ResolveEndpoints(brandpkg.Feishu).Accounts),
+	apiOrigin(brandpkg.Lark, brandpkg.ResolveEndpoints(brandpkg.Lark).Accounts),
 }
 
 func (t *Transport) routeAllowsSignals(req *http.Request) bool {
@@ -141,7 +141,7 @@ func originOf(value *url.URL) origin {
 	return origin{scheme: scheme, host: strings.ToLower(value.Hostname()), port: port}
 }
 
-func apiOrigin(brand core.LarkBrand, endpointURL string) origin {
+func apiOrigin(brand brandpkg.Brand, endpointURL string) origin {
 	endpoint, err := url.Parse(endpointURL)
 	if err != nil {
 		return origin{}

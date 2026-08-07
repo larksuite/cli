@@ -6,23 +6,23 @@ package errclass
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"net/url"
 	"strings"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/recovery"
 )
 
 // ClassifyContext is the contextual data BuildAPIError uses to populate
 // identity-aware fields on typed errors (PermissionError.Identity / ConsoleURL).
 // Brand and Identity are plain strings at this boundary; ConsoleURL normalizes
-// Brand through core.ParseBrand, so callers can pass a raw brand string without
-// coupling this contract to core's brand enum.
+// Brand through brandpkg.ParseBrand, so callers can pass a raw brand string without
+// coupling this contract to the brand enum.
 type ClassifyContext struct {
 	Brand    string // "feishu" | "lark" — drives console_url host
 	AppID    string // placed in console_url
-	Identity string // "user" / "bot" / "" — caller converts core.Identity at the boundary
+	Identity string // "user" / "bot" / "" — caller converts identitypkg.Identity at the boundary
 	LarkCmd  string // e.g. "drive +delete" — used as Action fallback on CategoryConfirmation arm
 }
 
@@ -567,7 +567,7 @@ func ConsoleURL(brand, appID string, scopes []string) string {
 	// parameters via `&`/`#`. The brand→host mapping is owned by core so the
 	// open-platform base URL stays a single source of truth.
 	base := fmt.Sprintf("%s/page/scope-apply?clientID=%s",
-		core.ResolveOpenBaseURL(core.ParseBrand(brand)), url.QueryEscape(appID))
+		brandpkg.ResolveOpenBaseURL(brandpkg.ParseBrand(brand)), url.QueryEscape(appID))
 	if len(scopes) == 0 {
 		return base
 	}

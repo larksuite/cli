@@ -5,13 +5,13 @@ package auth
 
 import (
 	"encoding/json"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/recovery"
-	"github.com/larksuite/cli/internal/surface"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 // TestAuthListRun_NotConfigured_ReturnsExitZero pins the contract that
@@ -71,9 +71,9 @@ func TestAuthListRun_JSONMode_NotConfigured_WritesStdoutOnly(t *testing.T) {
 func TestAuthListRun_NotConfigured_AgentWorkspace_RoutesToBindHelp(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	prev := core.CurrentWorkspace()
-	t.Cleanup(func() { core.SetCurrentWorkspace(prev) })
-	core.SetCurrentWorkspace(core.WorkspaceOpenClaw)
+	prev := workspace.CurrentWorkspace()
+	t.Cleanup(func() { workspace.SetCurrentWorkspace(prev) })
+	workspace.SetCurrentWorkspace(workspace.WorkspaceOpenClaw)
 
 	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
 	if err := authListRun(&ListOptions{Factory: f}); err != nil {

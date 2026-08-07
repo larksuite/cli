@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"strings"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -170,12 +170,12 @@ func (s drivePermissionGetSettingSpec) url(runtime *common.RuntimeContext) strin
 		return ""
 	}
 
-	brand := core.LarkBrand("")
+	brand := brandpkg.Brand("")
 	if runtime != nil && runtime.Config != nil {
 		brand = runtime.Config.Brand
 	}
 	host := "https://www.feishu.cn"
-	if brand == core.BrandLark {
+	if brand == brandpkg.Lark {
 		host = "https://www.larksuite.com"
 	}
 	return host + resourceKind.CanonicalPath + url.PathEscape(token)

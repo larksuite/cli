@@ -9,7 +9,7 @@ import (
 
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/processing"
-	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
+	"github.com/larksuite/cli/internal/imcontent"
 )
 
 // ImMessageReceiveOutput is the flattened shape for im.message.receive_v1; `desc` tags drive the reflected schema.
@@ -70,11 +70,11 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 	msg := envelope.Event.Message
 	var content string
 	if msg.MessageType == "interactive" {
-		content = convertlib.ConvertInteractiveEventContent(msg.Content, msg.Mentions)
+		content = imcontent.ConvertInteractiveEventContent(msg.Content, msg.Mentions)
 	} else {
-		content = convertlib.ConvertBodyContent(msg.MessageType, &convertlib.ConvertContext{
+		content = imcontent.ConvertBodyContent(msg.MessageType, &imcontent.ConvertContext{
 			RawContent: msg.Content,
-			MentionMap: convertlib.BuildMentionKeyMap(msg.Mentions),
+			MentionMap: imcontent.BuildMentionKeyMap(msg.Mentions),
 		})
 	}
 

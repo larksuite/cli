@@ -6,13 +6,11 @@ package auth
 import (
 	"bytes"
 	"context"
-	"log"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/keychain"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -86,14 +84,13 @@ func TestVerifyUserToken(t *testing.T) {
 			)
 
 			var buf bytes.Buffer
-			restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
+			authLogger := testAuthLogger(&buf, func() time.Time {
 				return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 			}, func() []string {
 				return []string{"lark-cli", "auth", "status"}
 			})
-			t.Cleanup(restore)
 
-			err := VerifyUserToken(context.Background(), sdk, "test-token")
+			err := verifyUserToken(context.Background(), sdk, "test-token", authLogger)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")

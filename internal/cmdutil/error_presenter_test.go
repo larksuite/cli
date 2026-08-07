@@ -5,11 +5,11 @@ package cmdutil
 
 import (
 	"errors"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
@@ -29,7 +29,7 @@ func TestFactoryPresentErrorClonesAndPreservesPermissionMachineFields(t *testing
 		surface.CommandAuthLogin: surface.CommandConcealed,
 	})
 	f := &Factory{
-		ResolvedIdentity: core.AsUser,
+		ResolvedIdentity: identitypkg.AsUser,
 		Recovery: recovery.NewProjector(func() *surface.Plan {
 			return plan
 		}),
@@ -77,7 +77,7 @@ func TestFactoryPresentErrorRebuildsUnannotatedCanonicalHintWithInvocationContex
 		WithIdentity("user").
 		WithHint("%s", canonical)
 	projector := recovery.NewProjectorWithContext(nil, recovery.RenderContext{Profile: "team-beta"})
-	f := &Factory{ResolvedIdentity: core.AsUser, Recovery: projector}
+	f := &Factory{ResolvedIdentity: identitypkg.AsUser, Recovery: projector}
 
 	rendered := f.PresentError(source, ErrorPresentationOptions{
 		DeclaredScopes: func() []string { return []string{"calendar:calendar.event:read"} },

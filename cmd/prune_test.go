@@ -12,7 +12,7 @@ import (
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
@@ -77,7 +77,7 @@ func findCmd(root *cobra.Command, names ...string) *cobra.Command {
 
 func TestPruneForStrictMode_Bot(t *testing.T) {
 	root := newTestTree()
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 
 	if cmd := findCmd(root, "im", "+search"); cmd == nil || !cmd.Hidden {
 		t.Error("+search (user-only) should be replaced by a hidden stub in bot mode")
@@ -101,7 +101,7 @@ func TestPruneForStrictMode_Bot(t *testing.T) {
 
 func TestPruneForStrictMode_User(t *testing.T) {
 	root := newTestTree()
-	pruneForStrictMode(root, core.StrictModeUser)
+	pruneForStrictMode(root, identity.StrictModeUser)
 
 	if findCmd(root, "im", "+search") == nil {
 		t.Error("+search (user-only) should be kept in user mode")
@@ -119,7 +119,7 @@ func TestPruneForStrictMode_User(t *testing.T) {
 
 func TestPruneEmpty(t *testing.T) {
 	root := newTestTree()
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 
 	if cmd := findCmd(root, "im", "messages"); cmd == nil || !cmd.Hidden {
 		t.Error("resource 'messages' should be kept hidden when only hidden stubs remain")
@@ -146,7 +146,7 @@ func TestPruneForStrictMode_Bot_DirectUserShortcutReturnsStrictMode(t *testing.T
 	root := newTestTree()
 	root.SilenceErrors = true
 	root.SilenceUsage = true
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 	root.SetArgs([]string{"im", "+search", "--query", "hello"})
 
 	err := root.Execute()
@@ -162,7 +162,7 @@ func TestPruneForStrictMode_Bot_DirectNestedUserMethodReturnsStrictMode(t *testi
 	root := newTestTree()
 	root.SilenceErrors = true
 	root.SilenceUsage = true
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 	root.SetArgs([]string{"im", "messages", "search", "--query", "hello"})
 
 	err := root.Execute()
@@ -178,7 +178,7 @@ func TestPruneForStrictMode_Bot_DirectAuthLoginReturnsStrictMode(t *testing.T) {
 	root := newTestTree()
 	root.SilenceErrors = true
 	root.SilenceUsage = true
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 	root.SetArgs([]string{"auth", "login", "--json", "--scope", "im:message.send_as_user"})
 
 	err := root.Execute()
@@ -194,7 +194,7 @@ func TestPruneForStrictMode_User_DirectBotShortcutReturnsStrictMode(t *testing.T
 	root := newTestTree()
 	root.SilenceErrors = true
 	root.SilenceUsage = true
-	pruneForStrictMode(root, core.StrictModeUser)
+	pruneForStrictMode(root, identity.StrictModeUser)
 	root.SetArgs([]string{"im", "+subscribe", "--topic", "x"})
 
 	err := root.Execute()
@@ -217,7 +217,7 @@ func TestPruneForStrictMode_User_DirectBotShortcutReturnsStrictMode(t *testing.T
 // stops at the stub and proceeds to its RunE.
 func TestStrictModeStub_BypassesParentPersistentPreRunE(t *testing.T) {
 	root := newTestTree()
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 	stub := findCmd(root, "auth", "login")
 	if stub == nil {
 		t.Fatal("auth/login stub should exist after StrictModeBot")
@@ -237,7 +237,7 @@ func TestStrictModeStub_BypassesParentPersistentPreRunE(t *testing.T) {
 // stub's RunE.
 func TestStrictModeStub_BypassesArgsValidator(t *testing.T) {
 	root := newTestTree()
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 	stub := findCmd(root, "auth", "login")
 	if stub == nil {
 		t.Fatal("auth/login stub should exist after StrictModeBot")
@@ -258,7 +258,7 @@ func TestStrictModeStub_BypassesArgsValidator(t *testing.T) {
 // still inspect the structured denial taxonomy via errors.As.
 func TestStrictModeStub_StructuredEnvelope(t *testing.T) {
 	root := newTestTree()
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 	stub := findCmd(root, "im", "+search")
 	if stub == nil {
 		t.Fatalf("expected im/+search stub")
@@ -320,7 +320,7 @@ func TestStrictModeStub_StructuredEnvelope(t *testing.T) {
 // and silently return nil, swallowing the strict-mode error.
 func TestStrictModeStub_HasDenialAnnotation(t *testing.T) {
 	root := newTestTree()
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 
 	// im/+search is user-only -> replaced by a stub in StrictModeBot.
 	stub := findCmd(root, "im", "+search")
@@ -358,7 +358,7 @@ func TestStrictModeStub_PreservesOriginalMetadata(t *testing.T) {
 	cmdutil.SetRisk(userOnly, "read")
 	svc.AddCommand(userOnly)
 
-	pruneForStrictMode(root, core.StrictModeBot)
+	pruneForStrictMode(root, identity.StrictModeBot)
 
 	stub := findCmd(root, "im", "+search")
 	if stub == nil {
@@ -387,7 +387,7 @@ func TestStrictModeStub_PreservesOriginalMetadata(t *testing.T) {
 // dead pointer and does not mutate the source error.
 func TestStrictModeStub_ConfigHintUsesBuildLocalSurface(t *testing.T) {
 	child := &cobra.Command{Use: "search", RunE: func(*cobra.Command, []string) error { return nil }}
-	stub := strictModeStubFrom(child, core.StrictModeBot)
+	stub := strictModeStubFrom(child, identity.StrictModeBot)
 	source := stub.RunE(stub, nil)
 	var original *errs.ValidationError
 	if !errors.As(source, &original) {

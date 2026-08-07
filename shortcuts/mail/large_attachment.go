@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -197,8 +197,8 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 // buildLargeAttachmentPreviewURL builds the download/preview URL for a large
 // attachment token. The domain is derived from the CLI's configured endpoint
 // (e.g. open.feishu.cn → www.feishu.cn).
-func buildLargeAttachmentPreviewURL(brand core.LarkBrand, fileToken string) string {
-	ep := core.ResolveEndpoints(brand)
+func buildLargeAttachmentPreviewURL(brand brandpkg.Brand, fileToken string) string {
+	ep := brandpkg.ResolveEndpoints(brand)
 	host := strings.TrimPrefix(ep.Open, "https://")
 	host = strings.TrimPrefix(host, "http://")
 	mainDomain := strings.TrimPrefix(host, "open.")
@@ -244,10 +244,10 @@ const (
 // text, aligning with the desktop client's APP_DISPLAY_NAME i18n
 // substitution.
 //
-//   - BrandLark    → "Lark" (same in English and Chinese)
-//   - BrandFeishu  → "飞书" for zh languages, "Feishu" for others
-func brandDisplayName(brand core.LarkBrand, lang string) string {
-	if brand == core.BrandLark {
+//   - brand.Lark    → "Lark" (same in English and Chinese)
+//   - brand.Feishu  → "飞书" for zh languages, "Feishu" for others
+func brandDisplayName(brand brandpkg.Brand, lang string) string {
+	if brand == brandpkg.Lark {
 		return "Lark"
 	}
 	if strings.HasPrefix(lang, "zh") {
@@ -256,7 +256,7 @@ func brandDisplayName(brand core.LarkBrand, lang string) string {
 	return "Feishu"
 }
 
-func buildLargeAttachmentItems(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
+func buildLargeAttachmentItems(brand brandpkg.Brand, lang string, results []largeAttachmentResult) string {
 	if len(results) == 0 {
 		return ""
 	}
@@ -265,7 +265,7 @@ func buildLargeAttachmentItems(brand core.LarkBrand, lang string, results []larg
 		downloadText = "下载"
 	}
 	iconCDN := iconCDNCN
-	if brand == core.BrandLark {
+	if brand == brandpkg.Lark {
 		iconCDN = iconCDNEN
 	}
 	var items strings.Builder
@@ -282,7 +282,7 @@ func buildLargeAttachmentItems(brand core.LarkBrand, lang string, results []larg
 	return items.String()
 }
 
-func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
+func buildLargeAttachmentHTML(brand brandpkg.Brand, lang string, results []largeAttachmentResult) string {
 	if len(results) == 0 {
 		return ""
 	}
@@ -298,7 +298,7 @@ func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []large
 	return fmt.Sprintf(largeAttContainerTpl, timestamp, title, buildLargeAttachmentItems(brand, lang, results))
 }
 
-func buildLargeAttachmentPlainText(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
+func buildLargeAttachmentPlainText(brand brandpkg.Brand, lang string, results []largeAttachmentResult) string {
 	if len(results) == 0 {
 		return ""
 	}
@@ -487,7 +487,7 @@ func ensureLargeAttachmentCards(runtime *common.RuntimeContext, snapshot *draftp
 		return
 	}
 
-	brand := core.BrandFeishu
+	brand := brandpkg.Feishu
 	if runtime.Config != nil {
 		brand = runtime.Config.Brand
 	}
@@ -734,7 +734,7 @@ func flattenSnapshotParts(root *draftpkg.Part) []*draftpkg.Part {
 // container, new items are appended inside that container (maintaining a
 // single container, matching the desktop client). Otherwise a new
 // container is created and inserted before the quote block (or appended).
-func injectLargeAttachmentHTMLIntoSnapshot(snapshot *draftpkg.DraftSnapshot, brand core.LarkBrand, lang string, results []largeAttachmentResult) {
+func injectLargeAttachmentHTMLIntoSnapshot(snapshot *draftpkg.DraftSnapshot, brand brandpkg.Brand, lang string, results []largeAttachmentResult) {
 	if len(results) == 0 {
 		return
 	}

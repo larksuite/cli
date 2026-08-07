@@ -11,16 +11,18 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 func TestDoStream_HTTPErrorIncludesLogID(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	config := &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu}
+	config := &configpkg.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu}
 	factory, _, _, reg := cmdutil.TestFactory(t, config)
 	reg.Register(&httpmock.Stub{
 		Method:  http.MethodGet,
@@ -40,7 +42,7 @@ func TestDoStream_HTTPErrorIncludesLogID(t *testing.T) {
 	_, err = client.DoStream(context.Background(), &larkcore.ApiReq{
 		HttpMethod: http.MethodGet,
 		ApiPath:    "/open-apis/drive/v1/medias/file_token/download",
-	}, core.AsBot)
+	}, identity.AsBot)
 	var netErr *errs.NetworkError
 	if !errors.As(err, &netErr) {
 		t.Fatalf("expected *errs.NetworkError, got %T %v", err, err)

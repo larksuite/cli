@@ -14,8 +14,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -567,8 +568,8 @@ func TestImFeedShortcutListDryRunIncludesNonEmptyPageToken(t *testing.T) {
 }
 
 func TestImFeedShortcutListHelpDoesNotTreatDetailAsArgName(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "app", AppSecret: "secret", Brand: core.BrandFeishu,
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "app", AppSecret: "secret", Brand: brand.Feishu,
 	})
 	parent := &cobra.Command{Use: "im"}
 	ImFeedShortcutList.Mount(parent, f)

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"reflect"
 	"slices"
 	"strings"
@@ -14,14 +15,13 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
 func newMountedIMRuntime(t *testing.T, shortcut *common.Shortcut, args ...string) (*common.RuntimeContext, *bytes.Buffer) {
 	t.Helper()
-	config := &core.CliConfig{}
+	config := &configpkg.CliConfig{}
 	factory, _, stderr, _ := cmdutil.TestFactory(t, config)
 	parent := &cobra.Command{Use: "root"}
 	shortcut.Mount(parent, factory)

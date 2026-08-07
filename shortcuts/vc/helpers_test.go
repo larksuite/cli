@@ -12,12 +12,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-func bareMeetingQueryRuntime(as core.Identity) *common.RuntimeContext {
+func bareMeetingQueryRuntime(as identitypkg.Identity) *common.RuntimeContext {
 	return common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "test"}, defaultConfig(), as)
 }
 
@@ -32,12 +32,12 @@ func TestNormalizeMeetingQueryPermissionError_NilRuntimeReturnsOriginalError(t *
 func TestNormalizeMeetingQueryPermissionError_TypedNilReturnsOriginalError(t *testing.T) {
 	var permissionErr *errs.PermissionError
 	var original error = permissionErr
-	if got := normalizeMeetingQueryPermissionError(bareMeetingQueryRuntime(core.AsUser), original); got != original {
+	if got := normalizeMeetingQueryPermissionError(bareMeetingQueryRuntime(identitypkg.AsUser), original); got != original {
 		t.Fatalf("got %v, want original error %v", got, original)
 	}
 }
 
-func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Identity, code int) {
+func assertMeetingQueryPermissionError(t *testing.T, err error, identity identitypkg.Identity, code int) {
 	t.Helper()
 
 	var pe *errs.PermissionError
@@ -96,18 +96,18 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity(t *testing.T) {
 	cases := []struct {
 		name     string
-		identity core.Identity
+		identity identitypkg.Identity
 		code     int
 		subtype  errs.Subtype
 	}{
-		{name: "user_with_user_scope_error", identity: core.AsUser, code: output.LarkErrUserScopeInsufficient, subtype: errs.SubtypeMissingScope},
-		{name: "bot_with_app_scope_error", identity: core.AsBot, code: output.LarkErrAppScopeNotEnabled, subtype: errs.SubtypeAppScopeNotApplied},
+		{name: "user_with_user_scope_error", identity: identitypkg.AsUser, code: output.LarkErrUserScopeInsufficient, subtype: errs.SubtypeMissingScope},
+		{name: "bot_with_app_scope_error", identity: identitypkg.AsBot, code: output.LarkErrAppScopeNotEnabled, subtype: errs.SubtypeAppScopeNotApplied},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			wantScope := meetingQueryUserScope
-			if tc.identity == core.AsBot {
+			if tc.identity == identitypkg.AsBot {
 				wantScope = meetingQueryBotScope
 			}
 			wantMessage := "access denied for " + string(tc.identity) + " identity; recommended scope: " + wantScope
@@ -119,7 +119,7 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 				WithMissingScopes(meetingQueryUserScope, meetingQueryBotScope).
 				WithRequestedScopes("requested:scope").
 				WithGrantedScopes("granted:scope")
-			if tc.identity == core.AsBot {
+			if tc.identity == identitypkg.AsBot {
 				original.ConsoleURL = "https://example.com/scopes"
 			}
 			original.Troubleshooter = "https://example.com/troubleshoot"
@@ -141,7 +141,7 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 			if pe.Message != wantMessage {
 				t.Fatalf("Message = %q, want %q", pe.Message, wantMessage)
 			}
-			if tc.identity == core.AsBot {
+			if tc.identity == identitypkg.AsBot {
 				consoleURL, err := url.Parse(pe.ConsoleURL)
 				if err != nil {
 					t.Fatalf("ConsoleURL = %q is invalid: %v", pe.ConsoleURL, err)
@@ -160,24 +160,24 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 func TestNormalizeMeetingQueryPermissionError_PassesThroughNonMatchingErrors(t *testing.T) {
 	cases := []struct {
 		name     string
-		identity core.Identity
+		identity identitypkg.Identity
 		err      error
 	}{
 		{
 			name:     "user_with_app_scope_error",
-			identity: core.AsUser,
+			identity: identitypkg.AsUser,
 			err: errs.NewPermissionError(errs.SubtypeAppScopeNotApplied, "app scope error").
 				WithCode(output.LarkErrAppScopeNotEnabled),
 		},
 		{
 			name:     "bot_with_user_scope_error",
-			identity: core.AsBot,
+			identity: identitypkg.AsBot,
 			err: errs.NewPermissionError(errs.SubtypeMissingScope, "user scope error").
 				WithCode(output.LarkErrUserScopeInsufficient),
 		},
 		{
 			name:     "auto_with_user_scope_error",
-			identity: core.AsAuto,
+			identity: identitypkg.AsAuto,
 			err: errs.NewPermissionError(errs.SubtypeMissingScope, "auto identity").
 				WithCode(output.LarkErrUserScopeInsufficient),
 		},
@@ -197,7 +197,7 @@ func TestNormalizeMeetingQueryPermissionError_PassesThroughNonMatchingErrors(t *
 		t.Run(tc.name, func(t *testing.T) {
 			identity := tc.identity
 			if identity == "" {
-				identity = core.AsBot
+				identity = identitypkg.AsBot
 			}
 			if got := normalizeMeetingQueryPermissionError(bareMeetingQueryRuntime(identity), tc.err); got != tc.err {
 				t.Fatalf("got %T %v, want original error %T %v", got, got, tc.err, tc.err)

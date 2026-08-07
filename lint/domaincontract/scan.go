@@ -66,7 +66,7 @@ var allowlist = map[string]bool{
 
 // resolverPath is the resolver source; host literals are permitted only
 // inside its ResolveEndpoints function body.
-var resolverPath = filepath.FromSlash("internal/core/types.go")
+var resolverPath = filepath.FromSlash("brand/brand.go")
 
 func skipDir(name string) bool {
 	switch name {
@@ -181,8 +181,8 @@ func scanHardcodedEndpoints(root string) ([]lintapi.Violation, error) {
 						Action:     lintapi.ActionReject,
 						File:       display,
 						Line:       pos.Line,
-						Message:    "SDK base-URL global " + pkg.Name + "." + node.Sel.Name + " bypasses the resolver — use core.ResolveEndpoints",
-						Suggestion: "derive the host from core.ResolveEndpoints(brand) instead of the SDK global",
+						Message:    "SDK base-URL global " + pkg.Name + "." + node.Sel.Name + " bypasses the resolver — use brand.ResolveEndpoints",
+						Suggestion: "derive the host from brand.ResolveEndpoints(brand) instead of the SDK global",
 					})
 				}
 			case *ast.BasicLit:
@@ -206,8 +206,8 @@ func scanHardcodedEndpoints(root string) ([]lintapi.Violation, error) {
 							Action:     lintapi.ActionReject,
 							File:       display,
 							Line:       pos.Line,
-							Message:    "hardcoded resolver host " + host + " — outbound domains must come from core.ResolveEndpoints",
-							Suggestion: "use core.ResolveEndpoints(brand) instead of a literal host",
+							Message:    "hardcoded resolver host " + host + " — outbound domains must come from brand.ResolveEndpoints",
+							Suggestion: "use brand.ResolveEndpoints(brand) instead of a literal host",
 						})
 						return true
 					}

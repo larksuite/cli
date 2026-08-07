@@ -9,11 +9,11 @@ import (
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 )
 
 func TestAuthLogin_StrictModeBot_Blocked(t *testing.T) {
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID: "a", AppSecret: "s",
 		SupportedIdentities: uint8(extcred.SupportsBot),
 	}
@@ -39,7 +39,7 @@ func TestAuthLogin_StrictModeBot_Blocked(t *testing.T) {
 }
 
 func TestAuthLogin_StrictModeUser_Allowed(t *testing.T) {
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID: "a", AppSecret: "s",
 		SupportedIdentities: uint8(extcred.SupportsUser),
 	}
@@ -62,7 +62,7 @@ func TestAuthLogin_StrictModeUser_Allowed(t *testing.T) {
 }
 
 func TestAuthLogin_StrictModeOff_Allowed(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "a", AppSecret: "s"})
 
 	var called bool
 	cmd := NewCmdAuthLogin(f, func(opts *LoginOptions) error {

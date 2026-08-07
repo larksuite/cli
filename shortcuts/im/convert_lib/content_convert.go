@@ -5,21 +5,16 @@ package convertlib
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
+	"github.com/larksuite/cli/internal/imcontent"
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-// ContentConverter defines the interface for converting a message type's raw content to human-readable text.
-type ContentConverter interface {
-	Convert(ctx *ConvertContext) string
-}
 
 // ConvertContext holds all context needed for content conversion.
 type ConvertContext struct {
@@ -45,45 +40,22 @@ type ConvertContext struct {
 	MergeForwardSubItems map[string][]map[string]interface{}
 }
 
-// converters maps message types to their ContentConverter implementations.
-var converters map[string]ContentConverter
-
-func init() {
-	converters = map[string]ContentConverter{
-		"text":                 textConverter{},
-		"post":                 postConverter{},
-		"image":                imageConverter{},
-		"file":                 fileConverter{},
-		"audio":                audioMsgConverter{},
-		"video":                videoMsgConverter{},
-		"media":                videoMsgConverter{},
-		"sticker":              stickerConverter{},
-		"interactive":          interactiveConverter{},
-		"share_chat":           shareChatConverter{},
-		"share_user":           shareUserConverter{},
-		"location":             locationConverter{},
-		"merge_forward":        mergeForwardConverter{},
-		"folder":               folderConverter{},
-		"share_calendar_event": calendarEventConverter{},
-		"calendar":             calendarInviteConverter{},
-		"general_calendar":     generalCalendarConverter{},
-		"video_chat":           videoChatConverter{},
-		"system":               systemConverter{},
-		"todo":                 todoConverter{},
-		"vote":                 voteConverter{},
-		"hongbao":              hongbaoConverter{},
-	}
-}
-
 // ConvertBodyContent converts body.content (a raw JSON string) to human-readable text.
+//
+// The empty-content guard has to live here, above the merge_forward dispatch,
+// not only in imcontent.ConvertBodyContent: the shortcut-side merge_forward
+// converter never consults imcontent on its expansion paths, so a guard that
+// only sat below the dispatch would let an empty-content merge_forward render a
+// prefetched <forwarded_messages> tree — or issue an inline
+// GET /open-apis/im/v1/messages/{id} — where every other message type returns "".
 func ConvertBodyContent(msgType string, ctx *ConvertContext) string {
-	if ctx.RawContent == "" {
+	if ctx == nil || ctx.RawContent == "" {
 		return ""
 	}
-	if c, ok := converters[msgType]; ok {
-		return c.Convert(ctx)
+	if msgType == "merge_forward" {
+		return (mergeForwardConverter{}).Convert(ctx)
 	}
-	return fmt.Sprintf("[%s]", msgType)
+	return imcontent.ConvertBodyContent(msgType, pureConvertContext(ctx))
 }
 
 // FormatEventMessage converts an event-pushed message to a human-readable map.
@@ -260,7 +232,7 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	return msg
 }
 
-func assembleMessageAppLink(m map[string]interface{}, brand core.LarkBrand) string {
+func assembleMessageAppLink(m map[string]interface{}, brand brandpkg.Brand) string {
 	domain := resolveAppLinkDomain(brand)
 	if domain == "" {
 		return ""
@@ -395,8 +367,8 @@ func normalizeMessagePosition(v interface{}) (string, bool) {
 	}
 }
 
-func resolveAppLinkDomain(brand core.LarkBrand) string {
-	appLink := core.ResolveEndpoints(brand).AppLink
+func resolveAppLinkDomain(brand brandpkg.Brand) string {
+	appLink := brandpkg.ResolveEndpoints(brand).AppLink
 	u, err := url.Parse(appLink)
 	if err != nil {
 		return ""

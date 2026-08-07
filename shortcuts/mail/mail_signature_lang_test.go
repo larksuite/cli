@@ -6,7 +6,7 @@ package mail
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -26,7 +26,7 @@ func TestResolveLang(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rt := &common.RuntimeContext{Config: &core.CliConfig{Lang: tt.stored}}
+			rt := &common.RuntimeContext{Config: &configpkg.CliConfig{Lang: tt.stored}}
 			if got := resolveLang(rt); got != tt.want {
 				t.Errorf("resolveLang(stored=%q) = %q, want %q", tt.stored, got, tt.want)
 			}

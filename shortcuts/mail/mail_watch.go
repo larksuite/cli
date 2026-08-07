@@ -23,12 +23,10 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
@@ -208,7 +206,7 @@ var MailWatch = common.Shortcut{
 				return mailValidationParamError("--output-dir", "invalid --output-dir %q: %v", outputDir, err).WithCause(err)
 			}
 			outputDir = safePath
-			if err := vfs.MkdirAll(outputDir, 0700); err != nil {
+			if err := common.EnsureOutputDir(outputDir); err != nil {
 				return mailFileIOError("cannot create output directory %q: %v", err, outputDir, err)
 			}
 		}
@@ -416,7 +414,7 @@ var MailWatch = common.Shortcut{
 		eventDispatcher.InitConfig(larkevent.WithLogger(sdkLogger))
 		eventDispatcher.OnCustomizedEvent(mailEventType, rawHandler)
 
-		endpoints := core.ResolveEndpoints(runtime.Config.Brand)
+		endpoints := brand.ResolveEndpoints(runtime.Config.Brand)
 		domain := endpoints.Open
 
 		info("Connecting to Feishu event WebSocket...")
@@ -715,7 +713,7 @@ func fetchMessageForWatch(runtime *common.RuntimeContext, mailbox, messageID, fo
 		QueryParams: queryParams,
 	})
 	if err != nil {
-		return nil, client.WrapDoAPIError(err)
+		return nil, common.WrapDoAPIError(err)
 	}
 	data, err := runtime.ClassifyAPIResponse(apiResp)
 	if err != nil {

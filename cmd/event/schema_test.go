@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	eventlib "github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/schemas"
@@ -55,7 +55,7 @@ type approvalSchemaJSONProperty struct {
 }
 
 func TestRunSchema_ProcessedKey_Text(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 	if err := runSchema(f, compileCatalog(), "im.message.receive_v1", false); err != nil {
 		t.Fatalf("runSchema: %v", err)
@@ -75,7 +75,7 @@ func TestRunSchema_ProcessedKey_Text(t *testing.T) {
 }
 
 func TestRunSchema_NativeKey_WrapsEnvelope(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 	if err := runSchema(f, compileCatalog(), "im.message.message_read_v1", false); err != nil {
 		t.Fatalf("runSchema: %v", err)
@@ -95,7 +95,7 @@ func TestRunSchema_NativeKey_WrapsEnvelope(t *testing.T) {
 }
 
 func TestRunSchema_UnknownKey_SuggestsAlternatives(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 	err := runSchema(f, compileCatalog(), "im.message.recieve_v1", false)
 	if err == nil {
@@ -111,7 +111,7 @@ func TestRunSchema_UnknownKey_SuggestsAlternatives(t *testing.T) {
 }
 
 func TestRunSchema_JSONOutput(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 	if err := runSchema(f, compileCatalog(), "im.message.receive_v1", true); err != nil {
 		t.Fatalf("runSchema json: %v", err)
@@ -132,7 +132,7 @@ func TestRunSchema_JSONOutput(t *testing.T) {
 }
 
 func TestRunSchema_ReceiveMessageAgentFieldsJSON(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 	if err := runSchema(f, compileCatalog(), "im.message.receive_v1", true); err != nil {
 		t.Fatalf("runSchema json: %v", err)
@@ -166,7 +166,7 @@ func TestRunSchema_ReceiveMessageAgentFieldsJSON(t *testing.T) {
 }
 
 func TestRunSchema_TaskUpdateUserAccessJSON(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 	if err := runSchema(f, compileCatalog(), "task.task.update_user_access_v2", true); err != nil {
 		t.Fatalf("runSchema json: %v", err)
@@ -205,7 +205,7 @@ func TestRunSchema_ApprovalStatusChangedJSON(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.key, func(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+			f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 			if err := runSchema(f, compileCatalog(), tc.key, true); err != nil {
 				t.Fatalf("runSchema json: %v", err)
@@ -253,7 +253,7 @@ func TestRunSchema_JSONOutput_VCMeetingLifecycleKeys(t *testing.T) {
 		"vc.meeting.participant_meeting_joined_v1",
 	} {
 		t.Run(key, func(t *testing.T) {
-			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+			f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 			if err := runSchema(f, compileCatalog(), key, true); err != nil {
 				t.Fatalf("runSchema json: %v", err)
@@ -299,7 +299,7 @@ func TestSchema_RendersSubscriptionKeyMarker(t *testing.T) {
 		Schema: eventlib.SchemaDef{Native: &eventlib.SchemaSpec{Type: reflect.TypeOf(struct{ X string }{})}},
 	})
 
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 	if err := runSchema(f, snap, syntheticKey, false); err != nil {
 		t.Fatalf("runSchema: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestSchema_JSON_IncludesSubscriptionKey(t *testing.T) {
 		Schema:    eventlib.SchemaDef{Native: &eventlib.SchemaSpec{Type: reflect.TypeOf(struct{ X string }{})}},
 	})
 
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 	if err := runSchema(f, snap, syntheticKey, true); err != nil {
 		t.Fatalf("runSchema json: %v", err)
 	}

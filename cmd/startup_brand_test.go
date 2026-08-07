@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/registry"
 )
 
@@ -48,7 +48,7 @@ func TestResolveStartupBrand_Precedence(t *testing.T) {
 	os.Unsetenv("LARKSUITE_CLI_BRAND")
 
 	// No config at all → default brand.
-	if got := ResolveStartupBrand(""); got != core.BrandFeishu {
+	if got := ResolveStartupBrand(""); got != brand.Feishu {
 		t.Errorf("empty state brand = %q, want feishu", got)
 	}
 
@@ -59,16 +59,16 @@ func TestResolveStartupBrand_Precedence(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmp, "config.json"), []byte(raw), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if got := ResolveStartupBrand(""); got != core.BrandFeishu {
+	if got := ResolveStartupBrand(""); got != brand.Feishu {
 		t.Errorf("default profile brand = %q, want feishu", got)
 	}
-	if got := ResolveStartupBrand("lark-prof"); got != core.BrandLark {
+	if got := ResolveStartupBrand("lark-prof"); got != brand.Lark {
 		t.Errorf("lark profile brand = %q, want lark (normalized)", got)
 	}
 
 	// Environment wins over the config file.
 	t.Setenv("LARKSUITE_CLI_BRAND", "lark")
-	if got := ResolveStartupBrand(""); got != core.BrandLark {
+	if got := ResolveStartupBrand(""); got != brand.Lark {
 		t.Errorf("env brand = %q, want lark", got)
 	}
 }

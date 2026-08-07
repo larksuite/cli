@@ -5,10 +5,10 @@ package cmd
 
 import (
 	"errors"
+	"github.com/larksuite/cli/brand"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/spf13/cobra"
@@ -56,7 +56,7 @@ func installEnvironmentProfileGate(
 	inv cmdutil.InvocationContext,
 	plan *surface.Plan,
 ) bool {
-	if inv.ProfileSource != core.ProfileFromEnvironment ||
+	if inv.ProfileSource != brand.ProfileFromEnvironment ||
 		plan.CanReference(surface.CommandProfile) {
 		return false
 	}

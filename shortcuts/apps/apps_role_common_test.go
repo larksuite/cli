@@ -10,21 +10,23 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
 func newRoleRCtx(t *testing.T, flagDefs map[string]string, flags map[string]string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-app-" + strings.ToLower(t.Name()),
 		AppSecret:  "test-secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_test",
 	}
 	factory, stdoutBuf, _, reg := cmdutil.TestFactory(t, cfg)
@@ -47,7 +49,7 @@ func newRoleRCtx(t *testing.T, flagDefs map[string]string, flags map[string]stri
 			t.Fatalf("set flag %q = %q: %v", name, val, err)
 		}
 	}
-	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, core.AsUser)
+	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, identity.AsUser)
 	return rctx, stdoutBuf, reg
 }
 

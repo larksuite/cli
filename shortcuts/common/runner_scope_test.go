@@ -11,8 +11,9 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 type scopeCheckTokenResolver struct {
@@ -105,7 +106,7 @@ func TestCheckShortcutScopes_PropagatesContextCancellation(t *testing.T) {
 		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{err: context.Canceled}, nil),
 	}
 
-	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, []string{"im:message:read"})
+	err := checkShortcutScopes(f, context.Background(), identity.AsUser, &configpkg.CliConfig{AppID: "app-1"}, []string{"im:message:read"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("checkShortcutScopes() error = %v, want context.Canceled", err)
 	}
@@ -125,7 +126,7 @@ func TestCheckShortcutScopes_ReturnsTypedPermissionError(t *testing.T) {
 	}
 
 	required := []string{"im:message:read", "drive:drive:read", "docx:document:read"}
-	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, required)
+	err := checkShortcutScopes(f, context.Background(), identity.AsUser, &configpkg.CliConfig{AppID: "app-1"}, required)
 	if err == nil {
 		t.Fatal("expected error when token is missing required scopes, got nil")
 	}
@@ -140,8 +141,8 @@ func TestCheckShortcutScopes_ReturnsTypedPermissionError(t *testing.T) {
 	if permErr.Subtype != errs.SubtypeMissingScope {
 		t.Errorf("Subtype = %q, want %q", permErr.Subtype, errs.SubtypeMissingScope)
 	}
-	if permErr.Identity != string(core.AsUser) {
-		t.Errorf("Identity = %q, want %q", permErr.Identity, string(core.AsUser))
+	if permErr.Identity != string(identity.AsUser) {
+		t.Errorf("Identity = %q, want %q", permErr.Identity, string(identity.AsUser))
 	}
 	wantMissing := map[string]bool{"drive:drive:read": true, "docx:document:read": true}
 	for _, m := range permErr.MissingScopes {
@@ -163,7 +164,7 @@ func TestCheckShortcutScopes_IgnoresNonContextTokenErrors(t *testing.T) {
 		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{err: errors.New("token cache unavailable")}, nil),
 	}
 
-	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, []string{"im:message:read"})
+	err := checkShortcutScopes(f, context.Background(), identity.AsUser, &configpkg.CliConfig{AppID: "app-1"}, []string{"im:message:read"})
 	if err != nil {
 		t.Fatalf("checkShortcutScopes() error = %v, want nil", err)
 	}

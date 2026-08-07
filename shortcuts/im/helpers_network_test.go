@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	internaltransport "github.com/larksuite/cli/internal/transport"
 	"io"
 	"net/http"
 	"os"
@@ -23,12 +24,13 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
-	internaltransport "github.com/larksuite/cli/internal/transport"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -105,16 +107,16 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 		lark.WithLogLevel(larkcore.LogLevelError),
 		lark.WithHttpClient(httpClient),
 	)
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:     "test-app",
 		AppSecret: "test-secret",
-		Brand:     core.BrandFeishu,
+		Brand:     brand.Feishu,
 	}
 	testCred := credential.NewCredentialProvider(nil, nil, &staticShortcutTokenResolver{}, nil)
 	runtime := &common.RuntimeContext{
 		Config: cfg,
 		Factory: &cmdutil.Factory{
-			Config:         func() (*core.CliConfig, error) { return cfg, nil },
+			Config:         func() (*configpkg.CliConfig, error) { return cfg, nil },
 			HttpClient:     func() (*http.Client, error) { return httpClient, nil },
 			LarkClient:     func() (*lark.Client, error) { return sdk, nil },
 			Credential:     testCred,
@@ -126,7 +128,7 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 		},
 	}
 	setRuntimeField(t, runtime, "ctx", cmdutil.ContextWithShortcut(context.Background(), "im.test", "exec-123"))
-	setRuntimeField(t, runtime, "resolvedAs", core.AsBot)
+	setRuntimeField(t, runtime, "resolvedAs", identity.AsBot)
 	setRuntimeField(t, runtime, "larkSDK", sdk)
 	return runtime
 }
@@ -134,7 +136,7 @@ func newBotShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeCo
 func newUserShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeContext {
 	t.Helper()
 	runtime := newBotShortcutRuntime(t, rt)
-	setRuntimeField(t, runtime, "resolvedAs", core.AsUser)
+	setRuntimeField(t, runtime, "resolvedAs", identity.AsUser)
 	return runtime
 }
 

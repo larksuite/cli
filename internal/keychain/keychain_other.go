@@ -35,7 +35,8 @@ func StorageDir(service string) string {
 	home, err := vfs.UserHomeDir()
 	if err != nil || home == "" {
 		// If home is missing, fallback to relative path and print warning.
-		// This matches the behavior in internal/core/config.go.
+		// The relative fallback matches internal/workspace.GetBaseConfigDir,
+		// which cannot warn because it has no IOStreams in scope.
 		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
 	}
 	xdgData := filepath.Join(home, ".local", "share")

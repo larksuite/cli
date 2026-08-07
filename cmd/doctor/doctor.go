@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/larksuite/cli/internal/envvars"
 	"net/http"
 	"os"
 	"sync"
@@ -14,16 +15,17 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/update"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 // DoctorOptions holds inputs for the doctor command.
@@ -98,7 +100,7 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 	}
 
 	// ── 1. Config file ──
-	_, err := core.LoadMultiAppConfig()
+	_, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		// For "config not present" cases, prefer the workspace-aware
 		// NotConfiguredError message + hint (e.g. "openclaw context
@@ -109,7 +111,7 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 		msg, hint := err.Error(), ""
 		if errors.Is(err, os.ErrNotExist) {
 			var cfgErr *errs.ConfigError
-			if errors.As(projector.Render(core.NotConfiguredError()), &cfgErr) {
+			if errors.As(projector.Render(configpkg.NotConfiguredError()), &cfgErr) {
 				msg, hint = cfgErr.Message, cfgErr.Hint
 			}
 		}
@@ -137,7 +139,7 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 	// built-in config-backed provider, which makes it the provider telltale.
 	if f.Invocation.Profile != "" && cfg.ProfileName == "" {
 		selector := "--profile"
-		if f.Invocation.ProfileSource == core.ProfileFromEnvironment {
+		if f.Invocation.ProfileSource == brand.ProfileFromEnvironment {
 			selector = envvars.CliProfile
 		}
 		checks = append(checks, warn("profile_selector",
@@ -145,7 +147,7 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 			fmt.Sprintf("unset %s, or remove the external credential variables to select accounts by profile", selector)))
 	}
 
-	ep := core.ResolveEndpoints(cfg.Brand)
+	ep := brand.ResolveEndpoints(cfg.Brand)
 
 	// ── 3. Identity readiness ──
 	diagnostics := identitydiag.FilterRecovery(
@@ -179,7 +181,7 @@ func identityCheck(name string, id identitydiag.Identity) checkResult {
 }
 
 // networkChecks probes Open API and MCP endpoints concurrently.
-func networkChecks(ctx context.Context, opts *DoctorOptions, ep core.Endpoints) []checkResult {
+func networkChecks(ctx context.Context, opts *DoctorOptions, ep brand.Endpoints) []checkResult {
 	if opts.Offline {
 		return []checkResult{
 			skip("endpoint_open", "skipped (--offline)"),
@@ -271,7 +273,7 @@ func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 
 	result := map[string]interface{}{
 		"ok":        allOK,
-		"workspace": core.CurrentWorkspace().Display(),
+		"workspace": workspace.CurrentWorkspace().Display(),
 		"checks":    checks,
 	}
 	output.PrintJson(f.IOStreams.Out, result)

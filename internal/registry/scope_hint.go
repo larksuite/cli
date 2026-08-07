@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 )
 
 // ExtractRequiredScopes pulls scope names out of the API error's
@@ -55,13 +55,13 @@ func SelectRecommendedScopeFromStrings(scopes []string, _ string) string {
 // BuildConsoleScopeURL returns the developer-console "apply scope" URL for the
 // given app and scope, branded for feishu / lark. Returns "" when appID or
 // scope is empty so callers can omit the field cleanly.
-func BuildConsoleScopeURL(brand core.LarkBrand, appID, scope string) string {
+func BuildConsoleScopeURL(brand brandpkg.Brand, appID, scope string) string {
 	if appID == "" || scope == "" {
 		return ""
 	}
 	return fmt.Sprintf(
 		"%s/page/scope-apply?clientID=%s&scopes=%s",
-		core.ResolveOpenBaseURL(brand),
+		brandpkg.ResolveOpenBaseURL(brand),
 		url.QueryEscape(appID),
 		url.QueryEscape(scope),
 	)

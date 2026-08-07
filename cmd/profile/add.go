@@ -12,11 +12,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
+	secretpkg "github.com/larksuite/cli/internal/secret"
 )
 
 // NewCmdProfileAdd creates the profile add subcommand.
@@ -53,7 +55,7 @@ func NewCmdProfileAdd(f *cmdutil.Factory) *cobra.Command {
 }
 
 func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, brand, lang string, useAfter bool) error {
-	if err := core.ValidateProfileName(name); err != nil {
+	if err := configpkg.ValidateProfileName(name); err != nil {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).
 			WithCause(err).
 			WithParam("--name")
@@ -90,12 +92,12 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 	}
 
 	// Load or create config
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return errs.NewInternalError(errs.SubtypeFileIO, "failed to load config: %v", err).WithCause(err)
 		}
-		multi = &core.MultiAppConfig{}
+		multi = &configpkg.MultiAppConfig{}
 	}
 
 	// Check name uniqueness
@@ -115,12 +117,12 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 	}
 
 	// Store secret securely
-	secret, err := core.ForStorage(appID, core.PlainSecret(appSecret), f.Keychain)
+	secret, err := secretpkg.ForStorage(appID, secretpkg.PlainSecret(appSecret), f.Keychain)
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "%v", err).WithCause(err)
 	}
 
-	parsedBrand := core.ParseBrand(brand)
+	parsedBrand := brandpkg.ParseBrand(brand)
 
 	// Capture current profile before appending (avoid setting PreviousApp to self)
 	var previousName string
@@ -131,13 +133,13 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 	}
 
 	// Append profile
-	multi.Apps = append(multi.Apps, core.AppConfig{
+	multi.Apps = append(multi.Apps, configpkg.AppConfig{
 		Name:      name,
 		AppId:     appID,
 		AppSecret: secret,
 		Brand:     parsedBrand,
 		Lang:      i18n.Lang(lang),
-		Users:     []core.AppUser{},
+		Users:     []configpkg.AppUser{},
 	})
 
 	if useAfter {
@@ -147,7 +149,7 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 		multi.CurrentApp = name
 	}
 
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 

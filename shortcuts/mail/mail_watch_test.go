@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -886,7 +886,7 @@ func runtimeForMailWatchTest(t *testing.T, values map[string]string) *common.Run
 	}
 	return &common.RuntimeContext{
 		Cmd:    cmd,
-		Config: &core.CliConfig{AppID: "cli_test_app"},
+		Config: &configpkg.CliConfig{AppID: "cli_test_app"},
 	}
 }
 

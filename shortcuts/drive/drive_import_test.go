@@ -12,9 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -95,7 +97,7 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 		t.Fatalf("set --folder-token: %v", err)
 	}
 
-	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, core.AsBot)
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, identity.AsBot)
 	dry := DriveImport.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -571,14 +573,14 @@ func driveImportMockEnv(t *testing.T, reg *httpmock.Registry, ticket string, pol
 }
 
 // driveImportTestConfig builds a CliConfig for the import fallback tests.
-// The brand defaults to BrandFeishu when omitted; pass core.BrandLark to
+// The brand defaults to brand.Feishu when omitted; pass brand.Lark to
 // exercise the larksuite.com branch of BuildResourceURL.
-func driveImportTestConfig(suffix string, brands ...core.LarkBrand) *core.CliConfig {
-	brand := core.BrandFeishu
+func driveImportTestConfig(suffix string, brands ...brand.Brand) *configpkg.CliConfig {
+	brand := brand.Feishu
 	if len(brands) > 0 {
 		brand = brands[0]
 	}
-	return &core.CliConfig{
+	return &configpkg.CliConfig{
 		AppID:     "drive-import-fallback-" + suffix,
 		AppSecret: "test-secret",
 		Brand:     brand,
@@ -680,7 +682,7 @@ func TestDriveImportFallbackURLWhenServerURLIsWhitespace(t *testing.T) {
 }
 
 func TestDriveImportFallbackURLForLarkBrand(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("lark-brand", core.BrandLark))
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("lark-brand", brand.Lark))
 	driveImportMockEnv(t, reg, "ticket_lark", map[string]interface{}{
 		"token":      "doxcn_imported",
 		"type":       "docx",

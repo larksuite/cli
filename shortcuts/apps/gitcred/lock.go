@@ -37,9 +37,9 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/internal/vfs" //nolint:depguard // git credential locks live under CLI config dir and are not user file I/O.
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 var urlLocks sync.Map
@@ -65,7 +65,7 @@ func lockURL(url string) func() {
 // Lock ordering: when both lockApp and lockURL are needed, lockApp must be
 // taken FIRST. See package comment for the full convention.
 func lockApp(appID string) (func(), error) {
-	dir := filepath.Join(core.GetConfigDir(), "locks")
+	dir := filepath.Join(workspace.GetConfigDir(), "locks")
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return nil, errs.NewInternalError(errs.SubtypeStorage, "create Git credential lock dir: %v", err).WithCause(err)
 	}
@@ -82,7 +82,7 @@ func lockApp(appID string) (func(), error) {
 // Lock ordering: lockGlobalConfig must be taken AFTER lockApp and BEFORE
 // lockURL. See package comment for the full convention.
 func lockGlobalConfig(origin string) (func(), error) {
-	dir := filepath.Join(core.GetConfigDir(), "locks")
+	dir := filepath.Join(workspace.GetConfigDir(), "locks")
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return nil, errs.NewInternalError(errs.SubtypeStorage, "create Git credential lock dir: %v", err).WithCause(err)
 	}

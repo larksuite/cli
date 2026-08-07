@@ -22,11 +22,14 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/sparkstore"
+	"github.com/larksuite/cli/internal/workspace"
 	"github.com/larksuite/cli/shortcuts/apps/gitcred"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -284,7 +287,7 @@ func TestAppsGitCredentialInitExecutesAndRefreshes(t *testing.T) {
 	if got := stdout.String(); !strings.Contains(got, `"status": "initialized"`) || !strings.Contains(got, `"repository_url": "https://example.com/git/u/app.git"`) {
 		t.Fatalf("init stdout = %s", got)
 	}
-	meta, err := Read("app_xxx", gitcred.MetadataFilename)
+	meta, err := sparkstore.Read("app_xxx", gitcred.MetadataFilename)
 	if err != nil {
 		t.Fatalf("read app-scoped metadata: %v", err)
 	}
@@ -526,13 +529,13 @@ func TestAppsGitCredentialListEmpty(t *testing.T) {
 
 func TestGitCredentialAppStorageListAppIDsSkipsNonCredentialAppDirs(t *testing.T) {
 	newAppsExecuteFactory(t)
-	if err := Write("app/a", gitcred.MetadataFilename, []byte("{}")); err != nil {
+	if err := sparkstore.Write("app/a", gitcred.MetadataFilename, []byte("{}")); err != nil {
 		t.Fatalf("Write escaped app metadata: %v", err)
 	}
-	if err := Write("app_b", gitcred.MetadataFilename, []byte("{}")); err != nil {
+	if err := sparkstore.Write("app_b", gitcred.MetadataFilename, []byte("{}")); err != nil {
 		t.Fatalf("Write app_b metadata: %v", err)
 	}
-	root := filepath.Join(core.GetConfigDir(), "spark")
+	root := filepath.Join(workspace.GetConfigDir(), "spark")
 	if err := os.WriteFile(filepath.Join(root, "not-an-app-dir"), []byte("x"), 0600); err != nil {
 		t.Fatalf("write non-dir: %v", err)
 	}
@@ -542,7 +545,7 @@ func TestGitCredentialAppStorageListAppIDsSkipsNonCredentialAppDirs(t *testing.T
 		}
 	}
 
-	appIDs, err := gitCredentialAppStorage{}.ListAppIDs()
+	appIDs, err := (sparkstore.AppStorage{}).ListAppIDs()
 	if err != nil {
 		t.Fatalf("ListAppIDs: %v", err)
 	}
@@ -558,7 +561,7 @@ func TestGitCredentialAppStorageListAppIDsSkipsNonCredentialAppDirs(t *testing.T
 func TestAppsGitCredentialListReturnsScanErrors(t *testing.T) {
 	t.Run("storage root error", func(t *testing.T) {
 		factory, stdout, _ := newAppsExecuteFactory(t)
-		root := filepath.Join(core.GetConfigDir(), "spark")
+		root := filepath.Join(workspace.GetConfigDir(), "spark")
 		if err := os.WriteFile(root, []byte("not a dir"), 0600); err != nil {
 			t.Fatalf("write storage root blocker: %v", err)
 		}
@@ -570,10 +573,10 @@ func TestAppsGitCredentialListReturnsScanErrors(t *testing.T) {
 
 	t.Run("record error", func(t *testing.T) {
 		factory, _, _ := newAppsExecuteFactory(t)
-		if err := Write("app_xxx", gitcred.MetadataFilename, []byte("{bad json")); err != nil {
+		if err := sparkstore.Write("app_xxx", gitcred.MetadataFilename, []byte("{bad json")); err != nil {
 			t.Fatalf("write invalid metadata: %v", err)
 		}
-		_, err := listGitCredentialRecords(factory.Keychain, time.Now)
+		_, err := gitcred.ListCredentialRecords(factory.Keychain, time.Now)
 		if err == nil || !strings.Contains(err.Error(), "invalid git.json") {
 			t.Fatalf("listGitCredentialRecords record error = %v", err)
 		}
@@ -585,7 +588,7 @@ func TestListGitCredentialRecordsSortsDuplicateDecodedAppIDs(t *testing.T) {
 	kc := newAppsTestKeychain()
 	factory.Keychain = kc
 	now := time.Unix(1780000000, 0)
-	manager := newGitCredentialManager("app_x", kc, nil)
+	manager := gitcred.NewAppManager("app_x", kc, nil)
 	manager.Now = func() time.Time { return now }
 	record := gitcred.CredentialRecord{
 		AppID:      "app_x",
@@ -599,11 +602,11 @@ func TestListGitCredentialRecordsSortsDuplicateDecodedAppIDs(t *testing.T) {
 	if err := manager.Store.Upsert(record); err != nil {
 		t.Fatalf("Upsert returned error: %v", err)
 	}
-	if err := os.Mkdir(filepath.Join(core.GetConfigDir(), "spark", "app%5Fx"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(workspace.GetConfigDir(), "spark", "app%5Fx"), 0700); err != nil {
 		t.Fatalf("mkdir duplicate encoded app dir: %v", err)
 	}
 
-	records, err := listGitCredentialRecords(kc, func() time.Time { return now })
+	records, err := gitcred.ListCredentialRecords(kc, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("listGitCredentialRecords returned error: %v", err)
 	}
@@ -683,7 +686,7 @@ func TestAppsGitCredentialRemoveRequiresAppID(t *testing.T) {
 
 func TestAppsGitCredentialRemoveReturnsStoreError(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := Write("app_xxx", gitcred.MetadataFilename, []byte("{bad json")); err != nil {
+	if err := sparkstore.Write("app_xxx", gitcred.MetadataFilename, []byte("{bad json")); err != nil {
 		t.Fatalf("write invalid metadata: %v", err)
 	}
 	err := runAppsShortcut(t, AppsGitCredentialRemove, []string{"+git-credential-remove", "--app-id", "app_xxx", "--as", "user"}, factory, stdout)
@@ -739,7 +742,7 @@ func TestRunGitCredentialHelperActions(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	kc := newAppsTestKeychain()
 	factory.Keychain = kc
-	storage := gitCredentialAppStorage{}
+	storage := sparkstore.AppStorage{}
 	manager := gitcred.NewManager(gitcred.NewAppStore("app_xxx", storage), gitcred.NewSecretStore(kc), nil, testAppsIssuer{next: &gitcred.IssuedCredential{
 		GitHTTPURL: "https://example.com/git/u/app.git",
 		Username:   "x-access-token",
@@ -789,7 +792,7 @@ func TestRunGitCredentialHelperActions(t *testing.T) {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 	stderr.Reset()
-	factory.Config = func() (*core.CliConfig, error) { return nil, errors.New("config failed") }
+	factory.Config = func() (*configpkg.CliConfig, error) { return nil, errors.New("config failed") }
 	factory.IOStreams.In = bytes.NewBufferString("protocol=https\nhost=example.com\npath=/git/u/app.git\n\n")
 	if err := runGitCredentialHelper(context.Background(), factory, "app_xxx", "get"); err != nil {
 		t.Fatalf("helper config error returned error: %v", err)
@@ -797,8 +800,8 @@ func TestRunGitCredentialHelperActions(t *testing.T) {
 	if !strings.Contains(stderr.String(), "config failed") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
-	cfg = &core.CliConfig{AppID: "cli", AppSecret: "secret", Brand: core.BrandFeishu, UserOpenId: "ou_test"}
-	factory.Config = func() (*core.CliConfig, error) { return cfg, nil }
+	cfg = &configpkg.CliConfig{AppID: "cli", AppSecret: "secret", Brand: brand.Feishu, UserOpenId: "ou_test"}
+	factory.Config = func() (*configpkg.CliConfig, error) { return cfg, nil }
 	stderr.Reset()
 	if err := runGitCredentialHelper(context.Background(), factory, "app_xxx", "unknown"); err != nil {
 		t.Fatalf("helper unknown returned error: %v", err)
@@ -859,19 +862,19 @@ func TestFactoryIssuerBranches(t *testing.T) {
 		t.Fatalf("%s header missing", cmdutil.HeaderExecutionId)
 	}
 
-	factory.Config = func() (*core.CliConfig, error) { return nil, errors.New("config failed") }
+	factory.Config = func() (*configpkg.CliConfig, error) { return nil, errors.New("config failed") }
 	if _, err := (factoryIssuer{f: factory}).Issue(context.Background(), "app_xxx", gitcred.ProfileContext{}); err == nil {
 		t.Fatal("factory issuer config error returned nil")
 	}
 
-	factory.Config = func() (*core.CliConfig, error) {
-		return &core.CliConfig{AppID: "cli", AppSecret: "secret", Brand: core.BrandFeishu}, nil
+	factory.Config = func() (*configpkg.CliConfig, error) {
+		return &configpkg.CliConfig{AppID: "cli", AppSecret: "secret", Brand: brand.Feishu}, nil
 	}
 	if _, err := (factoryIssuer{f: factory}).Issue(context.Background(), "app_xxx", gitcred.ProfileContext{}); err == nil {
 		t.Fatal("factory issuer without login returned nil")
 	}
-	factory.Config = func() (*core.CliConfig, error) {
-		return &core.CliConfig{AppID: "cli", AppSecret: "secret", Brand: core.BrandFeishu, UserOpenId: "ou_test"}, nil
+	factory.Config = func() (*configpkg.CliConfig, error) {
+		return &configpkg.CliConfig{AppID: "cli", AppSecret: "secret", Brand: brand.Feishu, UserOpenId: "ou_test"}, nil
 	}
 	factory.LarkClient = func() (*lark.Client, error) { return nil, errors.New("sdk failed") }
 	if _, err := (factoryIssuer{f: factory}).Issue(context.Background(), "app_xxx", gitcred.ProfileContext{}); err == nil {

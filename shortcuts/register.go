@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"slices"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/shortcuts/okr"
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts/application"
@@ -49,11 +49,11 @@ var serviceAliases = map[string][]string{
 
 // Empty brand (no config loaded) is treated as no-restriction so bootstrap
 // paths and tests without config still see the full service list.
-var brandRestrictedServices = map[string][]core.LarkBrand{
-	"apps": {core.BrandFeishu},
+var brandRestrictedServices = map[string][]brandpkg.Brand{
+	"apps": {brandpkg.Feishu},
 }
 
-func IsShortcutServiceAvailable(service string, brand core.LarkBrand) bool {
+func IsShortcutServiceAvailable(service string, brand brandpkg.Brand) bool {
 	allowed, ok := brandRestrictedServices[service]
 	if !ok {
 		return true
@@ -109,7 +109,7 @@ func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
 
 func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) {
 	// Factory.Config may be nil in tests that pass a zero-value factory.
-	var brand core.LarkBrand
+	var brand brandpkg.Brand
 	if f != nil && f.Config != nil {
 		if cfg, err := f.Config(); err == nil && cfg != nil {
 			brand = cfg.Brand
@@ -187,7 +187,7 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 // ArbitraryArgs keep cobra from short-circuiting with "missing required flag"
 // before our RunE runs; leaf-level PersistentPreRunE defeats cobra's "first
 // PreRunE wins" walk-up that would otherwise shadow the stub.
-func installBrandRestrictionGuard(svc *cobra.Command, service string, brand core.LarkBrand) {
+func installBrandRestrictionGuard(svc *cobra.Command, service string, brand brandpkg.Brand) {
 	stub := func(c *cobra.Command, _ []string) error {
 		c.SilenceUsage = true
 		return errs.NewValidationError(errs.SubtypeFailedPrecondition,

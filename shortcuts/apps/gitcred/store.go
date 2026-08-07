@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs" //nolint:depguard // git credential metadata is CLI config-dir state, not user file I/O.
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 type AppStorage interface {
@@ -29,7 +29,7 @@ type Store struct {
 }
 
 func NewStore() *Store {
-	return &Store{path: filepath.Join(core.GetConfigDir(), MetadataFilename)}
+	return &Store{path: filepath.Join(workspace.GetConfigDir(), MetadataFilename)}
 }
 
 func NewAppStore(appID string, storage AppStorage) *Store {

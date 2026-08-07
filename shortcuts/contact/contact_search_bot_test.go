@@ -10,9 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -28,9 +29,9 @@ func newBotSearchTestCommand() *cobra.Command {
 	return cmd
 }
 
-func botSearchDefaultConfig() *core.CliConfig {
-	return &core.CliConfig{
-		AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+func botSearchDefaultConfig() *configpkg.CliConfig {
+	return &configpkg.CliConfig{
+		AppID: "test", AppSecret: "test", Brand: brand.Feishu,
 		UserOpenId: "ou_self",
 	}
 }

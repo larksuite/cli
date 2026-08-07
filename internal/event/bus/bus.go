@@ -17,13 +17,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/busdiscover"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/lockfile"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 const (
@@ -83,7 +83,7 @@ func (b *Bus) Run(ctx context.Context) error {
 
 	// alive.lock before bind: closes the cleanup-TOCTOU race where two newly forked
 	// buses each unlink and rebind the socket. Brief retry covers stop-then-restart.
-	eventsDir := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(b.appID))
+	eventsDir := filepath.Join(workspace.GetConfigDir(), "events", event.SanitizeAppID(b.appID))
 	pidHandle, pidErr := acquireAliveLock(eventsDir)
 	if pidErr != nil {
 		if errors.Is(pidErr, lockfile.ErrHeld) {

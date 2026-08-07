@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 const (
@@ -160,7 +160,7 @@ func IsCIEnv() bool {
 // --- state file I/O ---
 
 func statePath() string {
-	return filepath.Join(core.GetConfigDir(), stateFile)
+	return filepath.Join(workspace.GetConfigDir(), stateFile)
 }
 
 func loadState() (*updateState, error) {
@@ -176,7 +176,7 @@ func loadState() (*updateState, error) {
 }
 
 func saveState(s *updateState) error {
-	dir := core.GetConfigDir()
+	dir := workspace.GetConfigDir()
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return err
 	}

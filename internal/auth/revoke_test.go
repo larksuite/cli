@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -54,7 +54,7 @@ func TestRevokeToken_PostsExpectedForm(t *testing.T) {
 	}
 	reg.Register(stub)
 
-	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", brand.Feishu, "user-access-token", "access_token")
 	if err != nil {
 		t.Fatalf("RevokeToken() error = %v", err)
 	}
@@ -71,7 +71,7 @@ func TestRevokeToken_DoFailureReturnsTypedNetworkError(t *testing.T) {
 		}),
 	}
 
-	err := RevokeToken(httpClient, "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(httpClient, "cli_a", "secret_b", brand.Feishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -98,7 +98,7 @@ func TestRevokeToken_ReportsHTTPError(t *testing.T) {
 		Body:   map[string]interface{}{"error": "invalid_token"},
 	})
 
-	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", brand.Feishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -127,7 +127,7 @@ func TestRevokeToken_ReportsOAuthCodeErrorAsTypedAPIError(t *testing.T) {
 		},
 	})
 
-	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", brand.Feishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -156,7 +156,7 @@ func TestRevokeToken_ReportsOAuthErrorFieldAsTypedAPIError(t *testing.T) {
 		},
 	})
 
-	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(httpmock.NewClient(reg), "cli_a", "secret_b", brand.Feishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -184,7 +184,7 @@ func TestRevokeToken_ReadFailureReturnsTypedInternalError(t *testing.T) {
 		}),
 	}
 
-	err := RevokeToken(httpClient, "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
+	err := RevokeToken(httpClient, "cli_a", "secret_b", brand.Feishu, "user-access-token", "access_token")
 	if err == nil {
 		t.Fatal("expected error")
 	}

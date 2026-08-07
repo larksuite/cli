@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
 func TestAddAPIIdentityFlag_NonStrictMode(t *testing.T) {
-	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	f, _, _, _ := TestFactory(t, &configpkg.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := &cobra.Command{Use: "test"}
 
 	AddAPIIdentityFlag(context.Background(), cmd, f, nil)
@@ -31,7 +31,7 @@ func TestAddAPIIdentityFlag_NonStrictMode(t *testing.T) {
 }
 
 func TestAddAPIIdentityFlag_StrictModeHidesFlagAndLocksDefault(t *testing.T) {
-	f, _, _, _ := TestFactory(t, &core.CliConfig{
+	f, _, _, _ := TestFactory(t, &configpkg.CliConfig{
 		AppID: "a", AppSecret: "s", SupportedIdentities: 2,
 	})
 	cmd := &cobra.Command{Use: "test"}
@@ -51,7 +51,7 @@ func TestAddAPIIdentityFlag_StrictModeHidesFlagAndLocksDefault(t *testing.T) {
 }
 
 func TestAddShortcutIdentityFlag_NoDefault(t *testing.T) {
-	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	f, _, _, _ := TestFactory(t, &configpkg.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := &cobra.Command{Use: "test"}
 
 	AddShortcutIdentityFlag(context.Background(), cmd, f, []string{"bot"})
@@ -70,7 +70,7 @@ func TestAddShortcutIdentityFlag_NoDefault(t *testing.T) {
 
 // TC-10: AuthTypes=["user"] → usage contains "identity type: user" and NOT "bot".
 func TestAddShortcutIdentityFlag_UserOnlyAuthTypes(t *testing.T) {
-	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	f, _, _, _ := TestFactory(t, &configpkg.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := &cobra.Command{Use: "test"}
 
 	AddShortcutIdentityFlag(context.Background(), cmd, f, []string{"user"})
@@ -93,7 +93,7 @@ func TestAddShortcutIdentityFlag_UserOnlyAuthTypes(t *testing.T) {
 
 // TC-11: AuthTypes=["user","bot"] → usage == "identity type: user | bot".
 func TestAddShortcutIdentityFlag_UserBotAuthTypes(t *testing.T) {
-	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	f, _, _, _ := TestFactory(t, &configpkg.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := &cobra.Command{Use: "test"}
 
 	AddShortcutIdentityFlag(context.Background(), cmd, f, []string{"user", "bot"})

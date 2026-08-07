@@ -6,7 +6,8 @@ package credential
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/i18n"
 )
 
@@ -46,11 +47,11 @@ func TestParseTokenType(t *testing.T) {
 }
 
 func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		ProfileName:         "target",
 		AppID:               "app-1",
 		AppSecret:           "secret-1",
-		Brand:               core.BrandLark,
+		Brand:               brand.Lark,
 		DefaultAs:           "user",
 		UserOpenId:          "ou_123",
 		UserName:            "alice",
@@ -99,7 +100,7 @@ func TestAccountToCliConfig_TokenOnlySecretPreservesNoAppSecret(t *testing.T) {
 		ProfileName: "env",
 		AppID:       "app-1",
 		AppSecret:   "",
-		Brand:       core.BrandFeishu,
+		Brand:       brand.Feishu,
 	}
 
 	cfg := acct.ToCliConfig()
@@ -134,7 +135,7 @@ func TestRuntimeAppSecret_TokenOnlyUsesPlaceholder(t *testing.T) {
 // The credential-layer ingress normalizes brand casing for all runtime consumers.
 func TestToCliConfig_NormalizesBrand(t *testing.T) {
 	acct := &Account{AppID: "cli_x", Brand: " LARK "}
-	if got := acct.ToCliConfig().Brand; got != core.BrandLark {
-		t.Errorf("Brand = %q, want %q", got, core.BrandLark)
+	if got := acct.ToCliConfig().Brand; got != brand.Lark {
+		t.Errorf("Brand = %q, want %q", got, brand.Lark)
 	}
 }

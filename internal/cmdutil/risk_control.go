@@ -4,12 +4,12 @@
 package cmdutil
 
 import (
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/riskcontrol"
 )
 
 type workspaceConfigSource interface {
-	MultiAppConfig() (*core.MultiAppConfig, error)
+	MultiAppConfig() (*configpkg.MultiAppConfig, error)
 }
 
 // resolveSDKHostSignalSource applies workspace policy at the SDK transport

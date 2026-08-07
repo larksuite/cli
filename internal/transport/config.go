@@ -23,13 +23,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/larksuite/cli/internal/binding"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/secaudit"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
-// ConfigFileName is the fixed config file name under core.GetConfigDir().
+// ConfigFileName is the fixed config file name under workspace.GetConfigDir().
 const (
 	ConfigFileName = "proxy_config.json"
 )
@@ -48,7 +48,7 @@ type Config struct {
 
 // Path returns the absolute path to the proxy plugin config file.
 func Path() string {
-	return filepath.Join(core.GetConfigDir(), ConfigFileName)
+	return filepath.Join(workspace.GetConfigDir(), ConfigFileName)
 }
 
 // loadOnce guards one-time proxy config loading for process-wide transport reuse.
@@ -94,7 +94,7 @@ func Load() (*Config, error) {
 		// egresses and which extra CA is trusted, so a file another local user or
 		// process can tamper with (symlink, foreign owner, group/world-writable)
 		// could redirect credential traffic. Audit it the same way the CA file is.
-		safePath, err := binding.AssertSecurePath(binding.AuditParams{
+		safePath, err := secaudit.AssertSecurePath(secaudit.AuditParams{
 			TargetPath:            p,
 			Label:                 ConfigFileName,
 			AllowReadableByOthers: true, // config is not a secret; only writability/owner/symlink matter

@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/update"
 )
@@ -66,12 +66,12 @@ var (
 // Init initializes the registry with default brand (feishu).
 // It is safe to call multiple times (sync.Once).
 func Init() {
-	InitWithBrand(core.BrandFeishu)
+	InitWithBrand(brandpkg.Feishu)
 }
 
 // ConfiguredBrand reports the brand the registry was initialized with
 // (empty before initialization). Diagnostics and startup-order tests use it.
-func ConfiguredBrand() core.LarkBrand {
+func ConfiguredBrand() brandpkg.Brand {
 	return configuredBrand
 }
 
@@ -80,7 +80,7 @@ func ConfiguredBrand() core.LarkBrand {
 // It is safe to call multiple times (sync.Once).
 // Remote fetch errors are silently ignored when embedded data is available.
 // If no embedded data exists and no cache is found, a synchronous fetch is attempted.
-func InitWithBrand(brand core.LarkBrand) {
+func InitWithBrand(brand brandpkg.Brand) {
 	initOnce.Do(func() {
 		configuredBrand = brand
 		// 1. Load embedded meta_data.json as baseline (no-op if not compiled in)

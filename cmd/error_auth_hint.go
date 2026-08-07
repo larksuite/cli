@@ -4,14 +4,14 @@
 package cmd
 
 import (
+	"github.com/larksuite/cli/internal/recovery"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/recovery"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
@@ -20,7 +20,7 @@ import (
 // presentRootError uses the same build-local presenter as shortcut result
 // sinks, adding only the root command's lazy declared-scope resolver.
 func presentRootError(f *cmdutil.Factory, err error, projector *recovery.Projector) error {
-	identity := core.Identity("")
+	identity := identitypkg.Identity("")
 	if f != nil {
 		identity = f.ResolvedIdentity
 	}
@@ -43,9 +43,9 @@ func resolveDeclaredScopesForCurrentCommand(f *cmdutil.Factory) []string {
 
 	identity := string(f.ResolvedIdentity)
 	if identity == "" {
-		identity = string(core.AsUser)
+		identity = string(identitypkg.AsUser)
 	}
-	if identity != string(core.AsUser) && identity != string(core.AsBot) {
+	if identity != string(identitypkg.AsUser) && identity != string(identitypkg.AsBot) {
 		return nil
 	}
 
@@ -115,7 +115,7 @@ func commandCatalogPath(cmd *cobra.Command) []string {
 func shortcutSupportsIdentity(sc shortcutcommon.Shortcut, identity string) bool {
 	authTypes := sc.AuthTypes
 	if len(authTypes) == 0 {
-		authTypes = []string{string(core.AsUser)}
+		authTypes = []string{string(identitypkg.AsUser)}
 	}
 	for _, authType := range authTypes {
 		if authType == identity {

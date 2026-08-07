@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -187,7 +187,7 @@ func TestDrivePermissionGetSettingResourceURLUsesConfiguredBrand(t *testing.T) {
 	t.Parallel()
 
 	runtime := newDrivePermissionGetSettingRuntime(t, "appMetaTok", "apps")
-	runtime.Config.Brand = core.BrandLark
+	runtime.Config.Brand = brand.Lark
 	spec, err := readDrivePermissionGetSettingSpec(runtime)
 	if err != nil {
 		t.Fatalf("read spec: %v", err)

@@ -7,6 +7,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/larksuite/cli/brand"
+	configpkg "github.com/larksuite/cli/internal/config"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -16,7 +19,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/spf13/cobra"
 )
@@ -44,7 +46,7 @@ func (result *paginateIntoTestResult) AddPage(page paginateIntoTestPage) error {
 
 func newPaginateIntoTestRuntime(t *testing.T, flags map[string]string) (*RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
-	config := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_x"}
+	config := &configpkg.CliConfig{Brand: brand.Feishu, AppID: "cli_x"}
 	factory, _, stderr, registry := cmdutil.TestFactory(t, config)
 	cmd := &cobra.Command{Use: "+list"}
 	cmd.Flags().Bool("page-all", false, "")
@@ -55,7 +57,7 @@ func newPaginateIntoTestRuntime(t *testing.T, flags map[string]string) (*Runtime
 			t.Fatalf("set --%s=%s: %v", name, value, err)
 		}
 	}
-	runtime := TestNewRuntimeContextForAPI(context.Background(), cmd, config, factory, core.AsUser)
+	runtime := TestNewRuntimeContextForAPI(context.Background(), cmd, config, factory, identitypkg.AsUser)
 	return runtime, stderr, registry
 }
 

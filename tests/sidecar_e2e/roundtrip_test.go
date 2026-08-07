@@ -21,7 +21,7 @@
 //     `lark-cli auth login` — there is no way to make it return a token
 //     without live credentials.
 //  2. sidecar/server-demo/main.go builds handler.allowedHosts from
-//     core.ResolveEndpoints(BrandFeishu/BrandLark) only — real feishu/lark
+//     brand.ResolveEndpoints(brand.Feishu/brand.Lark) only — real feishu/lark
 //     hosts. An in-test mock (127.0.0.1:<port>) is never in that allowlist
 //     and would be rejected with 403 (handler.go step 4).
 //  3. sidecar/server-demo/handler.go:184 pins the forward scheme to
@@ -72,6 +72,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/larksuite/cli/brand"
 	"io"
 	"net/http"
 	"net/http/httptest"

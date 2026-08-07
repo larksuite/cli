@@ -6,6 +6,9 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
+	"github.com/larksuite/cli/internal/update"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,10 +17,7 @@ import (
 
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/recovery"
-	"github.com/larksuite/cli/internal/surface"
-	"github.com/larksuite/cli/internal/update"
+	"github.com/larksuite/cli/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -71,9 +71,9 @@ func TestOfferRootUpgrade(t *testing.T) {
 	// workspace detection; pin the process-global workspace to Local so
 	// statePath() resolves under LARKSUITE_CLI_CONFIG_DIR rather than a stale
 	// subdir inherited from a prior test in the package.
-	origWS := core.CurrentWorkspace()
-	t.Cleanup(func() { core.SetCurrentWorkspace(origWS) })
-	core.SetCurrentWorkspace(core.WorkspaceLocal)
+	origWS := workspace.CurrentWorkspace()
+	t.Cleanup(func() { workspace.SetCurrentWorkspace(origWS) })
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLocal)
 
 	cases := []struct {
 		name                string

@@ -16,9 +16,10 @@ import (
 	"strings"
 	"testing"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -360,8 +361,8 @@ func TestEveryRegisteredDomain_HasBilingualDescription(t *testing.T) {
 }
 
 func TestAuthLoginRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
-	f, _, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	f, _, stderr, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "cli_test", AppSecret: "secret", Brand: brandpkg.Feishu,
 	})
 	// TestFactory has IsTerminal=false by default
 	opts := &LoginOptions{Factory: f, Ctx: context.Background()}
@@ -389,11 +390,11 @@ func TestGenericUserAuthorizationStartCommandPassesLoginValidation(t *testing.T)
 		t.Fatalf("generic recovery = %q, want executable start command %q", hint, startCommand)
 	}
 
-	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, stdout, _, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -709,21 +710,21 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	setupLoginConfigDir(t)
 	t.Setenv("HOME", t.TempDir())
 
-	multi := &core.MultiAppConfig{
+	multi := &configpkg.MultiAppConfig{
 		CurrentApp: "default",
-		Apps: []core.AppConfig{
+		Apps: []configpkg.AppConfig{
 			{Name: "default", AppId: "cli_test"},
 		},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, stderr, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 
 	reg.Register(&httpmock.Stub{
@@ -805,7 +806,7 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	if stored.Scope != "offline_access" {
 		t.Fatalf("stored scope = %q", stored.Scope)
 	}
-	cfg, err := core.LoadMultiAppConfig()
+	cfg, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		t.Fatalf("LoadMultiAppConfig() error = %v", err)
 	}
@@ -825,21 +826,21 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	setupLoginConfigDir(t)
 	t.Setenv("HOME", t.TempDir())
 
-	multi := &core.MultiAppConfig{
+	multi := &configpkg.MultiAppConfig{
 		CurrentApp: "default",
-		Apps: []core.AppConfig{
+		Apps: []configpkg.AppConfig{
 			{Name: "default", AppId: "cli_test"},
 		},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 
 	reg.Register(&httpmock.Stub{
@@ -956,15 +957,15 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand brandpkg.Brand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
 		return &larkauth.DeviceFlowResult{OK: true, Token: nil}
 	}
 
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 
 	err := authLoginRun(&LoginOptions{
@@ -995,15 +996,15 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand brandpkg.Brand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
 		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}
 	}
 
-	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 
 	reg.Register(&httpmock.Stub{
@@ -1065,11 +1066,11 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 }
 
 func TestAuthLoginRun_JSONWriteFailure_NoWaitReturnsWriterError(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, _, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 	f.IOStreams.Out = failWriter{}
 
@@ -1102,11 +1103,11 @@ func TestAuthLoginRun_JSONWriteFailure_NoWaitReturnsWriterError(t *testing.T) {
 }
 
 func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, stdout, _, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 
 	reg.Register(&httpmock.Stub{
@@ -1186,11 +1187,11 @@ func TestNoWaitAgentHint_DefaultBytesStable(t *testing.T) {
 }
 
 func TestAuthLoginRun_NoWaitJSONHintPreservesExplicitProfile(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, stdout, _, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "team-beta",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 	f.Invocation.Profile = "team-beta"
 
@@ -1241,11 +1242,11 @@ func TestAuthLoginRun_NoWaitJSONHintPreservesExplicitProfile(t *testing.T) {
 }
 
 func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationReturnsWriterError(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, _, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 	f.IOStreams.Out = failWriter{}
 
@@ -1279,11 +1280,11 @@ func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationReturnsWriterError(t *
 }
 
 func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, stdout, _, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brandpkg.Feishu,
 	})
 
 	reg.Register(&httpmock.Stub{

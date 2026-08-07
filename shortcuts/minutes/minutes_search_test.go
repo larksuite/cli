@@ -12,7 +12,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -50,7 +50,7 @@ func minutesStringSliceContains(values []string, want string) bool {
 }
 
 // configWithoutUserOpenID returns a test config without a resolvable user open_id.
-func configWithoutUserOpenID() *core.CliConfig {
+func configWithoutUserOpenID() *configpkg.CliConfig {
 	cfg := defaultConfig()
 	cfg.UserOpenId = ""
 	return cfg

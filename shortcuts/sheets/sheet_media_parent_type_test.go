@@ -16,10 +16,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -156,13 +158,13 @@ func TestUploadSheetImage_FileOpenError(t *testing.T) {
 func newSheetMediaTestRuntime(t *testing.T) (*common.RuntimeContext, *httpmock.Registry) {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:     "test-sheets-media-" + t.Name(),
 		AppSecret: "test-secret",
-		Brand:     core.BrandFeishu,
+		Brand:     brand.Feishu,
 	}
 	f, _, _, reg := cmdutil.TestFactory(t, cfg)
-	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "sheets"}, cfg, f, core.AsBot)
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "sheets"}, cfg, f, identity.AsBot)
 	return runtime, reg
 }
 

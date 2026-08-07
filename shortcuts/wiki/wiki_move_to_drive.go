@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -375,7 +375,7 @@ func parseWikiMoveToDriveTaskStatus(taskID string, task map[string]interface{}) 
 
 // Preserve the originating identity and profile so a resumed status lookup
 // uses the same credential context that created the async task.
-func wikiMoveToDriveTaskResultCommand(taskID string, identity core.Identity, profileName string) string {
+func wikiMoveToDriveTaskResultCommand(taskID string, identity identitypkg.Identity, profileName string) string {
 	asFlag := string(identity)
 	if asFlag == "" {
 		asFlag = "user"
@@ -399,7 +399,7 @@ func wikiMoveToDriveProfileName(runtime *common.RuntimeContext) string {
 	return runtime.Config.ProfileName
 }
 
-func wrapWikiMoveToDrivePollContextError(err error, taskID string, identity core.Identity, profileName string) error {
+func wrapWikiMoveToDrivePollContextError(err error, taskID string, identity identitypkg.Identity, profileName string) error {
 	if err == nil {
 		return nil
 	}

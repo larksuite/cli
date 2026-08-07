@@ -15,9 +15,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/larksuite/cli/envnames"
 	"github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
 )
 
@@ -32,7 +31,7 @@ func (p *Provider) Priority() int { return 0 }
 // placeholder secret, and SupportedIdentities derived from STRICT_MODE.
 // Returns nil, nil when sidecar mode is not active (AUTH_PROXY not set).
 func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, error) {
-	proxyAddr := os.Getenv(envvars.CliAuthProxy)
+	proxyAddr := os.Getenv(envnames.CliAuthProxy)
 	if proxyAddr == "" {
 		return nil, nil // not in sidecar mode, skip
 	}
@@ -40,26 +39,26 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	if err := sidecar.ValidateProxyAddr(proxyAddr); err != nil {
 		return nil, &credential.BlockError{
 			Provider: "sidecar",
-			Reason:   fmt.Sprintf("invalid %s %q: %v", envvars.CliAuthProxy, proxyAddr, err),
+			Reason:   fmt.Sprintf("invalid %s %q: %v", envnames.CliAuthProxy, proxyAddr, err),
 		}
 	}
 
-	appID := os.Getenv(envvars.CliAppID)
+	appID := os.Getenv(envnames.CliAppID)
 	if appID == "" {
 		return nil, &credential.BlockError{
 			Provider: "sidecar",
-			Reason:   envvars.CliAuthProxy + " is set but " + envvars.CliAppID + " is missing",
+			Reason:   envnames.CliAuthProxy + " is set but " + envnames.CliAppID + " is missing",
 		}
 	}
 
-	if os.Getenv(envvars.CliProxyKey) == "" {
+	if os.Getenv(envnames.CliProxyKey) == "" {
 		return nil, &credential.BlockError{
 			Provider: "sidecar",
-			Reason:   envvars.CliAuthProxy + " is set but " + envvars.CliProxyKey + " is missing",
+			Reason:   envnames.CliAuthProxy + " is set but " + envnames.CliProxyKey + " is missing",
 		}
 	}
 
-	brand := credential.Brand(core.ParseBrand(os.Getenv(envvars.CliBrand)))
+	brand := credential.ParseBrand(os.Getenv(envnames.CliBrand))
 
 	acct := &credential.Account{
 		AppID:     appID,
@@ -68,7 +67,7 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	}
 
 	// Parse DefaultAs
-	switch id := credential.Identity(os.Getenv(envvars.CliDefaultAs)); id {
+	switch id := credential.Identity(os.Getenv(envnames.CliDefaultAs)); id {
 	case "", credential.IdentityAuto:
 		acct.DefaultAs = id
 	case credential.IdentityUser, credential.IdentityBot:
@@ -76,12 +75,12 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	default:
 		return nil, &credential.BlockError{
 			Provider: "sidecar",
-			Reason:   fmt.Sprintf("invalid %s %q (want user, bot, or auto)", envvars.CliDefaultAs, id),
+			Reason:   fmt.Sprintf("invalid %s %q (want user, bot, or auto)", envnames.CliDefaultAs, id),
 		}
 	}
 
 	// Parse SupportedIdentities from STRICT_MODE, default to SupportsAll.
-	switch strictMode := os.Getenv(envvars.CliStrictMode); strictMode {
+	switch strictMode := os.Getenv(envnames.CliStrictMode); strictMode {
 	case "bot":
 		acct.SupportedIdentities = credential.SupportsBot
 	case "user":
@@ -91,7 +90,7 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	default:
 		return nil, &credential.BlockError{
 			Provider: "sidecar",
-			Reason:   fmt.Sprintf("invalid %s %q (want bot, user, or off)", envvars.CliStrictMode, strictMode),
+			Reason:   fmt.Sprintf("invalid %s %q (want bot, user, or off)", envnames.CliStrictMode, strictMode),
 		}
 	}
 
@@ -103,7 +102,7 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 // (user vs bot), strips it, and the sidecar injects the real token.
 // Returns nil, nil when sidecar mode is not active.
 func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (*credential.Token, error) {
-	if os.Getenv(envvars.CliAuthProxy) == "" {
+	if os.Getenv(envnames.CliAuthProxy) == "" {
 		return nil, nil
 	}
 

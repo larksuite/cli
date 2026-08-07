@@ -15,7 +15,6 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -165,7 +164,7 @@ var UploadAttachmentTask = common.Shortcut{
 			ApiPath:     taskAttachmentUploadPath,
 			QueryParams: queryParams,
 			Body:        &bodyBuf,
-		}, client.WithHeaders(headers))
+		}, common.WithHeaders(headers))
 		if err != nil {
 			fmt.Fprintf(runtime.IO().ErrOut,
 				"[+upload-attachment] http response: error=%v\n", err)

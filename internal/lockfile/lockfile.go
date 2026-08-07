@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 // safeIDChars strips path-traversal chars from app IDs.
@@ -34,7 +34,7 @@ func ForSubscribe(appID string) (*LockFile, error) {
 	if appID == "" {
 		return nil, fmt.Errorf("app ID must not be empty")
 	}
-	dir := filepath.Join(core.GetConfigDir(), "locks")
+	dir := filepath.Join(workspace.GetConfigDir(), "locks")
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("create lock dir: %w", err)
 	}

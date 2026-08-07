@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 )
 
 // fakeRT routes requests to per-path handlers and records what it saw.
@@ -132,7 +132,7 @@ func TestRunProbe_TATInvalidClient_ReturnsConfigError(t *testing.T) {
 	}
 	f, errBuf := fakeFactory(t, rt)
 
-	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
+	err := runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu)
 
 	if rt.probeCalls != 0 {
 		t.Error("probe endpoint must not be called when TAT fails")
@@ -148,7 +148,7 @@ func TestRunProbe_TATUnauthorizedClient_ReturnsConfigError(t *testing.T) {
 		},
 	}
 	f, errBuf := fakeFactory(t, rt)
-	assertConfigRejection(t, runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu), errBuf)
+	assertConfigRejection(t, runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu), errBuf)
 }
 
 // Any other deterministic client-side OAuth error (e.g. invalid_scope) falls
@@ -161,7 +161,7 @@ func TestRunProbe_TATOtherClientError_Propagates(t *testing.T) {
 		},
 	}
 	f, errBuf := fakeFactory(t, rt)
-	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
+	err := runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu)
 	if err == nil || !errs.IsTyped(err) {
 		t.Fatalf("expected a propagated typed error, got %T: %v", err, err)
 	}
@@ -180,7 +180,7 @@ func TestRunProbe_TATHTTPNon200_Silent(t *testing.T) {
 			},
 		}
 		f, errBuf := fakeFactory(t, rt)
-		assertSilent(t, runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu), errBuf)
+		assertSilent(t, runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu), errBuf)
 	}
 }
 
@@ -191,7 +191,7 @@ func TestRunProbe_TATTransportError_Silent(t *testing.T) {
 		},
 	}
 	f, errBuf := fakeFactory(t, rt)
-	assertSilent(t, runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu), errBuf)
+	assertSilent(t, runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu), errBuf)
 }
 
 func TestRunProbe_TATSuccess_ProbeFails_Silent(t *testing.T) {
@@ -201,7 +201,7 @@ func TestRunProbe_TATSuccess_ProbeFails_Silent(t *testing.T) {
 		},
 	}
 	f, errBuf := fakeFactory(t, rt)
-	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
+	err := runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu)
 	if rt.probeCalls != 1 {
 		t.Errorf("probe should be called once, got %d", rt.probeCalls)
 	}
@@ -211,7 +211,7 @@ func TestRunProbe_TATSuccess_ProbeFails_Silent(t *testing.T) {
 func TestRunProbe_TATSuccess_ProbeOK_Silent(t *testing.T) {
 	rt := &fakeRT{}
 	f, errBuf := fakeFactory(t, rt)
-	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
+	err := runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu)
 	if rt.tatCalls != 1 || rt.probeCalls != 1 {
 		t.Errorf("expected 1/1 calls, got tat=%d probe=%d", rt.tatCalls, rt.probeCalls)
 	}
@@ -221,7 +221,7 @@ func TestRunProbe_TATSuccess_ProbeOK_Silent(t *testing.T) {
 func TestRunProbe_ProbeRequestShape(t *testing.T) {
 	rt := &fakeRT{}
 	f, _ := fakeFactory(t, rt)
-	if err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu); err != nil {
+	if err := runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -245,7 +245,7 @@ func TestRunProbe_ProbeRequestShape(t *testing.T) {
 func TestRunProbe_LarkBrand_HostRoutedCorrectly(t *testing.T) {
 	rt := &fakeRT{}
 	f, _ := fakeFactory(t, rt)
-	if err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandLark); err != nil {
+	if err := runProbe(context.Background(), f, "cli_x", "secret_y", brand.Lark); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if rt.probeReq == nil {
@@ -262,7 +262,7 @@ func TestRunProbe_HTTPClientError_Silent(t *testing.T) {
 	f.HttpClient = func() (*http.Client, error) {
 		return nil, errors.New("client init failed")
 	}
-	assertSilent(t, runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu), errBuf)
+	assertSilent(t, runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu), errBuf)
 }
 
 func TestRunProbe_TimeoutHonored(t *testing.T) {
@@ -275,7 +275,7 @@ func TestRunProbe_TimeoutHonored(t *testing.T) {
 	f, errBuf := fakeFactory(t, rt)
 
 	start := time.Now()
-	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
+	err := runProbe(context.Background(), f, "cli_x", "secret_y", brand.Feishu)
 	elapsed := time.Since(start)
 
 	if elapsed > 4*time.Second {

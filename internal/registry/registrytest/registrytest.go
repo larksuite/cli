@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -65,7 +65,7 @@ func Seed(testRoot string) error {
 	cacheMeta, err := json.Marshal(registry.CacheMeta{
 		LastCheckAt: time.Now().Unix(),
 		Version:     fixture.Version,
-		Brand:       string(core.BrandFeishu),
+		Brand:       string(brand.Feishu),
 	})
 	if err != nil {
 		return err

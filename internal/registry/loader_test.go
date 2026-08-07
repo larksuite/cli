@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/meta"
 )
 
@@ -52,7 +52,7 @@ func initWithCache(t *testing.T, embeddedVer, cacheVer string) {
 	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
 	t.Setenv("LARKSUITE_CLI_META_TTL", "3600")
 	seedCache(t, tmp, "svc", "CACHE", cacheVer, "feishu")
-	InitWithBrand(core.BrandFeishu)
+	InitWithBrand(brand.Feishu)
 }
 
 func titleOf(t *testing.T, name string) string {

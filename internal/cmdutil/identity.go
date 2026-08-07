@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 // PrintIdentity outputs the current identity to stderr so callers (including AI agents)
 // can see which identity is being used for the API call.
-func PrintIdentity(w io.Writer, as core.Identity, config *core.CliConfig, autoDetected bool) {
+func PrintIdentity(w io.Writer, as identity.Identity, config *configpkg.CliConfig, autoDetected bool) {
 	if as.IsBot() {
 		if autoDetected {
 			fmt.Fprintln(w, "[identity: bot (auto — not logged in; `auth login` for user identity)]")

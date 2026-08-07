@@ -6,6 +6,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"github.com/larksuite/cli/brand"
 	"io"
 	"io/fs"
 	"net/http"
@@ -19,7 +20,6 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -49,7 +49,7 @@ func newRefreshTestOptions(stored *StoredUAToken) UATCallOptions {
 		AppId:      stored.AppId,
 		AppSecret:  "secret-test",
 		UserOpenId: stored.UserOpenId,
-		Domain:     core.BrandFeishu,
+		Domain:     brand.Feishu,
 		ErrOut:     io.Discard,
 	}
 }

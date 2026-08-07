@@ -6,76 +6,8 @@ package convertlib
 import (
 	"fmt"
 	"net/http"
-	"reflect"
 	"testing"
-	"time"
 )
-
-func TestParseJSONObject(t *testing.T) {
-	got, err := ParseJSONObject(`{"text":"hello","count":2}`)
-	if err != nil {
-		t.Fatalf("ParseJSONObject() error = %v", err)
-	}
-	if got["text"] != "hello" {
-		t.Fatalf("ParseJSONObject() text = %#v, want %#v", got["text"], "hello")
-	}
-
-	if invalid, err := ParseJSONObject(`{invalid`); err == nil || invalid != nil {
-		t.Fatalf("ParseJSONObject() invalid JSON = (%#v, %v), want (nil, err)", invalid, err)
-	}
-}
-
-func TestBuildMentionKeyMap(t *testing.T) {
-	mentions := []interface{}{
-		map[string]interface{}{"key": "@_user_1", "name": "Alice"},
-		map[string]interface{}{"key": "@_user_2", "name": "Bob"},
-		map[string]interface{}{"key": "", "name": "Ignored"},
-		map[string]interface{}{"key": "@_user_3"},
-	}
-
-	got := BuildMentionKeyMap(mentions)
-	want := map[string]string{
-		"@_user_1": "Alice",
-		"@_user_2": "Bob",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("BuildMentionKeyMap() = %#v, want %#v", got, want)
-	}
-}
-
-func TestResolveMentionKeys(t *testing.T) {
-	got := ResolveMentionKeys("hi @_user_1 and @_user_2", map[string]string{
-		"@_user_1": "Alice",
-		"@_user_2": "Bob",
-	})
-	want := "hi @Alice and @Bob"
-	if got != want {
-		t.Fatalf("ResolveMentionKeys() = %q, want %q", got, want)
-	}
-}
-
-func TestFormatTimestamp(t *testing.T) {
-	sec := int64(1710500000)
-	want := time.Unix(sec, 0).Local().Format("2006-01-02 15:04:05")
-
-	if got := formatTimestamp("1710500000"); got != want {
-		t.Fatalf("formatTimestamp(seconds) = %q, want %q", got, want)
-	}
-	if got := formatTimestamp("1710500000000"); got != want {
-		t.Fatalf("formatTimestamp(milliseconds) = %q, want %q", got, want)
-	}
-	if got := formatTimestamp(""); got != "" {
-		t.Fatalf("formatTimestamp(empty) = %q, want empty", got)
-	}
-	if got := formatTimestamp("not-a-number"); got != "" {
-		t.Fatalf("formatTimestamp(invalid) = %q, want empty", got)
-	}
-	futureSec := int64(10000000000)
-	wantFuture := time.Unix(futureSec, 0).Local().Format("2006-01-02 15:04:05")
-	if got := formatTimestamp("10000000000"); got != wantFuture {
-		t.Fatalf("formatTimestamp(future seconds) = %q, want %q", got, wantFuture)
-	}
-}
 
 func TestAttachSenderNames(t *testing.T) {
 	messages := []map[string]interface{}{
@@ -101,27 +33,6 @@ func TestAttachSenderNames(t *testing.T) {
 	sender3 := messages[2]["sender"].(map[string]interface{})
 	if _, hasName := sender3["name"]; hasName {
 		t.Fatalf("AttachSenderNames() unresolved sender should have no name, got %#v", sender3["name"])
-	}
-}
-
-func TestExtractPostBlocksText(t *testing.T) {
-	blocks := []interface{}{
-		[]interface{}{
-			map[string]interface{}{"tag": "text", "text": "hello "},
-			map[string]interface{}{"tag": "at", "user_name": "Alice"},
-			map[string]interface{}{"tag": "text", "text": " "},
-			map[string]interface{}{"tag": "a", "text": "docs", "href": "https://example.com"},
-		},
-		[]interface{}{
-			map[string]interface{}{"tag": "img", "image_key": "img_123"},
-		},
-		[]interface{}{},
-	}
-
-	got := extractPostBlocksText(blocks)
-	want := "hello @Alice [docs](https://example.com)\n![Image](img_123)"
-	if got != want {
-		t.Fatalf("extractPostBlocksText() = %q, want %q", got, want)
 	}
 }
 

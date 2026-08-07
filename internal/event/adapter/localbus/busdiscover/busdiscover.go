@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 type Process struct {
@@ -22,7 +22,7 @@ type Scanner interface {
 }
 
 func Default() Scanner {
-	return &fsScanner{eventsDir: filepath.Join(core.GetConfigDir(), "events")}
+	return &fsScanner{eventsDir: filepath.Join(workspace.GetConfigDir(), "events")}
 }
 
 type fsScanner struct {

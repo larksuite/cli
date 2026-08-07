@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"slices"
 
 	"github.com/spf13/cobra"
@@ -12,12 +13,11 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 // pruneForStrictMode removes commands incompatible with the active strict mode.
-func pruneForStrictMode(root *cobra.Command, mode core.StrictMode) {
+func pruneForStrictMode(root *cobra.Command, mode identity.StrictMode) {
 	pruneIncompatible(root, mode)
 	pruneEmpty(root)
 }
@@ -26,7 +26,7 @@ func pruneForStrictMode(root *cobra.Command, mode core.StrictMode) {
 // identities incompatible with the forced identity. Commands without annotation are kept.
 // Hidden stubs preserve direct execution so users get a strict-mode error instead
 // of Cobra's generic "unknown flag" fallback from the parent command.
-func pruneIncompatible(parent *cobra.Command, mode core.StrictMode) {
+func pruneIncompatible(parent *cobra.Command, mode identity.StrictMode) {
 	forced := string(mode.ForcedIdentity())
 	var toRemove []*cobra.Command
 	var toAdd []*cobra.Command
@@ -45,7 +45,7 @@ func pruneIncompatible(parent *cobra.Command, mode core.StrictMode) {
 	}
 }
 
-func strictModeStubFrom(child *cobra.Command, mode core.StrictMode) *cobra.Command {
+func strictModeStubFrom(child *cobra.Command, mode identity.StrictMode) *cobra.Command {
 	// The denial annotations let the hook layer's populateInvocationDenial
 	// recognise this command as denied, so the Wrap chain is physically
 	// isolated (wrapRunE takes the DeniedByPolicy branch and calls the

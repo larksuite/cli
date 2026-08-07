@@ -829,8 +829,8 @@ func TestScanFileAllowsStrongAuthTokenKeysWithoutStrongValueEvidence(t *testing.
 
 func TestScanFileAllowsTestFixtureSecretValues(t *testing.T) {
 	got := ScanFile("fixtures/calendar_meeting_test.go", []byte(strings.Join([]string{
-		`AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,`,
-		`cfg := &core.CliConfig{AppID: "a", AppSecret: "s"}`,
+		`AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,`,
+		`cfg := &configpkg.CliConfig{AppID: "a", AppSecret: "s"}`,
 		`os.WriteFile(path, []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600)`,
 		`rt := &stubRoundTripper{respBody: ` + "`" + `{"access_token":"t","token_type":"Bearer"}` + "`" + `}`,
 		`envContent := "FEISHU_APP_ID=cli_hermes_abc\nFEISHU_APP_SECRET=hermes_secret_123\nFEISHU_DOMAIN=lark\n"`,
@@ -839,7 +839,7 @@ func TestScanFileAllowsTestFixtureSecretValues(t *testing.T) {
 		`if got := out.String(); got != "username=x-access-token\npassword=valid-pat\n\n" {`,
 		`if got := out.String(); got != "username=x-access-token\npassword=restored-pat\n\n" {`,
 		`if got := stdout.String(); got != "username=x-access-token\npassword=pat-token\n\n" {`,
-		`return &core.CliConfig{AppID: "dummy", AppSecret: "dummy"}`,
+		`return &configpkg.CliConfig{AppID: "dummy", AppSecret: "dummy"}`,
 		`os.WriteFile(path, []byte("API_KEY=replace-me\n"), 0600)`,
 		`body := "APP_ID=\"cli_xxxxx\"\nAPP_SECRET=\"xxxxx\"\n"`,
 	}, "\n")+"\n"))

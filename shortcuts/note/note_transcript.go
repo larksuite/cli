@@ -20,9 +20,9 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -251,7 +251,7 @@ func resolveTranscriptLocale(runtime *common.RuntimeContext) string {
 	if lang := runtime.Lang(); lang != "" {
 		return string(lang)
 	}
-	if runtime.Config.Brand == core.BrandLark {
+	if runtime.Config.Brand == brand.Lark {
 		return string(i18n.LangEnUS)
 	}
 	return string(i18n.LangZhCN)

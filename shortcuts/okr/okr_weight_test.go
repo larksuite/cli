@@ -11,9 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/spf13/cobra"
 )
@@ -31,13 +32,13 @@ func getWeightFloat(v interface{}) float64 {
 	}
 }
 
-func weightTestConfig(t *testing.T) *core.CliConfig {
+func weightTestConfig(t *testing.T) *configpkg.CliConfig {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	return &core.CliConfig{
+	return &configpkg.CliConfig{
 		AppID:     "test-okr-weight",
 		AppSecret: "secret-okr-weight",
-		Brand:     core.BrandFeishu,
+		Brand:     brand.Feishu,
 	}
 }
 

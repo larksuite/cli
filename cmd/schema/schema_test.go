@@ -7,15 +7,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	identitypkg "github.com/larksuite/cli/internal/identity"
+	"github.com/larksuite/cli/internal/meta"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/meta"
+	configpkg "github.com/larksuite/cli/internal/config"
 )
 
 func TestSchemaCmd_FlagParsing(t *testing.T) {
@@ -202,8 +204,8 @@ func TestSchemaCmd_NoYesForReadRisk(t *testing.T) {
 }
 
 func TestSchemaCmd_UnknownService(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	})
 
 	cmd := NewCmdSchema(f, nil)
@@ -231,8 +233,8 @@ func TestSchemaCmd_UnknownService(t *testing.T) {
 // JSON-mode unknown-method path: *errs.ValidationError with
 // subtype invalid_argument and a hint listing the available methods.
 func TestSchemaCmd_UnknownMethod_TypedValidation(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	})
 
 	cmd := NewCmdSchema(f, nil)
@@ -267,7 +269,7 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 	}
 
 	var out bytes.Buffer
-	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, visible); err != nil {
+	if err := runSchemaCatalog(&out, nil, identitypkg.StrictModeOff, catalog, visible); err != nil {
 		t.Fatalf("broad schema failed: %v", err)
 	}
 	var envelopes []map[string]interface{}
@@ -292,7 +294,7 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 	err := runSchemaCatalog(
 		&out,
 		[]string{"mail", "user_mailbox", "messages", "list"},
-		core.StrictModeOff,
+		identitypkg.StrictModeOff,
 		catalog,
 		visible,
 	)
@@ -362,10 +364,10 @@ func TestSchemaSurfaceProjectionPreservesDefaultAndDeniedVisibleCatalog(t *testi
 	allVisible := func([]string) bool { return true }
 
 	var defaultOut, projectedOut bytes.Buffer
-	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil); err != nil {
+	if err := runSchemaCatalog(&defaultOut, nil, identitypkg.StrictModeOff, catalog, nil); err != nil {
 		t.Fatalf("default schema failed: %v", err)
 	}
-	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, allVisible); err != nil {
+	if err := runSchemaCatalog(&projectedOut, nil, identitypkg.StrictModeOff, catalog, allVisible); err != nil {
 		t.Fatalf("all-visible schema failed: %v", err)
 	}
 	if defaultOut.String() != projectedOut.String() {

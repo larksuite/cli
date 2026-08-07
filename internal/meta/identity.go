@@ -9,9 +9,9 @@ import "sort"
 // accepts. It is a distinct type so the two directions of the token<->identity
 // mapping below cannot be swapped silently — a bare string compiles on either
 // side of a string/string signature, a Token does not. The CLI identity
-// vocabulary ("bot"/"user") already has a home in internal/core (core.Identity);
-// meta is a leaf and must not import core, so the identity side stays a plain
-// string here and is typed at the core boundary.
+// vocabulary ("bot"/"user") already has a home in internal/identity
+// (identity.Identity); meta is a leaf and must not import it, so the identity
+// side stays a plain string here and is typed at that boundary instead.
 type Token string
 
 const (

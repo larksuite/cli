@@ -16,11 +16,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -99,19 +101,19 @@ func (fake *fakeWikiNodeCreateClient) CreateNode(ctx context.Context, spaceID st
 
 var wikiTestConfigSeq atomic.Int64
 
-func wikiTestConfig() *core.CliConfig {
-	return &core.CliConfig{
+func wikiTestConfig() *configpkg.CliConfig {
+	return &configpkg.CliConfig{
 		AppID:     fmt.Sprintf("wiki-test-app-%d", wikiTestConfigSeq.Add(1)),
 		AppSecret: "test-secret",
-		Brand:     core.BrandFeishu,
+		Brand:     brand.Feishu,
 	}
 }
 
-func wikiPermissionTestConfig(userOpenID string) *core.CliConfig {
-	return &core.CliConfig{
+func wikiPermissionTestConfig(userOpenID string) *configpkg.CliConfig {
+	return &configpkg.CliConfig{
 		AppID:      fmt.Sprintf("wiki-permission-test-app-%d", wikiTestConfigSeq.Add(1)),
 		AppSecret:  "test-secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: userOpenID,
 	}
 }
@@ -173,7 +175,7 @@ func TestValidateWikiNodeCreateSpecRejectsShortcutWithoutOriginNodeToken(t *test
 	err := validateWikiNodeCreateSpec(wikiNodeCreateSpec{
 		NodeType: wikiNodeTypeShortcut,
 		ObjType:  "docx",
-	}, core.AsUser)
+	}, identity.AsUser)
 	if err == nil || !strings.Contains(err.Error(), "--origin-node-token is required") {
 		t.Fatalf("expected shortcut origin-token error, got %v", err)
 	}
@@ -186,7 +188,7 @@ func TestValidateWikiNodeCreateSpecRejectsOriginTokenForOriginNode(t *testing.T)
 		NodeType:        wikiNodeTypeOrigin,
 		ObjType:         "docx",
 		OriginNodeToken: "wik_origin",
-	}, core.AsUser)
+	}, identity.AsUser)
 	if err == nil || !strings.Contains(err.Error(), "can only be used when --node-type=shortcut") {
 		t.Fatalf("expected origin-node-token validation error, got %v", err)
 	}
@@ -198,7 +200,7 @@ func TestValidateWikiNodeCreateSpecRejectsBotWithoutLocation(t *testing.T) {
 	err := validateWikiNodeCreateSpec(wikiNodeCreateSpec{
 		NodeType: wikiNodeTypeOrigin,
 		ObjType:  "docx",
-	}, core.AsBot)
+	}, identity.AsBot)
 	if err == nil || !strings.Contains(err.Error(), "bot identity requires --space-id or --parent-node-token") {
 		t.Fatalf("expected bot location validation error, got %v", err)
 	}
@@ -213,7 +215,7 @@ func TestValidateWikiNodeCreateSpecRejectsBotMyLibrarySpaceID(t *testing.T) {
 		ObjType:         "docx",
 		SpaceID:         wikiMyLibrarySpaceID,
 		ParentNodeToken: "wik_parent",
-	}, core.AsBot)
+	}, identity.AsBot)
 	if err == nil || !strings.Contains(err.Error(), "bot identity does not support --space-id my_library") {
 		t.Fatalf("expected bot my_library validation error, got %v", err)
 	}
@@ -228,7 +230,7 @@ func TestResolveWikiNodeCreateSpaceUsesParentNode(t *testing.T) {
 		},
 	}
 
-	resolved, err := resolveWikiNodeCreateSpace(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+	resolved, err := resolveWikiNodeCreateSpace(context.Background(), client, identity.AsUser, wikiNodeCreateSpec{
 		NodeType:        wikiNodeTypeOrigin,
 		ObjType:         "docx",
 		ParentNodeToken: "wik_parent",
@@ -253,7 +255,7 @@ func TestResolveWikiNodeCreateSpaceRejectsSpaceMismatch(t *testing.T) {
 		},
 	}
 
-	_, err := resolveWikiNodeCreateSpace(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+	_, err := resolveWikiNodeCreateSpace(context.Background(), client, identity.AsUser, wikiNodeCreateSpec{
 		NodeType:        wikiNodeTypeOrigin,
 		ObjType:         "docx",
 		SpaceID:         "space_other",
@@ -273,7 +275,7 @@ func TestResolveWikiNodeCreateSpaceUsesMyLibraryFallback(t *testing.T) {
 		},
 	}
 
-	resolved, err := resolveWikiNodeCreateSpace(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+	resolved, err := resolveWikiNodeCreateSpace(context.Background(), client, identity.AsUser, wikiNodeCreateSpec{
 		NodeType: wikiNodeTypeOrigin,
 		ObjType:  "docx",
 	})
@@ -291,7 +293,7 @@ func TestResolveWikiNodeCreateSpaceUsesMyLibraryFallback(t *testing.T) {
 func TestResolveWikiNodeCreateSpaceRejectsBotWithoutLocation(t *testing.T) {
 	t.Parallel()
 
-	_, err := resolveWikiNodeCreateSpace(context.Background(), &fakeWikiNodeCreateClient{}, core.AsBot, wikiNodeCreateSpec{
+	_, err := resolveWikiNodeCreateSpace(context.Background(), &fakeWikiNodeCreateClient{}, identity.AsBot, wikiNodeCreateSpec{
 		NodeType: wikiNodeTypeOrigin,
 		ObjType:  "docx",
 	})
@@ -322,7 +324,7 @@ func TestRunWikiNodeCreateCreatesNodeInResolvedSpace(t *testing.T) {
 		ObjType:  "docx",
 		Title:    "Roadmap",
 	}
-	execution, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, io.Discard)
+	execution, err := runWikiNodeCreate(context.Background(), client, identity.AsUser, spec, io.Discard)
 	if err != nil {
 		t.Fatalf("runWikiNodeCreate() error = %v", err)
 	}
@@ -350,7 +352,7 @@ func TestRunWikiNodeCreateRejectsNilCreatedNode(t *testing.T) {
 		returnNilNode: true,
 	}
 
-	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+	_, err := runWikiNodeCreate(context.Background(), client, identity.AsUser, wikiNodeCreateSpec{
 		NodeType: wikiNodeTypeOrigin,
 		ObjType:  "docx",
 		Title:    "Roadmap",
@@ -841,7 +843,7 @@ func TestWikiNodeURL(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := wikiNodeURL(core.BrandFeishu, tc.node); got != tc.want {
+			if got := wikiNodeURL(brand.Feishu, tc.node); got != tc.want {
 				t.Fatalf("wikiNodeURL() = %q, want %q", got, tc.want)
 			}
 		})
@@ -873,7 +875,7 @@ func TestRunWikiNodeCreateRetriesOnLockContention(t *testing.T) {
 		ObjType:  "docx",
 		Title:    "Roadmap",
 	}
-	execution, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	execution, err := runWikiNodeCreate(context.Background(), client, identity.AsUser, spec, &stderr)
 	if err != nil {
 		t.Fatalf("runWikiNodeCreate() error = %v", err)
 	}
@@ -912,7 +914,7 @@ func TestRunWikiNodeCreateRetriesExhausted(t *testing.T) {
 		ObjType:  "docx",
 		Title:    "Roadmap",
 	}
-	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	_, err := runWikiNodeCreate(context.Background(), client, identity.AsUser, spec, &stderr)
 	if err == nil {
 		t.Fatalf("expected error after retries exhausted")
 	}
@@ -957,7 +959,7 @@ func TestRunWikiNodeCreateNoRetryOnNonContentionError(t *testing.T) {
 		ObjType:  "docx",
 		Title:    "Roadmap",
 	}
-	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	_, err := runWikiNodeCreate(context.Background(), client, identity.AsUser, spec, &stderr)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -994,7 +996,7 @@ func TestRunWikiNodeCreateRetriesOnFirstLockThenSucceeds(t *testing.T) {
 		ObjType:  "docx",
 		Title:    "Roadmap",
 	}
-	execution, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	execution, err := runWikiNodeCreate(context.Background(), client, identity.AsUser, spec, &stderr)
 	if err != nil {
 		t.Fatalf("runWikiNodeCreate() error = %v", err)
 	}
@@ -1036,7 +1038,7 @@ func TestRunWikiNodeCreateRetryContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := runWikiNodeCreate(ctx, client, core.AsUser, spec, &stderr)
+	_, err := runWikiNodeCreate(ctx, client, identity.AsUser, spec, &stderr)
 	if err == nil {
 		t.Fatalf("expected error due to context cancellation")
 	}
@@ -1072,7 +1074,7 @@ func TestRunWikiNodeCreateNoRetryOnSuccess(t *testing.T) {
 		ObjType:  "docx",
 		Title:    "Roadmap",
 	}
-	execution, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	execution, err := runWikiNodeCreate(context.Background(), client, identity.AsUser, spec, &stderr)
 	if err != nil {
 		t.Fatalf("runWikiNodeCreate() error = %v", err)
 	}

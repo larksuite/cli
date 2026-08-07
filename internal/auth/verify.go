@@ -16,6 +16,10 @@ import (
 // VerifyUserToken calls /authen/v1/user_info to confirm the token is accepted server-side.
 // Returns nil on success or an error describing why the server rejected the token.
 func VerifyUserToken(ctx context.Context, sdk *lark.Client, accessToken string) error {
+	return verifyUserToken(ctx, sdk, accessToken, newAuthLogger())
+}
+
+func verifyUserToken(ctx context.Context, sdk *lark.Client, accessToken string, logger authLogger) error {
 	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
 		HttpMethod:                http.MethodGet,
 		ApiPath:                   PathUserInfoV1,
@@ -24,7 +28,7 @@ func VerifyUserToken(ctx context.Context, sdk *lark.Client, accessToken string) 
 	if err != nil {
 		return err
 	}
-	logSDKResponse(PathUserInfoV1, apiResp)
+	logSDKResponse(logger, PathUserInfoV1, apiResp)
 
 	var resp struct {
 		Code int    `json:"code"`

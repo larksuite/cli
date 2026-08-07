@@ -8,20 +8,22 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/brand"
 	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/i18n"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 )
 
 // Account is the credential-layer view of the active runtime account.
 // It intentionally mirrors only the resolved fields needed by runtime auth
-// and identity selection, without exposing core.CliConfig as a dependency.
+// and identity selection, without exposing configpkg.CliConfig as a dependency.
 type Account struct {
 	ProfileName         string
 	AppID               string
 	AppSecret           string
-	Brand               core.LarkBrand
-	DefaultAs           core.Identity
+	Brand               brand.Brand
+	DefaultAs           identitypkg.Identity
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
@@ -55,7 +57,7 @@ func normalizeAccountAppSecret(secret string) string {
 }
 
 // AccountFromCliConfig copies the resolved config view into a credential.Account.
-func AccountFromCliConfig(cfg *core.CliConfig) *Account {
+func AccountFromCliConfig(cfg *configpkg.CliConfig) *Account {
 	if cfg == nil {
 		return nil
 	}
@@ -74,15 +76,15 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 
 // ToCliConfig copies the credential-layer account into the downstream config
 // shape, normalizing the brand so runtime consumers never see raw casing.
-func (a *Account) ToCliConfig() *core.CliConfig {
+func (a *Account) ToCliConfig() *configpkg.CliConfig {
 	if a == nil {
 		return nil
 	}
-	return &core.CliConfig{
+	return &configpkg.CliConfig{
 		ProfileName:         a.ProfileName,
 		AppID:               a.AppID,
 		AppSecret:           normalizeAccountAppSecret(a.AppSecret),
-		Brand:               core.ParseBrand(string(a.Brand)),
+		Brand:               brand.ParseBrand(string(a.Brand)),
 		DefaultAs:           a.DefaultAs,
 		UserOpenId:          a.UserOpenId,
 		UserName:            a.UserName,
@@ -132,10 +134,10 @@ type TokenResult struct {
 	Scopes string // optional, space-separated; empty = skip scope pre-check
 }
 
-// IdentityHint is credential-layer guidance for resolving the effective identity.
+// IdentityHint is credential-layer guidance for resolving the effective identitypkg.
 type IdentityHint struct {
-	DefaultAs core.Identity
-	AutoAs    core.Identity
+	DefaultAs identitypkg.Identity
+	AutoAs    identitypkg.Identity
 }
 
 // TokenUnavailableError reports that no usable token was available.
@@ -171,7 +173,7 @@ type TokenProvider interface {
 
 // NewTokenSpec returns a TokenSpec with the token type automatically
 // selected based on identity: TAT for bot, UAT for user.
-func NewTokenSpec(identity core.Identity, appID string) TokenSpec {
+func NewTokenSpec(identity identitypkg.Identity, appID string) TokenSpec {
 	t := TokenTypeUAT
 	if identity.IsBot() {
 		t = TokenTypeTAT

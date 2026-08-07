@@ -7,12 +7,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/larksuite/cli/errs"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -313,15 +314,15 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 
 // ── Helpers ──
 
-func docsCreateTestConfig(t *testing.T, userOpenID string) *core.CliConfig {
+func docsCreateTestConfig(t *testing.T, userOpenID string) *configpkg.CliConfig {
 	t.Helper()
 
 	replacer := strings.NewReplacer("/", "-", " ", "-")
 	suffix := replacer.Replace(strings.ToLower(t.Name()))
-	return &core.CliConfig{
+	return &configpkg.CliConfig{
 		AppID:      "test-docs-create-" + suffix,
 		AppSecret:  "secret-docs-create-" + suffix,
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: userOpenID,
 	}
 }

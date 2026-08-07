@@ -5,12 +5,14 @@ package cmd
 
 import (
 	"encoding/json"
+	"github.com/larksuite/cli/brand"
+	configpkg "github.com/larksuite/cli/internal/config"
+	"github.com/larksuite/cli/internal/secret"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -40,14 +42,14 @@ func TestExecuteProfileSelectorPrecedence(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "1")
 			t.Setenv("LARKSUITE_CLI_NO_SKILLS_NOTIFIER", "1")
 
-			multi := &core.MultiAppConfig{
+			multi := &configpkg.MultiAppConfig{
 				CurrentApp: "default",
-				Apps: []core.AppConfig{
-					{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("secret-default"), Brand: core.BrandFeishu},
-					{Name: "session", AppId: "app-session", AppSecret: core.PlainSecret("secret-session"), Brand: core.BrandFeishu},
+				Apps: []configpkg.AppConfig{
+					{Name: "default", AppId: "app-default", AppSecret: secret.PlainSecret("secret-default"), Brand: brand.Feishu},
+					{Name: "session", AppId: "app-session", AppSecret: secret.PlainSecret("secret-session"), Brand: brand.Feishu},
 				},
 			}
-			if err := core.SaveMultiAppConfig(multi); err != nil {
+			if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 				t.Fatalf("SaveMultiAppConfig() error = %v", err)
 			}
 
@@ -69,7 +71,7 @@ func TestExecuteProfileSelectorPrecedence(t *testing.T) {
 			if result.ProfileSource != tc.wantSource {
 				t.Fatalf("profileSource = %q, want %q", result.ProfileSource, tc.wantSource)
 			}
-			saved, err := core.LoadMultiAppConfig()
+			saved, err := configpkg.LoadMultiAppConfig()
 			if err != nil {
 				t.Fatalf("LoadMultiAppConfig() error = %v", err)
 			}
@@ -92,13 +94,13 @@ func TestExecuteEnvironmentProfileNotFoundNamesTheVariable(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "1")
 	t.Setenv("LARKSUITE_CLI_NO_SKILLS_NOTIFIER", "1")
 
-	multi := &core.MultiAppConfig{
+	multi := &configpkg.MultiAppConfig{
 		CurrentApp: "default",
-		Apps: []core.AppConfig{
-			{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("secret-default"), Brand: core.BrandFeishu},
+		Apps: []configpkg.AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: secret.PlainSecret("secret-default"), Brand: brand.Feishu},
 		},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 

@@ -17,7 +17,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -608,7 +607,7 @@ func downloadDriveExportFile(ctx context.Context, runtime *common.RuntimeContext
 	if fileName == "" {
 		// Fall back to the server-provided download name when the caller did not
 		// request an explicit local file name.
-		fileName = client.ResolveFilename(apiResp)
+		fileName = common.ResolveFilename(apiResp)
 	}
 	savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, apiResp.RawBody, overwrite)
 	if err != nil {

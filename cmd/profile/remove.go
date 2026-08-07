@@ -5,6 +5,7 @@ package profile
 
 import (
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -12,9 +13,9 @@ import (
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/secret"
 )
 
 // NewCmdProfileRemove creates the profile remove subcommand.
@@ -35,7 +36,7 @@ func NewCmdProfileRemove(f *cmdutil.Factory) *cobra.Command {
 }
 
 func profileRemoveRun(f *cmdutil.Factory, name string) error {
-	multi, err := core.LoadOrNotConfigured()
+	multi, err := configpkg.LoadOrNotConfigured()
 	if err != nil {
 		return err
 	}
@@ -71,12 +72,12 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 		multi.PreviousApp = ""
 	}
 
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
 	// Best-effort credential cleanup after config commit
-	core.RemoveSecretStore(appSecret, f.Keychain)
+	secret.RemoveSecretStore(appSecret, f.Keychain)
 	for _, user := range users {
 		larkauth.RemoveStoredToken(appId, user.UserOpenId)
 	}

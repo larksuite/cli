@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -242,7 +241,7 @@ func queryTaskCheck(runtime *common.RuntimeContext, taskID string) (map[string]i
 }
 
 func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeContext, scenario string) error {
-	result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
+	scopes, ok, err := runtime.ResolveTokenScopes(ctx)
 	if err != nil {
 		// Propagate cancellation/timeout so callers stop instead of falling through
 		// to the API call. Other token errors are non-fatal here: the API call will
@@ -252,7 +251,7 @@ func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeC
 		}
 		return nil
 	}
-	if result == nil || result.Scopes == "" {
+	if !ok {
 		return nil
 	}
 
@@ -264,7 +263,7 @@ func validateDriveTaskResultScopes(ctx context.Context, runtime *common.RuntimeC
 		required = []string{"wiki:space:read"}
 	}
 
-	return requireDriveScopes(result.Scopes, required)
+	return requireDriveScopes(scopes, required)
 }
 
 func requireDriveScopes(storedScopes string, required []string) error {

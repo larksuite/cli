@@ -10,9 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -47,10 +49,10 @@ func TestAppsReleaseCreateMeta(t *testing.T) {
 // via the returned setter helper.
 func newReleaseCreateRuntimeContext(t *testing.T, appID, branch string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-app-" + strings.ToLower(t.Name()),
 		AppSecret:  "test-secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_test",
 	}
 	factory, stdoutBuf, _, reg := cmdutil.TestFactory(t, cfg)
@@ -64,7 +66,7 @@ func newReleaseCreateRuntimeContext(t *testing.T, appID, branch string) (*common
 		_ = cmd.Flags().Set("branch", branch)
 	}
 
-	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, core.AsUser)
+	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, identity.AsUser)
 	return rctx, stdoutBuf, reg
 }
 

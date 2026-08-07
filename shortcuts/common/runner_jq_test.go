@@ -15,10 +15,12 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -40,11 +42,11 @@ func newJqTestContext(jqExpr, format string) (*RuntimeContext, *bytes.Buffer, *b
 
 	rctx := &RuntimeContext{
 		ctx:        context.Background(),
-		Config:     &core.CliConfig{Brand: core.BrandFeishu},
+		Config:     &configpkg.CliConfig{Brand: brand.Feishu},
 		Cmd:        cmd,
 		Format:     format,
 		JqExpr:     jqExpr,
-		resolvedAs: core.AsBot,
+		resolvedAs: identity.AsBot,
 		Factory: &cmdutil.Factory{
 			IOStreams: &cmdutil.IOStreams{Out: stdout, ErrOut: stderr},
 		},
@@ -223,9 +225,9 @@ func newTestShortcutCmd(s *Shortcut, f *cmdutil.Factory) *cobra.Command {
 
 func newTestFactory() *cmdutil.Factory {
 	return &cmdutil.Factory{
-		Config: func() (*core.CliConfig, error) {
-			return &core.CliConfig{
-				AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+		Config: func() (*configpkg.CliConfig, error) {
+			return &configpkg.CliConfig{
+				AppID: "test", AppSecret: "test", Brand: brand.Feishu,
 			}, nil
 		},
 		LarkClient: func() (*lark.Client, error) {

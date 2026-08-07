@@ -9,22 +9,24 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/secret"
 	"github.com/zalando/go-keyring"
 )
 
-func writeLogoutConfig(t *testing.T, users []core.AppUser) {
+func writeLogoutConfig(t *testing.T, users []configpkg.AppUser) {
 	t.Helper()
-	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+	if err := configpkg.SaveMultiAppConfig(&configpkg.MultiAppConfig{
 		CurrentApp: "test-app",
-		Apps: []core.AppConfig{
+		Apps: []configpkg.AppConfig{
 			{
 				AppId:     "test-app",
-				AppSecret: core.PlainSecret("test-secret"),
-				Brand:     core.BrandFeishu,
+				AppSecret: secret.PlainSecret("test-secret"),
+				Brand:     brand.Feishu,
 				Users:     users,
 			},
 		},
@@ -91,7 +93,7 @@ func TestAuthLogoutRun_JSONMode_Success_WritesStdoutOnly(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	writeLogoutConfig(t, []core.AppUser{{UserOpenId: "ou_user", UserName: "tester"}})
+	writeLogoutConfig(t, []configpkg.AppUser{{UserOpenId: "ou_user", UserName: "tester"}})
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:      "test-app",
 		UserOpenId: "ou_user",
@@ -127,7 +129,7 @@ func TestAuthLogoutRun_DefaultMode_KeepsTextOutput(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	writeLogoutConfig(t, []core.AppUser{{UserOpenId: "ou_user", UserName: "tester"}})
+	writeLogoutConfig(t, []configpkg.AppUser{{UserOpenId: "ou_user", UserName: "tester"}})
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:      "test-app",
 		UserOpenId: "ou_user",
@@ -153,19 +155,19 @@ func TestAuthLogoutRun_RevokesTokenAndClearsLocalState(t *testing.T) {
 	setupLoginConfigDir(t)
 	t.Setenv("HOME", t.TempDir())
 
-	multi := &core.MultiAppConfig{
+	multi := &configpkg.MultiAppConfig{
 		CurrentApp: "default",
-		Apps: []core.AppConfig{
+		Apps: []configpkg.AppConfig{
 			{
 				Name:      "default",
 				AppId:     "cli_test",
-				AppSecret: core.PlainSecret("secret"),
-				Brand:     core.BrandFeishu,
-				Users:     []core.AppUser{{UserOpenId: "ou_user", UserName: "tester"}},
+				AppSecret: secret.PlainSecret("secret"),
+				Brand:     brand.Feishu,
+				Users:     []configpkg.AppUser{{UserOpenId: "ou_user", UserName: "tester"}},
 			},
 		},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
@@ -177,11 +179,11 @@ func TestAuthLogoutRun_RevokesTokenAndClearsLocalState(t *testing.T) {
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
 
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, stderr, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brand.Feishu,
 	})
 
 	reg.Register(&httpmock.Stub{
@@ -210,7 +212,7 @@ func TestAuthLogoutRun_RevokesTokenAndClearsLocalState(t *testing.T) {
 	if got := larkauth.GetStoredToken("cli_test", "ou_user"); got != nil {
 		t.Fatalf("expected stored token removed, got %#v", got)
 	}
-	saved, err := core.LoadMultiAppConfig()
+	saved, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		t.Fatalf("LoadMultiAppConfig() error = %v", err)
 	}
@@ -224,19 +226,19 @@ func TestAuthLogoutRun_FallsBackToAccessTokenWhenRefreshTokenMissing(t *testing.
 	setupLoginConfigDir(t)
 	t.Setenv("HOME", t.TempDir())
 
-	multi := &core.MultiAppConfig{
+	multi := &configpkg.MultiAppConfig{
 		CurrentApp: "default",
-		Apps: []core.AppConfig{
+		Apps: []configpkg.AppConfig{
 			{
 				Name:      "default",
 				AppId:     "cli_test",
-				AppSecret: core.PlainSecret("secret"),
-				Brand:     core.BrandFeishu,
-				Users:     []core.AppUser{{UserOpenId: "ou_user", UserName: "tester"}},
+				AppSecret: secret.PlainSecret("secret"),
+				Brand:     brand.Feishu,
+				Users:     []configpkg.AppUser{{UserOpenId: "ou_user", UserName: "tester"}},
 			},
 		},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
@@ -247,11 +249,11 @@ func TestAuthLogoutRun_FallsBackToAccessTokenWhenRefreshTokenMissing(t *testing.
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
 
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, stderr, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brand.Feishu,
 	})
 
 	reg.Register(&httpmock.Stub{
@@ -280,7 +282,7 @@ func TestAuthLogoutRun_FallsBackToAccessTokenWhenRefreshTokenMissing(t *testing.
 	if got := larkauth.GetStoredToken("cli_test", "ou_user"); got != nil {
 		t.Fatalf("expected stored token removed, got %#v", got)
 	}
-	saved, err := core.LoadMultiAppConfig()
+	saved, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		t.Fatalf("LoadMultiAppConfig() error = %v", err)
 	}
@@ -294,19 +296,19 @@ func TestAuthLogoutRun_RevokeFailureStillClearsLocalState(t *testing.T) {
 	setupLoginConfigDir(t)
 	t.Setenv("HOME", t.TempDir())
 
-	multi := &core.MultiAppConfig{
+	multi := &configpkg.MultiAppConfig{
 		CurrentApp: "default",
-		Apps: []core.AppConfig{
+		Apps: []configpkg.AppConfig{
 			{
 				Name:      "default",
 				AppId:     "cli_test",
-				AppSecret: core.PlainSecret("secret"),
-				Brand:     core.BrandFeishu,
-				Users:     []core.AppUser{{UserOpenId: "ou_user", UserName: "tester"}},
+				AppSecret: secret.PlainSecret("secret"),
+				Brand:     brand.Feishu,
+				Users:     []configpkg.AppUser{{UserOpenId: "ou_user", UserName: "tester"}},
 			},
 		},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
@@ -318,11 +320,11 @@ func TestAuthLogoutRun_RevokeFailureStillClearsLocalState(t *testing.T) {
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
 
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, stderr, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
 		ProfileName: "default",
 		AppID:       "cli_test",
 		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
+		Brand:       brand.Feishu,
 	})
 
 	reg.Register(&httpmock.Stub{
@@ -346,7 +348,7 @@ func TestAuthLogoutRun_RevokeFailureStillClearsLocalState(t *testing.T) {
 	if got := larkauth.GetStoredToken("cli_test", "ou_user"); got != nil {
 		t.Fatalf("expected stored token removed, got %#v", got)
 	}
-	saved, err := core.LoadMultiAppConfig()
+	saved, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		t.Fatalf("LoadMultiAppConfig() error = %v", err)
 	}

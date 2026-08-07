@@ -14,7 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
+	"github.com/larksuite/cli/internal/authlog"
 )
 
 // Terminal registration outcomes, exposed for typed classification by callers.
@@ -26,7 +27,7 @@ var (
 
 // Protocol defaults, mirroring the official SDK registration flow.
 const (
-	registrationBootstrapBrand = core.BrandFeishu
+	registrationBootstrapBrand = brandpkg.Feishu
 	defaultPollIntervalSeconds = 5
 	defaultExpireInSeconds     = 600
 	beginRequestTimeout        = 30 * time.Second
@@ -81,14 +82,14 @@ type AppRegUserInfo struct {
 }
 
 // appRegistrationEndpoint returns the brand's accounts registration endpoint.
-func appRegistrationEndpoint(brand core.LarkBrand) string {
-	return core.ResolveEndpoints(brand).Accounts + PathAppRegistration
+func appRegistrationEndpoint(brand brandpkg.Brand) string {
+	return brandpkg.ResolveEndpoints(brand).Accounts + PathAppRegistration
 }
 
 // RequestAppRegistration initiates the device flow. The registration protocol
 // always bootstraps on Feishu; brand selects the user-facing verification host.
 // The request is bounded by ctx and a begin timeout.
-func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, errOut io.Writer) (*AppRegistrationResponse, error) {
+func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand brandpkg.Brand, errOut io.Writer) (*AppRegistrationResponse, error) {
 	if errOut == nil {
 		errOut = io.Discard
 	}
@@ -96,7 +97,7 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	ctx, cancel := context.WithTimeout(ctx, beginRequestTimeout)
 	defer cancel()
 
-	ep := core.ResolveEndpoints(brand)
+	ep := brandpkg.ResolveEndpoints(brand)
 	endpoint := appRegistrationEndpoint(registrationBootstrapBrand)
 
 	form := url.Values{}
@@ -116,7 +117,7 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 		return nil, err
 	}
 	defer resp.Body.Close()
-	logHTTPResponse(resp)
+	logHTTPResponse(newAuthLogger(), resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -180,7 +181,7 @@ func BuildVerificationURL(baseURL, cliVersion string) string {
 }
 
 // pollOnce performs one ctx-bound poll request and decodes the payload.
-func pollOnce(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, deviceCode string) (map[string]interface{}, error) {
+func pollOnce(ctx context.Context, httpClient *http.Client, brand brandpkg.Brand, deviceCode string, logger *authlog.Logger) (map[string]interface{}, error) {
 	form := url.Values{}
 	form.Set("action", "poll")
 	form.Set("device_code", deviceCode)
@@ -196,7 +197,7 @@ func pollOnce(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		return nil, fmt.Errorf("poll network error: %w", err)
 	}
 	defer resp.Body.Close()
-	logHTTPResponse(resp)
+	logHTTPResponse(logger, resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -214,7 +215,7 @@ func pollOnce(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 // non-error responses without complete credentials keep polling, and one
 // deadline from the begin expiry bounds all waits and in-flight requests.
 // The returned brand is the one the credentials were issued on.
-func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp *AppRegistrationResponse, errOut io.Writer) (*AppRegistrationResult, core.LarkBrand, error) {
+func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp *AppRegistrationResponse, errOut io.Writer) (*AppRegistrationResult, brandpkg.Brand, error) {
 	if errOut == nil {
 		errOut = io.Discard
 	}
@@ -230,6 +231,7 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 	effectiveBrand := currentBrand
 	switched := false
 	waitBeforePoll := false
+	authLogger := newAuthLogger()
 
 	for {
 		if waitBeforePoll {
@@ -244,7 +246,7 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 			return nil, effectiveBrand, registrationContextError(ctx)
 		}
 
-		data, err := pollOnce(ctx, httpClient, currentBrand, resp.DeviceCode)
+		data, err := pollOnce(ctx, httpClient, currentBrand, resp.DeviceCode, authLogger)
 		if err != nil {
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] app-registration: %v\n", err)
 			interval = minInt(interval+1, maxPollIntervalSeconds)
@@ -257,7 +259,7 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 		if !switched {
 			if userInfoRaw, ok := data["user_info"].(map[string]interface{}); ok {
 				if tb := getStr(userInfoRaw, "tenant_brand"); tb != "" {
-					if actual := core.ParseBrand(tb); actual != currentBrand {
+					if actual := brandpkg.ParseBrand(tb); actual != currentBrand {
 						currentBrand = actual
 						effectiveBrand = actual
 						switched = true
@@ -285,7 +287,7 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 				// The issuing domain is authoritative; a contradictory final
 				// tenant report is a protocol violation, not a brand override.
 				if result.UserInfo != nil && result.UserInfo.TenantBrand != "" &&
-					core.ParseBrand(result.UserInfo.TenantBrand) != effectiveBrand {
+					brandpkg.ParseBrand(result.UserInfo.TenantBrand) != effectiveBrand {
 					return nil, effectiveBrand, fmt.Errorf("app registration returned credentials with a contradictory tenant brand %q", result.UserInfo.TenantBrand)
 				}
 				return result, effectiveBrand, nil

@@ -20,8 +20,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/larksuite/cli/envnames"
 	"github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
 )
 
@@ -36,15 +36,15 @@ func (p *Provider) Name() string { return "sidecar" }
 // the non-sidecar transport path (where the credential layer will typically
 // block them for lack of a valid account).
 func (p *Provider) ResolveInterceptor(ctx context.Context) transport.Interceptor {
-	proxyAddr := os.Getenv(envvars.CliAuthProxy)
+	proxyAddr := os.Getenv(envnames.CliAuthProxy)
 	if proxyAddr == "" {
 		return nil
 	}
 	if err := sidecar.ValidateProxyAddr(proxyAddr); err != nil {
-		fmt.Fprintf(os.Stderr, "WARNING: invalid %s, sidecar interceptor disabled: %v\n", envvars.CliAuthProxy, err)
+		fmt.Fprintf(os.Stderr, "WARNING: invalid %s, sidecar interceptor disabled: %v\n", envnames.CliAuthProxy, err)
 		return nil
 	}
-	key := os.Getenv(envvars.CliProxyKey)
+	key := os.Getenv(envnames.CliProxyKey)
 	return &Interceptor{
 		key:         []byte(key),
 		sidecarHost: sidecar.ProxyHost(proxyAddr),
@@ -166,12 +166,12 @@ func detectSentinel(req *http.Request) (identity, authHeader string) {
 }
 
 func init() {
-	proxyAddr := os.Getenv(envvars.CliAuthProxy)
+	proxyAddr := os.Getenv(envnames.CliAuthProxy)
 	if proxyAddr == "" {
 		return
 	}
 	if err := sidecar.ValidateProxyAddr(proxyAddr); err != nil {
-		fmt.Fprintf(os.Stderr, "WARNING: ignoring invalid %s: %v\n", envvars.CliAuthProxy, err)
+		fmt.Fprintf(os.Stderr, "WARNING: ignoring invalid %s: %v\n", envnames.CliAuthProxy, err)
 		return
 	}
 	transport.Register(&Provider{})

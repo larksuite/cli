@@ -14,18 +14,18 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
 // newChatListTestRuntimeContext registers flags and returns a user-identity runtime context.
 func newChatListTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
-	return newChatListTestRuntimeContextWithIdentity(t, stringFlags, boolFlags, core.AsUser)
+	return newChatListTestRuntimeContextWithIdentity(t, stringFlags, boolFlags, identity.AsUser)
 }
 
 // newChatListTestRuntimeContextWithIdentity is the identity-aware variant.
-func newChatListTestRuntimeContextWithIdentity(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool, as core.Identity) *common.RuntimeContext {
+func newChatListTestRuntimeContextWithIdentity(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool, as identity.Identity) *common.RuntimeContext {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cmd := &cobra.Command{Use: "test"}
@@ -217,19 +217,19 @@ func TestResolveTypes(t *testing.T) {
 	cases := []struct {
 		name          string
 		raw           string
-		as            core.Identity
+		as            identity.Identity
 		wantEffective string
 		wantStripped  bool
 	}{
-		{"user empty", "", core.AsUser, "", false},
-		{"user p2p", "p2p", core.AsUser, "p2p", false},
-		{"user p2p,group", "p2p,group", core.AsUser, "p2p,group", false},
-		{"user group,p2p preserves order", "group,p2p", core.AsUser, "group,p2p", false},
-		{"user normalized casing", "P2P,GROUP", core.AsUser, "p2p,group", false},
-		{"bot empty", "", core.AsBot, "", false},
-		{"bot group only", "group", core.AsBot, "group", false},
-		{"bot p2p,group strips p2p", "p2p,group", core.AsBot, "group", true},
-		{"bot group,p2p strips p2p", "group,p2p", core.AsBot, "group", true},
+		{"user empty", "", identity.AsUser, "", false},
+		{"user p2p", "p2p", identity.AsUser, "p2p", false},
+		{"user p2p,group", "p2p,group", identity.AsUser, "p2p,group", false},
+		{"user group,p2p preserves order", "group,p2p", identity.AsUser, "group,p2p", false},
+		{"user normalized casing", "P2P,GROUP", identity.AsUser, "p2p,group", false},
+		{"bot empty", "", identity.AsBot, "", false},
+		{"bot group only", "group", identity.AsBot, "group", false},
+		{"bot p2p,group strips p2p", "p2p,group", identity.AsBot, "group", true},
+		{"bot group,p2p strips p2p", "group,p2p", identity.AsBot, "group", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -263,19 +263,19 @@ func TestImChatList_Validate_Types(t *testing.T) {
 	cases := []struct {
 		name     string
 		typesRaw string
-		as       core.Identity
+		as       identity.Identity
 		wantErr  string // substring; "" means no error
 	}{
-		{"user empty ok", "", core.AsUser, ""},
-		{"user p2p ok", "p2p", core.AsUser, ""},
-		{"user group ok", "group", core.AsUser, ""},
-		{"user p2p,group ok", "p2p,group", core.AsUser, ""},
-		{"user invalid element rejected", "private", core.AsUser, "expected one of p2p, group"},
-		{"user comma-only rejected", ",", core.AsUser, "must contain at least one of p2p, group"},
-		{"bot empty ok", "", core.AsBot, ""},
-		{"bot group ok", "group", core.AsBot, ""},
-		{"bot p2p,group ok (degraded at Execute)", "p2p,group", core.AsBot, ""},
-		{"bot single p2p rejected", "p2p", core.AsBot, "only supported with user identity"},
+		{"user empty ok", "", identity.AsUser, ""},
+		{"user p2p ok", "p2p", identity.AsUser, ""},
+		{"user group ok", "group", identity.AsUser, ""},
+		{"user p2p,group ok", "p2p,group", identity.AsUser, ""},
+		{"user invalid element rejected", "private", identity.AsUser, "expected one of p2p, group"},
+		{"user comma-only rejected", ",", identity.AsUser, "must contain at least one of p2p, group"},
+		{"bot empty ok", "", identity.AsBot, ""},
+		{"bot group ok", "group", identity.AsBot, ""},
+		{"bot p2p,group ok (degraded at Execute)", "p2p,group", identity.AsBot, ""},
+		{"bot single p2p rejected", "p2p", identity.AsBot, "only supported with user identity"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -498,16 +498,16 @@ func TestImChatList_Execute_PrettyOutputRendersP2pRow(t *testing.T) {
 func TestImChatList_DryRun_TypesPassthrough(t *testing.T) {
 	cases := []struct {
 		name     string
-		as       core.Identity
+		as       identity.Identity
 		typesRaw string
 		wantSub  string // substring expected in dry-run JSON
 		wantErr  bool   // whether Validate should reject before DryRun runs
 	}{
-		{"user p2p", core.AsUser, "p2p", `"types":"p2p"`, false},
-		{"user p2p,group", core.AsUser, "p2p,group", `"types":"p2p,group"`, false},
-		{"bot p2p,group strips to group", core.AsBot, "p2p,group", `"types":"group"`, false},
-		{"bot group passes", core.AsBot, "group", `"types":"group"`, false},
-		{"bot single p2p rejected at Validate", core.AsBot, "p2p", "", true},
+		{"user p2p", identity.AsUser, "p2p", `"types":"p2p"`, false},
+		{"user p2p,group", identity.AsUser, "p2p,group", `"types":"p2p,group"`, false},
+		{"bot p2p,group strips to group", identity.AsBot, "p2p,group", `"types":"group"`, false},
+		{"bot group passes", identity.AsBot, "group", `"types":"group"`, false},
+		{"bot single p2p rejected at Validate", identity.AsBot, "p2p", "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

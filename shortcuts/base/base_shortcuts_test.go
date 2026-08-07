@@ -18,7 +18,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -62,7 +62,7 @@ func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlag
 	for name, value := range intFlags {
 		_ = cmd.Flags().Set(name, strconv.Itoa(value))
 	}
-	return &common.RuntimeContext{Cmd: cmd, Config: &core.CliConfig{UserOpenId: "ou_test"}}
+	return &common.RuntimeContext{Cmd: cmd, Config: &configpkg.CliConfig{UserOpenId: "ou_test"}}
 }
 
 func assertBasePaginationValidation(t *testing.T, err error, param string) {

@@ -17,8 +17,8 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
@@ -210,7 +210,7 @@ func TestHandleResponse_JSON(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	err := HandleResponse(resp, ResponseOptions{
-		Identity: core.AsBot,
+		Identity: identity.AsBot,
 		Out:      &out,
 		ErrOut:   &errOut,
 		FileIO:   &localfileio.LocalFileIO{},
@@ -302,7 +302,7 @@ func TestHandleResponse_NonJSONFormatsEmitExactStructuredResponseBytes(t *testin
 			var errOut bytes.Buffer
 			err = HandleResponse(resp, ResponseOptions{
 				Format:      tt.format,
-				Identity:    core.AsBot,
+				Identity:    identity.AsBot,
 				Out:         &out,
 				ErrOut:      &errOut,
 				CommandPath: "lark-cli api GET",
@@ -328,7 +328,7 @@ func TestHandleResponse_JSONWithJqUsesSuccessEnvelope(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	err := HandleResponse(resp, ResponseOptions{
-		Identity: core.AsBot,
+		Identity: identity.AsBot,
 		JqExpr:   ".data.id",
 		Out:      &out,
 		ErrOut:   &errOut,

@@ -5,6 +5,7 @@ package transport
 
 import (
 	"context"
+	"github.com/larksuite/cli/brand"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	exttransport "github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/core"
 )
 
 type requestMatcher func(*http.Request) bool
@@ -231,7 +231,7 @@ func InstallSDKTransportBridge(buildPlatformPolicy func(http.RoundTripper) http.
 func isSDKWebSocketBootstrapRequest(req *http.Request) bool {
 	return req != nil &&
 		req.Method == http.MethodPost &&
-		core.IsPlatformEndpointURL(req.URL) &&
+		brand.IsPlatformEndpointURL(req.URL) &&
 		req.URL.Path == larkws.GenEndpointUri
 }
 

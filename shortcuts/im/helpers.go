@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"io"
 	"math"
 	"net/http"
@@ -21,9 +22,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -1293,7 +1291,7 @@ func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, req
 	if len(required) == 0 {
 		return nil
 	}
-	result, err := rt.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(rt.As(), rt.Config.AppID))
+	scopes, ok, err := rt.ResolveTokenScopes(ctx)
 	if err != nil {
 		return recovery.Attach(
 			errs.NewAuthenticationError(errs.SubtypeTokenMissing,
@@ -1301,13 +1299,13 @@ func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, req
 			recovery.UserAuthorization(required...),
 		)
 	}
-	if result == nil || result.Scopes == "" {
+	if !ok {
 		fmt.Fprintf(rt.IO().ErrOut,
 			"warning: cannot verify required scope(s) because token scope metadata is unavailable; API may fail if missing: %s\n",
 			strings.Join(required, " "))
 		return nil
 	}
-	if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
+	if missing := common.MissingScopes(scopes, required); len(missing) > 0 {
 		return errs.NewPermissionError(errs.SubtypeMissingScope, "missing required scope(s): %s", strings.Join(missing, ", ")).
 			WithMissingScopes(missing...).
 			WithIdentity(string(rt.As()))

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/meta"
 )
 
@@ -511,7 +511,7 @@ func TestBrandSwitchInvalidatesCache(t *testing.T) {
 	testMetaURL = ts.URL
 
 	// Init with lark brand — should invalidate feishu cache and sync fetch
-	InitWithBrand(core.BrandLark)
+	InitWithBrand(brand.Lark)
 
 	// The old feishu_svc should NOT be loaded from stale cache
 	// The new lark_svc from sync fetch should be available
@@ -524,7 +524,7 @@ func TestRemoteMetaURL_BrandSpecific(t *testing.T) {
 	testMetaURL = ""
 
 	// Default URL (feishu) with no version
-	configuredBrand = core.BrandFeishu
+	configuredBrand = brand.Feishu
 	u := remoteMetaURL("")
 	if !strings.Contains(u, "open.feishu.cn") {
 		t.Errorf("expected feishu URL, got %s", u)
@@ -534,7 +534,7 @@ func TestRemoteMetaURL_BrandSpecific(t *testing.T) {
 	}
 
 	// Lark brand with version param
-	configuredBrand = core.BrandLark
+	configuredBrand = brand.Lark
 	u = remoteMetaURL("1.0.3")
 	if !strings.Contains(u, "open.larksuite.com") {
 		t.Errorf("expected lark URL, got %s", u)

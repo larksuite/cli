@@ -6,9 +6,9 @@ package event
 import (
 	"context"
 	"errors"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
 	eventlib "github.com/larksuite/cli/internal/event"
 	appconsume "github.com/larksuite/cli/internal/event/application/consume"
 )
@@ -28,7 +28,7 @@ func TestReadPreconditions_TokenErrorBlocksWithTheSameError(t *testing.T) {
 	tokenErr := errors.New("no tenant token available")
 	pf := &preflightCtx{
 		appID:    "cli_test",
-		identity: core.AsBot,
+		identity: identitypkg.AsBot,
 		keyDef:   &eventlib.KeyDefinition{Key: "demo.thing.updated_v1"},
 	}
 	got := readPreconditions(context.Background(), pf, nil, tokenErr)
@@ -46,7 +46,7 @@ func TestReadPreconditions_TokenErrorBlocksWithTheSameError(t *testing.T) {
 func TestReadPreconditions_UnreadableScopesAreUnknown(t *testing.T) {
 	pf := &preflightCtx{
 		appID:    "cli_test",
-		identity: core.AsBot,
+		identity: identitypkg.AsBot,
 		keyDef: &eventlib.KeyDefinition{
 			Key:    "demo.thing.updated_v1",
 			Scopes: []string{"demo:read"},

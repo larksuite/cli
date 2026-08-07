@@ -15,9 +15,9 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -367,7 +367,7 @@ func (m *mockDriveTaskResultTokenResolver) ResolveToken(ctx context.Context, req
 	return &credential.TokenResult{Token: token, Scopes: m.scopes}, nil
 }
 
-func newDriveTaskResultRuntimeWithScopes(t *testing.T, as core.Identity, scopes string) *common.RuntimeContext {
+func newDriveTaskResultRuntimeWithScopes(t *testing.T, as identity.Identity, scopes string) *common.RuntimeContext {
 	t.Helper()
 
 	cfg := driveTestConfig()
@@ -646,7 +646,7 @@ func TestValidateDriveTaskResultScopesWikiScenariosRequireWikiScope(t *testing.T
 	for _, scenario := range []string{"wiki_move", "wiki_move_to_drive", "wiki_delete_space", "wiki_delete_node"} {
 		t.Run(scenario+"/rejects missing scope", func(t *testing.T) {
 			t.Parallel()
-			runtime := newDriveTaskResultRuntimeWithScopes(t, core.AsUser, "drive:drive.metadata:readonly")
+			runtime := newDriveTaskResultRuntimeWithScopes(t, identity.AsUser, "drive:drive.metadata:readonly")
 			err := validateDriveTaskResultScopes(context.Background(), runtime, scenario)
 			if err == nil || !strings.Contains(err.Error(), "missing required scope(s): wiki:space:read") {
 				t.Fatalf("expected missing wiki scope error, got %v", err)
@@ -664,7 +664,7 @@ func TestValidateDriveTaskResultScopesWikiScenariosRequireWikiScope(t *testing.T
 		})
 		t.Run(scenario+"/accepts wiki scope", func(t *testing.T) {
 			t.Parallel()
-			runtime := newDriveTaskResultRuntimeWithScopes(t, core.AsUser, "wiki:space:read")
+			runtime := newDriveTaskResultRuntimeWithScopes(t, identity.AsUser, "wiki:space:read")
 			err := validateDriveTaskResultScopes(context.Background(), runtime, scenario)
 			if err != nil {
 				t.Fatalf("validateDriveTaskResultScopes() error = %v", err)
@@ -853,7 +853,7 @@ func TestDriveTaskResultRejectsUnknownScenarioListsWikiDeleteNode(t *testing.T) 
 func TestValidateDriveTaskResultScopesDriveScenariosRequireDriveScope(t *testing.T) {
 	t.Parallel()
 
-	runtime := newDriveTaskResultRuntimeWithScopes(t, core.AsUser, "wiki:space:read")
+	runtime := newDriveTaskResultRuntimeWithScopes(t, identity.AsUser, "wiki:space:read")
 	err := validateDriveTaskResultScopes(context.Background(), runtime, "import")
 	if err == nil || !strings.Contains(err.Error(), "missing required scope(s): drive:drive.metadata:readonly") {
 		t.Fatalf("expected missing drive scope error, got %v", err)
@@ -964,7 +964,7 @@ func TestValidateDriveTaskResultScopesPropagatesContextCancellation(t *testing.T
 	factory, _, _, _ := cmdutil.TestFactory(t, cfg)
 	factory.Credential = credential.NewCredentialProvider(nil, nil, cancelingTokenResolver{}, nil)
 
-	runtime := common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "drive +task_result"}, cfg, core.AsUser)
+	runtime := common.TestNewRuntimeContextWithIdentity(&cobra.Command{Use: "drive +task_result"}, cfg, identity.AsUser)
 	runtime.Factory = factory
 
 	err := validateDriveTaskResultScopes(context.Background(), runtime, "wiki_move")

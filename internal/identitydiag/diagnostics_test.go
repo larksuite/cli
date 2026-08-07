@@ -10,17 +10,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/brand"
 	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/zalando/go-keyring"
 )
 
 func TestDiagnose_NoUserReportsBotReadyAndUserMissing(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: brand.Feishu}
 	f, _, _, _ := cmdutil.TestFactory(t, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, false)
@@ -33,7 +34,7 @@ func TestDiagnose_NoUserReportsBotReadyAndUserMissing(t *testing.T) {
 }
 
 func TestDiagnose_BotIdentityNotConfigured(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test-app", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test-app", Brand: brand.Feishu}
 	f, _, _, _ := cmdutil.TestFactory(t, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, false)
@@ -43,7 +44,7 @@ func TestDiagnose_BotIdentityNotConfigured(t *testing.T) {
 }
 
 func TestDiagnose_VerifyBotIdentity(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: brand.Feishu}
 	f, _, _, reg := cmdutil.TestFactory(t, cfg)
 	stub := &httpmock.Stub{
 		Method: http.MethodGet,
@@ -79,10 +80,10 @@ func TestDiagnose_VerifyUserIdentity(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-app-user",
 		AppSecret:  "secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_user",
 		UserName:   "tester",
 	}
@@ -135,7 +136,7 @@ func TestDiagnose_VerifyUserIdentity(t *testing.T) {
 }
 
 func TestDiagnose_VerifyBotIdentity_HTTPErrorSurfacesEnvelope(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: brand.Feishu}
 	f, _, _, reg := cmdutil.TestFactory(t, cfg)
 	reg.Register(&httpmock.Stub{
 		Method: http.MethodGet,
@@ -160,7 +161,7 @@ func TestDiagnose_VerifyBotIdentity_HTTPErrorSurfacesEnvelope(t *testing.T) {
 }
 
 func TestDiagnose_VerifyBotIdentity_BusinessErrorCode(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: brand.Feishu}
 	f, _, _, reg := cmdutil.TestFactory(t, cfg)
 	reg.Register(&httpmock.Stub{
 		Method: http.MethodGet,
@@ -185,10 +186,10 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-app-reject",
 		AppSecret:  "secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_user",
 		UserName:   "tester",
 	}
@@ -241,10 +242,10 @@ func TestDiagnose_UserIdentityExpired(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-app-expired",
 		AppSecret:  "secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_expired",
 		UserName:   "tester",
 	}
@@ -275,10 +276,10 @@ func TestDiagnose_UserIdentityExpired(t *testing.T) {
 func TestDiagnose_BotIdentityStrictUserOnly(t *testing.T) {
 	// SupportedIdentities = SupportsUser (1) only — bot path should be
 	// reported as not_configured even though an app secret is present.
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:               "test-app",
 		AppSecret:           "secret",
-		Brand:               core.BrandFeishu,
+		Brand:               brand.Feishu,
 		SupportedIdentities: 1,
 	}
 	f, _, _, _ := cmdutil.TestFactory(t, cfg)
@@ -290,7 +291,7 @@ func TestDiagnose_BotIdentityStrictUserOnly(t *testing.T) {
 }
 
 func TestDiagnose_UserIdentityMissingAppConfig(t *testing.T) {
-	cfg := &core.CliConfig{Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{Brand: brand.Feishu}
 	f, _, _, _ := cmdutil.TestFactory(t, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, false)
@@ -320,10 +321,10 @@ func TestDiagnose_UserIdentityNeedsRefresh(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-app-needs-refresh",
 		AppSecret:  "secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_refresh",
 		UserName:   "tester",
 	}
@@ -368,13 +369,13 @@ func (p *fakeExtProvider) ResolveToken(context.Context, extcred.TokenSpec) (*ext
 	return p.token, nil
 }
 
-func externalFactory(prov *fakeExtProvider, cfg *core.CliConfig) *cmdutil.Factory {
+func externalFactory(prov *fakeExtProvider, cfg *configpkg.CliConfig) *cmdutil.Factory {
 	cred := credential.NewCredentialProvider(
 		[]extcred.Provider{prov}, nil, nil,
 		func() (*http.Client, error) { return nil, nil },
 	)
 	return &cmdutil.Factory{
-		Config:     func() (*core.CliConfig, error) { return cfg, nil },
+		Config:     func() (*configpkg.CliConfig, error) { return cfg, nil },
 		Credential: cred,
 		IOStreams:  &cmdutil.IOStreams{},
 	}
@@ -398,7 +399,7 @@ func assertExternalHint(t *testing.T, hint string) {
 }
 
 func TestDiagnose_External_UserReady(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsAll), UserOpenId: "ou_x", UserName: "Alice"}
+	cfg := &configpkg.CliConfig{AppID: "cli_x", Brand: brand.Feishu, SupportedIdentities: uint8(extcred.SupportsAll), UserOpenId: "ou_x", UserName: "Alice"}
 	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, false)
@@ -420,7 +421,7 @@ func TestDiagnose_External_UserReady(t *testing.T) {
 }
 
 func TestDiagnose_External_UserNotSignedIn(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsAll)}
+	cfg := &configpkg.CliConfig{AppID: "cli_x", Brand: brand.Feishu, SupportedIdentities: uint8(extcred.SupportsAll)}
 	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, false)
@@ -431,7 +432,7 @@ func TestDiagnose_External_UserNotSignedIn(t *testing.T) {
 }
 
 func TestDiagnose_External_BotOnly(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsBot), UserOpenId: "ou_x"}
+	cfg := &configpkg.CliConfig{AppID: "cli_x", Brand: brand.Feishu, SupportedIdentities: uint8(extcred.SupportsBot), UserOpenId: "ou_x"}
 	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, false)
@@ -447,7 +448,7 @@ func TestDiagnose_External_BotOnly(t *testing.T) {
 }
 
 func TestDiagnose_External_UserOnly(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandLark, SupportedIdentities: uint8(extcred.SupportsUser), UserOpenId: "ou_x", UserName: "Bob"}
+	cfg := &configpkg.CliConfig{AppID: "cli_x", Brand: brand.Lark, SupportedIdentities: uint8(extcred.SupportsUser), UserOpenId: "ou_x", UserName: "Bob"}
 	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, false)
@@ -461,7 +462,7 @@ func TestDiagnose_External_UserOnly(t *testing.T) {
 }
 
 func TestDiagnose_External_VerifyUserResolvesToken(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsUser), UserOpenId: "ou_x", UserName: "Alice"}
+	cfg := &configpkg.CliConfig{AppID: "cli_x", Brand: brand.Feishu, SupportedIdentities: uint8(extcred.SupportsUser), UserOpenId: "ou_x", UserName: "Alice"}
 	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}, token: &extcred.Token{Value: "ext-uat"}}, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, true)
@@ -471,7 +472,7 @@ func TestDiagnose_External_VerifyUserResolvesToken(t *testing.T) {
 }
 
 func TestDiagnose_External_VerifyUserTokenUnavailable(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsUser), UserOpenId: "ou_x"}
+	cfg := &configpkg.CliConfig{AppID: "cli_x", Brand: brand.Feishu, SupportedIdentities: uint8(extcred.SupportsUser), UserOpenId: "ou_x"}
 	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, true)

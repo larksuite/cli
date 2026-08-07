@@ -13,12 +13,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/i18n"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
@@ -56,7 +58,7 @@ send the verification URL (or QR code) to the user as your final message, end th
 run --device-code in a later step after the user confirms authorization. Use 'lark-cli auth qrcode'
 to generate QR codes (supports ASCII and PNG formats).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if mode := f.ResolveStrictMode(cmd.Context()); mode == core.StrictModeBot {
+			if mode := f.ResolveStrictMode(cmd.Context()); mode == identity.StrictModeBot {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument,
 					"strict mode is %q, user login is disabled in this profile", mode).
 					WithHint("if the user explicitly wants to switch to user identity, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)")
@@ -73,7 +75,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")
-	var helpBrand core.LarkBrand
+	var helpBrand brandpkg.Brand
 	if f != nil && f.Config != nil {
 		if cfg, err := f.Config(); err == nil && cfg != nil {
 			helpBrand = cfg.Brand
@@ -126,7 +128,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// Determine UI language from saved config
 	var lang i18n.Lang
-	if multi, _ := core.LoadMultiAppConfig(); multi != nil {
+	if multi, _ := configpkg.LoadMultiAppConfig(); multi != nil {
 		if app := multi.FindApp(config.ProfileName); app != nil {
 			lang = app.Lang
 		}
@@ -387,7 +389,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 // authLoginPollDeviceCode resumes the device flow by polling with a device code
 // obtained from a previous --no-wait call.
-func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *loginMsg, log func(string, ...interface{})) error {
+func authLoginPollDeviceCode(opts *LoginOptions, config *configpkg.CliConfig, msg *loginMsg, log func(string, ...interface{})) error {
 	f := opts.Factory
 
 	httpClient, err := f.HttpClient()
@@ -470,7 +472,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 
 // syncLoginUserToProfile persists the logged-in user info into the named profile.
 func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "load config: %v", err).WithCause(err)
 	}
@@ -480,9 +482,9 @@ func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 		return errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found in config", profileName)
 	}
 
-	oldUsers := append([]core.AppUser(nil), app.Users...)
-	app.Users = []core.AppUser{{UserOpenId: openID, UserName: userName}}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	oldUsers := append([]configpkg.AppUser(nil), app.Users...)
+	app.Users = []configpkg.AppUser{{UserOpenId: openID, UserName: userName}}
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "save config: %v", err).WithCause(err)
 	}
 
@@ -495,7 +497,7 @@ func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 }
 
 // findProfileByName returns the AppConfig matching profileName, or nil.
-func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.AppConfig {
+func findProfileByName(multi *configpkg.MultiAppConfig, profileName string) *configpkg.AppConfig {
 	for i := range multi.Apps {
 		if multi.Apps[i].ProfileName() == profileName {
 			return &multi.Apps[i]
@@ -508,7 +510,7 @@ func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.App
 // shortcut scopes for the given domain names.
 // Domains with auth_domain children are automatically expanded to include
 // their children's scopes.
-func collectScopesForDomains(domains []string, identity string, brand core.LarkBrand) []string {
+func collectScopesForDomains(domains []string, identity string, brand brandpkg.Brand) []string {
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
@@ -549,7 +551,7 @@ func collectScopesForDomains(domains []string, identity string, brand core.LarkB
 // allKnownDomains returns all valid auth domain names (from_meta projects +
 // shortcut services), excluding domains that have auth_domain set (they are
 // folded into their parent domain).
-func allKnownDomains(brand core.LarkBrand) map[string]bool {
+func allKnownDomains(brand brandpkg.Brand) map[string]bool {
 	domains := make(map[string]bool)
 	for _, p := range registry.ListFromMetaProjects() {
 		if !registry.HasAuthDomain(p) {
@@ -568,7 +570,7 @@ func allKnownDomains(brand core.LarkBrand) map[string]bool {
 }
 
 // sortedKnownDomains returns all valid domain names sorted alphabetically.
-func sortedKnownDomains(brand core.LarkBrand) []string {
+func sortedKnownDomains(brand brandpkg.Brand) []string {
 	m := allKnownDomains(brand)
 	domains := make([]string, 0, len(m))
 	for d := range m {

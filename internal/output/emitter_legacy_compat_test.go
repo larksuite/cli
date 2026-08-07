@@ -3,6 +3,12 @@
 
 // Legacy oracle fixtures are frozen at base SHA 4a56748bfa941ff0ee0bfec92e65acac427732b0.
 // Golden regeneration is allowed only from that base, never from the current system under test.
+//
+// These cases run the Emitter, which is where the formatting lives. The other
+// half — that RuntimeContext's Out* methods still reach the Emitter with the
+// options each one promises — is asserted from the layer that owns those methods,
+// in shortcuts/common/runner_emitter_wiring_test.go: a test here would have made
+// internal/output depend upward on shortcuts/common.
 
 package output_test
 
@@ -18,14 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"github.com/larksuite/cli/errs"
 	extcs "github.com/larksuite/cli/extension/contentsafety"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
 )
 
 type emitterCapture struct {
@@ -294,15 +295,6 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 				t.Fatalf("frozen golden case %q is missing", tc.name)
 			}
 
-			opts := runtimeOracleOptions{
-				raw:       tc.raw,
-				ok:        tc.ok,
-				meta:      tc.meta,
-				jq:        tc.jq,
-				format:    tc.format,
-				useFormat: tc.useFormat,
-				pretty:    tc.pretty,
-			}
 			current := runEmitterWithRuntimeContextContract(tc.data(), output.EmitterConfig{
 				CommandPath:    "lark-cli fixture +emit",
 				Identity:       "bot",
@@ -316,9 +308,6 @@ func TestEmitterMatchesRuntimeContextLegacyOracle(t *testing.T) {
 			})
 
 			assertEmitterGolden(t, want, current)
-
-			integrated := runRuntimeContextOracle(t, tc.data(), opts)
-			assertEmitterGolden(t, want, integrated)
 			if tc.safetyMode == "block" {
 				var safetyErr *errs.ContentSafetyError
 				if !errors.As(current.err, &safetyErr) {
@@ -371,57 +360,6 @@ func captureEmitterGolden(t *testing.T, capture emitterCapture) emitterCaptureGo
 		ExitCode: output.ExitCodeOf(capture.err),
 	}
 	return golden
-}
-
-type runtimeOracleOptions struct {
-	raw       bool
-	ok        bool
-	meta      *output.Meta
-	jq        string
-	format    string
-	useFormat bool
-	pretty    bool
-}
-
-func runRuntimeContextOracle(t *testing.T, data interface{}, opts runtimeOracleOptions) emitterCapture {
-	t.Helper()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	parent := &cobra.Command{Use: "lark-cli"}
-	cmd := &cobra.Command{Use: "fixture"}
-	leaf := &cobra.Command{Use: "+emit"}
-	parent.AddCommand(cmd)
-	cmd.AddCommand(leaf)
-
-	factory := &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{Out: stdout, ErrOut: stderr}}
-	runtime := common.TestNewRuntimeContextForAPI(
-		context.Background(), leaf, &core.CliConfig{Brand: core.BrandFeishu}, factory, core.AsBot,
-	)
-	runtime.Format = opts.format
-	runtime.JqExpr = opts.jq
-
-	pretty := func(w io.Writer) {
-		fmt.Fprintln(w, "pretty:fixture")
-	}
-	if !opts.pretty {
-		pretty = nil
-	}
-
-	var err error
-	switch {
-	case opts.useFormat && opts.raw:
-		runtime.OutFormatRaw(data, opts.meta, pretty)
-	case opts.useFormat:
-		runtime.OutFormat(data, opts.meta, pretty)
-	case !opts.ok:
-		err = runtime.OutPartialFailure(data, opts.meta)
-	case opts.raw:
-		runtime.OutRaw(data, opts.meta)
-	default:
-		runtime.Out(data, opts.meta)
-	}
-
-	return emitterCapture{stdout: stdout.String(), stderr: stderr.String(), err: err}
 }
 
 func runEmitterSuccess(data interface{}, config output.EmitterConfig, ok bool, opts output.EmitOptions) emitterCapture {

@@ -16,9 +16,10 @@ import (
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -135,7 +136,7 @@ type ServiceMethodOptions struct {
 	// Flags
 	Params     string
 	Data       string
-	As         core.Identity
+	As         identitypkg.Identity
 	Output     string
 	PageAll    bool
 	PageLimit  int
@@ -268,7 +269,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Cmd = cmd
 			opts.Ctx = cmd.Context()
-			opts.As = core.Identity(asStr)
+			opts.As = identitypkg.Identity(asStr)
 			if runF != nil {
 				return runF(opts)
 			}
@@ -371,7 +372,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		return err
 	}
 
-	// Check if this API method supports the resolved identity.
+	// Check if this API method supports the resolved identitypkg.
 	if opts.Method.RestrictsIdentity() {
 		if err := f.CheckIdentity(opts.As, opts.Method.Identities()); err != nil {
 			return err
@@ -454,7 +455,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 }
 
 // checkServiceScopes pre-checks user scopes before making the API call.
-func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider, identity core.Identity, config *core.CliConfig, method meta.Method) error {
+func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider, identity identitypkg.Identity, config *configpkg.CliConfig, method meta.Method) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -674,7 +675,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	return request, nil, nil
 }
 
-func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *ServiceMethodOptions) error {
+func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *configpkg.CliConfig, opts *ServiceMethodOptions) error {
 	return cmdutil.PrintDryRun(request, config, serviceDryRunOutputOptions(f, opts))
 }
 
@@ -689,7 +690,7 @@ func serviceDryRunOutputOptions(f *cmdutil.Factory, opts *ServiceMethodOptions) 
 	}
 }
 
-func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
+func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions, checkErr func(interface{}, identitypkg.Identity) error) error {
 	if pagOpts.Identity == "" {
 		pagOpts.Identity = request.As
 	}

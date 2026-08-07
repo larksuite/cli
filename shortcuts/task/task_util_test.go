@@ -14,9 +14,9 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/smartystreets/goconvey/convey"
@@ -173,7 +173,7 @@ func TestHandleTaskApiResultWithContext_PermissionConsoleURL(t *testing.T) {
 func TestCallTaskAPITyped_TaskHint(t *testing.T) {
 	cfg := taskTestConfig(t)
 	f, _, _, reg := cmdutil.TestFactory(t, cfg)
-	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+x"}, cfg, f, core.AsUser)
+	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+x"}, cfg, f, identity.AsUser)
 	reg.Register(&httpmock.Stub{
 		Method: http.MethodGet,
 		URL:    "/open-apis/task/v2/tasks/t-1",

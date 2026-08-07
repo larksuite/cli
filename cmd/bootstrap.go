@@ -5,11 +5,11 @@ package cmd
 
 import (
 	"errors"
+	"github.com/larksuite/cli/brand"
 	"io"
 	"os"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/spf13/pflag"
 )
@@ -36,14 +36,14 @@ func BootstrapInvocationContext(args []string) (cmdutil.InvocationContext, error
 	if fs.Changed("profile") {
 		return cmdutil.InvocationContext{
 			Profile:       globals.Profile,
-			ProfileSource: core.ProfileFromFlag,
+			ProfileSource: brand.ProfileFromFlag,
 		}, nil
 	}
 	if profile := os.Getenv(envvars.CliProfile); profile != "" {
 		return cmdutil.InvocationContext{
 			Profile:       profile,
-			ProfileSource: core.ProfileFromEnvironment,
+			ProfileSource: brand.ProfileFromEnvironment,
 		}, nil
 	}
-	return cmdutil.InvocationContext{ProfileSource: core.ProfileFromConfig}, nil
+	return cmdutil.InvocationContext{ProfileSource: brand.ProfileFromConfig}, nil
 }

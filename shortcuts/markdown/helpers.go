@@ -17,7 +17,6 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -490,7 +489,7 @@ func uploadMarkdownFileAll(runtime *common.RuntimeContext, spec markdownUploadSp
 			Body:       fd,
 		}, larkcore.WithFileUpload())
 		if err != nil {
-			return markdownUploadResult{}, markdownUploadProblem(client.WrapDoAPIError(err), markdownUploadAllAction)
+			return markdownUploadResult{}, markdownUploadProblem(common.WrapDoAPIError(err), markdownUploadAllAction)
 		}
 
 		data, err := runtime.ClassifyAPIResponse(apiResp)
@@ -630,7 +629,7 @@ func uploadMarkdownMultipartParts(runtime *common.RuntimeContext, fileReader io.
 				Body:       fd,
 			}, larkcore.WithFileUpload())
 			if err != nil {
-				return markdownUploadProblem(client.WrapDoAPIError(err), action)
+				return markdownUploadProblem(common.WrapDoAPIError(err), action)
 			}
 			if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
 				return markdownUploadProblem(err, action)

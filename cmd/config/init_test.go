@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/secret"
 )
 
 // updateExistingProfileWithoutSecret guards four blank-input scenarios. Each
@@ -19,47 +21,47 @@ import (
 // not for missing user input.
 
 func TestUpdateExistingProfileWithoutSecret_NilConfig_EmitsValidationError(t *testing.T) {
-	err := updateExistingProfileWithoutSecret(nil, "", "cli_test", core.BrandFeishu, "en")
+	err := updateExistingProfileWithoutSecret(nil, "", "cli_test", brand.Feishu, "en")
 	assertValidationParam(t, err, "--app-secret")
 }
 
 func TestUpdateExistingProfileWithoutSecret_UnknownProfile_EmitsValidationError(t *testing.T) {
-	existing := &core.MultiAppConfig{
-		Apps: []core.AppConfig{{
+	existing := &configpkg.MultiAppConfig{
+		Apps: []configpkg.AppConfig{{
 			Name:      "default",
 			AppId:     "app-default",
-			AppSecret: core.PlainSecret("secret-default"),
-			Brand:     core.BrandFeishu,
+			AppSecret: secret.PlainSecret("secret-default"),
+			Brand:     brand.Feishu,
 		}},
 	}
-	err := updateExistingProfileWithoutSecret(existing, "missing-profile", "cli_test", core.BrandFeishu, "en")
+	err := updateExistingProfileWithoutSecret(existing, "missing-profile", "cli_test", brand.Feishu, "en")
 	assertValidationParam(t, err, "--app-secret")
 }
 
 func TestUpdateExistingProfileWithoutSecret_NoCurrentApp_EmitsValidationError(t *testing.T) {
-	existing := &core.MultiAppConfig{
+	existing := &configpkg.MultiAppConfig{
 		CurrentApp: "missing",
-		Apps: []core.AppConfig{{
+		Apps: []configpkg.AppConfig{{
 			Name:      "default",
 			AppId:     "app-default",
-			AppSecret: core.PlainSecret("secret-default"),
-			Brand:     core.BrandFeishu,
+			AppSecret: secret.PlainSecret("secret-default"),
+			Brand:     brand.Feishu,
 		}},
 	}
-	err := updateExistingProfileWithoutSecret(existing, "", "cli_test", core.BrandFeishu, "en")
+	err := updateExistingProfileWithoutSecret(existing, "", "cli_test", brand.Feishu, "en")
 	assertValidationParam(t, err, "--app-secret")
 }
 
 func TestUpdateExistingProfileWithoutSecret_AppIdMismatch_EmitsValidationError(t *testing.T) {
-	existing := &core.MultiAppConfig{
-		Apps: []core.AppConfig{{
+	existing := &configpkg.MultiAppConfig{
+		Apps: []configpkg.AppConfig{{
 			Name:      "default",
 			AppId:     "app-default",
-			AppSecret: core.PlainSecret("secret-default"),
-			Brand:     core.BrandFeishu,
+			AppSecret: secret.PlainSecret("secret-default"),
+			Brand:     brand.Feishu,
 		}},
 	}
-	err := updateExistingProfileWithoutSecret(existing, "", "cli_different", core.BrandFeishu, "en")
+	err := updateExistingProfileWithoutSecret(existing, "", "cli_different", brand.Feishu, "en")
 	assertValidationParam(t, err, "--app-secret")
 }
 

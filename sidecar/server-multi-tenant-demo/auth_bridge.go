@@ -23,8 +23,9 @@ import (
 	"sync"
 	"time"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -38,7 +39,7 @@ type authBridge struct {
 	key       []byte
 	appID     string
 	appSecret string
-	brand     core.LarkBrand
+	brand     brandpkg.Brand
 	cred      *credential.CredentialProvider
 	logger    *log.Logger
 	httpCl    *http.Client
@@ -51,7 +52,7 @@ type authBridge struct {
 	mapFile string
 }
 
-func newAuthBridge(key []byte, appID, appSecret string, brand core.LarkBrand, cred *credential.CredentialProvider, logger *log.Logger) *authBridge {
+func newAuthBridge(key []byte, appID, appSecret string, brand brandpkg.Brand, cred *credential.CredentialProvider, logger *log.Logger) *authBridge {
 	configDir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR")
 	mapFile := ""
 	if configDir != "" {
@@ -287,7 +288,7 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		GrantedAt:        now,
 	}
 
-	ep := core.ResolveEndpoints(ab.brand)
+	ep := brandpkg.ResolveEndpoints(ab.brand)
 	openID, userName, err := fetchUserInfoDirect(ab.httpCl, ep.Open, result.Token.AccessToken)
 	if err != nil {
 		ab.logger.Printf("AUTH_BRIDGE_WARN action=user_info error=%q", err.Error())
@@ -330,7 +331,7 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 func (ab *authBridge) handleStatus(w http.ResponseWriter, _ *http.Request, body []byte) {
 	clientID := parseClientID(body)
 
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "failed to load config: "+err.Error())
 		return
@@ -417,7 +418,7 @@ func (ab *authBridge) resolveUserTokenByClient(clientName string) (string, error
 }
 
 func addUserToConfig(appID, openID, userName string) error {
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		return err
 	}
@@ -434,12 +435,12 @@ func addUserToConfig(appID, openID, userName string) error {
 			}
 		}
 		if !found {
-			multi.Apps[i].Users = append(multi.Apps[i].Users, core.AppUser{
+			multi.Apps[i].Users = append(multi.Apps[i].Users, configpkg.AppUser{
 				UserOpenId: openID,
 				UserName:   userName,
 			})
 		}
-		return core.SaveMultiAppConfig(multi)
+		return configpkg.SaveMultiAppConfig(multi)
 	}
 	return fmt.Errorf("app %s not found in config", appID)
 }

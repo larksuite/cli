@@ -14,7 +14,8 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 )
@@ -26,7 +27,7 @@ type DryRunOutputOptions struct {
 	Format      string
 	JqExpr      string
 	CommandPath string
-	Identity    core.Identity
+	Identity    identity.Identity
 	Out         io.Writer
 	ErrOut      io.Writer
 }
@@ -246,7 +247,7 @@ func encodeParams(params map[string]interface{}) string {
 
 // buildDryRunPreview assembles the shared preview skeleton: HTTP method, URL,
 // query params, and the app/user context common to every dry-run.
-func buildDryRunPreview(request client.RawApiRequest, config *core.CliConfig) *DryRunAPI {
+func buildDryRunPreview(request client.RawApiRequest, config *configpkg.CliConfig) *DryRunAPI {
 	dr := NewDryRunAPI().call(request.Method, request.URL)
 	if len(request.Params) > 0 {
 		dr.Params(request.Params)
@@ -258,7 +259,7 @@ func buildDryRunPreview(request client.RawApiRequest, config *core.CliConfig) *D
 
 // PrintDryRunWithFile outputs a dry-run summary for file upload requests.
 // Instead of serializing the Formdata body, it shows file metadata.
-func PrintDryRunWithFile(request client.RawApiRequest, config *core.CliConfig, opts DryRunOutputOptions, file FileUploadMeta) error {
+func PrintDryRunWithFile(request client.RawApiRequest, config *configpkg.CliConfig, opts DryRunOutputOptions, file FileUploadMeta) error {
 	dr := buildDryRunPreview(request, config)
 	filePathDisplay := file.FilePath
 	if filePathDisplay == "" {
@@ -277,7 +278,7 @@ func PrintDryRunWithFile(request client.RawApiRequest, config *core.CliConfig, o
 
 // PrintDryRun outputs a standardised dry-run summary using DryRunAPI.
 // When format is "pretty", outputs human-readable text; otherwise JSON.
-func PrintDryRun(request client.RawApiRequest, config *core.CliConfig, opts DryRunOutputOptions) error {
+func PrintDryRun(request client.RawApiRequest, config *configpkg.CliConfig, opts DryRunOutputOptions) error {
 	dr := buildDryRunPreview(request, config)
 	if !util.IsNil(request.Data) {
 		dr.Body(request.Data)

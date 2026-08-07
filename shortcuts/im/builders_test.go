@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -659,7 +659,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"user-id": "ou_123",
 		}, nil)
-		setRuntimeField(t, runtime, "resolvedAs", core.AsBot)
+		setRuntimeField(t, runtime, "resolvedAs", identity.AsBot)
 		err := ImChatMessageList.Validate(context.Background(), runtime)
 		if err == nil || !strings.Contains(err.Error(), "requires user identity") {
 			t.Fatalf("ImChatMessageList.Validate() error = %v, want requires user identity", err)

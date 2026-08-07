@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -176,9 +174,9 @@ var VCDetail = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-ids: too many IDs (%d), maximum is %d", len(ids), maxBatchSize).WithParam("--meeting-ids")
 		}
 		// dynamic scope check
-		result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
-		if err == nil && result != nil && result.Scopes != "" {
-			if missing := auth.MissingScopes(result.Scopes, scopesDetailMeetingIDs); len(missing) > 0 {
+		scopes, ok, err := runtime.ResolveTokenScopes(ctx)
+		if err == nil && ok {
+			if missing := common.MissingScopes(scopes, scopesDetailMeetingIDs); len(missing) > 0 {
 				return errs.NewPermissionError(errs.SubtypeMissingScope,
 					"missing required scope(s): %s", strings.Join(missing, ", ")).
 					WithMissingScopes(missing...).

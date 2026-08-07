@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -65,11 +65,11 @@ func TestLocalImagePath(t *testing.T) {
 // segment is exactly the uploaded file token.
 func TestBuildCalendarImagePreviewURL(t *testing.T) {
 	for _, tc := range []struct {
-		brand    core.LarkBrand
+		brand    brandpkg.Brand
 		hostFrag string
 	}{
-		{core.BrandFeishu, "feishu.cn"},
-		{core.BrandLark, "larksuite"},
+		{brandpkg.Feishu, "feishu.cn"},
+		{brandpkg.Lark, "larksuite"},
 	} {
 		raw := buildCalendarImagePreviewURL(tc.brand, "boxcnTOKEN123", 416, 306, 142568)
 		u, err := url.Parse(raw)
@@ -90,7 +90,7 @@ func TestBuildCalendarImagePreviewURL(t *testing.T) {
 	}
 
 	// With unknown dimensions the helper params are omitted entirely.
-	raw := buildCalendarImagePreviewURL(core.BrandFeishu, "boxcnTOKEN123", 0, 0, 0)
+	raw := buildCalendarImagePreviewURL(brandpkg.Feishu, "boxcnTOKEN123", 0, 0, 0)
 	if strings.Contains(raw, "im_w") || strings.Contains(raw, "im_size") {
 		t.Errorf("expected no dimension params for unknown size, got %q", raw)
 	}

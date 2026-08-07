@@ -11,8 +11,9 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -43,15 +44,15 @@ func NewCmdConfigShow(f *cmdutil.Factory, runF func(*ConfigShowOptions) error) *
 func configShowRun(opts *ConfigShowOptions) error {
 	f := opts.Factory
 
-	config, err := core.LoadMultiAppConfig()
+	config, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return core.NotConfiguredError()
+			return configpkg.NotConfiguredError()
 		}
 		return errs.NewConfigError(errs.SubtypeInvalidConfig, "failed to load config: %v", err).WithCause(err)
 	}
 	if config == nil || len(config.Apps) == 0 {
-		return core.NotConfiguredError()
+		return configpkg.NotConfiguredError()
 	}
 	app, err := config.RequireAppConfig(f.Invocation.Profile, f.Invocation.ProfileSource)
 	if err != nil {
@@ -70,7 +71,7 @@ func configShowRun(opts *ConfigShowOptions) error {
 	// effective profile and the persisted default can legitimately differ.
 	_, effectiveSource := config.EffectiveProfile(f.Invocation.Profile, f.Invocation.ProfileSource)
 	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
-		"workspace":     core.CurrentWorkspace().Display(),
+		"workspace":     workspace.CurrentWorkspace().Display(),
 		"profile":       app.ProfileName(),
 		"profileSource": effectiveSource.String(),
 		"appId":         app.AppId,
@@ -79,6 +80,6 @@ func configShowRun(opts *ConfigShowOptions) error {
 		"lang":          app.Lang,
 		"users":         users,
 	})
-	fmt.Fprintf(f.IOStreams.ErrOut, "\nConfig file path: %s\n", core.GetConfigPath())
+	fmt.Fprintf(f.IOStreams.ErrOut, "\nConfig file path: %s\n", workspace.GetConfigPath())
 	return nil
 }

@@ -3,6 +3,8 @@
 
 package convertlib
 
+import "github.com/larksuite/cli/internal/imcontent"
+
 // ResourceRef is a downloadable resource reference extracted from a message
 // during formatting. Type is the download API resource type ("image" or
 // "file"); MessageID is the message id used as the download API path parameter.
@@ -62,7 +64,7 @@ func extractResourceRefs(msgType, rawContent, messageID string, mergeSub map[str
 // extractPostResourceRefs walks a post body's elements and collects img/media
 // resource refs.
 func extractPostResourceRefs(rawContent, messageID string) []ResourceRef {
-	parsed, err := ParseJSONObject(rawContent)
+	parsed, err := imcontent.ParseJSONObject(rawContent)
 	if err != nil || parsed == nil {
 		return nil
 	}
@@ -152,7 +154,7 @@ func collectMergeForwardResourceRefs(ownerID, lookupID string, mergeSub map[stri
 // jsonStringField parses raw as a JSON object and returns the named string
 // field, or "" if parsing fails or the field is missing/non-string.
 func jsonStringField(raw, field string) string {
-	parsed, err := ParseJSONObject(raw)
+	parsed, err := imcontent.ParseJSONObject(raw)
 	if err != nil {
 		return ""
 	}

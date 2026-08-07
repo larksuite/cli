@@ -16,7 +16,7 @@ import (
 	"unicode"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -208,7 +208,7 @@ func buildMeetingEventsOutput(data map[string]interface{}, events []interface{},
 }
 
 func meetingEventsCurrentIdentity(runtime *common.RuntimeContext) (meetingEventsIdentity, string) {
-	if runtime.As() == core.AsBot {
+	if runtime.As() == identitypkg.AsBot {
 		botInfo, err := runtime.BotInfo()
 		if err != nil {
 			return meetingEventsBotIdentity(nil), fmt.Sprintf("identity unavailable: %v", err)

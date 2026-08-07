@@ -9,20 +9,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/spf13/cobra"
 	"github.com/tidwall/gjson"
 )
 
-func createTestConfig(t *testing.T) *core.CliConfig {
+func createTestConfig(t *testing.T) *configpkg.CliConfig {
 	t.Helper()
-	return &core.CliConfig{
+	return &configpkg.CliConfig{
 		AppID:     "test-okr-create",
 		AppSecret: patchTestValue(),
-		Brand:     core.BrandFeishu,
+		Brand:     brand.Feishu,
 	}
 }
 

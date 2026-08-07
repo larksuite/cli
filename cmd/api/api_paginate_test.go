@@ -13,11 +13,13 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -44,10 +46,10 @@ func newAPIPaginateTestHarness(t *testing.T) (*client.APIClient, *bytes.Buffer, 
 	output.PendingNotice = nil
 	t.Cleanup(func() { output.PendingNotice = previousNotice })
 
-	config := &core.CliConfig{
+	config := &configpkg.CliConfig{
 		AppID:     "test-app",
 		AppSecret: "test-secret",
-		Brand:     core.BrandFeishu,
+		Brand:     brand.Feishu,
 	}
 	f, out, errOut, reg := cmdutil.TestFactory(t, config)
 	ac, err := f.NewAPIClientWithConfig(config)
@@ -62,7 +64,7 @@ func apiPaginateRequest() client.RawApiRequest {
 	return client.RawApiRequest{
 		Method: "GET",
 		URL:    "/open-apis/test/v1/items",
-		As:     core.AsBot,
+		As:     identity.AsBot,
 	}
 }
 

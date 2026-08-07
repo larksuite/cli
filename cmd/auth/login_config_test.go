@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 )
 
 func setupLoginConfigDir(t *testing.T) {
@@ -17,22 +17,22 @@ func setupLoginConfigDir(t *testing.T) {
 
 func TestSyncLoginUserToProfile_UpdatesOnlyTargetProfile(t *testing.T) {
 	setupLoginConfigDir(t)
-	multi := &core.MultiAppConfig{
+	multi := &configpkg.MultiAppConfig{
 		CurrentApp: "target",
-		Apps: []core.AppConfig{
+		Apps: []configpkg.AppConfig{
 			{
 				Name:  "target",
 				AppId: "app-target",
-				Users: []core.AppUser{{UserOpenId: "ou_old", UserName: "old"}},
+				Users: []configpkg.AppUser{{UserOpenId: "ou_old", UserName: "old"}},
 			},
 			{
 				Name:  "other",
 				AppId: "app-other",
-				Users: []core.AppUser{{UserOpenId: "ou_other", UserName: "other"}},
+				Users: []configpkg.AppUser{{UserOpenId: "ou_other", UserName: "other"}},
 			},
 		},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
@@ -40,7 +40,7 @@ func TestSyncLoginUserToProfile_UpdatesOnlyTargetProfile(t *testing.T) {
 		t.Fatalf("syncLoginUserToProfile() error = %v", err)
 	}
 
-	saved, err := core.LoadMultiAppConfig()
+	saved, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		t.Fatalf("LoadMultiAppConfig() error = %v", err)
 	}
@@ -54,13 +54,13 @@ func TestSyncLoginUserToProfile_UpdatesOnlyTargetProfile(t *testing.T) {
 
 func TestSyncLoginUserToProfile_ProfileNotFoundReturnsError(t *testing.T) {
 	setupLoginConfigDir(t)
-	multi := &core.MultiAppConfig{
-		Apps: []core.AppConfig{{
+	multi := &configpkg.MultiAppConfig{
+		Apps: []configpkg.AppConfig{{
 			Name:  "default",
 			AppId: "app-default",
 		}},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 

@@ -6,6 +6,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"os"
 	"strings"
 
@@ -14,13 +15,15 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/i18n"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/secret"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 // BindOptions holds all inputs for config bind.
@@ -141,8 +144,8 @@ func configBindRunWithRecovery(opts *BindOptions, projector *recovery.Projector)
 	if err != nil {
 		return err
 	}
-	core.SetCurrentWorkspace(core.Workspace(source))
-	targetConfigPath := core.GetConfigPath()
+	workspace.SetCurrentWorkspace(workspace.Workspace(source))
+	targetConfigPath := workspace.GetConfigPath()
 
 	existing, err := reconcileExistingBinding(opts, source, targetConfigPath)
 	if err != nil {
@@ -199,12 +202,12 @@ func finalizeSource(opts *BindOptions) (string, error) {
 	}
 
 	var detected string
-	switch core.DetectWorkspaceFromEnv(os.Getenv) {
-	case core.WorkspaceOpenClaw:
+	switch workspace.DetectWorkspaceFromEnv(os.Getenv) {
+	case workspace.WorkspaceOpenClaw:
 		detected = "openclaw"
-	case core.WorkspaceHermes:
+	case workspace.WorkspaceHermes:
 		detected = "hermes"
-	case core.WorkspaceLarkChannel:
+	case workspace.WorkspaceLarkChannel:
 		detected = "lark-channel"
 	}
 
@@ -277,7 +280,7 @@ func reconcileExistingBinding(opts *BindOptions, source, configPath string) (exi
 // enumerate candidates, pick one via the shared decision layer, and build a
 // ready-to-persist AppConfig. Adding a new bind source only requires
 // implementing SourceBinder — none of the logic below needs to change.
-func resolveAccount(opts *BindOptions, source string) (*core.AppConfig, error) {
+func resolveAccount(opts *BindOptions, source string) (*configpkg.AppConfig, error) {
 	binder, err := newBinder(source, opts)
 	if err != nil {
 		return nil, err
@@ -320,12 +323,12 @@ func resolveIdentity(opts *BindOptions) error {
 // the bind flow treats a corrupt previous config (commitBinding will
 // overwrite it cleanly).
 func hasStrictBotLock(data []byte) bool {
-	var multi core.MultiAppConfig
+	var multi configpkg.MultiAppConfig
 	if err := json.Unmarshal(data, &multi); err != nil {
 		return false
 	}
 	for _, app := range multi.Apps {
-		if app.StrictMode != nil && *app.StrictMode == core.StrictModeBot {
+		if app.StrictMode != nil && *app.StrictMode == identity.StrictModeBot {
 			return true
 		}
 	}
@@ -382,16 +385,16 @@ func preferredLang(requested, prior i18n.Lang) i18n.Lang {
 	return prior
 }
 
-func applyPreferences(appConfig *core.AppConfig, opts *BindOptions, prior i18n.Lang) {
+func applyPreferences(appConfig *configpkg.AppConfig, opts *BindOptions, prior i18n.Lang) {
 	switch opts.Identity {
 	case "bot-only":
-		sm := core.StrictModeBot
+		sm := identity.StrictModeBot
 		appConfig.StrictMode = &sm
-		appConfig.DefaultAs = core.AsBot
+		appConfig.DefaultAs = identity.AsBot
 	case "user-default":
-		sm := core.StrictModeOff
+		sm := identity.StrictModeOff
 		appConfig.StrictMode = &sm
-		appConfig.DefaultAs = core.AsUser
+		appConfig.DefaultAs = identity.AsUser
 	}
 	appConfig.Lang = preferredLang(i18n.Lang(opts.Lang), prior)
 }
@@ -402,7 +405,7 @@ func applyPreferences(appConfig *core.AppConfig, opts *BindOptions, prior i18n.L
 // wrong profile's preference into a re-bind when the workspace holds multiple
 // named profiles and the active one disagrees with Apps[0].
 func priorLang(previousConfigBytes []byte) i18n.Lang {
-	var multi core.MultiAppConfig
+	var multi configpkg.MultiAppConfig
 	if json.Unmarshal(previousConfigBytes, &multi) != nil {
 		return ""
 	}
@@ -419,14 +422,14 @@ func priorLang(previousConfigBytes []byte) i18n.Lang {
 // usable.
 func commitBinding(
 	opts *BindOptions,
-	appConfig *core.AppConfig,
+	appConfig *configpkg.AppConfig,
 	previousConfigBytes []byte,
 	source, configPath string,
 	projector *recovery.Projector,
 ) error {
-	multi := &core.MultiAppConfig{Apps: []core.AppConfig{*appConfig}}
+	multi := &configpkg.MultiAppConfig{Apps: []configpkg.AppConfig{*appConfig}}
 
-	if err := vfs.MkdirAll(core.GetConfigDir(), 0700); err != nil {
+	if err := vfs.MkdirAll(workspace.GetConfigDir(), 0700); err != nil {
 		return errs.NewInternalError(errs.SubtypeFileIO, "failed to create workspace directory: %v", err).WithCause(err)
 	}
 	data, err := json.MarshalIndent(multi, "", "  ")
@@ -506,8 +509,8 @@ func userDefaultBindMessage(
 // the secret that ForStorage just wrote (old and new secret share the same
 // keychain key, derived from appId). Best-effort: errors are silently
 // ignored (same contract as config init's cleanup).
-func cleanupKeychainFromData(kc keychain.KeychainAccess, data []byte, keep *core.AppConfig) {
-	var multi core.MultiAppConfig
+func cleanupKeychainFromData(kc keychain.KeychainAccess, data []byte, keep *configpkg.AppConfig) {
+	var multi configpkg.MultiAppConfig
 	if err := json.Unmarshal(data, &multi); err != nil {
 		return
 	}
@@ -519,7 +522,7 @@ func cleanupKeychainFromData(kc keychain.KeychainAccess, data []byte, keep *core
 		if keepID != "" && app.AppSecret.Ref != nil && app.AppSecret.Ref.Source == "keychain" && app.AppSecret.Ref.ID == keepID {
 			continue
 		}
-		core.RemoveSecretStore(app.AppSecret, kc)
+		secret.RemoveSecretStore(app.AppSecret, kc)
 	}
 }
 
@@ -533,13 +536,13 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 	var source string
 
 	// Pre-select based on detected env signals
-	detected := core.DetectWorkspaceFromEnv(os.Getenv)
+	detected := workspace.DetectWorkspaceFromEnv(os.Getenv)
 	switch detected {
-	case core.WorkspaceOpenClaw:
+	case workspace.WorkspaceOpenClaw:
 		source = "openclaw"
-	case core.WorkspaceHermes:
+	case workspace.WorkspaceHermes:
 		source = "hermes"
-	case core.WorkspaceLarkChannel:
+	case workspace.WorkspaceLarkChannel:
 		source = "lark-channel"
 	default:
 		source = "openclaw" // default first option
@@ -612,7 +615,7 @@ func tuiConflictPrompt(opts *BindOptions, source, configPath string) (string, er
 	// Build existing binding summary
 	existingSummary := fmt.Sprintf(msg.ConflictDesc, source, "?", "?", configPath)
 	if data, err := vfs.ReadFile(configPath); err == nil {
-		var multi core.MultiAppConfig
+		var multi configpkg.MultiAppConfig
 		if json.Unmarshal(data, &multi) == nil && len(multi.Apps) > 0 {
 			app := multi.Apps[0]
 			existingSummary = fmt.Sprintf(msg.ConflictDesc,

@@ -15,10 +15,12 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 var commonDriveMediaUploadTestSeq atomic.Int64
@@ -304,15 +306,15 @@ func newDriveMediaUploadTestRuntime(t *testing.T) (*RuntimeContext, *httpmock.Re
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	cfg := &core.CliConfig{
-		AppID: fmt.Sprintf("common-drive-media-test-%d", commonDriveMediaUploadTestSeq.Add(1)), AppSecret: "test-secret", Brand: core.BrandFeishu,
+	cfg := &configpkg.CliConfig{
+		AppID: fmt.Sprintf("common-drive-media-test-%d", commonDriveMediaUploadTestSeq.Add(1)), AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, _, _, reg := cmdutil.TestFactory(t, cfg)
 	runtime := &RuntimeContext{
 		ctx:        context.Background(),
 		Config:     cfg,
 		Factory:    f,
-		resolvedAs: core.AsBot,
+		resolvedAs: identity.AsBot,
 	}
 	return runtime, reg
 }

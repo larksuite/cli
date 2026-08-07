@@ -16,9 +16,10 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -106,7 +107,7 @@ type mockWikiMoveTokenResolver struct {
 }
 
 type wikiMoveAccountResolver struct {
-	cfg *core.CliConfig
+	cfg *configpkg.CliConfig
 }
 
 func (r *wikiMoveAccountResolver) ResolveAccount(ctx context.Context) (*credential.Account, error) {
@@ -138,7 +139,7 @@ func withSingleWikiMovePoll(t *testing.T) {
 	})
 }
 
-func newWikiMoveRuntimeWithScopes(t *testing.T, as core.Identity, scopes string) (*common.RuntimeContext, *bytes.Buffer) {
+func newWikiMoveRuntimeWithScopes(t *testing.T, as identity.Identity, scopes string) (*common.RuntimeContext, *bytes.Buffer) {
 	t.Helper()
 
 	cfg := wikiTestConfig()
@@ -547,7 +548,7 @@ func TestRunWikiNodeMoveReturnsResolvedMetadata(t *testing.T) {
 func TestRunWikiMoveDispatchesByMode(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiMoveRuntimeWithScopes(t, core.AsUser, "")
+	runtime, _ := newWikiMoveRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiMoveClient{
 		docsResp: &wikiMoveDocsResponse{WikiToken: "wik_ready"},
 		moveNode: &wikiNodeRecord{SpaceID: "space_dst", NodeToken: "wik_node"},
@@ -581,7 +582,7 @@ func TestRunWikiMoveDispatchesByMode(t *testing.T) {
 func TestRunWikiDocsToWikiMoveSyncReady(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiMoveRuntimeWithScopes(t, core.AsUser, "")
+	runtime, _ := newWikiMoveRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiMoveClient{
 		docsResp: &wikiMoveDocsResponse{WikiToken: "wik_ready"},
 	}
@@ -608,7 +609,7 @@ func TestRunWikiDocsToWikiMoveSyncReady(t *testing.T) {
 func TestRunWikiDocsToWikiMoveApplied(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiMoveRuntimeWithScopes(t, core.AsUser, "")
+	runtime, _ := newWikiMoveRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiMoveClient{
 		docsResp: &wikiMoveDocsResponse{Applied: true},
 	}
@@ -632,7 +633,7 @@ func TestRunWikiDocsToWikiMoveApplied(t *testing.T) {
 func TestRunWikiDocsToWikiMoveAsyncReady(t *testing.T) {
 	withSingleWikiMovePoll(t)
 
-	runtime, stderr := newWikiMoveRuntimeWithScopes(t, core.AsUser, "")
+	runtime, stderr := newWikiMoveRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiMoveClient{
 		docsResp: &wikiMoveDocsResponse{TaskID: "task_123"},
 		taskStatuses: []wikiMoveTaskStatus{{
@@ -673,7 +674,7 @@ func TestRunWikiDocsToWikiMoveAsyncReady(t *testing.T) {
 func TestRunWikiDocsToWikiMoveAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	withSingleWikiMovePoll(t)
 
-	runtime, stderr := newWikiMoveRuntimeWithScopes(t, core.AsUser, "")
+	runtime, stderr := newWikiMoveRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiMoveClient{
 		docsResp: &wikiMoveDocsResponse{TaskID: "task_123"},
 		taskStatuses: []wikiMoveTaskStatus{{
@@ -689,7 +690,7 @@ func TestRunWikiDocsToWikiMoveAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runWikiDocsToWikiMove() error = %v", err)
 	}
-	if out["ready"] != false || out["timed_out"] != true || out["next_command"] != wikiMoveTaskResultCommand("task_123", core.AsUser) {
+	if out["ready"] != false || out["timed_out"] != true || out["next_command"] != wikiMoveTaskResultCommand("task_123", identity.AsUser) {
 		t.Fatalf("expected timeout response, got %#v", out)
 	}
 	if out["status_msg"] != "processing" {
@@ -703,7 +704,7 @@ func TestRunWikiDocsToWikiMoveAsyncTimeoutReturnsNextCommand(t *testing.T) {
 func TestRunWikiDocsToWikiMoveAsyncFailureReturnsStructuredError(t *testing.T) {
 	withSingleWikiMovePoll(t)
 
-	runtime, _ := newWikiMoveRuntimeWithScopes(t, core.AsUser, "")
+	runtime, _ := newWikiMoveRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiMoveClient{
 		docsResp: &wikiMoveDocsResponse{TaskID: "task_123"},
 		taskStatuses: []wikiMoveTaskStatus{{
@@ -850,7 +851,7 @@ func TestWikiMoveExecuteDocsToWikiShortcutAsyncSuccess(t *testing.T) {
 func TestPollWikiMoveTaskWrapsRepeatedPollFailuresWithHint(t *testing.T) {
 	withSingleWikiMovePoll(t)
 
-	runtime, stderr := newWikiMoveRuntimeWithScopes(t, core.AsUser, "")
+	runtime, stderr := newWikiMoveRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiMoveClient{
 		taskErrs: []error{errs.NewAPIError(errs.SubtypeServerError, "poll failed").WithHint("retry original")},
 	}
@@ -869,7 +870,7 @@ func TestPollWikiMoveTaskWrapsRepeatedPollFailuresWithHint(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
 	}
-	if !strings.Contains(p.Hint, "retry original") || !strings.Contains(p.Hint, wikiMoveTaskResultCommand("task_123", core.AsUser)) {
+	if !strings.Contains(p.Hint, "retry original") || !strings.Contains(p.Hint, wikiMoveTaskResultCommand("task_123", identity.AsUser)) {
 		t.Fatalf("hint = %q, want original hint and resume command", p.Hint)
 	}
 	if !strings.Contains(stderr.String(), "Wiki move status attempt 1/1 failed") {

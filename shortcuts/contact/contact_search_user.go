@@ -15,8 +15,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -260,7 +260,7 @@ func isHumanReadableFormat(format string) bool {
 
 // We deliberately do not surface a numeric rank: the API returns no relevance
 // score, and a derived ordinal would tempt agents to over-trust it.
-func projectUsers(data *searchUserAPIData, lang string, brand core.LarkBrand) ([]searchUser, bool) {
+func projectUsers(data *searchUserAPIData, lang string, brand brandpkg.Brand) ([]searchUser, bool) {
 	if data == nil {
 		return []searchUser{}, false
 	}
@@ -317,13 +317,13 @@ func prettyUserRows(users []searchUser) []map[string]interface{} {
 // lark→en_us first) → fixedLocaleFallback → dictionary order → openID.
 // Does NOT fall back to display_info, which may contain phone/email instead
 // of a name.
-func pickName(i18n map[string]string, lang string, brand core.LarkBrand, openID string) string {
+func pickName(i18n map[string]string, lang string, brand brandpkg.Brand, openID string) string {
 	primary := make([]string, 0, 3)
 	if lang != "" {
 		primary = append(primary, strings.ReplaceAll(strings.ToLower(lang), "-", "_"))
 	}
 	switch brand {
-	case core.BrandLark:
+	case brandpkg.Lark:
 		primary = append(primary, "en_us", "zh_cn")
 	default:
 		primary = append(primary, "zh_cn", "en_us")
@@ -356,7 +356,7 @@ func pickName(i18n map[string]string, lang string, brand core.LarkBrand, openID 
 
 // Cross-tenant users may have empty email / department; pass through as empty
 // string so consumers can distinguish "unknown" from "confirmed absent".
-func rowFromItem(item *searchUserAPIItem, lang string, brand core.LarkBrand) searchUser {
+func rowFromItem(item *searchUserAPIItem, lang string, brand brandpkg.Brand) searchUser {
 	meta := &item.MetaData
 	i18n := meta.I18nNames
 	if i18n == nil {

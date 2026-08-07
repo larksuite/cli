@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/sidecar"
@@ -28,7 +28,7 @@ type proxyHandler struct {
 	key          []byte
 	cred         *credential.CredentialProvider
 	appID        string
-	brand        core.LarkBrand
+	brand        brandpkg.Brand
 	logger       *log.Logger
 	forwardCl    *http.Client
 	allowedHosts map[string]bool // target host allowlist derived from brand

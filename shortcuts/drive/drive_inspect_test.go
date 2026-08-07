@@ -14,7 +14,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -26,7 +26,7 @@ func TestDriveInspectValidate_EmptyURL(t *testing.T) {
 	cmd.Flags().String("url", "", "")
 	cmd.Flags().String("type", "", "")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err == nil {
 		t.Fatal("expected error for empty --url, got nil")
@@ -39,7 +39,7 @@ func TestDriveInspectValidate_UnsupportedURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://google.com/some/page")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err == nil {
 		t.Fatal("expected error for unsupported URL, got nil")
@@ -52,7 +52,7 @@ func TestDriveInspectValidate_NonLarkHostWithLarkPath(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://google.com/docx/doxcnLooksValid")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err != nil {
 		t.Fatalf("expected no error for non-Lark host with Lark-like path (host validation removed), got %v", err)
@@ -65,7 +65,7 @@ func TestDriveInspectValidate_BareTokenWithoutType(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "doxcnBareToken")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err == nil {
 		t.Fatal("expected error for bare token without --type, got nil")
@@ -79,7 +79,7 @@ func TestDriveInspectValidate_BareTokenWithType(t *testing.T) {
 	_ = cmd.Flags().Set("url", "doxcnBareToken")
 	_ = cmd.Flags().Set("type", "docx")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -93,7 +93,7 @@ func TestDriveInspectValidate_URLTypeConflict(t *testing.T) {
 	_ = cmd.Flags().Set("url", "https://xxx.feishu.cn/docx/doxcnBareToken")
 	_ = cmd.Flags().Set("type", "sheet")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err == nil {
 		t.Fatal("expected error for conflicting --type, got nil")
@@ -107,7 +107,7 @@ func TestDriveInspectValidate_BareTokenWithPathFragment(t *testing.T) {
 	_ = cmd.Flags().Set("url", "doxcnBareToken/extra")
 	_ = cmd.Flags().Set("type", "docx")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err == nil {
 		t.Fatal("expected error for bare token with path fragment, got nil")
@@ -120,7 +120,7 @@ func TestDriveInspectValidate_ValidDocxURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://xxx.feishu.cn/docx/doxcnABC")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -133,7 +133,7 @@ func TestDriveInspectValidate_ValidWikiURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://xxx.feishu.cn/wiki/wikcnABC")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -146,7 +146,7 @@ func TestDriveInspectValidate_ValidDoubaoDriveFileURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://feishu.doubao.com/drive/file/boxcnABC")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -159,7 +159,7 @@ func TestDriveInspectValidate_ValidDoubaoChatDriveFolderURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://feishu.doubao.com/chat/drive/fldcnABC")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -172,7 +172,7 @@ func TestDriveInspectValidate_ValidDoubaoDriveShareFolderURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://feishu.doubao.com/drive/shr/fldcnABC")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -187,7 +187,7 @@ func TestDriveInspectDryRun_DocxURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://xxx.feishu.cn/docx/doxcnABC")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	dry := DriveInspect.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -234,7 +234,7 @@ func TestDriveInspectDryRun_WikiURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://xxx.feishu.cn/wiki/wikcnABC")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	dry := DriveInspect.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -281,7 +281,7 @@ func TestDriveInspectDryRun_BareTokenWithType(t *testing.T) {
 	_ = cmd.Flags().Set("url", "doxcnBareToken")
 	_ = cmd.Flags().Set("type", "docx")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	dry := DriveInspect.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -311,7 +311,7 @@ func TestDriveInspectDryRun_DoubaoDriveFileURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://feishu.doubao.com/drive/file/boxcnABC")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	dry := DriveInspect.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -349,7 +349,7 @@ func TestDriveInspectDryRun_DoubaoDriveShareFolderURL(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	_ = cmd.Flags().Set("url", "https://feishu.doubao.com/drive/shr/fldcnABC")
 
-	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	runtime := common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	dry := DriveInspect.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")

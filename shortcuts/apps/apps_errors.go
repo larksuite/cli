@@ -30,12 +30,6 @@ func appsFailedPreconditionError(format string, args ...any) *errs.ValidationErr
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition, format, args...)
 }
 
-// appsStorageError classifies a local credential/state storage failure
-// (read, write, delete, list) as internal/storage.
-func appsStorageError(err error, format string, args ...any) *errs.InternalError {
-	return errs.NewInternalError(errs.SubtypeStorage, format, args...).WithCause(err)
-}
-
 // appsExternalToolError classifies a runtime failure of an external tool the
 // CLI shells out to (git, npx) as internal/external_tool. The tool output is
 // carried in the message; recovery guidance goes in the hint.

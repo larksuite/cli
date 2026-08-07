@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/envnames"
 )
 
 func TestCheckNoAuthsidecarBuild_Unset(t *testing.T) {
@@ -30,7 +30,7 @@ func TestCheckNoAuthsidecarBuild_Unset(t *testing.T) {
 func TestCheckNoAuthsidecarBuild_Set(t *testing.T) {
 	var stderr bytes.Buffer
 	env := func(k string) string {
-		if k == envvars.CliAuthProxy {
+		if k == envnames.CliAuthProxy {
 			return "http://127.0.0.1:16384"
 		}
 		return ""
@@ -41,7 +41,7 @@ func TestCheckNoAuthsidecarBuild_Set(t *testing.T) {
 	}
 	msg := stderr.String()
 	for _, want := range []string{
-		envvars.CliAuthProxy,
+		envnames.CliAuthProxy,
 		"authsidecar", // build-tag name must appear so operators can act on it
 		"rebuild",
 	} {

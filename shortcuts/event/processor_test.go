@@ -16,9 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
@@ -121,10 +122,10 @@ func newSubscribeTestRuntime(t *testing.T) *common.RuntimeContext {
 
 	return &common.RuntimeContext{
 		Cmd: cmd,
-		Config: &core.CliConfig{
+		Config: &configpkg.CliConfig{
 			AppID:     "cli_event_test",
 			AppSecret: "secret",
-			Brand:     core.BrandFeishu,
+			Brand:     brand.Feishu,
 		},
 		Factory: &cmdutil.Factory{
 			IOStreams: cmdutil.NewIOStreams(strings.NewReader(""), &out, &errOut),

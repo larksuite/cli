@@ -7,14 +7,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
 func TestShortcutMount_StrictModeHidesAsFlag(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu, SupportedIdentities: 2,
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu, SupportedIdentities: 2,
 	})
 	parent := &cobra.Command{Use: "root"}
 	shortcut := Shortcut{

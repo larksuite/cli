@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
 	cmdconfig "github.com/larksuite/cli/cmd/config"
@@ -21,8 +22,9 @@ import (
 	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
@@ -308,7 +310,7 @@ func TestHandleRootError_DeprecatedAliasMissingFlagStructured(t *testing.T) {
 // TestHandleRootError_AuthConfigWireGolden is the wire-consistency regression
 // baseline for auth/config errors: it pins the typed envelope and exit code the
 // dispatcher produces for the two source-of-truth shapes, which are constructed
-// typed at their origin in internal/auth and internal/core.
+// typed at their origin in internal/auth and internal/configpkg.
 func TestHandleRootError_AuthConfigWireGolden(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
@@ -348,7 +350,7 @@ func TestHandleRootError_AuthConfigWireGolden(t *testing.T) {
 		errOut := &bytes.Buffer{}
 		f.IOStreams.ErrOut = errOut
 
-		exit := handleRootError(f, core.NotConfiguredError(), nil)
+		exit := handleRootError(f, configpkg.NotConfiguredError(), nil)
 		if exit != int(output.ExitAuth) {
 			t.Errorf("exit = %d, want %d (config shares ExitAuth)", exit, int(output.ExitAuth))
 		}
@@ -515,10 +517,10 @@ func TestHandleRootError_TypedAuthErrorWithLegacyCausePreserved(t *testing.T) {
 func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	})
-	f.ResolvedIdentity = core.AsUser
+	f.ResolvedIdentity = identity.AsUser
 
 	var target registry.CommandEntry
 	for _, entry := range registry.CollectCommandScopes([]string{"calendar"}, "user") {
@@ -599,10 +601,10 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 func TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	})
-	f.ResolvedIdentity = core.AsUser
+	f.ResolvedIdentity = identity.AsUser
 
 	root := &cobra.Command{Use: "lark-cli"}
 	serviceCmd := &cobra.Command{Use: "docs"}
@@ -634,10 +636,10 @@ func TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT(t *testi
 func TestApplyNeedAuthorizationHint_ShortcutIncludesConditionalScopes(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	})
-	f.ResolvedIdentity = core.AsUser
+	f.ResolvedIdentity = identity.AsUser
 
 	root := &cobra.Command{Use: "lark-cli"}
 	serviceCmd := &cobra.Command{Use: "drive"}
@@ -670,10 +672,10 @@ func TestApplyNeedAuthorizationHint_ShortcutIncludesConditionalScopes(t *testing
 func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	})
-	f.ResolvedIdentity = core.AsUser
+	f.ResolvedIdentity = identity.AsUser
 
 	root := &cobra.Command{Use: "lark-cli"}
 	serviceCmd := &cobra.Command{Use: "docs"}

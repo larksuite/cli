@@ -11,9 +11,9 @@ import (
 	"regexp"
 
 	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 var loginScopeCacheSafeChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
@@ -25,7 +25,7 @@ type loginScopeCacheRecord struct {
 // loginScopeCacheDir returns the directory used to persist auth login --no-wait
 // requested scopes keyed by device_code.
 func loginScopeCacheDir() string {
-	return filepath.Join(core.GetConfigDir(), "cache", "auth_login_scopes")
+	return filepath.Join(workspace.GetConfigDir(), "cache", "auth_login_scopes")
 }
 
 // loginScopeCachePath returns the cache file path for a given device_code.

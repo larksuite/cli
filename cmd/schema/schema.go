@@ -6,14 +6,14 @@ package schema
 import (
 	"context"
 	"errors"
+	identitypkg "github.com/larksuite/cli/internal/identity"
+	"github.com/larksuite/cli/internal/meta"
 	"io"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/schema"
@@ -122,7 +122,7 @@ func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) 
 func runSchemaWithVisibility(
 	out io.Writer,
 	parts []string,
-	mode core.StrictMode,
+	mode identitypkg.StrictMode,
 	visibility CommandVisibility,
 ) error {
 	return runSchemaCatalog(out, parts, mode, registry.SchemaCatalog(), visibility)
@@ -131,7 +131,7 @@ func runSchemaWithVisibility(
 func runSchemaCatalog(
 	out io.Writer,
 	parts []string,
-	mode core.StrictMode,
+	mode identitypkg.StrictMode,
 	catalog apicatalog.Catalog,
 	visibility CommandVisibility,
 ) error {

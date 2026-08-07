@@ -6,8 +6,8 @@ package wiki
 import (
 	"strings"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -18,7 +18,7 @@ import (
 //
 // Shared by +node-create and +node-copy, hence kept here rather than in either
 // command's file.
-func wikiNodeURL(brand core.LarkBrand, node *wikiNodeRecord) string {
+func wikiNodeURL(brand brandpkg.Brand, node *wikiNodeRecord) string {
 	if node == nil {
 		return ""
 	}

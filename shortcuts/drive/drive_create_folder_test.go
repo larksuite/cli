@@ -12,8 +12,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -75,7 +75,7 @@ func TestDriveCreateFolderDryRunIncludesCreateRequest(t *testing.T) {
 		t.Fatalf("set --folder-token: %v", err)
 	}
 
-	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, core.AsBot)
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, identity.AsBot)
 	dry := DriveCreateFolder.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")

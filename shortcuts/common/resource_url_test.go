@@ -6,7 +6,7 @@ package common
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 )
 
 func TestParseResourceURL(t *testing.T) {
@@ -90,7 +90,7 @@ func TestParseResourceURL_RoundTrip(t *testing.T) {
 
 	for _, kind := range types {
 		t.Run(kind, func(t *testing.T) {
-			built := BuildResourceURL(core.BrandFeishu, kind, token)
+			built := BuildResourceURL(brandpkg.Feishu, kind, token)
 			if built == "" {
 				t.Fatalf("BuildResourceURL returned empty for kind %q", kind)
 			}
@@ -113,29 +113,29 @@ func TestBuildResourceURL(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		brand core.LarkBrand
+		brand brandpkg.Brand
 		kind  string
 		token string
 		want  string
 	}{
-		{"feishu docx", core.BrandFeishu, "docx", "doxcnABC", "https://www.feishu.cn/docx/doxcnABC"},
-		{"feishu doc legacy", core.BrandFeishu, "doc", "doccnABC", "https://www.feishu.cn/doc/doccnABC"},
-		{"feishu sheet", core.BrandFeishu, "sheet", "shtcnABC", "https://www.feishu.cn/sheets/shtcnABC"},
-		{"feishu bitable", core.BrandFeishu, "bitable", "bascnABC", "https://www.feishu.cn/base/bascnABC"},
-		{"feishu wiki", core.BrandFeishu, "wiki", "wikcnABC", "https://www.feishu.cn/wiki/wikcnABC"},
-		{"feishu file", core.BrandFeishu, "file", "boxcnABC", "https://www.feishu.cn/file/boxcnABC"},
-		{"feishu folder", core.BrandFeishu, "folder", "fldcnABC", "https://www.feishu.cn/drive/folder/fldcnABC"},
-		{"feishu mindnote", core.BrandFeishu, "mindnote", "mncnABC", "https://www.feishu.cn/mindnote/mncnABC"},
-		{"feishu slides", core.BrandFeishu, "slides", "slkcnABC", "https://www.feishu.cn/slides/slkcnABC"},
-		{"lark docx", core.BrandLark, "docx", "doxcnABC", "https://www.larksuite.com/docx/doxcnABC"},
-		{"lark wiki", core.BrandLark, "wiki", "wikcnABC", "https://www.larksuite.com/wiki/wikcnABC"},
-		{"empty brand defaults to feishu", core.LarkBrand(""), "docx", "doxcnABC", "https://www.feishu.cn/docx/doxcnABC"},
-		{"kind case-insensitive", core.BrandFeishu, "DOCX", "doxcnABC", "https://www.feishu.cn/docx/doxcnABC"},
-		{"token whitespace trimmed", core.BrandFeishu, "docx", "  doxcnABC  ", "https://www.feishu.cn/docx/doxcnABC"},
-		{"empty token", core.BrandFeishu, "docx", "", ""},
-		{"whitespace-only token", core.BrandFeishu, "docx", "   ", ""},
-		{"unknown kind", core.BrandFeishu, "calendar", "calABC", ""},
-		{"empty kind", core.BrandFeishu, "", "doxcnABC", ""},
+		{"feishu docx", brandpkg.Feishu, "docx", "doxcnABC", "https://www.feishu.cn/docx/doxcnABC"},
+		{"feishu doc legacy", brandpkg.Feishu, "doc", "doccnABC", "https://www.feishu.cn/doc/doccnABC"},
+		{"feishu sheet", brandpkg.Feishu, "sheet", "shtcnABC", "https://www.feishu.cn/sheets/shtcnABC"},
+		{"feishu bitable", brandpkg.Feishu, "bitable", "bascnABC", "https://www.feishu.cn/base/bascnABC"},
+		{"feishu wiki", brandpkg.Feishu, "wiki", "wikcnABC", "https://www.feishu.cn/wiki/wikcnABC"},
+		{"feishu file", brandpkg.Feishu, "file", "boxcnABC", "https://www.feishu.cn/file/boxcnABC"},
+		{"feishu folder", brandpkg.Feishu, "folder", "fldcnABC", "https://www.feishu.cn/drive/folder/fldcnABC"},
+		{"feishu mindnote", brandpkg.Feishu, "mindnote", "mncnABC", "https://www.feishu.cn/mindnote/mncnABC"},
+		{"feishu slides", brandpkg.Feishu, "slides", "slkcnABC", "https://www.feishu.cn/slides/slkcnABC"},
+		{"lark docx", brandpkg.Lark, "docx", "doxcnABC", "https://www.larksuite.com/docx/doxcnABC"},
+		{"lark wiki", brandpkg.Lark, "wiki", "wikcnABC", "https://www.larksuite.com/wiki/wikcnABC"},
+		{"empty brand defaults to feishu", brandpkg.Brand(""), "docx", "doxcnABC", "https://www.feishu.cn/docx/doxcnABC"},
+		{"kind case-insensitive", brandpkg.Feishu, "DOCX", "doxcnABC", "https://www.feishu.cn/docx/doxcnABC"},
+		{"token whitespace trimmed", brandpkg.Feishu, "docx", "  doxcnABC  ", "https://www.feishu.cn/docx/doxcnABC"},
+		{"empty token", brandpkg.Feishu, "docx", "", ""},
+		{"whitespace-only token", brandpkg.Feishu, "docx", "   ", ""},
+		{"unknown kind", brandpkg.Feishu, "calendar", "calABC", ""},
+		{"empty kind", brandpkg.Feishu, "", "doxcnABC", ""},
 	}
 
 	for _, tt := range tests {

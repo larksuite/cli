@@ -6,8 +6,8 @@ package cmdutil
 import (
 	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/recovery"
 )
 
@@ -16,7 +16,7 @@ import (
 // server-reported scope facts needs command metadata resolution.
 type ErrorPresentationOptions struct {
 	Projector      *recovery.Projector
-	Identity       core.Identity
+	Identity       identitypkg.Identity
 	DeclaredScopes func() []string
 }
 
@@ -42,7 +42,7 @@ func completePermissionRecovery(
 	f *Factory,
 	err error,
 	projector *recovery.Projector,
-	identity core.Identity,
+	identity identitypkg.Identity,
 	declaredScopes func() []string,
 ) {
 	typed, ok := errs.UnwrapTypedError(err)
@@ -54,12 +54,12 @@ func completePermissionRecovery(
 		return
 	}
 	if permissionErr.Identity != "" {
-		identity = core.Identity(permissionErr.Identity)
+		identity = identitypkg.Identity(permissionErr.Identity)
 	} else if identity == "" && f != nil {
 		identity = f.ResolvedIdentity
 	}
 	if identity == "" {
-		identity = core.AsUser
+		identity = identitypkg.AsUser
 	}
 	canonical := errclass.PermissionRecovery(
 		permissionErr.MissingScopes,
@@ -88,8 +88,8 @@ func completePermissionRecovery(
 	permissionErr.Hint = projector.RenderHint(hint)
 }
 
-func permissionRecoveryUsesDeclaredScopes(permissionErr *errs.PermissionError, identity core.Identity) bool {
-	if permissionErr == nil || identity != core.AsUser || len(permissionErr.MissingScopes) > 0 {
+func permissionRecoveryUsesDeclaredScopes(permissionErr *errs.PermissionError, identity identitypkg.Identity) bool {
+	if permissionErr == nil || identity != identitypkg.AsUser || len(permissionErr.MissingScopes) > 0 {
 		return false
 	}
 	switch permissionErr.Subtype {

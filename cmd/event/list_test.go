@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
+
+	_ "github.com/larksuite/cli/events"
 )
 
 func TestEventLookup_VCMeetingLifecycleKeys(t *testing.T) {
@@ -27,7 +29,7 @@ func TestEventLookup_VCMeetingLifecycleKeys(t *testing.T) {
 }
 
 func TestRunList_TextOutput(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 	if err := runList(f, compileCatalog(), "", false); err != nil {
 		t.Fatalf("runList: %v", err)
@@ -51,7 +53,7 @@ func TestRunList_TextOutput(t *testing.T) {
 }
 
 func TestRunList_JSONOutput(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 
 	if err := runList(f, compileCatalog(), "", true); err != nil {
 		t.Fatalf("runList json: %v", err)

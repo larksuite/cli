@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -25,10 +26,11 @@ import (
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/i18n"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -37,14 +39,14 @@ import (
 // RuntimeContext provides helpers for shortcut execution.
 type RuntimeContext struct {
 	ctx            context.Context // from cmd.Context(), propagated through the call chain
-	Config         *core.CliConfig
+	Config         *configpkg.CliConfig
 	Cmd            *cobra.Command
 	Format         string
 	JqExpr         string                            // --jq expression; empty = no filter
 	outputErrOnce  sync.Once                         // guards first-error capture in Out()/OutFormat()
 	outputErr      error                             // deferred error from jq filtering; written at most once
 	botOnly        bool                              // set by framework for bot-only shortcuts
-	resolvedAs     core.Identity                     // effective identity resolved by framework
+	resolvedAs     identitypkg.Identity              // effective identity resolved by framework
 	declaredScopes []string                          // shortcut-declared scopes for the resolved identity
 	Factory        *cmdutil.Factory                  // injected by framework
 	apiClientFunc  func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
@@ -56,20 +58,20 @@ type RuntimeContext struct {
 
 // ── Identity ──
 
-// As returns the current identity.
+// As returns the current identitypkg.
 // For bot-only shortcuts, always returns AsBot.
 // For dual-auth shortcuts, uses the resolved identity (respects default-as config).
-func (ctx *RuntimeContext) As() core.Identity {
+func (ctx *RuntimeContext) As() identitypkg.Identity {
 	if ctx.botOnly {
-		return core.AsBot
+		return identitypkg.AsBot
 	}
 	if ctx.resolvedAs.IsBot() {
-		return core.AsBot
+		return identitypkg.AsBot
 	}
 	if ctx.resolvedAs != "" {
 		return ctx.resolvedAs
 	}
-	return core.AsUser
+	return identitypkg.AsUser
 }
 
 // PresentError renders a typed producer error for this command tree before a
@@ -93,7 +95,7 @@ func (ctx *RuntimeContext) IsBot() bool {
 
 // Command returns the shortcut command name as cobra knows it (e.g.
 // "+pivot-create"). Used by per-service helpers (e.g. sheets schema
-// validation) that key off the shortcut identity.
+// validation) that key off the shortcut identitypkg.
 func (ctx *RuntimeContext) Command() string {
 	if ctx.Cmd == nil {
 		return ""
@@ -177,7 +179,7 @@ func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
 	return ctx.Factory.NewAPIClientWithConfig(ctx.Config)
 }
 
-// AccessToken returns a valid access token for the current identity.
+// AccessToken returns a valid access token for the current identitypkg.
 // For user: returns user access token (with auto-refresh).
 // For bot: returns tenant access token.
 func (ctx *RuntimeContext) AccessToken() (string, error) {
@@ -212,6 +214,32 @@ func (ctx *RuntimeContext) LarkSDK() *lark.Client {
 // downstream API call still surfaces missing_scope at runtime.
 func (ctx *RuntimeContext) EnsureScopes(scopes []string) error {
 	return checkShortcutScopes(ctx.Factory, ctx.ctx, ctx.As(), ctx.Config, scopes)
+}
+
+// ResolveTokenScopes resolves the current credential and returns its scope metadata.
+func (ctx *RuntimeContext) ResolveTokenScopes(callCtx context.Context) (string, bool, error) {
+	result, err := ctx.Factory.Credential.ResolveToken(callCtx, credential.NewTokenSpec(ctx.As(), ctx.Config.AppID))
+	if err != nil {
+		return "", false, err
+	}
+	if result == nil || result.Scopes == "" {
+		return "", false, nil
+	}
+	return result.Scopes, true, nil
+}
+
+// StoredTokenScopes returns scope metadata from the locally stored user token.
+func (ctx *RuntimeContext) StoredTokenScopes() (string, bool) {
+	stored := auth.GetStoredToken(ctx.Config.AppID, ctx.UserOpenId())
+	if stored == nil {
+		return "", false
+	}
+	return stored.Scope, true
+}
+
+// MissingScopes returns required scopes absent from the stored scope string.
+func MissingScopes(storedScope string, required []string) []string {
+	return auth.MissingScopes(storedScope, required)
 }
 
 // ── Flag accessors ──
@@ -271,6 +299,29 @@ func (ctx *RuntimeContext) Changed(name string) bool {
 }
 
 // ── API helpers ──
+
+// Option configures streaming API request behavior.
+type Option = client.Option
+
+// WithHeaders adds HTTP headers to a streaming API request.
+func WithHeaders(headers http.Header) Option {
+	return client.WithHeaders(headers)
+}
+
+// WithTimeout sets a timeout for a streaming API request.
+func WithTimeout(timeout time.Duration) Option {
+	return client.WithTimeout(timeout)
+}
+
+// WrapDoAPIError classifies SDK request failures as typed command errors.
+func WrapDoAPIError(err error) error {
+	return client.WrapDoAPIError(err)
+}
+
+// ResolveFilename derives a download filename from an API response.
+func ResolveFilename(resp *larkcore.ApiResp) string {
+	return client.ResolveFilename(resp)
+}
 
 // CallAPITyped calls the Lark API using the current identity (ctx.As()) via
 // the SDK request path (buildRequest → APIClient.DoAPI → DoSDKRequest) and
@@ -392,7 +443,7 @@ func typedOrInternal(err error) error {
 }
 
 // APIClassifyContext builds the errclass.ClassifyContext for the running command
-// from the runtime config and resolved identity.
+// from the runtime config and resolved identitypkg.
 func (ctx *RuntimeContext) APIClassifyContext() errclass.ClassifyContext {
 	larkCmd := ""
 	if ctx.Cmd != nil {
@@ -495,7 +546,7 @@ func (ctx *RuntimeContext) DoAPIAsBot(req *larkcore.ApiReq, opts ...larkcore.Req
 	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
 		opts = append(opts, optFn)
 	}
-	return ac.DoSDKRequest(ctx.ctx, req, core.AsBot, opts...)
+	return ac.DoSDKRequest(ctx.ctx, req, identitypkg.AsBot, opts...)
 }
 
 // DoAPIStream executes a streaming HTTP request via APIClient.DoStream.
@@ -808,7 +859,7 @@ func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, pre
 // checkScopePrereqs performs a fast local check: does the token
 // contain all scopes declared by the shortcut? Returns the missing ones.
 // If scope data is unavailable, returns nil (let the API call handle it).
-func checkScopePrereqs(f *cmdutil.Factory, ctx context.Context, appID string, identity core.Identity, required []string) ([]string, error) {
+func checkScopePrereqs(f *cmdutil.Factory, ctx context.Context, appID string, identity identitypkg.Identity, required []string) ([]string, error) {
 	result, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(identity, appID))
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -837,7 +888,7 @@ func enhancePermissionError(err error, requiredScopes []string) error {
 	}
 	permErr.WithMissingScopes(requiredScopes...)
 	if permErr.Identity == "" {
-		permErr.WithIdentity(string(core.AsUser))
+		permErr.WithIdentity(string(identitypkg.AsUser))
 	}
 	// Discard any generic classifier hint now that this shortcut has supplied
 	// the authoritative scope facts. The root presenter will rebuild recovery
@@ -1001,23 +1052,23 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	return rctx.outputErr
 }
 
-func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
+func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (identitypkg.Identity, error) {
 	// Step 1: determine identity (--as > default-as > auto-detect).
 	asFlag, _ := cmd.Flags().GetString("as")
-	as := f.ResolveAs(cmd.Context(), cmd, core.Identity(asFlag))
+	as := f.ResolveAs(cmd.Context(), cmd, identitypkg.Identity(asFlag))
 
 	if err := f.CheckStrictMode(cmd.Context(), as); err != nil {
 		return "", err
 	}
 
-	// Step 2: check if this shortcut supports the resolved identity.
+	// Step 2: check if this shortcut supports the resolved identitypkg.
 	if err := f.CheckIdentity(as, s.AuthTypes); err != nil {
 		return "", err
 	}
 	return as, nil
 }
 
-func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identity, config *core.CliConfig, scopes []string) error {
+func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as identitypkg.Identity, config *configpkg.CliConfig, scopes []string) error {
 	if len(scopes) == 0 {
 		return nil
 	}
@@ -1034,7 +1085,7 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 		WithMissingScopes(missing...)
 }
 
-func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
+func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *configpkg.CliConfig, as identitypkg.Identity, botOnly bool) (*RuntimeContext, error) {
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
 	rctx := &RuntimeContext{

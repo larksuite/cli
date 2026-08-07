@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/risk"
 )
 
 var validJSONSchemaTypes = map[string]bool{
@@ -81,7 +81,7 @@ func lintEnvelope(env Envelope) []error {
 	}
 
 	// ---- L3: cross-field self-consistency ----
-	dangerExpected := env.Meta.Risk == core.RiskWrite || env.Meta.Risk == core.RiskHighRiskWrite
+	dangerExpected := env.Meta.Risk == risk.RiskWrite || env.Meta.Risk == risk.RiskHighRiskWrite
 	if env.Meta.Danger != dangerExpected {
 		errs = append(errs, fmt.Errorf("L3: _meta.danger=%v inconsistent with risk=%q", env.Meta.Danger, env.Meta.Risk))
 	}
@@ -92,7 +92,7 @@ func lintEnvelope(env Envelope) []error {
 	if env.InputSchema != nil && env.InputSchema.Properties != nil {
 		_, hasYes = env.InputSchema.Properties.Map["yes"]
 	}
-	wantYes := env.Meta.Risk == core.RiskHighRiskWrite
+	wantYes := env.Meta.Risk == risk.RiskHighRiskWrite
 	if hasYes != wantYes {
 		errs = append(errs, fmt.Errorf("L3: inputSchema `yes` property=%v inconsistent with risk=%q", hasYes, env.Meta.Risk))
 	}

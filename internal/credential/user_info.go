@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 )
 
 type userInfo struct {
@@ -18,8 +18,8 @@ type userInfo struct {
 }
 
 // fetchUserInfo calls /open-apis/authen/v1/user_info with a UAT to get the user's identity.
-func fetchUserInfo(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, uat string) (*userInfo, error) {
-	ep := core.ResolveEndpoints(brand)
+func fetchUserInfo(ctx context.Context, httpClient *http.Client, brand brandpkg.Brand, uat string) (*userInfo, error) {
+	ep := brandpkg.ResolveEndpoints(brand)
 	url := ep.Open + "/open-apis/authen/v1/user_info"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

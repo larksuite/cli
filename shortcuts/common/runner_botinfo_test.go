@@ -10,18 +10,19 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
 // botInfoTestConfig returns a CliConfig suitable for bot info tests.
-func botInfoTestConfig(t *testing.T) *core.CliConfig {
+func botInfoTestConfig(t *testing.T) *configpkg.CliConfig {
 	t.Helper()
-	return &core.CliConfig{
+	return &configpkg.CliConfig{
 		AppID:     "test-app",
 		AppSecret: "test-secret",
-		Brand:     core.BrandFeishu,
+		Brand:     brand.Feishu,
 	}
 }
 
@@ -290,7 +291,7 @@ func TestFetchBotInfo_CanBotFalse(t *testing.T) {
 
 func TestBotInfo_NilFunc(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
-	rctx := TestNewRuntimeContext(cmd, &core.CliConfig{})
+	rctx := TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 	_, err := rctx.BotInfo()
 	if err == nil {
 		t.Fatal("expected error for nil botInfoFunc")

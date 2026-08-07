@@ -10,9 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/spf13/cobra"
 )
@@ -24,12 +25,12 @@ type testReorderItem struct {
 
 func (t testReorderItem) GetID() string { return t.id }
 
-func reorderTestConfig(t *testing.T) *core.CliConfig {
+func reorderTestConfig(t *testing.T) *configpkg.CliConfig {
 	t.Helper()
-	return &core.CliConfig{
+	return &configpkg.CliConfig{
 		AppID:     "test-okr-reorder",
 		AppSecret: "secret-okr-reorder",
-		Brand:     core.BrandFeishu,
+		Brand:     brand.Feishu,
 	}
 }
 

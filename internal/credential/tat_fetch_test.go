@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 )
 
 // stubRoundTripper lets us assert request shape and return canned responses.
@@ -53,7 +53,7 @@ func TestFetchTAT_Success(t *testing.T) {
 	}
 	hc := &http.Client{Transport: rt}
 
-	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	token, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestFetchTAT_InvalidClient_ConfigInvalidClient(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"error":"invalid_client","error_description":"The client secret is invalid.","code":20002}`}
 	hc := &http.Client{Transport: rt}
 
-	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	token, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 	if err == nil {
 		t.Fatal("expected error for invalid_client")
 	}
@@ -111,7 +111,7 @@ func TestFetchTAT_OtherClientError_Typed(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"code":20068,"error":"invalid_scope","error_description":"unauthorized scope"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 	if err == nil {
 		t.Fatal("expected error for invalid_scope")
 	}
@@ -132,7 +132,7 @@ func TestFetchTAT_OtherClientError_CodeZero_Typed(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"error":"invalid_scope","error_description":"the requested scope is not granted"}`}
 	hc := &http.Client{Transport: rt}
 
-	tok, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	tok, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 	if err == nil {
 		t.Fatal("expected non-nil error for code-0 invalid_scope (must not return empty token + nil error)")
 	}
@@ -151,7 +151,7 @@ func TestFetchTAT_LarkStyleMsg_FallsBackOnTypedError(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"code":99999,"msg":"app ticket invalid"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 	if err == nil {
 		t.Fatal("expected error for {code, msg} response")
 	}
@@ -170,7 +170,7 @@ func TestFetchTAT_ServerError_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 500, respBody: `{"code":20050,"error":"server_error","error_description":"please retry"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 	if err == nil {
 		t.Fatal("expected error for server_error")
 	}
@@ -220,7 +220,7 @@ func TestFetchTAT_HTTP429_TypedRateLimit(t *testing.T) {
 			}
 			hc := &http.Client{Transport: rt}
 
-			_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+			_, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 			var apiErr *errs.APIError
 			if !errors.As(err, &apiErr) {
 				t.Fatalf("HTTP 429 error = %T %v, want *errs.APIError", err, err)
@@ -247,7 +247,7 @@ func TestFetchTAT_OAuthSlowDown_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 200, respBody: `{"error":"slow_down","error_description":"polling too fast"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 	if err == nil {
 		t.Fatal("expected error for slow_down")
 	}
@@ -263,7 +263,7 @@ func TestFetchTAT_HTTPNon200_Untyped(t *testing.T) {
 	for _, code := range []int{401, 403, 500, 503} {
 		rt := &stubRoundTripper{respCode: code, respBody: `whatever`}
 		hc := &http.Client{Transport: rt}
-		_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+		_, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 		if err == nil {
 			t.Fatalf("HTTP %d: expected error", code)
 		}
@@ -278,7 +278,7 @@ func TestFetchTAT_TransportError_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{err: sentinel}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -294,7 +294,7 @@ func TestFetchTAT_ParseError_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 200, respBody: `not json`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, brandpkg.Feishu, "cli_app", "secret_x")
 	if err == nil {
 		t.Fatal("expected parse error")
 	}
@@ -305,11 +305,11 @@ func TestFetchTAT_ParseError_Untyped(t *testing.T) {
 
 func TestFetchTAT_BrandRouting(t *testing.T) {
 	tests := []struct {
-		brand   core.LarkBrand
+		brand   brandpkg.Brand
 		wantURL string
 	}{
-		{core.BrandFeishu, "https://accounts.feishu.cn/oauth/v3/token"},
-		{core.BrandLark, "https://accounts.larksuite.com/oauth/v3/token"},
+		{brandpkg.Feishu, "https://accounts.feishu.cn/oauth/v3/token"},
+		{brandpkg.Lark, "https://accounts.larksuite.com/oauth/v3/token"},
 	}
 	for _, tc := range tests {
 		t.Run(string(tc.brand), func(t *testing.T) {
@@ -337,7 +337,7 @@ func TestFetchTAT_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // pre-canceled
 
-	_, err := FetchTAT(ctx, hc, core.BrandFeishu, "a", "b")
+	_, err := FetchTAT(ctx, hc, brandpkg.Feishu, "a", "b")
 	if err == nil {
 		t.Fatal("expected error for canceled context")
 	}

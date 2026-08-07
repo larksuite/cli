@@ -10,7 +10,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 )
 
 // NewCmdConfigRiskControl creates the workspace risk-control policy command.
@@ -29,7 +29,7 @@ opt it back in explicitly, or default to remove the explicit preference.`,
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			config, err := core.LoadOrNotConfigured()
+			config, err := configpkg.LoadOrNotConfigured()
 			if err != nil {
 				return err
 			}
@@ -52,7 +52,7 @@ opt it back in explicitly, or default to remove the explicit preference.`,
 					"invalid risk-control value %q, valid values: on | off | default", args[0])
 			}
 
-			if err := core.SaveMultiAppConfig(config); err != nil {
+			if err := configpkg.SaveMultiAppConfig(config); err != nil {
 				return errs.NewInternalError(errs.SubtypeStorage,
 					"failed to save risk-control policy: %v", err).WithCause(err)
 			}
@@ -64,7 +64,7 @@ opt it back in explicitly, or default to remove the explicit preference.`,
 	return cmd
 }
 
-func printRiskControl(f *cmdutil.Factory, config *core.MultiAppConfig) {
+func printRiskControl(f *cmdutil.Factory, config *configpkg.MultiAppConfig) {
 	source := "default"
 	if config.RiskControl != nil {
 		source = "workspace"

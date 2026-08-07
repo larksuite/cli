@@ -6,6 +6,8 @@ package doc
 import (
 	"context"
 	"errors"
+	configpkg "github.com/larksuite/cli/internal/config"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -14,7 +16,6 @@ import (
 	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/surface"
@@ -171,5 +172,5 @@ func docsV2OnlyTestRuntimeWithSkills(t *testing.T, legacyMode bool, plan *surfac
 			return plan
 		}),
 	}
-	return common.TestNewRuntimeContextForAPI(context.Background(), cmd, &core.CliConfig{}, factory, core.AsUser)
+	return common.TestNewRuntimeContextForAPI(context.Background(), cmd, &configpkg.CliConfig{}, factory, identitypkg.AsUser)
 }

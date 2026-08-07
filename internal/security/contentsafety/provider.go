@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	extcs "github.com/larksuite/cli/extension/contentsafety"
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 // regexProvider implements extcs.Provider using regex rules from config file.
@@ -76,6 +76,6 @@ func (p *regexProvider) loadOrCreate(errOut io.Writer) (*Config, error) {
 
 func init() {
 	extcs.Register(&regexProvider{
-		configDir: core.GetConfigDir(),
+		configDir: workspace.GetConfigDir(),
 	})
 }

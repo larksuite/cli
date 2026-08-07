@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -105,7 +105,7 @@ func (r *NpmResult) CombinedOutput() string {
 // / RestoreAvailableOverride for testing.
 type Updater struct {
 	// Brand selects the skills index/source endpoints (zero value = feishu).
-	Brand core.LarkBrand
+	Brand brand.Brand
 
 	DetectOverride           func() DetectResult
 	NpmInstallOverride       func(version string) *NpmResult
@@ -140,12 +140,12 @@ func (u *Updater) skillsIndexURL() string {
 	if officialSkillsIndexURL != "" {
 		return officialSkillsIndexURL
 	}
-	return core.ResolveEndpoints(u.Brand).Open + "/.well-known/skills/index.json"
+	return brand.ResolveEndpoints(u.Brand).Open + "/.well-known/skills/index.json"
 }
 
 // skillsSource returns the brand's skills source host for `npx skills add`.
 func (u *Updater) skillsSource() string {
-	return core.ResolveEndpoints(u.Brand).Open
+	return brand.ResolveEndpoints(u.Brand).Open
 }
 
 // DetectInstallMethod determines how the CLI was installed and whether the

@@ -5,12 +5,12 @@ package event
 
 import (
 	"flag"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite golden files instead of comparing")
@@ -35,7 +35,7 @@ func TestGolden_ListOutput(t *testing.T) {
 	snap := compileCatalog()
 	for name, asJSON := range map[string]bool{"list_text": false, "list_json": true} {
 		t.Run(name, func(t *testing.T) {
-			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+			f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 			if err := runList(f, snap, "", asJSON); err != nil {
 				t.Fatalf("runList: %v", err)
 			}
@@ -49,7 +49,7 @@ func TestGolden_SchemaOutput(t *testing.T) {
 	for name, key := range goldenSchemaKeys {
 		for suffix, asJSON := range map[string]bool{"_text": false, "_json": true} {
 			t.Run(name+suffix, func(t *testing.T) {
-				f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+				f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 				if err := runSchema(f, snap, key, asJSON); err != nil {
 					t.Fatalf("runSchema(%s): %v", key, err)
 				}

@@ -10,8 +10,8 @@ import (
 
 	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/risk"
 )
 
 // Convert renders a meta.Field as a JSON-Schema Property. meta owns the value
@@ -145,7 +145,7 @@ func buildInputSchema(m meta.Method) *InputSchema {
 	addInputObject(is, "data", "", m.Data(), false, "--data")
 	addInputObject(is, "file", "Binary file uploads. Each property is a file field with format:binary; CLI maps each to --file <key>=<path>.", m.Files(), false, "--file")
 
-	if m.Risk == core.RiskHighRiskWrite {
+	if m.Risk == risk.RiskHighRiskWrite {
 		falseVal := false
 		is.Properties.Set("yes", Property{
 			Type:        "boolean",
@@ -206,7 +206,7 @@ func buildMeta(m meta.Method) *Meta {
 	if m.Risk != "" {
 		out.Risk = m.Risk
 	} else {
-		out.Risk = core.RiskRead
+		out.Risk = risk.RiskRead
 	}
 	if m.DocURL != "" {
 		out.DocURL = m.DocURL

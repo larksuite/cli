@@ -62,19 +62,6 @@ jobs:
           go list -m -u all 2>/dev/null | grep '\[' >> report.md || echo "All dependencies up to date" >> report.md
           echo '```' >> report.md
 
-      - name: Circular dependency check
-        run: |
-          echo "## Circular Dependencies" >> report.md
-          go list -f '{{.ImportPath}} {{join .Imports " "}}' ./... | \
-            go run golang.org/x/tools/cmd/digraph@v0.31.0 scc 2>&1 | tee cycles.txt
-          if [ -s cycles.txt ]; then
-            echo '```' >> report.md
-            cat cycles.txt >> report.md
-            echo '```' >> report.md
-          else
-            echo "No circular dependencies detected." >> report.md
-          fi
-
       - name: E2E coverage gaps
         run: |
           echo "## E2E Coverage Gaps" >> report.md

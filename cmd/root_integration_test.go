@@ -11,17 +11,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
 	"github.com/larksuite/cli/cmd/service"
+	"github.com/larksuite/cli/envnames"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/secret"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/update"
 	"github.com/larksuite/cli/shortcuts"
@@ -155,37 +158,37 @@ func strictModeFixtureCatalog() apicatalog.Catalog {
 	})
 }
 
-func newStrictModeDefaultFactory(t *testing.T, profile string, mode core.StrictMode) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
+func newStrictModeDefaultFactory(t *testing.T, profile string, mode identity.StrictMode) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
-	t.Setenv(envvars.CliAppID, "")
-	t.Setenv(envvars.CliAppSecret, "")
-	t.Setenv(envvars.CliUserAccessToken, "")
-	t.Setenv(envvars.CliTenantAccessToken, "")
-	t.Setenv(envvars.CliDefaultAs, "")
+	t.Setenv(envnames.CliAppID, "")
+	t.Setenv(envnames.CliAppSecret, "")
+	t.Setenv(envnames.CliUserAccessToken, "")
+	t.Setenv(envnames.CliTenantAccessToken, "")
+	t.Setenv(envnames.CliDefaultAs, "")
 
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
 
 	targetMode := mode
-	multi := &core.MultiAppConfig{
+	multi := &configpkg.MultiAppConfig{
 		CurrentApp: "default",
-		Apps: []core.AppConfig{
+		Apps: []configpkg.AppConfig{
 			{
 				Name:      "default",
 				AppId:     "app-default",
-				AppSecret: core.PlainSecret("secret-default"),
-				Brand:     core.BrandFeishu,
+				AppSecret: secret.PlainSecret("secret-default"),
+				Brand:     brand.Feishu,
 			},
 			{
 				Name:       "target",
 				AppId:      "app-target",
-				AppSecret:  core.PlainSecret("secret-target"),
-				Brand:      core.BrandFeishu,
+				AppSecret:  secret.PlainSecret("secret-target"),
+				Brand:      brand.Feishu,
 				StrictMode: &targetMode,
 			},
 		},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
@@ -206,7 +209,7 @@ func resetBuffers(stdout *bytes.Buffer, stderr *bytes.Buffer) {
 // --- service command ---
 
 func TestIntegration_StrictModeBot_ProfileOverride_HidesCommandsInHelp(t *testing.T) {
-	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", identity.StrictModeBot)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{"auth", "--help"})
@@ -238,7 +241,7 @@ func TestIntegration_StrictModeBot_ProfileOverride_HidesCommandsInHelp(t *testin
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_DirectAuthLoginReturnsEnvelope(t *testing.T) {
-	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", identity.StrictModeBot)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
@@ -315,7 +318,7 @@ func assertCheckStrictModeEnvelope(t *testing.T, env typedErrorEnvelope, wantMes
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_MessagesSearchDryRunSucceeds(t *testing.T) {
-	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", identity.StrictModeBot)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
@@ -340,7 +343,7 @@ func TestIntegration_StrictModeBot_ProfileOverride_MessagesSearchDryRunSucceeds(
 func TestIntegration_StrictModeUser_ProfileOverride_ChatCreateDryRunSucceeds(t *testing.T) {
 	// +chat-create supports both user and bot identities, so strict mode user
 	// should allow it and force user identity.
-	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeUser)
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", identity.StrictModeUser)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
@@ -357,7 +360,7 @@ func TestIntegration_StrictModeUser_ProfileOverride_ChatCreateDryRunSucceeds(t *
 }
 
 func TestIntegration_StrictModeUser_ProfileOverride_ShortcutExplicitBotReturnsEnvelope(t *testing.T) {
-	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeUser)
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", identity.StrictModeUser)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
@@ -375,7 +378,7 @@ func TestIntegration_StrictModeUser_ProfileOverride_ShortcutExplicitBotReturnsEn
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnvelope(t *testing.T) {
-	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", identity.StrictModeBot)
 	catalog := strictModeFixtureCatalog()
 	rootCmd := buildStrictModeIntegrationRootCmdWithCatalog(t, f, &catalog)
 
@@ -394,7 +397,7 @@ func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnv
 }
 
 func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsEnvelope(t *testing.T) {
-	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeUser)
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", identity.StrictModeUser)
 	catalog := strictModeFixtureCatalog()
 	rootCmd := buildStrictModeIntegrationRootCmdWithCatalog(t, f, &catalog)
 
@@ -413,7 +416,7 @@ func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsE
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_APIExplicitUserReturnsEnvelope(t *testing.T) {
-	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", identity.StrictModeBot)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
@@ -433,8 +436,8 @@ func TestIntegration_StrictModeBot_ProfileOverride_APIExplicitUserReturnsEnvelop
 // --- shortcut command ---
 
 func TestIntegration_Shortcut_BusinessError_OutputsEnvelope(t *testing.T) {
-	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "e2e-sc-err", AppSecret: "secret", Brand: core.BrandFeishu,
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "e2e-sc-err", AppSecret: "secret", Brand: brand.Feishu,
 	})
 	reg.Register(&httpmock.Stub{
 		URL:    "/open-apis/im/v1/messages",

@@ -13,11 +13,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/i18n"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/secret"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 // wantErrDetail is the normalized comparison shape for a typed error's wire
@@ -80,8 +84,8 @@ func assertEnvelope(t *testing.T, stdout []byte, want map[string]any) {
 // Must be called at the start of any test that may trigger configBindRun (which sets workspace).
 func saveWorkspace(t *testing.T) {
 	t.Helper()
-	orig := core.CurrentWorkspace()
-	t.Cleanup(func() { core.SetCurrentWorkspace(orig) })
+	orig := workspace.CurrentWorkspace()
+	t.Cleanup(func() { workspace.SetCurrentWorkspace(orig) })
 }
 
 // ── Command flag parsing tests (aligned with config_test.go pattern) ──
@@ -229,7 +233,7 @@ func TestConfigBindRun_EmptyLangIsNoOp(t *testing.T) {
 				t.Fatalf("configBindRun(--lang %q) = %v, want nil", tc.lang, err)
 			}
 
-			multi, err := core.LoadMultiAppConfig()
+			multi, err := configpkg.LoadMultiAppConfig()
 			if err != nil {
 				t.Fatalf("LoadMultiAppConfig: %v", err)
 			}
@@ -265,7 +269,7 @@ func TestConfigBindRun_OmitLangPreservesPrior(t *testing.T) {
 		t.Fatalf("re-bind (no --lang): %v", err)
 	}
 
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		t.Fatalf("LoadMultiAppConfig: %v", err)
 	}
@@ -279,9 +283,9 @@ func TestConfigBindRun_OmitLangPreservesPrior(t *testing.T) {
 // workspace (set up via `profile add` before a re-bind), the active profile's
 // Lang must win over a sibling profile that happens to sit earlier in the slice.
 func TestPriorLang_RespectsCurrentApp(t *testing.T) {
-	multi := core.MultiAppConfig{
+	multi := configpkg.MultiAppConfig{
 		CurrentApp: "active",
-		Apps: []core.AppConfig{
+		Apps: []configpkg.AppConfig{
 			{Name: "stale", AppId: "cli_stale", Lang: i18n.LangJaJP},
 			{Name: "active", AppId: "cli_active", Lang: i18n.LangEnUS},
 		},
@@ -300,8 +304,8 @@ func TestPriorLang_RespectsCurrentApp(t *testing.T) {
 // so a bind-written config (which always has exactly one app and no
 // CurrentApp field) still inherits its Lang.
 func TestPriorLang_FallsBackToFirstAppWhenCurrentUnset(t *testing.T) {
-	multi := core.MultiAppConfig{
-		Apps: []core.AppConfig{
+	multi := configpkg.MultiAppConfig{
+		Apps: []configpkg.AppConfig{
 			{AppId: "cli_only", Lang: i18n.LangJaJP},
 		},
 	}
@@ -639,8 +643,8 @@ func TestConfigBindRun_LarkChannel_Success(t *testing.T) {
 	// Brand is not in the stdout envelope — read it back from the persisted
 	// workspace config to verify accounts.app.tenant flowed through to the
 	// stored AppConfig.Brand field.
-	core.SetCurrentWorkspace(core.WorkspaceLarkChannel)
-	multi, err := core.LoadMultiAppConfig()
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLarkChannel)
+	multi, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		t.Fatalf("load workspace config: %v", err)
 	}
@@ -686,8 +690,8 @@ func TestConfigBindRun_LarkChannel_LarkTenant(t *testing.T) {
 	if err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"}); err != nil {
 		t.Fatalf("expected success, got error: %v", err)
 	}
-	core.SetCurrentWorkspace(core.WorkspaceLarkChannel)
-	multi, err := core.LoadMultiAppConfig()
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLarkChannel)
+	multi, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		t.Fatalf("load workspace config: %v", err)
 	}
@@ -801,16 +805,16 @@ func TestConfigShowRun_WorkspaceField(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
 
-	core.SetCurrentWorkspace(core.WorkspaceLocal)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLocal)
 
-	multi := &core.MultiAppConfig{
-		Apps: []core.AppConfig{{
+	multi := &configpkg.MultiAppConfig{
+		Apps: []configpkg.AppConfig{{
 			AppId:     "cli_local_test",
-			AppSecret: core.PlainSecret("secret"),
-			Brand:     core.BrandFeishu,
+			AppSecret: secret.PlainSecret("secret"),
+			Brand:     brand.Feishu,
 		}},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -827,7 +831,7 @@ func TestConfigShowRun_AgentWorkspaceNotBound(t *testing.T) {
 	saveWorkspace(t)
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	core.SetCurrentWorkspace(core.WorkspaceOpenClaw)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceOpenClaw)
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configShowRun(&ConfigShowOptions{Factory: f})
@@ -998,7 +1002,7 @@ func TestConfigBindRun_HermesSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read config.json: %v", err)
 	}
-	var multi core.MultiAppConfig
+	var multi configpkg.MultiAppConfig
 	if err := json.Unmarshal(data, &multi); err != nil {
 		t.Fatalf("unmarshal config.json: %v", err)
 	}
@@ -1008,8 +1012,8 @@ func TestConfigBindRun_HermesSuccess(t *testing.T) {
 	if multi.Apps[0].AppId != "cli_hermes_abc" {
 		t.Errorf("appId = %q, want %q", multi.Apps[0].AppId, "cli_hermes_abc")
 	}
-	if multi.Apps[0].Brand != core.BrandLark {
-		t.Errorf("brand = %q, want %q", multi.Apps[0].Brand, core.BrandLark)
+	if multi.Apps[0].Brand != brand.Lark {
+		t.Errorf("brand = %q, want %q", multi.Apps[0].Brand, brand.Lark)
 	}
 }
 
@@ -1275,7 +1279,7 @@ func TestConfigBindRun_Identity_BotOnly_Applied(t *testing.T) {
 		"message":     fmt.Sprintf(msg.MessageBotOnly, "cli_abc", "Hermes", brandDisplay("feishu", "en")),
 	})
 	assertPresetApplied(t, filepath.Join(configDir, "hermes", "config.json"),
-		core.StrictModeBot, core.AsBot)
+		identity.StrictModeBot, identity.AsBot)
 }
 
 // TestConfigBindRun_FlagModeDefaultsToBotOnly verifies the flag-mode default
@@ -1310,7 +1314,7 @@ func TestConfigBindRun_FlagModeDefaultsToBotOnly(t *testing.T) {
 		"message":     fmt.Sprintf(msg.MessageBotOnly, "cli_abc", "Hermes", brandDisplay("feishu", "")),
 	})
 	assertPresetApplied(t, filepath.Join(configDir, "hermes", "config.json"),
-		core.StrictModeBot, core.AsBot)
+		identity.StrictModeBot, identity.AsBot)
 }
 
 // TestConfigBindRun_WarnsOnIdentityEscalationWithoutForce verifies the
@@ -1406,7 +1410,7 @@ func TestConfigBindRun_IdentityEscalationWithForceAllowed(t *testing.T) {
 		t.Fatalf("expected --force to allow the escalation, got: %v", err)
 	}
 	assertPresetApplied(t, filepath.Join(hermesDir, "config.json"),
-		core.StrictModeOff, core.AsUser)
+		identity.StrictModeOff, identity.AsUser)
 }
 
 // TestConfigBindRun_AllowsRebindSameBotOnly verifies re-binding the same
@@ -1442,7 +1446,7 @@ func TestConfigBindRun_AllowsRebindSameBotOnly(t *testing.T) {
 		t.Fatalf("expected rebind to same bot-only identity to succeed, got: %v", err)
 	}
 	assertPresetApplied(t, filepath.Join(hermesDir, "config.json"),
-		core.StrictModeBot, core.AsBot)
+		identity.StrictModeBot, identity.AsBot)
 }
 
 // TestConfigBindRun_AllowsUserDefaultOnUserDefaultConfig verifies that if the
@@ -1479,18 +1483,18 @@ func TestConfigBindRun_AllowsUserDefaultOnUserDefaultConfig(t *testing.T) {
 		t.Fatalf("expected user-default→user-default rebind to succeed, got: %v", err)
 	}
 	assertPresetApplied(t, filepath.Join(hermesDir, "config.json"),
-		core.StrictModeOff, core.AsUser)
+		identity.StrictModeOff, identity.AsUser)
 }
 
 // assertPresetApplied verifies the on-disk config.json applied the identity
 // preset's StrictMode + DefaultAs expansion.
-func assertPresetApplied(t *testing.T, configPath string, wantStrict core.StrictMode, wantDefault core.Identity) {
+func assertPresetApplied(t *testing.T, configPath string, wantStrict identity.StrictMode, wantDefault identity.Identity) {
 	t.Helper()
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", configPath, err)
 	}
-	var multi core.MultiAppConfig
+	var multi configpkg.MultiAppConfig
 	if err := json.Unmarshal(data, &multi); err != nil {
 		t.Fatalf("unmarshal %s: %v", configPath, err)
 	}
@@ -1787,10 +1791,10 @@ func TestCleanupKeychainFromData_KeepsSecretSharedWithNewApp(t *testing.T) {
 	}
 
 	oldConfig := []byte(`{"apps":[{"appId":"cli_shared","appSecret":{"source":"keychain","id":"` + sharedID + `"}}]}`)
-	newApp := &core.AppConfig{
+	newApp := &configpkg.AppConfig{
 		AppId: "cli_shared",
-		AppSecret: core.SecretInput{
-			Ref: &core.SecretRef{Source: "keychain", ID: sharedID},
+		AppSecret: secret.SecretInput{
+			Ref: &secret.SecretRef{Source: "keychain", ID: sharedID},
 		},
 	}
 
@@ -1817,10 +1821,10 @@ func TestCleanupKeychainFromData_RemovesStaleSecretWhenAppIDChanges(t *testing.T
 	}
 
 	oldConfig := []byte(`{"apps":[{"appId":"cli_old","appSecret":{"source":"keychain","id":"` + oldID + `"}}]}`)
-	newApp := &core.AppConfig{
+	newApp := &configpkg.AppConfig{
 		AppId: "cli_new",
-		AppSecret: core.SecretInput{
-			Ref: &core.SecretRef{Source: "keychain", ID: newID},
+		AppSecret: secret.SecretInput{
+			Ref: &secret.SecretRef{Source: "keychain", ID: newID},
 		},
 	}
 

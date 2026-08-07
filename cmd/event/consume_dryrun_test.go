@@ -5,12 +5,12 @@ package event
 
 import (
 	"encoding/json"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 )
 
 // A dry run in a degraded environment (the test factory has no reachable
@@ -18,7 +18,7 @@ import (
 // zero with a structured decision that honestly says "unknown" — and performs
 // none of its declared write effects.
 func TestDryRun_DegradedEnvironmentStaysHonestAndSideEffectFree(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "cli_test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "cli_test"})
 	snap := compileCatalog()
 
 	tmp := t.TempDir()

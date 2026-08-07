@@ -12,9 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -51,7 +52,7 @@ func TestUniqueIDs(t *testing.T) {
 }
 
 func TestParseTimeRange(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test", AppSecret: "s", Brand: brand.Feishu}
 	tests := []struct {
 		name    string
 		start   string
@@ -86,7 +87,7 @@ func TestParseTimeRange(t *testing.T) {
 }
 
 func TestBuildSearchBody(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test", AppSecret: "s", Brand: brand.Feishu}
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("query", "", "")
 	cmd.Flags().String("start", "", "")
@@ -120,7 +121,7 @@ func TestBuildSearchBody(t *testing.T) {
 }
 
 func TestBuildSearchBody_Empty(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test", AppSecret: "s", Brand: brand.Feishu}
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("query", "", "")
 	cmd.Flags().String("start", "", "")
@@ -317,7 +318,7 @@ func TestSearch_InvalidTimeRange(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestParseTimeRange_InvalidStart_TypedError(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test", AppSecret: "s", Brand: brand.Feishu}
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("start", "", "")
 	cmd.Flags().String("end", "", "")
@@ -344,7 +345,7 @@ func TestParseTimeRange_InvalidStart_TypedError(t *testing.T) {
 }
 
 func TestParseTimeRange_InvalidEnd_TypedError(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test", AppSecret: "s", Brand: brand.Feishu}
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("start", "", "")
 	cmd.Flags().String("end", "", "")
@@ -371,7 +372,7 @@ func TestParseTimeRange_InvalidEnd_TypedError(t *testing.T) {
 }
 
 func TestParseTimeRange_StartAfterEnd_TypedError(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test", AppSecret: "s", Brand: brand.Feishu}
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("start", "", "")
 	cmd.Flags().String("end", "", "")
@@ -442,7 +443,7 @@ func TestSearch_Validation_NoFilter_TypedError(t *testing.T) {
 }
 
 func TestBuildSearchParams(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "test", AppSecret: "s", Brand: brand.Feishu}
 
 	t.Run("defaults", func(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}

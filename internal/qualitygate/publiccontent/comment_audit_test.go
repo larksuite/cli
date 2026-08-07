@@ -60,7 +60,7 @@ func TestScanCommentDetectsCredentialAssignmentInsideMermaidMessage(t *testing.T
 }
 
 func TestScanCommentAtPathAllowsTestFixtureCredentialPlaceholder(t *testing.T) {
-	body := `cfg := &core.CliConfig{AppID: "cli_x", AppSecret: "fake-secret"}`
+	body := `cfg := &configpkg.CliConfig{AppID: "cli_x", AppSecret: "fake-secret"}`
 	got := ScanCommentAtPath("pull_request_review_comment", "cmd/agent/list_test.go", body)
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {

@@ -5,14 +5,15 @@ package profile
 
 import (
 	"fmt"
+	"github.com/larksuite/cli/brand"
+	"github.com/larksuite/cli/internal/envvars"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -34,7 +35,7 @@ func NewCmdProfileUse(f *cmdutil.Factory) *cobra.Command {
 }
 
 func profileUseRun(f *cmdutil.Factory, name string) error {
-	multi, err := core.LoadOrNotConfigured()
+	multi, err := configpkg.LoadOrNotConfigured()
 	if err != nil {
 		return err
 	}
@@ -69,7 +70,7 @@ func profileUseRun(f *cmdutil.Factory, name string) error {
 	}
 	multi.CurrentApp = targetName
 
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
@@ -84,7 +85,7 @@ func profileUseRun(f *cmdutil.Factory, name string) error {
 // overriding every subsequent command. Only the environment source warns —
 // a --profile flag ends with this invocation and shadows nothing after it.
 func warnShadowedByEnvironment(f *cmdutil.Factory, targetName string) {
-	if f.Invocation.ProfileSource != core.ProfileFromEnvironment ||
+	if f.Invocation.ProfileSource != brand.ProfileFromEnvironment ||
 		f.Invocation.Profile == targetName {
 		return
 	}

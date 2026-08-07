@@ -8,14 +8,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"io"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/util"
@@ -23,8 +24,8 @@ import (
 
 const mcpErrorBodyLimit = 4000
 
-func MCPEndpoint(brand core.LarkBrand) string {
-	return core.ResolveEndpoints(brand).MCP + "/mcp"
+func MCPEndpoint(brand brandpkg.Brand) string {
+	return brandpkg.ResolveEndpoints(brand).MCP + "/mcp"
 }
 
 // CallMCPTool calls an MCP tool via JSON-RPC 2.0 and returns the parsed result.
@@ -62,9 +63,9 @@ func normalizeMCPToolResult(raw interface{}) (map[string]interface{}, error) {
 }
 
 func DoMCPCall(ctx context.Context, httpClient *http.Client, toolName string, args map[string]interface{}, accessToken string, mcpEndpoint string, isBot bool) (interface{}, error) {
-	identity := string(core.AsUser)
+	identity := string(identitypkg.AsUser)
 	if isBot {
-		identity = string(core.AsBot)
+		identity = string(identitypkg.AsBot)
 	}
 	body := map[string]interface{}{
 		"jsonrpc": "2.0",
@@ -221,7 +222,7 @@ func withMCPAuthenticationRecovery(err error, identity string) error {
 	if !ok || authErr.Hint != "" {
 		return err
 	}
-	if identity == string(core.AsBot) {
+	if identity == string(identitypkg.AsBot) {
 		return authErr.WithHint("configure valid app credentials for the bot identity")
 	}
 	return recovery.Attach(authErr, recovery.UserAuthorization())

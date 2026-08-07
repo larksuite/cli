@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/larksuite/cli/internal/workspace"
 	"io"
 	"io/fs"
 	"os"
@@ -17,7 +18,6 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -50,12 +50,12 @@ func useAuthFSStub(t *testing.T, stub authFSStub) {
 
 func TestTokenStorageLockUsesWorkspaceSanitizedPath(t *testing.T) {
 	setupStoredTokenTest(t)
-	previous := core.CurrentWorkspace()
-	core.SetCurrentWorkspace(core.WorkspaceOpenClaw)
-	t.Cleanup(func() { core.SetCurrentWorkspace(previous) })
+	previous := workspace.CurrentWorkspace()
+	workspace.SetCurrentWorkspace(workspace.WorkspaceOpenClaw)
+	t.Cleanup(func() { workspace.SetCurrentWorkspace(previous) })
 
 	got := tokenStorageLockPath("cli/test", "ou:test")
-	if filepath.Dir(got) != filepath.Join(core.GetConfigDir(), "locks") {
+	if filepath.Dir(got) != filepath.Join(workspace.GetConfigDir(), "locks") {
 		t.Fatalf("lock directory = %q, want workspace config lock directory", filepath.Dir(got))
 	}
 	if filepath.Base(got) != "refresh_cli_test_ou_test.lock" {

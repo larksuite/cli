@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
 func resolveOpenIDsTestRuntime(userOpenID string) *RuntimeContext {
 	cmd := &cobra.Command{Use: "test"}
-	cfg := &core.CliConfig{UserOpenId: userOpenID}
+	cfg := &configpkg.CliConfig{UserOpenId: userOpenID}
 	return TestNewRuntimeContext(cmd, cfg)
 }
 

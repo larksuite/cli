@@ -42,7 +42,7 @@ func writeFile(t *testing.T, root, rel, content string) {
 func TestScanRepo(t *testing.T) {
 	root := t.TempDir()
 	// Negative: the resolver may hold the literals inside ResolveEndpoints.
-	writeFile(t, root, "internal/core/types.go", "package core\n\nfunc ResolveEndpoints(b string) string {\n\treturn \"https://open.feishu.cn\"\n}\n")
+	writeFile(t, root, "brand/brand.go", "package brand\n\nfunc ResolveEndpoints(b string) string {\n\treturn \"https://open.feishu.cn\"\n}\n")
 	// Negative: non-resolver hosts + a comment reference must not trip the guard.
 	writeFile(t, root, "shortcuts/x/display.go", "package x\n\n// see https://open.feishu.cn/document/foo\nvar h = \"https://www.feishu.cn\"\nvar e = \"https://example.feishu.cn\"\nvar r = \"https://registry.npmjs.org/pkg\"\n")
 	// Negative: _test.go files may assert literals.
@@ -108,7 +108,7 @@ func TestScanRepoSDKConstants(t *testing.T) {
 // forbiddenHosts must equal the https hosts in the resolver source, both ways;
 // a resolver domain change without a guard update fails here.
 func TestForbiddenHostsMatchResolver(t *testing.T) {
-	src := filepath.Join("..", "..", "internal", "core", "types.go")
+	src := filepath.Join("..", "..", "brand", "brand.go")
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, src, nil, 0)
 	if err != nil {
@@ -197,8 +197,8 @@ func TestScanRepoDotImportAndCase(t *testing.T) {
 // ResolveEndpoints body is rejected.
 func TestScanRepoResolverFunctionScope(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "internal/core/types.go",
-		"package core\n\nfunc ResolveEndpoints(b string) string {\n\treturn \"https://open.feishu.cn\"\n}\n\nfunc bypass() string { return \"https://open.feishu.cn\" }\n\ntype localResolver struct{}\nfunc (localResolver) ResolveEndpoints() string { return \"https://open.feishu.cn\" }\n")
+	writeFile(t, root, "brand/brand.go",
+		"package brand\n\nfunc ResolveEndpoints(b string) string {\n\treturn \"https://open.feishu.cn\"\n}\n\nfunc bypass() string { return \"https://open.feishu.cn\" }\n\ntype localResolver struct{}\nfunc (localResolver) ResolveEndpoints() string { return \"https://open.feishu.cn\" }\n")
 
 	vs, err := ScanRepo(root)
 	if err != nil {
@@ -208,8 +208,8 @@ func TestScanRepoResolverFunctionScope(t *testing.T) {
 		t.Fatalf("got %d violations, want 2 (helper and receiver method): %+v", len(vs), vs)
 	}
 	for _, v := range vs {
-		if filepath.Base(v.File) != "types.go" {
-			t.Errorf("violation in %q, want types.go", v.File)
+		if filepath.Base(v.File) != "brand.go" {
+			t.Errorf("violation in %q, want brand.go", v.File)
 		}
 	}
 }

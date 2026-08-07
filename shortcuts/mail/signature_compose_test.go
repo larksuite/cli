@@ -6,6 +6,7 @@ package mail
 import (
 	"context"
 	"errors"
+	internaltransport "github.com/larksuite/cli/internal/transport"
 	"io"
 	"net/http"
 	"strings"
@@ -13,12 +14,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
-	internaltransport "github.com/larksuite/cli/internal/transport"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -230,9 +232,9 @@ func TestAddSignatureImagesToBuilderWithImages(t *testing.T) {
 // tests that exercise signature API code paths (autoResolveSignatureID, resolveSignature).
 func newSigTestRuntime(t *testing.T) (*common.RuntimeContext, *httpmock.Registry) {
 	t.Helper()
-	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_sigtest"}
+	cfg := &configpkg.CliConfig{Brand: brand.Feishu, AppID: "cli_sigtest"}
 	f, _, _, reg := cmdutil.TestFactory(t, cfg)
-	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+test"}, cfg, f, core.AsUser)
+	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+test"}, cfg, f, identity.AsUser)
 	return rt, reg
 }
 

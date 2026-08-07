@@ -12,10 +12,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 	"github.com/tidwall/gjson"
@@ -23,10 +25,10 @@ import (
 
 func newAppsMemberAPIRuntime(t *testing.T, shortcut common.Shortcut, values map[string]string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-member-client",
 		AppSecret:  "test-member-secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_test_operator",
 	}
 	factory, stdout, _, registry := cmdutil.TestFactory(t, cfg)
@@ -56,7 +58,7 @@ func newAppsMemberAPIRuntime(t *testing.T, shortcut common.Shortcut, values map[
 			t.Fatalf("set --%s=%q: %v", name, value, err)
 		}
 	}
-	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, core.AsUser)
+	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, identitypkg.AsUser)
 	rctx.Format = "json"
 	return rctx, stdout, registry
 }

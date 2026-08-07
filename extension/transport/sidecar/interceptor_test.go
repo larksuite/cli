@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/larksuite/cli/envnames"
 	exttransport "github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/envvars"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/sidecar"
 )
@@ -274,8 +274,8 @@ func TestInterceptor_EmptyBody(t *testing.T) {
 }
 
 func TestLegacySidecarProviderStillHandlesForcedExternalRequests(t *testing.T) {
-	t.Setenv(envvars.CliAuthProxy, "http://127.0.0.1:16384")
-	t.Setenv(envvars.CliProxyKey, "test-key")
+	t.Setenv(envnames.CliAuthProxy, "http://127.0.0.1:16384")
+	t.Setenv(envnames.CliProxyKey, "test-key")
 	previousProvider := exttransport.GetProvider()
 	exttransport.Register(&Provider{})
 	t.Cleanup(func() { exttransport.Register(previousProvider) })

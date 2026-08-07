@@ -11,12 +11,12 @@ import (
 	"net/url"
 	"strings"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 )
 
 // RevokeToken revokes a previously issued OAuth token.
-func RevokeToken(httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, token, tokenTypeHint string) error {
+func RevokeToken(httpClient *http.Client, appId, appSecret string, brand brandpkg.Brand, token, tokenTypeHint string) error {
 	endpoints := ResolveOAuthEndpoints(brand)
 
 	form := url.Values{}
@@ -38,7 +38,7 @@ func RevokeToken(httpClient *http.Client, appId, appSecret string, brand core.La
 		return errs.NewNetworkError(errs.SubtypeNetworkTransport, "token revoke transport error: %v", err).WithCause(err)
 	}
 	defer resp.Body.Close()
-	logHTTPResponse(resp)
+	logHTTPResponse(newAuthLogger(), resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

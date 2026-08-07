@@ -5,9 +5,9 @@ package cmd
 
 import (
 	"errors"
+	"github.com/larksuite/cli/brand"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 )
 
@@ -85,12 +85,12 @@ func TestBootstrapInvocationContext_ProfilePrecedence(t *testing.T) {
 		environment string
 		args        []string
 		wantProfile string
-		wantSource  core.ProfileSource
+		wantSource  brand.ProfileSource
 	}{
-		{"environment default", "session", []string{"whoami"}, "session", core.ProfileFromEnvironment},
-		{"flag overrides environment", "session", []string{"whoami", "--profile", "command"}, "command", core.ProfileFromFlag},
-		{"empty flag suppresses environment", "session", []string{"whoami", "--profile="}, "", core.ProfileFromFlag},
-		{"empty environment is unset", "", []string{"whoami"}, "", core.ProfileFromConfig},
+		{"environment default", "session", []string{"whoami"}, "session", brand.ProfileFromEnvironment},
+		{"flag overrides environment", "session", []string{"whoami", "--profile", "command"}, "command", brand.ProfileFromFlag},
+		{"empty flag suppresses environment", "session", []string{"whoami", "--profile="}, "", brand.ProfileFromFlag},
+		{"empty environment is unset", "", []string{"whoami"}, "", brand.ProfileFromConfig},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(envvars.CliProfile, tc.environment)

@@ -10,13 +10,14 @@ import (
 	"net"
 
 	"github.com/charmbracelet/huh"
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/build"
 	qrcode "github.com/skip2/go-qrcode"
 
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/transport"
 )
@@ -24,7 +25,7 @@ import (
 // configInitResult holds the result of the interactive config init flow.
 type configInitResult struct {
 	Mode      string // "create" or "existing"
-	Brand     core.LarkBrand
+	Brand     brand.Brand
 	AppID     string
 	AppSecret string
 }
@@ -62,8 +63,8 @@ func runInteractiveConfigInit(ctx context.Context, f *cmdutil.Factory, msg *init
 // runExistingAppForm shows a huh form for manually entering App ID / App Secret / Brand.
 func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, error) {
 	// Load existing config for defaults
-	existing, _ := core.LoadMultiAppConfig()
-	var firstApp *core.AppConfig
+	existing, _ := configpkg.LoadMultiAppConfig()
+	var firstApp *configpkg.AppConfig
 	if existing != nil {
 		firstApp = existing.CurrentAppConfig("")
 	}
@@ -150,8 +151,8 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 
 // runCreateAppFlow runs the "create new app" flow via OpenClaw device flow.
 // If brandOverride is non-empty, skip the interactive brand selection.
-func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, msg *initMsg) (*configInitResult, error) {
-	var larkBrand core.LarkBrand
+func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride brand.Brand, msg *initMsg) (*configInitResult, error) {
+	var larkBrand brand.Brand
 	if brandOverride != "" {
 		larkBrand = brandOverride
 	} else {

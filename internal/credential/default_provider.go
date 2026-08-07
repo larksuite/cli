@@ -6,14 +6,16 @@ package credential
 import (
 	"context"
 	"fmt"
+	"github.com/larksuite/cli/brand"
 	"io"
 	"net/http"
 	"sync"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/keychain"
 
 	extcred "github.com/larksuite/cli/extension/credential"
@@ -64,10 +66,10 @@ func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) e
 type DefaultAccountProvider struct {
 	keychain      func() keychain.KeychainAccess
 	profile       string
-	profileSource core.ProfileSource
+	profileSource brand.ProfileSource
 }
 
-func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string, source core.ProfileSource) *DefaultAccountProvider {
+func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string, source brand.ProfileSource) *DefaultAccountProvider {
 	if kc == nil {
 		kc = keychain.Default
 	}
@@ -76,12 +78,12 @@ func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string
 
 func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, error) {
 	// Load config once — used for both credentials and strict mode.
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
-		return nil, core.NotConfiguredError()
+		return nil, configpkg.NotConfiguredError()
 	}
 
-	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile, p.profileSource)
+	cfg, err := configpkg.ResolveConfigFromMulti(multi, p.keychain(), p.profile, p.profileSource)
 	if err != nil {
 		return nil, err
 	}
@@ -91,18 +93,18 @@ func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, 
 
 // strictModeToIdentitySupport maps the config-level strict mode to
 // the SupportedIdentities bitflag using an already-loaded MultiAppConfig.
-func strictModeToIdentitySupport(multi *core.MultiAppConfig, profileOverride string) uint8 {
+func strictModeToIdentitySupport(multi *configpkg.MultiAppConfig, profileOverride string) uint8 {
 	app := multi.CurrentAppConfig(profileOverride)
-	var mode core.StrictMode
+	var mode identity.StrictMode
 	if app != nil && app.StrictMode != nil {
 		mode = *app.StrictMode
 	} else {
 		mode = multi.StrictMode
 	}
 	switch mode {
-	case core.StrictModeBot:
+	case identity.StrictModeBot:
 		return uint8(extcred.SupportsBot)
-	case core.StrictModeUser:
+	case identity.StrictModeUser:
 		return uint8(extcred.SupportsUser)
 	default:
 		return 0

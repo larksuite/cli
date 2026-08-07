@@ -5,13 +5,13 @@ package cmd
 
 import (
 	"errors"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
@@ -27,7 +27,7 @@ func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProdu
 		WithCause(cause)
 
 	visible := presentRootError(
-		&cmdutil.Factory{ResolvedIdentity: core.AsUser},
+		&cmdutil.Factory{ResolvedIdentity: identitypkg.AsUser},
 		source,
 		recovery.NewProjector(nil),
 	)
@@ -56,7 +56,7 @@ func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProdu
 		surface.CommandAuthLogin: surface.CommandConcealed,
 	})
 	concealed := presentRootError(
-		&cmdutil.Factory{ResolvedIdentity: core.AsUser},
+		&cmdutil.Factory{ResolvedIdentity: identitypkg.AsUser},
 		source,
 		recovery.NewProjector(func() *surface.Plan { return plan }),
 	)
@@ -70,7 +70,7 @@ func TestRootErrorPresenterCompletesDirectPermissionRecoveryWithoutMutatingProdu
 func TestRootErrorPresenterUsesDeclaredScopesForCanonicalPermissionRecovery(t *testing.T) {
 	const declaredScope = "calendar:calendar.event:read"
 
-	f := &cmdutil.Factory{ResolvedIdentity: core.AsUser}
+	f := &cmdutil.Factory{ResolvedIdentity: identitypkg.AsUser}
 	root := &cobra.Command{Use: "lark-cli"}
 	calendar := &cobra.Command{Use: "calendar"}
 	agenda := &cobra.Command{Use: "+agenda"}
@@ -222,7 +222,7 @@ func TestRootErrorPresenterPreservesPermissionGuidanceWhenAuthLoginIsConcealed(t
 				WithCause(cause)
 
 			rendered := presentRootError(
-				&cmdutil.Factory{ResolvedIdentity: core.AsUser},
+				&cmdutil.Factory{ResolvedIdentity: identitypkg.AsUser},
 				source,
 				projector,
 			)
@@ -274,7 +274,7 @@ func TestRootErrorPresenterDoesNotRecommendUserLoginForBotPermission(t *testing.
 				WithIdentity("bot")
 
 			rendered := presentRootError(
-				&cmdutil.Factory{ResolvedIdentity: core.AsBot},
+				&cmdutil.Factory{ResolvedIdentity: identitypkg.AsBot},
 				source,
 				recovery.NewProjector(nil),
 			)
@@ -306,7 +306,7 @@ func TestRootErrorPresenterDoesNotMutateNestedPermissionCause(t *testing.T) {
 		WithCause(inner)
 
 	rendered := presentRootError(
-		&cmdutil.Factory{ResolvedIdentity: core.AsUser},
+		&cmdutil.Factory{ResolvedIdentity: identitypkg.AsUser},
 		outer,
 		recovery.NewProjector(nil),
 	)
@@ -345,7 +345,7 @@ func TestRootErrorPresenterDoesNotMutateNestedAuthenticationCause(t *testing.T) 
 
 func factoryWithDeclaredServiceScope(t *testing.T) *cmdutil.Factory {
 	t.Helper()
-	f := &cmdutil.Factory{ResolvedIdentity: core.AsUser}
+	f := &cmdutil.Factory{ResolvedIdentity: identitypkg.AsUser}
 	var target registry.CommandEntry
 	for _, entry := range registry.CollectCommandScopes([]string{"calendar"}, "user") {
 		if len(entry.Scopes) > 0 {

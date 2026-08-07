@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -191,7 +191,7 @@ func runWikiDeleteSpace(ctx context.Context, client wikiDeleteSpaceClient, runti
 	return out, nil
 }
 
-func wikiDeleteSpaceTaskResultCommand(taskID string, identity core.Identity) string {
+func wikiDeleteSpaceTaskResultCommand(taskID string, identity identitypkg.Identity) string {
 	asFlag := string(identity)
 	if asFlag == "" {
 		asFlag = "user"

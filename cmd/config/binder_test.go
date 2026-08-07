@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -20,10 +20,10 @@ type fakeBinder struct {
 	path string
 }
 
-func (b *fakeBinder) Name() string                                { return b.name }
-func (b *fakeBinder) ConfigPath() string                          { return b.path }
-func (b *fakeBinder) ListCandidates() ([]Candidate, error)        { return nil, nil }
-func (b *fakeBinder) Build(appID string) (*core.AppConfig, error) { return nil, nil }
+func (b *fakeBinder) Name() string                                     { return b.name }
+func (b *fakeBinder) ConfigPath() string                               { return b.path }
+func (b *fakeBinder) ListCandidates() ([]Candidate, error)             { return nil, nil }
+func (b *fakeBinder) Build(appID string) (*configpkg.AppConfig, error) { return nil, nil }
 
 // tuiUnreachable is a tuiPrompt that fails the test if called. It's the
 // guardrail that proves the non-TUI decision paths really do stay out of the

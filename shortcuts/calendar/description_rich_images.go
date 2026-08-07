@@ -17,8 +17,8 @@ import (
 	"regexp"
 	"strings"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -156,9 +156,9 @@ func localImagePath(src string) string {
 	return s
 }
 
-func buildCalendarImagePreviewURL(brand core.LarkBrand, fileToken string, width, height int, size int64) string {
+func buildCalendarImagePreviewURL(brand brandpkg.Brand, fileToken string, width, height int, size int64) string {
 	host := "internal-api-drive-stream.feishu.cn"
-	if brand == core.BrandLark {
+	if brand == brandpkg.Lark {
 		host = "internal-api-drive-stream.larksuite.com"
 	}
 	u := fmt.Sprintf("https://%s/space/api/box/stream/download/preview/%s?preview_type=16", host, fileToken)

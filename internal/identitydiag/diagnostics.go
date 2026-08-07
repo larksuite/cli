@@ -8,17 +8,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/brand"
 	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 const (
@@ -87,7 +89,7 @@ func FilterRecovery(result Result, canReference func(recovery.Target) bool) Resu
 
 // Diagnose checks bot and user identities separately. When verify is false,
 // it only reports local readiness and skips server calls.
-func Diagnose(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, verify bool) Result {
+func Diagnose(ctx context.Context, f *cmdutil.Factory, cfg *configpkg.CliConfig, verify bool) Result {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -116,7 +118,7 @@ func activeExternalProvider(ctx context.Context, f *cmdutil.Factory) string {
 	return name
 }
 
-func diagnoseExternal(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, provider string, verify bool) Result {
+func diagnoseExternal(ctx context.Context, f *cmdutil.Factory, cfg *configpkg.CliConfig, provider string, verify bool) Result {
 	if cfg == nil || cfg.AppID == "" {
 		notConfigured := Identity{
 			Status:  StatusNotConfigured,
@@ -135,7 +137,7 @@ func diagnoseExternal(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConf
 	}
 }
 
-func diagnoseExternalBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, provider string, supported, verify bool) Identity {
+func diagnoseExternalBot(ctx context.Context, f *cmdutil.Factory, cfg *configpkg.CliConfig, provider string, supported, verify bool) Identity {
 	if !supported {
 		return notProvidedExternally("Bot", provider)
 	}
@@ -157,7 +159,7 @@ func diagnoseExternalBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliC
 	return id
 }
 
-func diagnoseExternalUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, provider string, supported, verify bool) Identity {
+func diagnoseExternalUser(ctx context.Context, f *cmdutil.Factory, cfg *configpkg.CliConfig, provider string, supported, verify bool) Identity {
 	if !supported {
 		return notProvidedExternally("User", provider)
 	}
@@ -182,7 +184,7 @@ func diagnoseExternalUser(ctx context.Context, f *cmdutil.Factory, cfg *core.Cli
 	if !verify {
 		return id
 	}
-	if _, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(core.AsUser, cfg.AppID)); err != nil {
+	if _, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(identity.AsUser, cfg.AppID)); err != nil {
 		return externalVerifyFailed(id, "User", provider, err)
 	}
 	id.Verified = boolPtr(true)
@@ -216,7 +218,7 @@ func externalCredentialHint(provider string) string {
 	return fmt.Sprintf("managed by the external credential provider %q and cannot be configured via lark-cli", provider)
 }
 
-func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, verify bool) Identity {
+func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *configpkg.CliConfig, verify bool) Identity {
 	if cfg == nil || cfg.AppID == "" {
 		return withCommandRecovery(Identity{
 			Status:  StatusNotConfigured,
@@ -277,7 +279,7 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 	return id
 }
 
-func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, verify bool) Identity {
+func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *configpkg.CliConfig, verify bool) Identity {
 	if cfg == nil || cfg.AppID == "" {
 		return withCommandRecovery(Identity{
 			Status:  StatusNotConfigured,
@@ -360,11 +362,11 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	return id
 }
 
-func resolveBotToken(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (string, error) {
+func resolveBotToken(ctx context.Context, f *cmdutil.Factory, cfg *configpkg.CliConfig) (string, error) {
 	if f == nil || f.Credential == nil {
 		return "", &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
 	}
-	result, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(core.AsBot, cfg.AppID))
+	result, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(identity.AsBot, cfg.AppID))
 	if err != nil {
 		return "", err
 	}
@@ -379,14 +381,14 @@ type botInfo struct {
 	AppName string
 }
 
-func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, token string) (*botInfo, error) {
+func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *configpkg.CliConfig, token string) (*botInfo, error) {
 	httpClient, err := f.HttpClient()
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
-	url := strings.TrimRight(core.ResolveEndpoints(cfg.Brand).Open, "/") + "/open-apis/bot/v3/info"
+	url := strings.TrimRight(brand.ResolveEndpoints(cfg.Brand).Open, "/") + "/open-apis/bot/v3/info"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err

@@ -9,18 +9,20 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 func TestTestNewRuntimeContextForAPIWiresFields(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	cfg := &core.CliConfig{AppID: "self-test-app", AppSecret: "secret", Brand: core.BrandFeishu}
+	cfg := &configpkg.CliConfig{AppID: "self-test-app", AppSecret: "secret", Brand: brand.Feishu}
 	f, _, _, _ := cmdutil.TestFactory(t, cfg)
 	cmd := &cobra.Command{Use: "testing-helper"}
 
 	ctx := context.Background()
-	rctx := TestNewRuntimeContextForAPI(ctx, cmd, cfg, f, core.AsBot)
+	rctx := TestNewRuntimeContextForAPI(ctx, cmd, cfg, f, identity.AsBot)
 	if rctx == nil {
 		t.Fatal("TestNewRuntimeContextForAPI returned nil")
 	}
@@ -43,8 +45,8 @@ func TestTestNewRuntimeContextForAPIWiresFields(t *testing.T) {
 	// User identity should also be accepted — the whole reason for making
 	// the parameter explicit is to let user-identity code paths use this
 	// helper instead of forking a second one.
-	userRctx := TestNewRuntimeContextForAPI(ctx, cmd, cfg, f, core.AsUser)
-	if userRctx.resolvedAs != core.AsUser {
+	userRctx := TestNewRuntimeContextForAPI(ctx, cmd, cfg, f, identity.AsUser)
+	if userRctx.resolvedAs != identity.AsUser {
 		t.Errorf("resolvedAs AsUser not preserved, got %q", userRctx.resolvedAs)
 	}
 }

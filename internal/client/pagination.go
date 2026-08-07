@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 )
 
 // PaginationOptions contains pagination control options.
 type PaginationOptions struct {
-	PageLimit int           // max pages to fetch; 0 = unlimited (default: 10)
-	PageDelay int           // ms, default 200
-	Identity  core.Identity // identity passed to checkErr; defaults to AsUser when empty
+	PageLimit int               // max pages to fetch; 0 = unlimited (default: 10)
+	PageDelay int               // ms, default 200
+	Identity  identity.Identity // identity passed to checkErr; defaults to AsUser when empty
 }
 
 func mergePagedResults(w io.Writer, results []interface{}) interface{} {

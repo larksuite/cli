@@ -15,9 +15,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -1179,14 +1180,14 @@ func TestUploadSlidesPlaceholdersReportsSourceFlag(t *testing.T) {
 }
 
 // slidesTestConfig returns a CliConfig for testing with the given user open ID.
-func slidesTestConfig(t *testing.T, userOpenID string) *core.CliConfig {
+func slidesTestConfig(t *testing.T, userOpenID string) *configpkg.CliConfig {
 	t.Helper()
 	replacer := strings.NewReplacer("/", "-", " ", "-")
 	suffix := replacer.Replace(strings.ToLower(t.Name()))
-	return &core.CliConfig{
+	return &configpkg.CliConfig{
 		AppID:      "test-slides-create-" + suffix,
 		AppSecret:  "secret-slides-create-" + suffix,
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: userOpenID,
 	}
 }

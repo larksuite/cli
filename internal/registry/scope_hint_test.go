@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
 )
 
 func TestExtractRequiredScopes_HappyPath(t *testing.T) {
@@ -45,7 +45,7 @@ func TestExtractRequiredScopes_NilOrMalformed(t *testing.T) {
 }
 
 func TestBuildConsoleScopeURL_BrandSpecificHost(t *testing.T) {
-	got := BuildConsoleScopeURL(core.BrandFeishu, "cli_xxx", "docs:permission.member:create")
+	got := BuildConsoleScopeURL(brand.Feishu, "cli_xxx", "docs:permission.member:create")
 	if !strings.Contains(got, "open.feishu.cn") {
 		t.Errorf("feishu brand should use open.feishu.cn host, got %s", got)
 	}
@@ -56,17 +56,17 @@ func TestBuildConsoleScopeURL_BrandSpecificHost(t *testing.T) {
 		t.Errorf("scope not URL-escaped: %s", got)
 	}
 
-	got = BuildConsoleScopeURL(core.BrandLark, "cli_yyy", "drive:drive")
+	got = BuildConsoleScopeURL(brand.Lark, "cli_yyy", "drive:drive")
 	if !strings.Contains(got, "open.larksuite.com") {
 		t.Errorf("lark brand should use open.larksuite.com host, got %s", got)
 	}
 }
 
 func TestBuildConsoleScopeURL_EmptyInput(t *testing.T) {
-	if got := BuildConsoleScopeURL(core.BrandFeishu, "", "docs:doc"); got != "" {
+	if got := BuildConsoleScopeURL(brand.Feishu, "", "docs:doc"); got != "" {
 		t.Errorf("empty appID should yield empty url, got %s", got)
 	}
-	if got := BuildConsoleScopeURL(core.BrandFeishu, "cli_xxx", ""); got != "" {
+	if got := BuildConsoleScopeURL(brand.Feishu, "cli_xxx", ""); got != "" {
 		t.Errorf("empty scope should yield empty url, got %s", got)
 	}
 }

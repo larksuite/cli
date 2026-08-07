@@ -14,7 +14,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -102,7 +102,7 @@ func TestBuildFetchBodyUsesRuntimeConfigLang(t *testing.T) {
 	t.Parallel()
 
 	runtime := newFetchBodyTestRuntime(context.Background())
-	runtime.Config = &core.CliConfig{Lang: "zh_cn"}
+	runtime.Config = &configpkg.CliConfig{Lang: "zh_cn"}
 
 	body := buildFetchBody(runtime)
 	if got := body["lang"]; got != "zh_cn" {
@@ -114,7 +114,7 @@ func TestBuildFetchBodyExplicitBlankLangOmitsLang(t *testing.T) {
 	t.Parallel()
 
 	runtime := newFetchBodyTestRuntime(context.Background())
-	runtime.Config = &core.CliConfig{Lang: "zh_cn"}
+	runtime.Config = &configpkg.CliConfig{Lang: "zh_cn"}
 	if err := runtime.Cmd.Flags().Set("lang", ""); err != nil {
 		t.Fatalf("set lang: %v", err)
 	}

@@ -6,12 +6,12 @@ package common
 import (
 	"context"
 	"errors"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
@@ -124,11 +124,11 @@ func TestNewRuntimeContextUsesEffectiveBotOnlyIdentityForDeclaredScopes(t *testi
 		t.Fatal(err)
 	}
 	cmd := newTestShortcutCmd(shortcut, f)
-	runtime, err := newRuntimeContext(cmd, f, shortcut, config, core.AsUser, true)
+	runtime, err := newRuntimeContext(cmd, f, shortcut, config, identitypkg.AsUser, true)
 	if err != nil {
 		t.Fatalf("newRuntimeContext() error = %v", err)
 	}
-	if runtime.As() != core.AsBot {
+	if runtime.As() != identitypkg.AsBot {
 		t.Fatalf("runtime.As() = %q, want bot", runtime.As())
 	}
 	if got, want := runtime.declaredScopes, []string{"bot:scope"}; !reflect.DeepEqual(got, want) {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/envnames"
 	"github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/envvars"
 )
 
 func TestProvider_Name(t *testing.T) {
@@ -20,9 +20,9 @@ func TestProvider_Name(t *testing.T) {
 }
 
 func TestResolveAccount_BothSet(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "cli_test")
-	t.Setenv(envvars.CliAppSecret, "secret_test")
-	t.Setenv(envvars.CliBrand, " LARK ")
+	t.Setenv(envnames.CliAppID, "cli_test")
+	t.Setenv(envnames.CliAppSecret, "secret_test")
+	t.Setenv(envnames.CliBrand, " LARK ")
 
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
@@ -41,7 +41,7 @@ func TestResolveAccount_NeitherSet(t *testing.T) {
 }
 
 func TestResolveAccount_OnlyIDSet(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "cli_test")
+	t.Setenv(envnames.CliAppID, "cli_test")
 	_, err := (&Provider{}).ResolveAccount(context.Background())
 	var blockErr *credential.BlockError
 	if !errors.As(err, &blockErr) {
@@ -50,8 +50,8 @@ func TestResolveAccount_OnlyIDSet(t *testing.T) {
 }
 
 func TestResolveAccount_AppIDAndUserTokenWithoutSecret(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "cli_test")
-	t.Setenv(envvars.CliUserAccessToken, "uat_test")
+	t.Setenv(envnames.CliAppID, "cli_test")
+	t.Setenv(envnames.CliUserAccessToken, "uat_test")
 
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
@@ -69,7 +69,7 @@ func TestResolveAccount_AppIDAndUserTokenWithoutSecret(t *testing.T) {
 }
 
 func TestResolveAccount_OnlySecretSet(t *testing.T) {
-	t.Setenv(envvars.CliAppSecret, "secret_test")
+	t.Setenv(envnames.CliAppSecret, "secret_test")
 	_, err := (&Provider{}).ResolveAccount(context.Background())
 	var blockErr *credential.BlockError
 	if !errors.As(err, &blockErr) {
@@ -78,21 +78,21 @@ func TestResolveAccount_OnlySecretSet(t *testing.T) {
 }
 
 func TestResolveAccount_OnlyTokenSetWithoutAppID(t *testing.T) {
-	t.Setenv(envvars.CliUserAccessToken, "uat_test")
+	t.Setenv(envnames.CliUserAccessToken, "uat_test")
 
 	_, err := (&Provider{}).ResolveAccount(context.Background())
 	var blockErr *credential.BlockError
 	if !errors.As(err, &blockErr) {
 		t.Fatalf("expected BlockError, got %v", err)
 	}
-	if !strings.Contains(err.Error(), envvars.CliAppID) {
-		t.Fatalf("error = %v, want mention of %s", err, envvars.CliAppID)
+	if !strings.Contains(err.Error(), envnames.CliAppID) {
+		t.Fatalf("error = %v, want mention of %s", err, envnames.CliAppID)
 	}
 }
 
 func TestResolveAccount_DefaultBrand(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "cli_test")
-	t.Setenv(envvars.CliAppSecret, "secret_test")
+	t.Setenv(envnames.CliAppID, "cli_test")
+	t.Setenv(envnames.CliAppSecret, "secret_test")
 	acct, _ := (&Provider{}).ResolveAccount(context.Background())
 	if acct.Brand != "feishu" {
 		t.Errorf("expected 'feishu', got %q", acct.Brand)
@@ -100,9 +100,9 @@ func TestResolveAccount_DefaultBrand(t *testing.T) {
 }
 
 func TestResolveAccount_DefaultAsFromEnv(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "cli_test")
-	t.Setenv(envvars.CliAppSecret, "secret_test")
-	t.Setenv(envvars.CliDefaultAs, "user")
+	t.Setenv(envnames.CliAppID, "cli_test")
+	t.Setenv(envnames.CliAppSecret, "secret_test")
+	t.Setenv(envnames.CliDefaultAs, "user")
 
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
@@ -114,23 +114,23 @@ func TestResolveAccount_DefaultAsFromEnv(t *testing.T) {
 }
 
 func TestResolveToken_UATSet(t *testing.T) {
-	t.Setenv(envvars.CliUserAccessToken, "u-env")
+	t.Setenv(envnames.CliUserAccessToken, "u-env")
 	tok, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tok.Value != "u-env" || tok.Source != "env:"+envvars.CliUserAccessToken {
+	if tok.Value != "u-env" || tok.Source != "env:"+envnames.CliUserAccessToken {
 		t.Errorf("unexpected: %+v", tok)
 	}
 }
 
 func TestResolveToken_TATSet(t *testing.T) {
-	t.Setenv(envvars.CliTenantAccessToken, "t-env")
+	t.Setenv(envnames.CliTenantAccessToken, "t-env")
 	tok, err := (&Provider{}).ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tok.Value != "t-env" || tok.Source != "env:"+envvars.CliTenantAccessToken {
+	if tok.Value != "t-env" || tok.Source != "env:"+envnames.CliTenantAccessToken {
 		t.Errorf("unexpected: %+v", tok)
 	}
 }
@@ -143,9 +143,9 @@ func TestResolveToken_NotSet(t *testing.T) {
 }
 
 func TestResolveAccount_StrictModeBot(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "app")
-	t.Setenv(envvars.CliAppSecret, "secret")
-	t.Setenv(envvars.CliStrictMode, "bot")
+	t.Setenv(envnames.CliAppID, "app")
+	t.Setenv(envnames.CliAppSecret, "secret")
+	t.Setenv(envnames.CliStrictMode, "bot")
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -156,9 +156,9 @@ func TestResolveAccount_StrictModeBot(t *testing.T) {
 }
 
 func TestResolveAccount_StrictModeUser(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "app")
-	t.Setenv(envvars.CliAppSecret, "secret")
-	t.Setenv(envvars.CliStrictMode, "user")
+	t.Setenv(envnames.CliAppID, "app")
+	t.Setenv(envnames.CliAppSecret, "secret")
+	t.Setenv(envnames.CliStrictMode, "user")
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -169,9 +169,9 @@ func TestResolveAccount_StrictModeUser(t *testing.T) {
 }
 
 func TestResolveAccount_StrictModeOff(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "app")
-	t.Setenv(envvars.CliAppSecret, "secret")
-	t.Setenv(envvars.CliStrictMode, "off")
+	t.Setenv(envnames.CliAppID, "app")
+	t.Setenv(envnames.CliAppSecret, "secret")
+	t.Setenv(envnames.CliStrictMode, "off")
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -182,9 +182,9 @@ func TestResolveAccount_StrictModeOff(t *testing.T) {
 }
 
 func TestResolveAccount_InferFromUATOnly(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "app")
-	t.Setenv(envvars.CliAppSecret, "secret")
-	t.Setenv(envvars.CliUserAccessToken, "u-tok")
+	t.Setenv(envnames.CliAppID, "app")
+	t.Setenv(envnames.CliAppSecret, "secret")
+	t.Setenv(envnames.CliUserAccessToken, "u-tok")
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -198,9 +198,9 @@ func TestResolveAccount_InferFromUATOnly(t *testing.T) {
 }
 
 func TestResolveAccount_InferFromTATOnly(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "app")
-	t.Setenv(envvars.CliAppSecret, "secret")
-	t.Setenv(envvars.CliTenantAccessToken, "t-tok")
+	t.Setenv(envnames.CliAppID, "app")
+	t.Setenv(envnames.CliAppSecret, "secret")
+	t.Setenv(envnames.CliTenantAccessToken, "t-tok")
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -214,10 +214,10 @@ func TestResolveAccount_InferFromTATOnly(t *testing.T) {
 }
 
 func TestResolveAccount_InferBothTokens(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "app")
-	t.Setenv(envvars.CliAppSecret, "secret")
-	t.Setenv(envvars.CliUserAccessToken, "u-tok")
-	t.Setenv(envvars.CliTenantAccessToken, "t-tok")
+	t.Setenv(envnames.CliAppID, "app")
+	t.Setenv(envnames.CliAppSecret, "secret")
+	t.Setenv(envnames.CliUserAccessToken, "u-tok")
+	t.Setenv(envnames.CliTenantAccessToken, "t-tok")
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -231,11 +231,11 @@ func TestResolveAccount_InferBothTokens(t *testing.T) {
 }
 
 func TestResolveAccount_StrictModeOverridesTokenInference(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "app")
-	t.Setenv(envvars.CliAppSecret, "secret")
-	t.Setenv(envvars.CliUserAccessToken, "u-tok")
-	t.Setenv(envvars.CliTenantAccessToken, "t-tok")
-	t.Setenv(envvars.CliStrictMode, "bot")
+	t.Setenv(envnames.CliAppID, "app")
+	t.Setenv(envnames.CliAppSecret, "secret")
+	t.Setenv(envnames.CliUserAccessToken, "u-tok")
+	t.Setenv(envnames.CliTenantAccessToken, "t-tok")
+	t.Setenv(envnames.CliStrictMode, "bot")
 	acct, err := (&Provider{}).ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -246,9 +246,9 @@ func TestResolveAccount_StrictModeOverridesTokenInference(t *testing.T) {
 }
 
 func TestResolveAccount_InvalidStrictModeRejected(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "app")
-	t.Setenv(envvars.CliAppSecret, "secret")
-	t.Setenv(envvars.CliStrictMode, "invalid")
+	t.Setenv(envnames.CliAppID, "app")
+	t.Setenv(envnames.CliAppSecret, "secret")
+	t.Setenv(envnames.CliStrictMode, "invalid")
 
 	_, err := (&Provider{}).ResolveAccount(context.Background())
 	if err == nil {
@@ -258,15 +258,15 @@ func TestResolveAccount_InvalidStrictModeRejected(t *testing.T) {
 	if !errors.As(err, &blockErr) {
 		t.Fatalf("expected BlockError, got %T", err)
 	}
-	if !strings.Contains(err.Error(), envvars.CliStrictMode) {
-		t.Fatalf("error = %v, want mention of %s", err, envvars.CliStrictMode)
+	if !strings.Contains(err.Error(), envnames.CliStrictMode) {
+		t.Fatalf("error = %v, want mention of %s", err, envnames.CliStrictMode)
 	}
 }
 
 func TestResolveAccount_InvalidDefaultAsRejected(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "app")
-	t.Setenv(envvars.CliAppSecret, "secret")
-	t.Setenv(envvars.CliDefaultAs, "invalid")
+	t.Setenv(envnames.CliAppID, "app")
+	t.Setenv(envnames.CliAppSecret, "secret")
+	t.Setenv(envnames.CliDefaultAs, "invalid")
 
 	_, err := (&Provider{}).ResolveAccount(context.Background())
 	if err == nil {
@@ -276,7 +276,7 @@ func TestResolveAccount_InvalidDefaultAsRejected(t *testing.T) {
 	if !errors.As(err, &blockErr) {
 		t.Fatalf("expected BlockError, got %T", err)
 	}
-	if !strings.Contains(err.Error(), envvars.CliDefaultAs) {
-		t.Fatalf("error = %v, want mention of %s", err, envvars.CliDefaultAs)
+	if !strings.Contains(err.Error(), envnames.CliDefaultAs) {
+		t.Fatalf("error = %v, want mention of %s", err, envnames.CliDefaultAs)
 	}
 }

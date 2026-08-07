@@ -10,9 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -37,10 +39,10 @@ func TestAppsReleaseGetMeta(t *testing.T) {
 // newStatusRuntimeContext builds a RuntimeContext for AppsReleaseGet.Execute tests.
 func newStatusRuntimeContext(t *testing.T, appID, releaseID string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-app-" + strings.ToLower(t.Name()),
 		AppSecret:  "test-secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_test",
 	}
 	factory, stdoutBuf, _, reg := cmdutil.TestFactory(t, cfg)
@@ -52,7 +54,7 @@ func newStatusRuntimeContext(t *testing.T, appID, releaseID string) (*common.Run
 	_ = cmd.Flags().Set("app-id", appID)
 	_ = cmd.Flags().Set("release-id", releaseID)
 
-	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, core.AsUser)
+	rctx := common.TestNewRuntimeContextForAPI(context.Background(), cmd, cfg, factory, identity.AsUser)
 	return rctx, stdoutBuf, reg
 }
 

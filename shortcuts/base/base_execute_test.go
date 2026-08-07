@@ -19,9 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
@@ -37,10 +38,10 @@ func newExecuteFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *httpmock
 
 func newExecuteFactoryWithUserOpenID(t *testing.T, userOpenID string) (*cmdutil.Factory, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
-	config := &core.CliConfig{
+	config := &configpkg.CliConfig{
 		AppID:      "test-app-" + strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-"),
 		AppSecret:  "test-secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: userOpenID,
 	}
 	factory, stdout, _, reg := cmdutil.TestFactory(t, config)

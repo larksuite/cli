@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"io"
 	"net/http"
 	"net/http/httptrace"
@@ -16,10 +17,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/recovery"
 )
 
 // UATCallOptions contains options for UAT API calls.
@@ -27,7 +28,7 @@ type UATCallOptions struct {
 	UserOpenId string
 	AppId      string
 	AppSecret  string
-	Domain     core.LarkBrand
+	Domain     brand.Brand
 	ErrOut     io.Writer // diagnostic/status output (caller injects f.IOStreams.ErrOut)
 }
 
@@ -43,7 +44,7 @@ type UATStatus struct {
 }
 
 // NewUATCallOptions creates UATCallOptions from a CLI config.
-func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
+func NewUATCallOptions(cfg *configpkg.CliConfig, errOut io.Writer) UATCallOptions {
 	if errOut == nil {
 		errOut = os.Stderr
 	}
@@ -329,7 +330,7 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 		}
 	}
 	defer resp.Body.Close()
-	logHTTPResponse(resp)
+	logHTTPResponse(newAuthLogger(), resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

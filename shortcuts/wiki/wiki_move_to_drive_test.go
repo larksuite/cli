@@ -15,8 +15,8 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -76,7 +76,7 @@ func withWikiMoveToDrivePoll(t *testing.T, attempts int) {
 	})
 }
 
-func newWikiMoveToDriveRuntime(t *testing.T, identity core.Identity) (*common.RuntimeContext, *bytes.Buffer) {
+func newWikiMoveToDriveRuntime(t *testing.T, identity identitypkg.Identity) (*common.RuntimeContext, *bytes.Buffer) {
 	t.Helper()
 	cfg := wikiTestConfig()
 	factory, _, stderr, _ := cmdutil.TestFactory(t, cfg)
@@ -225,7 +225,7 @@ func TestParseWikiMoveToDriveTaskStatus(t *testing.T) {
 
 func TestRunWikiMoveToDriveSuccess(t *testing.T) {
 	withSingleWikiMoveToDrivePoll(t)
-	runtime, stderr := newWikiMoveToDriveRuntime(t, core.AsUser)
+	runtime, stderr := newWikiMoveToDriveRuntime(t, identitypkg.AsUser)
 	client := &fakeWikiMoveToDriveClient{
 		moveTaskID: "raw-task-signature",
 		taskStatus: []wikiMoveToDriveTaskStatus{{
@@ -260,7 +260,7 @@ func TestRunWikiMoveToDriveSuccess(t *testing.T) {
 
 func TestRunWikiMoveToDriveTimeoutReturnsResumeCommand(t *testing.T) {
 	withSingleWikiMoveToDrivePoll(t)
-	runtime, _ := newWikiMoveToDriveRuntime(t, core.AsBot)
+	runtime, _ := newWikiMoveToDriveRuntime(t, identitypkg.AsBot)
 	runtime.Config.ProfileName = "secondary"
 	client := &fakeWikiMoveToDriveClient{
 		moveTaskID: "raw-task-signature",
@@ -284,7 +284,7 @@ func TestRunWikiMoveToDriveTimeoutReturnsResumeCommand(t *testing.T) {
 
 func TestPollWikiMoveToDriveContinuesFromProcessingToSuccess(t *testing.T) {
 	withWikiMoveToDrivePoll(t, 2)
-	runtime, _ := newWikiMoveToDriveRuntime(t, core.AsUser)
+	runtime, _ := newWikiMoveToDriveRuntime(t, identitypkg.AsUser)
 	client := &fakeWikiMoveToDriveClient{
 		taskStatus: []wikiMoveToDriveTaskStatus{
 			{Status: wikiMoveToDriveStatusProcessing},
@@ -303,7 +303,7 @@ func TestPollWikiMoveToDriveContinuesFromProcessingToSuccess(t *testing.T) {
 
 func TestPollWikiMoveToDriveRecoversFromTransientError(t *testing.T) {
 	withWikiMoveToDrivePoll(t, 2)
-	runtime, _ := newWikiMoveToDriveRuntime(t, core.AsUser)
+	runtime, _ := newWikiMoveToDriveRuntime(t, identitypkg.AsUser)
 	requestTimeout := errs.NewNetworkError(errs.SubtypeNetworkTimeout, "temporary request timeout").
 		WithCause(context.DeadlineExceeded)
 	client := &fakeWikiMoveToDriveClient{
@@ -325,7 +325,7 @@ func TestPollWikiMoveToDriveRecoversFromTransientError(t *testing.T) {
 
 func TestPollWikiMoveToDriveDoesNotSwallowFinalCancellation(t *testing.T) {
 	withWikiMoveToDrivePoll(t, 2)
-	runtime, _ := newWikiMoveToDriveRuntime(t, core.AsUser)
+	runtime, _ := newWikiMoveToDriveRuntime(t, identitypkg.AsUser)
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &fakeWikiMoveToDriveClient{
 		taskStatus: []wikiMoveToDriveTaskStatus{{Status: wikiMoveToDriveStatusProcessing}},
@@ -345,7 +345,7 @@ func TestPollWikiMoveToDriveDoesNotSwallowFinalCancellation(t *testing.T) {
 
 func TestRunWikiMoveToDriveFailureIsTypedAPIError(t *testing.T) {
 	withSingleWikiMoveToDrivePoll(t)
-	runtime, _ := newWikiMoveToDriveRuntime(t, core.AsUser)
+	runtime, _ := newWikiMoveToDriveRuntime(t, identitypkg.AsUser)
 	client := &fakeWikiMoveToDriveClient{
 		moveTaskID: "raw-task-signature",
 		taskStatus: []wikiMoveToDriveTaskStatus{{Status: wikiMoveToDriveStatusFailure, StatusMsg: "failure"}},
@@ -360,7 +360,7 @@ func TestRunWikiMoveToDriveFailureIsTypedAPIError(t *testing.T) {
 
 func TestPollWikiMoveToDrivePreservesTypedPollError(t *testing.T) {
 	withSingleWikiMoveToDrivePoll(t)
-	runtime, _ := newWikiMoveToDriveRuntime(t, core.AsUser)
+	runtime, _ := newWikiMoveToDriveRuntime(t, identitypkg.AsUser)
 	cause := errors.New("connection reset")
 	upstream := errs.NewNetworkError(errs.SubtypeNetworkTransport, "poll failed").
 		WithCode(503).
@@ -384,7 +384,7 @@ func TestPollWikiMoveToDrivePreservesTypedPollError(t *testing.T) {
 func TestWrapWikiMoveToDrivePollContextError(t *testing.T) {
 	t.Parallel()
 
-	err := wrapWikiMoveToDrivePollContextError(context.DeadlineExceeded, "task-id", core.AsUser, "secondary")
+	err := wrapWikiMoveToDrivePollContextError(context.DeadlineExceeded, "task-id", identitypkg.AsUser, "secondary")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("wrapped deadline must preserve context.DeadlineExceeded")
 	}

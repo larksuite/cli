@@ -17,9 +17,9 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -231,7 +231,7 @@ func withSingleWikiDeleteNodePoll(t *testing.T) {
 	})
 }
 
-func newWikiNodeDeleteRuntime(t *testing.T, as core.Identity) (*common.RuntimeContext, *bytes.Buffer) {
+func newWikiNodeDeleteRuntime(t *testing.T, as identity.Identity) (*common.RuntimeContext, *bytes.Buffer) {
 	t.Helper()
 
 	cfg := wikiTestConfig()
@@ -244,7 +244,7 @@ func newWikiNodeDeleteRuntime(t *testing.T, as core.Identity) (*common.RuntimeCo
 func TestRunWikiNodeDeleteResolvesSpaceWhenMissing(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, _ := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	client := &fakeWikiNodeDeleteClient{
 		resolveNode: &wikiNodeRecord{SpaceID: "space_resolved"},
 	}
@@ -271,7 +271,7 @@ func TestRunWikiNodeDeleteResolvesSpaceWhenMissing(t *testing.T) {
 func TestRunWikiNodeDeleteSkipsResolveWhenSpaceProvided(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, _ := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	client := &fakeWikiNodeDeleteClient{}
 
 	_, err := runWikiNodeDelete(context.Background(), client, runtime, wikiNodeDeleteSpec{
@@ -291,7 +291,7 @@ func TestRunWikiNodeDeleteSkipsResolveWhenSpaceProvided(t *testing.T) {
 func TestRunWikiNodeDeleteAsyncReadyShape(t *testing.T) {
 	withSingleWikiDeleteNodePoll(t)
 
-	runtime, stderr := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, stderr := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	client := &fakeWikiNodeDeleteClient{
 		deleteTaskID: "task_async_node",
 		taskStatuses: []wikiAsyncTaskStatus{{Status: "success"}},
@@ -314,7 +314,7 @@ func TestRunWikiNodeDeleteAsyncReadyShape(t *testing.T) {
 func TestRunWikiNodeDeleteAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	withSingleWikiDeleteNodePoll(t)
 
-	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, _ := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	client := &fakeWikiNodeDeleteClient{
 		deleteTaskID: "task_async_node",
 		taskStatuses: []wikiAsyncTaskStatus{{Status: "processing"}},
@@ -326,7 +326,7 @@ func TestRunWikiNodeDeleteAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runWikiNodeDelete() error = %v", err)
 	}
-	wantNext := wikiDeleteNodeTaskResultCommand("task_async_node", core.AsUser)
+	wantNext := wikiDeleteNodeTaskResultCommand("task_async_node", identity.AsUser)
 	if out["ready"] != false || out["timed_out"] != true || out["next_command"] != wantNext {
 		t.Fatalf("timeout output = %#v", out)
 	}
@@ -338,7 +338,7 @@ func TestRunWikiNodeDeleteAsyncTimeoutReturnsNextCommand(t *testing.T) {
 func TestRunWikiNodeDeleteAsyncFailureSurfacesReason(t *testing.T) {
 	withSingleWikiDeleteNodePoll(t)
 
-	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, _ := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	client := &fakeWikiNodeDeleteClient{
 		deleteTaskID: "task_async_node",
 		taskStatuses: []wikiAsyncTaskStatus{{Status: "failure", StatusMsg: "permission denied"}},

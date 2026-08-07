@@ -13,7 +13,8 @@ import (
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 // DefaultAccountResolver is implemented by the default account provider.
@@ -69,15 +70,15 @@ func (s extensionTokenSource) ResolveIdentityHint(ctx context.Context, acct *Acc
 	// Extension sources verify user identity via enrichUserInfo, so a resolved
 	// UserOpenId is sufficient here; no keychain-backed token status lookup is needed.
 	if acct.UserOpenId != "" {
-		hint.AutoAs = core.AsUser
+		hint.AutoAs = identity.AsUser
 		return hint, nil
 	}
 	ids := extcred.IdentitySupport(acct.SupportedIdentities)
 	switch {
 	case ids.UserOnly():
-		hint.AutoAs = core.AsUser
+		hint.AutoAs = identity.AsUser
 	case ids.BotOnly():
-		hint.AutoAs = core.AsBot
+		hint.AutoAs = identity.AsBot
 	}
 	return hint, nil
 }
@@ -112,19 +113,19 @@ func (s defaultTokenSource) ResolveIdentityHint(ctx context.Context, acct *Accou
 	}
 	hint.DefaultAs = acct.DefaultAs
 	if acct.UserOpenId == "" {
-		hint.AutoAs = core.AsBot
+		hint.AutoAs = identity.AsBot
 		return hint, nil
 	}
 	stored := getStoredToken(acct.AppID, acct.UserOpenId)
 	if stored == nil {
-		hint.AutoAs = core.AsBot
+		hint.AutoAs = identity.AsBot
 		return hint, nil
 	}
 	if getStoredTokenStatus(stored) == "expired" {
-		hint.AutoAs = core.AsBot
+		hint.AutoAs = identity.AsBot
 		return hint, nil
 	}
-	hint.AutoAs = core.AsUser
+	hint.AutoAs = identity.AsUser
 	return hint, nil
 }
 
@@ -203,7 +204,7 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 		p.selectedSource = defaultTokenSource{resolver: p.defaultToken}
 		return acct, nil
 	}
-	return nil, core.NotConfiguredError()
+	return nil, configpkg.NotConfiguredError()
 }
 
 // enrichUserInfo resolves user identity when extension provides a UAT.
@@ -372,8 +373,8 @@ func convertAccount(ext *extcred.Account) *Account {
 	return &Account{
 		AppID:               ext.AppID,
 		AppSecret:           ext.AppSecret,
-		Brand:               core.LarkBrand(ext.Brand),
-		DefaultAs:           core.Identity(ext.DefaultAs),
+		Brand:               ext.Brand,
+		DefaultAs:           identity.Identity(ext.DefaultAs),
 		ProfileName:         ext.ProfileName,
 		UserOpenId:          ext.OpenID,
 		SupportedIdentities: uint8(ext.SupportedIdentities),

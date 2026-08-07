@@ -4,7 +4,7 @@
 package cmd
 
 import (
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/spf13/pflag"
 )
 
@@ -32,7 +32,7 @@ func RegisterGlobalFlags(fs *pflag.FlagSet, opts *GlobalOptions) {
 // until at least two profiles exist. Intended for the Execute entry point —
 // buildInternal must not call this directly to stay state-free.
 func isSingleAppMode() bool {
-	raw, err := core.LoadMultiAppConfig()
+	raw, err := configpkg.LoadMultiAppConfig()
 	if err != nil || raw == nil {
 		return true
 	}

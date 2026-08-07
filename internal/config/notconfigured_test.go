@@ -1,0 +1,359 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package config
+
+import (
+	"errors"
+	"github.com/larksuite/cli/brand"
+	"github.com/larksuite/cli/internal/secret"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/workspace"
+)
+
+// saveAndRestoreWorkspace ensures package-level currentWorkspace is reset
+// between subtests so cross-test pollution can't make assertions pass by
+// accident.
+func saveAndRestoreWorkspace(t *testing.T) {
+	t.Helper()
+	prev := workspace.CurrentWorkspace()
+	t.Cleanup(func() { workspace.SetCurrentWorkspace(prev) })
+}
+
+func TestNotConfiguredError_Local(t *testing.T) {
+	saveAndRestoreWorkspace(t)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLocal)
+
+	err := NotConfiguredError()
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	if cfgErr.Category != errs.CategoryConfig || cfgErr.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("category/subtype = %q/%q, want config/not_configured", cfgErr.Category, cfgErr.Subtype)
+	}
+	if cfgErr.Message != "not configured" {
+		t.Errorf("message = %q, want %q", cfgErr.Message, "not configured")
+	}
+	if !strings.Contains(cfgErr.Hint, "config init --new") {
+		t.Errorf("local hint should suggest config init --new; got %q", cfgErr.Hint)
+	}
+	if strings.Contains(cfgErr.Hint, "config bind") {
+		t.Errorf("local hint must not mention config bind; got %q", cfgErr.Hint)
+	}
+}
+
+func TestNotConfiguredError_OpenClaw(t *testing.T) {
+	saveAndRestoreWorkspace(t)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceOpenClaw)
+
+	err := NotConfiguredError()
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	// The wire subtype stays not_configured; the workspace name only appears
+	// in the message, never in the typed taxonomy.
+	if cfgErr.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("subtype = %q, want not_configured", cfgErr.Subtype)
+	}
+	if !strings.Contains(cfgErr.Message, "openclaw") {
+		t.Errorf("message must name the openclaw workspace; got %q", cfgErr.Message)
+	}
+	// Hint must point at --help (read first, confirm with user, then bind),
+	// NOT a directly-executable bind command — binding is policy-laden
+	// (identity preset, may overwrite existing binding).
+	if !strings.Contains(cfgErr.Hint, "config bind --help") {
+		t.Errorf("agent hint must point to `config bind --help`; got %q", cfgErr.Hint)
+	}
+	if strings.Contains(cfgErr.Hint, "config init") {
+		t.Errorf("agent hint must NOT mention config init (would cause AI to create a new app); got %q", cfgErr.Hint)
+	}
+}
+
+func TestNotConfiguredError_Hermes(t *testing.T) {
+	saveAndRestoreWorkspace(t)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceHermes)
+
+	err := NotConfiguredError()
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	if cfgErr.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("subtype = %q, want not_configured", cfgErr.Subtype)
+	}
+	if !strings.Contains(cfgErr.Message, "hermes") {
+		t.Errorf("message must name the hermes workspace; got %q", cfgErr.Message)
+	}
+	if !strings.Contains(cfgErr.Hint, "config bind --help") {
+		t.Errorf("hermes hint must point to `config bind --help`; got %q", cfgErr.Hint)
+	}
+}
+
+func TestNoActiveProfileError_Local(t *testing.T) {
+	saveAndRestoreWorkspace(t)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLocal)
+
+	err := NoActiveProfileError()
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	if cfgErr.Message != "no active profile" {
+		t.Errorf("message = %q, want %q", cfgErr.Message, "no active profile")
+	}
+}
+
+func TestNoActiveProfileError_AgentSuggestsBind(t *testing.T) {
+	saveAndRestoreWorkspace(t)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceOpenClaw)
+
+	err := NoActiveProfileError()
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	if !strings.Contains(cfgErr.Hint, "config bind --help") {
+		t.Errorf("agent hint must point to `config bind --help`; got %q", cfgErr.Hint)
+	}
+}
+
+func TestReconfigureHint_Local(t *testing.T) {
+	saveAndRestoreWorkspace(t)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLocal)
+
+	got := reconfigureHint()
+	if !strings.Contains(got, "config init") {
+		t.Errorf("local reconfigure hint must mention config init; got %q", got)
+	}
+}
+
+func TestReconfigureHint_Agent(t *testing.T) {
+	saveAndRestoreWorkspace(t)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceHermes)
+
+	got := reconfigureHint()
+	if !strings.Contains(got, "config bind --help") {
+		t.Errorf("agent reconfigure hint must point to `config bind --help`; got %q", got)
+	}
+}
+
+func TestLoadOrNotConfigured_FileMissing_ReturnsNotConfigured(t *testing.T) {
+	saveAndRestoreWorkspace(t)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLocal)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	_, err := LoadOrNotConfigured()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	if cfgErr.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("subtype = %q, want not_configured", cfgErr.Subtype)
+	}
+	if cfgErr.Message != "not configured" {
+		t.Errorf("message = %q, want \"not configured\"", cfgErr.Message)
+	}
+	if !strings.Contains(cfgErr.Hint, "config init --new") {
+		t.Errorf("missing-file in local must hint `config init --new`; got %q", cfgErr.Hint)
+	}
+}
+
+// TestLoadOrNotConfigured_CorruptFile_PreservesCause is the regression guard
+// for the previous "every load error → not configured" coercion: a malformed
+// config.json must surface its real failure cause so the user can fix it,
+// not get sent in circles by an init/bind hint that wouldn't help here.
+func TestLoadOrNotConfigured_CorruptFile_PreservesCause(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	// Write garbage that will fail JSON parsing.
+	if err := os.WriteFile(dir+"/config.json", []byte("{not valid json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadOrNotConfigured()
+	if err == nil {
+		t.Fatal("expected error for corrupt config")
+	}
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	// A malformed file maps to invalid_config, not not_configured.
+	if cfgErr.Subtype != errs.SubtypeInvalidConfig {
+		t.Errorf("subtype = %q, want invalid_config", cfgErr.Subtype)
+	}
+	if !strings.Contains(cfgErr.Message, "failed to load config") {
+		t.Errorf("corrupt-file message must say 'failed to load config'; got %q", cfgErr.Message)
+	}
+	// And it must NOT pretend the user just hasn't initialised yet.
+	if cfgErr.Message == "not configured" {
+		t.Errorf("corrupt-file must not be coerced to 'not configured'")
+	}
+	if strings.Contains(cfgErr.Hint, "config init") || strings.Contains(cfgErr.Hint, "config bind") {
+		t.Errorf("corrupt-file hint must not redirect to init/bind; got %q", cfgErr.Hint)
+	}
+	// The underlying parse failure stays reachable through the unwrap chain.
+	if cfgErr.Cause == nil {
+		t.Error("Cause must wrap the underlying load error for errors.Is/Unwrap")
+	}
+}
+
+func TestProfileNotFoundError_NamesSelectorAndSource(t *testing.T) {
+	multi := &MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: secret.PlainSecret("s1"), Brand: brand.Feishu},
+			{Name: "session", AppId: "app-session", AppSecret: secret.PlainSecret("s2"), Brand: brand.Feishu},
+		},
+	}
+
+	for _, tc := range []struct {
+		name         string
+		profile      string
+		source       brand.ProfileSource
+		wantMessage  string
+		wantField    string
+		wantHintSubs []string
+	}{
+		{
+			name:        "environment selector",
+			profile:     "ghost",
+			source:      brand.ProfileFromEnvironment,
+			wantMessage: `profile "ghost" not found`,
+			wantField:   "LARKSUITE_CLI_PROFILE",
+			wantHintSubs: []string{
+				`LARKSUITE_CLI_PROFILE selected profile "ghost"`,
+				"unset LARKSUITE_CLI_PROFILE",
+				"default, session",
+			},
+		},
+		{
+			name:        "flag selector",
+			profile:     "ghost",
+			source:      brand.ProfileFromFlag,
+			wantMessage: `profile "ghost" not found`,
+			wantField:   "--profile",
+			wantHintSubs: []string{
+				`--profile selected profile "ghost"`,
+				"default, session",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := multi.RequireAppConfig(tc.profile, tc.source)
+			var cfgErr *errs.ConfigError
+			if !errors.As(err, &cfgErr) {
+				t.Fatalf("expected *errs.ConfigError, got %T %v", err, err)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf(%T) = _, false; want typed problem", err)
+			}
+			if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeNotConfigured {
+				t.Errorf("problem = %s/%s, want config/not_configured", problem.Category, problem.Subtype)
+			}
+			if cfgErr.Message != tc.wantMessage {
+				t.Errorf("message = %q, want %q", cfgErr.Message, tc.wantMessage)
+			}
+			if cfgErr.Field != tc.wantField {
+				t.Errorf("field = %q, want %q", cfgErr.Field, tc.wantField)
+			}
+			for _, sub := range tc.wantHintSubs {
+				if !strings.Contains(cfgErr.Hint, sub) {
+					t.Errorf("hint = %q, missing %q", cfgErr.Hint, sub)
+				}
+			}
+			// The remaining profiles are intact; re-initializing would be
+			// destructive misdirection for both selector sources.
+			if strings.Contains(cfgErr.Hint, "config init") {
+				t.Errorf("hint must not suggest config init; got %q", cfgErr.Hint)
+			}
+		})
+	}
+}
+
+func TestProfileNotFoundError_DanglingCurrentApp(t *testing.T) {
+	multi := &MultiAppConfig{
+		CurrentApp: "renamed-away",
+		Apps: []AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: secret.PlainSecret("s1"), Brand: brand.Feishu},
+		},
+	}
+	_, err := multi.RequireAppConfig("", brand.ProfileFromConfig)
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("expected *errs.ConfigError, got %T %v", err, err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(%T) = _, false; want typed problem", err)
+	}
+	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("problem = %s/%s, want config/not_configured", problem.Category, problem.Subtype)
+	}
+	if cfgErr.Message != `profile "renamed-away" not found` {
+		t.Errorf("message = %q, want the dangling currentApp named", cfgErr.Message)
+	}
+	if cfgErr.Field != "currentApp" {
+		t.Errorf("field = %q, want currentApp", cfgErr.Field)
+	}
+	for _, sub := range []string{"currentApp", "profile use", "default"} {
+		if !strings.Contains(cfgErr.Hint, sub) {
+			t.Errorf("hint = %q, missing %q", cfgErr.Hint, sub)
+		}
+	}
+	if strings.Contains(cfgErr.Hint, "config init") {
+		t.Errorf("hint must not suggest config init; got %q", cfgErr.Hint)
+	}
+}
+
+func TestProfileNotFoundError_EmptyConfigFallsBackToNotConfigured(t *testing.T) {
+	saveAndRestoreWorkspace(t)
+	workspace.SetCurrentWorkspace(workspace.WorkspaceLocal)
+	multi := &MultiAppConfig{}
+	_, err := multi.RequireAppConfig("", brand.ProfileFromConfig)
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("expected *errs.ConfigError, got %T %v", err, err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(%T) = _, false; want typed problem", err)
+	}
+	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("problem = %s/%s, want config/not_configured", problem.Category, problem.Subtype)
+	}
+	if cfgErr.Message != "not configured" {
+		t.Errorf("message = %q, want the NotConfiguredError fallback", cfgErr.Message)
+	}
+	if !strings.Contains(cfgErr.Hint, "config init") {
+		t.Errorf("empty config is the one case where init IS the fix; hint = %q", cfgErr.Hint)
+	}
+}
+
+func TestRequireAppConfig_ResolvesExisting(t *testing.T) {
+	multi := &MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: secret.PlainSecret("s1"), Brand: brand.Feishu},
+			{Name: "session", AppId: "app-session", AppSecret: secret.PlainSecret("s2"), Brand: brand.Feishu},
+		},
+	}
+	app, err := multi.RequireAppConfig("session", brand.ProfileFromEnvironment)
+	if err != nil || app == nil || app.AppId != "app-session" {
+		t.Fatalf("RequireAppConfig() = %v, %v; want app-session", app, err)
+	}
+	app, err = multi.RequireAppConfig("", brand.ProfileFromConfig)
+	if err != nil || app == nil || app.AppId != "app-default" {
+		t.Fatalf("RequireAppConfig() persisted = %v, %v; want app-default", app, err)
+	}
+}

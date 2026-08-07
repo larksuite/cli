@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
 	"github.com/smartystreets/goconvey/convey"
 )
 
@@ -390,11 +390,11 @@ func TestParseCreateProgressRecordParams_BrandAwareSourceURL(t *testing.T) {
 		// This test directly tests the brand-aware default logic by constructing
 		// a minimal ContentBlock JSON and checking the resolved sourceURL.
 		convey.Convey("feishu brand defaults to feishu.cn", func() {
-			url := core.ResolveOpenBaseURL(core.BrandFeishu) + "/app"
+			url := brand.ResolveOpenBaseURL(brand.Feishu) + "/app"
 			convey.So(url, convey.ShouldEqual, "https://open.feishu.cn/app")
 		})
 		convey.Convey("lark brand defaults to larksuite.com", func() {
-			url := core.ResolveOpenBaseURL(core.BrandLark) + "/app"
+			url := brand.ResolveOpenBaseURL(brand.Lark) + "/app"
 			convey.So(url, convey.ShouldEqual, "https://open.larksuite.com/app")
 		})
 	})

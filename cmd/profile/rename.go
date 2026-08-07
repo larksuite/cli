@@ -11,7 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -30,11 +30,11 @@ func NewCmdProfileRename(f *cmdutil.Factory) *cobra.Command {
 }
 
 func profileRenameRun(f *cmdutil.Factory, oldName, newName string) error {
-	if err := core.ValidateProfileName(newName); err != nil {
+	if err := configpkg.ValidateProfileName(newName); err != nil {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithCause(err)
 	}
 
-	multi, err := core.LoadOrNotConfigured()
+	multi, err := configpkg.LoadOrNotConfigured()
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func profileRenameRun(f *cmdutil.Factory, oldName, newName string) error {
 		multi.PreviousApp = newName
 	}
 
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 

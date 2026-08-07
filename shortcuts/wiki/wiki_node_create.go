@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -219,7 +219,7 @@ func readWikiNodeCreateSpec(runtime *common.RuntimeContext) wikiNodeCreateSpec {
 	}
 }
 
-func validateWikiNodeCreateSpec(spec wikiNodeCreateSpec, identity core.Identity) error {
+func validateWikiNodeCreateSpec(spec wikiNodeCreateSpec, identity identitypkg.Identity) error {
 	if err := validateOptionalResourceName(spec.SpaceID, "--space-id"); err != nil {
 		return err
 	}
@@ -305,7 +305,7 @@ func needsMyLibraryLookup(spec wikiNodeCreateSpec) bool {
 	return spec.SpaceID == "" || spec.SpaceID == wikiMyLibrarySpaceID
 }
 
-func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identity core.Identity, spec wikiNodeCreateSpec, errOut io.Writer) (*wikiNodeCreateExecution, error) {
+func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identity identitypkg.Identity, spec wikiNodeCreateSpec, errOut io.Writer) (*wikiNodeCreateExecution, error) {
 	resolvedSpace, err := resolveWikiNodeCreateSpace(ctx, client, identity, spec)
 	if err != nil {
 		return nil, err
@@ -380,7 +380,7 @@ func wrapWikiNodeCreateRetryError(err error) error {
 
 // resolveWikiNodeCreateSpace applies the shortcut's precedence rules:
 // explicit space ID wins, then parent-node inference, then my_library fallback.
-func resolveWikiNodeCreateSpace(ctx context.Context, client wikiNodeCreateClient, identity core.Identity, spec wikiNodeCreateSpec) (wikiResolvedSpace, error) {
+func resolveWikiNodeCreateSpace(ctx context.Context, client wikiNodeCreateClient, identity identitypkg.Identity, spec wikiNodeCreateSpec) (wikiResolvedSpace, error) {
 	if spec.SpaceID != "" {
 		return resolveWikiNodeCreateSpaceFromExplicitSpace(ctx, client, spec)
 	}

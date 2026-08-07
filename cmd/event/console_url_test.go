@@ -12,8 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 func decodeAddons(t *testing.T, encoded string) ManifestAddons {
@@ -55,11 +56,11 @@ func TestEncodeAddons_RoundTrip(t *testing.T) {
 }
 
 func TestConsoleAddonsURL_FormatAndBrandHost(t *testing.T) {
-	url, err := consoleAddonsURL(core.BrandFeishu, "cli_x", ManifestAddons{Callbacks: &AddonsCallbacks{Items: []string{"card.action.trigger"}}})
+	url, err := consoleAddonsURL(brand.Feishu, "cli_x", ManifestAddons{Callbacks: &AddonsCallbacks{Items: []string{"card.action.trigger"}}})
 	if err != nil {
 		t.Fatalf("url: %v", err)
 	}
-	host := core.ResolveEndpoints(core.BrandFeishu).Open
+	host := brand.ResolveEndpoints(brand.Feishu).Open
 	prefix := host + "/page/launcher?clientID=cli_x&addons="
 	if !strings.HasPrefix(url, prefix) {
 		t.Errorf("url = %q, want prefix %q", url, prefix)
@@ -71,22 +72,22 @@ func TestConsoleAddonsURL_FormatAndBrandHost(t *testing.T) {
 }
 
 func TestMissingScopeAddons_ByIdentity(t *testing.T) {
-	bot := missingScopeAddons(core.AsBot, []string{"im:message"})
+	bot := missingScopeAddons(identity.AsBot, []string{"im:message"})
 	if bot.Scopes == nil || len(bot.Scopes.Tenant) != 1 || len(bot.Scopes.User) != 0 {
 		t.Errorf("bot scopes = %+v, want tenant-only", bot.Scopes)
 	}
-	user := missingScopeAddons(core.AsUser, []string{"im:message"})
+	user := missingScopeAddons(identity.AsUser, []string{"im:message"})
 	if user.Scopes == nil || len(user.Scopes.User) != 1 || len(user.Scopes.Tenant) != 0 {
 		t.Errorf("user scopes = %+v, want user-only", user.Scopes)
 	}
 }
 
 func TestMissingSubscriptionAddons_EventVsCallback(t *testing.T) {
-	ev := missingSubscriptionAddons(eventlib.SubTypeEvent, core.AsBot, []string{"im.message.receive_v1"})
+	ev := missingSubscriptionAddons(eventlib.SubTypeEvent, identity.AsBot, []string{"im.message.receive_v1"})
 	if ev.Events == nil || len(ev.Events.Items.Tenant) != 1 {
 		t.Errorf("event addons = %+v, want events.items.tenant", ev.Events)
 	}
-	cb := missingSubscriptionAddons(eventlib.SubTypeCallback, core.AsBot, []string{"card.action.trigger"})
+	cb := missingSubscriptionAddons(eventlib.SubTypeCallback, identity.AsBot, []string{"card.action.trigger"})
 	if cb.Callbacks == nil || len(cb.Callbacks.Items) != 1 || cb.Events != nil {
 		t.Errorf("callback addons = %+v, want callbacks.items only", cb)
 	}
@@ -96,9 +97,9 @@ func TestMissingAddons_EncodeEmptyArraysNotNull(t *testing.T) {
 	// Unused identity sides must encode as [] (not null) so the launcher page's
 	// shape validation treats them as "缺省 -> 空数组" per the addons spec.
 	cases := []ManifestAddons{
-		missingScopeAddons(core.AsBot, []string{"im:message"}),
-		missingScopeAddons(core.AsUser, []string{"im:message"}),
-		missingSubscriptionAddons(eventlib.SubTypeEvent, core.AsBot, []string{"im.message.receive_v1"}),
+		missingScopeAddons(identity.AsBot, []string{"im:message"}),
+		missingScopeAddons(identity.AsUser, []string{"im:message"}),
+		missingSubscriptionAddons(eventlib.SubTypeEvent, identity.AsBot, []string{"im.message.receive_v1"}),
 	}
 	for i, a := range cases {
 		raw, err := json.Marshal(a)

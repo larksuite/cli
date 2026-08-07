@@ -10,8 +10,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/larksuite/cli/envnames"
 	"github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
 )
 
@@ -40,7 +40,7 @@ func unsetEnv(t *testing.T, key string) {
 }
 
 func TestResolveAccount_NotActive(t *testing.T) {
-	unsetEnv(t, envvars.CliAuthProxy)
+	unsetEnv(t, envnames.CliAuthProxy)
 
 	p := &Provider{}
 	acct, err := p.ResolveAccount(context.Background())
@@ -53,12 +53,12 @@ func TestResolveAccount_NotActive(t *testing.T) {
 }
 
 func TestResolveAccount_Active(t *testing.T) {
-	setEnv(t, envvars.CliAuthProxy, "http://127.0.0.1:16384")
-	setEnv(t, envvars.CliProxyKey, "test-key")
-	setEnv(t, envvars.CliAppID, "cli_test123")
-	setEnv(t, envvars.CliBrand, " LARK ")
-	unsetEnv(t, envvars.CliDefaultAs)
-	unsetEnv(t, envvars.CliStrictMode)
+	setEnv(t, envnames.CliAuthProxy, "http://127.0.0.1:16384")
+	setEnv(t, envnames.CliProxyKey, "test-key")
+	setEnv(t, envnames.CliAppID, "cli_test123")
+	setEnv(t, envnames.CliBrand, " LARK ")
+	unsetEnv(t, envnames.CliDefaultAs)
+	unsetEnv(t, envnames.CliStrictMode)
 
 	p := &Provider{}
 	acct, err := p.ResolveAccount(context.Background())
@@ -83,9 +83,9 @@ func TestResolveAccount_Active(t *testing.T) {
 }
 
 func TestResolveAccount_MissingProxyKey(t *testing.T) {
-	setEnv(t, envvars.CliAuthProxy, "http://127.0.0.1:16384")
-	unsetEnv(t, envvars.CliProxyKey)
-	setEnv(t, envvars.CliAppID, "cli_test")
+	setEnv(t, envnames.CliAuthProxy, "http://127.0.0.1:16384")
+	unsetEnv(t, envnames.CliProxyKey)
+	setEnv(t, envnames.CliAppID, "cli_test")
 
 	p := &Provider{}
 	_, err := p.ResolveAccount(context.Background())
@@ -98,9 +98,9 @@ func TestResolveAccount_MissingProxyKey(t *testing.T) {
 }
 
 func TestResolveAccount_MissingAppID(t *testing.T) {
-	setEnv(t, envvars.CliAuthProxy, "http://127.0.0.1:16384")
-	setEnv(t, envvars.CliProxyKey, "test-key")
-	unsetEnv(t, envvars.CliAppID)
+	setEnv(t, envnames.CliAuthProxy, "http://127.0.0.1:16384")
+	setEnv(t, envnames.CliProxyKey, "test-key")
+	unsetEnv(t, envnames.CliAppID)
 
 	p := &Provider{}
 	_, err := p.ResolveAccount(context.Background())
@@ -113,9 +113,9 @@ func TestResolveAccount_MissingAppID(t *testing.T) {
 }
 
 func TestResolveAccount_StrictMode(t *testing.T) {
-	setEnv(t, envvars.CliAuthProxy, "http://127.0.0.1:16384")
-	setEnv(t, envvars.CliProxyKey, "test-key")
-	setEnv(t, envvars.CliAppID, "cli_test")
+	setEnv(t, envnames.CliAuthProxy, "http://127.0.0.1:16384")
+	setEnv(t, envnames.CliProxyKey, "test-key")
+	setEnv(t, envnames.CliAppID, "cli_test")
 
 	tests := []struct {
 		mode string
@@ -131,9 +131,9 @@ func TestResolveAccount_StrictMode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("strict_"+tt.mode, func(t *testing.T) {
 			if tt.mode == "" {
-				unsetEnv(t, envvars.CliStrictMode)
+				unsetEnv(t, envnames.CliStrictMode)
 			} else {
-				setEnv(t, envvars.CliStrictMode, tt.mode)
+				setEnv(t, envnames.CliStrictMode, tt.mode)
 			}
 			acct, err := p.ResolveAccount(context.Background())
 			if err != nil {
@@ -147,7 +147,7 @@ func TestResolveAccount_StrictMode(t *testing.T) {
 }
 
 func TestResolveToken_NotActive(t *testing.T) {
-	unsetEnv(t, envvars.CliAuthProxy)
+	unsetEnv(t, envnames.CliAuthProxy)
 
 	p := &Provider{}
 	tok, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeUAT})
@@ -160,8 +160,8 @@ func TestResolveToken_NotActive(t *testing.T) {
 }
 
 func TestResolveToken_Sentinels(t *testing.T) {
-	setEnv(t, envvars.CliAuthProxy, "http://127.0.0.1:16384")
-	setEnv(t, envvars.CliProxyKey, "test-key")
+	setEnv(t, envnames.CliAuthProxy, "http://127.0.0.1:16384")
+	setEnv(t, envnames.CliProxyKey, "test-key")
 
 	p := &Provider{}
 

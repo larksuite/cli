@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/smartystreets/goconvey/convey"
 )
 
@@ -51,11 +51,11 @@ func Test_BuildVerificationURL(t *testing.T) {
 
 func TestAppRegistrationEndpoint(t *testing.T) {
 	cases := []struct {
-		brand core.LarkBrand
+		brand brandpkg.Brand
 		want  string
 	}{
-		{core.BrandFeishu, "https://accounts.feishu.cn" + PathAppRegistration},
-		{core.BrandLark, "https://accounts.larksuite.com" + PathAppRegistration},
+		{brandpkg.Feishu, "https://accounts.feishu.cn" + PathAppRegistration},
+		{brandpkg.Lark, "https://accounts.larksuite.com" + PathAppRegistration},
 	}
 	for _, c := range cases {
 		if got := appRegistrationEndpoint(c.brand); got != c.want {
@@ -66,11 +66,11 @@ func TestAppRegistrationEndpoint(t *testing.T) {
 
 func TestRequestAppRegistration_UsesFeishuBootstrapAndConfiguredVerificationBrand(t *testing.T) {
 	cases := []struct {
-		brand            core.LarkBrand
+		brand            brandpkg.Brand
 		verificationHost string
 	}{
-		{core.BrandFeishu, "open.feishu.cn"},
-		{core.BrandLark, "open.larksuite.com"},
+		{brandpkg.Feishu, "open.feishu.cn"},
+		{brandpkg.Lark, "open.larksuite.com"},
 	}
 	for _, c := range cases {
 		t.Run(string(c.brand), func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestRegisterAppWithDiscovery_LarkFlowUsesProtocolBootstrap(t *testing.T) {
 		t.Errorf("unexpected host polled: %s", r.URL.Host)
 		return jsonResponse(`{}`), nil
 	})}
-	resp, err := RequestAppRegistration(context.Background(), client, core.BrandLark, io.Discard)
+	resp, err := RequestAppRegistration(context.Background(), client, brandpkg.Lark, io.Discard)
 	if err != nil {
 		t.Fatalf("RequestAppRegistration error = %v", err)
 	}
@@ -127,8 +127,8 @@ func TestRegisterAppWithDiscovery_LarkFlowUsesProtocolBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterAppWithDiscovery error = %v, want nil", err)
 	}
-	if finalBrand != core.BrandLark {
-		t.Errorf("finalBrand = %q, want %q (credentials were issued on the lark domain)", finalBrand, core.BrandLark)
+	if finalBrand != brandpkg.Lark {
+		t.Errorf("finalBrand = %q, want %q (credentials were issued on the lark domain)", finalBrand, brandpkg.Lark)
 	}
 	if result.ClientID != "cli_x" || result.ClientSecret != "test-secret" {
 		t.Errorf("credentials = (%q, %q), want (cli_x, test-secret)", result.ClientID, result.ClientSecret)
@@ -162,8 +162,8 @@ func TestRegisterAppWithDiscovery_BootstrapBrandSinglePoll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterAppWithDiscovery error = %v, want nil", err)
 	}
-	if finalBrand != core.BrandFeishu {
-		t.Errorf("finalBrand = %q, want %q", finalBrand, core.BrandFeishu)
+	if finalBrand != brandpkg.Feishu {
+		t.Errorf("finalBrand = %q, want %q", finalBrand, brandpkg.Feishu)
 	}
 	if polls != 1 {
 		t.Errorf("polls = %d, want 1", polls)
@@ -214,7 +214,7 @@ func TestRegisterAppWithDiscovery_PollsUntilCredentials(t *testing.T) {
 	if polls != 3 {
 		t.Errorf("polls = %d, want 3", polls)
 	}
-	if result.ClientSecret != "test-secret" || finalBrand != core.BrandFeishu {
+	if result.ClientSecret != "test-secret" || finalBrand != brandpkg.Feishu {
 		t.Errorf("result = (%q, %q), want (test-secret, feishu)", result.ClientSecret, finalBrand)
 	}
 }
@@ -240,7 +240,7 @@ func TestRegisterAppWithDiscovery_ImmediateFirstPollAndSwitch(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Errorf("discovery waited an interval somewhere: took %v", elapsed)
 	}
-	if finalBrand != core.BrandLark || result.ClientSecret != "test-secret" {
+	if finalBrand != brandpkg.Lark || result.ClientSecret != "test-secret" {
 		t.Errorf("result = (%q, %q), want (test-secret, lark)", result.ClientSecret, finalBrand)
 	}
 	want := []string{"accounts.feishu.cn", "accounts.larksuite.com"}
@@ -286,7 +286,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err := RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expire_in":60,"interval":3}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","expire_in":60,"interval":3}`), brandpkg.Feishu, io.Discard)
 	if err != nil {
 		t.Fatalf("begin error = %v", err)
 	}
@@ -295,7 +295,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","expires_in":45}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","expires_in":45}`), brandpkg.Feishu, io.Discard)
 	if err != nil {
 		t.Fatalf("legacy begin error = %v", err)
 	}
@@ -304,7 +304,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	resp, err = RequestAppRegistration(context.Background(),
-		serve(`{"device_code":"d","interval":0}`), core.BrandFeishu, io.Discard)
+		serve(`{"device_code":"d","interval":0}`), brandpkg.Feishu, io.Discard)
 	if err != nil {
 		t.Fatalf("defaults begin error = %v", err)
 	}
@@ -313,7 +313,7 @@ func TestRequestAppRegistration_ProtocolFields(t *testing.T) {
 	}
 
 	if _, err := RequestAppRegistration(context.Background(),
-		serve(`{"interval":5}`), core.BrandFeishu, io.Discard); err == nil {
+		serve(`{"interval":5}`), brandpkg.Feishu, io.Discard); err == nil {
 		t.Error("missing device_code: expected error, got nil")
 	}
 }
@@ -335,7 +335,7 @@ func TestRegisterAppWithDiscovery_PendingWithTenantSignalSwitches(t *testing.T) 
 	if err != nil {
 		t.Fatalf("RegisterAppWithDiscovery error = %v, want nil", err)
 	}
-	if finalBrand != core.BrandLark || result.ClientSecret != "test-secret" {
+	if finalBrand != brandpkg.Lark || result.ClientSecret != "test-secret" {
 		t.Errorf("result = (%q, %q), want (test-secret, lark)", result.ClientSecret, finalBrand)
 	}
 	want := []string{"accounts.feishu.cn", "accounts.larksuite.com"}
@@ -394,7 +394,7 @@ func TestRequestAppRegistration_BodyReadCancelKeepsCause(t *testing.T) {
 			Header:     make(http.Header),
 		}, nil
 	})}
-	_, err := RequestAppRegistration(context.Background(), client, core.BrandFeishu, io.Discard)
+	_, err := RequestAppRegistration(context.Background(), client, brandpkg.Feishu, io.Discard)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want a context.Canceled cause", err)
 	}

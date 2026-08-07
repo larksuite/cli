@@ -49,6 +49,7 @@ fmt-check:
 
 script-test:
 	bash scripts/resolve-changed-from.test.sh
+	bash scripts/check-layering-ratchet.test.sh
 	bash scripts/ci-workflow.test.sh
 	bash scripts/release-workflow.test.sh
 	bash scripts/semantic-review-workflow.test.sh

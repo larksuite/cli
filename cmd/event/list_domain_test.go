@@ -5,12 +5,12 @@ package event
 
 import (
 	"encoding/json"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 )
 
 // Filtering only removes rows: the vc selection must be exactly the catalog's
@@ -18,7 +18,7 @@ import (
 func TestListDomain_FilterKeepsExactlyTheRequestedDomain(t *testing.T) {
 	snap := compileCatalog()
 
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 	if err := runList(f, snap, "vc", true); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestListDomain_FilterKeepsExactlyTheRequestedDomain(t *testing.T) {
 
 func TestListDomain_TextFilter(t *testing.T) {
 	snap := compileCatalog()
-	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, stdout, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 	if err := runList(f, snap, "im", false); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestListDomain_TextFilter(t *testing.T) {
 
 func TestListDomain_UnknownDomainIsRejectedWithTheValidSet(t *testing.T) {
 	snap := compileCatalog()
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test"})
 	err := runList(f, snap, "definitely-bogus", true)
 	if err == nil {
 		t.Fatal("an unknown domain must be rejected")

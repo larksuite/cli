@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/brand"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
@@ -25,8 +26,8 @@ import (
 // branch. These tests pin that contract end-to-end through the dispatcher.
 
 func TestAuthCheckRun_NotLoggedIn_ExitOneWithStdoutOnly(t *testing.T) {
-	f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 		// UserOpenId left empty: triggers the not_logged_in branch.
 	})
 
@@ -57,8 +58,8 @@ func TestAuthCheckRun_NotLoggedIn_ExitOneWithStdoutOnly(t *testing.T) {
 }
 
 func TestAuthCheckRun_NoStoredToken_ExitOneWithStdoutOnly(t *testing.T) {
-	f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 		UserOpenId: "ou_user", UserName: "tester",
 	})
 
@@ -94,10 +95,10 @@ func TestAuthCheckRun_ScopedTokenPresent_ExitZero(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-app",
 		AppSecret:  "test-secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_user",
 		UserName:   "tester",
 	}
@@ -152,8 +153,8 @@ func TestAuthCheckRun_EmptyScopeIsValidationError(t *testing.T) {
 	// Scope validation is a real input error, not a predicate negative
 	// answer — it must surface as a typed ValidationError with the normal
 	// stderr envelope, distinct from the silent ErrBare predicate path.
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	})
 
 	err := authCheckRun(&CheckOptions{Factory: f, Scope: "   "})
@@ -171,10 +172,10 @@ func TestAuthCheckRun_ConcealedLoginOmitsSuggestion(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	cfg := &core.CliConfig{
+	cfg := &configpkg.CliConfig{
 		AppID:      "test-app",
 		AppSecret:  "test-secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_user",
 		UserName:   "tester",
 	}

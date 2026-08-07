@@ -13,9 +13,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -164,10 +165,10 @@ func TestNoteTranscriptPassesLocaleThrough(t *testing.T) {
 }
 
 func TestNoteTranscriptDefaultsLocaleFromLarkBrand(t *testing.T) {
-	config := &core.CliConfig{
+	config := &configpkg.CliConfig{
 		AppID:      "test-app-lark-locale",
 		AppSecret:  "test-secret",
-		Brand:      core.BrandLark,
+		Brand:      brand.Lark,
 		UserOpenId: "ou_testuser",
 	}
 	factory, stdout, _, reg := noteShortcutTestFactoryWithConfig(t, config)
@@ -379,16 +380,16 @@ func TestTranscriptContextErrorPreservesCause(t *testing.T) {
 
 func noteShortcutTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
-	config := &core.CliConfig{
+	config := &configpkg.CliConfig{
 		AppID:      "test-app-" + strings.ReplaceAll(strings.ToLower(t.Name()), "/", "-"),
 		AppSecret:  "test-secret",
-		Brand:      core.BrandFeishu,
+		Brand:      brand.Feishu,
 		UserOpenId: "ou_testuser",
 	}
 	return noteShortcutTestFactoryWithConfig(t, config)
 }
 
-func noteShortcutTestFactoryWithConfig(t *testing.T, config *core.CliConfig) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
+func noteShortcutTestFactoryWithConfig(t *testing.T, config *configpkg.CliConfig) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	return cmdutil.TestFactory(t, config)
 }

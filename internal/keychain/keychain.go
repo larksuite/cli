@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/authlog"
 )
 
 var (
@@ -46,7 +47,7 @@ func wrapError(op string, err error) error {
 
 	func() {
 		defer func() { recover() }()
-		LogAuthError("keychain", op, fmt.Errorf("keychain %s error: %w", op, err))
+		authlog.Shared().LogError("keychain", op, fmt.Errorf("keychain %s error: %w", op, err))
 	}()
 
 	return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg).

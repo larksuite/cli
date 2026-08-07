@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 // pollWikiAsyncTask is shared infrastructure for every wiki delete shortcut,
@@ -21,7 +21,7 @@ import (
 func TestPollWikiAsyncTaskSuccessFirstPoll(t *testing.T) {
 	t.Parallel()
 
-	runtime, stderr := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, stderr := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	status, ready, err := pollWikiAsyncTask(
 		context.Background(), runtime, "task_ok", "delete-node", 3, 0,
 		func(context.Context, string) (wikiAsyncTaskStatus, error) {
@@ -43,7 +43,7 @@ func TestPollWikiAsyncTaskSuccessFirstPoll(t *testing.T) {
 func TestPollWikiAsyncTaskFailureIsTerminal(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, _ := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	_, ready, err := pollWikiAsyncTask(
 		context.Background(), runtime, "task_x", "delete-node", 3, 0,
 		func(context.Context, string) (wikiAsyncTaskStatus, error) {
@@ -62,7 +62,7 @@ func TestPollWikiAsyncTaskFailureIsTerminal(t *testing.T) {
 func TestPollWikiAsyncTaskTimeoutWhenAlwaysProcessing(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, _ := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	status, ready, err := pollWikiAsyncTask(
 		context.Background(), runtime, "task_slow", "delete-space", 2, 0,
 		func(context.Context, string) (wikiAsyncTaskStatus, error) {
@@ -87,7 +87,7 @@ func TestPollWikiAsyncTaskTimeoutWhenAlwaysProcessing(t *testing.T) {
 func TestPollWikiAsyncTaskAllPollsFailWrapsWithResumeHint(t *testing.T) {
 	t.Parallel()
 
-	runtime, stderr := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, stderr := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	transportErr := errors.New("transport boom")
 	_, ready, err := pollWikiAsyncTask(
 		context.Background(), runtime, "task_lost", "delete-node", 2, 0,
@@ -131,7 +131,7 @@ func TestParseWikiAsyncTaskStatusRejectsNilTask(t *testing.T) {
 func TestPollWikiAsyncTaskPrependsUpstreamExitHint(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, _ := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	// The upstream poll error is a typed error carrying its own hint, mirroring
 	// what runtime.CallAPITyped produces for a permission failure.
 	upstream := errs.NewPermissionError(errs.SubtypePermissionDenied, "permission denied").
@@ -166,7 +166,7 @@ func TestPollWikiAsyncTaskPrependsUpstreamExitHint(t *testing.T) {
 func TestPollWikiAsyncTaskHonoursContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
+	runtime, _ := newWikiNodeDeleteRuntime(t, identity.AsUser)
 	ctx, cancel := context.WithCancel(context.Background())
 	calls := 0
 	_, ready, err := pollWikiAsyncTask(

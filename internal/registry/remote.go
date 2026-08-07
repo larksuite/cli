@@ -15,12 +15,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/build"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 const (
@@ -53,7 +54,7 @@ type remoteResponse struct {
 }
 
 // configuredBrand is set by InitWithBrand and determines which API host to use.
-var configuredBrand core.LarkBrand
+var configuredBrand brand.Brand
 
 // --- configuration helpers ---
 
@@ -75,7 +76,7 @@ func remoteMetaURL(version string) string {
 	if testMetaURL != "" {
 		return testMetaURL
 	}
-	base := core.ResolveEndpoints(configuredBrand).Open + "/api/tools/open/api_definition"
+	base := brand.ResolveEndpoints(configuredBrand).Open + "/api/tools/open/api_definition"
 	q := "protocol=meta&client_version=" + url.QueryEscape(build.Version)
 	if version != "" {
 		q += "&data_version=" + url.QueryEscape(version)
@@ -95,7 +96,7 @@ func metaTTL() time.Duration {
 // --- cache path helpers ---
 
 func cacheDir() string {
-	return filepath.Join(core.GetConfigDir(), "cache")
+	return filepath.Join(workspace.GetConfigDir(), "cache")
 }
 
 func cachePath() string {

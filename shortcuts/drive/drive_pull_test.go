@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -363,7 +363,7 @@ func TestDrivePullShouldSkipSmartFallsBackWhenMetadataCannotBeTrusted(t *testing
 		t.Fatalf("Chtimes: %v", err)
 	}
 
-	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, core.AsBot)
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, identity.AsBot)
 
 	for _, tt := range []struct {
 		name       string
@@ -399,7 +399,7 @@ func TestDrivePullShouldSkipSmartFallsBackWhenPathCannotBeResolved(t *testing.T)
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
-	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, core.AsBot)
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, identity.AsBot)
 
 	if got := drivePullShouldSkipSmart("../escape.txt", drivePullTarget{ModifiedTime: "100"}, drivePullIfExistsSmart, runtime); got {
 		t.Fatal("drivePullShouldSkipSmart() = true, want false when ResolvePath rejects the target")
@@ -414,7 +414,7 @@ func TestDrivePullShouldSkipSmartFallsBackWhenLocalFileDisappeared(t *testing.T)
 	if err := os.MkdirAll("local", 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
-	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, core.AsBot)
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, identity.AsBot)
 
 	if got := drivePullShouldSkipSmart(filepath.Join("local", "missing.txt"), drivePullTarget{ModifiedTime: "100"}, drivePullIfExistsSmart, runtime); got {
 		t.Fatal("drivePullShouldSkipSmart() = true, want false when os.Stat cannot find the local file")

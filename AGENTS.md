@@ -62,9 +62,20 @@ Both notices recommend the same fix command: `lark-cli update`. The skills notic
 | `internal/credential/` | Credential provider chain (extension → default) |
 | `extension/credential/` | Plugin-facing credential interfaces and env provider |
 | `internal/client/client.go` | APIClient: DoSDKRequest, DoStream |
-| `internal/core/config.go` | Multi-profile config loading/saving |
+| `brand/` | Brand (feishu/lark) and its endpoint hosts — repo root, so `extension/` may import it |
+| `internal/workspace/` | Workspace detection plus the config and runtime directory paths |
+| `internal/identity/` | The `--as` identity (user/bot) and the strict-mode policy |
+| `internal/config/config.go` | Multi-profile config loading/saving |
 | `internal/vfs/` | Filesystem abstraction (use `vfs.*` instead of `os.*`) |
 | `internal/validate/path.go` | Path safety validation |
+
+`internal/core` is gone. Besides the four packages above it also became
+`internal/secret` (app secret storage and resolution) and `internal/risk` (the
+read / write / high-risk-write vocabulary). Import the narrowest one you need:
+`brand`, `internal/workspace`, `internal/identity`, `internal/secret` and
+`internal/risk` do not import each other — only `internal/config` sits on top of
+them — so asking for a config directory no longer drags in keychain, i18n and
+validate.
 
 ## Who Uses This CLI
 

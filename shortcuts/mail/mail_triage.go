@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -1368,7 +1367,7 @@ func doJSONAPI(runtime *common.RuntimeContext, req *larkcore.ApiReq, action stri
 	for attempt := 0; attempt <= triageAPIRetries; attempt++ {
 		apiResp, err := runtime.DoAPI(req)
 		if err != nil {
-			lastErr = mailDecorateProblemMessage(client.WrapDoAPIError(err), "%s", action)
+			lastErr = mailDecorateProblemMessage(common.WrapDoAPIError(err), "%s", action)
 			if attempt == triageAPIRetries {
 				return nil, lastErr
 			}

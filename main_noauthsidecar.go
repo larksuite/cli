@@ -21,7 +21,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/envnames"
 )
 
 func init() {
@@ -35,7 +35,7 @@ func init() {
 // isolation that this binary cannot provide. Factored out from init() so
 // tests can exercise the decision without actually calling os.Exit.
 func checkNoAuthsidecarBuild(getenv func(string) string, stderr io.Writer) int {
-	v := getenv(envvars.CliAuthProxy)
+	v := getenv(envnames.CliAuthProxy)
 	if v == "" {
 		return 0
 	}
@@ -49,6 +49,6 @@ func checkNoAuthsidecarBuild(getenv func(string) string, stderr io.Writer) int {
 			"To fix, either:\n"+
 			"  - rebuild the CLI with: go build -tags authsidecar\n"+
 			"  - or unset %s if sidecar isolation is not required\n",
-		envvars.CliAuthProxy, envvars.CliAuthProxy)
+		envnames.CliAuthProxy, envnames.CliAuthProxy)
 	return 2
 }

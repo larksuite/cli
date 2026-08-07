@@ -16,8 +16,8 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -733,7 +733,7 @@ func TestMeetingListActive_Execute_BotPassesUserID(t *testing.T) {
 func TestMeetingListActive_DryRun_BotValidationErrorEnvelope(t *testing.T) {
 	cmd := &cobra.Command{Use: "+meeting-list-active"}
 	cmd.Flags().String("user-id", "", "")
-	runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), core.AsBot)
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), identity.AsBot)
 
 	dry := VCMeetingListActive.DryRun(context.Background(), runtime)
 	if dry == nil {
@@ -765,7 +765,7 @@ func TestMeetingListActive_DryRun_BotSendsUserID(t *testing.T) {
 func TestMeetingListActive_Execute_ValidationError(t *testing.T) {
 	cmd := &cobra.Command{Use: "+meeting-list-active"}
 	cmd.Flags().String("user-id", "", "")
-	runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), core.AsBot)
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), identity.AsBot)
 
 	err := VCMeetingListActive.Execute(context.Background(), runtime)
 	if err == nil {

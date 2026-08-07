@@ -6,7 +6,7 @@ package common
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/i18n"
 )
 
@@ -24,7 +24,7 @@ func TestRuntimeContext_Lang(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := &RuntimeContext{Config: &core.CliConfig{Lang: tt.stored}}
+			ctx := &RuntimeContext{Config: &configpkg.CliConfig{Lang: tt.stored}}
 			if got := ctx.Lang(); got != tt.want {
 				t.Errorf("Lang() with stored %q = %q, want %q", tt.stored, got, tt.want)
 			}

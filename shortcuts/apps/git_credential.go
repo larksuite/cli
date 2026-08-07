@@ -7,11 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"io"
 	"net/http"
 	"net/url"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -22,12 +21,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/identity"
+	"github.com/larksuite/cli/internal/sparkstore"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/apps/gitcred"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -71,7 +69,7 @@ var AppsGitCredentialInit = common.Shortcut{
 			Set("mode", "api-plus-local-setup").
 			Set("action", "initialize_local_git_credential").
 			Set("app_id", appID).
-			Set("metadata_file", appKeyPath(appID, gitcred.MetadataFilename)).
+			Set("metadata_file", sparkstore.Path(appID, gitcred.MetadataFilename)).
 			Set("local_effects", []string{
 				"save the issued PAT in the local system credential store",
 				"write app-scoped git credential metadata",
@@ -82,7 +80,7 @@ var AppsGitCredentialInit = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
-		manager := newGitCredentialManager(appID, rctx.Factory.Keychain, runtimeIssuer{rctx: rctx})
+		manager := gitcred.NewAppManager(appID, rctx.Factory.Keychain, runtimeIssuer{rctx: rctx})
 		result, err := manager.Init(ctx, profileFromConfig(rctx.Config), appID)
 		if err != nil {
 			return gitCredentialLocalError("Initialize local app Git credential", err)
@@ -156,7 +154,7 @@ var AppsGitCredentialRemove = common.Shortcut{
 			Set("mode", "local-cleanup-only").
 			Set("action", "remove_local_git_credential").
 			Set("app_id", appID).
-			Set("metadata_file", appKeyPath(appID, gitcred.MetadataFilename)).
+			Set("metadata_file", sparkstore.Path(appID, gitcred.MetadataFilename)).
 			Set("effects", []string{
 				"read app-scoped git credential metadata",
 				"remove the saved PAT from the local system credential store",
@@ -166,7 +164,7 @@ var AppsGitCredentialRemove = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
-		manager := newGitCredentialManager(appID, rctx.Factory.Keychain, nil)
+		manager := gitcred.NewAppManager(appID, rctx.Factory.Keychain, nil)
 		result, err := manager.Remove(ctx, profileFromConfig(rctx.Config), appID)
 		if err != nil {
 			return gitCredentialLocalError("Remove local app Git credential", err)
@@ -216,14 +214,14 @@ var AppsGitCredentialList = common.Shortcut{
 			Desc("Preview local Git credential listing (no API call, read-only local state).").
 			Set("mode", "local-read-only").
 			Set("action", "list_local_git_credentials").
-			Set("storage_root", filepath.Join(core.GetConfigDir(), storageRoot)).
+			Set("storage_root", sparkstore.Root()).
 			Set("reads", []string{
 				"scan app-scoped git credential metadata under the CLI config directory",
 				"derive per-app repository URLs and local credential status from local metadata",
 			})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		records, err := listGitCredentialRecords(rctx.Factory.Keychain, time.Now)
+		records, err := gitcred.ListCredentialRecords(rctx.Factory.Keychain, time.Now)
 		if err != nil {
 			return gitCredentialLocalError("List local app Git credentials", err)
 		}
@@ -319,11 +317,11 @@ func (i factoryIssuer) Issue(ctx context.Context, appID string, profile gitcred.
 	if optFn := cmdutil.ShortcutHeaderOpts(ctx); optFn != nil {
 		opts = append(opts, optFn)
 	}
-	resp, err := ac.DoSDKRequest(ctx, req, core.AsUser, opts...)
+	resp, err := ac.DoSDKRequest(ctx, req, identity.AsUser, opts...)
 	data, err := parseIssueCredentialData(resp, err, errclass.ClassifyContext{
 		Brand:    string(cfg.Brand),
 		AppID:    cfg.AppID,
-		Identity: string(core.AsUser),
+		Identity: string(identity.AsUser),
 	})
 	if err != nil {
 		return nil, err
@@ -346,7 +344,7 @@ func runGitCredentialHelper(ctx context.Context, f *cmdutil.Factory, appID, acti
 		fmt.Fprintln(f.IOStreams.ErrOut, "Git credential unavailable: missing app_id; rerun lark-cli apps +git-credential-init --app-id <app_id>")
 		return nil
 	}
-	manager := newGitCredentialManager(appID, f.Keychain, factoryIssuer{f: f})
+	manager := gitcred.NewAppManager(appID, f.Keychain, factoryIssuer{f: f})
 	switch action {
 	case "get":
 		input, err := gitcred.ParseCredentialInput(f.IOStreams.In)
@@ -370,36 +368,6 @@ func runGitCredentialHelper(ctx context.Context, f *cmdutil.Factory, appID, acti
 	}
 }
 
-func newGitCredentialManager(appID string, kc keychain.KeychainAccess, issuer gitcred.Issuer) *gitcred.Manager {
-	storage := gitCredentialAppStorage{}
-	return gitcred.NewManager(gitcred.NewAppStore(appID, storage), gitcred.NewSecretStore(kc), gitcred.GlobalGitConfig{}, issuer)
-}
-
-func listGitCredentialRecords(kc keychain.KeychainAccess, now func() time.Time) ([]gitcred.ListRecord, error) {
-	storage := gitCredentialAppStorage{}
-	appIDs, err := storage.ListAppIDs()
-	if err != nil {
-		return nil, err
-	}
-	records := make([]gitcred.ListRecord, 0, len(appIDs))
-	for _, appID := range appIDs {
-		manager := newGitCredentialManager(appID, kc, nil)
-		manager.Now = now
-		result, err := manager.List()
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, result.Records...)
-	}
-	sort.Slice(records, func(i, j int) bool {
-		if records[i].AppID == records[j].AppID {
-			return records[i].GitHTTPURL < records[j].GitHTTPURL
-		}
-		return records[i].AppID < records[j].AppID
-	})
-	return records, nil
-}
-
 func gitCredentialListPayload(records []gitcred.ListRecord) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(records))
 	for _, record := range records {
@@ -419,7 +387,7 @@ func gitCredentialDisplayStatus(status string) string {
 	return status
 }
 
-func profileFromConfig(cfg *core.CliConfig) gitcred.ProfileContext {
+func profileFromConfig(cfg *configpkg.CliConfig) gitcred.ProfileContext {
 	if cfg == nil {
 		return gitcred.ProfileContext{}
 	}
@@ -500,7 +468,7 @@ func issuedFromData(appID string, data map[string]interface{}) (*gitcred.IssuedC
 // handled locally.
 func parseIssueCredentialData(resp *larkcore.ApiResp, err error, cc errclass.ClassifyContext) (map[string]any, error) {
 	if err != nil {
-		return nil, redactGitCredentialIssueError(client.WrapDoAPIError(err))
+		return nil, redactGitCredentialIssueError(common.WrapDoAPIError(err))
 	}
 	detail := logIDDetail(resp)
 	if resp == nil || len(resp.RawBody) == 0 {

@@ -17,12 +17,12 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 const (
@@ -64,7 +64,7 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 	// ErrHeld = another consume is forking; let dial retry catch its bus.
 	pid, forkErr := forkBus(tr, appID, profileName, domain)
 	if forkErr != nil && !errors.Is(forkErr, lockfile.ErrHeld) {
-		eventsRoot := filepath.Join(core.GetConfigDir(), "events")
+		eventsRoot := filepath.Join(workspace.GetConfigDir(), "events")
 		return nil, errs.NewInternalError(errs.SubtypeUnknown,
 			"failed to start event bus daemon: %s", forkErr).
 			WithCause(forkErr).
@@ -86,7 +86,7 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 		}
 	}
 
-	logPath := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.log")
+	logPath := filepath.Join(workspace.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.log")
 	fmt.Fprintln(errOut, "[event] event bus exited unexpectedly.")
 	fmt.Fprintln(errOut, "[event] please check app credentials (lark-cli config show) and retry.")
 	fmt.Fprintf(errOut, "[event] logs: %s\n", logPath)
@@ -125,7 +125,7 @@ func probeAndDialBus(tr transport.IPC, addr string) (net.Conn, error) {
 
 // forkBus holds bus.fork.lock until the spawned daemon is dial-able, so concurrent callers can't race past the empty-socket gap and fork independent buses.
 func forkBus(tr transport.IPC, appID, profileName, domain string) (int, error) {
-	lockPath := filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.fork.lock")
+	lockPath := filepath.Join(workspace.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.fork.lock")
 	if err := vfs.MkdirAll(filepath.Dir(lockPath), 0700); err != nil {
 		return 0, err
 	}

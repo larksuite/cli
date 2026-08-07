@@ -258,7 +258,7 @@ func configureFlagCompletions(args []string) {
 //     render via the typed envelope writer, which lifts extension fields
 //     (missing_scopes, console_url, challenge_url, ...) to the top level.
 //     Routed by errs.CategoryOf via ExitCodeOf. Auth and config errors are
-//     constructed typed at their origin (internal/auth, internal/core), so the
+//     constructed typed at their origin (internal/auth, internal/config), so the
 //     dispatcher no longer promotes any legacy shape here.
 //  2. PartialFailure / BareError signals: the result envelope is already on
 //     stdout; honor the exit code and write nothing to stderr.

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/apicatalog"
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/meta"
 )
 
@@ -57,7 +57,7 @@ func bestScope(scopes []string, priorities map[string]int) string {
 // permissive" predicate (meta.Method.SupportsToken) both live in meta, so this
 // only composes them — schema completion/render and service commands never
 // re-derive identity semantics.
-func FilterForStrictMode(mode core.StrictMode) apicatalog.MethodFilter {
+func FilterForStrictMode(mode identity.StrictMode) apicatalog.MethodFilter {
 	if !mode.IsActive() {
 		return nil
 	}

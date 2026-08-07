@@ -5,6 +5,8 @@ package cmdutil
 
 import (
 	"context"
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/authlog"
 	"io"
 	"net/http"
 	"net/url"
@@ -16,11 +18,11 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/brand"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/registry"
@@ -28,13 +30,8 @@ import (
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
 	"github.com/larksuite/cli/internal/transport"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
+	"github.com/larksuite/cli/internal/workspace"
 )
-
-func init() {
-	// Stable package wiring: assign once during initialization rather than on
-	// every Build/NewDefault call.
-	keychain.RuntimeDirFunc = core.GetRuntimeDir
-}
 
 // NewDefault creates a production Factory with cached closures.
 // Initialization follows a credential-first order:
@@ -54,9 +51,16 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	// Workspace detection: determines which config subtree to use.
 	// Must run before any config or credential load, since those paths are
 	// workspace-scoped. Default is WorkspaceLocal — existing behavior unchanged.
-	ws := core.DetectWorkspaceFromEnv(os.Getenv)
-	core.SetCurrentWorkspace(ws)
-	workspaceConfig := core.NewConfigSnapshot()
+	ws := workspace.DetectWorkspaceFromEnv(os.Getenv)
+	workspace.SetCurrentWorkspace(ws)
+
+	// Auth diagnostics: install the one logger the whole process shares, now
+	// that the workspace is known. authlog cannot resolve the workspace-aware
+	// directory itself — keychain imports authlog, so authlog importing
+	// workspace-aware config would close a cycle — which leaves this the only
+	// place that can supply it.
+	authlog.SetShared(authlog.New(authlog.Options{RuntimeDir: workspace.GetRuntimeDir}))
+	workspaceConfig := configpkg.NewConfigSnapshot()
 	bootstrapHostSignalSource := sync.OnceValue(func() riskcontrol.Source {
 		return resolveSDKHostSignalSource(workspaceConfig)
 	})
@@ -87,7 +91,7 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	})
 
 	// Phase 3: Runtime config contains resolved account data only.
-	f.Config = sync.OnceValues(func() (*core.CliConfig, error) {
+	f.Config = sync.OnceValues(func() (*configpkg.CliConfig, error) {
 		acct, err := f.Credential.ResolveAccount(context.Background())
 		if err != nil {
 			return nil, err
@@ -229,7 +233,7 @@ func cachedLarkClientFunc(f *Factory, workspaceConfig workspaceConfigSource) fun
 			Transport:     buildSDKTransport(hostSignalSource),
 			CheckRedirect: safeRedirectPolicy,
 		}))
-		ep := core.ResolveEndpoints(acct.Brand)
+		ep := brand.ResolveEndpoints(acct.Brand)
 		opts = append(opts, lark.WithOpenBaseUrl(ep.Open))
 		return lark.NewClient(acct.AppID, credential.RuntimeAppSecret(acct.AppSecret), opts...), nil
 	})
@@ -275,7 +279,7 @@ func buildSDKHTTPTransport(base http.RoundTripper, platform bool) http.RoundTrip
 type credentialDeps struct {
 	Keychain      func() keychain.KeychainAccess
 	Profile       string
-	ProfileSource core.ProfileSource
+	ProfileSource brand.ProfileSource
 	HttpClient    func() (*http.Client, error)
 	ErrOut        io.Writer
 }

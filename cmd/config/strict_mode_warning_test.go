@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 )
 
 // runStrictMode is a small helper that runs `config strict-mode <args...>` and
@@ -16,7 +16,7 @@ import (
 // new user-identity warning land.
 func runStrictMode(t *testing.T, args ...string) string {
 	t.Helper()
-	f, _, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-app", AppSecret: "secret"})
+	f, _, stderr, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "test-app", AppSecret: "secret"})
 	cmd := NewCmdConfigStrictMode(f)
 	cmd.SetArgs(args)
 	if err := cmd.Execute(); err != nil {

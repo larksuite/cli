@@ -11,9 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 type mockExtProvider struct {
@@ -150,7 +151,7 @@ func TestCredentialProvider_TokenFallsToDefault(t *testing.T) {
 func TestCredentialProvider_TokenDoesNotMixSourcesAfterDefaultAccountSelection(t *testing.T) {
 	cp := NewCredentialProvider(
 		[]extcred.Provider{&mockExtProvider{name: "env", token: &extcred.Token{Value: "ext_tok", Source: "env"}}},
-		&mockDefaultAcct{account: &Account{AppID: "default_app", Brand: core.BrandFeishu}},
+		&mockDefaultAcct{account: &Account{AppID: "default_app", Brand: brand.Feishu}},
 		&mockDefaultToken{result: &TokenResult{Token: "default_tok"}},
 		nil,
 	)
@@ -223,11 +224,11 @@ func TestCredentialProvider_ResolveIdentityHint_FromExtensionAccount(t *testing.
 	if err != nil {
 		t.Fatalf("ResolveIdentityHint() error = %v", err)
 	}
-	if hint.DefaultAs != core.AsUser {
-		t.Fatalf("ResolveIdentityHint() defaultAs = %q, want %q", hint.DefaultAs, core.AsUser)
+	if hint.DefaultAs != identity.AsUser {
+		t.Fatalf("ResolveIdentityHint() defaultAs = %q, want %q", hint.DefaultAs, identity.AsUser)
 	}
-	if hint.AutoAs != core.AsUser {
-		t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, core.AsUser)
+	if hint.AutoAs != identity.AsUser {
+		t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, identity.AsUser)
 	}
 }
 
@@ -251,7 +252,7 @@ func TestCredentialProvider_ResolveIdentityHint_DefaultSourceUsesStoredTokenStat
 
 	cp := NewCredentialProvider(
 		nil,
-		&mockDefaultAcct{account: &Account{AppID: "default_app", Brand: core.BrandFeishu, UserOpenId: "ou_default"}},
+		&mockDefaultAcct{account: &Account{AppID: "default_app", Brand: brand.Feishu, UserOpenId: "ou_default"}},
 		&mockDefaultToken{result: &TokenResult{Token: "default_tok"}},
 		nil,
 	)
@@ -260,8 +261,8 @@ func TestCredentialProvider_ResolveIdentityHint_DefaultSourceUsesStoredTokenStat
 	if err != nil {
 		t.Fatalf("ResolveIdentityHint() error = %v", err)
 	}
-	if hint.AutoAs != core.AsUser {
-		t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, core.AsUser)
+	if hint.AutoAs != identity.AsUser {
+		t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, identity.AsUser)
 	}
 }
 
@@ -286,7 +287,7 @@ func TestCredentialProvider_ResolveIdentityHint_CachesResult(t *testing.T) {
 
 	cp := NewCredentialProvider(
 		nil,
-		&mockDefaultAcct{account: &Account{AppID: "default_app", Brand: core.BrandFeishu, UserOpenId: "ou_default"}},
+		&mockDefaultAcct{account: &Account{AppID: "default_app", Brand: brand.Feishu, UserOpenId: "ou_default"}},
 		&mockDefaultToken{result: &TokenResult{Token: "default_tok"}},
 		nil,
 	)
@@ -296,8 +297,8 @@ func TestCredentialProvider_ResolveIdentityHint_CachesResult(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ResolveIdentityHint() error = %v", err)
 		}
-		if hint.AutoAs != core.AsUser {
-			t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, core.AsUser)
+		if hint.AutoAs != identity.AsUser {
+			t.Fatalf("ResolveIdentityHint() autoAs = %q, want %q", hint.AutoAs, identity.AsUser)
 		}
 	}
 
@@ -329,7 +330,7 @@ func TestCredentialProvider_ResolveAccountDoesNotEnrichWithTokenFromDifferentPro
 		[]extcred.Provider{&mockExtProvider{name: "env", token: &extcred.Token{Value: "ext_tok", Source: "env"}}},
 		&mockDefaultAcct{account: &Account{
 			AppID:      "default_app",
-			Brand:      core.BrandFeishu,
+			Brand:      brand.Feishu,
 			UserOpenId: "ou_default",
 			UserName:   "Default User",
 		}},

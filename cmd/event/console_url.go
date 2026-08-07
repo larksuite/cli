@@ -10,8 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 	eventlib "github.com/larksuite/cli/internal/event"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 )
 
 // Landing-page contract for the scan-to-enable deep link, verified against the
@@ -67,23 +68,23 @@ func encodeAddons(a ManifestAddons) (string, error) {
 }
 
 // consoleAddonsURL builds the scan-to-enable deep link carrying incremental scopes/events/callbacks.
-func consoleAddonsURL(brand core.LarkBrand, appID string, a ManifestAddons) (string, error) {
+func consoleAddonsURL(brand brandpkg.Brand, appID string, a ManifestAddons) (string, error) {
 	encoded, err := encodeAddons(a)
 	if err != nil {
 		return "", err
 	}
-	host := core.ResolveEndpoints(brand).Open
+	host := brandpkg.ResolveEndpoints(brand).Open
 	return fmt.Sprintf("%s%s?%s=%s&addons=%s", host, addonsLandingPath, addonsClientIDParam, appID, encoded), nil
 }
 
 // consoleLandingURL is the bare landing page (no addons) — fallback when encoding fails.
-func consoleLandingURL(brand core.LarkBrand, appID string) string {
-	host := core.ResolveEndpoints(brand).Open
+func consoleLandingURL(brand brandpkg.Brand, appID string) string {
+	host := brandpkg.ResolveEndpoints(brand).Open
 	return fmt.Sprintf("%s%s?%s=%s", host, addonsLandingPath, addonsClientIDParam, appID)
 }
 
 // addonsHintURL returns the scan URL, degrading to the bare landing page on encode error.
-func addonsHintURL(brand core.LarkBrand, appID string, a ManifestAddons) string {
+func addonsHintURL(brand brandpkg.Brand, appID string, a ManifestAddons) string {
 	url, err := consoleAddonsURL(brand, appID, a)
 	if err != nil {
 		return consoleLandingURL(brand, appID)
@@ -94,7 +95,7 @@ func addonsHintURL(brand core.LarkBrand, appID string, a ManifestAddons) string 
 // missingScopeAddons routes missing scopes into the identity-appropriate section.
 // The unused side is an empty (non-nil) slice so JSON encodes [] not null —
 // the addons spec treats a missing tenant/user as an empty array.
-func missingScopeAddons(identity core.Identity, missing []string) ManifestAddons {
+func missingScopeAddons(identity identitypkg.Identity, missing []string) ManifestAddons {
 	s := &AddonsScopes{Tenant: []string{}, User: []string{}}
 	if identity.IsBot() {
 		s.Tenant = missing
@@ -106,7 +107,7 @@ func missingScopeAddons(identity core.Identity, missing []string) ManifestAddons
 
 // missingSubscriptionAddons routes missing events/callbacks into the right section.
 // Like missingScopeAddons, unused event sides stay [] (not null) per the addons spec.
-func missingSubscriptionAddons(subType eventlib.SubscriptionType, identity core.Identity, missing []string) ManifestAddons {
+func missingSubscriptionAddons(subType eventlib.SubscriptionType, identity identitypkg.Identity, missing []string) ManifestAddons {
 	if subType == eventlib.SubTypeCallback {
 		return ManifestAddons{Callbacks: &AddonsCallbacks{Items: missing}}
 	}

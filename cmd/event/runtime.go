@@ -9,13 +9,13 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 // consumeRuntime routes event.APIClient calls through the shared client.APIClient with a pinned identity.
 type consumeRuntime struct {
 	client         *client.APIClient
-	accessIdentity core.Identity
+	accessIdentity identity.Identity
 }
 
 func (r *consumeRuntime) CallAPI(ctx context.Context, method, path string, body interface{}) (json.RawMessage, error) {

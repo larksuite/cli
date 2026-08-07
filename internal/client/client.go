@@ -18,10 +18,12 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/util"
@@ -33,20 +35,20 @@ type RawApiRequest struct {
 	URL       string
 	Params    map[string]interface{}
 	Data      interface{}
-	As        core.Identity
+	As        identitypkg.Identity
 	ExtraOpts []larkcore.RequestOptionFunc // additional SDK request options (e.g. security headers)
 }
 
 // APIClient wraps lark.Client for all Lark Open API calls.
 type APIClient struct {
-	Config     *core.CliConfig
+	Config     *configpkg.CliConfig
 	SDK        *lark.Client // All Lark API calls go through SDK
 	HTTP       *http.Client // Only for non-Lark API (OAuth, MCP, etc.)
 	ErrOut     io.Writer    // debug/progress output
 	Credential *credential.CredentialProvider
 }
 
-func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (string, error) {
+func (c *APIClient) resolveAccessToken(ctx context.Context, as identitypkg.Identity) (string, error) {
 	result, err := c.Credential.ResolveToken(ctx, credential.NewTokenSpec(as, c.Config.AppID))
 	if err != nil {
 		var unavailableErr *credential.TokenUnavailableError
@@ -68,14 +70,14 @@ func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (s
 
 // newTokenMissingError builds the typed *errs.AuthenticationError that
 // resolveAccessToken returns when no usable token is available for the
-// requested identity. cause is the underlying credential-chain error (or nil
+// requested identitypkg. cause is the underlying credential-chain error (or nil
 // for the defensive empty-token branch) and is preserved for errors.Is /
 // errors.Unwrap traversal without being serialized on the wire.
-func newTokenMissingError(as core.Identity, cause error) error {
+func newTokenMissingError(as identitypkg.Identity, cause error) error {
 	e := errs.NewAuthenticationError(errs.SubtypeTokenMissing,
 		"no access token available for %s", as).
 		WithCause(cause)
-	if as == core.AsUser {
+	if as == identitypkg.AsUser {
 		return recovery.Attach(e, recovery.UserAuthorization())
 	}
 	return e.WithHint("configure valid app credentials for the bot identity")
@@ -122,7 +124,7 @@ func (c *APIClient) buildApiReq(request RawApiRequest) (*larkcore.ApiReq, []lark
 // contract in errs/ERROR_CONTRACT.md. Errors that arrive already-classified
 // (a typed *errs.* from resolveAccessToken's missing-credential paths or
 // elsewhere) flow through unchanged.
-func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as core.Identity, extraOpts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as identitypkg.Identity, extraOpts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	var opts []larkcore.RequestOptionFunc
 
 	token, err := c.resolveAccessToken(ctx, as)
@@ -158,7 +160,7 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 // any extra headers from opts are applied automatically.
 // HTTP errors (status >= 400) are handled internally: the body is read (up to 4 KB),
 // closed, and returned as a typed *errs.NetworkError — callers only receive successful responses.
-func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.Identity, opts ...Option) (*http.Response, error) {
+func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as identitypkg.Identity, opts ...Option) (*http.Response, error) {
 	cfg := buildConfig(opts)
 
 	// Resolve auth
@@ -269,7 +271,7 @@ func (r *cancelOnCloseBody) Close() error {
 	return err
 }
 
-func buildStreamURL(brand core.LarkBrand, req *larkcore.ApiReq) (string, error) {
+func buildStreamURL(brand brandpkg.Brand, req *larkcore.ApiReq) (string, error) {
 	requestURL := req.ApiPath
 	if !strings.HasPrefix(requestURL, "http://") && !strings.HasPrefix(requestURL, "https://") {
 		var pathSegs []string
@@ -288,7 +290,7 @@ func buildStreamURL(brand core.LarkBrand, req *larkcore.ApiReq) (string, error) 
 			}
 			pathSegs = append(pathSegs, url.PathEscape(pathValue))
 		}
-		endpoints := core.ResolveEndpoints(brand)
+		endpoints := brandpkg.ResolveEndpoints(brand)
 		requestURL = strings.TrimRight(endpoints.Open, "/") + strings.Join(pathSegs, "/")
 	}
 	if query := req.QueryParams.Encode(); query != "" {
@@ -497,7 +499,7 @@ func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onIt
 // the canonical Category/Subtype + identity-aware extension fields (MissingScopes,
 // ConsoleURL, etc.) for known Lark codes; unknown codes still surface as
 // *errs.APIError{Subtype: unknown}.
-func (c *APIClient) CheckResponse(result interface{}, identity core.Identity) error {
+func (c *APIClient) CheckResponse(result interface{}, identity identitypkg.Identity) error {
 	resultMap, ok := result.(map[string]interface{})
 	if !ok || resultMap == nil {
 		return nil

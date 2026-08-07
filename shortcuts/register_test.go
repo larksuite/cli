@@ -16,7 +16,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -25,7 +25,7 @@ import (
 func newRegisterTestFactory(t *testing.T) *cmdutil.Factory {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{})
 	return f
 }
 

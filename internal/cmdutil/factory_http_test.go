@@ -5,23 +5,23 @@ package cmdutil
 
 import (
 	"errors"
+	"github.com/larksuite/cli/errs"
+	exttransport "github.com/larksuite/cli/extension/transport"
+	internaltransport "github.com/larksuite/cli/internal/transport"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	exttransport "github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/core"
-	internaltransport "github.com/larksuite/cli/internal/transport"
+	configpkg "github.com/larksuite/cli/internal/config"
 )
 
 func TestCachedHTTPClientFunc_ReturnsSameInstance(t *testing.T) {
 	isEnabled := false
-	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "test-app"})
+	f, _, _, _ := TestFactory(t, &configpkg.CliConfig{AppID: "test-app"})
 	f.IOStreams.ErrOut = io.Discard
-	fn := cachedHttpClientFunc(f, staticWorkspaceConfig{config: &core.MultiAppConfig{RiskControl: &isEnabled}})
+	fn := cachedHttpClientFunc(f, staticWorkspaceConfig{config: &configpkg.MultiAppConfig{RiskControl: &isEnabled}})
 
 	c1, err := fn()
 	if err != nil {
@@ -42,9 +42,9 @@ func TestCachedHTTPClientFunc_ReturnsSameInstance(t *testing.T) {
 
 func TestCachedHTTPClientFunc_HasTimeout(t *testing.T) {
 	isEnabled := false
-	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "test-app"})
+	f, _, _, _ := TestFactory(t, &configpkg.CliConfig{AppID: "test-app"})
 	f.IOStreams.ErrOut = io.Discard
-	fn := cachedHttpClientFunc(f, staticWorkspaceConfig{config: &core.MultiAppConfig{RiskControl: &isEnabled}})
+	fn := cachedHttpClientFunc(f, staticWorkspaceConfig{config: &configpkg.MultiAppConfig{RiskControl: &isEnabled}})
 	c, _ := fn()
 	if c.Timeout == 0 {
 		t.Error("expected non-zero timeout")
@@ -53,9 +53,9 @@ func TestCachedHTTPClientFunc_HasTimeout(t *testing.T) {
 
 func TestCachedHTTPClientFunc_HasRedirectPolicy(t *testing.T) {
 	isEnabled := false
-	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "test-app"})
+	f, _, _, _ := TestFactory(t, &configpkg.CliConfig{AppID: "test-app"})
 	f.IOStreams.ErrOut = io.Discard
-	fn := cachedHttpClientFunc(f, staticWorkspaceConfig{config: &core.MultiAppConfig{RiskControl: &isEnabled}})
+	fn := cachedHttpClientFunc(f, staticWorkspaceConfig{config: &configpkg.MultiAppConfig{RiskControl: &isEnabled}})
 	c, _ := fn()
 	if c.CheckRedirect == nil {
 		t.Error("expected CheckRedirect to be set (safeRedirectPolicy)")

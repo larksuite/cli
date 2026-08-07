@@ -7,9 +7,9 @@ import (
 	"io"
 	"testing"
 
+	"github.com/larksuite/cli/envnames"
 	_ "github.com/larksuite/cli/extension/credential/env" // registers the env-backed account provider
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
+	configpkg "github.com/larksuite/cli/internal/config"
 )
 
 // installProxyWarnSpy replaces warnIfProxied with a counter for one test and
@@ -42,10 +42,10 @@ func TestCachedHTTPClientFunc_ProxyWarnGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := installProxyWarnSpy(t)
 
-			f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "test-app"})
+			f, _, _, _ := TestFactory(t, &configpkg.CliConfig{AppID: "test-app"})
 			f.IOStreams.ErrOut = io.Discard
 			f.IOStreams.StderrIsTerminal = tc.terminal
-			fn := cachedHttpClientFunc(f, staticWorkspaceConfig{config: &core.MultiAppConfig{RiskControl: &isEnabled}})
+			fn := cachedHttpClientFunc(f, staticWorkspaceConfig{config: &configpkg.MultiAppConfig{RiskControl: &isEnabled}})
 			if _, err := fn(); err != nil {
 				t.Fatalf("http client init: %v", err)
 			}
@@ -64,11 +64,11 @@ func TestCachedHTTPClientFunc_ProxyWarnGate(t *testing.T) {
 func TestCachedLarkClientFunc_ProxyWarnGate(t *testing.T) {
 	for _, tc := range proxyWarnGateCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv(envvars.CliAppID, "env-app")
-			t.Setenv(envvars.CliAppSecret, "env-secret")
-			t.Setenv(envvars.CliDefaultAs, "")
-			t.Setenv(envvars.CliUserAccessToken, "")
-			t.Setenv(envvars.CliTenantAccessToken, "")
+			t.Setenv(envnames.CliAppID, "env-app")
+			t.Setenv(envnames.CliAppSecret, "env-secret")
+			t.Setenv(envnames.CliDefaultAs, "")
+			t.Setenv(envnames.CliUserAccessToken, "")
+			t.Setenv(envnames.CliTenantAccessToken, "")
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 			calls := installProxyWarnSpy(t)

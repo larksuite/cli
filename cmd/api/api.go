@@ -13,7 +13,8 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -33,7 +34,7 @@ type APIOptions struct {
 	// Flags
 	Params    string
 	Data      string
-	As        core.Identity
+	As        identity.Identity
 	Output    string
 	PageAll   bool
 	PageSize  int
@@ -87,7 +88,7 @@ Examples:
 			opts.Path = args[1]
 			opts.Cmd = cmd
 			opts.Ctx = cmd.Context()
-			opts.As = core.Identity(asStr)
+			opts.As = identity.Identity(asStr)
 			if runF != nil {
 				return runF(opts)
 			}
@@ -304,7 +305,7 @@ func apiRun(opts *APIOptions) error {
 	return nil
 }
 
-func apiDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *APIOptions) error {
+func apiDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *configpkg.CliConfig, opts *APIOptions) error {
 	return cmdutil.PrintDryRun(request, config, dryRunOutputOptions(f, opts))
 }
 

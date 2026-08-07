@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 )
 
 // DeviceAuthResponse is the response from the device authorization endpoint.
@@ -52,8 +52,8 @@ type OAuthEndpoints struct {
 }
 
 // ResolveOAuthEndpoints resolves OAuth endpoint URLs based on brand.
-func ResolveOAuthEndpoints(brand core.LarkBrand) OAuthEndpoints {
-	ep := core.ResolveEndpoints(brand)
+func ResolveOAuthEndpoints(brand brandpkg.Brand) OAuthEndpoints {
+	ep := brandpkg.ResolveEndpoints(brand)
 	return OAuthEndpoints{
 		DeviceAuthorization: ep.Accounts + PathDeviceAuthorization,
 		Revoke:              ep.Accounts + PathOAuthRevoke,
@@ -62,7 +62,11 @@ func ResolveOAuthEndpoints(brand core.LarkBrand) OAuthEndpoints {
 }
 
 // RequestDeviceAuthorization requests a device authorization code.
-func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, scope string, errOut io.Writer) (*DeviceAuthResponse, error) {
+func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string, brand brandpkg.Brand, scope string, errOut io.Writer) (*DeviceAuthResponse, error) {
+	return requestDeviceAuthorization(httpClient, appId, appSecret, brand, scope, errOut, newAuthLogger())
+}
+
+func requestDeviceAuthorization(httpClient *http.Client, appId, appSecret string, brand brandpkg.Brand, scope string, errOut io.Writer, logger authLogger) (*DeviceAuthResponse, error) {
 	if errOut == nil {
 		errOut = io.Discard
 	}
@@ -95,7 +99,7 @@ func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string
 		return nil, err
 	}
 	defer resp.Body.Close()
-	logHTTPResponse(resp)
+	logHTTPResponse(logger, resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -139,7 +143,7 @@ func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string
 }
 
 // PollDeviceToken polls the token endpoint until authorization completes or times out.
-func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *DeviceFlowResult {
+func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand brandpkg.Brand, deviceCode string, interval, expiresIn int, errOut io.Writer) *DeviceFlowResult {
 	if errOut == nil {
 		errOut = io.Discard
 	}
@@ -155,6 +159,7 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
 	currentInterval := interval
 	attempts := 0
+	authLogger := newAuthLogger()
 
 	for time.Now().Before(deadline) && attempts < maxPollAttempts {
 		attempts++
@@ -186,7 +191,7 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 			currentInterval = minInt(currentInterval+1, maxPollInterval)
 			continue
 		}
-		logHTTPResponse(resp)
+		logHTTPResponse(authLogger, resp)
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()

@@ -7,13 +7,16 @@ import (
 	"context"
 	"testing"
 
+	"github.com/larksuite/cli/brand"
+	"github.com/larksuite/cli/envnames"
 	extcred "github.com/larksuite/cli/extension/credential"
 	envprovider "github.com/larksuite/cli/extension/credential/env"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/i18n"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/secret"
 )
 
 type noopKC struct{}
@@ -23,9 +26,9 @@ func (n *noopKC) Set(service, account, value string) error    { return nil }
 func (n *noopKC) Remove(service, account string) error        { return nil }
 
 func TestFullChain_EnvWins(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "env_app")
-	t.Setenv(envvars.CliAppSecret, "env_secret")
-	t.Setenv(envvars.CliUserAccessToken, "env_uat")
+	t.Setenv(envnames.CliAppID, "env_app")
+	t.Setenv(envnames.CliAppSecret, "env_secret")
+	t.Setenv(envnames.CliUserAccessToken, "env_uat")
 
 	ep := &envprovider.Provider{}
 	cp := credential.NewCredentialProvider(
@@ -82,26 +85,26 @@ func (m *mockDefaultTokenProvider) ResolveToken(ctx context.Context, req credent
 }
 
 func TestFullChain_ConfigStrictMode(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "")
-	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envnames.CliAppID, "")
+	t.Setenv(envnames.CliAppSecret, "")
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
 
-	botMode := core.StrictModeBot
-	multi := &core.MultiAppConfig{
-		Apps: []core.AppConfig{{
+	botMode := identity.StrictModeBot
+	multi := &configpkg.MultiAppConfig{
+		Apps: []configpkg.AppConfig{{
 			AppId:      "cfg_app",
-			AppSecret:  core.PlainSecret("cfg_secret"),
-			Brand:      core.BrandLark,
+			AppSecret:  secret.PlainSecret("cfg_secret"),
+			Brand:      brand.Lark,
 			StrictMode: &botMode,
 		}},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatal(err)
 	}
 
 	ep := &envprovider.Provider{}
-	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "", core.ProfileFromConfig)
+	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "", brand.ProfileFromConfig)
 
 	cp := credential.NewCredentialProvider(
 		[]extcred.Provider{ep},
@@ -125,23 +128,23 @@ func TestFullChain_ConfigStrictMode(t *testing.T) {
 // consumers (mail signature, etc.) silently fall back to defaults — defeating
 // the whole point of persisting --lang.
 func TestFullChain_LangSurvivesProductionPath(t *testing.T) {
-	t.Setenv(envvars.CliAppID, "")
-	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envnames.CliAppID, "")
+	t.Setenv(envnames.CliAppSecret, "")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	multi := &core.MultiAppConfig{
-		Apps: []core.AppConfig{{
+	multi := &configpkg.MultiAppConfig{
+		Apps: []configpkg.AppConfig{{
 			AppId:     "cfg_app",
-			AppSecret: core.PlainSecret("cfg_secret"),
-			Brand:     core.BrandFeishu,
+			AppSecret: secret.PlainSecret("cfg_secret"),
+			Brand:     brand.Feishu,
 			Lang:      i18n.LangJaJP,
 		}},
 	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
+	if err := configpkg.SaveMultiAppConfig(multi); err != nil {
 		t.Fatalf("SaveMultiAppConfig: %v", err)
 	}
 
-	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "", core.ProfileFromConfig)
+	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "", brand.ProfileFromConfig)
 	acct, err := defaultAcct.ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatalf("ResolveAccount: %v", err)

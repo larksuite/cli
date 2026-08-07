@@ -15,10 +15,10 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -74,7 +74,7 @@ func withSingleWikiDeleteSpacePoll(t *testing.T) {
 	})
 }
 
-func newWikiDeleteSpaceRuntimeWithScopes(t *testing.T, as core.Identity, scopes string) (*common.RuntimeContext, *bytes.Buffer) {
+func newWikiDeleteSpaceRuntimeWithScopes(t *testing.T, as identity.Identity, scopes string) (*common.RuntimeContext, *bytes.Buffer) {
 	t.Helper()
 
 	cfg := wikiTestConfig()
@@ -164,7 +164,7 @@ func TestWikiDeleteSpaceDryRunIncludesTaskPoll(t *testing.T) {
 func TestRunWikiDeleteSpaceSync(t *testing.T) {
 	t.Parallel()
 
-	runtime, _ := newWikiDeleteSpaceRuntimeWithScopes(t, core.AsUser, "")
+	runtime, _ := newWikiDeleteSpaceRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiDeleteSpaceClient{
 		deleteResp: &wikiDeleteSpaceResponse{},
 	}
@@ -192,7 +192,7 @@ func TestRunWikiDeleteSpaceSync(t *testing.T) {
 func TestRunWikiDeleteSpaceAsyncReady(t *testing.T) {
 	withSingleWikiDeleteSpacePoll(t)
 
-	runtime, stderr := newWikiDeleteSpaceRuntimeWithScopes(t, core.AsUser, "")
+	runtime, stderr := newWikiDeleteSpaceRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiDeleteSpaceClient{
 		deleteResp: &wikiDeleteSpaceResponse{TaskID: "task_123"},
 		taskStatuses: []wikiDeleteSpaceTaskStatus{{
@@ -215,7 +215,7 @@ func TestRunWikiDeleteSpaceAsyncReady(t *testing.T) {
 func TestRunWikiDeleteSpaceAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	withSingleWikiDeleteSpacePoll(t)
 
-	runtime, stderr := newWikiDeleteSpaceRuntimeWithScopes(t, core.AsUser, "")
+	runtime, stderr := newWikiDeleteSpaceRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiDeleteSpaceClient{
 		deleteResp: &wikiDeleteSpaceResponse{TaskID: "task_123"},
 		taskStatuses: []wikiDeleteSpaceTaskStatus{{
@@ -227,7 +227,7 @@ func TestRunWikiDeleteSpaceAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runWikiDeleteSpace() error = %v", err)
 	}
-	wantNext := wikiDeleteSpaceTaskResultCommand("task_123", core.AsUser)
+	wantNext := wikiDeleteSpaceTaskResultCommand("task_123", identity.AsUser)
 	if out["ready"] != false || out["timed_out"] != true || out["next_command"] != wantNext {
 		t.Fatalf("expected timeout response, got %#v", out)
 	}
@@ -245,7 +245,7 @@ func TestRunWikiDeleteSpaceAsyncTimeoutReturnsNextCommand(t *testing.T) {
 func TestRunWikiDeleteSpaceAsyncFailure(t *testing.T) {
 	withSingleWikiDeleteSpacePoll(t)
 
-	runtime, _ := newWikiDeleteSpaceRuntimeWithScopes(t, core.AsUser, "")
+	runtime, _ := newWikiDeleteSpaceRuntimeWithScopes(t, identity.AsUser, "")
 	client := &fakeWikiDeleteSpaceClient{
 		deleteResp: &wikiDeleteSpaceResponse{TaskID: "task_123"},
 		taskStatuses: []wikiDeleteSpaceTaskStatus{{
@@ -265,7 +265,7 @@ func TestRunWikiDeleteSpaceAsyncFailure(t *testing.T) {
 func TestPollWikiDeleteSpaceTaskWrapsPollFailuresWithHint(t *testing.T) {
 	withSingleWikiDeleteSpacePoll(t)
 
-	runtime, stderr := newWikiDeleteSpaceRuntimeWithScopes(t, core.AsUser, "")
+	runtime, stderr := newWikiDeleteSpaceRuntimeWithScopes(t, identity.AsUser, "")
 	// Seed a typed error that carries an upstream Lark code and hint so the test
 	// pins that structured fields survive a fully failed poll (not just the
 	// hint): the poll-exhaustion path must propagate the typed error in place.
@@ -294,7 +294,7 @@ func TestPollWikiDeleteSpaceTaskWrapsPollFailuresWithHint(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
 	}
-	if !strings.Contains(p.Hint, "retry original") || !strings.Contains(p.Hint, wikiDeleteSpaceTaskResultCommand("task_123", core.AsUser)) {
+	if !strings.Contains(p.Hint, "retry original") || !strings.Contains(p.Hint, wikiDeleteSpaceTaskResultCommand("task_123", identity.AsUser)) {
 		t.Fatalf("hint = %q, want original hint and resume command", p.Hint)
 	}
 	if p.Code != 131006 {

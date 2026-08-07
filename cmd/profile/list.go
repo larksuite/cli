@@ -10,10 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -23,14 +24,14 @@ import (
 // marks the profile this very invocation resolved to — a --profile flag or
 // LARKSUITE_CLI_PROFILE overrides the default without touching it.
 type profileListItem struct {
-	Name            string         `json:"name"`
-	AppID           string         `json:"appId"`
-	Brand           core.LarkBrand `json:"brand"`
-	Active          bool           `json:"active"`
-	Effective       bool           `json:"effective,omitempty"`
-	EffectiveSource string         `json:"effectiveSource,omitempty"` // config | flag | environment
-	User            string         `json:"user,omitempty"`
-	TokenStatus     string         `json:"tokenStatus,omitempty"`
+	Name            string      `json:"name"`
+	AppID           string      `json:"appId"`
+	Brand           brand.Brand `json:"brand"`
+	Active          bool        `json:"active"`
+	Effective       bool        `json:"effective,omitempty"`
+	EffectiveSource string      `json:"effectiveSource,omitempty"` // config | flag | environment
+	User            string      `json:"user,omitempty"`
+	TokenStatus     string      `json:"tokenStatus,omitempty"`
 }
 
 // NewCmdProfileList creates the profile list subcommand.
@@ -47,7 +48,7 @@ func NewCmdProfileList(f *cmdutil.Factory) *cobra.Command {
 }
 
 func profileListRun(f *cmdutil.Factory) error {
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			output.PrintJson(f.IOStreams.Out, []profileListItem{})

@@ -21,23 +21,25 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-func markdownTestConfig() *core.CliConfig {
-	return &core.CliConfig{
-		AppID: "markdown-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+func markdownTestConfig() *configpkg.CliConfig {
+	return &configpkg.CliConfig{
+		AppID: "markdown-test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 }
 
-func markdownPermissionTestConfig(userOpenID string) *core.CliConfig {
-	return &core.CliConfig{
-		AppID: "markdown-perm-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+func markdownPermissionTestConfig(userOpenID string) *configpkg.CliConfig {
+	return &configpkg.CliConfig{
+		AppID: "markdown-perm-test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 		UserOpenId: userOpenID,
 	}
 }
@@ -1335,7 +1337,7 @@ func TestUploadMarkdownMultipartPartsRejectsOversizedBlockSize(t *testing.T) {
 
 func TestWithMarkdownUploadRetryDataDoesNotRetryNonRetryable(t *testing.T) {
 	f, _, stderr, _ := cmdutil.TestFactory(t, markdownTestConfig())
-	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser)
+	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, identity.AsUser)
 
 	attempts := 0
 	expected := errs.NewAPIError(errs.SubtypePermissionDenied, "permission denied").WithCode(1061004)
@@ -1356,7 +1358,7 @@ func TestWithMarkdownUploadRetryDataDoesNotRetryNonRetryable(t *testing.T) {
 
 func TestWithMarkdownUploadRetryVoidExhaustedAppendsHint(t *testing.T) {
 	f, _, stderr, _ := cmdutil.TestFactory(t, markdownTestConfig())
-	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser)
+	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, identity.AsUser)
 
 	orig := markdownUploadRetryBackoffs
 	markdownUploadRetryBackoffs = []time.Duration{0, 0}
@@ -1470,7 +1472,7 @@ func TestUploadMarkdownFileAllMissingFileTokenGetsActionPrefix(t *testing.T) {
 	})
 
 	_, err := uploadMarkdownFileAll(
-		common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+		common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, identity.AsUser),
 		markdownUploadSpec{ContentSet: true},
 		"README.md",
 		int64(len("# hello\n")),
@@ -1506,7 +1508,7 @@ func TestUploadMarkdownFileMultipartOpenFailureNamesFileParam(t *testing.T) {
 	})
 
 	_, err := uploadMarkdownFileMultipart(
-		common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+		common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, identity.AsUser),
 		markdownUploadSpec{FileSet: true, FilePath: "missing.md"},
 		"missing.md",
 		int64(1),
@@ -1536,7 +1538,7 @@ func TestUploadMarkdownFileMultipartPrepareAndFinishParseErrorsGetActionPrefix(t
 		})
 
 		_, err := uploadMarkdownFileMultipart(
-			common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+			common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, identity.AsUser),
 			markdownUploadSpec{ContentSet: true},
 			"README.md",
 			int64(len("# hello\n")),
@@ -1587,7 +1589,7 @@ func TestUploadMarkdownFileMultipartPrepareAndFinishParseErrorsGetActionPrefix(t
 		})
 
 		_, err := uploadMarkdownFileMultipart(
-			common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+			common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, identity.AsUser),
 			markdownUploadSpec{ContentSet: true},
 			"README.md",
 			int64(len("# hello\n")),

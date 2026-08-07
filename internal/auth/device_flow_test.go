@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
+	"github.com/larksuite/cli/internal/authlog"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/keychain"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -25,9 +25,17 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
 
+func testAuthLogger(buf *bytes.Buffer, now func() time.Time, args func() []string) *authlog.Logger {
+	return authlog.New(authlog.Options{
+		Logger: log.New(buf, "", 0),
+		Now:    now,
+		Args:   args,
+	})
+}
+
 // TestResolveOAuthEndpoints_Feishu validates endpoints for the Feishu brand.
 func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
-	ep := ResolveOAuthEndpoints(core.BrandFeishu)
+	ep := ResolveOAuthEndpoints(brand.Feishu)
 	if ep.DeviceAuthorization != "https://accounts.feishu.cn/oauth/v1/device_authorization" {
 		t.Errorf("DeviceAuthorization = %q", ep.DeviceAuthorization)
 	}
@@ -41,7 +49,7 @@ func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
 
 // TestResolveOAuthEndpoints_Lark validates endpoints for the Lark brand.
 func TestResolveOAuthEndpoints_Lark(t *testing.T) {
-	ep := ResolveOAuthEndpoints(core.BrandLark)
+	ep := ResolveOAuthEndpoints(brand.Lark)
 	if ep.DeviceAuthorization != "https://accounts.larksuite.com/oauth/v1/device_authorization" {
 		t.Errorf("DeviceAuthorization = %q", ep.DeviceAuthorization)
 	}
@@ -76,14 +84,13 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
+	authLogger := testAuthLogger(&buf, func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 	}, func() []string {
 		return []string{"lark-cli", "auth", "login", "--device-code", "device-code-secret", "--app-secret=top-secret"}
 	})
-	t.Cleanup(restore)
 
-	_, err := RequestDeviceAuthorization(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "", nil)
+	_, err := requestDeviceAuthorization(httpmock.NewClient(reg), "cli_a", "secret_b", brand.Feishu, "", nil, authLogger)
 	if err != nil {
 		t.Fatalf("RequestDeviceAuthorization() error: %v", err)
 	}
@@ -108,7 +115,7 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 
 // TestFormatAuthCmdline_TruncatesExtraArgs verifies that long command lines are truncated.
 func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
-	got := keychain.FormatAuthCmdline([]string{
+	got := authlog.FormatAuthCmdline([]string{
 		"lark-cli",
 		"auth",
 		"login",
@@ -126,11 +133,10 @@ func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
 // TestLogAuthResponse_IgnoresTypedNilHTTPResponse tests that a typed nil HTTP response is ignored gracefully.
 func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 	var buf bytes.Buffer
-	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), nil, nil)
-	t.Cleanup(restore)
+	authLogger := testAuthLogger(&buf, nil, nil)
 
 	var resp *http.Response
-	logHTTPResponse(resp)
+	logHTTPResponse(authLogger, resp)
 
 	if got := buf.String(); got != "" {
 		t.Fatalf("expected no log output, got %q", got)
@@ -140,14 +146,13 @@ func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 // TestLogAuthResponse_HandlesNilSDKResponse verifies that a nil SDK response is handled without panicking.
 func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 	var buf bytes.Buffer
-	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
+	authLogger := testAuthLogger(&buf, func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 	}, func() []string {
 		return []string{"lark-cli", "auth", "status", "--verify"}
 	})
-	t.Cleanup(restore)
 
-	logSDKResponse(PathUserInfoV1, nil)
+	logSDKResponse(authLogger, PathUserInfoV1, nil)
 
 	got := buf.String()
 	if !strings.Contains(got, "path="+PathUserInfoV1) {
@@ -160,14 +165,13 @@ func TestLogAuthResponse_HandlesNilSDKResponse(t *testing.T) {
 
 func TestLogAuthError_RecordsStructuredEntry(t *testing.T) {
 	var buf bytes.Buffer
-	restore := keychain.SetAuthLogHooksForTest(log.New(&buf, "", 0), func() time.Time {
+	authLogger := testAuthLogger(&buf, func() time.Time {
 		return time.Date(2026, 4, 2, 3, 4, 5, 0, time.UTC)
 	}, func() []string {
 		return []string{"lark-cli", "auth", "login", "--device-code", "secret"}
 	})
-	t.Cleanup(restore)
 
-	keychain.LogAuthError("keychain", "Set", fmt.Errorf("keychain Set error: %w", http.ErrUseLastResponse))
+	authLogger.LogError("keychain", "Set", fmt.Errorf("keychain Set error: %w", http.ErrUseLastResponse))
 
 	got := buf.String()
 	if !strings.Contains(got, "auth-error") {
@@ -205,7 +209,7 @@ func TestPollDeviceToken_DefaultsZeroIntervalToFiveSeconds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	t.Cleanup(cancel)
 
-	result := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 0, 10, nil)
+	result := PollDeviceToken(ctx, client, "cli_a", "secret_b", brand.Feishu, "device-code", 0, 10, nil)
 	if result == nil {
 		t.Fatal("PollDeviceToken() returned nil result")
 	}

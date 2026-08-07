@@ -8,8 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -26,7 +28,7 @@ import (
 type whoamiResult struct {
 	Profile        string         `json:"profile"`
 	AppID          string         `json:"appId"`
-	Brand          core.LarkBrand `json:"brand"`
+	Brand          brand.Brand    `json:"brand"`
 	DefaultAs      string         `json:"defaultAs"`
 	Identity       string         `json:"identity"`
 	IdentitySource string         `json:"identitySource"`
@@ -91,7 +93,7 @@ func whoamiRun(cmd *cobra.Command, opts *Options, projector *recovery.Projector)
 		return err
 	}
 	ctx := cmd.Context()
-	flagAs := core.Identity(opts.As)
+	flagAs := identity.Identity(opts.As)
 	as := f.ResolveAs(ctx, cmd, flagAs)
 	// Validate as a real API call does (strict mode, then identity) so whoami
 	// can't preview an identity the next call would refuse.
@@ -121,8 +123,8 @@ func whoamiRun(cmd *cobra.Command, opts *Options, projector *recovery.Projector)
 // auto-detected result means auto-detect; otherwise a strict-mode forced
 // identity means strict-mode; otherwise it came from configured default-as.
 // Values are snake_case to match the other enum fields (e.g. tokenStatus).
-func resolveSource(changedAs bool, flagAs core.Identity, autoDetected bool, strictForced core.Identity) string {
-	if changedAs && (flagAs == core.AsUser || flagAs == core.AsBot) {
+func resolveSource(changedAs bool, flagAs identity.Identity, autoDetected bool, strictForced identity.Identity) string {
+	if changedAs && (flagAs == identity.AsUser || flagAs == identity.AsBot) {
 		return "flag"
 	}
 	if autoDetected {
@@ -136,10 +138,10 @@ func resolveSource(changedAs bool, flagAs core.Identity, autoDetected bool, stri
 
 // buildResult maps the resolved identity and local diagnostics into the output.
 // ResolveAs only ever returns user or bot, so the default branch handles user.
-func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag identitydiag.Result) *whoamiResult {
+func buildResult(cfg *configpkg.CliConfig, as identity.Identity, source string, diag identitydiag.Result) *whoamiResult {
 	defaultAs := cfg.DefaultAs
 	if defaultAs == "" {
-		defaultAs = core.AsAuto
+		defaultAs = identity.AsAuto
 	}
 	res := &whoamiResult{
 		Profile:        cfg.ProfileName,
@@ -152,7 +154,7 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 	// Use the diagnosed hint as-is: it is tailored to the credential source, so
 	// it never says "auth login" when that is blocked under an external provider.
 	switch as {
-	case core.AsBot:
+	case identity.AsBot:
 		res.Available = diag.Bot.Available
 		res.TokenStatus = diag.Bot.Status
 		if !diag.Bot.Available {

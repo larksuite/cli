@@ -22,11 +22,13 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -39,9 +41,9 @@ func (fn driveRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error
 
 var driveTaskCheckPollMu sync.Mutex
 
-func driveTestConfig() *core.CliConfig {
-	return &core.CliConfig{
-		AppID: "drive-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+func driveTestConfig() *configpkg.CliConfig {
+	return &configpkg.CliConfig{
+		AppID: "drive-test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 }
 
@@ -94,8 +96,8 @@ func withDriveWorkingDir(t *testing.T, dir string) {
 
 func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 	// Use a distinct AppID to avoid Lark SDK global token cache collision with other tests.
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-test-app", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -172,8 +174,8 @@ func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 }
 
 func TestDriveUploadLargeFileToWikiUsesMultipart(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-large-wiki-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-large-wiki-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -249,8 +251,8 @@ func TestDriveUploadLargeFileToWikiUsesMultipart(t *testing.T) {
 }
 
 func TestDriveUploadLargeFileOverwriteUsesMultipart(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-large-overwrite-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-large-overwrite-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -319,8 +321,8 @@ func TestDriveUploadLargeFileOverwriteUsesMultipart(t *testing.T) {
 }
 
 func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinish(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-large-overwrite-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-large-overwrite-version-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -384,8 +386,8 @@ func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinish(t *testing.
 }
 
 func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinishAlias(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-large-overwrite-data-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-large-overwrite-data-version-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -449,8 +451,8 @@ func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinishAlias(t *tes
 }
 
 func TestDriveUploadSmallFile(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-small-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-small-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -488,8 +490,8 @@ func TestDriveUploadSmallFile(t *testing.T) {
 }
 
 func TestDriveUploadSmallFileOverwriteUsesFileToken(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-small-overwrite-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-small-overwrite-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -534,8 +536,8 @@ func TestDriveUploadSmallFileOverwriteUsesFileToken(t *testing.T) {
 }
 
 func TestDriveUploadReturnsVersionFromDataVersionAlias(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-small-data-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-small-data-version-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -575,8 +577,8 @@ func TestDriveUploadReturnsVersionFromDataVersionAlias(t *testing.T) {
 }
 
 func TestDriveUploadSmallFileToWiki(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-small-wiki-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-small-wiki-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -625,8 +627,8 @@ func TestDriveUploadSmallFileToWiki(t *testing.T) {
 }
 
 func TestDriveUploadUsesMetaURLForExplorerParent(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-explorer-meta-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-explorer-meta-url", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -676,8 +678,8 @@ func TestDriveUploadUsesMetaURLForExplorerParent(t *testing.T) {
 }
 
 func TestDriveUploadUsesMetaURLForWikiParent(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-wiki-meta-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-wiki-meta-url", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -724,8 +726,8 @@ func TestDriveUploadUsesMetaURLForWikiParent(t *testing.T) {
 }
 
 func TestDriveUploadSmallFileAPIError(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-small-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-small-err", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -760,8 +762,8 @@ func TestDriveUploadSmallFileAPIError(t *testing.T) {
 }
 
 func TestDriveUploadSmallFileNoToken(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-small-notoken", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-small-notoken", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -797,8 +799,8 @@ func TestDriveUploadSmallFileNoToken(t *testing.T) {
 }
 
 func TestDriveUploadSmallFileInvalidJSON(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-small-json", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-small-json", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -831,8 +833,8 @@ func TestDriveUploadSmallFileInvalidJSON(t *testing.T) {
 }
 
 func TestDriveUploadPrepareInvalidResponse(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-prepare-bad", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-prepare-bad", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -877,8 +879,8 @@ func TestDriveUploadPrepareInvalidResponse(t *testing.T) {
 }
 
 func TestDriveUploadPartAPIError(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-part-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-part-err", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -939,8 +941,8 @@ func TestDriveUploadPartAPIError(t *testing.T) {
 }
 
 func TestDriveUploadPartInvalidJSON(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-part-json", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-part-json", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -991,8 +993,8 @@ func TestDriveUploadPartInvalidJSON(t *testing.T) {
 }
 
 func TestDriveUploadFinishNoToken(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-finish-notoken", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-finish-notoken", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -1052,8 +1054,8 @@ func TestDriveUploadFinishNoToken(t *testing.T) {
 }
 
 func TestDriveUploadWithCustomName(t *testing.T) {
-	uploadTestConfig := &core.CliConfig{
-		AppID: "drive-upload-name-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	uploadTestConfig := &configpkg.CliConfig{
+		AppID: "drive-upload-name-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
 
@@ -1106,7 +1108,7 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 		t.Fatalf("set --wiki-token: %v", err)
 	}
 
-	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, core.AsBot)
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, identity.AsBot)
 	dry := DriveUpload.DryRun(context.Background(), runtime)
 	if dry == nil {
 		t.Fatal("DryRun returned nil")
@@ -2198,7 +2200,7 @@ func TestDriveDownloadMetadataContextErrorStopsBeforeDownload(t *testing.T) {
 					credential.RuntimeAppSecret(cfg.AppSecret),
 					lark.WithEnableTokenCache(false),
 					lark.WithLogLevel(larkcore.LogLevelError),
-					lark.WithOpenBaseUrl(core.ResolveOpenBaseURL(cfg.Brand)),
+					lark.WithOpenBaseUrl(brand.ResolveOpenBaseURL(cfg.Brand)),
 					lark.WithHttpClient(&http.Client{Transport: driveRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 						if strings.Contains(req.URL.Path, "/metas/batch_query") {
 							metadataRequests++

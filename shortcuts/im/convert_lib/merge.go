@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/larksuite/cli/internal/imcontent"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -62,12 +63,7 @@ func (mergeForwardConverter) Convert(ctx *ConvertContext) string {
 			return renderMergeForwardTree(ctx, subItems)
 		}
 	}
-	// Final fallback: try to extract message IDs from content (some older formats include them)
-	ids := ParseMergeForwardIDs(ctx.RawContent)
-	if len(ids) > 0 {
-		return fmt.Sprintf("[Merged forward: %d messages]", len(ids))
-	}
-	return "[Merged forward]"
+	return imcontent.ConvertBodyContent("merge_forward", pureConvertContext(ctx))
 }
 
 // renderMergeForwardTree resolves sender names for the supplied sub-items and
@@ -242,18 +238,7 @@ func mergeForwardMessagesPath(messageID string) string {
 
 // ParseMergeForwardIDs extracts message IDs from a merge_forward content JSON.
 func ParseMergeForwardIDs(raw string) []string {
-	parsed, err := ParseJSONObject(raw)
-	if err != nil {
-		return nil
-	}
-	rawIds, _ := parsed["create_message_ids"].([]interface{})
-	ids := make([]string, 0, len(rawIds))
-	for _, id := range rawIds {
-		if s, ok := id.(string); ok {
-			ids = append(ids, s)
-		}
-	}
-	return ids
+	return imcontent.ParseMergeForwardIDs(raw)
 }
 
 // BuildMergeForwardChildrenMap builds a parent→children map from a flat items list.

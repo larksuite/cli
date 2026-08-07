@@ -8,13 +8,14 @@ package main
 import (
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/brand"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/sidecar"
 )
 
 // buildAllowedHosts extracts the set of allowed target hostnames from
 // multiple brand endpoints so the sidecar can serve both feishu and lark clients.
-func buildAllowedHosts(endpoints ...core.Endpoints) map[string]bool {
+func buildAllowedHosts(endpoints ...brand.Endpoints) map[string]bool {
 	hosts := make(map[string]bool)
 	for _, ep := range endpoints {
 		for _, u := range []string{ep.Open, ep.Accounts, ep.MCP} {
@@ -28,7 +29,7 @@ func buildAllowedHosts(endpoints ...core.Endpoints) map[string]bool {
 
 // buildAllowedIdentities returns the set of identities the sidecar is allowed to serve,
 // based on the trusted-side strict mode / SupportedIdentities configuration.
-func buildAllowedIdentities(cfg *core.CliConfig) map[string]bool {
+func buildAllowedIdentities(cfg *configpkg.CliConfig) map[string]bool {
 	ids := make(map[string]bool)
 	switch {
 	case cfg.SupportedIdentities == 0: // unknown/unset → allow both

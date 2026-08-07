@@ -5,11 +5,11 @@ package transport
 
 import (
 	"context"
+	"github.com/larksuite/cli/brand"
 	"net/http"
 
 	"github.com/larksuite/cli/errs"
 	exttransport "github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/core"
 )
 
 type requestClassContextKey struct{}
@@ -94,7 +94,7 @@ func classifyRequest(req *http.Request) (exttransport.RequestClass, error) {
 			)
 		}
 	}
-	if core.IsPlatformEndpointURL(req.URL) {
+	if brand.IsPlatformEndpointURL(req.URL) {
 		return exttransport.RequestClassPlatform, nil
 	}
 	return exttransport.RequestClassExternal, nil

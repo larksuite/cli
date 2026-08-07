@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"time"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 )
 
@@ -47,7 +47,7 @@ const probeTimeout = 3 * time.Second
 //  2. If TAT succeeded, a POST to the probe endpoint is fired. The outcome of
 //     that call (success, server error, timeout, parse failure) is always
 //     ignored — return nil regardless.
-func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret string, brand core.LarkBrand) error {
+func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret string, brand brandpkg.Brand) error {
 	if factory == nil {
 		return nil
 	}
@@ -73,7 +73,7 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	}
 
 	// TAT succeeded — fire the probe call. Any outcome is ignored.
-	url := core.ResolveEndpoints(brand).Open + "/open-apis/application/v6/larksuite_cli_app/probe"
+	url := brandpkg.ResolveEndpoints(brand).Open + "/open-apis/application/v6/larksuite_cli_app/probe"
 	body := []byte(fmt.Sprintf(`{"from":"lark-cli/%s"}`, build.Version))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {

@@ -64,7 +64,7 @@ The resolver-ownership guard rejects:
   flagged.
 
 Host literals are permitted only inside the resolver's `ResolveEndpoints`
-function body (`internal/core/types.go`) and in this rule's own host list
+function body (`brand/brand.go`) and in this rule's own host list
 (`lint/domaincontract/scan.go`); a helper elsewhere in the resolver file
 returning a hardcoded host is still rejected. Comments and `_test.go` files
 are not scanned. Literals are unquoted before matching (escape sequences

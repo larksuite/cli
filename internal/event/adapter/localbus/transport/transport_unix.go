@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 const dialTimeout = 5 * time.Second // matches winio.DialPipe for cross-platform symmetry
@@ -36,7 +36,7 @@ func (t *unixTransport) Dial(addr string) (net.Conn, error) {
 
 // Address: NOT os.UserHomeDir — honours LARKSUITE_CLI_CONFIG_DIR override.
 func (t *unixTransport) Address(appID string) string {
-	return filepath.Join(core.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.sock")
+	return filepath.Join(workspace.GetConfigDir(), "events", event.SanitizeAppID(appID), "bus.sock")
 }
 
 func (t *unixTransport) Cleanup(addr string) {

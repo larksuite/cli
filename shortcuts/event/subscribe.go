@@ -14,8 +14,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -246,7 +246,7 @@ var EventSubscribe = common.Shortcut{
 		}
 
 		// --- WebSocket ---
-		domain := core.ResolveEndpoints(runtime.Config.Brand).Open
+		domain := brand.ResolveEndpoints(runtime.Config.Brand).Open
 
 		info(fmt.Sprintf("%sConnecting to Lark event WebSocket...%s", output.Cyan, output.Reset))
 		if eventTypeFilter != nil {

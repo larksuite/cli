@@ -16,10 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -1463,7 +1464,7 @@ func TestDrivePushDetectsLocalFileChangedBeforeUpload(t *testing.T) {
 		t.Fatalf("upload_all was called after local snapshot changed:\n%s", stdout.String())
 	}
 
-	problemErr := drivePushVerifyLocalSnapshot(common.TestNewRuntimeContext(&cobra.Command{Use: "drive +push"}, &core.CliConfig{}), drivePushLocalFile{
+	problemErr := drivePushVerifyLocalSnapshot(common.TestNewRuntimeContext(&cobra.Command{Use: "drive +push"}, &configpkg.CliConfig{}), drivePushLocalFile{
 		RelPath:  "missing.txt",
 		OpenPath: filepath.Join("local", "missing.txt"),
 		FileName: "missing.txt",
@@ -2099,8 +2100,8 @@ func TestDrivePushMirrorsEmptyDirectories(t *testing.T) {
 // tests (mirrors the existing TestDriveUploadLargeFileUsesMultipart
 // pattern).
 func TestDrivePushUploadsLargeFileViaMultipart(t *testing.T) {
-	pushTestConfig := &core.CliConfig{
-		AppID: "drive-push-multipart-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	pushTestConfig := &configpkg.CliConfig{
+		AppID: "drive-push-multipart-test", AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, pushTestConfig)
 

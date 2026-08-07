@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -78,7 +78,7 @@ func newAppsMemberRuntime(t *testing.T, shortcut common.Shortcut, values map[str
 			t.Fatalf("set --%s=%q: %v", name, value, err)
 		}
 	}
-	return common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	return common.TestNewRuntimeContext(cmd, &configpkg.CliConfig{})
 }
 
 func requireAppsMemberValidationError(t *testing.T, err error, param string) *errs.ValidationError {

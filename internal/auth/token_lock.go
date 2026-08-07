@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/larksuite/cli/internal/workspace"
 	"path/filepath"
 	"regexp"
 	"sync"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -33,7 +33,7 @@ func sanitizeID(id string) string {
 }
 
 func tokenStorageLockDir() string {
-	return filepath.Join(core.GetConfigDir(), "locks")
+	return filepath.Join(workspace.GetConfigDir(), "locks")
 }
 
 func tokenStorageLockPath(appID, userOpenID string) string {

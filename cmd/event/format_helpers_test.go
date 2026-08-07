@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -287,7 +287,7 @@ func errorAs(err error, target interface{}) bool {
 }
 
 func TestNewCmdFactories_WireFlags(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "cli_XXXXXXXXXXXXXXXX"})
+	f, _, _, _ := cmdutil.TestFactory(t, &configpkg.CliConfig{AppID: "cli_XXXXXXXXXXXXXXXX"})
 	snap := compileCatalog()
 
 	t.Run("consume", func(t *testing.T) {

@@ -16,16 +16,18 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-func docsTestConfigWithAppID(appID string) *core.CliConfig {
-	return &core.CliConfig{
-		AppID: appID, AppSecret: "test-secret", Brand: core.BrandFeishu,
+func docsTestConfigWithAppID(appID string) *configpkg.CliConfig {
+	return &configpkg.CliConfig{
+		AppID: appID, AppSecret: "test-secret", Brand: brand.Feishu,
 	}
 }
 
@@ -267,7 +269,7 @@ func TestUploadDocMediaFileWithContentUsesSinglePartUpload(t *testing.T) {
 		&cobra.Command{Use: "docs +media-upload"},
 		docsTestConfigWithAppID("docs-upload-content-app"),
 		f,
-		core.AsBot,
+		identity.AsBot,
 	)
 
 	payload := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a} // PNG magic bytes
@@ -328,7 +330,7 @@ func TestUploadDocMediaFileWithContentUsesMultipart(t *testing.T) {
 		&cobra.Command{Use: "docs +media-upload"},
 		docsTestConfigWithAppID("docs-upload-content-multi"),
 		f,
-		core.AsBot,
+		identity.AsBot,
 	)
 
 	size := common.MaxDriveMediaUploadSinglePartSize + 1

@@ -7,20 +7,23 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"io"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/recovery"
+	secretpkg "github.com/larksuite/cli/internal/secret"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 // ConfigInitOptions holds all inputs for config init.
@@ -162,7 +165,7 @@ func guardAgentWorkspace(opts *ConfigInitOptions) error {
 	if opts.ForceInit {
 		return nil
 	}
-	ws := core.DetectWorkspaceFromEnv(os.Getenv)
+	ws := workspace.DetectWorkspaceFromEnv(os.Getenv)
 	if ws.IsLocal() {
 		return nil
 	}
@@ -182,7 +185,7 @@ func (o *ConfigInitOptions) hasAnyNonInteractiveFlag() bool {
 }
 
 // cleanupOldConfig clears keychain entries (AppSecret + UAT) for all apps in existing config except the app whose AppId equals skipAppID.
-func cleanupOldConfig(existing *core.MultiAppConfig, f *cmdutil.Factory, skipAppID string) {
+func cleanupOldConfig(existing *configpkg.MultiAppConfig, f *cmdutil.Factory, skipAppID string) {
 	if existing == nil {
 		return
 	}
@@ -190,7 +193,7 @@ func cleanupOldConfig(existing *core.MultiAppConfig, f *cmdutil.Factory, skipApp
 		if app.AppId == skipAppID {
 			continue
 		}
-		core.RemoveSecretStore(app.AppSecret, f.Keychain)
+		secretpkg.RemoveSecretStore(app.AppSecret, f.Keychain)
 		for _, user := range app.Users {
 			auth.RemoveStoredToken(app.AppId, user.UserOpenId)
 		}
@@ -198,19 +201,19 @@ func cleanupOldConfig(existing *core.MultiAppConfig, f *cmdutil.Factory, skipApp
 }
 
 // saveAsOnlyApp overwrites config.json with a single-app config.
-func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
-	config := &core.MultiAppConfig{
-		Apps: []core.AppConfig{{
-			AppId: appId, AppSecret: secret, Brand: brand, Lang: i18n.Lang(lang), Users: []core.AppUser{},
+func saveAsOnlyApp(appId string, secret secretpkg.SecretInput, brand brandpkg.Brand, lang string) error {
+	config := &configpkg.MultiAppConfig{
+		Apps: []configpkg.AppConfig{{
+			AppId: appId, AppSecret: secret, Brand: brand, Lang: i18n.Lang(lang), Users: []configpkg.AppUser{},
 		}},
 	}
-	return core.SaveMultiAppConfig(config)
+	return configpkg.SaveMultiAppConfig(config)
 }
 
 // saveInitConfig saves a new/updated app config, respecting --profile mode.
 // With profileName: appends or updates the named profile (preserves other profiles).
 // Without profileName: cleans up old config and saves as the only app.
-func saveInitConfig(profileName string, existing *core.MultiAppConfig, f *cmdutil.Factory, appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
+func saveInitConfig(profileName string, existing *configpkg.MultiAppConfig, f *cmdutil.Factory, appId string, secret secretpkg.SecretInput, brand brandpkg.Brand, lang string) error {
 	if profileName != "" {
 		return saveAsProfile(existing, f.Keychain, profileName, appId, secret, brand, lang)
 	}
@@ -241,20 +244,20 @@ func wrapSaveConfigError(err error) error {
 // saveAsProfile appends or updates a named profile in the config.
 // If a profile with the same name exists, it updates it; otherwise appends.
 // When updating, cleans up old keychain secrets if AppId changed.
-func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, profileName, appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
+func saveAsProfile(existing *configpkg.MultiAppConfig, kc keychain.KeychainAccess, profileName, appId string, secret secretpkg.SecretInput, brand brandpkg.Brand, lang string) error {
 	multi := existing
 	if multi == nil {
-		multi = &core.MultiAppConfig{}
+		multi = &configpkg.MultiAppConfig{}
 	}
 
 	if idx := findProfileIndexByName(multi, profileName); idx >= 0 {
 		// Clean up old keychain secret and user tokens if AppId changed
 		if multi.Apps[idx].AppId != appId {
-			core.RemoveSecretStore(multi.Apps[idx].AppSecret, kc)
+			secretpkg.RemoveSecretStore(multi.Apps[idx].AppSecret, kc)
 			for _, user := range multi.Apps[idx].Users {
 				auth.RemoveStoredToken(multi.Apps[idx].AppId, user.UserOpenId)
 			}
-			multi.Apps[idx].Users = []core.AppUser{}
+			multi.Apps[idx].Users = []configpkg.AppUser{}
 		}
 		multi.Apps[idx].AppId = appId
 		multi.Apps[idx].AppSecret = secret
@@ -267,19 +270,19 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 				WithParam("--name")
 		}
 		// Append new profile
-		multi.Apps = append(multi.Apps, core.AppConfig{
+		multi.Apps = append(multi.Apps, configpkg.AppConfig{
 			Name:      profileName,
 			AppId:     appId,
 			AppSecret: secret,
 			Brand:     brand,
 			Lang:      i18n.Lang(lang),
-			Users:     []core.AppUser{},
+			Users:     []configpkg.AppUser{},
 		})
 	}
-	return core.SaveMultiAppConfig(multi)
+	return configpkg.SaveMultiAppConfig(multi)
 }
 
-func findProfileIndexByName(multi *core.MultiAppConfig, profileName string) int {
+func findProfileIndexByName(multi *configpkg.MultiAppConfig, profileName string) int {
 	if multi == nil {
 		return -1
 	}
@@ -291,7 +294,7 @@ func findProfileIndexByName(multi *core.MultiAppConfig, profileName string) int 
 	return -1
 }
 
-func findAppIndexByAppID(multi *core.MultiAppConfig, appID string) int {
+func findAppIndexByAppID(multi *configpkg.MultiAppConfig, appID string) int {
 	if multi == nil {
 		return -1
 	}
@@ -318,13 +321,13 @@ func wrapUpdateExistingProfileErr(err error) error {
 	return errs.NewInternalError(errs.SubtypeSDKError, "failed to save config: %v", err).WithCause(err)
 }
 
-func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileName, appID string, brand core.LarkBrand, lang string) error {
+func updateExistingProfileWithoutSecret(existing *configpkg.MultiAppConfig, profileName, appID string, brand brandpkg.Brand, lang string) error {
 	if existing == nil {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "App Secret cannot be empty for new configuration").
 			WithParam("--app-secret")
 	}
 
-	var app *core.AppConfig
+	var app *configpkg.AppConfig
 	if profileName != "" {
 		if idx := findProfileIndexByName(existing, profileName); idx >= 0 {
 			app = &existing.Apps[idx]
@@ -348,7 +351,7 @@ func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileNa
 	app.AppId = appID
 	app.Brand = brand
 	app.Lang = preferredLang(i18n.Lang(lang), app.Lang)
-	return core.SaveMultiAppConfig(existing)
+	return configpkg.SaveMultiAppConfig(existing)
 }
 
 func configInitRun(opts *ConfigInitOptions) error {
@@ -369,14 +372,14 @@ func configInitRun(opts *ConfigInitOptions) error {
 		}
 	}
 
-	existing, err := core.LoadMultiAppConfig()
+	existing, err := configpkg.LoadMultiAppConfig()
 	if err != nil {
 		existing = nil // treat as empty
 	}
 
 	// Validate --profile name if set
 	if opts.ProfileName != "" {
-		if err := core.ValidateProfileName(opts.ProfileName); err != nil {
+		if err := configpkg.ValidateProfileName(opts.ProfileName); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithCause(err)
 		}
 	}
@@ -384,14 +387,14 @@ func configInitRun(opts *ConfigInitOptions) error {
 	// Mode 1: Non-interactive
 	if opts.AppID != "" && opts.appSecret != "" {
 		brand := parseBrand(opts.Brand)
-		secret, err := core.ForStorage(opts.AppID, core.PlainSecret(opts.appSecret), f.Keychain)
+		secret, err := secretpkg.ForStorage(opts.AppID, secretpkg.PlainSecret(opts.appSecret), f.Keychain)
 		if err != nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 		}
 		if err := saveInitConfig(opts.ProfileName, existing, f, opts.AppID, secret, brand, opts.Lang); err != nil {
 			return wrapSaveConfigError(err)
 		}
-		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
+		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", workspace.GetConfigPath()))
 		printLangPreferenceConfirmation(opts)
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": opts.AppID, "appSecret": "****", "brand": brand})
 		if err := runProbe(opts.Ctx, f, opts.AppID, opts.appSecret, brand); err != nil {
@@ -423,8 +426,8 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if result == nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "app creation returned no result")
 		}
-		existing, _ := core.LoadMultiAppConfig()
-		secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
+		existing, _ := configpkg.LoadMultiAppConfig()
+		secret, err := secretpkg.ForStorage(result.AppID, secretpkg.PlainSecret(result.AppSecret), f.Keychain)
 		if err != nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 		}
@@ -450,11 +453,11 @@ func configInitRun(opts *ConfigInitOptions) error {
 				WithParam("--app-id")
 		}
 
-		existing, _ := core.LoadMultiAppConfig()
+		existing, _ := configpkg.LoadMultiAppConfig()
 
 		if result.AppSecret != "" {
 			// New secret provided (either from "create" or "existing" with input)
-			secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
+			secret, err := secretpkg.ForStorage(result.AppID, secretpkg.PlainSecret(result.AppSecret), f.Keychain)
 			if err != nil {
 				return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 			}
@@ -489,7 +492,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 
 	// Mode 5: Legacy interactive (readline fallback)
-	firstApp := (*core.AppConfig)(nil)
+	firstApp := (*configpkg.AppConfig)(nil)
 	if existing != nil {
 		firstApp = existing.CurrentAppConfig("")
 	}
@@ -540,9 +543,9 @@ func configInitRun(opts *ConfigInitOptions) error {
 	if resolvedAppId == "" && firstApp != nil {
 		resolvedAppId = firstApp.AppId
 	}
-	var resolvedSecret core.SecretInput
+	var resolvedSecret secretpkg.SecretInput
 	if appSecretInput != "" {
-		resolvedSecret = core.PlainSecret(appSecretInput)
+		resolvedSecret = secretpkg.PlainSecret(appSecretInput)
 	} else if firstApp != nil {
 		resolvedSecret = firstApp.AppSecret
 	}
@@ -559,14 +562,14 @@ func configInitRun(opts *ConfigInitOptions) error {
 			WithParam("--app-id")
 	}
 
-	storedSecret, err := core.ForStorage(resolvedAppId, resolvedSecret, f.Keychain)
+	storedSecret, err := secretpkg.ForStorage(resolvedAppId, resolvedSecret, f.Keychain)
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 	}
 	if err := saveInitConfig(opts.ProfileName, existing, f, resolvedAppId, storedSecret, parseBrand(resolvedBrand), opts.Lang); err != nil {
 		return wrapSaveConfigError(err)
 	}
-	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
+	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", workspace.GetConfigPath()))
 	printLangPreferenceConfirmation(opts)
 	if appSecretInput != "" {
 		if err := runProbe(opts.Ctx, f, resolvedAppId, appSecretInput, parseBrand(resolvedBrand)); err != nil {

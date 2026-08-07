@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/larksuite/cli/internal/recovery"
 	"net/http"
 	"slices"
 
@@ -16,9 +17,8 @@ import (
 
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/identity"
 )
 
 // NewCmdAuth creates the auth command with subcommands.
@@ -141,7 +141,7 @@ func getAppInfo(ctx context.Context, f *cmdutil.Factory, appId string) (*appInfo
 		HttpMethod:  http.MethodGet,
 		ApiPath:     larkauth.ApplicationInfoPath(appId),
 		QueryParams: queryParams,
-	}, core.AsBot)
+	}, identity.AsBot)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +181,7 @@ func classifyAppInfoErr(rawBody []byte, code int, msg string, f *cmdutil.Factory
 	}
 	raw["code"] = code
 	raw["msg"] = msg
-	cc := errclass.ClassifyContext{Identity: string(core.AsBot)}
+	cc := errclass.ClassifyContext{Identity: string(identity.AsBot)}
 	if cfg, _ := f.Config(); cfg != nil {
 		cc.Brand = string(cfg.Brand)
 		cc.AppID = appId

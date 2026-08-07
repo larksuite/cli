@@ -12,7 +12,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 )
@@ -58,7 +58,7 @@ func authListRun(opts *ListOptions) error {
 func authListRunWithRecovery(opts *ListOptions, projector *recovery.Projector) error {
 	f := opts.Factory
 
-	multi, _ := core.LoadMultiAppConfig()
+	multi, _ := configpkg.LoadMultiAppConfig()
 	if multi == nil || len(multi.Apps) == 0 {
 		if opts.JSON {
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
@@ -74,7 +74,7 @@ func authListRunWithRecovery(opts *ListOptions, projector *recovery.Projector) e
 		// workspace-aware, so we pull the message+hint out of
 		// NotConfiguredError() instead of hard-coding it.
 		var cfgErr *errs.ConfigError
-		if errors.As(projector.Render(core.NotConfiguredError()), &cfgErr) {
+		if errors.As(projector.Render(configpkg.NotConfiguredError()), &cfgErr) {
 			fmt.Fprintln(f.IOStreams.ErrOut, cfgErr.Message)
 			if cfgErr.Hint != "" {
 				fmt.Fprintln(f.IOStreams.ErrOut, "  hint: "+cfgErr.Hint)

@@ -7,15 +7,15 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	configpkg "github.com/larksuite/cli/internal/config"
 )
 
 type staticWorkspaceConfig struct {
-	config *core.MultiAppConfig
+	config *configpkg.MultiAppConfig
 	err    error
 }
 
-func (s staticWorkspaceConfig) MultiAppConfig() (*core.MultiAppConfig, error) {
+func (s staticWorkspaceConfig) MultiAppConfig() (*configpkg.MultiAppConfig, error) {
 	return s.config, s.err
 }
 
@@ -26,8 +26,8 @@ func TestResolveSDKHostSignalSource(t *testing.T) {
 		config     workspaceConfigSource
 		wantSource bool
 	}{
-		{name: "workspace default on", config: staticWorkspaceConfig{config: &core.MultiAppConfig{}}, wantSource: true},
-		{name: "workspace opt-out", config: staticWorkspaceConfig{config: &core.MultiAppConfig{RiskControl: &disabled}}},
+		{name: "workspace default on", config: staticWorkspaceConfig{config: &configpkg.MultiAppConfig{}}, wantSource: true},
+		{name: "workspace opt-out", config: staticWorkspaceConfig{config: &configpkg.MultiAppConfig{RiskControl: &disabled}}},
 		{name: "missing config", config: staticWorkspaceConfig{err: errors.New("file does not exist")}},
 		{name: "unreadable config", config: staticWorkspaceConfig{err: errors.New("permission denied")}},
 		{name: "nil config value", config: staticWorkspaceConfig{}},

@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 )
 
 // BuildResourceURL returns a brand-standard, user-facing URL for a freshly
@@ -22,14 +22,14 @@ import (
 // Returns "" when token is empty or kind is unrecognized — callers should
 // only set the field when the result is non-empty so that "" never overrides
 // a real URL the backend already returned.
-func BuildResourceURL(brand core.LarkBrand, kind, token string) string {
+func BuildResourceURL(brand brandpkg.Brand, kind, token string) string {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return ""
 	}
 
 	host := "https://www.feishu.cn"
-	if brand == core.BrandLark {
+	if brand == brandpkg.Lark {
 		host = "https://www.larksuite.com"
 	}
 

@@ -16,7 +16,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/core"
+	identitypkg "github.com/larksuite/cli/internal/identity"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 )
@@ -34,11 +34,11 @@ type ResponseOptions struct {
 	CommandPath string        // raw cobra CommandPath() for content safety scanning
 	// Identity is forwarded to CheckError (default or caller-supplied) so the
 	// classifier can populate identity-aware fields (e.g. PermissionError.Identity).
-	// Defaults to core.AsUser when empty.
-	Identity core.Identity
+	// Defaults to identitypkg.AsUser when empty.
+	Identity identitypkg.Identity
 	// CheckError is called on parsed JSON results. Nil defaults to (*APIClient).CheckResponse
 	// with the Identity field (or AsUser when unset).
-	CheckError func(result interface{}, identity core.Identity) error
+	CheckError func(result interface{}, identity identitypkg.Identity) error
 }
 
 // httpStatusError classifies an HTTP error response by status when the body
@@ -69,7 +69,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	ct := resp.Header.Get("Content-Type")
 	identity := opts.Identity
 	if identity == "" {
-		identity = core.AsUser
+		identity = identitypkg.AsUser
 	}
 	check := opts.CheckError
 	if check == nil {
@@ -77,7 +77,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		// *errs.PermissionError / AuthenticationError / etc. A zero-value
 		// *APIClient is safe here because BuildAPIError gracefully degrades
 		// identity-aware fields (ConsoleURL etc.) when AppID is empty.
-		check = func(r interface{}, id core.Identity) error {
+		check = func(r interface{}, id identitypkg.Identity) error {
 			return (&APIClient{}).CheckResponse(r, id)
 		}
 	}

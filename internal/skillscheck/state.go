@@ -10,9 +10,9 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/workspace"
 )
 
 const (
@@ -31,7 +31,7 @@ type SkillsState struct {
 }
 
 func statePath() string {
-	return filepath.Join(core.GetBaseConfigDir(), stateFile)
+	return filepath.Join(workspace.GetBaseConfigDir(), stateFile)
 }
 
 func ReadState() (*SkillsState, bool, error) {
@@ -58,7 +58,7 @@ func ReadState() (*SkillsState, bool, error) {
 func WriteState(state SkillsState) error {
 	state.ensureNonNilSlices()
 
-	if err := vfs.MkdirAll(core.GetBaseConfigDir(), 0o700); err != nil {
+	if err := vfs.MkdirAll(workspace.GetBaseConfigDir(), 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(state, "", "  ")

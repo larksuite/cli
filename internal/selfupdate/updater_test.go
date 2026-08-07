@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -519,12 +519,12 @@ func TestDetectInstallMethod_Caches(t *testing.T) {
 
 func TestSkillsBrandHosts(t *testing.T) {
 	cases := []struct {
-		brand      core.LarkBrand
+		brand      brandpkg.Brand
 		wantIndex  string
 		wantSource string
 	}{
-		{core.BrandFeishu, "https://open.feishu.cn/.well-known/skills/index.json", "https://open.feishu.cn"},
-		{core.BrandLark, "https://open.larksuite.com/.well-known/skills/index.json", "https://open.larksuite.com"},
+		{brandpkg.Feishu, "https://open.feishu.cn/.well-known/skills/index.json", "https://open.feishu.cn"},
+		{brandpkg.Lark, "https://open.larksuite.com/.well-known/skills/index.json", "https://open.larksuite.com"},
 	}
 	for _, c := range cases {
 		u := &Updater{Brand: c.brand}

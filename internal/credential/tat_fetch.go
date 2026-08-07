@@ -8,14 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/larksuite/cli/errs"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
 )
 
 type tatResponse struct {
@@ -43,9 +43,9 @@ type tatResponse struct {
 // credential rejection.
 //
 // The caller owns the context timeout.
-func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (string, error) {
-	ep := core.ResolveEndpoints(brand)
-	endpoint := ep.Accounts + core.OAuthTokenV3Path
+func FetchTAT(ctx context.Context, httpClient *http.Client, brand brandpkg.Brand, appID, appSecret string) (string, error) {
+	ep := brandpkg.ResolveEndpoints(brand)
+	endpoint := ep.Accounts + brandpkg.OAuthTokenV3Path
 
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")

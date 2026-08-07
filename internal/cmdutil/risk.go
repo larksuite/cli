@@ -4,19 +4,19 @@
 package cmdutil
 
 import (
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/risk"
 	"github.com/spf13/cobra"
 )
 
 const riskLevelAnnotationKey = "risk_level"
 
-// Risk level constants — aliases of the canonical core.Risk* values, re-exported
+// Risk level constants — aliases of the canonical risk.Risk* values, re-exported
 // here so command code gets the risk vocabulary and the SetRisk/GetRisk helpers
 // from one package. core is the single source of truth.
 const (
-	RiskRead          = core.RiskRead
-	RiskWrite         = core.RiskWrite
-	RiskHighRiskWrite = core.RiskHighRiskWrite
+	RiskRead          = risk.RiskRead
+	RiskWrite         = risk.RiskWrite
+	RiskHighRiskWrite = risk.RiskHighRiskWrite
 )
 
 // SetRisk stores a command's static risk level on cobra annotations so the

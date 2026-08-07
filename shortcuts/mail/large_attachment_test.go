@@ -12,7 +12,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/core"
+	brandpkg "github.com/larksuite/cli/brand"
+	configpkg "github.com/larksuite/cli/internal/config"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
@@ -105,12 +106,12 @@ func TestMaxLargeAttachmentSize(t *testing.T) {
 
 func TestBuildLargeAttachmentPreviewURL(t *testing.T) {
 	tests := []struct {
-		brand core.LarkBrand
+		brand brandpkg.Brand
 		token string
 		want  string
 	}{
-		{core.BrandFeishu, "abc123", "https://www.feishu.cn/mail/page/attachment?token=abc123"},
-		{core.BrandLark, "xyz789", "https://www.larksuite.com/mail/page/attachment?token=xyz789"},
+		{brandpkg.Feishu, "abc123", "https://www.feishu.cn/mail/page/attachment?token=abc123"},
+		{brandpkg.Lark, "xyz789", "https://www.larksuite.com/mail/page/attachment?token=xyz789"},
 	}
 	for _, tt := range tests {
 		got := buildLargeAttachmentPreviewURL(tt.brand, tt.token)
@@ -125,7 +126,7 @@ func TestBuildLargeAttachmentHTML(t *testing.T) {
 		{FileName: "report.pdf", FileSize: 50 * 1024 * 1024, FileToken: "tok_abc"},
 		{FileName: "data.zip", FileSize: 100 * 1024 * 1024, FileToken: "tok_xyz"},
 	}
-	html := buildLargeAttachmentHTML(core.BrandFeishu, "en_us", results)
+	html := buildLargeAttachmentHTML(brandpkg.Feishu, "en_us", results)
 
 	// Check it contains the container ID prefix
 	if !strings.Contains(html, "large-file-area-") {
@@ -155,14 +156,14 @@ func TestBuildLargeAttachmentHTML_BrandAwareTitle(t *testing.T) {
 	results := []largeAttachmentResult{{FileName: "a.pdf", FileSize: 1024, FileToken: "tok"}}
 
 	cases := []struct {
-		brand     core.LarkBrand
+		brand     brandpkg.Brand
 		lang      string
 		wantTitle string
 	}{
-		{core.BrandFeishu, "zh_cn", "来自飞书邮箱的超大附件"},
-		{core.BrandFeishu, "en_us", "Large file from Feishu Mail"},
-		{core.BrandLark, "zh_cn", "来自Lark邮箱的超大附件"},
-		{core.BrandLark, "en_us", "Large file from Lark Mail"},
+		{brandpkg.Feishu, "zh_cn", "来自飞书邮箱的超大附件"},
+		{brandpkg.Feishu, "en_us", "Large file from Feishu Mail"},
+		{brandpkg.Lark, "zh_cn", "来自Lark邮箱的超大附件"},
+		{brandpkg.Lark, "en_us", "Large file from Lark Mail"},
 	}
 	for _, tc := range cases {
 		html := buildLargeAttachmentHTML(tc.brand, tc.lang, results)
@@ -174,15 +175,15 @@ func TestBuildLargeAttachmentHTML_BrandAwareTitle(t *testing.T) {
 
 func TestBrandDisplayName(t *testing.T) {
 	cases := []struct {
-		brand core.LarkBrand
+		brand brandpkg.Brand
 		lang  string
 		want  string
 	}{
-		{core.BrandFeishu, "zh_cn", "飞书"},
-		{core.BrandFeishu, "en_us", "Feishu"},
-		{core.BrandFeishu, "", "Feishu"},
-		{core.BrandLark, "zh_cn", "Lark"},
-		{core.BrandLark, "en_us", "Lark"},
+		{brandpkg.Feishu, "zh_cn", "飞书"},
+		{brandpkg.Feishu, "en_us", "Feishu"},
+		{brandpkg.Feishu, "", "Feishu"},
+		{brandpkg.Lark, "zh_cn", "Lark"},
+		{brandpkg.Lark, "en_us", "Lark"},
 	}
 	for _, tc := range cases {
 		if got := brandDisplayName(tc.brand, tc.lang); got != tc.want {
@@ -192,7 +193,7 @@ func TestBrandDisplayName(t *testing.T) {
 }
 
 func TestBuildLargeAttachmentHTML_Empty(t *testing.T) {
-	html := buildLargeAttachmentHTML(core.BrandFeishu, "en_us", nil)
+	html := buildLargeAttachmentHTML(brandpkg.Feishu, "en_us", nil)
 	if html != "" {
 		t.Errorf("expected empty string for nil results, got %q", html)
 	}
@@ -202,7 +203,7 @@ func TestBuildLargeAttachmentHTML_EscapesSpecialChars(t *testing.T) {
 	results := []largeAttachmentResult{
 		{FileName: `file<script>alert("xss")</script>.txt`, FileSize: 100, FileToken: `tok"inject`},
 	}
-	html := buildLargeAttachmentHTML(core.BrandFeishu, "en_us", results)
+	html := buildLargeAttachmentHTML(brandpkg.Feishu, "en_us", results)
 	if strings.Contains(html, "<script>") {
 		t.Error("HTML injection: <script> not escaped")
 	}
@@ -303,7 +304,7 @@ func TestEnsureLargeAttachmentCards_InjectsMissingCards(t *testing.T) {
 			Body:      []byte("<p>Hello</p>"),
 		},
 	}
-	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &configpkg.CliConfig{Brand: brandpkg.Feishu})
 	ensureLargeAttachmentCards(rt, snapshot)
 
 	html := string(snapshot.Body.Body)
@@ -344,7 +345,7 @@ func TestEnsureLargeAttachmentCards_NoDuplicateWhenCardExists(t *testing.T) {
 			Body:      []byte("<p>Hello</p>" + existingCard),
 		},
 	}
-	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &configpkg.CliConfig{Brand: brandpkg.Feishu})
 	originalHTML := string(snapshot.Body.Body)
 	ensureLargeAttachmentCards(rt, snapshot)
 
@@ -373,7 +374,7 @@ func TestEnsureLargeAttachmentCards_PartialMissing(t *testing.T) {
 			Body:      []byte("<p>Hello</p>" + existingCard),
 		},
 	}
-	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &configpkg.CliConfig{Brand: brandpkg.Feishu})
 	ensureLargeAttachmentCards(rt, snapshot)
 
 	html := string(snapshot.Body.Body)
@@ -425,7 +426,7 @@ func TestEnsureLargeAttachmentCards_PlainTextBodyInjectsDownloadInfo(t *testing.
 			Body:      []byte("plain text body"),
 		},
 	}
-	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &configpkg.CliConfig{Brand: brandpkg.Feishu})
 	ensureLargeAttachmentCards(rt, snapshot)
 
 	body := string(snapshot.Body.Body)
@@ -457,7 +458,7 @@ func TestEnsureLargeAttachmentCards_PlainTextNoDuplicate(t *testing.T) {
 			Body:      []byte(bodyWithToken),
 		},
 	}
-	rt := common.TestNewRuntimeContext(&cobra.Command{}, &core.CliConfig{Brand: core.BrandFeishu})
+	rt := common.TestNewRuntimeContext(&cobra.Command{}, &configpkg.CliConfig{Brand: brandpkg.Feishu})
 	ensureLargeAttachmentCards(rt, snapshot)
 
 	if string(snapshot.Body.Body) != bodyWithToken {
@@ -470,7 +471,7 @@ func TestBuildLargeAttachmentPlainText(t *testing.T) {
 		{FileName: "report.pdf", FileSize: 26214400, FileToken: "tok_aaa"},
 		{FileName: "video.mp4", FileSize: 314572800, FileToken: "tok_bbb"},
 	}
-	text := buildLargeAttachmentPlainText(core.BrandFeishu, "zh_cn", results)
+	text := buildLargeAttachmentPlainText(brandpkg.Feishu, "zh_cn", results)
 	if !strings.Contains(text, "来自飞书邮箱的超大附件") {
 		t.Error("should contain Chinese title for Feishu brand")
 	}
@@ -493,7 +494,7 @@ func TestBuildLargeAttachmentPlainText(t *testing.T) {
 		t.Error("should contain Chinese download label")
 	}
 
-	textEN := buildLargeAttachmentPlainText(core.BrandLark, "en_us", results)
+	textEN := buildLargeAttachmentPlainText(brandpkg.Lark, "en_us", results)
 	if !strings.Contains(textEN, "Large file from Lark Mail") {
 		t.Error("should contain English title for Lark brand")
 	}
@@ -547,7 +548,7 @@ func TestInjectLargeAttachmentTextIntoSnapshot_ExistingHTMLBody(t *testing.T) {
 }
 
 func TestBuildLargeAttachmentPlainText_Empty(t *testing.T) {
-	text := buildLargeAttachmentPlainText(core.BrandFeishu, "zh_cn", nil)
+	text := buildLargeAttachmentPlainText(brandpkg.Feishu, "zh_cn", nil)
 	if text != "" {
 		t.Error("should return empty string for no results")
 	}
@@ -606,7 +607,7 @@ func TestInjectLargeAttachmentHTML_MergesIntoExistingContainer(t *testing.T) {
 	newResults := []largeAttachmentResult{
 		{FileName: "new_file.txt", FileSize: 26214400, FileToken: "tok_new"},
 	}
-	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn", newResults)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, brandpkg.Feishu, "zh_cn", newResults)
 
 	html := string(snapshot.Body.Body)
 
@@ -643,7 +644,7 @@ func TestInjectLargeAttachmentHTML_CreatesContainerWhenNoneExists(t *testing.T) 
 	results := []largeAttachmentResult{
 		{FileName: "file.txt", FileSize: 1024, FileToken: "tok_a"},
 	}
-	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn", results)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, brandpkg.Feishu, "zh_cn", results)
 
 	html := string(snapshot.Body.Body)
 	if !strings.Contains(html, "large-file-area-") {
@@ -667,7 +668,7 @@ func TestInjectLargeAttachmentHTML_TwoInjectionsProduceSingleContainer(t *testin
 			Body:      []byte("<p>body</p>"),
 		},
 	}
-	brand := core.BrandFeishu
+	brand := brandpkg.Feishu
 	lang := "zh_cn"
 
 	// First injection (from ensureLargeAttachmentCards)
@@ -907,7 +908,7 @@ func TestInjectLargeAttachmentHTML_EmptyResults(t *testing.T) {
 		Body: &draftpkg.Part{MediaType: "text/html", Body: []byte("<p>hello</p>")},
 	}
 	original := string(snapshot.Body.Body)
-	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn", nil)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, brandpkg.Feishu, "zh_cn", nil)
 	if string(snapshot.Body.Body) != original {
 		t.Error("empty results should not modify body")
 	}
@@ -918,7 +919,7 @@ func TestInjectLargeAttachmentHTML_NilBodyCreatesNew(t *testing.T) {
 	results := []largeAttachmentResult{
 		{FileName: "file.txt", FileSize: 1024, FileToken: "tok_a"},
 	}
-	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn", results)
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, brandpkg.Feishu, "zh_cn", results)
 	if snapshot.Body == nil {
 		t.Fatal("should create body part")
 	}
@@ -938,7 +939,7 @@ func TestInjectLargeAttachmentHTML_SkipsWhenNonNilBodyButNoHTMLPart(t *testing.T
 		Body: &draftpkg.Part{MediaType: "text/plain", Body: []byte("text only")},
 	}
 	original := string(snapshot.Body.Body)
-	injectLargeAttachmentHTMLIntoSnapshot(snapshot, core.BrandFeishu, "zh_cn",
+	injectLargeAttachmentHTMLIntoSnapshot(snapshot, brandpkg.Feishu, "zh_cn",
 		[]largeAttachmentResult{{FileName: "f.txt", FileSize: 100, FileToken: "tok"}})
 	if string(snapshot.Body.Body) != original {
 		t.Error("should not modify text/plain body when looking for HTML part")
@@ -981,7 +982,7 @@ func TestStatAttachmentFiles_FileNotFound(t *testing.T) {
 
 func TestBuildLargeAttachmentItems(t *testing.T) {
 	t.Run("empty results", func(t *testing.T) {
-		got := buildLargeAttachmentItems(core.BrandFeishu, "en_us", nil)
+		got := buildLargeAttachmentItems(brandpkg.Feishu, "en_us", nil)
 		if got != "" {
 			t.Errorf("expected empty string, got %q", got)
 		}
@@ -990,7 +991,7 @@ func TestBuildLargeAttachmentItems(t *testing.T) {
 		results := []largeAttachmentResult{
 			{FileName: "doc.pdf", FileSize: 1024, FileToken: "tok1"},
 		}
-		got := buildLargeAttachmentItems(core.BrandFeishu, "zh_cn", results)
+		got := buildLargeAttachmentItems(brandpkg.Feishu, "zh_cn", results)
 		if !strings.Contains(got, "下载") {
 			t.Error("should contain Chinese download text")
 		}
@@ -1002,7 +1003,7 @@ func TestBuildLargeAttachmentItems(t *testing.T) {
 		results := []largeAttachmentResult{
 			{FileName: "doc.pdf", FileSize: 1024, FileToken: "tok1"},
 		}
-		got := buildLargeAttachmentItems(core.BrandLark, "en_us", results)
+		got := buildLargeAttachmentItems(brandpkg.Lark, "en_us", results)
 		if !strings.Contains(got, "Download") {
 			t.Error("should contain English download text")
 		}
