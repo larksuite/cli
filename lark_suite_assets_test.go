@@ -6,10 +6,26 @@ package main
 import (
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/vfs"
 )
+
+func TestInstallWizardUsesRegularSkillsRoute(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve test file path")
+	}
+	contents, err := vfs.ReadFile(filepath.Join(filepath.Dir(currentFile), "scripts", "install-wizard.js"))
+	if err != nil {
+		t.Fatalf("read install wizard: %v", err)
+	}
+	const route = `const SKILLS_REPO = "https://open.feishu.cn/lark-cli/skills/regular";`
+	if !strings.Contains(string(contents), route) {
+		t.Fatalf("install wizard must use the production regular Agent Skills route")
+	}
+}
 
 func TestLarkSuiteArchivePathsFitSkillsInstallerTarLimit(t *testing.T) {
 	// npx skills v1.5.21 did not honor PAX long-path metadata while extracting
