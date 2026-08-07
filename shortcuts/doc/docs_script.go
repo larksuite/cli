@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/doc/internal/docxparse"
 )
@@ -158,6 +158,13 @@ type docsScriptDraftResult struct {
 	Workspace string `json:"workspace"`
 	DraftPath string `json:"draft_path"`
 	Tip       string `json:"tip"`
+}
+
+type docsScriptWorkspace struct {
+	path         string
+	resolvedPath string
+	fileIO       fileio.FileIO
+	fs           vfs.FS
 }
 
 type docsScriptFetchRequest struct {
@@ -728,57 +735,92 @@ func docsScriptBlockCount(blocks []docxparse.BlockShare, blockType string) int {
 }
 
 func initDocsScriptDraft(runtime *common.RuntimeContext) error {
-	path, err := newDocsScriptWorkspacePath()
+	workspace, err := newDocsScriptWorkspace(runtime)
 	if err != nil {
-		return errs.NewInternalError(errs.SubtypeUnknown, "generate unique draft workspace path").WithCause(err)
-	}
-	resolvedPath, err := runtime.ResolveSavePath(path)
-	if err != nil {
-		return errs.NewInternalError(errs.SubtypeFileIO,
-			"resolve reserved draft XML path %s: %s", path, err).
-			WithCause(err)
+		return err
 	}
 	rawDecision := strings.TrimSpace(runtime.Str("presentation-decision"))
-	decisionPath := filepath.Join(filepath.Dir(path), docsScriptDecisionFile)
-	if _, err := runtime.FileIO().Save(decisionPath, fileio.SaveOptions{
-		ContentType:   "application/json",
-		ContentLength: int64(len(rawDecision)),
-	}, strings.NewReader(rawDecision)); err != nil {
-		return failDocsScriptWorkspace(path, resolvedPath, common.WrapSaveErrorTyped(err))
+	if err := workspace.savePresentationDecision(rawDecision); err != nil {
+		return workspace.fail(common.WrapSaveErrorTyped(err))
 	}
 	runtime.Out(docsScriptDraftResult{
-		Workspace: filepath.Dir(path),
-		DraftPath: path,
+		Workspace: workspace.directory(),
+		DraftPath: workspace.path,
 		Tip:       docsScriptDraftTip,
 	}, nil)
 	if err := runtime.OutputError(); err != nil {
-		return failDocsScriptWorkspace(path, resolvedPath, err)
+		return workspace.fail(err)
 	}
 	return nil
 }
 
-func failDocsScriptWorkspace(path, resolvedPath string, cause error) error {
-	if cleanupErr := removeDocsScriptWorkspace(path, resolvedPath); cleanupErr != nil {
+func newDocsScriptWorkspace(runtime *common.RuntimeContext) (docsScriptWorkspace, error) {
+	path, err := newDocsScriptWorkspacePath()
+	if err != nil {
+		return docsScriptWorkspace{}, errs.NewInternalError(errs.SubtypeUnknown,
+			"generate unique draft workspace path").WithCause(err)
+	}
+	workspaceFileIO := runtime.FileIO()
+	if workspaceFileIO == nil {
+		return docsScriptWorkspace{}, errs.NewInternalError(errs.SubtypeFileIO,
+			"resolve reserved draft XML path %s: no file I/O provider registered", path)
+	}
+	resolvedPath, err := workspaceFileIO.ResolvePath(path)
+	if err != nil {
+		return docsScriptWorkspace{}, errs.NewInternalError(errs.SubtypeFileIO,
+			"resolve reserved draft XML path %s: %s", path, err).
+			WithCause(err)
+	}
+	if resolvedPath == "" {
+		return docsScriptWorkspace{}, errs.NewInternalError(errs.SubtypeFileIO,
+			"resolve reserved draft XML path %s: empty result", path)
+	}
+	return docsScriptWorkspace{
+		path:         path,
+		resolvedPath: resolvedPath,
+		fileIO:       workspaceFileIO,
+		fs:           vfs.DefaultFS,
+	}, nil
+}
+
+func (workspace docsScriptWorkspace) directory() string {
+	return filepath.Dir(workspace.path)
+}
+
+func (workspace docsScriptWorkspace) savePresentationDecision(decision string) error {
+	_, err := workspace.fileIO.Save(filepath.Join(workspace.directory(), docsScriptDecisionFile), fileio.SaveOptions{
+		ContentType:   "application/json",
+		ContentLength: int64(len(decision)),
+	}, strings.NewReader(decision))
+	return err
+}
+
+func (workspace docsScriptWorkspace) fail(cause error) error {
+	if cleanupErr := workspace.remove(); cleanupErr != nil {
 		return errors.Join(cause, cleanupErr)
 	}
 	return cause
 }
 
-func removeDocsScriptWorkspace(path, resolvedPath string) error {
-	cleanPath := filepath.Clean(path)
+func (workspace docsScriptWorkspace) remove() error {
+	cleanPath := filepath.Clean(workspace.path)
 	if !isDocsScriptWorkspacePath(cleanPath, true) {
 		return errs.NewInternalError(errs.SubtypeFileIO,
 			"refusing to remove unexpected draft workspace path %s", filepath.Dir(cleanPath))
 	}
-	cleanResolvedPath := filepath.Clean(resolvedPath)
+	cleanResolvedPath := filepath.Clean(workspace.resolvedPath)
 	if !filepath.IsAbs(cleanResolvedPath) ||
 		filepath.Base(filepath.Dir(cleanResolvedPath)) != filepath.Base(filepath.Dir(cleanPath)) ||
 		!isDocsScriptWorkspacePath(cleanResolvedPath, false) {
 		return errs.NewInternalError(errs.SubtypeFileIO,
 			"refusing to remove unexpected resolved draft workspace path %s", filepath.Dir(cleanResolvedPath))
 	}
+	if workspace.fs == nil {
+		return errs.NewInternalError(errs.SubtypeFileIO,
+			"remove failed draft workspace %s: no workspace filesystem configured", filepath.Dir(cleanResolvedPath))
+	}
 	resolvedDirectory := filepath.Dir(cleanResolvedPath)
-	if err := os.RemoveAll(resolvedDirectory); err != nil { //nolint:forbidigo // FileIO has no remove operation; resolvedDirectory is strictly validated above.
+	if err := workspace.fs.RemoveAll(resolvedDirectory); err != nil {
 		return errs.NewInternalError(errs.SubtypeFileIO,
 			"remove failed draft workspace %s: %s", resolvedDirectory, err).
 			WithCause(err)

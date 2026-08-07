@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/doc/internal/docxparse"
 )
@@ -875,9 +876,23 @@ func (docsScriptErrorWriter) Write([]byte) (int, error) {
 	return 0, errors.New("injected output failure")
 }
 
+type docsScriptTrackingFS struct {
+	vfs.FS
+	removeAllPaths []string
+}
+
+func (fs *docsScriptTrackingFS) RemoveAll(path string) error {
+	fs.removeAllPaths = append(fs.removeAllPaths, path)
+	return fs.FS.RemoveAll(path)
+}
+
 func TestDocsScriptRemovesOnlyCurrentWorkspaceOnFinalFailure(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
+	previousFS := vfs.DefaultFS
+	trackingFS := &docsScriptTrackingFS{FS: previousFS}
+	vfs.DefaultFS = trackingFS
+	t.Cleanup(func() { vfs.DefaultFS = previousFS })
 	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-cleanup-failed-workspace"))
 	baseFileIO := f.ResolveFileIO(context.Background())
 	f.FileIOProvider = docsScriptFileIOProvider{fileIO: &docsScriptFailingFileIO{
@@ -930,8 +945,12 @@ func TestDocsScriptRemovesOnlyCurrentWorkspaceOnFinalFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve unrelated path: %v", err)
 	}
-	if err := removeDocsScriptWorkspace(unrelatedPath, unrelatedResolvedPath); err == nil {
-		t.Fatal("removeDocsScriptWorkspace accepted an unrelated directory")
+	if err := (docsScriptWorkspace{
+		path:         unrelatedPath,
+		resolvedPath: unrelatedResolvedPath,
+		fs:           trackingFS,
+	}).remove(); err == nil {
+		t.Fatal("workspace cleanup accepted an unrelated directory")
 	}
 	if _, err := os.Stat(filepath.Join("unrelated_folder", docsScriptDraftXMLFileName)); err != nil {
 		t.Fatalf("unrelated file was removed: %v", err)
@@ -947,7 +966,11 @@ func TestDocsScriptRemovesOnlyCurrentWorkspaceOnFinalFailure(t *testing.T) {
 		t.Fatalf("create mapped draft: %v", err)
 	}
 	mappedPath := filepath.Join(mappedDirectoryName, docsScriptDraftXMLFileName)
-	if err := removeDocsScriptWorkspace(mappedPath, mappedResolvedPath); err != nil {
+	if err := (docsScriptWorkspace{
+		path:         mappedPath,
+		resolvedPath: mappedResolvedPath,
+		fs:           trackingFS,
+	}).remove(); err != nil {
 		t.Fatalf("remove mapped workspace: %v", err)
 	}
 	if _, err := os.Stat(filepath.Dir(mappedResolvedPath)); !os.IsNotExist(err) {
@@ -962,11 +985,18 @@ func TestDocsScriptRemovesOnlyCurrentWorkspaceOnFinalFailure(t *testing.T) {
 	if err := os.WriteFile(otherResolvedPath, []byte("keep"), 0o600); err != nil {
 		t.Fatalf("create other mapped draft: %v", err)
 	}
-	if err := removeDocsScriptWorkspace(mappedPath, otherResolvedPath); err == nil {
-		t.Fatal("removeDocsScriptWorkspace accepted a different random workspace")
+	if err := (docsScriptWorkspace{
+		path:         mappedPath,
+		resolvedPath: otherResolvedPath,
+		fs:           trackingFS,
+	}).remove(); err == nil {
+		t.Fatal("workspace cleanup accepted a different random workspace")
 	}
 	if _, err := os.Stat(otherResolvedPath); err != nil {
 		t.Fatalf("different random workspace was removed: %v", err)
+	}
+	if len(trackingFS.removeAllPaths) != 3 {
+		t.Fatalf("VFS RemoveAll calls = %v, want two failed initializations and one explicit workspace cleanup", trackingFS.removeAllPaths)
 	}
 }
 

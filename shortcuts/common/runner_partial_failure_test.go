@@ -4,7 +4,6 @@
 package common
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -60,31 +59,5 @@ func TestOutPartialFailure(t *testing.T) {
 	items, _ := env.Data["items"].([]interface{})
 	if len(items) != 2 {
 		t.Fatalf("both succeeded and failed items must ride on stdout, got %d items\nstdout: %s", len(items), stdout.String())
-	}
-}
-
-func TestOutPartialFailureRawPreservesDocumentMarkup(t *testing.T) {
-	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_x"}
-	f, stdout, _, _ := cmdutil.TestFactory(t, cfg)
-	rt := TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+script"}, cfg, f, core.AsUser)
-
-	err := rt.OutPartialFailureRaw(map[string]interface{}{
-		"warning": []string{`use <img path="@relative/image.png"/>`},
-	}, nil)
-	var partialFailure *output.PartialFailureError
-	if !errors.As(err, &partialFailure) || partialFailure.Code != output.ExitAPI {
-		t.Fatalf("error = %T %v, want ExitAPI partial failure", err, err)
-	}
-	if bytes.Contains(stdout.Bytes(), []byte(`\u003cimg`)) || !bytes.Contains(stdout.Bytes(), []byte(`<img`)) {
-		t.Fatalf("raw partial-failure output escaped document markup: %s", stdout)
-	}
-	var envelope struct {
-		OK bool `json:"ok"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode stdout: %v\n%s", err, stdout)
-	}
-	if envelope.OK {
-		t.Fatalf("raw partial-failure output reported ok:true: %s", stdout)
 	}
 }

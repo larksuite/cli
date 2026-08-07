@@ -773,21 +773,6 @@ func (ctx *RuntimeContext) OutPartialFailure(data interface{}, meta *output.Meta
 	return output.PartialFailure(output.ExitAPI)
 }
 
-// OutPartialFailureRaw is like OutPartialFailure but disables HTML escaping
-// for payloads that contain document markup in warning or result fields.
-func (ctx *RuntimeContext) OutPartialFailureRaw(data interface{}, meta *output.Meta) error {
-	ctx.handleEmitterError(ctx.newEmitter().PartialFailure(data, output.EmitOptions{
-		Format: "",
-		Raw:    true,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-	}))
-	if ctx.outputErr != nil {
-		return ctx.outputErr
-	}
-	return output.PartialFailure(output.ExitAPI)
-}
-
 // OutFormat prints output based on --format flag.
 // "json" (default) outputs JSON envelope; "pretty" calls prettyFn; others delegate to FormatValue.
 // When JqExpr is set, envelope filtering takes precedence over format.
