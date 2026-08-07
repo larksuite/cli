@@ -426,12 +426,8 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		fmt.Fprintf(f.IOStreams.ErrOut, "warning: unknown format %q, falling back to json\n", opts.Format)
 	}
 
-	// Scope-insufficient (99991679) and all other Lark API codes route through
-	// errclass.BuildAPIError via ac.CheckResponse, producing *errs.PermissionError
-	// with MissingScopes / Identity / ConsoleURL populated from the response.
-	checkErr := ac.CheckResponse
-
 	if opts.PageAll {
+		checkErr := classifyServiceAPIError(ac.CheckResponse, opts, request)
 		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
@@ -449,8 +445,106 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		FileIO:      f.ResolveFileIO(opts.Ctx),
 		CommandPath: opts.Cmd.CommandPath(),
 		Identity:    opts.As,
-		CheckError:  checkErr,
+		CheckError:  classifyServiceAPIError(ac.CheckResponse, opts, request),
 	})
+}
+
+const userAllowBlockCachePreparingSemantic = "UserAllowBlockCachePreparing"
+
+const userAllowBlockCachePreparingHint = "Search cache is preparing. Retry later; or run the same list command without keyword to initialize the cache, then retry the keyword search."
+
+func classifyServiceAPIError(base func(interface{}, core.Identity) error, opts *ServiceMethodOptions, request client.RawApiRequest) func(interface{}, core.Identity) error {
+	return func(result interface{}, identity core.Identity) error {
+		err := base(result, identity)
+		return annotateUserAllowBlockCachePreparing(err, result, opts, request)
+	}
+}
+
+func annotateUserAllowBlockCachePreparing(err error, result interface{}, opts *ServiceMethodOptions, request client.RawApiRequest) error {
+	if err == nil || opts == nil || !isUserAllowBlockSenderListMethod(opts.Method.ID) || !serviceRequestHasKeyword(request) || !isUserAllowBlockCachePreparingResult(result) {
+		return err
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+	p.Subtype = errs.SubtypeUserAllowBlockCachePreparing
+	if !strings.Contains(p.Message, userAllowBlockCachePreparingSemantic) {
+		p.Message = fmt.Sprintf("%s: %s", userAllowBlockCachePreparingSemantic, p.Message)
+	}
+	p.Hint = appendUserAllowBlockCachePreparingHint(p.Hint)
+	p.Retryable = true
+	return err
+}
+
+func appendUserAllowBlockCachePreparingHint(existing string) string {
+	existing = strings.TrimSpace(existing)
+	if existing == "" {
+		return userAllowBlockCachePreparingHint
+	}
+	if strings.Contains(existing, userAllowBlockCachePreparingHint) {
+		return existing
+	}
+	return existing + " " + userAllowBlockCachePreparingHint
+}
+
+func isUserAllowBlockSenderListMethod(methodID string) bool {
+	switch methodID {
+	case "user_mailbox.allow_sender.list", "user_mailbox.blocked_sender.list":
+		return true
+	default:
+		return false
+	}
+}
+
+func serviceRequestHasKeyword(request client.RawApiRequest) bool {
+	keyword, ok := request.Params["keyword"].(string)
+	return ok && strings.TrimSpace(keyword) != ""
+}
+
+func isUserAllowBlockCachePreparingResult(result interface{}) bool {
+	resultMap, ok := result.(map[string]interface{})
+	if !ok || !serviceNumberEquals(resultMap["code"], 456) {
+		return false
+	}
+	message := strings.Join(serviceCachePreparingText(resultMap), " ")
+	return strings.Contains(message, "15190000") && strings.Contains(message, "ErrCacheEmpty")
+}
+
+func serviceCachePreparingText(resultMap map[string]interface{}) []string {
+	var parts []string
+	for _, key := range []string{"msg", "message"} {
+		if value, ok := resultMap[key].(string); ok && strings.TrimSpace(value) != "" {
+			parts = append(parts, value)
+		}
+	}
+	if errBlock, ok := resultMap["error"].(map[string]interface{}); ok {
+		for _, key := range []string{"msg", "message"} {
+			if value, ok := errBlock[key].(string); ok && strings.TrimSpace(value) != "" {
+				parts = append(parts, value)
+			}
+		}
+	}
+	return parts
+}
+
+func serviceNumberEquals(value interface{}, want int) bool {
+	wantStr := fmt.Sprint(want)
+	switch v := value.(type) {
+	case int:
+		return v == want
+	case int32:
+		return int(v) == want
+	case int64:
+		return v == int64(want)
+	case float64:
+		return v == float64(want)
+	case string:
+		got := strings.TrimSpace(v)
+		return got == wantStr || got == wantStr+".0"
+	default:
+		return false
+	}
 }
 
 // checkServiceScopes pre-checks user scopes before making the API call.

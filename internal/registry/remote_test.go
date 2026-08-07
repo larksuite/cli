@@ -114,6 +114,36 @@ func testEnvelopeNotModifiedJSON() []byte {
 	return data
 }
 
+func testMailAllowBlockRegistry(version string) MergedRegistry {
+	return MergedRegistry{
+		Version: version,
+		Services: []meta.Service{
+			{
+				Name:    "mail",
+				Version: "v1",
+				Resources: map[string]meta.Resource{
+					"user_mailbox.messages": {
+						Methods: map[string]meta.Method{
+							"list": {ID: "user_mailbox.messages.list", HTTPMethod: "GET"},
+						},
+					},
+					"user_mailbox.allow_sender": {
+						Methods: map[string]meta.Method{
+							"batch_create": {ID: "user_mailbox.allow_sender.batch_create", HTTPMethod: "POST"},
+							"list":         {ID: "user_mailbox.allow_sender.list", HTTPMethod: "GET"},
+						},
+					},
+					"user_mailbox.blocked_sender": {
+						Methods: map[string]meta.Method{
+							"batch_remove": {ID: "user_mailbox.blocked_sender.batch_remove", HTTPMethod: "POST"},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 // TestColdStart_UsesEmbedded was removed because it triggers a data race:
 // resetInit() writes package globals while a background goroutine from a
 // previous test's triggerBackgroundRefresh may still be reading them.
@@ -195,6 +225,74 @@ func TestCacheHit_WithinTTL(t *testing.T) {
 		if _, ok := ServiceTyped("calendar"); !ok {
 			t.Error("expected calendar from embedded data")
 		}
+	}
+}
+
+func TestNewerCacheDoesNotRemoveEmbeddedMailResources(t *testing.T) {
+	embedded, _ := json.Marshal(testMailAllowBlockRegistry("1.0.0"))
+	swapEmbeddedMeta(t, embedded)
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
+	t.Setenv("LARKSUITE_CLI_META_TTL", "3600")
+
+	cached := MergedRegistry{
+		Version: "1.0.2",
+		Services: []meta.Service{
+			{
+				Name:    "mail",
+				Version: "v1",
+				Resources: map[string]meta.Resource{
+					"user_mailbox.messages": {
+						Methods: map[string]meta.Method{
+							"list": {ID: "user_mailbox.messages.list", HTTPMethod: "GET", Description: "from cache"},
+							"get":  {ID: "user_mailbox.messages.get", HTTPMethod: "GET"},
+						},
+					},
+				},
+			},
+		},
+	}
+	cacheData, _ := json.Marshal(cached)
+	cDir := filepath.Join(tmp, "cache")
+	os.MkdirAll(cDir, 0700)
+	os.WriteFile(filepath.Join(cDir, "remote_meta.json"), cacheData, 0644)
+	metaData, _ := json.Marshal(CacheMeta{LastCheckAt: time.Now().Unix(), Version: "1.0.2", Brand: string(core.BrandFeishu)})
+	os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0644)
+
+	Init()
+
+	svc, ok := ServiceTyped("mail")
+	if !ok {
+		t.Fatal("expected mail service")
+	}
+	allow, ok := svc.Resource("user_mailbox.allow_sender")
+	if !ok {
+		t.Fatal("expected embedded user_mailbox.allow_sender resource to survive newer cache")
+	}
+	if _, ok := allow.Method("batch_create"); !ok {
+		t.Fatal("expected embedded allow_sender.batch_create method to survive newer cache")
+	}
+	blocked, ok := svc.Resource("user_mailbox.blocked_sender")
+	if !ok {
+		t.Fatal("expected embedded user_mailbox.blocked_sender resource to survive newer cache")
+	}
+	if _, ok := blocked.Method("batch_remove"); !ok {
+		t.Fatal("expected embedded blocked_sender.batch_remove method to survive newer cache")
+	}
+	messages, ok := svc.Resource("user_mailbox.messages")
+	if !ok {
+		t.Fatal("expected messages resource")
+	}
+	list, ok := messages.Method("list")
+	if !ok {
+		t.Fatal("expected messages.list method")
+	}
+	if list.Description != "from cache" {
+		t.Fatalf("messages.list Description = %q, want cache override", list.Description)
+	}
+	if _, ok := messages.Method("get"); !ok {
+		t.Fatal("expected cache-only messages.get method")
 	}
 }
 
