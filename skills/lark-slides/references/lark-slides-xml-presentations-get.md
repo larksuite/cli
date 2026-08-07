@@ -2,7 +2,7 @@
 
 ## 用途
 
-读取飞书幻灯片（PPT）演示文稿的完整 XML 内容信息。
+读取飞书幻灯片（PPT）的完整演示文稿 XML，或通过 `--slide-id` / `--slide-number` 读取指定单页 XML。
 
 ## Shortcut
 
