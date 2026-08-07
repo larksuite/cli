@@ -8,6 +8,7 @@
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
 - TestBaseBlockDryRun: proves the five `+base-block-*` shortcuts request shapes without touching live data.
+- TestBaseAppWorkflow: live user workflow in an isolated fixture Workspace covering Workspace entity listing, BaseApp create/get, Page create/list/get/update/delete, text Block create/list/get/update, and App cleanup through Drive delete (`type=bitable`). Set `LARK_CLI_E2E_BASEAPP_WORKSPACE_TOKEN` to enable it.
 - TestBaseFieldCreateDryRunArrayCompat: proves `+field-create` dry-run request shape for the internal JSON-array compatibility path.
 - TestBaseFormQuestionsCreateDryRun: proves `+form-questions-create` preserves its POST body and renders the existing-question guard in command help.
 - TestBaseFormDetailDryRun / TestBaseFormSubmitDryRun: prove shared-form detail and submission request shapes.
