@@ -20,7 +20,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/doc/internal/docxparse"
 )
@@ -161,10 +160,8 @@ type docsScriptDraftResult struct {
 }
 
 type docsScriptWorkspace struct {
-	path         string
-	resolvedPath string
-	fileIO       fileio.FileIO
-	fs           vfs.FS
+	path   string
+	fileIO fileio.WorkspaceFileIO
 }
 
 type docsScriptFetchRequest struct {
@@ -760,10 +757,16 @@ func newDocsScriptWorkspace(runtime *common.RuntimeContext) (docsScriptWorkspace
 		return docsScriptWorkspace{}, errs.NewInternalError(errs.SubtypeUnknown,
 			"generate unique draft workspace path").WithCause(err)
 	}
-	workspaceFileIO := runtime.FileIO()
-	if workspaceFileIO == nil {
+	resolvedFileIO := runtime.FileIO()
+	if resolvedFileIO == nil {
 		return docsScriptWorkspace{}, errs.NewInternalError(errs.SubtypeFileIO,
 			"resolve reserved draft XML path %s: no file I/O provider registered", path)
+	}
+	workspaceFileIO, ok := resolvedFileIO.(fileio.WorkspaceFileIO)
+	if !ok {
+		return docsScriptWorkspace{}, errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"configured file I/O provider does not support draft workspace cleanup").
+			WithHint("use a file I/O provider that supports non-recursive workspace entry removal")
 	}
 	resolvedPath, err := workspaceFileIO.ResolvePath(path)
 	if err != nil {
@@ -776,10 +779,8 @@ func newDocsScriptWorkspace(runtime *common.RuntimeContext) (docsScriptWorkspace
 			"resolve reserved draft XML path %s: empty result", path)
 	}
 	return docsScriptWorkspace{
-		path:         path,
-		resolvedPath: resolvedPath,
-		fileIO:       workspaceFileIO,
-		fs:           vfs.DefaultFS,
+		path:   path,
+		fileIO: workspaceFileIO,
 	}, nil
 }
 
@@ -804,36 +805,29 @@ func (workspace docsScriptWorkspace) fail(cause error) error {
 
 func (workspace docsScriptWorkspace) remove() error {
 	cleanPath := filepath.Clean(workspace.path)
-	if !isDocsScriptWorkspacePath(cleanPath, true) {
+	if !isDocsScriptWorkspacePath(cleanPath) {
 		return errs.NewInternalError(errs.SubtypeFileIO,
 			"refusing to remove unexpected draft workspace path %s", filepath.Dir(cleanPath))
 	}
-	cleanResolvedPath := filepath.Clean(workspace.resolvedPath)
-	if !filepath.IsAbs(cleanResolvedPath) ||
-		filepath.Base(filepath.Dir(cleanResolvedPath)) != filepath.Base(filepath.Dir(cleanPath)) ||
-		!isDocsScriptWorkspacePath(cleanResolvedPath, false) {
-		return errs.NewInternalError(errs.SubtypeFileIO,
-			"refusing to remove unexpected resolved draft workspace path %s", filepath.Dir(cleanResolvedPath))
-	}
-	if workspace.fs == nil {
-		return errs.NewInternalError(errs.SubtypeFileIO,
-			"remove failed draft workspace %s: no workspace filesystem configured", filepath.Dir(cleanResolvedPath))
-	}
-	resolvedDirectory := filepath.Dir(cleanResolvedPath)
-	if err := workspace.fs.RemoveAll(resolvedDirectory); err != nil {
-		return errs.NewInternalError(errs.SubtypeFileIO,
-			"remove failed draft workspace %s: %s", resolvedDirectory, err).
-			WithCause(err)
+	for _, entry := range []string{
+		filepath.Join(filepath.Dir(cleanPath), docsScriptDecisionFile),
+		filepath.Dir(cleanPath),
+	} {
+		if err := workspace.fileIO.RemoveWorkspaceEntry(entry); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return errs.NewInternalError(errs.SubtypeFileIO,
+				"remove failed draft workspace entry %s: %s", entry, err).
+				WithCause(err)
+		}
 	}
 	return nil
 }
 
-func isDocsScriptWorkspacePath(path string, requireRelativeParent bool) bool {
+func isDocsScriptWorkspacePath(path string) bool {
 	directory := filepath.Dir(path)
 	directoryName := filepath.Base(directory)
 	randomPart := strings.TrimSuffix(strings.TrimPrefix(directoryName, docsScriptDraftDirectoryPrefix), docsScriptDraftDirectorySuffix)
 	_, randomErr := hex.DecodeString(randomPart)
-	return (!requireRelativeParent || filepath.Dir(directory) == ".") &&
+	return filepath.Dir(directory) == "." &&
 		filepath.Base(path) == docsScriptDraftXMLFileName &&
 		strings.HasPrefix(directoryName, docsScriptDraftDirectoryPrefix) && strings.HasSuffix(directoryName, docsScriptDraftDirectorySuffix) &&
 		len(randomPart) == docsScriptDraftRandomHexLength && randomErr == nil

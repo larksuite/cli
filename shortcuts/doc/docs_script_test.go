@@ -21,7 +21,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/doc/internal/docxparse"
 )
@@ -849,9 +848,10 @@ func TestDocsScriptInitDraftCreatesUniqueWorkspacesWithoutXML(t *testing.T) {
 }
 
 type docsScriptFailingFileIO struct {
-	fileio.FileIO
-	failSaveAt int
-	saveCalls  int
+	fileio.WorkspaceFileIO
+	failSaveAt  int
+	saveCalls   int
+	removeCalls []string
 }
 
 func (f *docsScriptFailingFileIO) Save(path string, opts fileio.SaveOptions, body io.Reader) (fileio.SaveResult, error) {
@@ -859,7 +859,12 @@ func (f *docsScriptFailingFileIO) Save(path string, opts fileio.SaveOptions, bod
 	if f.saveCalls == f.failSaveAt {
 		return nil, errors.New("injected draft workspace save failure")
 	}
-	return f.FileIO.Save(path, opts, body)
+	return f.WorkspaceFileIO.Save(path, opts, body)
+}
+
+func (f *docsScriptFailingFileIO) RemoveWorkspaceEntry(path string) error {
+	f.removeCalls = append(f.removeCalls, path)
+	return f.WorkspaceFileIO.RemoveWorkspaceEntry(path)
 }
 
 type docsScriptFileIOProvider struct {
@@ -876,29 +881,19 @@ func (docsScriptErrorWriter) Write([]byte) (int, error) {
 	return 0, errors.New("injected output failure")
 }
 
-type docsScriptTrackingFS struct {
-	vfs.FS
-	removeAllPaths []string
-}
-
-func (fs *docsScriptTrackingFS) RemoveAll(path string) error {
-	fs.removeAllPaths = append(fs.removeAllPaths, path)
-	return fs.FS.RemoveAll(path)
-}
-
 func TestDocsScriptRemovesOnlyCurrentWorkspaceOnFinalFailure(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
-	previousFS := vfs.DefaultFS
-	trackingFS := &docsScriptTrackingFS{FS: previousFS}
-	vfs.DefaultFS = trackingFS
-	t.Cleanup(func() { vfs.DefaultFS = previousFS })
 	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-cleanup-failed-workspace"))
-	baseFileIO := f.ResolveFileIO(context.Background())
-	f.FileIOProvider = docsScriptFileIOProvider{fileIO: &docsScriptFailingFileIO{
-		FileIO:     baseFileIO,
-		failSaveAt: 1,
-	}}
+	baseFileIO, ok := f.ResolveFileIO(context.Background()).(fileio.WorkspaceFileIO)
+	if !ok {
+		t.Fatalf("default FileIO does not implement fileio.WorkspaceFileIO")
+	}
+	failingFileIO := &docsScriptFailingFileIO{
+		WorkspaceFileIO: baseFileIO,
+		failSaveAt:      1,
+	}
+	f.FileIOProvider = docsScriptFileIOProvider{fileIO: failingFileIO}
 	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
 
 	err := mountAndRunDocs(t, DocsScript, []string{
@@ -941,62 +936,62 @@ func TestDocsScriptRemovesOnlyCurrentWorkspaceOnFinalFailure(t *testing.T) {
 		t.Fatalf("create unrelated file: %v", err)
 	}
 	unrelatedPath := filepath.Join("unrelated_folder", docsScriptDraftXMLFileName)
-	unrelatedResolvedPath, err := filepath.Abs(unrelatedPath)
-	if err != nil {
-		t.Fatalf("resolve unrelated path: %v", err)
-	}
+	removeCallsBefore := len(failingFileIO.removeCalls)
 	if err := (docsScriptWorkspace{
-		path:         unrelatedPath,
-		resolvedPath: unrelatedResolvedPath,
-		fs:           trackingFS,
+		path:   unrelatedPath,
+		fileIO: failingFileIO,
 	}).remove(); err == nil {
 		t.Fatal("workspace cleanup accepted an unrelated directory")
+	}
+	if len(failingFileIO.removeCalls) != removeCallsBefore {
+		t.Fatalf("unsafe workspace reached FileIO removal: %v", failingFileIO.removeCalls[removeCallsBefore:])
 	}
 	if _, err := os.Stat(filepath.Join("unrelated_folder", docsScriptDraftXMLFileName)); err != nil {
 		t.Fatalf("unrelated file was removed: %v", err)
 	}
+	if len(failingFileIO.removeCalls) != 4 {
+		t.Fatalf("workspace FileIO removal calls = %v, want two entries for each failed initialization", failingFileIO.removeCalls)
+	}
+	for i := 0; i < len(failingFileIO.removeCalls); i += 2 {
+		decisionPath := failingFileIO.removeCalls[i]
+		directory := failingFileIO.removeCalls[i+1]
+		if filepath.Base(decisionPath) != docsScriptDecisionFile || filepath.Dir(decisionPath) != directory {
+			t.Fatalf("workspace cleanup pair = %q, %q", decisionPath, directory)
+		}
+		if !isDocsScriptWorkspacePath(filepath.Join(directory, docsScriptDraftXMLFileName)) {
+			t.Fatalf("workspace cleanup used unexpected directory %q", directory)
+		}
+	}
+}
 
-	mappedRoot := t.TempDir()
-	mappedDirectoryName := docsScriptDraftDirectoryPrefix + strings.Repeat("a", docsScriptDraftRandomHexLength) + docsScriptDraftDirectorySuffix
-	mappedResolvedPath := filepath.Join(mappedRoot, mappedDirectoryName, docsScriptDraftXMLFileName)
-	if err := os.MkdirAll(filepath.Dir(mappedResolvedPath), 0o700); err != nil {
-		t.Fatalf("create mapped workspace: %v", err)
-	}
-	if err := os.WriteFile(mappedResolvedPath, []byte("draft"), 0o600); err != nil {
-		t.Fatalf("create mapped draft: %v", err)
-	}
-	mappedPath := filepath.Join(mappedDirectoryName, docsScriptDraftXMLFileName)
-	if err := (docsScriptWorkspace{
-		path:         mappedPath,
-		resolvedPath: mappedResolvedPath,
-		fs:           trackingFS,
-	}).remove(); err != nil {
-		t.Fatalf("remove mapped workspace: %v", err)
-	}
-	if _, err := os.Stat(filepath.Dir(mappedResolvedPath)); !os.IsNotExist(err) {
-		t.Fatalf("mapped workspace still exists or stat failed unexpectedly: %v", err)
-	}
+type docsScriptBasicFileIO struct {
+	fileio.FileIO
+}
 
-	otherDirectoryName := docsScriptDraftDirectoryPrefix + strings.Repeat("b", docsScriptDraftRandomHexLength) + docsScriptDraftDirectorySuffix
-	otherResolvedPath := filepath.Join(mappedRoot, otherDirectoryName, docsScriptDraftXMLFileName)
-	if err := os.MkdirAll(filepath.Dir(otherResolvedPath), 0o700); err != nil {
-		t.Fatalf("create other mapped workspace: %v", err)
+func TestDocsScriptInitDraftRequiresWorkspaceFileIO(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-workspace-fileio"))
+	f.FileIOProvider = docsScriptFileIOProvider{fileIO: docsScriptBasicFileIO{
+		FileIO: f.ResolveFileIO(context.Background()),
+	}}
+	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", decision,
+	}, f, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("problem = %+v, ok=%v, want validation/failed_precondition", problem, ok)
 	}
-	if err := os.WriteFile(otherResolvedPath, []byte("keep"), 0o600); err != nil {
-		t.Fatalf("create other mapped draft: %v", err)
+	entries, readErr := os.ReadDir(workDir)
+	if readErr != nil {
+		t.Fatalf("read work directory: %v", readErr)
 	}
-	if err := (docsScriptWorkspace{
-		path:         mappedPath,
-		resolvedPath: otherResolvedPath,
-		fs:           trackingFS,
-	}).remove(); err == nil {
-		t.Fatal("workspace cleanup accepted a different random workspace")
-	}
-	if _, err := os.Stat(otherResolvedPath); err != nil {
-		t.Fatalf("different random workspace was removed: %v", err)
-	}
-	if len(trackingFS.removeAllPaths) != 3 {
-		t.Fatalf("VFS RemoveAll calls = %v, want two failed initializations and one explicit workspace cleanup", trackingFS.removeAllPaths)
+	if len(entries) != 0 {
+		t.Fatalf("unsupported FileIO created workspace entries: %+v", entries)
 	}
 }
 
