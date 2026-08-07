@@ -124,7 +124,7 @@ lark-cli wiki +node-get \
   --format json
 ```
 
-读取 `data.node.space_id`。
+读取 `data.space_id`。
 
 ### 3. 只有知识库名称
 
