@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -500,6 +501,7 @@ func TestNormalizeDownloadOutputPath(t *testing.T) {
 		{name: "empty key", fileKey: " ", wantErr: "file-key cannot be empty"},
 		{name: "separator in key", fileKey: "dir/file", wantErr: "file-key cannot contain path separators"},
 		{name: "absolute path", fileKey: "file_123", outputPath: "/tmp/out.bin", wantErr: "absolute paths are not allowed"},
+		{name: "windows rooted path", fileKey: "file_123", outputPath: `\tmp\out.bin`, wantErr: "absolute paths are not allowed"},
 		{name: "parent escape", fileKey: "file_123", outputPath: "../out.bin", wantErr: "path cannot escape the current working directory"},
 		{name: "empty path after clean", fileKey: "file_123", outputPath: " . ", wantErr: "path cannot be empty"},
 	}
@@ -536,39 +538,43 @@ func TestDownloadIMResourceToPathHTTPClientError(t *testing.T) {
 	}
 }
 
-func TestParseTotalSize(t *testing.T) {
+func TestParseContentRange(t *testing.T) {
 	tests := []struct {
 		name         string
 		contentRange string
-		want         int64
+		want         contentRange
 		wantErr      string
 	}{
-		{name: "normal", contentRange: "bytes 0-131071/104857600", want: 104857600},
-		{name: "single probe chunk", contentRange: "bytes 0-131071/131072", want: 131072},
-		{name: "single small chunk", contentRange: "bytes 0-15/16", want: 16},
+		{name: "normal", contentRange: "bytes 0-131071/104857600", want: contentRange{start: 0, end: 131071, total: 104857600}},
+		{name: "single small chunk", contentRange: "bytes 0-15/16", want: contentRange{start: 0, end: 15, total: 16}},
 		{name: "empty", contentRange: "", wantErr: "content-range is empty"},
 		{name: "invalid prefix", contentRange: "items 0-15/16", wantErr: `unsupported content-range: "items 0-15/16"`},
-		{name: "missing total", contentRange: "bytes 0-15/", wantErr: `unsupported content-range: "bytes 0-15/"`},
-		{name: "wildcard", contentRange: "bytes */16", wantErr: `unsupported content-range: "bytes */16"`},
+		{name: "missing slash", contentRange: "bytes 0-15", wantErr: `unsupported content-range: "bytes 0-15"`},
+		{name: "missing range end", contentRange: "bytes 0-/16", wantErr: `unsupported content-range: "bytes 0-/16"`},
+		{name: "wildcard range", contentRange: "bytes */16", wantErr: `unsupported content-range: "bytes */16"`},
 		{name: "unknown total size", contentRange: "bytes 0-99/*", wantErr: `unknown total size in content-range: "bytes 0-99/*"`},
+		{name: "invalid start", contentRange: "bytes nope-15/16", wantErr: "parse range start:"},
+		{name: "invalid end", contentRange: "bytes 0-nope/16", wantErr: "parse range end:"},
 		{name: "invalid total", contentRange: "bytes 0-15/not-a-number", wantErr: "parse total size:"},
+		{name: "start after end", contentRange: "bytes 16-15/32", wantErr: "invalid content range: start 16 is after end 15"},
 		{name: "zero total size", contentRange: "bytes 0-0/0", wantErr: "invalid total size: 0"},
+		{name: "end reaches total", contentRange: "bytes 0-16/16", wantErr: "invalid content range: end 16 is outside total 16"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseTotalSize(tt.contentRange)
+			got, err := parseContentRange(tt.contentRange)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("parseTotalSize() error = %v, want substring %q", err, tt.wantErr)
+					t.Fatalf("parseContentRange() error = %v, want substring %q", err, tt.wantErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseTotalSize() unexpected error = %v", err)
+				t.Fatalf("parseContentRange() unexpected error = %v", err)
 			}
 			if got != tt.want {
-				t.Fatalf("parseTotalSize() = %d, want %d", got, tt.want)
+				t.Fatalf("parseContentRange() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
@@ -619,7 +625,7 @@ func TestResolveIMResourceDownloadPath(t *testing.T) {
 		{name: "default path, CD RFC5987", safePath: "file_xxx", contentDisposition: `attachment; filename*=UTF-8''%E5%AD%A3%E5%BA%A6%E6%8A%A5%E5%91%8A.xlsx`, want: "季度报告.xlsx"},
 		{name: "default path, no CD, MIME ext", safePath: "file_xxx", contentType: "application/pdf", want: "file_xxx.pdf"},
 		{name: "default path, no CD, unknown MIME", safePath: "file_xxx", contentType: "application/x-unknown", want: "file_xxx"},
-		{name: "default path, CD with dir component", safePath: "downloads/file_xxx", contentDisposition: `attachment; filename="report.xlsx"`, want: "downloads/report.xlsx"},
+		{name: "default path, CD with dir component", safePath: "downloads/file_xxx", contentDisposition: `attachment; filename="report.xlsx"`, want: filepath.Join("downloads", "report.xlsx")},
 		// User --output without extension: use CD filename's extension
 		{name: "user path no ext, CD with ext", safePath: "myfile", contentDisposition: `attachment; filename="server.pdf"`, preserveBasename: true, want: "myfile.pdf"},
 		{name: "user path no ext, CD no ext, MIME ext", safePath: "myfile", contentDisposition: `attachment; filename="noext"`, contentType: "image/png", preserveBasename: true, want: "myfile.png"},

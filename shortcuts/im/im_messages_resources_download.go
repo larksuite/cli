@@ -97,12 +97,13 @@ func normalizeDownloadOutputPath(fileKey, outputPath string) (string, error) {
 	if outputPath == "" {
 		return fileKey, nil
 	}
-	outputPath = filepath.Clean(strings.TrimSpace(outputPath))
+	outputPath = strings.TrimSpace(outputPath)
+	if filepath.IsAbs(outputPath) || strings.HasPrefix(outputPath, "/") || strings.HasPrefix(outputPath, "\\") {
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "absolute paths are not allowed").WithParam("--output")
+	}
+	outputPath = filepath.Clean(outputPath)
 	if outputPath == "." {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "path cannot be empty").WithParam("--output")
-	}
-	if filepath.IsAbs(outputPath) {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "absolute paths are not allowed").WithParam("--output")
 	}
 	if outputPath == ".." || strings.HasPrefix(outputPath, ".."+string(filepath.Separator)) {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "path cannot escape the current working directory").WithParam("--output")
@@ -158,6 +159,8 @@ type rangeChunkReader struct {
 	totalSize  int64
 	delivered  int64
 	current    io.ReadCloser
+	chunkWant  int64
+	chunkRead  int64
 	nextOffset int64
 }
 
@@ -176,6 +179,7 @@ func newRangeChunkReader(
 		fileType:   fileType,
 		totalSize:  totalSize,
 		current:    probeBody,
+		chunkWant:  min(probeChunkSize, totalSize),
 		nextOffset: probeChunkSize,
 	}
 }
@@ -185,6 +189,7 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 		if r.current != nil {
 			n, err := r.current.Read(p)
 			r.delivered += int64(n)
+			r.chunkRead += int64(n)
 
 			if r.delivered > r.totalSize {
 				if err == io.EOF {
@@ -196,11 +201,24 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 				}
 				return 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "chunk overflow: delivered %d, expected %d", r.delivered, r.totalSize)
 			}
+			if r.chunkRead > r.chunkWant {
+				_ = r.current.Close()
+				r.current = nil
+				return 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "chunk size mismatch: expected %d bytes for current range, got more than %d", r.chunkWant, r.chunkWant)
+			}
 
 			switch err {
 			case nil:
 				return n, nil
 			case io.EOF:
+				if r.chunkRead != r.chunkWant {
+					closeErr := r.current.Close()
+					r.current = nil
+					if closeErr != nil {
+						return n, closeErr
+					}
+					return 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "chunk size mismatch: expected %d bytes for current range, got %d", r.chunkWant, r.chunkRead)
+				}
 				closeErr := r.current.Close()
 				r.current = nil
 				if closeErr != nil {
@@ -213,8 +231,12 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 					return 0, io.EOF
 				}
 				if n > 0 {
+					r.chunkRead = 0
+					r.chunkWant = 0
 					return n, nil
 				}
+				r.chunkRead = 0
+				r.chunkWant = 0
 			default:
 				return n, err
 			}
@@ -242,8 +264,18 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 			resp.Body.Close()
 			return 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "unexpected status code: %d", resp.StatusCode)
 		}
+		if err := validateContentRange(resp.Header.Get("Content-Range"), contentRange{
+			start: r.nextOffset,
+			end:   end,
+			total: r.totalSize,
+		}); err != nil {
+			resp.Body.Close()
+			return 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid Content-Range header on range response: %s", err)
+		}
 
 		r.current = resp.Body
+		r.chunkWant = end - r.nextOffset + 1
+		r.chunkRead = 0
 		r.nextOffset = end + 1
 	}
 }
@@ -288,13 +320,26 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 	)
 	switch downloadResp.StatusCode {
 	case http.StatusPartialContent:
-		totalSize, err := parseTotalSize(downloadResp.Header.Get("Content-Range"))
+		firstRange, err := parseContentRange(downloadResp.Header.Get("Content-Range"))
 		if err != nil {
 			downloadResp.Body.Close()
 			return "", 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid Content-Range header on range response: %s", err)
 		}
-		body = newRangeChunkReader(ctx, runtime, messageID, fileKey, fileType, downloadResp.Body, totalSize)
-		sizeBytes = totalSize
+		if firstRange.start != 0 {
+			downloadResp.Body.Close()
+			return "", 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "unexpected initial Content-Range: got %s, want start 0", firstRange)
+		}
+		wantFirstRange := contentRange{
+			start: 0,
+			end:   min(probeChunkSize-1, firstRange.total-1),
+			total: firstRange.total,
+		}
+		if firstRange != wantFirstRange {
+			downloadResp.Body.Close()
+			return "", 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "unexpected initial Content-Range: got %s, want %s", firstRange, wantFirstRange)
+		}
+		body = newRangeChunkReader(ctx, runtime, messageID, fileKey, fileType, downloadResp.Body, firstRange.total)
+		sizeBytes = firstRange.total
 
 	case http.StatusOK:
 		body = downloadResp.Body
@@ -445,37 +490,84 @@ func sleepIMDownloadRetry(ctx context.Context, attempt int) {
 func downloadResponseError(resp *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if len(body) > 0 {
-		return errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return errs.NewNetworkError(downloadHTTPErrorSubtype(resp.StatusCode), "download failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body))).WithCode(resp.StatusCode)
 	}
-	return errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d", resp.StatusCode)
+	return errs.NewNetworkError(downloadHTTPErrorSubtype(resp.StatusCode), "download failed: HTTP %d", resp.StatusCode).WithCode(resp.StatusCode)
 }
 
-func parseTotalSize(contentRange string) (int64, error) {
-	contentRange = strings.TrimSpace(contentRange)
-	if contentRange == "" {
-		return 0, fmt.Errorf("content-range is empty") //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+func downloadHTTPErrorSubtype(statusCode int) errs.Subtype {
+	if statusCode >= 500 {
+		return errs.SubtypeNetworkServer
 	}
-	if !strings.HasPrefix(contentRange, "bytes ") {
-		return 0, fmt.Errorf("unsupported content-range: %q", contentRange) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	return errs.SubtypeNetworkTransport
+}
+
+type contentRange struct {
+	start int64
+	end   int64
+	total int64
+}
+
+func (cr contentRange) String() string {
+	return fmt.Sprintf("bytes %d-%d/%d", cr.start, cr.end, cr.total)
+}
+
+func validateContentRange(header string, want contentRange) error {
+	got, err := parseContentRange(header)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("unexpected Content-Range: got %s, want %s", got, want) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	}
+	return nil
+}
+
+func parseContentRange(header string) (contentRange, error) {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return contentRange{}, fmt.Errorf("content-range is empty") //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	}
+	if !strings.HasPrefix(header, "bytes ") {
+		return contentRange{}, fmt.Errorf("unsupported content-range: %q", header) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 
-	parts := strings.SplitN(strings.TrimPrefix(contentRange, "bytes "), "/", 2)
-	if len(parts) != 2 || parts[1] == "" {
-		return 0, fmt.Errorf("unsupported content-range: %q", contentRange) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	parts := strings.SplitN(strings.TrimPrefix(header, "bytes "), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return contentRange{}, fmt.Errorf("unsupported content-range: %q", header) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 	if parts[0] == "*" {
-		return 0, fmt.Errorf("unsupported content-range: %q", contentRange) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+		return contentRange{}, fmt.Errorf("unsupported content-range: %q", header) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 	if parts[1] == "*" {
-		return 0, fmt.Errorf("unknown total size in content-range: %q", contentRange) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+		return contentRange{}, fmt.Errorf("unknown total size in content-range: %q", header) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 
-	totalSize, err := strconv.ParseInt(parts[1], 10, 64)
+	bounds := strings.SplitN(parts[0], "-", 2)
+	if len(bounds) != 2 || bounds[0] == "" || bounds[1] == "" {
+		return contentRange{}, fmt.Errorf("unsupported content-range: %q", header) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	}
+
+	start, err := strconv.ParseInt(bounds[0], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("parse total size: %w", err) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+		return contentRange{}, fmt.Errorf("parse range start: %w", err) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
-	if totalSize <= 0 {
-		return 0, fmt.Errorf("invalid total size: %d", totalSize) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	end, err := strconv.ParseInt(bounds[1], 10, 64)
+	if err != nil {
+		return contentRange{}, fmt.Errorf("parse range end: %w", err) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
-	return totalSize, nil
+	total, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return contentRange{}, fmt.Errorf("parse total size: %w", err) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	}
+	if total <= 0 {
+		return contentRange{}, fmt.Errorf("invalid total size: %d", total) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	}
+	if start > end {
+		return contentRange{}, fmt.Errorf("invalid content range: start %d is after end %d", start, end) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	}
+	if end >= total {
+		return contentRange{}, fmt.Errorf("invalid content range: end %d is outside total %d", end, total) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
+	}
+	return contentRange{start: start, end: end, total: total}, nil
 }
