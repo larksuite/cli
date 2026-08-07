@@ -27,11 +27,10 @@ var BaseTableCreate = common.Shortcut{
 		baseTokenFlag(true),
 		{Name: "name", Desc: "table name", Required: true},
 		{Name: "view", Desc: "view JSON object/array for create"},
-		{Name: "fields", Required: true, Desc: `field JSON array defining the table schema; must hold at least one field, e.g. [{"name":"Title","type":"text"},{"name":"Status","type":"select","options":[{"name":"Todo"},{"name":"Done"}]}]`},
+		{Name: "fields", Required: true, Desc: `field JSON array defining the table schema; must hold at least one field, e.g. [{"name":"Title","type":"text"},{"name":"Status","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Done","hue":"Green","lightness":"Light"}]}]`},
 	},
 	Tips: []string{
-		`Example: lark-cli base +table-create --base-token <base_token> --name "Tasks" --fields '[{"name":"Title","type":"text"},{"name":"Status","type":"select","options":[{"name":"Todo"},{"name":"Done"}]}]'`,
-		"--fields is required and must hold at least one field; omitted, blank and empty-array schemas are rejected before any table is created. Declaring the schema here is the only way to avoid the platform default fields, which stay in the table alongside anything you add later.",
+		`Example: lark-cli base +table-create --base-token <base_token> --name "Tasks" --fields '[{"name":"Title","type":"text"},{"name":"Status","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Done","hue":"Green","lightness":"Light"}]}]'`,
 		"Before using --fields, read lark-base-field-json.md or rely on the same field JSON shape used by +field-create; do not invent field properties.",
 		"The first --fields item becomes the primary field.",
 	},
