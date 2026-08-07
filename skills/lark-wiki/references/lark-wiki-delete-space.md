@@ -118,8 +118,9 @@ dry-run 会展示两步调用链：
 ### 2. 只有知识库 URL（`.../wiki/<token>`）
 
 ```bash
-lark-cli wiki spaces get_node \
-  --params '{"token":"<wiki_token>"}' \
+lark-cli wiki +node-get \
+  --node-token '<wiki_url>' \
+  --as user \
   --format json
 ```
 
