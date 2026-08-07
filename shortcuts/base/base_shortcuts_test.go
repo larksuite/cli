@@ -70,12 +70,19 @@ func assertBasePaginationValidation(t *testing.T, err error, param string) {
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("category=%q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+	}
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected validation error, got %T: %v", err, err)
-	}
-	if validationErr.Subtype != errs.SubtypeInvalidArgument {
-		t.Fatalf("subtype=%q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
 	}
 	if validationErr.Param != param {
 		t.Fatalf("param=%q, want %s", validationErr.Param, param)

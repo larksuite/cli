@@ -188,7 +188,7 @@ lark-cli base +base-copy --base-token <模板 token> --name "<新 Base 名>" --a
 
 - 三个命令都是只读，默认 `--as user`，所需权限 `base:template:read`。
 - 模板中心是公开数据集，不能用 `drive +search` 找到；用户要“我的/最近访问/已有 Base”不要走这里。
-- 分类先于列表：`+template-list --category-key` 的 `category-key` 必须来自 `+template-categories` 的返回，不要凭空猜类目 key。
+- 分类先于列表：`+template-list` 的 `--category-key` 必须来自 `+template-categories` 的返回，不要凭空猜类目 key。
 - `+template-search` 不支持空关键词，会被拒绝；用户只有大方向、无具体检索词时改走分类浏览。
 - 模板的唯一标识是 `token`（模板 Base token），不要改名成 `id` 或 `key`。
 - `--offset` 是服务端返回的不透明游标，翻页时原样回传，不要解析或自行构造。
