@@ -2,11 +2,11 @@
 
 > **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
-Download image or file resources from a message. Supports **automatic chunked download for large files** using HTTP Range requests. Resources are identified by the combination of `message_id` + `file_key`, both of which come directly from message content returned by `im +chat-messages-list`.
+Download an image or file attached to a message. Use the `message_id` and resource key returned by a message-reading command; do not guess or combine identifiers from different messages.
 
 > **Note:** read-only message commands render resource keys in message content, but they do not download binaries automatically. Use this command whenever you need to fetch the actual image/file bytes or save them to a specific path.
 
-This skill maps to the shortcut: `lark-cli im +messages-resources-download` (internally calls `GET /open-apis/im/v1/messages/{message_id}/resources/{file_key}`).
+Shortcut: `lark-cli im +messages-resources-download`.
 
 ## Commands
 
@@ -34,30 +34,11 @@ lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_x
 | `--message-id <id>` | Yes | Message ID (`om_xxx` format) |
 | `--file-key <key>` | Yes | Resource key (`img_xxx` or `file_xxx`) |
 | `--type <type>` | Yes | Resource type: `image` or `file` |
-| `--output <path>` | No | Output path (relative paths only; `..` traversal is not allowed). When omitted, the server's original filename from `Content-Disposition` is used if available; otherwise defaults to `file_key`. File extension is automatically inferred from `Content-Disposition` or `Content-Type` if not provided |
+| `--output <path>` | No | Relative output path; absolute paths and `..` traversal are rejected. When omitted, the command uses the attachment name when available and otherwise falls back to the resource key |
 | `--as <identity>` | No | Identity type: `user` (default) or `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
-## Large File Download (Auto Chunking)
-
-When downloading large files, the command automatically uses **HTTP Range requests** for reliable chunked downloading:
-
-| Behavior | Details |
-|----------|---------|
-| Applies to | `--type file` only; `--type image` uses a single full response |
-| First part | Up to 32 MiB to discover the total representation size |
-| Subsequent parts | Exact, non-overlapping ranges of up to 32 MiB |
-| Workers | Single-threaded sequential download (ensures reliability) |
-| Retries | Up to 3 retries for transient request or body failures, with exponential backoff |
-| Idle timeout | 60 seconds without response headers or body progress; slow transfers continue while bytes arrive |
-
-**Benefits:**
-- Reduces the impact of transient request failures during large downloads
-- Treats the message resource key as an immutable identity; if a strong ETag is published, later requests bind to it automatically with `If-Range`
-- Preserves the server's original filename via `Content-Disposition` (supports RFC 5987 UTF-8 encoding); falls back to `Content-Type`-based extension inference
-- Validates file size integrity after download completion
-
-## `file_key` Sources
+## Choose `--type`
 
 Different resource markers in message content correspond to different `file_key` and `type` values:
 
@@ -67,6 +48,17 @@ Different resource markers in message content correspond to different `file_key`
 | File | `file_xxx` | `file_xxx` | `file` |
 | Audio | `file_xxx` | `file_xxx` | `file` |
 | Video | `file_xxx` | `file_xxx` | `file` |
+
+Stickers cannot be downloaded with this command.
+
+## Output
+
+On success, read:
+
+| Field | Meaning |
+|------|---------|
+| `data.saved_path` | Saved local path |
+| `data.size_bytes` | Saved byte count |
 
 ## Usage Scenario
 
@@ -86,10 +78,9 @@ lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_x
 | Symptom | Root Cause | Solution |
 |---------|---------|---------|
 | Download failed | `file_key` does not match the `message_id` | Make sure the `file_key` came from that message's content |
-| Hit error code 234002 or 14005 | No permission, **not** missing API scope | no access to this chat or file was deleted — do not retry, return the error to the user |
+| Hit error code 234002 or 14005 | The caller cannot access the resource, or it was deleted | Do not retry; report that the attachment is unavailable |
 | Permission denied | `im:message:readonly` is not authorized | Run `auth login --scope "im:message:readonly"` |
-| File size mismatch | Chunked download integrity check failed | Network instability during download; retry the command |
-| Content-Range error | Server returned invalid range header | Transient API issue; retry the command |
+| Retryable network error | The transfer did not complete | Retry the same command |
 
 ## References
 
