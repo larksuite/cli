@@ -397,6 +397,38 @@ func TestRunDryRunsMaterializesLarkDocumentURLPlaceholders(t *testing.T) {
 	}
 }
 
+func TestRunDryRunsMaterializesWikiURLPlaceholders(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/wiki/v2/spaces/get_node","params":{"token":"wiki_test123"}}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:     "wiki +node-get",
+		Runnable: true,
+		Flags: []manifest.Flag{
+			{Name: "node-token", TakesValue: true, Usage: "node token, obj token, or Lark URL"},
+			{Name: "as", TakesValue: true},
+			{Name: "format", TakesValue: true},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:            "lark-cli wiki +node-get --node-token '<wiki_url>' --as user --format json",
+		SourceFile:     "skills/lark-wiki/references/lark-wiki-delete-space.md",
+		Line:           123,
+		HasPlaceholder: true,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("wiki URL placeholder example should be executable after materialization: %#v", facts)
+	}
+	wantArgs := []string{"wiki", "+node-get", "--node-token", "https://example.feishu.cn/wiki/wiki_test123", "--as", "user", "--format", "json", "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
 func TestRunDryRunsMaterializesResourceIDPlaceholderFlagValues(t *testing.T) {
 	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/wiki/v2/spaces/space_test123/nodes"}]}`)
 	m := manifest.Manifest{Commands: []manifest.Command{{

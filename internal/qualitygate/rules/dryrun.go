@@ -416,6 +416,9 @@ func fakeContextualURLValueForPlaceholder(name string, ctx placeholderContext) (
 	if !hasPlaceholderToken(nameTokens, "url", "link") && !hasPlaceholderToken(flagTokens, "url", "link") {
 		return "", false
 	}
+	if hasPlaceholderToken(nameTokens, "wiki") {
+		return "https://example.feishu.cn/wiki/wiki_test123", true
+	}
 	usage := strings.ToLower(ctx.FlagUsage)
 	if strings.Contains(usage, "lark") || strings.Contains(usage, "feishu") || strings.Contains(usage, "document url") {
 		return "https://example.feishu.cn/docx/doc_test123", true
