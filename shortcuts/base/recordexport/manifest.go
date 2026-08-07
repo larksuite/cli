@@ -46,69 +46,73 @@ type ColumnStats struct {
 // produced it. Format is explicit so the same structure can describe future
 // JSON-array and Parquet outputs.
 type Manifest struct {
-	ManifestVersion string                    `json:"manifest_version"`
-	Format          string                    `json:"format"`
-	BaseToken       string                    `json:"base_token"`
-	TableID         string                    `json:"table_id"`
-	Rev             *int64                    `json:"rev,omitempty"`
-	Timezone        string                    `json:"timezone"`
-	QueryContext    map[string]any            `json:"query_context,omitempty"`
-	Offset          int                       `json:"offset,omitempty"`
-	RequestedLimit  int                       `json:"requested_limit,omitempty"`
-	RecordsCount    int                       `json:"records_count"`
-	PageCount       int                       `json:"page_count"`
-	HasMore         bool                      `json:"has_more"`
-	NextOffset      *int                      `json:"next_offset,omitempty"`
-	RecordFile      string                    `json:"record_file"`
-	ManifestFile    string                    `json:"manifest_file"`
-	Columns         map[string]ColumnManifest `json:"columns"`
-	IgnoredFields   []IgnoredField            `json:"ignored_fields,omitempty"`
-	RecordNotFound  []string                  `json:"record_not_found,omitempty"`
+	ManifestVersion     string                    `json:"manifest_version"`
+	Format              string                    `json:"format"`
+	BaseToken           string                    `json:"base_token"`
+	TableID             string                    `json:"table_id"`
+	Rev                 *int64                    `json:"rev,omitempty"`
+	Timezone            string                    `json:"timezone"`
+	QueryContext        map[string]any            `json:"query_context,omitempty"`
+	Offset              int                       `json:"offset,omitempty"`
+	RequestedLimit      int                       `json:"requested_limit,omitempty"`
+	RecordsCount        int                       `json:"records_count"`
+	PageCount           int                       `json:"page_count"`
+	HasMore             bool                      `json:"has_more"`
+	NextOffset          *int                      `json:"next_offset,omitempty"`
+	RecordFile          string                    `json:"record_file"`
+	RecordFileSizeBytes int64                     `json:"record_file_size_bytes"`
+	ManifestFile        string                    `json:"manifest_file"`
+	Columns             map[string]ColumnManifest `json:"columns"`
+	IgnoredFields       []IgnoredField            `json:"ignored_fields,omitempty"`
+	RecordNotFound      []string                  `json:"record_not_found,omitempty"`
 }
 
 // ManifestOptions carries query and file details that are outside Dataset.
 type ManifestOptions struct {
-	BaseToken      string
-	TableID        string
-	Rev            *int64
-	QueryContext   map[string]any
-	Offset         int
-	RequestedLimit int
-	PageCount      int
-	HasMore        bool
-	RecordFile     string
-	ManifestFile   string
-	IgnoredFields  []IgnoredField
-	RecordNotFound []string
+	BaseToken           string
+	TableID             string
+	Rev                 *int64
+	QueryContext        map[string]any
+	Offset              int
+	RequestedLimit      int
+	PageCount           int
+	HasMore             bool
+	RecordFile          string
+	RecordFileSizeBytes int64
+	ManifestFile        string
+	IgnoredFields       []IgnoredField
+	RecordNotFound      []string
 }
 
 // MinimalManifest is the stable low-token stdout result.
 type MinimalManifest struct {
-	RecordFile   string `json:"record_file"`
-	ManifestFile string `json:"manifest_file"`
-	RecordsCount int    `json:"records_count"`
-	HasMore      bool   `json:"has_more"`
+	RecordFile          string `json:"record_file"`
+	RecordFileSizeBytes int64  `json:"record_file_size_bytes"`
+	ManifestFile        string `json:"manifest_file"`
+	RecordsCount        int    `json:"records_count"`
+	HasMore             bool   `json:"has_more"`
 }
 
 func BuildManifest(dataset Dataset, opts ManifestOptions) Manifest {
 	manifest := Manifest{
-		ManifestVersion: ManifestVersion,
-		Format:          FormatNDJSON,
-		BaseToken:       opts.BaseToken,
-		TableID:         opts.TableID,
-		Rev:             opts.Rev,
-		Timezone:        dataset.Timezone,
-		QueryContext:    opts.QueryContext,
-		Offset:          opts.Offset,
-		RequestedLimit:  opts.RequestedLimit,
-		RecordsCount:    len(dataset.Records),
-		PageCount:       opts.PageCount,
-		HasMore:         opts.HasMore,
-		RecordFile:      opts.RecordFile,
-		ManifestFile:    opts.ManifestFile,
-		Columns:         make(map[string]ColumnManifest, len(dataset.Columns)),
-		IgnoredFields:   opts.IgnoredFields,
-		RecordNotFound:  opts.RecordNotFound,
+		ManifestVersion:     ManifestVersion,
+		Format:              FormatNDJSON,
+		BaseToken:           opts.BaseToken,
+		TableID:             opts.TableID,
+		Rev:                 opts.Rev,
+		Timezone:            dataset.Timezone,
+		QueryContext:        opts.QueryContext,
+		Offset:              opts.Offset,
+		RequestedLimit:      opts.RequestedLimit,
+		RecordsCount:        len(dataset.Records),
+		PageCount:           opts.PageCount,
+		HasMore:             opts.HasMore,
+		RecordFile:          opts.RecordFile,
+		RecordFileSizeBytes: opts.RecordFileSizeBytes,
+		ManifestFile:        opts.ManifestFile,
+		Columns:             make(map[string]ColumnManifest, len(dataset.Columns)),
+		IgnoredFields:       opts.IgnoredFields,
+		RecordNotFound:      opts.RecordNotFound,
 	}
 	if opts.HasMore {
 		nextOffset := opts.Offset + len(dataset.Records)
@@ -312,7 +316,8 @@ func numberAsFloat64(value any) (float64, bool) {
 
 func (m Manifest) Minimal() MinimalManifest {
 	return MinimalManifest{
-		RecordFile: m.RecordFile, ManifestFile: m.ManifestFile,
+		RecordFile: m.RecordFile, RecordFileSizeBytes: m.RecordFileSizeBytes,
+		ManifestFile: m.ManifestFile,
 		RecordsCount: m.RecordsCount, HasMore: m.HasMore,
 	}
 }

@@ -24,6 +24,7 @@ import (
 const (
 	maxInlineRecordReadLimit = 200
 	maxNDJSONRecordReadLimit = 2000
+	recordAnalysisOutputTip  = "For analysis, parsing, comparison, or reusable local input, prefer --output ./records.ndjson --minimal-stdout; use inline markdown/json for small results intended for immediate display."
 )
 
 var recordExportNow = time.Now
@@ -31,14 +32,14 @@ var recordExportNow = time.Now
 func recordOutputFlag() common.Flag {
 	return common.Flag{
 		Name: "output",
-		Desc: "relative .ndjson output path; implies --format ndjson when format is omitted",
+		Desc: "preferred analysis output: relative .ndjson output path; implies --format ndjson when format is omitted",
 	}
 }
 
 func recordMinimalStdoutFlag() common.Flag {
 	return common.Flag{
 		Name: "minimal-stdout", Type: "bool",
-		Desc: "for ndjson, print only artifact paths, records_count, and has_more",
+		Desc: "for ndjson, print only artifact paths, record file size, records_count, and has_more",
 	}
 }
 
@@ -315,22 +316,24 @@ func finalizeRecordExport(
 		output.WriteAlertWarning(runtime.IO().ErrOut, scanResult.Alert)
 	}
 
-	if err := saveRecordNDJSON(fio, paths.recordRelative, accumulator.dataset); err != nil {
+	recordFileSizeBytes, err := saveRecordNDJSON(fio, paths.recordRelative, accumulator.dataset)
+	if err != nil {
 		return err
 	}
 	manifest := recordexport.BuildManifest(accumulator.dataset, recordexport.ManifestOptions{
-		BaseToken:      runtime.Str("base-token"),
-		TableID:        baseTableID(runtime),
-		Rev:            accumulator.rev,
-		QueryContext:   accumulator.queryContext,
-		Offset:         startOffset,
-		RequestedLimit: requestedLimit,
-		PageCount:      accumulator.pageCount,
-		HasMore:        accumulator.hasMore,
-		RecordFile:     paths.recordAbsolute,
-		ManifestFile:   paths.manifestAbsolute,
-		IgnoredFields:  accumulator.ignoredFields,
-		RecordNotFound: accumulator.recordNotFound,
+		BaseToken:           runtime.Str("base-token"),
+		TableID:             baseTableID(runtime),
+		Rev:                 accumulator.rev,
+		QueryContext:        accumulator.queryContext,
+		Offset:              startOffset,
+		RequestedLimit:      requestedLimit,
+		PageCount:           accumulator.pageCount,
+		HasMore:             accumulator.hasMore,
+		RecordFile:          paths.recordAbsolute,
+		RecordFileSizeBytes: recordFileSizeBytes,
+		ManifestFile:        paths.manifestAbsolute,
+		IgnoredFields:       accumulator.ignoredFields,
+		RecordNotFound:      accumulator.recordNotFound,
 	})
 	if err := saveRecordManifest(fio, paths.manifestRelative, manifest); err != nil {
 		return err
@@ -393,7 +396,7 @@ func ensureRecordExportTargets(fio fileio.FileIO, paths recordExportPaths, overw
 	return nil
 }
 
-func saveRecordNDJSON(fio fileio.FileIO, path string, dataset recordexport.Dataset) error {
+func saveRecordNDJSON(fio fileio.FileIO, path string, dataset recordexport.Dataset) (int64, error) {
 	reader, writer := io.Pipe()
 	writeDone := make(chan error, 1)
 	go func() {
@@ -401,18 +404,21 @@ func saveRecordNDJSON(fio fileio.FileIO, path string, dataset recordexport.Datas
 		_ = writer.CloseWithError(err)
 		writeDone <- err
 	}()
-	_, saveErr := fio.Save(path, fileio.SaveOptions{
+	saveResult, saveErr := fio.Save(path, fileio.SaveOptions{
 		ContentType: "application/x-ndjson", ContentLength: -1,
 	}, reader)
 	_ = reader.CloseWithError(saveErr)
 	writeErr := <-writeDone
 	if saveErr != nil {
-		return baseSaveError(saveErr)
+		return 0, baseSaveError(saveErr)
 	}
 	if writeErr != nil {
-		return errs.NewInternalError(errs.SubtypeInvalidResponse, "cannot encode ndjson records: %v", writeErr).WithCause(writeErr)
+		return 0, errs.NewInternalError(errs.SubtypeInvalidResponse, "cannot encode ndjson records: %v", writeErr).WithCause(writeErr)
 	}
-	return nil
+	if saveResult == nil {
+		return 0, errs.NewInternalError(errs.SubtypeFileIO, "record export did not report the saved ndjson size")
+	}
+	return saveResult.Size(), nil
 }
 
 func saveRecordManifest(fio fileio.FileIO, path string, manifest recordexport.Manifest) error {

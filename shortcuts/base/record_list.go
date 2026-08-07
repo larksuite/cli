@@ -37,6 +37,7 @@ var BaseRecordList = common.Shortcut{
 	Tips: []string{
 		"Example: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
 		"Example with projection: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --limit 50",
+		"Example for analysis: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --limit 2000 --output ./records.ndjson --minimal-stdout",
 		`Text equality filter: --filter-json '{"logic":"and","conditions":[["Title","==","Launch plan"]]}'`,
 		`Text contains/like filter: --filter-json '{"logic":"and","conditions":[["Title","intersects","urgent"]]}'`,
 		`Number equality filter: --filter-json '{"logic":"and","conditions":[["Score","==",95]]}'`,
@@ -44,7 +45,7 @@ var BaseRecordList = common.Shortcut{
 		`Option intersection filter: --filter-json '{"logic":"and","conditions":[["Tags","intersects",["P0","Blocked"]]]}'`,
 		`Sort priority follows --sort-json array order: --sort-json '[{"field":"Updated","desc":true},{"field":"Title","desc":false}]'`,
 		formatRecordQueryPriorityTip(),
-		"Default output is markdown; pass --format json for the raw matrix, or --format ndjson/--output <file>.ndjson for a typed local artifact.",
+		recordAnalysisOutputTip,
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
 	Normalize: normalizeRecordReadOutput,
@@ -84,6 +85,6 @@ func recordReadFormatFlag() common.Flag {
 		Name:    "format",
 		Default: "markdown",
 		Enum:    []string{"markdown", "json", "ndjson"},
-		Desc:    "output format: markdown (default) | json | ndjson artifact",
+		Desc:    "output format: markdown (default display) | json raw matrix | ndjson typed artifact (preferred for analysis)",
 	}
 }

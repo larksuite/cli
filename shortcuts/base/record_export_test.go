@@ -81,6 +81,13 @@ func TestRecordListNDJSONOutputInfersFormatAndNormalizesValues(t *testing.T) {
 	}
 
 	recordPath := filepath.Join(dir, "exports", "customers.ndjson")
+	recordInfo, err := os.Stat(recordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest["record_file_size_bytes"] != float64(recordInfo.Size()) {
+		t.Fatalf("record_file_size_bytes = %#v, want %d", manifest["record_file_size_bytes"], recordInfo.Size())
+	}
 	file, err := os.Open(recordPath)
 	if err != nil {
 		t.Fatal(err)
@@ -113,8 +120,16 @@ func TestRecordListNDJSONOutputInfersFormatAndNormalizesValues(t *testing.T) {
 	if rows[1]["Done"] != false {
 		t.Fatalf("Done = %#v, want false", rows[1]["Done"])
 	}
-	if _, err := os.Stat(filepath.Join(dir, "exports", "customers.manifest.json")); err != nil {
-		t.Fatalf("manifest file missing: %v", err)
+	manifestFileBytes, err := os.ReadFile(filepath.Join(dir, "exports", "customers.manifest.json"))
+	if err != nil {
+		t.Fatalf("read manifest file: %v", err)
+	}
+	var savedManifest map[string]any
+	if err := json.Unmarshal(manifestFileBytes, &savedManifest); err != nil {
+		t.Fatalf("decode manifest file: %v", err)
+	}
+	if savedManifest["record_file_size_bytes"] != float64(recordInfo.Size()) {
+		t.Fatalf("saved record_file_size_bytes = %#v, want %d", savedManifest["record_file_size_bytes"], recordInfo.Size())
 	}
 }
 
@@ -142,7 +157,7 @@ func TestRecordListNDJSONSerializesPagesAbove200(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &minimal); err != nil {
 		t.Fatal(err)
 	}
-	if len(minimal) != 4 || minimal["records_count"] != float64(201) || minimal["has_more"] != true {
+	if len(minimal) != 5 || minimal["record_file_size_bytes"].(float64) <= 0 || minimal["records_count"] != float64(201) || minimal["has_more"] != true {
 		t.Fatalf("minimal stdout = %#v", minimal)
 	}
 	file, err := os.Open(filepath.Join(dir, "paged.ndjson"))

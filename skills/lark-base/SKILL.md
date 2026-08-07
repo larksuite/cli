@@ -31,9 +31,9 @@ metadata:
 - Base 业务操作只使用 `lark-cli base +...` shortcut，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`。
 - 执行 update 前必须先查当前 shortcut 的 `--help` 或对应 reference。若命令要求完整配置，首次请求必须基于可信的当前配置执行 read-modify-write：只修改用户明确指定的内容，保留其他仍适用的可写配置，并按命令要求的结构提交。若命令支持局部／delta update，按其契约提交最小合法 payload；不得以不完整请求试错补参。
 - Base CLI/OpenAPI 当前不支持视图行高、冻结列、列宽等 UI-only 外观设置。遇到这类需求，说明能力边界并停止，不要猜测未文档化参数或改走 raw API。
-- 本地文件与 Base 之间的导入/导出转 `lark-drive`，具体格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责；导入完成后再回到 Base 命令。
-- `+record-list` / `+record-search --output <path>.ndjson` 是数据分析的记录 artifact，不是 Base 文件导出；按 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md) 继续使用 Base shortcut，不转 `lark-drive`。
-- 在线复制 Base 使用 `+base-copy`，不要绕行导出/导入。
+- **高频：数据分析。** 记录作为分析、解析、比较或可复用的本地输入时，首选 `--output <path>.ndjson --minimal-stdout`，并按 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md) 处理。
+- **低频：在线复制。** 复制整个 Base 使用 `+base-copy`，复制 Base 内单张数据表使用 `+table-copy`。
+- **更低频：文件导入/导出。** 本地文件与 Base 之间的导入/导出转 `lark-drive`；具体格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责，导入完成后再回到 Base 命令。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
 
 ## 先获取 Base Token 和所需 ID
@@ -56,13 +56,13 @@ metadata:
 | 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系和 fewshot 看 `--help` |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
 | 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
-| 复制 Base 内单张数据表 | `+table-copy` / `+table-copy-status` | 默认只复制结构；只有用户明确要求复制全表、数据、行或记录时才传 `--range all`；异步任务按返回的 `task_id` 查询或续等 |
+| 复制 Base 内单张数据表 | `+table-copy` / `+table-copy-status` | 在线复制单张数据表；复制范围和异步任务参数查看 `--help` |
 | 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段 |
 | 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
-| 读取已知记录 | `+record-get` | 已知 `record_id` 的单条读取直接执行 |
-| 查询或分析数据表记录 | 由 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md) 选择 | 除已知 `record_id` 的单条读取外，所有数据表记录查询和分析任务先读 SOP |
+| 读取已知记录 | `+record-get` | 已知具体 `record_id` 时可以直接读取记录 |
+| 查询或分析数据表记录 | 由 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md) 选择 | 数据表记录查询和分析任务先读 SOP |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
-| 附件字段 | `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` | 附件不要伪造成普通 CellValue；上传走本地文件，下载/删除按 file token 或字段定位 |
+| 附件字段 | `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` | 使用附件操作命令上传本地文件系统中的文件，下载/删除按 file token 或字段定位 |
 | 删除记录 / 分享记录链接 / 历史 | `+record-delete` / `+record-share-link-create` / `+record-history-list` | 删除前确认 record；分享链接最多 100 条；历史读 [lark-base-record-history-list.md](references/lark-base-record-history-list.md)，只查单条记录，不做整表审计 |
 | 管理视图 | `+view-*` | `+view-set-filter` 读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)（filter 条件结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md)）；其余配置先 get 现状，再按返回结构更新 |
 | 公式字段 | `+field-create/update --json '{"type":"formula",...}'` | 必读 [formula-field-guide.md](references/formula-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
@@ -70,10 +70,10 @@ metadata:
 | 表单提交 | `+form-submit` | 先读 [lark-base-form-detail.md](references/lark-base-form-detail.md) 获取题目、filter 和附件所需 `base_token`；提交 JSON 读 [lark-base-form-submit.md](references/lark-base-form-submit.md) |
 | 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | Base 内表单按 table 管理；先确定并复用真实 `table_id`。读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)；题目显隐条件 `visible_rule` 结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md) |
 | Base 内表单管理 | `+form-list/get/create/update/delete` / `+form-questions-list/delete` | 缺少或不确定归属时，先用 `+table-list` 或 `+base-block-list` 取得真实 `table_id`；这些命令使用 `--base-token + --table-id` 并在整个工作流中复用同一 `table_id`，删除前确认目标表单 |
-| 分享表单详情 | `+form-detail --share-token <share_token>` | 只接受表单分享链接里的 `share_token`，不要传 `--base-token` / `--form-id`；提交前读 [lark-base-form-detail.md](references/lark-base-form-detail.md) |
+| 分享表单详情 | `+form-detail --share-token <share_token>` | 使用表单分享链接里的 `share_token`；提交前读 [lark-base-form-detail.md](references/lark-base-form-detail.md) |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取一个或多个图表计算结果用 `+dashboard-block-get-data` |
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
-| 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；角色 create/update 或解读完整配置再读权限 JSON SSOT [role-config.md](references/role-config.md)；系统角色不可删除；关闭高级权限会影响自定义角色 |
+| 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；角色 create/update 或解读完整配置再读权限 JSON SSOT [role-config.md](references/role-config.md)；关闭高级权限会影响自定义角色 |
 
 ## Base 心智模型
 
@@ -82,9 +82,8 @@ metadata:
 - `base-block` 只负责资源目录管理，包括创建资源、移动到 folder、重命名和删除；具体资源内容仍走 table/dashboard/workflow 命令。
 - 新建 Base 时，强烈推荐一次性执行 `lark-cli base +base-create --name "<base>" --table-name "<table>" --fields '<field-json-array>'`，同时配置新 Base 里唯一一个初始数据表的 name 和 schema；使用 `--fields` 前先读 [lark-base-field-json.md](references/lark-base-field-json.md) 或复用 `+field-create` 的字段 JSON 形状，不要猜字段属性。
 - `+base-create` 不传 `--table-name` 和 `--fields` 时，会创建一个默认 schema 的初始数据表。
-- `+table-copy` 的安全默认值是只复制表结构；用户没有明确要求记录时省略 `--range`，明确要求包含记录时才传 `--range all`。`--table-id` 可直接使用当前 Base 中的表 ID 或表名。
+- `+table-copy` 用于在线复制 Base 内的数据表，`--table-id` 可使用当前 Base 中的表 ID 或表名；复制范围等参数查看 `--help`。
 - 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
-- 存储字段可写；系统字段、`formula`、`lookup` 只读；附件字段走专用 attachment 命令。
 - `formula` 适合常规计算、条件判断、文本/日期处理和长期派生指标；`lookup` 适合明确的跨表查找、筛选后取值或聚合引用。
 - 写入、公式、lookup、workflow、dashboard 前，先读取真实结构：表、字段、视图、关联表和 dashboard block 名称都以命令返回为准。
 
@@ -110,9 +109,9 @@ metadata:
 
 ## 表单与视图细节
 
-- Base 内表单 list/get/create/update/delete 和题目管理都属于具体数据表：第一个管理命令前必须已有归属明确的真实 `table_id`；缺失或归属不明确时才用 `+table-list` 或 `+base-block-list` 定位，已有真实 ID 时直接复用。后续管理命令始终传同一 `base_token + table_id`。`+form-detail` 是分享表单入口，标识域不同，只使用 `share_token`。
+- Base 内表单 list/get/create/update/delete 和题目管理都属于具体数据表：第一个管理命令前必须已有归属明确的真实 `table_id`；缺失或归属不明确时才用 `+table-list` 或 `+base-block-list` 定位，已有真实 ID 时直接复用。后续管理命令始终传同一 `base_token + table_id`。
 - 表单问题由数据表字段承载，question `id` 就是 `field_id`。创建问题前先 `+form-questions-list`；除非用户明确要求同名的独立问题，否则标题已存在时优先用 `+form-questions-update` 修改必填状态、标题或描述，不要先创建同名问题再删除旧问题。
-- `+form-questions-delete` 会删除承载问题的数据表字段。主字段问题不可删除；不要把主字段 ID 放入 `--question-ids`，需要修改时使用 `+form-questions-update`。
+- `+form-questions-delete` 用于删除非主字段问题；主字段问题使用 `+form-questions-update` 修改。
 - `+form-submit` 是高风险写操作，必须带 `--yes` 确认；调用前必须先跑 `+form-detail`，读取 `questions[].type`、`required`、`filter` 和附件场景需要的 `base_token`；不要填写被 filter 隐藏的问题。
 - `+form-questions-update` 是题目配置全量覆盖，不是 patch；未传字段会回落默认值，传空字符串 / `null` / 空数组会直接写入空或清空。更新前先 `+form-questions-list` 读取当前题目，把要保留的 `title` / `description` / `required` / `option_display_mode` / `visible_rule` 等字段带回请求。
 - 表单附件不要写进 `fields`，放在 `--json.attachments`；提交附件时必须同时传表单所属 Base 的 `--base-token`。
@@ -143,7 +142,6 @@ metadata:
 | `ignored_fields` / `READONLY` | 移除只读字段，只写存储字段 |
 | `1254104` | 批量超过 200，分批调用 |
 | `1254291` | 并发写冲突，串行写入并在批次间短暂等待 |
-| `91403` | 无权限访问该 Base，按 `lark-shared` 权限流程处理，不要盲目重试 |
 
 ## 保留 Reference
 
@@ -157,7 +155,7 @@ metadata:
 - [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md)：字段创建/更新命令级补充
 - [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) / [lark-base-record-history-list.md](references/lark-base-record-history-list.md)：记录写入 JSON 与历史返回解释
 - [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)：视图筛选 JSON
-- [lark-base-filter-condition.md](references/lark-base-filter-condition.md)：视图 filter、记录 `--filter-json`、表单 `visible_rule` 的 tuple 条件结构公共协议 SSOT；不适用于 `+data-query`
+- [lark-base-filter-condition.md](references/lark-base-filter-condition.md)：视图 filter、记录 `--filter-json`、表单 `visible_rule` 的 tuple 条件结构公共协议 SSOT
 - [lark-base-form-detail.md](references/lark-base-form-detail.md) / [lark-base-form-submit.md](references/lark-base-form-submit.md) / [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)：表单详情、提交和复杂 JSON
 - [lark-base-dashboard.md](references/lark-base-dashboard.md) / [dashboard-block-data-config.md](references/dashboard-block-data-config.md) / [lark-base-dashboard-block-get-data.md](references/lark-base-dashboard-block-get-data.md)：仪表盘、组件配置与图表结果协议
 - [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) / [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)：workflow 入口与 steps JSON SSOT

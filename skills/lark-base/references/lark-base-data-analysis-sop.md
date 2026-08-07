@@ -1,6 +1,6 @@
 # Base 数据表查询与分析 SOP
 
-除已知 `record_id` 的单条 `+record-get` 外，所有数据表记录查询和分析任务先读本 SOP，包括多记录预览、`+record-list`、`+record-search`、`+data-query`、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、全局结论和查询后写入。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按任务所需数据规模与计算复杂度选择对应路径。
+所有数据表记录查询和分析任务先读本 SOP，包括记录预览、`+record-get`、`+record-list`、`+record-search`、`+data-query`、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、全局结论和查询后写入。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按任务所需数据规模与计算复杂度选择对应路径。
 
 ## 分流决策
 
@@ -12,32 +12,49 @@
 
 ## 执行与交付
 
+分析输入默认采用 `--output x.ndjson`；`--format json` 和 Markdown 适用于向用户即时展示的小结果。
+
 缩小大表记录范围时，展示文本关键词用 `+record-search`，日期、状态、数字、空值、选项、人员和关联等结构化条件用 `+record-list --filter-json`。
+
+全表分析的常规资源链路是 `+table-list` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再用 `+record-list` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
 
 1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
 2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 表示当前结果仅覆盖已读取范围。
-3. 确定性分析选定一个分析引擎完成计算；模型上下文仅接收最终小结果，NDJSON 正文保留在 artifact 文件中。
+3. 确定性分析选定一个分析引擎直接读取 NDJSON；模型上下文仅接收预览或最终小结果。
 4. 任务涉及业务键、展开、JOIN 或金额分摊时，明确目标粒度并检查与口径直接相关的空值、重复或总量守恒。
 5. 最终结果保留真实表、查询范围和计算口径，展示用户可读字段；内部 ID 用于连接或定位。
 
 `+table-list` / `+base-block-list` 返回的 `records_count` 表示整表行数；manifest 的 `records_count` 表示本次查询实际导出的行数。
 
+## 复用本轮 NDJSON
+
+Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否复用：
+
+1. 短时间内继续分析或表中数据低频变化时，谓词下推口径一致且已有列覆盖计算需求即可优先复用。
+2. 间隔较长或表中数据高频变化时，批量提取 manifests 的 `base_token/table_id/rev`，并发执行 `+table-list` 校验最新 `rev`；版本一致且谓词口径未变时复用，否则重新导出对应表。
+
+> 例：本轮已按“日期在 2026 年”导出 `orders.ndjson`，用户继续要求按负责人聚合；谓词和所需列未变，直接复用。若间隔较长或该表频繁写入，manifest `rev=42` 与 `+table-list` 最新 `rev` 相同则复用，最新 `rev=43` 则重新导出。
+
 ## LLM 语义分析
+
+先用任务中明确且不改变分析口径的确定性条件缩小数据范围；只有剩余判断必须依赖语义理解时，才将必要原文加载到模型上下文。
 
 开放文本打标、情绪或意图识别、主题归纳、语义分类、相似性判断和实体消歧等任务必须理解原文，最终判断由当前 LLM 在本地上下文中逐条完成。代码只用于确定性范围筛选、分批、结果持久化和最终汇总；除非用户明确要求规则法，不用关键词命中、词频、正则或规则打分替代语义判断。
 
 1. 先把日期、状态、来源等不改变任务语义的确定性范围条件下推到 Base，只导出 `record_id`、判断所需原文和最终解释所需的最小字段集。
-2. 在读取正文前，用 manifest 的 `records_count` 以及所选字符串列的 `null_count`、`max_length` 估算上下文规模；`Σ((records_count - null_count) × max_length)` 可作为原始文本字符数的保守上界，并为任务说明、推理过程和最终输出预留上下文。
-3. 规模可控时，将必要记录读入上下文并直接完成语义分析。
-4. 规模过大时，先向用户说明该任务为什么必须由 LLM 阅读原文、预计会更耗时，并在用户确认后按文本体量分批处理，如果具备 sub agent 并发能力，最好使用多个同时工作的 agent 并行完成分片分析。各批沿用同一判断口径，将 `record_id`、结构化判断和必要依据持续写入本地 artifact，最后统一汇总，避免单批占满上下文。
+2. 在读取正文前，先看 manifest 的 `record_file_size_bytes`；结合 `records_count` 以及所选字符串列的 `null_count`、`max_length` 判断正文相对当前上下文的规模，拿不准时先读取前 3 行再决定读取范围。
+3. 文件较小且上下文充足时，将必要记录读入上下文并直接完成语义分析；文件较大但任务仍必须理解全部原文时，先向用户说明原因和预计耗时，在确认后按文本体量分批处理。各批沿用同一判断口径，将 `record_id`、结构化判断和必要依据持续写入本地 artifact，最后统一汇总。
 
 ## Manifest
 
-`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest，`--minimal-stdout` 只保留文件位置、`records_count` 和 `has_more` 等必要信息。
+`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest，`--minimal-stdout` 只保留文件位置、文件字节数、`records_count` 和 `has_more`。
+
+分析 artifact 尽量使用相对路径输出到当前工作目录，例如 `--output ./records.ndjson`。
 
 ```json
 {
   "record_file": "/path/records.ndjson",
+  "record_file_size_bytes": 18432,
   "manifest_file": "/path/records.manifest.json",
   "records_count": 137,
   "has_more": false,
@@ -68,9 +85,10 @@
 | 系统 `record_id` | `max_length` |
 
 - stdout 的 `records_count` 和 `has_more` 描述本次导出；确认后无需在分析代码中重读 manifest 或重新统计 NDJSON 行数。
-- manifest 的 `rev` 是导出首个响应页返回的 table revision，主要用于接手之前保存的 artifact 时识别其版本。
-- `query_context` 保存导出查询范围，主要用于接手之前保存的 NDJSON/manifest；本轮刚完成的查询直接使用当前上下文。
-- 仅在需要 `columns`、example 或 hint 时读取 `manifest_file`；同表同投影的重复分析可用 `--minimal-stdout`。
+- `record_file_size_bytes` 是 NDJSON artifact 的实际字节数，用于选择一次读取、预览或分批方式；确定性计算由 jq/Python 直接读取文件。
+- manifest 的 `rev` 是导出首个响应页返回的 table revision；与 `+table-list` 返回的最新 `rev` 比较，可判断本轮 NDJSON 是否仍对应当前表版本。
+- `query_context` 保存导出查询范围；复用本轮 NDJSON 时结合原查询上下文确认谓词下推口径保持一致。
+- 仅在需要 `columns`、example、hint 或执行 artifact 复用判断时读取 `manifest_file`；满足复用条件后直接继续分析现有 NDJSON。
 - `ignored_fields` 和 `record_not_found` 仅在 stdout 返回时关注。
 
 ## 数据库专家快速心智模型
