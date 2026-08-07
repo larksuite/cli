@@ -1043,6 +1043,15 @@ func parseWorkbookCreateSheetStyles(runtime flagView, payload *tablePayload, exi
 	return out, nil
 }
 
+const (
+	// Keep declarative style payloads bounded before parsing allocates per-entry
+	// error objects or the coalescer scans them. The operation budget is 100,
+	// while a larger raw list is useful when adjacent same-style stamps merge.
+	maxStyleItems        = 100
+	maxStyleSectionItems = 1000
+	maxStyleProblems     = 9 // eight displayed plus one truncation marker
+)
+
 func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, error) {
 	root, ok := v.(map[string]interface{})
 	if !ok {
@@ -1055,6 +1064,9 @@ func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, er
 	arr, ok := rawItems.([]interface{})
 	if !ok {
 		return nil, common.ValidationErrorf("--styles.styles must be an array")
+	}
+	if len(arr) > maxStyleItems {
+		return nil, common.ValidationErrorf("--styles.styles accepts at most %d items; got %d", maxStyleItems, len(arr))
 	}
 	items := make([]map[string]interface{}, len(arr))
 	for i, raw := range arr {
@@ -1077,12 +1089,31 @@ func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, er
 // +table-put / +styles-put).
 var workbookCreateStyleItemKeys = []string{"name", "cell_styles", "row_sizes", "col_sizes", "cell_merges", "freeze"}
 
+func boundedStyleProblems(probs *[]error, extra []error) {
+	for _, err := range extra {
+		if len(*probs) >= maxStyleProblems {
+			return
+		}
+		*probs = append(*probs, err)
+	}
+}
+
 func parseWorkbookCreateStyleItem(item map[string]interface{}, path string, existingSheet bool) (*workbookCreateStylePayload, []error) {
 	payload := &workbookCreateStylePayload{}
 	var probs []error
+	oversized := make(map[string]bool)
+	for _, section := range styleItemRangeSections {
+		if raw, ok := item[section]; ok {
+			if arr, ok := raw.([]interface{}); ok && len(arr) > maxStyleSectionItems {
+				probs = append(probs, common.ValidationErrorf("%s.%s accepts at most %d items; got %d", path, section, maxStyleSectionItems, len(arr)))
+				oversized[section] = true
+			}
+		}
+	}
 	// Reject unknown top-level keys first: a typo like "freezee" would
 	// otherwise be silently dropped while the rest of the item applies.
 	var unknown []string
+	unknownCount := 0
 	for k := range item {
 		known := false
 		for _, lk := range workbookCreateStyleItemKeys {
@@ -1092,11 +1123,22 @@ func parseWorkbookCreateStyleItem(item map[string]interface{}, path string, exis
 			}
 		}
 		if !known {
-			unknown = append(unknown, k)
+			unknownCount++
+			if len(unknown) < maxStyleProblems {
+				unknown = append(unknown, k)
+			}
 		}
+	}
+	if unknownCount > len(unknown) {
+		// Keep the deterministic sorted sample bounded; the aggregate formatter
+		// reports the omitted count without retaining every unknown key.
+		probs = append(probs, common.ValidationErrorf("%s has %d unknown keys (showing the first %d)", path, unknownCount, len(unknown)))
 	}
 	sort.Strings(unknown)
 	for _, k := range unknown {
+		if len(probs) >= maxStyleProblems {
+			break
+		}
 		msg := fmt.Sprintf("%s has unknown key %q", path, k)
 		if match := suggest.Closest(strings.ToLower(k), workbookCreateStyleItemKeys, 1); len(match) > 0 {
 			msg += fmt.Sprintf(" — did you mean %q?", match[0])
@@ -1113,30 +1155,30 @@ func parseWorkbookCreateStyleItem(item map[string]interface{}, path string, exis
 	// is skipped when there is none.
 	name, _ := item["name"].(string)
 	probs = append(probs, normalizeStyleItemRangePrefixes(item, path, strings.TrimSpace(name))...)
-	if raw, ok := item["cell_styles"]; ok {
+	if raw, ok := item["cell_styles"]; ok && !oversized["cell_styles"] {
 		var errsHere []error
 		payload.CellStyles, errsHere = parseWorkbookCreateCellStyleOps(raw, path+".cell_styles")
-		probs = append(probs, errsHere...)
+		boundedStyleProblems(&probs, errsHere)
 	}
-	if raw, ok := item["row_sizes"]; ok {
+	if raw, ok := item["row_sizes"]; ok && !oversized["row_sizes"] {
 		var errsHere []error
 		payload.RowSizes, errsHere = parseWorkbookCreateResizeOps(raw, path+".row_sizes", "row")
-		probs = append(probs, errsHere...)
+		boundedStyleProblems(&probs, errsHere)
 	}
-	if raw, ok := item["col_sizes"]; ok {
+	if raw, ok := item["col_sizes"]; ok && !oversized["col_sizes"] {
 		var errsHere []error
 		payload.ColSizes, errsHere = parseWorkbookCreateResizeOps(raw, path+".col_sizes", "column")
-		probs = append(probs, errsHere...)
+		boundedStyleProblems(&probs, errsHere)
 	}
-	if raw, ok := item["cell_merges"]; ok {
+	if raw, ok := item["cell_merges"]; ok && !oversized["cell_merges"] {
 		var errsHere []error
 		payload.CellMerges, errsHere = parseWorkbookCreateMergeOps(raw, path+".cell_merges")
-		probs = append(probs, errsHere...)
+		boundedStyleProblems(&probs, errsHere)
 	}
 	if raw, ok := item["freeze"]; ok {
 		freeze, err := parseWorkbookCreateFreezeOp(raw, path+".freeze", existingSheet)
 		if err != nil {
-			probs = append(probs, err)
+			boundedStyleProblems(&probs, []error{err})
 		} else {
 			payload.Freeze = freeze
 		}
@@ -1192,6 +1234,9 @@ func normalizeStyleItemRangePrefixes(item map[string]interface{}, path, name str
 		arr, ok := item[key].([]interface{})
 		if !ok {
 			continue // a wrong-shaped section is the section parser's to report.
+		}
+		if len(arr) > maxStyleSectionItems {
+			continue // parseWorkbookCreateStyleItem reports the bounded-size error.
 		}
 		for i, elem := range arr {
 			section := fmt.Sprintf("%s[%d]", key, i)
@@ -1263,8 +1308,13 @@ func parseWorkbookCreateFreezeOp(raw interface{}, path string, existingSheet boo
 			return nil, common.ValidationErrorf("%s.%s is not a supported field (want rows/cols)", path, k)
 		}
 	}
-	if out.Rows == 0 && out.Cols == 0 && !existingSheet {
-		return nil, common.ValidationErrorf("%s must freeze at least one dimension (rows or cols > 0) — a newly created sheet starts unfrozen", path)
+	if out.Rows == 0 && out.Cols == 0 {
+		if !existingSheet {
+			return nil, common.ValidationErrorf("%s must freeze at least one dimension (rows or cols > 0) — a newly created sheet starts unfrozen", path)
+		}
+		if len(obj) == 0 {
+			return nil, common.ValidationErrorf("%s must specify rows or cols; use {\"rows\":0,\"cols\":0} explicitly to unfreeze both axes", path)
+		}
 	}
 	return out, nil
 }
@@ -1290,14 +1340,17 @@ func joinStyleValidationErrors(probs []error) error {
 		return verr
 	}
 	const maxShown = 8
-	msgs := make([]string, 0, len(probs))
-	for _, e := range probs {
+	shown := probs
+	if len(shown) > maxShown {
+		shown = shown[:maxShown]
+	}
+	msgs := make([]string, 0, len(shown))
+	for _, e := range shown {
 		msgs = append(msgs, aggregatedIssueText(e))
 	}
 	suffix := ""
-	if len(msgs) > maxShown {
-		suffix = fmt.Sprintf(" (+%d more)", len(msgs)-maxShown)
-		msgs = msgs[:maxShown]
+	if len(probs) > maxShown {
+		suffix = fmt.Sprintf(" (+%d more)", len(probs)-maxShown)
 	}
 	return sheetsValidationForFlag("styles", "--styles has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix).
 		WithCause(probs[0])

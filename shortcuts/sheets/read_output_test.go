@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/httpmock"
 )
@@ -34,6 +35,12 @@ func TestReadOutputPath_UnsafePathIsTypedValidation(t *testing.T) {
 		"--output-path", "../../outside.json", "--as", "user",
 	}, stub)
 	ve := requireValidation(t, err, "unsafe output path")
+	if ve.Param != "--output-path" {
+		t.Errorf("Param = %q, want --output-path", ve.Param)
+	}
+	if p, ok := errs.ProblemOf(err); !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("ProblemOf = %#v, want validation/invalid_argument", p)
+	}
 	if ve.Cause == nil || !errors.Is(ve.Cause, fileio.ErrPathValidation) {
 		t.Errorf("Cause = %v, want the fileio.ErrPathValidation chain preserved", ve.Cause)
 	}

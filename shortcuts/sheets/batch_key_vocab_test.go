@@ -13,7 +13,20 @@ func subOp(shortcut string, input map[string]interface{}) map[string]interface{}
 	return map[string]interface{}{"shortcut": shortcut, "input": input}
 }
 
-// TestBatchOp_UnknownInputKeyRejected pins the key-vocabulary guard: an
+func TestBatchOperations_PreflightCellBudgetBeforeMaterialization(t *testing.T) {
+	t.Parallel()
+	ops := []interface{}{subOp("+cells-clear", map[string]interface{}{"range": "A1"})}
+	for i := 0; i < 2; i++ {
+		ops = append(ops, subOp("+cells-set-style", map[string]interface{}{
+			"sheet_name":       "S1",
+			"range":            "A1:T9999",
+			"background_color": "#fff",
+		}))
+	}
+	_, err := translateBatchOperations(ops, testToken)
+	requireValidation(t, err, "over the 200000-cell safety cap")
+}
+
 // off-vocabulary sub-op input key must error with a did-you-mean instead of
 // being silently ignored (silent ignore surfaced as misleading "missing
 // required flag" errors — the top batch error cluster in eval traces).

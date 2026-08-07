@@ -664,6 +664,23 @@ func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}
 		return nil, sheetsValidationForFlag("operations", "--operations accepts at most %d entries; got %d", maxBatchOperations, len(rawOps)).
 			WithHint("split the operations into %d separate +batch-update calls of at most %d entries each", batches, maxBatchOperations)
 	}
+	// Preflight the cell footprint before any translator can materialize a
+	// matrix. Translators intentionally aggregate validation errors, so a bad
+	// early op must not let later valid +cells-set* ops allocate their payloads
+	// outside the batch-wide safety budget before being discarded.
+	var estimatedCells int64
+	var budgetErr error
+	for _, raw := range rawOps {
+		estimatedCells += estimatedBatchOpCells(raw)
+		if estimatedCells > maxStampMatrixCells && budgetErr == nil {
+			budgetErr = sheetsValidationForFlag("operations",
+				"--operations materialize %d cells total, over the %d-cell safety cap; reduce the number or size of cell operations",
+				estimatedCells, maxStampMatrixCells)
+		}
+	}
+	if budgetErr != nil {
+		return nil, budgetErr
+	}
 	out := make([]interface{}, 0, len(rawOps))
 	var totalCells int64
 	var opErrs []error
@@ -709,6 +726,61 @@ func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}
 		msg += fmt.Sprintf("; (%d more not shown — fix these first)", len(opErrs)-batchOpErrorDisplayLimit)
 	}
 	return nil, sheetsValidationForFlag("operations", "%s", msg).WithCause(opErrs[0])
+}
+
+// estimatedBatchOpCells returns the cell footprint without invoking a
+// translator. It is deliberately best-effort: malformed inputs return zero and
+// are still reported by the normal translator, while well-shaped cell payloads
+// are budgeted before any matrix materialization can occur.
+func estimatedBatchOpCells(raw interface{}) int64 {
+	op, ok := raw.(map[string]interface{})
+	if !ok {
+		return 0
+	}
+	shortcut, _ := op["shortcut"].(string)
+	input, _ := op["input"].(map[string]interface{})
+	if input == nil {
+		return 0
+	}
+	lookup := func(name string) interface{} {
+		if v, ok := input[name]; ok {
+			return v
+		}
+		if v, ok := input[strings.ReplaceAll(name, "-", "_")]; ok {
+			return v
+		}
+		if v, ok := input[strings.ReplaceAll(name, "_", "-")]; ok {
+			return v
+		}
+		return nil
+	}
+	if shortcut == "+cells-set" {
+		cells, ok := lookup("cells").([]interface{})
+		if !ok {
+			return 0
+		}
+		var total int64
+		for _, row := range cells {
+			r, ok := row.([]interface{})
+			if !ok || int64(len(r)) > maxStampMatrixCells-total {
+				return maxStampMatrixCells + 1
+			}
+			total += int64(len(r))
+		}
+		return total
+	}
+	if shortcut != "+cells-set-style" && shortcut != "+dropdown-set" {
+		return 0
+	}
+	rangeStr, ok := lookup("range").(string)
+	if !ok {
+		return 0
+	}
+	rows, cols, err := rangeDimensions(rangeStr)
+	if err != nil || rows <= 0 || cols <= 0 {
+		return 0
+	}
+	return int64(rows) * int64(cols)
 }
 
 func translatedCellCount(op map[string]interface{}) int64 {

@@ -352,6 +352,7 @@ def _write_hints(
     data_start: int,
     bounds,
     hidden_columns: list[str] | None = None,
+    skip_hidden: bool = False,
 ) -> dict[str, Any]:
     last_non_empty_col = None
     for idx, col in enumerate(grid.col_letters):
@@ -371,10 +372,15 @@ def _write_hints(
     safe_col = index_to_col(safe_col_num)
     hints = {
         "last_non_empty_col": index_to_col(last_non_empty_col) if last_non_empty_col else None,
-        "safe_append_col": safe_col,
-        "safe_append_header_cell": f"{safe_col}{header_row}" if header_row else None,
-        "safe_append_data_start_cell": f"{safe_col}{data_start}",
     }
+    if not (skip_hidden and hidden_columns is None):
+        hints.update(
+            {
+                "safe_append_col": safe_col,
+                "safe_append_header_cell": f"{safe_col}{header_row}" if header_row else None,
+                "safe_append_data_start_cell": f"{safe_col}{data_start}",
+            }
+        )
     if skipped_hidden:
         hints["skipped_hidden_cols"] = skipped_hidden
     return hints
@@ -464,6 +470,7 @@ def profile_grid(
             data_start=data_start,
             bounds=bounds,
             hidden_columns=all_hidden_columns,
+            skip_hidden=skip_hidden,
         ),
         "special_rows": specials,
     }
@@ -553,7 +560,7 @@ def profile_table(args) -> tuple[dict[str, Any], list[str]]:
         warnings.append("CSV row numbers were inferred from the requested range")
     hidden_rows: list[int] = []
     hidden_columns: list[str] = []
-    all_hidden_columns: list[str] = []
+    all_hidden_columns: list[str] | None = None
     # Fetched in BOTH modes. Under --skip-hidden the hidden rows/columns are
     # absent from the grid, so hidden_rows/hidden_columns (which are scoped to
     # what the grid contains) come back empty and no warning fires — but the

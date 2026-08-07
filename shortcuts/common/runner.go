@@ -648,6 +648,13 @@ func WrapInputStatErrorTyped(err error, readMsg ...string) error {
 // migrating from a custom category (e.g. "io", "api_error") change their
 // envelope's type field.
 func WrapSaveErrorTyped(err error) error {
+	return WrapSaveErrorTypedForFlag(err, "")
+}
+
+// WrapSaveErrorTypedForFlag is the parameter-aware form used by commands whose
+// output path is a user-facing flag. Keeping the flag at the call site avoids
+// attributing download/save errors from unrelated commands to --output-path.
+func WrapSaveErrorTypedForFlag(err error, param string) error {
 	if err == nil {
 		return nil
 	}
@@ -657,8 +664,11 @@ func WrapSaveErrorTyped(err error) error {
 	var me *fileio.MkdirError
 	switch {
 	case errors.Is(err, fileio.ErrPathValidation):
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).
-			WithCause(err)
+		verr := errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err)
+		if param != "" {
+			verr = verr.WithParam(param)
+		}
+		return verr.WithCause(err)
 	case errors.As(err, &me):
 		return errs.NewInternalError(errs.SubtypeFileIO, "cannot create parent directory: %s", err).
 			WithCause(err)

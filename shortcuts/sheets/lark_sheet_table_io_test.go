@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -47,11 +48,11 @@ func TestTablePut_IsoDateToSerial(t *testing.T) {
 				t.Errorf("isoDateToSerial(%q) unexpected error: %v", tt.in, err)
 				continue
 			}
-			if got != tt.want {
-				t.Errorf("isoDateToSerial(%q) = %d, want %d", tt.in, got, tt.want)
+			if got != float64(tt.want) && !(strings.Contains(tt.in, "T") && math.Abs(got-float64(tt.want)) < 1) {
+				t.Errorf("isoDateToSerial(%q) = %v, want %d", tt.in, got, tt.want)
 			}
 		} else if err == nil {
-			t.Errorf("isoDateToSerial(%q) = %d, want error", tt.in, got)
+			t.Errorf("isoDateToSerial(%q) = %v, want error", tt.in, got)
 		}
 	}
 }
@@ -162,7 +163,7 @@ func TestTablePut_BuildTypedCell(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cell["value"] != 45306 {
+		if cell["value"] != float64(45306) && cell["value"] != 45306 {
 			t.Errorf("value = %#v, want serial 45306", cell["value"])
 		}
 		if nf := numberFormatOf(cell); nf != "yyyy-mm-dd" {
@@ -357,14 +358,15 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 // payload parser without a cobra command.
 type stubFlagView map[string]string
 
-func (s stubFlagView) Str(name string) string        { return s[name] }
-func (s stubFlagView) Bool(name string) bool         { return s[name] == "true" }
-func (s stubFlagView) Int(name string) int           { return 0 }
-func (s stubFlagView) Float64(name string) float64   { return 0 }
-func (s stubFlagView) Changed(name string) bool      { _, ok := s[name]; return ok }
-func (s stubFlagView) StrArray(name string) []string { return nil }
-func (s stubFlagView) StrSlice(name string) []string { return nil }
-func (s stubFlagView) Command() string               { return "+table-put" }
+func (s stubFlagView) Str(name string) string                   { return s[name] }
+func (s stubFlagView) Bool(name string) bool                    { return s[name] == "true" }
+func (s stubFlagView) Int(name string) int                      { return 0 }
+func (s stubFlagView) Float64(name string) float64              { return 0 }
+func (s stubFlagView) Changed(name string) bool                 { _, ok := s[name]; return ok }
+func (s stubFlagView) StrArray(name string) []string            { return nil }
+func (s stubFlagView) StrSlice(name string) []string            { return nil }
+func (s stubFlagView) InputResolvedFromSource(name string) bool { return false }
+func (s stubFlagView) Command() string                          { return "+table-put" }
 
 // ─── dry-run: create + write rendering ────────────────────────────────
 
@@ -1259,7 +1261,7 @@ func TestTableGet_SerialRoundTrip(t *testing.T) {
 			t.Fatalf("isoDateToSerial(%s): %v", iso, err)
 		}
 		if back := serialToISO(float64(s)); back != iso {
-			t.Errorf("roundtrip %s → %d → %s", iso, s, back)
+			t.Errorf("roundtrip %s → %v → %s", iso, s, back)
 		}
 	}
 }
@@ -1272,10 +1274,15 @@ func TestTableGet_IsDateNumberFormat(t *testing.T) {
 		// inferred as number — the column then read back raw serials
 		// (live-verified 2026-08-06: m/d → float64, same serial with
 		// yyyy-mm-dd → datetime64).
-		"m/d", "mm-dd", "d-m", "h:mm", "hh:mm:ss", "h:mm am/pm", "mm/dd hh:mm",
+		"m/d", "mm-dd", "d-m", "mm/dd hh:mm",
 	} {
 		if !isDateNumberFormat(nf) {
 			t.Errorf("%q should be a date format", nf)
+		}
+	}
+	for _, nf := range []string{"h:mm", "hh:mm:ss", "h:mm am/pm"} {
+		if isDateNumberFormat(nf) {
+			t.Errorf("time-only format %q must not be inferred as a calendar date", nf)
 		}
 	}
 	// JPY (and other currency / unit prefixes that happen to contain a lone Y)
@@ -1497,20 +1504,13 @@ func TestTableGet_DuplicateHeaderRejected(t *testing.T) {
 // sheet name. The target should fall back to using the id as the name.
 func TestTableGet_SheetIDFallbackBackfillsName(t *testing.T) {
 	t.Parallel()
-	// Structure has a different sheet — selector mismatch triggers the fallback.
+	// A successful structure read that does not contain the requested selector
+	// is a real locator error; do not fabricate a sheet name from the id and
+	// continue with a dimensionless A1 probe.
 	structure := toolOutputStub(testToken, "read", `{"sheets":[{"sheet_id":"shtOther","sheet_name":"另一张","row_count":200,"column_count":20,"index":0}]}`)
-	region := toolOutputStub(testToken, "read", `{"current_region":"A1:A2"}`)
-	cells := toolOutputStub(testToken, "read", `{"ranges":[{"cells":[[{"value":"h"}],[{"value":"x"}]]}]}`)
-	out, err := runShortcutWithStubs(t, TableGet,
-		[]string{"--url", testURL, "--sheet-id", testSheetID}, structure, region, cells)
-	if err != nil {
-		t.Fatalf("execute failed: %v\nout=%s", err, out)
-	}
-	data := decodeEnvelopeData(t, out)
-	s0, _ := data["sheets"].([]interface{})[0].(map[string]interface{})
-	if s0["name"] != testSheetID {
-		t.Errorf("fallback name = %v, want %q (id used as name)", s0["name"], testSheetID)
-	}
+	_, err := runShortcutWithStubs(t, TableGet,
+		[]string{"--url", testURL, "--sheet-id", testSheetID}, structure)
+	requireValidation(t, err, "was not found in workbook")
 }
 
 // TestTablePutFullRange_EmptyMatrix covers the dry-run report for the

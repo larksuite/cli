@@ -667,9 +667,8 @@ func describeJSONType(raw interface{}) string {
 var excelEpoch = time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
 
 // isoDateToSerial converts an ISO yyyy-mm-dd string to its Excel serial day
-// number. The result is written as a numeric cell value with a date
-// number_format, which is the only combination that yields a real (sortable,
-// pivotable, ISNUMBER=TRUE) date in Lark Sheets.
+// number. A time suffix is retained as a fractional day so table-get/table-put
+// round-trips datetime-formatted cells without dropping the clock component.
 //
 // Accepts both bare dates (`2024-01-15`) and full ISO datetime strings with a
 // `T` separator (`2024-01-15T00:00:00.000`, `2024-01-15T08:30:00+08:00`). The
@@ -678,7 +677,7 @@ var excelEpoch = time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
 // always emits the full ISO form — round-trips without an extra string clean
 // step on the agent side. A leading `T` (no date prefix) is left alone so the
 // parser still rejects it cleanly.
-func isoDateToSerial(s string) (int, error) {
+func isoDateToSerial(s string) (float64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		// Empty cells in a date-typed column are the classic header/total-row
@@ -687,13 +686,34 @@ func isoDateToSerial(s string) (int, error) {
 		return 0, fmt.Errorf("date column has an empty cell — drop the empty rows, fill real yyyy-mm-dd dates, or declare the column dtype as object (text)") //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
 	}
 	if i := strings.Index(s, "T"); i > 0 {
-		s = s[:i]
+		base := s[:i]
+		date, err := time.Parse("2006-01-02", base)
+		if err != nil {
+			return 0, fmt.Errorf("date %q must be ISO yyyy-mm-dd: %w", base, err)
+		}
+		var parsed time.Time
+		clock := s[i:]
+		if strings.ContainsAny(clock, "Zz+-") {
+			parsed, err = time.Parse(time.RFC3339Nano, s)
+		} else {
+			parsed, err = time.Parse("2006-01-02T15:04:05.999999999", s)
+		}
+		if err != nil {
+			return 0, fmt.Errorf("datetime %q must be ISO: %w", s, err)
+		}
+		if parsed.Location() != time.UTC {
+			// Keep the wall-clock time supplied by the caller; Excel serials do
+			// not carry a timezone and table-put historically treated the ISO
+			// date/time as the sheet-local value.
+			return date.Sub(excelEpoch).Hours()/24 + float64(parsed.Hour()*3600+parsed.Minute()*60+parsed.Second())/86400 + float64(parsed.Nanosecond())/(86400*1e9), nil
+		}
+		return date.Sub(excelEpoch).Hours()/24 + float64(parsed.Hour()*3600+parsed.Minute()*60+parsed.Second())/86400 + float64(parsed.Nanosecond())/(86400*1e9), nil
 	}
 	t, err := time.Parse("2006-01-02", s)
 	if err != nil {
 		return 0, fmt.Errorf("date %q must be ISO yyyy-mm-dd: %w", s, err) //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
 	}
-	return int(math.Round(t.Sub(excelEpoch).Hours() / 24)), nil
+	return float64(int(math.Round(t.Sub(excelEpoch).Hours() / 24))), nil
 }
 
 // ─── range helpers ────────────────────────────────────────────────────
@@ -777,7 +797,11 @@ func writeSheetData(ctx context.Context, runtime *common.RuntimeContext, token, 
 	}
 
 	if len(matrix) == 0 {
-		// header:false with no data rows — nothing to write.
+		// header:false with no data rows — visual operations still carry user
+		// intent, so apply freeze/merge/resize even when there is no cell matrix.
+		if err := applyWorkbookCreateVisualOps(ctx, runtime, token, sheetID, styles); err != nil {
+			return nil, fmt.Errorf("applying visual styles: %w", err)
+		}
 		return map[string]interface{}{
 			"name": s.Name, "sheet_id": sheetID, "range": "",
 			"data_rows": 0, "columns": ncols, "writes": 0, "mode": writeModeName(s),
@@ -1241,12 +1265,15 @@ var TableGet = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		dry := common.NewDryRunAPI()
-		// get_workbook_structure runs on every path now (not just whole-workbook):
-		// the single-sheet selector path also reads it to learn the grid's physical
-		// dimensions, which anchor the default used-range probe over the full grid.
-		body, _ := buildToolBody("get_workbook_structure", map[string]interface{}{"excel_id": token})
-		dry.POST(toolInvokePath(token, ToolKindRead)).Desc("read sub-sheets + grid dimensions via get_workbook_structure").Body(body)
 		rng := strings.TrimSpace(runtime.Str("range"))
+		// Keep dry-run and Execute aligned: a direct explicit-range read with a
+		// selector does not need workbook structure discovery.
+		if rng != "" && (strings.TrimSpace(runtime.Str("sheet-id")) != "" || strings.TrimSpace(runtime.Str("sheet-name")) != "") {
+			// no structure call
+		} else {
+			body, _ := buildToolBody("get_workbook_structure", map[string]interface{}{"excel_id": token})
+			dry.POST(toolInvokePath(token, ToolKindRead)).Desc("read sub-sheets + grid dimensions via get_workbook_structure").Body(body)
+		}
 		if rng == "" {
 			rng = "<each sheet's used range (full-grid current_region)>"
 		}
@@ -1268,7 +1295,7 @@ var TableGet = common.Shortcut{
 			strings.TrimSpace(runtime.Str("sheet-id")),
 			strings.TrimSpace(runtime.Str("sheet-name")),
 		)
-		body, _ = buildToolBody("get_cell_ranges", input)
+		body, _ := buildToolBody("get_cell_ranges", input)
 		dry.POST(toolInvokePath(token, ToolKindRead)).
 			Desc(fmt.Sprintf("read cells (%s) + styles via get_cell_ranges, then infer column types", rng)).
 			Body(body)
@@ -1348,6 +1375,13 @@ type tableGetSheet struct {
 func tableGetTargets(ctx context.Context, runtime *common.RuntimeContext, token string) ([]tableGetSheet, error) {
 	id := strings.TrimSpace(runtime.Str("sheet-id"))
 	name := strings.TrimSpace(runtime.Str("sheet-name"))
+	// An explicit range already supplies the read bounds. When the caller also
+	// supplies a sheet selector, no structure lookup is needed to discover a
+	// default region or enumerate sheets; avoid turning a direct get_cell_ranges
+	// read into an unrelated dependency on get_workbook_structure.
+	if strings.TrimSpace(runtime.Str("range")) != "" && (id != "" || name != "") {
+		return []tableGetSheet{{id: id, name: name}}, nil
+	}
 
 	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_workbook_structure", map[string]interface{}{"excel_id": token})
 	if err != nil {
@@ -1375,10 +1409,11 @@ func tableGetTargets(ctx context.Context, runtime *common.RuntimeContext, token 
 				return []tableGetSheet{{id: sid, name: sname, rowCount: rc, colCount: cc}}, nil
 			}
 		}
-		if id != "" {
-			return []tableGetSheet{{id: id, name: id}}, nil
+		selector := name
+		if selector == "" {
+			selector = id
 		}
-		return []tableGetSheet{{name: name}}, nil
+		return nil, common.ValidationErrorf("sheet %q was not found in workbook", selector)
 	}
 
 	targets := make([]tableGetSheet, 0, len(raw))
@@ -1567,22 +1602,19 @@ func readSheetAsSpec(ctx context.Context, runtime *common.RuntimeContext, token 
 }
 
 // cellRangesTruncated reports whether a get_cell_ranges response was clipped by
-// max_chars — either the top-level has_more flag or the first range's truncated
-// flag. Used by +table-get, whose spec output otherwise drops both signals.
+// max_chars — either the top-level or any range-level truncation flag.
 func cellRangesTruncated(out interface{}) bool {
 	m, ok := out.(map[string]interface{})
 	if !ok {
 		return false
 	}
-	if hm, ok := m["has_more"].(bool); ok && hm {
+	if truncationFlagSet(m) {
 		return true
 	}
 	ranges, _ := m["ranges"].([]interface{})
-	if len(ranges) > 0 {
-		if r0, ok := ranges[0].(map[string]interface{}); ok {
-			if t, ok := r0["truncated"].(bool); ok {
-				return t
-			}
+	for _, raw := range ranges {
+		if r, ok := raw.(map[string]interface{}); ok && truncationFlagSet(r) {
+			return true
 		}
 	}
 	return false
@@ -1606,6 +1638,9 @@ func sheetCurrentRegion(ctx context.Context, runtime *common.RuntimeContext, tok
 		anchor = "A1:" + columnIndexToLetter(t.colCount-1) + strconv.Itoa(t.rowCount)
 	}
 	input := map[string]interface{}{"excel_id": token, "range": anchor, "max_rows": unboundedReadLimit}
+	if n, ok := maxCharsInput(runtime); ok {
+		input["max_chars"] = n
+	}
 	sheetSelectorForToolInput(input, t.id, t.name)
 	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_range_as_csv", input)
 	if err != nil {
@@ -1618,6 +1653,9 @@ func sheetCurrentRegion(ctx context.Context, runtime *common.RuntimeContext, tok
 	region, _ := m["current_region"].(string)
 	if region == "" {
 		region, _ = m["actual_range"].(string)
+	}
+	if truncationFlagSet(m) {
+		return "", common.ValidationErrorf("used-range probe was truncated at %q; narrow --range or raise --max-chars before running +table-get", region)
 	}
 	return region, nil
 }
@@ -1761,8 +1799,13 @@ func inferColumnType(dataRows [][]map[string]interface{}, c int) (string, string
 //     as number and read back as raw serials — live-verified 2026-08-06.)
 func isDateNumberFormat(nf string) bool {
 	s := strings.ToLower(nf)
+	if strings.Contains(s, ":") && !strings.ContainsAny(s, "yYdD/-.") {
+		// Clock-only and elapsed-time formats (h:mm, mm:ss, [h]:mm) are
+		// durations/times, not calendar dates; preserve their numeric serial.
+		return false
+	}
 	inQuote, inBracket, escape := false, false, false
-	sawDateLetter, allDateChars, sawEffective := false, true, false
+	sawCalendarToken, sawClockToken, allDateChars, sawEffective := false, false, true, false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if escape {
@@ -1779,13 +1822,26 @@ func isDateNumberFormat(nf string) bool {
 		case !inQuote && c == ']':
 			inBracket = false
 		case !inQuote && !inBracket:
+			if strings.HasPrefix(s[i:], "am/pm") {
+				sawEffective = true
+				i += len("am/pm") - 1
+				continue
+			}
 			if c == 'y' && i+1 < len(s) && s[i+1] == 'y' {
 				return true
 			}
 			sawEffective = true
 			switch {
-			case c == 'y' || c == 'm' || c == 'd' || c == 'h' || c == 's':
-				sawDateLetter = true
+			case c == 'y' || c == 'd':
+				sawCalendarToken = true
+			case c == 'm':
+				// Once an hour token has appeared, m is minutes rather than
+				// a calendar month (h:mm is a time-only format).
+				if !sawClockToken {
+					sawCalendarToken = true
+				}
+			case c == 'h' || c == 's':
+				sawClockToken = true
 			case c == 'a' || c == 'p' || (c >= '0' && c <= '9') ||
 				c == '/' || c == '-' || c == ':' || c == '.' || c == ',' || c == ' ':
 				// separator / am-pm letter / digit: allowed, not a token
@@ -1794,7 +1850,7 @@ func isDateNumberFormat(nf string) bool {
 			}
 		}
 	}
-	return sawEffective && allDateChars && sawDateLetter
+	return sawEffective && allDateChars && sawCalendarToken
 }
 
 // isTextNumberFormat reports whether a number_format is Excel/Lark text format
@@ -1857,5 +1913,5 @@ func tableGetToFloat(v interface{}) (float64, bool) {
 // serialToISO converts an Excel serial day number back to an ISO yyyy-mm-dd
 // string — the inverse of isoDateToSerial.
 func serialToISO(serial float64) string {
-	return excelEpoch.AddDate(0, 0, int(serial)).Format("2006-01-02")
+	return excelEpoch.Add(time.Duration(serial * 24 * float64(time.Hour))).Format("2006-01-02")
 }

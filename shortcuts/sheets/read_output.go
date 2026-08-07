@@ -160,6 +160,9 @@ func emitReadResult(runtime *common.RuntimeContext, out interface{}) error {
 		runtime.Out(out, nil)
 		return nil
 	}
+	if strings.TrimSpace(runtime.JqExpr) != "" {
+		return common.ValidationErrorf("--jq cannot be combined with --output-path; jq filters the stdout receipt, while the file contains the unfiltered read payload")
+	}
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return err
@@ -168,7 +171,7 @@ func emitReadResult(runtime *common.RuntimeContext, out interface{}) error {
 	if _, err := runtime.FileIO().Save(path, fileio.SaveOptions{}, bytes.NewReader(b)); err != nil {
 		// Typed mapping keeps an unsafe --output-path a validation error and
 		// write failures file_io — a raw Save error surfaces as internal/unknown.
-		return common.WrapSaveErrorTyped(err)
+		return common.WrapSaveErrorTypedForFlag(err, "--output-path")
 	}
 	resolved, err := runtime.FileIO().ResolvePath(path)
 	if err != nil {

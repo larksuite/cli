@@ -26,17 +26,21 @@ def df_to_sheet(df, name, formats=None):
     # then rejects `columns` ("cannot unmarshal number into … type string")
     # and the dtype lookup would miss anyway. Stringify every key once, and
     # refuse to continue when that conversion silently merges two columns.
+    normalized_labels = [str(c) for c in df.columns]
     columns = [str(c) for c in packed["columns"]]
+    if normalized_labels != columns:
+        columns = normalized_labels
     if len(set(columns)) != len(columns):
         raise ValueError(
             "column labels collide after str() conversion; "
             "rename the DataFrame columns before packing"
         )
     packed["columns"] = columns
+    dtype_values = list(df.dtypes)
     return {
         "name": name,
         **packed,
-        "dtypes": {str(k): str(v) for k, v in df.dtypes.items()},
+        "dtypes": {key: str(dtype) for key, dtype in zip(columns, dtype_values)},
         **({"formats": {str(k): v for k, v in formats.items()}} if formats else {}),
     }
 

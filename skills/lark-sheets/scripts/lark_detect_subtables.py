@@ -517,7 +517,7 @@ def detect_subtables(args) -> tuple[dict[str, Any], list[str]]:
             )
             if _has_value(anchor_grid):
                 confirmed_external_merges.add(merge_ref)
-        except LarkCliError as exc:
+        except (LarkCliError, ValueError) as exc:
             warnings.append(f"could not confirm merge anchor {anchor}: {exc}")
     occupied = build_occupancy(
         grid,

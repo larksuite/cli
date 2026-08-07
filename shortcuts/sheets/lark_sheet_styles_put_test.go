@@ -118,6 +118,14 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 		}
 	})
 
+	t.Run("empty freeze object is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+			"styles": []interface{}{map[string]interface{}{"name": "S1", "freeze": map[string]interface{}{}}},
+		}), testToken)
+		requireValidation(t, err, "must specify rows or cols")
+	})
+
 	t.Run("range prefixed with another sheet rejected", func(t *testing.T) {
 		// Silently stripping "Detail!" would retarget the styles onto Summary.
 		t.Parallel()

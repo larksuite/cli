@@ -196,12 +196,7 @@ func dimInsertAnchorShifted(runtime flagView, input map[string]interface{}) bool
 }
 
 func dimInsertNeedsBeforeStyleWarning(runtime flagView) bool {
-	if !runtime.Changed("inherit-style") || runtime.Str("inherit-style") != "before" {
-		return false
-	}
-	// Only the first row/column (idx 0) has no preceding row/column.
-	_, idx, err := parseA1Position(strings.TrimSpace(runtime.Str("position")))
-	return err == nil && idx == 0
+	return false
 }
 
 // dimInsertInput passes --position (1-based row number "3" or column letter

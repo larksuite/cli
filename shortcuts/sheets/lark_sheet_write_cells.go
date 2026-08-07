@@ -564,6 +564,12 @@ func csvPutInput(runtime flagView, token, sheetID, sheetName string) (map[string
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, err
 	}
+	if !runtime.InputResolvedFromSource("csv") {
+		rawCSV := strings.TrimSpace(runtime.Str("csv"))
+		if rawCSV != "" && csvValueLooksLikePath(rawCSV) {
+			return nil, sheetsValidationForFlag("csv", "--csv value %q looks like a file path; use @<path> or stdin", rawCSV)
+		}
+	}
 	if strings.TrimSpace(runtime.Str("csv")) == "" {
 		return nil, sheetsValidationForFlag("csv", "--csv is required")
 	}

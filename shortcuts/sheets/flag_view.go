@@ -29,6 +29,7 @@ type flagView interface {
 	StrArray(name string) []string
 	StrSlice(name string) []string
 	Changed(name string) bool
+	InputResolvedFromSource(name string) bool
 	// Command returns the shortcut command this view feeds (e.g.
 	// "+pivot-create"). Used to look up the schema entry for
 	// schema-driven flag validation; both standalone and batch sub-op
@@ -237,6 +238,8 @@ func (m mapFlagView) Changed(name string) bool {
 	_, ok := m.lookupRaw(name)
 	return ok
 }
+
+func (m mapFlagView) InputResolvedFromSource(name string) bool { return false }
 
 // validateRawTypes rejects sub-op input fields whose JSON type contradicts the
 // flag's declared type in flag-defs. +batch-update skips parse-time schema
