@@ -1030,6 +1030,30 @@ func TestCorrelateLocalDocResourcesTypeMismatchIsNotSafeToCleanup(t *testing.T) 
 	}
 }
 
+func TestCorrelateLocalDocResourcesMissingMarkerIsSkippedAmbiguous(t *testing.T) {
+	marker := "@lcli_img_0123456789abcdef0123456789abcdef"
+	outcomes := correlateLocalDocResources(map[string]interface{}{
+		"document": map[string]interface{}{"new_blocks": []interface{}{}},
+	}, []localDocResource{{Occurrence: 1, Kind: localDocResourceImage, Marker: marker}})
+
+	if len(outcomes) != 1 || outcomes[0].Status != "correlation_failed" || outcomes[0].SafeToCleanup {
+		t.Fatalf("missing marker outcome = %#v", outcomes)
+	}
+	if outcomes[0].CleanupStatus != "skipped_ambiguous" {
+		t.Fatalf("missing marker cleanup status = %q, want skipped_ambiguous", outcomes[0].CleanupStatus)
+	}
+	data := map[string]interface{}{}
+	appendLocalDocResourceFailures(data, outcomes)
+	failures, ok := data["local_resource_failures"].([]interface{})
+	if !ok || len(failures) != 1 {
+		t.Fatalf("failure payload = %#v, want one failure", data["local_resource_failures"])
+	}
+	failure, ok := failures[0].(map[string]interface{})
+	if !ok || failure["cleanup_status"] != "skipped_ambiguous" {
+		t.Fatalf("failure payload = %#v, want cleanup_status=skipped_ambiguous", failures[0])
+	}
+}
+
 func TestCorrelateLocalDocResourcesUnknownMarkerDisablesCleanup(t *testing.T) {
 	expectedMarker := "@lcli_img_0123456789abcdef0123456789abcdef"
 	unknownMarker := "@lcli_file_fedcba9876543210fedcba9876543210"

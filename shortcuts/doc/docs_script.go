@@ -149,7 +149,6 @@ func installDocsScriptHelp(cmd *cobra.Command) {
 	installDocsContentPathCapture(cmd)
 	cmd.Example = `  lark-cli docs +script --command init-draft --presentation-decision '<JSON>'
   lark-cli docs +script --command parse --content "@./draft.xml"
-  lark-cli docs +script --command parse --content "@./draft.md"
   lark-cli docs +script --command parse --doc "https://example.larksuite.com/docx/doxcn..."`
 }
 

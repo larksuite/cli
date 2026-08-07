@@ -1126,7 +1126,7 @@ func correlateLocalDocResources(data map[string]interface{}, resources []localDo
 				}
 			}
 			outcome.SafeToCleanup = len(outcome.CleanupBlockIDs) > 0 && allBlocksMatchKind
-			if !allBlocksMatchKind {
+			if len(matches) == 0 || !allBlocksMatchKind {
 				outcome.CleanupStatus = "skipped_ambiguous"
 			}
 			outcomes[i] = outcome
