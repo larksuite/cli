@@ -45,6 +45,26 @@ func TestOpenClassifiesFullResponseReadFailures(t *testing.T) {
 	}
 }
 
+func TestOpenClassifiesUnknownLengthNoProgress(t *testing.T) {
+	stream, err := openTest(context.Background(), func(context.Context, Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode:    http.StatusOK,
+			Header:        make(http.Header),
+			Body:          io.NopCloser(noProgressReader{}),
+			ContentLength: -1,
+		}, nil
+	}, testOptions())
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer stream.Body.Close()
+	_, err = io.ReadAll(stream.Body)
+	requireProblem(t, err, errs.SubtypeNetworkTransport, true, "no progress")
+	if !errors.Is(err, io.ErrNoProgress) {
+		t.Fatalf("ReadAll() error = %v, want io.ErrNoProgress cause", err)
+	}
+}
+
 func TestOpenPreservesTypedFullResponseReadError(t *testing.T) {
 	want := errs.NewNetworkError(errs.SubtypeNetworkServer, "upstream failed").WithRetryable()
 	stream, err := openTest(context.Background(), func(context.Context, Request) (*http.Response, error) {

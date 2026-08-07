@@ -51,6 +51,8 @@ func classifyBodyReadError(ctx context.Context, readErr, cause error) error {
 		if errors.As(readErr, &netErr) && netErr.Timeout() {
 			subtype = errs.SubtypeNetworkTimeout
 			message = "download request timed out"
+		} else if errors.Is(readErr, io.ErrNoProgress) {
+			message = "download response body made no progress"
 		} else if errors.Is(readErr, io.ErrUnexpectedEOF) {
 			message = "download response body ended unexpectedly"
 		}

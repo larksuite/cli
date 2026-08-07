@@ -35,7 +35,7 @@ lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_x
 | `--file-key <key>` | Yes | Resource key (`img_xxx` or `file_xxx`) |
 | `--type <type>` | Yes | Resource type: `image` or `file` |
 | `--output <path>` | No | Relative output path; absolute paths and `..` traversal are rejected. When omitted, the command uses the attachment name when available and otherwise falls back to the resource key |
-| `--as <identity>` | No | Identity type: `user` (default) or `bot` |
+| `--as <identity>` | No | Identity type: `user` or `bot`; when omitted, the CLI resolves the configured or available identity |
 | `--dry-run` | No | Print the request only, do not execute it |
 
 ## Choose `--type`
@@ -77,9 +77,10 @@ lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_x
 
 | Symptom | Root Cause | Solution |
 |---------|---------|---------|
-| Download failed | `file_key` does not match the `message_id` | Make sure the `file_key` came from that message's content |
-| Hit error code 234002 or 14005 | The caller cannot access the resource, or it was deleted | Do not retry; report that the attachment is unavailable |
-| Permission denied | `im:message:readonly` is not authorized | Run `auth login --scope "im:message:readonly"` |
+| Resource does not match the message | `file_key` and `message_id` came from different messages | Read the message again and use its matching identifiers |
+| Authentication failed | The current credential or identity was rejected | Check the active profile and `--as`; retry only after correcting authentication |
+| Permission denied | `im:message:readonly` is not authorized | For user identity, run `lark-cli auth login --scope "im:message:readonly"`; for bot identity, grant the scope to the app in the developer console |
+| Attachment unavailable | The message or resource is deleted, hidden, restricted, or inaccessible to the caller | Do not retry unchanged; report the exact CLI error |
 | Retryable network error | The transfer did not complete | Retry the same command |
 
 ## References

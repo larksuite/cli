@@ -84,6 +84,9 @@ func (b *idleTimeoutBody) Read(p []byte) (int, error) {
 	if errors.Is(context.Cause(b.requestCtx), errDownloadIdleTimeout) && b.ctx.Err() == nil {
 		return n, newIdleTimeoutError(b.timeout)
 	}
+	if n == 0 && err == nil {
+		return 0, io.ErrNoProgress
+	}
 	if err == io.EOF {
 		b.cancel(nil)
 	}
