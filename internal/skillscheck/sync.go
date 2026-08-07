@@ -54,18 +54,6 @@ func ParseSkillsList(text string) []string {
 	return nil
 }
 
-func ParseGlobalSkillsJSON(text string) []string {
-	entries, err := parseInstalledSkillsJSON(text)
-	if err != nil {
-		return nil
-	}
-	seen := map[string]bool{}
-	for _, entry := range entries {
-		seen[entry.Name] = true
-	}
-	return sortedKeys(seen)
-}
-
 type installedSkill struct {
 	Name string `json:"name"`
 	Path string `json:"path"`

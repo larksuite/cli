@@ -81,35 +81,6 @@ General
 	}
 }
 
-func TestParseGlobalSkillsJSON(t *testing.T) {
-	input := `[
-  {"name":"lark-calendar","path":"/Users/example/.agents/skills/lark-calendar","scope":"global","agents":["Codex"]},
-  {"name":"lark-mail@1.2.3","path":"/Users/example/.agents/skills/lark-mail","scope":"global","agents":["Codex"]},
-  {"name":"lark-calendar","path":"/Users/example/.agents/skills/lark-calendar","scope":"global","agents":["Codex"]},
-  {"name":"  lark-base  ","path":"/Users/example/.agents/skills/lark-base","scope":"global","agents":["Codex"]},
-  {"name":""},
-  {"name":"   "},
-  {"name":"bad skill"}
-]`
-	got := ParseGlobalSkillsJSON(input)
-	want := []string{"lark-base", "lark-calendar", "lark-mail@1.2.3"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("ParseGlobalSkillsJSON() = %#v, want %#v", got, want)
-	}
-}
-
-func TestParseGlobalSkillsJSONInvalidOrUnsupported(t *testing.T) {
-	for _, input := range []string{
-		`not json`,
-		`{"name":"lark-calendar"}`,
-		`[]`,
-	} {
-		if got := ParseGlobalSkillsJSON(input); len(got) != 0 {
-			t.Fatalf("ParseGlobalSkillsJSON(%q) = %#v, want empty", input, got)
-		}
-	}
-}
-
 func TestParseOfficialSkillsIndexJSON(t *testing.T) {
 	input := `{
 	  "skills": [
