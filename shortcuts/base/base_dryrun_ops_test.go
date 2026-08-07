@@ -85,6 +85,12 @@ func TestDryRunFieldOps(t *testing.T) {
 		map[string]int{"offset": 3, "limit": 30},
 	)
 	assertDryRunContains(t, dryRunFieldGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1")
+	fieldGetAliasRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "field-id-or-name": "Amount"},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunFieldGet(ctx, fieldGetAliasRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/Amount")
 	assertDryRunContains(t, dryRunFieldCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/fields")
 
 	arrayRT := newBaseTestRuntime(
@@ -117,6 +123,18 @@ func TestDryRunFieldOps(t *testing.T) {
 	if out := autoNumberDR.Format(); strings.Contains(out, "auto_serial") || strings.Contains(out, "reformat_existing_records") || strings.Contains(out, "/open-apis/bitable/v1/") {
 		t.Fatalf("auto_number dry-run must stay on v3 field JSON, got:\n%s", out)
 	}
+
+	reformatRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"field-id":   "fld_1",
+			"json":       `{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}`,
+		},
+		map[string]bool{"reformat-existing-records": true},
+		nil,
+	)
+	assertDryRunContains(t, dryRunFieldUpdate(ctx, reformatRT), "PUT /open-apis/bitable/v1/apps/app_x/tables/tbl_1/fields/fld_1", `"field_name":"编号"`, `"type":1005`, `"reformat_existing_records":true`, `"type":"system_number"`, `"value":"4"`)
 }
 
 func TestDryRunRecordOps(t *testing.T) {

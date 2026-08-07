@@ -184,7 +184,8 @@
 - `icon` 默认 `star`
 - `icon` 可用：`star`、`heart`、`thumbsup`、`fire`、`smile`、`lightning`、`flower`、`number`
 - `min` 取值 `0..1`，默认 `1`
-- `max` 默认 `5`；常见或已文档化的范围为 `1..10`，但 CLI 不强制上限为 `10`。如果用户明确需要更大评分范围，优先确认平台能力或用 `+field-create/update --dry-run` 检查请求形状；平台拒绝后再建议改用普通数字或进度字段。
+- `max` 取值 `1..10`，默认 `5`
+- `max > 10` 是平台硬限制；0-20 评分不支持，不要尝试写入，改问是否用普通数字或进度字段表示
 
 ```json
 {
@@ -472,6 +473,7 @@
 
 默认值 / 约束：
 - `date_format` 可用：`yyyyMMdd`、`yyyyMM`、`yyMM`、`MMdd`、`yyyy`、`MM`、`dd`
+- 开启 `+field-update --reformat-existing-records` 时优先用 `yyyyMMdd` 或 `yyyyMM`；`yyMM` 会被已有记录重排接口拒绝
 
 ```json
 { "type": "created_time", "date_format": "yyyyMMdd" }

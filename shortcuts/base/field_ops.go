@@ -9,8 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+const baseFieldUpdateNoopCode = 800070003
 
 var fieldCreateBatchDelay = time.Second
 
@@ -32,7 +35,7 @@ func dryRunFieldGet(_ context.Context, runtime *common.RuntimeContext) *common.D
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime)).
-		Set("field_id", runtime.Str("field-id"))
+		Set("field_id", fieldGetRef(runtime))
 }
 
 func dryRunFieldCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -55,6 +58,21 @@ func dryRunFieldUpdate(_ context.Context, runtime *common.RuntimeContext) *commo
 	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 	if err != nil {
 		return common.NewDryRunAPI().Desc(fmt.Sprintf("dry-run validation failed: %v", err))
+	}
+	if err := validateRatingFieldLimit(body); err != nil {
+		return common.NewDryRunAPI().Desc(fmt.Sprintf("dry-run validation failed: %v", err))
+	}
+	if runtime.Bool("reformat-existing-records") {
+		body, err := buildAutoNumberReformatBody(body)
+		if err != nil {
+			return common.NewDryRunAPI().Desc(fmt.Sprintf("dry-run validation failed: %v", err))
+		}
+		return common.NewDryRunAPI().
+			PUT("/open-apis/bitable/v1/apps/:base_token/tables/:table_id/fields/:field_id").
+			Body(body).
+			Set("base_token", runtime.Str("base-token")).
+			Set("table_id", baseTableID(runtime)).
+			Set("field_id", runtime.Str("field-id"))
 	}
 	return common.NewDryRunAPI().
 		PUT("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
@@ -112,6 +130,9 @@ func validateFieldCreate(runtime *common.RuntimeContext) error {
 		return err
 	}
 	for _, body := range bodies {
+		if err := validateRatingFieldLimit(body); err != nil {
+			return err
+		}
 		if err := validateFormulaLookupGuideAck(runtime, "+field-create", body); err != nil {
 			return err
 		}
@@ -124,7 +145,39 @@ func validateFieldUpdate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if runtime.Bool("reformat-existing-records") {
+		if _, err := buildAutoNumberReformatBody(body); err != nil {
+			return err
+		}
+	} else if containsAutoNumberReformatKey(body) {
+		return baseFlagErrorf("--reformat-existing-records is required for auto_number existing-record regeneration; remove reformat_existing_records from --json and pass --reformat-existing-records")
+	}
+	if err := validateRatingFieldLimit(body); err != nil {
+		return err
+	}
 	return validateFormulaLookupGuideAck(runtime, "+field-update", body)
+}
+
+func validateRatingFieldLimit(body map[string]interface{}) error {
+	if fieldType := strings.ToLower(strings.TrimSpace(common.GetString(body, "type"))); fieldType != "number" {
+		return nil
+	}
+	style, _ := body["style"].(map[string]interface{})
+	if style == nil {
+		return nil
+	}
+	if styleType := strings.ToLower(strings.TrimSpace(common.GetString(style, "type"))); styleType != "rating" {
+		return nil
+	}
+	maxValue, ok := style["max"]
+	if !ok {
+		return nil
+	}
+	max := toInt(maxValue)
+	if max > 10 {
+		return baseFlagErrorf("--json.style.max %d is not supported for rating fields; rating max must be <= 10. To represent 0-20, report that rating fields do not support that range or ask whether to use a plain number/progress field instead", max)
+	}
+	return nil
 }
 
 func executeFieldList(runtime *common.RuntimeContext) error {
@@ -147,7 +200,7 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 func executeFieldGet(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
-	fieldRef := runtime.Str("field-id")
+	fieldRef := fieldGetRef(runtime)
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldRef), nil, nil)
 	if err != nil {
 		return err
@@ -200,8 +253,37 @@ func executeFieldUpdate(runtime *common.RuntimeContext) error {
 		return err
 	}
 	fieldRef := runtime.Str("field-id")
+	if runtime.Bool("reformat-existing-records") {
+		body, err := buildAutoNumberReformatBody(body)
+		if err != nil {
+			return err
+		}
+		data, err := baseV3Call(runtime, "PUT", bitableV1Path("apps", baseToken, "tables", tableIDValue, "fields", fieldRef), nil, body)
+		if err != nil {
+			return err
+		}
+		field := interface{}(data)
+		if inner, ok := data["field"]; ok {
+			field = inner
+		}
+		runtime.Out(fieldUpdateNoReadbackResult(map[string]interface{}{"field": field, "updated": true, "reformat_existing_records": true}), nil)
+		return nil
+	}
 	data, err := baseV3Call(runtime, "PUT", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldRef), nil, body)
 	if err != nil {
+		if isFieldUpdateNoop(err) {
+			submittedField := cloneMap(body)
+			runtime.Out(fieldUpdateNoReadbackResult(map[string]interface{}{
+				"submitted_field":           submittedField,
+				"field_ref":                 fieldRef,
+				"updated":                   false,
+				"noop":                      true,
+				"current_matches_submitted": true,
+				"field_get_required":        false,
+				"message":                   "requested field update produced no changes; current field already matched the submitted definition",
+			}), nil)
+			return nil
+		}
 		return err
 	}
 	runtime.Out(fieldUpdateResult(map[string]interface{}{"field": data, "updated": true}, body), nil)
@@ -235,6 +317,45 @@ func fieldUpdateResult(result map[string]interface{}, submitted map[string]inter
 	submittedType := normalizeFieldType(common.GetString(submitted, "type"))
 	readbackRecommended, reason := fieldUpdateReadbackRecommendation(returnedType, submittedType)
 	return attachFieldReadbackRecommendation(result, readbackRecommended, reason)
+}
+
+func fieldUpdateNoReadbackResult(result map[string]interface{}) map[string]interface{} {
+	result["field_get_recommended"] = false
+	result["field_get_required"] = false
+	result["next_step"] = "done"
+	result["verification_hint"] = "result already verifies target state; skip +field-get or repeat +field-update unless extra properties are needed"
+	return result
+}
+
+func isFieldUpdateNoop(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		return false
+	}
+	return problem.Code == baseFieldUpdateNoopCode &&
+		strings.Contains(strings.ToLower(problem.Message), "no operation produced")
+}
+
+func containsAutoNumberReformatKey(value interface{}) bool {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		for key, child := range v {
+			switch strings.ToLower(strings.TrimSpace(key)) {
+			case "reformat_existing_records", "reformat_existing_record", "apply_for_existing_records":
+				return true
+			}
+			if containsAutoNumberReformatKey(child) {
+				return true
+			}
+		}
+	case []interface{}:
+		for _, child := range v {
+			if containsAutoNumberReformatKey(child) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func fieldUpdateReadbackRecommendation(returnedType, submittedType string) (bool, string) {
@@ -340,4 +461,107 @@ func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
 		"total":      total,
 	}, nil)
 	return nil
+}
+
+func buildAutoNumberReformatBody(body map[string]interface{}) (map[string]interface{}, error) {
+	if body == nil {
+		return nil, baseFlagErrorf("--json must be a JSON object")
+	}
+	if fieldType := strings.ToLower(strings.TrimSpace(common.GetString(body, "type"))); fieldType != "auto_number" {
+		return nil, baseFlagErrorf("--reformat-existing-records requires --json.type to be \"auto_number\"")
+	}
+	fieldName := strings.TrimSpace(common.GetString(body, "name"))
+	if fieldName == "" {
+		return nil, baseFlagErrorf("--json.name is required with --reformat-existing-records")
+	}
+	if autoSerial := autoSerialProperty(body); autoSerial != nil {
+		autoSerial = cloneMap(autoSerial)
+		if strings.TrimSpace(common.GetString(autoSerial, "type")) == "" {
+			autoSerial["type"] = "custom"
+		}
+		autoSerial["reformat_existing_records"] = true
+		return map[string]interface{}{
+			"field_name": fieldName,
+			"type":       1005,
+			"property": map[string]interface{}{
+				"auto_serial": autoSerial,
+			},
+		}, nil
+	}
+	rules, err := autoNumberStyleRules(body)
+	if err != nil {
+		return nil, err
+	}
+	options := make([]interface{}, 0, len(rules))
+	for idx, item := range rules {
+		rule, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, baseFlagErrorf("--json.style.rules[%d] must be an object", idx)
+		}
+		option, err := autoNumberRuleToV1Option(rule, idx)
+		if err != nil {
+			return nil, err
+		}
+		options = append(options, option)
+	}
+	return map[string]interface{}{
+		"field_name": fieldName,
+		"type":       1005,
+		"property": map[string]interface{}{
+			"auto_serial": map[string]interface{}{
+				"type":                      "custom",
+				"reformat_existing_records": true,
+				"options":                   options,
+			},
+		},
+	}, nil
+}
+
+func autoSerialProperty(body map[string]interface{}) map[string]interface{} {
+	property, _ := body["property"].(map[string]interface{})
+	if property == nil {
+		return nil
+	}
+	autoSerial, _ := property["auto_serial"].(map[string]interface{})
+	if autoSerial == nil {
+		return nil
+	}
+	return autoSerial
+}
+
+func autoNumberStyleRules(body map[string]interface{}) ([]interface{}, error) {
+	style, _ := body["style"].(map[string]interface{})
+	if style == nil {
+		return nil, baseFlagErrorf("--json.style.rules is required with --reformat-existing-records")
+	}
+	rules, _ := style["rules"].([]interface{})
+	if len(rules) == 0 {
+		return nil, baseFlagErrorf("--json.style.rules must contain at least one rule with --reformat-existing-records")
+	}
+	return rules, nil
+}
+
+func autoNumberRuleToV1Option(rule map[string]interface{}, idx int) (map[string]interface{}, error) {
+	ruleType := strings.ToLower(strings.TrimSpace(common.GetString(rule, "type")))
+	switch ruleType {
+	case "text":
+		return map[string]interface{}{"type": "fixed_text", "value": common.GetString(rule, "text")}, nil
+	case "created_time":
+		format := strings.TrimSpace(common.GetString(rule, "date_format"))
+		if format == "" {
+			format = "yyyyMMdd"
+		}
+		if format == "yyMM" {
+			return nil, baseFlagErrorf("--json.style.rules[%d].date_format %q is not supported with --reformat-existing-records; use yyyyMMdd or yyyyMM", idx, format)
+		}
+		return map[string]interface{}{"type": "created_time", "value": format}, nil
+	case "incremental_number":
+		length := toInt(rule["length"])
+		if length <= 0 {
+			length = 3
+		}
+		return map[string]interface{}{"type": "system_number", "value": fmt.Sprintf("%d", length)}, nil
+	default:
+		return nil, baseFlagErrorf("--json.style.rules[%d].type %q is not supported with --reformat-existing-records; use text, created_time, or incremental_number", idx, ruleType)
+	}
 }

@@ -25,6 +25,7 @@ import (
 const (
 	batchSize         = 500
 	baseV3ServicePath = "/open-apis/base/v3"
+	bitableV1PathRoot = "/open-apis/bitable/v1"
 )
 
 type fieldTypeSpec struct {
@@ -376,6 +377,14 @@ func buildTableFieldBodies(rawFields string, rawFieldSpecs string) ([]interface{
 }
 
 func baseV3Path(parts ...string) string {
+	return escapedAPIPath(baseV3ServicePath, parts...)
+}
+
+func bitableV1Path(parts ...string) string {
+	return escapedAPIPath(bitableV1PathRoot, parts...)
+}
+
+func escapedAPIPath(root string, parts ...string) string {
 	clean := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.Trim(part, "/")
@@ -383,7 +392,7 @@ func baseV3Path(parts ...string) string {
 			clean = append(clean, url.PathEscape(part))
 		}
 	}
-	return baseV3ServicePath + "/" + strings.Join(clean, "/")
+	return root + "/" + strings.Join(clean, "/")
 }
 
 func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {

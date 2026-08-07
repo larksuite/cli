@@ -26,6 +26,7 @@ lark-cli base +field-update \
   --table-id <table_id> \
   --field-id <field_id> \
   --json '{"name":"编号","type":"auto_number","style":{"rules":[{"type":"text","text":"TASK-"},{"type":"created_time","date_format":"yyyyMM"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}' \
+  --reformat-existing-records \
   --yes
 ```
 
@@ -37,6 +38,7 @@ lark-cli base +field-update \
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
 | `--field-id <id_or_name>` | 是 | 字段 ID 或字段名 |
 | `--json <body>` | 是 | 字段属性 JSON 对象 |
+| `--reformat-existing-records` | 否 | 仅 `auto_number` 可用：更新编号规则时重排已有记录编号；不要把 `reformat_existing_records` 放进 `--json` |
 | `--yes` | 是 | 确认执行高风险字段更新 |
 
 > 这是**高风险写入操作**。`+field-update` 使用 `PUT` 全量字段定义语义；改变字段类型或关键配置可能影响整列已有数据的解释、展示或可用性。CLI 层要求显式传 `--yes`；如果用户已经明确目标和期望更新，可直接执行并带上 `--yes`。
@@ -49,7 +51,13 @@ lark-cli base +field-update \
 PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ```
 
-当 `--json.type` 是 `auto_number` 时，仍然走同一个 v3 字段更新接口：更新自动编号规则后，接口现状就会把新规则应用到已有编号（这是接口默认行为，只是 agent 通常不知道），因此**不需要**任何额外开关或参数。只需要正常提交目标自动编号字段定义即可；如果用户要求“将修改用于已有编号”，直接执行这次 `+field-update` 就能达到效果，不要在 `--json` 里额外添加任何参数去“触发”重排。
+当需要把新的 `auto_number` 编号规则应用到已有记录时，传 `--reformat-existing-records`。命令会把 v3 字段 JSON 转成 bitable v1 的自动编号重排请求：
+
+```
+PUT /open-apis/bitable/v1/apps/:base_token/tables/:table_id/fields/:field_id
+```
+
+不要在 `--json` 里额外添加 `reformat_existing_records`、`reformat_existing_record` 或 `apply_for_existing_records`；这些低层开关必须用 `--reformat-existing-records` 表达。
 
 ## JSON 值规范
 
@@ -62,6 +70,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
 - `auto_number` 更新的 `style.rules` 支持 `text`、`created_time`、`incremental_number`。
+- `auto_number` 使用 `--reformat-existing-records` 时，`created_time.date_format` 优先用 `yyyyMMdd` 或 `yyyyMM`；`yyMM` 会被重排接口拒绝。
 
 **推荐更新示例**
 
@@ -95,7 +104,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - 返回 `field` 和 `updated: true`。
 - `updated:true` 只表示更新请求成功，不表示字段结构、已有记录值或下游能力已经完成验证。`+field-update` 无法知道更新前的字段类型，因此成功响应会推荐执行 `+field-get`；若发生类型转换，还要抽样读取记录值。
 - 如果响应中的 `field.type` 与提交的 `type` 不一致，必须把它当作待核验的类型不匹配；不能返回完成态，也不能只根据其中任一类型推断更新成功。
-- 如果 API 报告本次更新没有产生任何变更（no-op），命令会如实返回该错误；这通常说明目标字段已是期望状态，不要机械重试同一份 `+field-update`。需要确认当前字段完整状态时执行 `+field-get`。
+- 如果返回 `noop:true`、`current_matches_submitted:true`、`field_get_required:false`，表示当前字段已匹配 `submitted_field`；只为确认字段结构时不要再调用 `+field-get`。
 - 如果返回 `field_get_recommended:true` 或 `next_step:"field_get"`，按提示读回字段；`auto_number` 更新后还应抽样读记录值确认编号已按新规则生成。
 
 ## 工作流
@@ -103,7 +112,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 1. 建议先用 `+field-get` 拉现状，再做最小化修改。
 2. `formula/lookup` 类型更新前先阅读对应指南。
-3. 如果更新 `auto_number`，理解为“更新编号规则，同时把新规则应用到已有编号”；执行后按返回提示读回字段并在必要时抽样记录值。
+3. 如果更新 `auto_number` 且用户要求应用到已有编号，传 `--reformat-existing-records`；执行后按返回提示读回字段并在必要时抽样记录值。
 4. 如果这次更新会改变字段 `type` 先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
 
 ## 字段类型变更规则
@@ -170,7 +179,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ### 完成态验证
 
 - `FieldReadback`: 读回字段结构，确认 `type` / `multiple` / `style` / `options`
-- `NoopReadback`: `+field-update` 返回 no-op 错误时，只能说明 API 报告没有产生变更；可以跳过重复 update，但不能替代 `FieldReadback`
+- `NoopReadback`: `+field-update` 返回 `noop:true` 且 `field_get_required:false` 时，字段结构已匹配提交定义，等同完成 `FieldReadback`
 - `ValueReadback`: 抽样读回转换后的单元格值
 - `DownstreamReadback`: 若涉及看板 / 分组 / 排序 / lookup / 公式，继续读回结果
 - `CompletionRule`: 结构、值、下游能力都正确，才能回复“已完成”
