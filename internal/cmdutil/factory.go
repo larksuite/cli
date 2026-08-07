@@ -26,13 +26,18 @@ import (
 	"github.com/larksuite/cli/internal/transport"
 )
 
+// InvocationContext is the immutable per-invocation input resolved at the
+// process boundary, before the command tree is built. Profile carries the
+// selected profile name; ProfileSource records which channel selected it so
+// downstream gating, errors, and status output can name the actual input.
+type InvocationContext struct {
+	Profile       string
+	ProfileSource core.ProfileSource
+}
+
 // Factory holds shared dependencies injected into every command.
 // All function fields are lazily initialized and cached after first call.
 // In tests, replace any field to stub out external dependencies.
-type InvocationContext struct {
-	Profile string
-}
-
 type Factory struct {
 	Config     func() (*core.CliConfig, error) // lazily loads app config from Credential
 	HttpClient func() (*http.Client, error)    // policy-routed HTTP client for direct requests

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/schemas"
 )
 
@@ -83,13 +83,14 @@ func TestTaskUpdateUserAccessSchemaAnnotations(t *testing.T) {
 
 func TestTaskUpdateUserAccessRegistersCleanly(t *testing.T) {
 	const key = eventTypeTaskUpdateUserAccessV2
-	event.UnregisterKeyForTest(key)
-	t.Cleanup(func() { event.UnregisterKeyForTest(key) })
-
-	for _, def := range Keys() {
-		event.RegisterKey(def)
+	snap, err := catalog.Compile(Keys(), catalog.StrategyRefs{
+		catalog.StrategyNone,
+		catalog.StrategyLegacyPreConsume,
+	})
+	if err != nil {
+		t.Fatalf("catalog.Compile(Keys()): %v", err)
 	}
-	if _, ok := event.Lookup(key); !ok {
-		t.Fatalf("event.Lookup(%q) not registered", key)
+	if _, ok := snap.Resolve(key); !ok {
+		t.Fatalf("snap.Resolve(%q): key missing from compiled catalog", key)
 	}
 }

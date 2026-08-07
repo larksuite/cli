@@ -2,7 +2,7 @@
 
 > **Prerequisite:** Read [`../SKILL.md`](../SKILL.md) first for the `event consume` essentials (commands, subprocess contract, jq usage).
 
-## Key catalog (4)
+## Key catalog (7)
 
 | EventKey | Purpose |
 |---|---|
@@ -10,8 +10,11 @@
 | `vc.meeting.participant_meeting_joined_v1` | The current user has joined a meeting |
 | `vc.meeting.participant_meeting_ended_v1` | A meeting the current user participates in has ended |
 | `vc.note.generated_v1` | A note has been generated (meeting, recording, upload, etc.) |
+| `vc.recording.recording_started_v1` | A recording_bean recording has started (Feishu software only) |
+| `vc.recording.recording_transcript_generated_v1` | Recording_bean transcript items were generated (Feishu software only) |
+| `vc.recording.recording_ended_v1` | A recording_bean recording ended and uploaded successfully (Feishu software only) |
 
-All four keys use a **Custom schema** (flat output) and carry a **PreConsume hook** that auto-subscribes / unsubscribes via OAPI on first / last consumer. All require `--as user`.
+All seven keys use a **Custom schema** (flat output) and carry a **PreConsume hook** that auto-subscribes / unsubscribes via OAPI on first / last consumer. All require `--as user`.
 
 ## Scopes & auth
 
@@ -21,6 +24,9 @@ All four keys use a **Custom schema** (flat output) and carry a **PreConsume hoo
 | `vc.meeting.participant_meeting_joined_v1` | `vc:meeting.meetingevent:read` | user |
 | `vc.meeting.participant_meeting_ended_v1` | `vc:meeting.meetingevent:read` | user |
 | `vc.note.generated_v1` | `vc:note:read` | user |
+| `vc.recording.recording_started_v1` | `vc:recording:read` | user |
+| `vc.recording.recording_transcript_generated_v1` | `vc:recording:read` | user |
+| `vc.recording.recording_ended_v1` | `vc:recording:read` | user |
 
 ---
 

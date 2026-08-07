@@ -52,7 +52,7 @@ func TestFlagsFor_MapsAllFields(t *testing.T) {
 
 	// enum + default
 	rt := byName("+dim-insert", "inherit-style")
-	if rt == nil || len(rt.Enum) != 3 || rt.Default != "none" {
+	if rt == nil || len(rt.Enum) != 2 || rt.Default != "" {
 		t.Errorf("+dim-insert --inherit-style not mapped: %+v", rt)
 	}
 	// required

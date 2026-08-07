@@ -29,6 +29,11 @@ func Shortcuts() []common.Shortcut {
 		// shortcut values are package globals and Shortcuts may be called more
 		// than once in tests or embedders.
 		all[i].Flags = withSpreadsheetTokenAlias(all[i].Flags)
+		// +chart-create grows --print-example (minimal per-type --properties
+		// templates) — the biggest --print-schema consumer in eval traces.
+		if all[i].Command == "+chart-create" {
+			all[i].PostMount = withChartPrintExample(all[i].PostMount)
+		}
 		// Sheets-scoped flag ergonomics (unknown-flag hints with the valid
 		// flags inlined, enum vocabulary normalization) ride the existing
 		// PostMount composition, so no other domain's behavior shifts.
@@ -131,6 +136,9 @@ func shortcutList() []common.Shortcut {
 		FilterViewCreate, FilterViewUpdate, FilterViewDelete,
 		SparklineCreate, SparklineUpdate, SparklineDelete,
 		FloatImageCreate, FloatImageUpdate, FloatImageDelete,
+
+		// lark_sheet_styles_put
+		StylesPut,
 
 		// lark_sheet_batch_update
 		BatchUpdate,

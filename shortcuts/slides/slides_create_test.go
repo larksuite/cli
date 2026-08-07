@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -450,7 +452,11 @@ func TestSlidesCreateWithSlidesPartialFailure(t *testing.T) {
 		},
 	})
 
-	slidesJSON := `["<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>","<bad-xml>"]`
+	// Page 2 is a structurally valid <slide>, so it reaches the API and is
+	// rejected there — the case this test is about. A locally malformed page is
+	// now caught before the presentation is created at all, which is a different
+	// path with its own test.
+	slidesJSON := `["<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>","<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" height=\"-6\"/></data></slide>"]`
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
 		"--title", "Partial",
@@ -463,6 +469,14 @@ func TestSlidesCreateWithSlidesPartialFailure(t *testing.T) {
 	p, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected a typed errs.* error, got %v", err)
+	}
+	// Attaching the progress hint must not rewrite what failed: the caller still
+	// sees the API's own category, code and message rather than an internal error.
+	if p.Category != errs.CategoryAPI {
+		t.Fatalf("category = %q, want %q", p.Category, errs.CategoryAPI)
+	}
+	if p.Code != 400 || p.Message != "invalid xml" {
+		t.Fatalf("api failure not preserved: code=%d message=%q", p.Code, p.Message)
 	}
 	// The presentation was created but a slide add failed; the recovery hint
 	// carries the partial-progress context (which presentation exists, how many
@@ -763,6 +777,404 @@ func TestXmlEscape(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("xmlEscape(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+// createStubPresentation registers the presentation.create stub and returns the
+// registry-backed slide stubs for a deck of n pages, in call order.
+func createStubPresentation(t *testing.T, reg *httpmock.Registry, presentationID string, n int) []*httpmock.Stub {
+	t.Helper()
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"xml_presentation_id": presentationID, "revision_id": 1},
+		},
+	})
+	stubs := make([]*httpmock.Stub, 0, n)
+	for i := 0; i < n; i++ {
+		stub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/slides_ai/v1/xml_presentations/" + presentationID + "/slide",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"slide_id": fmt.Sprintf("s_%d", i+1), "revision_id": i + 2},
+			},
+		}
+		reg.Register(stub)
+		stubs = append(stubs, stub)
+	}
+	return stubs
+}
+
+// capturedSlideContent pulls slide.content out of a captured request body.
+func capturedSlideContent(t *testing.T, stub *httpmock.Stub) string {
+	t.Helper()
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	slide, _ := body["slide"].(map[string]interface{})
+	content, _ := slide["content"].(string)
+	return content
+}
+
+// TestSlidesCreateAssemblesRepeatedSlideFiles is the reason --slide exists:
+// building the --slides JSON array in the shell needs a JSON encoder for the
+// quotes and newlines inside each page, so callers reached for jq — and every
+// environment without jq turned that into an empty argument. Repeating
+// --slide @page.xml lets the CLI do the encoding.
+func TestSlidesCreateAssemblesRepeatedSlideFiles(t *testing.T) {
+	dir := t.TempDir()
+	// Multi-line XML with quotes: exactly what shell escaping mangles.
+	page1 := "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\">\n  <data>\n    <shape type=\"text\"><content>Page \"one\"</content></shape>\n  </data>\n</slide>"
+	page2 := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data/></slide>`
+	for name, content := range map[string]string{"slide-01.xml": page1, "slide-02.xml": page2} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+	}
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	stubs := createStubPresentation(t, reg, "pres_repeat", 2)
+
+	if err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Assembled",
+		"--slide", "@./slide-01.xml",
+		"--slide", "@./slide-02.xml",
+		"--as", "user",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Flag order is page order, and the file bytes arrive verbatim.
+	if got := capturedSlideContent(t, stubs[0]); got != page1 {
+		t.Fatalf("page 1 content = %q, want the file verbatim %q", got, page1)
+	}
+	if got := capturedSlideContent(t, stubs[1]); got != page2 {
+		t.Fatalf("page 2 content = %q, want %q", got, page2)
+	}
+
+	data := decodeSlidesCreateEnvelope(t, stdout)
+	if data["slides_added"] != float64(2) {
+		t.Fatalf("slides_added = %v, want 2", data["slides_added"])
+	}
+}
+
+// TestSlidesCreateReadsSlidesArrayFromFile covers the other half: callers who
+// already have the JSON array no longer have to inline it into an argument.
+func TestSlidesCreateReadsSlidesArrayFromFile(t *testing.T) {
+	dir := t.TempDir()
+	deck := `["<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data/></slide>"]`
+	if err := os.WriteFile(filepath.Join(dir, "deck.json"), []byte(deck), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	stubs := createStubPresentation(t, reg, "pres_json", 1)
+
+	if err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "From File",
+		"--slides", "@./deck.json",
+		"--as", "user",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data/></slide>`
+	if got := capturedSlideContent(t, stubs[0]); got != want {
+		t.Fatalf("slide content = %q, want %q", got, want)
+	}
+}
+
+// TestSlidesCreateStripsBOMFromSlideFile keeps the two file forms behaving the
+// same. The framework strips a leading BOM from every Input flag, so
+// --slides @deck.json already tolerated editors that add one; --slide resolves
+// @path itself, and without the same normalization the BOM read as text outside
+// the root element and rejected a file the other form accepted.
+func TestSlidesCreateStripsBOMFromSlideFile(t *testing.T) {
+	dir := t.TempDir()
+	page := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data/></slide>`
+	if err := os.WriteFile(filepath.Join(dir, "slide-01.xml"), []byte("\uFEFF"+page), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	stubs := createStubPresentation(t, reg, "pres_bom", 1)
+
+	if err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "BOM",
+		"--slide", "@./slide-01.xml",
+		"--as", "user",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The BOM is dropped rather than forwarded: the backend would reject it too.
+	if got := capturedSlideContent(t, stubs[0]); got != page {
+		t.Fatalf("slide content = %q, want the page without the BOM %q", got, page)
+	}
+}
+
+// TestSlidesCreateRejectsBothSlideForms keeps page order unambiguous: merging
+// the two forms would make it depend on flag-ordering rules.
+func TestSlidesCreateRejectsBothSlideForms(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Both",
+		"--slides", `["<slide/>"]`,
+		"--slide", "<slide/>",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error when both forms are used")
+	}
+	assertValidationProblem(t, err, "--slide", nil)
+	if !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("error = %q, want a combined-forms rejection", err.Error())
+	}
+}
+
+// TestSlidesCreateRejectsMalformedSlideBeforeCreating locks the ordering that
+// makes local validation worth having: a bad page must not leave an empty
+// presentation behind. The registry has no stubs, so any API call fails loudly.
+func TestSlidesCreateRejectsMalformedSlideBeforeCreating(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Malformed",
+		"--slide", `<slide xmlns="x"><data/></slide>`,
+		"--slide", `<presentation xmlns="x"><slide/></presentation>`,
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error for a <presentation> root")
+	}
+	assertValidationProblem(t, err, "--slide", errAnyCause)
+	// The index is what makes a 10-page deck debuggable.
+	if !strings.Contains(err.Error(), "page 2") || !strings.Contains(err.Error(), "want <slide>") {
+		t.Fatalf("error = %q, want the offending page index and the structural reason", err.Error())
+	}
+}
+
+// TestSlidesCreateRejectsXMLDeclarationBeforeCreating covers the one malformed
+// page the parser alone will not catch: `<?xml ...?>` is well-formed XML, so
+// without an explicit check the deck gets created and only the slide request
+// fails, which is the orphaned-empty-deck outcome this validation exists to
+// prevent. No stubs, so a presentation create would fail loudly.
+func TestSlidesCreateRejectsXMLDeclarationBeforeCreating(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Prolog",
+		"--slide", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data/></slide>",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error for a leading XML declaration")
+	}
+	assertValidationProblem(t, err, "--slide", errAnyCause)
+	if !strings.Contains(err.Error(), "page 1") || !strings.Contains(err.Error(), "<?xml ...?>") {
+		t.Fatalf("error = %q, want the page index and the declaration named", err.Error())
+	}
+}
+
+// TestSlidesCreateSlideFileNotFound checks the missing-file path reports the
+// flag, not a bare os error.
+func TestSlidesCreateSlideFileNotFound(t *testing.T) {
+	withSlidesTestWorkingDir(t, t.TempDir())
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Missing",
+		"--slide", "@./nope.xml",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error for a missing file")
+	}
+	assertValidationProblem(t, err, "--slide", errAnyCause)
+}
+
+// TestSlidesCreateSlideRejectsStdin documents the one thing a repeatable flag
+// cannot do: a process has a single stdin, so "-" has no per-occurrence
+// meaning. The hint has to name the two forms that do work.
+func TestSlidesCreateSlideRejectsStdin(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Stdin",
+		"--slide", "-",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error for --slide -")
+	}
+	ve := assertValidationProblem(t, err, "--slide", nil)
+	if !strings.Contains(ve.Hint, "@page.xml") || !strings.Contains(ve.Hint, "--slides -") {
+		t.Fatalf("hint = %q, want both working alternatives", ve.Hint)
+	}
+}
+
+// TestSlidesCreateSlideExceedsMax covers the page cap from the repeatable form.
+// The cap is enforced on the assembled array, so it applies to both forms, but
+// only this pins that the error names the flag the caller actually typed --
+// the backend never sees a page count at all (one call per page), so a wrong
+// flag name here is the caller's only signal about what to change.
+func TestSlidesCreateSlideExceedsMax(t *testing.T) {
+	t.Parallel()
+
+	// Every page is structurally valid, so the count is the only possible
+	// reason to fail.
+	args := []string{"+create", "--title", "Too Many"}
+	for i := 0; i <= maxSlidesPerCreate; i++ {
+		args = append(args, "--slide", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data/></slide>`)
+	}
+	args = append(args, "--as", "user")
+
+	// No stubs registered: reaching the API would fail loudly, which is how
+	// this also shows no empty presentation is left behind.
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesCreateShortcut(t, f, stdout, args)
+	if err == nil {
+		t.Fatalf("expected a validation error for %d pages", maxSlidesPerCreate+1)
+	}
+	assertValidationProblem(t, err, "--slide", nil)
+	if !strings.Contains(err.Error(), "exceeds maximum") {
+		t.Fatalf("error = %q, want 'exceeds maximum' mention", err.Error())
+	}
+	// "--slides" contains "--slide", so Contains cannot tell the forms apart;
+	// the absence of the plural is what proves the right flag was blamed.
+	if strings.Contains(err.Error(), "--slides") {
+		t.Fatalf("error = %q, blames --slides but the caller used --slide", err.Error())
+	}
+	// The way out has to be in the message: there is no larger value to pass.
+	if !strings.Contains(err.Error(), "+add-slide") {
+		t.Fatalf("error = %q, want the two-step alternative", err.Error())
+	}
+}
+
+// TestSlidesCreateRejectsEmptySlidesValue pins the one input that must not be
+// read as "no pages given". `--slides "$(...)"` collapses to an empty value
+// whenever the substitution fails, and treating that as absent is what turns a
+// broken array into a blank deck reported as success.
+func TestSlidesCreateRejectsEmptySlidesValue(t *testing.T) {
+	t.Parallel()
+
+	// No stubs: a presentation create would fail loudly, so passing this test
+	// also means nothing was created.
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Empty Value",
+		"--slides", "",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error for an empty --slides value")
+	}
+	assertValidationProblem(t, err, "--slides", nil)
+	if !strings.Contains(err.Error(), "invalid JSON") {
+		t.Fatalf("error = %q, want the JSON parse failure named", err.Error())
+	}
+	// An empty value is rejected while "[]" still creates a blank deck
+	// (TestSlidesCreateWithSlidesEmptyArray): "" is not valid JSON, "[]" is a
+	// deliberate zero pages.
+}
+
+// TestSlidesCreateRejectsNullSlidesValue closes the gap the empty-value check
+// leaves open: null IS valid JSON for a slice, so it parses without error and
+// leaves the array nil, which reads as "no pages given" and produces the same
+// blank deck reported as success. Again no stubs, so nothing may be created.
+func TestSlidesCreateRejectsNullSlidesValue(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Null Value",
+		"--slides", "null",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error for a null --slides value")
+	}
+	assertValidationProblem(t, err, "--slides", nil)
+	if !strings.Contains(err.Error(), "must be an array") {
+		t.Fatalf("error = %q, want the array requirement named", err.Error())
+	}
+}
+
+// TestSlidesCreateRejectsBothSlideFormsWithEmptySlides is the same combination
+// as TestSlidesCreateRejectsBothSlideForms, except --slides carries no value.
+// Detecting the form by value rather than by "was it typed" let this one slip
+// through and silently run as if only --slide had been passed.
+func TestSlidesCreateRejectsBothSlideFormsWithEmptySlides(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Both",
+		"--slides", "",
+		"--slide", `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data/></slide>`,
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error for both forms")
+	}
+	assertValidationProblem(t, err, "--slide", nil)
+	if !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("error = %q, want the mutual-exclusion message", err.Error())
+	}
+}
+
+// TestUploadSlidesPlaceholdersReportsSourceFlag pins that the uploader blames
+// the flag its caller was given: +create reads pages from --slides, +add-slide
+// from --slide, and the name used to be hardcoded to the former. Driving the
+// helper directly is deliberate -- both shortcuts check placeholder files in
+// their Validate stage, so these branches are only reachable if a file stops
+// being readable between validation and upload, and the flag name is the part
+// that has to stay right when they are.
+func TestUploadSlidesPlaceholdersReportsSourceFlag(t *testing.T) {
+	for _, param := range []string{"--slide", "--slides"} {
+		t.Run(param, func(t *testing.T) {
+			dir := t.TempDir()
+			withSlidesTestWorkingDir(t, dir)
+
+			f, _, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			runtime := &common.RuntimeContext{Factory: f}
+
+			// A directory, not a missing file: it proves the check reached the
+			// "must be a regular file" branch rather than failing to stat.
+			if err := os.Mkdir(filepath.Join(dir, "notafile.png"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			tokens, uploaded, err := uploadSlidesPlaceholders(runtime, "pres_x", []string{"./notafile.png"}, param)
+			if err == nil {
+				t.Fatal("expected a validation error for a directory placeholder")
+			}
+			assertValidationProblem(t, err, param, nil)
+			if uploaded != 0 || len(tokens) != 0 {
+				t.Fatalf("uploaded = %d, tokens = %v, want nothing uploaded", uploaded, tokens)
+			}
+		})
 	}
 }
 

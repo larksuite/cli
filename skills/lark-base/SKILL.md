@@ -58,7 +58,7 @@ metadata:
 | 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
 | 复制 Base 内单张数据表 | `+table-copy` / `+table-copy-status` | 在线复制单张数据表；复制范围和异步任务参数查看 `--help` |
 | 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段 |
-| 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
+| 创建/更新字段 | `+field-create` / `+field-update` | 同一表创建多个字段时，默认一次向 `+field-create --json` 传字段对象数组；预计串行运行时间超过 caller/tool timeout 时按时间预算拆分，不按固定条数切块；仅创建一个或多个只含 `name` + `type:text` 的简单字段时按 `+field-create --help` 即可，其他类型或属性必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)，lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；仍需逐项恢复或命令细节时读 [lark-base-field-create.md](references/lark-base-field-create.md)，更新细节读 [lark-base-field-update.md](references/lark-base-field-update.md) |
 | 读取已知记录 | `+record-get` | 已知具体 `record_id` 时可以直接读取记录 |
 | 查询或分析数据表记录 | 由 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md) 选择 | 数据表记录查询和分析任务先读 SOP |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
@@ -71,7 +71,7 @@ metadata:
 | 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | Base 内表单按 table 管理；先确定并复用真实 `table_id`。读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)；题目显隐条件 `visible_rule` 结构见公共协议 [lark-base-filter-condition.md](references/lark-base-filter-condition.md) |
 | Base 内表单管理 | `+form-list/get/create/update/delete` / `+form-questions-list/delete` | 缺少或不确定归属时，先用 `+table-list` 或 `+base-block-list` 取得真实 `table_id`；这些命令使用 `--base-token + --table-id` 并在整个工作流中复用同一 `table_id`，删除前确认目标表单 |
 | 分享表单详情 | `+form-detail --share-token <share_token>` | 使用表单分享链接里的 `share_token`；提交前读 [lark-base-form-detail.md](references/lark-base-form-detail.md) |
-| 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取一个或多个图表计算结果用 `+dashboard-block-get-data` |
+| 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取一个或多个图表计算结果用 `+dashboard-block-get-data`；读取完整仪表盘时按 block 类型分流，文本和不支持直接取数的图表按 reference 恢复 |
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；角色 create/update 或解读完整配置再读权限 JSON SSOT [role-config.md](references/role-config.md)；关闭高级权限会影响自定义角色 |
 
@@ -99,12 +99,13 @@ metadata:
 ## 写入前置规则
 
 - 优先用写入返回确认结果；返回信息不足或任务明确要求核验时，再读回。
+- 严格区分动作语义：用户要求“新增/创建”时，必须用本轮 create 返回的对象、ID 或数量确认完成，不能把已有资源算作本轮新增；目标已存在时按具体命令或 guide 的同名契约处理，不得自行改写用户语义。复合创建任务对每类资源只做一次必要盘点；只有命令明确返回逐项结果时才优先使用批量创建，并继续配置本轮返回的 ID。
 - 写记录前先读字段结构；只写存储字段。系统字段、附件字段、`formula`、`lookup` 不作为普通记录写入目标。
 - 附件上传、下载、删除走专用 `+record-*-attachment` 命令。
-- 写字段前先读 [lark-base-field-json.md](references/lark-base-field-json.md)；请求字段类型不在 reference 已支持类型目录中时，说明当前 CLI 不支持并停止，不要猜测未注册的字段 JSON、service 或 schema，也不要用其他字段类型冒充；涉及 `formula` / `lookup` 时必须读 [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)。
+- 除上述简单 text fast path 外，写字段前先读 [lark-base-field-json.md](references/lark-base-field-json.md)；请求字段类型不在 reference 已支持类型目录中时，说明当前 CLI 不支持并停止，不要猜测未注册的字段 JSON、service 或 schema，也不要用其他字段类型冒充；涉及 `formula` / `lookup` 时必须读 [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)。
 - 表名、字段名、视图名、workflow 配置中的名称必须来自真实返回；跨表场景还要读取目标表结构。
 - 删除、角色更新、字段更新、表单提交（`+form-submit`）等高风险操作遵循 CLI 的 confirmation gate，必须带 `--yes`；目标不明确时先用 get/list 消歧。
-- 批量写入单批最多 200 条；连续写同一表时串行执行，遇到 `1254291` 按短暂等待后重试处理。
+- 真正的 batch 写命令遵守各自文档的单批上限；`+field-create` 数组是顺序单项请求，按 caller timeout 而非固定条数拆分；连续写同一表时串行执行，遇到 `1254291` 按短暂等待后重试处理。
 - `select` 字段只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
 
 ## 表单与视图细节
@@ -120,7 +121,7 @@ metadata:
 
 ## Dashboard / Workflow / Role
 
-- Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，仅在用户明确要求重排/美化、或对本次会话从零新建的仪表盘做收尾整理时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
+- Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，仅在用户明确要求重排/美化、或对本次会话从零新建的仪表盘做收尾整理时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。用户要求“全部/完整”仪表盘内容时不得跳过 text 或不支持直接取数的 block，按 [lark-base-dashboard.md](references/lark-base-dashboard.md) 的完整读取分支恢复。
 - Dashboard shortcut 不支持指定组件的 `x/y/w/h`、精确位置或尺寸，不能把 `+dashboard-arrange` 静默当作等价实现。用户只要求一般性重排/美化时可执行一次智能重排；用户要求精确结果时先说明限制并询问是否接受自适应布局，接受后才执行。不要探测 raw `lark-cli api`、源码或未公开布局参数。
 - 创建接口成功返回即表示写入成功；只有结果不确定时才额外执行一次 `+dashboard-get` 或 `+dashboard-block-list`。不要仅为确认创建而逐组件调用 `+dashboard-block-get-data`。
 - 用户要读取多个组件的计算结果时，先完整列出组件（`+dashboard-block-list --page-size 100`；若 `has_more=true`，继续把返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`），再按 [lark-base-dashboard-block-get-data.md](references/lark-base-dashboard-block-get-data.md) 在一个 shell 工具调用内串行读取；不要把每个 block 拆成独立模型轮次。

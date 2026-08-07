@@ -1,7 +1,7 @@
 # minutes +search
 
 
-搜索妙记列表，支持关键词、所有者、参与者以及时间范围等多条件过滤。所有者与参与者都支持传入多个 open\_id，也支持传入 `me` 表示当前用户。只读操作，不修改任何妙记数据。
+搜索妙记列表，支持关键词、所有者、参与者以及时间范围等多条件过滤。支持 user 身份和 bot / 应用身份；所有者与参与者都支持传入多个 open\_id，user 身份下也支持传入 `me` 表示当前用户。只读操作，不修改任何妙记数据。
 
 本 skill 对应 shortcut：`lark-cli minutes +search`（调用 `POST /open-apis/minutes/v1/minutes/search`）。
 
@@ -81,14 +81,14 @@ lark-cli minutes +search --query "预算复盘" --format json
 
 所有参数均可选，但必须至少提供一个过滤条件：`--query`、`--owner-ids`、`--participant-ids`、`--start` 或 `--end`。
 
-### 2. 仅支持 user 身份
+### 2. 支持 user 和 bot 身份
 
-该接口仅支持 `user` 身份，使用前需完成 `lark-cli auth login` 并具备 `minutes:minutes.search:read` 权限。
+该接口支持 `--as user` 和 `--as bot`。user 身份需要完成 `lark-cli auth login` 并具备 `minutes:minutes.search:read` 权限；bot 身份使用应用的 tenant access token，需要确认当前应用已开通 `minutes:minutes.search:read` scope，且运行环境能获取有效的 TAT。
 
 ### 3. `me` 表示当前用户
 
-在 `--owner-ids` 和 `--participant-ids` 中可使用 `me`，表示当前登录用户。该值会在本地解析为当前用户的 `open_id`，无需手动先查询自己的用户 ID。
-若当前环境尚未完成用户登录，或 CLI 无法解析出当前用户的 `open_id`，则应先执行 `lark-cli auth login`，再重新执行搜索。
+在 `--owner-ids` 和 `--participant-ids` 中可使用 `me`，表示当前登录用户。该值会在本地解析为当前用户的 `open_id`，无需手动先查询自己的用户 ID。`me` 只适合 user 身份；bot 身份没有“当前用户”，请直接传 `ou_` open_id。
+若当前环境尚未完成用户登录，或 CLI 无法解析出当前用户的 `open_id`，则应先执行 `lark-cli auth login`，再重新执行搜索。该恢复方式只适用于 user 身份和 `me` 解析；bot 身份应检查 tenant access token 与应用 scope，不应通过 `auth login` 修复。
 
 ### 4. 自然语言中的“参与的妙记”默认按并集理解
 
@@ -182,7 +182,7 @@ lark-cli minutes +detail --minute-tokens <minute_token> --summary
 | 时间参数校验失败               | `--start` 或 `--end` 格式不合法                             | 改用 ISO 8601 或 `YYYY-MM-DD`                   |
 | `owner-ids` 校验失败       | 传入的不是 open\_id，且也不是 `me`；或传了 `me` 但当前用户 open\_id 不可解析 | 改为 `ou_` 开头的用户 ID，或先完成 `auth login` 后再传 `me` |
 | `participant-ids` 校验失败 | 传入的不是 open\_id，且也不是 `me`；或传了 `me` 但当前用户 open\_id 不可解析 | 改为 `ou_` 开头的用户 ID，或先完成 `auth login` 后再传 `me` |
-| 权限不足                   | 未授权 `minutes:minutes.search:read`                     | 使用 `auth login` 完成授权                         |
+| 权限不足                   | 未授权 `minutes:minutes.search:read`                     | user 身份使用 `auth login` 完成用户授权；bot 身份检查 tenant access token 和应用 scope |
 
 ## 提示
 
@@ -199,4 +199,3 @@ lark-cli minutes +detail --minute-tokens <minute_token> --summary
 - [lark-minutes](../SKILL.md) -- 妙记相关命令
 - [lark-minutes-detail](lark-minutes-detail.md) -- 基于 `minute_token` 获取逐字稿、总结、待办、章节等产物
 - [lark-vc](../../lark-vc/SKILL.md) -- 视频会议全部命令
-

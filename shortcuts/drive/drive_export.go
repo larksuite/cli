@@ -21,17 +21,20 @@ import (
 // preserved for errors.Is) instead of an untyped context.Canceled /
 // context.DeadlineExceeded escaping as a plain string. CR-flagged hole on the
 // poll loop: returning ctx.Err() directly bypassed the typed-error contract.
-func wrapExportContextErr(err error) error {
+// command names the shortcut actually running — RunExport is shared between
+// drive +export and sheets +workbook-export, and a hard-coded "drive +export"
+// here handed +workbook-export users a recovery command they never ran.
+func wrapExportContextErr(command string, err error) error {
 	if err == nil {
 		return nil
 	}
 	subtype := errs.SubtypeNetworkTransport
-	msg := "drive +export polling cancelled: %s"
+	verb := "cancelled"
 	if errors.Is(err, context.DeadlineExceeded) {
 		subtype = errs.SubtypeNetworkTimeout
-		msg = "drive +export polling deadline exceeded: %s"
+		verb = "deadline exceeded"
 	}
-	return errs.NewNetworkError(subtype, msg, err).WithCause(err)
+	return errs.NewNetworkError(subtype, "%s polling %s: %s", command, verb, err).WithCause(err)
 }
 
 // DriveExport exports Drive-native documents to local files and falls back to
@@ -285,12 +288,12 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 		if attempt > 1 {
 			select {
 			case <-ctx.Done():
-				return wrapExportContextErr(ctx.Err())
+				return wrapExportContextErr(runtime.Command(), ctx.Err())
 			case <-time.After(driveExportPollInterval):
 			}
 		}
 		if err := ctx.Err(); err != nil {
-			return wrapExportContextErr(err)
+			return wrapExportContextErr(runtime.Command(), err)
 		}
 
 		status, err := getDriveExportStatus(runtime, spec.Token, ticket)

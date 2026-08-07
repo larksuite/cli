@@ -6,10 +6,9 @@ package vc
 import (
 	"context"
 	"encoding/json"
-	"strconv"
-	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // VCRecordingTranscriptItemOutput is one flattened transcript item for recording events.
@@ -29,15 +28,6 @@ type VCRecordingTranscriptGeneratedOutput struct {
 	UniqueKey       string                            `json:"unique_key,omitempty"       desc:"Unique key generated for one recording_bean recording session"`
 	Source          string                            `json:"source,omitempty"           desc:"Recording source; always recording_bean"`
 	TranscriptItems []VCRecordingTranscriptItemOutput `json:"transcript_items,omitempty" desc:"Generated transcript items"`
-}
-
-type recordingTranscriptGeneratedEnvelope struct {
-	Header struct {
-		EventID    string `json:"event_id"`
-		EventType  string `json:"event_type"`
-		CreateTime string `json:"create_time"`
-	} `json:"header"`
-	Event recordingTranscriptGeneratedEvent `json:"event"`
 }
 
 type recordingTranscriptGeneratedEvent struct {
@@ -61,56 +51,22 @@ type recordingTranscriptGeneratedSpeakerIn struct {
 type recordingTranscriptGeneratedString string
 
 func processVCRecordingTranscriptGenerated(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
-	envelope, ok := parseRecordingTranscriptGeneratedEnvelope(raw)
+	body, ok := decodeEventBody[recordingTranscriptGeneratedEvent](raw)
 	if !ok {
-		return raw.Payload, nil
+		return nil, processing.DropMalformed(raw.EventType)
 	}
-	if !isRecordingTranscriptGeneratedBeanEvent(envelope) {
+	if body.Source != recordingBeanSource {
 		return nil, nil
 	}
 	out := &VCRecordingTranscriptGeneratedOutput{
-		Type:            recordingTranscriptGeneratedEventType(envelope, raw),
-		EventID:         envelope.Header.EventID,
-		EventTime:       recordingTranscriptGeneratedEventTime(envelope.Header.CreateTime),
-		UniqueKey:       envelope.Event.UniqueKey,
-		Source:          envelope.Event.Source,
-		TranscriptItems: recordingTranscriptItems(envelope.Event.TranscriptItems),
+		Type:            raw.EventType,
+		EventID:         raw.EventID,
+		EventTime:       millisToLocalRFC3339(raw.SourceTime),
+		UniqueKey:       body.UniqueKey,
+		Source:          body.Source,
+		TranscriptItems: recordingTranscriptItems(body.TranscriptItems),
 	}
 	return json.Marshal(out)
-}
-
-func parseRecordingTranscriptGeneratedEnvelope(raw *event.RawEvent) (*recordingTranscriptGeneratedEnvelope, bool) {
-	var envelope recordingTranscriptGeneratedEnvelope
-	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return nil, false
-	}
-	return &envelope, true
-}
-
-func isRecordingTranscriptGeneratedBeanEvent(envelope *recordingTranscriptGeneratedEnvelope) bool {
-	return envelope != nil && envelope.Event.Source == "recording_bean"
-}
-
-func recordingTranscriptGeneratedEventType(envelope *recordingTranscriptGeneratedEnvelope, raw *event.RawEvent) string {
-	if envelope != nil && envelope.Header.EventType != "" {
-		return envelope.Header.EventType
-	}
-	return raw.EventType
-}
-
-func recordingTranscriptGeneratedEventTime(raw string) string {
-	return recordingTranscriptGeneratedMillisToLocalRFC3339(raw)
-}
-
-func recordingTranscriptGeneratedMillisToLocalRFC3339(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	millis, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return ""
-	}
-	return time.UnixMilli(millis).Local().Format(time.RFC3339)
 }
 
 func recordingTranscriptItems(items []recordingTranscriptGeneratedItemIn) []VCRecordingTranscriptItemOutput {
@@ -128,8 +84,8 @@ func recordingTranscriptItem(item recordingTranscriptGeneratedItemIn) VCRecordin
 	return VCRecordingTranscriptItemOutput{
 		SpeakerName: recordingSpeakerName(item.Speaker),
 		Text:        item.Text,
-		StartTime:   recordingTranscriptGeneratedMillisToLocalRFC3339(item.StartTimeMs.String()),
-		EndTime:     recordingTranscriptGeneratedMillisToLocalRFC3339(item.EndTimeMs.String()),
+		StartTime:   millisToLocalRFC3339(item.StartTimeMs.String()),
+		EndTime:     millisToLocalRFC3339(item.EndTimeMs.String()),
 		SentenceID:  item.SentenceID,
 	}
 }

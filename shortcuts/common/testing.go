@@ -39,6 +39,13 @@ func TestNewRuntimeContextWithBotInfo(cmd *cobra.Command, cfg *core.CliConfig, i
 	return rctx
 }
 
+// TestMarkInputResolved marks a flag as resolved from @file / stdin, so
+// domain tests can exercise guards that branch on InputResolvedFromSource
+// without wiring the full resolveInputFlags path.
+func TestMarkInputResolved(rctx *RuntimeContext, name string) {
+	rctx.markInputResolved(name)
+}
+
 // TestNewRuntimeContextForAPI creates a RuntimeContext ready for HTTP tests:
 // sets Cmd, Config, Factory, context, and the requested identity so callers
 // can invoke DoAPI / CallAPI directly without wiring through a cobra parent

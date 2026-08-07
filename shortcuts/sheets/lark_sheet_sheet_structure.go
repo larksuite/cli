@@ -6,6 +6,7 @@ package sheets
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -128,12 +129,29 @@ var DimInsert = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+dim-insert"),
-	Validate:    validateViaInput(dimInsertInput),
+	Tips: []string{
+		"Example: lark-cli sheets +dim-insert --url <URL> --sheet-name Sheet1 --position 3 --count 2 --inherit-style before",
+		"Rows vs columns comes from --position alone: a row number (3) inserts rows, a column letter (C) inserts columns — there is no --dimension flag.",
+	},
+	Validate: validateViaInput(dimInsertInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := dimInsertInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+		dr := invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+		switch {
+		case dimInsertNeedsBeforeStyleWarning(runtime):
+			dr.Set("warning_message", dimInsertBeforeStyleWarning)
+		case dimInsertAnchorShifted(runtime, input):
+			// --inherit-style before anchors one unit earlier (see
+			// dimInsertInput), so the previewed body carries a position the
+			// caller never typed. Unexplained, that reads as an off-by-one bug in
+			// exactly the artifact people dry-run to check for off-by-one bugs.
+			dr.Set("warning_message", fmt.Sprintf(
+				"note: the previewed position is %q, not the %q you passed — this is not an off-by-one. --inherit-style before is emulated by anchoring one row/column earlier and inserting after it, which lands in the same place while copying the PRECEDING style. The row/column still appears at %q.",
+				input["position"], strings.TrimSpace(runtime.Str("position")), strings.TrimSpace(runtime.Str("position"))))
+		}
+		return dr
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -148,6 +166,9 @@ var DimInsert = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if dimInsertNeedsBeforeStyleWarning(runtime) {
+			fmt.Fprintln(runtime.IO().ErrOut, dimInsertBeforeStyleWarning)
+		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		if err != nil {
 			return err
@@ -157,8 +178,36 @@ var DimInsert = common.Shortcut{
 	},
 }
 
+// dimInsertBeforeStyleWarning fires only when the preceding-side style cannot
+// be copied: --inherit-style before at the first row/column, where no
+// preceding row/column exists. The row/column is still inserted before
+// --position, just without style inheritance. (--inherit-style after has no
+// such edge — a plain before-insert always has a following row/column.)
+const dimInsertBeforeStyleWarning = "warning: --inherit-style before cannot copy the preceding row/column's style at the first row/column (no preceding row/column exists); inserting before --position without style inheritance. Copy styles separately if needed."
+
+// dimInsertAnchorShifted reports whether the built body carries an anchor
+// position different from the one the caller passed — true exactly when the
+// --inherit-style before emulation moved it back one unit. Compared against the
+// built input rather than recomputed, so the note can never claim a shift the
+// request does not have.
+func dimInsertAnchorShifted(runtime flagView, input map[string]interface{}) bool {
+	built, ok := input["position"].(string)
+	return ok && built != strings.TrimSpace(runtime.Str("position"))
+}
+
+func dimInsertNeedsBeforeStyleWarning(runtime flagView) bool {
+	return false
+}
+
 // dimInsertInput passes --position (1-based row number "3" or column letter
-// "C") straight to the tool's `position` field; --count maps to `count`.
+// "C") to the tool's `position` field; --count maps to `count`.
+//
+// +dim-insert's public contract is always "insert before --position";
+// --inherit-style only selects which side's style the new row/column copies,
+// never the insertion side. The sheet-ai tool always copies the *anchor*
+// column's style (the target passed as position), regardless of side — so
+// --inherit-style before is emulated by anchoring one unit earlier. See the
+// switch below.
 func dimInsertInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, err
@@ -184,11 +233,36 @@ func dimInsertInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		"count":     count,
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
+	// --inherit-style selects which side's style the blank row/column copies;
+	// the insertion always lands *before* --position. Empirically the addCol
+	// backend copies the *anchor* column's style (the target passed as
+	// position), regardless of side — side only decides whether the blank lands
+	// before or after that anchor (verified live, see
+	// TestDimInsertInheritStyleSideMapping):
+	//   after  → side=before at P: the blank lands at P and anchor P becomes the
+	//            *following* neighbour, so the blank copies it. Position unchanged.
+	//   before → side=after at P-1: the blank still lands at P (insert-after-(P-1)
+	//            == insert-before-P) and anchor P-1 becomes the *preceding*
+	//            neighbour, so the blank copies it.
+	//
+	// The flag documents `after` as its default, and the omitted case takes that
+	// branch rather than leaving `side` off the request. This is belt-and-braces,
+	// not a fix: the backend's own default IS `before`, verified live 07-31 on a
+	// 4-way sheet (omitted / after / before / no-side-at-all all place the blank
+	// at --position, and omitted inherits the FOLLOWING row's style exactly as
+	// `after` does). Sending it explicitly just stops the documented default from
+	// depending on an undocumented server-side one.
+	// Pinned by TestDimInsertOmittedMatchesAfter.
 	switch runtime.Str("inherit-style") {
 	case "before":
+		if prev, ok := a1PositionBefore(position); ok {
+			input["side"] = "after"
+			input["position"] = prev
+		}
+		// First row/column: no preceding row/column exists, so fall back to a
+		// plain before-insert (dimInsertNeedsBeforeStyleWarning surfaces this).
+	default: // "after", and the omitted case it is the default for.
 		input["side"] = "before"
-	case "after":
-		input["side"] = "after"
 	}
 	return input, nil
 }
@@ -203,10 +277,34 @@ var DimDelete = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+dim-delete"),
-	Validate:    validateDimRangeOp("delete"),
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if runtime.Changed("ranges") {
+			if runtime.Changed("range") {
+				return sheetsValidationForFlag("ranges", "--range and --ranges are mutually exclusive; put every range into --ranges")
+			}
+			token, err := resolveSpreadsheetToken(runtime)
+			if err != nil {
+				return err
+			}
+			sheetID, sheetName, err := resolveSheetSelector(runtime)
+			if err != nil {
+				return err
+			}
+			_, err = dimDeleteRangesOps(runtime, token, sheetID, sheetName)
+			return err
+		}
+		return validateDimRangeOp("delete")(ctx, runtime)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
+		if runtime.Changed("ranges") {
+			ops, _ := dimDeleteRangesOps(runtime, token, sheetID, sheetName)
+			return invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
+				"excel_id":   token,
+				"operations": ops,
+			})
+		}
 		input, _ := dimRangeOpInput(runtime, token, sheetID, sheetName, "delete")
 		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 	},
@@ -218,6 +316,21 @@ var DimDelete = common.Shortcut{
 		sheetID, sheetName, err := resolveSheetSelector(runtime)
 		if err != nil {
 			return err
+		}
+		if runtime.Changed("ranges") {
+			ops, err := dimDeleteRangesOps(runtime, token, sheetID, sheetName)
+			if err != nil {
+				return err
+			}
+			out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
+				"excel_id":   token,
+				"operations": ops,
+			})
+			if err != nil {
+				return err
+			}
+			runtime.Out(out, nil)
+			return nil
 		}
 		input, err := dimRangeOpInput(runtime, token, sheetID, sheetName, "delete")
 		if err != nil {
@@ -232,7 +345,74 @@ var DimDelete = common.Shortcut{
 	},
 	Tips: []string{
 		"Row/column deletion is irreversible. Always preview with --dry-run first.",
+		`Scattered ranges: --ranges '["5:5","8:8","11:13"]' deletes them in one batch request (fail-fast, no rollback) — the CLI orders positions descending, so indexes never shift under you.`,
 	},
+}
+
+// dimDeleteRangesOps parses --ranges into one atomic batch of
+// modify_sheet_structure delete ops, ordered DESCENDING by start position:
+// deleting an earlier row shifts every later index up, so ascending
+// execution deletes the wrong rows — the recurring failure of hand-built
+// dim-delete batches in eval traces. Same-dimension and non-overlap are
+// enforced up front.
+func dimDeleteRangesOps(runtime flagView, token, sheetID, sheetName string) ([]interface{}, error) {
+	if err := requireSheetSelector(sheetID, sheetName); err != nil {
+		return nil, err
+	}
+	raw, err := requireJSONArray(runtime, "ranges")
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return nil, sheetsValidationForFlag("ranges", "--ranges must be a non-empty JSON array")
+	}
+	if len(raw) > maxBatchRanges {
+		return nil, sheetsValidationForFlag("ranges", "--ranges accepts at most %d entries; got %d", maxBatchRanges, len(raw))
+	}
+	type span struct {
+		raw        string
+		start, end int
+	}
+	spans := make([]span, 0, len(raw))
+	dimension := ""
+	for i, v := range raw {
+		s, ok := v.(string)
+		if !ok {
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] must be a string", i)
+		}
+		dim, start, end, err := parseA1Range(s)
+		if err != nil {
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] %q: %v", i, s, err)
+		}
+		if dimension == "" {
+			dimension = dim
+		} else if dim != dimension {
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] %q is a %s range but earlier entries are %s ranges; one call deletes rows OR columns, not both", i, s, dim, dimension)
+		}
+		spans = append(spans, span{raw: strings.TrimSpace(s), start: start, end: end})
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i].start > spans[j].start })
+	for i := 1; i < len(spans); i++ {
+		// Descending order: spans[i-1] starts at or after spans[i]. Overlap
+		// (or duplicate) makes the later delete hit already-shifted positions.
+		if spans[i].end >= spans[i-1].start {
+			return nil, sheetsValidationForFlag("ranges", "--ranges entries %q and %q overlap; merge them into one range", spans[i].raw, spans[i-1].raw)
+		}
+	}
+	ops := make([]interface{}, 0, len(spans))
+	for _, sp := range spans {
+		input := map[string]interface{}{
+			"excel_id":  token,
+			"operation": "delete",
+			"range":     sp.raw,
+		}
+		sheetSelectorForToolInput(input, sheetID, sheetName)
+		ops = append(ops, map[string]interface{}{
+			"tool_name": "modify_sheet_structure",
+			"input":     input,
+		})
+	}
+	return ops, nil
 }
 
 // validateDimRangeOp returns a Validate closure that delegates to
@@ -281,23 +461,37 @@ var DimUngroup = newDimGroupShortcut(
 	"+dim-ungroup", "Remove a row/column outline group.", "ungroup",
 )
 
-// DimFreeze freezes the first N rows or columns; --count 0 unfreezes that
-// dimension.
+// DimFreeze sets the sheet's freeze state. Freeze is full-state replacement
+// server-side (verified 07-31 live), so every call states the WHOLE state:
+// --rows/--cols name both axes at once, while the older --dimension/--count
+// pair can only name one and therefore unfreezes the other.
 var DimFreeze = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+dim-freeze",
-	Description: "Freeze the first N rows or columns; --count 0 unfreezes the chosen dimension.",
+	Description: "Freeze the first N rows and/or columns; this sets the whole freeze state, so an axis you do not name ends up unfrozen.",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+dim-freeze"),
-	Validate:    validateViaInput(dimFreezeInput),
+	Tips: []string{
+		"Example: lark-cli sheets +dim-freeze --url <URL> --sheet-name Sheet1 --rows 1 --cols 2 (holds the header row and the first 2 columns in one call)",
+		"Freezing is not additive: --dimension row --count 1 followed by --dimension column --count 2 leaves ONLY the columns frozen. Pass --rows/--cols together instead of calling twice",
+		"To unfreeze one axis but keep the other, state the survivor: --rows 0 --cols 2. Bare --count 0 clears both",
+	},
+	Validate: validateViaInput(dimFreezeInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := dimFreezeInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+		dr := invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+		// Surface the deprecation steer during the preview too: agents dry-run
+		// before executing, so a note only on the execute path arrives after the
+		// spelling is already committed to.
+		if note := dimFreezeLegacyNote(runtime); note != "" {
+			dr.Set("warning_message", note)
+		}
+		return dr
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -312,6 +506,9 @@ var DimFreeze = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if note := dimFreezeLegacyNote(runtime); note != "" {
+			fmt.Fprintln(runtime.IO().ErrOut, note)
+		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		if err != nil {
 			return err
@@ -321,33 +518,151 @@ var DimFreeze = common.Shortcut{
 	},
 }
 
+// DEPRECATED(phase-2): +dim-freeze --dimension / --count — replaced by
+// --rows / --cols. Phase 1: the flags keep working, are retired from the skill
+// docs via bundle.json doc_hidden_flags in sheet-skill-spec and from --help via
+// their hidden mark, and every use is steered by dimFreezeLegacyNote.
+// Phase 2 removal: drop both rows from spec-tables/flags.json + their
+// doc_hidden_flags entry, then dimFreezeLegacyNote, dimFreezeEquivalent, their
+// call sites (this shortcut's DryRun/Execute and batchLegacyDimFreezeNotes) and
+// the legacy branch in dimFreezeInput.
+//
+// The pair is a strict subset of --rows/--cols — every --dimension/--count call
+// has a byte-identical --rows/--cols spelling (TestDimFreezeEquivalent pins
+// this) — and it is the form that reads as if it scoped to one axis when the
+// backend replaces the whole freeze state.
+//
+// dimFreezeLegacyNote returns "" for the modern form. It takes a flagView
+// rather than a RuntimeContext so +batch-update can render the identical
+// wording for a sub-op (see batchLegacyDimFreezeNotes).
+func dimFreezeLegacyNote(runtime flagView) string {
+	if !runtime.Changed("dimension") && !runtime.Changed("count") {
+		return ""
+	}
+	return fmt.Sprintf(
+		"note: --dimension/--count is superseded by --rows/--cols, which state both axes at once; this call is equivalent to %s",
+		dimFreezeEquivalent(runtime))
+}
+
+// dimFreezeEquivalent renders the --rows/--cols spelling of a legacy
+// --dimension/--count call, so the deprecation note carries the exact
+// replacement instead of a generic pointer.
+func dimFreezeEquivalent(runtime flagView) string {
+	rows, cols, _ := dimFreezeAxes(runtime)
+	return dimFreezeSpelling(rows, cols)
+}
+
+// dimFreezeAxes maps either request form onto the (rows, cols) freeze state it
+// asks for. Pure mapping, no validation — dimFreezeInput validates first and
+// then calls this, so the request body, the deprecation note and the batch
+// collision note can never disagree about what a call means. ok is false when
+// the flags name no state at all, or when the legacy pair is half-given
+// (--count without --dimension); dimFreezeInput reports both.
+func dimFreezeAxes(runtime flagView) (rows, cols int, ok bool) {
+	pairForm := runtime.Changed("dimension") || runtime.Changed("count")
+	axisForm := runtime.Changed("rows") || runtime.Changed("cols")
+	switch {
+	case axisForm && !pairForm:
+		return runtime.Int("rows"), runtime.Int("cols"), true
+	case pairForm && !axisForm:
+		if !runtime.Changed("dimension") || !runtime.Changed("count") {
+			return 0, 0, false
+		}
+		// A zero count clears BOTH axes — it is the bare unfreeze operation,
+		// which carries no dimension.
+		if count := runtime.Int("count"); count > 0 {
+			if runtime.Str("dimension") == "row" {
+				return count, 0, true
+			}
+			return 0, count, true
+		}
+		return 0, 0, true
+	}
+	return 0, 0, false
+}
+
+// dimFreezeSpelling renders a freeze state as the --rows/--cols flags that
+// produce it. Single source of the replacement wording, shared by the
+// deprecation note and the batch collision note.
+func dimFreezeSpelling(rows, cols int) string {
+	switch {
+	case rows > 0 && cols > 0:
+		return fmt.Sprintf("--rows %d --cols %d", rows, cols)
+	case rows > 0:
+		return fmt.Sprintf("--rows %d", rows)
+	case cols > 0:
+		return fmt.Sprintf("--cols %d", cols)
+	}
+	return "--rows 0 --cols 0"
+}
+
+// dimFreezeInput builds the freeze body for both the standalone shortcut and
+// the +batch-update sub-op, so the two stay byte-identical (see
+// TestBatchOp_BodyMatchesStandalone).
+//
+// Two request forms, deliberately not mixable:
+//
+//   - --rows / --cols state the complete target state in ONE operation. This
+//     is the only form that can hold both axes, because freeze is full-state
+//     replacement server-side (verified 07-31 live: freeze rows=1 then
+//     columns=2 in two calls ends at 0 rows / 2 columns — the second call
+//     drops the first axis). It is also the only form usable inside
+//     +batch-update, whose sub-ops are a static array that cannot read the
+//     current state to preserve an axis.
+//   - --dimension + --count is the original single-axis form, kept for
+//     compatibility. It necessarily unfreezes the axis it does not name.
 func dimFreezeInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, err
 	}
-	if !runtime.Changed("dimension") {
-		return nil, sheetsValidationForFlag("dimension", "--dimension is required")
+	pairForm := runtime.Changed("dimension") || runtime.Changed("count")
+	axisForm := runtime.Changed("rows") || runtime.Changed("cols")
+	switch {
+	case pairForm && axisForm:
+		return nil, sheetsValidationForFlag("rows",
+			"give either --rows/--cols or --dimension/--count, not both — they are two ways to say the same thing; --rows/--cols is the one that can hold both axes at once")
+	case !pairForm && !axisForm:
+		// Prescribes only --rows/--cols: --dimension/--count is retired
+		// (DEPRECATED(phase-2)) and steering a caller into it here would earn
+		// them a deprecation note on the very next call.
+		return nil, sheetsValidationForFlag("rows",
+			"nothing to freeze: pass --rows N and/or --cols N — e.g. --rows 1 holds the header row, --rows 1 --cols 2 holds it plus the first 2 columns, --rows 0 --cols 0 unfreezes everything")
 	}
-	if !runtime.Changed("count") {
-		return nil, sheetsValidationForFlag("count", "--count is required (0 unfreezes)")
-	}
-	if runtime.Int("count") < 0 {
-		return nil, sheetsValidationForFlag("count", "--count must be >= 0")
-	}
-	dim := runtime.Str("dimension")
-	count := runtime.Int("count")
-	op := "freeze"
-	if count == 0 {
-		op = "unfreeze"
-	}
-	input := map[string]interface{}{"excel_id": token, "operation": op}
-	sheetSelectorForToolInput(input, sheetID, sheetName)
-	if op == "freeze" {
-		if dim == "row" {
-			input["freeze_rows"] = count
-		} else {
-			input["freeze_columns"] = count
+
+	if axisForm {
+		for _, name := range []string{"rows", "cols"} {
+			if runtime.Changed(name) && runtime.Int(name) < 0 {
+				return nil, sheetsValidationForFlag(name, "--%s must be >= 0 (0 leaves that axis unfrozen)", name)
+			}
 		}
+	} else {
+		if !runtime.Changed("dimension") {
+			return nil, sheetsValidationForFlag("dimension", "--dimension is required alongside --count (or use --rows/--cols to set both axes at once)")
+		}
+		if !runtime.Changed("count") {
+			return nil, sheetsValidationForFlag("count", "--count is required alongside --dimension (0 unfreezes)")
+		}
+		if runtime.Int("count") < 0 {
+			return nil, sheetsValidationForFlag("count", "--count must be >= 0")
+		}
+	}
+	// Validation done; the flags-to-state mapping is dimFreezeAxes', shared with
+	// the deprecation and collision notes so the three cannot disagree.
+	rows, cols, _ := dimFreezeAxes(runtime)
+
+	// An all-zero target is the bare "unfreeze" operation, which carries no
+	// dimension and clears everything — the same request the old --count 0
+	// always sent.
+	input := map[string]interface{}{"excel_id": token, "operation": "unfreeze"}
+	if rows > 0 || cols > 0 {
+		input["operation"] = "freeze"
+	}
+	sheetSelectorForToolInput(input, sheetID, sheetName)
+	if rows > 0 {
+		input["freeze_rows"] = rows
+	}
+	if cols > 0 {
+		input["freeze_columns"] = cols
 	}
 	return input, nil
 }
@@ -555,6 +870,23 @@ func columnIndexToLetter(idx int) string {
 		idx /= 26
 	}
 	return string(out)
+}
+
+// a1PositionBefore returns the A1 position one unit before s ("6" → "5",
+// "C" → "B"), preserving row/column form. ok is false when s is the first
+// row/column (row 1 / column A) — no earlier position — or is not a valid A1
+// position. Callers validate via parseA1Position first, so in practice ok is
+// false only at the first row/column.
+func a1PositionBefore(s string) (pos string, ok bool) {
+	dimension, idx, err := parseA1Position(s)
+	if err != nil || idx == 0 {
+		return "", false
+	}
+	if dimension == "row" {
+		// idx is 0-based; the 1-based number one row earlier is idx itself.
+		return strconv.Itoa(idx), true
+	}
+	return columnIndexToLetter(idx - 1), true
 }
 
 // ─── +dim-move (native v3 move_dimension, cli_status: cli-only) ──────

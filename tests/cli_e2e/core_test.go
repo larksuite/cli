@@ -100,6 +100,13 @@ func TestBuildArgs(t *testing.T) {
 	})
 }
 
+func TestDryRunGet(t *testing.T) {
+	stdout := `{"ok":true,"identity":"bot","data":{"api":[{"method":"POST"}]}}`
+
+	assert.Equal(t, "POST", DryRunGet(stdout, "api.0.method").String())
+	assert.Equal(t, "bot", DryRunGet(stdout, "identity").String())
+}
+
 func TestSkipWithoutUserToken(t *testing.T) {
 	t.Run("returns immediately when env user access token exists", func(t *testing.T) {
 		t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "uat-from-env")

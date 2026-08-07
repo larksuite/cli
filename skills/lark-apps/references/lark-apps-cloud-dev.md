@@ -10,7 +10,7 @@
 
 三层父子关系，下层都挂在上层之下：
 
-- **app（应用资产）**：一个妙搭应用，由 `+create` 创建并拿到 `app_id`。云端生成应用类型用 `full_stack`。
+- **app（应用资产）**：一个妙搭应用，由 `+create` 创建并拿到 `app_id`。`--app-type` 沿用 SKILL.md「选择开发路径」判定的类型（有数据库需求→`full_stack`；纯前端交互、未提数据库→默认 `frontend`），云端生成不写死 `full_stack`。
 - **session（会话）**：一个 app 下的一段独立对话上下文，由 `+session-create` 创建并拿到 `session_id`。一个 app 可有多个 session；`is_active` 表示该 session 当前是否可写（可发起对话）。
 - **turn（轮）**：一个 session 里的一轮交互 = 一条用户消息 + 妙搭 Agent 针对它的生成/迭代。`+chat` 发一条消息就发起一轮；轮的句柄是 `turn_id`，状态看 `latest_turn.status`。
 
@@ -41,7 +41,8 @@
 ### 典型链路
 
 ```bash
-# 1) 建 app，拿 app_id（云端生成走 full_stack）
+# 1) 建 app，拿 app_id（--app-type 用主路由判定的类型；此例"待办应用"要存待办→full_stack，
+#    若是纯前端交互工具且未提数据库则用 frontend）
 lark-cli apps +create --name "待办应用" --app-type full_stack \
   --description "支持新增、完成、筛选待办"
 
@@ -68,14 +69,14 @@ lark-cli apps +session-list --app-id app_xxx
 ## 需求发送
 
 - 只有用户明确选择云端路径，或明确说“让妙搭 Agent / 云端 AI 生成/迭代”时，才进入本 reference；不要因为用户只说“做个 X”或“给我链接”就默认云端。
-- 进入云端路径后，极简需求也可直接发起生成，例如“做个投票工具”“做个站会小应用”。先建 `full_stack` app，再用 `+chat --message "<用户原话>"` 透传需求，不编造实体、字段或业务细节。
+- 进入云端路径后，极简需求也可直接发起生成，例如“做个投票工具”“做个站会小应用”。先按主路由判定的 `--app-type` 建 app（有数据库需求→`full_stack`，纯前端交互未提数据库→默认 `frontend`），再用 `+chat --message "<用户原话>"` 透传需求，不编造实体、字段或业务细节。
 - 如果需求过泛，可在 `+chat --message` 中保留原话，并只补一句“请先生成通用版本，后续可继续迭代”，不要用多轮追问阻塞生成。
 
 ## 会话落点
 
 | 情形 | 动作 |
 |---|---|
-| 全新应用 + 云端生成 | 先 `+create --app-type full_stack` 拿 `app_id`，再 `+session-create` -> `+chat` |
+| 全新应用 + 云端生成 | 先按主路由判定的类型 `+create --app-type <frontend\|full_stack>`（未提数据库默认 frontend）拿 `app_id`，再 `+session-create` -> `+chat` |
 | 已知 app_id，用户没指定会话 | 先 `+session-list`；有活跃会话时问用户继续现有还是新开 |
 | 用户说“新开一段/换个话题” | `+session-create` 后再 `+chat` |
 | 用户说“接着刚才” | 复用上下文 session_id；拿不到就 `+session-list` 让用户选 |

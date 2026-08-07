@@ -69,4 +69,9 @@ func TestSheets_WorkbookImportDryRun(t *testing.T) {
 		"--name should reach file_name; stdout:\n%s", out)
 	require.Equal(t, "csv", clie2e.DryRunGet(out, "api.1.body.file_extension").String(),
 		"file_extension sniffed from .csv; stdout:\n%s", out)
+	// The import task must consume the upload step's result: the dry-run plan
+	// carries the <file_token> placeholder standing in for api.0's returned
+	// token — its absence would mean the two steps are not actually linked.
+	require.Equal(t, "<file_token>", clie2e.DryRunGet(out, "api.1.body.file_token").String(),
+		"upload file_token must feed the import task body; stdout:\n%s", out)
 }

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -637,7 +638,7 @@ func TestGitCredentialListPayloadDoesNotExposeExpiry(t *testing.T) {
 func TestAppsGitCredentialRemoveReportsGitConfigWarning(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	factory.Keychain = newAppsTestKeychain()
-	installAppsFakeGit(t, 7) // unsetting useHttpPath exits non-zero -> ConfigWarning
+	installAppsFakeGitUnsetUseHTTPPathFailure(t, 7)
 	expiresAt := time.Now().Add(24 * time.Hour).Unix()
 	for _, appID := range []string{"app_one", "app_two"} {
 		reg.Register(&httpmock.Stub{
@@ -1203,29 +1204,57 @@ func (i testAppsIssuer) Issue(ctx context.Context, appID string, profile gitcred
 
 func installAppsFakeGit(t *testing.T, failUseHTTPPathExit int) {
 	t.Helper()
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("find real git: %v", err)
+	}
 	dir := t.TempDir()
 	gitPath := filepath.Join(dir, "git")
-	script := `#!/bin/sh
-case "$*" in
-  *"--get"*) exit 1 ;;
-esac
-exit 0
-`
+	script := fmt.Sprintf("#!/bin/sh\nexec %q \"$@\"\n", realGit)
 	if failUseHTTPPathExit != 0 {
-		script = `#!/bin/sh
+		script = fmt.Sprintf(`#!/bin/sh
 case "$*" in
-  *"--get"*) exit 1 ;;
+  *"useHttpPath true"*) exit %d ;;
 esac
-case "$*" in
-  *useHttpPath*) exit 7 ;;
-esac
-exit 0
-`
+exec %q "$@"
+`, failUseHTTPPathExit, realGit)
 	}
 	if err := os.WriteFile(gitPath, []byte(script), 0700); err != nil {
 		t.Fatalf("write fake git: %v", err)
 	}
+	globalConfig := filepath.Join(t.TempDir(), "global.config")
+	if err := os.WriteFile(globalConfig, nil, 0600); err != nil {
+		t.Fatalf("write isolated global git config: %v", err)
+	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GIT_CONFIG_GLOBAL", globalConfig)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+}
+
+func installAppsFakeGitUnsetUseHTTPPathFailure(t *testing.T, exitCode int) {
+	t.Helper()
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("find real git: %v", err)
+	}
+	dir := t.TempDir()
+	gitPath := filepath.Join(dir, "git")
+	script := fmt.Sprintf(`#!/bin/sh
+case "$*" in
+  *"--unset-all"*"useHttpPath"*) exit %d ;;
+esac
+exec %q "$@"
+`, exitCode, realGit)
+	if err := os.WriteFile(gitPath, []byte(script), 0700); err != nil {
+		t.Fatalf("write fake git: %v", err)
+	}
+	globalConfig := filepath.Join(t.TempDir(), "global.config")
+	if err := os.WriteFile(globalConfig, nil, 0600); err != nil {
+		t.Fatalf("write isolated global git config: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GIT_CONFIG_GLOBAL", globalConfig)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 }
 
 // TestParseIssueCredentialData_SharedClassifierCoverage pins the canonical

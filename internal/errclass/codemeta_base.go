@@ -6,6 +6,9 @@ package errclass
 import "github.com/larksuite/cli/errs"
 
 var baseCodeMeta = map[int]CodeMeta{
+	// Base write-path errors.
+	1254291: {Category: errs.CategoryAPI, Subtype: errs.SubtypeConflict, Retryable: true},
+
 	// Copy Table domain errors (technical design chapter 18.2).
 	800020304: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied},
 	800010102: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition},

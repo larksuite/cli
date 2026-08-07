@@ -17,12 +17,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -1251,6 +1255,36 @@ func TestBaseViewExecutePropertyActions(t *testing.T) {
 
 }
 
+func TestFieldCreateBatchDelayUsesLowerBoundOfWriteConflictGuidance(t *testing.T) {
+	want := 500 * time.Millisecond
+	if fieldCreateBatchDelay != want {
+		t.Fatalf("fieldCreateBatchDelay=%s, want %s", fieldCreateBatchDelay, want)
+	}
+}
+
+func TestFieldCreateThrottleDelayCountsRequestTime(t *testing.T) {
+	startedAt := time.Unix(0, 0)
+	for _, tc := range []struct {
+		name string
+		now  time.Time
+		want time.Duration
+	}{
+		{name: "first request", want: 0},
+		{name: "fast response waits only for remainder", now: startedAt.Add(200 * time.Millisecond), want: 300 * time.Millisecond},
+		{name: "slow response needs no extra wait", now: startedAt.Add(600 * time.Millisecond), want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previousStartedAt := startedAt
+			if tc.name == "first request" {
+				previousStartedAt = time.Time{}
+			}
+			if got := fieldCreateThrottleDelay(previousStartedAt, tc.now); got != tc.want {
+				t.Fatalf("fieldCreateThrottleDelay()=%s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestBaseFieldExecuteCRUD(t *testing.T) {
 	t.Run("list", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -1346,7 +1380,14 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 			},
 			Body: map[string]interface{}{
 				"code": 0,
-				"data": map[string]interface{}{"id": "fld_a", "name": "A", "type": "text"},
+				"data": map[string]interface{}{
+					"id":            "fld_a",
+					"name":          "A",
+					"type":          "text",
+					"default_value": nil,
+					"description":   "verbose server field metadata",
+					"style":         map[string]interface{}{"type": "plain"},
+				},
 			},
 		}
 		secondStub := &httpmock.Stub{
@@ -1375,11 +1416,281 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		if len(fields) != 2 {
 			t.Fatalf("fields len=%d output=%#v", len(fields), data)
 		}
+		firstField, _ := fields[0].(map[string]interface{})
+		if firstField["id"] != "fld_a" || firstField["name"] != "A" || firstField["type"] != "text" {
+			t.Fatalf("batch output should preserve field identity, got %#v", firstField)
+		}
+		if firstField["description"] != "verbose server field metadata" || firstField["default_value"] != nil {
+			t.Fatalf("batch output should preserve server field metadata, got %#v", firstField)
+		}
+		style, _ := firstField["style"].(map[string]interface{})
+		if style["type"] != "plain" {
+			t.Fatalf("batch output should preserve server field style, got %#v", firstField)
+		}
 		if data["field_get_recommended"] != false || data["next_step"] != "done" || data["verification_hint"] == nil {
 			t.Fatalf("simple batch create must carry field_get_recommended:false + next_step:done + verification_hint: %#v", data)
 		}
+		hint := common.GetString(data, "verification_hint")
+		for _, want := range []string{"do not list or get fields", "filter +field-list with --jq"} {
+			if !strings.Contains(hint, want) {
+				t.Fatalf("verification_hint=%q, want %q", hint, want)
+			}
+		}
 		if !strings.Contains(string(firstStub.CapturedBody), `"name":"A"`) || !strings.Contains(string(secondStub.CapturedBody), `"name":"B"`) {
 			t.Fatalf("unexpected request bodies: %s / %s", firstStub.CapturedBody, secondStub.CapturedBody)
+		}
+	})
+
+	t.Run("create array reports progress when a later field fails", func(t *testing.T) {
+		oldDelay := fieldCreateBatchDelay
+		fieldCreateBatchDelay = 0
+		t.Cleanup(func() { fieldCreateBatchDelay = oldDelay })
+
+		runPartial := func(input, createdType, failedName string, failedResponse map[string]interface{}) map[string]interface{} {
+			t.Helper()
+			factory, stdout, reg := newExecuteFactory(t)
+			register := func(name string, response map[string]interface{}) {
+				reg.Register(&httpmock.Stub{
+					Method:     "POST",
+					URL:        "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+					BodyFilter: func(body []byte) bool { return strings.Contains(string(body), `"name":"`+name+`"`) },
+					Body:       response,
+				})
+			}
+			register("A", map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"id":            "fld_a",
+					"name":          "A",
+					"type":          createdType,
+					"default_value": nil,
+					"description":   "verbose server field metadata",
+					"style":         map[string]interface{}{"type": "plain"},
+				},
+			})
+			register(failedName, failedResponse)
+			err := runShortcut(t, BaseFieldCreate, []string{
+				"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", input,
+			}, factory, stdout)
+			var partialErr *output.PartialFailureError
+			if !errors.As(err, &partialErr) {
+				t.Fatalf("expected partial failure error, got %T: %v", err, err)
+			}
+			var envelope struct {
+				OK   bool                   `json:"ok"`
+				Data map[string]interface{} `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode partial failure output: %v\nstdout=%s", err, stdout.String())
+			}
+			if envelope.OK || envelope.Data == nil {
+				t.Fatalf("unexpected partial failure envelope: %#v", envelope)
+			}
+			return envelope.Data
+		}
+
+		conflictResponse := map[string]interface{}{
+			"code": 1254090,
+			"msg":  "field already exists",
+			"error": map[string]interface{}{
+				"log_id":         "202607300001",
+				"troubleshooter": "https://open.feishu.cn/document/troubleshoot/field-exists",
+				"details":        []interface{}{map[string]interface{}{"value": "choose a different field name"}},
+			},
+		}
+		data := runPartial(`[{"name":"A","type":"auto_number"},{"name":"B","type":"text"},{"name":"C","type":"text"}]`, "auto_number", "B", conflictResponse)
+		summary, _ := data["summary"].(map[string]interface{})
+		if summary["requested"] != float64(3) || summary["attempted"] != float64(2) ||
+			summary["created"] != float64(1) || summary["failed"] != float64(1) || summary["not_attempted"] != float64(1) {
+			t.Fatalf("unexpected summary: %#v", summary)
+		}
+
+		items, _ := data["items"].([]interface{})
+		if len(items) != 3 {
+			t.Fatalf("items=%#v, want three outcomes", items)
+		}
+		created, _ := items[0].(map[string]interface{})
+		createdField, _ := created["field"].(map[string]interface{})
+		failed, _ := items[1].(map[string]interface{})
+		failedField, _ := failed["field"].(map[string]interface{})
+		notAttempted, _ := items[2].(map[string]interface{})
+		notAttemptedField, _ := notAttempted["field"].(map[string]interface{})
+		if created["status"] != "created" || createdField["id"] != "fld_a" ||
+			failed["status"] != "failed" || failed["index"] != float64(1) || failedField["name"] != "B" ||
+			notAttempted["status"] != "not_attempted" || notAttemptedField["name"] != "C" {
+			t.Fatalf("unexpected item outcomes: %#v", items)
+		}
+		if len(createdField) != 3 {
+			t.Fatalf("partial failure should keep only compact created-field identity, got %#v", createdField)
+		}
+		if !strings.Contains(common.GetString(failed, "error"), "field already exists") {
+			t.Fatalf("failed item must include the API error: %#v", failed)
+		}
+		for key, want := range map[string]interface{}{
+			"type":           "api",
+			"subtype":        "unknown",
+			"code":           float64(1254090),
+			"hint":           "choose a different field name",
+			"retryable":      false,
+			"log_id":         "202607300001",
+			"troubleshooter": "https://open.feishu.cn/document/troubleshoot/field-exists",
+		} {
+			if failed[key] != want {
+				t.Fatalf("failed[%q]=%#v, want %#v; failed=%#v", key, failed[key], want, failed)
+			}
+		}
+		if _, ok := failed["error_type"]; ok {
+			t.Fatalf("failed item must use canonical type/subtype fields: %#v", failed)
+		}
+		writeConflictData := runPartial(`[{"name":"A","type":"text"},{"name":"W","type":"text"}]`, "text", "W", map[string]interface{}{
+			"code": 1254291,
+			"msg":  "write conflict",
+		})
+		items, _ = writeConflictData["items"].([]interface{})
+		writeConflict, _ := items[1].(map[string]interface{})
+		if writeConflict["type"] != "api" || writeConflict["subtype"] != "conflict" || writeConflict["retryable"] != true ||
+			!strings.Contains(common.GetString(writeConflict, "hint"), "retry later") {
+			t.Fatalf("1254291 must remain a retryable conflict with wait guidance: %#v", writeConflict)
+		}
+		if !strings.Contains(data["hint"].(string), "Automatically retry a failed item unchanged only when retryable is true") {
+			t.Fatalf("hint=%#v", data["hint"])
+		}
+		if data["field_get_recommended"] != true || data["next_step"] != "inspect_items" || data["verification_hint"] == nil {
+			t.Fatalf("partial success with auto_number must recommend readback: %#v", data)
+		}
+
+		simpleData := runPartial(`[{"name":"A","type":"text"},{"name":"B","type":"text"},{"name":"C","type":"text"}]`, "text", "B", conflictResponse)
+		if simpleData["field_get_recommended"] != false || simpleData["next_step"] != "inspect_items" {
+			t.Fatalf("simple-field partial failure must inspect items, not report done: %#v", simpleData)
+		}
+
+		permissionData := runPartial(`[{"name":"A","type":"text"},{"name":"P","type":"text"}]`, "text", "P", map[string]interface{}{
+			"code": 99991672,
+			"msg":  "app scope not applied",
+			"error": map[string]interface{}{
+				"permission_violations": []interface{}{map[string]interface{}{"subject": "base:field:create"}},
+			},
+		})
+		items, _ = permissionData["items"].([]interface{})
+		permissionFailure, _ := items[1].(map[string]interface{})
+		missingScopes, _ := permissionFailure["missing_scopes"].([]interface{})
+		if len(missingScopes) != 1 || missingScopes[0] != "base:field:create" ||
+			permissionFailure["identity"] != "bot" || common.GetString(permissionFailure, "console_url") == "" {
+			t.Fatalf("permission failure must retain typed extensions: %#v", permissionFailure)
+		}
+
+		policyData := runPartial(`[{"name":"A","type":"text"},{"name":"S","type":"text"}]`, "text", "S", map[string]interface{}{
+			"code": 21000,
+			"msg":  "challenge required",
+			"data": map[string]interface{}{
+				"challenge_url": "https://passport.feishu.cn/challenge/field-create",
+				"hint":          "complete MFA in the browser, then retry",
+			},
+		})
+		items, _ = policyData["items"].([]interface{})
+		policyFailure, _ := items[1].(map[string]interface{})
+		if policyFailure["type"] != "policy" || policyFailure["subtype"] != "challenge_required" ||
+			policyFailure["code"] != float64(21000) || policyFailure["retryable"] != false ||
+			policyFailure["challenge_url"] != "https://passport.feishu.cn/challenge/field-create" ||
+			common.GetString(policyFailure, "hint") != "complete MFA in the browser, then retry" {
+			t.Fatalf("policy failure must retain typed extensions: %#v", policyFailure)
+		}
+	})
+
+	t.Run("create array presents partial failure recovery", func(t *testing.T) {
+		oldDelay := fieldCreateBatchDelay
+		fieldCreateBatchDelay = 0
+		t.Cleanup(func() { fieldCreateBatchDelay = oldDelay })
+
+		tests := []struct {
+			name string
+			plan *surface.Plan
+		}{
+			{name: "visible"},
+			{
+				name: "concealed",
+				plan: surface.NewPlan(map[surface.CommandID]surface.CommandState{
+					surface.CommandAuthLogin: surface.CommandConcealed,
+				}),
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				factory, stdout, reg := newExecuteFactory(t)
+				factory.Recovery = recovery.NewProjector(func() *surface.Plan { return tt.plan })
+				reg.Register(&httpmock.Stub{
+					Method:     "POST",
+					URL:        "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+					BodyFilter: func(body []byte) bool { return strings.Contains(string(body), `"name":"A"`) },
+					Body: map[string]interface{}{
+						"code": 0,
+						"data": map[string]interface{}{"id": "fld_a", "name": "A", "type": "text"},
+					},
+				})
+				reg.Register(&httpmock.Stub{
+					Method:     "POST",
+					URL:        "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+					BodyFilter: func(body []byte) bool { return strings.Contains(string(body), `"name":"B"`) },
+					Body:       map[string]interface{}{"code": 230027, "msg": "operation unauthorized"},
+				})
+
+				err := runShortcutWithAuthTypes(t, BaseFieldCreate, []string{"bot", "user"}, []string{
+					"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--as", "user",
+					"--json", `[{"name":"A","type":"text"},{"name":"B","type":"text"}]`,
+				}, factory, stdout)
+				var partialErr *output.PartialFailureError
+				if !errors.As(err, &partialErr) {
+					t.Fatalf("expected partial failure error, got %T: %v", err, err)
+				}
+
+				var envelope struct {
+					OK   bool `json:"ok"`
+					Data struct {
+						Items []map[string]interface{} `json:"items"`
+						Hint  string                   `json:"hint"`
+					} `json:"data"`
+				}
+				if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+					t.Fatalf("decode partial failure output: %v\nstdout=%s", err, stdout.String())
+				}
+				if envelope.OK || len(envelope.Data.Items) != 2 {
+					t.Fatalf("unexpected partial failure envelope: %#v", envelope)
+				}
+
+				failed := envelope.Data.Items[1]
+				wantHint := errclass.PermissionRecovery(
+					[]string{"base:field:create"}, "user", errs.SubtypeUserUnauthorized, "",
+				).Render(tt.plan)
+				gotHint := common.GetString(failed, "hint")
+				if gotHint != wantHint {
+					t.Errorf("failed hint = %q, want %q", gotHint, wantHint)
+				}
+				if failed["type"] != "authorization" || failed["subtype"] != "user_unauthorized" || failed["identity"] != "user" || failed["retryable"] != false {
+					t.Errorf("failed typed metadata = %#v", failed)
+				}
+				for _, want := range []string{
+					"Automatically retry a failed item unchanged only when retryable is true",
+					"otherwise follow its hint to authorize or correct the input before resubmitting it",
+				} {
+					if !strings.Contains(envelope.Data.Hint, want) {
+						t.Errorf("partial failure hint = %q, want %q", envelope.Data.Hint, want)
+					}
+				}
+				if strings.Contains(envelope.Data.Hint, "Do not retry failed items") {
+					t.Errorf("partial failure hint must allow recovery before resubmission: %q", envelope.Data.Hint)
+				}
+				if _, ok := failed["missing_scopes"]; ok {
+					t.Errorf("presentation must not fabricate missing_scopes: %#v", failed)
+				}
+				if tt.plan == nil {
+					if !strings.Contains(gotHint, `auth login --scope "base:field:create"`) {
+						t.Errorf("visible recovery lost precise auth path: %q", gotHint)
+					}
+				} else if strings.Contains(gotHint, "auth login") || !strings.Contains(gotHint, "base:field:create") {
+					t.Errorf("concealed recovery leaked command or lost scope: %q", gotHint)
+				}
+			})
 		}
 	})
 
@@ -1441,6 +1752,44 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
+}
+
+type fieldCreateCollidingTypedError struct {
+	errs.Problem
+	Index     int    `json:"index"`
+	Status    string `json:"status"`
+	Field     string `json:"field"`
+	ErrorText string `json:"error"`
+}
+
+func TestFieldCreateTypedErrorExtensionsAliasLedgerCollisions(t *testing.T) {
+	extensions := fieldCreateTypedErrorExtensions(&fieldCreateCollidingTypedError{
+		Problem: errs.Problem{
+			Category: errs.CategoryConfig,
+			Subtype:  errs.SubtypeInvalidConfig,
+			Message:  "invalid config",
+		},
+		Index:     0,
+		Status:    "created",
+		Field:     "app_id",
+		ErrorText: "masked failure",
+	})
+
+	for key, want := range map[string]interface{}{
+		"error_index":  float64(0),
+		"error_status": "created",
+		"error_field":  "app_id",
+		"error_error":  "masked failure",
+	} {
+		if extensions[key] != want {
+			t.Errorf("%s=%#v, want %#v", key, extensions[key], want)
+		}
+	}
+	for _, key := range []string{"index", "status", "field", "error"} {
+		if _, exists := extensions[key]; exists {
+			t.Errorf("ledger key %q must not be exposed by typed extensions: %#v", key, extensions)
+		}
+	}
 }
 
 func TestBaseTableExecuteReadAndDelete(t *testing.T) {

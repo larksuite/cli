@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
 )
 
@@ -40,11 +41,6 @@ type MentionOutput struct {
 
 func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-		} `json:"header"`
 		Event struct {
 			Message struct {
 				MessageID   string        `json:"message_id"`
@@ -68,7 +64,7 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
 	msg := envelope.Event.Message
@@ -82,14 +78,14 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 		})
 	}
 
-	timestamp := envelope.Header.CreateTime
+	timestamp := raw.SourceTime
 	if timestamp == "" {
 		timestamp = msg.CreateTime
 	}
 
 	out := &ImMessageReceiveOutput{
-		Type:        envelope.Header.EventType,
-		EventID:     envelope.Header.EventID,
+		Type:        raw.EventType,
+		EventID:     raw.EventID,
 		Timestamp:   timestamp,
 		ID:          msg.MessageID,
 		MessageID:   msg.MessageID,

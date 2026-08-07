@@ -24,10 +24,15 @@ func Keys() []event.KeyDefinition {
 			EventType:   eventTypeWhiteboardUpdated,
 			Params: []event.ParamDef{
 				{
-					Name:        "whiteboard_id",
-					Type:        event.ParamString,
-					Required:    true,
-					Description: "Whiteboard id to subscribe; subscription is per-whiteboard.",
+					Name:     "whiteboard_id",
+					Type:     event.ParamString,
+					Required: true,
+					// The server-side subscription is keyed per whiteboard, so
+					// the id must be part of the consumer's subscription
+					// identity: consumers of different whiteboards get their
+					// own setup/cleanup lifecycle instead of sharing one.
+					SubscriptionKey: true,
+					Description:     "Whiteboard id to subscribe; subscription is per-whiteboard.",
 				},
 			},
 			Schema: event.SchemaDef{
@@ -39,6 +44,7 @@ func Keys() []event.KeyDefinition {
 					"/event/operator_ids/*/user_id":  {Kind: "user_id"},
 				},
 			},
+			Match:                 whiteboardIDMatch,
 			PreConsume:            whiteboardSubscriptionPreConsume(eventTypeWhiteboardUpdated),
 			Scopes:                []string{"board:whiteboard:node:read"},
 			AuthTypes:             []string{"user", "bot"},

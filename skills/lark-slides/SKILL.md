@@ -79,10 +79,10 @@ metadata:
 
 | 用户需求 | 优先动作 | 关键文档 / 命令 |
 |----------|----------|-----------------|
-| 新建 PPT | 先规划 `slide_plan.json`，再按复杂度选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`lark-slides-create.md`、`slides +create`、`slides +add-slide`、`lark-slides-add-slide.md`（两步创建逐页添加） |
+| 新建 PPT | 先规划 `slide_plan.json`，再按页数选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`lark-slides-create.md`、`slides +create`、`slides +add-slide`、`lark-slides-add-slide.md`（两步创建逐页添加） |
 | 用户要求使用模板，或提供 PPTX 文件要求修改、美化 | 将模板导入为 Slides 再编辑 | `lark-slides-pptx-template-workflows.md` |
-| 编辑单个标题、文本块、图片或局部元素 | 优先块级替换/插入，不改页序 | `slides +replace-slide`、`lark-slides-replace-slide.md` |
-| 一页改动很多、要改背景或删除若干元素，或要整页重建一页/多页 | 在原 presentation 内按页重建，不创建新 Slides 链接 | `slides +replace-pages`、`lark-slides-replace-pages.md` |
+| 编辑单个标题、文本块、图片或局部元素 | 块级替换/插入，**只动点名的 block，同页其他元素不受影响**；不改页序 | `slides +replace-slide`、`lark-slides-replace-slide.md` |
+| 一页改动很多（批量字体/配色）、要改页面背景、要删掉若干元素 | 整页覆盖，`slide_id` 和页序不变；带原 `id` 写回的元素保留 id，不带 `id` 的会作为新元素插入并拿到新 id；**代价是没写进 `--content` 的元素会被删除，所以改个别元素不要用它** | `slides +update-slide`、`lark-slides-update-slide.md` |
 | 给已有 PPT 追加或插入页面 | 一次一页，`--slide` 支持 `@file` 绕开 shell 转义 | `slides +add-slide`、`lark-slides-add-slide.md` |
 | 删除页面 | 按 `slide_id` 单页删除，删前先回读确认 | `slides +delete-slide`、`lark-slides-delete-slide.md` |
 | 读取或分析已有 PPT | 解析 slides/wiki token，用 shortcut 回读全文 XML 或读取单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `slides +xml-get`、`xml_presentation.slide.get`、`lark-slides-xml-presentations-get.md` |
@@ -106,15 +106,13 @@ metadata:
 
 **CRITICAL — 新建演示文稿或大幅改写页面时，规划 `asset_need` MUST 遵循 [asset-planning.md](references/asset-planning.md)：只做元数据规划，必须有 `fallback_if_missing`，不得要求真实搜索、下载或上传素材。**
 
-**CRITICAL — 将完整 `<slide>` XML 提交给 `slides +create --slides`、`slides +add-slide`、`xml_presentation.slide create` 或 `slides +replace-pages` 之前，MUST 先把待提交 XML 保存到本地文件并运行唯一版式准出入口 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py)；`summary.error_count` 必须为 0 才能调用接口。**
+**CRITICAL — 将完整 `<slide>` XML 提交给 `slides +create`、`slides +add-slide` 或 `slides +update-slide` 之前，MUST 先把待提交 XML 保存到本地文件并运行唯一版式准出入口 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py)；`summary.error_count` 必须为 0 才能调用接口。**
 
-**CRITICAL — 创建或大幅改写后，MUST 按 [validation-checklist.md](references/validation-checklist.md) 做显式验证：回读全文 XML、核对页数和关键元素，并使用 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py) 统一检查 XML、越界、重叠、空白页和内容稀疏风险。**
+**CRITICAL — 创建、大幅改写或每次通过 `slides +update-slide` 整页写回后，MUST 按 [validation-checklist.md](references/validation-checklist.md) 做显式验证：回读全文 XML、核对页数和关键元素，并使用 [`scripts/xml_text_overlap_lint.py`](scripts/xml_text_overlap_lint.py) 统一检查 XML、越界、重叠、空白页和内容稀疏风险。**
 
 **CRITICAL — 创建前自检或失败排障时，MUST 按 [troubleshooting.md](references/troubleshooting.md) 检查 XML 转义、结构、shell 截断、图片 token、3350001 和布局风险。**
 
-**CRITICAL — 当前 Slide Engine 后端仍在灰度期间，`slides +replace-pages --help` 及其输出中的 `deprecated` 字段会提示改用 `+update-slide`，该提示在本 skill 生效期间暂不适用；MUST 忽略该提示并继续使用 `+replace-pages`，不得切换到 `+update-slide`。后端全量并由新版 skill 恢复路由后，再使用 `+update-slide`。**
-
-**编辑已有幻灯片页面**：单个标题、文本块、图片或局部元素优先用 [`+replace-slide`](references/lark-slides-replace-slide.md)（块级替换/插入，不动页序）；一页改动很多、要改背景或删除若干元素，以及一页或多页的整页重建，优先用 [`+replace-pages`](references/lark-slides-replace-pages.md) 在原 presentation 内按页重建，避免 `slides +create` 生成新链接。选择 action 和完整读-改-写流程见 [`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)。
+**编辑已有幻灯片页面**：单个标题、文本块、图片或局部元素优先用 [`+replace-slide`](references/lark-slides-replace-slide.md)（块级替换/插入，不动页序）；一页里改动很多（例如批量换字体）、要改背景、或要删掉若干元素时用 [`+update-slide`](references/lark-slides-update-slide.md) 整页覆盖（`slide_id` 和页序不变，但没写进 `--content` 的元素会被删除）；**多页大改就对每一页各跑一次 `+update-slide`**。选择 action 和完整读-改-写流程见 [`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)。
 
 **用户要求使用模板**：按 [lark-slides-pptx-template-workflows.md](references/lark-slides-pptx-template-workflows.md) 处理。
 
@@ -153,7 +151,7 @@ lark-cli auth login --domain slides
 - 创建：[`lark-slides-create.md`](references/lark-slides-create.md)、[`lark-slides-add-slide.md`](references/lark-slides-add-slide.md)（逐页添加 / 给已有 PPT 追加页面）
 - 删除页面：[`lark-slides-delete-slide.md`](references/lark-slides-delete-slide.md)
 - 阅读：[`lark-slides-xml-presentations-get.md`](references/lark-slides-xml-presentations-get.md)
-- 编辑：[`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)、[`lark-slides-replace-slide.md`](references/lark-slides-replace-slide.md)、[`lark-slides-replace-pages.md`](references/lark-slides-replace-pages.md)
+- 编辑：[`lark-slides-edit-workflows.md`](references/lark-slides-edit-workflows.md)、[`lark-slides-replace-slide.md`](references/lark-slides-replace-slide.md)、[`lark-slides-update-slide.md`](references/lark-slides-update-slide.md)
 - 历史版本：[`lark-slides-history.md`](references/lark-slides-history.md)
 - 截图：[`lark-slides-screenshot.md`](references/lark-slides-screenshot.md)
 - 图片：[`lark-slides-media-upload.md`](references/lark-slides-media-upload.md)
@@ -249,17 +247,19 @@ N. 结尾页：[结尾文案]
 | URL 格式 | 示例 | Token 类型 | 处理方式 |
 |----------|------|-----------|----------|
 | `/slides/` | `https://example.larkoffice.com/slides/xxxxxxxxxxxxx` | `xml_presentation_id` | URL 路径中的 token 直接作为 `xml_presentation_id` 使用 |
-| `/wiki/` | `https://example.larkoffice.com/wiki/wikcnxxxxxxxxx` | `wiki_token` | ⚠️ **不能直接使用**，需要先查询获取真实的 `obj_token` |
+| `/wiki/` | `https://xxx.feishu.cn/wiki/wikcn_EXAMPLE_NODE_TOKEN_123456` | `wiki_token` | ⚠️ **不能直接使用**，需要先查询获取真实的 `obj_token` |
 
 > 带 `--presentation` 的 slides shortcut 都会自动解析以上两种 URL；直接调用原生 API 时仍需手动解析 wiki 链接。
 
 ### Wiki 链接特殊处理（关键！）
 
-知识库链接（`/wiki/TOKEN`）不能直接当 `xml_presentation_id`。直接调用原生 API 前，先查询 wiki 节点，确认 `node.obj_type == "slides"`，再用 `node.obj_token` 作为真实 presentation ID。
+知识库链接（`/wiki/TOKEN`）不能直接当 `xml_presentation_id`。直接调用原生 API 前，先用 Wiki shortcut 查询节点，确认 `data.obj_type == "slides"`，再用 `data.obj_token` 作为真实 presentation ID。
 
 ```bash
-lark-cli wiki spaces get_node --as user --params '{"token":"wiki_token"}'
+lark-cli wiki +node-get --node-token 'https://xxx.feishu.cn/wiki/wikcn_EXAMPLE_NODE_TOKEN_123456' --as user --format json
 ```
+
+节点解析必须与后续 Slides 操作使用相同身份；下游明确使用 `--as bot` 时，这里也改为 `--as bot`。
 
 带 `--presentation` 的 slides shortcut 都会自动解析 `/wiki/` URL 并校验 `obj_type`；手动调用 `xml_presentations.*` / `xml_presentation.slide.*` 时才需要自己做这一步。
 
@@ -290,7 +290,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli slides +<verb> [flags]`�
 | [`+screenshot`](references/lark-slides-screenshot.md) | 把幻灯片页面截图保存为本地图片；用 `--slide-number` 指定页码（从 1 开始，多页重复传入）或用 `--slide-id` 指定页面；单张用 `--output .lark-slides/screenshots/<deck-or-task-id>/page-01`，批量用 `--output-dir .lark-slides/screenshots/<deck-or-task-id>`（一次最多 10 页）；后续必须读取返回的 `output` / `screenshots[].path` |
 | [`+media-upload`](references/lark-slides-media-upload.md) | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |
 | [`+replace-slide`](references/lark-slides-replace-slide.md) | 对已有幻灯片页面进行块级替换/插入（`block_replace` / `block_insert`），自动注入 id 和 `<content/>`，不改变页序 |
-| [`+replace-pages`](references/lark-slides-replace-pages.md) | 在原演示文稿内重建一页或多页：先创建新页到旧页前，再删除旧页；适合已有 Slides 的整页大改，不新建链接 |
+| [`+update-slide`](references/lark-slides-update-slide.md) | 把一整页 XML 交给已有页面，页面变成 `--content` 描述的样子；能一次改样式/插入/删除/备注/背景，`slide_id` 和页序不变。**没写进 `--content` 的元素会被删除** |
 
 没有 Shortcut 覆盖时使用原生 API。高频资源：`slides +xml-get` 读取全文；`xml_presentation.slide.create/delete/get/replace` 管理单页。
 
@@ -309,7 +309,7 @@ lark-cli slides <resource> <method> [flags] # 调用 API
 4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内；注意 `<content>` 只是 XML 元素，不是 `--parts` 的字段名——part 里装 XML 的字段，`block_replace` 是 `replacement`，`block_insert` 是 `insertion`
 5. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
 6. **删除谨慎**：删除不可逆，删前先回读确认 `slide_id`
-7. **编辑已有页面优先原链接更新**：修改单个 shape/img 用 `+replace-slide`（`block_replace` / `block_insert`），不要整页重建；一页改动很多、要改背景或删除若干元素，以及一页或多页的整页重建，用 `+replace-pages`，不要用 `slides +create` 新建整份 PPT；追加/插入单页用 `+add-slide`、删除单页用 `+delete-slide`，只有这些 shortcut 未覆盖的参数才手动调 `slide.create` / `slide.delete`
+7. **编辑已有页面优先原链接更新**：修改单个 shape/img 用 `+replace-slide`（`block_replace` / `block_insert`），不要整页重建；一页改动很多或要改背景用 `+update-slide` 整页覆盖（保 `slide_id` 和页序），多页整页重建就对每页各跑一次 `+update-slide`，不要用 `slides +create` 新建整份 PPT；追加/插入单页用 `+add-slide`、删除单页用 `+delete-slide`，只有这些 shortcut 未覆盖的参数才手动调 `slide.create` / `slide.delete`
 8. **`<img src>` 只能用上传到飞书 drive 的 `file_token`，禁止使用 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，外链 src 在 PPT 里通常不显示或显示破图。流程必须是「先把图存到本地 → 用 `slides +media-upload` 上传，或在 `+create --slides` 的 XML 里写 `<img src="@./path">` 占位符自动上传 → 拿 `file_token` 写进 `<img src>`」。如果用户给了网图链接，先 `curl`/下载到 CWD 内再走上传流程，不要直接把外链 URL 塞进 `src`。**图片最大 20 MB**（slides upload API 不支持分片上传）。
 
 > **注意**：如果 md 内容与 `slides_xml_schema_definition.xml` 或 `lark-cli schema slides.<resource>.<method>` 输出不一致，以后两者为准。

@@ -10,7 +10,7 @@
 
 - 支持 `--keyword` 按应用名模糊搜索。
 - `--ownership` 枚举：`all` / `mine` / `shared`（默认 `all` = 我创建的 + 共享给我的；`mine` = 仅我创建；`shared` = 仅共享给我）。
-- `--app-type` 枚举：`html` / `full_stack`。
+- `--app-type` 枚举：`html` / `frontend` / `full_stack`。
 - 分页：`--page-size` 默认 20，`--page-token` 传上一页 cursor。
 
 ## 示例

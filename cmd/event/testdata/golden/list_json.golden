@@ -1,0 +1,3023 @@
+[
+  {
+    "key": "application.bot.menu_v6",
+    "display_name": "Bot menu",
+    "description": "Triggered when a user clicks a custom bot menu item whose action is configured as a push event.",
+    "event_type": "application.bot.menu_v6",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "application.bot.menu_v6"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "app_id": {
+          "type": "string",
+          "description": "Application ID from the event header"
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "event_key": {
+          "type": "string",
+          "description": "Developer-defined bot menu event key"
+        },
+        "menu_timestamp": {
+          "type": "string",
+          "description": "Menu click timestamp from the event body",
+          "format": "timestamp_ms"
+        },
+        "operator_id": {
+          "type": "string",
+          "description": "Operator open_id; kept as a short alias of operator_open_id",
+          "format": "open_id"
+        },
+        "operator_name": {
+          "type": "string",
+          "description": "Operator display name"
+        },
+        "operator_open_id": {
+          "type": "string",
+          "description": "Operator open_id",
+          "format": "open_id"
+        },
+        "operator_union_id": {
+          "type": "string",
+          "description": "Operator union_id",
+          "format": "union_id"
+        },
+        "operator_user_id": {
+          "type": "string",
+          "description": "Operator user_id",
+          "format": "user_id"
+        },
+        "tenant_key": {
+          "type": "string",
+          "description": "Tenant key from the event header"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string); prefers header.create_time",
+          "format": "timestamp_ms"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always application.bot.menu_v6"
+        }
+      }
+    }
+  },
+  {
+    "key": "approval.instance.status_changed_v4",
+    "display_name": "Approval instance status changed",
+    "description": "Triggered after an approval instance status becomes visible to the requester or approval participants",
+    "event_type": "approval.instance.status_changed_v4",
+    "subscription_type": "event",
+    "params": [
+      {
+        "name": "subscription_type",
+        "type": "multi",
+        "required": false,
+        "description": "Approval subscription relation type(s) to register for the current authorized user. Omit to register both involved and managed approval relations.",
+        "values": [
+          {
+            "value": "INVOLVED_APPROVAL",
+            "desc": "Receive events where the current user is the approval requester or approver."
+          },
+          {
+            "value": "MANAGED_APPROVAL",
+            "desc": "Receive events under approval definitions managed by the current user."
+          }
+        ]
+      }
+    ],
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "approval:instance:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "approval.instance.status_changed_v4"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "approval_code": {
+          "type": "string",
+          "description": "Approval definition code; not a subscription dimension"
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "external_id": {
+          "type": "string",
+          "description": "Third-party approval instance id; present only for third-party approvals"
+        },
+        "instance_code": {
+          "type": "string",
+          "description": "Approval instance code"
+        },
+        "operate_time": {
+          "type": "string",
+          "description": "Status change time in milliseconds",
+          "format": "timestamp_ms"
+        },
+        "start_user": {
+          "type": "object",
+          "description": "Approval instance starter; omitted when unavailable",
+          "properties": {
+            "open_id": {
+              "type": "string",
+              "description": "User open_id; prefixed with ou_",
+              "format": "open_id"
+            },
+            "union_id": {
+              "type": "string",
+              "description": "User union_id",
+              "format": "union_id"
+            },
+            "user_id": {
+              "type": "string",
+              "description": "User id within the tenant",
+              "format": "user_id"
+            }
+          }
+        },
+        "status": {
+          "type": "string",
+          "description": "Approval instance status",
+          "enum": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+            "CANCELED",
+            "DELETED",
+            "REVERTED",
+            "OVERTIME_CLOSE",
+            "OVERTIME_RECOVER"
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string); taken from header.create_time when present",
+          "format": "timestamp_ms"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always approval.instance.status_changed_v4",
+          "enum": [
+            "approval.instance.status_changed_v4"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "key": "approval.task.status_changed_v4",
+    "display_name": "Approval task status changed",
+    "description": "Triggered after an approval task status becomes visible to the requester or task approver",
+    "event_type": "approval.task.status_changed_v4",
+    "subscription_type": "event",
+    "params": [
+      {
+        "name": "subscription_type",
+        "type": "multi",
+        "required": false,
+        "description": "Approval subscription relation type(s) to register for the current authorized user. Omit to register both involved and managed approval relations.",
+        "values": [
+          {
+            "value": "INVOLVED_APPROVAL",
+            "desc": "Receive events where the current user is the approval requester or approver."
+          },
+          {
+            "value": "MANAGED_APPROVAL",
+            "desc": "Receive events under approval definitions managed by the current user."
+          }
+        ]
+      }
+    ],
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "approval:task:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "approval.task.status_changed_v4"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "approval_code": {
+          "type": "string",
+          "description": "Approval definition code; not a subscription dimension"
+        },
+        "assigned_user": {
+          "type": "object",
+          "description": "Task assignee or operator user ids; omitted for automatic flows without an operator",
+          "properties": {
+            "open_id": {
+              "type": "string",
+              "description": "User open_id; prefixed with ou_",
+              "format": "open_id"
+            },
+            "union_id": {
+              "type": "string",
+              "description": "User union_id",
+              "format": "union_id"
+            },
+            "user_id": {
+              "type": "string",
+              "description": "User id within the tenant",
+              "format": "user_id"
+            }
+          }
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "external_id": {
+          "type": "string",
+          "description": "Third-party approval external id; present only for third-party approvals"
+        },
+        "instance_code": {
+          "type": "string",
+          "description": "Approval instance code"
+        },
+        "operate_time": {
+          "type": "string",
+          "description": "Status change time in milliseconds",
+          "format": "timestamp_ms"
+        },
+        "status": {
+          "type": "string",
+          "description": "Approval task status",
+          "enum": [
+            "REVERTED",
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+            "TRANSFERRED",
+            "ROLLBACK",
+            "DONE",
+            "OVERTIME_CLOSE",
+            "OVERTIME_RECOVER"
+          ]
+        },
+        "task_external_id": {
+          "type": "string",
+          "description": "Third-party approval task external id; present only when emitted by the upstream service"
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Approval task id"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string); taken from header.create_time when present",
+          "format": "timestamp_ms"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always approval.task.status_changed_v4",
+          "enum": [
+            "approval.task.status_changed_v4"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "key": "board.whiteboard.updated_v1",
+    "display_name": "Whiteboard updated",
+    "description": "Pushed when the whiteboard content is updated.",
+    "event_type": "board.whiteboard.updated_v1",
+    "subscription_type": "event",
+    "params": [
+      {
+        "name": "whiteboard_id",
+        "type": "string",
+        "required": true,
+        "description": "Whiteboard id to subscribe; subscription is per-whiteboard.",
+        "subscription_key": true
+      }
+    ],
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/operator_ids/*/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_ids/*/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_ids/*/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        },
+        "/event/whiteboard_id": {
+          "Description": "whiteboard id to subscribe",
+          "Enum": null,
+          "Kind": "whiteboard_id"
+        }
+      }
+    },
+    "scopes": [
+      "board:whiteboard:node:read"
+    ],
+    "auth_types": [
+      "user",
+      "bot"
+    ],
+    "required_console_events": [
+      "board.whiteboard.updated_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "operator_ids": {
+              "items": {
+                "properties": {
+                  "open_id": {
+                    "format": "open_id",
+                    "type": "string"
+                  },
+                  "union_id": {
+                    "format": "union_id",
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "format": "user_id",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "whiteboard_id": {
+              "description": "whiteboard id to subscribe",
+              "format": "whiteboard_id",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "card.action.trigger",
+    "display_name": "Card action",
+    "description": "Triggered when a user interacts with an interactive card (button click, form submit, dropdown select, etc.). Output includes: token (valid 30 min, max 2 updates), action details (tag, value, name, form_value), and card_content (original card in userDSL text format, auto-fetched at consume time). To update the card: parse card_content to understand the current state, construct the new card JSON, then call `lark-cli api POST /open-apis/interactive/v1/card/update` with the token (see lark-im-card-action-reply.md).",
+    "event_type": "card.action.trigger",
+    "subscription_type": "callback",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "im:message:readonly"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "card.action.trigger"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "single_consumer": true,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "action_name": {
+          "type": "string",
+          "description": "Element name attribute"
+        },
+        "action_tag": {
+          "type": "string",
+          "description": "Triggered element type: button/select_static/input/checker/etc"
+        },
+        "action_value": {
+          "type": "string",
+          "description": "Developer-defined action value as JSON string"
+        },
+        "card_content": {
+          "type": "string",
+          "description": "Original card JSON content (body.content) auto-fetched via message get API at consume time using message_id; empty if message_id absent or fetch fails"
+        },
+        "chat_id": {
+          "type": "string",
+          "description": "Chat ID",
+          "format": "chat_id"
+        },
+        "checked": {
+          "type": "boolean",
+          "description": "Checkbox state (for checkbox elements)"
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID"
+        },
+        "form_value": {
+          "type": "string",
+          "description": "Form submission values as JSON string (only on form submit)"
+        },
+        "host": {
+          "type": "string",
+          "description": "Host type: im_message / im_top_notice"
+        },
+        "input_value": {
+          "type": "string",
+          "description": "Input field value (only for input elements)"
+        },
+        "message_id": {
+          "type": "string",
+          "description": "Message ID of the card",
+          "format": "message_id"
+        },
+        "operator_id": {
+          "type": "string",
+          "description": "Operator open_id",
+          "format": "open_id"
+        },
+        "option": {
+          "type": "string",
+          "description": "Selected option value (for single-select dropdown)"
+        },
+        "options": {
+          "type": "string",
+          "description": "Selected options, comma-separated (for multi-select)"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string)",
+          "format": "timestamp_ms"
+        },
+        "timezone": {
+          "type": "string",
+          "description": "User timezone for date/time picker interactions"
+        },
+        "token": {
+          "type": "string",
+          "description": "Token for delay card update (valid 30 min, max 2 updates)"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always card.action.trigger"
+        }
+      }
+    }
+  },
+  {
+    "key": "im.chat.disbanded_v1",
+    "display_name": "Chat disbanded",
+    "description": "Triggered after a chat is disbanded",
+    "event_type": "im.chat.disbanded_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/chat_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "chat_id"
+        },
+        "/event/operator_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:chat:read"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.chat.disbanded_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "chat_id": {
+              "format": "chat_id",
+              "type": "string"
+            },
+            "external": {
+              "type": "boolean"
+            },
+            "i18n_names": {
+              "properties": {
+                "en_us": {
+                  "type": "string"
+                },
+                "ja_jp": {
+                  "type": "string"
+                },
+                "zh_cn": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "operator_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "operator_tenant_key": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.chat.member.bot.added_v1",
+    "display_name": "Bot added to chat",
+    "description": "Triggered when the bot is added to a chat",
+    "event_type": "im.chat.member.bot.added_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/chat_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "chat_id"
+        },
+        "/event/operator_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:chat.members:bot_access"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.chat.member.bot.added_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "chat_id": {
+              "format": "chat_id",
+              "type": "string"
+            },
+            "external": {
+              "type": "boolean"
+            },
+            "i18n_names": {
+              "properties": {
+                "en_us": {
+                  "type": "string"
+                },
+                "ja_jp": {
+                  "type": "string"
+                },
+                "zh_cn": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "operator_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "operator_tenant_key": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.chat.member.bot.deleted_v1",
+    "display_name": "Bot removed from chat",
+    "description": "Triggered after the bot is removed from a chat",
+    "event_type": "im.chat.member.bot.deleted_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/chat_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "chat_id"
+        },
+        "/event/operator_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:chat.members:bot_access"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.chat.member.bot.deleted_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "chat_id": {
+              "format": "chat_id",
+              "type": "string"
+            },
+            "external": {
+              "type": "boolean"
+            },
+            "i18n_names": {
+              "properties": {
+                "en_us": {
+                  "type": "string"
+                },
+                "ja_jp": {
+                  "type": "string"
+                },
+                "zh_cn": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "operator_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "operator_tenant_key": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.chat.member.user.added_v1",
+    "display_name": "User added to chat",
+    "description": "Triggered when a new user joins a chat (including topic chats)",
+    "event_type": "im.chat.member.user.added_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/chat_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "chat_id"
+        },
+        "/event/operator_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        },
+        "/event/users/*/user_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/users/*/user_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/users/*/user_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:chat.members:read"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.chat.member.user.added_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "chat_id": {
+              "format": "chat_id",
+              "type": "string"
+            },
+            "external": {
+              "type": "boolean"
+            },
+            "i18n_names": {
+              "properties": {
+                "en_us": {
+                  "type": "string"
+                },
+                "ja_jp": {
+                  "type": "string"
+                },
+                "zh_cn": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "operator_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "operator_tenant_key": {
+              "type": "string"
+            },
+            "users": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "tenant_key": {
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "properties": {
+                      "open_id": {
+                        "format": "open_id",
+                        "type": "string"
+                      },
+                      "union_id": {
+                        "format": "union_id",
+                        "type": "string"
+                      },
+                      "user_id": {
+                        "format": "user_id",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.chat.member.user.deleted_v1",
+    "display_name": "User left chat",
+    "description": "Triggered when a user leaves or is removed from a chat",
+    "event_type": "im.chat.member.user.deleted_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/chat_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "chat_id"
+        },
+        "/event/operator_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        },
+        "/event/users/*/user_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/users/*/user_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/users/*/user_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:chat.members:read"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.chat.member.user.deleted_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "chat_id": {
+              "format": "chat_id",
+              "type": "string"
+            },
+            "external": {
+              "type": "boolean"
+            },
+            "i18n_names": {
+              "properties": {
+                "en_us": {
+                  "type": "string"
+                },
+                "ja_jp": {
+                  "type": "string"
+                },
+                "zh_cn": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "operator_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "operator_tenant_key": {
+              "type": "string"
+            },
+            "users": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "tenant_key": {
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "properties": {
+                      "open_id": {
+                        "format": "open_id",
+                        "type": "string"
+                      },
+                      "union_id": {
+                        "format": "union_id",
+                        "type": "string"
+                      },
+                      "user_id": {
+                        "format": "user_id",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.chat.member.user.withdrawn_v1",
+    "display_name": "User invite withdrawn",
+    "description": "Triggered after a pending user invite is withdrawn",
+    "event_type": "im.chat.member.user.withdrawn_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/chat_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "chat_id"
+        },
+        "/event/operator_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        },
+        "/event/users/*/user_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/users/*/user_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/users/*/user_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:chat.members:read"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.chat.member.user.withdrawn_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "chat_id": {
+              "format": "chat_id",
+              "type": "string"
+            },
+            "external": {
+              "type": "boolean"
+            },
+            "i18n_names": {
+              "properties": {
+                "en_us": {
+                  "type": "string"
+                },
+                "ja_jp": {
+                  "type": "string"
+                },
+                "zh_cn": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "operator_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "operator_tenant_key": {
+              "type": "string"
+            },
+            "users": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "tenant_key": {
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "properties": {
+                      "open_id": {
+                        "format": "open_id",
+                        "type": "string"
+                      },
+                      "union_id": {
+                        "format": "union_id",
+                        "type": "string"
+                      },
+                      "user_id": {
+                        "format": "user_id",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.chat.updated_v1",
+    "display_name": "Chat updated",
+    "description": "Triggered after chat settings (owner, avatar, name, permissions, etc.) are updated",
+    "event_type": "im.chat.updated_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/after_change/owner_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/after_change/owner_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/after_change/owner_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        },
+        "/event/before_change/owner_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/before_change/owner_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/before_change/owner_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        },
+        "/event/chat_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "chat_id"
+        },
+        "/event/moderator_list/added_member_list/*/user_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/moderator_list/added_member_list/*/user_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/moderator_list/added_member_list/*/user_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        },
+        "/event/moderator_list/removed_member_list/*/user_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/moderator_list/removed_member_list/*/user_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/moderator_list/removed_member_list/*/user_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        },
+        "/event/operator_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/operator_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/operator_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:chat:read"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.chat.updated_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "after_change": {
+              "properties": {
+                "add_member_permission": {
+                  "type": "string"
+                },
+                "at_all_permission": {
+                  "type": "string"
+                },
+                "avatar": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "edit_permission": {
+                  "type": "string"
+                },
+                "group_message_type": {
+                  "type": "string"
+                },
+                "i18n_names": {
+                  "properties": {
+                    "en_us": {
+                      "type": "string"
+                    },
+                    "ja_jp": {
+                      "type": "string"
+                    },
+                    "zh_cn": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "join_message_visibility": {
+                  "type": "string"
+                },
+                "labels": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "leave_message_visibility": {
+                  "type": "string"
+                },
+                "membership_approval": {
+                  "type": "string"
+                },
+                "moderation_permission": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "owner_id": {
+                  "properties": {
+                    "open_id": {
+                      "format": "open_id",
+                      "type": "string"
+                    },
+                    "union_id": {
+                      "format": "union_id",
+                      "type": "string"
+                    },
+                    "user_id": {
+                      "format": "user_id",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "restricted_mode_setting": {
+                  "properties": {
+                    "download_has_permission_setting": {
+                      "type": "string"
+                    },
+                    "message_has_permission_setting": {
+                      "type": "string"
+                    },
+                    "screenshot_has_permission_setting": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                },
+                "share_card_permission": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "before_change": {
+              "properties": {
+                "add_member_permission": {
+                  "type": "string"
+                },
+                "at_all_permission": {
+                  "type": "string"
+                },
+                "avatar": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "edit_permission": {
+                  "type": "string"
+                },
+                "group_message_type": {
+                  "type": "string"
+                },
+                "i18n_names": {
+                  "properties": {
+                    "en_us": {
+                      "type": "string"
+                    },
+                    "ja_jp": {
+                      "type": "string"
+                    },
+                    "zh_cn": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "join_message_visibility": {
+                  "type": "string"
+                },
+                "labels": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "leave_message_visibility": {
+                  "type": "string"
+                },
+                "membership_approval": {
+                  "type": "string"
+                },
+                "moderation_permission": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "owner_id": {
+                  "properties": {
+                    "open_id": {
+                      "format": "open_id",
+                      "type": "string"
+                    },
+                    "union_id": {
+                      "format": "union_id",
+                      "type": "string"
+                    },
+                    "user_id": {
+                      "format": "user_id",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "restricted_mode_setting": {
+                  "properties": {
+                    "download_has_permission_setting": {
+                      "type": "string"
+                    },
+                    "message_has_permission_setting": {
+                      "type": "string"
+                    },
+                    "screenshot_has_permission_setting": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                },
+                "share_card_permission": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "chat_id": {
+              "format": "chat_id",
+              "type": "string"
+            },
+            "external": {
+              "type": "boolean"
+            },
+            "moderator_list": {
+              "properties": {
+                "added_member_list": {
+                  "items": {
+                    "properties": {
+                      "tenant_key": {
+                        "type": "string"
+                      },
+                      "user_id": {
+                        "properties": {
+                          "open_id": {
+                            "format": "open_id",
+                            "type": "string"
+                          },
+                          "union_id": {
+                            "format": "union_id",
+                            "type": "string"
+                          },
+                          "user_id": {
+                            "format": "user_id",
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "removed_member_list": {
+                  "items": {
+                    "properties": {
+                      "tenant_key": {
+                        "type": "string"
+                      },
+                      "user_id": {
+                        "properties": {
+                          "open_id": {
+                            "format": "open_id",
+                            "type": "string"
+                          },
+                          "union_id": {
+                            "format": "union_id",
+                            "type": "string"
+                          },
+                          "user_id": {
+                            "format": "user_id",
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            },
+            "operator_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "operator_tenant_key": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.message.message_read_v1",
+    "display_name": "Message read",
+    "description": "Triggered after a user reads a P2P message sent by the bot",
+    "event_type": "im.message.message_read_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/message_id_list/*": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "message_id"
+        },
+        "/event/reader/read_time": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "timestamp_ms"
+        },
+        "/event/reader/reader_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/reader/reader_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/reader/reader_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:message:readonly",
+      "im:message"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.message.message_read_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "message_id_list": {
+              "items": {
+                "format": "message_id",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "reader": {
+              "properties": {
+                "read_time": {
+                  "format": "timestamp_ms",
+                  "type": "string"
+                },
+                "reader_id": {
+                  "properties": {
+                    "open_id": {
+                      "format": "open_id",
+                      "type": "string"
+                    },
+                    "union_id": {
+                      "format": "union_id",
+                      "type": "string"
+                    },
+                    "user_id": {
+                      "format": "user_id",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "tenant_key": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.message.reaction.created_v1",
+    "display_name": "Reaction added",
+    "description": "Triggered when a reaction is added to a message",
+    "event_type": "im.message.reaction.created_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/action_time": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "timestamp_ms"
+        },
+        "/event/message_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "message_id"
+        },
+        "/event/user_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/user_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/user_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:message:readonly",
+      "im:message.reactions:read"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.message.reaction.created_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "action_time": {
+              "format": "timestamp_ms",
+              "type": "string"
+            },
+            "app_id": {
+              "type": "string"
+            },
+            "message_id": {
+              "format": "message_id",
+              "type": "string"
+            },
+            "operator_type": {
+              "type": "string"
+            },
+            "reaction_type": {
+              "properties": {
+                "emoji_type": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "user_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.message.reaction.deleted_v1",
+    "display_name": "Reaction removed",
+    "description": "Triggered when a reaction is removed from a message",
+    "event_type": "im.message.reaction.deleted_v1",
+    "subscription_type": "event",
+    "schema": {
+      "native": {},
+      "field_overrides": {
+        "/event/action_time": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "timestamp_ms"
+        },
+        "/event/message_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "message_id"
+        },
+        "/event/user_id/open_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "open_id"
+        },
+        "/event/user_id/union_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "union_id"
+        },
+        "/event/user_id/user_id": {
+          "Description": "",
+          "Enum": null,
+          "Kind": "user_id"
+        }
+      }
+    },
+    "scopes": [
+      "im:message:readonly",
+      "im:message.reactions:read"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.message.reaction.deleted_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "action_time": {
+              "format": "timestamp_ms",
+              "type": "string"
+            },
+            "app_id": {
+              "type": "string"
+            },
+            "message_id": {
+              "format": "message_id",
+              "type": "string"
+            },
+            "operator_type": {
+              "type": "string"
+            },
+            "reaction_type": {
+              "properties": {
+                "emoji_type": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "user_id": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "im.message.receive_v1",
+    "display_name": "Receive message",
+    "description": "Receive IM messages",
+    "event_type": "im.message.receive_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "im:message.p2p_msg:readonly"
+    ],
+    "auth_types": [
+      "bot"
+    ],
+    "required_console_events": [
+      "im.message.receive_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "chat_id": {
+          "type": "string",
+          "description": "Chat/conversation ID; prefixed with oc_",
+          "format": "chat_id"
+        },
+        "chat_type": {
+          "type": "string",
+          "description": "Conversation type",
+          "enum": [
+            "p2p",
+            "group"
+          ]
+        },
+        "content": {
+          "type": "string",
+          "description": "Message content. For most types (text/post/image/file/audio, etc.) this is pre-rendered human-readable text."
+        },
+        "create_time": {
+          "type": "string",
+          "description": "Message creation time (ms timestamp string)",
+          "format": "timestamp_ms"
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Event delivery ID. Do not use as the message deduplication key; use message_id instead."
+        },
+        "id": {
+          "type": "string",
+          "description": "Message ID (legacy alias of message_id, kept for compatibility)",
+          "format": "message_id"
+        },
+        "mentions": {
+          "type": "array",
+          "description": "Compact mentions aligned with im +messages-mget",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Mentioned user open_id; prefixed with ou_",
+                "format": "open_id"
+              },
+              "key": {
+                "type": "string",
+                "description": "Mention placeholder key, for example @_user_1"
+              },
+              "name": {
+                "type": "string",
+                "description": "Mentioned display name"
+              }
+            }
+          }
+        },
+        "message_id": {
+          "type": "string",
+          "description": "Message ID; prefixed with om_. Recommended idempotency key for im.message.receive_v1 consumers.",
+          "format": "message_id"
+        },
+        "message_type": {
+          "type": "string",
+          "description": "Message type"
+        },
+        "reply_to": {
+          "type": "string",
+          "description": "Parent message ID of the direct reply context, when present",
+          "format": "message_id"
+        },
+        "root_id": {
+          "type": "string",
+          "description": "Root message ID of the reply/thread context, when present",
+          "format": "message_id"
+        },
+        "sender_id": {
+          "type": "string",
+          "description": "Sender open_id; prefixed with ou_",
+          "format": "open_id"
+        },
+        "sender_type": {
+          "type": "string",
+          "description": "Sender type",
+          "enum": [
+            "user",
+            "bot"
+          ]
+        },
+        "thread_id": {
+          "type": "string",
+          "description": "Thread ID, when present"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string); prefers header.create_time",
+          "format": "timestamp_ms"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always im.message.receive_v1"
+        },
+        "update_time": {
+          "type": "string",
+          "description": "Message update time (ms timestamp string); emitted only when different from create_time",
+          "format": "timestamp_ms"
+        }
+      }
+    }
+  },
+  {
+    "key": "minutes.minute.generated_v1",
+    "display_name": "Minute generated",
+    "description": "Triggered when a minute has been generated",
+    "event_type": "minutes.minute.generated_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "minutes:minutes.basic:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "minutes.minute.generated_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "minute_source": {
+          "type": "object",
+          "description": "Minute source metadata",
+          "properties": {
+            "source_entity_id": {
+              "type": "string",
+              "description": "Source entity ID"
+            },
+            "source_type": {
+              "type": "string",
+              "description": "Minute source type"
+            }
+          }
+        },
+        "minute_token": {
+          "type": "string",
+          "description": "Minute token"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string); taken from header.create_time when present",
+          "format": "timestamp_ms"
+        },
+        "title": {
+          "type": "string",
+          "description": "Minute title"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always minutes.minute.generated_v1"
+        }
+      }
+    }
+  },
+  {
+    "key": "task.task.update_user_access_v2",
+    "display_name": "Task updated",
+    "description": "Triggered when tasks visible to the current user or app are created, deleted, or updated",
+    "event_type": "task.task.update_user_access_v2",
+    "subscription_type": "event",
+    "schema": {
+      "native": {}
+    },
+    "scopes": [
+      "task:task:read"
+    ],
+    "auth_types": [
+      "user",
+      "bot"
+    ],
+    "required_console_events": [
+      "task.task.update_user_access_v2"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "single_consumer": true,
+    "resolved_output_schema": {
+      "description": "飞书事件",
+      "properties": {
+        "event": {
+          "properties": {
+            "event_types": {
+              "description": "Task commit types included in this event",
+              "items": {
+                "enum": [
+                  "task_create",
+                  "task_deleted",
+                  "task_summary_update",
+                  "task_desc_update",
+                  "task_assignees_update",
+                  "task_followers_update",
+                  "task_reminders_update",
+                  "task_start_due_update",
+                  "task_completed_update"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "task_guid": {
+              "description": "Task GUID that changed",
+              "format": "task_guid",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "header": {
+          "description": "事件头，所有事件结构一致",
+          "properties": {
+            "app_id": {
+              "description": "接收事件的应用 ID",
+              "type": "string"
+            },
+            "create_time": {
+              "description": "事件创建时间，毫秒时间戳字符串",
+              "type": "string"
+            },
+            "event_id": {
+              "description": "事件唯一 ID",
+              "type": "string"
+            },
+            "event_type": {
+              "description": "事件类型，用于路由",
+              "type": "string"
+            },
+            "tenant_key": {
+              "description": "租户唯一标识",
+              "type": "string"
+            },
+            "token": {
+              "description": "回调校验 token",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema": {
+          "description": "飞书事件协议版本",
+          "enum": [
+            "2.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "key": "vc.meeting.participant_meeting_ended_v1",
+    "display_name": "Participant meeting ended",
+    "description": "Triggered when a meeting the current user participates in has ended",
+    "event_type": "vc.meeting.participant_meeting_ended_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "vc:meeting.meetingevent:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "vc.meeting.participant_meeting_ended_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "calendar_event_id": {
+          "type": "string",
+          "description": "Calendar event ID associated with the meeting"
+        },
+        "end_time": {
+          "type": "string",
+          "description": "Meeting end time in RFC3339, converted to the local timezone"
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "meeting_id": {
+          "type": "string",
+          "description": "Meeting ID",
+          "format": "meeting_id"
+        },
+        "meeting_no": {
+          "type": "string",
+          "description": "Meeting number"
+        },
+        "start_time": {
+          "type": "string",
+          "description": "Meeting start time in RFC3339, converted to the local timezone"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string); taken from header.create_time when present",
+          "format": "timestamp_ms"
+        },
+        "topic": {
+          "type": "string",
+          "description": "Meeting topic"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always vc.meeting.participant_meeting_ended_v1"
+        }
+      }
+    }
+  },
+  {
+    "key": "vc.meeting.participant_meeting_joined_v1",
+    "display_name": "Participant meeting joined",
+    "description": "Triggered when the current user joins a meeting",
+    "event_type": "vc.meeting.participant_meeting_joined_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "vc:meeting.meetingevent:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "vc.meeting.participant_meeting_joined_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "calendar_event_id": {
+          "type": "string",
+          "description": "Calendar event ID associated with the meeting"
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "meeting_id": {
+          "type": "string",
+          "description": "Meeting ID",
+          "format": "meeting_id"
+        },
+        "meeting_no": {
+          "type": "string",
+          "description": "Meeting number"
+        },
+        "start_time": {
+          "type": "string",
+          "description": "Meeting start time in RFC3339, converted to the local timezone"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string); taken from header.create_time when present",
+          "format": "timestamp_ms"
+        },
+        "topic": {
+          "type": "string",
+          "description": "Meeting topic"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always vc.meeting.participant_meeting_joined_v1"
+        }
+      }
+    }
+  },
+  {
+    "key": "vc.meeting.participant_meeting_started_v1",
+    "display_name": "Participant meeting started",
+    "description": "Triggered when a meeting the current user participates in has started",
+    "event_type": "vc.meeting.participant_meeting_started_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "vc:meeting.meetingevent:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "vc.meeting.participant_meeting_started_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "calendar_event_id": {
+          "type": "string",
+          "description": "Calendar event ID associated with the meeting"
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "meeting_id": {
+          "type": "string",
+          "description": "Meeting ID",
+          "format": "meeting_id"
+        },
+        "meeting_no": {
+          "type": "string",
+          "description": "Meeting number"
+        },
+        "start_time": {
+          "type": "string",
+          "description": "Meeting start time in RFC3339, converted to the local timezone"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string); taken from header.create_time when present",
+          "format": "timestamp_ms"
+        },
+        "topic": {
+          "type": "string",
+          "description": "Meeting topic"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always vc.meeting.participant_meeting_started_v1"
+        }
+      }
+    }
+  },
+  {
+    "key": "vc.note.generated_v1",
+    "display_name": "Note generated",
+    "description": "Triggered when a note has been generated",
+    "event_type": "vc.note.generated_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "vc:note:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "vc.note.generated_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "note_id": {
+          "type": "string",
+          "description": "Note ID"
+        },
+        "note_source": {
+          "type": "object",
+          "description": "Note source metadata",
+          "properties": {
+            "source_entity_id": {
+              "type": "string",
+              "description": "Source entity ID"
+            },
+            "source_type": {
+              "type": "string",
+              "description": "Note source type"
+            }
+          }
+        },
+        "note_token": {
+          "type": "string",
+          "description": "Generated note document token"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Event delivery time (ms timestamp string); taken from header.create_time when present",
+          "format": "timestamp_ms"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always vc.note.generated_v1"
+        },
+        "verbatim_token": {
+          "type": "string",
+          "description": "Generated verbatim document token"
+        }
+      }
+    }
+  },
+  {
+    "key": "vc.recording.recording_ended_v1",
+    "display_name": "Recording ended",
+    "description": "Triggered when a recording_bean recording ends and uploads successfully; only generated when connected to Feishu software.",
+    "event_type": "vc.recording.recording_ended_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "vc:recording:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "vc.recording.recording_ended_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "event_time": {
+          "type": "string",
+          "description": "Time when the recording ended and uploaded successfully, in RFC3339 / ISO 8601 with the current system timezone"
+        },
+        "source": {
+          "type": "string",
+          "description": "Recording source; always recording_bean"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always vc.recording.recording_ended_v1"
+        },
+        "unique_key": {
+          "type": "string",
+          "description": "Unique key generated for one recording_bean recording session"
+        }
+      }
+    }
+  },
+  {
+    "key": "vc.recording.recording_started_v1",
+    "display_name": "Recording started",
+    "description": "Triggered when a recording_bean recording starts; only generated when connected to Feishu software.",
+    "event_type": "vc.recording.recording_started_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "vc:recording:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "vc.recording.recording_started_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "event_time": {
+          "type": "string",
+          "description": "Recording start time in RFC3339 / ISO 8601 with the current system timezone"
+        },
+        "source": {
+          "type": "string",
+          "description": "Recording source; always recording_bean"
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always vc.recording.recording_started_v1"
+        },
+        "unique_key": {
+          "type": "string",
+          "description": "Unique key generated for one recording_bean recording session"
+        }
+      }
+    }
+  },
+  {
+    "key": "vc.recording.recording_transcript_generated_v1",
+    "display_name": "Recording transcript generated",
+    "description": "Triggered when recording_bean transcript items are generated; only generated when connected to Feishu software.",
+    "event_type": "vc.recording.recording_transcript_generated_v1",
+    "subscription_type": "event",
+    "schema": {
+      "custom": {}
+    },
+    "scopes": [
+      "vc:recording:read"
+    ],
+    "auth_types": [
+      "user"
+    ],
+    "required_console_events": [
+      "vc.recording.recording_transcript_generated_v1"
+    ],
+    "buffer_size": 100,
+    "workers": 1,
+    "resolved_output_schema": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "description": "Globally unique event ID; safe for deduplication"
+        },
+        "event_time": {
+          "type": "string",
+          "description": "Time when this batch of transcript items was generated, in RFC3339 / ISO 8601 with the current system timezone"
+        },
+        "source": {
+          "type": "string",
+          "description": "Recording source; always recording_bean"
+        },
+        "transcript_items": {
+          "type": "array",
+          "description": "Generated transcript items",
+          "items": {
+            "type": "object",
+            "properties": {
+              "end_time": {
+                "type": "string",
+                "description": "Transcript item end time in RFC3339 / ISO 8601 with the current system timezone"
+              },
+              "sentence_id": {
+                "type": "string",
+                "description": "Transcript sentence ID"
+              },
+              "speaker_name": {
+                "type": "string",
+                "description": "Speaker display name"
+              },
+              "start_time": {
+                "type": "string",
+                "description": "Transcript item start time in RFC3339 / ISO 8601 with the current system timezone"
+              },
+              "text": {
+                "type": "string",
+                "description": "Transcript text"
+              }
+            }
+          }
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type; always vc.recording.recording_transcript_generated_v1"
+        },
+        "unique_key": {
+          "type": "string",
+          "description": "Unique key generated for one recording_bean recording session"
+        }
+      }
+    }
+  }
+]

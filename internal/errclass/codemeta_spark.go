@@ -23,6 +23,10 @@ var sparkCodeMeta = map[int]CodeMeta{
 	3344039: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},          // invalid role description
 	3344040: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},          // unsupported member type
 	3344041: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},          // invalid member ID
+
+	400002465: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no database yet
+	500002759: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no database yet, pre-4xx renumber
+	400002469: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // table does not exist
 }
 
 func init() { mergeCodeMeta(sparkCodeMeta, "spark") }

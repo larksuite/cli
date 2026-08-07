@@ -11,14 +11,14 @@
 
 | 场景 | 推荐方式 |
 |------|----------|
-| 简单 XML（1-3 页、结构简单、几乎无复杂中文和特殊字符） | `slides +create --slides '[...]'` 一步创建 |
-| 复杂 XML（多页、含中文、大段文本、复杂布局、嵌套引号、特殊字符较多） | **两步创建**：先 `slides +create` 创建空白 PPT，再用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加（`--slide @file` 可绕开 shell 转义） |
+| 不超过 10 页 | 每页存一个 XML 文件，`slides +create --slide @page-01.xml --slide @page-02.xml ...` 一步创建 |
+| 超过 10 页 | **两步创建**：先 `slides +create` 创建空白 PPT，再用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加 |
 | 已有 PPT 继续追加或插入页面 | 使用 [`+add-slide`](lark-slides-add-slide.md)，必要时配合 `--before-slide-id` |
 
-> [!WARNING]
-> `--slides '[...]'` 的风险点主要在 shell 参数传递，而不是单纯页数。即使只有 1 页，只要 XML 足够复杂，也建议使用两步创建法。
 > [!IMPORTANT]
-> `slides +create --slides` 底层会逐页创建，不是原子操作。中途失败时先记录 `xml_presentation_id`，回读确认当前状态，再继续修复或追加。
+> `slides +create` 带页面时底层会逐页创建，不是原子操作。中途失败时先记录 `xml_presentation_id`，回读确认当前状态，再继续修复或追加。
+
+**CRITICAL — 提交前必须先跑版式 lint**：把待提交的 `<slide>` XML 存成本地文件，运行 [`scripts/xml_text_overlap_lint.py`](../scripts/xml_text_overlap_lint.py)，`summary.error_count` 必须为 0。
 
 ## 命令
 
@@ -26,30 +26,21 @@
 # 创建空白 PPT
 lark-cli slides +create --title "项目汇报"
 
-# 创建 PPT + 添加 slide 页面
-lark-cli slides +create --title "项目汇报" --slides '[
-  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>封面</p></content></shape></data></slide>",
-  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>第二页</p></content></shape></data></slide>"
-]'
+# 创建 PPT + 添加页面：每页一个 XML 文件，重复 --slide，顺序即页序
+lark-cli slides +create --as user --title "项目汇报" \
+  --slide @.lark-slides/plan/project/slide-01.xml \
+  --slide @.lark-slides/plan/project/slide-02.xml
+
+# 已有组装好的 JSON 数组：从文件或 stdin 读
+lark-cli slides +create --as user --title "项目汇报" --slides @./deck.json
+cat deck.json | lark-cli slides +create --as user --title "项目汇报" --slides -
 
 # 以应用身份创建（自动授权当前用户）
 lark-cli slides +create --title "项目汇报" --as bot
 
 # 预览（不执行）
-lark-cli slides +create --title "项目汇报" --slides '[...]' --dry-run
+lark-cli slides +create --title "项目汇报" --slide @./slide-01.xml --dry-run
 ```
-
-用 `--slides` 一步创建时，按页保存 XML，再用 `jq --rawfile` 组装参数，不要手写转义：
-
-```bash
-lark-cli slides +create --as user --title "项目汇报" \
-  --slides "$(jq -n \
-    --rawfile s1 .lark-slides/plan/project/slide-01.xml \
-    --rawfile s2 .lark-slides/plan/project/slide-02.xml \
-    '[$s1, $s2]')"
-```
-
-`--rawfile` 会把文件内容作为字符串读入 JSON，自动处理 XML 中的引号和换行；不要手动拼接带大量转义符的 JSON 字符串。
 
 ## 返回值
 
@@ -59,15 +50,15 @@ lark-cli slides +create --as user --title "项目汇报" \
 - **`title`**（string）：演示文稿标题
 - **`url`**（string，可选）：演示文稿的在线链接，如有返回则务必展示给用户（需要 drive 相关权限；若获取失败则不返回此字段）
 - **`revision_id`**（integer）：演示文稿版本号
-- **`slide_ids`**（string[]，可选）：仅传 `--slides` 时返回，成功添加的页面 ID 列表
-- **`slides_added`**（integer，可选）：仅传 `--slides` 时返回，成功添加的页面数量
-- **`images_uploaded`**（integer，可选）：仅 `--slides` 中含 `@<本地路径>` 占位符时返回，已上传的去重后图片数量
+- **`slide_ids`**（string[]，可选）：带页面创建时返回，成功添加的页面 ID 列表
+- **`slides_added`**（integer，可选）：带页面创建时返回，成功添加的页面数量
+- **`images_uploaded`**（integer，可选）：页面 XML 中含 `@<本地路径>` 占位符时返回，已上传的去重后图片数量
 - **`permission_grant`**（object，可选）：仅 `--as bot` 时返回，说明是否已自动为当前 CLI 用户授予可管理权限
 
 > [!IMPORTANT]
-> 不传 `--slides` 时，`slides +create` 只创建空白演示文稿。创建后用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加 slide 内容。
+> 不带页面参数时，`slides +create` 只创建空白演示文稿。创建后用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加 slide 内容。
 >
-> 传了 `--slides` 时，CLI 先创建空白演示文稿，再逐页调用 slide 创建接口添加页面。如果某一页添加失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留。
+> 带了页面时，CLI 先创建空白演示文稿，再逐页调用 slide 创建接口添加页面。如果某一页添加失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留。
 >
 > 如果演示文稿是**以应用身份（bot）创建**的，如 `lark-cli slides +create --as bot`，CLI 会**尝试为当前 CLI 用户自动授予该演示文稿的 `full_access`（可管理权限）**。
 >
@@ -83,27 +74,67 @@ lark-cli slides +create --as user --title "项目汇报" \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--title` | 否 | 演示文稿标题（不传则默认 "Untitled"） |
-| `--slides` | 否 | slide 内容 JSON 数组，每个元素是一个 `<slide>` XML 字符串（最多 10 个；超过 10 页请先用 `+create` 创建空白 PPT，再用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加） |
+| `--slide` | 否 | 一页 `<slide>` XML，或 `@路径`；可重复，最多 10 次。格式见[页面输入形式](#页面输入形式) |
+| `--slides` | 否 | 页面 XML 的 JSON 字符串数组，最多 10 个；支持 `@文件` 和 `-`（stdin）。格式见[页面输入形式](#页面输入形式) |
 
-## `--slides` 参数格式
+10 页是 CLI 的上限，服务端每次只接收一页。超过 10 页时先用 `+create` 创建空白 PPT，再用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加。
+
+两种形式的每一页都会在发请求前校验成「单个完整的 `<slide>` 文档」。不合格的页在创建演示文稿之前报错并指出页序号，不会留下空壳演示文稿。
+
+## 页面输入形式
+
+页面内容有 `--slide` 和 `--slides` 两种传法，二选一，同时传会报错。
+
+两种形式的 `@路径` 都必须是 CWD 内的相对路径（如 `./slide-01.xml`）；绝对路径和 `../` 会被拒（报 `invalid file path`）。XML 写在别的目录时，先 `cd` 过去或把文件拷进 CWD 再执行。
+
+### `--slide`：一页一个文件
+
+可重复，重复次数即页数，出现顺序即页序。值是一页完整的 `<slide>` XML，或读取该 XML 的 `@路径`。
+
+文件内容就是这一页 XML 本身，外面没有引号或方括号：
+
+```xml
+<slide xmlns="https://www.larkoffice.com/sml/2.0">
+  <data>…第1页…</data>
+</slide>
+```
+
+文件内容不需要转义：引号、换行、中文原样写。
+
+### `--slides`：一个 JSON 数组
+
+值是 JSON 字符串数组，每个元素是一整页 XML，支持 `@文件` 和 `-`（stdin）。
+
+文件内容是一个 JSON 文档，XML 以 JSON 字符串出现，其中的 `"` 写作 `\"`，换行写作 `\n`：
 
 ```json
 [
-  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\">...第1页XML...</slide>",
-  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\">...第2页XML...</slide>"
+  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data>…第1页…</data></slide>",
+  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data>…第2页…</data></slide>"
 ]
 ```
 
-JSON string 数组，每个元素是一页 slide 的完整 XML。CLI 内部负责包装成 API 所需的 `{"slide": {"content": "..."}}` 格式并逐页调用。
+数组元素是页面 XML 原文。包装成 API 所需的 `{"slide": {"content": …}}` 并逐页调用由 CLI 完成。
 
-### 本地图片：`@<path>` 占位符
+> [!WARNING]
+> `--slides '[...]'` 的风险点主要在 shell 参数传递，而不是单纯页数。即使只有 1 页，只要 XML 足够复杂，也建议改用 `--slide @page-01.xml` 逐页传文件。
+
+## 本地图片：`@<path>` 占位符
 
 `<img>` 元素的 `src` 属性如果以 `@` 开头，CLI 会把它当作本地文件路径，自动上传到当前演示文稿，并把占位符替换为返回的 `file_token`。
 
+`slide-01.xml`：
+
+```xml
+<slide xmlns="https://www.larkoffice.com/sml/2.0">
+  <data>
+    <img src="@./assets/chart.png" topLeftX="100" topLeftY="100" width="320" height="180"/>
+  </data>
+</slide>
+```
+
 ```bash
-lark-cli slides +create --as user --title "图测试" --slides '[
-  "<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data><img src=\"@./assets/chart.png\" topLeftX=\"100\" topLeftY=\"100\" width=\"320\" height=\"180\"/></data></slide>"
-]'
+lark-cli slides +create --as user --title "图测试" --slide @./slide-01.xml
 ```
 
 行为：
@@ -120,11 +151,11 @@ lark-cli slides +create --as user --title "图测试" --slides '[
 
 ## 创建后续步骤
 
-如果没有使用 `--slides`，`slides +create` 返回的 `xml_presentation_id` 用于后续操作：
+创建空白 PPT 时，`slides +create` 返回的 `xml_presentation_id` 用于后续操作：
 
 ```bash
 # 第 1 步：创建空白 PPT
-PRES_ID=$(lark-cli slides +create --title "项目汇报" | jq -r '.data.xml_presentation_id')
+PRES_ID=$(lark-cli slides +create --title "项目汇报" --jq '.data.xml_presentation_id')
 
 # 第 2 步：逐页添加（--slide 支持 @file，复杂 XML 优先走文件）
 lark-cli slides +add-slide --as user \

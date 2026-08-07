@@ -190,7 +190,7 @@ lark-cli contact +search-user --query <query> --as user
 lark-cli im +chat-search --query <query> --as user
 ```
 
-> 搜索用户接口不支持 bot 身份，必须用 `--as user`；搜到的 `ou_` open_id 用于日程参与人操作（如添加日程参与人）。
+> 搜索用户/群不支持 bot 身份，必须用 `--as user`。**解析不到或类型不明确时，向用户澄清该参会人类型，不要靠名字形态硬猜类型。**
 
 ## 不在本 skill 范围
 

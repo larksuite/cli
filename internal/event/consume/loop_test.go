@@ -19,7 +19,8 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
+	"github.com/larksuite/cli/internal/event/model"
 )
 
 func echoKeyDef(key string) *event.KeyDefinition {
@@ -70,8 +71,8 @@ func TestConsumeLoop_DeliversEventsAndExitsOnMaxEvents(t *testing.T) {
 	defer server.Close()
 
 	events := []*protocol.Event{
-		protocol.NewEvent("test.evt", "e1", "", 1, json.RawMessage(`{"n":1}`)),
-		protocol.NewEvent("test.evt", "e2", "", 2, json.RawMessage(`{"n":2}`)),
+		protocol.NewEvent(&model.Event{EventType: "test.evt", EventID: "e1", Payload: json.RawMessage(`{"n":1}`)}, 1),
+		protocol.NewEvent(&model.Event{EventType: "test.evt", EventID: "e2", Payload: json.RawMessage(`{"n":2}`)}, 2),
 	}
 	go busSide(t, server, events, true)
 
@@ -113,8 +114,8 @@ func TestConsumeLoop_SeqGapEmitsWarning(t *testing.T) {
 	defer server.Close()
 
 	events := []*protocol.Event{
-		protocol.NewEvent("test.evt", "e1", "", 1, json.RawMessage(`{"n":1}`)),
-		protocol.NewEvent("test.evt", "e5", "", 5, json.RawMessage(`{"n":5}`)),
+		protocol.NewEvent(&model.Event{EventType: "test.evt", EventID: "e1", Payload: json.RawMessage(`{"n":1}`)}, 1),
+		protocol.NewEvent(&model.Event{EventType: "test.evt", EventID: "e5", Payload: json.RawMessage(`{"n":5}`)}, 5),
 	}
 	go busSide(t, server, events, true)
 
@@ -149,8 +150,8 @@ func TestConsumeLoop_JQFilterAppliedPerEvent(t *testing.T) {
 	defer server.Close()
 
 	events := []*protocol.Event{
-		protocol.NewEvent("test.evt", "e1", "", 1, json.RawMessage(`{"keep":true,"n":1}`)),
-		protocol.NewEvent("test.evt", "e2", "", 2, json.RawMessage(`{"keep":false,"n":2}`)),
+		protocol.NewEvent(&model.Event{EventType: "test.evt", EventID: "e1", Payload: json.RawMessage(`{"keep":true,"n":1}`)}, 1),
+		protocol.NewEvent(&model.Event{EventType: "test.evt", EventID: "e2", Payload: json.RawMessage(`{"keep":false,"n":2}`)}, 2),
 	}
 	go busSide(t, server, events, true)
 

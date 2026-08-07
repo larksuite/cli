@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/output"
 )
 
 func TestLookupCodeMetaSparkRoleCodes(t *testing.T) {
@@ -30,6 +31,9 @@ func TestLookupCodeMetaSparkRoleCodes(t *testing.T) {
 		{3344039, errs.CategoryAPI, errs.SubtypeInvalidParameters},
 		{3344040, errs.CategoryAPI, errs.SubtypeInvalidParameters},
 		{3344041, errs.CategoryAPI, errs.SubtypeInvalidParameters},
+		{400002465, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
+		{500002759, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
+		{400002469, errs.CategoryAPI, errs.SubtypeNotFound},
 	}
 
 	for _, tt := range tests {
@@ -55,5 +59,38 @@ func TestLookupCodeMetaSparkRoleCodes(t *testing.T) {
 				t.Fatalf("BuildAPIError(%d) problem = %+v", tt.code, problem)
 			}
 		})
+	}
+}
+
+// TestSparkNoDatabaseCodesExitCode pins the exit code these codes route to;
+// classifying them as Validation moves it from 1 to 2.
+func TestSparkNoDatabaseCodesExitCode(t *testing.T) {
+	for _, code := range []int{400002465, 500002759} {
+		err := BuildAPIError(map[string]any{
+			"code": code,
+			"msg":  "get workspace id failed by app id",
+		}, ClassifyContext{Identity: "user"})
+		if got := output.ExitCodeOf(err); got != 2 {
+			t.Errorf("code %d exit = %d, want 2 (validation: fix state, do not retry)", code, got)
+		}
+	}
+}
+
+// TestSparkTableNotFoundLeavesHintToCaller keeps Hint empty here: the Apps layer
+// only fills its command-scoped hint when the classifier left one empty.
+func TestSparkTableNotFoundLeavesHintToCaller(t *testing.T) {
+	err := BuildAPIError(map[string]any{
+		"code": 400002469,
+		"msg":  "数据表格不存在",
+	}, ClassifyContext{Identity: "user"})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("BuildAPIError = %#v, want typed problem", err)
+	}
+	if p.Hint != "" {
+		t.Errorf("Hint = %q, want empty so the command-scoped hint still applies", p.Hint)
+	}
+	if got := output.ExitCodeOf(err); got != 1 {
+		t.Errorf("exit = %d, want 1 (unchanged: an ordinary API lookup failure)", got)
 	}
 }

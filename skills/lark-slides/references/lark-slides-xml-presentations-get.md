@@ -2,12 +2,11 @@
 
 ## 用途
 
-读取飞书幻灯片（PPT）演示文稿的完整 XML 内容信息。
+读取飞书幻灯片（PPT）的完整演示文稿 XML，或通过 `--slide-id` / `--slide-number` 读取指定单页 XML。
 
 ## Shortcut
 
 使用 `slides +xml-get` shortcut，可以把 XML 保存到本地文件，避免终端输出被截断。
-
 
 ```bash
 lark-cli slides +xml-get --as user \
@@ -23,7 +22,10 @@ lark-cli slides +xml-get --as user \
 | `--presentation` | string | 是 | 演示文稿的唯一标识符 |
 | `--revision-id` | integer | 否 | 版本号，`-1` 表示最新版本 |
 | `--output` | string | 否 | XML 保存路径，必须使用相对路径；省略时 XML 在 stdout 的 JSON envelope 中返回 |
-| `--remove-attr-id` | flag | 否 | 移除 XML id 属性后读取 |
+| `--raw` | flag | 否 | 直接把 XML 输出到 stdout，不包 JSON envelope；不能与 `--output`、`--jq` 或非 JSON `--format` 同时使用 |
+| `--slide-id` | string | 否 | 只读取指定 `slide_id` 的单页 XML；不能与 `--slide-number` 或 `--remove-attr-id` 同时使用 |
+| `--slide-number` | integer | 否 | 只读取指定的 1-based 页码；不能与 `--slide-id` 或 `--remove-attr-id` 同时使用 |
+| `--remove-attr-id` | flag | 否 | 仅全文读取可用；移除 XML id 属性后读取，不适合后续精确块编辑 |
 | `--json` | flag | 否 | `--format json` 的简写，json 为默认输出格式 |
 
 
@@ -34,6 +36,27 @@ lark-cli slides +xml-get --as user \
   --presentation "slides_example_presentation_id" \
   --output .lark-slides/plan/slides_example_presentation_id/readback.xml \
   --json
+```
+
+### 读取单页并保存
+
+按页面 ID 和按页码二选一：
+
+```bash
+lark-cli slides +xml-get --as user \
+  --presentation "slides_example_presentation_id" \
+  --slide-id "slide_example_id" \
+  --output .lark-slides/plan/slides_example_presentation_id/slide.xml \
+  --json
+```
+
+### 直接输出 XML 到管道
+
+```bash
+lark-cli slides +xml-get --as user \
+  --presentation "slides_example_presentation_id" \
+  --slide-number 1 \
+  --raw
 ```
 
 ### 指定版本读取

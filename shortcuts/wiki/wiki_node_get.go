@@ -245,6 +245,9 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 	if err := validateOptionalResourceName(spec.Token, "--node-token"); err != nil {
 		return wikiNodeGetSpec{}, err
 	}
+	if err := validateWikiResourceTokenLength(spec.Token, "--node-token"); err != nil {
+		return wikiNodeGetSpec{}, err
+	}
 	if err := validateOptionalResourceName(spec.SpaceID, "--space-id"); err != nil {
 		return wikiNodeGetSpec{}, err
 	}

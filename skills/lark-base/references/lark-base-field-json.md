@@ -6,8 +6,9 @@
 
 ## 1. 顶层规则（必须遵守）
 
-- `--json` 必须是 JSON 对象。
-- 顶层统一使用：`type` + `name` + 类型特有字段。
+- 单个字段定义始终是 JSON 对象，每个字段对象统一使用：`type` + `name` + 类型特有字段。
+- `+field-create --json` 接受一个字段对象或非空字段对象数组。
+- `+field-update --json` 只接受一个字段对象。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
 - 字段默认值使用 `default_value`，直接传对应 CellValue；支持范围只有 `text`、`number`、静态 `select`、`datetime`、`user`。清空默认值传 `null`；省略表示创建时不设置、更新时不修改。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
