@@ -188,8 +188,16 @@ func TestUpdateSlideFailedReasonIsAnError(t *testing.T) {
 		t.Fatalf("category/subtype = %q/%q, want %q/%q",
 			p.Category, p.Subtype, errs.CategoryAPI, errs.SubtypeInvalidParameters)
 	}
-	if p.Hint != updateSlideInvalidParamHint {
-		t.Fatalf("hint = %q, want command-specific recovery guidance", p.Hint)
+	if p.Hint != updateSlideNotFoundHint {
+		t.Fatalf("hint = %q, want %q", p.Hint, updateSlideNotFoundHint)
+	}
+	for _, want := range []string{"--presentation", "--slide-id", "+xml-get"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Fatalf("not-found hint = %q, want it to mention %q", p.Hint, want)
+		}
+	}
+	if strings.Contains(p.Hint, "--content") {
+		t.Fatalf("not-found hint must not prescribe XML repair: %q", p.Hint)
 	}
 	if strings.Contains(stdout.String(), `"ok": true`) || strings.Contains(stdout.String(), `"ok":true`) {
 		t.Fatalf("no success envelope may be printed, got %s", stdout.String())
@@ -474,10 +482,9 @@ func TestSlideReplaceAPIPathIsShared(t *testing.T) {
 }
 
 // TestUpdateSlideInvalidParamHintIsCommandSpecific pins the hint away from the
-// generic +replace-slide checklist. That checklist's first suggestion is to
-// re-fetch the XML because block_id is missing from the slide — here block_id IS
-// the slide, so following it just loops. While the backend change is unreleased
-// this is the error every caller sees, so the hint has to name the real cause.
+// generic +replace-slide checklist. A generic invalid-parameter response does
+// not establish that the page is missing, so this hint stays focused on the
+// caller-controlled XML that can repair malformed-content failures.
 func TestUpdateSlideInvalidParamHintIsCommandSpecific(t *testing.T) {
 	t.Parallel()
 
@@ -502,20 +509,42 @@ func TestUpdateSlideInvalidParamHintIsCommandSpecific(t *testing.T) {
 	if !ok {
 		t.Fatalf("error carries no Problem: %v", err)
 	}
-	// Pin what stays true for the life of the command, not which cause fired:
-	// 3350001 covers both a rejected page id and bad XML, so a hint asserting one
-	// of them would go stale once whole-page update is generally available.
-	for _, want := range []string{
-		"--content",             // says what the caller can act on
-		"page's own id",         // the command-specific fact
-		"slides +replace-slide", // an actual way forward
-	} {
-		if !strings.Contains(p.Hint, want) {
-			t.Fatalf("hint = %q, want it to mention %q", p.Hint, want)
+	if p.Hint != updateSlideInvalidParamHint {
+		t.Fatalf("hint = %q, want %q", p.Hint, updateSlideInvalidParamHint)
+	}
+	if !strings.Contains(p.Hint, "--content") {
+		t.Fatalf("malformed-content hint must prescribe XML repair: %q", p.Hint)
+	}
+	for _, unwanted := range []string{"--presentation", "--slide-id", "+xml-get"} {
+		if strings.Contains(p.Hint, unwanted) {
+			t.Fatalf("malformed-content hint = %q, must not mention %q", p.Hint, unwanted)
 		}
 	}
-	if strings.Contains(p.Hint, "re-run slide.get") {
-		t.Fatalf("hint must not send the caller to re-fetch XML: %q", p.Hint)
+}
+
+func TestUpdateSlideNotFoundAPIErrorUsesPageRecoveryHint(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide/replace",
+		Body:   map[string]interface{}{"code": 3350001, "msg": "block with id 'pYw' not found"},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide", "--presentation", "pres_abc", "--slide-id", "pYw",
+		"--content", testPageXML, "--as", "user",
+	})
+	if err == nil {
+		t.Fatal("3350001 not-found response must surface as an error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error carries no Problem: %v", err)
+	}
+	if p.Hint != updateSlideNotFoundHint {
+		t.Fatalf("hint = %q, want %q", p.Hint, updateSlideNotFoundHint)
 	}
 }
 
