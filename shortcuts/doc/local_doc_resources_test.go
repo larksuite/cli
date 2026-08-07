@@ -1963,6 +1963,33 @@ func TestDocsUpdateRemoteImageDryRunDownloadsAfterDocumentWrite(t *testing.T) {
 	}
 }
 
+func TestDocsUpdateV2RejectsBlockedRemoteImageBeforeDocumentWrite(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-update-blocked-remote-image"))
+	updateStub := &httpmock.Stub{
+		Method:   "PUT",
+		URL:      "/open-apis/docs_ai/v1/documents/doxcn_blocked_remote_image",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(updateStub)
+
+	err := mountAndRunDocs(t, DocsUpdate, []string{
+		"+update",
+		"--doc", "doxcn_blocked_remote_image",
+		"--command", "append",
+		"--content", `<p>text that must not be written</p><img href="http://127.0.0.1/image.png"/>`,
+		"--as", "bot",
+	}, f, stdout)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "href")
+	if len(updateStub.CapturedBodies) != 0 {
+		t.Fatalf("document update was called before remote image validation: %s", updateStub.CapturedBody)
+	}
+}
+
 func TestLocalDocResourceUpdateCommands(t *testing.T) {
 	resources := []localDocResource{{Kind: localDocResourceImage}}
 	for _, command := range []string{"str_replace"} {

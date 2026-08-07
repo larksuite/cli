@@ -625,6 +625,18 @@ func validateRemoteDocImageSource(ctx context.Context, rawURL string, occurrence
 	return nil
 }
 
+func validateRemoteDocImageSources(ctx context.Context, resources []localDocResource) error {
+	for _, resource := range resources {
+		if resource.RemoteURL == "" {
+			continue
+		}
+		if err := validateRemoteDocImageSource(ctx, resource.RemoteURL, resource.Occurrence); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func probeRemoteDocImageDownload(runtime *common.RuntimeContext, rawURL string, occurrence int) error {
 	if err := validateRemoteDocImageSource(runtime.Ctx(), rawURL, occurrence); err != nil {
 		return err

@@ -61,7 +61,7 @@ lark-cli docs +script --command parse --content "@./document.xml" --presentation
 - 决策必须包含 `audience`、`reader_task`、`genre_contract`、`adapter`、`presentation_mode` 和 `visual_plan`；`presentation_mode` 取 `formal|normal|rich`。`visual_plan` 包含非空 `reason` 和不重复的 `{type,min_count,purpose}` 数组；兼容的 `list` 约束按 `<ul>` 与 `<ol>` 的合计数量检查。仅有字数要求时添加合法的 `word_count: {min,max}`。
 - 使用 `--content "@./<init-draft 返回的 data.draft_path>"` 时自动加载保存的决策；显式 `--presentation-decision` 优先。
 - `--doc` 需要 `docx:document:readonly`；`--content` 不调用 OpenAPI。
-- 返回 `data.profile`，包含 `word_count`、`char_count`、`block_count` 和 `blocks[]`。决策或资源预检问题写入 `data.warning[]`；存在 warning 时命令以 `ok:false` 和退出码 1 返回 partial failure，但仍保留完整 profile 与 warning，修复后重新解析。
+- 返回 `data.assessment.status`、`data.profile` 和按需出现的 `data.diagnostics[]`；profile 包含 `word_count`、`char_count`、`block_count` 和 `blocks[]`。顶层 `ok` 只表示命令是否成功执行。画像、决策或资源预检未通过时，命令仍以 `ok:true` 和退出码 0 返回，但 `assessment.status` 为 `failed`；每条 diagnostic 提供 `severity`、稳定 `code`、`msg`、可选 `expected` / `actual` 和 `suggested`。同一原因失败的远程图片合并为一条 diagnostic，并在 `image_indices[]` 中列出图片序号，避免重复提示。修复后重新解析，直到 `assessment.status` 为 `passed`。
 - `parse` 不是 XML/SDK schema validator。成功且无 warning 也不保证服务端接受；写入前仍须按 XML 规则复查。
 
 ## 所有脚本通用参数

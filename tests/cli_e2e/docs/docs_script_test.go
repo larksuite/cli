@@ -38,6 +38,7 @@ func TestDocsScriptParseXMLFromFile(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, true)
+	require.Equal(t, "passed", gjson.Get(result.Stdout, "data.assessment.status").String())
 	require.Equal(t, int64(10), gjson.Get(result.Stdout, "data.profile.word_count").Int())
 	require.Equal(t, int64(15), gjson.Get(result.Stdout, "data.profile.char_count").Int())
 	require.Equal(t, int64(2), gjson.Get(result.Stdout, "data.profile.block_count").Int())
@@ -65,6 +66,7 @@ func TestDocsScriptLocalParseWithAuthenticatedBot(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, true)
+	require.Equal(t, "passed", gjson.Get(result.Stdout, "data.assessment.status").String())
 	require.Equal(t, int64(2), gjson.Get(result.Stdout, "data.profile.word_count").Int())
 }
 
@@ -86,7 +88,8 @@ func TestDocsScriptPresentationDecisionListCountsULAndOL(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, true)
-	require.False(t, gjson.Get(result.Stdout, "data.warning").Exists())
+	require.Equal(t, "passed", gjson.Get(result.Stdout, "data.assessment.status").String())
+	require.False(t, gjson.Get(result.Stdout, "data.diagnostics").Exists())
 	require.Equal(t, int64(1), gjson.Get(result.Stdout, `data.profile.blocks.#(type=="ul").count`).Int())
 	require.Equal(t, int64(1), gjson.Get(result.Stdout, `data.profile.blocks.#(type=="ol").count`).Int())
 }
@@ -157,12 +160,19 @@ func TestDocsScriptInitializedDraftAutomaticallyValidatesPresentationDecision(t 
 		Env:       docsScriptE2EEnv(t),
 	})
 	require.NoError(t, err)
-	result.AssertExitCode(t, 1)
-	result.AssertStdoutStatus(t, false)
-	require.Equal(t, int64(3), gjson.Get(result.Stdout, "data.warning.#").Int())
-	require.Contains(t, gjson.Get(result.Stdout, "data.warning.0").String(), "expects range 18-22")
-	require.Contains(t, gjson.Get(result.Stdout, "data.warning.1").String(), "at least 1 whiteboard block")
-	require.Contains(t, gjson.Get(result.Stdout, "data.warning.2").String(), "at least 1 html5-block block")
+	result.AssertExitCode(t, 0)
+	result.AssertStdoutStatus(t, true)
+	require.Equal(t, "failed", gjson.Get(result.Stdout, "data.assessment.status").String())
+	require.Equal(t, int64(3), gjson.Get(result.Stdout, "data.diagnostics.#").Int())
+	require.Equal(t, "word_count_out_of_range", gjson.Get(result.Stdout, "data.diagnostics.0.code").String())
+	require.Equal(t, int64(18), gjson.Get(result.Stdout, "data.diagnostics.0.expected.min").Int())
+	require.Equal(t, int64(22), gjson.Get(result.Stdout, "data.diagnostics.0.expected.max").Int())
+	require.Equal(t, int64(10), gjson.Get(result.Stdout, "data.diagnostics.0.actual").Int())
+	require.Equal(t, "required_block_missing", gjson.Get(result.Stdout, "data.diagnostics.1.code").String())
+	require.Equal(t, "whiteboard", gjson.Get(result.Stdout, "data.diagnostics.1.expected.type").String())
+	require.Equal(t, int64(1), gjson.Get(result.Stdout, "data.diagnostics.1.expected.min_count").Int())
+	require.Equal(t, int64(0), gjson.Get(result.Stdout, "data.diagnostics.1.actual").Int())
+	require.Equal(t, "html5-block", gjson.Get(result.Stdout, "data.diagnostics.2.expected.type").String())
 }
 
 func TestDocsScriptInitializedDraftPreflightsBlockedRemoteImage(t *testing.T) {
@@ -193,7 +203,7 @@ func TestDocsScriptInitializedDraftPreflightsBlockedRemoteImage(t *testing.T) {
 	require.True(t, os.IsNotExist(statErr), "reserved draft XML already exists: %v", statErr)
 	require.NoError(t, os.WriteFile(
 		filepath.Join(workDir, draftPath),
-		[]byte(`<title>Draft</title><img href="http://127.0.0.1/image.png"/>`),
+		[]byte(`<title>Draft</title><img href="http://127.0.0.1/one.png"/><img href="http://127.0.0.1/two.png"/>`),
 		0o600,
 	))
 
@@ -208,13 +218,17 @@ func TestDocsScriptInitializedDraftPreflightsBlockedRemoteImage(t *testing.T) {
 		Env:       docsScriptE2EEnv(t),
 	})
 	require.NoError(t, err)
-	result.AssertExitCode(t, 1)
-	result.AssertStdoutStatus(t, false)
-	require.Equal(t, int64(1), gjson.Get(result.Stdout, "data.warning.#").Int())
-	warning := gjson.Get(result.Stdout, "data.warning.0").String()
-	require.Contains(t, warning, "resource preflight failed")
-	require.Contains(t, warning, "remote image #1 href is not allowed: local/internal host is not allowed")
-	require.Contains(t, warning, "use a public HTTP(S) image URL")
+	result.AssertExitCode(t, 0)
+	result.AssertStdoutStatus(t, true)
+	require.Equal(t, "failed", gjson.Get(result.Stdout, "data.assessment.status").String())
+	require.Equal(t, int64(1), gjson.Get(result.Stdout, "data.diagnostics.#").Int())
+	require.Equal(t, "remote_image_source_disallowed", gjson.Get(result.Stdout, "data.diagnostics.0.code").String())
+	require.Equal(t, int64(2), gjson.Get(result.Stdout, "data.diagnostics.0.image_indices.#").Int())
+	require.Equal(t, int64(1), gjson.Get(result.Stdout, "data.diagnostics.0.image_indices.0").Int())
+	require.Equal(t, int64(2), gjson.Get(result.Stdout, "data.diagnostics.0.image_indices.1").Int())
+	require.Equal(t, "local/internal host is not allowed", gjson.Get(result.Stdout, "data.diagnostics.0.msg").String())
+	require.Contains(t, gjson.Get(result.Stdout, "data.diagnostics.0.suggested").String(), "Download the affected images")
+	require.False(t, gjson.Get(result.Stdout, "data.warning").Exists())
 }
 
 func TestDocsScriptParseRepairsMalformedXMLForProfile(t *testing.T) {

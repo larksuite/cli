@@ -21,7 +21,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/doc/internal/docxparse"
 )
@@ -88,8 +87,15 @@ func TestDocsScriptParsesAndProfilesXML(t *testing.T) {
 	if !envelope.OK {
 		t.Fatalf("ok = false: %s", stdout)
 	}
-	if len(envelope.Data) != 1 || envelope.Data["profile"] == nil {
-		t.Fatalf("data = %+v, want only profile", envelope.Data)
+	if len(envelope.Data) != 2 || envelope.Data["profile"] == nil || envelope.Data["assessment"] == nil {
+		t.Fatalf("data = %+v, want assessment and profile", envelope.Data)
+	}
+	var assessment docsScriptAssessment
+	if err := json.Unmarshal(envelope.Data["assessment"], &assessment); err != nil {
+		t.Fatalf("decode assessment: %v", err)
+	}
+	if assessment.Status != docsScriptAssessmentPassed {
+		t.Fatalf("assessment = %+v for valid XML: %s", assessment, stdout)
 	}
 	var profile docsScriptPublicProfile
 	if err := json.Unmarshal(envelope.Data["profile"], &profile); err != nil {
@@ -113,7 +119,7 @@ func TestDocsScriptParsesAndProfilesXML(t *testing.T) {
 	}
 }
 
-func TestDocsScriptReturnsPresentationDecisionWarnings(t *testing.T) {
+func TestDocsScriptReturnsPresentationDecisionDiagnostics(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-presentation-warnings"))
 	decision := `{
 		"audience": "reader",
@@ -139,7 +145,9 @@ func TestDocsScriptReturnsPresentationDecisionWarnings(t *testing.T) {
 		"--presentation-decision", decision,
 		"--as", "bot",
 	}, f, stdout)
-	requireDocsScriptWarningPartialFailure(t, err)
+	if err != nil {
+		t.Fatalf("execute docs +script: %v", err)
+	}
 
 	var envelope struct {
 		OK   bool                  `json:"ok"`
@@ -148,19 +156,33 @@ func TestDocsScriptReturnsPresentationDecisionWarnings(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode stdout: %v\n%s", err, stdout)
 	}
-	if envelope.OK {
-		t.Fatalf("warning result reported ok:true: %s", stdout)
+	if !envelope.OK {
+		t.Fatalf("diagnostic result reported ok:false: %s", stdout)
 	}
-	if len(envelope.Data.Warning) != 3 {
-		t.Fatalf("warning = %#v, want word-count, whiteboard, and html warnings", envelope.Data.Warning)
+	if envelope.Data.Assessment.Status != docsScriptAssessmentFailed {
+		t.Fatalf("assessment = %+v with diagnostics, want failed: %s", envelope.Data.Assessment, stdout)
 	}
-	for _, want := range []string{"expects range 18-22", "at least 1 whiteboard block", "at least 1 html5-block block"} {
-		if !containsDocsScriptWarning(envelope.Data.Warning, want) {
-			t.Errorf("warning = %#v, want substring %q", envelope.Data.Warning, want)
+	if len(envelope.Data.Diagnostics) != 3 {
+		t.Fatalf("diagnostics = %#v, want word-count, whiteboard, and html diagnostics", envelope.Data.Diagnostics)
+	}
+	wordCount := envelope.Data.Diagnostics[0]
+	if wordCount.Severity != docsScriptDiagnosticError || wordCount.Code != docsScriptCodeWordCountRange ||
+		wordCount.Expected == nil || wordCount.Expected.Min == nil || *wordCount.Expected.Min != 18 ||
+		wordCount.Expected.Max == nil || *wordCount.Expected.Max != 22 || wordCount.Actual == nil || *wordCount.Actual != 10 {
+		t.Fatalf("word-count diagnostic = %#v", wordCount)
+	}
+	for index, wantType := range []string{"whiteboard", "html5-block"} {
+		diagnostic := envelope.Data.Diagnostics[index+1]
+		if diagnostic.Code != docsScriptCodeRequiredBlock || diagnostic.Expected == nil ||
+			diagnostic.Expected.Type != wantType || diagnostic.Expected.MinCount != 1 ||
+			diagnostic.Actual == nil || *diagnostic.Actual != 0 {
+			t.Errorf("%s diagnostic = %#v", wantType, diagnostic)
 		}
 	}
-	if containsDocsScriptWarning(envelope.Data.Warning, "at least 1 img block") {
-		t.Fatalf("warning = %#v, img block exists", envelope.Data.Warning)
+	for _, diagnostic := range envelope.Data.Diagnostics {
+		if diagnostic.Expected != nil && diagnostic.Expected.Type == "img" {
+			t.Fatalf("diagnostics = %#v, img requirement is satisfied", envelope.Data.Diagnostics)
+		}
 	}
 }
 
@@ -171,11 +193,13 @@ func TestDocsScriptPresentationDecisionPreflightsBlockedRemoteImage(t *testing.T
 	err := mountAndRunDocs(t, DocsScript, []string{
 		"+script",
 		"--command", docsScriptParse,
-		"--content", `<title>Draft</title><img href="http://127.0.0.1/image.png"/>`,
+		"--content", `<title>Draft</title><img href="http://127.0.0.1/one.png"/><img href="http://127.0.0.1/two.png"/>`,
 		"--presentation-decision", decision,
 		"--as", "bot",
 	}, f, stdout)
-	requireDocsScriptWarningPartialFailure(t, err)
+	if err != nil {
+		t.Fatalf("execute docs +script: %v", err)
+	}
 
 	var envelope struct {
 		Data docsScriptParseResult `json:"data"`
@@ -183,18 +207,20 @@ func TestDocsScriptPresentationDecisionPreflightsBlockedRemoteImage(t *testing.T
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode stdout: %v\n%s", err, stdout)
 	}
-	if len(envelope.Data.Warning) != 1 {
-		t.Fatalf("warning = %#v, want one resource warning", envelope.Data.Warning)
+	if envelope.Data.Assessment.Status != docsScriptAssessmentFailed {
+		t.Fatalf("assessment = %+v, want failed", envelope.Data.Assessment)
 	}
-	warning := envelope.Data.Warning[0]
-	for _, want := range []string{
-		"resource preflight failed",
-		"remote image #1 href is not allowed: local/internal host is not allowed",
-		`use a public HTTP(S) image URL`,
-	} {
-		if !strings.Contains(warning, want) {
-			t.Fatalf("warning = %q, want substring %q", warning, want)
-		}
+	if len(envelope.Data.Diagnostics) != 1 {
+		t.Fatalf("diagnostics = %#v, want one deduplicated image diagnostic", envelope.Data.Diagnostics)
+	}
+	diagnostic := envelope.Data.Diagnostics[0]
+	if diagnostic.Code != docsScriptCodeImageSource || diagnostic.Severity != docsScriptDiagnosticError ||
+		len(diagnostic.ImageIndices) != 2 || diagnostic.ImageIndices[0] != 1 || diagnostic.ImageIndices[1] != 2 ||
+		diagnostic.Msg != "local/internal host is not allowed" || !strings.Contains(diagnostic.Suggested, "Download the affected images") {
+		t.Fatalf("image diagnostic = %#v", diagnostic)
+	}
+	if strings.Contains(diagnostic.Msg, "remote image #") || strings.Contains(stdout.String(), "resource preflight failed") {
+		t.Fatalf("image diagnostic repeats legacy prefixes: %s", stdout)
 	}
 }
 
@@ -222,7 +248,9 @@ func TestDocsScriptPresentationDecisionProbesRemoteImageDownload(t *testing.T) {
 		"--content", `<title>Draft</title><img href="https://93.184.216.34/image.png"/>`,
 		"--presentation-decision", decision,
 	}, f, stdout)
-	requireDocsScriptWarningPartialFailure(t, err)
+	if err != nil {
+		t.Fatalf("execute docs +script: %v", err)
+	}
 
 	var envelope struct {
 		Data docsScriptParseResult `json:"data"`
@@ -233,8 +261,13 @@ func TestDocsScriptPresentationDecisionProbesRemoteImageDownload(t *testing.T) {
 	if requestMethod != http.MethodGet || requestRange != "bytes=0-0" {
 		t.Fatalf("remote image probe method = %q range = %q, want ranged GET", requestMethod, requestRange)
 	}
-	if !containsDocsScriptWarning(envelope.Data.Warning, "HTTP 404") {
-		t.Fatalf("warning = %#v, want failed remote image availability probe", envelope.Data.Warning)
+	if envelope.Data.Assessment.Status != docsScriptAssessmentFailed {
+		t.Fatalf("assessment = %+v, want failed", envelope.Data.Assessment)
+	}
+	if len(envelope.Data.Diagnostics) != 1 || envelope.Data.Diagnostics[0].Code != docsScriptCodeImageUnavailable ||
+		len(envelope.Data.Diagnostics[0].ImageIndices) != 1 || envelope.Data.Diagnostics[0].ImageIndices[0] != 1 ||
+		envelope.Data.Diagnostics[0].Msg != "HTTP 404" {
+		t.Fatalf("diagnostics = %#v, want image #1 HTTP 404", envelope.Data.Diagnostics)
 	}
 }
 
@@ -256,8 +289,8 @@ func TestDocsScriptParseWithoutPresentationDecisionSkipsResourcePreflight(t *tes
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode stdout: %v\n%s", err, stdout)
 	}
-	if len(envelope.Data.Warning) != 0 {
-		t.Fatalf("warning = %#v, want no resource preflight without a Presentation Decision", envelope.Data.Warning)
+	if envelope.Data.Assessment.Status != docsScriptAssessmentPassed || len(envelope.Data.Diagnostics) != 0 {
+		t.Fatalf("result = %#v, want passed with no resource preflight without a Presentation Decision", envelope.Data)
 	}
 }
 
@@ -327,15 +360,17 @@ func TestDocsScriptInitDraftPersistsDecisionForAutomaticParse(t *testing.T) {
 		"--content", "@./" + draftPath,
 		"--as", "bot",
 	}, f, stdout)
-	requireDocsScriptWarningPartialFailure(t, err)
+	if err != nil {
+		t.Fatalf("execute docs +script: %v", err)
+	}
 	var parsed struct {
 		Data docsScriptParseResult `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
 		t.Fatalf("decode parse output: %v\n%s", err, stdout)
 	}
-	if len(parsed.Data.Warning) != 3 {
-		t.Fatalf("warning = %#v, want persisted word-count, whiteboard, and html warnings", parsed.Data.Warning)
+	if parsed.Data.Assessment.Status != docsScriptAssessmentFailed || len(parsed.Data.Diagnostics) != 3 {
+		t.Fatalf("result = %#v, want failed assessment with persisted word-count, whiteboard, and html diagnostics", parsed.Data)
 	}
 }
 
@@ -373,9 +408,9 @@ func TestDocsScriptPresentationDecisionWordCountRangeIsInclusive(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("word-count-%d", test.wordCount), func(t *testing.T) {
-			warnings := docsScriptPresentationWarnings(docsScriptPublicProfile{WordCount: test.wordCount}, decision)
-			if got := len(warnings) > 0; got != test.wantWarn {
-				t.Fatalf("warnings = %#v, want warning=%v", warnings, test.wantWarn)
+			diagnostics := docsScriptPresentationDiagnostics(docsScriptPublicProfile{WordCount: test.wordCount}, decision)
+			if got := len(diagnostics) > 0; got != test.wantWarn {
+				t.Fatalf("diagnostics = %#v, want diagnostic=%v", diagnostics, test.wantWarn)
 			}
 		})
 	}
@@ -392,13 +427,13 @@ func TestDocsScriptPresentationDecisionSupportsOneSidedWordCountBounds(t *testin
 			name:      "minimum",
 			wordCount: 9,
 			decision:  `{"audience":"reader","reader_task":"understand","genre_contract":"knowledge","adapter":null,"presentation_mode":"normal","word_count":{"min":10,"max":null},"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
-			want:      "expects at least 10",
+			want:      "Increase word_count to at least 10.",
 		},
 		{
 			name:      "maximum",
 			wordCount: 21,
 			decision:  `{"audience":"reader","reader_task":"understand","genre_contract":"knowledge","adapter":"wechat","presentation_mode":"normal","word_count":{"min":null,"max":20},"visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`,
-			want:      "expects at most 20",
+			want:      "Reduce word_count to at most 20.",
 		},
 	}
 	for _, test := range tests {
@@ -407,9 +442,9 @@ func TestDocsScriptPresentationDecisionSupportsOneSidedWordCountBounds(t *testin
 			if err != nil {
 				t.Fatalf("parse decision: %v", err)
 			}
-			warnings := docsScriptPresentationWarnings(docsScriptPublicProfile{WordCount: test.wordCount}, decision)
-			if len(warnings) != 1 || !strings.Contains(warnings[0], test.want) {
-				t.Fatalf("warnings = %#v, want one containing %q", warnings, test.want)
+			diagnostics := docsScriptPresentationDiagnostics(docsScriptPublicProfile{WordCount: test.wordCount}, decision)
+			if len(diagnostics) != 1 || diagnostics[0].Code != docsScriptCodeWordCountRange || diagnostics[0].Suggested != test.want {
+				t.Fatalf("diagnostics = %#v, want one with suggestion %q", diagnostics, test.want)
 			}
 		})
 	}
@@ -434,18 +469,20 @@ func TestDocsScriptPresentationDecisionListCountsULAndOL(t *testing.T) {
 		{Type: "ul", Count: 1},
 		{Type: "ol", Count: 1},
 	}}
-	if warnings := docsScriptPresentationWarnings(profile, decision); len(warnings) != 0 {
-		t.Fatalf("warnings = %#v, want ul + ol to satisfy two list blocks", warnings)
+	if diagnostics := docsScriptPresentationDiagnostics(profile, decision); len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v, want ul + ol to satisfy two list blocks", diagnostics)
 	}
 
 	decision.VisualPlan.Blocks[0].MinCount = 3
-	warnings := docsScriptPresentationWarnings(profile, decision)
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "at least 3 list block(s)") || !strings.Contains(warnings[0], "draft has 2") {
-		t.Fatalf("warnings = %#v, want list count 2", warnings)
+	diagnostics := docsScriptPresentationDiagnostics(profile, decision)
+	if len(diagnostics) != 1 || diagnostics[0].Code != docsScriptCodeRequiredBlock ||
+		diagnostics[0].Expected == nil || diagnostics[0].Expected.Type != docsScriptListBlockType ||
+		diagnostics[0].Expected.MinCount != 3 || diagnostics[0].Actual == nil || *diagnostics[0].Actual != 2 {
+		t.Fatalf("diagnostics = %#v, want list min_count 3 and actual 2", diagnostics)
 	}
 }
 
-func TestDocsScriptOmitsWarningWhenPresentationDecisionPasses(t *testing.T) {
+func TestDocsScriptOmitsDiagnosticsWhenPresentationDecisionPasses(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
 	if err := os.WriteFile("flow.mmd", []byte("flowchart LR\nA --> B"), 0o600); err != nil {
@@ -489,8 +526,12 @@ func TestDocsScriptOmitsWarningWhenPresentationDecisionPasses(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode stdout: %v\n%s", err, stdout)
 	}
-	if envelope.Data["warning"] != nil {
-		t.Fatalf("passing decision should omit data.warning: %s", stdout)
+	if envelope.Data["diagnostics"] != nil {
+		t.Fatalf("passing decision should omit data.diagnostics: %s", stdout)
+	}
+	var assessment docsScriptAssessment
+	if err := json.Unmarshal(envelope.Data["assessment"], &assessment); err != nil || assessment.Status != docsScriptAssessmentPassed {
+		t.Fatalf("passing decision data.assessment = %s, decode error = %v", envelope.Data["assessment"], err)
 	}
 }
 
@@ -643,9 +684,11 @@ func TestDocsScriptPresentationBlockPlanUsesProfileCatalogGenerically(t *testing
 	if err != nil {
 		t.Fatalf("parseDocsScriptPresentationDecision() error: %v", err)
 	}
-	warnings := docsScriptPresentationWarnings(docsScriptPublicProfile{Blocks: []docxparse.BlockShare{{Type: "table", Count: 1}}}, decision)
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "at least 2 table block") || !strings.Contains(warnings[0], "draft has 1") {
-		t.Fatalf("warnings = %#v", warnings)
+	diagnostics := docsScriptPresentationDiagnostics(docsScriptPublicProfile{Blocks: []docxparse.BlockShare{{Type: "table", Count: 1}}}, decision)
+	if len(diagnostics) != 1 || diagnostics[0].Code != docsScriptCodeRequiredBlock ||
+		diagnostics[0].Expected == nil || diagnostics[0].Expected.Type != "table" || diagnostics[0].Expected.MinCount != 2 ||
+		diagnostics[0].Actual == nil || *diagnostics[0].Actual != 1 {
+		t.Fatalf("diagnostics = %#v", diagnostics)
 	}
 }
 
@@ -1178,8 +1221,12 @@ func TestDocsScriptProfilesCompatibleMalformedXML(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode stdout: %v\n%s", err, stdout)
 	}
-	if len(envelope.Data) != 1 || envelope.Data["profile"] == nil {
-		t.Fatalf("data = %+v, want only profile", envelope.Data)
+	if len(envelope.Data) != 2 || envelope.Data["profile"] == nil || envelope.Data["assessment"] == nil {
+		t.Fatalf("data = %+v, want assessment and profile", envelope.Data)
+	}
+	var assessment docsScriptAssessment
+	if err := json.Unmarshal(envelope.Data["assessment"], &assessment); err != nil || assessment.Status != docsScriptAssessmentPassed {
+		t.Fatalf("compatible XML data.assessment = %s, decode error = %v", envelope.Data["assessment"], err)
 	}
 	var profile docsScriptPublicProfile
 	if err := json.Unmarshal(envelope.Data["profile"], &profile); err != nil {
@@ -1242,24 +1289,4 @@ func blockCount(blocks []docxparse.BlockShare, typ string) int {
 		}
 	}
 	return 0
-}
-
-func containsDocsScriptWarning(warnings []string, substring string) bool {
-	for _, warning := range warnings {
-		if strings.Contains(warning, substring) {
-			return true
-		}
-	}
-	return false
-}
-
-func requireDocsScriptWarningPartialFailure(t *testing.T, err error) {
-	t.Helper()
-	var partialFailure *output.PartialFailureError
-	if !errors.As(err, &partialFailure) {
-		t.Fatalf("error = %T %v, want warning partial failure", err, err)
-	}
-	if partialFailure.Code != output.ExitAPI {
-		t.Fatalf("partial failure exit code = %d, want %d", partialFailure.Code, output.ExitAPI)
-	}
 }

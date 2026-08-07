@@ -174,6 +174,9 @@ func executeUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if err := validateRemoteDocImageSources(runtime.Ctx(), resources); err != nil {
+		return err
+	}
 	documentID := ref.Token
 	if len(resources) > 0 {
 		documentID, err = resolveDocxDocumentID(runtime, runtime.Str("doc"))

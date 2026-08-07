@@ -53,6 +53,31 @@ func TestDocsCreateV2RemoteImageDryRunDownloadsAfterDocumentCreation(t *testing.
 	}
 }
 
+func TestDocsCreateV2RejectsBlockedRemoteImageBeforeDocumentCreation(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	createStub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/docs_ai/v1/documents",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(createStub)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--content", `<title>Blocked image</title><img href="http://127.0.0.1/image.png"/>`,
+		"--as", "bot",
+	})
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "href")
+	if len(createStub.CapturedBodies) != 0 {
+		t.Fatalf("document creation was called before remote image validation: %s", createStub.CapturedBody)
+	}
+}
+
 func TestDocsCreateV2BotAutoGrantSuccess(t *testing.T) {
 	t.Parallel()
 

@@ -95,6 +95,9 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if err := validateRemoteDocImageSources(runtime.Ctx(), resources); err != nil {
+		return err
+	}
 
 	data, err := doDocAPI(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
 	if err != nil {

@@ -36,6 +36,17 @@ const (
 	docsScriptDecisionFile          = ".presentation-decision.json"
 	docsScriptDraftTip              = "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first."
 	docsScriptListBlockType         = "list"
+	docsScriptAssessmentPassed      = "passed"
+	docsScriptAssessmentFailed      = "failed"
+	docsScriptDiagnosticError       = "error"
+	docsScriptCodeWordCountRange    = "word_count_out_of_range"
+	docsScriptCodeRequiredBlock     = "required_block_missing"
+	docsScriptCodeResourcePreflight = "resource_preflight_failed"
+	docsScriptCodeImageSource       = "remote_image_source_disallowed"
+	docsScriptCodeImageUnavailable  = "remote_image_unavailable"
+	docsScriptCodeImageFormat       = "remote_image_format_unsupported"
+	docsScriptCodeImageTooLarge     = "remote_image_too_large"
+	docsScriptCodeImagePreflight    = "remote_image_preflight_failed"
 )
 
 var DocsScript = common.Shortcut{
@@ -72,6 +83,7 @@ var DocsScript = common.Shortcut{
 	},
 	Tips: []string{
 		"parse preflights draft resources when a Presentation Decision is loaded, repairs common malformed XML in memory, and returns the text and block profile",
+		"for parse results, ok reports command execution and data.assessment.status reports whether all available presentation and resource checks passed",
 	},
 	PostMount: installDocsScriptHelp,
 	Validate:  validateDocsScript,
@@ -80,8 +92,30 @@ var DocsScript = common.Shortcut{
 }
 
 type docsScriptParseResult struct {
-	Profile docsScriptPublicProfile `json:"profile"`
-	Warning []string                `json:"warning,omitempty"`
+	Assessment  docsScriptAssessment    `json:"assessment"`
+	Profile     docsScriptPublicProfile `json:"profile"`
+	Diagnostics []docsScriptDiagnostic  `json:"diagnostics,omitempty"`
+}
+
+type docsScriptAssessment struct {
+	Status string `json:"status"`
+}
+
+type docsScriptDiagnostic struct {
+	Severity     string                           `json:"severity"`
+	Code         string                           `json:"code"`
+	Expected     *docsScriptDiagnosticExpectation `json:"expected,omitempty"`
+	Actual       *int                             `json:"actual,omitempty"`
+	ImageIndices []int                            `json:"image_indices,omitempty"`
+	Msg          string                           `json:"msg"`
+	Suggested    string                           `json:"suggested,omitempty"`
+}
+
+type docsScriptDiagnosticExpectation struct {
+	Type     string `json:"type,omitempty"`
+	MinCount int    `json:"min_count,omitempty"`
+	Min      *int   `json:"min,omitempty"`
+	Max      *int   `json:"max,omitempty"`
 }
 
 // docsScriptPublicProfile is the stable shortcut response. The parser keeps
@@ -290,17 +324,19 @@ func executeDocsScript(_ context.Context, runtime *common.RuntimeContext) error 
 		if err != nil {
 			return err
 		}
-		var warnings []string
+		var diagnostics []docsScriptDiagnostic
 		if hasDecision {
-			warnings = docsScriptPresentationWarnings(publicProfile, decision)
-			warnings = append(warnings, docsScriptResourceWarnings(runtime, content)...)
+			diagnostics = docsScriptPresentationDiagnostics(publicProfile, decision)
+			diagnostics = append(diagnostics, docsScriptResourceDiagnostics(runtime, content)...)
+		}
+		status := docsScriptAssessmentPassed
+		if len(diagnostics) > 0 {
+			status = docsScriptAssessmentFailed
 		}
 		result := docsScriptParseResult{
-			Profile: publicProfile,
-			Warning: warnings,
-		}
-		if len(warnings) > 0 {
-			return runtime.OutPartialFailureRaw(result, nil)
+			Assessment:  docsScriptAssessment{Status: status},
+			Profile:     publicProfile,
+			Diagnostics: diagnostics,
 		}
 		runtime.OutFormatRaw(result, nil, nil)
 		return nil
@@ -311,22 +347,30 @@ func executeDocsScript(_ context.Context, runtime *common.RuntimeContext) error 
 	}
 }
 
-func docsScriptResourceWarnings(runtime *common.RuntimeContext, content string) []string {
+func docsScriptResourceDiagnostics(runtime *common.RuntimeContext, content string) []docsScriptDiagnostic {
 	input, err := prepareDocsV2WriteInputForFormat(runtime, string(docxparse.FormatXML), docsV2WriteInput{Content: content})
 	if err != nil {
-		return []string{docsScriptResourceWarning(err)}
+		return []docsScriptDiagnostic{docsScriptResourceDiagnostic(err)}
 	}
 
-	warnings := make([]string, 0)
+	diagnostics := make([]docsScriptDiagnostic, 0)
+	groupByCause := make(map[string]int)
 	for _, resource := range input.LocalResources {
 		if resource.RemoteURL == "" {
 			continue
 		}
 		if err := probeRemoteDocImageDownload(runtime, resource.RemoteURL, resource.Occurrence); err != nil {
-			warnings = append(warnings, docsScriptResourceWarning(err))
+			diagnostic := docsScriptRemoteImageDiagnostic(err, resource.Occurrence)
+			groupKey := diagnostic.Code + "\x00" + diagnostic.Msg + "\x00" + diagnostic.Suggested
+			if index, ok := groupByCause[groupKey]; ok {
+				diagnostics[index].ImageIndices = append(diagnostics[index].ImageIndices, resource.Occurrence)
+				continue
+			}
+			groupByCause[groupKey] = len(diagnostics)
+			diagnostics = append(diagnostics, diagnostic)
 		}
 	}
-	return warnings
+	return diagnostics
 }
 
 func docsScriptHasPresentationDecision(runtime *common.RuntimeContext) bool {
@@ -347,10 +391,68 @@ func docsScriptHasRemoteImagePreflight(runtime *common.RuntimeContext, content s
 	return false
 }
 
-func docsScriptResourceWarning(err error) string {
-	message := "resource preflight failed: " + err.Error()
-	if problem, ok := errs.ProblemOf(err); ok && strings.TrimSpace(problem.Hint) != "" {
-		message += "; hint: " + problem.Hint
+func docsScriptResourceDiagnostic(err error) docsScriptDiagnostic {
+	diagnostic := docsScriptDiagnostic{
+		Severity: docsScriptDiagnosticError,
+		Code:     docsScriptCodeResourcePreflight,
+		Msg:      err.Error(),
+	}
+	if problem, ok := errs.ProblemOf(err); ok {
+		diagnostic.Msg = problem.Message
+		diagnostic.Suggested = problem.Hint
+	}
+	return diagnostic
+}
+
+func docsScriptRemoteImageDiagnostic(err error, occurrence int) docsScriptDiagnostic {
+	message := err.Error()
+	code := docsScriptCodeImagePreflight
+	suggested := "Download the affected images into the draft workspace, then replace href with <img path=\"@relative/path\"/>."
+	problem, hasProblem := errs.ProblemOf(err)
+	if hasProblem {
+		message = problem.Message
+	}
+	switch {
+	case strings.Contains(message, "href is not allowed") ||
+		strings.Contains(message, "href must be an absolute") ||
+		strings.Contains(message, "invalid remote image"):
+		code = docsScriptCodeImageSource
+	case strings.Contains(message, "exceeds 20MiB"):
+		code = docsScriptCodeImageTooLarge
+		suggested = "Compress the affected images below 20 MiB, save them in the draft workspace, and use <img path=\"@relative/path\"/>."
+	case strings.Contains(message, "Content-Type") ||
+		strings.Contains(message, "not a valid") ||
+		strings.Contains(message, "declared"):
+		code = docsScriptCodeImageFormat
+		suggested = "Convert the affected images to BMP, GIF, JPEG, PNG, TIFF, or WebP, save them in the draft workspace, and use <img path=\"@relative/path\"/>."
+	case hasProblem && problem.Category == errs.CategoryNetwork:
+		code = docsScriptCodeImageUnavailable
+		suggested = "Check that the affected image URLs are publicly reachable, or download the images into the draft workspace and use <img path=\"@relative/path\"/>."
+	}
+	return docsScriptDiagnostic{
+		Severity:     docsScriptDiagnosticError,
+		Code:         code,
+		ImageIndices: []int{occurrence},
+		Msg:          docsScriptRemoteImageReason(message, occurrence),
+		Suggested:    suggested,
+	}
+}
+
+func docsScriptRemoteImageReason(message string, occurrence int) string {
+	prefixes := []string{
+		fmt.Sprintf("remote image #%d href is not allowed: ", occurrence),
+		fmt.Sprintf("remote image #%d href ", occurrence),
+		fmt.Sprintf("invalid remote image #%d href: ", occurrence),
+		fmt.Sprintf("probe remote image #%d failed: ", occurrence),
+		fmt.Sprintf("download remote image #%d failed: ", occurrence),
+		fmt.Sprintf("download remote image #%d ", occurrence),
+		fmt.Sprintf("remote image #%d ", occurrence),
+	}
+	message = strings.TrimSpace(message)
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(message, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(message, prefix))
+		}
 	}
 	return message
 }
@@ -564,37 +666,53 @@ func normalizeDocsScriptOptionalRoute(field string, value *string) (*string, err
 	return &normalized, nil
 }
 
-func docsScriptPresentationWarnings(profile docsScriptPublicProfile, decision docsScriptPresentationDecision) []string {
-	var warnings []string
+func docsScriptPresentationDiagnostics(profile docsScriptPublicProfile, decision docsScriptPresentationDecision) []docsScriptDiagnostic {
+	var diagnostics []docsScriptDiagnostic
 	if decision.WordCount != nil {
 		belowMinimum := decision.WordCount.Min != nil && profile.WordCount < *decision.WordCount.Min
 		aboveMaximum := decision.WordCount.Max != nil && profile.WordCount > *decision.WordCount.Max
 		if belowMinimum || aboveMaximum {
-			expectation := ""
+			expectation := docsScriptDiagnosticExpectation{
+				Min: decision.WordCount.Min,
+				Max: decision.WordCount.Max,
+			}
+			suggested := ""
 			switch {
 			case decision.WordCount.Min != nil && decision.WordCount.Max != nil:
-				expectation = fmt.Sprintf("range %d-%d", *decision.WordCount.Min, *decision.WordCount.Max)
+				suggested = fmt.Sprintf("Adjust word_count to the %d-%d range.", *decision.WordCount.Min, *decision.WordCount.Max)
 			case decision.WordCount.Min != nil:
-				expectation = fmt.Sprintf("at least %d", *decision.WordCount.Min)
+				suggested = fmt.Sprintf("Increase word_count to at least %d.", *decision.WordCount.Min)
 			default:
-				expectation = fmt.Sprintf("at most %d", *decision.WordCount.Max)
+				suggested = fmt.Sprintf("Reduce word_count to at most %d.", *decision.WordCount.Max)
 			}
-			warnings = append(warnings, fmt.Sprintf(
-				"word_count is %d; Presentation Decision expects %s",
-				profile.WordCount, expectation,
-			))
+			actual := profile.WordCount
+			diagnostics = append(diagnostics, docsScriptDiagnostic{
+				Severity:  docsScriptDiagnosticError,
+				Code:      docsScriptCodeWordCountRange,
+				Expected:  &expectation,
+				Actual:    &actual,
+				Msg:       "word_count does not satisfy the Presentation Decision.",
+				Suggested: suggested,
+			})
 		}
 	}
 	for _, required := range decision.VisualPlan.Blocks {
 		actual := docsScriptBlockCount(profile.Blocks, required.Type)
 		if actual < required.MinCount {
-			warnings = append(warnings, fmt.Sprintf(
-				"visual_plan requires at least %d %s block(s) for %s, but the draft has %d",
-				required.MinCount, required.Type, required.Purpose, actual,
-			))
+			diagnostics = append(diagnostics, docsScriptDiagnostic{
+				Severity: docsScriptDiagnosticError,
+				Code:     docsScriptCodeRequiredBlock,
+				Expected: &docsScriptDiagnosticExpectation{
+					Type:     required.Type,
+					MinCount: required.MinCount,
+				},
+				Actual:    &actual,
+				Msg:       fmt.Sprintf("The draft is missing required %s block(s) for %s.", required.Type, required.Purpose),
+				Suggested: fmt.Sprintf("Add at least %d %s block(s) for %s.", required.MinCount, required.Type, required.Purpose),
+			})
 		}
 	}
-	return warnings
+	return diagnostics
 }
 
 func docsScriptBlockCount(blocks []docxparse.BlockShare, blockType string) int {
