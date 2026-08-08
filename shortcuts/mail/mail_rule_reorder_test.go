@@ -148,6 +148,47 @@ func TestMailRuleReorderExecute_ListFailureDoesNotCallReorder(t *testing.T) {
 	reg.Verify(t)
 }
 
+func TestMailRuleReorderExecute_RejectsMalformedRuleList(t *testing.T) {
+	tests := []struct {
+		name  string
+		items interface{}
+		want  string
+	}{
+		{name: "missing items", items: nil, want: "missing items"},
+		{name: "non-array items", items: "bad", want: "want array"},
+		{name: "non-object rule", items: []interface{}{"bad"}, want: "not an object"},
+		{name: "missing id", items: []interface{}{map[string]interface{}{"sequence": float64(1)}}, want: "id is missing"},
+		{name: "non-string id", items: []interface{}{map[string]interface{}{"id": float64(123)}}, want: "id is json.Number, want string"},
+		{name: "fractional sequence", items: []interface{}{map[string]interface{}{"id": "rule_a", "sequence": float64(1.5)}}, want: `sequence is "1.5", want integer`},
+		{name: "non-numeric sequence", items: []interface{}{map[string]interface{}{"id": "rule_a", "sequence": "1"}}, want: "sequence is string, want integer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := mailShortcutTestFactory(t)
+			data := map[string]interface{}{}
+			if tt.items != nil {
+				data["items"] = tt.items
+			}
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/user_mailboxes/me/rules",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+					"data": data,
+				},
+			})
+
+			err := runMountedMailShortcut(t, MailRuleReorder, []string{
+				"+rule-reorder",
+				"--rule-ids", "rule_a",
+			}, f, stdout)
+			requireMailRuleInternal(t, err, tt.want)
+			reg.Verify(t)
+		})
+	}
+}
+
 func TestMailRuleReorderExecute_ReorderFailureAddsSubmittedIDsHint(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stubMailRuleList(reg, []map[string]interface{}{
@@ -247,6 +288,16 @@ func requireMailRuleValidation(t *testing.T, err error, param, contains string) 
 	if err == nil {
 		t.Fatalf("expected validation error containing %q, got nil", contains)
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("problem Category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem Subtype = %q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+	}
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
@@ -256,5 +307,25 @@ func requireMailRuleValidation(t *testing.T, err error, param, contains string) 
 	}
 	if !strings.Contains(err.Error(), contains) {
 		t.Fatalf("validation error = %v, want substring %q", err, contains)
+	}
+}
+
+func requireMailRuleInternal(t *testing.T, err error, contains string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected internal error containing %q, got nil", contains)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryInternal {
+		t.Fatalf("problem Category = %q, want %q", problem.Category, errs.CategoryInternal)
+	}
+	if problem.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("problem Subtype = %q, want %q", problem.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if !strings.Contains(err.Error(), contains) {
+		t.Fatalf("internal error = %v, want substring %q", err, contains)
 	}
 }

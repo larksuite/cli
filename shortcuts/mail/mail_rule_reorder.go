@@ -30,7 +30,7 @@ var MailRuleReorder = common.Shortcut{
 	Description: "Reorder mail rules by providing the rule IDs to move to the front. The CLI fetches current rules and submits the complete rule ID list.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
-	AuthTypes:   []string{"user", "bot"},
+	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Desc: "Mailbox email address that owns the rules (default: me)."},
@@ -133,20 +133,39 @@ func fetchMailRulesForReorder(rt *common.RuntimeContext, mailboxID string) ([]ma
 	if err != nil {
 		return nil, err
 	}
-	items, _ := data["items"].([]interface{})
+	rawItems, ok := data["items"]
+	if !ok {
+		return nil, mailInvalidResponseError("rules response missing items")
+	}
+	items, ok := rawItems.([]interface{})
+	if !ok {
+		return nil, mailInvalidResponseError("rules response items is %T, want array", rawItems)
+	}
 	rules := make([]mailRuleOrderItem, 0, len(items))
 	for i, raw := range items {
 		item, ok := raw.(map[string]interface{})
 		if !ok {
 			return nil, mailInvalidResponseError("rules[%d] is not an object", i)
 		}
-		id := strings.TrimSpace(mailRuleStringValue(item["id"]))
+		rawID, ok := item["id"]
+		if !ok {
+			return nil, mailInvalidResponseError("rules[%d].id is missing", i)
+		}
+		id, ok := rawID.(string)
+		if !ok {
+			return nil, mailInvalidResponseError("rules[%d].id is %T, want string", i, rawID)
+		}
+		id = strings.TrimSpace(id)
 		if id == "" {
 			return nil, mailInvalidResponseError("rules[%d].id is empty", i)
 		}
+		sequence, err := mailRuleSequenceValue(item["sequence"])
+		if err != nil {
+			return nil, mailInvalidResponseError("rules[%d].sequence %s", i, err.Error())
+		}
 		rules = append(rules, mailRuleOrderItem{
 			ID:       id,
-			Sequence: int64PointerValue(item["sequence"]),
+			Sequence: sequence,
 			Index:    i,
 		})
 	}
@@ -201,38 +220,31 @@ func sortMailRulesBySequenceWhenComplete(rules []mailRuleOrderItem) {
 	})
 }
 
-func int64PointerValue(v interface{}) *int64 {
+func mailRuleSequenceValue(v interface{}) (*int64, error) {
+	if v == nil {
+		return nil, nil
+	}
 	switch x := v.(type) {
 	case int:
 		n := int64(x)
-		return &n
+		return &n, nil
 	case int64:
 		n := x
-		return &n
+		return &n, nil
+	case json.Number:
+		n, err := x.Int64()
+		if err != nil {
+			return nil, fmt.Errorf("is %q, want integer", x.String())
+		}
+		return &n, nil
 	case float64:
+		if x != float64(int64(x)) {
+			return nil, fmt.Errorf("is %v, want integer", x)
+		}
 		n := int64(x)
-		return &n
-	case json.Number:
-		if n, err := x.Int64(); err == nil {
-			return &n
-		}
-	}
-	return nil
-}
-
-func mailRuleStringValue(v interface{}) string {
-	switch x := v.(type) {
-	case string:
-		return x
-	case fmt.Stringer:
-		return x.String()
-	case json.Number:
-		return x.String()
+		return &n, nil
 	default:
-		if v == nil {
-			return ""
-		}
-		return fmt.Sprint(v)
+		return nil, fmt.Errorf("is %T, want integer", v)
 	}
 }
 
