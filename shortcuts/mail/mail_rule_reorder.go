@@ -234,17 +234,17 @@ func mailRuleSequenceValue(v interface{}) (*int64, error) {
 	case json.Number:
 		n, err := x.Int64()
 		if err != nil {
-			return nil, fmt.Errorf("is %q, want integer", x.String())
+			return nil, fmt.Errorf("is %q, want integer", x.String()) //nolint:forbidigo // intermediate parser detail; caller wraps into typed invalid_response.
 		}
 		return &n, nil
 	case float64:
 		if x != float64(int64(x)) {
-			return nil, fmt.Errorf("is %v, want integer", x)
+			return nil, fmt.Errorf("is %v, want integer", x) //nolint:forbidigo // intermediate parser detail; caller wraps into typed invalid_response.
 		}
 		n := int64(x)
 		return &n, nil
 	default:
-		return nil, fmt.Errorf("is %T, want integer", v)
+		return nil, fmt.Errorf("is %T, want integer", v) //nolint:forbidigo // intermediate parser detail; caller wraps into typed invalid_response.
 	}
 }
 
