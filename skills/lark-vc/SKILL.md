@@ -1,7 +1,7 @@
 ---
 name: lark-vc
 version: 1.0.0
-description: "飞书视频会议：查询进行中的会议列表(含会议 ID)和会中事件、发送会中消息，以及搜索历史会议、查询会议纪要（总结/待办/章节/逐字稿）和参会人快照。Agent 真实入会/离会走 lark-vc-agent；查询未来日程走 lark-calendar。"
+description: "飞书视频会议：查询进行中的会议列表（含会议 ID）、读取会中事件（发言、聊天、共享等）、发送会中消息，以及搜索历史会议、查询会议纪要（总结/待办/章节/逐字稿）和参会人快照。Agent 真实入会/离会走 lark-vc-agent；查询未来日程走 lark-calendar。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -51,6 +51,7 @@ lark-cli vc +search --query "站会" --start <start_time> --end <end_time>
 | 查日历/日程或未来时间的会议 | [lark-calendar](../lark-calendar/SKILL.md) |
 | 查"今天有哪些会议" | `vc +search`（已结束）+ lark-calendar（未开始），合并展示 |
 | 查询进行中的会议、会中事件或发送会中消息 | 本 skill 的 `+meeting-list-active` / `+meeting-events` / `+meeting-message-send`，也可由 [lark-vc-agent](../lark-vc-agent/SKILL.md) 编排 |
+| 用户询问会议内容，但未提供 `meeting_id`，也未明确指向已结束会议 | 先用 `+meeting-list-active` 查询进行中的会议；无结果时，再用 `+search` 查询当天最近结束的会议；仍无结果时询问会议时间、主题或会议号，不自行扩大时间范围 |
 | 只按自然语言标题查"xx 纪要的逐字稿 / 原始记录 / 谁说了什么" | 先到 [lark-drive](../lark-drive/SKILL.md) / [lark-doc](../lark-doc/SKILL.md)；仅在已拿到 `note_id` / `vc-node-id` 后再到 [lark-note](../lark-note/SKILL.md) |
 | Agent 真实入会/离会 | [lark-vc-agent](../lark-vc-agent/SKILL.md) |
 | 妙记信息/时长/封面/链接 | 先走 `vc +detail` 或 `vc +recording` 获取 `minute_token`，再用 [lark-minutes](../lark-minutes/SKILL.md) 的 `minutes get` |

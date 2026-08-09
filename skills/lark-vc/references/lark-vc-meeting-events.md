@@ -65,7 +65,7 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token 
 lark-cli vc +meeting-join --as bot --meeting-number 123456789
 
 # 再查询事件
-lark-cli vc +meeting-events --as bot --meeting-id <id>
+lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
 ```
 
 如果应用机器人已经在会中，也可以先通过 active meeting 找会：
@@ -131,15 +131,10 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 
 执行准则：
 
-- 如果上下文已有明确 `meeting_id`，沿用该 `meeting_id` 的来源身份执行 `+meeting-events --page-all --format json`。
 - 如果上下文没有明确 `meeting_id`，先按用户当前意图选择身份：问“我/当前用户所在会议”用 `lark-cli vc +meeting-list-active --as user --format json`；问“应用机器人可见的目标用户会议”用 `lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json`。返回多个会议时先让用户选择。
 - 如果上下文只有 9 位会议号，先按当前身份执行 `+meeting-list-active` 并按 `meeting_no` 匹配；匹配到唯一会议后再查事件。不要为了总结会议而自动调用 `+meeting-join`。
-- 这类问题拿到 `meeting_id` 后，用同一身份执行 `lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format json` 拉取最新事件流。
-- 如果事件中出现共享文档线索，例如：
-  - `magic_share_started`
-  - `share_doc.title`
-  - `share_doc.url`
-- 必须继续读取共享文档内容，再生成总结，不能只根据“开始共享了某文档”这条事件和文档标题来概括会议内容。
+- 确认 `meeting_id` 后，沿用其来源身份执行 `lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format pretty` 拉取最新事件流。
+- 如果事件流显示开始共享内容（JSON 事件类型为 `magic_share_started`，pretty 时间线显示“开始共享”），并包含文档标题或 URL 等线索，必须继续读取共享文档内容后再生成总结，不能只根据共享事件和文档标题概括会议内容。
 - 若存在多个共享文档，优先读取**最近一次共享**的文档。
 - 若文档读取失败，必须明确说明“以下总结仅基于会中事件流，未成功读取共享文档内容”。
 
