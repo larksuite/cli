@@ -345,6 +345,8 @@ func eventActors(eventType string, payload map[string]interface{}, selfIdentity 
 		addFromItems("magic_share_started_items", "operator")
 	case "magic_share_ended":
 		addFromItems("magic_share_ended_items", "operator")
+	case "document_context_changed":
+		addFromItems("document_context_changed_items", "operator")
 	}
 	return actors
 }
@@ -737,6 +739,7 @@ type meetingTimelineEntry struct {
 	subject     string
 	description string
 	details     []string
+	isAction    bool
 }
 
 func buildMeetingEventTimeline(events []interface{}) meetingTimeline {
@@ -838,9 +841,141 @@ func buildTimelineEntriesForEvent(event map[string]interface{}, sequence *int) [
 		return magicShareStartedEntries(payload, eventTime, eventTimeOK, sequence)
 	case "magic_share_ended":
 		return magicShareEndedEntries(payload, eventTime, eventTimeOK, sequence)
+	case "document_context_changed":
+		return documentContextEntries(payload, eventTime, eventTimeOK, sequence)
 	default:
 		return []meetingTimelineEntry{newTimelineEntry(eventTime, eventTimeOK, sequence, meetingEventUserDisplayName(nil), meetingEventSummary(event), nil)}
 	}
+}
+
+func documentContextEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "document_context_changed_items")
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		description, details, recognized := describeDocumentContextItem(item)
+		if !recognized {
+			continue
+		}
+		when, ok := parseFlexibleTime(common.GetString(item, "time"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := meetingEventUserWithID(common.GetMap(item, "operator"))
+		if subject == "" {
+			subject = "未知用户"
+		}
+		entries = append(entries, newTimelineActionEntry(when, ok, sequence, subject, description, details))
+	}
+	return entries
+}
+
+func describeDocumentContextItem(item map[string]interface{}) (string, []string, bool) {
+	if item == nil {
+		return "", nil, false
+	}
+
+	var contextKind string
+	var context map[string]interface{}
+	for _, kind := range []string{"comment_focus", "section_location", "element_preview"} {
+		value, exists := item[kind]
+		if !exists {
+			continue
+		}
+		parsed, ok := value.(map[string]interface{})
+		if !ok || contextKind != "" {
+			return "", nil, false
+		}
+		contextKind = kind
+		context = parsed
+	}
+	if contextKind == "" {
+		return "", nil, false
+	}
+
+	switch contextKind {
+	case "comment_focus":
+		return describeCommentFocus(item, context)
+	case "section_location":
+		return describeSectionLocation(context)
+	case "element_preview":
+		return describeElementPreview(context)
+	default:
+		return "", nil, false
+	}
+}
+
+func describeCommentFocus(_ map[string]interface{}, comment map[string]interface{}) (string, []string, bool) {
+	commentID := strings.TrimSpace(common.GetString(comment, "comment_id"))
+	focused, hasFocused := comment["focused"].(bool)
+	if !hasFocused {
+		return "", nil, false
+	}
+	var description string
+	switch {
+	case focused && commentID != "":
+		description = "聚焦评论 " + commentID
+	case focused:
+		description = "聚焦评论"
+	case commentID != "":
+		description = "取消聚焦评论 " + commentID
+	default:
+		description = "取消评论聚焦"
+	}
+	return description, nil, true
+}
+
+func describeSectionLocation(section map[string]interface{}) (string, []string, bool) {
+	sectionPath := documentSectionPath(section)
+	if sectionPath == "" {
+		return "", nil, false
+	}
+	description := "定位到章节「" + sectionPath + "」"
+	var details []string
+	if level := strings.TrimSpace(fieldValueString(section, "level")); level != "" {
+		details = append(details, "层级："+level)
+	}
+	return description, details, true
+}
+
+func documentSectionPath(section map[string]interface{}) string {
+	parts := make([]string, 0, len(common.GetSlice(section, "parent_titles"))+1)
+	for _, raw := range common.GetSlice(section, "parent_titles") {
+		title, _ := raw.(string)
+		if title = strings.TrimSpace(title); title != "" {
+			parts = append(parts, title)
+		}
+	}
+	if title := strings.TrimSpace(common.GetString(section, "title")); title != "" {
+		parts = append(parts, title)
+	}
+	return strings.Join(parts, " > ")
+}
+
+func describeElementPreview(element map[string]interface{}) (string, []string, bool) {
+	action := strings.TrimSpace(common.GetString(element, "action"))
+	elementType := strings.TrimSpace(common.GetString(element, "element_type"))
+	if elementType != "image" && elementType != "whiteboard" {
+		return "", nil, false
+	}
+	token := strings.TrimSpace(common.GetString(element, "element_token"))
+	var description string
+	switch action {
+	case "open":
+		description = "打开 " + elementType + " 预览"
+	case "close":
+		description = "关闭 " + elementType + " 预览"
+	default:
+		return "", nil, false
+	}
+	if token != "" {
+		description += " " + token
+	}
+	var details []string
+	if blockID := strings.TrimSpace(common.GetString(element, "block_id")); blockID != "" {
+		details = append(details, "block_id："+blockID)
+	}
+	return description, details, true
 }
 
 func participantJoinedEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
@@ -1004,6 +1139,12 @@ func newTimelineEntry(when time.Time, hasWhen bool, sequence *int, subject, desc
 	return entry
 }
 
+func newTimelineActionEntry(when time.Time, hasWhen bool, sequence *int, subject, description string, details []string) meetingTimelineEntry {
+	entry := newTimelineEntry(when, hasWhen, sequence, subject, description, details)
+	entry.isAction = true
+	return entry
+}
+
 func parseFlexibleTime(raw string) (time.Time, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -1044,7 +1185,7 @@ func renderMeetingEventsPretty(timeline meetingTimeline) string {
 				}
 				continue
 			}
-			if needsColon(entry.description) {
+			if !entry.isAction && needsColon(entry.description) {
 				fmt.Fprintf(&b, "%s: %s\n", escapePrettyText(entry.subject), escapePrettyText(entry.description))
 			} else {
 				fmt.Fprintf(&b, "%s %s\n", escapePrettyText(entry.subject), escapePrettyText(entry.description))
