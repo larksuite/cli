@@ -65,7 +65,7 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token 
 lark-cli vc +meeting-join --as bot --meeting-number 123456789
 
 # 再查询事件
-lark-cli vc +meeting-events --as bot --meeting-id <id>
+lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
 ```
 
 如果应用机器人已经在会中，也可以先通过 active meeting 找会：
@@ -114,7 +114,7 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 - `--format pretty`：默认推荐格式，输出当前身份和逐条时间线，适合快速理解“发生了什么”。
 - `--format ndjson`：输出事件行，并带 metadata 行，适合流式消费。
 
-**选型原则**：只在 `pretty`、`json`、`ndjson` 之间选择。目标是告诉用户“发生了什么”时，用 `--page-all --format pretty`；需要稳定字段给 agent 做结构化消费、总结、转发或二次处理时用 `--format json`；需要流式消费时用 `--format ndjson`。
+**选型原则**：只在 `pretty`、`json`、`ndjson` 之间选择。默认优先用 `--format pretty`；用户明确要求 json / 结构化字段，或需要完整保真字段时，建议用 `--format json`；需要流式消费时用 `--format ndjson`。
 
 > **注意**：pretty 输出中的正文文本会做单行转义，真实换行会显示为 `\n`，避免打乱时间线布局。
 
@@ -131,21 +131,16 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 
 执行准则：
 
-- 如果上下文已有明确 `meeting_id`，沿用该 `meeting_id` 的来源身份执行 `+meeting-events --page-all --format json`。
 - 如果上下文没有明确 `meeting_id`，先按用户当前意图选择身份：问“我/当前用户所在会议”用 `lark-cli vc +meeting-list-active --as user --format json`；问“应用机器人可见的目标用户会议”用 `lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json`。返回多个会议时先让用户选择。
 - 如果上下文只有 9 位会议号，先按当前身份执行 `+meeting-list-active` 并按 `meeting_no` 匹配；匹配到唯一会议后再查事件。不要为了总结会议而自动调用 `+meeting-join`。
-- 这类问题拿到 `meeting_id` 后，用同一身份执行 `lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format json` 拉取最新事件流。
-- 如果事件中出现共享文档线索，例如：
-  - `magic_share_started`
-  - `share_doc.title`
-  - `share_doc.url`
-- 必须继续读取共享文档内容，再生成总结，不能只根据“开始共享了某文档”这条事件和文档标题来概括会议内容。
+- 确认 `meeting_id` 后，沿用其来源身份执行 `lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format pretty` 拉取最新事件流。
+- 如果事件流显示开始共享内容（JSON 事件类型为 `magic_share_started`，pretty 时间线显示“开始共享”），并包含文档标题或 URL 等线索，必须继续读取共享文档内容后再生成总结，不能只根据共享事件和文档标题概括会议内容。
 - 若存在多个共享文档，按用户问题读取相关文档；处理某条文档上下文事件时必须按该 item 的 `share_id` 精确关联，不能用“最近一次共享”替代。
 - 若文档读取失败，必须明确说明“以下总结仅基于会中事件流，未成功读取共享文档内容”。
 
 ### 7. 文档上下文事件消费
 
-`document_context_changed` 是只读线索事件。`vc +meeting-events` 保留原始 payload，并按既有事件输出约定派生 actor 与 pretty timeline；它不会为单个事件类型扩张 JSON/NDJSON 公共 envelope，也不会查询评论、下载素材或写文件。后续 Drive/Docs 命令只能由 Agent 按下表显式选择。
+`document_context_changed` 是只读线索事件。需要根据该事件执行评论、章节或预览等后续处理时，必须用 `+meeting-events --page-all --format json` 读取 `share_id`、`comment_id`、`element_token` 等完整字段；仅向用户展示时间线时仍默认使用 pretty。`vc +meeting-events` 保留原始 payload，并按既有事件输出约定派生 actor 与 pretty timeline；它不会为单个事件类型扩张 JSON/NDJSON 公共 envelope，也不会查询评论、下载素材或写文件。后续 Drive/Docs 命令只能由 Agent 按下表显式选择。
 
 #### 共享会话关联
 
@@ -408,12 +403,12 @@ lark-cli vc +meeting-events \
 
 ## 参考
 
-- [lark-vc-agent-meeting-join](lark-vc-agent-meeting-join.md) — 先真实入会
-- [lark-vc-agent-meeting-list-active](lark-vc-agent-meeting-list-active.md) — 发现当前可读事件的进行中会议 ID
-- [lark-vc-agent-meeting-leave](lark-vc-agent-meeting-leave.md) — 用户明确要求时离会
-- [lark-vc-search](../../lark-vc/references/lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
-- [lark-vc-recording](../../lark-vc/references/lark-vc-recording.md) — 查询 minute_token
-- [lark-vc-detail](../../lark-vc/references/lark-vc-detail.md) — 获取会议详情
-- [lark-vc-agent](../SKILL.md) — Agent 参会能力（本 skill）
-- [lark-vc](../../lark-vc/SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
+- [lark-vc-agent-meeting-join](../../lark-vc-agent/references/lark-vc-agent-meeting-join.md) — 先真实入会
+- [lark-vc-meeting-list-active](lark-vc-meeting-list-active.md) — 发现当前可读事件的进行中会议 ID
+- [lark-vc-agent-meeting-leave](../../lark-vc-agent/references/lark-vc-agent-meeting-leave.md) — 用户明确要求时离会
+- [lark-vc-search](lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
+- [lark-vc-recording](lark-vc-recording.md) — 查询 minute_token
+- [lark-vc-detail](lark-vc-detail.md) — 获取会议详情
+- [lark-vc-agent](../../lark-vc-agent/SKILL.md) — Agent 参会能力
+- [lark-vc](../SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

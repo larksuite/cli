@@ -87,5 +87,5 @@ lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
 
 ## 参考
 
-- [lark-vc-agent-meeting-join](lark-vc-agent-meeting-join.md) — 让应用机器人真实入会并拿 `meeting.id`
-- [lark-vc-agent-meeting-events](lark-vc-agent-meeting-events.md) — 使用 `meeting_id` 读取会中事件
+- [lark-vc-agent-meeting-join](../../lark-vc-agent/references/lark-vc-agent-meeting-join.md) — 让应用机器人真实入会并拿 `meeting.id`
+- [lark-vc-meeting-events](lark-vc-meeting-events.md) — 使用 `meeting_id` 读取会中事件
