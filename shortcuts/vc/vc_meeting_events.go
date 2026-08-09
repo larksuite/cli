@@ -744,6 +744,7 @@ type meetingTimelineEntry struct {
 
 func buildMeetingEventTimeline(events []interface{}) meetingTimeline {
 	timeline := meetingTimeline{}
+	speakerLabels := buildTranscriptSpeakerLabels(events)
 	var sequence int
 	for _, raw := range events {
 		event, _ := raw.(map[string]interface{})
@@ -757,7 +758,7 @@ func buildMeetingEventTimeline(events []interface{}) meetingTimeline {
 		if timeline.topic == "" || !timeline.hasStart || !timeline.hasEnd {
 			populateMeetingHeader(&timeline, common.GetMap(payload, "meeting"))
 		}
-		for _, entry := range buildTimelineEntriesForEvent(event, &sequence) {
+		for _, entry := range buildTimelineEntriesForEventWithSpeakerLabels(event, &sequence, speakerLabels) {
 			timeline.entries = append(timeline.entries, entry)
 		}
 	}
@@ -821,7 +822,67 @@ func populateMeetingHeader(timeline *meetingTimeline, meeting map[string]interfa
 	}
 }
 
+func buildTranscriptSpeakerLabels(events []interface{}) map[string]string {
+	speakerIDsByName := make(map[string][]string)
+	seen := make(map[string]map[string]struct{})
+	for _, raw := range events {
+		event, _ := raw.(map[string]interface{})
+		if event == nil || meetingEventType(event) != "transcript_received" {
+			continue
+		}
+		for _, rawItem := range common.GetSlice(common.GetMap(event, "payload"), "transcript_received_items") {
+			item, _ := rawItem.(map[string]interface{})
+			speaker := common.GetMap(item, "speaker")
+			name := strings.TrimSpace(common.GetString(speaker, "user_name"))
+			id := strings.TrimSpace(common.GetString(speaker, "id"))
+			if name == "" || id == "" {
+				continue
+			}
+			if seen[name] == nil {
+				seen[name] = make(map[string]struct{})
+			}
+			if _, exists := seen[name][id]; exists {
+				continue
+			}
+			seen[name][id] = struct{}{}
+			speakerIDsByName[name] = append(speakerIDsByName[name], id)
+		}
+	}
+
+	labels := make(map[string]string)
+	for name, ids := range speakerIDsByName {
+		for index, id := range ids {
+			label := name
+			if len(ids) > 1 {
+				label = fmt.Sprintf("%s[%d]", name, index+1)
+			}
+			labels[transcriptSpeakerKey(name, id)] = label
+		}
+	}
+	return labels
+}
+
+func transcriptSpeakerKey(name, id string) string {
+	return name + "\x00" + id
+}
+
+func transcriptSpeakerDisplayName(user map[string]interface{}, labels map[string]string) string {
+	name := strings.TrimSpace(common.GetString(user, "user_name"))
+	id := strings.TrimSpace(common.GetString(user, "id"))
+	if label := labels[transcriptSpeakerKey(name, id)]; label != "" {
+		return label
+	}
+	if name != "" {
+		return name
+	}
+	return id
+}
+
 func buildTimelineEntriesForEvent(event map[string]interface{}, sequence *int) []meetingTimelineEntry {
+	return buildTimelineEntriesForEventWithSpeakerLabels(event, sequence, nil)
+}
+
+func buildTimelineEntriesForEventWithSpeakerLabels(event map[string]interface{}, sequence *int, speakerLabels map[string]string) []meetingTimelineEntry {
 	payload := common.GetMap(event, "payload")
 	if payload == nil {
 		return nil
@@ -834,7 +895,7 @@ func buildTimelineEntriesForEvent(event map[string]interface{}, sequence *int) [
 	case "participant_left":
 		return participantLeftEntries(payload, eventTime, eventTimeOK, sequence)
 	case "transcript_received":
-		return transcriptEntries(payload, eventTime, eventTimeOK, sequence)
+		return transcriptEntries(payload, eventTime, eventTimeOK, sequence, speakerLabels)
 	case "chat_received":
 		return chatEntries(payload, eventTime, eventTimeOK, sequence)
 	case "magic_share_started":
@@ -1020,7 +1081,7 @@ func participantLeftEntries(payload map[string]interface{}, fallbackTime time.Ti
 	return entries
 }
 
-func transcriptEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+func transcriptEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int, speakerLabels map[string]string) []meetingTimelineEntry {
 	items := common.GetSlice(payload, "transcript_received_items")
 	if len(items) == 0 {
 		return []meetingTimelineEntry{newTimelineEntry(fallbackTime, fallbackOK, sequence, "", "产生了转写", nil)}
@@ -1032,7 +1093,7 @@ func transcriptEntries(payload map[string]interface{}, fallbackTime time.Time, f
 		if !ok {
 			when, ok = fallbackTime, fallbackOK
 		}
-		subject := meetingEventUserWithID(common.GetMap(item, "speaker"))
+		subject := transcriptSpeakerDisplayName(common.GetMap(item, "speaker"), speakerLabels)
 		if subject == "" {
 			subject = "未知发言人"
 		}
