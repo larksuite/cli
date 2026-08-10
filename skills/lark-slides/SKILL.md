@@ -79,12 +79,12 @@ metadata:
 
 | 用户需求 | 优先动作 | 关键文档 / 命令 |
 |----------|----------|-----------------|
-| 新建 PPT | 先规划 `slide_plan.json`，再按页数选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`cli/lark-slides-create.md`、`slides +create`、`slides +add-slide`、`xml/lark-slides-add-slide.md`（两步创建逐页添加） |
+| 新建 PPT | 先规划 `slide_plan.json`，再按页数选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`cli/lark-slides-create.md`、`slides +create`、`slides +add-slide`、`cli/lark-slides-add-slide.md`（两步创建逐页添加） |
 | 用户要求使用模板，或提供 PPTX 文件要求修改、美化 | 将模板导入为 Slides 再编辑 | `workflow/template-editing.md` |
 | 编辑单个标题、文本块、图片或局部元素 | 块级替换/插入，**只动点名的 block，同页其他元素不受影响**；不改页序 | `slides +replace-slide`、`cli/lark-slides-replace-slide.md` |
 | 一页改动很多（批量字体/配色）、要改页面背景、要删掉若干元素 | 整页覆盖，`slide_id` 和页序不变；带原 `id` 写回的元素保留 id，不带 `id` 的会作为新元素插入并拿到新 id；**代价是没写进 `--content` 的元素会被删除，所以改个别元素不要用它** | `slides +update-slide`、`lark-slides-update-slide.md` |
-| 给已有 PPT 追加或插入页面 | 一次一页，`--slide` 支持 `@file` 绕开 shell 转义 | `slides +add-slide`、`xml/lark-slides-add-slide.md` |
-| 删除页面 | 按 `slide_id` 单页删除，删前先回读确认 | `slides +delete-slide`、`xml/lark-slides-delete-slide.md` |
+| 给已有 PPT 追加或插入页面 | 一次一页，`--slide` 支持 `@file` 绕开 shell 转义 | `slides +add-slide`、`cli/lark-slides-add-slide.md` |
+| 删除页面 | 按 `slide_id` 单页删除，删前先回读确认 | `slides +delete-slide`、`cli/lark-slides-delete-slide.md` |
 | 读取或分析已有 PPT | 解析 slides/wiki token，用 shortcut 回读全文 XML 或读取单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `slides +xml-get`、`xml_presentation.slide.get`、`cli/lark-slides-xml-presentations-get.md` |
 | 查看或回滚历史版本 | 先用 `+history-list` 找 `history_version_id`，再 `+history-revert`，必要时 `+history-revert-status` 轮询 | [`cli/lark-slides-history.md`](references/cli/lark-slides-history.md) |
 | 获取幻灯片页面截图 | 按页码用 `--slide-number`，按 ID 用 `--slide-id`；单张用 `--output`，批量或全量用 `--output-dir`，每批最多 10 页串行执行；截图目录复用同一任务的 deck/task 标识，后续读取返回的实际路径 | `slides +screenshot`、`cli/lark-slides-screenshot.md` |
@@ -148,8 +148,8 @@ lark-cli auth login --domain slides
 
 调用相关命令前必须读取相关的文档以了解命令的使用方式：
 
-- 创建：[`cli/lark-slides-create.md`](references/cli/lark-slides-create.md)、[`xml/lark-slides-add-slide.md`](references/xml/lark-slides-add-slide.md)（逐页添加 / 给已有 PPT 追加页面）
-- 删除页面：[`xml/lark-slides-delete-slide.md`](references/xml/lark-slides-delete-slide.md)
+- 创建：[`cli/lark-slides-create.md`](references/cli/lark-slides-create.md)、[`cli/lark-slides-add-slide.md`](references/cli/lark-slides-add-slide.md)（逐页添加 / 给已有 PPT 追加页面）
+- 删除页面：[`cli/lark-slides-delete-slide.md`](references/cli/lark-slides-delete-slide.md)
 - 阅读：[`cli/lark-slides-xml-presentations-get.md`](references/cli/lark-slides-xml-presentations-get.md)
 - 编辑：[`workflow/slides_editing.md`](references/workflow/slides_editing.md)、[`cli/lark-slides-replace-slide.md`](references/cli/lark-slides-replace-slide.md)、[`lark-slides-update-slide.md`](references/lark-slides-update-slide.md)
 - 历史版本：[`cli/lark-slides-history.md`](references/cli/lark-slides-history.md)
@@ -212,7 +212,7 @@ Step 2: 生成大纲 → 写入 slide_plan.json
 Step 3: 按 slide_plan.json 生成 XML → 创建
   - 逐页消费 plan：key_message 定主结论，layout_type 定几何，visual_focus 定主视觉，text_density 定文本量
   - 缺少真实素材时必须用 `fallback_if_missing` 生成替代图片，不要留空
-  - 读 cli/lark-slides-create.md 定一步创建还是两步创建，并据此构造 `slides +create`；两步创建再读 xml/lark-slides-add-slide.md 用 `+add-slide` 逐页添加
+  - 读 cli/lark-slides-create.md 定一步创建还是两步创建，并据此构造 `slides +create`；两步创建再读 cli/lark-slides-add-slide.md 用 `+add-slide` 逐页添加
   - 图片按 cli/lark-slides-media-upload.md 处理；复杂 XML、转义和 3350001 排查按 workflow/error-handling.md 执行
 
 Step 4: 审查 & 交付
@@ -284,8 +284,8 @@ Shortcut 是对常用操作的高级封装（`lark-cli slides +<verb> [flags]`�
 | Shortcut | 说明 |
 |----------|------|
 | [`+create`](references/cli/lark-slides-create.md) | 创建 PPT，可选一步添加页面 |
-| [`+add-slide`](references/xml/lark-slides-add-slide.md) | 向已有演示文稿追加或插入**一页**（`--before-slide-id` 控制位置），XML 支持 `@file` / stdin，`<img src="@./path">` 占位符自动上传 |
-| [`+delete-slide`](references/xml/lark-slides-delete-slide.md) | 按 `slide_id` 删除**一页** |
+| [`+add-slide`](references/cli/lark-slides-add-slide.md) | 向已有演示文稿追加或插入**一页**（`--before-slide-id` 控制位置），XML 支持 `@file` / stdin，`<img src="@./path">` 占位符自动上传 |
+| [`+delete-slide`](references/cli/lark-slides-delete-slide.md) | 按 `slide_id` 删除**一页** |
 | [`+xml-get`](references/cli/lark-slides-xml-presentations-get.md) | 读取全文 XML，用 `--presentation` 指定演示文稿的 `xml_presentation_id`，用 `--output` 把 XML 存到本地文件（必须是 CWD 内的相对路径，如 `.lark-slides/plan/<deck>/readback.xml`） |
 | [`+screenshot`](references/cli/lark-slides-screenshot.md) | 把幻灯片页面截图保存为本地图片；用 `--slide-number` 指定页码（从 1 开始，多页重复传入）或用 `--slide-id` 指定页面；单张用 `--output .lark-slides/screenshots/<deck-or-task-id>/page-01`，批量用 `--output-dir .lark-slides/screenshots/<deck-or-task-id>`（一次最多 10 页）；后续必须读取返回的 `output` / `screenshots[].path` |
 | [`+media-upload`](references/cli/lark-slides-media-upload.md) | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |

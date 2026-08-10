@@ -153,5 +153,5 @@ lark-cli slides xml_presentations get --as user --params '<json_params>'
 ## 相关命令
 
 - [slides +create](lark-slides-create.md) - 创建空白 PPT
-- [slides +add-slide](../xml/lark-slides-add-slide.md) - 添加幻灯片页面
-- [slides +delete-slide](../xml/lark-slides-delete-slide.md) - 删除幻灯片页面
+- [slides +add-slide](lark-slides-add-slide.md) - 添加幻灯片页面
+- [slides +delete-slide](lark-slides-delete-slide.md) - 删除幻灯片页面

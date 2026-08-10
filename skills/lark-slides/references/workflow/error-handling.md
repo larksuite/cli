@@ -59,4 +59,4 @@
 
 - 图片上传、`@path` 占位符、`file_token`：见 [lark-slides-media-upload.md](../cli/lark-slides-media-upload.md) 和 [lark-slides-create.md](../cli/lark-slides-create.md)。
 - 块级替换、`block_id`、3350001 replace 细节：见 [lark-slides-replace-slide.md](../cli/lark-slides-replace-slide.md)。
-- 追加/插入单页、`--before-slide-id` 和 `--slide @file` 绕开转义：见 [lark-slides-add-slide.md](../xml/lark-slides-add-slide.md)。
+- 追加/插入单页、`--before-slide-id` 和 `--slide @file` 绕开转义：见 [lark-slides-add-slide.md](../cli/lark-slides-add-slide.md)。

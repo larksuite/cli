@@ -62,7 +62,7 @@ lark-cli slides +add-slide --as user \
 ```
 
 - 文件不存在、不是普通文件、超过 20 MB，都在**调用任何接口之前**报错，不会留下半成品。
-- 去重只在**单次调用内**生效：多页共用同一张图时，逐页循环会把它每页重传一次。这种图先用 [`+media-upload`](../cli/lark-slides-media-upload.md) 传一次，把 `file_token` 写进各页的 `src`。
+- 去重只在**单次调用内**生效：多页共用同一张图时，逐页循环会把它每页重传一次。这种图先用 [`+media-upload`](lark-slides-media-upload.md) 传一次，把 `file_token` 写进各页的 `src`。
 
 ## 成功输出
 
