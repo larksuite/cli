@@ -6,10 +6,12 @@ package apps
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -196,6 +198,91 @@ func TestAppsUserIDConvert_DryRun(t *testing.T) {
 	}
 	if !strings.Contains(got, "id_convert") {
 		t.Fatalf("dry-run should reference the id_convert endpoint: %s", got)
+	}
+}
+
+// requestIDs decodes the ids array the CLI actually sent, so @file / stdin tests
+// prove the input was split into discrete IDs rather than forwarded as one blob.
+func requestIDs(t *testing.T, body []byte) []string {
+	t.Helper()
+	var req struct {
+		IDConvertType int      `json:"id_convert_type"`
+		IDs           []string `json:"ids"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		t.Fatalf("decode request body: %v\n%s", err, body)
+	}
+	return req.IDs
+}
+
+// A stdin list is newline-delimited (one ID per line), not comma-delimited. The
+// framework hands the whole block to parseConvertIDs, which must split it into
+// discrete IDs — not send the block as a single request ID. A trailing newline
+// (every well-formed text file has one) must not create an empty trailing ID.
+func TestAppsUserIDConvert_StdinNewlineList(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	factory.IOStreams.In = strings.NewReader("ou_a\nou_b\nou_c\n")
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/directory/user/id_convert",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": []interface{}{}},
+		},
+	}
+	reg.Register(stub)
+
+	if err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "open-id-to-miaoda", "--ids", "-", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := requestIDs(t, stub.CapturedBody)
+	want := []string{"ou_a", "ou_b", "ou_c"}
+	if len(got) != len(want) {
+		t.Fatalf("request ids = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("request ids = %v, want %v", got, want)
+		}
+	}
+}
+
+// @file input goes through the same path: a one-ID-per-line file must be split
+// into discrete IDs. Mixed comma+newline separators within a file are accepted
+// too, since a newline is treated as equivalent to a comma.
+func TestAppsUserIDConvert_FileNewlineList(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("ids.txt", []byte("ou_a\nou_b,ou_c\nou_d\n"), 0o600); err != nil {
+		t.Fatalf("write ids file: %v", err)
+	}
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/directory/user/id_convert",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": []interface{}{}},
+		},
+	}
+	reg.Register(stub)
+
+	if err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "open-id-to-miaoda", "--ids", "@ids.txt", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := requestIDs(t, stub.CapturedBody)
+	want := []string{"ou_a", "ou_b", "ou_c", "ou_d"}
+	if len(got) != len(want) {
+		t.Fatalf("request ids = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("request ids = %v, want %v", got, want)
+		}
 	}
 }
 

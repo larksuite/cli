@@ -184,29 +184,36 @@ func errsInvalidConvertType(got string) error {
 		WithHint("allowed: %s", idConvertAllowed)
 }
 
-// parseConvertIDs splits the resolved --ids value (already expanded from
-// @file / stdin by the framework) into a trimmed, order-preserving list. IDs are
-// NOT de-duplicated — duplicates are kept and returned in input order so a caller
-// can index results by position. An empty element (e.g. "a,,b" or a trailing
-// comma) is rejected rather than dropped, since dropping it would shift every
-// later result's 0-based index and silently break the position-keyed contract.
-// The CLI enforces 1–100 to reject an empty batch (no-op round trip) and a batch
-// over the OpenAPI cap.
+// parseConvertIDs splits the resolved --ids value into a trimmed,
+// order-preserving list. The framework expands @file / stdin content verbatim
+// before this runs, so the value may be the inline comma form (a,b,c) or the
+// one-ID-per-line form a file or stdin naturally produces; both are accepted by
+// treating a newline as equivalent to a comma. IDs are NOT de-duplicated —
+// duplicates are kept in input order so a caller can index results by position.
+// An interior empty element ("a,,b", or a blank line between IDs) is rejected
+// rather than dropped, since dropping it would shift every later result's 0-based
+// index and silently break the position-keyed contract; a trailing separator (a
+// file's final newline, a trailing comma) is benign and tolerated. The CLI
+// enforces 1–100 to reject an empty batch (no-op round trip) and a batch over the
+// OpenAPI cap.
 func parseConvertIDs(raw string) ([]string, error) {
-	parts := strings.Split(raw, ",")
+	normalized := strings.NewReplacer("\r\n", ",", "\r", ",", "\n", ",").Replace(raw)
+	parts := strings.Split(normalized, ",")
 	ids := make([]string, 0, len(parts))
-	empty := false
+	pendingEmpty := false
 	for _, part := range parts {
 		id := strings.TrimSpace(part)
 		if id == "" {
-			empty = true
+			// Defer the verdict: an empty slot only breaks the position contract
+			// if a real ID still follows it. A trailing empty never does.
+			pendingEmpty = true
 			continue
 		}
+		if pendingEmpty {
+			return nil, appsValidationParamError("--ids", "--ids contains an empty entry; remove it so result positions stay aligned").
+				WithHint("provide non-empty ids only, one per line or comma-separated; 1–%d per call (OpenAPI cap 100)", idConvertMaxIDs)
+		}
 		ids = append(ids, id)
-	}
-	if empty && len(ids) > 0 {
-		return nil, appsValidationParamError("--ids", "--ids contains an empty entry; remove it so result positions stay aligned").
-			WithHint("provide non-empty ids only; 1–%d per call (OpenAPI cap 100)", idConvertMaxIDs)
 	}
 	if len(ids) == 0 || len(ids) > idConvertMaxIDs {
 		return nil, appsValidationParamError("--ids", "--ids must contain between 1 and %d IDs, got %d", idConvertMaxIDs, len(ids)).
