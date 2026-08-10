@@ -209,11 +209,15 @@ func TestDownloadAttachmentTaskRejectsMissingServerGUID(t *testing.T) {
 			},
 		},
 	})
+	var downloadCalls int
 	downloadStub := &httpmock.Stub{
 		Method:   http.MethodGet,
 		URL:      "https://download.example/note",
 		RawBody:  []byte("DATA"),
 		Optional: true,
+		OnMatch: func(*http.Request) {
+			downloadCalls++
+		},
 	}
 	reg.Register(downloadStub)
 
@@ -227,7 +231,7 @@ func TestDownloadAttachmentTaskRejectsMissingServerGUID(t *testing.T) {
 	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
 		t.Fatalf("problem = %#v, %v; want internal/invalid_response", problem, ok)
 	}
-	if len(downloadStub.CapturedBodies) != 0 {
+	if downloadCalls != 0 {
 		t.Fatal("temporary download URL was consumed for metadata without a server GUID")
 	}
 }
