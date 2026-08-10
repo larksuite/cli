@@ -2,12 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
-### Compatibility
-
-- Release binaries are now built with Go 1.26.5. macOS release binaries require macOS 12 Monterey or later.
-
 ## [v1.0.85] - 2026-08-07
 
 ### Features
