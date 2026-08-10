@@ -64,13 +64,13 @@ func TestLookupCodeMetaSparkDBSyncCodes(t *testing.T) {
 		category errs.Category
 		subtype  errs.Subtype
 	}{
-		{500002783, errs.CategoryAPI, errs.SubtypeInvalidParameters},
-		{500002784, errs.CategoryAPI, errs.SubtypeInvalidParameters},
-		{500002785, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
-		{500002786, errs.CategoryAPI, errs.SubtypeNotFound},
-		{500002787, errs.CategoryAPI, errs.SubtypeInvalidParameters},
-		{500002788, errs.CategoryAPI, errs.SubtypeNotFound},
-		{500002789, errs.CategoryAPI, errs.SubtypeNotFound},
+		{400002477, errs.CategoryAPI, errs.SubtypeInvalidParameters},
+		{400002478, errs.CategoryAPI, errs.SubtypeInvalidParameters},
+		{400002479, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
+		{400002480, errs.CategoryAPI, errs.SubtypeNotFound},
+		{400002481, errs.CategoryAPI, errs.SubtypeInvalidParameters},
+		{400002482, errs.CategoryAPI, errs.SubtypeNotFound},
+		{400002483, errs.CategoryAPI, errs.SubtypeNotFound},
 	}
 
 	for _, tt := range tests {

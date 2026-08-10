@@ -24,13 +24,13 @@ var sparkCodeMeta = map[int]CodeMeta{
 	3344040: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},          // unsupported member type
 	3344041: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},          // invalid member ID
 
-	500002783: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},         // db sync mapping is invalid
-	500002784: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},         // db sync target schema mismatch
-	500002785: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // db sync operation is not allowed in the current task state
-	500002786: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // db sync task does not exist
-	500002787: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},         // db sync task ID is invalid
-	500002788: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // db sync source table does not exist
-	500002789: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // db sync target table does not exist
+	400002477: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},         // db sync mapping is invalid
+	400002478: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},         // db sync target schema mismatch
+	400002479: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // db sync operation is not allowed in the current task state
+	400002480: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // db sync task does not exist
+	400002481: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},         // db sync task ID is invalid
+	400002482: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // db sync source table does not exist
+	400002483: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // db sync target table does not exist
 }
 
 func init() { mergeCodeMeta(sparkCodeMeta, "spark") }

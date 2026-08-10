@@ -207,7 +207,7 @@ lark-cli apps +db-sync-get --app-id app_xxx --task-id batch_123
 
 **online 禁 DDL（`k_dl_4000001`）恢复**：`+db-sync-create` 建表报 `k_dl_4000001：forbid ddl/dcl operation in online env` 时，这必然是多环境应用（共享库在 online 建表不会报此码）。online 分支**本就不允许**直接建表，这是多环境应用的产品设计、不是可绕过的限制。改用 `--environment dev` 重跑 `+db-sync-create`，把表建到 dev 分支；不要试图「在 online 想办法重试建表」，没有这个选项。
 
-**缺 Base 表记录 ID 映射列（`500002783`）恢复**：streaming 自动同步要求目标表有一个映射给「Base 表记录 ID」的 **text + 单值 + unique** 列。用 `action=use_existing` 写已有表时，若该表没有这样的列，会报 `500002783`（Field mapping must include 'Base 表记录 ID'）。先用 `+db-execute` 给表加一个，如 `ALTER TABLE <表> ADD COLUMN base_record_id varchar UNIQUE`，再把它映射给「Base 表记录 ID」、重跑 `+db-sync-create --preview`。注意这是**加列**、不是建表，不需要审计列 / RLS 那套建表规范。
+**缺 Base 表记录 ID 映射列（`400002477`）恢复**：streaming 自动同步要求目标表有一个映射给「Base 表记录 ID」的 **text + 单值 + unique** 列。用 `action=use_existing` 写已有表时，若该表没有这样的列，会报 `400002477`（Field mapping must include 'Base 表记录 ID'）。先用 `+db-execute` 给表加一个，如 `ALTER TABLE <表> ADD COLUMN base_record_id varchar UNIQUE`，再把它映射给「Base 表记录 ID」、重跑 `+db-sync-create --preview`。注意这是**加列**、不是建表，不需要审计列 / RLS 那套建表规范。
 
 ### 变更追溯与审计
 

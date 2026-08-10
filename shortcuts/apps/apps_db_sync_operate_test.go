@@ -169,7 +169,7 @@ func TestAppsDBSyncOperateErrorCarriesOperationHint(t *testing.T) {
 		Method: "POST",
 		URL:    dbSyncEnableURL,
 		Body: map[string]interface{}{
-			"code": 500002785,
+			"code": 400002479,
 			"msg":  "Operation 'enable' is only available for streaming tasks.",
 		},
 	})
@@ -183,7 +183,7 @@ func TestAppsDBSyncOperateErrorCarriesOperationHint(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected typed problem, got %T %v", err, err)
 	}
-	if p.Code != 500002785 || !strings.Contains(p.Hint, "+db-sync-get") {
+	if p.Code != 400002479 || !strings.Contains(p.Hint, "+db-sync-get") {
 		t.Fatalf("problem = %+v, want operation-not-allowed hint", p)
 	}
 }

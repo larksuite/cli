@@ -251,7 +251,7 @@ func TestAppsDBSyncCreateTargetTableNotFoundHint(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST", URL: dbSyncURL,
-		Body: map[string]interface{}{"code": 500002789, "msg": "target table not found"},
+		Body: map[string]interface{}{"code": 400002483, "msg": "target table not found"},
 	})
 
 	err := runAppsShortcut(t, AppsDBSyncCreate, []string{

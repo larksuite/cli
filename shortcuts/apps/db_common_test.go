@@ -214,7 +214,7 @@ func TestDBSyncHint(t *testing.T) {
 	})
 
 	t.Run("known code gets mapped hint", func(t *testing.T) {
-		in := errs.NewAPIError(errs.SubtypeNotFound, "target missing").WithCode(500002789).WithLogID("log_x")
+		in := errs.NewAPIError(errs.SubtypeNotFound, "target missing").WithCode(400002483).WithLogID("log_x")
 		out := withDBSyncHint(in, "fallback")
 		p, ok := errs.ProblemOf(out)
 		if !ok {
@@ -223,13 +223,13 @@ func TestDBSyncHint(t *testing.T) {
 		if !strings.Contains(p.Hint, "target.table.action") {
 			t.Fatalf("hint = %q, want target-table recovery", p.Hint)
 		}
-		if p.Code != 500002789 || p.LogID != "log_x" || p.Subtype != errs.SubtypeNotFound {
+		if p.Code != 400002483 || p.LogID != "log_x" || p.Subtype != errs.SubtypeNotFound {
 			t.Fatalf("problem metadata mutated: %+v", p)
 		}
 	})
 
 	t.Run("existing hint is preserved", func(t *testing.T) {
-		in := errs.NewAPIError(errs.SubtypeInvalidParameters, "bad mapping").WithCode(500002783).WithHint("server hint")
+		in := errs.NewAPIError(errs.SubtypeInvalidParameters, "bad mapping").WithCode(400002477).WithHint("server hint")
 		out := withDBSyncHint(in, "fallback")
 		p, _ := errs.ProblemOf(out)
 		if p.Hint != "server hint" {
@@ -238,7 +238,7 @@ func TestDBSyncHint(t *testing.T) {
 	})
 
 	t.Run("record-id mapping code guides adding a unique column", func(t *testing.T) {
-		in := errs.NewAPIError(errs.SubtypeInvalidParameters, "mapping must include Base 表记录 ID").WithCode(500002783)
+		in := errs.NewAPIError(errs.SubtypeInvalidParameters, "mapping must include Base 表记录 ID").WithCode(400002477)
 		out := withDBSyncHint(in, "fallback")
 		p, ok := errs.ProblemOf(out)
 		if !ok {
@@ -247,7 +247,7 @@ func TestDBSyncHint(t *testing.T) {
 		if !strings.Contains(p.Hint, "+db-execute") || !strings.Contains(p.Hint, "base_record_id") {
 			t.Fatalf("hint = %q, want +db-execute add-column guidance", p.Hint)
 		}
-		if p.Code != 500002783 || p.Subtype != errs.SubtypeInvalidParameters {
+		if p.Code != 400002477 || p.Subtype != errs.SubtypeInvalidParameters {
 			t.Fatalf("problem metadata mutated: %+v", p)
 		}
 	})

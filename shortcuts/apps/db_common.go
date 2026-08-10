@@ -317,16 +317,16 @@ func requireAppID(raw string) (string, error) {
 }
 
 var dbSyncCodeHints = map[int]string{
-	500002783: "Map 'Base 表记录 ID' to a text, single-value, unique target column. " +
+	400002477: "Map 'Base 表记录 ID' to a text, single-value, unique target column. " +
 		"If the use_existing target table has no such column, first add one with " +
 		"+db-execute (e.g. ALTER TABLE <table> ADD COLUMN base_record_id varchar UNIQUE), then rerun preview. " +
 		"For create, rerun preview; for update, resubmit the corrected configuration.",
-	500002784: "Run +log-list with --keyword <table> to inspect logs. Fix the target with +db-execute or update the streaming task mapping with +db-sync-update, then query the same task again.",
-	500002785: "Run +db-sync-get --task-id <task_id> to inspect the completed task, or create a new task with the required mode.",
-	500002786: "Verify --task-id and list tasks with +db-sync-list.",
-	500002787: "Use a task_id returned by +db-sync-create or +db-sync-list, such as streaming_<id> or batch_<id>.",
-	500002788: "Correct source.table in the config file, then run +db-sync-create --preview again.",
-	500002789: "Set target.table.action to 'create', or create the table with +db-execute, then rerun preview.",
+	400002478: "Run +log-list with --keyword <table> to inspect logs. Fix the target with +db-execute or update the streaming task mapping with +db-sync-update, then query the same task again.",
+	400002479: "Run +db-sync-get --task-id <task_id> to inspect the completed task, or create a new task with the required mode.",
+	400002480: "Verify --task-id and list tasks with +db-sync-list.",
+	400002481: "Use a task_id returned by +db-sync-create or +db-sync-list, such as streaming_<id> or batch_<id>.",
+	400002482: "Correct source.table in the config file, then run +db-sync-create --preview again.",
+	400002483: "Set target.table.action to 'create', or create the table with +db-execute, then rerun preview.",
 }
 
 // dbSyncOnlineDDLCode / dbSyncOnlineDDLSubcode identify the online-branch DDL ban.

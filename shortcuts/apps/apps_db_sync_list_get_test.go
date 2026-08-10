@@ -246,7 +246,7 @@ func TestAppsDBSyncGet_TaskNotFoundGetsListHint(t *testing.T) {
 		Method: "GET",
 		URL:    "/open-apis/spark/v1/apps/app_x/db/sync_task",
 		Body: map[string]interface{}{
-			"code": 500002786,
+			"code": 400002480,
 			"msg":  "task not found",
 		},
 	})
@@ -255,8 +255,8 @@ func TestAppsDBSyncGet_TaskNotFoundGetsListHint(t *testing.T) {
 		[]string{"+db-sync-get", "--app-id", "app_x", "--task-id", "missing", "--as", "user"},
 		factory, stdout)
 	p := requireAppsAPIProblem(t, err)
-	if p.Code != 500002786 {
-		t.Fatalf("code = %d, want 500002786", p.Code)
+	if p.Code != 400002480 {
+		t.Fatalf("code = %d, want 400002480", p.Code)
 	}
 	if !strings.Contains(p.Hint, "+db-sync-list") {
 		t.Fatalf("hint should mention +db-sync-list, got %q", p.Hint)
@@ -269,7 +269,7 @@ func TestAppsDBSyncList_TaskNotFoundGetsListHint(t *testing.T) {
 		Method: "GET",
 		URL:    "/open-apis/spark/v1/apps/app_x/db/sync_list",
 		Body: map[string]interface{}{
-			"code": 500002786,
+			"code": 400002480,
 			"msg":  "task not found",
 		},
 	})
@@ -278,8 +278,8 @@ func TestAppsDBSyncList_TaskNotFoundGetsListHint(t *testing.T) {
 		[]string{"+db-sync-list", "--app-id", "app_x", "--as", "user"},
 		factory, stdout)
 	p := requireAppsAPIProblem(t, err)
-	if p.Code != 500002786 {
-		t.Fatalf("code = %d, want 500002786", p.Code)
+	if p.Code != 400002480 {
+		t.Fatalf("code = %d, want 400002480", p.Code)
 	}
 	if !strings.Contains(p.Hint, "+db-sync-list") {
 		t.Fatalf("hint should mention +db-sync-list, got %q", p.Hint)
