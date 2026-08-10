@@ -43,7 +43,7 @@ metadata:
 
 | 强触发条件（命中任一即必读） | Reference |
 |---|---|
-| 查看自己是谁（user/bot）、获取当前身份详细字段信息、不理解`--as user/bot`的含义、登录态、认证、scope、授权、权限、`missing_scope` 或 `console_url` | [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md) |
+| 查看自己是谁（user/bot）、获取当前身份详细字段信息、不理解`--as user/bot`的含义、登录态、认证、scope、授权、权限、`missing_scopes` 或 `console_url` | [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md) |
 | Agent 准备发起或完成 `auth login`，或该命令输出 `verification_url`、`device_code` | [`auth-split-flow`](references/lark-shared-auth-split-flow.md) |
 | 需要依赖 JSON 输出契约 判断成功 / 失败、读取 stdout / stderr，或为命令编写脚本与封装 | [`output-contract`](references/lark-shared-output-contract.md) |
 | 准备执行high-risk-write(高风险操作)、判断命令风险等级、遇到退出码 exit 10、 `confirmation_required`、确认后重试 | [`high-risk-approval`](references/lark-shared-high-risk-approval.md) |
