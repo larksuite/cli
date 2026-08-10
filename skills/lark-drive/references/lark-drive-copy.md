@@ -44,16 +44,15 @@ lark-cli drive +copy --token <WIKI_TOKEN> --type wiki --name '副本名称' --fo
 
 - bot 身份复制成功后，CLI 会自动尝试给当前 CLI 用户授予新副本的 `full_access`，结果在输出的 `data.permission_grant` 字段中；授权失败不影响复制本身的成功状态
 
-## 复制后继续处理
+## 复制及后续处理
 
-本节定义复制后操作的路由；状态无关的后续操作直接执行，状态依赖的文档编辑再进入 `lark-doc` 通用更新流程。
+本节定义从源文件定位、复制到后续操作的工作流；状态无关的后续操作直接执行，状态依赖的文档编辑再进入对应资源 Skill 的更新流程。
 
 1. 需要按标题定位源文件时，先按 [`lark-drive-search.md`](lark-drive-search.md) 使用 `drive +search` 得到唯一匹配的源资源；已提供可直接使用的 URL 或 token 时从该资源开始。
 2. 使用已确认的源 URL，或真实 token 与 type，执行一次 `drive +copy`。目标位置使用用户给出的文件夹 URL/token；复制到“我的空间”或未指定其他目标位置时使用 `--folder-token my_space`。
 3. 从成功响应的 `data.file_token` 或 `data.url` 取得新副本；后续只操作该副本，不重新搜索副本，也不操作源 token。
 4. 后续写入所需的目标 token、位置和内容均可由用户输入与复制响应确定时，直接按对应资源 Skill 执行写入，不为获取这些参数而预读副本。
-5. 需要当前结构才能确定写入位置时，按对应资源 Skill 读取必要的最小范围；不得猜测 block ID 或正文范围。写入返回明确成功且没有 warning 后即完成；仅在用户要求验证、返回部分成功或 warning，或下一步依赖服务端最新状态时读取结果。
-6. 如果复制后的编辑失败，保留 `data.file_token`，只重试编辑步骤；不要重新执行 `drive +copy`，避免创建重复副本。
+5. 需要当前结构才能确定写入位置时，按对应资源 Skill 读取必要的最小范围；不得猜测 block ID 或正文范围。写入后的验证按对应资源 Skill 和用户需求处理。
 
 ## 输出
 
