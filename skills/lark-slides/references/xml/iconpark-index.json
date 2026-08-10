@@ -442,22 +442,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Abstract/cube-four.svg",
-      "category": "Abstract",
-      "name": "cube-four",
-      "tags": [
-        "cube",
-        "four",
-        "cube-four",
-        "魔方",
-        "六边形",
-        "立方体",
-        "零件",
-        "abstract",
-        "抽象图形"
-      ]
-    },
-    {
       "iconType": "iconpark/Abstract/cube-three.svg",
       "category": "Abstract",
       "name": "cube-three",
@@ -3192,21 +3176,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Arrows/download-one.svg",
-      "category": "Arrows",
-      "name": "download-one",
-      "tags": [
-        "download",
-        "one",
-        "download-one",
-        "下载1",
-        "下载",
-        "云下载",
-        "arrows",
-        "箭头方向"
-      ]
-    },
-    {
       "iconType": "iconpark/Arrows/download-three.svg",
       "category": "Arrows",
       "name": "download-three",
@@ -3817,23 +3786,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Arrows/play-once.svg",
-      "category": "Arrows",
-      "name": "play-once",
-      "tags": [
-        "play",
-        "once",
-        "play-once",
-        "播放一次",
-        "箭头",
-        "播放",
-        "循环",
-        "单次循环",
-        "arrows",
-        "箭头方向"
-      ]
-    },
-    {
       "iconType": "iconpark/Arrows/recycling.svg",
       "category": "Arrows",
       "name": "recycling",
@@ -3877,20 +3829,6 @@
         "再做",
         "刷新",
         "旋转",
-        "arrows",
-        "箭头方向"
-      ]
-    },
-    {
-      "iconType": "iconpark/Arrows/reject.svg",
-      "category": "Arrows",
-      "name": "reject",
-      "tags": [
-        "reject",
-        "驳回",
-        "拒绝",
-        "不通过",
-        "有问题",
         "arrows",
         "箭头方向"
       ]
@@ -4093,23 +4031,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Arrows/send-one.svg",
-      "category": "Arrows",
-      "name": "send-one",
-      "tags": [
-        "send",
-        "one",
-        "send-one",
-        "发送1",
-        "飞机",
-        "发送",
-        "飞书",
-        "导航",
-        "arrows",
-        "箭头方向"
-      ]
-    },
-    {
       "iconType": "iconpark/Arrows/shuffle.svg",
       "category": "Arrows",
       "name": "shuffle",
@@ -4237,37 +4158,6 @@
         "上下",
         "顺序",
         "排列",
-        "arrows",
-        "箭头方向"
-      ]
-    },
-    {
-      "iconType": "iconpark/Arrows/sort-two.svg",
-      "category": "Arrows",
-      "name": "sort-two",
-      "tags": [
-        "sort",
-        "two",
-        "sort-two",
-        "排序2",
-        "排序",
-        "上下",
-        "顺序",
-        "排列",
-        "arrows",
-        "箭头方向"
-      ]
-    },
-    {
-      "iconType": "iconpark/Arrows/switch.svg",
-      "category": "Arrows",
-      "name": "switch",
-      "tags": [
-        "switch",
-        "切换",
-        "箭头",
-        "左右箭头",
-        "转换",
         "arrows",
         "箭头方向"
       ]
@@ -4550,22 +4440,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Arrows/upload-one.svg",
-      "category": "Arrows",
-      "name": "upload-one",
-      "tags": [
-        "upload",
-        "one",
-        "upload-one",
-        "上传1",
-        "上传",
-        "云上传",
-        "载入",
-        "arrows",
-        "箭头方向"
-      ]
-    },
-    {
       "iconType": "iconpark/Arrows/upload-three.svg",
       "category": "Arrows",
       "name": "upload-three",
@@ -4612,20 +4486,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Baby/baby-app.svg",
-      "category": "Baby",
-      "name": "baby-app",
-      "tags": [
-        "baby",
-        "app",
-        "baby-app",
-        "应用",
-        "电脑",
-        "小孩",
-        "母婴儿童"
-      ]
-    },
-    {
       "iconType": "iconpark/Baby/baby-bottle.svg",
       "category": "Baby",
       "name": "baby-bottle",
@@ -4651,20 +4511,6 @@
         "baby-car-seat",
         "车载座",
         "座椅",
-        "母婴儿童"
-      ]
-    },
-    {
-      "iconType": "iconpark/Baby/baby-feet.svg",
-      "category": "Baby",
-      "name": "baby-feet",
-      "tags": [
-        "baby",
-        "feet",
-        "baby-feet",
-        "脚掌",
-        "脚",
-        "脚印",
         "母婴儿童"
       ]
     },
@@ -4882,21 +4728,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Baby/child-with-pacifier.svg",
-      "category": "Baby",
-      "name": "child-with-pacifier",
-      "tags": [
-        "child",
-        "with",
-        "pacifier",
-        "child-with-pacifier",
-        "吃奶嘴",
-        "吃奶",
-        "baby",
-        "母婴儿童"
-      ]
-    },
-    {
       "iconType": "iconpark/Baby/children-pyramid.svg",
       "category": "Baby",
       "name": "children-pyramid",
@@ -4920,21 +4751,6 @@
         "摇篮",
         "儿童床",
         "baby",
-        "母婴儿童"
-      ]
-    },
-    {
-      "iconType": "iconpark/Baby/crying-baby.svg",
-      "category": "Baby",
-      "name": "crying-baby",
-      "tags": [
-        "crying",
-        "baby",
-        "crying-baby",
-        "孩子哭泣",
-        "哭泣",
-        "表情",
-        "难过",
         "母婴儿童"
       ]
     },
@@ -5068,36 +4884,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Baby/paper-ship.svg",
-      "category": "Baby",
-      "name": "paper-ship",
-      "tags": [
-        "paper",
-        "ship",
-        "paper-ship",
-        "纸船",
-        "船",
-        "模型",
-        "baby",
-        "母婴儿童"
-      ]
-    },
-    {
-      "iconType": "iconpark/Baby/parenting-book.svg",
-      "category": "Baby",
-      "name": "parenting-book",
-      "tags": [
-        "parenting",
-        "book",
-        "parenting-book",
-        "育儿书",
-        "书籍",
-        "阅读",
-        "baby",
-        "母婴儿童"
-      ]
-    },
-    {
       "iconType": "iconpark/Baby/party-balloon.svg",
       "category": "Baby",
       "name": "party-balloon",
@@ -5152,50 +4938,6 @@
         "算数",
         "计算",
         "知识",
-        "baby",
-        "母婴儿童"
-      ]
-    },
-    {
-      "iconType": "iconpark/Baby/radio-nanny.svg",
-      "category": "Baby",
-      "name": "radio-nanny",
-      "tags": [
-        "radio",
-        "nanny",
-        "radio-nanny",
-        "广播保姆",
-        "遥控器",
-        "播放器",
-        "广播",
-        "baby",
-        "母婴儿童"
-      ]
-    },
-    {
-      "iconType": "iconpark/Baby/rattle.svg",
-      "category": "Baby",
-      "name": "rattle",
-      "tags": [
-        "rattle",
-        "拨浪鼓",
-        "鼓",
-        "玩具",
-        "baby",
-        "母婴儿童"
-      ]
-    },
-    {
-      "iconType": "iconpark/Baby/rattle-one.svg",
-      "category": "Baby",
-      "name": "rattle-one",
-      "tags": [
-        "rattle",
-        "one",
-        "rattle-one",
-        "拨浪鼓1",
-        "鼓",
-        "玩具",
         "baby",
         "母婴儿童"
       ]
@@ -5664,19 +5406,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Base/more.svg",
-      "category": "Base",
-      "name": "more",
-      "tags": [
-        "more",
-        "更多",
-        "点",
-        "三点",
-        "base",
-        "基础"
-      ]
-    },
-    {
       "iconType": "iconpark/Base/more-app.svg",
       "category": "Base",
       "name": "more-app",
@@ -5691,38 +5420,6 @@
         "基础",
         "module",
         "模块"
-      ]
-    },
-    {
-      "iconType": "iconpark/Base/more-one.svg",
-      "category": "Base",
-      "name": "more-one",
-      "tags": [
-        "more",
-        "one",
-        "more-one",
-        "更多1",
-        "点",
-        "三点",
-        "更多",
-        "base",
-        "基础"
-      ]
-    },
-    {
-      "iconType": "iconpark/Base/more-two.svg",
-      "category": "Base",
-      "name": "more-two",
-      "tags": [
-        "more",
-        "two",
-        "more-two",
-        "更多2",
-        "更多",
-        "圆形",
-        "三点",
-        "base",
-        "基础"
       ]
     },
     {
@@ -6244,24 +5941,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Brand/adobe-illustrate.svg",
-      "category": "Brand",
-      "name": "adobe-illustrate",
-      "tags": [
-        "adobe",
-        "illustrate",
-        "adobe-illustrate",
-        "软件",
-        "应用",
-        "工具",
-        "设计",
-        "logo",
-        "ai",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
       "iconType": "iconpark/Brand/adobe-indesign.svg",
       "category": "Brand",
       "name": "adobe-indesign",
@@ -6316,22 +5995,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Brand/alipay.svg",
-      "category": "Brand",
-      "name": "alipay",
-      "tags": [
-        "alipay",
-        "支付宝",
-        "手机付款",
-        "移动支付",
-        "无现金支付",
-        "阿里支付",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
       "iconType": "iconpark/Brand/android.svg",
       "category": "Brand",
       "name": "android",
@@ -6341,24 +6004,6 @@
         "谷歌",
         "操作系统",
         "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/app-store.svg",
-      "category": "Brand",
-      "name": "app-store",
-      "tags": [
-        "app",
-        "store",
-        "app-store",
-        "应用商店",
-        "商店",
-        "应用",
-        "商城",
-        "logo",
-        "工具",
         "brand",
         "品牌"
       ]
@@ -6445,51 +6090,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Brand/bytedance.svg",
-      "category": "Brand",
-      "name": "bytedance",
-      "tags": [
-        "bytedance",
-        "字节跳动",
-        "头条",
-        "音符",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/cc.svg",
-      "category": "Brand",
-      "name": "cc",
-      "tags": [
-        "cc",
-        "巨量创意",
-        "创意中心",
-        "商业化品牌",
-        "创意广告",
-        "oceanengine",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/customer.svg",
-      "category": "Brand",
-      "name": "customer",
-      "tags": [
-        "customer",
-        "小六客服",
-        "客服",
-        "聊天",
-        "沟通",
-        "oceanengine",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
       "iconType": "iconpark/Brand/dianziqian.svg",
       "category": "Brand",
       "name": "dianziqian",
@@ -6499,22 +6099,6 @@
         "logo",
         "签合同",
         "合作",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/dongchedi.svg",
-      "category": "Brand",
-      "name": "dongchedi",
-      "tags": [
-        "dongchedi",
-        "懂车帝",
-        "汽车",
-        "资讯",
-        "媒体",
-        "logo",
-        "字节跳动",
         "brand",
         "品牌"
       ]
@@ -6607,35 +6191,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Brand/faceu.svg",
-      "category": "Brand",
-      "name": "faceu",
-      "tags": [
-        "faceu",
-        "激萌",
-        "拍照",
-        "logo",
-        "修图",
-        "美颜",
-        "相机",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/fanqiexiaoshuo.svg",
-      "category": "Brand",
-      "name": "fanqiexiaoshuo",
-      "tags": [
-        "fanqiexiaoshuo",
-        "番茄小说",
-        "logo",
-        "阅读软件",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
       "iconType": "iconpark/Brand/feelgood.svg",
       "category": "Brand",
       "name": "feelgood",
@@ -6661,22 +6216,6 @@
         "对话",
         "气泡",
         "feegood",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/feiyu.svg",
-      "category": "Brand",
-      "name": "feiyu",
-      "tags": [
-        "feiyu",
-        "飞鱼crm",
-        "飞鱼",
-        "crm",
-        "线索",
-        "oceanengine",
-        "logo",
         "brand",
         "品牌"
       ]
@@ -6730,21 +6269,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Brand/github.svg",
-      "category": "Brand",
-      "name": "github",
-      "tags": [
-        "github",
-        "代码共享社区",
-        "开发",
-        "社区",
-        "logo",
-        "小猫",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
       "iconType": "iconpark/Brand/github-one.svg",
       "category": "Brand",
       "name": "github-one",
@@ -6770,22 +6294,6 @@
         "代码共享社区",
         "开发",
         "社区",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/google.svg",
-      "category": "Brand",
-      "name": "google",
-      "tags": [
-        "google",
-        "谷歌",
-        "搜索",
-        "search",
-        "company",
-        "llc",
-        "logo",
         "brand",
         "品牌"
       ]
@@ -6839,20 +6347,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Brand/huoshanzhibo.svg",
-      "category": "Brand",
-      "name": "huoshanzhibo",
-      "tags": [
-        "huoshanzhibo",
-        "抖音火山",
-        "音乐",
-        "抖音火山版",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
       "iconType": "iconpark/Brand/instagram.svg",
       "category": "Brand",
       "name": "instagram",
@@ -6889,55 +6383,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Brand/jinritoutiao.svg",
-      "category": "Brand",
-      "name": "jinritoutiao",
-      "tags": [
-        "jinritoutiao",
-        "今日头条",
-        "字节跳动",
-        "新闻",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/lark.svg",
-      "category": "Brand",
-      "name": "lark",
-      "tags": [
-        "lark",
-        "飞书",
-        "协作",
-        "办公",
-        "logo",
-        "字节跳动",
-        "飞机",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/lark-one.svg",
-      "category": "Brand",
-      "name": "lark-one",
-      "tags": [
-        "lark",
-        "one",
-        "lark-one",
-        "飞书1",
-        "协作",
-        "办公",
-        "logo",
-        "字节跳动",
-        "飞书",
-        "飞机",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
       "iconType": "iconpark/Brand/lincoln.svg",
       "category": "Brand",
       "name": "lincoln",
@@ -6949,41 +6394,6 @@
         "logo",
         "标志",
         "标识",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/maill-one.svg",
-      "category": "Brand",
-      "name": "maill-one",
-      "tags": [
-        "maill",
-        "one",
-        "maill-one",
-        "邮件1",
-        "信息",
-        "讯息",
-        "交流",
-        "社交",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/market.svg",
-      "category": "Brand",
-      "name": "market",
-      "tags": [
-        "market",
-        "易拍",
-        "巨量创意",
-        "广告拍摄",
-        "滤镜",
-        "编辑视频",
-        "oceanengine",
-        "logo",
         "brand",
         "品牌"
       ]
@@ -7007,40 +6417,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Brand/messages.svg",
-      "category": "Brand",
-      "name": "messages",
-      "tags": [
-        "messages",
-        "短信",
-        "信息",
-        "讯息",
-        "交流",
-        "社交",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/messages-one.svg",
-      "category": "Brand",
-      "name": "messages-one",
-      "tags": [
-        "messages",
-        "one",
-        "messages-one",
-        "短信1",
-        "信息",
-        "讯息",
-        "交流",
-        "社交",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
       "iconType": "iconpark/Brand/mitsubishi.svg",
       "category": "Brand",
       "name": "mitsubishi",
@@ -7051,65 +6427,6 @@
         "三角形",
         "菱形",
         "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/new-dianziqian.svg",
-      "category": "Brand",
-      "name": "new-dianziqian",
-      "tags": [
-        "new",
-        "dianziqian",
-        "new-dianziqian",
-        "电子签-新",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/new-lark.svg",
-      "category": "Brand",
-      "name": "new-lark",
-      "tags": [
-        "new",
-        "lark",
-        "new-lark",
-        "飞书-新",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/oceanengine.svg",
-      "category": "Brand",
-      "name": "oceanengine",
-      "tags": [
-        "oceanengine",
-        "巨量引擎",
-        "广告投放",
-        "广告",
-        "变现",
-        "营销",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/orange-station.svg",
-      "category": "Brand",
-      "name": "orange-station",
-      "tags": [
-        "orange",
-        "station",
-        "orange-station",
-        "橙子建站",
-        "智能建站",
-        "落地页",
-        "智能设计平台",
-        "oceanengine",
-        "h5",
         "brand",
         "品牌"
       ]
@@ -7135,42 +6452,6 @@
         "paypal",
         "支付",
         "转账",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/phone-two.svg",
-      "category": "Brand",
-      "name": "phone-two",
-      "tags": [
-        "phone",
-        "two",
-        "phone-two",
-        "电话2",
-        "通话",
-        "交流",
-        "沟通",
-        "社交",
-        "logo",
-        "电话",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/qingniao-clue.svg",
-      "category": "Brand",
-      "name": "qingniao-clue",
-      "tags": [
-        "qingniao",
-        "clue",
-        "qingniao-clue",
-        "青鸟线索通",
-        "商业化品牌",
-        "品牌广告",
-        "oceanengine",
         "logo",
         "brand",
         "品牌"
@@ -7239,45 +6520,12 @@
       ]
     },
     {
-      "iconType": "iconpark/Brand/taobao.svg",
-      "category": "Brand",
-      "name": "taobao",
-      "tags": [
-        "taobao",
-        "淘宝",
-        "阿里巴巴",
-        "电商",
-        "购物",
-        "手机购物",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
       "iconType": "iconpark/Brand/telegram.svg",
       "category": "Brand",
       "name": "telegram",
       "tags": [
         "telegram",
         "飞机",
-        "logo",
-        "通信软件",
-        "聊天",
-        "社交",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/tencent-qq.svg",
-      "category": "Brand",
-      "name": "tencent-qq",
-      "tags": [
-        "tencent",
-        "qq",
-        "tencent-qq",
-        "企鹅",
         "logo",
         "通信软件",
         "聊天",
@@ -7403,22 +6651,6 @@
         "大众",
         "汽车",
         "加工厂",
-        "logo",
-        "brand",
-        "品牌"
-      ]
-    },
-    {
-      "iconType": "iconpark/Brand/wechat.svg",
-      "category": "Brand",
-      "name": "wechat",
-      "tags": [
-        "wechat",
-        "微信",
-        "聊天",
-        "社交",
-        "沟通",
-        "语音",
         "logo",
         "brand",
         "品牌"
@@ -7833,20 +7065,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Build/city.svg",
-      "category": "Build",
-      "name": "city",
-      "tags": [
-        "city",
-        "城市",
-        "建筑",
-        "楼房",
-        "办公楼",
-        "小区",
-        "build"
-      ]
-    },
-    {
       "iconType": "iconpark/Build/city-gate.svg",
       "category": "Build",
       "name": "city-gate",
@@ -8199,22 +7417,6 @@
         "护理",
         "健康",
         "build"
-      ]
-    },
-    {
-      "iconType": "iconpark/Build/hotel.svg",
-      "category": "Build",
-      "name": "hotel",
-      "tags": [
-        "hotel",
-        "酒店",
-        "城楼",
-        "阁楼",
-        "房子",
-        "大厦",
-        "办公楼",
-        "build",
-        "建筑"
       ]
     },
     {
@@ -8699,19 +7901,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Character/ad.svg",
-      "category": "Character",
-      "name": "ad",
-      "tags": [
-        "ad",
-        "广告",
-        "广告符号",
-        "标志",
-        "character",
-        "符号标识"
-      ]
-    },
-    {
       "iconType": "iconpark/Character/add.svg",
       "category": "Character",
       "name": "add",
@@ -8754,19 +7943,6 @@
         "圈人",
         "提醒用户",
         "相关人",
-        "character",
-        "符号标识"
-      ]
-    },
-    {
-      "iconType": "iconpark/Character/attention.svg",
-      "category": "Character",
-      "name": "attention",
-      "tags": [
-        "attention",
-        "注意",
-        "提示",
-        "警示",
         "character",
         "符号标识"
       ]
@@ -9006,32 +8182,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Character/help.svg",
-      "category": "Character",
-      "name": "help",
-      "tags": [
-        "help",
-        "帮助",
-        "问题",
-        "疑问",
-        "character",
-        "符号标识"
-      ]
-    },
-    {
-      "iconType": "iconpark/Character/info.svg",
-      "category": "Character",
-      "name": "info",
-      "tags": [
-        "info",
-        "信息",
-        "注解",
-        "提示",
-        "character",
-        "符号标识"
-      ]
-    },
-    {
       "iconType": "iconpark/Character/minus.svg",
       "category": "Character",
       "name": "minus",
@@ -9041,21 +8191,6 @@
         "减号",
         "去除",
         "减少",
-        "character",
-        "符号标识"
-      ]
-    },
-    {
-      "iconType": "iconpark/Character/more-three.svg",
-      "category": "Character",
-      "name": "more-three",
-      "tags": [
-        "more",
-        "three",
-        "more-three",
-        "更多3",
-        "更多",
-        "圆形",
         "character",
         "符号标识"
       ]
@@ -9172,18 +8307,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Character/trademark.svg",
-      "category": "Character",
-      "name": "trademark",
-      "tags": [
-        "trademark",
-        "商标符号",
-        "标志",
-        "character",
-        "符号标识"
-      ]
-    },
-    {
       "iconType": "iconpark/Character/vip.svg",
       "category": "Character",
       "name": "vip",
@@ -9206,21 +8329,6 @@
         "活动源",
         "数据库",
         "数据源",
-        "charts",
-        "数据图表"
-      ]
-    },
-    {
-      "iconType": "iconpark/Charts/analysis.svg",
-      "category": "Charts",
-      "name": "analysis",
-      "tags": [
-        "analysis",
-        "分析",
-        "网络分析",
-        "数据",
-        "趋势",
-        "统计",
         "charts",
         "数据图表"
       ]
@@ -9286,23 +8394,6 @@
         "数据",
         "图表",
         "曲线",
-        "charts",
-        "数据图表"
-      ]
-    },
-    {
-      "iconType": "iconpark/Charts/broadcast-one.svg",
-      "category": "Charts",
-      "name": "broadcast-one",
-      "tags": [
-        "broadcast",
-        "one",
-        "broadcast-one",
-        "广播",
-        "多节点传输",
-        "传输",
-        "数据",
-        "通信",
         "charts",
         "数据图表"
       ]
@@ -9930,21 +9021,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Charts/multicast.svg",
-      "category": "Charts",
-      "name": "multicast",
-      "tags": [
-        "multicast",
-        "多播",
-        "组播",
-        "节点传输",
-        "多节点",
-        "通信",
-        "charts",
-        "数据图表"
-      ]
-    },
-    {
       "iconType": "iconpark/Charts/negative-dynamics.svg",
       "category": "Charts",
       "name": "negative-dynamics",
@@ -10299,37 +9375,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Charts/unicast.svg",
-      "category": "Charts",
-      "name": "unicast",
-      "tags": [
-        "unicast",
-        "单播",
-        "点对点通信",
-        "节点传输",
-        "charts",
-        "数据图表"
-      ]
-    },
-    {
-      "iconType": "iconpark/Charts/vertical-timeline.svg",
-      "category": "Charts",
-      "name": "vertical-timeline",
-      "tags": [
-        "vertical",
-        "timeline",
-        "vertical-timeline",
-        "垂直时间线",
-        "时间线",
-        "时间",
-        "数据",
-        "分析",
-        "图表",
-        "charts",
-        "数据图表"
-      ]
-    },
-    {
       "iconType": "iconpark/Charts/viencharts.svg",
       "category": "Charts",
       "name": "viencharts",
@@ -10394,20 +9439,6 @@
         "教育",
         "培训",
         "学习"
-      ]
-    },
-    {
-      "iconType": "iconpark/Clothes/bachelor-cap-two.svg",
-      "category": "Clothes",
-      "name": "bachelor-cap-two",
-      "tags": [
-        "bachelor",
-        "cap",
-        "two",
-        "bachelor-cap-two",
-        "博士帽2",
-        "clothes",
-        "服饰"
       ]
     },
     {
@@ -11178,19 +10209,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Clothes/shorts.svg",
-      "category": "Clothes",
-      "name": "shorts",
-      "tags": [
-        "shorts",
-        "短裤",
-        "运动裤",
-        "训练裤",
-        "clothes",
-        "服饰"
-      ]
-    },
-    {
       "iconType": "iconpark/Clothes/skates.svg",
       "category": "Clothes",
       "name": "skates",
@@ -11521,24 +10539,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Communicate/communication.svg",
-      "category": "Communicate",
-      "name": "communication",
-      "tags": [
-        "communication",
-        "沟通",
-        "信息",
-        "聊天",
-        "通知",
-        "社交",
-        "新消息",
-        "合作洽谈",
-        "评论",
-        "communicate",
-        "交流沟通"
-      ]
-    },
-    {
       "iconType": "iconpark/Communicate/message.svg",
       "category": "Communicate",
       "name": "message",
@@ -11550,24 +10550,6 @@
         "社交",
         "通讯",
         "沟通",
-        "communicate",
-        "交流沟通"
-      ]
-    },
-    {
-      "iconType": "iconpark/Communicate/message-emoji.svg",
-      "category": "Communicate",
-      "name": "message-emoji",
-      "tags": [
-        "message",
-        "emoji",
-        "message-emoji",
-        "表情信息",
-        "对话",
-        "评论",
-        "聊天",
-        "消息",
-        "通知",
         "communicate",
         "交流沟通"
       ]
@@ -11587,24 +10569,6 @@
         "消息",
         "通知",
         "失败",
-        "communicate",
-        "交流沟通"
-      ]
-    },
-    {
-      "iconType": "iconpark/Communicate/message-one.svg",
-      "category": "Communicate",
-      "name": "message-one",
-      "tags": [
-        "message",
-        "one",
-        "message-one",
-        "消息",
-        "信息",
-        "聊天",
-        "通知",
-        "社交",
-        "沟通",
         "communicate",
         "交流沟通"
       ]
@@ -11704,26 +10668,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Communicate/message-unread.svg",
-      "category": "Communicate",
-      "name": "message-unread",
-      "tags": [
-        "message",
-        "unread",
-        "message-unread",
-        "未读消息",
-        "信息",
-        "聊天",
-        "通知",
-        "社交",
-        "沟通",
-        "新消息",
-        "评论",
-        "communicate",
-        "交流沟通"
-      ]
-    },
-    {
       "iconType": "iconpark/Communicate/online-meeting.svg",
       "category": "Communicate",
       "name": "online-meeting",
@@ -11787,24 +10731,6 @@
         "接收",
         "通话",
         "呼叫",
-        "communicate",
-        "交流沟通"
-      ]
-    },
-    {
-      "iconType": "iconpark/Communicate/phone-missed.svg",
-      "category": "Communicate",
-      "name": "phone-missed",
-      "tags": [
-        "phone",
-        "missed",
-        "phone-missed",
-        "电话错过",
-        "电话",
-        "呼叫失败",
-        "通话",
-        "错过",
-        "静音",
         "communicate",
         "交流沟通"
       ]
@@ -11889,24 +10815,6 @@
         "phone-video-call",
         "视频电话",
         "通话",
-        "communicate",
-        "交流沟通"
-      ]
-    },
-    {
-      "iconType": "iconpark/Communicate/tips-one.svg",
-      "category": "Communicate",
-      "name": "tips-one",
-      "tags": [
-        "tips",
-        "one",
-        "tips-one",
-        "提示",
-        "信息提示",
-        "警示",
-        "报错",
-        "提示信息",
-        "message",
         "communicate",
         "交流沟通"
       ]
@@ -12399,21 +11307,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Connect/left-and-right-branch.svg",
-      "category": "Connect",
-      "name": "left-and-right-branch",
-      "tags": [
-        "left",
-        "and",
-        "right",
-        "branch",
-        "left-and-right-branch",
-        "左右分支",
-        "connect",
-        "链接"
-      ]
-    },
-    {
       "iconType": "iconpark/Connect/left-branch.svg",
       "category": "Connect",
       "name": "left-branch",
@@ -12532,34 +11425,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Connect/link-three.svg",
-      "category": "Connect",
-      "name": "link-three",
-      "tags": [
-        "link",
-        "three",
-        "link-three",
-        "链接",
-        "组合",
-        "合并",
-        "绑定",
-        "connect"
-      ]
-    },
-    {
-      "iconType": "iconpark/Connect/lower-branch.svg",
-      "category": "Connect",
-      "name": "lower-branch",
-      "tags": [
-        "lower",
-        "branch",
-        "lower-branch",
-        "下分支",
-        "connect",
-        "链接"
-      ]
-    },
-    {
       "iconType": "iconpark/Connect/network-tree.svg",
       "category": "Connect",
       "name": "network-tree",
@@ -12607,19 +11472,6 @@
         "连接",
         "发散",
         "跳跃",
-        "connect",
-        "链接"
-      ]
-    },
-    {
-      "iconType": "iconpark/Connect/right-branch.svg",
-      "category": "Connect",
-      "name": "right-branch",
-      "tags": [
-        "right",
-        "branch",
-        "right-branch",
-        "右分支",
         "connect",
         "链接"
       ]
@@ -12702,23 +11554,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Connect/s-turn-left.svg",
-      "category": "Connect",
-      "name": "s-turn-left",
-      "tags": [
-        "s",
-        "turn",
-        "left",
-        "s-turn-left",
-        "左侧连接",
-        "流转",
-        "传输",
-        "串联",
-        "connect",
-        "链接"
-      ]
-    },
-    {
       "iconType": "iconpark/Connect/s-turn-right.svg",
       "category": "Connect",
       "name": "s-turn-right",
@@ -12731,24 +11566,6 @@
         "流转",
         "传输",
         "串联",
-        "connect",
-        "链接"
-      ]
-    },
-    {
-      "iconType": "iconpark/Connect/s-turn-up.svg",
-      "category": "Connect",
-      "name": "s-turn-up",
-      "tags": [
-        "s",
-        "turn",
-        "up",
-        "s-turn-up",
-        "顶部连接",
-        "上侧连接",
-        "传输",
-        "串联",
-        "流转",
         "connect",
         "链接"
       ]
@@ -12770,42 +11587,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Connect/split-turn-down-left.svg",
-      "category": "Connect",
-      "name": "split-turn-down-left",
-      "tags": [
-        "split",
-        "turn",
-        "down",
-        "left",
-        "split-turn-down-left",
-        "左下分支",
-        "思维导图",
-        "分支",
-        "分散",
-        "connect",
-        "链接"
-      ]
-    },
-    {
-      "iconType": "iconpark/Connect/split-turn-down-right.svg",
-      "category": "Connect",
-      "name": "split-turn-down-right",
-      "tags": [
-        "split",
-        "turn",
-        "down",
-        "right",
-        "split-turn-down-right",
-        "右下分支",
-        "思维导图",
-        "分支",
-        "分散",
-        "connect",
-        "链接"
-      ]
-    },
-    {
       "iconType": "iconpark/Connect/tree-diagram.svg",
       "category": "Connect",
       "name": "tree-diagram",
@@ -12818,23 +11599,6 @@
         "散发",
         "分支",
         "结构",
-        "connect",
-        "链接"
-      ]
-    },
-    {
-      "iconType": "iconpark/Connect/u-turn-down.svg",
-      "category": "Connect",
-      "name": "u-turn-down",
-      "tags": [
-        "u",
-        "turn",
-        "down",
-        "u-turn-down",
-        "上回转",
-        "转向",
-        "回转",
-        "返回",
         "connect",
         "链接"
       ]
@@ -12866,23 +11630,6 @@
         "right",
         "u-turn-right",
         "左回转",
-        "转向",
-        "回转",
-        "返回",
-        "connect",
-        "链接"
-      ]
-    },
-    {
-      "iconType": "iconpark/Connect/u-turn-up.svg",
-      "category": "Connect",
-      "name": "u-turn-up",
-      "tags": [
-        "u",
-        "turn",
-        "up",
-        "u-turn-up",
-        "下回转",
         "转向",
         "回转",
         "返回",
@@ -12924,17 +11671,6 @@
       "tags": [
         "aries",
         "白羊座",
-        "constellation",
-        "星座"
-      ]
-    },
-    {
-      "iconType": "iconpark/Constellation/cancer.svg",
-      "category": "Constellation",
-      "name": "cancer",
-      "tags": [
-        "cancer",
-        "巨蟹座",
         "constellation",
         "星座"
       ]
@@ -13028,17 +11764,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Constellation/virgo.svg",
-      "category": "Constellation",
-      "name": "virgo",
-      "tags": [
-        "virgo",
-        "处女座",
-        "constellation",
-        "星座"
-      ]
-    },
-    {
       "iconType": "iconpark/Datas/data-display.svg",
       "category": "Datas",
       "name": "data-display",
@@ -13097,20 +11822,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Datas/database-alert.svg",
-      "category": "Datas",
-      "name": "database-alert",
-      "tags": [
-        "database",
-        "alert",
-        "database-alert",
-        "数据库警示",
-        "资源库",
-        "datas",
-        "数据"
-      ]
-    },
-    {
       "iconType": "iconpark/Datas/database-code.svg",
       "category": "Datas",
       "name": "database-code",
@@ -13119,47 +11830,6 @@
         "code",
         "database-code",
         "数据库代码",
-        "datas",
-        "数据"
-      ]
-    },
-    {
-      "iconType": "iconpark/Datas/database-config.svg",
-      "category": "Datas",
-      "name": "database-config",
-      "tags": [
-        "database",
-        "config",
-        "database-config",
-        "数据库配置",
-        "datas",
-        "数据"
-      ]
-    },
-    {
-      "iconType": "iconpark/Datas/database-download.svg",
-      "category": "Datas",
-      "name": "database-download",
-      "tags": [
-        "database",
-        "download",
-        "database-download",
-        "数据库下载",
-        "资源下载",
-        "datas",
-        "数据"
-      ]
-    },
-    {
-      "iconType": "iconpark/Datas/database-enter.svg",
-      "category": "Datas",
-      "name": "database-enter",
-      "tags": [
-        "database",
-        "enter",
-        "database-enter",
-        "数据库进入",
-        "数据移出",
         "datas",
         "数据"
       ]
@@ -13289,19 +11959,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Datas/database-proportion.svg",
-      "category": "Datas",
-      "name": "database-proportion",
-      "tags": [
-        "database",
-        "proportion",
-        "database-proportion",
-        "数据库占比",
-        "datas",
-        "数据"
-      ]
-    },
-    {
       "iconType": "iconpark/Datas/database-search.svg",
       "category": "Datas",
       "name": "database-search",
@@ -13344,34 +12001,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Datas/database-sync.svg",
-      "category": "Datas",
-      "name": "database-sync",
-      "tags": [
-        "database",
-        "sync",
-        "database-sync",
-        "数据库同步",
-        "数据运转",
-        "datas",
-        "数据"
-      ]
-    },
-    {
-      "iconType": "iconpark/Datas/database-time.svg",
-      "category": "Datas",
-      "name": "database-time",
-      "tags": [
-        "database",
-        "time",
-        "database-time",
-        "数据库时间",
-        "资源库",
-        "datas",
-        "数据"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/add-four.svg",
       "category": "Edit",
       "name": "add-four",
@@ -13384,21 +12013,6 @@
         "精准",
         "扫描",
         "识别",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/add-item.svg",
-      "category": "Edit",
-      "name": "add-item",
-      "tags": [
-        "add",
-        "item",
-        "add-item",
-        "添加同级条目",
-        "拖拽",
-        "复制",
         "edit",
         "编辑"
       ]
@@ -13432,20 +12046,6 @@
         "添加",
         "图片",
         "相册",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/add-subset.svg",
-      "category": "Edit",
-      "name": "add-subset",
-      "tags": [
-        "add",
-        "subset",
-        "add-subset",
-        "添加子条目",
-        "创建",
         "edit",
         "编辑"
       ]
@@ -13648,22 +12248,6 @@
         "编辑",
         "排版",
         "edit"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/align-left-two.svg",
-      "category": "Edit",
-      "name": "align-left-two",
-      "tags": [
-        "align",
-        "left",
-        "two",
-        "align-left-two",
-        "左对齐2",
-        "左对齐",
-        "排版方式",
-        "edit",
-        "编辑"
       ]
     },
     {
@@ -14538,21 +13122,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/brightness.svg",
-      "category": "Edit",
-      "name": "brightness",
-      "tags": [
-        "brightness",
-        "亮度",
-        "显示",
-        "显示屏",
-        "明暗",
-        "太阳",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/bring-forward.svg",
       "category": "Edit",
       "name": "bring-forward",
@@ -14850,19 +13419,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/cutting.svg",
-      "category": "Edit",
-      "name": "cutting",
-      "tags": [
-        "cutting",
-        "裁切",
-        "裁剪",
-        "剪切",
-        "编辑",
-        "edit"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/cutting-one.svg",
       "category": "Edit",
       "name": "cutting-one",
@@ -14908,20 +13464,6 @@
         "亮度",
         "对比度",
         "黑暗",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/deeplink.svg",
-      "category": "Edit",
-      "name": "deeplink",
-      "tags": [
-        "deeplink",
-        "链接",
-        "深度链接",
-        "连接",
-        "联系",
         "edit",
         "编辑"
       ]
@@ -15017,22 +13559,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/delete-three.svg",
-      "category": "Edit",
-      "name": "delete-three",
-      "tags": [
-        "delete",
-        "three",
-        "delete-three",
-        "删除",
-        "关闭",
-        "错误",
-        "乘号",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/difference-set.svg",
       "category": "Edit",
       "name": "difference-set",
@@ -15044,64 +13570,6 @@
         "交集",
         "路径查找器",
         "排除",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/direction.svg",
-      "category": "Edit",
-      "name": "direction",
-      "tags": [
-        "direction",
-        "方向",
-        "游戏",
-        "左右",
-        "手柄",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/direction-adjustment.svg",
-      "category": "Edit",
-      "name": "direction-adjustment",
-      "tags": [
-        "direction",
-        "adjustment",
-        "direction-adjustment",
-        "方向校准",
-        "方向箭头",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/direction-adjustment-three.svg",
-      "category": "Edit",
-      "name": "direction-adjustment-three",
-      "tags": [
-        "direction",
-        "adjustment",
-        "three",
-        "direction-adjustment-three",
-        "方向校准",
-        "方向箭头",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/direction-adjustment-two.svg",
-      "category": "Edit",
-      "name": "direction-adjustment-two",
-      "tags": [
-        "direction",
-        "adjustment",
-        "two",
-        "direction-adjustment-two",
-        "方向校准",
-        "方向箭头",
         "edit",
         "编辑"
       ]
@@ -15135,20 +13603,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/distribute-horizontally.svg",
-      "category": "Edit",
-      "name": "distribute-horizontally",
-      "tags": [
-        "distribute",
-        "horizontally",
-        "distribute-horizontally",
-        "水平分布",
-        "间距",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/distribute-vertical-spacing.svg",
       "category": "Edit",
       "name": "distribute-vertical-spacing",
@@ -15159,20 +13613,6 @@
         "distribute-vertical-spacing",
         "垂直间距分布",
         "纵向居中对齐",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/distribute-vertically.svg",
-      "category": "Edit",
-      "name": "distribute-vertically",
-      "tags": [
-        "distribute",
-        "vertically",
-        "distribute-vertically",
-        "垂直分布",
-        "间距",
         "edit",
         "编辑"
       ]
@@ -15206,23 +13646,6 @@
         "分割线",
         "区分",
         "线段",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/done-all.svg",
-      "category": "Edit",
-      "name": "done-all",
-      "tags": [
-        "done",
-        "all",
-        "done-all",
-        "完成全部",
-        "全部完成",
-        "打勾",
-        "勾选",
-        "全选",
         "edit",
         "编辑"
       ]
@@ -15441,19 +13864,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/endpoint-displacement.svg",
-      "category": "Edit",
-      "name": "endpoint-displacement",
-      "tags": [
-        "endpoint",
-        "displacement",
-        "endpoint-displacement",
-        "端点位移",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/endpoint-flat.svg",
       "category": "Edit",
       "name": "endpoint-flat",
@@ -15492,39 +13902,6 @@
         "endpoint-square",
         "平头端点",
         "端点类型",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/enter-the-keyboard.svg",
-      "category": "Edit",
-      "name": "enter-the-keyboard",
-      "tags": [
-        "enter",
-        "the",
-        "keyboard",
-        "enter-the-keyboard",
-        "输入键盘",
-        "输入",
-        "录入",
-        "键盘",
-        "打字",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/equal-ratio.svg",
-      "category": "Edit",
-      "name": "equal-ratio",
-      "tags": [
-        "equal",
-        "ratio",
-        "equal-ratio",
-        "等比",
-        "一比一",
-        "还原",
         "edit",
         "编辑"
       ]
@@ -15638,19 +14015,6 @@
         "浮层",
         "抽屉",
         "示例",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/extend.svg",
-      "category": "Edit",
-      "name": "extend",
-      "tags": [
-        "extend",
-        "拓展",
-        "扩大",
-        "全屏",
         "edit",
         "编辑"
       ]
@@ -15895,34 +14259,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/full-selection.svg",
-      "category": "Edit",
-      "name": "full-selection",
-      "tags": [
-        "full",
-        "selection",
-        "full-selection",
-        "选择",
-        "更换文件",
-        "全部选择",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/fullwidth.svg",
-      "category": "Edit",
-      "name": "fullwidth",
-      "tags": [
-        "fullwidth",
-        "全宽",
-        "满宽",
-        "扩大",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/go-on.svg",
       "category": "Edit",
       "name": "go-on",
@@ -16090,20 +14426,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/helpcenter.svg",
-      "category": "Edit",
-      "name": "helpcenter",
-      "tags": [
-        "helpcenter",
-        "帮助中心",
-        "问题",
-        "疑问",
-        "帮助",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/high-light.svg",
       "category": "Edit",
       "name": "high-light",
@@ -16180,23 +14502,6 @@
         "进出口",
         "进口",
         "出口",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/increase-the-scale.svg",
-      "category": "Edit",
-      "name": "increase-the-scale",
-      "tags": [
-        "increase",
-        "the",
-        "scale",
-        "increase-the-scale",
-        "增加小数位",
-        "小数位",
-        "增加",
-        "增加位数",
         "edit",
         "编辑"
       ]
@@ -17097,20 +15402,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/many-to-many.svg",
-      "category": "Edit",
-      "name": "many-to-many",
-      "tags": [
-        "many",
-        "to",
-        "many-to-many",
-        "多对多",
-        "n:n",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/margin.svg",
       "category": "Edit",
       "name": "margin",
@@ -17151,19 +15442,6 @@
         "遮罩",
         "蒙版",
         "阴影",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/merge.svg",
-      "category": "Edit",
-      "name": "merge",
-      "tags": [
-        "merge",
-        "合并",
-        "交叉",
-        "交集",
         "edit",
         "编辑"
       ]
@@ -17263,19 +15541,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/modify.svg",
-      "category": "Edit",
-      "name": "modify",
-      "tags": [
-        "modify",
-        "修改",
-        "错误",
-        "直尺",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/modify-two.svg",
       "category": "Edit",
       "name": "modify-two",
@@ -17350,20 +15615,6 @@
         "飞机",
         "选中",
         "箭头",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/multi-picture-carousel.svg",
-      "category": "Edit",
-      "name": "multi-picture-carousel",
-      "tags": [
-        "multi",
-        "picture",
-        "carousel",
-        "multi-picture-carousel",
-        "多图轮播",
         "edit",
         "编辑"
       ]
@@ -17485,40 +15736,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/one-to-many.svg",
-      "category": "Edit",
-      "name": "one-to-many",
-      "tags": [
-        "one",
-        "to",
-        "many",
-        "one-to-many",
-        "一对多",
-        "1:n",
-        "比例",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/one-to-one.svg",
-      "category": "Edit",
-      "name": "one-to-one",
-      "tags": [
-        "one",
-        "to",
-        "one-to-one",
-        "一对一",
-        "1:1",
-        "等比",
-        "等比例",
-        "一比一",
-        "比例",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/ordered-list.svg",
       "category": "Edit",
       "name": "ordered-list",
@@ -17544,20 +15761,6 @@
         "overall-reduction",
         "整体缩小",
         "缩放",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/paragraph-alphabet.svg",
-      "category": "Edit",
-      "name": "paragraph-alphabet",
-      "tags": [
-        "paragraph",
-        "alphabet",
-        "paragraph-alphabet",
-        "字母段落",
-        "文案",
         "edit",
         "编辑"
       ]
@@ -17804,39 +16007,6 @@
         "two",
         "radio-two",
         "单选",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/reduce-decimal-places.svg",
-      "category": "Edit",
-      "name": "reduce-decimal-places",
-      "tags": [
-        "reduce",
-        "decimal",
-        "places",
-        "reduce-decimal-places",
-        "减少小数位",
-        "小数位",
-        "减少位数",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/reduce-two.svg",
-      "category": "Edit",
-      "name": "reduce-two",
-      "tags": [
-        "reduce",
-        "two",
-        "reduce-two",
-        "收缩",
-        "游戏",
-        "方向",
-        "左右",
-        "手柄",
         "edit",
         "编辑"
       ]
@@ -18137,36 +16307,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Edit/selected-focus.svg",
-      "category": "Edit",
-      "name": "selected-focus",
-      "tags": [
-        "selected",
-        "focus",
-        "selected-focus",
-        "选中焦点",
-        "锚点",
-        "图形",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/send-backward.svg",
-      "category": "Edit",
-      "name": "send-backward",
-      "tags": [
-        "send",
-        "backward",
-        "send-backward",
-        "下层",
-        "底层",
-        "向下",
-        "edit",
-        "编辑"
-      ]
-    },
-    {
       "iconType": "iconpark/Edit/send-to-back.svg",
       "category": "Edit",
       "name": "send-to-back",
@@ -18456,20 +16596,6 @@
         "裁切",
         "编辑",
         "裁剪放大",
-        "edit"
-      ]
-    },
-    {
-      "iconType": "iconpark/Edit/tailoring-two.svg",
-      "category": "Edit",
-      "name": "tailoring-two",
-      "tags": [
-        "tailoring",
-        "two",
-        "tailoring-two",
-        "裁剪放大",
-        "裁切",
-        "编辑",
         "edit"
       ]
     },
@@ -19042,34 +17168,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Emoji/anguished-face.svg",
-      "category": "Emoji",
-      "name": "anguished-face",
-      "tags": [
-        "anguished",
-        "face",
-        "anguished-face",
-        "圆嘴",
-        "表情",
-        "目瞪口呆",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/astonished-face.svg",
-      "category": "Emoji",
-      "name": "astonished-face",
-      "tags": [
-        "astonished",
-        "face",
-        "astonished-face",
-        "张大嘴",
-        "表情",
-        "惊呆",
-        "emoji"
-      ]
-    },
-    {
       "iconType": "iconpark/Emoji/confounded-face.svg",
       "category": "Emoji",
       "name": "confounded-face",
@@ -19080,20 +17178,6 @@
         "抿嘴闭眼",
         "表情",
         "害怕",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/confused-face.svg",
-      "category": "Emoji",
-      "name": "confused-face",
-      "tags": [
-        "confused",
-        "face",
-        "confused-face",
-        "别嘴",
-        "表情",
-        "耍酷",
         "emoji"
       ]
     },
@@ -19141,38 +17225,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Emoji/emotion-happy.svg",
-      "category": "Emoji",
-      "name": "emotion-happy",
-      "tags": [
-        "emotion",
-        "happy",
-        "emotion-happy",
-        "开心",
-        "表情",
-        "成功",
-        "笑脸",
-        "喜悦",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/emotion-unhappy.svg",
-      "category": "Emoji",
-      "name": "emotion-unhappy",
-      "tags": [
-        "emotion",
-        "unhappy",
-        "emotion-unhappy",
-        "不开心",
-        "表情",
-        "失败",
-        "哭脸",
-        "悲伤",
-        "emoji"
-      ]
-    },
-    {
       "iconType": "iconpark/Emoji/expressionless-face.svg",
       "category": "Emoji",
       "name": "expressionless-face",
@@ -19199,67 +17251,6 @@
         "大眼笑",
         "表情",
         "惊呆",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/face-without-mouth.svg",
-      "category": "Emoji",
-      "name": "face-without-mouth",
-      "tags": [
-        "face",
-        "without",
-        "mouth",
-        "face-without-mouth",
-        "无嘴脸",
-        "表情",
-        "偷看",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/frowning-face-whit-open-mouth.svg",
-      "category": "Emoji",
-      "name": "frowning-face-whit-open-mouth",
-      "tags": [
-        "frowning",
-        "face",
-        "whit",
-        "open",
-        "mouth",
-        "frowning-face-whit-open-mouth",
-        "别嘴生气",
-        "表情",
-        "惊呆",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/grimacing-face.svg",
-      "category": "Emoji",
-      "name": "grimacing-face",
-      "tags": [
-        "grimacing",
-        "face",
-        "grimacing-face",
-        "呲牙张嘴",
-        "表情",
-        "害怕",
-        "恐慌",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/grinning-face.svg",
-      "category": "Emoji",
-      "name": "grinning-face",
-      "tags": [
-        "grinning",
-        "face",
-        "grinning-face",
-        "开心",
-        "表情",
-        "笑",
         "emoji"
       ]
     },
@@ -19371,20 +17362,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Emoji/neutral-face.svg",
-      "category": "Emoji",
-      "name": "neutral-face",
-      "tags": [
-        "neutral",
-        "face",
-        "neutral-face",
-        "正常标签",
-        "表情",
-        "无语",
-        "emoji"
-      ]
-    },
-    {
       "iconType": "iconpark/Emoji/pouting-face.svg",
       "category": "Emoji",
       "name": "pouting-face",
@@ -19428,21 +17405,6 @@
         "表情",
         "痛苦",
         "纠结",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/slightly-smiling-face.svg",
-      "category": "Emoji",
-      "name": "slightly-smiling-face",
-      "tags": [
-        "slightly",
-        "smiling",
-        "face",
-        "slightly-smiling-face",
-        "微笑",
-        "表情",
-        "开心",
         "emoji"
       ]
     },
@@ -19493,54 +17455,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Emoji/surprised-face-with-open-big-mouth.svg",
-      "category": "Emoji",
-      "name": "surprised-face-with-open-big-mouth",
-      "tags": [
-        "surprised",
-        "face",
-        "with",
-        "open",
-        "big",
-        "mouth",
-        "surprised-face-with-open-big-mouth",
-        "惊讶张嘴",
-        "表情",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/surprised-face-with-open-mouth.svg",
-      "category": "Emoji",
-      "name": "surprised-face-with-open-mouth",
-      "tags": [
-        "surprised",
-        "face",
-        "with",
-        "open",
-        "mouth",
-        "surprised-face-with-open-mouth",
-        "惊讶",
-        "表情",
-        "目瞪口呆",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/upside-down-face.svg",
-      "category": "Emoji",
-      "name": "upside-down-face",
-      "tags": [
-        "upside",
-        "down",
-        "face",
-        "upside-down-face",
-        "翻转笑脸",
-        "表情",
-        "emoji"
-      ]
-    },
-    {
       "iconType": "iconpark/Emoji/weary-face.svg",
       "category": "Emoji",
       "name": "weary-face",
@@ -19582,23 +17496,6 @@
         "眨一个眼睛",
         "表情",
         "调皮",
-        "emoji"
-      ]
-    },
-    {
-      "iconType": "iconpark/Emoji/worried-face.svg",
-      "category": "Emoji",
-      "name": "worried-face",
-      "tags": [
-        "worried",
-        "face",
-        "worried-face",
-        "担心",
-        "表情",
-        "失败",
-        "哭脸",
-        "不开心",
-        "悲伤",
         "emoji"
       ]
     },
@@ -20590,22 +18487,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Foods/chicken-leg.svg",
-      "category": "Foods",
-      "name": "chicken-leg",
-      "tags": [
-        "chicken",
-        "leg",
-        "chicken-leg",
-        "鸡腿",
-        "鸡肉",
-        "美食",
-        "餐饮",
-        "foods",
-        "食品"
-      ]
-    },
-    {
       "iconType": "iconpark/Foods/chili.svg",
       "category": "Foods",
       "name": "chili",
@@ -20787,19 +18668,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Foods/drumstick.svg",
-      "category": "Foods",
-      "name": "drumstick",
-      "tags": [
-        "drumstick",
-        "鸡腿",
-        "肉食",
-        "鸡肉",
-        "foods",
-        "食品"
-      ]
-    },
-    {
       "iconType": "iconpark/Foods/egg.svg",
       "category": "Foods",
       "name": "egg",
@@ -20959,22 +18827,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Foods/goblet-one.svg",
-      "category": "Foods",
-      "name": "goblet-one",
-      "tags": [
-        "goblet",
-        "one",
-        "goblet-one",
-        "高脚杯",
-        "杯子",
-        "酒杯",
-        "玻璃杯",
-        "foods",
-        "食品"
-      ]
-    },
-    {
       "iconType": "iconpark/Foods/hamburger.svg",
       "category": "Foods",
       "name": "hamburger",
@@ -20989,24 +18841,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Foods/hamburger-one.svg",
-      "category": "Foods",
-      "name": "hamburger-one",
-      "tags": [
-        "hamburger",
-        "one",
-        "hamburger-one",
-        "汉堡",
-        "汉堡包",
-        "面包",
-        "食物",
-        "美食",
-        "食品",
-        "餐饮",
-        "foods"
-      ]
-    },
-    {
       "iconType": "iconpark/Foods/honey.svg",
       "category": "Foods",
       "name": "honey",
@@ -21016,23 +18850,6 @@
         "滋补",
         "补品",
         "养生",
-        "foods",
-        "食品"
-      ]
-    },
-    {
-      "iconType": "iconpark/Foods/honey-one.svg",
-      "category": "Foods",
-      "name": "honey-one",
-      "tags": [
-        "honey",
-        "one",
-        "honey-one",
-        "蜂蜜",
-        "糖",
-        "甜品",
-        "甜食",
-        "蜜糖",
         "foods",
         "食品"
       ]
@@ -21476,19 +19293,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Foods/peas.svg",
-      "category": "Foods",
-      "name": "peas",
-      "tags": [
-        "peas",
-        "豌豆角",
-        "豆角",
-        "蔬菜",
-        "foods",
-        "食品"
-      ]
-    },
-    {
       "iconType": "iconpark/Foods/pineapple.svg",
       "category": "Foods",
       "name": "pineapple",
@@ -21631,21 +19435,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Foods/sandwich-one.svg",
-      "category": "Foods",
-      "name": "sandwich-one",
-      "tags": [
-        "sandwich",
-        "one",
-        "sandwich-one",
-        "三明治",
-        "热狗",
-        "食品",
-        "面包",
-        "foods"
-      ]
-    },
-    {
       "iconType": "iconpark/Foods/scallion.svg",
       "category": "Foods",
       "name": "scallion",
@@ -21756,22 +19545,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Foods/tea.svg",
-      "category": "Foods",
-      "name": "tea",
-      "tags": [
-        "tea",
-        "茶",
-        "饮料",
-        "茶饮",
-        "热水",
-        "咖啡",
-        "热牛奶",
-        "foods",
-        "食品"
-      ]
-    },
-    {
       "iconType": "iconpark/Foods/tea-drink.svg",
       "category": "Foods",
       "name": "tea-drink",
@@ -21804,19 +19577,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Foods/thermos-cup.svg",
-      "category": "Foods",
-      "name": "thermos-cup",
-      "tags": [
-        "thermos",
-        "cup",
-        "thermos-cup",
-        "保温杯",
-        "foods",
-        "食品"
-      ]
-    },
-    {
       "iconType": "iconpark/Foods/tomato.svg",
       "category": "Foods",
       "name": "tomato",
@@ -21826,19 +19586,6 @@
         "水果",
         "蔬菜",
         "西红柿",
-        "foods",
-        "食品"
-      ]
-    },
-    {
-      "iconType": "iconpark/Foods/tray.svg",
-      "category": "Foods",
-      "name": "tray",
-      "tags": [
-        "tray",
-        "托盘",
-        "盘子",
-        "厨具",
         "foods",
         "食品"
       ]
@@ -22206,19 +19953,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Game/ghost.svg",
-      "category": "Game",
-      "name": "ghost",
-      "tags": [
-        "ghost",
-        "幽灵",
-        "游戏",
-        "恐怖",
-        "可怕",
-        "game"
-      ]
-    },
-    {
       "iconType": "iconpark/Game/handheld.svg",
       "category": "Game",
       "name": "handheld",
@@ -22506,270 +20240,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Graphics/diamond-one.svg",
-      "category": "Graphics",
-      "name": "diamond-one",
-      "tags": [
-        "diamond",
-        "one",
-        "diamond-one",
-        "菱形1",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/diamond-three.svg",
-      "category": "Graphics",
-      "name": "diamond-three",
-      "tags": [
-        "diamond",
-        "three",
-        "diamond-three",
-        "菱形3",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/diamond-two.svg",
-      "category": "Graphics",
-      "name": "diamond-two",
-      "tags": [
-        "diamond",
-        "two",
-        "diamond-two",
-        "菱形2",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/hexagon-one.svg",
-      "category": "Graphics",
-      "name": "hexagon-one",
-      "tags": [
-        "hexagon",
-        "one",
-        "hexagon-one",
-        "六边形1",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/octagon.svg",
-      "category": "Graphics",
-      "name": "octagon",
-      "tags": [
-        "octagon",
-        "八边形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/oval-one.svg",
-      "category": "Graphics",
-      "name": "oval-one",
-      "tags": [
-        "oval",
-        "one",
-        "oval-one",
-        "椭圆形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/parallelogram.svg",
-      "category": "Graphics",
-      "name": "parallelogram",
-      "tags": [
-        "parallelogram",
-        "平行四边形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/pentagon-one.svg",
-      "category": "Graphics",
-      "name": "pentagon-one",
-      "tags": [
-        "pentagon",
-        "one",
-        "pentagon-one",
-        "五边形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/quadrilateral.svg",
-      "category": "Graphics",
-      "name": "quadrilateral",
-      "tags": [
-        "quadrilateral",
-        "四边形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/rectangle.svg",
-      "category": "Graphics",
-      "name": "rectangle",
-      "tags": [
-        "rectangle",
-        "矩形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/rectangle-one.svg",
-      "category": "Graphics",
-      "name": "rectangle-one",
-      "tags": [
-        "rectangle",
-        "one",
-        "rectangle-one",
-        "矩形1",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/rectangle-small.svg",
-      "category": "Graphics",
-      "name": "rectangle-small",
-      "tags": [
-        "rectangle",
-        "small",
-        "rectangle-small",
-        "小矩形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/right-angle.svg",
-      "category": "Graphics",
-      "name": "right-angle",
-      "tags": [
-        "right",
-        "angle",
-        "right-angle",
-        "直角形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/round.svg",
-      "category": "Graphics",
-      "name": "round",
-      "tags": [
-        "round",
-        "圆形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/square.svg",
-      "category": "Graphics",
-      "name": "square",
-      "tags": [
-        "square",
-        "方形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/square-small.svg",
-      "category": "Graphics",
-      "name": "square-small",
-      "tags": [
-        "square",
-        "small",
-        "square-small",
-        "小方形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/trapezoid.svg",
-      "category": "Graphics",
-      "name": "trapezoid",
-      "tags": [
-        "trapezoid",
-        "梯形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Graphics/triangle.svg",
-      "category": "Graphics",
-      "name": "triangle",
-      "tags": [
-        "triangle",
-        "三角形",
-        "graphics",
-        "几何图形"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hands/bad.svg",
-      "category": "Hands",
-      "name": "bad",
-      "tags": [
-        "bad",
-        "坏的",
-        "不好",
-        "不认可",
-        "不肯定",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hands/bad-one.svg",
-      "category": "Hands",
-      "name": "bad-one",
-      "tags": [
-        "bad",
-        "one",
-        "bad-one",
-        "差劲",
-        "踩",
-        "坏的",
-        "不认可",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hands/bad-two.svg",
-      "category": "Hands",
-      "name": "bad-two",
-      "tags": [
-        "bad",
-        "two",
-        "bad-two",
-        "踩",
-        "不好",
-        "不认可",
-        "不肯定",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
       "iconType": "iconpark/Hands/bless.svg",
       "category": "Hands",
       "name": "bless",
@@ -22851,35 +20321,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hands/come.svg",
-      "category": "Hands",
-      "name": "come",
-      "tags": [
-        "come",
-        "招引",
-        "引诱",
-        "勾引",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hands/concept-sharing.svg",
-      "category": "Hands",
-      "name": "concept-sharing",
-      "tags": [
-        "concept",
-        "sharing",
-        "concept-sharing",
-        "理念共享",
-        "共享",
-        "创意共享",
-        "想法",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
       "iconType": "iconpark/Hands/cool.svg",
       "category": "Hands",
       "name": "cool",
@@ -22905,21 +20346,6 @@
         "传递",
         "交付",
         "拱手相让",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hands/easy.svg",
-      "category": "Hands",
-      "name": "easy",
-      "tags": [
-        "easy",
-        "简单",
-        "差劲",
-        "小拇指",
-        "手势",
-        "手指",
         "hands",
         "手势动作"
       ]
@@ -23004,39 +20430,11 @@
       ]
     },
     {
-      "iconType": "iconpark/Hands/fist.svg",
-      "category": "Hands",
-      "name": "fist",
-      "tags": [
-        "fist",
-        "拳头",
-        "石头",
-        "拳",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
       "iconType": "iconpark/Hands/five.svg",
       "category": "Hands",
       "name": "five",
       "tags": [
         "five",
-        "五",
-        "手指",
-        "手势",
-        "手掌",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hands/five-five.svg",
-      "category": "Hands",
-      "name": "five-five",
-      "tags": [
-        "five",
-        "five-five",
         "五",
         "手指",
         "手势",
@@ -23066,35 +20464,6 @@
         "四",
         "手指",
         "手势",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hands/four-four.svg",
-      "category": "Hands",
-      "name": "four-four",
-      "tags": [
-        "four",
-        "four-four",
-        "四",
-        "手指",
-        "手势",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hands/good.svg",
-      "category": "Hands",
-      "name": "good",
-      "tags": [
-        "good",
-        "好的",
-        "好",
-        "认可",
-        "肯定",
-        "赞",
         "hands",
         "手势动作"
       ]
@@ -23217,19 +20586,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hands/hi.svg",
-      "category": "Hands",
-      "name": "hi",
-      "tags": [
-        "hi",
-        "打招呼",
-        "手掌",
-        "手势",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
       "iconType": "iconpark/Hands/hold.svg",
       "category": "Hands",
       "name": "hold",
@@ -23301,21 +20657,6 @@
         "mayura-gesture",
         "马尤拉手势",
         "手",
-        "手势",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hands/middle-finger.svg",
-      "category": "Hands",
-      "name": "middle-finger",
-      "tags": [
-        "middle",
-        "finger",
-        "middle-finger",
-        "中指",
-        "手指",
         "手势",
         "hands",
         "手势动作"
@@ -23577,20 +20918,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hands/three-three.svg",
-      "category": "Hands",
-      "name": "three-three",
-      "tags": [
-        "three",
-        "three-three",
-        "三",
-        "手指",
-        "手势",
-        "hands",
-        "手势动作"
-      ]
-    },
-    {
       "iconType": "iconpark/Hands/thumbs-down.svg",
       "category": "Hands",
       "name": "thumbs-down",
@@ -23787,19 +21114,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/battery-failure.svg",
-      "category": "Hardware",
-      "name": "battery-failure",
-      "tags": [
-        "battery",
-        "failure",
-        "battery-failure",
-        "电池故障",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/battery-storage.svg",
       "category": "Hardware",
       "name": "battery-storage",
@@ -23808,19 +21122,6 @@
         "storage",
         "battery-storage",
         "电池充电",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/battery-tips.svg",
-      "category": "Hardware",
-      "name": "battery-tips",
-      "tags": [
-        "battery",
-        "tips",
-        "battery-tips",
-        "电池提示",
         "hardware",
         "硬件"
       ]
@@ -23926,31 +21227,6 @@
         "数学",
         "算力",
         "hardware"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/calculator-one.svg",
-      "category": "Hardware",
-      "name": "calculator-one",
-      "tags": [
-        "calculator",
-        "one",
-        "calculator-one",
-        "计算器",
-        "计算",
-        "智能",
-        "算数",
-        "统计",
-        "结果",
-        "答案",
-        "数字",
-        "加",
-        "减",
-        "乘",
-        "除",
-        "工具",
-        "hardware",
-        "硬件"
       ]
     },
     {
@@ -24096,26 +21372,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/charging-treasure.svg",
-      "category": "Hardware",
-      "name": "charging-treasure",
-      "tags": [
-        "charging",
-        "treasure",
-        "charging-treasure",
-        "充电宝",
-        "电池",
-        "电量",
-        "充电",
-        "能量",
-        "能源",
-        "充电器",
-        "移动电源",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/chip.svg",
       "category": "Hardware",
       "name": "chip",
@@ -24211,25 +21467,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/computer-one.svg",
-      "category": "Hardware",
-      "name": "computer-one",
-      "tags": [
-        "computer",
-        "one",
-        "computer-one",
-        "计算机",
-        "计算",
-        "算数",
-        "加",
-        "减",
-        "乘",
-        "除",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/control.svg",
       "category": "Hardware",
       "name": "control",
@@ -24261,45 +21498,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/cup.svg",
-      "category": "Hardware",
-      "name": "cup",
-      "tags": [
-        "cup",
-        "咖啡杯",
-        "水",
-        "水杯",
-        "被子",
-        "饮料",
-        "咖啡",
-        "热饮",
-        "喝",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/dashboard-one.svg",
-      "category": "Hardware",
-      "name": "dashboard-one",
-      "tags": [
-        "dashboard",
-        "one",
-        "dashboard-one",
-        "仪表盘",
-        "仪表",
-        "速度",
-        "数值",
-        "计数",
-        "表盘",
-        "统计",
-        "温度",
-        "转动",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/dashboard-two.svg",
       "category": "Hardware",
       "name": "dashboard-two",
@@ -24310,19 +21508,6 @@
         "仪表盘",
         "仪表",
         "看板",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/data-server.svg",
-      "category": "Hardware",
-      "name": "data-server",
-      "tags": [
-        "data",
-        "server",
-        "data-server",
-        "数据服务器",
         "hardware",
         "硬件"
       ]
@@ -24453,47 +21638,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/disk-two.svg",
-      "category": "Hardware",
-      "name": "disk-two",
-      "tags": [
-        "disk",
-        "two",
-        "disk-two",
-        "u盘2",
-        "u盘",
-        "硬盘",
-        "储存",
-        "硬件",
-        "移动",
-        "保存",
-        "文件",
-        "安全",
-        "hardware"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/dome-light.svg",
-      "category": "Hardware",
-      "name": "dome-light",
-      "tags": [
-        "dome",
-        "light",
-        "dome-light",
-        "顶灯",
-        "灯",
-        "光",
-        "亮",
-        "家具",
-        "装饰",
-        "闪光",
-        "打光",
-        "照亮",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/download-computer.svg",
       "category": "Hardware",
       "name": "download-computer",
@@ -24566,22 +21710,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/eight-key.svg",
-      "category": "Hardware",
-      "name": "eight-key",
-      "tags": [
-        "eight",
-        "key",
-        "eight-key",
-        "按键八",
-        "八",
-        "8",
-        "按键",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/electric-iron.svg",
       "category": "Hardware",
       "name": "electric-iron",
@@ -24595,28 +21723,6 @@
         "烫衣服",
         "烫印",
         "烙印",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/electronic-door-lock.svg",
-      "category": "Hardware",
-      "name": "electronic-door-lock",
-      "tags": [
-        "electronic",
-        "door",
-        "lock",
-        "electronic-door-lock",
-        "智能门锁",
-        "门",
-        "锁",
-        "智能",
-        "密码锁",
-        "安全",
-        "防盗门",
-        "关门",
-        "加密",
         "hardware",
         "硬件"
       ]
@@ -24979,70 +22085,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/game-console.svg",
-      "category": "Hardware",
-      "name": "game-console",
-      "tags": [
-        "game",
-        "console",
-        "game-console",
-        "游戏机",
-        "游戏",
-        "电子",
-        "设备",
-        "娱乐",
-        "上瘾",
-        "消遣",
-        "沉迷",
-        "活动",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/game-console-one.svg",
-      "category": "Hardware",
-      "name": "game-console-one",
-      "tags": [
-        "game",
-        "console",
-        "one",
-        "game-console-one",
-        "移动游戏机",
-        "游戏机",
-        "游戏手柄",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/game-three.svg",
-      "category": "Hardware",
-      "name": "game-three",
-      "tags": [
-        "game",
-        "three",
-        "game-three",
-        "游戏手柄",
-        "游戏机",
-        "控制器",
-        "遥控器",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/gamepad.svg",
-      "category": "Hardware",
-      "name": "gamepad",
-      "tags": [
-        "gamepad",
-        "游戏机",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/gopro.svg",
       "category": "Hardware",
       "name": "gopro",
@@ -25079,25 +22121,6 @@
         "加热",
         "热风",
         "吹造型",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/hand-painted-plate.svg",
-      "category": "Hardware",
-      "name": "hand-painted-plate",
-      "tags": [
-        "hand",
-        "painted",
-        "plate",
-        "hand-painted-plate",
-        "手绘板",
-        "绘制",
-        "绘画",
-        "控制板",
-        "触控板",
-        "手绘",
         "hardware",
         "硬件"
       ]
@@ -25156,17 +22179,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/hdd.svg",
-      "category": "Hardware",
-      "name": "hdd",
-      "tags": [
-        "hdd",
-        "接口",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/hdmi-cable.svg",
       "category": "Hardware",
       "name": "hdmi-cable",
@@ -25175,21 +22187,6 @@
         "cable",
         "hdmi-cable",
         "hdmi线",
-        "接口",
-        "数据线",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/hdmi-connector.svg",
-      "category": "Hardware",
-      "name": "hdmi-connector",
-      "tags": [
-        "hdmi",
-        "connector",
-        "hdmi-connector",
-        "hdmi接口",
         "接口",
         "数据线",
         "hardware",
@@ -25229,24 +22226,6 @@
         "从动",
         "hardware",
         "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/i-mac.svg",
-      "category": "Hardware",
-      "name": "i-mac",
-      "tags": [
-        "i",
-        "mac",
-        "i-mac",
-        "苹果电脑imac",
-        "imac",
-        "苹果电脑",
-        "电脑",
-        "设备",
-        "硬件",
-        "pc",
-        "hardware"
       ]
     },
     {
@@ -25394,40 +22373,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/keyboard.svg",
-      "category": "Hardware",
-      "name": "keyboard",
-      "tags": [
-        "keyboard",
-        "键盘",
-        "输入",
-        "按键",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/keyboard-one.svg",
-      "category": "Hardware",
-      "name": "keyboard-one",
-      "tags": [
-        "keyboard",
-        "one",
-        "keyboard-one",
-        "键盘",
-        "控制",
-        "输入",
-        "敲打",
-        "编码",
-        "写代码",
-        "点击",
-        "指令",
-        "按键",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/lamp.svg",
       "category": "Hardware",
       "name": "lamp",
@@ -25523,20 +22468,6 @@
         "访达",
         "文件管理",
         "我的电脑",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/master.svg",
-      "category": "Hardware",
-      "name": "master",
-      "tags": [
-        "master",
-        "主机",
-        "储存器",
-        "服务器",
-        "管理器",
         "hardware",
         "硬件"
       ]
@@ -25729,20 +22660,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/microwaves.svg",
-      "category": "Hardware",
-      "name": "microwaves",
-      "tags": [
-        "microwaves",
-        "微波炉",
-        "加热器",
-        "烹饪机",
-        "做饭",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/mini-sd-card.svg",
       "category": "Hardware",
       "name": "mini-sd-card",
@@ -25896,37 +22813,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/one-key.svg",
-      "category": "Hardware",
-      "name": "one-key",
-      "tags": [
-        "one",
-        "key",
-        "one-key",
-        "按键一",
-        "一",
-        "1",
-        "按键",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/pad.svg",
-      "category": "Hardware",
-      "name": "pad",
-      "tags": [
-        "pad",
-        "平板电脑",
-        "电脑",
-        "平板",
-        "游戏",
-        "设备",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/painted-screen.svg",
       "category": "Hardware",
       "name": "painted-screen",
@@ -25952,29 +22838,6 @@
         "手机",
         "电话",
         "通信",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/phone-one.svg",
-      "category": "Hardware",
-      "name": "phone-one",
-      "tags": [
-        "phone",
-        "one",
-        "phone-one",
-        "电话",
-        "通话",
-        "拨号",
-        "转接",
-        "接通",
-        "交流",
-        "沟通",
-        "会议",
-        "语音",
-        "求救",
-        "报警",
         "hardware",
         "硬件"
       ]
@@ -26122,20 +22985,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/projector.svg",
-      "category": "Hardware",
-      "name": "projector",
-      "tags": [
-        "projector",
-        "投影仪",
-        "播放",
-        "幻灯片",
-        "演讲",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/projector-one.svg",
       "category": "Hardware",
       "name": "projector-one",
@@ -26144,27 +22993,6 @@
         "one",
         "projector-one",
         "投影机",
-        "摄像",
-        "拍摄",
-        "记录",
-        "录像",
-        "录制",
-        "检测",
-        "电影",
-        "放映",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/projector-three.svg",
-      "category": "Hardware",
-      "name": "projector-three",
-      "tags": [
-        "projector",
-        "three",
-        "projector-three",
-        "放映机",
         "摄像",
         "拍摄",
         "记录",
@@ -26276,49 +23104,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/remote-control.svg",
-      "category": "Hardware",
-      "name": "remote-control",
-      "tags": [
-        "remote",
-        "control",
-        "remote-control",
-        "遥控器",
-        "控制",
-        "遥控",
-        "开关",
-        "调节",
-        "调整",
-        "命令",
-        "传感器",
-        "感应器",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/remote-control-one.svg",
-      "category": "Hardware",
-      "name": "remote-control-one",
-      "tags": [
-        "remote",
-        "control",
-        "one",
-        "remote-control-one",
-        "遥控器",
-        "控制",
-        "遥控",
-        "开关",
-        "调节",
-        "调整",
-        "命令",
-        "传感器",
-        "感应器",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/robot.svg",
       "category": "Hardware",
       "name": "robot",
@@ -26331,43 +23116,6 @@
         "命令",
         "执行",
         "客服",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/robot-one.svg",
-      "category": "Hardware",
-      "name": "robot-one",
-      "tags": [
-        "robot",
-        "one",
-        "robot-one",
-        "机器人1",
-        "控制",
-        "遥控",
-        "调整",
-        "命令",
-        "执行",
-        "客服",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/rocket-one.svg",
-      "category": "Hardware",
-      "name": "rocket-one",
-      "tags": [
-        "rocket",
-        "one",
-        "rocket-one",
-        "火箭",
-        "飞行器",
-        "推动器",
-        "发射器",
-        "航天器",
-        "宇宙飞船",
         "hardware",
         "硬件"
       ]
@@ -26421,20 +23169,6 @@
         "流量",
         "接收器",
         "雷达",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/rs-male.svg",
-      "category": "Hardware",
-      "name": "rs-male",
-      "tags": [
-        "rs",
-        "male",
-        "rs-male",
-        "接口",
-        "数据",
         "hardware",
         "硬件"
       ]
@@ -26535,22 +23269,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/seven-key.svg",
-      "category": "Hardware",
-      "name": "seven-key",
-      "tags": [
-        "seven",
-        "key",
-        "seven-key",
-        "按键七",
-        "七",
-        "7",
-        "按键",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/shaver.svg",
       "category": "Hardware",
       "name": "shaver",
@@ -26620,36 +23338,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/six-key.svg",
-      "category": "Hardware",
-      "name": "six-key",
-      "tags": [
-        "six",
-        "key",
-        "six-key",
-        "按键六",
-        "六",
-        "6",
-        "按键",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/slave.svg",
-      "category": "Hardware",
-      "name": "slave",
-      "tags": [
-        "slave",
-        "附件",
-        "数据",
-        "传输",
-        "链接",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/solar-energy.svg",
       "category": "Hardware",
       "name": "solar-energy",
@@ -26685,40 +23373,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/sound.svg",
-      "category": "Hardware",
-      "name": "sound",
-      "tags": [
-        "sound",
-        "音响",
-        "声音",
-        "音乐",
-        "乐器",
-        "扩音器",
-        "喇叭",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/sound-one.svg",
-      "category": "Hardware",
-      "name": "sound-one",
-      "tags": [
-        "sound",
-        "one",
-        "sound-one",
-        "音响",
-        "声音",
-        "音乐",
-        "乐器",
-        "扩音器",
-        "喇叭",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/speaker.svg",
       "category": "Hardware",
       "name": "speaker",
@@ -26729,36 +23383,6 @@
         "设备",
         "声音",
         "家庭影院",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/speaker-one.svg",
-      "category": "Hardware",
-      "name": "speaker-one",
-      "tags": [
-        "speaker",
-        "one",
-        "speaker-one",
-        "喇叭",
-        "声音",
-        "音乐",
-        "乐器",
-        "扩音器",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/ssd.svg",
-      "category": "Hardware",
-      "name": "ssd",
-      "tags": [
-        "ssd",
-        "储存器",
-        "服务器",
-        "管理器",
         "hardware",
         "硬件"
       ]
@@ -26854,23 +23478,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Hardware/subway.svg",
-      "category": "Hardware",
-      "name": "subway",
-      "tags": [
-        "subway",
-        "地铁",
-        "交通",
-        "火车",
-        "运输",
-        "货运",
-        "电车",
-        "公交车",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
       "iconType": "iconpark/Hardware/surveillance-cameras.svg",
       "category": "Hardware",
       "name": "surveillance-cameras",
@@ -26916,38 +23523,6 @@
         "two",
         "surveillance-cameras-two",
         "监控摄像头",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/switch-nintendo.svg",
-      "category": "Hardware",
-      "name": "switch-nintendo",
-      "tags": [
-        "switch",
-        "nintendo",
-        "switch-nintendo",
-        "任天堂游戏",
-        "手柄",
-        "控制器",
-        "游戏机",
-        "操作器",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/switch-one.svg",
-      "category": "Hardware",
-      "name": "switch-one",
-      "tags": [
-        "switch",
-        "one",
-        "switch-one",
-        "开关",
-        "控制器",
-        "调节器",
         "hardware",
         "硬件"
       ]
@@ -27101,40 +23676,6 @@
         "大屏",
         "硬件",
         "hardware"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/tv-one.svg",
-      "category": "Hardware",
-      "name": "tv-one",
-      "tags": [
-        "tv",
-        "one",
-        "tv-one",
-        "电视",
-        "显示屏",
-        "电影",
-        "投影",
-        "节目",
-        "音乐",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/two-key.svg",
-      "category": "Hardware",
-      "name": "two-key",
-      "tags": [
-        "two",
-        "key",
-        "two-key",
-        "按键二",
-        "二",
-        "2",
-        "按键",
-        "hardware",
-        "硬件"
       ]
     },
     {
@@ -27391,51 +23932,6 @@
         "虚拟现实",
         "设备",
         "游戏",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/washing-machine.svg",
-      "category": "Hardware",
-      "name": "washing-machine",
-      "tags": [
-        "washing",
-        "machine",
-        "washing-machine",
-        "洗衣机",
-        "卫生",
-        "打扫",
-        "清除",
-        "干净",
-        "垃圾",
-        "清洗",
-        "洗衣服",
-        "除污渍",
-        "电器",
-        "hardware",
-        "硬件"
-      ]
-    },
-    {
-      "iconType": "iconpark/Hardware/washing-machine-one.svg",
-      "category": "Hardware",
-      "name": "washing-machine-one",
-      "tags": [
-        "washing",
-        "machine",
-        "one",
-        "washing-machine-one",
-        "洗衣机1",
-        "卫生",
-        "打扫",
-        "清除",
-        "干净",
-        "垃圾",
-        "清洗",
-        "洗衣服",
-        "除污渍",
-        "电器",
         "hardware",
         "硬件"
       ]
@@ -27861,19 +24357,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Health/hospital-three.svg",
-      "category": "Health",
-      "name": "hospital-three",
-      "tags": [
-        "hospital",
-        "three",
-        "hospital-three",
-        "医院3",
-        "health",
-        "医疗健康"
-      ]
-    },
-    {
       "iconType": "iconpark/Health/infusion.svg",
       "category": "Health",
       "name": "infusion",
@@ -28011,19 +24494,6 @@
         "one",
         "medicine-bottle-one",
         "药瓶",
-        "health",
-        "医疗健康"
-      ]
-    },
-    {
-      "iconType": "iconpark/Health/medicine-chest.svg",
-      "category": "Health",
-      "name": "medicine-chest",
-      "tags": [
-        "medicine",
-        "chest",
-        "medicine-chest",
-        "药箱",
         "health",
         "医疗健康"
       ]
@@ -28197,34 +24667,6 @@
         "女性",
         "生理期",
         "生殖",
-        "health",
-        "医疗健康"
-      ]
-    },
-    {
-      "iconType": "iconpark/Health/pesticide.svg",
-      "category": "Health",
-      "name": "pesticide",
-      "tags": [
-        "pesticide",
-        "农药",
-        "药品",
-        "毒药",
-        "肥料",
-        "药瓶",
-        "医药",
-        "牛奶",
-        "health",
-        "医疗健康"
-      ]
-    },
-    {
-      "iconType": "iconpark/Health/pill.svg",
-      "category": "Health",
-      "name": "pill",
-      "tags": [
-        "pill",
-        "药丸2",
         "health",
         "医疗健康"
       ]
@@ -28584,20 +25026,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Industry/heater-resistor.svg",
-      "category": "Industry",
-      "name": "heater-resistor",
-      "tags": [
-        "heater",
-        "resistor",
-        "heater-resistor",
-        "加热电阻",
-        "电阻",
-        "industry",
-        "工业"
-      ]
-    },
-    {
       "iconType": "iconpark/Industry/helmet-one.svg",
       "category": "Industry",
       "name": "helmet-one",
@@ -28693,17 +25121,6 @@
         "oil-industry",
         "工业油漆",
         "油",
-        "工业"
-      ]
-    },
-    {
-      "iconType": "iconpark/Industry/oscillator.svg",
-      "category": "Industry",
-      "name": "oscillator",
-      "tags": [
-        "oscillator",
-        "震荡器",
-        "industry",
         "工业"
       ]
     },
@@ -28930,19 +25347,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Life/coffee-machine.svg",
-      "category": "Life",
-      "name": "coffee-machine",
-      "tags": [
-        "coffee",
-        "machine",
-        "coffee-machine",
-        "咖啡机",
-        "life",
-        "生活"
-      ]
-    },
-    {
       "iconType": "iconpark/Life/cooking-pot.svg",
       "category": "Life",
       "name": "cooking-pot",
@@ -28987,21 +25391,6 @@
         "双人床",
         "睡觉",
         "休息",
-        "life",
-        "生活"
-      ]
-    },
-    {
-      "iconType": "iconpark/Life/fan.svg",
-      "category": "Life",
-      "name": "fan",
-      "tags": [
-        "fan",
-        "扇子",
-        "文化",
-        "中国风",
-        "凉快",
-        "降温",
         "life",
         "生活"
       ]
@@ -29142,21 +25531,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Life/shower-head.svg",
-      "category": "Life",
-      "name": "shower-head",
-      "tags": [
-        "shower",
-        "head",
-        "shower-head",
-        "淋浴喷头",
-        "酒店",
-        "洗澡",
-        "life",
-        "生活"
-      ]
-    },
-    {
       "iconType": "iconpark/Life/single-bed.svg",
       "category": "Life",
       "name": "single-bed",
@@ -29182,36 +25556,6 @@
         "家居",
         "家具",
         "装修",
-        "life",
-        "生活"
-      ]
-    },
-    {
-      "iconType": "iconpark/Life/sofa-two.svg",
-      "category": "Life",
-      "name": "sofa-two",
-      "tags": [
-        "sofa",
-        "two",
-        "sofa-two",
-        "沙发",
-        "居家",
-        "home",
-        "家居",
-        "家具",
-        "装修",
-        "家装",
-        "life",
-        "生活"
-      ]
-    },
-    {
-      "iconType": "iconpark/Life/terrace.svg",
-      "category": "Life",
-      "name": "terrace",
-      "tags": [
-        "terrace",
-        "阳台",
         "life",
         "生活"
       ]
@@ -29422,20 +25766,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Makeups/hair-brush.svg",
-      "category": "Makeups",
-      "name": "hair-brush",
-      "tags": [
-        "hair",
-        "brush",
-        "hair-brush",
-        "发梳",
-        "梳子",
-        "makeups",
-        "化妆美妆"
-      ]
-    },
-    {
       "iconType": "iconpark/Makeups/hair-clip.svg",
       "category": "Makeups",
       "name": "hair-clip",
@@ -29561,19 +25891,6 @@
         "口红",
         "化妆品",
         "美妆",
-        "makeups",
-        "化妆美妆"
-      ]
-    },
-    {
-      "iconType": "iconpark/Makeups/lipstick-one.svg",
-      "category": "Makeups",
-      "name": "lipstick-one",
-      "tags": [
-        "lipstick",
-        "one",
-        "lipstick-one",
-        "口红1",
         "makeups",
         "化妆美妆"
       ]
@@ -29913,21 +26230,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Measurement/cuvette.svg",
-      "category": "Measurement",
-      "name": "cuvette",
-      "tags": [
-        "cuvette",
-        "试管",
-        "试验",
-        "容器",
-        "化学",
-        "科学",
-        "measurement",
-        "测量 & 试验"
-      ]
-    },
-    {
       "iconType": "iconpark/Measurement/experiment.svg",
       "category": "Measurement",
       "name": "experiment",
@@ -30145,25 +26447,6 @@
         "银行",
         "财务",
         "财富",
-        "money",
-        "电商财产"
-      ]
-    },
-    {
-      "iconType": "iconpark/Money/bank-card-two.svg",
-      "category": "Money",
-      "name": "bank-card-two",
-      "tags": [
-        "bank",
-        "card",
-        "two",
-        "bank-card-two",
-        "银行卡",
-        "财富",
-        "前",
-        "金钱",
-        "银行",
-        "卡片",
         "money",
         "电商财产"
       ]
@@ -30693,21 +26976,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Money/ios-face-recognition.svg",
-      "category": "Money",
-      "name": "ios-face-recognition",
-      "tags": [
-        "ios",
-        "face",
-        "recognition",
-        "ios-face-recognition",
-        "人脸识别",
-        "面部识别",
-        "money",
-        "电商财产"
-      ]
-    },
-    {
       "iconType": "iconpark/Money/ipo.svg",
       "category": "Money",
       "name": "ipo",
@@ -30828,25 +27096,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Money/pay-code-one.svg",
-      "category": "Money",
-      "name": "pay-code-one",
-      "tags": [
-        "pay",
-        "code",
-        "one",
-        "pay-code-one",
-        "付款码",
-        "二维码",
-        "扫码",
-        "扫描",
-        "识别",
-        "支付",
-        "money",
-        "电商财产"
-      ]
-    },
-    {
       "iconType": "iconpark/Money/pay-code-two.svg",
       "category": "Money",
       "name": "pay-code-two",
@@ -30934,25 +27183,6 @@
         "shopping",
         "购物车",
         "买东西",
-        "消费",
-        "money",
-        "电商财产"
-      ]
-    },
-    {
-      "iconType": "iconpark/Money/shopping-bag.svg",
-      "category": "Money",
-      "name": "shopping-bag",
-      "tags": [
-        "shopping",
-        "bag",
-        "shopping-bag",
-        "购物袋",
-        "快消品",
-        "逛街",
-        "包包",
-        "手提袋",
-        "购物车",
         "消费",
         "money",
         "电商财产"
@@ -31263,23 +27493,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Money/wallet-two.svg",
-      "category": "Money",
-      "name": "wallet-two",
-      "tags": [
-        "wallet",
-        "two",
-        "wallet-two",
-        "钱包",
-        "金钱",
-        "财富",
-        "理财",
-        "投资",
-        "money",
-        "电商财产"
-      ]
-    },
-    {
       "iconType": "iconpark/Money/water-level.svg",
       "category": "Money",
       "name": "water-level",
@@ -31408,20 +27621,6 @@
         "播放",
         "音乐",
         "添加",
-        "多媒体音乐"
-      ]
-    },
-    {
-      "iconType": "iconpark/Music/airpods.svg",
-      "category": "Music",
-      "name": "airpods",
-      "tags": [
-        "airpods",
-        "蓝牙耳机",
-        "苹果耳机",
-        "耳机",
-        "无线耳机",
-        "music",
         "多媒体音乐"
       ]
     },
@@ -32177,24 +28376,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Music/volume-mute.svg",
-      "category": "Music",
-      "name": "volume-mute",
-      "tags": [
-        "volume",
-        "mute",
-        "volume-mute",
-        "静音",
-        "音量关闭",
-        "声音",
-        "音量",
-        "喇叭",
-        "广播",
-        "music",
-        "多媒体音乐"
-      ]
-    },
-    {
       "iconType": "iconpark/Music/volume-notice.svg",
       "category": "Music",
       "name": "volume-notice",
@@ -32287,20 +28468,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Office/abnormal.svg",
-      "category": "Office",
-      "name": "abnormal",
-      "tags": [
-        "abnormal",
-        "异常",
-        "报错",
-        "提示",
-        "提醒",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
       "iconType": "iconpark/Office/accept-email.svg",
       "category": "Office",
       "name": "accept-email",
@@ -32343,19 +28510,6 @@
         "印章",
         "打印",
         "印刷",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/add-web.svg",
-      "category": "Office",
-      "name": "add-web",
-      "tags": [
-        "add",
-        "web",
-        "add-web",
-        "添加网页",
         "office",
         "办公文档"
       ]
@@ -32685,19 +28839,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Office/disabaled-web.svg",
-      "category": "Office",
-      "name": "disabaled-web",
-      "tags": [
-        "disabaled",
-        "web",
-        "disabaled-web",
-        "网页禁用",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
       "iconType": "iconpark/Office/disabled-picture.svg",
       "category": "Office",
       "name": "disabled-picture",
@@ -32843,19 +28984,6 @@
         "picture",
         "down-picture",
         "图片下载",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/download-web.svg",
-      "category": "Office",
-      "name": "download-web",
-      "tags": [
-        "download",
-        "web",
-        "download-web",
-        "网页下载",
         "office",
         "办公文档"
       ]
@@ -33035,20 +29163,6 @@
         "信件",
         "文件夹",
         "发送成功",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/english.svg",
-      "category": "Office",
-      "name": "english",
-      "tags": [
-        "english",
-        "英文",
-        "英",
-        "英语",
-        "西文",
         "office",
         "办公文档"
       ]
@@ -33739,21 +29853,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Office/file-question.svg",
-      "category": "Office",
-      "name": "file-question",
-      "tags": [
-        "file",
-        "question",
-        "file-question",
-        "存疑文件",
-        "疑问",
-        "问好",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
       "iconType": "iconpark/Office/file-removal.svg",
       "category": "Office",
       "name": "file-removal",
@@ -33958,37 +30057,6 @@
         "文件",
         "字体",
         "文本",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/file-tips.svg",
-      "category": "Office",
-      "name": "file-tips",
-      "tags": [
-        "file",
-        "tips",
-        "file-tips",
-        "警示文件",
-        "提示",
-        "报错",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/file-tips-one.svg",
-      "category": "Office",
-      "name": "file-tips-one",
-      "tags": [
-        "file",
-        "tips",
-        "one",
-        "file-tips-one",
-        "警示文件1",
-        "提示",
-        "报错",
         "office",
         "办公文档"
       ]
@@ -34665,23 +30733,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Office/form-one.svg",
-      "category": "Office",
-      "name": "form-one",
-      "tags": [
-        "form",
-        "one",
-        "form-one",
-        "形式",
-        "布局",
-        "样式",
-        "模块",
-        "单元",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
       "iconType": "iconpark/Office/format.svg",
       "category": "Office",
       "name": "format",
@@ -34709,20 +30760,6 @@
         "健康",
         "收藏",
         "喜欢",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/hourglass.svg",
-      "category": "Office",
-      "name": "hourglass",
-      "tags": [
-        "hourglass",
-        "沙漏",
-        "沙子",
-        "时间",
-        "计时",
         "office",
         "办公文档"
       ]
@@ -35006,19 +31043,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Office/locking-picture.svg",
-      "category": "Office",
-      "name": "locking-picture",
-      "tags": [
-        "locking",
-        "picture",
-        "locking-picture",
-        "图片锁定",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
       "iconType": "iconpark/Office/locking-web.svg",
       "category": "Office",
       "name": "locking-web",
@@ -35179,19 +31203,6 @@
         "分析",
         "数据",
         "趋势",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/moving-picture.svg",
-      "category": "Office",
-      "name": "moving-picture",
-      "tags": [
-        "moving",
-        "picture",
-        "moving-picture",
-        "图片",
         "office",
         "办公文档"
       ]
@@ -35514,45 +31525,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Office/setting-web.svg",
-      "category": "Office",
-      "name": "setting-web",
-      "tags": [
-        "setting",
-        "web",
-        "setting-web",
-        "网页设置",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/source-code.svg",
-      "category": "Office",
-      "name": "source-code",
-      "tags": [
-        "source",
-        "code",
-        "source-code",
-        "网页代码",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/success-picture.svg",
-      "category": "Office",
-      "name": "success-picture",
-      "tags": [
-        "success",
-        "picture",
-        "success-picture",
-        "图片成功",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
       "iconType": "iconpark/Office/table.svg",
       "category": "Office",
       "name": "table",
@@ -35583,23 +31555,6 @@
         "无效",
         "失效",
         "禁用",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/text-message.svg",
-      "category": "Office",
-      "name": "text-message",
-      "tags": [
-        "text",
-        "message",
-        "text-message",
-        "文字讯息",
-        "音讯",
-        "消息",
-        "文字",
-        "资讯",
         "office",
         "办公文档"
       ]
@@ -35710,32 +31665,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Office/upload-web.svg",
-      "category": "Office",
-      "name": "upload-web",
-      "tags": [
-        "upload",
-        "web",
-        "upload-web",
-        "网页上传",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/video-conference.svg",
-      "category": "Office",
-      "name": "video-conference",
-      "tags": [
-        "video",
-        "conference",
-        "video-conference",
-        "视频会议",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
       "iconType": "iconpark/Office/video-file.svg",
       "category": "Office",
       "name": "video-file",
@@ -35782,19 +31711,6 @@
         "表格",
         "文件",
         "文本",
-        "office",
-        "办公文档"
-      ]
-    },
-    {
-      "iconType": "iconpark/Office/web-page.svg",
-      "category": "Office",
-      "name": "web-page",
-      "tags": [
-        "web",
-        "page",
-        "web-page",
-        "网页",
         "office",
         "办公文档"
       ]
@@ -35862,22 +31778,6 @@
         "摄像",
         "牌照",
         "配置",
-        "operate",
-        "美颜调整"
-      ]
-    },
-    {
-      "iconType": "iconpark/Operate/contrast-view.svg",
-      "category": "Operate",
-      "name": "contrast-view",
-      "tags": [
-        "contrast",
-        "view",
-        "contrast-view",
-        "对比",
-        "对比查看",
-        "查看",
-        "编辑",
         "operate",
         "美颜调整"
       ]
@@ -36101,22 +32001,6 @@
         "素材",
         "用户素材",
         "图像",
-        "operate",
-        "美颜调整"
-      ]
-    },
-    {
-      "iconType": "iconpark/Operate/material-two.svg",
-      "category": "Operate",
-      "name": "material-two",
-      "tags": [
-        "material",
-        "two",
-        "material-two",
-        "材质",
-        "拍摄",
-        "设置",
-        "摄像",
         "operate",
         "美颜调整"
       ]
@@ -36394,21 +32278,6 @@
         "分享",
         "信号",
         "传递",
-        "others",
-        "其它"
-      ]
-    },
-    {
-      "iconType": "iconpark/Others/browser.svg",
-      "category": "Others",
-      "name": "browser",
-      "tags": [
-        "browser",
-        "浏览器",
-        "窗口",
-        "网页",
-        "页面",
-        "pc端",
         "others",
         "其它"
       ]
@@ -36694,17 +32563,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Others/gavel.svg",
-      "category": "Others",
-      "name": "gavel",
-      "tags": [
-        "gavel",
-        "拍卖",
-        "others",
-        "其它"
-      ]
-    },
-    {
       "iconType": "iconpark/Others/glasses-three.svg",
       "category": "Others",
       "name": "glasses-three",
@@ -36984,17 +32842,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Others/snowman.svg",
-      "category": "Others",
-      "name": "snowman",
-      "tags": [
-        "snowman",
-        "雪人",
-        "others",
-        "其它"
-      ]
-    },
-    {
       "iconType": "iconpark/Others/stand-up.svg",
       "category": "Others",
       "name": "stand-up",
@@ -37114,23 +32961,6 @@
         "语音文字",
         "语音转文字",
         "语音入法",
-        "others",
-        "其它"
-      ]
-    },
-    {
-      "iconType": "iconpark/Others/voice-message.svg",
-      "category": "Others",
-      "name": "voice-message",
-      "tags": [
-        "voice",
-        "message",
-        "voice-message",
-        "语音信息",
-        "语音",
-        "信息",
-        "声音",
-        "信号",
         "others",
         "其它"
       ]
@@ -37268,21 +33098,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Others/wifi.svg",
-      "category": "Others",
-      "name": "wifi",
-      "tags": [
-        "wifi",
-        "无线网络",
-        "wi-fi",
-        "无线网",
-        "网络",
-        "信号",
-        "others",
-        "其它"
-      ]
-    },
-    {
       "iconType": "iconpark/Peoples/add-user.svg",
       "category": "Peoples",
       "name": "add-user",
@@ -37341,22 +33156,6 @@
         "我的",
         "员工",
         "男",
-        "peoples",
-        "用户人名"
-      ]
-    },
-    {
-      "iconType": "iconpark/Peoples/baby.svg",
-      "category": "Peoples",
-      "name": "baby",
-      "tags": [
-        "baby",
-        "婴儿",
-        "育儿",
-        "宝宝",
-        "小朋友",
-        "婴幼儿",
-        "儿童票",
         "peoples",
         "用户人名"
       ]
@@ -37551,19 +33350,6 @@
         "one",
         "people-delete-one",
         "删除用户",
-        "peoples",
-        "用户人名"
-      ]
-    },
-    {
-      "iconType": "iconpark/Peoples/people-download.svg",
-      "category": "Peoples",
-      "name": "people-download",
-      "tags": [
-        "people",
-        "download",
-        "people-download",
-        "用户下载",
         "peoples",
         "用户人名"
       ]
@@ -37964,23 +33750,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Peoples/user-to-user-transmission.svg",
-      "category": "Peoples",
-      "name": "user-to-user-transmission",
-      "tags": [
-        "user",
-        "to",
-        "transmission",
-        "user-to-user-transmission",
-        "用户互传",
-        "相互传输",
-        "用户",
-        "用户之间",
-        "peoples",
-        "用户人名"
-      ]
-    },
-    {
       "iconType": "iconpark/Peoples/weixin-people-nearby.svg",
       "category": "Peoples",
       "name": "weixin-people-nearby",
@@ -38050,22 +33819,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Safe/alarm.svg",
-      "category": "Safe",
-      "name": "alarm",
-      "tags": [
-        "alarm",
-        "警报",
-        "警灯",
-        "灯",
-        "警示",
-        "灵感",
-        "提示",
-        "safe",
-        "安全 & 防护"
-      ]
-    },
-    {
       "iconType": "iconpark/Safe/balance-two.svg",
       "category": "Safe",
       "name": "balance-two",
@@ -38095,21 +33848,6 @@
         "损坏",
         "事故",
         "报错",
-        "safe",
-        "安全 & 防护"
-      ]
-    },
-    {
-      "iconType": "iconpark/Safe/caution.svg",
-      "category": "Safe",
-      "name": "caution",
-      "tags": [
-        "caution",
-        "报错",
-        "错误",
-        "警示",
-        "提示",
-        "报警",
         "safe",
         "安全 & 防护"
       ]
@@ -40233,20 +35971,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Travel/brake-pads.svg",
-      "category": "Travel",
-      "name": "brake-pads",
-      "tags": [
-        "brake",
-        "pads",
-        "brake-pads",
-        "刹车片",
-        "汽车",
-        "travel",
-        "交通旅游"
-      ]
-    },
-    {
       "iconType": "iconpark/Travel/bus-one.svg",
       "category": "Travel",
       "name": "bus-one",
@@ -40535,22 +36259,6 @@
       "tags": [
         "frigate",
         "军舰",
-        "travel",
-        "交通旅游"
-      ]
-    },
-    {
-      "iconType": "iconpark/Travel/gate-machine.svg",
-      "category": "Travel",
-      "name": "gate-machine",
-      "tags": [
-        "gate",
-        "machine",
-        "gate-machine",
-        "检票机",
-        "闸机",
-        "检票",
-        "过关",
         "travel",
         "交通旅游"
       ]
@@ -40990,21 +36698,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Travel/passport-one.svg",
-      "category": "Travel",
-      "name": "passport-one",
-      "tags": [
-        "passport",
-        "one",
-        "passport-one",
-        "护照",
-        "护照夹",
-        "证件",
-        "travel",
-        "交通旅游"
-      ]
-    },
-    {
       "iconType": "iconpark/Travel/pennant.svg",
       "category": "Travel",
       "name": "pennant",
@@ -41275,21 +36968,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Travel/selfie.svg",
-      "category": "Travel",
-      "name": "selfie",
-      "tags": [
-        "selfie",
-        "自拍杆",
-        "自拍",
-        "拍照",
-        "拍摄",
-        "摄影",
-        "travel",
-        "交通旅游"
-      ]
-    },
-    {
       "iconType": "iconpark/Travel/set-off.svg",
       "category": "Travel",
       "name": "set-off",
@@ -41435,21 +37113,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Travel/taxi.svg",
-      "category": "Travel",
-      "name": "taxi",
-      "tags": [
-        "taxi",
-        "出租车",
-        "出行",
-        "交通",
-        "汽车",
-        "付费",
-        "travel",
-        "交通旅游"
-      ]
-    },
-    {
       "iconType": "iconpark/Travel/tent.svg",
       "category": "Travel",
       "name": "tent",
@@ -41521,47 +37184,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Travel/tickets-one.svg",
-      "category": "Travel",
-      "name": "tickets-one",
-      "tags": [
-        "tickets",
-        "one",
-        "tickets-one",
-        "门票",
-        "检票",
-        "值机",
-        "票务",
-        "票",
-        "票据",
-        "机票",
-        "票夹",
-        "travel",
-        "交通旅游"
-      ]
-    },
-    {
-      "iconType": "iconpark/Travel/tickets-two.svg",
-      "category": "Travel",
-      "name": "tickets-two",
-      "tags": [
-        "tickets",
-        "two",
-        "tickets-two",
-        "门票",
-        "检票",
-        "值机",
-        "票务",
-        "票",
-        "票据",
-        "机票",
-        "发票",
-        "收据",
-        "travel",
-        "交通旅游"
-      ]
-    },
-    {
       "iconType": "iconpark/Travel/tour-bus.svg",
       "category": "Travel",
       "name": "tour-bus",
@@ -41592,19 +37214,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Travel/transfer.svg",
-      "category": "Travel",
-      "name": "transfer",
-      "tags": [
-        "transfer",
-        "转机",
-        "换乘",
-        "移动",
-        "travel",
-        "交通旅游"
-      ]
-    },
-    {
       "iconType": "iconpark/Travel/transport.svg",
       "category": "Travel",
       "name": "transport",
@@ -41615,17 +37224,6 @@
         "运送",
         "搬运",
         "托运",
-        "travel",
-        "交通旅游"
-      ]
-    },
-    {
-      "iconType": "iconpark/Travel/universal.svg",
-      "category": "Travel",
-      "name": "universal",
-      "tags": [
-        "universal",
-        "宇宙",
         "travel",
         "交通旅游"
       ]
@@ -41788,18 +37386,6 @@
       ]
     },
     {
-      "iconType": "iconpark/Weather/snow.svg",
-      "category": "Weather",
-      "name": "snow",
-      "tags": [
-        "snow",
-        "下雪",
-        "雪",
-        "weather",
-        "天气"
-      ]
-    },
-    {
       "iconType": "iconpark/Weather/snowflake.svg",
       "category": "Weather",
       "name": "snowflake",
@@ -41811,35 +37397,6 @@
         "寒冷",
         "大雪",
         "weather"
-      ]
-    },
-    {
-      "iconType": "iconpark/Weather/sun.svg",
-      "category": "Weather",
-      "name": "sun",
-      "tags": [
-        "sun",
-        "太阳",
-        "晴朗",
-        "阳光",
-        "weather",
-        "天气"
-      ]
-    },
-    {
-      "iconType": "iconpark/Weather/sun-one.svg",
-      "category": "Weather",
-      "name": "sun-one",
-      "tags": [
-        "sun",
-        "one",
-        "sun-one",
-        "太阳1",
-        "阳光",
-        "太阳",
-        "晴朗",
-        "weather",
-        "天气"
       ]
     },
     {
