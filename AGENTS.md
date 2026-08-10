@@ -52,7 +52,7 @@ version metadata and the embedded service catalog. It, `make vet`,
 the ignored `internal/registry/meta_data.json` is absent and the first run needs
 access to `open.feishu.cn`; a valid existing file is reused.
 `LARKSUITE_CLI_REMOTE_META=off` does not disable this build-time fetch.
-`make live-skills-test` also needs Node/npm, may use `npx`, and needs network.
+`make live-skills-test` requires working `npx` and network access.
 
 If the fetch fails before Go starts, report the missing Python or network
 prerequisite instead of changing product code or generated metadata. `go build .`
@@ -193,13 +193,15 @@ run the focused source test and verify changed paths/symbols directly.
 `make test` currently leaves root binaries `audit-observer` and `readonly-policy`; do not stage them.
 
 Before a Go PR, run `make unit-test`, `make vet`, and `make fmt-check`;
-`go mod tidy` must leave module files unchanged. Then run the CI checks:
+`go mod tidy` must leave module files unchanged. Set
+`QUALITY_GATE_CHANGED_FROM` to the PR base before diff-scoped checks. Pinned
+`go run module@version` commands need module access unless cached.
 
 ```bash
 go mod tidy
 git diff --exit-code -- go.mod go.sum
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev=origin/main
-go run -C lint . --changed-from origin/main ..
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev="$QUALITY_GATE_CHANGED_FROM"
+go run -C lint . --changed-from "$QUALITY_GATE_CHANGED_FROM" ..
 go test -C lint ./... -count=1
 go run github.com/google/go-licenses/v2@v2.0.1 check ./... --disallowed_types=forbidden,restricted,reciprocal,unknown
 ```
