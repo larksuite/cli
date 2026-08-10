@@ -44,14 +44,21 @@ lark-cli drive +copy --token <WIKI_TOKEN> --type wiki --name '副本名称' --fo
 
 - bot 身份复制成功后，CLI 会自动尝试给当前 CLI 用户授予新副本的 `full_access`，结果在输出的 `data.permission_grant` 字段中；授权失败不影响复制本身的成功状态
 
-## 按标题复制并继续编辑
+## 按标题复制并在 Docx 副本开头插入文本
 
 1. 按标题定位源文件时，先按 [`lark-drive-search.md`](lark-drive-search.md) 使用 `drive +search` 得到唯一匹配的源资源。
 2. 使用已确认的源 URL，或真实 token 与 type，执行一次 `drive +copy`。目标位置使用用户给出的文件夹 URL/token；复制到“我的空间”或未指定其他目标位置时使用 `--folder-token my_space`。
 3. 从成功响应的 `data.file_token` 或 `data.url` 取得新副本；后续只操作该副本，不重新搜索副本，也不操作源 token。
-4. 后续编辑命令确实需要 block ID 时，只读取一次取得该参数所需的最小文档结构，并将结果直接用于紧随其后的更新。
-5. 最终更新返回结构化成功后结束。只有用户明确要求验证时，才再次读取、搜索或检查元数据。
+4. 在 Docx 副本开头插入已知内容时，直接使用文档开头的固定锚点，无需读取正文或获取真实 block ID：
+
+   ```bash
+   lark-cli docs +update --doc "<COPY_FILE_TOKEN>" --command block_insert_after --block-id 0 --content '<p>要插入的内容</p>'
+   ```
+
+5. 更新返回 `data.result=success` 且 `data.warnings` 为空时任务完成。只有用户明确要求验证、返回 `partial_success`、`data.warnings` 非空，或后续编辑需要当前正文结构时，才读取副本。
 6. 如果复制后的编辑失败，保留 `data.file_token`，只重试编辑步骤；不要重新执行 `drive +copy`，避免创建重复副本。
+
+上述固定路径仅适用于“新复制的 Docx + 在开头插入已知内容”。替换已有内容、按章节修改、保留复杂结构或需要真实 block ID 时，进入 `lark-doc` 的通用更新流程。
 
 ## 输出
 

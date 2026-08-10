@@ -18,6 +18,8 @@ metadata:
 
 > **副本分流规则：** 如果用户要复制在线文档、创建文档副本、把文档复制到另一个文件夹，必须使用 `lark-cli drive +copy`。不要用 `drive +export` 下载后再 `drive +import` 上传，也不要用 `docs +fetch` + `docs +create` 重建正文；导出/导入只用于本地文件转换或离线产物。
 
+> **副本后编辑路由：** 复制 Docx 后仅需在副本开头插入已知文本时，继续按 [`references/lark-drive-copy.md`](references/lark-drive-copy.md) 的固定锚点路径完成；只有编辑依赖现有正文结构或真实 block ID 时，才进入通用文档更新流程。
+
 ## 快速决策
 
 - 用户要把**已有 Wiki 节点移出知识库，放到 Drive 文件夹或“我的空间”根目录**：切到 `lark-wiki`，使用 `lark-cli wiki +move-to-drive`；不要把 Wiki token 直接交给 `drive +move`。这是会改变文档归属和权限继承的写操作，执行前确认源节点与目标位置。
