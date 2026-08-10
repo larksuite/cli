@@ -187,16 +187,26 @@ func errsInvalidConvertType(got string) error {
 // parseConvertIDs splits the resolved --ids value (already expanded from
 // @file / stdin by the framework) into a trimmed, order-preserving list. IDs are
 // NOT de-duplicated — duplicates are kept and returned in input order so a caller
-// can index results by position. The CLI enforces 1–100 to reject an empty
-// batch (no-op round trip) and a batch over the OpenAPI cap.
+// can index results by position. An empty element (e.g. "a,,b" or a trailing
+// comma) is rejected rather than dropped, since dropping it would shift every
+// later result's 0-based index and silently break the position-keyed contract.
+// The CLI enforces 1–100 to reject an empty batch (no-op round trip) and a batch
+// over the OpenAPI cap.
 func parseConvertIDs(raw string) ([]string, error) {
-	ids := make([]string, 0)
-	for _, part := range strings.Split(raw, ",") {
+	parts := strings.Split(raw, ",")
+	ids := make([]string, 0, len(parts))
+	empty := false
+	for _, part := range parts {
 		id := strings.TrimSpace(part)
 		if id == "" {
+			empty = true
 			continue
 		}
 		ids = append(ids, id)
+	}
+	if empty && len(ids) > 0 {
+		return nil, appsValidationParamError("--ids", "--ids contains an empty entry; remove it so result positions stay aligned").
+			WithHint("provide non-empty ids only; 1–%d per call (OpenAPI cap 100)", idConvertMaxIDs)
 	}
 	if len(ids) == 0 || len(ids) > idConvertMaxIDs {
 		return nil, appsValidationParamError("--ids", "--ids must contain between 1 and %d IDs, got %d", idConvertMaxIDs, len(ids)).
@@ -222,16 +232,16 @@ func buildConvertResult(convertType string, ids []string, resp map[string]interf
 	// Group returned target_ids by source_id, preserving arrival order so
 	// duplicate source IDs are consumed one target per occurrence.
 	returned := map[string][]string{}
-	for _, raw := range asSlice(resp["items"]) {
+	for _, raw := range common.GetSlice(resp, "items") {
 		item, ok := raw.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		src := asString(item["source_id"])
+		src := common.GetString(item, "source_id")
 		if src == "" {
 			continue
 		}
-		returned[src] = append(returned[src], asString(item["target_id"]))
+		returned[src] = append(returned[src], common.GetString(item, "target_id"))
 	}
 
 	items := make([]idConvertItem, 0, len(ids))
@@ -251,14 +261,4 @@ func buildConvertResult(convertType string, ids []string, resp map[string]interf
 	missedCount := len(missed)
 	meta := &output.Meta{Total: &total, HitCount: &hit, MissedCount: &missedCount}
 	return data, meta
-}
-
-func asSlice(v interface{}) []interface{} {
-	s, _ := v.([]interface{})
-	return s
-}
-
-func asString(v interface{}) string {
-	s, _ := v.(string)
-	return s
 }

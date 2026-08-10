@@ -13,10 +13,22 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-// requireConvertValidation extracts the typed ValidationError so its Param /
-// Hint can be asserted (Param lives on ValidationError, not the embedded Problem).
+// requireConvertValidation asserts the error carries the typed validation
+// metadata (category + subtype via errs.ProblemOf) and returns the
+// *errs.ValidationError so its Param / Hint can be asserted (Param lives on
+// ValidationError, not the Problem projection).
 func requireConvertValidation(t *testing.T, err error) *errs.ValidationError {
 	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("err = %T %v, want a typed problem", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Fatalf("category = %s, want %s", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %s, want %s", p.Subtype, errs.SubtypeInvalidArgument)
+	}
 	var ve *errs.ValidationError
 	if !errors.As(err, &ve) {
 		t.Fatalf("err = %T %v, want *errs.ValidationError", err, err)
@@ -205,12 +217,29 @@ func TestAppsUserIDConvert_InvalidConvertType(t *testing.T) {
 	}
 }
 
-// resolveConvertType is the internal mapping used by Execute/DryRun; unit-test
-// it directly so the hint wording (pipe-joined allowed list) stays covered even
-// though the flag Enum normally intercepts a bad value first.
+// resolveConvertType is the internal mapping used by Execute/DryRun. Table-drive
+// every direction so each --convert-type → id_convert_type mapping (10/11/20/21/40)
+// is directly protected; the HTTP tests do not assert the request body. Also cover
+// the empty-input hint wording (pipe-joined allowed list).
 func TestResolveConvertType(t *testing.T) {
-	if st, err := resolveConvertType("miaoda-to-feishu-user-id"); err != nil || st != 40 {
-		t.Fatalf("miaoda-to-feishu-user-id → %d, %v; want 40, nil", st, err)
+	cases := []struct {
+		flag string
+		want int
+	}{
+		{"miaoda-to-open-id", 10},
+		{"miaoda-to-union-id", 11},
+		{"open-id-to-miaoda", 20},
+		{"union-id-to-miaoda", 21},
+		{"miaoda-to-feishu-user-id", 40},
+	}
+	if len(cases) != len(idConvertDirections) {
+		t.Fatalf("cases cover %d directions, idConvertDirections has %d — keep them in sync", len(cases), len(idConvertDirections))
+	}
+	for _, c := range cases {
+		st, err := resolveConvertType(c.flag)
+		if err != nil || st != c.want {
+			t.Fatalf("resolveConvertType(%q) = %d, %v; want %d, nil", c.flag, st, err, c.want)
+		}
 	}
 	_, err := resolveConvertType("")
 	ve := requireConvertValidation(t, err)
@@ -231,6 +260,23 @@ func TestAppsUserIDConvert_EmptyIDs(t *testing.T) {
 	}
 	if !strings.Contains(ve.Hint, "1–100") {
 		t.Fatalf("hint should mention 1–100: %q", ve.Hint)
+	}
+}
+
+// An interior empty element (e.g. "id-a,,id-b") must be rejected, not silently
+// dropped — dropping it would shift later result indices and break the
+// position-keyed items/missed contract.
+func TestAppsUserIDConvert_InteriorEmptyID(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "open-id-to-miaoda", "--ids", "ou_a,,ou_b", "--as", "user"},
+		factory, stdout)
+	ve := requireConvertValidation(t, err)
+	if ve.Param != "--ids" {
+		t.Fatalf("param=%q, want --ids", ve.Param)
+	}
+	if !strings.Contains(ve.Message, "empty entry") {
+		t.Fatalf("message should flag the empty entry: %q", ve.Message)
 	}
 }
 
