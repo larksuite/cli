@@ -171,7 +171,7 @@ func fetchTaskAttachmentDownloadMetadata(runtime *common.RuntimeContext, guid, u
 		return taskAttachmentDownloadMetadata{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "decode attachment metadata: %s", err).WithCause(err)
 	}
 	if strings.TrimSpace(metadata.GUID) == "" {
-		metadata.GUID = guid
+		return taskAttachmentDownloadMetadata{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "attachment response has no attachment guid")
 	}
 	if strings.TrimSpace(metadata.URL) == "" {
 		return taskAttachmentDownloadMetadata{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "attachment response has no temporary download URL")
@@ -185,9 +185,7 @@ func taskAttachmentTargetPath(runtime *common.RuntimeContext, output, attachment
 	if info, err := runtime.FileIO().Stat(output); err == nil {
 		outputIsDir = info.IsDir()
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot inspect output path: %s", err).
-			WithParam("--output").
-			WithCause(err)
+		return "", taskAttachmentStatError(err)
 	}
 
 	targetPath := output
@@ -205,12 +203,22 @@ func taskAttachmentTargetPath(runtime *common.RuntimeContext, output, attachment
 				WithParam("--output").
 				WithHint("use --overwrite to replace the existing file")
 		} else if !errors.Is(err, fs.ErrNotExist) {
-			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot inspect output path: %s", err).
-				WithParam("--output").
-				WithCause(err)
+			return "", taskAttachmentStatError(err)
 		}
 	}
 	return targetPath, nil
+}
+
+func taskAttachmentStatError(err error) error {
+	if _, ok := errs.ProblemOf(err); ok {
+		return err
+	}
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot inspect output path: %s", err).
+			WithParam("--output").
+			WithCause(err)
+	}
+	return errs.NewInternalError(errs.SubtypeFileIO, "cannot inspect output path: %s", err).WithCause(err)
 }
 
 func taskAttachmentFileName(name string) string {

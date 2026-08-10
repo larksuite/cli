@@ -4,6 +4,7 @@
 package task
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -12,8 +13,10 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestDownloadAttachmentTaskSuccess(t *testing.T) {
@@ -181,6 +184,117 @@ func TestDownloadAttachmentTaskDoesNotLeakMalformedTemporaryURL(t *testing.T) {
 	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
 		t.Fatalf("problem = %#v, %v; want internal/invalid_response", problem, ok)
 	}
+}
+
+func TestDownloadAttachmentTaskRejectsMissingServerGUID(t *testing.T) {
+	factory, stdout, _, reg := taskShortcutTestFactory(t)
+	warmTenantToken(t, factory, reg)
+
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/task/v2/attachments/att-guid-1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{
+				"attachment": map[string]interface{}{
+					"guid":       "   ",
+					"file_token": "file-token-1",
+					"name":       "note.txt",
+					"size":       4,
+					"url":        "https://download.example/note",
+				},
+			},
+		},
+	})
+	downloadStub := &httpmock.Stub{
+		Method:   http.MethodGet,
+		URL:      "https://download.example/note",
+		RawBody:  []byte("DATA"),
+		Optional: true,
+	}
+	reg.Register(downloadStub)
+
+	err := runMountedTaskShortcut(t, DownloadAttachmentTask, []string{
+		"+download-attachment",
+		"--attachment-guid", "att-guid-1",
+		"--output", "./note.txt",
+		"--as", "bot",
+	}, factory, stdout)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("problem = %#v, %v; want internal/invalid_response", problem, ok)
+	}
+	if len(downloadStub.CapturedBodies) != 0 {
+		t.Fatal("temporary download URL was consumed for metadata without a server GUID")
+	}
+}
+
+func TestTaskAttachmentTargetPathClassifiesStatErrors(t *testing.T) {
+	pathCause := &fileio.PathValidationError{Err: errors.New("unsafe path")}
+	fileCause := errors.New("permission denied")
+	tests := []struct {
+		name       string
+		statErrors []error
+		cause      error
+		category   errs.Category
+		subtype    errs.Subtype
+	}{
+		{name: "initial path validation", statErrors: []error{pathCause}, cause: pathCause, category: errs.CategoryValidation, subtype: errs.SubtypeInvalidArgument},
+		{name: "target path validation", statErrors: []error{os.ErrNotExist, pathCause}, cause: pathCause, category: errs.CategoryValidation, subtype: errs.SubtypeInvalidArgument},
+		{name: "initial file I/O", statErrors: []error{fileCause}, cause: fileCause, category: errs.CategoryInternal, subtype: errs.SubtypeFileIO},
+		{name: "target file I/O", statErrors: []error{os.ErrNotExist, fileCause}, cause: fileCause, category: errs.CategoryInternal, subtype: errs.SubtypeFileIO},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fio := &taskAttachmentStatFileIO{statErrors: tt.statErrors}
+			runtime := &common.RuntimeContext{Factory: &cmdutil.Factory{
+				FileIOProvider: taskAttachmentFileIOProvider{fileIO: fio},
+			}}
+			_, err := taskAttachmentTargetPath(runtime, "report.pdf", "report.pdf", false)
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != tt.category || problem.Subtype != tt.subtype || !errors.Is(err, tt.cause) {
+				t.Fatalf("problem = %#v, %v; error = %v", problem, ok, err)
+			}
+			if tt.category == errs.CategoryValidation {
+				var validationErr *errs.ValidationError
+				if !errors.As(err, &validationErr) || validationErr.Param != "--output" {
+					t.Fatalf("error = %#v, want --output validation error", err)
+				}
+			}
+		})
+	}
+}
+
+type taskAttachmentFileIOProvider struct {
+	fileIO fileio.FileIO
+}
+
+func (taskAttachmentFileIOProvider) Name() string { return "task-attachment-test" }
+
+func (p taskAttachmentFileIOProvider) ResolveFileIO(context.Context) fileio.FileIO {
+	return p.fileIO
+}
+
+type taskAttachmentStatFileIO struct {
+	fileio.FileIO
+	statErrors []error
+	statCalls  int
+}
+
+func (f *taskAttachmentStatFileIO) Stat(string) (fileio.FileInfo, error) {
+	if f.statCalls >= len(f.statErrors) {
+		return nil, os.ErrNotExist
+	}
+	err := f.statErrors[f.statCalls]
+	f.statCalls++
+	return nil, err
+}
+
+func (*taskAttachmentStatFileIO) ResolvePath(path string) (string, error) {
+	return path, nil
 }
 
 func TestTaskAttachmentFileName(t *testing.T) {

@@ -151,15 +151,16 @@ func TestOpaqueURLDoesNotLeakSignedURLOrResponseBody(t *testing.T) {
 		t.Fatalf("OpaqueURL() error leaked signed URL material: %q", message)
 	}
 	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Code != http.StatusForbidden {
-		t.Fatalf("problem = %#v, %v; want HTTP 403", problem, ok)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport || problem.Code != http.StatusForbidden {
+		t.Fatalf("problem = %#v, %v; want network/transport HTTP 403", problem, ok)
 	}
 }
 
 func TestOpaqueURLDoesNotLeakSignedURLOnTransportFailure(t *testing.T) {
 	const signedURL = "https://example.com/object?authcode=secret-value"
+	cause := errors.New("connection refused")
 	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return nil, errors.New("connection refused")
+		return nil, cause
 	})}
 	_, err := OpaqueURL(httpClient, signedURL)(context.Background(), Request{})
 	if err == nil {
@@ -169,8 +170,53 @@ func TestOpaqueURLDoesNotLeakSignedURLOnTransportFailure(t *testing.T) {
 		t.Fatalf("OpaqueURL() error leaked signed URL material: %q", message)
 	}
 	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Subtype != errs.SubtypeNetworkTransport || !problem.Retryable {
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport || !problem.Retryable || !errors.Is(err, cause) {
 		t.Fatalf("problem = %#v, %v; want retryable network/transport", problem, ok)
+	}
+}
+
+func TestOpaqueURLDoesNotLeakMalformedSignedURL(t *testing.T) {
+	const signedURL = "https://%secret-value?authcode=secret-value"
+	httpClient := &http.Client{}
+	_, err := OpaqueURL(httpClient, signedURL)(context.Background(), Request{})
+	if err == nil {
+		t.Fatal("OpaqueURL() error = nil, want invalid URL error")
+	}
+	if message := err.Error(); strings.Contains(message, "secret-value") || strings.Contains(message, "authcode") {
+		t.Fatalf("OpaqueURL() error leaked signed URL material: %q", message)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport || problem.Retryable {
+		t.Fatalf("problem = %#v, %v; want non-retryable network/transport", problem, ok)
+	}
+}
+
+func TestOpaqueURLDoesNotLeakSignedURLOnRedirectFailure(t *testing.T) {
+	const signedURL = "https://example.com/object?authcode=secret-value"
+	cause := errors.New("blocked redirect target")
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusFound,
+				Header:     http.Header{"Location": {"https://redirect.example/object?authcode=redirect-secret-value"}},
+				Body:       io.NopCloser(strings.NewReader("redirect")),
+				Request:    req,
+			}, nil
+		}),
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return cause
+		},
+	}
+	_, err := OpaqueURL(httpClient, signedURL)(context.Background(), Request{})
+	if err == nil {
+		t.Fatal("OpaqueURL() error = nil, want redirect error")
+	}
+	if message := err.Error(); strings.Contains(message, "secret-value") || strings.Contains(message, "authcode") {
+		t.Fatalf("OpaqueURL() error leaked signed URL material: %q", message)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport || problem.Retryable || !errors.Is(err, cause) {
+		t.Fatalf("problem = %#v, %v; want non-retryable network/transport with redirect cause", problem, ok)
 	}
 }
 
