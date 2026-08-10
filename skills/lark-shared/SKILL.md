@@ -39,13 +39,13 @@ metadata:
 
 ## Reference 强触发索引
 
-命中任一触发条件时，**必须在执行下一步前读取对应 reference**。命中多条时按表中顺序读取，同一reference只读取一次。
+命中任一触发条件时，**MUST 在执行下一步前读取对应 reference**。命中多条时按表中顺序读取，同一reference只读取一次。
 
 | 强触发条件（命中任一即必读） | Reference |
 |---|---|
-| 查询/诊断当前实际身份或自己的 openId等、不理解`--as user/bot`的含义、处理登录态、scope、业务域、登录/退出、授权、权限不足、`missing_scope` 或 `console_url` | [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md) |
+| 查看自己是谁（user/bot）、获取当前身份详细字段信息、不理解`--as user/bot`的含义、登录态、认证、scope、授权、权限、`missing_scope` 或 `console_url` | [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md) |
 | Agent 准备发起或完成 `auth login`，或该命令输出 `verification_url`、`device_code` | [`auth-split-flow`](references/lark-shared-auth-split-flow.md) |
 | 需要依赖 JSON 输出契约 判断成功 / 失败、读取 stdout / stderr，或为命令编写脚本与封装 | [`output-contract`](references/lark-shared-output-contract.md) |
-| 准备执行/预览high-risk-write、判断命令风险等级、遇到退出码 exit 10、 `confirmation_required`、确认后重试 | [`high-risk-approval`](references/lark-shared-high-risk-approval.md) |
+| 准备执行high-risk-write(高风险操作)、判断命令风险等级、遇到退出码 exit 10、 `confirmation_required`、确认后重试 | [`high-risk-approval`](references/lark-shared-high-risk-approval.md) |
 | 首次使用CLI需运行 `lark-cli config init` 完成应用配置、或 CLI 明确提示 `config init --new` | [`config-init`](references/lark-shared-config-init.md) |
 | 用户询问 notice、CLI版本更新、或输出含 `_notice`（升级 / skills 落后 / 废弃命令提示）| [`update-notice`](references/lark-shared-update-notice.md) |
