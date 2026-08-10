@@ -1,7 +1,7 @@
 
 # drive +copy
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **认证与确认：** 普通复制直接执行本页命令。用户明确要求检查登录态或当前身份，或命令返回认证、授权、scope、权限、`1061005 auth failed` 或 `confirmation_required` 时，再阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
 
 复制一个 Drive 文件（在线文档、表格、多维表格、幻灯片、思维笔记或普通文件）到目标文件夹，生成一个内容相同的新副本。
 
@@ -44,6 +44,14 @@ lark-cli drive +copy --token <WIKI_TOKEN> --type wiki --name '副本名称' --fo
 
 - bot 身份复制成功后，CLI 会自动尝试给当前 CLI 用户授予新副本的 `full_access`，结果在输出的 `data.permission_grant` 字段中；授权失败不影响复制本身的成功状态
 
+## 按标题复制并继续编辑
+
+1. 按标题定位源文件时，先按 [`lark-drive-search.md`](lark-drive-search.md) 使用 `drive +search` 得到唯一匹配的源资源。
+2. 使用已确认的源 URL，或真实 token 与 type，执行一次 `drive +copy`。目标位置使用用户给出的文件夹 URL/token；复制到“我的空间”或未指定其他目标位置时使用 `--folder-token my_space`。
+3. 从成功响应的 `data.file_token` 或 `data.url` 取得新副本；后续只操作该副本，不重新搜索副本，也不操作源 token。
+4. 后续编辑命令确实需要 block ID 时，只读取一次取得该参数所需的最小文档结构，并将结果直接用于紧随其后的更新。
+5. 最终更新返回结构化成功后结束。只有用户明确要求验证时，才再次读取、搜索或检查元数据。
+
 ## 输出
 
 ```json
@@ -79,6 +87,10 @@ lark-cli drive +copy --token <WIKI_TOKEN> --type wiki --name '副本名称' --fo
 |---|---|---|
 | `99991672` / `99991679` | 缺失 scope | 按错误里的 `missing_scopes`、`hint` 申请/授权所需 scope 后重试 |
 | `99991400` | 命中接口限频 | 等待一段时间后重试；批量复制时保持串行并降低频率 |
+
+- `invalid token`、`not found`、`unsupported type` 等确定性资源错误：如实报告并停止。
+- 参数校验错误：按本页公开参数和命令返回的结构化错误修正输入，继续使用 `drive +copy`。
+- timeout、connection reset 或 5xx 发生在请求可能已送达服务端之后：结果视为不确定，不自动再次复制；向用户说明重复执行可能产生第二个副本，并在确认后再处理。
 
 ## 参考
 
