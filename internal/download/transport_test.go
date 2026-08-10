@@ -134,6 +134,46 @@ func TestURLTransportFailureOwnsRetryability(t *testing.T) {
 	}
 }
 
+func TestOpaqueURLDoesNotLeakSignedURLOrResponseBody(t *testing.T) {
+	const signedURL = "https://example.com/object?authcode=secret-value"
+	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("denied for authcode=secret-value")),
+		}, nil
+	})}
+	_, err := OpaqueURL(httpClient, signedURL)(context.Background(), Request{})
+	if err == nil {
+		t.Fatal("OpaqueURL() error = nil, want HTTP error")
+	}
+	if message := err.Error(); strings.Contains(message, "secret-value") || strings.Contains(message, "authcode") {
+		t.Fatalf("OpaqueURL() error leaked signed URL material: %q", message)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Code != http.StatusForbidden {
+		t.Fatalf("problem = %#v, %v; want HTTP 403", problem, ok)
+	}
+}
+
+func TestOpaqueURLDoesNotLeakSignedURLOnTransportFailure(t *testing.T) {
+	const signedURL = "https://example.com/object?authcode=secret-value"
+	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	})}
+	_, err := OpaqueURL(httpClient, signedURL)(context.Background(), Request{})
+	if err == nil {
+		t.Fatal("OpaqueURL() error = nil, want transport error")
+	}
+	if message := err.Error(); strings.Contains(message, "secret-value") || strings.Contains(message, "authcode") {
+		t.Fatalf("OpaqueURL() error leaked signed URL material: %q", message)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Subtype != errs.SubtypeNetworkTransport || !problem.Retryable {
+		t.Fatalf("problem = %#v, %v; want retryable network/transport", problem, ok)
+	}
+}
+
 func TestURLCallerDeadlineIsNotRetryable(t *testing.T) {
 	httpClient := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		<-req.Context().Done()

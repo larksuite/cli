@@ -1,7 +1,7 @@
 ---
 name: lark-task
 version: 1.0.0
-description: "飞书任务：管理任务、清单和任务智能体。创建待办任务、查看和更新任务状态、拆分子任务、组织任务清单、分配协作成员、上传任务附件、注册或注销任务智能体、更新任务智能体的主页数据、写入智能体任务记录。当用户需要创建待办事项、查看任务列表、跟踪任务进度、管理项目清单或给他人分配任务、为任务上传附件文件、注册注销任务智能体、更新智能体主页数据、写入任务记录时使用。"
+description: "飞书任务：管理任务、清单和任务智能体。创建待办任务、查看和更新任务状态、拆分子任务、组织任务清单、分配协作成员、上传或下载任务附件、注册或注销任务智能体、更新任务智能体的主页数据、写入智能体任务记录。当用户需要创建待办事项、查看任务列表、跟踪任务进度、管理项目清单或给他人分配任务、上传或下载任务附件、注册注销任务智能体、更新智能体主页数据、写入任务记录时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -60,6 +60,7 @@ metadata:
 | [`+get-related-tasks`](references/lark-task-get-related-tasks.md) | list tasks related to me |
 | [`+search`](references/lark-task-search.md) | search tasks |
 | [`+upload-attachment`](references/lark-task-upload-attachment.md) | upload a local file as an attachment to a task |
+| [`+download-attachment`](references/lark-task-download-attachment.md) | download a task attachment by attachment GUID |
 | [`+tasklist-create`](references/lark-task-tasklist-create.md) | create a tasklist and optionally add tasks |
 | [`+tasklist-search`](references/lark-task-tasklist-search.md) | search tasklists |
 | [`+tasklist-task-add`](references/lark-task-tasklist-task-add.md) | add tasks to a tasklist |
@@ -173,3 +174,4 @@ lark-cli task <resource> <method> [flags] # 调用 API
 | `agent.update_agent_profile` | `task:task:write` |
 | `agent.register_agent` | `task:task:write` |
 | `agent_task_step_info.append_task_steps` | `task:task:write` |
+| `+download-attachment` | `task:attachment:read` |

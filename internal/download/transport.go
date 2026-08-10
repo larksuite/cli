@@ -103,6 +103,17 @@ func cloneQueryParams(params larkcore.QueryParams) larkcore.QueryParams {
 // URL adapts a caller-validated URL and HTTP client to Transport. The caller
 // owns source and redirect validation; Open owns transfer timeouts.
 func URL(httpClient *http.Client, rawURL string) Transport {
+	return urlTransport(httpClient, rawURL, false)
+}
+
+// OpaqueURL adapts a caller-validated URL while keeping the URL and external
+// response body out of serialized error messages. Use it for short-lived URLs
+// that embed credentials or authorization codes.
+func OpaqueURL(httpClient *http.Client, rawURL string) Transport {
+	return urlTransport(httpClient, rawURL, true)
+}
+
+func urlTransport(httpClient *http.Client, rawURL string, opaque bool) Transport {
 	var downloadClient *http.Client
 	if httpClient != nil {
 		downloadClient = &http.Client{
@@ -117,6 +128,9 @@ func URL(httpClient *http.Client, rawURL string) Transport {
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
+			if opaque {
+				return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid download URL").WithCause(err)
+			}
 			return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid download URL: %s", err).WithCause(err)
 		}
 		req.Header = request.Headers()
@@ -131,23 +145,31 @@ func URL(httpClient *http.Client, rawURL string) Transport {
 				return nil, err
 			}
 			if hasResponse {
+				if opaque {
+					return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download redirect failed").WithCause(err)
+				}
 				return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download redirect failed: %s", err).WithCause(err)
+			}
+			if opaque {
+				return nil, client.WrapReplaySafeTransportError(ctx, err, "download failed")
 			}
 			return nil, client.WrapReplaySafeTransportError(ctx, err, "download failed: %s", err)
 		}
 		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 			return resp, nil
 		}
-		return nil, urlResponseError(resp)
+		return nil, urlResponseError(resp, !opaque)
 	}
 }
 
-func urlResponseError(resp *http.Response) error {
+func urlResponseError(resp *http.Response, includeDetail bool) error {
 	var detail string
 	if resp.Body != nil {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		detail = strings.TrimSpace(string(body))
+		if includeDetail {
+			detail = strings.TrimSpace(string(body))
+		}
 	}
 
 	subtype := errs.SubtypeNetworkTransport

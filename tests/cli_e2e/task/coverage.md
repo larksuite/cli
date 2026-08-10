@@ -1,9 +1,9 @@
 # Task CLI E2E Coverage
 
 ## Metrics
-- Denominator: 29 leaf commands
-- Covered: 15
-- Coverage: 51.7%
+- Denominator: 30 leaf commands
+- Covered: 16
+- Coverage: 53.3%
 
 ## Summary
 - TestTask_StatusWorkflow: creates a task via `task +create`, then proves `task +complete`, `task tasks get`, and `task +reopen` through `complete`, `get completed task`, `reopen`, and `get reopened task`; asserts `status` flips between `done` and `todo` and `completed_at` is set then cleared.
@@ -14,6 +14,7 @@
 - TestTask_TasklistWorkflowAsUser: creates a tasklist as `--as user`, patches its name through `task tasklists patch`, then proves both `task tasklists get` and `task tasklists list` return the patched tasklist.
 - TestTask_TasklistAddTaskWorkflow: creates a standalone tasklist and task, runs `add task to tasklist`, then `list tasklist tasks` and `get task with tasklist link`; proves `task +tasklist-task-add`, `task tasklists tasks`, and `task tasks get`, including no failed tasks in the add response.
 - TestTask_GetMyTasksDryRun: validates `task +get-my-tasks --dry-run` request shape for `type=my_tasks`, `user_id_type=open_id`, `completed`, `page_token`, and default `page_size` without calling live APIs.
+- TestTaskDownloadAttachmentWorkflow: creates a task, uploads a unique text attachment, downloads it through `task +download-attachment`, verifies the exact bytes and attachment GUID, and relies on task cleanup to remove the attachment. `TestTaskDownloadAttachmentDryRun` separately pins the two-step metadata plus temporary-URL request shape.
 - Cleanup path note: workflow-created tasks and tasklists are deleted through direct `task tasks delete` / `task tasklists delete` cleanup paths in `helpers_test.go::createTask`, `helpers_test.go::createTasklist`, `tasklist_workflow_test.go::TestTask_TasklistWorkflowAsBot`, and `tasklist_workflow_test.go::TestTask_TasklistWorkflowAsUser`, but those cleanup-only executions are not counted as command coverage because no testcase asserts delete behavior as the primary proof surface.
 - Blocked area: assignee, follower, and tasklist member mutations still require stable real-user `open_id` fixtures; the current suite is bot-safe only.
 - Blocked area: `task +get-my-tasks` live result assertions and `task tasks list` did not return the workflow-created user task deterministically in UAT, so live list visibility remains uncovered instead of being counted from flaky results.
@@ -28,6 +29,7 @@
 | ✓ | task +comment | shortcut | task_comment_workflow_test.go::TestTask_CommentWorkflow/comment | `--task-id`; `--content` | |
 | ✓ | task +complete | shortcut | task_status_workflow_test.go::TestTask_StatusWorkflow/complete | `--task-id` | |
 | ✓ | task +create | shortcut | task_status_workflow_test.go::TestTask_StatusWorkflow; task_comment_workflow_test.go::TestTask_CommentWorkflow; task_reminder_workflow_test.go::TestTask_ReminderWorkflow; tasklist_add_task_workflow_test.go::TestTask_TasklistAddTaskWorkflow | `summary` + `description`; `due.timestamp` + `due.is_all_day` | |
+| ✓ | task +download-attachment | shortcut | task_download_attachment_workflow_test.go::TestTaskDownloadAttachmentWorkflow; task_download_attachment_dryrun_test.go::TestTaskDownloadAttachmentDryRun | `--attachment-guid`; relative `--output`; metadata GET followed by temporary URL GET | live workflow uploads a unique fixture and task cleanup removes it |
 | ✕ | task +followers | shortcut |  | none | requires real follower open_id fixtures; shortcut defaults to `--as user` |
 | ✓ | task +get-my-tasks | shortcut | task_get_my_tasks_dryrun_test.go::TestTask_GetMyTasksDryRun | `--complete`; `--page-token`; dry-run only | live UAT did not return the workflow-created user task deterministically in my-tasks views |
 | ✓ | task +reminder | shortcut | task_reminder_workflow_test.go::TestTask_ReminderWorkflow/set reminder; task_reminder_workflow_test.go::TestTask_ReminderWorkflow/remove reminder | `--task-id --set 30m`; `--task-id --remove` | |
