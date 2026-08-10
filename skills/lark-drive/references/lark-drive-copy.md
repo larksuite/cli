@@ -51,6 +51,7 @@ lark-cli drive +copy --token <WIKI_TOKEN> --type wiki --name '副本名称' --fo
 3. 从成功响应的 `data.file_token` 或 `data.url` 取得新副本；后续只操作该副本，不重新搜索副本，也不操作源 token。
 4. 后续编辑命令确实需要 block ID 时，只读取一次取得该参数所需的最小文档结构，并将结果直接用于紧随其后的更新。
 5. 最终更新返回结构化成功后结束。只有用户明确要求验证时，才再次读取、搜索或检查元数据。
+6. 如果复制后的编辑失败，保留 `data.file_token`，只重试编辑步骤；不要重新执行 `drive +copy`，避免创建重复副本。
 
 ## 输出
 
