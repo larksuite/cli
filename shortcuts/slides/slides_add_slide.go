@@ -165,7 +165,7 @@ var SlidesAddSlide = common.Shortcut{
 		// after a wiki ref has been resolved to a real presentation id.
 		placeholders := extractImagePlaceholderPaths([]string{slideXML})
 		if len(placeholders) > 0 {
-			tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders)
+			tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders, "--slide")
 			if err != nil {
 				return appendSlidesProgressHint(err, fmt.Sprintf("no page was added; %d of %d image(s) uploaded before failure", uploaded, len(placeholders)))
 			}

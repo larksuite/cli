@@ -34,6 +34,7 @@ var commandsWithSchema = map[string]struct{}{
 	"+rows-resize":           {},
 	"+sparkline-create":      {},
 	"+sparkline-update":      {},
+	"+styles-put":            {},
 	"+table-put":             {},
 	"+workbook-create":       {},
 }

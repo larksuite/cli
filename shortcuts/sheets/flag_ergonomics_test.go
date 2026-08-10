@@ -96,6 +96,54 @@ func TestSheetsFlagErrorFunc_TypoKeepsSuggestion(t *testing.T) {
 	}
 }
 
+// TestSheetsFlagErrorFunc_BatchUpdateSheetLocator pins the targeted fix: a
+// top-level --sheet-id / --sheet-name on +batch-update points the caller at
+// the per-op locator contract instead of offering a misleading fuzzy guess.
+func TestSheetsFlagErrorFunc_BatchUpdateSheetLocator(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"sheet-id", "sheet-name", "sheet_id", "sheet_name"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := &cobra.Command{Use: "+batch-update"}
+			c.Flags().String("operations", "", "")
+			err := sheetsFlagErrorFunc(c, errors.New("unknown flag: --"+name))
+			var verr *errs.ValidationError
+			if !errors.As(err, &verr) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if !strings.Contains(verr.Message, "put sheet_id/sheet_name inside each operation's input") {
+				t.Errorf("message should name the per-op locator contract, got %q", verr.Message)
+			}
+			if strings.Contains(verr.Hint, "did you mean") {
+				t.Errorf("must not offer a fuzzy guess here, got hint %q", verr.Hint)
+			}
+			if len(verr.Params) != 1 || verr.Params[0].Name != "--"+name {
+				t.Errorf("Params should carry the offending flag, got %v", verr.Params)
+			}
+			if len(verr.Params[0].Suggestions) != 0 {
+				t.Errorf("no suggestions expected, got %v", verr.Params[0].Suggestions)
+			}
+		})
+	}
+}
+
+// TestSheetsFlagErrorFunc_BatchUpdateOtherUnknownStillSuggests confirms the
+// special case is scoped to the two sheet-locator flags: any other unknown
+// flag on +batch-update keeps the normal did-you-mean behaviour.
+func TestSheetsFlagErrorFunc_BatchUpdateOtherUnknownStillSuggests(t *testing.T) {
+	t.Parallel()
+	c := &cobra.Command{Use: "+batch-update"}
+	c.Flags().String("operations", "", "")
+	err := sheetsFlagErrorFunc(c, errors.New("unknown flag: --operation"))
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if strings.Contains(verr.Message, "no top-level sheet locator") {
+		t.Errorf("non-locator unknown flag must not hit the special case, got %q", verr.Message)
+	}
+}
+
 func TestSheetsFlagErrorFunc_OtherErrorStaysGeneric(t *testing.T) {
 	t.Parallel()
 	c := &cobra.Command{Use: "demo"}
@@ -284,13 +332,299 @@ func TestShortcuts_FlagErgonomicsMounted(t *testing.T) {
 		_, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL,
 			"--sheet-name", "s",
-			"--cols", "A:D",
+			"--col-size", "A:D",
 		})
-		ve := requireValidation(t, err, `unknown flag "--cols"`)
+		ve := requireValidation(t, err, `unknown flag "--col-size"`)
 		for _, want := range []string{"valid flags:", "--range", "--width", "--widths"} {
 			if !strings.Contains(ve.Hint, want) {
 				t.Errorf("hint should contain %q, got %q", want, ve.Hint)
 			}
 		}
 	})
+}
+
+// TestShortcuts_IntuitiveFlagAliases verifies the silent-alias tier: a
+// habitual name with identical value semantics parses as the real flag on a
+// mounted command, costing zero round trips (eval: --cols, --file, --name,
+// --source/--target each burned an unknown-flag failure plus a --help call).
+func TestShortcuts_IntuitiveFlagAliases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("cols-resize --cols parses as --range", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cols-resize")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--cols", "A:D",
+			"--width", "100",
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--cols should alias to --range and pass, got: %v", err)
+		}
+		if !strings.Contains(stdout, "A:D") {
+			t.Errorf("dry-run body should carry the aliased range, got %q", stdout)
+		}
+	})
+
+	t.Run("sheet-create --name parses as --title", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+sheet-create")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--name", "汇总",
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--name should alias to --title and pass, got: %v", err)
+		}
+		if !strings.Contains(stdout, "汇总") {
+			t.Errorf("dry-run body should carry the aliased title, got %q", stdout)
+		}
+	})
+
+	t.Run("sheet-rename --new-name parses as --title", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+sheet-rename")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--new-name", "授权需求清单",
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--new-name should alias to --title and pass, got: %v", err)
+		}
+		if !strings.Contains(stdout, "授权需求清单") {
+			t.Errorf("dry-run body should carry the aliased title, got %q", stdout)
+		}
+	})
+
+	t.Run("range-fill --source/--target parse as ranges", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+range-fill")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--source", "B2",
+			"--target", "B3:B10",
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--source/--target should alias to the -range flags, got: %v", err)
+		}
+		for _, want := range []string{"B2", "B3:B10"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("dry-run body should carry %q, got %q", want, stdout)
+			}
+		}
+	})
+
+	t.Run("csv-put --file parses as --csv", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+csv-put")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--start-cell", "A1",
+			"--file", "a,b\n1,2",
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--file with CSV text should alias to --csv and pass, got: %v", err)
+		}
+		if !strings.Contains(stdout, "a,b") {
+			t.Errorf("dry-run body should carry the CSV text, got %q", stdout)
+		}
+	})
+
+	t.Run("cols-resize --size parses as --width", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cols-resize")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A:C",
+			"--size", "120",
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--size should alias to --width (styles-protocol vocabulary), got: %v", err)
+		}
+		if !strings.Contains(stdout, "120") {
+			t.Errorf("dry-run body should carry the pixel width 120, got %q", stdout)
+		}
+	})
+
+	t.Run("rows-resize --size parses as --height", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+rows-resize")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "1:3",
+			"--size", "36",
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--size should alias to --height (styles-protocol vocabulary), got: %v", err)
+		}
+	})
+
+	t.Run("alias never shadows a registered flag", func(t *testing.T) {
+		t.Parallel()
+		c := &cobra.Command{Use: "+csv-put"}
+		c.Flags().String("csv", "", "")
+		c.Flags().String("file", "", "") // hypothetical real flag wins
+		chainFlagAliases(c)
+		if err := c.ParseFlags([]string{"--file", "x"}); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if got, _ := c.Flags().GetString("file"); got != "x" {
+			t.Errorf("registered --file should keep its own value, got %q", got)
+		}
+		if got, _ := c.Flags().GetString("csv"); got != "" {
+			t.Errorf("--csv must stay empty when --file is a real flag, got %q", got)
+		}
+	})
+}
+
+// TestShortcuts_IntuitiveFlagHints verifies the prescription tier: habitual
+// names whose fix is not a rename answer with the exact correct form, so the
+// retry needs no --help round trip (eval: +sheet-copy burned 3/3 post-error
+// --help calls, +dim-insert kept failing even after reading help).
+func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		command  string
+		args     []string
+		wrong    string
+		wantHint []string
+		// rejectHint pins what a prescription must NOT name — used where the
+		// obvious wording would steer into a deprecated flag.
+		rejectHint []string
+	}{
+		{
+			command:  "+dim-insert",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--dimension", "row"},
+			wrong:    "--dimension",
+			wantHint: []string{"--position", "--count"},
+		},
+		{
+			command: "+dim-freeze",
+			args:    []string{"--url", testURL, "--sheet-name", "s", "--frozen-rows", "2"},
+			wrong:   "--frozen-rows",
+			// Must prescribe the CURRENT spelling: --dimension/--count is
+			// retired and hidden from --help, so a hint naming it would point at
+			// a flag missing from the same error's valid-flags list.
+			wantHint:   []string{"--rows N"},
+			rejectHint: []string{"--dimension", "--count"},
+		},
+		{
+			command:  "+cells-set-style",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bold", "true"},
+			wrong:    "--bold",
+			wantHint: []string{"--font-weight bold"},
+		},
+		{
+			command:  "+sheet-copy",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--new-sheet-name", "副本"},
+			wrong:    "--new-sheet-name",
+			wantHint: []string{"--title", "source sheet"},
+		},
+		{
+			command:  "+table-put",
+			args:     []string{"--url", testURL, "--sheets", "{}", "--start-cell", "B2"},
+			wrong:    "--start-cell",
+			wantHint: []string{`"start_cell"`, "+csv-put"},
+		},
+		{
+			command:  "+cells-set",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--values", `[["x"]]`},
+			wrong:    "--values",
+			wantHint: []string{"--cells", "+workbook-create"},
+		},
+		{
+			command:    "+dim-freeze",
+			args:       []string{"--url", testURL, "--sheet-name", "s", "--frozen-row-count", "1"},
+			wrong:      "--frozen-row-count",
+			wantHint:   []string{"--rows N"},
+			rejectHint: []string{"--dimension", "--count"},
+		},
+		{
+			// The parse error reports the flag as typed: the underscore
+			// spelling must hit the same curated entry as the hyphenated one.
+			command:    "+dim-freeze",
+			args:       []string{"--url", testURL, "--sheet-name", "s", "--frozen_rows", "2"},
+			wrong:      "--frozen_rows",
+			wantHint:   []string{"--rows N"},
+			rejectHint: []string{"--dimension", "--count"},
+		},
+		{
+			command:  "+cells-set-style",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--font-bold", "true"},
+			wrong:    "--font-bold",
+			wantHint: []string{"--font-weight bold"},
+		},
+		{
+			command:  "+cells-set-style",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bg-color", "#FFF"},
+			wrong:    "--bg-color",
+			wantHint: []string{"--background-color"},
+		},
+		{
+			command:  "+cells-set-style",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--wrap-strategy", "overflow"},
+			wrong:    "--wrap-strategy",
+			wantHint: []string{"--word-wrap"},
+		},
+		{
+			command:  "+cells-set-style",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-all", "thin"},
+			wrong:    "--border-all",
+			wantHint: []string{"--border-styles", `"all"`},
+		},
+		{
+			command:  "+cells-set-style",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-top", "thin"},
+			wrong:    "--border-top",
+			wantHint: []string{"--border-styles", `"top"`},
+		},
+		{
+			command:  "+cells-set-style",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-color", "#000"},
+			wrong:    "--border-color",
+			wantHint: []string{"--border-styles", "color"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.command+" "+tc.wrong, func(t *testing.T) {
+			t.Parallel()
+			sc := shortcutFromRegistry(t, tc.command)
+			_, _, err := runShortcutCapturingErr(t, sc, tc.args)
+			ve := requireValidation(t, err, "unknown flag \""+tc.wrong+"\"")
+			for _, want := range tc.wantHint {
+				if !strings.Contains(ve.Hint, want) {
+					t.Errorf("hint should contain %q, got %q", want, ve.Hint)
+				}
+			}
+			// The valid-flags list is appended to the same Hint, so only the
+			// prescription itself is checked for banned wording.
+			prescription, _, _ := strings.Cut(ve.Hint, "; valid flags:")
+			for _, banned := range tc.rejectHint {
+				if strings.Contains(prescription, banned) {
+					t.Errorf("prescription must not steer to %q, got %q", banned, prescription)
+				}
+			}
+			// A curated prescription must not ship contradicting edit-distance
+			// candidates (--font-bold used to carry --font-color/--font-line/
+			// --font-size in params while the fix is --font-weight).
+			for _, p := range ve.Params {
+				if len(p.Suggestions) > 0 {
+					t.Errorf("curated prescription should drop edit-distance suggestions, got %v", p.Suggestions)
+				}
+			}
+		})
+	}
 }

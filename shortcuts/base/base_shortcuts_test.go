@@ -246,10 +246,61 @@ func TestBaseHighRiskShortcutsTipsGuideAgents(t *testing.T) {
 	}
 }
 
-func TestBaseFieldCreateHelpHidesReadGuideFlag(t *testing.T) {
+func TestBaseFieldCreateTipsGuideTypeSelectionByStoredValue(t *testing.T) {
+	tips := strings.Join(BaseFieldCreate.Tips, "\n")
+	for _, want := range []string{
+		"+field-create defines storage schema only",
+		"a documented field type",
+		"explicit stored-value requirements and the user's semantics",
+		"field name or business purpose only as a clue to confirm",
+		"do not use it to invent derived behavior",
+		"Use style only to format the chosen type",
+		"explicitly requested derived, automatic, synchronized, or backfilled behavior",
+		"use documented formula, lookup, link, workflow, or automation only",
+		"formula, lookup, link, workflow, or automation",
+		"If unsupported, do not probe code/web/OpenAPI, create a storage placeholder, or claim completion",
+		"report the boundary and alternatives",
+		"arrays remain sequential per-field requests",
+		"split only for timeout bounds, not a fixed chunk size",
+		"prefer --json @file or an argv-safe subprocess call",
+		"do not double-escape JSON inside shell command substitution",
+		"For large arrays, bound successful stdout with --jq",
+		"if .ok then (.data | {created,total,field_get_recommended,next_step,verification_hint}) else . end",
+		"preserves the full partial-failure envelope",
+		"next_step:done means stop",
+		"filter +field-list with --jq",
+	} {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("field-create tips should contain %q, got:\n%s", want, tips)
+		}
+	}
+	lowerTips := strings.ToLower(tips)
+	for _, caseArtifact := range []string{
+		"base_table_",
+		"larkoffice.com/base/",
+		"grading_pass_rate",
+		"benchmark",
+	} {
+		if strings.Contains(lowerTips, caseArtifact) {
+			t.Fatalf("field-create tips should remain generic, found %q:\n%s", caseArtifact, tips)
+		}
+	}
+}
+
+func TestBaseFieldCreateHelpDocumentsBatchAndHidesReadGuideFlag(t *testing.T) {
 	parent := &cobra.Command{Use: "base"}
 	BaseFieldCreate.Mount(parent, &cmdutil.Factory{})
 	cmd := parent.Commands()[0]
+	if !strings.Contains(cmd.Short, "one or more fields") {
+		t.Fatalf("help should describe creating one or more fields, got %q", cmd.Short)
+	}
+	jsonFlag := cmd.Flags().Lookup("json")
+	if jsonFlag == nil {
+		t.Fatal("flag json must exist")
+	}
+	if !strings.Contains(jsonFlag.Usage, "JSON object or non-empty array") || !strings.Contains(jsonFlag.Usage, "supports @file") {
+		t.Fatalf("json flag help should document object and array input, got %q", jsonFlag.Usage)
+	}
 	if cmd.Flags().Lookup("i-have-read-guide") == nil {
 		t.Fatalf("flag i-have-read-guide must exist for runtime validation")
 	}

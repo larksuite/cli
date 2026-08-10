@@ -57,7 +57,7 @@ metadata:
 | 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
 | 复制 Base 内单张数据表 | `+table-copy` / `+table-copy-status` | 默认只复制结构；只有用户明确要求复制全表、数据、行或记录时才传 `--range all`；异步任务按返回的 `task_id` 查询或续等 |
 | 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段 |
-| 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
+| 创建/更新字段 | `+field-create` / `+field-update` | 同一表创建多个字段时，默认一次向 `+field-create --json` 传字段对象数组；预计串行运行时间超过 caller/tool timeout 时按时间预算拆分，不按固定条数切块；仅创建一个或多个只含 `name` + `type:text` 的简单字段时按 `+field-create --help` 即可，其他类型或属性必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)，lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；仍需逐项恢复或命令细节时读 [lark-base-field-create.md](references/lark-base-field-create.md)，更新细节读 [lark-base-field-update.md](references/lark-base-field-update.md) |
 | 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 涉及筛选、排序、Top/Bottom N、聚合、多表关联、全局结论时读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
 | 附件字段 | `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` | 附件不要伪造成普通 CellValue；上传走本地文件，下载/删除按 file token 或字段定位 |
@@ -113,12 +113,13 @@ metadata:
 ## 写入前置规则
 
 - 优先用写入返回确认结果；返回信息不足或任务明确要求核验时，再读回。
+- 严格区分动作语义：用户要求“新增/创建”时，必须用本轮 create 返回的对象、ID 或数量确认完成，不能把已有资源算作本轮新增；目标已存在时按具体命令或 guide 的同名契约处理，不得自行改写用户语义。复合创建任务对每类资源只做一次必要盘点；只有命令明确返回逐项结果时才优先使用批量创建，并继续配置本轮返回的 ID。
 - 写记录前先读字段结构；只写存储字段。系统字段、附件字段、`formula`、`lookup` 不作为普通记录写入目标。
 - 附件上传、下载、删除走专用 `+record-*-attachment` 命令。
-- 写字段前先读 [lark-base-field-json.md](references/lark-base-field-json.md)；请求字段类型不在 reference 已支持类型目录中时，说明当前 CLI 不支持并停止，不要猜测未注册的字段 JSON、service 或 schema，也不要用其他字段类型冒充；涉及 `formula` / `lookup` 时必须读 [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)。
+- 除上述简单 text fast path 外，写字段前先读 [lark-base-field-json.md](references/lark-base-field-json.md)；请求字段类型不在 reference 已支持类型目录中时，说明当前 CLI 不支持并停止，不要猜测未注册的字段 JSON、service 或 schema，也不要用其他字段类型冒充；涉及 `formula` / `lookup` 时必须读 [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)。
 - 表名、字段名、视图名、workflow 配置中的名称必须来自真实返回；跨表场景还要读取目标表结构。
 - 删除、角色更新、字段更新、表单提交（`+form-submit`）等高风险操作遵循 CLI 的 confirmation gate，必须带 `--yes`；目标不明确时先用 get/list 消歧。
-- 批量写入单批最多 200 条；连续写同一表时串行执行，遇到 `1254291` 按短暂等待后重试处理。
+- 真正的 batch 写命令遵守各自文档的单批上限；`+field-create` 数组是顺序单项请求，按 caller timeout 而非固定条数拆分；连续写同一表时串行执行，遇到 `1254291` 按短暂等待后重试处理。
 - `select` 字段只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
 
 ## 表单与视图细节

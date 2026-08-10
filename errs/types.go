@@ -383,7 +383,10 @@ func (e *ConfigError) WithCause(cause error) *ConfigError {
 // errors.Is / errors.Unwrap; it is intentionally not serialized.
 type NetworkError struct {
 	Problem
-	Cause error `json:"-"`
+	// RetryAfterSeconds is an upstream-provided minimum delay before another
+	// attempt. Zero means no precise delay was provided and omits the field.
+	RetryAfterSeconds int   `json:"retry_after_seconds,omitempty"`
+	Cause             error `json:"-"`
 }
 
 // Unwrap is nil-receiver safe; see ValidationError.Unwrap.
@@ -429,6 +432,11 @@ func (e *NetworkError) WithCode(code int) *NetworkError {
 
 func (e *NetworkError) WithRetryable() *NetworkError {
 	e.Retryable = true
+	return e
+}
+
+func (e *NetworkError) WithRetryAfterSeconds(seconds int) *NetworkError {
+	e.RetryAfterSeconds = max(seconds, 0)
 	return e
 }
 
@@ -493,6 +501,11 @@ func (e *APIError) WithCode(code int) *APIError {
 
 func (e *APIError) WithRetryable() *APIError {
 	e.Retryable = true
+	return e
+}
+
+func (e *APIError) WithRetryAfterSeconds(seconds int) *APIError {
+	e.RetryAfterSeconds = max(seconds, 0)
 	return e
 }
 

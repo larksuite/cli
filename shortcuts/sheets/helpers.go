@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	neturl "net/url"
 	"strings"
 
@@ -320,7 +319,12 @@ func requireSheetSelector(sheetID, sheetName string) error {
 	sheetID = strings.TrimSpace(sheetID)
 	sheetName = strings.TrimSpace(sheetName)
 	if sheetID == "" && sheetName == "" {
+		// Eval traces show every occurrence recovering on the next call, so
+		// the gap is knowing WHICH name to pass, not that one is needed: a
+		// just-created workbook has a single sheet named Sheet1, and any
+		// other workbook needs one +workbook-info lookup.
 		return common.ValidationErrorf("specify at least one of --sheet-id or --sheet-name").
+			WithHint("a freshly created workbook has one sheet named Sheet1 (`--sheet-name Sheet1`); otherwise list the real sheets with `lark-cli sheets +workbook-info --url <URL>`").
 			WithParams(
 				sheetsInvalidParam("sheet-id", "required; specify at least one"),
 				sheetsInvalidParam("sheet-name", "required; specify at least one"),
@@ -425,6 +429,13 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 		}
 		return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
 	}
+	// Unambiguous habitual shapes are rewritten onto the wire contract
+	// before validation (see jsonFlagNormalizers). Runs on the parsed value,
+	// so both the standalone cobra path and +batch-update sub-ops (whose
+	// mapFlagView.Str re-encodes composites through here) get the rewrite.
+	if norm := jsonFlagNormalizers[runtime.Command()][name]; norm != nil {
+		out = norm(out)
+	}
 	// Schema-driven flag validation at the user-input boundary. Skips
 	// --properties (validated at the input-builder tail after enhance
 	// hooks fill in flat-flag-derived fields) and any flag without an
@@ -433,6 +444,134 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// jsonFlagNormalizers rewrites, per (command, flag), unambiguous habitual
+// input shapes onto the wire contract before schema validation — same
+// contract as enum normalization: only a shape whose meaning is beyond
+// doubt may be rewritten; anything ambiguous must fail with a prescription
+// instead. Applied to the parsed JSON value inside parseJSONFlag.
+var jsonFlagNormalizers = map[string]map[string]func(interface{}) interface{}{
+	"+cells-set":             {"cells": normalizeCellsFlagValue},
+	"+cells-set-style":       {"border-styles": normalizeBorderStylesFlagValue},
+	"+cells-batch-set-style": {"border-styles": normalizeBorderStylesFlagValue},
+	"+chart-create":          {"properties": normalizeChartHexColors},
+	"+chart-update":          {"properties": normalizeChartHexColors},
+}
+
+// normalizeChartHexColors walks a chart properties payload and prefixes bare
+// 6/8-digit hex values on color keys with '#' (4472C4 → #4472C4 — the
+// Excel-habit form the chart backend rejects with "expected rgba() or
+// #RRGGBB/#RRGGBBAA"). In-place, recursive; anything not unambiguously a
+// bare hex color is untouched.
+func normalizeChartHexColors(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		for k, val := range t {
+			if s, ok := val.(string); ok && isColorKey(k) && isBareHexColor(s) {
+				t[k] = "#" + s
+				continue
+			}
+			// A color key can hold an ARRAY of colors (colorTheme, series
+			// palettes). Recursing without the key would lose the color
+			// context and leave bare hex strings unprefixed, so the server
+			// rejects a payload the schema itself allows.
+			if arr, ok := val.([]interface{}); ok && isColorKey(k) {
+				normalizeChartHexColorList(arr)
+				continue
+			}
+			normalizeChartHexColors(val)
+		}
+	case []interface{}:
+		for _, e := range t {
+			normalizeChartHexColors(e)
+		}
+	}
+	return v
+}
+
+// normalizeChartHexColorList prefixes bare hex strings inside an array that
+// sits under a color key, and keeps descending for nested shapes.
+func normalizeChartHexColorList(arr []interface{}) {
+	for i, e := range arr {
+		if s, ok := e.(string); ok {
+			if isBareHexColor(s) {
+				arr[i] = "#" + s
+			}
+			continue
+		}
+		if nested, ok := e.([]interface{}); ok {
+			normalizeChartHexColorList(nested)
+			continue
+		}
+		normalizeChartHexColors(e)
+	}
+}
+
+// isColorKey reports whether a key names a color (or a list of colors). The
+// value gate is isBareHexColor — a strict 6/8-digit hex check — so matching a
+// key generously is safe: a non-hex value under a color-ish key is left alone.
+// Plural and color-prefixed forms matter because the chart schema uses
+// colorTheme / colorScale / colorGradient / highlight_colors, none of which
+// end in "color".
+func isColorKey(k string) bool {
+	if k == "color" || k == "colors" {
+		return true
+	}
+	for _, suffix := range []string{"_color", "Color", "_colors", "Colors"} {
+		if strings.HasSuffix(k, suffix) {
+			return true
+		}
+	}
+	return strings.HasPrefix(k, "color") || strings.HasPrefix(k, "Color")
+}
+
+func isBareHexColor(s string) bool {
+	if len(s) != 6 && len(s) != 8 {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f', r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// cellObjectKeys pins the property vocabulary of a single cell in the
+// +cells-set --cells schema ([[{…}]]). Drift against the embedded schema is
+// guarded by TestCellObjectKeys_MatchEmbeddedSchema.
+var cellObjectKeys = map[string]struct{}{
+	"border_styles":   {},
+	"cell_styles":     {},
+	"data_validation": {},
+	"formula":         {},
+	"multiple_values": {},
+	"note":            {},
+	"rich_text":       {},
+	"value":           {},
+}
+
+// wrapLoneCellObject rewrites a bare cell object into the [[cell]] the
+// --cells contract expects. Eval traces show agents writing a single cell
+// routinely pass {"value":…} without the two array layers; when every key
+// belongs to the cell vocabulary the meaning is a 1×1 write and the wrap is
+// safe. Anything else (unknown keys, arrays — one bracket layer could be a
+// row or a column) is returned untouched for the schema validator to
+// prescribe.
+func wrapLoneCellObject(v interface{}) interface{} {
+	obj, ok := v.(map[string]interface{})
+	if !ok || len(obj) == 0 {
+		return v
+	}
+	for k := range obj {
+		if _, known := cellObjectKeys[k]; !known {
+			return v
+		}
+	}
+	return []interface{}{[]interface{}{obj}}
 }
 
 // requireJSONObject is parseJSONFlag + a type assertion to map[string]interface{}.
@@ -451,6 +590,51 @@ func requireJSONObject(runtime flagView, name string) (map[string]interface{}, e
 	return m, nil
 }
 
+// ─── aggregated sub-error rendering ────────────────────────────────────
+//
+// Several flags collect per-item failures and fold them into ONE typed error
+// (--styles, --writes, --operations). A Problem carries a single Hint slot,
+// so the naive fold — taking only each inner error's Message — silently drops
+// the very prescriptions this domain adds (requireSheetSelector's
+// "+workbook-info" pointer, the batch key contract). These two helpers keep
+// them: a lone failure hands its Hint to the outer error's Hint field, and a
+// folded list inlines each hint next to its own message.
+
+// aggregatedIssueParts splits a collected sub-error into its message and its
+// hint ("" when it carries none), unwrapping the typed Problem so the message
+// is the bare text rather than the Error() rendering.
+func aggregatedIssueParts(err error) (msg, hint string) {
+	if p, ok := errs.ProblemOf(err); ok {
+		return p.Message, p.Hint
+	}
+	return err.Error(), ""
+}
+
+// aggregatedIssueText renders one collected sub-error for a folded, multi-issue
+// message, appending its hint in parentheses so a per-item prescription is not
+// lost to the single shared Hint slot.
+func aggregatedIssueText(err error) string {
+	msg, hint := aggregatedIssueParts(err)
+	if hint == "" {
+		return msg
+	}
+	return msg + " (" + hint + ")"
+}
+
+// prefixValidationIssue re-labels a collected sub-error with the path it was
+// found at ("--writes[2]"), keeping its Hint. Formatting the inner error into
+// a new message with "%v" would drop that hint on the floor — the collectors
+// only ever read Message and Hint, so the two must stay separate all the way
+// to the fold.
+func prefixValidationIssue(path string, err error) error {
+	msg, hint := aggregatedIssueParts(err)
+	out := common.ValidationErrorf("%s: %s", path, msg).WithCause(err)
+	if hint != "" {
+		out = out.WithHint("%s", hint)
+	}
+	return out
+}
+
 // requireJSONArray is parseJSONFlag + a type assertion to []interface{}.
 func requireJSONArray(runtime flagView, name string) ([]interface{}, error) {
 	v, err := parseJSONFlag(runtime, name)
@@ -465,147 +649,4 @@ func requireJSONArray(runtime flagView, name string) ([]interface{}, error) {
 		return nil, sheetsValidationForFlag(name, "--%s must be a JSON array", name)
 	}
 	return a, nil
-}
-
-// ─── style flags (shared by +cells-set-style and +cells-batch-set-style) ─
-
-// buildCellStyleFromFlags reads the 12 flat style flags and returns the
-// cell_styles map expected by set_cell_range. Skips any flag the user
-// didn't set so partial styles work.
-func buildCellStyleFromFlags(runtime flagView) map[string]interface{} {
-	style := map[string]interface{}{}
-	if v := runtime.Str("background-color"); v != "" {
-		style["background_color"] = v
-	}
-	if v := runtime.Str("font-color"); v != "" {
-		style["font_color"] = v
-	}
-	if v := runtime.Str("font-family"); v != "" {
-		style["font_family"] = v
-	}
-	if runtime.Changed("font-size") && runtime.Float64("font-size") > 0 {
-		style["font_size"] = runtime.Float64("font-size")
-	}
-	if v := runtime.Str("font-style"); v != "" {
-		style["font_style"] = v
-	}
-	if v := runtime.Str("font-weight"); v != "" {
-		style["font_weight"] = v
-	}
-	if v := runtime.Str("font-line"); v != "" {
-		style["font_line"] = v
-	}
-	if v := runtime.Str("horizontal-alignment"); v != "" {
-		style["horizontal_alignment"] = v
-	}
-	if v := runtime.Str("vertical-alignment"); v != "" {
-		style["vertical_alignment"] = v
-	}
-	if v := runtime.Str("word-wrap"); v != "" {
-		style["word_wrap"] = v
-	}
-	if v := runtime.Str("number-format"); v != "" {
-		style["number_format"] = v
-	}
-	return style
-}
-
-// cellStyleAliases maps shorthand cell_styles field names that models commonly
-// hallucinate (Excel / openpyxl / CSS conventions) onto the canonical field
-// names the backend expects. Only the unambiguous alignment shorthands are
-// aliased — they are the high-frequency miss; ambiguous guesses (e.g. "color",
-// "bg_color", "text_align") are intentionally left out so a wrong guess still
-// surfaces as an error rather than being silently reinterpreted.
-var cellStyleAliases = []struct{ alias, canonical string }{
-	{"horizontal_align", "horizontal_alignment"},
-	{"halign", "horizontal_alignment"},
-	{"vertical_align", "vertical_alignment"},
-	{"valign", "vertical_alignment"},
-}
-
-// normalizeCellStyleAliases renames known shorthand keys in a single
-// cell_styles map to their canonical equivalents, in place, so a model that
-// writes e.g. "horizontal_align" instead of "horizontal_alignment" still
-// applies the style instead of hitting an "unsupported field" error (--styles)
-// or having the field silently dropped by the backend (typed --cells). If both
-// the shorthand and its canonical key are present it returns a validation error
-// rather than picking one. path labels the map for the error message.
-func normalizeCellStyleAliases(style map[string]interface{}, path string) error {
-	if len(style) == 0 {
-		return nil
-	}
-	for _, a := range cellStyleAliases {
-		v, ok := style[a.alias]
-		if !ok {
-			continue
-		}
-		if _, exists := style[a.canonical]; exists {
-			return common.ValidationErrorf("%s.%s conflicts with %s; pass only %s", path, a.alias, a.canonical, a.canonical)
-		}
-		style[a.canonical] = v
-		delete(style, a.alias)
-	}
-	return nil
-}
-
-// normalizeTypedCellsStyleAliases walks a typed --cells 2D array and applies
-// normalizeCellStyleAliases to every cell's inline cell_styles object, so the
-// alignment shorthands are accepted on +cells-set the same as on --styles.
-// Structure is checked leniently to match the pass-through contract: any
-// element that isn't the expected shape is skipped, not rejected.
-func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
-	for r, rowRaw := range cells {
-		row, ok := rowRaw.([]interface{})
-		if !ok {
-			continue
-		}
-		for c, cellRaw := range row {
-			cell, ok := cellRaw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			st, ok := cell["cell_styles"].(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if err := normalizeCellStyleAliases(st, fmt.Sprintf("%s[%d][%d].cell_styles", path, r, c)); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// borderStylesFromFlag parses --border-styles as a JSON object (top/bottom/
-// left/right with style sub-objects). Returns nil when the flag is empty.
-func borderStylesFromFlag(runtime flagView) (map[string]interface{}, error) {
-	if runtime.Str("border-styles") == "" {
-		return nil, nil
-	}
-	v, err := parseJSONFlag(runtime, "border-styles")
-	if err != nil {
-		return nil, err
-	}
-	m, ok := v.(map[string]interface{})
-	if !ok {
-		return nil, sheetsValidationForFlag("border-styles", "--border-styles must be a JSON object")
-	}
-	return m, nil
-}
-
-// requireAnyStyleFlag ensures at least one style-defining flag (style or
-// border) is set — otherwise the request would do nothing.
-func requireAnyStyleFlag(runtime flagView) error {
-	if len(buildCellStyleFromFlags(runtime)) > 0 {
-		return nil
-	}
-	if runtime.Str("border-styles") != "" {
-		return nil
-	}
-	return common.ValidationErrorf("at least one style flag is required (e.g. --background-color, --font-weight, --border-styles)").
-		WithParams(
-			sheetsInvalidParam("background-color", "required; specify at least one style flag"),
-			sheetsInvalidParam("font-weight", "required; specify at least one style flag"),
-			sheetsInvalidParam("border-styles", "required; specify at least one style flag"),
-		)
 }

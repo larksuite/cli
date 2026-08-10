@@ -64,7 +64,7 @@
   - 若追加位置紧邻汇总行、说明区或空白分隔区，先判断真实数据区域边界再操作，避免破坏原有结构。
   - **Zebra Stripes 维护**：插入或删除行后若影响后续行奇偶性，须从受影响行往后重建条纹（先清理再重设）。少量增删用局部重建，大量变动用全局清理+统一重建。
   - 具体采样与复制流程见下方「场景二：从已有区域继承美化」。
-- **列宽 / 行高调整**（飞书 `+cols-resize` / `+rows-resize` 直接给像素值：统一尺寸用 `--range` + `--width`/`--height <px>`，多列 / 多行不同尺寸用 `--widths`/`--heights` map 一次原子完成，如 `--widths '{"A":100,"C:E":120}'`）：
+- **列宽 / 行高调整**（飞书 `+cols-resize` / `+rows-resize` 直接给像素值：统一尺寸用 `--range` + `--width`/`--height <px>`，多列 / 多行不同尺寸用 `--widths`/`--heights` map 一次调用完成，如 `--widths '{"A":100,"C:E":120}'`）：
   - 禁止硬编码固定列宽，须根据该列实际内容长度估算像素。
   - 经验估算：中文每字约 15-18px，英文/数字每字约 7-9px，外加 10-16px padding。
   - 上下限建议 80~400px；超上限启用自动换行（`word_wrap: auto-wrap`）+ 调整行高，而非无限加宽。
@@ -155,7 +155,7 @@ Step 1 — 格式铺开：`+batch-update` + `+range-copy`（或 `+range-fill`）
 Step 2 — 内容覆写：`+batch-update` + `+cells-set`（仅传 value/formula，不传任何样式）
   └── 将每行的实际数据写入，cell_styles 全部省略，因为格式已在 Step 1 中就位
 
-Step 3 — 微调收尾：`+rows-resize --heights` / `+cols-resize --widths`（行高列宽 map 一次原子完成）、`+batch-update` + `+cells-{merge|unmerge}` 等
+Step 3 — 微调收尾：`+rows-resize --heights` / `+cols-resize --widths`（行高列宽 map 一次调用完成）、`+batch-update` + `+cells-{merge|unmerge}` 等
   └── 调整行高列宽、处理合并单元格、扩展条件格式范围等边缘情况
 ```
 

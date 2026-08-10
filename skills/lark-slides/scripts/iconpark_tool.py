@@ -13,7 +13,7 @@ from typing import Any
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 REFERENCES_DIR = SKILL_ROOT / "references"
-DEFAULT_INDEX_PATH = REFERENCES_DIR / "iconpark-index.json"
+DEFAULT_INDEX_PATH = REFERENCES_DIR / "xml" / "iconpark-index.json"
 DEFAULT_LIMIT = 8
 CURATED_ICON_BOOSTS = {
     "设置": {"iconpark/Base/setting.svg"},

@@ -178,9 +178,13 @@ func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error
 	// was not written. Reporting that as a success envelope would tell the caller
 	// their edit landed when it did not.
 	if reason, ok := data["failed_reason"].(string); ok && strings.TrimSpace(reason) != "" {
+		hint := updateSlideInvalidParamHint
+		if updateSlideReasonIsNotFound(reason) {
+			hint = updateSlideNotFoundHint
+		}
 		return errs.NewAPIError(errs.SubtypeInvalidParameters,
 			"slide %s was not updated: %s", slideID, reason).
-			WithHint(updateSlideInvalidParamHint)
+			WithHint(hint)
 	}
 
 	result := map[string]interface{}{
@@ -194,18 +198,18 @@ func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error
 	return nil
 }
 
-// updateSlideInvalidParamHint replaces the generic +replace-slide checklist for
-// this command. That checklist opens with "block_id not found in current slide —
-// re-run slide.get", which is the wrong move here: block_id is the page's own id,
-// so it is never missing, and re-fetching would just loop.
-//
-// The hint names what the caller can act on and does not claim which cause it
-// was: 3350001 covers both a rejected page id and bad XML, and a hint asserting
-// the former goes stale the moment whole-page update is generally available.
+const updateSlideNotFoundHint = "check --presentation and --slide-id: the presentation may be wrong," +
+	" or the page may have been deleted. Re-run slides +xml-get for the presentation and use a current slide id"
+
+// updateSlideInvalidParamHint is reserved for malformed-content failures. A
+// failed_reason that says the page was not found gets updateSlideNotFoundHint
+// instead, because re-reading is exactly the right recovery for a stale id.
 const updateSlideInvalidParamHint = "check --content first: an unsupported element, a <shape> without" +
-	" <content/>, or coordinates outside 960x540. Re-fetching the page will not help — block_id is the" +
-	" page's own id, so it is never missing. If --content is known good, this backend may not accept a" +
-	" whole-page update yet; edit the elements individually with `slides +replace-slide` instead"
+	" <content/>, or coordinates outside 960x540"
+
+func updateSlideReasonIsNotFound(reason string) bool {
+	return strings.Contains(strings.ToLower(reason), "not found")
+}
 
 // enrichUpdateSlideError attaches updateSlideInvalidParamHint on 3350001, leaving
 // any more specific upstream hint in place. Mirrors enrichSlidesReplaceError.
@@ -215,7 +219,11 @@ func enrichUpdateSlideError(err error) error {
 		return err
 	}
 	if p.Hint == "" {
-		p.Hint = updateSlideInvalidParamHint
+		if updateSlideReasonIsNotFound(p.Message) {
+			p.Hint = updateSlideNotFoundHint
+		} else {
+			p.Hint = updateSlideInvalidParamHint
+		}
 	}
 	return err
 }

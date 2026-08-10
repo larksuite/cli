@@ -51,6 +51,7 @@ type RuntimeContext struct {
 	botInfoFunc    func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
 	larkSDK        *lark.Client                      // eagerly initialized in mountDeclarative
 	stdinConsumed  bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
+	inputResolved  map[string]bool                   // flags whose value was replaced by @file / stdin content in resolveInputFlags; see InputResolvedFromSource
 }
 
 // ── Identity ──
@@ -647,6 +648,13 @@ func WrapInputStatErrorTyped(err error, readMsg ...string) error {
 // migrating from a custom category (e.g. "io", "api_error") change their
 // envelope's type field.
 func WrapSaveErrorTyped(err error) error {
+	return WrapSaveErrorTypedForFlag(err, "")
+}
+
+// WrapSaveErrorTypedForFlag is the parameter-aware form used by commands whose
+// output path is a user-facing flag. Keeping the flag at the call site avoids
+// attributing download/save errors from unrelated commands to --output-path.
+func WrapSaveErrorTypedForFlag(err error, param string) error {
 	if err == nil {
 		return nil
 	}
@@ -656,8 +664,11 @@ func WrapSaveErrorTyped(err error) error {
 	var me *fileio.MkdirError
 	switch {
 	case errors.Is(err, fileio.ErrPathValidation):
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).
-			WithCause(err)
+		verr := errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err)
+		if param != "" {
+			verr = verr.WithParam(param)
+		}
+		return verr.WithCause(err)
 	case errors.As(err, &me):
 		return errs.NewInternalError(errs.SubtypeFileIO, "cannot create parent directory: %s", err).
 			WithCause(err)
@@ -709,6 +720,13 @@ func (ctx *RuntimeContext) handleEmitterError(err error) {
 		fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
 	}
 	ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
+}
+
+// OutputError returns the first deferred output failure captured by Out,
+// OutRaw, or OutFormat. Commands that create local artifacts can use it to
+// roll those artifacts back before returning the final command error.
+func (ctx *RuntimeContext) OutputError() error {
+	return ctx.outputErr
 }
 
 func wrapLegacyPrettyRenderer(prettyFn func(w io.Writer)) output.PrettyRenderer {
@@ -1052,14 +1070,33 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	return rctx, nil
 }
 
-// stripUTF8BOM removes a leading UTF-8 byte-order mark from content read from a
+// StripUTF8BOM removes a leading UTF-8 byte-order mark from content read from a
 // file or stdin. A BOM that survives into a CSV cell corrupts the first value
 // (e.g. "\ufeffNorth", which then makes a MAXIFS/lookup miss it), and a BOM at the
 // head of a JSON payload makes json.Unmarshal fail with "invalid character 'ï'".
 // Some editors and exporters add it silently. Only a leading BOM is removed; interior
 // occurrences are left untouched.
-func stripUTF8BOM(s string) string {
+func StripUTF8BOM(s string) string {
 	return strings.TrimPrefix(s, "\uFEFF")
+}
+
+// InputResolvedFromSource reports whether the named flag's value was loaded
+// from an external source (@file or stdin `-`) by resolveInputFlags, as
+// opposed to typed inline on the command line. Domain guards that apply
+// shape heuristics to inline values ("this looks like a file path — did you
+// forget the @?") must skip resolved values: their content was already read
+// from the right place and may legitimately look like anything, including a
+// path. Without this bit such a guard re-rejects correct @file / stdin
+// invocations, because by the time Validate runs both arrive as plain text.
+func (ctx *RuntimeContext) InputResolvedFromSource(name string) bool {
+	return ctx.inputResolved[name]
+}
+
+func (ctx *RuntimeContext) markInputResolved(name string) {
+	if ctx.inputResolved == nil {
+		ctx.inputResolved = map[string]bool{}
+	}
+	ctx.inputResolved[name] = true
 }
 
 // resolveInputFlags resolves @file and - (stdin) for flags with Input sources.
@@ -1100,7 +1137,8 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			}
 			// strip a leading UTF-8 BOM so it can't corrupt the first CSV
 			// cell or break JSON parsing downstream.
-			rctx.Cmd.Flags().Set(fl.Name, stripUTF8BOM(string(data)))
+			rctx.Cmd.Flags().Set(fl.Name, StripUTF8BOM(string(data)))
+			rctx.markInputResolved(fl.Name)
 			continue
 		}
 
@@ -1136,7 +1174,8 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			}
 			// strip a leading UTF-8 BOM so it
 			// can't corrupt the first CSV cell or break JSON parsing downstream.
-			rctx.Cmd.Flags().Set(fl.Name, stripUTF8BOM(string(data)))
+			rctx.Cmd.Flags().Set(fl.Name, StripUTF8BOM(string(data)))
+			rctx.markInputResolved(fl.Name)
 			continue
 		}
 	}

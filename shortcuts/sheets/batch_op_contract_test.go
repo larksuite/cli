@@ -94,6 +94,15 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			subInput: `{"sheet-id":"sh1","dimension":"row","count":2}`,
 		},
 		{
+			// The both-axes form has to hold inside a batch too: it is the only
+			// way to freeze rows AND columns there, since +styles-put (the other
+			// carrier of a combined freeze) is not a batchable sub-op.
+			shortcut: "+dim-freeze",
+			sc:       DimFreeze,
+			args:     []string{"--sheet-id", "sh1", "--rows", "1", "--cols", "2"},
+			subInput: `{"sheet-id":"sh1","rows":1,"cols":2}`,
+		},
+		{
 			shortcut: "+dim-group",
 			sc:       DimGroup,
 			args:     []string{"--sheet-id", "sh1", "--range", "2:5", "--group-state", "fold"},
@@ -763,7 +772,7 @@ func TestBatchOp_SchemaValidatesSubOps(t *testing.T) {
 		{
 			"+pivot-create summarize_by out of enum",
 			"+pivot-create",
-			`{"sheet-id":"sh1","source":"Sheet1!A1:D100","properties":{"values":[{"field":"A","summarize_by":"BOGUS"}]}}`,
+			`{"target_sheet_id":"sh1","source":"Sheet1!A1:D100","properties":{"values":[{"field":"A","summarize_by":"BOGUS"}]}}`,
 			"summarize_by",
 		},
 		// +chart-create properties.position.row has minimum:0 — P0

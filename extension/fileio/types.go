@@ -42,6 +42,15 @@ type FileIO interface {
 	Save(path string, opts SaveOptions, body io.Reader) (SaveResult, error)
 }
 
+// WorkspaceFileIO is an optional extension for commands that own temporary
+// workspace entries. RemoveWorkspaceEntry must remove exactly one file or one
+// empty directory, never recursively, and must apply the same path validation
+// and storage backend as the embedded FileIO methods.
+type WorkspaceFileIO interface {
+	FileIO
+	RemoveWorkspaceEntry(path string) error
+}
+
 // FileInfo is a minimal subset of os.FileInfo covering actual CLI usage.
 // os.FileInfo satisfies this interface.
 type FileInfo interface {

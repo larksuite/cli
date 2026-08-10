@@ -1681,11 +1681,11 @@ func TestDriveTaskResultExportIncludesReadyFlags(t *testing.T) {
 // directly so an untyped context.Canceled would escape as a plain string at
 // the command layer, bypassing the typed-error contract.
 func TestWrapExportContextErr(t *testing.T) {
-	if err := wrapExportContextErr(nil); err != nil {
+	if err := wrapExportContextErr("+export", nil); err != nil {
 		t.Errorf("wrapExportContextErr(nil) = %v, want nil", err)
 	}
 
-	cancelled := wrapExportContextErr(context.Canceled)
+	cancelled := wrapExportContextErr("+workbook-export", context.Canceled)
 	var netErrCancel *errs.NetworkError
 	if !errors.As(cancelled, &netErrCancel) {
 		t.Fatalf("wrapExportContextErr(Canceled) = %T, want *errs.NetworkError", cancelled)
@@ -1693,11 +1693,16 @@ func TestWrapExportContextErr(t *testing.T) {
 	if netErrCancel.Subtype != errs.SubtypeNetworkTransport {
 		t.Errorf("Canceled subtype = %q, want %q", netErrCancel.Subtype, errs.SubtypeNetworkTransport)
 	}
+	// The message must name the shortcut actually running — RunExport is shared
+	// with sheets +workbook-export, which used to be told about "drive +export".
+	if !strings.Contains(cancelled.Error(), "+workbook-export") {
+		t.Errorf("message should carry the running command, got %q", cancelled.Error())
+	}
 	if !errors.Is(cancelled, context.Canceled) {
 		t.Error("wrapExportContextErr should preserve context.Canceled via errors.Is")
 	}
 
-	deadline := wrapExportContextErr(context.DeadlineExceeded)
+	deadline := wrapExportContextErr("+export", context.DeadlineExceeded)
 	var netErrDeadline *errs.NetworkError
 	if !errors.As(deadline, &netErrDeadline) {
 		t.Fatalf("wrapExportContextErr(DeadlineExceeded) = %T, want *errs.NetworkError", deadline)

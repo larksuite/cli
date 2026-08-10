@@ -33,6 +33,7 @@ var WikiNodeCopy = common.Shortcut{
 	Tips: []string{
 		"At least one of --target-space-id or --target-parent-node-token must be provided.",
 		"Omit --title to keep the original node title in the copy.",
+		"This shortcut copies the current node only; descendant nodes are not copied.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateOptionalResourceName(strings.TrimSpace(runtime.Str("space-id")), "--space-id"); err != nil {

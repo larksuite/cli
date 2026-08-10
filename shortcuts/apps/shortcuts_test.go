@@ -23,11 +23,51 @@ import (
 //   - 3 cache（get/delete/clear）
 //   - 3 plugin（install/uninstall/list）
 //   - 6 automation（list/get/create/update/enable/disable）
-//   - 9 role（role CRUD + role-member list/add/remove + role-match-list）= 89。
-func TestAppsShortcuts_Returns89(t *testing.T) {
+//   - 9 role（role CRUD + role-member list/add/remove + role-match-list）
+//   - 6 creative app member/permission settings
+//   - 7 db-sync（create/list/get/enable/disable/update/delete）= 95。
+func TestAppsShortcuts_Returns95(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 89 {
-		t.Fatalf("Shortcuts() returned %d entries, want 89", len(got))
+	if len(got) != 95 {
+		t.Fatalf("Shortcuts() returned %d entries, want 95", len(got))
+	}
+}
+
+func TestAppsShortcuts_IncludesMemberCommandsWithExactSecurityMetadata(t *testing.T) {
+	want := map[string]struct {
+		risk  string
+		scope string
+	}{
+		"+member-list":         {risk: "read", scope: "spark:app:read"},
+		"+member-add":          {risk: "high-risk-write", scope: "spark:app:write"},
+		"+member-update":       {risk: "high-risk-write", scope: "spark:app:write"},
+		"+member-remove":       {risk: "high-risk-write", scope: "spark:app:write"},
+		"+member-settings-get": {risk: "read", scope: "spark:app:read"},
+		"+member-settings-set": {risk: "high-risk-write", scope: "spark:app:write"},
+	}
+
+	for _, sc := range Shortcuts() {
+		expected, ok := want[sc.Command]
+		if !ok {
+			continue
+		}
+		delete(want, sc.Command)
+		if sc.Hidden {
+			t.Errorf("%s must be visible", sc.Command)
+		}
+		if sc.Risk != expected.risk {
+			t.Errorf("%s risk = %q, want %q", sc.Command, sc.Risk, expected.risk)
+		}
+		if len(sc.Scopes) != 1 || sc.Scopes[0] != expected.scope {
+			t.Errorf("%s scopes = %#v, want [%q]", sc.Command, sc.Scopes, expected.scope)
+		}
+		if len(sc.AuthTypes) != 1 || sc.AuthTypes[0] != "user" {
+			t.Errorf("%s auth types = %#v, want [user]", sc.Command, sc.AuthTypes)
+		}
+	}
+
+	for command := range want {
+		t.Errorf("Shortcuts() missing %s", command)
 	}
 }
 

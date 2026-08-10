@@ -30,6 +30,8 @@ func init() {
 // and atomic writes are handled internally.
 type LocalFileIO struct{}
 
+var _ fileio.WorkspaceFileIO = (*LocalFileIO)(nil)
+
 // Open opens a local file for reading after validating the path.
 func (l *LocalFileIO) Open(name string) (fileio.File, error) {
 	safePath, err := SafeInputPath(name)
@@ -78,4 +80,14 @@ func (l *LocalFileIO) Save(path string, _ fileio.SaveOptions, body io.Reader) (f
 		return nil, &fileio.WriteError{Err: err}
 	}
 	return &saveResult{size: n}, nil
+}
+
+// RemoveWorkspaceEntry removes one workspace file or one empty workspace
+// directory after applying the same output-path validation as Save.
+func (l *LocalFileIO) RemoveWorkspaceEntry(path string) error {
+	safePath, err := SafeOutputPath(path)
+	if err != nil {
+		return &fileio.PathValidationError{Err: err}
+	}
+	return vfs.Remove(safePath)
 }

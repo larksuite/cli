@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/ratelimit"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/util"
 )
@@ -157,7 +158,7 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 // Auth is resolved via Credential (same as DoSDKRequest). Security headers and
 // any extra headers from opts are applied automatically.
 // HTTP errors (status >= 400) are handled internally: the body is read (up to 4 KB),
-// closed, and returned as a typed *errs.NetworkError — callers only receive successful responses.
+// closed, and returned as a typed error — callers only receive successful responses.
 func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.Identity, opts ...Option) (*http.Response, error) {
 	cfg := buildConfig(opts)
 
@@ -216,10 +217,7 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		cancel()
-		if _, ok := errs.ProblemOf(err); ok {
-			return nil, err
-		}
-		return nil, errs.NewNetworkError(classifyNetworkSubtype(err), "stream request failed: %s", err).WithCause(err)
+		return nil, wrapTransportError(ctx, err, cfg.replaySafe, "stream request failed: %s", err)
 	}
 	resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}
 
@@ -228,8 +226,33 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 		defer resp.Body.Close()
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		msg := strings.TrimSpace(string(errBody))
+		if cfg.replaySafe && resp.StatusCode == http.StatusTooManyRequests {
+			rate := ratelimit.ParseHeaders(resp.Header, time.Now())
+			retryAfterSeconds := rate.RetryAfterSeconds()
+			if msg == "" {
+				msg = "OpenAPI gateway rate limit exceeded"
+			}
+			apiErr := errs.NewAPIError(errs.SubtypeRateLimit, "HTTP %d: %s", resp.StatusCode, msg).
+				WithCode(resp.StatusCode).
+				WithRetryable().
+				WithRetryAfterSeconds(retryAfterSeconds)
+			hint := "retry with exponential backoff and jitter"
+			if retryAfterSeconds > 0 {
+				hint = fmt.Sprintf("wait at least %d seconds before retrying; use exponential backoff with jitter if throttling continues", retryAfterSeconds)
+			}
+			if rate.Limit > 0 {
+				hint += fmt.Sprintf("; gateway request-window quota is %d", rate.Limit)
+			}
+			apiErr.WithHint("%s", hint)
+			if logID := streamLogID(resp.Header); logID != "" {
+				apiErr.WithLogID(logID)
+			}
+			return nil, apiErr
+		}
 		subtype := errs.SubtypeNetworkTransport
-		if resp.StatusCode >= 500 {
+		if cfg.replaySafe && resp.StatusCode == http.StatusRequestTimeout {
+			subtype = errs.SubtypeNetworkTimeout
+		} else if resp.StatusCode >= 500 {
 			subtype = errs.SubtypeNetworkServer
 		}
 		var netErr *errs.NetworkError
@@ -239,6 +262,10 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 			netErr = errs.NewNetworkError(subtype, "HTTP %d", resp.StatusCode)
 		}
 		netErr = netErr.WithCode(resp.StatusCode)
+		if cfg.replaySafe && (resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode >= http.StatusInternalServerError) {
+			rate := ratelimit.ParseHeaders(resp.Header, time.Now())
+			netErr = netErr.WithRetryable().WithRetryAfterSeconds(rate.RetryAfterSeconds())
+		}
 		if logID := streamLogID(resp.Header); logID != "" {
 			netErr = netErr.WithLogID(logID)
 		}

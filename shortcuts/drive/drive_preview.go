@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -19,9 +17,15 @@ var DrivePreview = common.Shortcut{
 	Description: "View or download Drive file content, or list and fetch available preview artifacts",
 	Risk:        "read",
 	Scopes:      []string{"drive:file:download"},
-	AuthTypes:   []string{"user", "bot"},
+	// The wiki scope is only required when the caller passes a wiki node
+	// (--wiki-token or a /wiki/ URL) that must be resolved to the underlying
+	// file token before previewing.
+	ConditionalScopes: []string{driveWikiNodeRetrieveScope},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file-token", Desc: "Drive file token", Required: true},
+		{Name: "file-token", Desc: "Drive file token"},
+		{Name: "url", Desc: "Drive file URL, or a wiki node URL that wraps an uploaded file (resolved to the underlying file token)"},
+		{Name: "wiki-token", Desc: "wiki node token wrapping an uploaded file (resolved to the underlying file token)"},
 		{Name: "type", Desc: "preview type to download: pdf | html | text | image | source_file"},
 		{Name: "version", Desc: "optional file version"},
 		{Name: "list-only", Type: "bool", Desc: "list preview candidates without downloading"},
@@ -29,8 +33,14 @@ var DrivePreview = common.Shortcut{
 		{Name: "if-exists", Desc: "output conflict policy: error | overwrite | rename", Default: drivePreviewIfExistsError, Enum: []string{drivePreviewIfExistsError, drivePreviewIfExistsOverwrite, drivePreviewIfExistsRename}},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validate.ResourceName(runtime.Str("file-token"), "--file-token"); err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
+		source, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
+		if err != nil {
+			return err
+		}
+		if source.NeedsWikiResolution() {
+			if err := runtime.EnsureScopes([]string{driveWikiNodeRetrieveScope}); err != nil {
+				return err
+			}
 		}
 		if err := validateDrivePreviewMode(runtime.Str("type"), runtime.Bool("list-only"), runtime.Str("output"), "type"); err != nil {
 			return err
@@ -38,9 +48,30 @@ var DrivePreview = common.Shortcut{
 		return validateDrivePreviewIfExists(runtime.Str("if-exists"))
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		fileToken := runtime.Str("file-token")
+		source, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
+		if err != nil {
+			return common.NewDryRunAPI().Set("error", err.Error())
+		}
+		fileToken := source.FileToken
+		wiki := source.NeedsWikiResolution()
+		if wiki {
+			fileToken = "obj_token_from_wiki_node"
+		}
 		version := strings.TrimSpace(runtime.Str("version"))
 		requestedType := strings.TrimSpace(runtime.Str("type"))
+
+		// planWikiResolution prepends the wiki get_node step (and echoes the
+		// wiki token) so the preview steps are numbered after it.
+		planWikiResolution := func(dry *common.DryRunAPI) {
+			if !wiki {
+				return
+			}
+			dry.GET("/open-apis/wiki/v2/spaces/get_node").
+				Desc("[0] Resolve wiki node to the underlying Drive file token (obj_type must be file)").
+				Params(map[string]interface{}{"token": source.WikiToken})
+			dry.Set("wiki_token", source.WikiToken)
+		}
+
 		if requestedType == "source_file" {
 			downloadParams := map[string]interface{}{
 				"preview_type": drivePreviewTypeSourceFile,
@@ -48,7 +79,9 @@ var DrivePreview = common.Shortcut{
 			if version != "" {
 				downloadParams["version"] = version
 			}
-			return common.NewDryRunAPI().
+			dry := common.NewDryRunAPI()
+			planWikiResolution(dry)
+			return dry.
 				GET("/open-apis/drive/v1/medias/:file_token/preview_download").
 				Desc("Download the source file artifact").
 				Params(downloadParams).
@@ -63,7 +96,9 @@ var DrivePreview = common.Shortcut{
 		if version != "" {
 			body["version"] = version
 		}
-		dry := common.NewDryRunAPI().
+		dry := common.NewDryRunAPI()
+		planWikiResolution(dry)
+		dry.
 			POST("/open-apis/drive/v1/medias/:file_token/preview_result").
 			Desc("[1] Fetch preview candidates for a Drive file").
 			Set("file_token", fileToken)
@@ -90,7 +125,20 @@ var DrivePreview = common.Shortcut{
 			Set("output", runtime.Str("output"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		fileToken := runtime.Str("file-token")
+		source, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
+		if err != nil {
+			return err
+		}
+		fileToken := source.FileToken
+		var wikiResolution driveFileWikiResolution
+		if source.NeedsWikiResolution() {
+			resolvedToken, resolution, resolveErr := resolveDriveFileWikiSource(ctx, runtime, source)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			fileToken = resolvedToken
+			wikiResolution = resolution
+		}
 		version := strings.TrimSpace(runtime.Str("version"))
 		requestedType := strings.TrimSpace(runtime.Str("type"))
 		outputPath := runtime.Str("output")
@@ -110,7 +158,7 @@ var DrivePreview = common.Shortcut{
 			result["mode"] = "download"
 			result["file_token"] = fileToken
 			result["selected_type"] = "source_file"
-			runtime.Out(result, nil)
+			runtime.Out(annotateDriveFileWikiOutput(result, wikiResolution), nil)
 			return nil
 		}
 
@@ -123,7 +171,7 @@ var DrivePreview = common.Shortcut{
 			return err
 		}
 		if runtime.Bool("list-only") {
-			runtime.Out(buildDrivePreviewListOutput(fileToken, candidates), nil)
+			runtime.Out(annotateDriveFileWikiOutput(buildDrivePreviewListOutput(fileToken, candidates), wikiResolution), nil)
 			return nil
 		}
 
@@ -147,7 +195,7 @@ var DrivePreview = common.Shortcut{
 		result["mode"] = "download"
 		result["file_token"] = fileToken
 		result["selected_type"] = candidate.Type
-		runtime.Out(result, nil)
+		runtime.Out(annotateDriveFileWikiOutput(result, wikiResolution), nil)
 		return nil
 	},
 }
