@@ -5,6 +5,8 @@ package sheets
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -435,6 +437,372 @@ func TestValidateValueAgainstSchema_ShapeSkeletonOnShallowTypeMismatch(t *testin
 	}
 	if !strings.Contains(err.Error(), "--print-schema") {
 		t.Errorf("deep mismatch should keep the --print-schema pointer, got %q", err.Error())
+	}
+}
+
+// TestValidateAgainstSchema_StrictUnexpectedPropertyListsKeys pins the strict
+// additionalProperties:false enhancement: the error lists the node's legal
+// property keys (sorted, capped at 15 with an "(N more)" overflow) and, when
+// the unknown key is a near miss, appends a did-you-mean.
+func TestValidateAgainstSchema_StrictUnexpectedPropertyListsKeys(t *testing.T) {
+	t.Parallel()
+
+	t.Run("lists legal keys and suggests a near miss", func(t *testing.T) {
+		t.Parallel()
+		schema := parseSchema(t, `{
+			"type":"object",
+			"additionalProperties":false,
+			"properties":{
+				"background_color":{"type":"string"},
+				"font_weight":{"type":"string"},
+				"font_size":{"type":"integer"}
+			}
+		}`)
+		err := validateAgainstSchema(map[string]interface{}{"background_colour": "#fff"}, schema, "")
+		if err == nil {
+			t.Fatal("unknown key under strict schema must fail")
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, `unexpected property "background_colour"`) {
+			t.Errorf("want the offending key named; got %q", msg)
+		}
+		if !strings.Contains(msg, `did you mean "background_color"?`) {
+			t.Errorf("want a did-you-mean for the near miss; got %q", msg)
+		}
+		for _, want := range []string{"valid properties:", "background_color", "font_size", "font_weight"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("want valid-property list to contain %q; got %q", want, msg)
+			}
+		}
+	})
+
+	t.Run("no did-you-mean for an unrelated key", func(t *testing.T) {
+		t.Parallel()
+		schema := parseSchema(t, `{
+			"type":"object",
+			"additionalProperties":false,
+			"properties":{"background_color":{"type":"string"}}
+		}`)
+		err := validateAgainstSchema(map[string]interface{}{"zzzzzzzz": 1}, schema, "")
+		if err == nil {
+			t.Fatal("unknown key must fail")
+		}
+		if strings.Contains(err.Error(), "did you mean") {
+			t.Errorf("unrelated key should get no suggestion; got %q", err.Error())
+		}
+		if !strings.Contains(err.Error(), "valid properties: [background_color]") {
+			t.Errorf("want the valid-property list; got %q", err.Error())
+		}
+	})
+
+	t.Run("wide object truncates the key list with overflow", func(t *testing.T) {
+		t.Parallel()
+		props := make([]string, 0, 20)
+		for i := 0; i < 20; i++ {
+			props = append(props, fmt.Sprintf(`"k%02d":{"type":"string"}`, i))
+		}
+		schema := parseSchema(t, `{"type":"object","additionalProperties":false,"properties":{`+strings.Join(props, ",")+`}}`)
+		err := validateAgainstSchema(map[string]interface{}{"nope": 1}, schema, "")
+		if err == nil {
+			t.Fatal("unknown key must fail")
+		}
+		if !strings.Contains(err.Error(), "(5 more)") { // 20 keys, cap 15
+			t.Errorf("want overflow marker '(5 more)'; got %q", err.Error())
+		}
+	})
+}
+
+// TestValidateAgainstSchema_RequiredMissingInlinesFieldHint pins that a
+// required-property-missing error inlines the field's type / one-line
+// description / enum when the schema describes that field.
+func TestValidateAgainstSchema_RequiredMissingInlinesFieldHint(t *testing.T) {
+	t.Parallel()
+
+	schema := parseSchema(t, `{
+		"type":"object",
+		"required":["operation"],
+		"properties":{
+			"operation":{
+				"type":"string",
+				"description":"Which mutation to run.",
+				"enum":["insert","delete","move"]
+			}
+		}
+	}`)
+	err := validateAgainstSchema(map[string]interface{}{}, schema, "")
+	if err == nil {
+		t.Fatal("missing required property must fail")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		`required property "operation"`,
+		`type "string"`,
+		"description: Which mutation to run.",
+		`one of ["insert", "delete", "move"]`,
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("want %q in required-missing error; got %q", want, msg)
+		}
+	}
+}
+
+// TestValidateAgainstSchema_RequiredMissingNoSchemaStaysPlain pins that a
+// missing required key with no describing schema keeps the plain legacy
+// message (no trailing "expected ...").
+func TestValidateAgainstSchema_RequiredMissingNoSchemaStaysPlain(t *testing.T) {
+	t.Parallel()
+	schema := parseSchema(t, `{"type":"object","required":["a"]}`)
+	err := validateAgainstSchema(map[string]interface{}{}, schema, "")
+	if err == nil {
+		t.Fatal("missing required must fail")
+	}
+	if strings.Contains(err.Error(), "; expected") {
+		t.Errorf("no field schema → no inlined hint; got %q", err.Error())
+	}
+}
+
+// TestValidateValueAgainstSchema_DeepTypeMismatchAppendsEnum pins that a deep
+// type mismatch (past the skeleton depth limit) still gets no whole-shape
+// skeleton, but appends the field's enum / description one-liner.
+func TestValidateValueAgainstSchema_DeepTypeMismatchAppendsEnum(t *testing.T) {
+	t.Parallel()
+	// A wrong-typed value three levels deep where the field is an enum string.
+	schema := parseSchema(t, `{
+		"type":"array",
+		"items":{"type":"array","items":{"type":"object","properties":{
+			"align":{"type":"string","description":"Text alignment.","enum":["left","center","right"]}
+		}}}
+	}`)
+	deep := parseValue(t, `[[{"align":42}]]`)
+	err := validateAgainstSchema(deep, schema, "")
+	if err == nil {
+		t.Fatal("wrong type for align must fail")
+	}
+	var tm *typeMismatchError
+	if !errors.As(err, &tm) {
+		t.Fatalf("want *typeMismatchError, got %T", err)
+	}
+	suffix := tm.hintSuffix()
+	for _, want := range []string{"description: Text alignment.", `one of ["left", "center", "right"]`} {
+		if !strings.Contains(suffix, want) {
+			t.Errorf("want %q in hintSuffix; got %q", want, suffix)
+		}
+	}
+}
+
+// TestSchemaFieldHint covers the single-field sketch used by
+// required-missing errors: each of type / description / enum contributes
+// its own segment, absent parts are simply skipped, and a nil / empty
+// schema yields no hint at all.
+func TestSchemaFieldHint(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		schema *schemaProperty
+		want   string
+	}{
+		{"nil schema", nil, ""},
+		{"empty schema", &schemaProperty{}, ""},
+		{"type only", &schemaProperty{Type: "string"}, `type "string"`},
+		{"description only", &schemaProperty{Description: "Cell note."}, "description: Cell note."},
+		{"enum only", &schemaProperty{Enum: []interface{}{"a", "b"}}, `one of ["a", "b"]`},
+		{
+			"all three",
+			&schemaProperty{Type: "string", Description: "段类型", Enum: []interface{}{"text", "link"}},
+			`type "string", description: 段类型, one of ["text", "link"]`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := schemaFieldHint(tc.schema); got != tc.want {
+				t.Errorf("schemaFieldHint = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFormatPropertyKeyList_Boundaries pins the display cap edges: exactly
+// at the cap nothing is folded, one past the cap folds into "(1 more)".
+func TestFormatPropertyKeyList_Boundaries(t *testing.T) {
+	t.Parallel()
+	keys := make([]string, 0, propertyKeyDisplayLimit+1)
+	for i := 0; i < propertyKeyDisplayLimit; i++ {
+		keys = append(keys, fmt.Sprintf("k%02d", i))
+	}
+	if got := formatPropertyKeyList(keys); strings.Contains(got, "more)") {
+		t.Errorf("exactly %d keys must not fold, got %q", propertyKeyDisplayLimit, got)
+	}
+	keys = append(keys, "overflow")
+	if got := formatPropertyKeyList(keys); !strings.Contains(got, "(1 more)") {
+		t.Errorf("%d keys should fold into '(1 more)', got %q", propertyKeyDisplayLimit+1, got)
+	}
+}
+
+// TestTypeMismatchHintSuffix_EmptyWhenUndeclared pins that a field with
+// neither enum nor description adds no suffix — the deep-mismatch fallback
+// message must stay byte-identical to the legacy wording in that case.
+func TestTypeMismatchHintSuffix_EmptyWhenUndeclared(t *testing.T) {
+	t.Parallel()
+	tm := &typeMismatchError{path: "a.b", expected: "string", got: "number"}
+	if got := tm.hintSuffix(); got != "" {
+		t.Errorf("no enum/description → empty suffix, got %q", got)
+	}
+}
+
+// TestValidateAgainstSchema_StrictUnexpectedProperty_CaseOnlyTypo pins the
+// did-you-mean for a key that differs from a legal one only in casing /
+// underscore style — a high-frequency LLM slip.
+func TestValidateAgainstSchema_StrictUnexpectedProperty_CaseOnlyTypo(t *testing.T) {
+	t.Parallel()
+	schema := parseSchema(t, `{
+		"type":"object",
+		"additionalProperties":false,
+		"properties":{"background_color":{"type":"string"}}
+	}`)
+	err := validateAgainstSchema(map[string]interface{}{"Background_Color": "#fff"}, schema, "")
+	if err == nil {
+		t.Fatal("case-typo key under strict schema must fail")
+	}
+	if !strings.Contains(err.Error(), `did you mean "background_color"?`) {
+		t.Errorf("want case-insensitive did-you-mean; got %q", err.Error())
+	}
+}
+
+// TestValidateValueAgainstSchema_RequiredMissingRealSchema replays 场景3
+// of the doubao case against the real embedded flag-schemas.json: a
+// rich_text segment without "type" must inline the field's type, enum and
+// description while keeping the --print-schema pointer.
+func TestValidateValueAgainstSchema_RequiredMissingRealSchema(t *testing.T) {
+	t.Parallel()
+	fv := mapFlagView{command: "+cells-set"}
+	value := parseValue(t, `[[{"rich_text":[{"text":"x"}]}]]`)
+	err := validateValueAgainstSchema(fv, "cells", value)
+	if err == nil {
+		t.Fatal("rich_text without type must fail against the embedded schema")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		`required property "type" is missing`,
+		`expected type "string"`,
+		"one of [",
+		`"text"`,
+		"--print-schema",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("want %q in real-schema required-missing error; got %q", want, msg)
+		}
+	}
+}
+
+// TestValidateValueAgainstSchema_DeepMismatchRealSchema replays 场景4: a
+// numeric rich_text "type" three levels deep gets the field's enum inline
+// (no whole-shape skeleton), still with the --print-schema pointer.
+func TestValidateValueAgainstSchema_DeepMismatchRealSchema(t *testing.T) {
+	t.Parallel()
+	fv := mapFlagView{command: "+cells-set"}
+	value := parseValue(t, `[[{"rich_text":[{"type":42,"text":"x"}]}]]`)
+	err := validateValueAgainstSchema(fv, "cells", value)
+	if err == nil {
+		t.Fatal("numeric rich_text type must fail against the embedded schema")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		`expected type "string", got "number"`,
+		"one of [",
+		`"text"`,
+		"--print-schema",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("want %q in real-schema deep-mismatch error; got %q", want, msg)
+		}
+	}
+	if strings.Contains(msg, "expected shape:") {
+		t.Errorf("deep mismatch must not inline a skeleton; got %q", msg)
+	}
+}
+
+// TestValidateValueAgainstSchema_AggregatesMultipleErrors pins the
+// aggregate path: a payload with several independent problems reports them
+// all in one numbered reply (each with its own teaching hint) instead of
+// the fail-fast fix-one-retry-hit-the-next loop.
+func TestValidateValueAgainstSchema_AggregatesMultipleErrors(t *testing.T) {
+	t.Parallel()
+	fv := mapFlagView{command: "+cells-set"}
+	// Two independent problems in one --cells payload: cell[0][0].rich_text[0]
+	// misses required "type"; cell[0][1].note has the wrong type.
+	value := parseValue(t, `[[{"rich_text":[{"text":"x"}]},{"note":12.5}]]`)
+	err := validateValueAgainstSchema(fv, "cells", value)
+	if err == nil {
+		t.Fatal("payload with two problems must fail")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		"2 validation errors:",
+		`1) required property "type" is missing`,
+		`one of ["text"`, // teaching hint rides along in aggregate mode too
+		`2) [0][1].note: expected type "string"`,
+		"--print-schema",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("want %q in aggregated error; got %q", want, msg)
+		}
+	}
+}
+
+// TestValidateValueAgainstSchema_AggregateCapTruncates pins the display
+// cap: a pathological payload reports schemaErrorDisplayLimit entries and
+// an explicit truncation tail, never the full flood.
+func TestValidateValueAgainstSchema_AggregateCapTruncates(t *testing.T) {
+	t.Parallel()
+	fv := mapFlagView{command: "+cells-set"}
+	// Seven cells all missing required rich_text "type" → 7 independent errors.
+	row := make([]string, 0, 7)
+	for i := 0; i < 7; i++ {
+		row = append(row, `{"rich_text":[{"text":"x"}]}`)
+	}
+	value := parseValue(t, `[[`+strings.Join(row, ",")+`]]`)
+	err := validateValueAgainstSchema(fv, "cells", value)
+	if err == nil {
+		t.Fatal("payload with seven problems must fail")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "5+ validation errors:") {
+		t.Errorf("want capped header '5+ validation errors:'; got %q", msg)
+	}
+	if !strings.Contains(msg, "more errors not shown") {
+		t.Errorf("want truncation tail; got %q", msg)
+	}
+	if strings.Contains(msg, "6)") {
+		t.Errorf("must not render entries beyond the display limit; got %q", msg)
+	}
+}
+
+// TestCollectSchemaErrors_OneOfProbeDoesNotLeak pins that failed oneOf
+// alternatives don't leak probe errors into the caller's collector when a
+// later alternative matches.
+func TestCollectSchemaErrors_OneOfProbeDoesNotLeak(t *testing.T) {
+	t.Parallel()
+	schema := parseSchema(t, `{"oneOf":[{"type":"string"},{"type":"number"}]}`)
+	c := &schemaErrorCollector{}
+	collectSchemaErrors(42.0, schema, "", c)
+	if len(c.errs) != 0 {
+		t.Errorf("number matches the second oneOf alternative; want no errors, got %v", c.errs)
+	}
+}
+
+func TestOneLineDescription(t *testing.T) {
+	t.Parallel()
+	if got := oneLineDescription("   "); got != "" {
+		t.Errorf("whitespace-only → empty, got %q", got)
+	}
+	if got := oneLineDescription("line one\n  line two"); got != "line one line two" {
+		t.Errorf("multi-line collapse = %q", got)
+	}
+	long := strings.Repeat("x", 200)
+	got := oneLineDescription(long)
+	if !strings.HasSuffix(got, "…") || len([]rune(got)) != descriptionMaxLen+1 {
+		t.Errorf("long description should truncate to %d runes + ellipsis, got %d", descriptionMaxLen, len([]rune(got)))
 	}
 }
 

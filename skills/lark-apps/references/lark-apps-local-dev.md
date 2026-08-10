@@ -1,6 +1,6 @@
 # lark-apps 本地开发
 
-适用：用户要把妙搭应用（full_stack 或 html）源码拉到本地，用本地 code agent/IDE 开发、调试数据库，再发布。
+适用：用户要把妙搭应用（full_stack、frontend 或 html）源码拉到本地，用本地 code agent/IDE 开发、再发布。其中调试数据库仅 full_stack 适用（frontend / html 无数据库）。
 
 ## 新建 vs 已有应用
 
@@ -34,6 +34,32 @@ git add <本次开发的文件>          # 提交粒度见下方「改完代码�
 git commit -m "feat: ..."
 git push origin sprint/default
 lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
+```
+
+### frontend
+
+纯前端应用（vite-react，无数据库）。流程与 full_stack 基本一致——`+init` 装依赖、`npm run dev`、commit/push/release——差别是无 `+db-*` 调库步骤。后续需要数据库/后端能力时不在本地升级，按 SKILL.md「类型升级」引导到云端会话。
+
+```bash
+# 新建 frontend 应用
+lark-cli apps +create --as user --name "JSON 格式化工具" --app-type frontend \
+  --description "纯前端交互工具，无需数据库"
+
+# 初始化本地仓库（--dir 取值见下方「领域规则」，勿照抄此处示例值）
+lark-cli apps +init --as user --app-id app_xxx --dir ./json-tool
+
+# 进入仓库后按项目脚手架启动（vite-react）
+cd ./json-tool
+npm install
+npm run dev
+
+# 开发完成后：提交本次改动 -> git push origin sprint/default -> +release-create
+git add <本次开发的文件>
+git commit -m "feat: ..."
+git push origin sprint/default
+lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
+# 发布是异步的：用 +release-get 轮询到 status=finished 才算部署完成、拿到 online_url
+lark-cli apps +release-get --as user --app-id app_xxx --release-id <上一步返回的 release_id>
 ```
 
 ### html

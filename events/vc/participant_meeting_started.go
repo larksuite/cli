@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // VCParticipantMeetingStartedOutput is the flattened shape for vc.meeting.participant_meeting_started_v1.
@@ -22,40 +23,32 @@ type VCParticipantMeetingStartedOutput struct {
 	CalendarEventID string `json:"calendar_event_id,omitempty" desc:"Calendar event ID associated with the meeting"`
 }
 
+type participantMeetingStartedEvent struct {
+	Meeting struct {
+		ID              string `json:"id"`
+		Topic           string `json:"topic"`
+		MeetingNo       string `json:"meeting_no"`
+		StartTime       string `json:"start_time"`
+		CalendarEventID string `json:"calendar_event_id"`
+	} `json:"meeting"`
+}
+
 func processVCParticipantMeetingStarted(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
-	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-		} `json:"header"`
-		Event struct {
-			Meeting struct {
-				ID              string `json:"id"`
-				Topic           string `json:"topic"`
-				MeetingNo       string `json:"meeting_no"`
-				StartTime       string `json:"start_time"`
-				CalendarEventID string `json:"calendar_event_id"`
-			} `json:"meeting"`
-		} `json:"event"`
-	}
-	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
+	body, ok := decodeEventBody[participantMeetingStartedEvent](raw)
+	if !ok {
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
-	meeting := envelope.Event.Meeting
+	meeting := body.Meeting
 	out := &VCParticipantMeetingStartedOutput{
-		Type:            envelope.Header.EventType,
-		EventID:         envelope.Header.EventID,
-		Timestamp:       envelope.Header.CreateTime,
+		Type:            raw.EventType,
+		EventID:         raw.EventID,
+		Timestamp:       raw.SourceTime,
 		MeetingID:       meeting.ID,
 		Topic:           meeting.Topic,
 		MeetingNo:       meeting.MeetingNo,
 		StartTime:       unixSecondsToLocalRFC3339(meeting.StartTime),
 		CalendarEventID: meeting.CalendarEventID,
-	}
-	if out.Type == "" {
-		out.Type = raw.EventType
 	}
 	return json.Marshal(out)
 }

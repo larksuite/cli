@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/larksuite/cli/errs"
@@ -84,6 +85,13 @@ func commandsWithFlagSchema() map[string]struct{} {
 // listing of introspectable flags; otherwise it returns the schema
 // subtree JSON for the named flag, or an error if the flag is not
 // registered.
+//
+// flagName also accepts a dotted path (properties.plotArea.axes): the
+// first segment names the flag, the rest walk the schema's properties
+// (descending through array items implicitly), returning just that
+// subtree. Large schemas — chart-create's properties is ~1,750 pretty
+// lines — otherwise force agents to page through the full dump for one
+// nested field; eval traces show 25 such round trips in one batch.
 func printFlagSchemaFor(command string) func(flagName string) ([]byte, error) {
 	return func(flagName string) ([]byte, error) {
 		idx, err := loadFlagSchemas()
@@ -103,10 +111,19 @@ func printFlagSchemaFor(command string) func(flagName string) ([]byte, error) {
 			return json.MarshalIndent(map[string]interface{}{
 				"shortcut":             command,
 				"introspectable_flags": flags,
-				"hint":                 "run again with --flag-name <name> to dump the JSON Schema for that flag",
+				"hint":                 "run again with --flag-name <name> to dump that flag's JSON Schema, or a dotted path like <name>.plotArea.axes to dump just one subtree",
 			}, "", "  ")
 		}
-		schema, ok := entry[flagName]
+		name, path := splitSchemaPath(flagName)
+		schema, ok := entry[name]
+		if !ok {
+			// Tolerate the wire-vocabulary underscore form (--flag-name
+			// border_styles for border-styles) — agents copy field names out
+			// of JSON payloads where underscores are canonical.
+			if alt := strings.ReplaceAll(name, "_", "-"); alt != name {
+				schema, ok = entry[alt]
+			}
+		}
 		if !ok {
 			flags := make([]string, 0, len(entry))
 			for f := range entry {
@@ -114,14 +131,121 @@ func printFlagSchemaFor(command string) func(flagName string) ([]byte, error) {
 			}
 			sort.Strings(flags)
 			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"no JSON Schema registered for %s --%s; available: %v", command, flagName, flags).
+				"no JSON Schema registered for %s --%s; available: %v", command, name, flags).
 				WithParam("--flag-name")
 		}
-		// Reformat for readability — schema files store compact JSON.
 		var pretty interface{}
 		if err := json.Unmarshal(schema, &pretty); err != nil {
 			return nil, err
 		}
+		if len(path) > 0 {
+			pretty, err = sliceSchemaByPath(pretty, name, path)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// Reformat for readability — schema files store compact JSON.
 		return json.MarshalIndent(pretty, "", "  ")
 	}
+}
+
+// splitSchemaPath splits a --flag-name value into the flag name and the
+// optional dotted schema path after it.
+func splitSchemaPath(flagName string) (string, []string) {
+	parts := strings.Split(flagName, ".")
+	return parts[0], parts[1:]
+}
+
+// sliceSchemaByPath walks a decoded JSON Schema along dotted path segments.
+// Each segment matches a key under "properties"; array levels are descended
+// implicitly through "items" (an explicit "items" segment also works), and
+// oneOf branches are searched for the first one carrying the key. A miss
+// errors with the keys actually available at that level so the caller can
+// re-issue the path without a full dump.
+func sliceSchemaByPath(schema interface{}, flagName string, path []string) (interface{}, error) {
+	node := schema
+	walked := flagName
+	for _, seg := range path {
+		next, ok := schemaChild(node, seg)
+		if !ok {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"no %q under %s; available keys: %v", seg, walked, schemaChildKeys(node)).
+				WithParam("--flag-name")
+		}
+		node = next
+		walked += "." + seg
+	}
+	return node, nil
+}
+
+// schemaChild resolves one path segment against a schema node, descending
+// through items / oneOf wrappers as needed.
+func schemaChild(node interface{}, seg string) (interface{}, bool) {
+	for depth := 0; depth < 8; depth++ {
+		m, ok := node.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		if seg == "items" {
+			if items, ok := m["items"]; ok {
+				return items, true
+			}
+		}
+		if props, ok := m["properties"].(map[string]interface{}); ok {
+			if child, ok := props[seg]; ok {
+				return child, true
+			}
+		}
+		if items, ok := m["items"]; ok {
+			node = items
+			continue
+		}
+		if branches, ok := m["oneOf"].([]interface{}); ok {
+			for _, b := range branches {
+				if child, ok := schemaChild(b, seg); ok {
+					return child, true
+				}
+			}
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// schemaChildKeys lists the property keys reachable at a schema node (through
+// items / oneOf wrappers), for the path-miss error.
+func schemaChildKeys(node interface{}) []string {
+	seen := map[string]struct{}{}
+	var collect func(n interface{}, depth int)
+	collect = func(n interface{}, depth int) {
+		if depth > 8 {
+			return
+		}
+		m, ok := n.(map[string]interface{})
+		if !ok {
+			return
+		}
+		if props, ok := m["properties"].(map[string]interface{}); ok {
+			for k := range props {
+				seen[k] = struct{}{}
+			}
+			return
+		}
+		if items, ok := m["items"]; ok {
+			collect(items, depth+1)
+			return
+		}
+		if branches, ok := m["oneOf"].([]interface{}); ok {
+			for _, b := range branches {
+				collect(b, depth+1)
+			}
+		}
+	}
+	collect(node, 0)
+	keys := make([]string, 0, len(seen))
+	for k := range seen {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

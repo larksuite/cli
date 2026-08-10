@@ -43,8 +43,9 @@ const (
 // target and is always retained; a command part is retained only while its
 // target remains referenceable in the current command surface.
 type Part struct {
-	text   string
-	target Target
+	text       string
+	target     Target
+	renderText func(RenderContext) string
 }
 
 // Text returns a recovery hint part that does not point to a command.
@@ -57,12 +58,17 @@ func Command(target Target, text string) Part {
 	return Part{text: text, target: target}
 }
 
+func contextualCommand(target Target, render func(RenderContext) string) Part {
+	return Part{target: target, renderText: render}
+}
+
 // Hint is an immutable sequence of semantic recovery parts. separator is used
 // only between retained non-empty parts, so filtering one action cannot leave
 // dangling punctuation such as a leading "; ".
 type Hint struct {
 	separator string
 	parts     []Part
+	hints     []Hint
 	fallback  string
 }
 
@@ -71,6 +77,15 @@ type Hint struct {
 func Join(separator string, parts ...Part) Hint {
 	snapshot := append([]Part(nil), parts...)
 	return Hint{separator: separator, parts: snapshot}
+}
+
+// JoinHints composes independently renderable hints. Each child applies its
+// own target filtering and fallback before the retained children are joined,
+// allowing command-only recovery to keep a useful fallback alongside other
+// policy guidance.
+func JoinHints(separator string, hints ...Hint) Hint {
+	snapshot := append([]Hint(nil), hints...)
+	return Hint{separator: separator, hints: snapshot}
 }
 
 // WithFallback returns a copy that renders text when projection removes every
@@ -82,22 +97,27 @@ func (h Hint) WithFallback(text string) Hint {
 	return h
 }
 
-// UserAuthorization returns the canonical user-login recovery. Business
-// producers provide only the scopes they require; the command target,
-// standard wording, and reduced-distribution fallback stay centralized.
+// UserAuthorization returns canonical structured user-login recovery for
+// producers that opt into this helper. Producers provide only the scopes they
+// require; the command target, standard wording, and reduced-distribution
+// fallback stay centralized.
 func UserAuthorization(scopes ...string) Hint {
-	var command string
-	if len(scopes) == 0 {
-		command = "run `lark-cli auth login` to authorize or refresh the current user"
-	} else {
-		command = fmt.Sprintf(
-			"run `lark-cli auth login --scope \"%s\"` to authorize or refresh the current user",
-			strings.Join(scopes, " "),
-		)
+	scopes = append([]string(nil), scopes...)
+	fallback := "obtain or refresh a user credential through this distribution's supported authorization flow, have the user complete authorization, then retry"
+	if len(scopes) > 0 {
+		fallback += "\ncurrent command requires scope(s): " + strings.Join(scopes, ", ")
 	}
-	return Join("", Command(TargetAuthLogin, command)).WithFallback(
-		"obtain or refresh a user credential through this distribution's supported authorization flow",
-	)
+	return Join("", contextualCommand(TargetAuthLogin, func(context RenderContext) string {
+		startArgs := "--recommend --no-wait --json"
+		if len(scopes) > 0 {
+			startArgs = fmt.Sprintf("--scope \"%s\" --no-wait --json", strings.Join(scopes, " "))
+		}
+		return fmt.Sprintf(
+			"run %s to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run %s in a later turn to finish login",
+			context.InlineAuthLoginCommand(startArgs),
+			context.InlineAuthLoginCommand("--device-code <device_code>"),
+		)
+	})).WithFallback(fallback)
 }
 
 // String returns the hint as rendered for the default, fully visible surface.
@@ -107,15 +127,36 @@ func (h Hint) String() string {
 
 // Render filters command-targeted parts against plan without changing h.
 func (h Hint) Render(plan *surface.Plan) string {
+	return h.render(plan, RenderContext{})
+}
+
+func (h Hint) render(plan *surface.Plan, context RenderContext) string {
+	if len(h.hints) > 0 {
+		retained := make([]string, 0, len(h.hints))
+		for _, child := range h.hints {
+			if rendered := child.render(plan, context); rendered != "" {
+				retained = append(retained, rendered)
+			}
+		}
+		if len(retained) == 0 {
+			return h.fallback
+		}
+		return strings.Join(retained, h.separator)
+	}
+
 	retained := make([]string, 0, len(h.parts))
 	for _, part := range h.parts {
-		if part.text == "" {
+		text := part.text
+		if part.renderText != nil {
+			text = part.renderText(context)
+		}
+		if text == "" {
 			continue
 		}
 		if part.target != "" && !plan.CanReference(surface.CommandID(part.target)) {
 			continue
 		}
-		retained = append(retained, part.text)
+		retained = append(retained, text)
 	}
 	if len(retained) == 0 {
 		return h.fallback

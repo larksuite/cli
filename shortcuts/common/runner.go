@@ -36,20 +36,22 @@ import (
 
 // RuntimeContext provides helpers for shortcut execution.
 type RuntimeContext struct {
-	ctx           context.Context // from cmd.Context(), propagated through the call chain
-	Config        *core.CliConfig
-	Cmd           *cobra.Command
-	Format        string
-	JqExpr        string                            // --jq expression; empty = no filter
-	outputErrOnce sync.Once                         // guards first-error capture in Out()/OutFormat()
-	outputErr     error                             // deferred error from jq filtering; written at most once
-	botOnly       bool                              // set by framework for bot-only shortcuts
-	resolvedAs    core.Identity                     // effective identity resolved by framework
-	Factory       *cmdutil.Factory                  // injected by framework
-	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
-	botInfoFunc   func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
-	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
-	stdinConsumed bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
+	ctx            context.Context // from cmd.Context(), propagated through the call chain
+	Config         *core.CliConfig
+	Cmd            *cobra.Command
+	Format         string
+	JqExpr         string                            // --jq expression; empty = no filter
+	outputErrOnce  sync.Once                         // guards first-error capture in Out()/OutFormat()
+	outputErr      error                             // deferred error from jq filtering; written at most once
+	botOnly        bool                              // set by framework for bot-only shortcuts
+	resolvedAs     core.Identity                     // effective identity resolved by framework
+	declaredScopes []string                          // shortcut-declared scopes for the resolved identity
+	Factory        *cmdutil.Factory                  // injected by framework
+	apiClientFunc  func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
+	botInfoFunc    func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
+	larkSDK        *lark.Client                      // eagerly initialized in mountDeclarative
+	stdinConsumed  bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
+	inputResolved  map[string]bool                   // flags whose value was replaced by @file / stdin content in resolveInputFlags; see InputResolvedFromSource
 }
 
 // ── Identity ──
@@ -68,6 +70,20 @@ func (ctx *RuntimeContext) As() core.Identity {
 		return ctx.resolvedAs
 	}
 	return core.AsUser
+}
+
+// PresentError renders a typed producer error for this command tree before a
+// shortcut copies its fields into a result payload.
+func (ctx *RuntimeContext) PresentError(err error) error {
+	if ctx == nil {
+		return err
+	}
+	return ctx.Factory.PresentError(err, cmdutil.ErrorPresentationOptions{
+		Identity: ctx.As(),
+		DeclaredScopes: func() []string {
+			return slices.Clone(ctx.declaredScopes)
+		},
+	})
 }
 
 // IsBot returns true if current identity is bot.
@@ -452,6 +468,12 @@ func (ctx *RuntimeContext) callRaw(method, url string, params map[string]interfa
 // Auth resolution is delegated to APIClient.DoSDKRequest to avoid duplicating
 // the identity → token logic across the generic and shortcut API paths.
 func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+	return ctx.DoAPIWithContext(ctx.ctx, req, opts...)
+}
+
+// DoAPIWithContext executes a raw Lark SDK request using callCtx for request
+// cancellation and deadlines while preserving the shortcut's resolved identity.
+func (ctx *RuntimeContext) DoAPIWithContext(callCtx context.Context, req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
 		return nil, err
@@ -459,7 +481,7 @@ func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestO
 	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
 		opts = append(opts, optFn)
 	}
-	return ac.DoSDKRequest(ctx.ctx, req, ctx.As(), opts...)
+	return ac.DoSDKRequest(callCtx, req, ctx.As(), opts...)
 }
 
 // DoAPIAsBot executes a raw Lark SDK request using bot identity (tenant access token),
@@ -626,6 +648,13 @@ func WrapInputStatErrorTyped(err error, readMsg ...string) error {
 // migrating from a custom category (e.g. "io", "api_error") change their
 // envelope's type field.
 func WrapSaveErrorTyped(err error) error {
+	return WrapSaveErrorTypedForFlag(err, "")
+}
+
+// WrapSaveErrorTypedForFlag is the parameter-aware form used by commands whose
+// output path is a user-facing flag. Keeping the flag at the call site avoids
+// attributing download/save errors from unrelated commands to --output-path.
+func WrapSaveErrorTypedForFlag(err error, param string) error {
 	if err == nil {
 		return nil
 	}
@@ -635,8 +664,11 @@ func WrapSaveErrorTyped(err error) error {
 	var me *fileio.MkdirError
 	switch {
 	case errors.Is(err, fileio.ErrPathValidation):
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).
-			WithCause(err)
+		verr := errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err)
+		if param != "" {
+			verr = verr.WithParam(param)
+		}
+		return verr.WithCause(err)
 	case errors.As(err, &me):
 		return errs.NewInternalError(errs.SubtypeFileIO, "cannot create parent directory: %s", err).
 			WithCause(err)
@@ -688,6 +720,13 @@ func (ctx *RuntimeContext) handleEmitterError(err error) {
 		fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
 	}
 	ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
+}
+
+// OutputError returns the first deferred output failure captured by Out,
+// OutRaw, or OutFormat. Commands that create local artifacts can use it to
+// roll those artifacts back before returning the final command error.
+func (ctx *RuntimeContext) OutputError() error {
+	return ctx.outputErr
 }
 
 func wrapLegacyPrettyRenderer(prettyFn func(w io.Writer)) output.PrettyRenderer {
@@ -1005,7 +1044,15 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
-	rctx := &RuntimeContext{ctx: ctx, Config: config, Cmd: cmd, botOnly: botOnly, resolvedAs: as, Factory: f}
+	rctx := &RuntimeContext{
+		ctx:        ctx,
+		Config:     config,
+		Cmd:        cmd,
+		botOnly:    botOnly,
+		resolvedAs: as,
+		Factory:    f,
+	}
+	rctx.declaredScopes = s.DeclaredScopesForIdentity(string(rctx.As()))
 	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
 		return f.NewAPIClientWithConfig(config)
 	})
@@ -1023,14 +1070,33 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	return rctx, nil
 }
 
-// stripUTF8BOM removes a leading UTF-8 byte-order mark from content read from a
+// StripUTF8BOM removes a leading UTF-8 byte-order mark from content read from a
 // file or stdin. A BOM that survives into a CSV cell corrupts the first value
 // (e.g. "\ufeffNorth", which then makes a MAXIFS/lookup miss it), and a BOM at the
 // head of a JSON payload makes json.Unmarshal fail with "invalid character 'ï'".
 // Some editors and exporters add it silently. Only a leading BOM is removed; interior
 // occurrences are left untouched.
-func stripUTF8BOM(s string) string {
+func StripUTF8BOM(s string) string {
 	return strings.TrimPrefix(s, "\uFEFF")
+}
+
+// InputResolvedFromSource reports whether the named flag's value was loaded
+// from an external source (@file or stdin `-`) by resolveInputFlags, as
+// opposed to typed inline on the command line. Domain guards that apply
+// shape heuristics to inline values ("this looks like a file path — did you
+// forget the @?") must skip resolved values: their content was already read
+// from the right place and may legitimately look like anything, including a
+// path. Without this bit such a guard re-rejects correct @file / stdin
+// invocations, because by the time Validate runs both arrive as plain text.
+func (ctx *RuntimeContext) InputResolvedFromSource(name string) bool {
+	return ctx.inputResolved[name]
+}
+
+func (ctx *RuntimeContext) markInputResolved(name string) {
+	if ctx.inputResolved == nil {
+		ctx.inputResolved = map[string]bool{}
+	}
+	ctx.inputResolved[name] = true
 }
 
 // resolveInputFlags resolves @file and - (stdin) for flags with Input sources.
@@ -1071,7 +1137,8 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			}
 			// strip a leading UTF-8 BOM so it can't corrupt the first CSV
 			// cell or break JSON parsing downstream.
-			rctx.Cmd.Flags().Set(fl.Name, stripUTF8BOM(string(data)))
+			rctx.Cmd.Flags().Set(fl.Name, StripUTF8BOM(string(data)))
+			rctx.markInputResolved(fl.Name)
 			continue
 		}
 
@@ -1107,7 +1174,8 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			}
 			// strip a leading UTF-8 BOM so it
 			// can't corrupt the first CSV cell or break JSON parsing downstream.
-			rctx.Cmd.Flags().Set(fl.Name, stripUTF8BOM(string(data)))
+			rctx.Cmd.Flags().Set(fl.Name, StripUTF8BOM(string(data)))
+			rctx.markInputResolved(fl.Name)
 			continue
 		}
 	}

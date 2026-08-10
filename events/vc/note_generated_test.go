@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 func TestVCKeys_ProcessedNoteGeneratedRegistered(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeNoteGenerated)
+	def, ok := lookupCompiledDef(t, eventTypeNoteGenerated)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeNoteGenerated)
 	}
@@ -113,7 +114,7 @@ func TestProcessVCNoteGenerated(t *testing.T) {
 func TestVCNoteGenerated_PreConsumeSubscriptionLifecycle(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	def, ok := event.Lookup(eventTypeNoteGenerated)
+	def, ok := lookupCompiledDef(t, eventTypeNoteGenerated)
 	if !ok {
 		t.Fatalf("%s should be registered via Keys()", eventTypeNoteGenerated)
 	}
@@ -301,11 +302,11 @@ func TestProcessVCNoteGenerated_MalformedPayload(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 	got, err := processVCNoteGenerated(context.Background(), nil, raw, nil)
-	if err != nil {
-		t.Fatalf("Process should swallow parse errors, got %v", err)
+	if !processing.IsDropMalformed(err) {
+		t.Fatalf("malformed payload must be dropped with a malformed marker, got err=%v", err)
 	}
-	if string(got) != "not json" {
-		t.Errorf("malformed fallback output = %q, want original bytes", string(got))
+	if got != nil {
+		t.Errorf("malformed payload must be dropped without output, got %q", string(got))
 	}
 }
 
@@ -316,6 +317,7 @@ func runNoteGenerated(t *testing.T, rt event.APIClient, payload string) VCNoteGe
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processVCNoteGenerated(context.Background(), rt, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

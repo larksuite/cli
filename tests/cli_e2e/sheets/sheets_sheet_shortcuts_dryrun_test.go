@@ -255,3 +255,36 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 		})
 	}
 }
+
+func TestSheets_DimInsertDryRunInheritAfterKeepsBeforePosition(t *testing.T) {
+	setSheetsDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"sheets", "+dim-insert",
+			"--spreadsheet-token", "shtDryRun",
+			"--sheet-id", "sheet1",
+			"--position", "D",
+			"--count", "1",
+			"--inherit-style", "after",
+			"--dry-run",
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	require.Equal(t, "/open-apis/sheet_ai/v2/spreadsheets/shtDryRun/tools/invoke_write", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+	require.Equal(t, "modify_sheet_structure", clie2e.DryRunGet(out, "tool_name").String(), "stdout:\n%s", out)
+	require.Equal(t, "insert", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
+	// inherit-style=after copies the following column's style via a plain
+	// before-insert at the same position (the backend anchors on the following
+	// column), so position stays D with side=before — the blank lands before D.
+	require.Equal(t, "D", clie2e.DryRunGet(out, "tool_input.position").String(), "stdout:\n%s", out)
+	require.Equal(t, int64(1), clie2e.DryRunGet(out, "tool_input.count").Int(), "stdout:\n%s", out)
+	require.Equal(t, "before", clie2e.DryRunGet(out, "tool_input.side").String(), "inherit-style=after copies the following-side style via side=before; stdout:\n%s", out)
+}

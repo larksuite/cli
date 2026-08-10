@@ -1,0 +1,127 @@
+{
+  "key": "board.whiteboard.updated_v1",
+  "display_name": "Whiteboard updated",
+  "description": "Pushed when the whiteboard content is updated.",
+  "event_type": "board.whiteboard.updated_v1",
+  "subscription_type": "event",
+  "params": [
+    {
+      "name": "whiteboard_id",
+      "type": "string",
+      "required": true,
+      "description": "Whiteboard id to subscribe; subscription is per-whiteboard.",
+      "subscription_key": true
+    }
+  ],
+  "schema": {
+    "native": {},
+    "field_overrides": {
+      "/event/operator_ids/*/open_id": {
+        "Description": "",
+        "Enum": null,
+        "Kind": "open_id"
+      },
+      "/event/operator_ids/*/union_id": {
+        "Description": "",
+        "Enum": null,
+        "Kind": "union_id"
+      },
+      "/event/operator_ids/*/user_id": {
+        "Description": "",
+        "Enum": null,
+        "Kind": "user_id"
+      },
+      "/event/whiteboard_id": {
+        "Description": "whiteboard id to subscribe",
+        "Enum": null,
+        "Kind": "whiteboard_id"
+      }
+    }
+  },
+  "scopes": [
+    "board:whiteboard:node:read"
+  ],
+  "auth_types": [
+    "user",
+    "bot"
+  ],
+  "required_console_events": [
+    "board.whiteboard.updated_v1"
+  ],
+  "buffer_size": 100,
+  "workers": 1,
+  "resolved_output_schema": {
+    "description": "飞书事件",
+    "properties": {
+      "event": {
+        "properties": {
+          "operator_ids": {
+            "items": {
+              "properties": {
+                "open_id": {
+                  "format": "open_id",
+                  "type": "string"
+                },
+                "union_id": {
+                  "format": "union_id",
+                  "type": "string"
+                },
+                "user_id": {
+                  "format": "user_id",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "whiteboard_id": {
+            "description": "whiteboard id to subscribe",
+            "format": "whiteboard_id",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "header": {
+        "description": "事件头，所有事件结构一致",
+        "properties": {
+          "app_id": {
+            "description": "接收事件的应用 ID",
+            "type": "string"
+          },
+          "create_time": {
+            "description": "事件创建时间，毫秒时间戳字符串",
+            "type": "string"
+          },
+          "event_id": {
+            "description": "事件唯一 ID",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "事件类型，用于路由",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "租户唯一标识",
+            "type": "string"
+          },
+          "token": {
+            "description": "回调校验 token",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "schema": {
+        "description": "飞书事件协议版本",
+        "enum": [
+          "2.0"
+        ],
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "jq_root_path": ".event"
+}

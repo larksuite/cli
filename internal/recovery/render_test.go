@@ -93,15 +93,17 @@ func TestRenderClonesEveryConcreteTypedErrorAndPreservesWireExtensions(t *testin
 		{
 			name: "network",
 			original: &errs.NetworkError{
-				Problem: problem(errs.CategoryNetwork, errs.SubtypeNetworkTimeout),
-				Cause:   sentinel,
+				Problem:           problem(errs.CategoryNetwork, errs.SubtypeNetworkTimeout),
+				RetryAfterSeconds: 4,
+				Cause:             sentinel,
 			},
 		},
 		{
 			name: "api",
 			original: &errs.APIError{
-				Problem: problem(errs.CategoryAPI, errs.SubtypeRateLimit),
-				Cause:   sentinel,
+				Problem:           problem(errs.CategoryAPI, errs.SubtypeRateLimit),
+				RetryAfterSeconds: 7,
+				Cause:             sentinel,
 			},
 		},
 		{

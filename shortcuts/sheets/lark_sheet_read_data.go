@@ -69,8 +69,7 @@ var CellsGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		runtime.Out(out, nil)
-		return nil
+		return emitReadResult(runtime, out)
 	},
 }
 
@@ -88,17 +87,19 @@ func cellsGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName str
 	// read cap. Pin cell_limit very high so the tool's own default never binds
 	// before max_chars.
 	input["cell_limit"] = unboundedReadLimit
-	if n := runtime.Int("max-chars"); n > 0 {
+	if n, ok := maxCharsInput(runtime); ok {
 		input["max_chars"] = n
 	}
 	return input
 }
 
 // applyIncludeToCellsGet maps the fine-grained --include vocabulary to the
-// tool's two coarse switches:
+// tool's switches:
 //
 //   - include_styles (bool) — toggled by "style" presence
 //   - value_render_option (enum) — "formula" → formula; otherwise omitted
+//   - include_truncation_info (bool) — toggled by "truncation" presence; makes
+//     the tool estimate and return per-cell isRowTruncated / isColTruncated
 //
 // "value", "comment", and "data_validation" are always returned by the tool
 // per the schema; they have no dedicated knob today but are accepted in
@@ -119,6 +120,9 @@ func applyIncludeToCellsGet(input map[string]interface{}, include []string) {
 	if want["formula"] {
 		input["value_render_option"] = "formula"
 	}
+	if want["truncation"] {
+		input["include_truncation_info"] = true
+	}
 }
 
 // CsvGet wraps get_range_as_csv: pull one range as RFC 4180 CSV with optional
@@ -138,9 +142,6 @@ var CsvGet = common.Shortcut{
 		}
 		if _, _, err := resolveSheetSelector(runtime); err != nil {
 			return err
-		}
-		if strings.TrimSpace(runtime.Str("range")) == "" {
-			return sheetsValidationForFlag("range", "--range is required")
 		}
 		return nil
 	},
@@ -165,16 +166,25 @@ var CsvGet = common.Shortcut{
 		if !runtime.Bool("include-row-prefix") {
 			out = stripRowPrefixFromCsvOutput(out)
 		}
-		runtime.Out(out, nil)
-		return nil
+		return emitReadResult(runtime, out)
 	},
 }
+
+// csvGetFullSheetRange is the range sent when --range is omitted: the tool
+// requires one, but clips anything past the grid bounds and reports the clip
+// in actual_range — so an over-wide whole-columns range reads the entire
+// sheet in one call, with no workbook-info pre-flight. Eval traces show
+// "read the whole sheet" as a recurring intent (--range was the single most
+// missed required flag once the rest of the surface was fixed).
+const csvGetFullSheetRange = "A:ZZZ"
 
 func csvGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) map[string]interface{} {
 	input := map[string]interface{}{"excel_id": token}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if r := strings.TrimSpace(runtime.Str("range")); r != "" {
 		input["range"] = r
+	} else {
+		input["range"] = csvGetFullSheetRange
 	}
 	if runtime.Bool("skip-hidden") {
 		input["skip_hidden"] = true
@@ -183,7 +193,7 @@ func csvGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName strin
 	// read cap. Pin max_rows very high so the tool's own default never binds
 	// before max_chars.
 	input["max_rows"] = unboundedReadLimit
-	if n := runtime.Int("max-chars"); n > 0 {
+	if n, ok := maxCharsInput(runtime); ok {
 		input["max_chars"] = n
 	}
 	return input

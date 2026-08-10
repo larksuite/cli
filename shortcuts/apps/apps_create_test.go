@@ -187,7 +187,7 @@ func TestAppsCreate_RequiresAppType(t *testing.T) {
 }
 
 // TestAppsCreate_RejectsInvalidAppType pins that --app-type is a strict
-// lowercase enum (html / full_stack). Unknown values and legacy uppercase are
+// lowercase enum (html / frontend / full_stack). Unknown values and legacy uppercase are
 // both rejected by the flag's Enum — the CLI does not normalize case; legacy
 // uppercase compatibility is a server-side concern, not surfaced by the client.
 func TestAppsCreate_RejectsInvalidAppType(t *testing.T) {
@@ -361,5 +361,20 @@ func TestAppsCreate_AgentEnvVarNotSet(t *testing.T) {
 	}
 	if _, present := sent["source_agent"]; present {
 		t.Fatalf("source_agent should not be present when env var is unset: %v", sent)
+	}
+}
+
+// TestAppsCreate_AcceptsFrontend pins that --app-type frontend is a valid
+// enum value and flows through to the request body as "frontend" verbatim.
+func TestAppsCreate_AcceptsFrontend(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsCreate,
+		[]string{"+create", "--name", "Demo", "--app-type", "frontend", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("frontend dry-run err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"app_type": "frontend"`) {
+		t.Fatalf("expected app_type frontend in body, got %s", got)
 	}
 }

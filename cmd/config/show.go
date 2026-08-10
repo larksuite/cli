@@ -13,7 +13,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/recovery"
 	"github.com/spf13/cobra"
 )
 
@@ -54,16 +53,9 @@ func configShowRun(opts *ConfigShowOptions) error {
 	if config == nil || len(config.Apps) == 0 {
 		return core.NotConfiguredError()
 	}
-	app := config.CurrentAppConfig(f.Invocation.Profile)
-	if app == nil {
-		hint := recovery.Join("",
-			recovery.Command(recovery.TargetProfileList, "run: lark-cli profile list")).
-			WithFallback("select or configure an available profile through this distribution")
-		return recovery.Annotate(
-			errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").
-				WithHint("%s", hint.String()),
-			hint,
-		)
+	app, err := config.RequireAppConfig(f.Invocation.Profile, f.Invocation.ProfileSource)
+	if err != nil {
+		return err
 	}
 	users := "(no logged-in users)"
 	if len(app.Users) > 0 {
@@ -73,14 +65,19 @@ func configShowRun(opts *ConfigShowOptions) error {
 		}
 		users = strings.Join(userStrs, ", ")
 	}
+	// profileSource says which channel picked this profile (config | flag |
+	// environment) — with a session-level LARKSUITE_CLI_PROFILE in play, the
+	// effective profile and the persisted default can legitimately differ.
+	_, effectiveSource := config.EffectiveProfile(f.Invocation.Profile, f.Invocation.ProfileSource)
 	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
-		"workspace": core.CurrentWorkspace().Display(),
-		"profile":   app.ProfileName(),
-		"appId":     app.AppId,
-		"appSecret": "****",
-		"brand":     app.Brand,
-		"lang":      app.Lang,
-		"users":     users,
+		"workspace":     core.CurrentWorkspace().Display(),
+		"profile":       app.ProfileName(),
+		"profileSource": effectiveSource.String(),
+		"appId":         app.AppId,
+		"appSecret":     "****",
+		"brand":         app.Brand,
+		"lang":          app.Lang,
+		"users":         users,
 	})
 	fmt.Fprintf(f.IOStreams.ErrOut, "\nConfig file path: %s\n", core.GetConfigPath())
 	return nil

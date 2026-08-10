@@ -47,6 +47,16 @@ func validateCompleteSlideXML(content string) error {
 			depth++
 		case xml.EndElement:
 			depth--
+		case xml.ProcInst:
+			// An `<?xml ...?>` prolog copied from a generic XML sample is
+			// well-formed, so nothing local used to object and it reached the
+			// backend, which answers 4001000 buildSnNode once the presentation
+			// already exists. Every caller of this validator posts to
+			// .../slide, and that is the endpoint that rejects it. Measured, so
+			// it does not get "made consistent" later: .../slide/replace takes
+			// the same prolog and applies the content, which is why
+			// +update-slide and +replace-slide stay permissive.
+			return invalidSlideXMLStructureError("<?%s ...?> declaration is not supported; remove it so the document starts with <slide>", t.Target)
 		case xml.CharData:
 			if depth == 0 && strings.TrimSpace(string(t)) != "" {
 				return invalidSlideXMLStructureError("non-whitespace text outside root element")

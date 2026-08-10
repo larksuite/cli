@@ -42,9 +42,46 @@ func withDriveDownloadForbiddenPreviewHint(err error, _ string) error {
 	return err
 }
 
+// withDriveDownloadRecoveryHint preserves the final download error while
+// attaching an actionable recovery path for permission and throttling failures.
+func withDriveDownloadRecoveryHint(err error, fileToken string) error {
+	err = withDriveDownloadForbiddenPreviewHint(err, fileToken)
+	if !driveDownloadIsRateLimit(err) {
+		return err
+	}
+
+	problem, _ := errs.ProblemOf(err)
+	if strings.Contains(problem.Hint, "exponential backoff") {
+		return err
+	}
+	const hint = "Drive download was rate limited; stop immediate retries and retry later with exponential backoff."
+	return appendDriveExportRecoveryHint(err, hint)
+}
+
+func driveDownloadIsRateLimit(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return false
+	}
+	return problem.Subtype == errs.SubtypeRateLimit ||
+		problem.Code == 99991400 ||
+		problem.Code == http.StatusTooManyRequests
+}
+
 func driveDownloadForbiddenPreviewHint() string {
 	const tokenArg = "<FILE_TOKEN>"
-	return fmt.Sprintf("Direct Drive download returned HTTP 403. To view file content through preview artifacts, try `lark-cli drive +preview --file-token %s --type source_file --output <path>`; for PDF/text/image preview choices, run `lark-cli drive +preview --file-token %s --list-only`.", tokenArg, tokenArg)
+	return fmt.Sprintf("Direct Drive download returned HTTP 403. To view file content through preview artifacts, try `lark-cli drive +preview --file-token %s --type source_file --output <path>`.", tokenArg)
+}
+
+func driveDownloadPermissionDeniedError() error {
+	const tokenArg = "<FILE_TOKEN>"
+	return errs.NewPermissionError(
+		errs.SubtypePermissionDenied,
+		"current identity does not have export permission for this Drive file",
+	).WithHint(
+		"Direct Drive download is unavailable. To view file content through preview artifacts, try `lark-cli drive +preview --file-token %s --type source_file --output <path>`.",
+		tokenArg,
+	)
 }
 
 // driveInputStatError maps a FileIO.Stat/Open error for input file validation
@@ -99,4 +136,44 @@ func appendDriveExportRecoveryHint(err error, hint string) error {
 		return err
 	}
 	return errs.NewInternalError(errs.SubtypeSDKError, "%s", err.Error()).WithHint(hint).WithCause(err)
+}
+
+// driveExportIsRateLimit follows the same typed-error inspection pattern as
+// driveInspectShouldRetry, but export status polling uses the signal to stop.
+// Continuing to poll after a rate-limit response only amplifies the throttling.
+func driveExportIsRateLimit(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return false
+	}
+	return problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400
+}
+
+// withDriveExportRateLimitRecovery preserves the upstream typed rate-limit
+// error while giving agents a resumable, task-aware recovery path. The export
+// task already exists at this point, so callers must reuse its ticket instead
+// of creating a duplicate task with drive +export.
+func withDriveExportRateLimitRecovery(err error, ticket, fileToken string) error {
+	if !driveExportIsRateLimit(err) {
+		return err
+	}
+
+	hint := fmt.Sprintf(
+		"export task status lookup was rate limited (ticket=%s); stop polling and wait at least 1 minute before retrying with: %s\nif rate limiting continues, use exponential backoff starting at 1 minute instead of retrying immediately; do not run `lark-cli drive +export` again because the export task already exists",
+		ticket,
+		driveExportTaskResultCommand(ticket, fileToken),
+	)
+	return appendDriveExportRecoveryHint(err, hint)
+}
+
+// withDriveExportCreateRateLimitRecovery handles throttling before the export
+// task exists. There is no ticket to resume, so callers must retry the original
+// export command after backing off instead of invoking drive +task_result.
+func withDriveExportCreateRateLimitRecovery(err error) error {
+	if !driveExportIsRateLimit(err) {
+		return err
+	}
+
+	const hint = "export task creation was rate limited before a ticket was issued; stop and wait at least 1 minute, then rerun the same `lark-cli drive +export` command\nif rate limiting continues, use exponential backoff starting at 1 minute instead of retrying immediately; do not run `lark-cli drive +task_result` because no export ticket exists yet"
+	return appendDriveExportRecoveryHint(err, hint)
 }

@@ -281,7 +281,7 @@ func handleRootError(
 	// dynamic enrichment operate on a concrete clone, never the producer's
 	// reusable error value.
 	if !errs.IsRaw(err) {
-		renderedErr = newRootErrorPresenter(f, projector).Present(err)
+		renderedErr = presentRootError(f, err, projector)
 	}
 
 	// Staged dispatch: capture the typed exit code BEFORE attempting the

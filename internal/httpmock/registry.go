@@ -23,6 +23,7 @@ type Stub struct {
 	RawBody     []byte      // raw bytes (takes precedence over Body when non-nil)
 	ContentType string      // override Content-Type header (default: application/json)
 	Headers     http.Header // optional full response headers (takes precedence over ContentType)
+	Error       error       // optional transport error returned after OnMatch
 	matched     bool
 
 	// BodyFilter (optional): match only when the captured request body satisfies
@@ -92,6 +93,9 @@ func (r *Registry) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.Body = io.NopCloser(bytes.NewReader(capturedBody))
 		if matched.OnMatch != nil {
 			matched.OnMatch(req)
+		}
+		if matched.Error != nil {
+			return nil, matched.Error
 		}
 		resp, err := stubResponse(matched)
 		if err != nil {

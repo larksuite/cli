@@ -242,7 +242,7 @@ func TestSafeOutputPath_DeepNonExistentPathStaysInCWD(t *testing.T) {
 	}
 }
 
-func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
+func TestSafeUploadPath_RejectsTempFileAbsolutePath(t *testing.T) {
 	// GIVEN: a real temp file (absolute path under os.TempDir())
 	f, err := os.CreateTemp("", "upload-test-*.bin")
 	if err != nil {
@@ -252,10 +252,11 @@ func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 	f.Close()
 	t.Cleanup(func() { os.Remove(tmpPath) })
 
-	// WHEN: SafeUploadPath validates the absolute temp path
+	// WHEN: SafeInputPath validates the absolute temp path
 	_, err = SafeInputPath(tmpPath)
 
-	// THEN: absolute paths are rejected even in temp dir
+	// THEN: the strict validator rejects it — uploads / drive sync rely on
+	// relative-only; out-of-tree content reaches flags via stdin ("-")
 	if err == nil {
 		t.Fatal("expected error for absolute temp path, got nil")
 	}

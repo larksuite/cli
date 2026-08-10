@@ -64,11 +64,6 @@ var SlashCommandUpdate = common.Shortcut{
 		{Name: "description-i18n", Type: "string_array", Desc: "localized description, repeatable <lang>=<text>; REPLACES the whole i18n map (missing languages are dropped); requires --description"},
 		{Name: "icon-key", Desc: "new icon key (invalid keys rejected server-side with code 40000031)"},
 	},
-	Tips: []string{
-		`lark-cli application +slash-command-update --command greet --description "new text" --as bot`,
-		"PATCH is field-level partial: fields you do not pass are preserved server-side",
-		"the command NAME itself cannot be changed (API limitation): rename = delete + create (new command_id)",
-	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateUpdateTarget(runtime)
 	},

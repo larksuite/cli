@@ -29,6 +29,11 @@ import "io/fs"
 // the CLI builds. Later additions or removals of top-level directories do
 // not change the manifest; files within an owned skill directory are read
 // live. Base and Overlay must contain only valid skill directories.
+// A skill may declare hard dependencies under
+// metadata.requires.skills in SKILL.md. Every declared dependency must be
+// present in the final composed manifest; Allow is never widened and Remove
+// is never overridden to satisfy one. A same-named Overlay replacement uses
+// the replacement SKILL.md's dependency metadata, not the base copy's.
 // Declaring this asset composition is a build-integrity commitment: invalid
 // selection, content, ownership, or reference remaps abort the build rather
 // than silently falling back to host defaults.

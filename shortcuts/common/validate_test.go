@@ -182,6 +182,9 @@ func TestWrapInputStatErrorTyped_ReturnsTypedValidation(t *testing.T) {
 func TestWrapSaveErrorTyped_ClassifiesPathAndFileIO(t *testing.T) {
 	pathErr := &fileio.PathValidationError{Err: errors.New("outside cwd")}
 	assertValidationParam(t, WrapSaveErrorTyped(pathErr), "")
+	if got := assertValidationParam(t, WrapSaveErrorTypedForFlag(pathErr, "--output-path"), "--output-path"); got.Param != "--output-path" {
+		t.Fatalf("Param = %q, want --output-path", got.Param)
+	}
 
 	mkdirErr := &fileio.MkdirError{Err: errors.New("permission denied")}
 	err := WrapSaveErrorTyped(mkdirErr)

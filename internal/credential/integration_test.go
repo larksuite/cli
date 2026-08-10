@@ -101,7 +101,7 @@ func TestFullChain_ConfigStrictMode(t *testing.T) {
 	}
 
 	ep := &envprovider.Provider{}
-	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "")
+	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "", core.ProfileFromConfig)
 
 	cp := credential.NewCredentialProvider(
 		[]extcred.Provider{ep},
@@ -141,7 +141,7 @@ func TestFullChain_LangSurvivesProductionPath(t *testing.T) {
 		t.Fatalf("SaveMultiAppConfig: %v", err)
 	}
 
-	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "")
+	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "", core.ProfileFromConfig)
 	acct, err := defaultAcct.ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatalf("ResolveAccount: %v", err)

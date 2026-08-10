@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/skillcontent"
+	"github.com/larksuite/cli/internal/skillpolicy"
 )
 
 // withBaseSkills swaps the process-global embedded skill tree for the
@@ -165,6 +166,51 @@ func TestBuildInternal_invalidSkillsOverlayGuard(t *testing.T) {
 	}
 	if !strings.Contains(verr.Hint, "invalid_skills_overlay") {
 		t.Errorf("hint should surface reason_code invalid_skills_overlay, got %q", verr.Hint)
+	}
+}
+
+// Invalid host skill metadata is classified at the command boundary while
+// preserving the internal sentinel for callers that inspect the cause chain.
+func TestBuildInternal_invalidHostBaseGuard(t *testing.T) {
+	tmpHome(t)
+	platform.ResetForTesting()
+	t.Cleanup(platform.ResetForTesting)
+
+	withBaseSkills(t, map[string]string{
+		"lark-a/SKILL.md": "---\nmetadata:\n  requires:\n    skills: [\"../escape\"]\n---\n",
+	})
+	platform.Register(platform.NewPlugin("acme", "1.0").
+		EmbeddedSkills(&platform.SkillsOverlay{Allow: []string{"lark-a"}}).MustBuild())
+
+	_, root, _ := buildInternal(context.Background(), buildInvocationForTest(t))
+	leaf := findRunnableLeaf(root)
+	if leaf == nil {
+		t.Fatal("no runnable leaf in command tree")
+	}
+	err := leaf.RunE(leaf, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(%T) failed: %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("problem = %s/%s, want validation/failed_precondition", problem.Category, problem.Subtype)
+	}
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %+v", err, err)
+	}
+	if verr.Param != "" {
+		t.Errorf("param = %q, want empty because embedded host content is not a user argument", verr.Param)
+	}
+	if !errors.Is(err, skillpolicy.ErrInvalidHostBase) {
+		t.Fatalf("error does not preserve ErrInvalidHostBase: %v", err)
+	}
+	const wantHint = "the wrapper's embedded base skill tree is invalid; fix the content passed to cmd.SetEmbeddedSkillContent (reason_code invalid_skills_overlay)"
+	if verr.Hint != wantHint {
+		t.Errorf("hint = %q, want host-base-specific recovery %q", verr.Hint, wantHint)
+	}
+	if strings.Contains(verr.Hint, "fix the plugin's EmbeddedSkills") {
+		t.Errorf("hint misattributes invalid host content to the plugin: %q", verr.Hint)
 	}
 }
 

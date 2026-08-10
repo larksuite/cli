@@ -183,7 +183,7 @@ var VCRecording = common.Shortcut{
 				fmt.Fprintf(errOut, "%s resolving calendar_event_id=%s ...\n", recordingLogPrefix, sanitizeLogValue(instanceID))
 				relInfo, resolveErr := resolveMeetingIDsFromCalendarEvent(runtime, instanceID, calendarID, false)
 				if resolveErr != nil {
-					results = append(results, map[string]any{"calendar_event_id": instanceID, "error": resolveErr.Error()})
+					results = append(results, calendarEventResolutionFailure(runtime, instanceID, resolveErr))
 					continue
 				}
 				found := false

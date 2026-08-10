@@ -9,7 +9,36 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"github.com/larksuite/cli/shortcuts/drive"
 )
+
+// TestApplyWorkbookOutputPath pins the --output-path → OutputDir/FileName
+// contract the dry-run plan cannot show (it stays I/O-free and carries the
+// unsplit path): empty = no download, an existing directory = download under
+// the server-provided name, anything else = split into dir + base name.
+func TestApplyWorkbookOutputPath(t *testing.T) {
+	t.Parallel()
+	fio := &localfileio.LocalFileIO{}
+
+	p := drive.ExportParams{}
+	applyWorkbookOutputPath(&p, fio, "")
+	if p.OutputDir != "" || p.FileName != "" {
+		t.Errorf("empty path must mean no download, got dir=%q name=%q", p.OutputDir, p.FileName)
+	}
+
+	p = drive.ExportParams{}
+	applyWorkbookOutputPath(&p, fio, "./out.xlsx")
+	if p.OutputDir != "." || p.FileName != "out.xlsx" {
+		t.Errorf("file path must split into dir+name, got dir=%q name=%q", p.OutputDir, p.FileName)
+	}
+
+	p = drive.ExportParams{}
+	applyWorkbookOutputPath(&p, fio, ".")
+	if p.OutputDir != "." || p.FileName != "" {
+		t.Errorf("existing dir must keep the server-provided name, got dir=%q name=%q", p.OutputDir, p.FileName)
+	}
+}
 
 // TestWorkbookExport_ExecuteExportOnly covers the no-download path: without
 // --output-path, +workbook-export delegates to the shared drive export core

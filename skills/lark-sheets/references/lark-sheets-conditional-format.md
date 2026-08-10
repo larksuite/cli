@@ -172,7 +172,7 @@ lark-cli sheets +cond-format-create --url "..." --sheet-id "$SID" \
 lark-cli sheets +cond-format-delete --url "..." --sheet-id "$SID" --rule-id "$RULE_ID" --yes
 ```
 
-> 一次只删一个 `--rule-id`。要删**多个**条件格式时，先 `+cond-format-list` 拿到各 `rule-id`，再用 `+batch-update` 把多个 `+cond-format-delete` 合并为单次原子提交，不要逐个调用。
+> 一次只删一个 `--rule-id`。要删**多个**条件格式时，先 `+cond-format-list` 拿到各 `rule-id`，再用 `+batch-update` 把多个 `+cond-format-delete` 合并为单次批量提交（fail-fast、不回滚），不要逐个调用。
 
 ### Validate / DryRun / Execute 约束
 

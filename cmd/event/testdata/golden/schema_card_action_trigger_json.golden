@@ -1,0 +1,104 @@
+{
+  "key": "card.action.trigger",
+  "display_name": "Card action",
+  "description": "Triggered when a user interacts with an interactive card (button click, form submit, dropdown select, etc.). Output includes: token (valid 30 min, max 2 updates), action details (tag, value, name, form_value), and card_content (original card in userDSL text format, auto-fetched at consume time). To update the card: parse card_content to understand the current state, construct the new card JSON, then call `lark-cli api POST /open-apis/interactive/v1/card/update` with the token (see lark-im-card-action-reply.md).",
+  "event_type": "card.action.trigger",
+  "subscription_type": "callback",
+  "schema": {
+    "custom": {}
+  },
+  "scopes": [
+    "im:message:readonly"
+  ],
+  "auth_types": [
+    "bot"
+  ],
+  "required_console_events": [
+    "card.action.trigger"
+  ],
+  "buffer_size": 100,
+  "workers": 1,
+  "single_consumer": true,
+  "resolved_output_schema": {
+    "type": "object",
+    "properties": {
+      "action_name": {
+        "type": "string",
+        "description": "Element name attribute"
+      },
+      "action_tag": {
+        "type": "string",
+        "description": "Triggered element type: button/select_static/input/checker/etc"
+      },
+      "action_value": {
+        "type": "string",
+        "description": "Developer-defined action value as JSON string"
+      },
+      "card_content": {
+        "type": "string",
+        "description": "Original card JSON content (body.content) auto-fetched via message get API at consume time using message_id; empty if message_id absent or fetch fails"
+      },
+      "chat_id": {
+        "type": "string",
+        "description": "Chat ID",
+        "format": "chat_id"
+      },
+      "checked": {
+        "type": "boolean",
+        "description": "Checkbox state (for checkbox elements)"
+      },
+      "event_id": {
+        "type": "string",
+        "description": "Globally unique event ID"
+      },
+      "form_value": {
+        "type": "string",
+        "description": "Form submission values as JSON string (only on form submit)"
+      },
+      "host": {
+        "type": "string",
+        "description": "Host type: im_message / im_top_notice"
+      },
+      "input_value": {
+        "type": "string",
+        "description": "Input field value (only for input elements)"
+      },
+      "message_id": {
+        "type": "string",
+        "description": "Message ID of the card",
+        "format": "message_id"
+      },
+      "operator_id": {
+        "type": "string",
+        "description": "Operator open_id",
+        "format": "open_id"
+      },
+      "option": {
+        "type": "string",
+        "description": "Selected option value (for single-select dropdown)"
+      },
+      "options": {
+        "type": "string",
+        "description": "Selected options, comma-separated (for multi-select)"
+      },
+      "timestamp": {
+        "type": "string",
+        "description": "Event delivery time (ms timestamp string)",
+        "format": "timestamp_ms"
+      },
+      "timezone": {
+        "type": "string",
+        "description": "User timezone for date/time picker interactions"
+      },
+      "token": {
+        "type": "string",
+        "description": "Token for delay card update (valid 30 min, max 2 updates)"
+      },
+      "type": {
+        "type": "string",
+        "description": "Event type; always card.action.trigger"
+      }
+    }
+  },
+  "jq_root_path": "."
+}

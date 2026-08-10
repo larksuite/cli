@@ -769,6 +769,135 @@ func TestBuildPermissionHint_AppMissingScopeRoutesToConsole(t *testing.T) {
 	}
 }
 
+// TestBuildAPIError_BotPermissionRecoveryFamily pins the complete dispatcher
+// contract for bot callers across the three permission codes that can otherwise
+// be mistaken for user OAuth failures. Recovery guidance must name only actors
+// that can fix a bot call; user-login commands would send an agent through an
+// irrelevant device-authorization round trip without repairing the bot call.
+func TestBuildAPIError_BotPermissionRecoveryFamily(t *testing.T) {
+	const (
+		appID = "cli_bot"
+		scope = "im:message"
+	)
+	cases := []struct {
+		name          string
+		code          int
+		wantSubtype   errs.Subtype
+		wantMessage   string
+		wantMissing   []string
+		wantHintParts []string
+	}{
+		{
+			name:          "99991679 missing_scope",
+			code:          99991679,
+			wantSubtype:   errs.SubtypeMissingScope,
+			wantMessage:   "unauthorized: bot identity does not have the required scope(s): " + scope,
+			wantMissing:   []string{scope},
+			wantHintParts: []string{"app developer", "developer console"},
+		},
+		{
+			name:          "99991676 token_scope_insufficient",
+			code:          99991676,
+			wantSubtype:   errs.SubtypeTokenScopeInsufficient,
+			wantMessage:   "token has no permission for this operation; required scope is missing",
+			wantMissing:   []string{scope},
+			wantHintParts: []string{"token's granted scopes", "app developer", "developer console"},
+		},
+		{
+			name:          "230027 user_unauthorized",
+			code:          230027,
+			wantSubtype:   errs.SubtypeUserUnauthorized,
+			wantMessage:   "access denied for this bot operation",
+			wantHintParts: []string{"required bot permissions", "target tenant", "target resource", "tenant admin", "policy restrictions"},
+		},
+		{
+			name:          "1470403 permission_denied",
+			code:          1470403,
+			wantSubtype:   errs.SubtypePermissionDenied,
+			wantMessage:   "bot lacks permission for the requested resource",
+			wantHintParts: []string{"resource owner", "this bot"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := map[string]any{
+				"code": tc.code,
+				"msg":  "upstream permission failure",
+			}
+			if len(tc.wantMissing) > 0 {
+				resp["error"] = map[string]any{
+					"permission_violations": []any{map[string]any{"subject": scope}},
+				}
+			}
+
+			err := errclass.BuildAPIError(resp, errclass.ClassifyContext{
+				Brand:    "feishu",
+				AppID:    appID,
+				Identity: "bot",
+			})
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf returned !ok, err = %T", err)
+			}
+			if problem.Category != errs.CategoryAuthorization {
+				t.Errorf("Category = %q, want %q", problem.Category, errs.CategoryAuthorization)
+			}
+			if problem.Subtype != tc.wantSubtype {
+				t.Errorf("Subtype = %q, want %q", problem.Subtype, tc.wantSubtype)
+			}
+			if problem.Code != tc.code {
+				t.Errorf("Code = %d, want %d", problem.Code, tc.code)
+			}
+			if problem.Message != tc.wantMessage {
+				t.Errorf("Message = %q, want %q", problem.Message, tc.wantMessage)
+			}
+
+			permission := requirePermissionError(t, err)
+			if permission.Identity != "bot" {
+				t.Errorf("Identity = %q, want bot", permission.Identity)
+			}
+			if len(permission.MissingScopes) != len(tc.wantMissing) {
+				t.Fatalf("MissingScopes = %v, want %v", permission.MissingScopes, tc.wantMissing)
+			}
+			for i := range tc.wantMissing {
+				if permission.MissingScopes[i] != tc.wantMissing[i] {
+					t.Errorf("MissingScopes = %v, want %v", permission.MissingScopes, tc.wantMissing)
+				}
+			}
+			if permission.ConsoleURL != "" {
+				t.Errorf("ConsoleURL = %q, want empty machine field for subtype %q", permission.ConsoleURL, tc.wantSubtype)
+			}
+
+			hint := strings.ToLower(problem.Hint)
+			message := strings.ToLower(problem.Message)
+			for _, part := range tc.wantHintParts {
+				if !strings.Contains(hint, strings.ToLower(part)) {
+					t.Errorf("Hint %q missing bot recovery guidance %q", problem.Hint, part)
+				}
+			}
+			for _, forbidden := range []string{
+				"auth login",
+				"--no-wait",
+				"verification_url",
+				"device_code",
+				"authorize or refresh",
+				"current user",
+				"re-authorize this user",
+				"user credential",
+				"target chat",
+				"external chats",
+			} {
+				if strings.Contains(hint, forbidden) {
+					t.Errorf("bot Hint %q must not contain user OAuth guidance %q", problem.Hint, forbidden)
+				}
+				if strings.Contains(message, forbidden) {
+					t.Errorf("bot Message %q must not contain user-specific guidance %q", problem.Message, forbidden)
+				}
+			}
+		})
+	}
+}
+
 // TestBuildPermissionError_CanonicalMessage pins the per-subtype canonical
 // wording so the wire envelope's Message preserves Lark's official phrasing
 // ("access denied" / "unauthorized" / "token has no permission") and enhances

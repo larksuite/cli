@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -45,11 +48,11 @@ func TestTablePut_IsoDateToSerial(t *testing.T) {
 				t.Errorf("isoDateToSerial(%q) unexpected error: %v", tt.in, err)
 				continue
 			}
-			if got != tt.want {
-				t.Errorf("isoDateToSerial(%q) = %d, want %d", tt.in, got, tt.want)
+			if got != float64(tt.want) && !(strings.Contains(tt.in, "T") && math.Abs(got-float64(tt.want)) < 1) {
+				t.Errorf("isoDateToSerial(%q) = %v, want %d", tt.in, got, tt.want)
 			}
 		} else if err == nil {
-			t.Errorf("isoDateToSerial(%q) = %d, want error", tt.in, got)
+			t.Errorf("isoDateToSerial(%q) = %v, want error", tt.in, got)
 		}
 	}
 }
@@ -160,7 +163,7 @@ func TestTablePut_BuildTypedCell(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cell["value"] != 45306 {
+		if cell["value"] != float64(45306) && cell["value"] != 45306 {
 			t.Errorf("value = %#v, want serial 45306", cell["value"])
 		}
 		if nf := numberFormatOf(cell); nf != "yyyy-mm-dd" {
@@ -355,14 +358,15 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 // payload parser without a cobra command.
 type stubFlagView map[string]string
 
-func (s stubFlagView) Str(name string) string        { return s[name] }
-func (s stubFlagView) Bool(name string) bool         { return s[name] == "true" }
-func (s stubFlagView) Int(name string) int           { return 0 }
-func (s stubFlagView) Float64(name string) float64   { return 0 }
-func (s stubFlagView) Changed(name string) bool      { _, ok := s[name]; return ok }
-func (s stubFlagView) StrArray(name string) []string { return nil }
-func (s stubFlagView) StrSlice(name string) []string { return nil }
-func (s stubFlagView) Command() string               { return "+table-put" }
+func (s stubFlagView) Str(name string) string                   { return s[name] }
+func (s stubFlagView) Bool(name string) bool                    { return s[name] == "true" }
+func (s stubFlagView) Int(name string) int                      { return 0 }
+func (s stubFlagView) Float64(name string) float64              { return 0 }
+func (s stubFlagView) Changed(name string) bool                 { _, ok := s[name]; return ok }
+func (s stubFlagView) StrArray(name string) []string            { return nil }
+func (s stubFlagView) StrSlice(name string) []string            { return nil }
+func (s stubFlagView) InputResolvedFromSource(name string) bool { return false }
+func (s stubFlagView) Command() string                          { return "+table-put" }
 
 // ─── dry-run: create + write rendering ────────────────────────────────
 
@@ -692,6 +696,177 @@ func TestTablePut_ExecuteCreatesWideSheetWithDims(t *testing.T) {
 	}
 }
 
+// TestWorkbookCreate_StylesAnchorFailsBeforeCreate pins that a cell_styles
+// range left of / above the write anchor fails in Validate — with NO API call.
+// The check used to live only in the write phase, after the workbook-create
+// call, stranding an orphan workbook (live-verified 2026-08-06: the envelope
+// read "spreadsheet … created but initial fill failed"). No stubs are
+// registered, so reaching Execute would fail with "no stub" instead of the
+// validation message this test requires.
+func TestWorkbookCreate_StylesAnchorFailsBeforeCreate(t *testing.T) {
+	t.Parallel()
+	// Only the typed --sheets path can move the anchor (per-sheet start_cell);
+	// --values always writes from A1, where no range can be left of / above.
+	_, _, err := runShortcutCapturingErr(t, WorkbookCreate, []string{
+		"--title", "T",
+		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
+		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
+	})
+	requireValidation(t, err, "starts left of the write range")
+}
+
+// TestTablePut_StylesAnchorFailsBeforeWrite pins that +table-put rejects an
+// out-of-anchor cell_styles range in Validate, with NO API call: a payload
+// targeting a missing sheet used to CREATE that sheet before the write phase
+// rejected the range — leaving a stray empty sheet behind while reporting
+// "no sheets were written". No stubs are registered, so reaching Execute
+// would fail with "no stub" instead of the required validation message.
+func TestTablePut_StylesAnchorFailsBeforeWrite(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+		"--url", testURL,
+		"--sheets", `{"sheets":[{"name":"S","start_cell":"B2","columns":["a"],"data":[["x"]]}]}`,
+		"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1","font_weight":"bold"}]}]}`,
+	})
+	requireValidation(t, err, "starts left of the write range")
+}
+
+// TestTablePut_AppendStylesAnchorSkipsRowCheck pins the append-mode carve-out:
+// the contract ignores start_cell's row (the base row comes from the sheet's
+// existing data at execute time), so Validate must not compare style rows
+// against the ignored static row — data ending at row 5 with start_cell B10
+// appends at row 6, making a B6 style legal. The COLUMN is still static and
+// still enforced. (dry-run-reproduced regression: B6 was rejected as "must be
+// at or after B10".)
+func TestTablePut_AppendStylesAnchorSkipsRowCheck(t *testing.T) {
+	t.Parallel()
+	t.Run("row above the ignored static anchor row passes Validate", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, TablePut, []string{"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"B6","font_weight":"bold"}]}]}`,
+		})
+		if len(calls) == 0 {
+			t.Fatal("append payload with a legal style range must produce a dry-run plan, not a validation error")
+		}
+	})
+	t.Run("column left of the anchor still rejected", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A6","font_weight":"bold"}]}]}`,
+		})
+		requireValidation(t, err, "starts left of the write range")
+	})
+
+	t.Run("missing append target fails before the sheet is created", func(t *testing.T) {
+		// Execute path (not just dry-run): the missing target would be created
+		// EMPTY, so append resolves its base row to the static anchor and the
+		// B6 style is genuinely unreachable — but the failure must land BEFORE
+		// the create. Only the structure-read stub is registered: reaching the
+		// modify_workbook_structure create would fail with "no stub" instead
+		// of the anchor message this test requires.
+		t.Parallel()
+		structure := toolOutputStub(testToken, "read", `{"sheets":[{"sheet_id":"`+testSheetID+`","sheet_name":"Other","index":0}]}`)
+		out, err := runShortcutWithStubs(t, TablePut,
+			[]string{"--url", testURL,
+				"--sheets", `{"sheets":[{"name":"S","mode":"append","start_cell":"B10","columns":["a"],"data":[["x"]]}]}`,
+				"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"B6","font_weight":"bold"}]}]}`},
+			structure)
+		if err == nil {
+			t.Fatalf("expected the pre-create anchor failure, got success: %s", out)
+		}
+		if !strings.Contains(err.Error(), "starts outside the write range") && !strings.Contains(out, "starts outside the write range") {
+			t.Fatalf("want the anchor message before any mutation; err=%v out=%s", err, out)
+		}
+	})
+}
+
+// TestTableGet_StructureErrorSurfaces pins that a failed get_workbook_structure
+// read is a typed error, not a silent degradation: the dimensionless fallback
+// anchored the used-range probe at A1, whose current_region stops at the first
+// fully-empty row — the read then silently returned a truncated sheet with no
+// incomplete marker (live-verified 2026-08-06).
+func TestTableGet_StructureErrorSurfaces(t *testing.T) {
+	t.Parallel()
+	structureErr := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+		Body:   map[string]interface{}{"code": 99991400, "msg": "rate limited"},
+	}
+	out, err := runShortcutWithStubs(t, TableGet,
+		[]string{"--url", testURL, "--sheet-name", "数据"},
+		structureErr)
+	if err == nil {
+		t.Fatalf("structure failure must surface, got success: %s", out)
+	}
+	p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeRateLimit, "get_workbook_structure")
+	if !p.Retryable {
+		t.Errorf("rate-limited structure read should stay retryable, got %+v", p)
+	}
+}
+
+// TestWorkbookCreate_AdoptPurgesStaleDefaultMapping is the regression test for
+// the adopt double-write bug: after the default "Sheet1" is renamed to the
+// first payload sheet, a later payload sheet literally named "Sheet1" must get
+// its OWN freshly created sheet — the stale byName["Sheet1"] entry used to
+// route it into the adopted (renamed) sheet, silently destroying the first
+// sheet's data while reporting both as written (live-verified 2026-08-06).
+func TestWorkbookCreate_AdoptPurgesStaleDefaultMapping(t *testing.T) {
+	t.Parallel()
+	createWorkbook := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v3/spreadsheets",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"spreadsheet": map[string]interface{}{"spreadsheet_token": testToken}},
+		},
+	}
+	defaultOnly := `{"sheets":[{"sheet_id":"` + testSheetID + `","sheet_name":"Sheet1","index":0,"row_count":200,"column_count":20}]}`
+	afterCreate := `{"sheets":[{"sheet_id":"` + testSheetID + `","sheet_name":"Sales","index":0,"row_count":200,"column_count":20},{"sheet_id":"` + testSheetID2 + `","sheet_name":"Sheet1","index":1,"row_count":200,"column_count":20}]}`
+	firstLookup := toolOutputStub(testToken, "read", defaultOnly)    // lookupFirstSheetID
+	listByName := toolOutputStub(testToken, "read", defaultOnly)     // writeTypedSheets' listSheetIDsByName
+	renameStub := toolOutputStub(testToken, "write", `{"ok":true}`)  // rename Sheet1 → Sales
+	salesWrite := toolOutputStub(testToken, "write", `{"ok":true}`)  // set_cell_range for Sales
+	createStub := toolOutputStub(testToken, "write", `{"ok":true}`)  // modify_workbook_structure create for Sheet1
+	postCreate := toolOutputStub(testToken, "read", afterCreate)     // createSheet's id read-back
+	sheet1Write := toolOutputStub(testToken, "write", `{"ok":true}`) // set_cell_range for Sheet1
+
+	out, err := runShortcutWithStubs(t, WorkbookCreate,
+		[]string{"--title", "T", "--sheets",
+			`{"sheets":[{"name":"Sales","columns":["a"],"data":[["s"]]},{"name":"Sheet1","columns":["b"],"data":[["x"]]}]}`},
+		createWorkbook, firstLookup, listByName, renameStub, salesWrite, createStub, postCreate, sheet1Write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	// The 5th tool call must be a CREATE for "Sheet1" — with the stale mapping
+	// it was a set_cell_range into the adopted sheet instead.
+	var wire map[string]interface{}
+	if err := json.Unmarshal(createStub.CapturedBody, &wire); err != nil {
+		t.Fatalf("decode create body: %v", err)
+	}
+	var input map[string]interface{}
+	if err := json.Unmarshal([]byte(wire["input"].(string)), &input); err != nil {
+		t.Fatalf("decode create tool input: %v", err)
+	}
+	if input["operation"] != "create" || input["sheet_name"] != "Sheet1" {
+		t.Fatalf("expected a create op for Sheet1, got %#v", input)
+	}
+
+	data := decodeEnvelopeData(t, out)
+	sheets, _ := data["sheets"].([]interface{})
+	if len(sheets) != 2 {
+		t.Fatalf("want 2 written sheets, got %d: %s", len(sheets), out)
+	}
+	id0 := sheets[0].(map[string]interface{})["sheet_id"]
+	id1 := sheets[1].(map[string]interface{})["sheet_id"]
+	if id0 == id1 {
+		t.Fatalf("both payload sheets landed on the same sheet_id %v — stale adopt mapping", id0)
+	}
+}
+
 // TestTablePut_ExecutePartialFailure covers the partial-success error path:
 // a set_cell_range write fails mid-import and the structured error surfaces.
 // TestTablePut_ExecuteTotalFailure: a single sheet whose write fails landed
@@ -716,6 +891,20 @@ func TestTablePut_ExecuteTotalFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed") && !strings.Contains(out, "no sheets were written") {
 		t.Errorf("expected plain-failure message; got err=%v out=%s", err, out)
+	}
+	// The typed error passes through (mutated in place), so classifier
+	// metadata survives — rebuilding from err.Error() erased code and log_id
+	// (live-verified: the same failure carried code 40400 + log_id through
+	// +workbook-info but neither through +table-put).
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("total failure must stay a typed error, got %T: %v", err, err)
+	}
+	if p.Code != 1254000 {
+		t.Errorf("Code = %d, want 1254000 preserved through tablePutPartial", p.Code)
+	}
+	if !strings.Contains(p.Message, "table-put failed on") || !strings.Contains(p.Message, "boom") {
+		t.Errorf("message should carry the table-put context and the cause, got %q", p.Message)
 	}
 }
 
@@ -1072,16 +1261,28 @@ func TestTableGet_SerialRoundTrip(t *testing.T) {
 			t.Fatalf("isoDateToSerial(%s): %v", iso, err)
 		}
 		if back := serialToISO(float64(s)); back != iso {
-			t.Errorf("roundtrip %s → %d → %s", iso, s, back)
+			t.Errorf("roundtrip %s → %v → %s", iso, s, back)
 		}
 	}
 }
 
 func TestTableGet_IsDateNumberFormat(t *testing.T) {
 	t.Parallel()
-	for _, nf := range []string{"yyyy-mm-dd", "yyyy-mm", "yyyy/m/d", "YYYY/MM/DD", "yy-mm-dd", "[Red]yyyy-mm-dd", `"At "yyyy`} {
+	for _, nf := range []string{
+		"yyyy-mm-dd", "yyyy-mm", "yyyy/m/d", "YYYY/MM/DD", "yy-mm-dd", "[Red]yyyy-mm-dd", `"At "yyyy`,
+		// Year-less date/time presets carry no 'yy' and were previously
+		// inferred as number — the column then read back raw serials
+		// (live-verified 2026-08-06: m/d → float64, same serial with
+		// yyyy-mm-dd → datetime64).
+		"m/d", "mm-dd", "d-m", "mm/dd hh:mm",
+	} {
 		if !isDateNumberFormat(nf) {
 			t.Errorf("%q should be a date format", nf)
+		}
+	}
+	for _, nf := range []string{"h:mm", "hh:mm:ss", "h:mm am/pm"} {
+		if isDateNumberFormat(nf) {
+			t.Errorf("time-only format %q must not be inferred as a calendar date", nf)
 		}
 	}
 	// JPY (and other currency / unit prefixes that happen to contain a lone Y)
@@ -1092,7 +1293,10 @@ func TestTableGet_IsDateNumberFormat(t *testing.T) {
 	for _, nf := range []string{
 		"#,##0", "0.00", "0.00%", "@", "",
 		"JPY #,##0", "JPY 0", `"YEN "#,##0`, "[$JPY-411] #,##0",
-		`\y\y`, // escaped letters, not a year token
+		`\y\y`,     // escaped letters, not a year token
+		"General",  // letters outside the date-token set
+		"0.00E+00", // scientific: 'e' is not a date token
+		"USD #,##0",
 	} {
 		if isDateNumberFormat(nf) {
 			t.Errorf("%q should NOT be a date format", nf)
@@ -1300,20 +1504,13 @@ func TestTableGet_DuplicateHeaderRejected(t *testing.T) {
 // sheet name. The target should fall back to using the id as the name.
 func TestTableGet_SheetIDFallbackBackfillsName(t *testing.T) {
 	t.Parallel()
-	// Structure has a different sheet — selector mismatch triggers the fallback.
+	// A successful structure read that does not contain the requested selector
+	// is a real locator error; do not fabricate a sheet name from the id and
+	// continue with a dimensionless A1 probe.
 	structure := toolOutputStub(testToken, "read", `{"sheets":[{"sheet_id":"shtOther","sheet_name":"另一张","row_count":200,"column_count":20,"index":0}]}`)
-	region := toolOutputStub(testToken, "read", `{"current_region":"A1:A2"}`)
-	cells := toolOutputStub(testToken, "read", `{"ranges":[{"cells":[[{"value":"h"}],[{"value":"x"}]]}]}`)
-	out, err := runShortcutWithStubs(t, TableGet,
-		[]string{"--url", testURL, "--sheet-id", testSheetID}, structure, region, cells)
-	if err != nil {
-		t.Fatalf("execute failed: %v\nout=%s", err, out)
-	}
-	data := decodeEnvelopeData(t, out)
-	s0, _ := data["sheets"].([]interface{})[0].(map[string]interface{})
-	if s0["name"] != testSheetID {
-		t.Errorf("fallback name = %v, want %q (id used as name)", s0["name"], testSheetID)
-	}
+	_, err := runShortcutWithStubs(t, TableGet,
+		[]string{"--url", testURL, "--sheet-id", testSheetID}, structure)
+	requireValidation(t, err, "was not found in workbook")
 }
 
 // TestTablePutFullRange_EmptyMatrix covers the dry-run report for the
@@ -1685,5 +1882,68 @@ func TestValidColumnType_AcceptsEmpty(t *testing.T) {
 	}
 	if validColumnType("float") {
 		t.Error(`validColumnType("float") = true, want false`)
+	}
+}
+
+// TestTableGet_CharBudgetSpansTheWholeWorkbook pins that --max-chars bounds the
+// WHOLE multi-sheet read, not each sheet independently.
+//
+// The cap is a memory guard on a non-streaming path, so letting every sheet
+// spend it in full would let a 30-sheet workbook pull 30x what the caller
+// allowed — quietly, since each individual request looks compliant. The clamp
+// that prevents it (charBudget in readSheetAsSpec) was unpinned: removing it
+// passed the entire suite, because the outer loop's exhaustion check is a
+// separate mechanism and keeps working.
+//
+// Asserted on the wire: sheet 2's request must ask for less than sheet 1's.
+func TestTableGet_CharBudgetSpansTheWholeWorkbook(t *testing.T) {
+	t.Parallel()
+
+	const budget = 40000
+	structure := toolOutputStub(testToken, "read", `{"sheets":[`+
+		`{"sheet_id":"sh1","sheet_name":"S1","row_count":50,"column_count":3,"index":0},`+
+		`{"sheet_id":"sh2","sheet_name":"S2","row_count":50,"column_count":3,"index":1}`+
+		`]}`)
+
+	// One reusable stub answers both the current-region probes and the cell
+	// reads; every captured body is inspected below.
+	payload := `{"current_region":"A1:B2","ranges":[{"cells":[` +
+		`[{"value":"col1"},{"value":"col2"}],` +
+		`[{"value":"a"},{"value":"b"}]` +
+		`]}]}`
+	reads := toolOutputStub(testToken, "read", payload)
+	reads.Reusable = true
+
+	out, err := runShortcutWithStubs(t, TableGet,
+		[]string{"--url", testURL, "--max-chars", strconv.Itoa(budget)}, structure, reads)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	var caps []int
+	for _, body := range reads.CapturedBodies {
+		var wire struct {
+			ToolName string `json:"tool_name"`
+			Input    string `json:"input"`
+		}
+		if json.Unmarshal(body, &wire) != nil || wire.ToolName != "get_cell_ranges" {
+			continue
+		}
+		var input struct {
+			MaxChars int `json:"max_chars"`
+		}
+		if json.Unmarshal([]byte(wire.Input), &input) != nil || input.MaxChars == 0 {
+			continue
+		}
+		caps = append(caps, input.MaxChars)
+	}
+	if len(caps) < 2 {
+		t.Fatalf("want a cell read per sheet, captured caps = %v", caps)
+	}
+	if caps[0] > budget {
+		t.Errorf("first sheet asked for max_chars=%d, over the %d budget", caps[0], budget)
+	}
+	if caps[1] >= caps[0] {
+		t.Errorf("second sheet asked for max_chars=%d, not reduced by what the first consumed (%d) — the budget is per-workbook, not per-sheet", caps[1], caps[0])
 	}
 }

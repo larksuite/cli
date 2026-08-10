@@ -35,6 +35,65 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
+			name:     "+cells-get include=formula without style pins include_styles=false",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--include", "formula"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":            testToken,
+				"sheet_id":            testSheetID,
+				"ranges":              []interface{}{"A1:B2"},
+				"include_styles":      false,
+				"value_render_option": "formula",
+				"cell_limit":          float64(unboundedReadLimit),
+			},
+		},
+		{
+			// --include truncation toggles include_truncation_info so the tool
+			// estimates and returns per-cell isRowTruncated / isColTruncated.
+			name:     "+cells-get include=truncation",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--include", "truncation"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":                testToken,
+				"sheet_id":                testSheetID,
+				"ranges":                  []interface{}{"A1:B2"},
+				"include_styles":          false,
+				"include_truncation_info": true,
+				"cell_limit":              float64(unboundedReadLimit),
+			},
+		},
+		{
+			// --output-path alone raises the cap to the bounded file-offload
+			// default — NOT the unbounded sentinel; the read path is not
+			// streaming, so the cap is the OOM guard.
+			name:     "+cells-get output-path uses bounded offload cap",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--output-path", "out.json"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":  testToken,
+				"sheet_id":  testSheetID,
+				"ranges":    []interface{}{"A1:B2"},
+				"max_chars": float64(outputPathReadLimit),
+			},
+		},
+		{
+			// An explicit --max-chars survives --output-path instead of being
+			// silently replaced by the unbounded sentinel.
+			name:     "+cells-get explicit max-chars survives output-path",
+			sc:       CellsGet,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--output-path", "out.json", "--max-chars", "12345"},
+			toolName: "get_cell_ranges",
+			wantInput: map[string]interface{}{
+				"excel_id":  testToken,
+				"sheet_id":  testSheetID,
+				"ranges":    []interface{}{"A1:B2"},
+				"max_chars": float64(12345),
+			},
+		},
+		{
 			// Canonical form: --sheet-id + bare --range. Aligned with
 			// +cells-get / +csv-get; before the e2e BUG-019 fix this
 			// shortcut was the odd one out (range-prefix required).
@@ -92,7 +151,9 @@ func TestDropdownGet_RequiresSheetSelector(t *testing.T) {
 
 // TestReadData_RequiresRange covers the trim-based --range guard on the
 // single-range readers (--range "" slips past cobra's MarkFlagRequired but
-// must still be rejected by Validate).
+// must still be rejected by Validate). +csv-get is deliberately absent:
+// its --range is optional — omitted/blank means a whole-sheet read (see
+// TestCsvGet_RangeOptionalDefaultsToFullSheet).
 func TestReadData_RequiresRange(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -100,7 +161,6 @@ func TestReadData_RequiresRange(t *testing.T) {
 		sc   common.Shortcut
 	}{
 		{"+cells-get", CellsGet},
-		{"+csv-get", CsvGet},
 		{"+dropdown-get", DropdownGet},
 	}
 	for _, c := range cases {
@@ -111,6 +171,23 @@ func TestReadData_RequiresRange(t *testing.T) {
 			})
 			requireValidation(t, err, "--range is required")
 		})
+	}
+}
+
+// TestCsvGet_RangeOptionalDefaultsToFullSheet pins the whole-sheet default:
+// with --range omitted the request carries the over-wide clip range, so a
+// full read needs no workbook-info pre-flight (eval: --range was the most
+// missed required flag on +csv-get once the rest of the surface settled).
+func TestCsvGet_RangeOptionalDefaultsToFullSheet(t *testing.T) {
+	t.Parallel()
+	stdout, _, err := runShortcutCapturingErr(t, CsvGet, []string{
+		"--url", testURL, "--sheet-id", testSheetID, "--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("rangeless +csv-get must pass validation, got: %v", err)
+	}
+	if !strings.Contains(stdout, csvGetFullSheetRange) {
+		t.Fatalf("dry-run body should carry the full-sheet range %q, got %q", csvGetFullSheetRange, stdout)
 	}
 }
 

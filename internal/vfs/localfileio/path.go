@@ -19,6 +19,9 @@ func SafeOutputPath(path string) (string, error) {
 }
 
 // SafeInputPath validates an upload/read source path for --file flags.
+// Deliberately strict (relative-to-cwd only): several callers — drive sync,
+// upload flags, the CI quality gates — treat "absolute paths rejected" as a
+// load-bearing invariant. Out-of-tree content reaches flags via stdin ("-").
 func SafeInputPath(path string) (string, error) {
 	return safePath(path, "--file")
 }

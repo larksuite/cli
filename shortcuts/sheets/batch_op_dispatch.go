@@ -4,8 +4,11 @@
 package sheets
 
 import (
+	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/larksuite/cli/internal/suggest"
 )
 
 // ─── +batch-update sub-op dispatch ─────────────────────────────────────
@@ -84,7 +87,14 @@ func objDeleteTranslate(spec objectCRUDSpec) batchTranslateFn {
 // flag error is identical too (locked by TestBatchOp_ErrorEquivalence).
 var batchOpDispatch = map[string]batchOpMapping{
 	// ─── 单元格内容 ──────────────────────────────────────────────────
-	"+cells-set":       {"set_cell_range", cellsSetInput},
+	"+cells-set": {"set_cell_range", func(fv flagView, token, sid, sname string) (map[string]interface{}, error) {
+		// The --writes plural form expands into its own atomic batch and
+		// cannot nest; sub-ops carry one range+cells each.
+		if fv.Changed("writes") {
+			return nil, sheetsValidationForFlag("writes", `"writes" is not supported inside +batch-update (it expands into its own batch request); call +cells-set --writes standalone, or give each sub-op a single range + cells`)
+		}
+		return cellsSetInput(fv, token, sid, sname)
+	}},
 	"+cells-set-style": {"set_cell_range", cellsSetStyleInput},
 	"+cells-clear":     {"clear_cell_range", cellsClearInput},
 	"+cells-replace":   {"replace_data", replaceInput},
@@ -102,6 +112,11 @@ var batchOpDispatch = map[string]batchOpMapping{
 	// ─── 行列结构 (modify_sheet_structure, operation 区分) ──────────
 	"+dim-insert": {"modify_sheet_structure", dimInsertInput},
 	"+dim-delete": {"modify_sheet_structure", func(fv flagView, token, sid, sname string) (map[string]interface{}, error) {
+		// The --ranges plural form expands into its own atomic batch and
+		// cannot nest; sub-ops carry one range each.
+		if fv.Changed("ranges") {
+			return nil, sheetsValidationForFlag("ranges", `"ranges" is not supported inside +batch-update (it expands into its own batch request); call +dim-delete --ranges standalone, or give each sub-op a single "range"`)
+		}
 		return dimRangeOpInput(fv, token, sid, sname, "delete")
 	}},
 	"+dim-hide": {"modify_sheet_structure", func(fv flagView, token, sid, sname string) (map[string]interface{}, error) {
@@ -301,6 +316,198 @@ func sheetMoveBatchInput(fv flagView, token, sheetID, sheetName string) (map[str
 // +batch-update 顶层 --url/--token 统一提供（excel_id / spreadsheet_token / url）。
 var reservedSubOpKeys = []string{"excel_id", "spreadsheet_token", "url"}
 
+// wrappedSubOpInputKeys are nested MCP-body container keys that must never
+// appear at a sub-op input's top level — their presence means the caller
+// pasted a shortcut's structured *output* (e.g. a {"cell_styles":{…}} block)
+// where the flattened flag keys belong. None of the batch sub-op translators
+// read input under these names, so rejecting them is safe.
+var wrappedSubOpInputKeys = []string{"cell_styles", "cell_merges", "styles"}
+
+// subOpKeyVocabulary returns the set of hyphen-canonical flag names a sub-op
+// input may carry for `sc`: every non-system flag in flag-defs except the
+// spreadsheet locators (reserved for the batch top level). Nil when the
+// shortcut has no flag-defs entry (vocabulary checks are then skipped).
+func subOpKeyVocabulary(sc string) map[string]bool {
+	defs, _ := loadFlagDefs()
+	spec, ok := defs[sc]
+	if !ok {
+		return nil
+	}
+	vocab := make(map[string]bool, len(spec.Flags))
+	for _, df := range spec.Flags {
+		if df.Kind == "system" || df.Name == "url" || df.Name == "spreadsheet-token" {
+			continue
+		}
+		vocab[df.Name] = true
+	}
+	return vocab
+}
+
+// camelToKebab converts a lowerCamelCase key to its kebab form
+// (sheetName → sheet-name). Returns "" when the key carries no uppercase
+// letter (nothing to convert).
+func camelToKebab(key string) string {
+	if strings.ToLower(key) == key {
+		return ""
+	}
+	var b strings.Builder
+	for i, r := range key {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('-')
+			}
+			b.WriteRune(r + ('a' - 'A'))
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// normalizeSubOpInputKeys validates every sub-op input key against the
+// shortcut's flag vocabulary, rewriting habitual spellings in place and
+// rejecting anything that matches nothing. Eval traces show unknown keys were
+// previously ignored silently, which turned "wrong key" (size for width,
+// camelCase sheetName, an invented styles object) into misleading
+// "missing required flag" errors downstream — the single largest batch error
+// cluster. Rewrites applied, in order:
+//
+//   - underscore ↔ hyphen forms of a declared flag (already tolerated by
+//     mapFlagView — accepted here as-is)
+//   - lowerCamelCase → the declared flag (sheetName → sheet_name)
+//   - the command's intuitive-alias table (size → width/height on the resize
+//     pair) — the same commandFlagAliases the cobra path applies
+//   - "ranges" with a single-entry array unwraps onto "range"; a multi-entry
+//     array gets a split-into-sub-ops prescription instead
+//
+// Anything else errors with a did-you-mean. Returns a bare error; the caller
+// wraps it with the operations[i] (<shortcut>) context and key contract.
+func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
+	vocab := subOpKeyVocabulary(sc)
+	if vocab == nil {
+		return nil
+	}
+	keys := make([]string, 0, len(input))
+	for k := range input {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	aliases := commandFlagAliases[sc]
+	// canonical tracks which raw key already claimed each logical key, so two
+	// spellings of the same flag (sheet-id / sheet_id / sheetId) can never both
+	// survive into the tool body — the flag view resolves hyphen↔underscore
+	// variants, so a leftover duplicate would be silently shadowed and could
+	// send the write to the wrong sheet.
+	canonical := map[string]string{}
+	claim := func(logical, raw string) error {
+		if prev, taken := canonical[logical]; taken {
+			if jsonEqual(input[prev], input[raw]) {
+				return nil // same value under two spellings: harmless
+			}
+			return fmt.Errorf("%s got conflicting values for %q under two spellings (%q and %q) — keep one", sc, strings.ReplaceAll(logical, "-", "_"), prev, raw) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+		}
+		canonical[logical] = raw
+		return nil
+	}
+	for _, k := range keys {
+		hv := strings.ReplaceAll(k, "_", "-")
+		if vocab[hv] {
+			if err := claim(hv, k); err != nil {
+				return err
+			}
+			// Normalize the surviving spelling to the underscore form the tool
+			// bodies use, so exactly one key reaches the flag view.
+			if target := strings.ReplaceAll(hv, "-", "_"); target != k {
+				if _, taken := input[target]; !taken {
+					input[target] = input[k]
+					delete(input, k)
+					canonical[hv] = target
+				}
+			}
+			continue
+		}
+		if kebab := camelToKebab(k); kebab != "" && vocab[kebab] {
+			if err := claim(kebab, k); err != nil {
+				return err
+			}
+			target := strings.ReplaceAll(kebab, "-", "_")
+			if _, taken := input[target]; taken {
+				return fmt.Errorf("%s got both %q and %q — keep %q and drop the other", sc, k, target, target) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+			}
+			if _, taken := input[kebab]; taken && kebab != target {
+				return fmt.Errorf("%s got both %q and %q — keep %q and drop the other", sc, k, kebab, kebab) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+			}
+			input[target] = input[k]
+			delete(input, k)
+			canonical[kebab] = target
+			continue
+		}
+		if target, ok := aliases[strings.ToLower(hv)]; ok && vocab[target] {
+			if err := claim(target, k); err != nil {
+				return err
+			}
+			underscored := strings.ReplaceAll(target, "-", "_")
+			_, hyphenTaken := input[target]
+			_, underscoreTaken := input[underscored]
+			if !hyphenTaken && !underscoreTaken {
+				input[target] = input[k]
+				delete(input, k)
+				continue
+			}
+			// The alias AND its target are both present. This key is recognized,
+			// so it must not fall through to the generic "unknown input key"
+			// below — the claim() conflict message never fires here either,
+			// because keys are walked in sorted order and the alias can sort
+			// before its target ("size" < "width"), so nothing has claimed the
+			// logical key yet. Name both spellings and the survivor.
+			taken := target
+			if underscoreTaken {
+				taken = underscored
+			}
+			if jsonEqual(input[k], input[taken]) {
+				delete(input, k) // same value under two names: drop the alias.
+				// Hand the logical key over to the surviving spelling, or the
+				// claim recorded above would still point at the deleted alias
+				// and make that spelling's own turn read as a conflict.
+				canonical[target] = taken
+				continue
+			}
+			return fmt.Errorf("%s got both %q and %q, which are two names for the same flag, with different values — keep %q", sc, k, taken, taken) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+		}
+		if strings.ToLower(hv) == "ranges" && vocab["range"] && !vocab["ranges"] {
+			if _, taken := input["range"]; taken {
+				return fmt.Errorf("%s got both %q and \"range\" — keep \"range\" and drop %q", sc, k, k) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+			}
+			if arr, isArr := input[k].([]interface{}); isArr {
+				if len(arr) == 1 {
+					if s, isStr := arr[0].(string); isStr {
+						input["range"] = s
+						delete(input, k)
+						continue
+					}
+				}
+				return fmt.Errorf("%s takes a single \"range\" per sub-op, got %d entries in %q — split them into %d sub-ops (one per range)", sc, len(arr), k, len(arr)) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+			}
+			if s, isStr := input[k].(string); isStr {
+				input["range"] = s
+				delete(input, k)
+				continue
+			}
+		}
+		msg := fmt.Sprintf("unknown input key %q", k)
+		display := make([]string, 0, len(vocab))
+		for name := range vocab {
+			display = append(display, strings.ReplaceAll(name, "-", "_"))
+		}
+		sort.Strings(display)
+		if match := suggest.Closest(strings.ToLower(hv), display, 1); len(match) > 0 {
+			msg += fmt.Sprintf(" — did you mean %q?", match[0])
+		}
+		return fmt.Errorf("%s", msg) //nolint:forbidigo // intermediate error; the batch dispatcher wraps it into a typed operations validation error
+	}
+	return nil
+}
+
 // translateBatchOp 把一个 CLI 视角的 {shortcut, input} 翻成底层 MCP
 // batch_update 的 {tool_name, input}。`index` 用于错误信息定位。input 用
 // shortcut 的 CLI flag 名（连字符/下划线均可），经该 shortcut 的 standalone
@@ -312,6 +519,7 @@ var reservedSubOpKeys = []string{"excel_id", "spreadsheet_token", "url"}
 //   - input 不是 object
 //   - input 里手填了 operation（由 shortcut 名隐含，禁手填以防 mismatch）
 //   - input 里手填了 excel_id / spreadsheet_token / url
+//   - input 顶层出现 cell_styles / cell_merges / styles（误贴 MCP body 包裹结构）
 //   - 子操作的 translator 报错（如缺必填字段）
 func translateBatchOp(raw interface{}, token string, index int) (map[string]interface{}, error) {
 	op, ok := raw.(map[string]interface{})
@@ -335,7 +543,7 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 		return nil, sheetsValidationForFlag(
 			"operations",
 			"operations[%d]: shortcut %q not allowed in +batch-update "+
-				"(read ops / fan-out wrappers like +batch-update / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete} are excluded)",
+				"(read ops / fan-out wrappers like +batch-update / +styles-put / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete} are excluded)",
 			index, sc,
 		).WithHint("allowed shortcuts: %s", strings.Join(allowedBatchShortcuts(), ", "))
 	}
@@ -358,11 +566,30 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 		)
 	}
 	// 禁在 sub-op 重复填 spreadsheet 定位 —— 由 +batch-update 顶层 --url/--token 统一提供。
-	for _, k := range reservedSubOpKeys {
+	// 连字符 / 下划线两种写法都算命中（spreadsheet-token 与 spreadsheet_token 同罪）。
+	for userKey := range input {
+		normalized := strings.ReplaceAll(userKey, "-", "_")
+		for _, k := range reservedSubOpKeys {
+			if normalized == k {
+				return nil, sheetsValidationForFlag(
+					"operations",
+					"operations[%d] (%s): do not pass input.%s — it is already set from +batch-update top-level --url / --token",
+					index, sc, userKey,
+				)
+			}
+		}
+	}
+	// Reject a "wrapped structure" sub-op input: agents copy a shortcut's nested
+	// output container (e.g. +workbook-create --styles' {"cell_styles":{…}}) into
+	// the op input, but the op input is the shortcut's own flags flattened into
+	// JSON keys, not that wrapper. Left unflagged this surfaces far downstream as
+	// an unrelated "at least one style flag is required" (helpers.go), which never
+	// points at the real mistake.
+	for _, k := range wrappedSubOpInputKeys {
 		if _, has := input[k]; has {
 			return nil, sheetsValidationForFlag(
 				"operations",
-				"operations[%d] (%s): do not pass input.%s — it is already set from +batch-update top-level --url / --token",
+				`operations[%d] (%s): op input is the shortcut's flags flattened as JSON keys (e.g. "background_color": "#EBF1F8"); do not wrap in %s`,
 				index, sc, k,
 			)
 		}
@@ -372,6 +599,16 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 		if k != "shortcut" && k != "input" {
 			return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): unknown top-level key %q (expected only 'shortcut' and 'input')", index, sc, k)
 		}
+	}
+	// Reject / rewrite off-vocabulary input keys BEFORE any value reads: an
+	// unknown key silently ignored surfaces later as a misleading
+	// "missing required flag" error (the top batch error cluster in evals).
+	if err := normalizeSubOpInputKeys(sc, input); err != nil {
+		verr := sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
+		if contract := subOpInputContract(sc); contract != "" {
+			verr = verr.WithHint("%s input keys: %s", sc, contract)
+		}
+		return nil, verr
 	}
 	fv := newMapFlagViewForCommand(sc, input)
 	// operations is skipped by parse-time schema validation, so type-check the
@@ -410,7 +647,14 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 // matrix, on the operations axis.
 const maxBatchOperations = 100
 
-// translateBatchOperations 翻译整个 ops 数组；fail-fast，遇错立即返回。
+// batchOpErrorDisplayLimit bounds how many per-op validation failures ride
+// on one aggregated --operations error, mirroring the schema validator's
+// display cap.
+const batchOpErrorDisplayLimit = 5
+
+// translateBatchOperations 翻译整个 ops 数组。逐 op 校验并**收集全部失败**
+// 一次性返回（不再 fail-fast）——agent 一轮就能修完所有坏 op，而不是
+// 修一个、重试、再撞下一个。cell 安全上限仍是全局判定，命中即返回。
 func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}, error) {
 	if len(rawOps) == 0 {
 		return nil, sheetsValidationForFlag("operations", "--operations must be a non-empty JSON array")
@@ -420,12 +664,34 @@ func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}
 		return nil, sheetsValidationForFlag("operations", "--operations accepts at most %d entries; got %d", maxBatchOperations, len(rawOps)).
 			WithHint("split the operations into %d separate +batch-update calls of at most %d entries each", batches, maxBatchOperations)
 	}
+	// Preflight the cell footprint before any translator can materialize a
+	// matrix. Translators intentionally aggregate validation errors, so a bad
+	// early op must not let later valid +cells-set* ops allocate their payloads
+	// outside the batch-wide safety budget before being discarded.
+	var estimatedCells int64
+	var budgetErr error
+	for _, raw := range rawOps {
+		estimatedCells += estimatedBatchOpCells(raw)
+		if estimatedCells > maxStampMatrixCells && budgetErr == nil {
+			budgetErr = sheetsValidationForFlag("operations",
+				"--operations materialize %d cells total, over the %d-cell safety cap; reduce the number or size of cell operations",
+				estimatedCells, maxStampMatrixCells)
+		}
+	}
+	if budgetErr != nil {
+		return nil, budgetErr
+	}
 	out := make([]interface{}, 0, len(rawOps))
 	var totalCells int64
+	var opErrs []error
 	for i, raw := range rawOps {
 		translated, err := translateBatchOp(raw, token, i)
 		if err != nil {
-			return nil, err
+			opErrs = append(opErrs, err)
+			continue
+		}
+		if len(opErrs) > 0 {
+			continue // already failing — keep scanning for more bad ops, skip cell math.
 		}
 		totalCells += translatedCellCount(translated)
 		if totalCells > maxStampMatrixCells {
@@ -435,7 +701,86 @@ func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}
 		}
 		out = append(out, translated)
 	}
-	return out, nil
+	switch len(opErrs) {
+	case 0:
+		return out, nil
+	case 1:
+		return nil, opErrs[0] // single failure keeps the historical error byte-for-byte.
+	}
+	shown := opErrs
+	truncated := false
+	if len(shown) > batchOpErrorDisplayLimit {
+		shown = shown[:batchOpErrorDisplayLimit]
+		truncated = true
+	}
+	parts := make([]string, 0, len(shown))
+	for i, e := range shown {
+		// aggregatedIssueText keeps each op's own hint (the "<shortcut> input
+		// keys: …" contract) inline: folding N errors leaves one Hint slot, so
+		// without this the multi-op error would carry LESS guidance than the
+		// single-op one it replaces.
+		parts = append(parts, fmt.Sprintf("%d) %s", i+1, aggregatedIssueText(e)))
+	}
+	msg := fmt.Sprintf("%d of %d operations failed validation: %s", len(opErrs), len(rawOps), strings.Join(parts, "; "))
+	if truncated {
+		msg += fmt.Sprintf("; (%d more not shown — fix these first)", len(opErrs)-batchOpErrorDisplayLimit)
+	}
+	return nil, sheetsValidationForFlag("operations", "%s", msg).WithCause(opErrs[0])
+}
+
+// estimatedBatchOpCells returns the cell footprint without invoking a
+// translator. It is deliberately best-effort: malformed inputs return zero and
+// are still reported by the normal translator, while well-shaped cell payloads
+// are budgeted before any matrix materialization can occur.
+func estimatedBatchOpCells(raw interface{}) int64 {
+	op, ok := raw.(map[string]interface{})
+	if !ok {
+		return 0
+	}
+	shortcut, _ := op["shortcut"].(string)
+	input, _ := op["input"].(map[string]interface{})
+	if input == nil {
+		return 0
+	}
+	lookup := func(name string) interface{} {
+		if v, ok := input[name]; ok {
+			return v
+		}
+		if v, ok := input[strings.ReplaceAll(name, "-", "_")]; ok {
+			return v
+		}
+		if v, ok := input[strings.ReplaceAll(name, "_", "-")]; ok {
+			return v
+		}
+		return nil
+	}
+	if shortcut == "+cells-set" {
+		cells, ok := lookup("cells").([]interface{})
+		if !ok {
+			return 0
+		}
+		var total int64
+		for _, row := range cells {
+			r, ok := row.([]interface{})
+			if !ok || int64(len(r)) > maxStampMatrixCells-total {
+				return maxStampMatrixCells + 1
+			}
+			total += int64(len(r))
+		}
+		return total
+	}
+	if shortcut != "+cells-set-style" && shortcut != "+dropdown-set" {
+		return 0
+	}
+	rangeStr, ok := lookup("range").(string)
+	if !ok {
+		return 0
+	}
+	rows, cols, err := rangeDimensions(rangeStr)
+	if err != nil || rows <= 0 || cols <= 0 {
+		return 0
+	}
+	return int64(rows) * int64(cols)
 }
 
 func translatedCellCount(op map[string]interface{}) int64 {

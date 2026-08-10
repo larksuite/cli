@@ -5,6 +5,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -386,6 +387,10 @@ func baseV3Path(parts ...string) string {
 }
 
 func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
+	return baseV3RawContext(runtime.Ctx(), runtime, method, path, params, data)
+}
+
+func baseV3RawContext(ctx context.Context, runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
 	queryParams := make(larkcore.QueryParams)
 	for k, v := range params {
 		switch val := v.(type) {
@@ -409,7 +414,7 @@ func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[s
 	}
 	h := make(http.Header)
 	h.Set("X-App-Id", runtime.Config.AppID)
-	resp, err := runtime.DoAPI(req, larkcore.WithHeaders(h))
+	resp, err := runtime.DoAPIWithContext(ctx, req, larkcore.WithHeaders(h))
 	if err != nil {
 		return nil, baseAPIBoundaryError(err, "API call failed")
 	}
@@ -501,6 +506,11 @@ func baseHTTPStatusErrorFromInvalidResponse(resp *larkcore.ApiResp, classified e
 
 func baseV3Call(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
 	result, err := baseV3Raw(runtime, method, path, params, data)
+	return handleBaseAPIResult(result, err, "API call failed")
+}
+
+func baseV3CallContext(ctx context.Context, runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
+	result, err := baseV3RawContext(ctx, runtime, method, path, params, data)
 	return handleBaseAPIResult(result, err, "API call failed")
 }
 

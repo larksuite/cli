@@ -29,6 +29,7 @@ type flagView interface {
 	StrArray(name string) []string
 	StrSlice(name string) []string
 	Changed(name string) bool
+	InputResolvedFromSource(name string) bool
 	// Command returns the shortcut command this view feeds (e.g.
 	// "+pivot-create"). Used to look up the schema entry for
 	// schema-driven flag validation; both standalone and batch sub-op
@@ -238,6 +239,8 @@ func (m mapFlagView) Changed(name string) bool {
 	return ok
 }
 
+func (m mapFlagView) InputResolvedFromSource(name string) bool { return false }
+
 // validateRawTypes rejects sub-op input fields whose JSON type contradicts the
 // flag's declared type in flag-defs. +batch-update skips parse-time schema
 // validation for `operations`, and Int/Float64/Bool silently fall back to
@@ -331,6 +334,12 @@ func (m *mapFlagView) normalizeAndValidateEnums() error {
 		}
 		if canonical := canonicalEnumValue(value, df.Enum); canonical != "" {
 			m.raw[rawKey] = canonical
+			continue
+		}
+		// A retired value means "as if omitted" — delete the key so Changed()
+		// also reports it as absent, matching the standalone path.
+		if isRetiredEnumValue(m.command, df.Name, value) {
+			delete(m.raw, rawKey)
 			continue
 		}
 		message := fmt.Sprintf("invalid value %q for --%s, allowed: %s", value, df.Name, strings.Join(df.Enum, ", "))

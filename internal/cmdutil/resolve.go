@@ -77,6 +77,11 @@ func ResolveInput(raw string, stdin io.Reader, fileIO fileio.FileIO) (string, er
 
 // ReadInputFile reads path through fileIO. Open/read failures are wrapped with
 // path context; fileio.ErrPathValidation remains matchable with errors.Is.
+// All paths go through the caller's fileIO provider and its relative-to-cwd
+// policy — no absolute-path side door: a trust root defined by the process
+// environment (TMPDIR) is not a security boundary, and reading outside the
+// provider would break sidecar/custom-FileIO ownership. Out-of-tree content
+// reaches flags via stdin ("-").
 func ReadInputFile(fileIO fileio.FileIO, path string) ([]byte, error) {
 	if fileIO == nil {
 		return nil, fmt.Errorf("file input is not available in this context")

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -39,41 +40,40 @@ var SlidesCreate = common.Shortcut{
 	Scopes: []string{"slides:presentation:create", "slides:presentation:write_only", "docs:document.media:upload"},
 	Flags: []common.Flag{
 		{Name: "title", Desc: "presentation title"},
-		{Name: "slides", Desc: "slide content JSON array (each element is a <slide> XML string, max 10; for more pages, create first then add them one at a time with slides +add-slide). <img src=\"@./local.png\"> placeholders are auto-uploaded and replaced with file_token."},
+		// The "(supports @file, - reads stdin ...)" suffix is appended from Input
+		// by the framework, so it is not spelled out in Desc.
+		{Name: "slides", Desc: "slide content JSON array (each element is a <slide> XML string, max 10; for more pages, create first then add them one at a time with slides +add-slide). <img src=\"@./local.png\"> placeholders are auto-uploaded and replaced with file_token.", Input: []string{common.File, common.Stdin}},
+		{Name: "slide", Type: "string_array", Desc: "one complete <slide> XML document, or @path to read one from a file; repeat once per page (max 10) and the CLI assembles the array for you, so no JSON escaping is needed. <img src=\"@./local.png\"> placeholders are handled as with --slides. Mutually exclusive with --slides."},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if slidesStr := runtime.Str("slides"); slidesStr != "" {
-			var slides []string
-			if err := json.Unmarshal([]byte(slidesStr), &slides); err != nil {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides invalid JSON, must be an array of XML strings").WithParam("--slides")
-			}
-			if len(slides) > maxSlidesPerCreate {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides array exceeds maximum of %d slides; create the presentation first, then add the remaining pages one at a time with slides +add-slide", maxSlidesPerCreate).WithParam("--slides")
-			}
-			// Validate placeholder paths up front so we don't create a presentation
-			// only to fail mid-way on a missing local file.
-			if err := validateImagePlaceholderFiles(runtime, "--slides", extractImagePlaceholderPaths(slides)); err != nil {
-				return err
-			}
+		slides, param, err := createSlideContents(runtime)
+		if err != nil {
+			return err
 		}
-		return nil
+		if len(slides) == 0 {
+			return nil
+		}
+		// Validate placeholder paths up front so we don't create a presentation
+		// only to fail mid-way on a missing local file.
+		return validateImagePlaceholderFiles(runtime, param, extractImagePlaceholderPaths(slides))
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		title := effectiveTitle(runtime.Str("title"))
-		slidesStr := runtime.Str("slides")
+		slides, _, err := createSlideContents(runtime)
+		if err != nil {
+			return common.NewDryRunAPI().Set("error", err.Error())
+		}
 		createBody := map[string]interface{}{
 			"xml_presentation": map[string]interface{}{"content": buildPresentationXML(title)},
 		}
 
 		dry := common.NewDryRunAPI()
 
-		if slidesStr == "" {
+		if len(slides) == 0 {
 			dry.Desc("Create empty presentation").
 				POST("/open-apis/slides_ai/v1/xml_presentations").
 				Body(createBody)
 		} else {
-			var slides []string
-			_ = json.Unmarshal([]byte(slidesStr), &slides)
 			n := len(slides)
 			placeholders := extractImagePlaceholderPaths(slides)
 			total := n + 1 + len(placeholders)
@@ -115,7 +115,12 @@ var SlidesCreate = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		title := effectiveTitle(runtime.Str("title"))
 		content := buildPresentationXML(title)
-		slidesStr := runtime.Str("slides")
+		// Resolve @path inputs before the create call: a bad path must not leave
+		// an orphaned empty presentation behind.
+		slides, param, err := createSlideContents(runtime)
+		if err != nil {
+			return err
+		}
 
 		// Step 1: Create presentation
 		data, err := runtime.CallAPITyped(
@@ -149,63 +154,58 @@ var SlidesCreate = common.Shortcut{
 		}
 
 		// Step 2: Add slides if provided
-		if slidesStr != "" {
-			var slides []string
-			_ = json.Unmarshal([]byte(slidesStr), &slides) // already validated
-
-			if len(slides) > 0 {
-				// Step 1.5: Upload any @path placeholders, then rewrite slide XML
-				// with the resulting file_tokens. Uploads run after creation so
-				// they can use the new presentation_id as parent_node.
-				placeholders := extractImagePlaceholderPaths(slides)
-				if len(placeholders) > 0 {
-					tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders)
-					if err != nil {
-						return appendSlidesProgressHint(err, fmt.Sprintf("presentation %s was created; %d image(s) uploaded before failure", presentationID, uploaded))
-					}
-					for i := range slides {
-						slides[i] = replaceImagePlaceholders(slides[i], tokens)
-					}
-					result["images_uploaded"] = uploaded
+		if len(slides) > 0 {
+			// Step 1.5: Upload any @path placeholders, then rewrite slide XML
+			// with the resulting file_tokens. Uploads run after creation so
+			// they can use the new presentation_id as parent_node.
+			placeholders := extractImagePlaceholderPaths(slides)
+			if len(placeholders) > 0 {
+				tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders, param)
+				if err != nil {
+					return appendSlidesProgressHint(err, fmt.Sprintf("presentation %s was created; %d image(s) uploaded before failure", presentationID, uploaded))
 				}
+				for i := range slides {
+					slides[i] = replaceImagePlaceholders(slides[i], tokens)
+				}
+				result["images_uploaded"] = uploaded
+			}
 
-				slideURL := fmt.Sprintf(
-					"/open-apis/slides_ai/v1/xml_presentations/%s/slide",
-					validate.EncodePathSegment(presentationID),
+			slideURL := fmt.Sprintf(
+				"/open-apis/slides_ai/v1/xml_presentations/%s/slide",
+				validate.EncodePathSegment(presentationID),
+			)
+
+			var slideIDs []string
+			var slideIssues []map[string]interface{}
+			for i, slideXML := range slides {
+				slideData, err := runtime.CallAPITyped(
+					"POST",
+					slideURL,
+					map[string]interface{}{"revision_id": -1},
+					map[string]interface{}{
+						"slide": map[string]interface{}{"content": slideXML},
+					},
 				)
-
-				var slideIDs []string
-				var slideIssues []map[string]interface{}
-				for i, slideXML := range slides {
-					slideData, err := runtime.CallAPITyped(
-						"POST",
-						slideURL,
-						map[string]interface{}{"revision_id": -1},
-						map[string]interface{}{
-							"slide": map[string]interface{}{"content": slideXML},
-						},
-					)
-					if err != nil {
-						return appendSlidesProgressHint(err, fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
-					}
-					sid := common.GetString(slideData, "slide_id")
-					if sid != "" {
-						slideIDs = append(slideIDs, sid)
-					}
-					if issues, ok := slideData["issues"]; ok {
-						slideIssues = append(slideIssues, map[string]interface{}{
-							"slide_index": i + 1,
-							"slide_id":    sid,
-							"issues":      issues,
-						})
-					}
+				if err != nil {
+					return appendSlidesProgressHint(err, fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
 				}
-
-				result["slide_ids"] = slideIDs
-				result["slides_added"] = len(slideIDs)
-				if len(slideIssues) > 0 {
-					result["slide_issues"] = slideIssues
+				sid := common.GetString(slideData, "slide_id")
+				if sid != "" {
+					slideIDs = append(slideIDs, sid)
 				}
+				if issues, ok := slideData["issues"]; ok {
+					slideIssues = append(slideIssues, map[string]interface{}{
+						"slide_index": i + 1,
+						"slide_id":    sid,
+						"issues":      issues,
+					})
+				}
+			}
+
+			result["slide_ids"] = slideIDs
+			result["slides_added"] = len(slideIDs)
+			if len(slideIssues) > 0 {
+				result["slide_issues"] = slideIssues
 			}
 		}
 
@@ -224,6 +224,119 @@ var SlidesCreate = common.Shortcut{
 		runtime.Out(result, nil)
 		return nil
 	},
+}
+
+// createSlideContents resolves the page XML for +create from whichever input
+// form the caller used, and returns it alongside the flag name to blame in
+// errors. An empty result means "create an empty presentation".
+//
+// Two forms, because assembling the JSON array by hand is what callers keep
+// getting wrong: --slides takes the finished array (now also from @file/stdin),
+// --slide is repeated once per page and the CLI builds the array. The forms are
+// mutually exclusive — merging them would make page order depend on flag
+// ordering rules nobody wants to reason about.
+func createSlideContents(runtime *common.RuntimeContext) ([]string, string, error) {
+	// Whether --slides was typed, not whether its value is non-empty: an empty
+	// value is the shape a failed command substitution takes
+	// (--slides "$(...)"), and silently reading it as "no pages given" is how a
+	// caller ends up with a blank deck reported as success. Empty is not valid
+	// JSON, so routing it into the parse below rejects it by itself.
+	slidesJSON := runtime.Str("slides")
+	slidesGiven := runtime.Cmd.Flags().Changed("slides")
+	slideArgs := runtime.StrArray("slide")
+
+	if slidesGiven && len(slideArgs) > 0 {
+		return nil, "--slide", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--slide and --slides cannot be combined; pass the whole array with --slides, or one page per --slide").
+			WithParam("--slide")
+	}
+
+	var (
+		slides []string
+		param  string
+	)
+	switch {
+	case slidesGiven:
+		param = "--slides"
+		// A null literal is valid JSON for any slice, so it parses without error
+		// and leaves slides nil. Reading that as "no pages given" is the same
+		// blank-deck-reported-as-success an empty value would cause, so it is
+		// rejected the same way. `[]` stays valid: that array is explicitly empty.
+		if err := json.Unmarshal([]byte(slidesJSON), &slides); err != nil || slides == nil {
+			return nil, param, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides invalid JSON, must be an array of XML strings").
+				WithParam("--slides").
+				WithHint("to pass pages as XML files instead of building the array, repeat --slide @page.xml once per page")
+		}
+	case len(slideArgs) > 0:
+		param = "--slide"
+		var err error
+		if slides, err = readSlideArgs(runtime, slideArgs); err != nil {
+			return nil, param, err
+		}
+	default:
+		return nil, "--slides", nil
+	}
+
+	if len(slides) > maxSlidesPerCreate {
+		return nil, param, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"%s exceeds maximum of %d slides per create; create the presentation first, then add the remaining pages one at a time with slides +add-slide",
+			param, maxSlidesPerCreate).WithParam(param)
+	}
+
+	// Structural checks run on the assembled array, so both input forms fail the
+	// same way. The backend rejects a non-<slide> payload with an opaque 3350001
+	// after the presentation already exists; catching it here keeps the deck from
+	// being created at all.
+	for i, slideXML := range slides {
+		slides[i] = strings.TrimSpace(slideXML)
+		if slides[i] == "" {
+			return nil, param, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: page %d is empty", param, i+1).WithParam(param)
+		}
+		if err := validateCompleteSlideXML(slides[i]); err != nil {
+			return nil, param, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"%s: page %d is not a single complete <slide> document: %v", param, i+1, err).WithParam(param).WithCause(err)
+		}
+	}
+	return slides, param, nil
+}
+
+// readSlideArgs turns each --slide value into page XML, reading @path values
+// from disk. The framework only resolves Flag.Input for single-valued string
+// flags, so a repeatable flag has to do it here — deliberately through the same
+// reader, which enforces the "relative path under the current directory" rule.
+func readSlideArgs(runtime *common.RuntimeContext, args []string) ([]string, error) {
+	slides := make([]string, 0, len(args))
+	for i, raw := range args {
+		raw = strings.TrimSpace(raw)
+		switch {
+		case raw == "-":
+			// A process has one stdin, so "-" cannot mean "this occurrence" on a
+			// repeatable flag. --slides reads stdin as the whole array.
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide does not support stdin (-)").
+				WithParam("--slide").
+				WithHint("pass each page as --slide @page.xml, or pipe the whole JSON array into --slides -")
+		case strings.HasPrefix(raw, "@@"):
+			// Same escape the framework applies: @@ is a literal leading @.
+			slides = append(slides, raw[1:])
+		case strings.HasPrefix(raw, "@"):
+			path := strings.TrimSpace(raw[1:])
+			if path == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide: file path cannot be empty after @ (page %d)", i+1).WithParam("--slide")
+			}
+			data, err := cmdutil.ReadInputFile(runtime.FileIO(), path)
+			if err != nil {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide: %v", err).WithParam("--slide").WithCause(err)
+			}
+			// Same normalization the framework applies to Input flags: a
+			// repeatable flag resolves @path itself, so it has to strip the BOM
+			// itself too, otherwise --slide @page.xml rejects a file that
+			// --slides @deck.json accepts.
+			slides = append(slides, common.StripUTF8BOM(string(data)))
+		default:
+			slides = append(slides, raw)
+		}
+	}
+	return slides, nil
 }
 
 // effectiveTitle returns the title to use, falling back to "Untitled".
@@ -249,16 +362,17 @@ func buildPresentationXML(title string) string {
 // uploadSlidesPlaceholders uploads each unique placeholder path against the
 // presentation and returns the path→file_token map. The second return value is
 // the number of files successfully uploaded before any error, so callers can
-// surface progress in the failure message.
-func uploadSlidesPlaceholders(runtime *common.RuntimeContext, presentationID string, paths []string) (map[string]string, int, error) {
+// surface progress in the failure message. param names the flag the XML came
+// from, so an error points at the flag the caller actually typed.
+func uploadSlidesPlaceholders(runtime *common.RuntimeContext, presentationID string, paths []string, param string) (map[string]string, int, error) {
 	tokens := make(map[string]string, len(paths))
 	for i, path := range paths {
 		stat, err := runtime.FileIO().Stat(path)
 		if err != nil {
-			return tokens, i, slidesInputStatError(err, "--slides", fmt.Sprintf("@%s", path))
+			return tokens, i, slidesInputStatError(err, param, fmt.Sprintf("@%s", path))
 		}
 		if !stat.Mode().IsRegular() {
-			return tokens, i, errs.NewValidationError(errs.SubtypeInvalidArgument, "@%s: must be a regular file", path).WithParam("--slides")
+			return tokens, i, errs.NewValidationError(errs.SubtypeInvalidArgument, "@%s: must be a regular file", path).WithParam(param)
 		}
 		fileName := filepath.Base(path)
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading image %d/%d: %s (%s)\n",

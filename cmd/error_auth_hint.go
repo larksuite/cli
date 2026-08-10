@@ -4,104 +4,33 @@
 package cmd
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/apicatalog"
-	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
 )
 
-// rootErrorPresenter owns the final command-facing error transformation for
-// one Cobra tree. Producers report typed facts and optional semantic recovery;
-// this boundary clones, completes, and projects them without exposing the
-// build-local surface plan to business packages.
-type rootErrorPresenter struct {
-	f         *cmdutil.Factory
-	projector *recovery.Projector
-}
-
-func newRootErrorPresenter(f *cmdutil.Factory, projector *recovery.Projector) *rootErrorPresenter {
-	return &rootErrorPresenter{f: f, projector: projector}
-}
-
-func (p *rootErrorPresenter) Present(err error) error {
-	if err == nil || errs.IsRaw(err) {
-		return err
+// presentRootError uses the same build-local presenter as shortcut result
+// sinks, adding only the root command's lazy declared-scope resolver.
+func presentRootError(f *cmdutil.Factory, err error, projector *recovery.Projector) error {
+	identity := core.Identity("")
+	if f != nil {
+		identity = f.ResolvedIdentity
 	}
-	rendered := p.projector.Render(err)
-	p.completePermissionRecovery(rendered)
-	applyNeedAuthorizationHint(p.f, rendered)
-	return rendered
-}
-
-// completePermissionRecovery supplies the canonical recovery for direct
-// PermissionError producers. API classification paths that already carry an
-// owned structured annotation keep their rendered Hint unchanged.
-func (p *rootErrorPresenter) completePermissionRecovery(err error) {
-	typed, ok := errs.UnwrapTypedError(err)
-	if !ok {
-		return
-	}
-	permissionErr, ok := typed.(*errs.PermissionError) //nolint:errorlint // presentation must not descend into the clone's original Cause
-	if !ok || permissionErr.Hint != "" {
-		return
-	}
-	identity := permissionErr.Identity
-	if identity == "" && p.f != nil {
-		identity = string(p.f.ResolvedIdentity)
-	}
-	if identity == "" {
-		identity = string(core.AsUser)
-	}
-	hint := errclass.PermissionRecovery(
-		permissionErr.MissingScopes,
-		identity,
-		permissionErr.Subtype,
-		permissionErr.ConsoleURL,
-	)
-	permissionErr.Hint = p.projector.RenderHint(hint)
-}
-
-// applyNeedAuthorizationHint augments a typed *errs.AuthenticationError with a
-// "current command requires scope(s): X, Y" hint when the underlying error is
-// a need_user_authorization signal AND the current command declares scopes
-// locally (via shortcut registration or service-method metadata). Existing
-// Hint text is preserved; scopes are appended on a new line.
-func applyNeedAuthorizationHint(f *cmdutil.Factory, err error) {
-	if err == nil || f == nil {
-		return
-	}
-	if !internalauth.IsNeedUserAuthorizationError(err) {
-		return
-	}
-	typed, ok := errs.UnwrapTypedError(err)
-	if !ok {
-		return
-	}
-	authErr, ok := typed.(*errs.AuthenticationError) //nolint:errorlint // enrich only the presented clone, never a nested producer Cause
-	if !ok {
-		return
-	}
-	scopes := resolveDeclaredScopesForCurrentCommand(f)
-	if len(scopes) == 0 {
-		return
-	}
-	scopeHint := fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
-	if authErr.Hint == "" {
-		authErr.Hint = scopeHint
-		return
-	}
-	authErr.Hint += "\n" + scopeHint
+	return f.PresentError(err, cmdutil.ErrorPresentationOptions{
+		Projector: projector,
+		Identity:  identity,
+		DeclaredScopes: func() []string {
+			return resolveDeclaredScopesForCurrentCommand(f)
+		},
+	})
 }
 
 // resolveDeclaredScopesForCurrentCommand returns the scopes declared by the

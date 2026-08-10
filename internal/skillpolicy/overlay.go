@@ -21,12 +21,18 @@ import (
 // so the io/fs helpers route through the merge instead of hitting a
 // single underlying tree.
 type overlayFS struct {
-	// The manifest: top-level skill name -> owning tree, snapshotted once
-	// at composition. Routing and listing consult the same snapshot, so a
-	// top-level directory added later cannot appear through only one of
-	// those surfaces. Contents WITHIN a skill directory are still read live.
-	owner   map[string]fs.FS
+	// The manifest: top-level skill name -> owning tree and integrity
+	// metadata, snapshotted once at composition. Routing, listing, and
+	// dependency validation consult the same snapshot, so a top-level
+	// directory added later cannot appear through only one of those surfaces.
+	// Contents WITHIN a skill directory are still read live.
+	owner   map[string]skillOwner
 	entries []fs.DirEntry // manifest listing, sorted by name
+}
+
+type skillOwner struct {
+	source   fs.FS
+	manifest skillManifest
 }
 
 var (
@@ -49,11 +55,11 @@ func newOverlayFS(lower, upper skillTreeSnapshot, remove, allow []string) *overl
 		}
 	}
 
-	o := &overlayFS{owner: map[string]fs.FS{}}
-	for name := range upper.skills {
-		o.owner[name] = upper.source
+	o := &overlayFS{owner: map[string]skillOwner{}}
+	for name, manifest := range upper.skills {
+		o.owner[name] = skillOwner{source: upper.source, manifest: manifest}
 	}
-	for name := range lower.skills {
+	for name, manifest := range lower.skills {
 		if removed[name] {
 			continue
 		}
@@ -63,7 +69,7 @@ func newOverlayFS(lower, upper skillTreeSnapshot, remove, allow []string) *overl
 		if allowed != nil && !allowed[name] {
 			continue
 		}
-		o.owner[name] = lower.source
+		o.owner[name] = skillOwner{source: lower.source, manifest: manifest}
 	}
 
 	// Derive the listing from the routing manifest after composition. Keeping
@@ -86,7 +92,7 @@ func (o *overlayFS) route(name string) (target fs.FS, whiteout bool) {
 		top = name[:i]
 	}
 	if t, ok := o.owner[top]; ok {
-		return t, false
+		return t.source, false
 	}
 	return nil, true
 }

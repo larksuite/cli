@@ -4,6 +4,7 @@
 package localfileio
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -209,6 +210,44 @@ func TestLocalFileIO_Save_RejectsAbsolutePath(t *testing.T) {
 	_, err := fio.Save("/tmp/evil.txt", fileio.SaveOptions{}, strings.NewReader("bad"))
 	if err == nil {
 		t.Error("expected error for absolute path in Save")
+	}
+}
+
+func TestLocalFileIO_RemoveWorkspaceEntry_IsValidatedAndNonRecursive(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+
+	fio := &LocalFileIO{}
+	workspace := "draft_workspace"
+	decisionPath := filepath.Join(workspace, ".presentation-decision.json")
+	keepPath := filepath.Join(workspace, "keep.txt")
+	if _, err := fio.Save(decisionPath, fileio.SaveOptions{}, strings.NewReader("{}")); err != nil {
+		t.Fatalf("Save decision: %v", err)
+	}
+	if _, err := fio.Save(keepPath, fileio.SaveOptions{}, strings.NewReader("keep")); err != nil {
+		t.Fatalf("Save retained entry: %v", err)
+	}
+
+	if err := fio.RemoveWorkspaceEntry(decisionPath); err != nil {
+		t.Fatalf("RemoveWorkspaceEntry file: %v", err)
+	}
+	if _, err := os.Stat(decisionPath); !os.IsNotExist(err) {
+		t.Fatalf("removed decision still exists or stat failed unexpectedly: %v", err)
+	}
+	if err := fio.RemoveWorkspaceEntry(workspace); err == nil {
+		t.Fatal("RemoveWorkspaceEntry recursively removed a non-empty directory")
+	}
+	if _, err := os.Stat(keepPath); err != nil {
+		t.Fatalf("non-recursive removal deleted retained entry: %v", err)
+	}
+	if err := fio.RemoveWorkspaceEntry(keepPath); err != nil {
+		t.Fatalf("RemoveWorkspaceEntry retained file: %v", err)
+	}
+	if err := fio.RemoveWorkspaceEntry(workspace); err != nil {
+		t.Fatalf("RemoveWorkspaceEntry empty directory: %v", err)
+	}
+	if err := fio.RemoveWorkspaceEntry("../outside"); !errors.Is(err, fileio.ErrPathValidation) {
+		t.Fatalf("traversal error = %v, want fileio.ErrPathValidation", err)
 	}
 }
 

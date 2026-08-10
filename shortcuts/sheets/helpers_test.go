@@ -144,6 +144,13 @@ func TestSheetHelpersValidationMetadata(t *testing.T) {
 		if validationErr.Params[0].Name != "--sheet-id" || validationErr.Params[1].Name != "--sheet-name" {
 			t.Fatalf("params = %#v, want --sheet-id/--sheet-name", validationErr.Params)
 		}
+		// Eval traces recover on the very next call, so the missing piece is
+		// which name to pass — the hint has to name Sheet1 and the lookup.
+		for _, want := range []string{"Sheet1", "+workbook-info"} {
+			if !strings.Contains(validationErr.Hint, want) {
+				t.Errorf("hint should mention %q, got %q", want, validationErr.Hint)
+			}
+		}
 	})
 
 	t.Run("spreadsheet url shape reports url param", func(t *testing.T) {
@@ -222,6 +229,19 @@ func parseDryRunAPI(t *testing.T, sc common.Shortcut, args []string) []interface
 	dryRun := decodeDryRunRaw(t, out)
 	calls, _ := dryRunAPIEntries(dryRun)
 	return calls
+}
+
+// dryRunWarning returns the advisory text a dry-run surfaces under
+// data.warning_message, or "" when the shortcut emitted none.
+func dryRunWarning(t *testing.T, sc common.Shortcut, args []string) string {
+	t.Helper()
+	out, err := runShortcut(t, sc, append(args, "--dry-run"))
+	if err != nil {
+		t.Fatalf("dry-run failed: %v\noutput=%s", err, out)
+	}
+	data, _ := decodeDryRunRaw(t, out)["data"].(map[string]interface{})
+	warning, _ := data["warning_message"].(string)
+	return warning
 }
 
 func decodeDryRunRaw(t *testing.T, out string) map[string]interface{} {

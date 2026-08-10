@@ -44,10 +44,9 @@ Typed errors render to **stderr** as one JSON object per process exit:
     "subtype": "missing_scope",
     "code": 99991679,
     "message": "missing scope `calendar:event:create` for app cli_xxx",
-    "hint": "run lark-cli auth login --scope calendar:event:create",
+    "hint": "run `lark-cli auth login --scope \"calendar:event:create\" --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login",
     "log_id": "20260520-0a1b2c3d",
-    "missing_scopes": ["calendar:event:create"],
-    "console_url": "https://open.feishu.cn/app/cli_xxx/auth?q=..."
+    "missing_scopes": ["calendar:event:create"]
   }
 }
 ```
@@ -63,9 +62,22 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.hint` | informational | actionable recovery guidance |
 | `error.log_id` | informational | upstream request id (server-side trace) |
 | `error.retryable` | wire-stable | `true` when present; omitted when `false` |
+| `error.retry_after_seconds` | per-Subtype-stable | upstream-provided minimum delay before retry; emitted when available for retryable `api/rate_limit` and HTTP-backed `network` errors |
 | `error.param` | per-Subtype-stable | single offending parameter (`ValidationError`); see **Validation parameters** |
 | `error.params` | per-Subtype-stable | per-parameter validation detail array (`ValidationError`); see **Validation parameters** |
-| per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url` |
+| per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url`; `console_url` is emitted for developer/admin recovery such as `app_scope_not_applied`, not user `missing_scope` |
+
+For retryable `type=api, subtype=rate_limit`, and for a retryable HTTP-backed
+`network` error, the CLI may emit `retry_after_seconds` when the upstream
+response supplies a precise delay. Replay-safe Lark OpenAPI streaming requests
+prefer the gateway's `x-ogw-ratelimit-reset` remaining-seconds header, then
+standard `Retry-After`. Other streaming requests retain their existing
+terminal error behavior. If neither header contains a valid delay, the field
+is omitted and the hint recommends exponential backoff with jitter. The
+envelope intentionally does not expose an implementation detail such as
+`retry_after_source`. Generic command dispatch does not replay a request
+automatically; a bounded operation such as multipart download may consume this
+field under its own idempotency and retry budget.
 
 `SecurityPolicyError` renders through the same typed envelope as every
 other category. `error.type` is `"policy"`, `error.subtype` is one of
@@ -145,6 +157,41 @@ residual Cobra usage errors (missing required flag, unknown command,
 argument validation): the latter are classified into a typed validation
 envelope (`invalid_argument`) and exit `2`, matching the explicit flag and
 subcommand guards.
+
+### Concealed commands (`validation/command_unavailable`)
+
+`command_unavailable` is emitted only by a distribution that explicitly opts
+into presenting plugin-restricted commands as absent. Direct invocation and
+`help <concealed-path>` both produce a typed validation envelope and exit `2`:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "type": "validation",
+    "subtype": "command_unavailable",
+    "message": "requested capability is not available in this CLI distribution"
+  }
+}
+```
+
+For consumers, this subtype means the capability is not part of the current
+binary's usable command surface. Do not treat it as an authentication failure,
+attempt to bypass local policy, or infer that installing credentials will make
+the command available. The distribution may customize `message`; branch only
+on `type` and `subtype`.
+
+The concealed wire shape deliberately omits `param`, `policy_source`,
+`rule_name`, and `reason_code`, so it does not disclose the plugin policy that
+removed the capability. An in-process Go caller may still observe the original
+denial through the error cause for auditing.
+
+This opt-in behavior does not change the other command-resolution contracts:
+
+- an ordinary unknown command remains `validation/invalid_argument`;
+- a restricted command in the legacy visible presentation remains
+  `validation/failed_precondition` with its policy diagnostics; and
+- the default CLI build does not emit `command_unavailable`.
 
 ### Predicate commands (`output.BareError`)
 
@@ -250,7 +297,7 @@ esac
 ```
 
 Unknown fields are forward-compatible additions: ignore, don't fail.
-Branch only on `type`, `subtype`, `code`, `retryable`, and declared
+Branch only on `type`, `subtype`, `code`, `retryable`, `retry_after_seconds`, and declared
 extension fields — `message` is human-readable prose that may be
 reworded without notice.
 
@@ -272,7 +319,9 @@ legal for framework dynamic paths (e.g. classifier fanout) but the lint
 | Login required | `errs.NewAuthenticationError(errs.SubtypeTokenMissing, msg)` |
 | Token lacks scope | `errclass.BuildAPIError(resp, ctx)` |
 | Local config missing | `errs.NewConfigError(errs.SubtypeNotConfigured, msg)` |
-| Transport failure | `errs.NewNetworkError(errs.SubtypeNetworkTimeout, msg).WithCause(err)` (subtype: `timeout` / `tls` / `dns` / `server_error` / `transport`) |
+| Transport failure | `errs.NewNetworkError(errs.SubtypeNetworkTimeout, msg).WithCause(err)` (subtype: `timeout` / `tls` / `dns` / `server_error` / `transport` / `protocol`) |
+| Peer answered but broke the protocol | `errs.NewNetworkError(errs.SubtypeNetworkProtocol, msg)` — e.g. a `206` whose `Content-Range` is not the range the transfer resumed from. Never retryable: replaying the same request cannot change the answer. |
+| Resource changed mid-transfer | `errs.NewNetworkError(errs.SubtypeNetworkRepresentationChanged, msg).WithRetryable().WithHint(...)` — the peer behaved correctly, so starting the transfer over reads the current version. |
 | Lark API error | `errclass.BuildAPIError(resp, ctx)` |
 | SDK / decode bug | `errs.NewInternalError(errs.SubtypeSDKError, msg).WithCause(err)` |
 | Policy block | `errs.NewSecurityPolicyError(subtype, msg).WithChallengeURL(url)` or `errs.NewContentSafetyError(subtype, msg).WithRules(...)` |

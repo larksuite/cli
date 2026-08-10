@@ -8,26 +8,23 @@
 2. **批次完成后必须回读校验**：整个 `+batch-update` 执行成功后，用 `+csv-get` 或 `+cells-get` 抽样回读受影响区域，至少校验 3-5 个代表性单元格（首 / 中 / 末），与本地脚本预先计算的预期值对照。
 3. **预期条数前置断言**：涉及"批量填充 N 行"或"对 M 个区域分别写入"时，先把 N、M 硬编码进代码，回读后断言实际等于预期；不一致就再发一轮 `+batch-update` 补齐，禁止交付半成品。
 
-若本次 `+batch-update` 的任一子操作写入了公式、复制了公式模板、或导入了含公式的数据块，**回读校验之后还必须继续执行 `+formula-verify`**。`+batch-update` 的原子提交只保证“写入动作都执行了”，不保证整批公式运行结果 zero-error。
+若本次 `+batch-update` 的任一子操作写入了公式、复制了公式模板、或导入了含公式的数据块，**回读校验之后还必须继续执行 `+formula-verify`**。`+batch-update` 只保证"写入动作按序执行了"，不保证整批公式运行结果 zero-error。
 
 ## 使用场景
 
-写入。批量执行多个写入工具操作。将多个工具调用合并为一次请求，按顺序依次执行。适合需要连续执行多个写入操作的场景（如先修改结构再写入数据）。注意：不支持嵌套 `+batch-update`。
+写入。把**跨类型、有顺序依赖**的多个写入操作合并为一次请求按序执行（如插列 → 写表头 → 回填数据）。注意：不支持嵌套 `+batch-update`。
 
-**不可放进 `--operations` 的写 shortcut**（`shortcut` 枚举不含它们，强行写入会被校验拒）：`+cells-set-image`（需本地上传图片）、`+dropdown-update` / `+dropdown-delete` / `+cells-batch-set-style` / `+cells-batch-clear`（自身已是批量入口，不可再嵌套）、`+dim-move`。这些操作需在 `+batch-update` 之外单独调用。
+**先分流再动手（按操作组合选入口）**：美化收尾（样式 / 合并 / 行高列宽 / 冻结的任意组合）→ 一次 `+styles-put`（声明式规格，见 `lark-sheets-styles-put`），不要拼 `--operations` 子操作数组；**同一个写操作**打多个区域 → 用该命令自身的复数形态（`+cells-set --writes` / `+cells-batch-clear` / `+dim-delete --ranges` / resize 的 map 形态等）；只有跨类型、有顺序依赖的操作链才用本命令。
 
-**⚠️ 何时必须使用 `+batch-update`（硬性要求）**：
-- 需要对**多个**不同区域执行 `+cells-{merge|unmerge}` 时（如按分组合并多列相同内容）
-- 需要先插入行列再写入数据时（`+dim-{insert|delete|hide|unhide|freeze|group|ungroup}` + `+cells-set`）
-- 需要对多个区域执行不同写入操作时（多次 `+cells-set` + `+cells-clear` 等组合）
+**不可放进 `--operations` 的写 shortcut**（`shortcut` 枚举不含它们，强行写入会被校验拒）：`+cells-set-image`（需本地上传图片）、`+styles-put` / `+dropdown-update` / `+dropdown-delete` / `+cells-batch-clear`（自身已是批量入口，不可再嵌套）、`+dim-move`。这些操作需在 `+batch-update` 之外单独调用。
 
-**行高列宽批量不走这里**：多行 / 多列不同尺寸直接用 `+rows-resize --heights` / `+cols-resize --widths` 的 map 形态（如 `--widths '{"A":100,"C:E":120}'`，见 `lark-sheets-range-operations`），一次调用原子完成；map 形态不可作为 `--operations` 子操作嵌入（子操作里仍可用单区间形态 `range` + `height`/`width`）。
+**行高列宽批量不走这里**：多行 / 多列不同尺寸用 `+styles-put` 的 `row_sizes` / `col_sizes`（可与样式同批），或 `+rows-resize --heights` / `+cols-resize --widths` 的 map 形态（见 `lark-sheets-range-operations`）；map 形态不可作为 `--operations` 子操作嵌入（子操作里仍可用单区间形态 `range` + `height`/`width`）。
 
-当同一工具需要对多个区域重复调用时，**必须**改用 `+batch-update` 合并为单次请求——`+batch-update` 是原子提交（要么全成功要么整批回滚）；逐个调用非原子，中途失败会留下半成品。
+**执行语义（fail-fast，不回滚）**：默认首个失败的子操作即中断剩余操作，但**已执行成功的子操作不回滚**——服务端报 "N succeeded, M failed" 时前 N 个已实际生效。修复失败项后**只重发失败起的剩余子集**，整批重发会把已成功的操作（如插行）重复应用。传 `--continue-on-error` 则遇失败仍继续执行剩余操作。正因如此，含结构变更（插删行列 / 移动）的批次失败后要先回读确认现状再续发。
 
 **公式相关批处理的默认闭环**：
 - 写前：先读 `lark-sheets-formula-translation`，把公式改写成飞书可执行语义。
-- 写时：用 `+batch-update` 一次性完成插行/写公式/复制模板等原子动作。
+- 写时：用 `+batch-update` 一次性完成插行/写公式/复制模板等成套动作。
 - 写后：抽样回读之外，继续跑 `lark-sheets-formula-verify`，直到 `+formula-verify` 返回 `status='success'`。
 
 **`+dropdown-update` 的选项模式（`--options` / `--source-range` 二选一）+ 配色规则**（`--colors` 长度可短不能长、必须配 `--highlight=true` 才生效、不传按内置 10 色色板循环补色）见 [`lark-sheets-write-cells`](./lark-sheets-write-cells.md) 的「Dropdown 选项 + 配色」节，本文不重复。`+dropdown-delete` 不涉及这些 flag。
@@ -37,7 +34,6 @@
 | Shortcut | Risk | 分组 |
 | --- | --- | --- |
 | `+batch-update` | high-risk-write | 批量 |
-| `+cells-batch-set-style` | write | 批量 |
 | `+dropdown-update` | write | 对象 |
 | `+dropdown-delete` | high-risk-write | 对象 |
 | `+cells-batch-clear` | high-risk-write | 批量 |
@@ -50,28 +46,8 @@ _公共：URL/token（无 sheet 定位） · 系统：`--yes`、`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--operations` | string + File + Stdin（复合 JSON） | required | JSON 数组：[{"shortcut":"+xxx-yyy","input":{...}}, ...]。shortcut 用 CLI 名；input 是该 shortcut 的入参集——含子表定位 sheet_id（或 sheet_name），但不含 spreadsheet token/url（后者只在顶层 --url/--spreadsheet-token 给一次；+batch-update 顶层没有 --sheet-id）；input 的键是该 shortcut 的 flag 展平成 JSON（如 "range":"A11:B12"），不是再套一层嵌套。基础 flag 查 --help，复合 JSON flag 查 --print-schema --flag-name <flag>；不要手填 operation 字段（由 CLI 按 shortcut 自动注入）。默认严格事务（首个失败即整批中断），传 --continue-on-error 切换为软批量（遇失败仍继续）；不支持嵌套；按数组顺序串行执行 |
+| `--operations` | string + File + Stdin（复合 JSON） | required | JSON 数组：[{"shortcut":"+xxx-yyy","input":{...}}, ...]。shortcut 用 CLI 名；input 是该 shortcut 的入参集——含子表定位 sheet_id（或 sheet_name），但不含 spreadsheet token/url（后者只在顶层 --url/--spreadsheet-token 给一次；+batch-update 顶层没有 --sheet-id）；input 的键是该 shortcut 的 flag 展平成 JSON（如 "range":"A11:B12"），不是再套一层嵌套。基础 flag 查 --help，复合 JSON flag 查 --print-schema --flag-name <flag>；不要手填 operation 字段（由 CLI 按 shortcut 自动注入）。默认 fail-fast：首个失败即中断剩余操作，**已执行的子操作不回滚**（服务端报 "N succeeded, M failed" 时 N 个已生效，修复后只重发失败起的剩余子集，不要整批重发）；传 --continue-on-error 遇失败仍继续；不支持嵌套；按数组顺序串行执行 |
 | `--continue-on-error` | bool | optional | 遇子操作失败时继续执行剩余操作；默认 false（首个失败即整批中断） |
-
-### `+cells-batch-set-style`
-
-_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
-
-| Flag | Type | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `--ranges` | string + File + Stdin（简单 JSON） | required | 目标范围 JSON 数组（最多 100 个），每项必须带 sheet 前缀（如 `["Sheet1!A1:B2","Sheet2!D1:D10"]`，前缀裸写不加引号）；前缀必须与 sheet 真实显示名完全一致（含大小写），不接受 sheet reference_id；支持跨 sheet；所有 range 应用同一组 style |
-| `--background-color` | string | optional | 背景颜色（十六进制，如 `#ffffff`） |
-| `--font-color` | string | optional | 字体颜色（十六进制，如 `#000000`） |
-| `--font-family` | string | optional | 字体名称（如 `Arial`、`微软雅黑`） |
-| `--font-size` | float64 | optional | 字体大小（px，例：10、12、14） |
-| `--font-style` | string | optional | 字体样式（可选值：`normal` / `italic`） |
-| `--font-weight` | string | optional | 字重（可选值：`normal` / `bold`） |
-| `--font-line` | string | optional | 字体线条样式（可选值：`none` / `underline` / `line-through`） |
-| `--horizontal-alignment` | string | optional | 水平对齐（可选值：`left` / `center` / `right`） |
-| `--vertical-alignment` | string | optional | 垂直对齐（可选值：`top` / `middle` / `bottom`） |
-| `--word-wrap` | string | optional | 换行策略（可选值：`overflow` / `auto-wrap` / `word-clip`） |
-| `--number-format` | string | optional | 数字格式（例：文本 `@`、数字 `0.00`、货币 `$#,##0.00`、日期 `mm/dd/yyyy`） |
-| `--border-styles` | string + File + Stdin（复合 JSON） | optional | 边框配置 JSON（结构同 +cells-set-style） |
 
 ### `+dropdown-update`
 
@@ -115,16 +91,6 @@ _要批量执行的 CLI shortcut 操作列表，按声明顺序串行执行；�
 - `shortcut` (enum) — CLI shortcut 名（不是底层 MCP tool 名） [+cells-set / +cells-set-style / +cells-clear / +cells-merge / +cells-unmerge / +cells-replace / +csv-put / +dropdown-set / +dim-insert / +dim-delete / +dim-hide / +dim-unhide / +dim-freeze / +dim-group / +dim-ungroup / +rows-resize / +cols-resize / +range-move / +range-copy / +range-fill / +range-sort / +sheet-create / +sheet-delete / +sheet-rename / +sheet-move / +sheet-copy / +sheet-hide / +sheet-unhide / +sheet-set-tab-color / +sheet-show-gridline / +sheet-hide-gridline / +chart-create / +chart-update / +chart-delete / +pivot-create / +pivot-update / +pivot-delete / +cond-format-create / +cond-format-update / +cond-format-delete / +filter-create / +filter-update / +filter-delete / +filter-view-create / +filter-view-update / +filter-view-delete / +sparkline-create / +sparkline-update / +sparkline-delete / +float-image-create / +float-image-update / +float-image-delete]
 - `input` (object) — 该 shortcut 的入参集——含子表定位 sheet_id（或 sheet_name），但不含 spreadsheet token/url（后者只在顶层 …
 
-### `+cells-batch-set-style` `--border-styles`
-
-_单元格边框配置，含 top/bottom/left/right 四个方向，每个方向的结构相同（见 top）_
-
-**顶层字段**：
-- `top` (object?) { style?: enum, weight?: enum, color?: string }
-- `bottom` (object?) { style?: enum, weight?: enum, color?: string }
-- `left` (object?) { style?: enum, weight?: enum, color?: string }
-- `right` (object?) { style?: enum, weight?: enum, color?: string }
-
 ### `+dropdown-update` `--options`
 
 _列表选项_
@@ -156,7 +122,7 @@ lark-cli sheets +batch-update --url "https://example.feishu.cn/sheets/shtXXX" --
 > - **每个子操作的子表定位 `sheet_id`（或 `sheet_name`）写进它自己的 `input`**（见上方 ops.json 每个 item）。
 > - `input` 的键是该 shortcut 的 flag **展平**成 JSON（`"range":"A11:B12"`、`"position":11`），不要把整组 `--operations` 再套一层嵌套 JSON。
 
-> **常见组合：插列 + 写表头 + 整列回填**——一次原子提交，不要拆成 N 次独立调用。批量回填同一列 **只需一次** `+cells-set`（range 写整列范围、cells 写 N×1 矩阵），不需要逐行循环。
+> **常见组合：插列 + 写表头 + 整列回填**——一次批量提交，不要拆成 N 次独立调用。批量回填同一列 **只需一次** `+cells-set`（range 写整列范围、cells 写 N×1 矩阵），不需要逐行循环。
 >
 > ```jsonc
 > // 在 C 列前插入新列 → 写表头 C1 → 回填 C2:C100 共 99 行
@@ -169,20 +135,9 @@ lark-cli sheets +batch-update --url "https://example.feishu.cn/sheets/shtXXX" --
 > ]
 > ```
 
-### `+cells-batch-set-style`
-
-多 range 应用同一组 style（服务端走 `+batch-update` 原子事务）：
-
-```bash
-# 表头行 + 汇总行同时刷成蓝底白字
-lark-cli sheets +cells-batch-set-style --url "..." \
-  --ranges '["sheet1!A1:F1","sheet1!A30:F30"]' \
-  --background-color "#1E5BC6" --font-color "#FFFFFF" --font-weight bold
-```
-
 ### `+cells-batch-clear`
 
-多 range 一次性清除（服务端走 `+batch-update` 原子事务）；`--scope` 同 `+cells-clear`（`content` / `formats` / `all`，默认 `content`），`high-risk-write` 强制 `--yes`：
+多 range 一次性清除（服务端走 `+batch-update` 批量提交，fail-fast、不回滚）；`--scope` 同 `+cells-clear`（`content` / `formats` / `all`，默认 `content`），`high-risk-write` 强制 `--yes`：
 
 ```bash
 # dry-run 先看清除范围
@@ -195,6 +150,6 @@ lark-cli sheets +cells-batch-clear --url "..." \
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：`+batch-update` 的 `--operations` 必须合法 JSON，且为非空数组；逐个子操作 `shortcut` / `input` 字段必填校验；**禁止嵌套 `+batch-update`**。`+cells-batch-set-style` 的 `--ranges` 必须 JSON 数组、每项带 sheet 前缀；样式 flag 至少一个非空（或带 `--border-styles`）。`+cells-batch-clear` 的 `--ranges` 同样必须 JSON 数组、每项带 sheet 前缀，`high-risk-write` 强制 `--yes` 或 `--dry-run`（`--scope` 默认 `content`）。
-- `DryRun`：按顺序输出每个子操作的目标 API + 请求 body 模板；首个失败则整批 fail-fast（不实际执行任何后续）。
-- `Execute`：按声明顺序串行执行；任一子操作失败立即中断并回滚到该子操作前状态（具体回滚能力取决于子操作类型，沿用 `+batch-update` 的语义）。
+- `Validate`：`+batch-update` 的 `--operations` 必须合法 JSON，且为非空数组；逐个子操作 `shortcut` / `input` 字段必填校验，input 键必须在该 shortcut 的 flag 词汇表内（未知键报错并提示最近似键与完整键契约）；**校验错误聚合上报**——所有子操作的首错一次性返回，全部修完再重发一次即可；**禁止嵌套 `+batch-update`**。`+cells-batch-clear` 的 `--ranges` 必须 JSON 数组、每项带 sheet 前缀，`high-risk-write` 强制 `--yes` 或 `--dry-run`（`--scope` 默认 `content`）。
+- `DryRun`：按顺序输出每个子操作的目标 API + 请求 body 模板，不发起调用。
+- `Execute`：按声明顺序串行执行；默认 fail-fast——任一子操作失败即中断剩余操作，**已成功的子操作不回滚**，报错会注明已生效数量与「仅重发失败起的剩余子集」的续发方式。

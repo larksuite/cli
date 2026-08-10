@@ -175,7 +175,7 @@ func TestDocsHistoryExecuteList(t *testing.T) {
 					map[string]interface{}{
 						"revision_id":        float64(42),
 						"history_version_id": "11",
-						"edit_time":          "1780000000",
+						"edit_time":          "2026-06-22T12:24:45Z",
 						"type":               float64(1),
 						"editor_ids":         []interface{}{"ou_1"},
 					},
@@ -205,6 +205,13 @@ func TestDocsHistoryExecuteList(t *testing.T) {
 	entries, _ := data["entries"].([]interface{})
 	if len(entries) != 1 {
 		t.Fatalf("entries = %#v, want one entry", data["entries"])
+	}
+	entry, ok := entries[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("entry = %T, want object", entries[0])
+	}
+	if got := entry["edit_time"]; got != "2026-06-22T12:24:45Z" {
+		t.Fatalf("edit_time = %#v, want RFC3339 value preserved", got)
 	}
 }
 

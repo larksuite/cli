@@ -253,3 +253,109 @@ func TestDoctor_ExternalProvider_IdentityReadyHintNotBlockedCommand(t *testing.T
 		t.Fatalf("user_identity hint not external-appropriate: %q", user.Hint)
 	}
 }
+
+func TestDoctorRun_WarnsWhenExternalProviderIgnoresProfileSelector(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps:       []core.AppConfig{{Name: "default", AppId: "cli_x", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	// An external provider leaves ProfileName empty — the telltale that the
+	// profile selector had no effect on account resolution.
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsBot | extcred.SupportsUser)}
+	cred := credential.NewCredentialProvider(
+		[]extcred.Provider{&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}},
+		nil, nil,
+		func() (*http.Client, error) { return nil, nil },
+	)
+	f, out, _, _ := cmdutil.TestFactory(t, cfg)
+	f.Credential = cred
+	f.Invocation = cmdutil.InvocationContext{Profile: "session", ProfileSource: core.ProfileFromEnvironment}
+
+	_ = doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil)
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\n%s", err, out.String())
+	}
+
+	selector := findCheck(t, got.Checks, "profile_selector")
+	if selector.Status != "warn" {
+		t.Fatalf("profile_selector status = %q, want warn", selector.Status)
+	}
+	for _, want := range []string{"LARKSUITE_CLI_PROFILE", `"session"`, "ignored"} {
+		if !strings.Contains(selector.Message, want) {
+			t.Errorf("message = %q, missing %q", selector.Message, want)
+		}
+	}
+	if !strings.Contains(selector.Hint, "unset LARKSUITE_CLI_PROFILE") {
+		t.Errorf("hint = %q, want unset guidance", selector.Hint)
+	}
+}
+
+func TestDoctorRun_NoSelectorWarningForBuiltinProvider(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps:       []core.AppConfig{{Name: "default", AppId: "cli_x", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	// Built-in resolution populates ProfileName: the selector took effect.
+	cfg := &core.CliConfig{AppID: "cli_x", ProfileName: "default", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsBot | extcred.SupportsUser)}
+	f, out, _, _ := cmdutil.TestFactory(t, cfg)
+	f.Invocation = cmdutil.InvocationContext{Profile: "default", ProfileSource: core.ProfileFromEnvironment}
+
+	_ = doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil)
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\n%s", err, out.String())
+	}
+	for _, c := range got.Checks {
+		if c.Name == "profile_selector" {
+			t.Fatalf("unexpected profile_selector check for builtin-resolved profile: %+v", c)
+		}
+	}
+}
+
+func TestDoctorRun_NoSelectorWarningForPersistedDefault(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps:       []core.AppConfig{{Name: "default", AppId: "cli_x", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	// A persisted currentApp is not an explicit selector: bootstrap leaves
+	// Invocation.Profile empty for ProfileFromConfig, so even with an external
+	// provider there is no user input for the warning to point at.
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsBot | extcred.SupportsUser)}
+	f, out, _, _ := cmdutil.TestFactory(t, cfg)
+	f.Credential = credential.NewCredentialProvider(
+		[]extcred.Provider{&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}},
+		nil, nil,
+		func() (*http.Client, error) { return nil, nil },
+	)
+	f.Invocation = cmdutil.InvocationContext{ProfileSource: core.ProfileFromConfig}
+
+	_ = doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil)
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\n%s", err, out.String())
+	}
+	for _, c := range got.Checks {
+		if c.Name == "profile_selector" {
+			t.Fatalf("unexpected profile_selector check for persisted default: %+v", c)
+		}
+	}
+}

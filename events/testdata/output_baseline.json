@@ -1,0 +1,177 @@
+{
+  "application.bot.menu_v6": {
+    "type": "application.bot.menu_v6",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "app_id": "cli-baseline-app",
+    "tenant_key": "tenant-baseline",
+    "event_key": "baseline_menu_key",
+    "menu_timestamp": "1700000000000",
+    "operator_id": "ou-baseline-operator",
+    "operator_open_id": "ou-baseline-operator",
+    "operator_union_id": "on-baseline-operator",
+    "operator_user_id": "user-baseline-operator",
+    "operator_name": "Baseline Operator"
+  },
+  "approval.instance.status_changed_v4": {
+    "type": "approval.instance.status_changed_v4",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "approval_code": "approval-code-baseline",
+    "instance_code": "instance-code-baseline",
+    "external_id": "external-id-baseline",
+    "status": "APPROVED",
+    "operate_time": "1700000000000",
+    "start_user": {
+      "open_id": "ou-baseline-starter",
+      "union_id": "on-baseline-starter",
+      "user_id": "user-baseline-starter"
+    }
+  },
+  "approval.task.status_changed_v4": {
+    "type": "approval.task.status_changed_v4",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "approval_code": "approval-code-baseline",
+    "instance_code": "instance-code-baseline",
+    "task_id": "task-id-baseline",
+    "external_id": "external-id-baseline",
+    "task_external_id": "task-external-id-baseline",
+    "assigned_user": {
+      "open_id": "ou-baseline-assignee",
+      "union_id": "on-baseline-assignee",
+      "user_id": "user-baseline-assignee"
+    },
+    "status": "APPROVED",
+    "operate_time": "1700000000000"
+  },
+  "card.action.trigger": {
+    "type": "card.action.trigger",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "operator_id": "ou-baseline-operator",
+    "message_id": "om-baseline-card",
+    "chat_id": "oc-baseline-chat",
+    "host": "im_message",
+    "token": "card-token-baseline",
+    "action_tag": "button",
+    "action_value": "{\"key\":\"baseline\"}",
+    "action_name": "baseline_button",
+    "form_value": "{\"field\":\"value\"}",
+    "input_value": "baseline input",
+    "option": "opt-1",
+    "options": "opt-1,opt-2",
+    "checked": true,
+    "timezone": "Asia/Shanghai",
+    "card_content": "{\"header\":{\"title\":{\"tag\":\"plain_text\",\"content\":\"Baseline card\"}}}"
+  },
+  "im.message.receive_v1": {
+    "type": "im.message.receive_v1",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "id": "om-baseline-msg",
+    "message_id": "om-baseline-msg",
+    "create_time": "1699999999000",
+    "update_time": "1700000000500",
+    "chat_id": "oc-baseline-chat",
+    "chat_type": "p2p",
+    "message_type": "text",
+    "sender_id": "ou-baseline-sender",
+    "sender_type": "user",
+    "root_id": "om-baseline-root",
+    "thread_id": "omt-baseline-thread",
+    "reply_to": "om-baseline-parent",
+    "content": "hello @Baseline User",
+    "mentions": [
+      {
+        "key": "@_user_1",
+        "id": "ou-baseline-mention",
+        "name": "Baseline User"
+      }
+    ]
+  },
+  "minutes.minute.generated_v1": {
+    "type": "minutes.minute.generated_v1",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "minute_token": "minute-token-baseline",
+    "title": "Baseline minute title",
+    "minute_source": {
+      "source_type": "meeting",
+      "source_entity_id": "meeting-entity-baseline"
+    }
+  },
+  "vc.meeting.participant_meeting_ended_v1": {
+    "type": "vc.meeting.participant_meeting_ended_v1",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "meeting_id": "meeting-id-baseline",
+    "topic": "Baseline meeting",
+    "meeting_no": "123456789",
+    "start_time": "2023-11-14T22:13:20Z",
+    "end_time": "2023-11-14T22:23:20Z",
+    "calendar_event_id": "calendar-event-baseline"
+  },
+  "vc.meeting.participant_meeting_joined_v1": {
+    "type": "vc.meeting.participant_meeting_joined_v1",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "meeting_id": "meeting-id-baseline",
+    "topic": "Baseline meeting",
+    "meeting_no": "123456789",
+    "start_time": "2023-11-14T22:13:20Z",
+    "calendar_event_id": "calendar-event-baseline"
+  },
+  "vc.meeting.participant_meeting_started_v1": {
+    "type": "vc.meeting.participant_meeting_started_v1",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "meeting_id": "meeting-id-baseline",
+    "topic": "Baseline meeting",
+    "meeting_no": "123456789",
+    "start_time": "2023-11-14T22:13:20Z",
+    "calendar_event_id": "calendar-event-baseline"
+  },
+  "vc.note.generated_v1": {
+    "type": "vc.note.generated_v1",
+    "event_id": "evt-baseline-001",
+    "timestamp": "1700000000000",
+    "note_id": "note-id-baseline",
+    "note_token": "note-doc-token-baseline",
+    "verbatim_token": "verbatim-doc-token-baseline",
+    "note_source": {
+      "source_type": "meeting",
+      "source_entity_id": "meeting-entity-baseline"
+    }
+  },
+  "vc.recording.recording_ended_v1": {
+    "type": "vc.recording.recording_ended_v1",
+    "event_id": "evt-baseline-001",
+    "event_time": "2023-11-14T22:13:20Z",
+    "unique_key": "recording-key-baseline",
+    "source": "recording_bean"
+  },
+  "vc.recording.recording_started_v1": {
+    "type": "vc.recording.recording_started_v1",
+    "event_id": "evt-baseline-001",
+    "event_time": "2023-11-14T22:13:20Z",
+    "unique_key": "recording-key-baseline",
+    "source": "recording_bean"
+  },
+  "vc.recording.recording_transcript_generated_v1": {
+    "type": "vc.recording.recording_transcript_generated_v1",
+    "event_id": "evt-baseline-001",
+    "event_time": "2023-11-14T22:13:20Z",
+    "unique_key": "recording-key-baseline",
+    "source": "recording_bean",
+    "transcript_items": [
+      {
+        "speaker_name": "Baseline Speaker",
+        "text": "baseline transcript text",
+        "start_time": "2023-11-14T22:13:20Z",
+        "end_time": "2023-11-14T22:13:21Z",
+        "sentence_id": "sentence-baseline-1"
+      }
+    ]
+  }
+}

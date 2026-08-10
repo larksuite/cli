@@ -10,6 +10,7 @@ const (
 	CliUserAccessToken   = "LARKSUITE_CLI_USER_ACCESS_TOKEN"
 	CliTenantAccessToken = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN"
 	CliDefaultAs         = "LARKSUITE_CLI_DEFAULT_AS"
+	CliProfile           = "LARKSUITE_CLI_PROFILE"
 	CliStrictMode        = "LARKSUITE_CLI_STRICT_MODE"
 
 	// Sidecar proxy (auth proxy mode)
