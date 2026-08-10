@@ -10,15 +10,13 @@ metadata:
 
 # drive (v1)
 
-**认证与确认路由：** 普通 Drive 命令直接执行。用户明确要求检查登录态或当前身份，或目标命令返回认证、授权、scope、权限、`1061005 auth failed` 或 `confirmation_required` 时，再读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 处理。
+**认证与确认路由：** 普通 Drive 请求直接执行目标命令。仅当用户要求检查登录态或身份，或目标命令返回认证失败（含 `1061005`）、授权、scope、权限或 `confirmation_required` 时，读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 处理。
 
 > **术语说明：** 飞书云空间也常被称为"云盘"、"云存储"、"网盘"或"我的空间"，这些说法通常指的是同一个产品，是飞书官方的云端文件存储与管理中心。
 
 > **导入分流规则：** 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
 
 > **副本分流规则：** 如果用户要复制在线文档、创建文档副本、把文档复制到另一个文件夹，必须使用 `lark-cli drive +copy`。不要用 `drive +export` 下载后再 `drive +import` 上传，也不要用 `docs +fetch` + `docs +create` 重建正文；导出/导入只用于本地文件转换或离线产物。
-
-> **副本后编辑路由：** 复制 Docx 后仅需在副本开头插入已知文本时，继续按 [`references/lark-drive-copy.md`](references/lark-drive-copy.md) 的固定锚点路径完成；只有编辑依赖现有正文结构或真实 block ID 时，才进入通用文档更新流程。
 
 ## 快速决策
 

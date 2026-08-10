@@ -1,8 +1,6 @@
 
 # drive +copy
 
-> **认证与确认：** 普通复制直接执行本页命令。用户明确要求检查登录态或当前身份，或命令返回认证、授权、scope、权限、`1061005 auth failed` 或 `confirmation_required` 时，再阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
-
 复制一个 Drive 文件（在线文档、表格、多维表格、幻灯片、思维笔记或普通文件）到目标文件夹，生成一个内容相同的新副本。
 
 ## 命令
@@ -44,21 +42,21 @@ lark-cli drive +copy --token <WIKI_TOKEN> --type wiki --name '副本名称' --fo
 
 - bot 身份复制成功后，CLI 会自动尝试给当前 CLI 用户授予新副本的 `full_access`，结果在输出的 `data.permission_grant` 字段中；授权失败不影响复制本身的成功状态
 
-## 按标题复制并在 Docx 副本开头插入文本
+## 复制后继续处理
 
-1. 按标题定位源文件时，先按 [`lark-drive-search.md`](lark-drive-search.md) 使用 `drive +search` 得到唯一匹配的源资源。
+本节定义复制后操作的路由；状态无关的后续操作直接执行，状态依赖的文档编辑再进入 `lark-doc` 通用更新流程。
+
+1. 需要按标题定位源文件时，先按 [`lark-drive-search.md`](lark-drive-search.md) 使用 `drive +search` 得到唯一匹配的源资源；已提供可直接使用的 URL 或 token 时从该资源开始。
 2. 使用已确认的源 URL，或真实 token 与 type，执行一次 `drive +copy`。目标位置使用用户给出的文件夹 URL/token；复制到“我的空间”或未指定其他目标位置时使用 `--folder-token my_space`。
 3. 从成功响应的 `data.file_token` 或 `data.url` 取得新副本；后续只操作该副本，不重新搜索副本，也不操作源 token。
-4. 在 Docx 副本开头插入已知内容时，直接使用文档开头的固定锚点，无需读取正文或获取真实 block ID：
+4. 后续操作的参数已由用户输入和复制响应完整提供、且不依赖副本现状时，直接执行。固定的文档开头或末尾锚点属于此类；例如在 Docx 开头插入内容：
 
    ```bash
    lark-cli docs +update --doc "<COPY_FILE_TOKEN>" --command block_insert_after --block-id 0 --content '<p>要插入的内容</p>'
    ```
 
-5. 更新返回 `data.result=success` 且 `data.warnings` 为空时任务完成。只有用户明确要求验证、返回 `partial_success`、`data.warnings` 非空，或后续编辑需要当前正文结构时，才读取副本。
+5. 操作依赖当前内容或真实 block ID 时，按 `lark-doc` 的通用更新流程读取所需的最小范围。更新返回 `data.result=success` 且 `data.warnings` 为空时任务完成；用户要求验证、返回 `partial_success`、`data.warnings` 非空，或下一步依赖更新后的状态时再读取副本。
 6. 如果复制后的编辑失败，保留 `data.file_token`，只重试编辑步骤；不要重新执行 `drive +copy`，避免创建重复副本。
-
-上述固定路径仅适用于“新复制的 Docx + 在开头插入已知内容”。替换已有内容、按章节修改、保留复杂结构或需要真实 block ID 时，进入 `lark-doc` 的通用更新流程。
 
 ## 输出
 
