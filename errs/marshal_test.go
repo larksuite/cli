@@ -158,10 +158,15 @@ func TestNetworkError_MarshalJSON(t *testing.T) {
 }
 
 func TestAPIError_MarshalJSON(t *testing.T) {
-	ae := &APIError{
+	ae := (&APIError{
 		Problem:           Problem{Category: CategoryAPI, Subtype: SubtypeRateLimit, Code: 99991400, Message: "slow", Retryable: true},
 		RetryAfterSeconds: 12,
-	}
+		FieldViolations: []APIFieldViolation{{
+			Field:       "nodes[0].type",
+			Value:       "42",
+			Description: "type is required",
+		}},
+	}).WithServerHint("server supplied detail")
 	b, _ := json.Marshal(ae)
 	s := string(b)
 	for _, want := range []string{
@@ -170,6 +175,8 @@ func TestAPIError_MarshalJSON(t *testing.T) {
 		`"code":99991400`,
 		`"retryable":true`,
 		`"retry_after_seconds":12`,
+		`"hint":"server supplied detail"`,
+		`"field_violations":[{"field":"nodes[0].type","value":"42","description":"type is required"}]`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in %s", want, s)
@@ -178,11 +185,18 @@ func TestAPIError_MarshalJSON(t *testing.T) {
 	if strings.Contains(s, `"retry_after_source"`) {
 		t.Errorf("implementation detail retry_after_source must not be emitted: %s", s)
 	}
+	if strings.Contains(s, `"hint_source"`) {
+		t.Errorf("implementation detail hint_source must not be emitted: %s", s)
+	}
 
 	ae.RetryAfterSeconds = 0
+	ae.FieldViolations = nil
 	b, _ = json.Marshal(ae)
 	if strings.Contains(string(b), `"retry_after_seconds"`) {
 		t.Errorf("retry_after_seconds must be omitted when no precise delay was provided: %s", b)
+	}
+	if strings.Contains(string(b), `"field_violations"`) {
+		t.Errorf("field_violations must be omitted when empty: %s", b)
 	}
 }
 

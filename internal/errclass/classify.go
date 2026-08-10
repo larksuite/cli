@@ -102,11 +102,13 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 	// so they are lifted into Problem.Hint — the sanctioned free-text recovery
 	// prompt — rather than fabricated structured params. Lifted before the
 	// category switch so any classified arm inherits it; the CategoryAPI arm
-	// below prefers this server detail over the context-free APIHint default.
+	// below prefers this server detail over nested error.message and the
+	// context-free APIHint default.
 	detailHint := liftErrorDetailValues(resp)
 	if detailHint != "" {
 		base.Hint = detailHint
 	}
+	errorMessageHint := liftErrorMessage(resp)
 
 	switch meta.Category {
 	case errs.CategoryAuthorization:
@@ -144,12 +146,26 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 			Action:  action,
 		}
 	case errs.CategoryAPI:
-		// A server-supplied detail (lifted into base.Hint above) wins over the
-		// context-free APIHint default; only fall back to APIHint when absent.
-		if base.Hint == "" {
+		fieldViolations := liftAPIFieldViolations(resp)
+		// Structured field violations are the strongest server diagnostic. Detail
+		// values are next, then nested error.message, then the context-free
+		// APIHint default.
+		if len(fieldViolations) > 0 {
+			base.Hint = apiFieldViolationHint(fieldViolations)
+		} else if detailHint == "" && errorMessageHint != "" {
+			base.Hint = errorMessageHint
+		} else if base.Hint == "" {
 			base.Hint = APIHint(base.Subtype) // "" for subtypes without a context-free default
 		}
-		return &errs.APIError{Problem: base}
+		apiErr := &errs.APIError{Problem: base, FieldViolations: fieldViolations}
+		switch {
+		case len(fieldViolations) > 0, detailHint != "", errorMessageHint != "":
+			return apiErr.WithServerHint("%s", base.Hint)
+		case base.Hint != "":
+			return apiErr.WithFallbackHint("%s", base.Hint)
+		default:
+			return apiErr
+		}
 	default:
 		// Fail closed: an unrecognized Category routes to InternalError
 		// instead of emitting an empty Problem on the wire.
@@ -163,6 +179,21 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 			},
 		}
 	}
+}
+
+// liftErrorMessage returns the upstream resp.error.message as a human-readable
+// hint fallback. Whitespace-only strings are absent; meaningful upstream text
+// is preserved exactly. Callers must not branch on this free-text value.
+func liftErrorMessage(resp map[string]any) string {
+	errBlock, ok := resp["error"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	message, _ := errBlock["message"].(string)
+	if strings.TrimSpace(message) == "" {
+		return ""
+	}
+	return message
 }
 
 // buildSecurityPolicyError extracts challenge_url and the hint from a Lark API
@@ -521,6 +552,60 @@ func liftErrorDetailValues(resp map[string]any) string {
 		}
 	}
 	return strings.Join(values, "; ")
+}
+
+// liftAPIFieldViolations preserves valid resp.error.field_violations entries
+// in upstream order. An entry is valid when field or description is a
+// non-blank string; malformed entries and malformed string fields are ignored.
+func liftAPIFieldViolations(resp map[string]any) []errs.APIFieldViolation {
+	errBlock, ok := resp["error"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	raw, ok := errBlock["field_violations"].([]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	out := make([]errs.APIFieldViolation, 0, len(raw))
+	for _, item := range raw {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		field, _ := entry["field"].(string)
+		value, _ := entry["value"].(string)
+		description, _ := entry["description"].(string)
+		if strings.TrimSpace(field) == "" {
+			field = ""
+		}
+		if strings.TrimSpace(description) == "" {
+			description = ""
+		}
+		if field == "" && description == "" {
+			continue
+		}
+		out = append(out, errs.APIFieldViolation{
+			Field:       field,
+			Value:       value,
+			Description: description,
+		})
+	}
+	return out
+}
+
+func apiFieldViolationHint(violations []errs.APIFieldViolation) string {
+	hints := make([]string, 0, len(violations))
+	for _, violation := range violations {
+		switch {
+		case violation.Field != "" && violation.Description != "":
+			hints = append(hints, violation.Field+": "+violation.Description)
+		case violation.Field != "":
+			hints = append(hints, violation.Field)
+		case violation.Description != "":
+			hints = append(hints, violation.Description)
+		}
+	}
+	return strings.Join(hints, "; ")
 }
 
 // extractMissingScopes walks resp["error"]["permission_violations"][].subject.

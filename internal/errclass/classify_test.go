@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -330,6 +332,226 @@ func TestBuildAPIError_DetailsMalformedShapesNoHint(t *testing.T) {
 			// With no liftable detail, the Hint must not echo a server detail.
 			if strings.Contains(p.Hint, "nope") {
 				t.Errorf("Hint should not lift a non-array details field, got %q", p.Hint)
+			}
+		})
+	}
+}
+
+func TestBuildAPIError_FieldViolationsPreserveOrderedStringValues(t *testing.T) {
+	for _, code := range []int{2890002, 99992402} {
+		t.Run(fmt.Sprintf("code_%d", code), func(t *testing.T) {
+			resp := map[string]any{
+				"code":   code,
+				"msg":    "exact upstream field validation message",
+				"log_id": "log-whiteboard-123",
+				"error": map[string]any{
+					"message":        "message fallback must lose",
+					"troubleshooter": "https://open.feishu.cn/document/troubleshooter/field-validation",
+					"field_violations": []any{
+						map[string]any{"field": "nodes[0].type", "value": "bad-type", "description": "type is required"},
+						"malformed entry",
+						map[string]any{"field": 42, "value": "ignored-with-invalid-item"},
+						map[string]any{"value": map[string]any{"nested": true}, "description": "description-only violation"},
+						map[string]any{"field": "nodes[2].id", "value": "bad-id"},
+					},
+					"details": []any{map[string]any{"value": "detail fallback must lose"}},
+				},
+			}
+
+			err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+			var apiErr *errs.APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("error type = %T, want *errs.APIError", err)
+			}
+			if apiErr.Category != errs.CategoryAPI || apiErr.Subtype != errs.SubtypeInvalidParameters {
+				t.Fatalf("problem = %+v, want api/invalid_parameters", apiErr.Problem)
+			}
+			if apiErr.Code != code || apiErr.Message != "exact upstream field validation message" || apiErr.LogID != "log-whiteboard-123" {
+				t.Fatalf("problem fields not preserved: %+v", apiErr.Problem)
+			}
+			if apiErr.Troubleshooter != "https://open.feishu.cn/document/troubleshooter/field-validation" {
+				t.Fatalf("Troubleshooter = %q", apiErr.Troubleshooter)
+			}
+			if len(apiErr.FieldViolations) != 3 {
+				t.Fatalf("FieldViolations = %#v, want three valid ordered items", apiErr.FieldViolations)
+			}
+			want := []errs.APIFieldViolation{
+				{Field: "nodes[0].type", Value: "bad-type", Description: "type is required"},
+				{Value: "", Description: "description-only violation"},
+				{Field: "nodes[2].id", Value: "bad-id"},
+			}
+			if !reflect.DeepEqual(apiErr.FieldViolations, want) {
+				t.Fatalf("FieldViolations = %#v, want %#v", apiErr.FieldViolations, want)
+			}
+			wantHint := "nodes[0].type: type is required; description-only violation; nodes[2].id"
+			if apiErr.Hint != wantHint {
+				t.Fatalf("Hint = %q, want %q", apiErr.Hint, wantHint)
+			}
+			if !apiErr.HintIsFromServer() {
+				t.Fatal("field violation hint must retain server provenance")
+			}
+			for _, valueText := range []string{"bad-type", "bad-id", "nested", "detail fallback must lose"} {
+				if strings.Contains(apiErr.Hint, valueText) {
+					t.Fatalf("Hint = %q, must not contain value/fallback %q", apiErr.Hint, valueText)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildAPIError_FieldViolationsNormalizePartialWhitespace(t *testing.T) {
+	err := errclass.BuildAPIError(map[string]any{
+		"code": 2890002,
+		"msg":  "invalid params",
+		"error": map[string]any{
+			"field_violations": []any{
+				map[string]any{
+					"field":       " \t ",
+					"value":       "v1",
+					"description": " description-only reason ",
+				},
+				map[string]any{
+					"field":       " nodes[1].type ",
+					"value":       "v2",
+					"description": "\n ",
+				},
+			},
+		},
+	}, errclass.ClassifyContext{})
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error type = %T, want *errs.APIError", err)
+	}
+	want := []errs.APIFieldViolation{
+		{Value: "v1", Description: " description-only reason "},
+		{Field: " nodes[1].type ", Value: "v2"},
+	}
+	if !reflect.DeepEqual(apiErr.FieldViolations, want) {
+		t.Fatalf("FieldViolations = %#v, want %#v", apiErr.FieldViolations, want)
+	}
+	if got, wantHint := apiErr.Hint, " description-only reason ;  nodes[1].type "; got != wantHint {
+		t.Fatalf("Hint = %q, want %q", got, wantHint)
+	}
+	b, err := json.Marshal(apiErr)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	wantWire := "\"field_violations\":[{\"value\":\"v1\",\"description\":\" description-only reason \"},{\"field\":\" nodes[1].type \",\"value\":\"v2\"}]"
+	if !strings.Contains(string(b), wantWire) {
+		t.Fatalf("wire = %s, want substring %s", b, wantWire)
+	}
+}
+
+func TestBuildAPIError_HintPrecedenceWithoutValidFieldViolations(t *testing.T) {
+	t.Run("details before APIHint", func(t *testing.T) {
+		err := errclass.BuildAPIError(map[string]any{
+			"code": 1061045,
+			"msg":  "conflict",
+			"error": map[string]any{
+				"field_violations": []any{map[string]any{"field": 42, "description": false}},
+				"details":          []any{map[string]any{"value": "server detail"}},
+				"message":          "message fallback must lose",
+			},
+		}, errclass.ClassifyContext{})
+		var apiErr *errs.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("error type = %T, want *errs.APIError", err)
+		}
+		if apiErr.Hint != "server detail" || len(apiErr.FieldViolations) != 0 {
+			t.Fatalf("APIError = %+v, want details hint and no violations", apiErr)
+		}
+		if !apiErr.HintIsFromServer() {
+			t.Fatal("details hint must retain server provenance")
+		}
+	})
+
+	t.Run("error.message before APIHint", func(t *testing.T) {
+		const wantHint = "Invalid request parameter: text_color_code. Invalid reason : text_color_code is required when text_color_type is system. Please check and modify accordingly."
+		err := errclass.BuildAPIError(map[string]any{
+			"code": 2890002,
+			"msg":  "text color code cannot be empty while type is system [@from@] arg error [@from@] whiteboard",
+			"error": map[string]any{
+				"message": wantHint,
+			},
+		}, errclass.ClassifyContext{})
+		var apiErr *errs.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("error type = %T, want *errs.APIError", err)
+		}
+		if apiErr.Hint != wantHint {
+			t.Fatalf("Hint = %q, want error.message %q", apiErr.Hint, wantHint)
+		}
+		if !apiErr.HintIsFromServer() {
+			t.Fatal("error.message hint must retain server provenance")
+		}
+	})
+
+	t.Run("APIHint last", func(t *testing.T) {
+		err := errclass.BuildAPIError(map[string]any{
+			"code":  1061045,
+			"msg":   "conflict",
+			"error": map[string]any{"message": " \t\n "},
+		}, errclass.ClassifyContext{})
+		var apiErr *errs.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("error type = %T, want *errs.APIError", err)
+		}
+		if got, want := apiErr.Hint, errclass.APIHint(errs.SubtypeConflict); got != want {
+			t.Fatalf("Hint = %q, want APIHint %q", got, want)
+		}
+		if !apiErr.HintIsFallback() {
+			t.Fatal("context-free APIHint must retain fallback provenance")
+		}
+	})
+}
+
+func TestBuildAPIError_WhitespaceFieldViolationsFallBack(t *testing.T) {
+	tests := []struct {
+		name     string
+		response map[string]any
+		wantHint string
+	}{
+		{
+			name: "details fallback",
+			response: map[string]any{
+				"code": 1470400,
+				"msg":  "invalid params",
+				"error": map[string]any{
+					"field_violations": []any{
+						map[string]any{"field": " \t ", "description": "\n "},
+					},
+					"details": []any{map[string]any{"value": "server detail fallback"}},
+				},
+			},
+			wantHint: "server detail fallback",
+		},
+		{
+			name: "APIHint fallback",
+			response: map[string]any{
+				"code": 1061045,
+				"msg":  "conflict",
+				"error": map[string]any{
+					"field_violations": []any{
+						map[string]any{"field": " \t ", "description": "\n "},
+					},
+				},
+			},
+			wantHint: errclass.APIHint(errs.SubtypeConflict),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := errclass.BuildAPIError(tt.response, errclass.ClassifyContext{})
+			var apiErr *errs.APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("error type = %T, want *errs.APIError", err)
+			}
+			if len(apiErr.FieldViolations) != 0 {
+				t.Fatalf("FieldViolations = %#v, want whitespace-only item ignored", apiErr.FieldViolations)
+			}
+			if apiErr.Hint != tt.wantHint {
+				t.Fatalf("Hint = %q, want fallback %q", apiErr.Hint, tt.wantHint)
 			}
 		})
 	}

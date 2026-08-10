@@ -132,6 +132,7 @@ func CloneTyped(err error) (error, bool) {
 			return nil, false
 		}
 		clone := *original
+		clone.FieldViolations = slices.Clone(original.FieldViolations)
 		return &clone, true
 	case *errs.SecurityPolicyError:
 		if original == nil {

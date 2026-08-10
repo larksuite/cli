@@ -4,6 +4,7 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -102,8 +103,21 @@ func applyTaskAPIHint(err error) error {
 	if err == nil {
 		return nil
 	}
-	if p, ok := errs.ProblemOf(err); ok {
-		if hint := taskAPIHints[p.Code]; hint != "" {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+	var apiErr *errs.APIError
+	if errors.As(err, &apiErr) && apiErr.HintIsFromServer() {
+		return err
+	}
+	if p.Hint != "" && (apiErr == nil || !apiErr.HintIsFallback()) {
+		return err
+	}
+	if hint := taskAPIHints[p.Code]; hint != "" {
+		if apiErr != nil {
+			apiErr.WithHint("%s", hint)
+		} else {
 			p.Hint = hint
 		}
 	}

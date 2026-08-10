@@ -23,19 +23,28 @@ Step 2: 生成完整 DSL（含颜色）
     2. 将脚本保存为 diagram.gen.cjs（必须 .cjs 后缀，脚本用 require() 写，.js 在 ESM 项目下会崩），执行 node diagram.gen.cjs 产出 diagram.json
     3. 用产出的 diagram.json 进入 Step 3
 
-Step 3: 渲染 & 审查 → 交付
+Step 3: 渲染 & 审查 → 交回 Workflow
   - 渲染前自查（见下方检查清单）
   - 渲染 PNG（仅用于预览验证，不是最终产物）：npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.json -o diagram.png
+  - 几何检查：npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.json --check
   - 检查：信息完整？布局合理？配色协调？文字无截断？连线无交叉？
   - 有问题 → 按症状表修复 → 重新渲染（最多 2 轮）
   - 2 轮后仍有严重问题 → 考虑走 Mermaid 路径兜底
-  - 写入画板：用 whiteboard-cli 将 diagram.json 转换为 OpenAPI 格式并 pipe 给 +update：
-      npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.json --to openapi --format json \
-        | lark-cli whiteboard +update --whiteboard-token <board_token> \
-            --source - --input_format raw --idempotent-token <时间戳+标识> --as user
-      → 完整 dry-run / 确认流程见 [§ 写入画板](../references/lark-whiteboard-workflow.md#写入画板)
-  - 交付：向用户报告 board_token 写入成功
+  - 生成 compiled nodes：npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.json --to openapi --format json -o compiled-nodes.json
+  - 把 source、preview/check 和 compiled nodes 交回中央 Workflow
+  - 不在 route 内读取目标画板、选择 mutation semantics、执行远端写入或报告远端成功
 ```
+
+## Artifact Contract
+
+本 route 交回 [`lark-whiteboard-workflow.md`](../references/lark-whiteboard-workflow.md#渲染--写入画板)：
+
+- `diagram.json`：DSL source。
+- `diagram.png`：本地 preview。
+- 本地 `--check` 结果和人工视觉审查结论。
+- `compiled-nodes.json`：同一 source 转换出的 OpenAPI 创建 payload。
+
+compiled nodes 只证明独立产物可生成，不证明它已满足非空画板的精确放置或新旧联合碰撞要求。Workflow 决定 initialize、append 或 replace，并负责本地请求预览、确认、远端写入和读回。
 
 **布局策略快速判断**（详见 `elements/layout.md`）：
 

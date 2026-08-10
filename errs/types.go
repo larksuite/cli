@@ -447,11 +447,30 @@ func (e *NetworkError) WithCause(cause error) *NetworkError {
 
 // ================================ APIError ===================================
 
+// APIFieldViolation is one field-level diagnostic returned by a Lark API.
+type APIFieldViolation struct {
+	Field       string `json:"field,omitempty"`
+	Value       string `json:"value,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type apiHintSource uint8
+
+const (
+	apiHintSourceUnknown apiHintSource = iota
+	apiHintSourceServer
+	apiHintSourceFallback
+)
+
 // APIError is the typed error for CategoryAPI (catch-all for classified Lark
 // API business errors). Cause preserves an optional wrapped sentinel for
 // errors.Is / errors.Unwrap; it is intentionally not serialized.
 type APIError struct {
 	Problem
+	FieldViolations []APIFieldViolation `json:"field_violations,omitempty"`
+	// hintSource distinguishes upstream diagnostics from context-free defaults
+	// for in-process callers. It is cloned with APIError but never serialized.
+	hintSource apiHintSource `json:"-"`
 	// RetryAfterSeconds is an upstream-provided minimum delay before another
 	// attempt. Zero means no precise delay was provided and omits the field.
 	RetryAfterSeconds int   `json:"retry_after_seconds,omitempty"`
@@ -486,7 +505,64 @@ func NewAPIError(subtype Subtype, format string, args ...any) *APIError {
 
 func (e *APIError) WithHint(format string, args ...any) *APIError {
 	e.Hint = formatMessage(format, args)
+	e.hintSource = apiHintSourceUnknown
 	return e
+}
+
+// WithServerHint records a hint lifted from the upstream API response. The
+// provenance is process-local and is intentionally omitted from the wire.
+func (e *APIError) WithServerHint(format string, args ...any) *APIError {
+	e.Hint = formatMessage(format, args)
+	e.hintSource = apiHintSourceServer
+	return e
+}
+
+// WithFallbackHint records a context-free default that a domain caller may
+// replace with more specific recovery guidance.
+func (e *APIError) WithFallbackHint(format string, args ...any) *APIError {
+	e.Hint = formatMessage(format, args)
+	e.hintSource = apiHintSourceFallback
+	return e
+}
+
+// AdoptHint copies both the human-readable hint and its process-local
+// provenance from another APIError. The provenance remains off the wire.
+func (e *APIError) AdoptHint(source *APIError) *APIError {
+	if e == nil {
+		return nil
+	}
+	if source == nil {
+		e.Hint = ""
+		e.hintSource = apiHintSourceUnknown
+		return e
+	}
+	e.Hint = source.Hint
+	e.hintSource = source.hintSource
+	return e
+}
+
+// AdoptServerDiagnostics copies hint provenance and, when present, an
+// independent snapshot of the source field violations. An empty source slice
+// leaves existing destination violations intact.
+func (e *APIError) AdoptServerDiagnostics(source *APIError) *APIError {
+	if e == nil {
+		return nil
+	}
+	e.AdoptHint(source)
+	if source != nil && len(source.FieldViolations) > 0 {
+		e.FieldViolations = slices.Clone(source.FieldViolations)
+	}
+	return e
+}
+
+// HintIsFromServer reports whether Hint was lifted from the upstream response.
+func (e *APIError) HintIsFromServer() bool {
+	return e != nil && e.hintSource == apiHintSourceServer
+}
+
+// HintIsFallback reports whether Hint is a caller-replaceable context-free default.
+func (e *APIError) HintIsFallback() bool {
+	return e != nil && e.hintSource == apiHintSourceFallback
 }
 
 func (e *APIError) WithLogID(logID string) *APIError {

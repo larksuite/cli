@@ -108,9 +108,84 @@ func TestHandleTaskApiResult_TypedMapping(t *testing.T) {
 			if p.Hint != taskAPIHints[tt.code] {
 				t.Errorf("hint = %q, want %q", p.Hint, taskAPIHints[tt.code])
 			}
+			var apiErr *errs.APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("err = %T, want *errs.APIError", err)
+			}
+			if apiErr.HintIsFallback() || apiErr.HintIsFromServer() {
+				t.Errorf("task-specific hint retained stale BuildAPIError provenance")
+			}
 			// BuildAPIError uses the raw upstream msg as the message.
 			if !strings.Contains(err.Error(), "raw upstream detail") {
 				t.Errorf("message = %q, want raw upstream detail", err.Error())
+			}
+		})
+	}
+}
+
+func TestHandleTaskApiResult_PreservesBuildAPIErrorHint(t *testing.T) {
+	tests := []struct {
+		name       string
+		code       int
+		errorBlock map[string]interface{}
+		wantHint   string
+	}{
+		{
+			name: "field violations",
+			code: ErrCodeTaskInvalidParams,
+			errorBlock: map[string]interface{}{
+				"field_violations": []interface{}{
+					map[string]interface{}{
+						"field":       "task.summary",
+						"description": "summary is required",
+					},
+				},
+			},
+			wantHint: "task.summary: summary is required",
+		},
+		{
+			name: "server details",
+			code: ErrCodeTaskInvalidParams,
+			errorBlock: map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "server-specific task validation detail"},
+				},
+			},
+			wantHint: "server-specific task validation detail",
+		},
+		{
+			name: "server detail equals generic APIHint",
+			code: ErrCodeTaskConflict,
+			errorBlock: map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": errclass.APIHint(errs.SubtypeConflict)},
+				},
+			},
+			wantHint: errclass.APIHint(errs.SubtypeConflict),
+		},
+		{
+			name: "error.message equals generic APIHint",
+			code: ErrCodeTaskConflict,
+			errorBlock: map[string]interface{}{
+				"message": errclass.APIHint(errs.SubtypeConflict),
+			},
+			wantHint: errclass.APIHint(errs.SubtypeConflict),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := HandleTaskApiResult(map[string]interface{}{
+				"code":  float64(tt.code),
+				"msg":   "invalid task parameters",
+				"error": tt.errorBlock,
+			}, nil, "create task")
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("err = %T, want typed errs.* error", err)
+			}
+			if p.Hint != tt.wantHint {
+				t.Fatalf("hint = %q, want BuildAPIError hint %q", p.Hint, tt.wantHint)
 			}
 		})
 	}
@@ -190,6 +265,30 @@ func TestCallTaskAPITyped_TaskHint(t *testing.T) {
 	}
 	if p.Hint != taskAPIHints[ErrCodeTaskReminderExists] {
 		t.Errorf("hint = %q, want %q", p.Hint, taskAPIHints[ErrCodeTaskReminderExists])
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/task/v2/tasks/t-2",
+		Body: map[string]interface{}{
+			"code": float64(ErrCodeTaskConflict),
+			"msg":  "conflict",
+			"error": map[string]interface{}{
+				"message": errclass.APIHint(errs.SubtypeConflict),
+			},
+		},
+	})
+
+	_, err = callTaskAPITyped(rt, http.MethodGet, "/open-apis/task/v2/tasks/t-2", nil, nil)
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %T, want *errs.APIError", err)
+	}
+	if got, want := apiErr.Hint, errclass.APIHint(errs.SubtypeConflict); got != want {
+		t.Fatalf("hint = %q, want server error.message %q", got, want)
+	}
+	if !apiErr.HintIsFromServer() {
+		t.Fatal("error.message collision must retain server provenance")
 	}
 }
 

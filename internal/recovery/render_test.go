@@ -103,7 +103,10 @@ func TestRenderClonesEveryConcreteTypedErrorAndPreservesWireExtensions(t *testin
 			original: &errs.APIError{
 				Problem:           problem(errs.CategoryAPI, errs.SubtypeRateLimit),
 				RetryAfterSeconds: 7,
-				Cause:             sentinel,
+				FieldViolations: []errs.APIFieldViolation{{
+					Field: "nodes[0].type", Value: "bad", Description: "type is required",
+				}},
+				Cause: sentinel,
 			},
 		},
 		{
@@ -279,15 +282,21 @@ func TestRenderDeepClonesSliceExtensions(t *testing.T) {
 		Problem: errs.Problem{Message: "message"},
 		Rules:   []string{"rule"},
 	}
+	api := &errs.APIError{
+		Problem:         errs.Problem{Message: "message"},
+		FieldViolations: []errs.APIFieldViolation{{Field: "nodes[0].type", Description: "required"}},
+	}
 
 	renderedValidation := Render(validation, nil).(*errs.ValidationError)
 	renderedPermission := Render(permission, nil).(*errs.PermissionError)
 	renderedContent := Render(content, nil).(*errs.ContentSafetyError)
+	renderedAPI := Render(api, nil).(*errs.APIError)
 	renderedValidation.Params[0].Suggestions[0] = "changed"
 	renderedPermission.MissingScopes[0] = "changed"
 	renderedPermission.RequestedScopes[0] = "changed"
 	renderedPermission.GrantedScopes[0] = "changed"
 	renderedContent.Rules[0] = "changed"
+	renderedAPI.FieldViolations[0].Field = "changed"
 
 	if validation.Params[0].Suggestions[0] != "--title" {
 		t.Error("ValidationError suggestions alias the source")
@@ -299,6 +308,44 @@ func TestRenderDeepClonesSliceExtensions(t *testing.T) {
 	}
 	if content.Rules[0] != "rule" {
 		t.Error("ContentSafetyError rules alias the source")
+	}
+	if api.FieldViolations[0].Field != "nodes[0].type" {
+		t.Error("APIError field violations alias the source")
+	}
+}
+
+func TestCloneTypedPreservesAPIHintSource(t *testing.T) {
+	tests := []struct {
+		name     string
+		original *errs.APIError
+		check    func(*errs.APIError) bool
+	}{
+		{
+			name:     "server",
+			original: errs.NewAPIError(errs.SubtypeConflict, "conflict").WithServerHint("server detail"),
+			check:    (*errs.APIError).HintIsFromServer,
+		},
+		{
+			name:     "fallback",
+			original: errs.NewAPIError(errs.SubtypeConflict, "conflict").WithFallbackHint("generic hint"),
+			check:    (*errs.APIError).HintIsFallback,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cloned, ok := CloneTyped(tt.original)
+			if !ok {
+				t.Fatal("CloneTyped returned !ok")
+			}
+			apiErr, ok := cloned.(*errs.APIError)
+			if !ok {
+				t.Fatalf("clone type = %T, want *errs.APIError", cloned)
+			}
+			if !tt.check(apiErr) {
+				t.Fatalf("clone lost %s hint provenance", tt.name)
+			}
+		})
 	}
 }
 

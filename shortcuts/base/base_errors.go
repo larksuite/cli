@@ -153,21 +153,49 @@ func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.Classi
 	if resultMap == nil {
 		return errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned a malformed response envelope")
 	}
-	if msg := extractDataErrorMessage(resultMap); msg != "" {
-		resultMap["msg"] = msg
-	}
 	hint := extractErrorHint(resultMap)
-	if logID := extractBaseErrorLogID(resultMap); logID != "" {
-		resultMap["log_id"] = logID
-	}
-	err := errclass.BuildAPIError(resultMap, cc)
+	err := errclass.BuildAPIError(projectBaseAPIErrorResult(resultMap), cc)
 	if err == nil {
 		return nil
 	}
-	if p, ok := errs.ProblemOf(err); ok && hint != "" {
-		p.Hint = hint
+	var apiErr *errs.APIError
+	hasFieldViolations := errors.As(err, &apiErr) && len(apiErr.FieldViolations) > 0
+	if p, ok := errs.ProblemOf(err); ok && hint != "" && !hasFieldViolations {
+		if apiErr != nil {
+			apiErr.WithServerHint("%s", hint)
+		} else {
+			p.Hint = hint
+		}
 	}
 	return err
+}
+
+func projectBaseAPIErrorResult(resultMap map[string]interface{}) map[string]interface{} {
+	projected := make(map[string]interface{}, len(resultMap)+1)
+	for key, value := range resultMap {
+		projected[key] = value
+	}
+
+	topError, _ := resultMap["error"].(map[string]interface{})
+	data, _ := resultMap["data"].(map[string]interface{})
+	dataError, _ := data["error"].(map[string]interface{})
+	if len(topError) > 0 || len(dataError) > 0 {
+		merged := make(map[string]interface{}, len(topError)+len(dataError))
+		for key, value := range dataError {
+			merged[key] = value
+		}
+		for key, value := range topError {
+			merged[key] = value
+		}
+		projected["error"] = merged
+	}
+	if msg := extractDataErrorMessage(resultMap); msg != "" {
+		projected["msg"] = msg
+	}
+	if logID := extractBaseErrorLogID(resultMap); logID != "" {
+		projected["log_id"] = logID
+	}
+	return projected
 }
 
 func enrichBaseAPIErrorFromBody(err error, body []byte, cc errclass.ClassifyContext) error {
@@ -186,7 +214,12 @@ func enrichBaseAPIErrorFromBody(err error, body []byte, cc errclass.ClassifyCont
 	dst, _ := errs.ProblemOf(err)
 	if src != nil && dst != nil {
 		dst.Message = src.Message
-		dst.Hint = src.Hint
+		var srcAPI, dstAPI *errs.APIError
+		if errors.As(enriched, &srcAPI) && errors.As(err, &dstAPI) {
+			dstAPI.AdoptServerDiagnostics(srcAPI)
+		} else {
+			dst.Hint = src.Hint
+		}
 		// A body without log_id must not erase a header-derived LogID
 		// already carried by err.
 		if src.LogID != "" {
@@ -222,13 +255,13 @@ func extractBaseErrorLogID(resultMap map[string]interface{}) string {
 
 func extractErrorHint(resultMap map[string]interface{}) string {
 	if detail, ok := resultMap["error"].(map[string]interface{}); ok {
-		if hint := consumeStringField(detail, "hint"); hint != "" {
+		if hint := readStringField(detail, "hint"); hint != "" {
 			return hint
 		}
 	}
 	data, _ := resultMap["data"].(map[string]interface{})
 	if detail, ok := data["error"].(map[string]interface{}); ok {
-		if hint := consumeStringField(detail, "hint"); hint != "" {
+		if hint := readStringField(detail, "hint"); hint != "" {
 			return hint
 		}
 	}
@@ -238,17 +271,14 @@ func extractErrorHint(resultMap map[string]interface{}) string {
 func extractDataErrorMessage(resultMap map[string]interface{}) string {
 	data, _ := resultMap["data"].(map[string]interface{})
 	if detail, ok := data["error"].(map[string]interface{}); ok {
-		if message := consumeStringField(detail, "message"); message != "" {
+		if message := readStringField(detail, "message"); message != "" {
 			return message
 		}
 	}
 	return ""
 }
 
-func consumeStringField(src map[string]interface{}, key string) string {
+func readStringField(src map[string]interface{}, key string) string {
 	value, _ := src[key].(string)
-	if _, exists := src[key]; exists {
-		delete(src, key)
-	}
 	return strings.TrimSpace(value)
 }

@@ -63,6 +63,7 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.log_id` | informational | upstream request id (server-side trace) |
 | `error.retryable` | wire-stable | `true` when present; omitted when `false` |
 | `error.retry_after_seconds` | per-Subtype-stable | upstream-provided minimum delay before retry; emitted when available for retryable `api/rate_limit` and HTTP-backed `network` errors |
+| `error.field_violations` | per-Subtype-stable | ordered field-level diagnostics on `APIError`; each item may carry string `field`, `value`, and `description` fields |
 | `error.param` | per-Subtype-stable | single offending parameter (`ValidationError`); see **Validation parameters** |
 | `error.params` | per-Subtype-stable | per-parameter validation detail array (`ValidationError`); see **Validation parameters** |
 | per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url`; `console_url` is emitted for developer/admin recovery such as `app_scope_not_applied`, not user `missing_scope` |
@@ -78,6 +79,19 @@ envelope intentionally does not expose an implementation detail such as
 `retry_after_source`. Generic command dispatch does not replay a request
 automatically; a bounded operation such as multipart download may consume this
 field under its own idempotency and retry budget.
+
+For an upstream API response with `error.field_violations`, `BuildAPIError`
+keeps every valid item in order on `APIError.field_violations`. An item is
+valid when `field` or `description` is non-blank. Its `value` is retained only
+when the upstream value is a string; a non-string value becomes empty while
+the otherwise-valid violation remains. Values never enter the human-facing
+`hint`. API-error hint precedence is: valid field violations, then
+`error.details[].value`, then a non-blank nested `error.message`, then the
+subtype-specific `APIHint` fallback. A nested `error.message` promoted to
+`hint` remains human-readable upstream prose: consumers must not branch on its
+text. The top-level upstream `msg` remains `error.message` in the CLI envelope;
+the numeric `code`, `log_id`, and `troubleshooter` are unchanged by this
+enrichment.
 
 `SecurityPolicyError` renders through the same typed envelope as every
 other category. `error.type` is `"policy"`, `error.subtype` is one of
