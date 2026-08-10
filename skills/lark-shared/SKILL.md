@@ -48,4 +48,4 @@ metadata:
 | 需要依赖 JSON 输出契约 判断成功 / 失败、读取 stdout / stderr，或为命令编写脚本与封装 | [`output-contract`](references/lark-shared-output-contract.md) |
 | 准备执行/预览high-risk-write、判断命令风险等级、遇到退出码 exit 10、 `confirmation_required`、确认后重试 | [`high-risk-approval`](references/lark-shared-high-risk-approval.md) |
 | 首次使用CLI需运行 `lark-cli config init` 完成应用配置、或 CLI 明确提示 `config init --new` | [`config-init`](references/lark-shared-config-init.md) |
-| 用户询问 notice、CLI版本更新、或输出出现 `_notice.update`、`_notice.skills` 或 `_notice.deprecated_command` | [`update-notice`](references/lark-shared-update-notice.md) |
+| 用户询问 notice、CLI版本更新、或输出含 `_notice`（升级 / skills 落后 / 废弃命令提示）| [`update-notice`](references/lark-shared-update-notice.md) |
