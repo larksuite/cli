@@ -41,6 +41,7 @@
 | `lookup` | `type` `name` `from` `select` `where` | `aggregate` |
 | `auto_number` | `type` `name` | `style.rules` |
 | `attachment` / `location` / `checkbox` | `type` `name` | 无 |
+| `button` | `type` `name` | `button_text` `button_color` |
 
 所有类型都可额外传 `description`；上表的“常见补充字段”只列类型特有配置。
 
@@ -510,6 +511,34 @@
 { "type": "checkbox", "name": "完成" }
 ```
 
+### 3.13 button
+
+按钮字段用于在记录上触发 Workflow。字段 JSON 只描述按钮字段的静态展示配置；不要在字段 JSON 中写 `workflow_id`、`trigger.config.id` 或其他绑定信息。
+
+最小写法：
+
+```json
+{
+  "type": "button",
+  "name": "提交审批",
+  "button_text": "提交"
+}
+```
+
+完整推荐流程：
+
+1. 用 `+workflow-create` 创建包含 `ButtonTrigger` 的 disabled Workflow，记录返回的 `wkf...` workflow ID。
+2. 用 `+field-create` 创建按钮字段，JSON 中不携带 Workflow ID。
+3. 用 `+field-button-bind --field-id <field_id> --workflow-id <wkf_id>` 建立绑定。
+4. 用 `+field-button-binding-get` 或 `+workflow-button-fields` 查询确认绑定。
+5. 确认成功后再用 `+workflow-enable` 启用 Workflow。
+
+常用字段：
+- `button_text`：按钮上显示的文案。
+- `button_color`：按钮颜色；按服务端当前支持值传入，平台拒绝时按错误提示修正。
+
+绑定关系以按钮 Workflow 绑定接口为准，字段查询里兼容回显的 `property.trigger` 只读参考，不能用于创建或换绑。
+
 ## 4. 创建与更新
 
 - `+field-create`：按目标字段配置直接构造 `--json`。
@@ -517,7 +546,7 @@
 
 ## 5. 暂不支持字段
 
-Object（对象字段）、Button（按钮字段）、Stage（流程字段）暂时都没有被 CLI 支持。这些字段会展示为 `not_support` 字段并被保护：不允许修改，不允许读取内容。
+Object（对象字段）、Stage（流程字段）暂时没有被 CLI 支持。这些字段会展示为 `not_support` 字段并被保护：不允许修改，不允许读取内容。
 
 遇到暂不支持的字段类型时，直接说明 Base CLI 当前不支持并停止；不要猜测未注册的字段 JSON、service 或 schema，也不要用其他字段类型冒充目标能力。
 
