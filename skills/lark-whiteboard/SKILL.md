@@ -2,7 +2,7 @@
 name: lark-whiteboard
 version: 1.0.0
 description: >
-  飞书画板：查询和编辑飞书云文档中的画板。支持导出画板为预览图片、导出原始节点结构、使用多种格式更新画板内容，并支持按节点增量创建、更新和删除。
+  飞书画板：查询和编辑飞书云文档中的画板。支持导出画板为预览图片、导出原始节点结构、使用多种格式更新画板内容，按节点增量创建、更新和删除，并支持把本地图片提交给 ParseImage 自动解析写入画板。
   当用户需要查看画板内容、导出画板图片、编辑画板时使用此 skill。不负责：飞书云文档内容编辑（lark-doc）、文档内嵌电子表格/Base（lark-sheets / lark-base）。
 metadata:
   requires:
@@ -33,6 +33,7 @@ metadata:
 | 只修改既有内容 | `patch` → [编辑 Workflow](references/lark-whiteboard-workflow.md#编辑-workflow) |
 | 只删除既有内容 | `delete` → [编辑 Workflow](references/lark-whiteboard-workflow.md#编辑-workflow) |
 | 丢弃非空画板的全部旧内容并写入完整最终状态 | `replace` → [编辑 Workflow](references/lark-whiteboard-workflow.md#编辑-workflow) |
+| 把一张本地图片解析成画板内容并自动写入目标画板 | `parse-image` → [`+parse-image`](references/lark-whiteboard-parse-image.md) |
 
 输入格式、输入是否就绪、目标是否已定位，只能缩小已经选定的操作如何执行，不能成为新的主路由。当前 Shortcut 的可执行边界、确认规则和禁止 fallback 统一由 [Workflow](references/lark-whiteboard-workflow.md) 决定。
 
@@ -45,6 +46,8 @@ metadata:
 | [`+node-create`](references/lark-whiteboard-node-create.md) | 向已有画板追加已编译的 OpenAPI 节点。 |
 | [`+node-update`](references/lark-whiteboard-node-update.md) | 按精确 node id 批量更新已有节点字段。 |
 | [`+node-delete`](references/lark-whiteboard-node-delete.md) | 按已确认的 node id 删除节点；真实执行需要 `--yes`。 |
+| [`+parse-image`](references/lark-whiteboard-parse-image.md) | 提交一张本地图片，由服务端自动解析并写入目标画板。 |
+| [`+parse-image-result`](references/lark-whiteboard-parse-image.md#parse-image-result) | 查询或等待 ParseImage 任务结果。 |
 
 ## 不在本 skill 范围
 

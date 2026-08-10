@@ -17,6 +17,8 @@ func Shortcuts() []common.Shortcut {
 		WhiteboardNodeCreate,
 		WhiteboardNodeUpdate,
 		WhiteboardNodeDelete,
+		WhiteboardParseImage,
+		WhiteboardParseImageResult,
 	}
 }
 

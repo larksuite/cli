@@ -62,8 +62,70 @@ lark-cli whiteboard +export \
 | patch | `+node-update` | 必须已唯一定位 node id，并准备只包含待修改字段的 OpenAPI payload。 |
 | delete | `+node-delete` | 必须通过 raw 确认 node id，dry-run 后取得删除批准，真实执行传 `--yes`。 |
 | replace | `+update --overwrite` | 丢弃非空画板的全部旧状态，必须经过覆盖确认。 |
+| parse-image | `+parse-image` / `+parse-image-result` | 服务端把一张本地图片解析成画板内容并自动写入目标画板；不返回 SVG，不走本地 `whiteboard-cli`。 |
 
 `+update --input_format raw` 仍调用创建节点接口：输入 ID 只用于本批次关系标识，服务端会重新分配 ID。它不能更新或删除现有节点；对应操作必须使用 `+node-update` 和 `+node-delete`。
+
+## ParseImage Workflow
+
+ParseImage 只用于“把一张本地图片里的结构解析成目标画板内容”。它不是图片节点上传，也不是旧 `image2svg` 原型。
+
+适用条件：
+
+- 用户提供本地图片路径，或上下文中已有可访问的本地图片文件。
+- 用户目标是让服务端自动解析图片内容并写入某个已有画板。
+- 已定位 `whiteboard-token`。
+
+不适用条件：
+
+- 只想把图片作为图片/素材插入画板。
+- 只想得到 SVG、TOS URL 或中间解析产物。
+- 想用本地 `whiteboard-cli` 从图片生成节点；当前本路径不做本地图片解析。
+
+执行步骤：
+
+1. 按 `lark-shared` 选择身份；首版 `+parse-image` 只使用 `--as user`。
+2. 若目标画板可能已有内容，默认 `overwrite=false` 追加。只有用户明确要求覆盖/替换，才传 `--overwrite`。
+3. 如需指定 Canvas Agent 模式，传 `--mode mini|flash|agentic|agentic_max`；不传时服务端默认 `flash`。
+4. 先 dry-run:
+
+```bash
+lark-cli whiteboard +parse-image \
+  --whiteboard-token <board_token> \
+  --image <local_image_path> \
+  --as user \
+  --dry-run
+```
+
+5. 真实提交:
+
+```bash
+lark-cli whiteboard +parse-image \
+  --whiteboard-token <board_token> \
+  --image <local_image_path> \
+  --as user
+```
+
+6. 提交成功只表示服务端任务已创建，不表示画板已经写入完成。记录返回的 `task_id` 和 `next_command`。
+7. 用户明确要求等待、评测要求同轮闭环，或需要最终写入证据时，调用:
+
+```bash
+lark-cli whiteboard +parse-image-result \
+  --whiteboard-token <board_token> \
+  --task-id <task_id> \
+  --wait \
+  --as user
+```
+
+8. 成功后如需证明画板内容，继续用 `+export --output-type raw` 或 preview 验证。
+
+禁止事项：
+
+- 不使用 `image2svg` shortcut；本仓不新增该 shortcut。
+- 不下载 SVG 或 TOS URL 交给 agent 手工处理。
+- 不用 `whiteboard-cli` 作为 ParseImage 的本地替代路径。
+- 不把 submit 的 `pending` 结果报告为画板写入完成。
+- `+parse-image-result` 只是查询/等待，不触发写入；后台写入由 Engine worker 自动完成。
 
 ## 创作 Workflow
 

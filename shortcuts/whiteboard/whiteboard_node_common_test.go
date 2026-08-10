@@ -19,6 +19,8 @@ func TestShortcutsIncludesWhiteboardNodeCommands(t *testing.T) {
 		"+node-create",
 		"+node-update",
 		"+node-delete",
+		"+parse-image",
+		"+parse-image-result",
 	}
 
 	seen := make(map[string]bool, len(got))
