@@ -44,7 +44,7 @@ lark-cli slides +media-upload --file ./pic.png --presentation $PRES_ID --dry-run
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--file` | 是 | 本地图片路径，**必须是 CWD 内的相对路径**（如 `./pic.png`）。**最大 20 MB**（slides upload API 不支持分片上传） |
+| `--file` | 是 | 本地图片路径，**必须是 CWD 内的相对路径**（如 `./pic.png`）。**最大 20 MB**（slides upload API 不支持分片上传）。**仅支持 png / jpeg / gif / bmp / tiff / webp** |
 | `--presentation` | 是 | `xml_presentation_id`、`/slides/<token>` URL，或 `/wiki/<token>` URL |
 
 > [!IMPORTANT]
