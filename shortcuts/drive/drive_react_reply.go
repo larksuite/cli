@@ -104,7 +104,8 @@ var DriveReactReply = common.Shortcut{
 		}
 		return buildDriveReactReplyDryRun(spec)
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		spec, err := readDriveReactReplySpec(runtime)
 		if err != nil {
 			return err

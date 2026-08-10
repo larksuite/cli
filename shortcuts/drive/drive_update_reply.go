@@ -65,7 +65,8 @@ var DriveUpdateReply = common.Shortcut{
 		}
 		return buildDriveUpdateReplyDryRun(spec)
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		spec, err := readDriveUpdateReplySpec(runtime)
 		if err != nil {
 			return err

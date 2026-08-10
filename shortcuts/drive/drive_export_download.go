@@ -40,7 +40,8 @@ var DriveExportDownload = common.Shortcut{
 			Set("file_token", runtime.Str("file-token")).
 			Set("output_dir", runtime.Str("output-dir"))
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		// Reuse the shared export download helper so overwrite checks, filename
 		// resolution, and output metadata stay consistent with drive +export.
 		out, err := downloadDriveExportFile(

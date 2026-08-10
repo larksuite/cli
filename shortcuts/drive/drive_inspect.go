@@ -80,7 +80,8 @@ var DriveInspect = common.Shortcut{
 			})
 		return dry
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		raw := strings.TrimSpace(runtime.Str("url"))
 		ref, err := driveInspectResolveRef(runtime)
 		if err != nil {

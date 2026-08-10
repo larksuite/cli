@@ -69,7 +69,8 @@ var DriveExport = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return PlanExportDryRun(runtime, exportParamsFromFlags(runtime))
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		return RunExport(ctx, runtime, exportParamsFromFlags(runtime))
 	},
 }

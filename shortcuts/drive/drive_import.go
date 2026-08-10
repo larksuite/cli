@@ -41,7 +41,8 @@ var DriveImport = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return PlanImportDryRun(runtime, importParamsFromFlags(runtime))
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		return RunImport(ctx, runtime, importParamsFromFlags(runtime))
 	},
 }

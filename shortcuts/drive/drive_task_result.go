@@ -132,7 +132,8 @@ var DriveTaskResult = common.Shortcut{
 
 		return dry
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		scenario := strings.ToLower(runtime.Str("scenario"))
 		ticket := runtime.Str("ticket")
 		taskID := runtime.Str("task-id")

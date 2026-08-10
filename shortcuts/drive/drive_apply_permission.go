@@ -184,7 +184,8 @@ var DriveApplyPermission = common.Shortcut{
 			Body(body).
 			Set("token", token)
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		token, docType, err := resolvePermApplyTarget(runtime.Str("token"), runtime.Str("type"))
 		if err != nil {
 			return err

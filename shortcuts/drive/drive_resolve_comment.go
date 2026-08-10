@@ -107,7 +107,8 @@ func newDriveCommentSolvedShortcut(cfg driveCommentSolvedConfig) common.Shortcut
 			}
 			return buildDriveCommentSolvedDryRun(cfg, spec)
 		},
-		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+			defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 			spec, err := readSpec(runtime)
 			if err != nil {
 				return err

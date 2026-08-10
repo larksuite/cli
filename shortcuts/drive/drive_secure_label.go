@@ -97,7 +97,8 @@ var DriveSecureLabelList = common.Shortcut{
 			GET("/open-apis/drive/v2/my_secure_labels").
 			Params(buildSecureLabelListParams(runtime))
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		data, err := runtime.CallAPITyped("GET",
 			"/open-apis/drive/v2/my_secure_labels",
 			buildSecureLabelListParams(runtime),
@@ -153,7 +154,8 @@ var DriveSecureLabelUpdate = common.Shortcut{
 			Body(map[string]interface{}{"id": labelID}).
 			Set("file_token", token)
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		token, docType, err := resolveSecureLabelTarget(runtime.Str("token"), runtime.Str("type"))
 		if err != nil {
 			return err

@@ -49,6 +49,22 @@ func withDocMediaDownloadRecoveryHint(err error, mediaType string) error {
 	return err
 }
 
+// withDocMediaPreviewRecoveryHint preserves the preview error classification
+// while ensuring throttled callers are told to stop immediate retries and use
+// exponential backoff.
+func withDocMediaPreviewRecoveryHint(err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil || !docMediaDownloadIsRateLimit(problem) {
+		return err
+	}
+	if strings.Contains(strings.ToLower(problem.Hint), "backoff") {
+		return err
+	}
+	const hint = "Document media preview was rate limited; stop immediate retries and retry later with exponential backoff and jitter."
+	appendDocRecoveryHint(problem, hint)
+	return err
+}
+
 func docMediaDownloadIsRateLimit(problem *errs.Problem) bool {
 	return problem.Subtype == errs.SubtypeRateLimit ||
 		problem.Code == 99991400 ||

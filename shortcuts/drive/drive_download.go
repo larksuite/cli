@@ -194,7 +194,8 @@ var DriveDownload = common.Shortcut{
 			Set("file_token", fileToken).
 			Set("output", outputPath)
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		source, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
 		if err != nil {
 			return err

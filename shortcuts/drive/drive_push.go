@@ -171,7 +171,8 @@ var DrivePush = common.Shortcut{
 			GET("/open-apis/drive/v1/files").
 			Set("folder_token", runtime.Str("folder-token"))
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		localDir := strings.TrimSpace(runtime.Str("local-dir"))
 		folderToken := strings.TrimSpace(runtime.Str("folder-token"))
 		ifExists := strings.TrimSpace(runtime.Str("if-exists"))
@@ -596,6 +597,7 @@ func driveBoolPtr(v bool) *bool {
 
 func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	decision := driveBatchFailureDecision{Class: "unknown", Retryable: errs.IsRetryable(err)}
+	err = withRateLimitRecoveryHint(err)
 	problem, ok := errs.ProblemOf(err)
 	if !ok {
 		return decision
@@ -620,9 +622,10 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	case problem.Subtype == errs.SubtypeInvalidParameters || problem.Code == 1061002:
 		decision.Class = "invalid_api_parameters"
 		decision.Terminal = true
-	case problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400:
+	case isRateLimitProblem(problem):
 		decision.Class = "rate_limited"
 		decision.Terminal = true
+		decision.Hint = problem.Hint
 	case problem.Code == 1062507:
 		decision.Class = "parent_sibling_limit"
 		decision.Terminal = true

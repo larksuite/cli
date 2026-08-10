@@ -173,7 +173,8 @@ var DriveVersionHistory = common.Shortcut{
 			Set("file_token", spec.FileToken).
 			Params(driveVersionHistoryParams(spec))
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		spec := driveVersionHistorySpec{
 			FileToken: strings.TrimSpace(runtime.Str("file-token")),
 			Limit:     runtime.Int("limit"),
@@ -283,7 +284,8 @@ var DriveVersionGet = common.Shortcut{
 			Set("output", outputPath).
 			Params(map[string]interface{}{"version": spec.Version})
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		spec := driveVersionGetSpec{
 			FileToken: strings.TrimSpace(runtime.Str("file-token")),
 			Version:   strings.TrimSpace(runtime.Str("version")),
@@ -387,7 +389,8 @@ var DriveVersionRevert = common.Shortcut{
 			Set("file_token", spec.FileToken).
 			Body(map[string]interface{}{"version": spec.Version})
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		spec := driveVersionMutationSpec{
 			FileToken: strings.TrimSpace(runtime.Str("file-token")),
 			Version:   strings.TrimSpace(runtime.Str("version")),
@@ -434,7 +437,8 @@ var DriveVersionDelete = common.Shortcut{
 			Set("file_token", spec.FileToken).
 			Body(map[string]interface{}{"version": spec.Version})
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		spec := driveVersionMutationSpec{
 			FileToken: strings.TrimSpace(runtime.Str("file-token")),
 			Version:   strings.TrimSpace(runtime.Str("version")),

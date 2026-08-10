@@ -13,6 +13,36 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 )
 
+const rateLimitRecoveryHint = "The request was rate limited; stop immediate retries and retry later with exponential backoff and jitter."
+
+// withRateLimitRecoveryHint preserves the typed error and any existing
+// server or command-specific hint, appending generic backoff guidance only
+// when the shortcut has not already supplied it.
+func withRateLimitRecoveryHint(err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || !isRateLimitProblem(problem) {
+		return err
+	}
+	if strings.Contains(strings.ToLower(problem.Hint), "backoff") {
+		return err
+	}
+	return appendDriveExportRecoveryHint(err, rateLimitRecoveryHint)
+}
+
+func isRateLimitProblem(problem *errs.Problem) bool {
+	if problem == nil {
+		return false
+	}
+	// 1063006 is a per-document daily permission-apply quota. Its recovery is
+	// waiting for the daily reset, not short-term exponential backoff.
+	if problem.Code == 1063006 {
+		return false
+	}
+	return problem.Subtype == errs.SubtypeRateLimit ||
+		problem.Code == 99991400 ||
+		problem.Code == http.StatusTooManyRequests
+}
+
 // wrapDriveNetworkErr returns err unchanged when it is already a typed errs.*
 // error (preserving its subtype / code / log_id from the runtime boundary),
 // and only wraps a raw, unclassified error as a transport-level network error.
@@ -60,12 +90,10 @@ func withDriveDownloadRecoveryHint(err error, fileToken string) error {
 
 func driveDownloadIsRateLimit(err error) bool {
 	problem, ok := errs.ProblemOf(err)
-	if !ok || problem == nil {
+	if !ok {
 		return false
 	}
-	return problem.Subtype == errs.SubtypeRateLimit ||
-		problem.Code == 99991400 ||
-		problem.Code == http.StatusTooManyRequests
+	return isRateLimitProblem(problem)
 }
 
 func driveDownloadForbiddenPreviewHint() string {
@@ -143,10 +171,10 @@ func appendDriveExportRecoveryHint(err error, hint string) error {
 // Continuing to poll after a rate-limit response only amplifies the throttling.
 func driveExportIsRateLimit(err error) bool {
 	problem, ok := errs.ProblemOf(err)
-	if !ok || problem == nil {
+	if !ok {
 		return false
 	}
-	return problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400
+	return isRateLimitProblem(problem)
 }
 
 // withDriveExportRateLimitRecovery preserves the upstream typed rate-limit

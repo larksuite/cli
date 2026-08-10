@@ -385,7 +385,8 @@ var DriveAddComment = common.Shortcut{
 			Body(commentBody).
 			Set("file_token", resolvedToken)
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		// Sheet comment: direct URL or token fast path.
 		docRef, _ := parseCommentDocRef(runtime.Str("doc"), runtime.Str("type"))
 		if docRef.Kind == "base" {

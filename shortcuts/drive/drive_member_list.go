@@ -267,7 +267,8 @@ var DriveMemberList = common.Shortcut{
 			GET(spec.apiPath()).
 			Params(spec.params())
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		spec, err := readDriveMemberListSpec(runtime)
 		if err != nil {
 			return err

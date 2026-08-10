@@ -110,6 +110,42 @@ func TestDocResourceDownloadCoverEmptyReturnsErrorWithoutDownload(t *testing.T) 
 	}
 }
 
+func TestDocResourceDownloadCoverRateLimitSuggestsBackoff(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-cover-download-429-app"))
+	documentID := "doxcnCoverDownload429"
+	coverToken := "cover_token_limited_123"
+	reg.Register(docCoverMetadataStub(documentID, map[string]interface{}{"token": coverToken}))
+	reg.Register(&httpmock.Stub{
+		Method:  http.MethodGet,
+		URL:     "/open-apis/drive/v1/medias/" + coverToken + "/download",
+		Status:  http.StatusTooManyRequests,
+		RawBody: []byte("rate limited"),
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+
+	err := mountAndRunDocs(t, DocResourceDownload, []string{
+		"+resource-download",
+		"--doc", documentID,
+		"--type", "cover",
+		"--output", "cover",
+		"--as", "bot",
+	}, f, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport || problem.Code != http.StatusTooManyRequests {
+		t.Fatalf("problem=%+v ok=%v, want network transport HTTP 429", problem, ok)
+	}
+	for _, want := range []string{"rate limited", "exponential backoff"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint=%q, want %q", problem.Hint, want)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "cover.png")); !os.IsNotExist(statErr) {
+		t.Fatalf("cover.png should not be created on rate limit, statErr=%v", statErr)
+	}
+}
+
 func TestDocResourceDeleteCoverEmptyIsIdempotent(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-cover-empty-delete-app"))
 	documentID := "doxcnCoverEmptyDelete1"

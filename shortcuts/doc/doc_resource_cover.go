@@ -109,7 +109,10 @@ var DocResourceDownload = common.Shortcut{
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/medias/%s/download", validate.EncodePathSegment(cover.Token)),
 		})
 		if err != nil {
-			return wrapDocNetworkErr(err, "download cover failed: %v", err)
+			// The cover streams from the same Drive media download endpoint as
+			// docs +media-download, so reuse its recovery decoration to keep
+			// throttling (backoff) and 403 preview guidance consistent.
+			return withDocMediaDownloadRecoveryHint(wrapDocNetworkErr(err, "download cover failed: %v", err), "media")
 		}
 		defer resp.Body.Close()
 

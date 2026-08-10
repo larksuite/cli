@@ -808,6 +808,55 @@ func TestDocMediaDownloadTypedRateLimitSuggestsBackoff(t *testing.T) {
 	}
 }
 
+func TestDocMediaPreviewHTTP429SuggestsBackoff(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-429-app"))
+	reg.Register(&httpmock.Stub{
+		Method:  http.MethodGet,
+		URL:     "/open-apis/drive/v1/medias/media_preview_limited/preview_download",
+		Status:  http.StatusTooManyRequests,
+		RawBody: []byte("rate limited"),
+	})
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	err := mountAndRunDocs(t, DocMediaPreview, []string{
+		"+media-preview",
+		"--token", "media_preview_limited",
+		"--output", "blocked.bin",
+		"--as", "bot",
+	}, f, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport || problem.Code != http.StatusTooManyRequests {
+		t.Fatalf("problem=%+v ok=%v, want network transport HTTP 429", problem, ok)
+	}
+	for _, want := range []string{"stop immediate retries", "exponential backoff", "jitter"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint=%q, want %q", problem.Hint, want)
+		}
+	}
+}
+
+func TestDocMediaPreviewTypedRateLimitPreservesUpstreamHint(t *testing.T) {
+	err := errs.NewAPIError(errs.SubtypeRateLimit, "request trigger frequency limit").
+		WithCode(99991400).
+		WithRetryable().
+		WithHint("upstream hint")
+
+	got := withDocMediaPreviewRecoveryHint(err)
+	problem, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", got, got)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 99991400 || !problem.Retryable {
+		t.Fatalf("problem=%+v, want preserved API rate-limit metadata", problem)
+	}
+	for _, want := range []string{"upstream hint", "stop immediate retries", "exponential backoff", "jitter"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint=%q, want %q", problem.Hint, want)
+		}
+	}
+}
+
 func TestDocMediaDownloadAppendsExtensionFromContentDispositionFilename(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-download-disposition-app"))
 	registerDocMediaExportAuth(reg, "tok_123", true)

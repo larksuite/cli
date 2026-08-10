@@ -67,7 +67,8 @@ var DriveCover = common.Shortcut{
 			Set("output", runtime.Str("output"))
 		return dry
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		fileToken := runtime.Str("file-token")
 		version := strings.TrimSpace(runtime.Str("version"))
 		requestedSpec := strings.TrimSpace(runtime.Str("spec"))

@@ -159,7 +159,8 @@ var DriveUpload = common.Shortcut{
 		}
 		return d
 	},
-	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) (retErr error) {
+		defer func() { retErr = withRateLimitRecoveryHint(retErr) }()
 		spec := newDriveUploadSpec(runtime)
 		isOverwrite := spec.FileToken != ""
 		fileName := spec.FileName()
