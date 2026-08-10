@@ -27,7 +27,7 @@ var BaseRecordList = common.Shortcut{
 		recordFilterFlag(),
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "maximum records to return; range 1-200, or 1-2000 for ndjson"},
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "maximum records to return; range 1-200, or 1-2000 for ndjson; omitted limit uses 2000 for ndjson"},
 		recordReadFormatFlag(),
 		recordOutputFlag(),
 		recordMinimalStdoutFlag(),
@@ -37,7 +37,7 @@ var BaseRecordList = common.Shortcut{
 	Tips: []string{
 		"Example: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
 		"Example with projection: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --limit 50",
-		"Example for analysis: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --limit 2000 --output ./records.ndjson --minimal-stdout",
+		"Example for analysis: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --output ./records.ndjson --minimal-stdout",
 		`Text equality filter: --filter-json '{"logic":"and","conditions":[["Title","==","Launch plan"]]}'`,
 		`Text contains/like filter: --filter-json '{"logic":"and","conditions":[["Title","intersects","urgent"]]}'`,
 		`Number equality filter: --filter-json '{"logic":"and","conditions":[["Score","==",95]]}'`,
@@ -48,7 +48,7 @@ var BaseRecordList = common.Shortcut{
 		recordAnalysisOutputTip,
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
-	Normalize: normalizeRecordReadOutput,
+	Normalize: common.ChainNormalizers(normalizeRecordReadOutput, normalizeRecordNDJSONLimit),
 	JQFormats: []string{"ndjson"},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateRecordReadFormat(runtime); err != nil {

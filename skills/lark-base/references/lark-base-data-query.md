@@ -1,11 +1,9 @@
 
 # Base data-query DSL SSOT
 
-> **入口指南**: [lark-base-data-query-guide.md](lark-base-data-query-guide.md) | **前置条件**: 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **入口指南**: [lark-base-data-query-guide.md](lark-base-data-query-guide.md) | **认证或授权问题**: [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
 
-本文档是 `+data-query` JSON DSL 的单一事实来源（SSOT），用于说明完整字段、操作符、限制、返回和错误恢复。常用 fewshot 与命令选择先读 [lark-base-data-query-guide.md](lark-base-data-query-guide.md)。
-
-数据表记录查询和分析任务先读 [`lark-base-data-analysis-sop.md`](lark-base-data-analysis-sop.md)；进入 Cloud 路径并选定 `+data-query` 时，读取 [`lark-base-data-analysis-cloud.md`](lark-base-data-analysis-cloud.md) 和本文。用户直接询问 `+data-query` 命令、DSL 或 API 时可直接读取本文。`+data-query` 让筛选、分组、聚合、排序和 TopN 在 Base 云端查询服务中执行。
+本文档是 `+data-query` JSON DSL 的单一事实来源（SSOT），用于说明完整字段、操作符、限制、返回和错误恢复。数据表查询与分析先由 [data analysis SOP](lark-base-data-analysis-sop.md) 选路；Cloud SOP 选定 `+data-query` 后先读 [data-query guide](lark-base-data-query-guide.md)，guide 未覆盖需求或用户明确要求完整 DSL/API reference 时再读本文。
 
 ## 限制
 

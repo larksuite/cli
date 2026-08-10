@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/shortcuts/base/recordexport"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -203,6 +204,9 @@ func recordSearchJSONBody(runtime *common.RuntimeContext) (map[string]interface{
 	}
 	if err := normalizeRecordSearchJSONBody(body); err != nil {
 		return nil, err
+	}
+	if _, exists := body["limit"]; !exists && runtime.Str("format") == recordexport.FormatNDJSON {
+		body["limit"] = maxNDJSONRecordReadLimit
 	}
 	return body, applyRecordQueryToBody(runtime, body)
 }

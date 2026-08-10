@@ -61,6 +61,7 @@ metadata:
 | 创建/更新字段 | `+field-create` / `+field-update` | 同一表创建多个字段时，默认一次向 `+field-create --json` 传字段对象数组；预计串行运行时间超过 caller/tool timeout 时按时间预算拆分，不按固定条数切块；仅创建一个或多个只含 `name` + `type:text` 的简单字段时按 `+field-create --help` 即可，其他类型或属性必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)，lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；仍需逐项恢复或命令细节时读 [lark-base-field-create.md](references/lark-base-field-create.md)，更新细节读 [lark-base-field-update.md](references/lark-base-field-update.md) |
 | 读取已知记录 | `+record-get` | 已知具体 `record_id` 时可以直接读取记录 |
 | 查询或分析数据表记录 | 由 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md) 选择 | 数据表记录查询和分析任务先读 SOP |
+| 解释、编写或排错 `+data-query` DSL | [data-query guide](references/lark-base-data-query-guide.md) | 用户明确询问 `+data-query` 命令或 DSL 时直接读取；需要完整字段、操作符、限制或响应协议时再读 [DSL SSOT](references/lark-base-data-query.md) |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
 | 附件字段 | `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` | 使用附件操作命令上传本地文件系统中的文件，下载/删除按 file token 或字段定位 |
 | 删除记录 / 分享记录链接 / 历史 | `+record-delete` / `+record-share-link-create` / `+record-history-list` | 删除前确认 record；分享链接最多 100 条；历史读 [lark-base-record-history-list.md](references/lark-base-record-history-list.md)，只查单条记录，不做整表审计 |
@@ -149,7 +150,7 @@ metadata:
 - [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md)：所有数据表记录查询和分析的统一入口；依次选择 jq、Python 或 Cloud
 - [Python 标准库](references/lark-base-data-analysis-python-stdlib.md) / [pandas](references/lark-base-data-analysis-pandas.md)：统一数据分析 SOP 选定 Python 实现后按需读取的同场景示例
 - [lark-base-data-analysis-cloud.md](references/lark-base-data-analysis-cloud.md)：统一 SOP 判定 jq 与 Python 路径均不适用时的云端查询 SOP
-- [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md) / [lark-base-data-query.md](references/lark-base-data-query.md)：聚合查询入口 fewshot 与 DSL SSOT；`+data-query` 的 `filters` 结构是独立对象 DSL，不使用公共 tuple filter 协议
+- [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md) / [lark-base-data-query.md](references/lark-base-data-query.md)：Cloud SOP 选定 `+data-query` 后或用户直接询问该命令/DSL 时读取 fewshot，完整 DSL 细节再读 SSOT；其 `filters` 使用独立对象 DSL
 - [lark-base-cell-value.md](references/lark-base-cell-value.md)：记录 CellValue 构造
 - [lark-base-field-json.md](references/lark-base-field-json.md)：字段 JSON 构造
 - [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)：公式与 lookup 字段

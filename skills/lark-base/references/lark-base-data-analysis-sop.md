@@ -1,6 +1,6 @@
 # Base 数据表查询与分析 SOP
 
-所有数据表记录查询和分析任务先读本 SOP，包括记录预览、`+record-get`、`+record-list`、`+record-search`、`+data-query`、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、全局结论和查询后写入。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按任务所需数据规模与计算复杂度选择对应路径。
+数据表记录查询和分析任务先读本 SOP，包括记录预览、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、全局结论和查询后写入。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按任务所需数据规模与计算复杂度选择对应路径。用户直接要求解释、编写或排错 `+data-query` 命令或 DSL 时，直接读 [data-query guide](lark-base-data-query-guide.md)。
 
 ## 分流决策
 
@@ -8,11 +8,13 @@
 2. 如果结论必须依赖 LLM 理解原始内容，例如开放文本打标、情绪或意图识别、主题归纳、语义分类、相似性判断或实体消歧，进入下文“LLM 语义分析”路径。
 3. 对于其余确定性查询，任一分析表超过 2000 行时，先从任务意图中为所有大表提取可在单表内独立执行的谓词，例如日期范围、状态和关键词，再按下文将谓词逐表下推，并用 `--field-id '<一个简单标量字段>' --limit 2000 --output <probe>.ndjson --minimal-stdout` 探测。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) 用云端的数据分析能力。
 4. 所有分析表都不超过 2000 行后：若只有一张表且短 jq 可清晰完成筛选、计数、简单分组/聚合/排序、TopN 可以使用 jq。
-5. 其余确定性任务比如多表、日历计算和复杂数据分析，在 Python 可用时使用 Python，否则用云端的数据分析能力。
+5. 其余确定性任务比如多表、日历计算和复杂数据分析，在 Python 可用时使用 Python，否则进入 [Cloud SOP](lark-base-data-analysis-cloud.md)。
+
+进入 Cloud 后先由 Cloud SOP 在原始记录查询与聚合查询之间选路；只有选定 `+data-query` 时才读取 data-query guide。
 
 ## 执行与交付
 
-分析输入默认采用 `--output x.ndjson`；`--format json` 和 Markdown 适用于向用户即时展示的小结果。
+分析输入默认采用 `--output x.ndjson`；NDJSON 未显式传 `--limit` 时默认读取最多 2000 条，正式分析通常沿用该范围。窄投影探测、快速预览或用户明确要求前 N 条时再设置较小的 `--limit`。`--format json` 和 Markdown 适用于向用户即时展示的小结果。
 
 缩小大表记录范围时，展示文本关键词用 `+record-search`，日期、状态、数字、空值、选项、人员和关联等结构化条件用 `+record-list --filter-json`。
 
@@ -177,7 +179,6 @@ lark-cli base +record-list \
   --table-id <table_id> \
   --field-id 状态 \
   --field-id 金额 \
-  --limit 2000 \
   --output records.ndjson \
   --minimal-stdout &&
 jq -s '

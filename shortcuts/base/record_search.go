@@ -30,7 +30,7 @@ var BaseRecordSearch = common.Shortcut{
 		recordFilterFlag(),
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "10", Desc: "maximum records to return; range 1-200, or 1-2000 for ndjson"},
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "10", Desc: "maximum records to return; range 1-200, or 1-2000 for ndjson; omitted limit uses 2000 for ndjson"},
 		recordReadFormatFlag(),
 		recordOutputFlag(),
 		recordMinimalStdoutFlag(),
@@ -38,12 +38,12 @@ var BaseRecordSearch = common.Shortcut{
 		recordOverwriteFlag(),
 	},
 	Tips: []string{
-		`Happy path fields: keyword (string), search_fields (1-20 field names/ids), select_fields (optional projection, <=50), view_id (optional), offset (default 0), limit (default 10; inline range 1-200, ndjson range 1-2000).`,
-		"JSON constraints: keyword length >=1; search_fields length 1-20; select_fields length <=50; offset >=0 defaults to 0; limit defaults to 10 and follows the active output format's range.",
+		`Happy path fields: keyword (string), search_fields (1-20 field names/ids), select_fields (optional projection, <=50), view_id (optional), offset (default 0), limit (default 10 inline or 2000 for ndjson; inline range 1-200, ndjson range 1-2000).`,
+		"JSON constraints: keyword length >=1; search_fields length 1-20; select_fields length <=50; offset >=0 defaults to 0; omitted limit uses 10 inline or 2000 for ndjson.",
 		"view_id scopes search to records in that view; when select_fields is omitted, returned fields follow that view's visible fields.",
 		`Example: lark-cli base +record-search --base-token <base_token> --table-id <table_id> --keyword Alice --search-field Name --field-id Name --field-id Status --limit 20`,
 		`Example with filter/sort JSON: lark-cli base +record-search --base-token <base_token> --table-id <table_id> --keyword Alice --search-field Name --filter-json @filter.json --sort-json '[{"field":"Updated","desc":true}]'`,
-		`Example for analysis: lark-cli base +record-search --base-token <base_token> --table-id <table_id> --keyword Alice --search-field Name --field-id Name --field-id Status --limit 2000 --output ./records.ndjson --minimal-stdout`,
+		`Example for analysis: lark-cli base +record-search --base-token <base_token> --table-id <table_id> --keyword Alice --search-field Name --field-id Name --field-id Status --output ./records.ndjson --minimal-stdout`,
 		`Text equality filter: --filter-json '{"logic":"and","conditions":[["Title","==","Launch plan"]]}'`,
 		`Text contains/like filter: --filter-json '{"logic":"and","conditions":[["Title","intersects","urgent"]]}'`,
 		`Option intersection filter: --filter-json '{"logic":"and","conditions":[["Tags","intersects",["P0","Blocked"]]]}'`,
@@ -53,7 +53,7 @@ var BaseRecordSearch = common.Shortcut{
 		"Use --json only when you need to pass the full search body directly.",
 		recordAnalysisOutputTip,
 	},
-	Normalize: normalizeRecordReadOutput,
+	Normalize: normalizeRecordSearchOutput,
 	JQFormats: []string{"ndjson"},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateRecordSearchFlags(runtime)

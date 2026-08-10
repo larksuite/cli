@@ -1,8 +1,6 @@
 # Base data-query guide
 
-This guide is the entry point for `+data-query`. Use it for common aggregation fewshots and command selection. For the complete DSL fields, operators, limits, and response details, use [lark-base-data-query.md](lark-base-data-query.md) as the DSL SSOT.
-
-For a table-record query or analysis task, first read [lark-base-data-analysis-sop.md](lark-base-data-analysis-sop.md). Read [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) and this guide after the SOP enters the Cloud path and selects `+data-query`; read this guide directly when the user explicitly asks about the `+data-query` command or DSL.
+Read this guide after the [data analysis SOP](lark-base-data-analysis-sop.md) enters the Cloud path and selects `+data-query`, or directly when the user explicitly asks about the `+data-query` command or DSL. It provides common aggregation fewshots; use [lark-base-data-query.md](lark-base-data-query.md) only for complete DSL fields, operators, limits, response details, or error recovery.
 
 ## When to use
 

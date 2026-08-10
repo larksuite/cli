@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,8 +24,9 @@ import (
 
 const (
 	maxInlineRecordReadLimit = 200
+	ndjsonRecordPageSize     = 500
 	maxNDJSONRecordReadLimit = 2000
-	recordAnalysisOutputTip  = "For analysis, parsing, comparison, or reusable local input, prefer --output ./records.ndjson --minimal-stdout; use inline markdown/json for small results intended for immediate display."
+	recordAnalysisOutputTip  = "For analysis, parsing, comparison, or reusable local input, prefer --output ./records.ndjson --minimal-stdout; ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result."
 )
 
 var recordExportNow = time.Now
@@ -58,26 +60,42 @@ func recordOverwriteFlag() common.Flag {
 }
 
 func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) error {
-	if strings.TrimSpace(flags.Str("output")) == "" {
-		return nil
-	}
-	if flags.Changed("format") && flags.Str("format") != recordexport.FormatNDJSON {
-		return errs.NewValidationError(
-			errs.SubtypeInvalidArgument,
-			"--output writes an ndjson artifact and conflicts with --format %s",
-			flags.Str("format"),
-		).
-			WithParam("--output").
-			WithParams(
-				errs.InvalidParam{Name: "--output", Reason: "requires ndjson"},
-				errs.InvalidParam{Name: "--format", Reason: "conflicts with --output"},
+	if strings.TrimSpace(flags.Str("output")) != "" {
+		if flags.Changed("format") && flags.Str("format") != recordexport.FormatNDJSON {
+			return errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"--output writes an ndjson artifact and conflicts with --format %s",
+				flags.Str("format"),
 			).
-			WithHint("Remove --format or set --format ndjson.")
-	}
-	if !flags.Changed("format") {
-		return flags.SetCanonicalFrom("output", "format", recordexport.FormatNDJSON)
+				WithParam("--output").
+				WithParams(
+					errs.InvalidParam{Name: "--output", Reason: "requires ndjson"},
+					errs.InvalidParam{Name: "--format", Reason: "conflicts with --output"},
+				).
+				WithHint("Remove --format or set --format ndjson.")
+		}
+		if !flags.Changed("format") {
+			return flags.SetCanonicalFrom("output", "format", recordexport.FormatNDJSON)
+		}
 	}
 	return nil
+}
+
+func normalizeRecordNDJSONLimit(_ context.Context, flags *common.FlagContext) error {
+	if flags.Str("format") != recordexport.FormatNDJSON || flags.Changed("limit") {
+		return nil
+	}
+	return flags.SetCanonical("limit", strconv.Itoa(maxNDJSONRecordReadLimit))
+}
+
+func normalizeRecordSearchOutput(ctx context.Context, flags *common.FlagContext) error {
+	if err := normalizeRecordReadOutput(ctx, flags); err != nil {
+		return err
+	}
+	if strings.TrimSpace(flags.Str("json")) != "" {
+		return nil
+	}
+	return normalizeRecordNDJSONLimit(ctx, flags)
 }
 
 func validateRecordExportFlags(runtime *common.RuntimeContext) error {
@@ -200,7 +218,7 @@ func executeRecordListNDJSON(
 	currentOffset := startOffset
 	remaining := requestedLimit
 	for remaining > 0 {
-		pageLimit := min(remaining, maxInlineRecordReadLimit)
+		pageLimit := min(remaining, ndjsonRecordPageSize)
 		params := cloneMap(baseParams)
 		params["offset"] = currentOffset
 		params["limit"] = pageLimit
@@ -242,7 +260,7 @@ func executeRecordSearchNDJSON(runtime *common.RuntimeContext, requestBody map[s
 	currentOffset := startOffset
 	remaining := requestedLimit
 	for remaining > 0 {
-		pageLimit := min(remaining, maxInlineRecordReadLimit)
+		pageLimit := min(remaining, ndjsonRecordPageSize)
 		body := cloneMap(requestBody)
 		body["offset"] = currentOffset
 		body["limit"] = pageLimit
