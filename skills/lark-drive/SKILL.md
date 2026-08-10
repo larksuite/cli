@@ -10,7 +10,7 @@ metadata:
 
 # drive (v1)
 
-**认证与确认路由：** 普通 Drive 请求直接执行目标命令。仅当用户要求检查登录态或身份，或目标命令返回认证失败（含 `1061005`）、授权、scope、权限或 `confirmation_required` 时，读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 处理。
+**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
 > **术语说明：** 飞书云空间也常被称为"云盘"、"云存储"、"网盘"或"我的空间"，这些说法通常指的是同一个产品，是飞书官方的云端文件存储与管理中心。
 

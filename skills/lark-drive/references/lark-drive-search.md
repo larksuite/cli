@@ -1,6 +1,8 @@
 
 # drive +search（云空间/云盘/云存储搜索：扁平 flag，面向自然语言场景）
 
+> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+
 基于 Search v2 接口 `POST /open-apis/search/v2/doc_wiki/search`，支持以**用户身份或应用身份**统一搜索云空间（云盘/云存储）对象。
 
 核心特性：
