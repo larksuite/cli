@@ -4045,3 +4045,93 @@ func TestBaseViewExecutePropertyGettersAndExtendedSetters(t *testing.T) {
 		}
 	})
 }
+
+func TestBaseFieldButtonWorkflowExecute(t *testing.T) {
+	t.Run("bind sends wkf workflow id", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/button-workflow:bind",
+			BodyFilter: func(body []byte) bool {
+				return string(body) == `{"workflow_id":"wkf_x"}`
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"workflow_id": "wkf_x", "table_id": "tbl_x", "field_id": "fld_x"},
+			},
+		})
+		err := runShortcut(t, BaseFieldButtonBind, []string{"+field-button-bind", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--workflow-id", "wkf_x"}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		for _, want := range []string{`"workflow_id": "wkf_x"`, `"table_id": "tbl_x"`, `"field_id": "fld_x"`} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("stdout missing %q:\n%s", want, got)
+			}
+		}
+	})
+
+	t.Run("bind rejects internal numeric workflow id", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseFieldButtonBind, []string{"+field-button-bind", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--workflow-id", "123"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "wkf prefix") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("get field binding", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/button-workflow",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"workflow_id": "wkf_x"},
+			},
+		})
+		err := runShortcut(t, BaseFieldButtonBindingGet, []string{"+field-button-binding-get", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x"}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"workflow_id": "wkf_x"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("unbind", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/button-workflow:unbind",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"unbound": true}},
+		})
+		err := runShortcut(t, BaseFieldButtonUnbind, []string{"+field-button-unbind", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x"}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"unbound": true`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("workflow button fields", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/workflows/wkf_x/button-fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"items": []interface{}{map[string]interface{}{"table_id": "tbl_x", "field_id": "fld_x"}}},
+			},
+		})
+		err := runShortcut(t, BaseWorkflowButtonFields, []string{"+workflow-button-fields", "--base-token", "app_x", "--workflow-id", "wkf_x"}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"table_id": "tbl_x"`) || !strings.Contains(got, `"field_id": "fld_x"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+}

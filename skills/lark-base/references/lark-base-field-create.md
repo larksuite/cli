@@ -35,6 +35,12 @@ lark-cli base +field-create \
   --base-token <base_token> \
   --table-id <table_id> \
   --json '[{"name":"备注","type":"text"},{"name":"优先级","type":"select","multiple":false,"options":[{"name":"高"},{"name":"低"}]}]'
+
+# 按钮字段只创建静态字段配置，Workflow 绑定走 +field-button-bind
+lark-cli base +field-create \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --json '{"name":"提交审批","type":"button","button_text":"提交"}'
 ```
 
 ## 参数
@@ -65,6 +71,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
   - `link`：必须有 `link_table`，可选 `bidirectional`、`bidirectional_link_field_name`。
   - `formula`：必须有 `expression`；先读 formula guide，再创建。
   - `lookup`：必须有 `from`、`select`、`where`；先读 lookup guide，再创建。
+  - `button`：只写按钮展示配置，例如 `button_text`；不要写 `workflow_id` 或 `property.trigger`，绑定必须在字段创建后调用 `+field-button-bind`。
 
 **正确（base +field-create）**
 
@@ -106,11 +113,13 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 
 1. formula / lookup 字段必须先阅读对应指南；没读之前不要直接创建。
 2. 创建简单字段时，优先相信命令返回；只有用户要求精确核对额外属性，或返回建议读回时，才继续执行 `+field-get`。
+3. 按钮字段的完整流程是：`+workflow-create` 创建 disabled 的 ButtonTrigger Workflow，`+field-create` 创建不含 Workflow ID 的按钮字段，`+field-button-bind` 建立绑定，`+field-button-binding-get` 查询确认，再 `+workflow-enable` 启用 Workflow。
 
 ## 坑点
 
 - ⚠️ 这是写入操作，执行前必须确认。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先读对应 guide，再创建。
+- ⚠️ 当 `type` 是 `button` 时，字段 JSON 不建立 Workflow 绑定；不要通过 `property.trigger.config.id` 换绑。
 - ⚠️ 不要把“每次创建后都 `+field-get`”当作固定流程；按返回里的 `field_get_recommended` 和 `next_step` 决定是否读回。
 
 ## 参考
