@@ -49,13 +49,8 @@ lark-cli drive +copy --token <WIKI_TOKEN> --type wiki --name '副本名称' --fo
 1. 需要按标题定位源文件时，先按 [`lark-drive-search.md`](lark-drive-search.md) 使用 `drive +search` 得到唯一匹配的源资源；已提供可直接使用的 URL 或 token 时从该资源开始。
 2. 使用已确认的源 URL，或真实 token 与 type，执行一次 `drive +copy`。目标位置使用用户给出的文件夹 URL/token；复制到“我的空间”或未指定其他目标位置时使用 `--folder-token my_space`。
 3. 从成功响应的 `data.file_token` 或 `data.url` 取得新副本；后续只操作该副本，不重新搜索副本，也不操作源 token。
-4. 后续操作的参数已由用户输入和复制响应完整提供、且不依赖副本现状时，直接执行。固定的文档开头或末尾锚点属于此类；例如在 Docx 开头插入内容：
-
-   ```bash
-   lark-cli docs +update --doc "<COPY_FILE_TOKEN>" --command block_insert_after --block-id 0 --content '<p>要插入的内容</p>'
-   ```
-
-5. 操作依赖当前内容或真实 block ID 时，按 `lark-doc` 的通用更新流程读取所需的最小范围。更新返回 `data.result=success` 且 `data.warnings` 为空时任务完成；用户要求验证、返回 `partial_success`、`data.warnings` 非空，或下一步依赖更新后的状态时再读取副本。
+4. 后续写入所需的目标 token、位置和内容均可由用户输入与复制响应确定时，直接按对应资源 Skill 执行写入，不为获取这些参数而预读副本。
+5. 需要当前结构才能确定写入位置时，按对应资源 Skill 读取必要的最小范围；不得猜测 block ID 或正文范围。写入返回明确成功且没有 warning 后即完成；仅在用户要求验证、返回部分成功或 warning，或下一步依赖服务端最新状态时读取结果。
 6. 如果复制后的编辑失败，保留 `data.file_token`，只重试编辑步骤；不要重新执行 `drive +copy`，避免创建重复副本。
 
 ## 输出
