@@ -89,6 +89,20 @@ metadata:
 12. 用户直接问“这个会议讲了什么 / 现在讲到哪了”且上下文没有明确 `meeting_id` 时，先用用户身份发现当前会议；如果用户明确要求应用机器人视角，或上下文已经是应用机器人参会流程，再用应用身份发现。若返回多个会议，展示候选并让用户选择。
 13. 用户直接提供 **9 位会议号** 并询问会中事件/会议内容时，默认把它当作 active meeting 的筛选条件：先按当前身份查 active meetings，并在返回里匹配 `meeting_no == <9位会议号>`；匹配到唯一会议后取长数字 `meeting_id`，再用同一身份查事件。只有用户明确要求“入会 / 让应用机器人旁听 / 代我参会”时才改用 `+meeting-join`。
 
+#### 文档上下文事件
+
+`event_type == "document_context_changed"` 时，结构化消费按 `payload.document_context_changed_items` 原序读取；CLI pretty timeline 与其他事件一致，按 item `time` 排序。每个 item 只接受一个 `comment_focus`、`section_location` 或 `element_preview`；零个、多个、字段缺失或未知值不生成 pretty 条目，但保留事件 `payload` 和原标识，不猜字段别名。
+
+| context | 消费规则 |
+| --- | --- |
+| `comment_focus` | 先按完整事件流中的 `magic_share_started/ended` 维护 `share_id -> share_doc` 共享会话映射，再用当前 item 的 `share_id` 精确关联文档；禁止退化为“最近一次共享”猜测。`document_context_changed` item 自带的 `share_doc` 当前不提供文档信息，只保留在 raw payload，不作为解析来源。仅当 `focused=true`、单个 `comment_id` 和由开始共享事件解析出的有效文档 URL 均存在时，用 `drive +batch-query-comments` 精确查询该 ID；严格匹配、回复分页与失败终止条件见 reference。`focused=false` 表示清除焦点，零评论调用。 |
+| `section_location` | 从当前 item 的 `parent_titles/title` 按原序派生 pretty timeline 中的章节路径；JSON/NDJSON 继续只保留原始 payload，不新增事件顶层 `section_path`。不得根据 `level` 反转、截断或补造路径，也不调用文档 API。 |
+| `element_preview` | 只有用户明确要求预览且 `action=open` 时路由：`element_type=image` 使用 `docs +media-preview --token <element_token> --output <用户选择路径>`；`element_type=whiteboard` 使用 `docs +media-download --type whiteboard --token <element_token> --output <用户选择路径>`。`close`、未知 type/action、缺 token 或无明确预览意图均零调用；禁止把未知 `element_type` 透传给 `--type`，禁止自动选择覆盖路径。 |
+
+`vc +meeting-events` 始终只读，不因评论或元素上下文自动调用 Drive/Docs，也不写文件。`share_id` 无法关联、评论 API/权限失败或 reply 游标为空/重复时，明确标记结果为未解析或 partial，并保留 `share_id`、`share_doc`、`comment_id`、`element_token`、`block_id` 和 raw payload，给出可重试的精确命令；不要用“最近一次共享”、全量评论扫描或自动下载兜底。完整命令与终止条件见 [`+meeting-events` reference](references/lark-vc-agent-meeting-events.md#文档上下文事件消费)。
+
+JSON/NDJSON 的单事件 envelope 始终只使用既有 `event_id/event_type/event_time/actors/payload` 字段；不得为 `document_context_changed` 单独增加顶层 `summary/section_path` 或新的 `derived` 层。结构化消费从 `payload.document_context_changed_items[]` 读取，pretty 仅作可读派生展示。
+
 ### 3. 发送会中文本或会中表情（写操作）
 
 1. 用户明确要求在当前进行中的会议里发送提示、说明、会中表情，或反馈“听不到 / 看不到 / 声音清楚 / 效果不错”时，用 `+meeting-message-send`。
@@ -165,7 +179,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 | --------------------------------------------------------------- | -- | -------------------------------------------------------------------------- |
 | [`+meeting-join`](references/lark-vc-agent-meeting-join.md)     | 写  | Join an in-progress meeting by 9-digit meeting number                      |
 | [`+meeting-list-active`](references/lark-vc-agent-meeting-list-active.md) | 读  | List active meetings and discover meeting_id for event reads               |
-| [`+meeting-events`](references/lark-vc-agent-meeting-events.md) | 读  | List meeting events visible to the app agent (participant joined/left, transcript, chat, share) |
+| [`+meeting-events`](references/lark-vc-agent-meeting-events.md) | 读  | List meeting events visible to the app agent (participant, transcript, chat, share, document context) |
 | [`+meeting-message-send`](references/lark-vc-agent-meeting-message-send.md) | 写  | Send an in-meeting text message or reaction emoji                          |
 | [`+meeting-leave`](references/lark-vc-agent-meeting-leave.md)   | 写  | Leave a meeting by meeting\_id                                             |
 
