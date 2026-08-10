@@ -1,6 +1,6 @@
 # 首次配置 lark-cli
 
-首次使用需运行 `lark-cli config init --new` 完成应用配置。
+首次使用需运行 `lark-cli config init` 完成应用配置。
 
 当你帮用户初始化配置时，使用background方式使用下面的命令发起配置应用流程，启动后读取输出，从中提取授权链接并发给用户。
 

@@ -8,7 +8,7 @@
 { "ok": true, "identity": "user", "data": { "guid": "..." }, "meta": { "count": 1 } }
 ```
 
-错误写入 **stderr**（退出码非 0）：
+错误信封写入 **stderr**（退出码非 0）：
 
 ```json
 { "ok": false, "identity": "user", "error": { "type": "authorization", "subtype": "missing_scope", "code": 99991679, "message": "...", "hint": "...", "missing_scopes": ["..."] } }

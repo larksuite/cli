@@ -36,5 +36,3 @@ lark-cli 对高风险写操作（`risk: "high-risk-write"`）有强制确认门�
 
 - shortcut：`lark-cli <service> +<cmd> --help` 顶部会显示 `Risk: high-risk-write`
 - service 命令：`lark-cli schema <service>.<resource>.<method> --format json` 的返回值里 `"risk": "high-risk-write"`
-
-标注 `high-risk-write` 不等于一定走 exit-10 门禁；以实际 exit 10 + envelope 为准，不要臆造确认 flag。

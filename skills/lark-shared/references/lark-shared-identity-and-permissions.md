@@ -2,8 +2,6 @@
 
 ## 认证任务速查
 
-认证、scope、业务域、登录态、退出登录态、撤销授权问题都走本 reference。
-
 | 用户意图 | 首选命令 / 回答 |
 |---|---|
 | 获取全部权限 | `lark-cli auth login --domain all --no-wait --json` |
@@ -44,7 +42,7 @@ LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 lark-cli a
 
 遇到权限相关错误时，**根据当前身份类型采取不同解决方案**。
 
-错误响应中的关键字段：
+错误响应中包含关键信息：
 - `missing_scopes`：列出缺失的 scope (N选1)
 - `console_url`：飞书开发者后台的权限配置链接
 - `hint`：建议的修复命令
