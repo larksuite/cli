@@ -172,6 +172,49 @@ func TestNewCmdServiceMethod_StrictModeHidesAsFlag(t *testing.T) {
 	}
 }
 
+// Regression for larksuite/cli#2206: a method restricted to a single identity
+// must advertise exactly that identity in --as help, so --help stops promising
+// --as bot on commands that CheckIdentity will refuse at run time.
+func TestNewCmdServiceMethod_RestrictedIdentityAdvertisedInHelp(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	m := meta.FromMap(map[string]interface{}{
+		"description":  "create draft",
+		"httpMethod":   "POST",
+		"accessTokens": []string{"user"},
+	})
+	cmd := NewCmdServiceMethod(f, driveSpec(), m, "create", "user_mailbox.drafts", nil)
+
+	flag := cmd.Flags().Lookup("as")
+	if flag == nil {
+		t.Fatal("expected --as flag to be registered")
+	}
+	wantUsage := "identity type: user"
+	if flag.Usage != wantUsage {
+		t.Errorf("Usage = %q, want %q", flag.Usage, wantUsage)
+	}
+	if strings.Contains(flag.Usage, "bot") {
+		t.Errorf("Usage should not advertise bot for user-only method, got %q", flag.Usage)
+	}
+}
+
+func TestNewCmdServiceMethod_UnrestrictedIdentityAdvertisesBoth(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	m := meta.FromMap(map[string]interface{}{
+		"description": "list",
+		"httpMethod":  "GET",
+	})
+	cmd := NewCmdServiceMethod(f, driveSpec(), m, "list", "files", nil)
+
+	flag := cmd.Flags().Lookup("as")
+	if flag == nil {
+		t.Fatal("expected --as flag to be registered")
+	}
+	wantUsage := "identity type: user | bot"
+	if flag.Usage != wantUsage {
+		t.Errorf("Usage = %q, want %q", flag.Usage, wantUsage)
+	}
+}
+
 // ── NewCmdServiceMethod flags ──
 
 func TestNewCmdServiceMethod_GETHasNoDataFlag(t *testing.T) {

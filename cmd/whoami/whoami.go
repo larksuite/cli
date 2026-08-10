@@ -74,7 +74,7 @@ func newCmdWhoami(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Comm
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
-	cmdutil.AddAPIIdentityFlag(context.Background(), cmd, f, &opts.As)
+	cmdutil.AddAPIIdentityFlag(context.Background(), cmd, f, &opts.As, nil)
 	// Output is always JSON. Accept (and ignore) --json so existing
 	// `whoami --json` callers don't break; hide it to avoid implying a non-JSON
 	// mode exists.

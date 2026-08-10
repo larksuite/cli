@@ -287,7 +287,14 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 		}
 		cmd.Flags().StringVar(&opts.Data, "data", "", dataUsage)
 	}
-	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr)
+	// Advertise only the identities the method's metadata permits; unrestricted
+	// methods keep the default user | bot shape. This keeps --help in sync with
+	// CheckIdentity below (see larksuite/cli#2206).
+	identities := []string(nil)
+	if spec.restricts {
+		identities = spec.identities
+	}
+	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr, identities)
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")

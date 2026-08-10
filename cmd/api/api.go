@@ -97,7 +97,7 @@ Examples:
 
 	cmd.Flags().StringVar(&opts.Params, "params", "", "query parameters JSON (supports - for stdin, @file for file input)")
 	cmd.Flags().StringVar(&opts.Data, "data", "", "request body JSON (supports - for stdin, @file for file input)")
-	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr)
+	cmdutil.AddAPIIdentityFlag(ctx, cmd, f, &asStr, nil)
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "output file path for binary responses")
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
 	cmd.Flags().IntVar(&opts.PageSize, "page-size", 0, "page size (0 = use API default)")

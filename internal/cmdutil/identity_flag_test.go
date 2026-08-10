@@ -16,7 +16,7 @@ func TestAddAPIIdentityFlag_NonStrictMode(t *testing.T) {
 	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
 	cmd := &cobra.Command{Use: "test"}
 
-	AddAPIIdentityFlag(context.Background(), cmd, f, nil)
+	AddAPIIdentityFlag(context.Background(), cmd, f, nil, nil)
 
 	flag := cmd.Flags().Lookup("as")
 	if flag == nil {
@@ -28,6 +28,10 @@ func TestAddAPIIdentityFlag_NonStrictMode(t *testing.T) {
 	if got := flag.DefValue; got != "" {
 		t.Fatalf("default value = %q, want empty string", got)
 	}
+	wantUsage := "identity type: user | bot"
+	if flag.Usage != wantUsage {
+		t.Errorf("Usage = %q, want %q", flag.Usage, wantUsage)
+	}
 }
 
 func TestAddAPIIdentityFlag_StrictModeHidesFlagAndLocksDefault(t *testing.T) {
@@ -36,7 +40,7 @@ func TestAddAPIIdentityFlag_StrictModeHidesFlagAndLocksDefault(t *testing.T) {
 	})
 	cmd := &cobra.Command{Use: "test"}
 
-	AddAPIIdentityFlag(context.Background(), cmd, f, nil)
+	AddAPIIdentityFlag(context.Background(), cmd, f, nil, nil)
 
 	flag := cmd.Flags().Lookup("as")
 	if flag == nil {
@@ -47,6 +51,53 @@ func TestAddAPIIdentityFlag_StrictModeHidesFlagAndLocksDefault(t *testing.T) {
 	}
 	if got := flag.DefValue; got != "bot" {
 		t.Fatalf("default value = %q, want %q", got, "bot")
+	}
+}
+
+func TestAddAPIIdentityFlag_UserOnly(t *testing.T) {
+	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	cmd := &cobra.Command{Use: "test"}
+
+	AddAPIIdentityFlag(context.Background(), cmd, f, nil, []string{"user"})
+
+	flag := cmd.Flags().Lookup("as")
+	if flag == nil {
+		t.Fatal("expected --as flag to be registered")
+	}
+	if flag.Hidden {
+		t.Fatal("expected --as flag to be visible")
+	}
+	if got := flag.DefValue; got != "" {
+		t.Fatalf("default value = %q, want empty string", got)
+	}
+	wantUsage := "identity type: user"
+	if flag.Usage != wantUsage {
+		t.Errorf("Usage = %q, want %q", flag.Usage, wantUsage)
+	}
+	if strings.Contains(flag.Usage, "bot") {
+		t.Errorf("Usage should not advertise bot for user-only command, got %q", flag.Usage)
+	}
+}
+
+func TestAddAPIIdentityFlag_BotOnly(t *testing.T) {
+	f, _, _, _ := TestFactory(t, &core.CliConfig{AppID: "a", AppSecret: "s"})
+	cmd := &cobra.Command{Use: "test"}
+
+	AddAPIIdentityFlag(context.Background(), cmd, f, nil, []string{"bot"})
+
+	flag := cmd.Flags().Lookup("as")
+	if flag == nil {
+		t.Fatal("expected --as flag to be registered")
+	}
+	if flag.Hidden {
+		t.Fatal("expected --as flag to be visible")
+	}
+	if got := flag.DefValue; got != "" {
+		t.Fatalf("default value = %q, want empty string", got)
+	}
+	wantUsage := "identity type: bot"
+	if flag.Usage != wantUsage {
+		t.Errorf("Usage = %q, want %q", flag.Usage, wantUsage)
 	}
 }
 
