@@ -1,0 +1,293 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package apps
+
+import (
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/httpmock"
+)
+
+// requireConvertValidation extracts the typed ValidationError so its Param /
+// Hint can be asserted (Param lives on ValidationError, not the embedded Problem).
+func requireConvertValidation(t *testing.T, err error) *errs.ValidationError {
+	t.Helper()
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("err = %T %v, want *errs.ValidationError", err, err)
+	}
+	return ve
+}
+
+// idConvertEnvelope mirrors the success/partial JSON envelope for assertions.
+type idConvertEnvelope struct {
+	OK       bool   `json:"ok"`
+	Identity string `json:"identity"`
+	DryRun   bool   `json:"dry_run"`
+	Data     struct {
+		ConvertType string `json:"convert_type"`
+		Items       []struct {
+			Index    int    `json:"index"`
+			SourceID string `json:"source_id"`
+			TargetID string `json:"target_id"`
+		} `json:"items"`
+		Missed []struct {
+			Index    int    `json:"index"`
+			SourceID string `json:"source_id"`
+			Reason   string `json:"reason"`
+		} `json:"missed"`
+	} `json:"data"`
+	Meta struct {
+		Total       *int `json:"total"`
+		HitCount    *int `json:"hit_count"`
+		MissedCount *int `json:"missed_count"`
+	} `json:"meta"`
+}
+
+func decodeIDConvert(t *testing.T, out string) idConvertEnvelope {
+	t.Helper()
+	var env idConvertEnvelope
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("decode envelope: %v\n%s", err, out)
+	}
+	return env
+}
+
+// Acceptance 1: batch, partial hit. One of two IDs resolves; the other is
+// reconstructed into missed with reason not_found, keeping its input index.
+func TestAppsUserIDConvert_PartialHit(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/directory/user/id_convert",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"source_id": "ou_abc123", "target_id": "1234567890123456"},
+				},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "open-id-to-miaoda", "--ids", "ou_abc123,ou_def456", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	env := decodeIDConvert(t, stdout.String())
+	if !env.OK {
+		t.Fatalf("ok=false: %s", stdout.String())
+	}
+	if env.Data.ConvertType != "open-id-to-miaoda" {
+		t.Fatalf("convert_type=%q", env.Data.ConvertType)
+	}
+	if len(env.Data.Items) != 1 || env.Data.Items[0].Index != 0 || env.Data.Items[0].SourceID != "ou_abc123" || env.Data.Items[0].TargetID != "1234567890123456" {
+		t.Fatalf("items wrong: %+v", env.Data.Items)
+	}
+	if len(env.Data.Missed) != 1 || env.Data.Missed[0].Index != 1 || env.Data.Missed[0].SourceID != "ou_def456" || env.Data.Missed[0].Reason != "not_found" {
+		t.Fatalf("missed wrong: %+v", env.Data.Missed)
+	}
+	if env.Meta.Total == nil || *env.Meta.Total != 2 || env.Meta.HitCount == nil || *env.Meta.HitCount != 1 || env.Meta.MissedCount == nil || *env.Meta.MissedCount != 1 {
+		t.Fatalf("meta wrong: %+v", env.Meta)
+	}
+}
+
+// Full hit must still emit missed_count: 0 (explicit zero), proving the pointer
+// meta fields are not dropped by omitempty when the value is a real zero.
+func TestAppsUserIDConvert_FullHitEmitsZeroMissed(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/directory/user/id_convert",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"source_id": "1234567890123456", "target_id": "700123456789"},
+				},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "miaoda-to-feishu-user-id", "--ids", "1234567890123456", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	if !strings.Contains(stdout.String(), `"missed_count": 0`) {
+		t.Fatalf("expected explicit missed_count: 0 in meta: %s", stdout.String())
+	}
+	env := decodeIDConvert(t, stdout.String())
+	if len(env.Data.Missed) != 0 {
+		t.Fatalf("missed should be empty: %+v", env.Data.Missed)
+	}
+	if env.Meta.MissedCount == nil || *env.Meta.MissedCount != 0 {
+		t.Fatalf("missed_count should be present zero: %+v", env.Meta.MissedCount)
+	}
+}
+
+// Duplicate input IDs are not de-duped and are matched to distinct output rows
+// by position (first-match consumption of returned targets).
+func TestAppsUserIDConvert_DuplicateIDsByPosition(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/directory/user/id_convert",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"source_id": "ou_dup", "target_id": "111"},
+				},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "open-id-to-miaoda", "--ids", "ou_dup,ou_dup", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	env := decodeIDConvert(t, stdout.String())
+	if *env.Meta.Total != 2 {
+		t.Fatalf("total should count duplicates: %+v", env.Meta)
+	}
+	// First occurrence hits (index 0), the second has no target left → missed (index 1).
+	if len(env.Data.Items) != 1 || env.Data.Items[0].Index != 0 {
+		t.Fatalf("items wrong: %+v", env.Data.Items)
+	}
+	if len(env.Data.Missed) != 1 || env.Data.Missed[0].Index != 1 {
+		t.Fatalf("missed wrong: %+v", env.Data.Missed)
+	}
+}
+
+// Acceptance 2: --dry-run prints the assembled body without calling.
+func TestAppsUserIDConvert_DryRun(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "miaoda-to-open-id", "--ids", "111,222", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"id_convert_type": 10`) {
+		t.Fatalf("dry-run body missing id_convert_type 10: %s", got)
+	}
+	if !strings.Contains(got, `"111"`) || !strings.Contains(got, `"222"`) {
+		t.Fatalf("dry-run body missing ids: %s", got)
+	}
+	if !strings.Contains(got, "id_convert") {
+		t.Fatalf("dry-run should reference the id_convert endpoint: %s", got)
+	}
+}
+
+// Acceptance 3: invalid --convert-type → typed validation error on
+// --convert-type listing the allowed directions. The flag's Enum makes the
+// framework reject a bad value before Execute; subtype is invalid_argument
+// (the taxonomy's validation subtype) with param --convert-type.
+func TestAppsUserIDConvert_InvalidConvertType(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "bogus", "--ids", "111", "--as", "user"},
+		factory, stdout)
+	ve := requireConvertValidation(t, err)
+	if ve.Param != "--convert-type" {
+		t.Fatalf("param=%q, want --convert-type", ve.Param)
+	}
+	if !strings.Contains(ve.Message, "miaoda-to-open-id") || !strings.Contains(ve.Message, "miaoda-to-feishu-user-id") {
+		t.Fatalf("message should list allowed directions: %q", ve.Message)
+	}
+}
+
+// resolveConvertType is the internal mapping used by Execute/DryRun; unit-test
+// it directly so the hint wording (pipe-joined allowed list) stays covered even
+// though the flag Enum normally intercepts a bad value first.
+func TestResolveConvertType(t *testing.T) {
+	if st, err := resolveConvertType("miaoda-to-feishu-user-id"); err != nil || st != 40 {
+		t.Fatalf("miaoda-to-feishu-user-id → %d, %v; want 40, nil", st, err)
+	}
+	_, err := resolveConvertType("")
+	ve := requireConvertValidation(t, err)
+	if ve.Param != "--convert-type" || !strings.Contains(ve.Hint, "|") {
+		t.Fatalf("empty convert-type: param=%q hint=%q", ve.Param, ve.Hint)
+	}
+}
+
+// Acceptance 4a: empty --ids → validation / invalid_argument on --ids.
+func TestAppsUserIDConvert_EmptyIDs(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "open-id-to-miaoda", "--ids", "  ,  ,", "--as", "user"},
+		factory, stdout)
+	ve := requireConvertValidation(t, err)
+	if ve.Param != "--ids" {
+		t.Fatalf("param=%q, want --ids", ve.Param)
+	}
+	if !strings.Contains(ve.Hint, "1–100") {
+		t.Fatalf("hint should mention 1–100: %q", ve.Hint)
+	}
+}
+
+// Acceptance 4b: more than 100 IDs → validation / invalid_argument on --ids.
+func TestAppsUserIDConvert_TooManyIDs(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	ids := make([]string, 101)
+	for i := range ids {
+		ids[i] = "ou_" + strings.Repeat("a", 3) + string(rune('0'+i%10))
+	}
+	err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "open-id-to-miaoda", "--ids", strings.Join(ids, ","), "--as", "user"},
+		factory, stdout)
+	ve := requireConvertValidation(t, err)
+	if ve.Param != "--ids" {
+		t.Fatalf("param=%q, want --ids", ve.Param)
+	}
+}
+
+// Whole-batch rejection (OpenAPI code != 0) surfaces as an api error with the
+// passthrough code and log_id, and does not retry.
+func TestAppsUserIDConvert_WholeBatchRejected(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/directory/user/id_convert",
+		Body: map[string]interface{}{
+			"code":   1254045,
+			"msg":    "invalid request",
+			"log_id": "logid-xyz",
+			"data":   map[string]interface{}{},
+		},
+	})
+
+	err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "open-id-to-miaoda", "--ids", "ou_x", "--as", "user"},
+		factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryAPI)
+	if p.Code != 1254045 {
+		t.Fatalf("code=%d, want passthrough 1254045", p.Code)
+	}
+	if p.LogID != "logid-xyz" {
+		t.Fatalf("log_id=%q, want logid-xyz", p.LogID)
+	}
+}
+
+func TestAppsUserIDConvert_Registered(t *testing.T) {
+	found := false
+	for _, sc := range Shortcuts() {
+		if sc.Command == "+user-id-convert" {
+			found = true
+			if sc.Risk != "read" {
+				t.Fatalf("risk=%q, want read", sc.Risk)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("+user-id-convert not registered in Shortcuts()")
+	}
+}

@@ -24,11 +24,12 @@ import (
 //   - 3 plugin（install/uninstall/list）
 //   - 6 automation（list/get/create/update/enable/disable）
 //   - 9 role（role CRUD + role-member list/add/remove + role-match-list）
-//   - 6 creative app member/permission settings = 88。
-func TestAppsShortcuts_Returns88(t *testing.T) {
+//   - 6 creative app member/permission settings
+//   - 1 user-id-convert = 89。
+func TestAppsShortcuts_Returns89(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 88 {
-		t.Fatalf("Shortcuts() returned %d entries, want 88", len(got))
+	if len(got) != 89 {
+		t.Fatalf("Shortcuts() returned %d entries, want 89", len(got))
 	}
 }
 
