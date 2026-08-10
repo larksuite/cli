@@ -21,14 +21,14 @@ const (
 
 const dbSyncPreviewConfig = `{
   "mode": "batch",
-  "source": {"type": "base", "table": {"url": "https://base.example/table"}},
+  "source": {"type": "base", "base_url": "https://base.example/base/CDfkbxg2Ra8aJusw53ib3bpWcMh?table=tblDhz3b9tOrrgMt", "table": {"name": "订单"}},
   "target": {"type": "postgresql", "table": {"name": "orders", "action": "create"}},
   "schema_only": true
 }`
 
 const dbSyncCommitConfig = `{
   "mode": "streaming",
-  "source": {"type": "base", "table": {"url": "https://base.example/table"}},
+  "source": {"type": "base", "base_url": "https://base.example/base/CDfkbxg2Ra8aJusw53ib3bpWcMh?table=tblDhz3b9tOrrgMt", "table": {"name": "订单"}},
   "target": {"type": "postgresql", "table": {"name": "orders", "action": "use_existing"}},
   "field_maps": [
     {"source_field": "Base 表记录 ID", "target_field": "record_id", "enabled": true}
@@ -37,8 +37,35 @@ const dbSyncCommitConfig = `{
 
 const dbSyncNoFieldMapsConfig = `{
   "mode": "streaming",
-  "source": {"type": "base", "table": {"url": "https://base.example/table"}},
+  "source": {"type": "base", "base_url": "https://base.example/base/CDfkbxg2Ra8aJusw53ib3bpWcMh?table=tblDhz3b9tOrrgMt", "table": {"name": "订单"}},
   "target": {"type": "postgresql", "table": {"name": "orders", "action": "use_existing"}}
+}`
+
+// base_url has only domain+token (no ?table=) and source.table.name is empty →
+// the source table cannot be identified. +db-sync-create must reject this locally.
+// field_maps present so commit mode reaches the source-table check (not blocked
+// earlier on the field_maps requirement).
+const dbSyncNoTableNoNameConfig = `{
+  "mode": "streaming",
+  "source": {"type": "base", "base_url": "https://base.example/base/CDfkbxg2Ra8aJusw53ib3bpWcMh", "table": {"name": ""}},
+  "target": {"type": "postgresql", "table": {"name": "orders", "action": "create"}},
+  "field_maps": [{"source_field": "Base 表记录 ID", "target_field": "record_id", "enabled": true}]
+}`
+
+// base_url carries ?table=, source.table.name empty → identifiable via url table param.
+const dbSyncUrlTableNoNameConfig = `{
+  "mode": "batch",
+  "source": {"type": "base", "base_url": "https://base.example/base/CDfkbxg2Ra8aJusw53ib3bpWcMh?table=tblDhz3b9tOrrgMt", "table": {"name": ""}},
+  "target": {"type": "postgresql", "table": {"name": "orders", "action": "create"}},
+  "schema_only": true
+}`
+
+// base_url has no ?table= but source.table.name is set → identifiable via name.
+const dbSyncNoTableWithNameConfig = `{
+  "mode": "batch",
+  "source": {"type": "base", "base_url": "https://base.example/base/CDfkbxg2Ra8aJusw53ib3bpWcMh", "table": {"name": "订单"}},
+  "target": {"type": "postgresql", "table": {"name": "orders", "action": "create"}},
+  "schema_only": true
 }`
 
 func TestAppsDBSyncCreatePreviewDryRun(t *testing.T) {
@@ -105,6 +132,25 @@ func TestAppsDBSyncCreateCommitDryRun(t *testing.T) {
 	config := a.Body["config"].(map[string]interface{})
 	if config["mode"] != "streaming" || config["field_maps"] == nil {
 		t.Fatalf("dry-run body.config = %v", config)
+	}
+}
+
+func TestAppsDBSyncCreateCommitWithoutFieldMapsDryRun(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+		"+db-sync-create", "--app-id", "app_x", "--config", dbSyncNoFieldMapsConfig,
+		"--environment", "dev", "--dry-run", "--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+
+	api := dbSyncFirstDryRunAPI(t, stdout.String())
+	if api.Body["preview"] != false {
+		t.Fatalf("dry-run body = %v", api.Body)
+	}
+	config := api.Body["config"].(map[string]interface{})
+	if _, ok := config["field_maps"]; ok {
+		t.Fatalf("CLI must not inject field_maps when omitted: %v", config)
 	}
 }
 
@@ -233,6 +279,83 @@ func TestAppsDBSyncCreateRejectsUnsafeOutput(t *testing.T) {
 				t.Fatalf("Param = %q, want --output", ve.Param)
 			}
 		})
+	}
+}
+
+func TestAppsDBSyncCreateRequiresIdentifiableSourceTable(t *testing.T) {
+	// base_url without ?table= and empty source.table.name → rejected locally,
+	// for both preview and commit. Hint points at base +table-list.
+	for _, preview := range []bool{true, false} {
+		name := "commit"
+		args := []string{"+db-sync-create", "--app-id", "app_x", "--config", dbSyncNoTableNoNameConfig, "--as", "user"}
+		if preview {
+			name = "preview"
+			args = append(args, "--preview")
+		} else {
+			args = append(args, "--yes")
+		}
+		t.Run(name+" rejects unidentifiable source table", func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsDBSyncCreate, args, factory, stdout)
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %T %v, want validation", err, err)
+			}
+			if ve.Param != "--config" {
+				t.Fatalf("Param = %q, want --config", ve.Param)
+			}
+			if !strings.Contains(ve.Hint, "base +table-list") {
+				t.Fatalf("hint = %q, want base +table-list guidance", ve.Hint)
+			}
+		})
+	}
+
+	// base_url carries ?table= → identifiable even with empty name.
+	t.Run("url table param is identifiable", func(t *testing.T) {
+		factory, stdout, _ := newAppsExecuteFactory(t)
+		err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+			"+db-sync-create", "--app-id", "app_x", "--config", dbSyncUrlTableNoNameConfig,
+			"--preview", "--dry-run", "--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("url-table config must pass validation, got %v", err)
+		}
+	})
+
+	// source.table.name set → identifiable even without a url table param.
+	t.Run("source table name is identifiable", func(t *testing.T) {
+		factory, stdout, _ := newAppsExecuteFactory(t)
+		err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+			"+db-sync-create", "--app-id", "app_x", "--config", dbSyncNoTableWithNameConfig,
+			"--preview", "--dry-run", "--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("named-table config must pass validation, got %v", err)
+		}
+	})
+}
+
+// +db-sync-update must not inherit the create-only source-table preflight: an
+// update config with no url table and no name is legal (server reuses the
+// original task's source).
+func TestAppsDBSyncUpdateSkipsSourceTablePreflight(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	// add field_maps so parseDBSyncConfigFlag's update requirement is satisfied.
+	cfg := `{
+  "mode": "streaming",
+  "source": {"type": "base", "base_url": "https://base.example/base/CDfkbxg2Ra8aJusw53ib3bpWcMh", "table": {"name": ""}},
+  "target": {"type": "postgresql", "table": {"name": "orders", "action": "use_existing"}},
+  "field_maps": [{"source_field": "Base 表记录 ID", "target_field": "record_id", "enabled": true}]
+}`
+	err := runAppsShortcut(t, AppsDBSyncUpdate, []string{
+		"+db-sync-update", "--app-id", "app_x", "--task-id", "streaming_1",
+		"--config", cfg, "--environment", "dev", "--dry-run", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("update must not apply create-only source-table preflight, got %v", err)
+	}
+	if strings.Contains(stdout.String(), "base +table-list") {
+		t.Fatalf("update output must not carry create-only preflight hint: %s", stdout.String())
 	}
 }
 

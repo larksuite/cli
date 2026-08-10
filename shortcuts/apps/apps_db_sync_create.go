@@ -38,7 +38,7 @@ var AppsDBSyncCreate = common.Shortcut{
 		{Name: "config", Desc: "sync config JSON object, inline or via @file/-", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "preview", Type: "bool", Desc: "preview and resolve sync config without creating a task"},
 		{Name: "output", Desc: "relative path for writing resolved preview config"},
-	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to use online, or pass dev/online explicitly")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -46,14 +46,18 @@ var AppsDBSyncCreate = common.Shortcut{
 		if err := rejectLegacyEnvFlag(rctx); err != nil {
 			return err
 		}
-		if _, err := parseDBSyncConfigFlag(rctx.Str("config"), !rctx.Bool("preview")); err != nil {
+		cfg, err := parseDBSyncConfigFlag(rctx.Str("config"), !rctx.Bool("preview"), true)
+		if err != nil {
+			return err
+		}
+		if err := requireDBSyncSourceTableIdentifiable(cfg); err != nil {
 			return err
 		}
 		return rejectOutputTraversal(rctx.Str("output"))
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
-		config, _ := parseDBSyncConfigFlag(rctx.Str("config"), !rctx.Bool("preview"))
+		config, _ := parseDBSyncConfigFlag(rctx.Str("config"), !rctx.Bool("preview"), true)
 		return common.NewDryRunAPI().
 			POST(appDbSyncCreatePath(appID)).
 			Desc("Preview or create Base data sync task").
@@ -64,7 +68,7 @@ var AppsDBSyncCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		config, err := parseDBSyncConfigFlag(rctx.Str("config"), !rctx.Bool("preview"))
+		config, err := parseDBSyncConfigFlag(rctx.Str("config"), !rctx.Bool("preview"), true)
 		if err != nil {
 			return err
 		}
@@ -87,9 +91,8 @@ func dbSyncCreateBody(rctx *common.RuntimeContext, config map[string]interface{}
 		"preview": preview,
 	}
 	// The sync_create endpoint reads env from the request body (peer of config/preview),
-	// not the query string; an absent/empty body env makes the server treat the request as
-	// online and reject DDL. Only attach env when the caller specified one, mirroring
-	// dbEnvParams' omit-empty contract so auto-select (server picks dev/online) still works.
+	// not the query string. Only attach env when the caller specified one; omitted env
+	// intentionally lets the db-sync backend use its online default.
 	return dbEnvBody(rctx, body)
 }
 

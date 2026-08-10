@@ -110,7 +110,11 @@ Base 数据同步走 `+db-sync-*`，和本地文件导入不同：`+db-data-impo
 - `mode=batch`：一次性任务。`schema_only=true` 只建目标表；`schema_only=false` 建表或写入已有表并导入当前 Base 数据。完成后不能 enable/disable/update/delete。
 - `mode=streaming`：持续同步任务。首次同步后持续处理 Base 变化，可 enable/disable/update/delete。
 
-**配置格式**：只通过 `--config` 传完整 JSON，支持内联 JSON、`@file`、`-` stdin。配置 key 使用复数：`field_maps`、`option_mappings`、`syncable_source_fields`。不要写单数 `field_map` / `option_mapping`，CLI 会直接报 validation 错。正式 create / update 时，`field_maps` 至少要有一个映射未显式写成 `"enabled": false`；否则不会产生有效字段映射。`target.table.action` 只能是 `create` 或 `use_existing`：建表时 `pg_field` 需要完整字段定义；写已有表时通常只需目标列名。`source.base_url`（源 Base 表完整 URL）在 `+db-sync-create` 必填、由服务端强制；`+db-sync-update` 可选——省略时服务端复用原任务的源 URL，仅在换源 / 替换成另一张 Base 表时才需要传新的 `base_url`。
+**环境（重要）**：`+db-sync-*` 命令省略 `--environment` 时默认落 **online**（不同于 `+db-table-*`/`+db-audit-*` 等「多环境自动选 dev、单环境选 online」的规则——db-sync 家族不走自动选分支）。**多环境应用建表**（`target.table.action=create`）**必须显式 `--environment dev`**：不填或填 `online` 会被 online 分支的 DDL 禁令拒（`k_dl_4000001：forbid ddl/dcl operation in online env`），因为 online 分支产品上不允许直接建表，建表要落到 dev 分支。共享库 / 单环境应用只有 online、在 online 建表正常成功（不会报 `k_dl_4000001`），省略 `--environment` 或填 `online` 均可。
+
+**配置格式**：只通过 `--config` 传完整 JSON，支持内联 JSON、`@file`、`-` stdin。配置 key 使用复数：`field_maps`、`option_mappings`、`syncable_source_fields`。不要写单数 `field_map` / `option_mapping`，CLI 会直接报 validation 错。正式 create 时 `field_maps` **可省略或传空数组**：服务端会使用与 preview 相同的逻辑自动匹配字段并直接创建任务；若显式传了映射，则至少要有一项未写成 `"enabled": false`，写了却全部关闭会被 CLI 拒绝。`+db-sync-update` 仍要求至少一个启用的 `field_maps`，因为 update 的语义是修改既有映射。`target.table.action` 只能是 `create` 或 `use_existing`：建表时 `pg_field` 需要完整字段定义；写已有表时通常只需目标列名。`source.base_url`（源 Base 表完整 URL）在 `+db-sync-create` 必填、由服务端强制；`+db-sync-update` 可选——省略时服务端复用原任务的源 URL，仅在换源 / 替换成另一张 Base 表时才需要传新的 `base_url`。`source.table.name` 是要同步的 Base 表名。`base_url` 形如 `https://.../base/<token>?table=<tableId>`：`token` 定位 Base，`table=` 参数（tableId）定位表。填了 `source.table.name` 就以 name 为准——服务端用 `token + name` 反查 tableId（覆盖 url 里的 `table=` 参数）；不填才用 url 的 `table=` 参数定位。所以用户自然语言里说「同步 xxx 表」「把 xxx 表同步过去」时，一定要把「xxx」填进 `source.table.name`，不要只给 `base_url`——尤其当 `base_url` 不带 `table=` 参数（指向不带具体表的 Base）时，漏了 name 服务端无从定位表。
+
+**不知道要同步哪张表**：若 `base_url` 只有域名+token、不带 `?table=` 参数，又不确定表名，别硬猜。先用 `lark-cli base +table-list --base-token <token>` 列出该 Base 的所有表（`<token>` 就是 `base_url` 里 `/base/` 后面那段），把表名给用户选定，再填进 `source.table.name`（或改用带 `?table=<table_id>` 的完整 URL）。`+db-sync-create` 会在本地就拦下「`base_url` 无 `?table=` 且 `source.table.name` 空」的配置（提交前即报 validation 错，不送到服务端）。
 
 **单数 key 恢复**：如果用户说配置里 `field_map` 是单数、`option_mapping` 是单数、或字段映射可能不生效，不要把原配置直接提交。先找到用户这份同步配置，做这三步：
 
@@ -130,7 +134,7 @@ lark-cli apps +db-sync-get --app-id app_xxx --task-id streaming_123 -q '.data | 
 lark-cli apps +db-sync-update --app-id app_xxx --task-id streaming_123 --environment dev --config @sync.json --yes
 ```
 
-**推荐流程**：先 preview，再让用户确认，再正式创建。
+**推荐流程（最佳实践，不是强制）**：优先先 preview，再让用户确认映射，最后用 preview 输出的完整 config 正式创建；这样最稳，也避免手写复杂 `field_maps`。若用户明确要求直接执行、不需要 preview，也可以在 create config 中省略 `field_maps`（或传空数组），由服务端自动匹配并直接创建任务；CLI 不应为了拿 mapping 强制用户先 preview。
 
 ```bash
 lark-cli apps +db-sync-create \
@@ -201,6 +205,10 @@ lark-cli apps +db-sync-get --app-id app_xxx --task-id batch_123
 
 **失败恢复**：看到 `warnings` 不要直接说同步成功。按 warning 或 error 的 `hint` 继续排查：常见路径是 `+log-list --keyword <target_table>` / `+log-get` 查日志，然后用 `+db-execute` 修目标表结构，或用 `+db-sync-update` 修字段映射，最后对同一 `task_id` 再 `+db-sync-get`。若此时 CLI 还缺授权、查不到 warning 详情，也不要只给泛化的字段核对建议：先说明被授权卡住，再把上面这条固定命令链（`+log-list`/`+log-get` → `+db-execute` 或 `+db-sync-update` → 再 `+db-sync-get` 复查）作为授权完成后的下一步明确交代给用户。
 
+**online 禁 DDL（`k_dl_4000001`）恢复**：`+db-sync-create` 建表报 `k_dl_4000001：forbid ddl/dcl operation in online env` 时，这必然是多环境应用（共享库在 online 建表不会报此码）。online 分支**本就不允许**直接建表，这是多环境应用的产品设计、不是可绕过的限制。改用 `--environment dev` 重跑 `+db-sync-create`，把表建到 dev 分支；不要试图「在 online 想办法重试建表」，没有这个选项。
+
+**缺 Base 表记录 ID 映射列（`500002783`）恢复**：streaming 自动同步要求目标表有一个映射给「Base 表记录 ID」的 **text + 单值 + unique** 列。用 `action=use_existing` 写已有表时，若该表没有这样的列，会报 `500002783`（Field mapping must include 'Base 表记录 ID'）。先用 `+db-execute` 给表加一个，如 `ALTER TABLE <表> ADD COLUMN base_record_id varchar UNIQUE`，再把它映射给「Base 表记录 ID」、重跑 `+db-sync-create --preview`。注意这是**加列**、不是建表，不需要审计列 / RLS 那套建表规范。
+
 ### 变更追溯与审计
 
 **`+db-changelog-list`**：查表结构变更（DDL）历史——谁、什么时候、改了哪张表、做了什么。可按 `--table` 过滤、按 `--change-id` 精确定位某条、用 `--since`/`--until` 圈时间区间，分页 `--page-size`/`--page-token`。
@@ -266,9 +274,10 @@ lark-cli apps +db-quota-get --app-id app_xxx --environment dev
 - 看表用 `+db-table-list`，看结构用 `+db-table-get`（要建表语句加 `--format pretty`）；`+db-env-create` 仅用于存量单库拆多环境，新建的 full_stack 应用一般不需要。
 - 高危命令（`+db-env-create`、`+db-data-import`、`+db-env-migrate`、`+db-recovery-apply`、`+db-sync-create`、`+db-sync-update`、`+db-sync-delete`）动手前先看清影响再带 `--yes`：发布 / 恢复先跑对应预览 `+db-env-diff` / `+db-recovery-diff`，Base 同步先跑 `+db-sync-create --preview`，导入无预览命令、可先 `--dry-run` 看请求或先在 `--environment dev` 验；不要静默追加 `--yes`，遇 confirmation_required（exit 10）按 lark-shared 协议向用户确认不可逆风险后再补 `--yes` 重试。
 - 导入 / 导出的本地路径用工作目录内相对路径；超大表导出会被行数 / 体积上限拒，改用 `+db-execute` 分批。
-- Base 同步先 preview，再给用户确认映射和影响；不要跳过 preview 直接创建任务。`--config` 文件里的字段映射使用 `field_maps` / `option_mappings` 复数 key。
-- 修复 Base 同步配置时，只把 `field_map` / `option_mapping` 改成 `field_maps` / `option_mappings`，并检查至少一个 `field_maps` 映射是启用的；修完先 preview 或复用 preview 输出，再 create / update。
-- `+db-sync-update` 省略 `source.base_url` 是合法的（服务端复用原任务源 URL）；`+db-sync-get` 不返回 `base_url` 属正常，不要因此编造 domain / 拼接 URL 去"补全"，只有换源 / 替换表时才传新的 `base_url`。`+db-sync-create` 的 `base_url` 必填，缺失由服务端报错。
+- Base 同步优先走 preview → 用户确认 → create，这是最稳的最佳实践、不是强制。用户明确要求直接 create 时，可省略 `field_maps`（或传空数组）让服务端自动匹配并创建；不要为了拿 mapping 强制用户先 preview。显式写映射时使用 `field_maps` / `option_mappings` 复数 key。
+- 修复 Base 同步配置时，只把 `field_map` / `option_mapping` 改成 `field_maps` / `option_mappings`。若显式给了 `field_maps`，检查至少一个映射启用；全是 `"enabled": false` 时先让用户确认要启用哪项。create 也可删掉/置空 `field_maps` 交给服务端自动匹配，但 update 仍必须提供启用的映射。
+- `+db-sync-update` 省略 `source.base_url` 是合法的（服务端复用原任务源 URL）；`+db-sync-get` 不返回 `base_url` 属正常，不要因此编造 domain / 拼接 URL 去"补全"，只有换源 / 替换表时才传新的 `base_url`。`+db-sync-create` 的 `base_url` 必填，缺失由服务端报错。用户说「同步 xxx 表」时把「xxx」填进 `source.table.name`——填了 name 就以 name 为准（服务端用 `base_url` 的 token + name 反查 tableId，覆盖 url 的 `table=` 参数），不填才用 url 的 `table=` 参数定位；别只给 `base_url`。
 - batch 同步任务不能重新 enable。遇到 operation-not-allowed 先 `+db-sync-get` 查状态和结果；要持续同步就新建 streaming 任务，走 preview -> 用户确认 -> create。
+- `+db-sync-*` 省略 `--environment` 默认落 online。多环境应用建表（`action=create`）必须显式 `--environment dev`；省略或填 `online` 会撞 `k_dl_4000001`（online 禁 DDL）——那是多环境应用的产品设计，把表建到 dev 分支即可，不要在 online 重试建表。共享库应用在 online 建表正常，不受此限。
 - `+db-audit-list` 多表查询时，把结果里 `skipped` 的表（不存在 / 未开审计）连同原因一并向用户说明，不要让用户以为这些表「没有变更」。
 - 恢复是覆盖式且不可逆：`+db-recovery-apply` 前必须先 `+db-recovery-diff`，并明确告知用户会覆盖当前数据。

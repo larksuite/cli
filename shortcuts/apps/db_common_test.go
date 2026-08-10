@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestAppTablesPath_ReusesExistingURL(t *testing.T) {
@@ -75,7 +76,7 @@ func TestDBSyncConfig(t *testing.T) {
 	}`
 
 	t.Run("preview allows omitted field maps", func(t *testing.T) {
-		cfg, err := parseDBSyncConfigFlag(validWithoutFieldMaps, false)
+		cfg, err := parseDBSyncConfigFlag(validWithoutFieldMaps, false, false)
 		if err != nil {
 			t.Fatalf("parseDBSyncConfigFlag preview = %v", err)
 		}
@@ -84,55 +85,78 @@ func TestDBSyncConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("commit requires enabled field map", func(t *testing.T) {
-		assertDBSyncConfigValidation(t, validWithoutFieldMaps, true, "field_maps")
+	t.Run("create-commit auto-matches when field_maps omitted or empty", func(t *testing.T) {
+		// create passes allowAutoMatch=true: absent field_maps or an empty array is
+		// allowed — the server auto-matches and creates the task.
+		if _, err := parseDBSyncConfigFlag(validWithoutFieldMaps, true, true); err != nil {
+			t.Fatalf("create without field_maps = %v, want nil (server auto-match)", err)
+		}
+		emptyArray := strings.Replace(validWithoutFieldMaps, `"target"`, `"field_maps": [], "target"`, 1)
+		if _, err := parseDBSyncConfigFlag(emptyArray, true, true); err != nil {
+			t.Fatalf("create with empty field_maps = %v, want nil (server auto-match)", err)
+		}
+		nullValue := strings.Replace(validWithoutFieldMaps, `"target"`, `"field_maps": null, "target"`, 1)
+		assertDBSyncConfigValidation(t, nullValue, true, true, "array")
+		objectValue := strings.Replace(validWithoutFieldMaps, `"target"`, `"field_maps": {}, "target"`, 1)
+		assertDBSyncConfigValidation(t, objectValue, true, true, "array")
+		// A present-but-all-disabled array is still a suspected mistake → rejected.
 		disabledOnly := `{
 			"mode": "batch",
 			"source": {"type": "base"},
 			"target": {"type": "postgresql", "table": {"name": "orders", "action": "create"}},
 			"field_maps": [{"source": "a", "target": "b", "enabled": false}]
 		}`
-		assertDBSyncConfigValidation(t, disabledOnly, true, "field_maps")
-		if _, err := parseDBSyncConfigFlag(validWithFieldMaps, true); err != nil {
+		assertDBSyncConfigValidation(t, disabledOnly, true, true, "disabled")
+		if _, err := parseDBSyncConfigFlag(validWithFieldMaps, true, true); err != nil {
 			t.Fatalf("parseDBSyncConfigFlag valid field_maps = %v", err)
 		}
 	})
 
+	t.Run("update still requires field maps", func(t *testing.T) {
+		// update passes allowAutoMatch=false: absent field_maps is rejected (update
+		// means changing the mapping, so an explicit mapping is required).
+		assertDBSyncConfigValidation(t, validWithoutFieldMaps, true, false, "field_maps")
+		emptyArray := strings.Replace(validWithoutFieldMaps, `"target"`, `"field_maps": [], "target"`, 1)
+		assertDBSyncConfigValidation(t, emptyArray, true, false, "field_maps")
+		disabledOnly := strings.Replace(validWithFieldMaps, `"enabled": true`, `"enabled": false`, 1)
+		assertDBSyncConfigValidation(t, disabledOnly, true, false, "disabled")
+	})
+
 	t.Run("must be JSON object", func(t *testing.T) {
-		assertDBSyncConfigValidation(t, `[1,2,3]`, false, "JSON object")
-		assertDBSyncConfigValidation(t, `{`, false, "JSON object")
-		assertDBSyncConfigValidation(t, validWithoutFieldMaps+` {}`, false, "one JSON object")
+		assertDBSyncConfigValidation(t, `[1,2,3]`, false, false, "JSON object")
+		assertDBSyncConfigValidation(t, `{`, false, false, "JSON object")
+		assertDBSyncConfigValidation(t, validWithoutFieldMaps+` {}`, false, false, "one JSON object")
 	})
 
 	t.Run("singular map keys are rejected", func(t *testing.T) {
-		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"source"`, `"field_map": [], "source"`, 1), false, "field_maps")
-		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"source"`, `"option_mapping": {}, "source"`, 1), false, "option_mappings")
+		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"source"`, `"field_map": [], "source"`, 1), false, false, "field_maps")
+		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"source"`, `"option_mapping": {}, "source"`, 1), false, false, "option_mappings")
 		nestedSingular := `{
 			"mode": "streaming",
 			"source": {"type": "base"},
 			"target": {"type": "postgresql", "table": {"name": "orders", "action": "use_existing"}},
 			"field_maps": [{"source": "record_id", "target": "record_id", "option_mapping": []}]
 		}`
-		assertDBSyncConfigValidation(t, nestedSingular, true, "option_mappings")
+		assertDBSyncConfigValidation(t, nestedSingular, true, true, "option_mappings")
 	})
 
 	t.Run("mode and endpoints are constrained", func(t *testing.T) {
-		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"batch"`, `"full"`, 1), false, "mode")
-		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"base"`, `"sheet"`, 1), false, "source.type")
-		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"postgresql"`, `"mysql"`, 1), false, "target.type")
-		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"orders"`, `""`, 1), false, "target.table.name")
-		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"create"`, `"drop"`, 1), false, "target.table.action")
+		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"batch"`, `"full"`, 1), false, false, "mode")
+		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"base"`, `"sheet"`, 1), false, false, "source.type")
+		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"postgresql"`, `"mysql"`, 1), false, false, "target.type")
+		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"orders"`, `""`, 1), false, false, "target.table.name")
+		assertDBSyncConfigValidation(t, strings.Replace(validWithoutFieldMaps, `"create"`, `"drop"`, 1), false, false, "target.table.action")
 	})
 
 	t.Run("schema only is batch create only", func(t *testing.T) {
 		validSchemaOnly := strings.Replace(validWithoutFieldMaps, `"mode": "batch"`, `"schema_only": true, "mode": "batch"`, 1)
-		if _, err := parseDBSyncConfigFlag(validSchemaOnly, false); err != nil {
+		if _, err := parseDBSyncConfigFlag(validSchemaOnly, false, false); err != nil {
 			t.Fatalf("parseDBSyncConfigFlag valid schema_only = %v", err)
 		}
 		streamingSchemaOnly := strings.Replace(validWithFieldMaps, `"mode": "streaming"`, `"schema_only": true, "mode": "streaming"`, 1)
-		assertDBSyncConfigValidation(t, streamingSchemaOnly, false, "schema_only")
+		assertDBSyncConfigValidation(t, streamingSchemaOnly, false, false, "schema_only")
 		useExistingSchemaOnly := strings.Replace(validSchemaOnly, `"create"`, `"use_existing"`, 1)
-		assertDBSyncConfigValidation(t, useExistingSchemaOnly, false, "schema_only")
+		assertDBSyncConfigValidation(t, useExistingSchemaOnly, false, false, "schema_only")
 	})
 
 	t.Run("update allows omitted source base_url", func(t *testing.T) {
@@ -144,7 +168,7 @@ func TestDBSyncConfig(t *testing.T) {
 			"target": {"type": "postgresql", "table": {"name": "orders", "action": "use_existing"}},
 			"field_maps": [{"source_field": "record_id", "target_field": "record_id", "enabled": true}]
 		}`
-		cfg, err := parseDBSyncConfigFlag(noBaseURL, true)
+		cfg, err := parseDBSyncConfigFlag(noBaseURL, true, false)
 		if err != nil {
 			t.Fatalf("parseDBSyncConfigFlag update without base_url = %v, want nil", err)
 		}
@@ -156,6 +180,26 @@ func TestDBSyncConfig(t *testing.T) {
 			t.Fatalf("source.base_url present %v, want absent (CLI must not inject default)", source["base_url"])
 		}
 	})
+}
+
+func TestDBSyncEnvironmentHelpDefaultsToOnline(t *testing.T) {
+	for _, shortcut := range []common.Shortcut{AppsDBSyncCreate, AppsDBSyncList, AppsDBSyncUpdate} {
+		t.Run(shortcut.Command, func(t *testing.T) {
+			for _, flag := range shortcut.Flags {
+				if flag.Name != "environment" {
+					continue
+				}
+				if !strings.Contains(flag.Desc, "leave unset to use online") {
+					t.Fatalf("%s --environment description = %q, want online default", shortcut.Command, flag.Desc)
+				}
+				if strings.Contains(flag.Desc, "auto-select") || strings.Contains(flag.Desc, "multi-env app uses dev") {
+					t.Fatalf("%s --environment description still claims auto-select: %q", shortcut.Command, flag.Desc)
+				}
+				return
+			}
+			t.Fatalf("%s missing --environment flag", shortcut.Command)
+		})
+	}
 }
 
 func TestDBSyncHint(t *testing.T) {
@@ -193,6 +237,21 @@ func TestDBSyncHint(t *testing.T) {
 		}
 	})
 
+	t.Run("record-id mapping code guides adding a unique column", func(t *testing.T) {
+		in := errs.NewAPIError(errs.SubtypeInvalidParameters, "mapping must include Base 表记录 ID").WithCode(500002783)
+		out := withDBSyncHint(in, "fallback")
+		p, ok := errs.ProblemOf(out)
+		if !ok {
+			t.Fatalf("withDBSyncHint returned untyped error: %T", out)
+		}
+		if !strings.Contains(p.Hint, "+db-execute") || !strings.Contains(p.Hint, "base_record_id") {
+			t.Fatalf("hint = %q, want +db-execute add-column guidance", p.Hint)
+		}
+		if p.Code != 500002783 || p.Subtype != errs.SubtypeInvalidParameters {
+			t.Fatalf("problem metadata mutated: %+v", p)
+		}
+	})
+
 	t.Run("unknown code uses fallback", func(t *testing.T) {
 		in := errs.NewAPIError(errs.SubtypeUnknown, "unknown").WithCode(42)
 		out := withDBSyncHint(in, "fallback")
@@ -201,11 +260,49 @@ func TestDBSyncHint(t *testing.T) {
 			t.Fatalf("hint = %q, want fallback", p.Hint)
 		}
 	})
+
+	t.Run("online DDL subcode gets multi-env dev hint", func(t *testing.T) {
+		in := errs.NewAPIError(errs.SubtypeUnknown, "k_dl_4000001：forbid ddl/dcl operation in online env").
+			WithCode(500002776).WithLogID("log_ddl")
+		out := withDBSyncHint(in, "fallback")
+		p, ok := errs.ProblemOf(out)
+		if !ok {
+			t.Fatalf("withDBSyncHint returned untyped error: %T", out)
+		}
+		if !strings.Contains(p.Hint, "multi-env") || !strings.Contains(p.Hint, "--environment dev") {
+			t.Fatalf("hint = %q, want multi-env online-DDL guidance", p.Hint)
+		}
+		if p.Code != 500002776 || p.LogID != "log_ddl" || p.Subtype != errs.SubtypeUnknown {
+			t.Fatalf("problem metadata mutated: %+v", p)
+		}
+	})
+
+	t.Run("generic 500002776 without subcode does not get dev hint", func(t *testing.T) {
+		in := errs.NewAPIError(errs.SubtypeUnknown, "some other 500002776 failure").WithCode(500002776)
+		out := withDBSyncHint(in, "fallback")
+		p, _ := errs.ProblemOf(out)
+		if strings.Contains(p.Hint, "multi-env") {
+			t.Fatalf("hint = %q, must not attach online-DDL guidance without subcode", p.Hint)
+		}
+		if p.Hint != "fallback" {
+			t.Fatalf("hint = %q, want fallback for unmapped 500002776", p.Hint)
+		}
+	})
+
+	t.Run("online DDL subcode does not override server hint", func(t *testing.T) {
+		in := errs.NewAPIError(errs.SubtypeUnknown, "k_dl_4000001：forbid ddl/dcl operation in online env").
+			WithCode(500002776).WithHint("server hint")
+		out := withDBSyncHint(in, "fallback")
+		p, _ := errs.ProblemOf(out)
+		if p.Hint != "server hint" {
+			t.Fatalf("hint = %q, want preserved server hint", p.Hint)
+		}
+	})
 }
 
-func assertDBSyncConfigValidation(t *testing.T, raw string, requireFieldMaps bool, wantText string) {
+func assertDBSyncConfigValidation(t *testing.T, raw string, requireFieldMaps, allowAutoMatch bool, wantText string) {
 	t.Helper()
-	_, err := parseDBSyncConfigFlag(raw, requireFieldMaps)
+	_, err := parseDBSyncConfigFlag(raw, requireFieldMaps, allowAutoMatch)
 	if err == nil {
 		t.Fatalf("parseDBSyncConfigFlag(%s) = nil, want validation error", raw)
 	}

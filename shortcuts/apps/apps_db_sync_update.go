@@ -29,7 +29,7 @@ var AppsDBSyncUpdate = common.Shortcut{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "task-id", Desc: "sync task id returned by +db-sync-create or +db-sync-list", Required: true},
 		{Name: "config", Desc: "sync config JSON object, inline or via @file/-", Required: true, Input: []string{common.File, common.Stdin}},
-	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to use online, or pass dev/online explicitly")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -40,12 +40,12 @@ var AppsDBSyncUpdate = common.Shortcut{
 		if strings.TrimSpace(rctx.Str("task-id")) == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--task-id is required").WithParam("--task-id")
 		}
-		_, err := parseDBSyncConfigFlag(rctx.Str("config"), true)
+		_, err := parseDBSyncConfigFlag(rctx.Str("config"), true, false)
 		return err
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
-		config, _ := parseDBSyncConfigFlag(rctx.Str("config"), true)
+		config, _ := parseDBSyncConfigFlag(rctx.Str("config"), true, false)
 		return common.NewDryRunAPI().
 			PUT(appDbSyncUpdatePath(appID)).
 			Desc("Update Base data sync task").
@@ -60,7 +60,7 @@ var AppsDBSyncUpdate = common.Shortcut{
 		if taskID == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--task-id is required").WithParam("--task-id")
 		}
-		config, err := parseDBSyncConfigFlag(rctx.Str("config"), true)
+		config, err := parseDBSyncConfigFlag(rctx.Str("config"), true, false)
 		if err != nil {
 			return err
 		}
@@ -75,6 +75,6 @@ var AppsDBSyncUpdate = common.Shortcut{
 
 func dbSyncUpdateBody(rctx *common.RuntimeContext, taskID string, config map[string]interface{}) map[string]interface{} {
 	// sync_update reads env from the request body (peer of task_id/config), not the query
-	// string; mirror dbEnvParams' omit-empty contract so unset env keeps server auto-select.
+	// string. Omitted env intentionally lets the db-sync backend use its online default.
 	return dbEnvBody(rctx, map[string]interface{}{"task_id": taskID, "config": config})
 }

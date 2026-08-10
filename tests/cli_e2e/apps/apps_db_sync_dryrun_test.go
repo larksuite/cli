@@ -23,6 +23,13 @@ const (
 	dbSyncSingularConfig = `{"mode":"streaming","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_sync","action":"use_existing"}},"field_map":[{"source_field":"Base 表记录 ID","target_field":"base_record_id","enabled":true}]}`
 
 	dbSyncUpdateNoBaseURLConfig = `{"mode":"streaming","source":{"type":"base","table":{"name":"数据表"}},"target":{"type":"postgresql","table":{"name":"orders_sync","action":"use_existing"}},"field_maps":[{"source_field":"Base 表记录 ID","target_field":"base_record_id","enabled":true}]}`
+
+	// base_url without ?table= and empty source.table.name → create must reject locally.
+	dbSyncNoTableNoNameConfig = `{"mode":"batch","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":""}},"target":{"type":"postgresql","table":{"name":"orders_preview","action":"create"}}}`
+
+	// create-commit without field_maps: identifiable source (has table name), no field_maps →
+	// CLI passes it through so the server auto-matches and creates the task.
+	dbSyncNoFieldMapsCommitConfig = `{"mode":"batch","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_auto","action":"create"}}}`
 )
 
 func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
@@ -65,6 +72,22 @@ func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
 		assert.Equal(t, "streaming", clie2e.DryRunGet(result.Stdout, "api.0.body.config.mode").String())
 		assert.Equal(t, "orders_sync", clie2e.DryRunGet(result.Stdout, "api.0.body.config.target.table.name").String())
 		assert.Equal(t, "Base 表记录 ID", clie2e.DryRunGet(result.Stdout, "api.0.body.config.field_maps.0.source_field").String())
+	})
+
+	t.Run("create commit without field maps uses server auto-match", func(t *testing.T) {
+		result := runDBSyncDryRun(t, []string{
+			"apps", "+db-sync-create",
+			"--app-id", dbSyncDryRunAppID,
+			"--config", dbSyncNoFieldMapsCommitConfig,
+			"--environment", "dev",
+			"--dry-run",
+		})
+
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.preview").Bool())
+		assert.Equal(t, "dev", clie2e.DryRunGet(result.Stdout, "api.0.body.env").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.config.field_maps").Exists(),
+			"CLI must not inject field_maps when the caller delegates matching to the server")
 	})
 
 	t.Run("list with filters", func(t *testing.T) {
@@ -182,6 +205,24 @@ func TestAppsDBSyncValidationErrors(t *testing.T) {
 	assert.Contains(t, message, "--config")
 }
 
+func TestAppsDBSyncCreateRequiresSourceTable(t *testing.T) {
+	setAppsDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"apps", "+db-sync-create", "--app-id", dbSyncDryRunAppID, "--config", dbSyncNoTableNoNameConfig, "--preview", "--dry-run"},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	assert.NotEqual(t, 0, result.ExitCode, "base_url without table and empty source.table.name must fail validation")
+	message := dbSyncValidateErrorMessage(result)
+	assert.Contains(t, message, "source.table.name")
+	assert.Equal(t, "--config", dbSyncValidateErrorParam(result))
+	assert.Contains(t, dbSyncValidateErrorHint(result), "base +table-list")
+}
+
 func runDBSyncDryRun(t *testing.T, args []string) *clie2e.Result {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -205,4 +246,18 @@ func dbSyncValidateErrorMessage(r *clie2e.Result) string {
 		return msg
 	}
 	return strings.TrimSpace(r.Stderr)
+}
+
+func dbSyncValidateErrorParam(r *clie2e.Result) string {
+	if v := gjson.Get(r.Stdout, "error.param").String(); v != "" {
+		return v
+	}
+	return gjson.Get(r.Stderr, "error.param").String()
+}
+
+func dbSyncValidateErrorHint(r *clie2e.Result) string {
+	if v := gjson.Get(r.Stdout, "error.hint").String(); v != "" {
+		return v
+	}
+	return gjson.Get(r.Stderr, "error.hint").String()
 }
