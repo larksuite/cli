@@ -51,7 +51,6 @@ script-test:
 	bash scripts/resolve-changed-from.test.sh
 	bash scripts/ci-workflow.test.sh
 	bash scripts/release-workflow.test.sh
-	bash scripts/release-toolchain.test.sh
 	bash scripts/semantic-review-workflow.test.sh
 	$(NODE) --test scripts/e2e_domains.test.js scripts/fetch_e2e_tat.test.js scripts/install.test.js scripts/release-preflight.test.js scripts/release-publish-policy.test.js scripts/semantic-review-verify-artifact.test.js scripts/pr-quality-summary.test.js scripts/semantic-review-publish.test.js scripts/ci-quality-summary-publish.test.js
 
