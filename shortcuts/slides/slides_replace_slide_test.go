@@ -357,6 +357,11 @@ func TestReplaceSlidePartsNonStringField(t *testing.T) {
 			`[{"action":"block_insert","insertion":"<shape/>","insert_before_block_id":true}]`,
 			"insert_before_block_id must be a string",
 		},
+		{
+			"payload alias is not a string",
+			`[{"action":"replace","target_id":"bUn","content":{"type":"shape"}}]`,
+			"replacement must be a string",
+		},
 	}
 
 	for _, tt := range tests {
@@ -376,6 +381,7 @@ func TestReplaceSlidePartsNonStringField(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("err = %v, want substring %q", err, tt.wantErr)
 			}
+			assertValidationProblem(t, err, "--parts", nil)
 		})
 	}
 }
@@ -777,12 +783,6 @@ func TestReplaceSlideUnknownPartField(t *testing.T) {
 		wantHint string
 	}{
 		{
-			name:     "content alias",
-			parts:    `[{"action":"block_replace","block_id":"bUn","content":"<shape type=\"text\"/>"}]`,
-			want:     []string{`unknown field "content"`, `did you mean "replacement"?`, "Valid fields for block_replace: action, block_id, replacement"},
-			wantHint: `"action":"block_replace"`,
-		},
-		{
 			name:  "xml alias",
 			parts: `[{"action":"block_replace","block_id":"bUn","xml":"<shape/>"}]`,
 			want:  []string{`unknown field "xml"`, `did you mean "replacement"?`},
@@ -798,16 +798,6 @@ func TestReplaceSlideUnknownPartField(t *testing.T) {
 			want:  []string{`unknown field "block_xml"`, `did you mean "replacement"?`},
 		},
 		{
-			name:  "block alias",
-			parts: `[{"action":"block_replace","block_id":"bUn","block":{"content":"x"}}]`,
-			want:  []string{`unknown field "block"`, `did you mean "replacement"?`},
-		},
-		{
-			name:  "element alias",
-			parts: `[{"action":"block_replace","block_id":"bUn","element":"<shape/>"}]`,
-			want:  []string{`unknown field "element"`, `did you mean "replacement"?`},
-		},
-		{
 			name:  "data alias",
 			parts: `[{"action":"block_replace","block_id":"bUn","data":{"x":1}}]`,
 			want:  []string{`unknown field "data"`, `did you mean "replacement"?`},
@@ -819,12 +809,6 @@ func TestReplaceSlideUnknownPartField(t *testing.T) {
 			parts:   `[{"action":"block_replace","block_id":"bUn","fill":"#fff"}]`,
 			want:    []string{`unknown field "fill"`, "Valid fields for block_replace: action, block_id, replacement"},
 			notWant: "did you mean",
-		},
-		{
-			name:     "alias under block_insert points at insertion",
-			parts:    `[{"action":"block_insert","content":"<shape/>"}]`,
-			want:     []string{`unknown field "content"`, `did you mean "insertion"?`, "Valid fields for block_insert: action, insertion, insert_before_block_id"},
-			wantHint: `"action":"block_insert"`,
 		},
 		{
 			name:  "field of the other action",
@@ -896,7 +880,7 @@ func TestReplaceSlideUnknownPartField(t *testing.T) {
 			// TestReplaceSlideUnknownFieldIsDeterministic re-parses to prove it.
 			name:  "several bad fields report deterministically",
 			parts: `[{"action":"block_replace","block_id":"bUn","zzz":"1","content":"<shape/>"}]`,
-			want:  []string{`unknown field "content"`},
+			want:  []string{`unknown field "zzz"`},
 		},
 	}
 
@@ -976,9 +960,10 @@ func TestReplaceSlideAllKnownPartFieldsAccepted(t *testing.T) {
 func TestReplaceSlideUnknownFieldIsDeterministic(t *testing.T) {
 	t.Parallel()
 
-	// "content", "data" and "zzz" are all rejected; sorted order reports "content".
+	// "content" is normalized first; "data" and "zzz" remain rejected, and sorted
+	// order reports "data".
 	parts := `[{"action":"block_replace","block_id":"bUn","zzz":"1","data":{"x":1},"content":"<shape/>"}]`
-	const want = `--parts[0] unknown field "content"; did you mean "replacement"? Valid fields for block_replace: action, block_id, replacement`
+	const want = `--parts[0] unknown field "data"; did you mean "replacement"? Valid fields for block_replace: action, block_id, replacement`
 
 	for i := 0; i < 50; i++ {
 		_, err := parseReplaceParts(parts)
@@ -988,5 +973,198 @@ func TestReplaceSlideUnknownFieldIsDeterministic(t *testing.T) {
 		if err.Error() != want {
 			t.Fatalf("parse %d: err = %q, want %q", i, err.Error(), want)
 		}
+	}
+}
+
+func TestReplaceSlideNormalizesCompatibleParts(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/slide/replace",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"revision_id": 9}},
+	}
+	reg.Register(stub)
+
+	parts := `[` +
+		`{"action":"replace","target_id":"bUn","content":"<shape type=\"text\"/>"},` +
+		`{"action":"insert","element":"<shape type=\"rect\"/>"}` +
+		`]`
+	if err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
+		"+replace-slide", "--presentation", "pres_abc", "--slide-id", "s",
+		"--parts", parts, "--as", "user",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var body struct {
+		Parts []map[string]interface{} `json:"parts"`
+	}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got := body.Parts[0]["action"]; got != "block_replace" {
+		t.Fatalf("replace action = %v, want block_replace", got)
+	}
+	if got := body.Parts[0]["block_id"]; got != "bUn" {
+		t.Fatalf("target_id = %v, want block_id bUn", got)
+	}
+	if got := body.Parts[0]["replacement"]; got != `<shape type="text" id="bUn"><content/></shape>` {
+		t.Fatalf("replacement = %v, want alias payload with only id and content injected", got)
+	}
+	if _, ok := body.Parts[0]["content"]; ok {
+		t.Fatalf("wire part must not retain content alias: %#v", body.Parts[0])
+	}
+	if got := body.Parts[1]["action"]; got != "block_insert" {
+		t.Fatalf("insert action = %v, want block_insert", got)
+	}
+	if got := body.Parts[1]["insertion"]; got != `<shape type="rect"><content/></shape>` {
+		t.Fatalf("insertion = %v, want alias payload with only content injected", got)
+	}
+	if _, ok := body.Parts[1]["element"]; ok {
+		t.Fatalf("wire part must not retain element alias: %#v", body.Parts[1])
+	}
+
+	data := decodeShortcutData(t, stdout)
+	normalizations, ok := data["normalizations"].([]interface{})
+	if !ok || len(normalizations) != 5 {
+		t.Fatalf("normalizations = %#v, want five action/field conversions", data["normalizations"])
+	}
+}
+
+func TestReplaceSlideNormalizesAllCompatiblePayloadAliases(t *testing.T) {
+	t.Parallel()
+
+	const payload = `<shape type="rect"/>`
+	for _, action := range []string{"block_replace", "block_insert"} {
+		for _, alias := range compatibleXMLPayloadAliases {
+			t.Run(action+"/"+alias, func(t *testing.T) {
+				t.Parallel()
+				part := map[string]interface{}{
+					"action": action,
+					alias:    payload,
+				}
+				if action == "block_replace" {
+					part["block_id"] = "bUn"
+				}
+				raw, err := json.Marshal([]map[string]interface{}{part})
+				if err != nil {
+					t.Fatal(err)
+				}
+				parsed, normalizations, err := parseReplacePartsWithNormalization(string(raw))
+				if err != nil {
+					t.Fatalf("parse: %v", err)
+				}
+				if len(normalizations) != 1 {
+					t.Fatalf("normalizations = %#v, want one", normalizations)
+				}
+				if action == "block_replace" && (parsed[0].Replacement == nil || *parsed[0].Replacement != payload) {
+					t.Fatalf("replacement = %v, want exact alias payload %q", parsed[0].Replacement, payload)
+				}
+				if action == "block_insert" && (parsed[0].Insertion == nil || *parsed[0].Insertion != payload) {
+					t.Fatalf("insertion = %v, want exact alias payload %q", parsed[0].Insertion, payload)
+				}
+			})
+		}
+	}
+}
+
+func TestReplaceSlideRejectsNormalizationConflicts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		parts string
+	}{
+		{
+			name:  "target id conflicts with block id",
+			parts: `[{"action":"replace","block_id":"bOne","target_id":"bTwo","content":"<shape/>"}]`,
+		},
+		{
+			name:  "payload alias conflicts with canonical field",
+			parts: `[{"action":"insert","insertion":"<shape type=\"rect\"/>","element":"<img src=\"token\"/>"}]`,
+		},
+		{
+			name:  "two payload aliases conflict",
+			parts: `[{"action":"replace","target_id":"bUn","content":"<shape/>","element":"<img src=\"token\"/>"}]`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := parseReplacePartsWithNormalization(tt.parts)
+			if err == nil || !strings.Contains(err.Error(), "conflict") {
+				t.Fatalf("err = %v, want conflict", err)
+			}
+			p, ok := errs.ProblemOf(err)
+			var ve *errs.ValidationError
+			if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument ||
+				!errors.As(err, &ve) || ve.Param != "--parts" {
+				t.Fatalf("problem = %#v, error = %v, want typed --parts validation error", p, err)
+			}
+		})
+	}
+}
+
+func TestReplaceSlideAcceptsDuplicateAliasValues(t *testing.T) {
+	t.Parallel()
+
+	parts := `[{"action":"replace","block_id":"bUn","target_id":"bUn","replacement":"<shape/>","content":"<shape/>"}]`
+	parsed, normalizations, err := parseReplacePartsWithNormalization(parts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(parsed) != 1 || parsed[0].BlockID == nil || *parsed[0].BlockID != "bUn" {
+		t.Fatalf("parsed = %#v", parsed)
+	}
+	if parsed[0].Replacement == nil || *parsed[0].Replacement != "<shape/>" {
+		t.Fatalf("replacement = %v, want exact folded payload %q", parsed[0].Replacement, "<shape/>")
+	}
+	if len(normalizations) != 3 {
+		t.Fatalf("normalizations = %#v, want action plus two folded fields", normalizations)
+	}
+}
+
+func TestReplaceSlideRejectsSemanticallyDifferentActions(t *testing.T) {
+	t.Parallel()
+
+	for _, action := range []string{"str_replace", "replace_all", "page_replace", "slide_replace"} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			parts := fmt.Sprintf(`[{"action":%q,"target_id":"bUn","content":"<shape/>"}]`, action)
+			err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
+				"+replace-slide", "--presentation", "pres_abc", "--slide-id", "s",
+				"--parts", parts, "--as", "user",
+			})
+			if err == nil || !strings.Contains(err.Error(), action) {
+				t.Fatalf("err = %v, want action %q named", err, action)
+			}
+			assertValidationProblem(t, err, "--parts", nil)
+			if action == "page_replace" || action == "slide_replace" {
+				if !strings.Contains(err.Error(), "slides +update-slide") {
+					t.Fatalf("err = %v, want whole-page recovery command", err)
+				}
+			}
+		})
+	}
+}
+
+func TestReplaceSlideInvalidJSONSuggestsFileInput(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := parseReplacePartsWithNormalization(`"'[{"action":"replace"}`)
+	if err == nil {
+		t.Fatal("expected invalid JSON error")
+	}
+	ve := assertValidationProblem(t, err, "--parts", errAnyCause)
+	if ve.Param != "--parts" || !strings.Contains(ve.Hint, "--parts @parts.json") ||
+		!strings.Contains(ve.Hint, "--parts -") {
+		t.Fatalf("validation error = %#v, want file and stdin recovery guidance", ve)
+	}
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("err = %v, want preserved *json.SyntaxError cause", err)
 	}
 }

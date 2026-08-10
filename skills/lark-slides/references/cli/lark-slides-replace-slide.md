@@ -2,7 +2,7 @@
 
 对指定 slide 做块级替换或插入。编辑已有 PPT 的主路径——`slide_id` 不变、页序不动、只影响被指定的块。
 
-> **`--parts` 字段名是硬约束**：装 XML 片段的字段，`block_replace` 只认 `replacement`，`block_insert` 只认 `insertion`（都是字符串）。`content` / `xml` / `new_xml` / `block_xml` / `block` / `element` / `data` 这些写法，以及任何其他字段名，**一律被 CLI 直接拒绝**——常见的错法会直接告诉你该用哪个字段（`unknown field "content"; did you mean "replacement"?`），其余只列出该 action 的合法字段集。`<content>` 是 `<shape>` 的**子元素**，不是 part 的字段名——这是最常见的搞混点。
+> **编写 `--parts` 时只使用标准 action 和字段**：`block_replace` 使用 `block_id` + `replacement`，`block_insert` 使用 `insertion`（可选 `insert_before_block_id`）。不要根据其他 API 或自然语言猜 action、字段名；具体结构以本文表格为准。
 
 相比直接调 `xml_presentation.slide.replace`，这个 shortcut 的四个额外价值：
 
@@ -76,13 +76,12 @@ lark-cli slides +replace-slide --as user \
 
 ### 错误字段名（CLI 直接拒绝）
 
-part 里出现上表以外的字段一律报错，不会被静默忽略。报错总会点名写错的那个字段，并按情况给出下一步：能对上正确字段时直接建议它（`did you mean "replacement"?`），字段属于另一个 action 时说明归属（`it belongs to block_insert`），都对不上时列出该 action 的合法字段集。无论哪种，**要改的是字段名，不是字段值**。
+编写 part 时只使用上表中的标准字段。CLI 返回 unknown field 时会点名写错的字段，并按情况给出下一步：能对上正确字段时直接建议它（`did you mean \"replacement\"?`），字段属于另一个 action 时说明归属（`it belongs to block_insert`），都对不上时列出该 action 的合法字段集。无论哪种，**要改的是字段名，不是字段值**。
 
 ```jsonc
 // ❌ 全部被拒
-[{"action":"block_replace","block_id":"bUn","content":"<p>...</p>"}]        // unknown field "content"; did you mean "replacement"?
-[{"action":"block_replace","block_id":"bUn","xml":"<shape.../>"}]           // 同上（new_xml / block_xml / element / data 一样）
-[{"action":"block_replace","block_id":"bUn","block":{"content":"..."}}]     // 不能把内容嵌一层 block
+[{"action":"block_replace","block_id":"bUn","xml":"<shape.../>"}]           // unknown field "xml"; did you mean "replacement"?
+[{"action":"block_replace","block_id":"bUn","data":"<shape.../>"}]          // data 不是标准字段
 [{"action":"block_replace","block_id":"bUn","insertion":"<shape/>"}]        // insertion 属于 block_insert
 [{"action":"block_replace","block_id":"bUn","replacement":{"type":"..."}}]  // replacement 必须是字符串，报 .replacement must be a string
 
@@ -241,9 +240,11 @@ lark-cli slides +replace-slide --as user \
 |------|------|------|
 | 3350001 + hint "block_id not found" | `parts[i].block_id` 在当前页不存在 | 重新 `slide.get` 拿最新 XML，按里面的 short ID 再填 |
 | 3350002 not found | `--revision-id` 传了不存在的版本号（超过当前 revision） | 用 `-1` 或用 `slide.get` 拿到的有效 `revision_id` |
+| `--parts invalid JSON` | JSON 本身不完整，或被 shell 引号/转义破坏 | 将数组写入 `parts.json` 后传 `--parts @parts.json`，或通过 stdin 传给 `--parts -` |
 | `--parts[i] action "str_replace" is not supported` | CLI 不暴露 `str_replace` | 把替换需求改写成 `block_replace` / `block_insert` |
+| `--parts[i] action "page_replace" / "slide_replace" means whole-page replacement` | 把整页更新意图传给了块级 shortcut | 改用 [`slides +update-slide`](lark-slides-update-slide.md) 整页原地写回 |
 | `--parts contains N items, exceeds maximum of 200` | 一次提交 parts 太多 | 拆多次调用 |
-| `--parts[i] unknown field "content"; did you mean "replacement"?` | XML 塞进了不存在的字段名（`content` / `xml` / `block` / `data` 等） | 只改字段名：`block_replace` 用 `replacement`，`block_insert` 用 `insertion`；报错自带一行正确写法的 hint |
+| `--parts[i] unknown field "xml"; did you mean "replacement"?` | XML 塞进了未支持的字段名（如 `xml` / `new_xml` / `data`） | 使用标准字段：`block_replace` 用 `replacement`，`block_insert` 用 `insertion` |
 | `--parts[i] unknown field "insertion"; it belongs to block_insert` | 字段和 `action` 不配对 | 按 action 取字段：`block_replace` = `block_id` + `replacement`；`block_insert` = `insertion` (+ `insert_before_block_id`) |
 | `--parts[i] (block_replace) requires non-empty block_id` / `replacement` | 字段名对，但值缺失或是空串 | 按 parts 元素结构补齐值 |
 | `<img>` 不显示 / 显示破图 | `src` 写了外链 URL | 换成通过 [`+media-upload`](lark-slides-media-upload.md) 拿到的 `file_token` |

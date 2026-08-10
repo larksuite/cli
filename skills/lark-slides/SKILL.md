@@ -108,7 +108,7 @@ metadata:
 
 **CRITICAL — 将完整 `<slide>` XML 提交给 `slides +create`、`slides +add-slide` 或 `slides +update-slide` 之前，MUST 先把待提交 XML 保存到本地文件并运行唯一版式准出入口 [`scripts/xml_lint.py`](scripts/xml_lint.py)；`summary.error_count` 必须为 0 才能调用接口。**
 
-**CRITICAL — 创建、大幅改写或每次通过 `slides +update-slide` 整页写回后，MUST 按 [workflow/validation-xml.md](references/workflow/validation-xml.md) 做显式验证：回读全文 XML、核对页数和关键元素，并使用 [`scripts/xml_lint.py`](scripts/xml_lint.py) 统一检查 XML、越界、重叠、空白页和内容稀疏风险。**
+**CRITICAL — 创建、大幅改写或整页写回后，MUST 按 [workflow/validation-xml.md](references/workflow/validation-xml.md) 做显式验证：回读全文 XML、核对页数和关键元素，并使用 [`scripts/xml_lint.py`](scripts/xml_lint.py) 统一检查 XML、越界、重叠、空白页和内容稀疏风险。**
 
 **CRITICAL — 创建前自检或失败排障时，MUST 按 [workflow/error-handling.md](references/workflow/error-handling.md) 检查 XML 转义、结构、shell 截断、图片 token、3350001 和布局风险。**
 
@@ -306,7 +306,7 @@ lark-cli slides <resource> <method> [flags] # 调用 API
 1. **先规划再写 XML**：新建演示文稿或大幅改写页面时，必须先写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`；模板、风格和大纲只能作为规划输入，不能绕过规划层
 2. **创建流程**：新建演示文稿用 `slides +create`，一步创建还是两步创建按 [`cli/lark-slides-create.md`](references/cli/lark-slides-create.md) 判断
 3. **`<slide>` 直接子元素只有 `<style>`、`<data>`、`<note>`**：文本和图形必须放在 `<data>` 内
-4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内；注意 `<content>` 只是 XML 元素，不是 `--parts` 的字段名——part 里装 XML 的字段，`block_replace` 是 `replacement`，`block_insert` 是 `insertion`
+4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内；不要混淆 XML 元素 `<content>` 和 `--parts` 的 JSON 字段：编写 `--parts` 时，`block_replace` 装载 XML 使用标准字段 `replacement`，`block_insert` 使用 `insertion`
 5. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
 6. **删除谨慎**：删除不可逆，删前先回读确认 `slide_id`
 7. **编辑已有页面优先原链接更新**：修改单个 shape/img 用 `+replace-slide`（`block_replace` / `block_insert`），不要整页重建；一页改动很多或要改背景用 `+update-slide` 整页覆盖（保 `slide_id` 和页序），多页整页重建就对每页各跑一次 `+update-slide`，不要用 `slides +create` 新建整份 PPT；追加/插入单页用 `+add-slide`、删除单页用 `+delete-slide`，只有这些 shortcut 未覆盖的参数才手动调 `slide.create` / `slide.delete`

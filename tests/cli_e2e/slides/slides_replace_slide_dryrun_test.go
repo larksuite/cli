@@ -13,20 +13,17 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// TestSlidesReplaceSlideUnknownFieldDryRunE2E pins the user-visible half of the
-// contract, which package-level tests cannot reach: they receive the Go error
-// directly and never run the dispatcher. Through the built binary the caller
-// sees an exit code, a clean stdout and a stderr envelope — and it is the
-// envelope, not the Go error, that an agent parses to fix its own command.
-func TestSlidesReplaceSlideUnknownFieldDryRunE2E(t *testing.T) {
+// TestSlidesReplaceSlideNormalizationDryRunE2E pins the compatibility contract
+// through the built binary: aliases are accepted, the request is canonical, and
+// structured output records every conversion that was applied.
+func TestSlidesReplaceSlideNormalizationDryRunE2E(t *testing.T) {
 	setSlidesDryRunEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
-	// "content" is the field callers reach for instead of "replacement",
-	// because <shape> nests a <content> child.
-	parts := `[{"action":"block_replace","block_id":"bUn","content":"` + `<shape type=\"text\"/>` + `"}]`
+	parts := `[{"action":"replace","target_id":"bUn","content":"` +
+		`<shape type=\"text\"/>"},{"action":"insert","element":"<shape type=\"rect\"/>"}]`
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
@@ -39,24 +36,44 @@ func TestSlidesReplaceSlideUnknownFieldDryRunE2E(t *testing.T) {
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
-	result.AssertExitCode(t, 2)
+	result.AssertExitCode(t, 0)
 
-	require.Empty(t, result.Stdout,
-		"a rejected command must not print a success envelope: %s", result.Stdout)
-	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
-	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
-	require.Equal(t, "--parts", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+	body := gjson.Get(result.Stdout, "data.api.0.body.parts").Array()
+	require.Len(t, body, 2, result.Stdout)
+	require.Equal(t, "block_replace", body[0].Get("action").String(), result.Stdout)
+	require.Equal(t, "bUn", body[0].Get("block_id").String(), result.Stdout)
+	require.True(t, body[0].Get("replacement").Exists(), result.Stdout)
+	require.False(t, body[0].Get("target_id").Exists(), result.Stdout)
+	require.False(t, body[0].Get("content").Exists(), result.Stdout)
+	require.Equal(t, "block_insert", body[1].Get("action").String(), result.Stdout)
+	require.True(t, body[1].Get("insertion").Exists(), result.Stdout)
+	require.False(t, body[1].Get("element").Exists(), result.Stdout)
 
-	message := gjson.Get(result.Stderr, "error.message").String()
-	require.Contains(t, message, `unknown field "content"`,
-		"the error must name the field the caller actually wrote: %s", result.Stderr)
-	require.Contains(t, message, `did you mean "replacement"?`,
-		"naming the field is only half the fix; the caller needs the right name: %s", result.Stderr)
-	require.NotContains(t, message, "non-empty",
-		"the old wording read as an empty value and sent callers rewriting the value: %s", result.Stderr)
+	normalizations := gjson.Get(result.Stdout, "data.normalizations").Array()
+	requireReplaceSlideAliasNormalizations(t, normalizations, result.Stdout)
+}
 
-	require.Contains(t, gjson.Get(result.Stderr, "error.hint").String(), `"replacement"`,
-		"the hint carries a copyable correct shape: %s", result.Stderr)
+func requireReplaceSlideAliasNormalizations(t *testing.T, got []gjson.Result, output string) {
+	t.Helper()
+	want := []struct {
+		partIndex int64
+		kind      string
+		from      string
+		to        string
+	}{
+		{0, "action", "replace", "block_replace"},
+		{0, "field", "target_id", "block_id"},
+		{0, "field", "content", "replacement"},
+		{1, "action", "insert", "block_insert"},
+		{1, "field", "element", "insertion"},
+	}
+	require.Len(t, got, len(want), output)
+	for i, expected := range want {
+		require.Equal(t, expected.partIndex, got[i].Get("part_index").Int(), output)
+		require.Equal(t, expected.kind, got[i].Get("kind").String(), output)
+		require.Equal(t, expected.from, got[i].Get("from").String(), output)
+		require.Equal(t, expected.to, got[i].Get("to").String(), output)
+	}
 }
 
 // TestSlidesReplaceSlideEmptyReplacementDryRunE2E guards the other side of the
