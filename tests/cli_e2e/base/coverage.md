@@ -19,7 +19,7 @@
 - TestBaseFormQuestionsCreateVisibleRuleDryRun / TestBaseFormQuestionsUpdateVisibleRuleDryRun: prove `+form-questions-create` / `+form-questions-update` dry-run request shape and that the optional `visible_rule` display condition is transcribed verbatim into the request body.
 - TestBaseTableCopyDryRun: proves `+table-copy` and `+table-copy-status` request shapes, including the schema-safe default, table-name path escaping, explicit all+wait orchestration, Cobra duration parsing, and the opaque task ID body.
 - TestBaseTableCopyWorkflow: feature-gated by `LARK_CLI_E2E_BASE_TABLE_COPY_READY=1` until the OpenAPI is deployed; creates a source table and record, proves schema-only copy, all no-wait plus status, all wait, record inclusion, and cleanup.
-- TestBaseTemplateCenterDryRun: proves `+template-categories`, `+template-list`, and `+template-search` request shapes, including cursor pagination and the `--page-size` alias.
+- TestBaseTemplateCenterDryRun: proves `+template-categories`, `+template-list`, and `+template-search` request shapes; the list case covers category, limit, and offset parameters.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
 - Blocked area: table-copy live integration remains deployment-gated; dashboard, field, most record operations, most form operations, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
 
