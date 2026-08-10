@@ -409,6 +409,84 @@ func TestWikiNodeGetMountedExecuteParsesURLAndFormatsOutput(t *testing.T) {
 	}
 }
 
+func TestWikiNodeGetMountedClassifiesTerminalBusinessErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		code     int
+		message  string
+		subtype  errs.Subtype
+		hintText string
+	}{
+		{
+			name:     "deleted node",
+			code:     131012,
+			message:  "node has been deleted",
+			subtype:  errs.SubtypeNotFound,
+			hintText: "Do not retry the same node token",
+		},
+		{
+			name:     "invalid resource token",
+			code:     131013,
+			message:  "token is invalid",
+			subtype:  errs.SubtypeInvalidParameters,
+			hintText: "Do not retry the same token",
+		},
+		{
+			name:     "document not in wiki",
+			code:     131014,
+			message:  "document is not in wiki",
+			subtype:  errs.SubtypeFailedPrecondition,
+			hintText: "Do not retry wiki +node-get with the same document",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code":   tt.code,
+					"msg":    tt.message,
+					"log_id": "log-node-get-terminal",
+				},
+			})
+
+			err := mountAndRunWiki(t, WikiNodeGet, []string{
+				"+node-get",
+				"--node-token", testWikiNodeToken,
+				"--as", "bot",
+			}, factory, stdout)
+			if err == nil {
+				t.Fatal("expected a terminal business error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if p.Category != errs.CategoryAPI || p.Code != tt.code || p.Subtype != tt.subtype {
+				t.Fatalf("problem category/code/subtype = %s/%d/%s, want %s/%d/%s",
+					p.Category, p.Code, p.Subtype, errs.CategoryAPI, tt.code, tt.subtype)
+			}
+			if p.Retryable {
+				t.Fatalf("problem retryable = true, want false: %#v", p)
+			}
+			if !strings.Contains(p.Hint, tt.hintText) {
+				t.Fatalf("hint = %q, want %q", p.Hint, tt.hintText)
+			}
+			if p.LogID != "log-node-get-terminal" {
+				t.Fatalf("log_id = %q, want log-node-get-terminal", p.LogID)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want no success envelope", stdout.String())
+			}
+		})
+	}
+}
+
 func TestWikiNodeGetMountedAcceptsNodeTokenFlag(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 

@@ -52,6 +52,16 @@ lark-cli wiki +node-get \
 - `creator` falls back to `creator` when `node_creator` is absent. `updated_at` is `obj_edit_time` formatted as RFC3339.
 - No `url` is returned: `get_node` does not provide one and a synthesized `www.feishu.cn/wiki/<node_token>` link is non-canonical/misleading for a read command. Use `node_token` / `obj_token` as the identifiers.
 
+## Terminal business errors
+
+These HTTP 200 responses carry a non-zero business code and are not retryable with the same input:
+
+| Code | Meaning | Required action |
+|------|---------|-----------------|
+| `131012` | The Wiki node has been deleted | Do not retry the same node token; rediscover the node or ask for a current Wiki link |
+| `131013` | The resource token is invalid | Do not switch identity or reauthorize; correct the URL/token |
+| `131014` | The document is not mounted in Wiki | Stop Wiki resolution; use the corresponding docs/sheets/base/drive command, or provide a Wiki URL/node_token |
+
 ## Required Scope
 
 `wiki:node:retrieve`
