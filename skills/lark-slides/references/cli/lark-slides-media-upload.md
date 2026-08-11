@@ -1,4 +1,3 @@
-
 # slides +media-upload（上传本地图片到飞书幻灯片）
 
 把本地图片上传到指定演示文稿的 drive 媒体库，返回 `file_token`。**返回的 token 作为 `<img src="...">` 的值塞进 slide XML 即可显示图片。**
@@ -65,7 +64,7 @@ SID=yyy       # 要加图的那一页
 
 # 1) 上传图片拿 file_token
 TOKEN=$(lark-cli slides +media-upload --as user \
-  --file ./pic.png --presentation $PRES_ID | jq -r '.data.file_token')
+  --file ./pic.png --presentation $PRES_ID --jq '.data.file_token')
 
 # 2) block_insert 到页末（或用 insert_before_block_id 指定插入位置）
 lark-cli slides +replace-slide --as user \

@@ -185,7 +185,7 @@ SID=yyy
 
 # 1) 上传图片
 TOKEN=$(lark-cli slides +media-upload --as user \
-  --file ./pic.png --presentation "$PID" | jq -r '.data.file_token')
+  --file ./pic.png --presentation "$PID" --jq '.data.file_token')
 
 # 2) block_insert 到页末
 lark-cli slides +replace-slide --as user \
@@ -256,4 +256,4 @@ lark-cli slides +replace-slide --as user \
 - [xml_presentation.slide get](lark-slides-xml-presentation-slide-get.md) — 读原页拿 `block_id` / `revision_id`
 - [xml_presentation.slide replace](lark-slides-xml-presentation-slide-replace.md) — 底层 replace API 参考
 - [+media-upload](lark-slides-media-upload.md) — 上传图片拿 `file_token`
-- [lark-slides-edit-workflows.md](../workflow/slides_editing.md) — 读-改-写闭环 + 决策树
+- [slides_editing.md](../workflow/slides_editing.md) — 读-改-写闭环 + 决策树
