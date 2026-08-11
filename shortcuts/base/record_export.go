@@ -92,10 +92,14 @@ func normalizeRecordSearchOutput(ctx context.Context, flags *common.FlagContext)
 	if err := normalizeRecordReadOutput(ctx, flags); err != nil {
 		return err
 	}
-	if strings.TrimSpace(flags.Str("json")) != "" {
+	if strings.TrimSpace(flags.Str("json")) != "" || flags.Changed("limit") {
 		return nil
 	}
-	return normalizeRecordNDJSONLimit(ctx, flags)
+	limit := 10
+	if flags.Str("format") == recordexport.FormatNDJSON {
+		limit = maxNDJSONRecordReadLimit
+	}
+	return flags.SetCanonical("limit", strconv.Itoa(limit))
 }
 
 func validateRecordExportFlags(runtime *common.RuntimeContext) error {

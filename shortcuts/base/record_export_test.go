@@ -493,6 +493,30 @@ func TestRecordSearchNDJSONPaginatesAndPreservesSearchBody(t *testing.T) {
 	}
 }
 
+func TestRecordSearchInlineDefaultsTo10Records(t *testing.T) {
+	factory, stdout, registry := newExecuteFactory(t)
+	searchStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
+		BodyFilter: func(body []byte) bool {
+			return strings.Contains(string(body), `"limit":10`)
+		},
+		Body: map[string]any{"code": 0, "data": recordMatrixPage(0, 1, false, "fld_name")},
+	}
+	registry.Register(searchStub)
+
+	err := runShortcut(t, BaseRecordSearch, []string{
+		"+record-search", "--base-token", "app_x", "--table-id", "tbl_x",
+		"--keyword", "Name", "--search-field", "Name", "--format", "json",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	if !strings.Contains(string(searchStub.CapturedBody), `"limit":10`) {
+		t.Fatalf("search body = %s, want dynamic inline limit 10", searchStub.CapturedBody)
+	}
+}
+
 func TestRecordSearchNDJSONDefaultsTo2000Records(t *testing.T) {
 	for _, tt := range []struct {
 		name string

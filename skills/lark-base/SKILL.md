@@ -31,7 +31,7 @@ metadata:
 - Base 业务操作只使用 `lark-cli base +...` shortcut，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`。
 - 执行 update 前必须先查当前 shortcut 的 `--help` 或对应 reference。若命令要求完整配置，首次请求必须基于可信的当前配置执行 read-modify-write：只修改用户明确指定的内容，保留其他仍适用的可写配置，并按命令要求的结构提交。若命令支持局部／delta update，按其契约提交最小合法 payload；不得以不完整请求试错补参。
 - Base CLI/OpenAPI 当前不支持视图行高、冻结列、列宽等 UI-only 外观设置。遇到这类需求，说明能力边界并停止，不要猜测未文档化参数或改走 raw API。
-- **高频：数据分析。** 记录作为分析、解析、比较或可复用的本地输入时，首选 `--output <path>.ndjson --minimal-stdout`，并按 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md) 处理。
+- **高频：数据分析。** 数据表记录用于查询、分析、解析或比较时，先读取 [Base 数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md)；进入本地分析路径后，使用 `+record-list --format ndjson` 获取分析数据。
 - **低频：在线复制。** 复制整个 Base 使用 `+base-copy`，复制 Base 内单张数据表使用 `+table-copy`。
 - **更低频：文件导入/导出。** 本地文件与 Base 之间的导入/导出转 `lark-drive`；具体格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责，导入完成后再回到 Base 命令。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
