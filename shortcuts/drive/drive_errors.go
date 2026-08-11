@@ -146,7 +146,31 @@ func driveExportIsRateLimit(err error) bool {
 	if !ok || problem == nil {
 		return false
 	}
-	return problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400
+	return problem.Subtype == errs.SubtypeRateLimit ||
+		problem.Code == 99991400 ||
+		(problem.Code == 9499 && driveExportTooManyRequestsMessage(problem.Message))
+}
+
+// normalizeDriveExportRateLimit scopes the overloaded 9499 interpretation to
+// Drive export task creation/status calls. The shared classifier intentionally
+// keeps the code's general meaning (invalid_parameters) for every other API.
+func normalizeDriveExportRateLimit(err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil || problem.Code != 9499 || !driveExportTooManyRequestsMessage(problem.Message) {
+		return err
+	}
+	problem.Category = errs.CategoryAPI
+	problem.Subtype = errs.SubtypeRateLimit
+	problem.Retryable = true
+	// BuildAPIError attached invalid-parameter recovery before the export
+	// boundary could disambiguate 9499. Drop it before adding rate-limit recovery.
+	problem.Hint = ""
+	return err
+}
+
+func driveExportTooManyRequestsMessage(message string) bool {
+	normalized := strings.Trim(strings.ToLower(strings.TrimSpace(message)), " .")
+	return normalized == "too many request" || normalized == "too many requests"
 }
 
 // withDriveExportRateLimitRecovery preserves the upstream typed rate-limit
@@ -154,6 +178,7 @@ func driveExportIsRateLimit(err error) bool {
 // task already exists at this point, so callers must reuse its ticket instead
 // of creating a duplicate task with drive +export.
 func withDriveExportRateLimitRecovery(err error, ticket, fileToken string) error {
+	err = normalizeDriveExportRateLimit(err)
 	if !driveExportIsRateLimit(err) {
 		return err
 	}
@@ -170,10 +195,37 @@ func withDriveExportRateLimitRecovery(err error, ticket, fileToken string) error
 // task exists. There is no ticket to resume, so callers must retry the original
 // export command after backing off instead of invoking drive +task_result.
 func withDriveExportCreateRateLimitRecovery(err error) error {
+	err = normalizeDriveExportRateLimit(err)
 	if !driveExportIsRateLimit(err) {
 		return err
 	}
 
-	const hint = "export task creation was rate limited before a ticket was issued; stop and wait at least 1 minute, then rerun the same `lark-cli drive +export` command\nif rate limiting continues, use exponential backoff starting at 1 minute instead of retrying immediately; do not run `lark-cli drive +task_result` because no export ticket exists yet"
+	const hint = "export task creation was rate limited before a ticket was issued; stop and wait at least 1 minute, then rerun the original command with the same arguments\nif rate limiting continues, use exponential backoff starting at 1 minute instead of retrying immediately; do not run `lark-cli drive +task_result` because no export ticket exists yet"
+	return appendDriveExportRecoveryHint(err, hint)
+}
+
+// withDriveExportCreateRecovery adds command-specific recovery to permanent
+// export-task failures while preserving the typed category, subtype, code, and
+// log ID decided by the shared response classifier.
+func withDriveExportCreateRecovery(err error) error {
+	err = withDriveExportCreateRateLimitRecovery(err)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return err
+	}
+
+	var hint string
+	switch problem.Code {
+	case 1069902:
+		hint = "verify the current --as identity can view and export the source document and that sharing, security-label, DLP, and tenant policies allow downloading; ask the document owner or tenant admin to grant access before retrying"
+	case 1069906:
+		hint = "the source document was deleted; stop retrying and export an existing document, or restore the document first"
+	case 1069914:
+		hint = "prefer --url with the original document link so the CLI can infer its type; for a bare Wiki node token, use --doc-type wiki; otherwise verify the token still exists and --doc-type matches the source"
+	case 1069918, 99992402:
+		hint = "check that --file-extension is supported by the source type and that sheet/bitable CSV exports include the correct --sub-id"
+	default:
+		return err
+	}
 	return appendDriveExportRecoveryHint(err, hint)
 }

@@ -40,9 +40,11 @@ lark-cli vc +recording --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 
 每次只能指定一种输入方式。同时传入会报错。
 
-### 2. 仅支持 user 身份
+### 2. 身份支持
 
-该命令仅支持 `user` 身份，使用前需完成 `lark-cli auth login`。user token 只能查自己有权限的录制。
+`--meeting-ids` 和 `--calendar-event-ids` 两种模式都支持 `--as user` 和 `--as bot`。user token 只能查自己有权限的录制；bot 使用 tenant_access_token，只能查 bot 有权限的录制。
+
+拿到的 `minute_token` 是在某个身份下解析出来的：下一步传给 `minutes minutes get` / `minutes +detail` / `minutes +download` 时必须显式沿用同一个 `--as`，不要省略让身份被 profile 默认值悄悄换掉（完整规则见 [lark-shared](../../lark-shared/SKILL.md) 的「身份延续」）。
 
 ### 3. 批量上限
 
@@ -78,10 +80,10 @@ lark-cli vc +recording --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 
 ```bash
 # 第 1 步：通过 meeting_id 查询录制，拿到 minute_token
-lark-cli vc +recording --meeting-ids xxx
+lark-cli vc +recording --meeting-ids xxx --as bot
 
-# 第 2 步：使用上一步返回的 minute_token 下载妙记文件
-lark-cli minutes +download --minute-tokens <minute_token>
+# 第 2 步：使用上一步返回的 minute_token 下载妙记文件，沿用第 1 步的身份
+lark-cli minutes +download --minute-tokens obcnxxxxxxxxxxxxxxxxxxxx --as bot
 ```
 
 ### 场景 2：知道 meeting_id，想查询妙记基础信息
@@ -136,7 +138,7 @@ lark-cli minutes +download --minute-tokens <minute_token>
 | `no recording available` | 该会议无录制或录制未完成 | 确认会议已结束且开启了录制 |
 | `121005 no permission` | 无权查看该会议录制 | 确认是会议参与者或有录制权限 |
 | `124002 recording generating` | 录制文件仍在生成中 | 等待录制完成后重试 |
-| `missing required scope(s)` | 权限不足 | 按提示运行 `auth login --scope` |
+| `missing required scope(s)` | 权限不足 | `--as user`：按提示运行 `auth login --scope`；`--as bot`：使用错误中的 `console_url` 去开发者后台开通，**禁止**对 bot 执行 `auth login`（见 [lark-shared](../../lark-shared/SKILL.md) 的权限恢复表） |
 
 ## 提示
 

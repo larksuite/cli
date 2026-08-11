@@ -56,6 +56,7 @@ lark-cli auth login --domain apps
 
 ## 高频路径
 
+- **Base 到应用数据库同步**：用户说“Base 同步到数据库 / 整库同步 / 多张表同步 / 批量任务重新启用 / operation-not-allowed”时，先读 [`lark-apps-db.md`](references/lark-apps-db.md) 的 Base 数据同步段落，再查 app_id 或处理授权。先形成计划再动手：`+db-sync-create` 一次只处理一张 Base 表，整库/多表必须拆成多份单表配置和多次 preview/create；batch/import 任务是一次性任务，不能重新 enable，遇 operation-not-allowed 先解释生命周期边界，再用 `+db-sync-get` 查状态/结果，持续同步要新建 streaming 任务。
 - **性能/监控/观测指标**：用户问“接口请求量、错误量、错误率、接口慢、延迟、CPU、内存、最近一小时/七天趋势”时，不要去当前工作区搜索监控文件，也不要询问“监控数据在哪”。先按「app_id 获取」解析应用：`lark-cli apps +list --keyword "<应用名>" --as user`；拿到 `app_id` 后读 [`lark-apps-observability.md`](references/lark-apps-observability.md)，用 `+metric-list`。
 - **请求量 + 错误量 + 延迟**：请求量/错误量用 `lark-cli apps +metric-list --app-id <app_id> --metric requests --since <range> --as user`（不传 `--series` 会同时返回 total/error）；延迟用 `--metric latency`（不传 `--series` 会返回 p50/p99）。如果用户给了具体接口，再加 `--api <path-or-name>`；不要臆造 group-by 参数。
 - **PV/UV/访问量/活跃用户**：先解析 `app_id`，再用 `+analytics-list`，不要误用 `+metric-list`。

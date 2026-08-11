@@ -20,7 +20,9 @@ metadata:
 
 ## 身份
 
-所有 minutes 命令默认使用 `--as user`。
+身份是跨命令工作流的状态：一旦某个 `minute_token` / `note_id` 由某个身份取得，后续消费它的命令必须显式沿用相同 `--as`，不要依赖 profile 默认身份。完整规则见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 的「身份延续」。
+
+所有 minutes 命令默认使用 `--as user`。`+search`、`minutes get`、`+detail`、`+download` 和 `+apply-permission` 也支持 `--as bot`（bot 只能访问 / 操作 bot 有权限的妙记）。精确身份支持以 `<command> --help` 为准。
 
 ## Shortcuts
 
@@ -31,7 +33,7 @@ metadata:
 | [`+download`](references/lark-minutes-download.md) | 下载妙记音视频媒体文件 |
 | [`+upload`](references/lark-minutes-upload.md) | 上传 file_token 生成妙记 |
 | [`+update`](references/lark-minutes-update.md) | 更新妙记标题 |
-| `+apply-permission` | 申请妙记查看或编辑权限 |
+| [`+apply-permission`](references/lark-minutes-apply-permission.md) | 申请妙记查看或编辑权限 |
 | [`+speaker-replace`](references/lark-minutes-speaker-replace.md) | 替换妙记逐字稿中的说话人（须先 `lark-cli api GET .../speakerlist` 取 `speaker_id`） |
 | `+word-replace` | 批量替换逐字稿关键词（详见 `lark-cli minutes +word-replace --help`） |
 | [`+summary`](references/lark-minutes-summary.md) | 替换妙记 AI 总结全文 |
@@ -79,17 +81,21 @@ metadata:
 
 ### 3. 申请妙记权限
 
-遇到妙记没有查看或编辑权限时，引导用户申请对应权限；只有用户明确要申请时，才调用 `minutes +apply-permission`。
+遇到妙记没有查看或编辑权限时，引导用户申请对应权限；只有用户明确要申请时，才调用 `minutes +apply-permission`。使用前必读 [`+apply-permission` reference](references/lark-minutes-apply-permission.md)（write 操作，含 user/bot 身份与权限语义）。
 
 只有当用户明确要求"申请查看权限"、"申请编辑权限"、"帮我申请这条妙记权限"时，才调用：
 
 ```bash
-lark-cli minutes +apply-permission --minute-token <token> --perm view|edit
+lark-cli minutes +apply-permission --minute-token <token> --perm view|edit --as user
+lark-cli minutes +apply-permission --minute-token <token> --perm view|edit --as bot
 ```
 
 这是向妙记所有者发起权限申请，不代表立即获得权限。
 
-**安全约束**：遇到无权限错误时，不要自动调用 `+apply-permission`；先把无权限事实告知用户，只有用户明确要求申请权限时才发起申请。
+**安全约束**：
+- 遇到无权限错误时，不要自动调用 `+apply-permission`；先把无权限事实告知用户，只有用户明确要求申请权限时才发起申请。
+- **必须沿用触发无权限错误时的来源身份**：例如 `--as bot` 读取妙记时遇到无权限，申请也要用 `--as bot`，不要切到 user 身份申请。
+- **禁止**用切换身份的方式绕过资源权限（例如 bot 无权限时改用 user 身份重新读取）。
 
 ### 4. 上传音视频文件生成妙记（并可继续获取纪要 / 逐字稿）
 

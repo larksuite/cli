@@ -12,8 +12,8 @@
 | 场景 | 推荐方式 |
 |------|----------|
 | 不超过 10 页 | 每页存一个 XML 文件，`slides +create --slide @page-01.xml --slide @page-02.xml ...` 一步创建 |
-| 超过 10 页 | **两步创建**：先 `slides +create` 创建空白 PPT，再用 [`+add-slide`](../xml/lark-slides-add-slide.md) 逐页添加 |
-| 已有 PPT 继续追加或插入页面 | 使用 [`+add-slide`](../xml/lark-slides-add-slide.md)，必要时配合 `--before-slide-id` |
+| 超过 10 页 | **两步创建**：先 `slides +create` 创建空白 PPT，再用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加 |
+| 已有 PPT 继续追加或插入页面 | 使用 [`+add-slide`](lark-slides-add-slide.md)，必要时配合 `--before-slide-id` |
 
 > [!IMPORTANT]
 > `slides +create` 带页面时底层会逐页创建，不是原子操作。中途失败时先记录 `xml_presentation_id`，回读确认当前状态，再继续修复或追加。
@@ -56,7 +56,7 @@ lark-cli slides +create --title "项目汇报" --slide @./slide-01.xml --dry-run
 - **`permission_grant`**（object，可选）：仅 `--as bot` 时返回，说明是否已自动为当前 CLI 用户授予可管理权限
 
 > [!IMPORTANT]
-> 不带页面参数时，`slides +create` 只创建空白演示文稿。创建后用 [`+add-slide`](../xml/lark-slides-add-slide.md) 逐页添加 slide 内容。
+> 不带页面参数时，`slides +create` 只创建空白演示文稿。创建后用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加 slide 内容。
 >
 > 带了页面时，CLI 先创建空白演示文稿，再逐页调用 slide 创建接口添加页面。如果某一页添加失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留。
 >
@@ -77,7 +77,7 @@ lark-cli slides +create --title "项目汇报" --slide @./slide-01.xml --dry-run
 | `--slide` | 否 | 一页 `<slide>` XML，或 `@路径`；可重复，最多 10 次。格式见[页面输入形式](#页面输入形式) |
 | `--slides` | 否 | 页面 XML 的 JSON 字符串数组，最多 10 个；支持 `@文件` 和 `-`（stdin）。格式见[页面输入形式](#页面输入形式) |
 
-10 页是 CLI 的上限，服务端每次只接收一页。超过 10 页时先用 `+create` 创建空白 PPT，再用 [`+add-slide`](../xml/lark-slides-add-slide.md) 逐页添加。
+10 页是 CLI 的上限，服务端每次只接收一页。超过 10 页时先用 `+create` 创建空白 PPT，再用 [`+add-slide`](lark-slides-add-slide.md) 逐页添加。
 
 两种形式的每一页都会在发请求前校验成「单个完整的 `<slide>` 文档」。不合格的页在创建演示文稿之前报错并指出页序号，不会留下空壳演示文稿。
 
@@ -172,5 +172,5 @@ lark-cli slides +add-slide --as user \
 
 ## 相关命令
 
-- [slides +add-slide](../xml/lark-slides-add-slide.md) — 追加/插入单页（两步创建的第二步）
+- [slides +add-slide](lark-slides-add-slide.md) — 追加/插入单页（两步创建的第二步）
 - [slides +xml-get](lark-slides-xml-presentations-get.md) — 读取 PPT 内容并保存到本地文件

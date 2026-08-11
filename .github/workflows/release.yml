@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  RELEASE_GO_VERSION: '1.26.5'
+
 concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
@@ -101,7 +104,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: '1.23'
+          go-version: ${{ env.RELEASE_GO_VERSION }}
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.x'
@@ -161,6 +164,27 @@ jobs:
           set -euo pipefail
           set +x
           [[ -z "${MACOS_NOTARY_KEY_PATH:-}" ]] || rm -f -- "$MACOS_NOTARY_KEY_PATH"
+
+      - name: Verify release Go toolchain
+        run: |
+          set -euo pipefail
+          mapfile -d '' release_binaries < <(
+            find dist -type f \( -name lark-cli -o -name lark-cli.exe \) -print0
+          )
+          (( ${#release_binaries[@]} > 0 )) || {
+            echo "GoReleaser produced no binaries to verify." >&2
+            exit 1
+          }
+
+          expected="go${RELEASE_GO_VERSION}"
+          for binary in "${release_binaries[@]}"; do
+            actual="$(go version -m "$binary" | awk 'NR == 1 { print $NF }')"
+            [[ "$actual" == "$expected" ]] || {
+              echo "Release binary ${binary} was built with ${actual:-an unknown Go version}; expected ${expected}." >&2
+              exit 1
+            }
+            echo "Verified ${binary}: ${actual}"
+          done
 
       - name: Build release candidate
         env:

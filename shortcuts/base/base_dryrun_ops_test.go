@@ -27,8 +27,9 @@ func TestDryRunTableOps(t *testing.T) {
 
 	rt := newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_1", "name": "Orders"}, nil, nil)
 	assertDryRunContains(t, dryRunTableGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1")
-	assertDryRunContains(t, dryRunTableCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/tables")
 
+	// +table-create requires --fields, so the fieldless shape is unreachable
+	// through the command surface; see table_create_test.go for that contract.
 	tableCreateWithFieldsRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "name": "Orders", "fields": `[{"name":"Title","type":"text"}]`},
 		nil,

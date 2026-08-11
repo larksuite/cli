@@ -37,6 +37,29 @@ func TestMinutesApplyPermission_DryRun(t *testing.T) {
 	assert.True(t, strings.Contains(output, `"perm": "view"`) || strings.Contains(output, `"perm":"view"`), "dry-run should contain perm body, got: %s", output)
 }
 
+func TestMinutesApplyPermission_DryRun_BotIdentity(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"minutes", "+apply-permission",
+			"--minute-token", "obcnexampleminute",
+			"--perm", "view",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.True(t, strings.Contains(output, "POST"), "dry-run should contain POST method, got: %s", output)
+	assert.True(t, strings.Contains(output, "/open-apis/minutes/v1/minutes/obcnexampleminute/permissions/apply"), "dry-run should contain API path, got: %s", output)
+	assert.True(t, strings.Contains(output, `"perm": "view"`) || strings.Contains(output, `"perm":"view"`), "dry-run should contain perm body, got: %s", output)
+}
+
 func TestMinutesApplyPermission_InvalidPerm(t *testing.T) {
 	setDryRunConfigEnv(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

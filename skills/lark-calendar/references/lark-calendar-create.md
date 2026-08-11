@@ -61,6 +61,7 @@ lark-cli calendar event.attendees create \
   --data '{"attendees": [{"type": "resource", "room_id": "omm_xxx", "approval_reason": "申请原因"}]}'
 
 完整 API 命令的关键差异：
+- `+create` 在传入 `--attendee-ids`（即需要邀请其他参会人）时，会自动把当前身份一并加进参会人，但 `calendar events create` / `calendar event.attendees create` 等完整 API **不会**自动加。需自行把调用身份的 open_id 以 `type:user` 写入 attendees，与邀请的其他参会人合并去重后添加。open_id 用 `lark-cli auth status --json --verify` 获取：bot 取 `identities.bot.openId`（`--verify` 才会填充），user 取 `identities.user.openId`。
 - 时间参数是 **Unix 秒字符串**（非 ISO 8601）。换算时**禁止依赖容器默认时区**（常为 UTC，会导致 8 小时偏移），必须显式指定目标时区。
 - 全天日程的开始日期和结束日期必须分别是日程开始的第一天和结束的最后一天；单日全天日程两者相同。
 - 手动拆成“创建日程 + 添加参会人”两步时，若第二步失败，建议删除刚创建的空日程，避免遗留无参会人的日程。

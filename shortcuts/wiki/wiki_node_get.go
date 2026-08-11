@@ -100,7 +100,7 @@ var WikiNodeGet = common.Shortcut{
 
 		data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", spec.RequestParams(), nil)
 		if err != nil {
-			return err
+			return wikiNodeGetProblem(err)
 		}
 		raw := common.GetMap(data, "node")
 		node, err := parseWikiNodeRecord(raw)
@@ -129,6 +129,37 @@ var WikiNodeGet = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+// wikiNodeGetProblem adds command-specific classification and recovery for
+// get_node business errors that are intentionally not registered in the
+// process-wide code metadata table. These failures are terminal for the same
+// input: callers must change the resource token or operation instead of
+// retrying the request or switching identities.
+func wikiNodeGetProblem(err error) error {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+
+	switch p.Code {
+	case 131006:
+		p.Retryable = false
+		appendWikiProblemHint(err, wikiPermissionDeniedHint())
+	case 131012:
+		p.Subtype = errs.SubtypeNotFound
+		p.Retryable = false
+		appendWikiProblemHint(err, "The Wiki node has been deleted. Do not retry the same node token; rediscover the node or ask for a current Wiki link.")
+	case 131013:
+		p.Subtype = errs.SubtypeInvalidParameters
+		p.Retryable = false
+		appendWikiProblemHint(err, "The resource token is invalid. Do not retry the same token, switch identity, or reauthorize; check the URL/token and provide a valid wiki node_token or typed document URL.")
+	case 131014:
+		p.Subtype = errs.SubtypeFailedPrecondition
+		p.Retryable = false
+		appendWikiProblemHint(err, "The document exists but is not mounted in Wiki. Do not retry wiki +node-get with the same document; use the corresponding docs, sheets, base, or drive command, or provide a Wiki URL/node_token.")
+	}
+	return err
 }
 
 // wikiNodeGetSpec is the normalized input for the shortcut.

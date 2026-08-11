@@ -64,6 +64,32 @@ LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 lark-cli a
 - **User 权限**：后台开通 scope + 用户通过 `auth login` 授权，两层都要满足
 
 
+### 身份延续（跨命令工作流）
+
+身份是**整个工作流的状态**，不是单条命令的局部参数。CLI 不会在进程之间继承"上一步用的身份"——省略 `--as` 不代表"保持当前身份"，而是把身份选择交回下面这条优先级链：
+
+```text
+显式 --as > profile default-as > credential auto-detect
+```
+
+因此，只要用户显式选择了身份，或某个 ID / Token 是通过某个身份取得的（例如 `vc +detail --as bot` 返回的 `note_id`），**后续每一条消费该 ID/Token 的命令都必须显式带上相同的 `--as`**，跨 skill 传递也不例外：
+
+- 禁止依赖 profile 默认身份让后续命令"自动"沿用同一身份。
+- 禁止仅仅因为遇到权限错误就切换身份去绕过它——先如实报告，只有用户明确同意才切换。
+- 下游命令根本不支持来源身份时（如 `--as bot` 拿到的 `note_id` 指向 `note_display_type=unified`，而 `note +transcript` 仅支持 `--as user`），停止并向用户说明这个边界，不要静默省略 `--as` 把身份交给默认值。
+- 命令支持的精确身份以 `<command> --help` / `schema` 为准；各 skill 的身份小节只标注会影响路由决策的例外，不重复维护完整矩阵。
+
+```bash
+# GOOD — note_id 来自 bot 链路，下一步显式沿用 bot
+lark-cli vc +detail --meeting-ids <meeting_id> --as bot
+lark-cli note +detail --note-id <note_id> --as bot
+lark-cli docs +fetch --doc <note_doc_token> --as bot
+
+# BAD — 省略 --as，身份可能被 profile 默认值悄悄换成 user
+lark-cli vc +detail --meeting-ids <meeting_id> --as bot
+lark-cli note +detail --note-id <note_id>
+```
+
 ### 权限不足处理
 
 遇到权限相关错误时，**根据当前身份类型采取不同解决方案**。
@@ -72,6 +98,16 @@ LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 lark-cli a
 - `missing_scopes`：列出缺失的 scope (N选1)
 - `console_url`：飞书开发者后台的权限配置链接
 - `hint`：建议的修复命令
+
+**missing_scope 与资源 ACL（无权访问某具体资源）是两类不同问题**，恢复方式也不同：
+
+| 失败类型 | user | bot |
+|---------|---------|---------|
+| missing scope（应用/用户完全没有这个权限） | `auth login --scope ...` | 使用错误中的 `console_url` 去开发者后台开通，**禁止** `auth login` |
+| 资源 ACL（有 scope，但对这一条具体资源没有访问权限） | 请求资源所有者给当前用户授权 | 请求资源所有者给当前应用/bot 授权 |
+| 资源在当前身份下不可见 | 保持当前身份，如实报告不可见，不要切换身份重试 | 保持当前身份，如实报告不可见，不要切换身份重试 |
+
+任何权限恢复完成后，都必须用**触发错误时的原身份**重试，不要在恢复过程中换成另一个身份。
 
 #### Bot 身份（`--as bot`）
 

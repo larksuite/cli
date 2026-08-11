@@ -92,6 +92,7 @@ var FollowersTask = common.Shortcut{
 			"guid": taskId,
 			"url":  urlVal,
 		}
+		projectTaskFields(outData, task, standardTaskOutputFields...)
 
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "✅ Task followers updated successfully!\n")

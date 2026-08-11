@@ -11,6 +11,7 @@ Live E2E is intentionally not counted yet because both commands require meeting-
 
 ## Summary
 - TestNoteDetailDryRun: dry-run coverage for `note +detail`; asserts the detail request method and `/open-apis/vc/v1/notes/{note_id}` URL without calling live APIs.
+- TestNoteDetailDryRunAsBot: dry-run coverage for `note +detail --as bot`; pins bot identity acceptance and the same detail endpoint.
 - TestNoteTranscriptDryRun: dry-run coverage for `note +transcript`; asserts the two-step request shape (`note detail` precheck, then `unified_note_transcript`), transcript query parameters, and that `--transcript-format` coexists with the global `--format` output flag.
 
 ## Command Table
@@ -18,4 +19,5 @@ Live E2E is intentionally not counted yet because both commands require meeting-
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
 | dry-run ✓ / live ✕ | note +detail | shortcut | note_dryrun_test.go::TestNoteDetailDryRun | `--note-id`; user identity | live note fixtures depend on meeting-generated artifacts |
+| dry-run ✓ / live ✕ | note +detail | shortcut | note_dryrun_test.go::TestNoteDetailDryRunAsBot | `--note-id`; `--as bot` | live note fixtures depend on meeting-generated artifacts |
 | dry-run ✓ / live ✕ | note +transcript | shortcut | note_dryrun_test.go::TestNoteTranscriptDryRun | `--note-id`; `--transcript-format`; `--format json`; transcript API `format/page_size/locale` params | live unified-note fixtures depend on generated VC note artifacts |

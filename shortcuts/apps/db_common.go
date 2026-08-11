@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -42,6 +44,16 @@ func dbEnvParams(rctx *common.RuntimeContext, params map[string]interface{}) map
 		params["env"] = env
 	}
 	return params
+}
+
+// dbEnvBody 把 env 并入请求体顶层：sync_create/sync_update 从 body 读 env（与 config/preview 平级），
+// 不是从 query。语义与 dbEnvParams 一致——仅在显式指定环境（非空）时带 env 键，未指定时省略、
+// 由服务端按应用多环境状态自动选分支。原样返回同一个 map 便于链式。
+func dbEnvBody(rctx *common.RuntimeContext, body map[string]interface{}) map[string]interface{} {
+	if env := dbEnv(rctx); env != "" {
+		body["env"] = env
+	}
+	return body
 }
 
 // rejectLegacyEnvFlag 在 Validate 阶段拦截已移除的 --env：显式传了就报清晰的 validation 错，指向 --environment。
@@ -139,6 +151,36 @@ func appRecoveryApplyStatusPath(appID string) string {
 // appDbQuotaPath 返回 db 配额查询 URL：db/quota。
 func appDbQuotaPath(appID string) string {
 	return fmt.Sprintf("%s/apps/%s/db/quota", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncCreatePath returns the Base data sync task create/preview URL.
+func appDbSyncCreatePath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_create", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncListPath returns the Base data sync task list URL.
+func appDbSyncListPath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_list", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncTaskPath returns the Base data sync task detail URL.
+func appDbSyncTaskPath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_task", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncUpdatePath returns the Base data sync task update URL.
+func appDbSyncUpdatePath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_update", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncDeletePath returns the Base data sync task delete URL.
+func appDbSyncDeletePath(appID string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_del", apiBasePath, validate.EncodePathSegment(appID))
+}
+
+// appDbSyncActionPath returns a Base data sync task action URL.
+func appDbSyncActionPath(appID, action string) string {
+	return fmt.Sprintf("%s/apps/%s/db/sync_%s", apiBasePath, validate.EncodePathSegment(appID), validate.EncodePathSegment(action))
 }
 
 // ── 变更追溯（changelog / audit）路由 ──
@@ -272,4 +314,285 @@ func requireAppID(raw string) (string, error) {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--app-id is required").WithParam("--app-id")
 	}
 	return id, nil
+}
+
+var dbSyncCodeHints = map[int]string{
+	400002477: "Map 'Base 表记录 ID' to a text, single-value, unique target column. " +
+		"If the use_existing target table has no such column, first add one with " +
+		"+db-execute (e.g. ALTER TABLE <table> ADD COLUMN base_record_id varchar UNIQUE), then rerun preview. " +
+		"For create, rerun preview; for update, resubmit the corrected configuration.",
+	400002478: "Run +log-list with --keyword <table> to inspect logs. Fix the target with +db-execute or update the streaming task mapping with +db-sync-update, then query the same task again.",
+	400002479: "Run +db-sync-get --task-id <task_id> to inspect the completed task, or create a new task with the required mode.",
+	400002480: "Verify --task-id and list tasks with +db-sync-list.",
+	400002481: "Use a task_id returned by +db-sync-create or +db-sync-list, such as streaming_<id> or batch_<id>.",
+	400002482: "Correct source.table in the config, then resubmit: rerun +db-sync-create --preview for a new task, or resubmit the same task_id with +db-sync-update.",
+	400002483: "Set target.table.action to 'create', or create the table with +db-execute, then rerun preview.",
+}
+
+// dbSyncOnlineDDLCode / dbSyncOnlineDDLSubcode identify the online-branch DDL ban.
+// Code 500002776 is generic (many db-sync failures share it), so the online-DDL
+// case is only recognized when the stable subcode k_dl_4000001 is also present in
+// the server msg — matching the subcode (a backend contract), not the free-text
+// English message that follows it. This ban is multi-env-only: shared/single-env
+// apps create tables on online fine and never return it.
+const (
+	dbSyncOnlineDDLCode    = 500002776
+	dbSyncOnlineDDLSubcode = "k_dl_4000001"
+)
+
+// dbSyncOnlineDDLHint states the product fact rather than framing dev as a retry
+// trick: a multi-env app's online branch does not allow direct table creation, so
+// table creation must target the dev branch.
+const dbSyncOnlineDDLHint = "The online branch does not allow creating tables (DDL) directly — this is how multi-env apps work, not a CLI limit. " +
+	"Rerun +db-sync-create with --environment dev to create the table on the dev branch."
+
+// withDBSyncHint attaches data-sync recovery guidance to typed API errors
+// without changing the original category, subtype, code, log_id, or cause.
+func withDBSyncHint(err error, fallback string) error {
+	if err == nil {
+		return nil
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+	if strings.TrimSpace(p.Hint) != "" {
+		return err
+	}
+	// Subcode-specific hint takes precedence over the generic code table: the
+	// online-DDL ban shares code 500002776 with unrelated failures, so match the
+	// stable subcode in the msg before falling back to per-code guidance.
+	if p.Code == dbSyncOnlineDDLCode && strings.Contains(p.Message, dbSyncOnlineDDLSubcode) {
+		p.Hint = dbSyncOnlineDDLHint
+		return err
+	}
+	if hint := dbSyncCodeHints[p.Code]; hint != "" {
+		p.Hint = hint
+		return err
+	}
+	if fallback != "" {
+		p.Hint = fallback
+	}
+	return err
+}
+
+// parseDBSyncConfigFlag parses and validates the local, recoverable portion of
+// the db sync config contract. Service-owned checks such as table existence and
+// field compatibility are intentionally left to the OpenAPI endpoint.
+//
+// allowFieldMapsAutoMatch relaxes the field_maps requirement for create-commit:
+// when field_maps is absent or an empty array, the server auto-matches fields and
+// creates the task (same matching as preview), so the caller may omit them. Update
+// passes false — it requires an explicit mapping. Either way, a field_maps array
+// that is present but has every mapping disabled is rejected as a suspected mistake.
+func parseDBSyncConfigFlag(raw string, requireFieldMaps, allowFieldMapsAutoMatch bool) (map[string]interface{}, error) {
+	var cfg map[string]interface{}
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&cfg); err != nil {
+		return nil, dbSyncConfigError("invalid JSON object for --config").WithCause(err)
+	}
+	if cfg == nil {
+		return nil, dbSyncConfigError("--config must be a JSON object")
+	}
+	var extra interface{}
+	if err := dec.Decode(&extra); err != io.EOF {
+		return nil, dbSyncConfigError("--config must contain one JSON object")
+	}
+
+	if _, ok := cfg["field_map"]; ok {
+		return nil, dbSyncConfigError("unsupported key field_map in --config; use field_maps instead").
+			WithHint("use field_maps instead")
+	}
+	if _, ok := cfg["option_mapping"]; ok {
+		return nil, dbSyncConfigError("unsupported key option_mapping in --config; use option_mappings instead").
+			WithHint("use option_mappings instead")
+	}
+
+	mode, ok := stringField(cfg, "mode")
+	if !ok || (mode != "batch" && mode != "streaming") {
+		return nil, dbSyncConfigError("config.mode must be batch or streaming")
+	}
+
+	source, ok := objectField(cfg, "source")
+	if !ok {
+		return nil, dbSyncConfigError("config.source is required")
+	}
+	sourceType, ok := stringField(source, "type")
+	if !ok || sourceType != "base" {
+		return nil, dbSyncConfigError("config.source.type must be base")
+	}
+
+	target, ok := objectField(cfg, "target")
+	if !ok {
+		return nil, dbSyncConfigError("config.target is required")
+	}
+	targetType, ok := stringField(target, "type")
+	if !ok || targetType != "postgresql" {
+		return nil, dbSyncConfigError("config.target.type must be postgresql")
+	}
+	table, ok := objectField(target, "table")
+	if !ok {
+		return nil, dbSyncConfigError("config.target.table is required")
+	}
+	tableName, ok := stringField(table, "name")
+	if !ok || strings.TrimSpace(tableName) == "" {
+		return nil, dbSyncConfigError("config.target.table.name is required")
+	}
+	action, ok := stringField(table, "action")
+	if !ok || (action != "create" && action != "use_existing") {
+		return nil, dbSyncConfigError("config.target.table.action must be create or use_existing")
+	}
+	if schemaOnly, ok := boolField(cfg, "schema_only"); ok && schemaOnly && (mode != "batch" || action != "create") {
+		return nil, dbSyncConfigError("config.schema_only=true requires mode=batch and target.table.action=create")
+	}
+	fieldMaps, fieldMapsPresent := cfg["field_maps"]
+	fieldMapsState := classifyFieldMaps(fieldMaps, fieldMapsPresent)
+	// A non-array field_maps is a structural error regardless of preview/commit:
+	// preview would otherwise forward the malformed shape to the backend.
+	if fieldMapsState == dbSyncFieldMapsInvalid {
+		return nil, dbSyncConfigError("config.field_maps must be an array")
+	}
+	if requireFieldMaps {
+		switch fieldMapsState {
+		case dbSyncFieldMapsDisabled:
+			// Mappings present but every one disabled — a suspected mistake, not an
+			// intent to auto-match. Reject for both create and update.
+			if !allowFieldMapsAutoMatch {
+				return nil, dbSyncConfigError("config.field_maps has mappings but all are disabled; enable at least one")
+			}
+			return nil, dbSyncConfigError("config.field_maps has mappings but all are disabled; enable at least one, or omit field_maps to let the server auto-match")
+		case dbSyncFieldMapsAbsent:
+			if !allowFieldMapsAutoMatch {
+				return nil, dbSyncConfigError("config.field_maps must contain at least one enabled mapping")
+			}
+			// create-commit: allowed — the server auto-matches and creates the task.
+		}
+	}
+	if err := rejectSingularOptionMappings(fieldMaps); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// requireDBSyncSourceTableIdentifiable pre-empts the backend's "source.table.name
+// is required when source.base_url has no table" rejection. The source table is
+// identifiable when either source.table.name is set (name takes precedence) or the
+// base_url carries a ?table=<table_id> query parameter (the only URL form that
+// carries a specific table). Both signals are local, so create is blocked before
+// submission rather than round-tripping to the backend. Used only by
+// +db-sync-create — update reuses the original task's source and is unaffected.
+func requireDBSyncSourceTableIdentifiable(cfg map[string]interface{}) error {
+	source, _ := objectField(cfg, "source")
+	if table, ok := objectField(source, "table"); ok {
+		if name, _ := stringField(table, "name"); strings.TrimSpace(name) != "" {
+			return nil
+		}
+	}
+	if baseURL, _ := stringField(source, "base_url"); baseURLHasTable(baseURL) {
+		return nil
+	}
+	return dbSyncConfigError("source.table.name is required when source.base_url has no table").
+		WithHint("append the table id to base_url as ?table=<table_id>, " +
+			"set source.table.name to the Base table name, " +
+			"or list tables with `lark-cli base +table-list --base-token <token>` and pick one")
+}
+
+// baseURLHasTable reports whether a Base URL carries a specific table via the
+// ?table=<table_id> query parameter — the only form that identifies a table
+// (confirmed with the backend). A URL that fails to parse is treated as
+// carrying no table, leaving the final call to the backend.
+func baseURLHasTable(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(parsed.Query().Get("table")) != ""
+}
+
+func dbSyncConfigError(msg string) *errs.ValidationError {
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, msg).WithParam("--config")
+}
+
+func objectField(m map[string]interface{}, key string) (map[string]interface{}, bool) {
+	v, ok := m[key]
+	if !ok {
+		return nil, false
+	}
+	obj, ok := v.(map[string]interface{})
+	return obj, ok
+}
+
+func stringField(m map[string]interface{}, key string) (string, bool) {
+	v, ok := m[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
+
+func boolField(m map[string]interface{}, key string) (bool, bool) {
+	v, ok := m[key]
+	if !ok {
+		return false, false
+	}
+	b, ok := v.(bool)
+	return b, ok
+}
+
+// dbSyncFieldMapsState classifies a config's field_maps for validation:
+//   - absent:   no field_maps key, or an empty array → server auto-matches
+//   - enabled:  at least one mapping not explicitly enabled:false
+//   - disabled: mappings present but every one is enabled:false (suspected mistake)
+//   - invalid:  field_maps key is present but is not an array
+type dbSyncFieldMapsState int
+
+const (
+	dbSyncFieldMapsAbsent dbSyncFieldMapsState = iota
+	dbSyncFieldMapsEnabled
+	dbSyncFieldMapsDisabled
+	dbSyncFieldMapsInvalid
+)
+
+func classifyFieldMaps(v interface{}, present bool) dbSyncFieldMapsState {
+	if !present {
+		return dbSyncFieldMapsAbsent
+	}
+	items, ok := v.([]interface{})
+	if !ok {
+		return dbSyncFieldMapsInvalid
+	}
+	if len(items) == 0 {
+		return dbSyncFieldMapsAbsent
+	}
+	for _, item := range items {
+		mapping, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if enabled, ok := mapping["enabled"].(bool); ok && !enabled {
+			continue
+		}
+		return dbSyncFieldMapsEnabled
+	}
+	return dbSyncFieldMapsDisabled
+}
+
+func rejectSingularOptionMappings(v interface{}) error {
+	items, ok := v.([]interface{})
+	if !ok {
+		return nil
+	}
+	for _, item := range items {
+		mapping, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if _, ok := mapping["option_mapping"]; ok {
+			return dbSyncConfigError("unsupported key option_mapping in --config field_maps; use option_mappings instead").
+				WithHint("use option_mappings instead")
+		}
+	}
+	return nil
 }
