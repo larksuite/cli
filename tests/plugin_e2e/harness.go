@@ -108,6 +108,14 @@ func buildFork(t *testing.T, name, pluginSrc string) string {
 	return buildForkWithMain(t, name, pluginSrc, customerMain)
 }
 
+// buildForkWithAffordance is buildFork with distribution-specific command
+// guidance. It exercises the public SetEmbeddedAffordanceContent boundary
+// without changing the shared fixture used by unrelated plugin scenarios.
+func buildForkWithAffordance(t *testing.T, name, pluginSrc, affordanceSrc string) string {
+	t.Helper()
+	return buildForkWithMainAndAffordance(t, name, pluginSrc, customerMain, affordanceSrc)
+}
+
 // buildConcealedFork uses the same real external-module path as buildFork, but
 // opts the wrapper host into distribution concealment. Keeping this choice in
 // main (rather than the Restrict plugin) is the compatibility boundary under
@@ -119,7 +127,12 @@ func buildConcealedFork(t *testing.T, name, pluginSrc string) string {
 
 func buildForkWithMain(t *testing.T, name, pluginSrc, mainSrc string) string {
 	t.Helper()
-	sum := sha256.Sum256([]byte(name + "\x00" + pluginSrc + "\x00" + mainSrc + "\x00" + customerAffordanceDocs))
+	return buildForkWithMainAndAffordance(t, name, pluginSrc, mainSrc, customerAffordanceDocs)
+}
+
+func buildForkWithMainAndAffordance(t *testing.T, name, pluginSrc, mainSrc, affordanceSrc string) string {
+	t.Helper()
+	sum := sha256.Sum256([]byte(name + "\x00" + pluginSrc + "\x00" + mainSrc + "\x00" + affordanceSrc))
 	cacheKey := fmt.Sprintf("%s-%x", name, sum[:8])
 	builtForksMu.Lock()
 	defer builtForksMu.Unlock()
@@ -157,7 +170,7 @@ func buildForkWithMain(t *testing.T, name, pluginSrc, mainSrc string) string {
 	if err := os.MkdirAll(filepath.Join(mod, "affordance"), 0o755); err != nil {
 		t.Fatalf("mkdir customer affordance: %v", err)
 	}
-	writeFile(t, filepath.Join(mod, "affordance", "docs.md"), customerAffordanceDocs)
+	writeFile(t, filepath.Join(mod, "affordance", "docs.md"), affordanceSrc)
 
 	// go.mod: reuse cli's require graph, rename the module, replace cli with the
 	// local archived tree. This avoids `go mod tidy` (no network at test time).
