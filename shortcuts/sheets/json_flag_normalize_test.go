@@ -177,6 +177,61 @@ func TestCellsSetStyle_BorderWeightWordInStyleNormalizes(t *testing.T) {
 	})
 }
 
+// TestCellsSetStyle_BorderValueVocabularyNormalizes pins the two border
+// value habits the 08-11 trace tally (596 traces) actually shows, beyond
+// the weight-word-in-style half fixed on 07-28: openpyxl's "hair" (476
+// hits / 19 tasks in the weight slot) and a thickness that arrives as a
+// number (the 07-28 report's second failing shape). Everything else in
+// openpyxl's line-style list scored zero and must STAY rejected — the
+// last row pins that, so the table cannot quietly grow past its evidence.
+func TestCellsSetStyle_BorderValueVocabularyNormalizes(t *testing.T) {
+	t.Parallel()
+	sc := shortcutFromRegistry(t, "+cells-set-style")
+	cases := []struct {
+		name    string
+		border  string
+		want    []string
+		wantErr string
+	}{
+		{name: "numeric width as string", border: `{"top":{"style":"solid","weight":"1"}}`,
+			want: []string{`"style": "solid"`, `"weight": "thin"`}},
+		{name: "numeric width as number", border: `{"top":{"style":"solid","weight":2}}`,
+			want: []string{`"style": "solid"`, `"weight": "medium"`}},
+		{name: "hair in the weight slot", border: `{"top":{"style":"solid","weight":"hair"}}`,
+			want: []string{`"weight": "thin"`}},
+		{name: "hair in the style slot", border: `{"all":{"style":"hair"}}`,
+			want: []string{`"style": "solid"`, `"weight": "thin"`}},
+		{name: "Google Sheets width key", border: `{"top":{"style":"solid","width":1}}`,
+			want: []string{`"weight": "thin"`}},
+		{name: "unobserved line style stays rejected", border: `{"top":{"style":"dashDot"}}`,
+			wantErr: "not in enum"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+				"--url", testURL,
+				"--sheet-name", "s",
+				"--range", "A1",
+				"--border-styles", tc.border,
+				"--dry-run",
+			})
+			if tc.wantErr != "" {
+				requireValidation(t, err, tc.wantErr)
+				return
+			}
+			if err != nil {
+				t.Fatalf("%s should normalize, got: %v", tc.border, err)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stdout, want) {
+					t.Errorf("dry-run body should carry %s, got %q", want, stdout)
+				}
+			}
+		})
+	}
+}
+
 // TestCellsSet_BorderWeightWordInStyleNormalizes pins the same reachability
 // fix on the typed --cells carrier (07-28 root-cause report #10, 58
 // occurrences): border_styles inside a cell object normalizes before the

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -335,7 +336,9 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 // Excel / openpyxl vocabulary, rejected by the backend — into the four
 // explicit sides, in place. An explicitly set side wins over the shorthand.
 // Applied on both the typed --cells path and the --styles path, so batch
-// sub-ops get the same rewrite as standalone calls.
+// sub-ops get the same rewrite as standalone calls. Every side it leaves
+// behind then goes through normalizeBorderSideVocab, which makes this the
+// one funnel where border VALUES get canonicalized as well.
 func expandBorderAllShorthand(border map[string]interface{}) {
 	if all, ok := border["all"]; ok {
 		for _, side := range []string{"top", "bottom", "left", "right"} {
@@ -345,26 +348,99 @@ func expandBorderAllShorthand(border map[string]interface{}) {
 		}
 		delete(border, "all")
 	}
-	// Weight vocabulary in the style slot ("thin"/"medium"/"thick" are the
-	// habitual Excel words; the largest residual styles cluster in the 07-21
-	// rerun wrote them into border_styles.<side>.style of the FULL nested
-	// form). A thin border always means a thin solid line: move the word to
-	// weight and default style to solid. Only when weight is absent — an
-	// explicit conflicting weight keeps the enum error path.
 	for _, raw := range border {
-		side, ok := raw.(map[string]interface{})
-		if !ok {
-			continue
+		if side, ok := raw.(map[string]interface{}); ok {
+			normalizeBorderSideVocab(side)
 		}
-		s, _ := side["style"].(string)
-		switch strings.ToLower(s) {
-		case "thin", "medium", "thick":
-			if _, hasWeight := side["weight"]; !hasWeight {
-				side["weight"] = strings.ToLower(s)
+	}
+}
+
+// borderWeightWord folds a thickness word onto the weight enum, returning
+// "" for anything that is not one. The wire contract splits a border into
+// style (line type) x weight (thickness) while openpyxl packs both into one
+// — Side(border_style="thin") — so these words show up in BOTH slots and
+// this one helper serves both.
+//
+// The 08-11 tally (596 traces) says they are the whole border-value problem:
+// "thin" in the style slot 1795 hits / 39 tasks, "hair" in weight 476 / 19,
+// "medium" in style 78 / 7. Everything else scored ZERO — openpyxl's other
+// line styles (dashDot, mediumDashed) and other libraries' spellings
+// (xlContinuous, CSS hidden, SOLID_THICK) stay rejected with the enum in the
+// message, per the admission bar at the top of this file.
+func borderWeightWord(s string) string {
+	switch lower := strings.ToLower(s); lower {
+	case "thin", "medium", "thick":
+		return lower
+	case "hair":
+		// openpyxl's hairline; the contract has no grade thinner than thin
+		return "thin"
+	}
+	return ""
+}
+
+// normalizeBorderSideVocab canonicalizes ONE border side spec in place:
+// a thickness word in the style slot moves to weight (a "thin border" is a
+// thin SOLID line), the weight slot folds casing and hair, and a numeric
+// weight reads as a line width. Unknown values are left for the enum error.
+func normalizeBorderSideVocab(side map[string]interface{}) {
+	// "width" is the Google Sheets API name for weight (35 hits / 3 tasks).
+	// Only when weight is free — a side carrying both is contradictory
+	// input, left intact for the validator.
+	if w, aliased := side["width"]; aliased {
+		if _, taken := side["weight"]; !taken {
+			side["weight"] = w
+			delete(side, "width")
+		}
+	}
+	// A number is a line width in px/pt (xlsxwriter's set_border(1) and the
+	// Google Sheets API agree at 1 and 2). 0 and negatives are not guessed
+	// at: "no width" is a border the caller should spell style:"none".
+	if n, isWidth := borderLineWidth(side["weight"]); isWidth {
+		switch {
+		case n >= 3:
+			side["weight"] = "thick"
+		case n >= 2:
+			side["weight"] = "medium"
+		case n > 0:
+			side["weight"] = "thin"
+		}
+	}
+	if w, isStr := side["weight"].(string); isStr {
+		if canon := borderWeightWord(w); canon != "" {
+			side["weight"] = canon
+		}
+	}
+	// The style slot: move the thickness word over and default the line
+	// type to solid. An explicit weight that contradicts the word keeps the
+	// enum error path rather than picking a winner.
+	if s, isStr := side["style"].(string); isStr {
+		if canon := borderWeightWord(s); canon != "" {
+			w, has := side["weight"]
+			if !has {
+				side["weight"] = canon
+			}
+			if !has || w == canon {
 				side["style"] = "solid"
 			}
 		}
 	}
+}
+
+// borderLineWidth reads a weight that arrived as a line width instead of a
+// word — JSON's float64, or the digits-in-a-string form ("1") that models
+// emit just as often. Deliberately not tableGetToFloat: that one answers
+// "is this cell a number?" for column typing and must NOT accept a quoted
+// number, whereas in the weight slot a quoted number is unambiguously a
+// width.
+func borderLineWidth(v interface{}) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case string:
+		n, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
+		return n, err == nil
+	}
+	return 0, false
 }
 
 // normalizeBorderStylesFlagValue runs the border vocabulary rewrites on the
@@ -478,7 +554,6 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 	attrNames := []string{"color", "style", "weight"}
 	sides := map[string]bool{"top": true, "bottom": true, "left": true, "right": true, "all": true}
 	attrs := map[string]bool{"style": true, "color": true, "weight": true}
-	borderWeights := map[string]bool{"thin": true, "medium": true, "thick": true}
 
 	ensureBorder := func() map[string]interface{} {
 		bs, ok := in["border_styles"].(map[string]interface{})
@@ -519,14 +594,19 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		}
 		return nil
 	}
-	// border_style with a weight-vocabulary value means "thin solid line".
+	// A flattened border_style holding a thickness word fills both attributes
+	// — same helper as the nested form (borderWeightWord), but split out here
+	// so a contradicting border_styles still reports the conflict rather than
+	// falling through to an enum error.
 	setAllScalar := func(attr string, v interface{}, from string) error {
 		if attr == "style" {
-			if s, ok := v.(string); ok && borderWeights[strings.ToLower(s)] {
-				if err := setSideAttr("all", "weight", strings.ToLower(s), from); err != nil {
-					return err
+			if s, ok := v.(string); ok {
+				if canon := borderWeightWord(s); canon != "" {
+					if err := setSideAttr("all", "weight", canon, from); err != nil {
+						return err
+					}
+					return setSideAttr("all", "style", "solid", from)
 				}
-				return setSideAttr("all", "style", "solid", from)
 			}
 		}
 		return setSideAttr("all", attr, v, from)
