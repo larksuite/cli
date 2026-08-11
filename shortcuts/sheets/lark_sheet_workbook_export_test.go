@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -122,8 +123,12 @@ func TestWorkbookExport_CreateRateLimitKeepsCallerRecovery(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected typed rate-limit error, got %T: %v", err, err)
 	}
-	if problem.Subtype != errs.SubtypeRateLimit || problem.Code != 9499 || !problem.Retryable {
-		t.Fatalf("problem = %+v, want retryable rate_limit code 9499", problem)
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 9499 || !problem.Retryable {
+		t.Fatalf("problem = %+v, want api/rate_limit code 9499 retryable", problem)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %T, want *errs.APIError", err)
 	}
 	if !strings.Contains(problem.Hint, "rerun the original command with the same arguments") {
 		t.Fatalf("hint should preserve the workbook-export caller: %q", problem.Hint)
