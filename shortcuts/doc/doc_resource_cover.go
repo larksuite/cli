@@ -41,9 +41,11 @@ func (c docCoverHTTPStatusCause) Error() string {
 }
 
 var docCoverAllowedContentTypes = map[string]string{
+	"image/bmp":  ".bmp",
 	"image/gif":  ".gif",
 	"image/jpeg": ".jpg",
 	"image/png":  ".png",
+	"image/tiff": ".tiff",
 	"image/webp": ".webp",
 }
 
@@ -566,7 +568,7 @@ func downloadDocCoverURL(ctx context.Context, runtime *common.RuntimeContext, ra
 	mediaType = strings.ToLower(mediaType)
 	ext, ok := docCoverAllowedContentTypes[mediaType]
 	if !ok {
-		return nil, "", errs.NewValidationError(errs.SubtypeInvalidArgument, "cover URL Content-Type %q is not supported; expected image/png, image/jpeg, image/gif or image/webp", mediaType).WithParam("--url")
+		return nil, "", errs.NewValidationError(errs.SubtypeInvalidArgument, "cover URL Content-Type %q is not supported; expected image/bmp, image/gif, image/jpeg, image/png, image/tiff, or image/webp", mediaType).WithParam("--url")
 	}
 
 	limited := io.LimitReader(resp.Body, docCoverURLMaxBytes+1)

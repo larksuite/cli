@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.85] - 2026-08-07
+
+### Features
+
+- **event**: compile the catalog and harden the consume pipeline (#2142)
+- support bot identity for search shortcuts (#2194)
+- **drive**: add +update-title shortcut (#2172)
+- **sheets**: add ai formula verify (#1959)
+- **drive**: add +copy shortcut (#2129)
+- add frontend as third app type for apps domain (#2072)
+- **sheets**: harden error prescriptions, batch updates, and read workflows
+- **slides**: accept slide XML files in +create (#2197)
+- **docs**: add local authoring and resource workflows (#1921)
+- preflight export permission for downloads (#2218)
+
+### Bug Fixes
+
+- **base**: guide complete dashboard data recovery (#2144)
+- **apps**: isolate git credential helper chain for scoped repos (#2188)
+- **im**: unpin search identity after bot support landed (#2208)
+- **auth**: harden token refresh and concurrency handling (#2135)
+- **registry**: describe the attendance and mindnotes domains (#2210)
+- reject truncated wiki node tokens (#2203)
+- **apps**: detect the no-database failure by code or message (#2217)
+- **base**: improve field creation and query guidance (#2114)
+- **slides**: restore update-slide skill guidance (#2227)
+- align slides xml-get skill flags (#2237)
+- **im**: harden resource downloads with validated ranged streams (#2223)
+
+### Documentation
+
+- **skills**: sync lark whiteboard skill (#2215)
+- **doc**: clarify history edit time format (#1962)
+
+### Misc
+
+- feat (apps): add miaoda app collaborator management (#2230)
+
 ## [v1.0.84] - 2026-08-05
 
 ### Features
@@ -1822,6 +1860,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.85]: https://github.com/larksuite/cli/releases/tag/v1.0.85
 [v1.0.84]: https://github.com/larksuite/cli/releases/tag/v1.0.84
 [v1.0.83]: https://github.com/larksuite/cli/releases/tag/v1.0.83
 [v1.0.82]: https://github.com/larksuite/cli/releases/tag/v1.0.82

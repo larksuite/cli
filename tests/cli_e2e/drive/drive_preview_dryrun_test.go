@@ -142,6 +142,80 @@ func TestDrivePreviewDryRun_SourceFile(t *testing.T) {
 	}
 }
 
+// TestDrivePreviewDryRun_WikiURLResolvesBeforePreview verifies a /wiki/ URL
+// prepends a get_node resolution step ahead of the preview_result step.
+func TestDrivePreviewDryRun_WikiURLResolvesBeforePreview(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+preview",
+			"--url", "https://example.feishu.cn/wiki/wikiDryRunPreview",
+			"--list-only",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 2 {
+		t.Fatalf("api count=%d, want 2 (get_node + preview_result)\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
+		t.Fatalf("api.0.url=%q, want wiki get_node\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.params.token").String(); got != "wikiDryRunPreview" {
+		t.Fatalf("api.0.params.token=%q, want wiki token\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "wiki_token").String(); got != "wikiDryRunPreview" {
+		t.Fatalf("wiki_token=%q, want wiki token\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/medias/obj_token_from_wiki_node/preview_result" {
+		t.Fatalf("api.1.url=%q, want preview_result from resolved token\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "mode").String(); got != "list" {
+		t.Fatalf("mode=%q, want list\nstdout:\n%s", got, out)
+	}
+}
+
+// TestDrivePreviewDryRun_WikiTokenSourceFile verifies --wiki-token feeds the
+// source_file download path via the resolved file token.
+func TestDrivePreviewDryRun_WikiTokenSourceFile(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+preview",
+			"--wiki-token", "wikiDryRunPreview",
+			"--type", "source_file",
+			"--output", "./artifacts/source",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 2 {
+		t.Fatalf("api count=%d, want 2 (get_node + preview_download)\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
+		t.Fatalf("api.0.url=%q, want wiki get_node\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/medias/obj_token_from_wiki_node/preview_download" {
+		t.Fatalf("api.1.url=%q, want preview_download from resolved token\nstdout:\n%s", got, out)
+	}
+}
+
 // TestDriveCoverDryRun_Download verifies cover dry-run request structure for
 // download mode.
 func TestDriveCoverDryRun_Download(t *testing.T) {

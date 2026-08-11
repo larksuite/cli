@@ -36,6 +36,7 @@ metadata:
   - 用户明确选定后再执行 `lark-cli wiki +delete-space --space-id <ID> --yes`（高风险写操作，必须显式 `--yes`）。
   - 反例：不要把 wiki URL / 名称直接当 `--space-id`（如 `--space-id "https://.../wiki/<wiki_token>"`）；务必先用 `wiki +node-get` 解析出 `data.space_id` 再传。
 - 用户要在知识库中创建新节点，优先使用 `lark-cli wiki +node-create`。
+- 用户要**原地重命名 Wiki 节点 / 修改节点标题**：使用 `lark-cli drive +update-title --url '<wiki_url>' --title '<new_title>'`。该命令保留同一个 `node_token`，并会根据 API 返回给出准确的缺失 scope 和授权提示；不要探索 raw `wiki.nodes` 的 `update_title` 端点，也不要通过复制或新建第二个节点实现改名。
 - 用户要列出 Wiki 节点：先用 `wiki +space-list --as user` 拿数字 `space_id`，再用 `wiki +node-list --space-id <space_id>`。不要把 wiki URL、node token、doc token、名称直接当 `--space-id`。钻子节点时 `--parent-node-token` 必须是 wiki node token；如果用户给的是 docx/sheet/base URL，先用 `wiki +node-get --node-token <url>` 解析出 `node_token`。
 - `wiki +node-list` 命中 `invalid_parameters`、`not_found`、`permission_denied` 时，不要重复调用同一参数；按 hint 修 `space_id` / `parent_node_token` / 权限。只有 `rate_limit` 才做退避重试。
 - 用户说“给知识库添加成员/管理员”：先把目标解析成“用户 / 群 / 部门 / 应用”四类之一，再决定 `--member-type`，不要先调 `wiki +member-add` 再根据报错反推类型。
@@ -111,7 +112,8 @@ lark-cli wiki <resource> <method> [flags]  # 调用 API
 
 ## 不在本 skill 范围
 
-- 上传 / 下载文件到知识库节点下 → [`lark-drive`](../lark-drive/SKILL.md)（`drive +upload --wiki-token`）
+- 上传文件到知识库节点下 → [`lark-drive`](../lark-drive/SKILL.md)（`drive +upload --wiki-token`）
+- 下载 Wiki 节点对应的文件（底层 `obj_type` 为 `file`）→ [`lark-drive`](../lark-drive/SKILL.md)：`drive +download --wiki-token <node_token>` 或 `drive +download --url <wiki_url>`（CLI 会先把 Wiki 节点解析到底层文件再下载）；底层是 `docx`/`sheet`/`bitable`/`slides` 等在线文档时改用 `drive +export`
 - 编辑文档正文内容 → [`lark-doc`](../lark-doc/SKILL.md)
 - 表格 / 多维表格数据操作 → [`lark-sheets`](../lark-sheets/SKILL.md) / [`lark-base`](../lark-base/SKILL.md)
 - 按名称搜索文档 / Wiki / 表格文件、评论与权限管理 → [`lark-drive`](../lark-drive/SKILL.md)

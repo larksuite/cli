@@ -88,7 +88,7 @@ lark-cli slides +update-slide --as user \
 
 ## 什么时候不要用它
 
-- **只改一个元素** → 用 [`+replace-slide`](lark-slides-replace-slide.md)，一条 `block_replace` part 更省，也不用带上整页
+- **只改一个元素** → 用 [`+replace-slide`](cli/lark-slides-replace-slide.md)，一条 `block_replace` part 更省，也不用带上整页
 - **要改多个页面** → 对每一页各跑一次本命令
 - **要新建页面** → `slides +create` 或 `xml_presentation.slide create`
 
@@ -97,7 +97,7 @@ lark-cli slides +update-slide --as user \
 和其他整页写入一样，把 `--content` 存成本地文件后先跑版式 lint。先取得当前已加载 `lark-slides/SKILL.md` 的父目录，记为 `<lark-slides-skill-dir>`；不要猜测全局安装路径：
 
 ```bash
-python3 "<lark-slides-skill-dir>/scripts/xml_text_overlap_lint.py" --input page.xml
+python3 "<lark-slides-skill-dir>/scripts/xml_lint.py" --input page.xml
 ```
 
 `summary.error_count` 必须为 0 才调接口；`warning_count > 0` 时写完要截图复核。
@@ -109,7 +109,7 @@ lark-cli slides +xml-get --as user \
   --presentation "$PRES" --output readback.xml
 ```
 
-按当前已加载 `lark-slides/SKILL.md` 指向的 [validation-checklist.md](validation-checklist.md) 完成验证：核对总页数、目标页和关键元素（包括需要保留的 ID、文本、背景与备注），并对回读 XML 运行同一版式 lint；发现差异时先停止后续写入并重新基于最新版处理。
+按当前已加载 `lark-slides/SKILL.md` 指向的 [validation-xml.md](workflow/validation-xml.md) 完成验证：核对总页数、目标页和关键元素（包括需要保留的 ID、文本、背景与备注），并对回读 XML 运行同一版式 lint；发现差异时先停止后续写入并重新基于最新版处理。
 
 ## 成功输出
 
@@ -141,6 +141,6 @@ lark-cli slides +xml-get --as user \
 | 现象 | 原因 | 解决 |
 |------|------|------|
 | 3350001，原因包含 `not found` | `--presentation` 不匹配，或 `--slide-id` 对应的页面已被删除 | 检查 `--presentation` 和 `--slide-id`，再用 `slides +xml-get` 回读当前页面 ID |
-| 3350001，其他 invalid param | `--content` 的 XML 结构有问题（如 `<shape>` 缺 `<content/>`、包含服务端不支持的元素） | 按 [troubleshooting.md](troubleshooting.md) 检查 `--content` 的 XML 结构 |
+| 3350001，其他 invalid param | `--content` 的 XML 结构有问题（如 `<shape>` 缺 `<content/>`、包含服务端不支持的元素） | 按 [error-handling.md](workflow/error-handling.md) 检查 `--content` 的 XML 结构 |
 | 3350002 not found | `--revision-id` 传了不存在的版本号 | 用 `-1` 或真实存在的 `revision_id` |
 | 1061004 / 403 | 当前身份对这份 PPT 没有编辑权限 | 检查是否拥有 `slides:presentation:update` 或 `slides:presentation:write_only` scope；wiki 链接另需 `wiki:node:read`；`--as bot` 还要求该 bot 对目标 PPT 有编辑权限 |

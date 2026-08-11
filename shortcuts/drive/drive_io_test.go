@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -33,23 +34,40 @@ import (
 
 type driveRoundTripFunc func(*http.Request) (*http.Response, error)
 
+// RoundTrip delegates an HTTP request to the test transport function.
 func (fn driveRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
 
 var driveTaskCheckPollMu sync.Mutex
 
+// driveTestConfig returns isolated credentials for Drive command tests.
 func driveTestConfig() *core.CliConfig {
 	return &core.CliConfig{
 		AppID: "drive-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 }
 
+func registerDriveDownloadExportAuth(reg *httpmock.Registry, fileToken string, allowed bool) *httpmock.Stub {
+	stub := &httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/drive/v1/permissions/" + fileToken + "/members/auth",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"auth_result": allowed},
+		},
+	}
+	reg.Register(stub)
+	return stub
+}
+
+// mountAndRunDrive executes a mounted Drive command with a background context.
 func mountAndRunDrive(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
 	return mountAndRunDriveWithContext(t, context.Background(), s, args, f, stdout)
 }
 
+// mountAndRunDriveWithContext executes a mounted Drive command with the supplied context.
 func mountAndRunDriveWithContext(t *testing.T, ctx context.Context, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
 	parent := &cobra.Command{Use: "drive"}
@@ -64,6 +82,7 @@ func mountAndRunDriveWithContext(t *testing.T, ctx context.Context, s common.Sho
 	return parent.Execute()
 }
 
+// withSingleDriveTaskCheckPoll limits task-result polling to one attempt for a test.
 func withSingleDriveTaskCheckPoll(t *testing.T) {
 	t.Helper()
 	driveTaskCheckPollMu.Lock()
@@ -76,6 +95,7 @@ func withSingleDriveTaskCheckPoll(t *testing.T) {
 	})
 }
 
+// withDriveWorkingDir changes into dir and restores the original directory during cleanup.
 func withDriveWorkingDir(t *testing.T, dir string) {
 	t.Helper()
 	cwd, err := os.Getwd()
@@ -92,6 +112,7 @@ func withDriveWorkingDir(t *testing.T, dir string) {
 	})
 }
 
+// TestDriveUploadLargeFileUsesMultipart verifies large uploads use the multipart workflow.
 func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 	// Use a distinct AppID to avoid Lark SDK global token cache collision with other tests.
 	uploadTestConfig := &core.CliConfig{
@@ -171,6 +192,7 @@ func TestDriveUploadLargeFileUsesMultipart(t *testing.T) {
 	}
 }
 
+// TestDriveUploadLargeFileToWikiUsesMultipart verifies large Wiki uploads use multipart requests.
 func TestDriveUploadLargeFileToWikiUsesMultipart(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-large-wiki-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -248,6 +270,7 @@ func TestDriveUploadLargeFileToWikiUsesMultipart(t *testing.T) {
 	}
 }
 
+// TestDriveUploadLargeFileOverwriteUsesMultipart verifies large overwrites retain multipart semantics.
 func TestDriveUploadLargeFileOverwriteUsesMultipart(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-large-overwrite-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -318,6 +341,7 @@ func TestDriveUploadLargeFileOverwriteUsesMultipart(t *testing.T) {
 	}
 }
 
+// TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinish verifies the finish response version is returned.
 func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinish(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-large-overwrite-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -383,6 +407,7 @@ func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinish(t *testing.
 	}
 }
 
+// TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinishAlias verifies the version alias is accepted.
 func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinishAlias(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-large-overwrite-data-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -448,6 +473,7 @@ func TestDriveUploadLargeFileOverwriteReturnsVersionFromUploadFinishAlias(t *tes
 	}
 }
 
+// TestDriveUploadSmallFile verifies the single-part Drive upload flow.
 func TestDriveUploadSmallFile(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -487,6 +513,7 @@ func TestDriveUploadSmallFile(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileOverwriteUsesFileToken verifies overwrite requests preserve the target token.
 func TestDriveUploadSmallFileOverwriteUsesFileToken(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-overwrite-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -533,6 +560,7 @@ func TestDriveUploadSmallFileOverwriteUsesFileToken(t *testing.T) {
 	}
 }
 
+// TestDriveUploadReturnsVersionFromDataVersionAlias verifies upload responses accept the data version alias.
 func TestDriveUploadReturnsVersionFromDataVersionAlias(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-data-version-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -574,6 +602,7 @@ func TestDriveUploadReturnsVersionFromDataVersionAlias(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileToWiki verifies a small file can target a Wiki parent.
 func TestDriveUploadSmallFileToWiki(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-wiki-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -624,6 +653,7 @@ func TestDriveUploadSmallFileToWiki(t *testing.T) {
 	}
 }
 
+// TestDriveUploadUsesMetaURLForExplorerParent verifies Explorer URLs resolve through Drive metadata.
 func TestDriveUploadUsesMetaURLForExplorerParent(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-explorer-meta-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -675,6 +705,7 @@ func TestDriveUploadUsesMetaURLForExplorerParent(t *testing.T) {
 	}
 }
 
+// TestDriveUploadUsesMetaURLForWikiParent verifies Wiki URLs resolve through Drive metadata.
 func TestDriveUploadUsesMetaURLForWikiParent(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-wiki-meta-url", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -723,6 +754,7 @@ func TestDriveUploadUsesMetaURLForWikiParent(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileAPIError verifies upload API failures remain typed errors.
 func TestDriveUploadSmallFileAPIError(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -759,6 +791,7 @@ func TestDriveUploadSmallFileAPIError(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileNoToken verifies a successful response without a token is rejected.
 func TestDriveUploadSmallFileNoToken(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-notoken", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -796,6 +829,7 @@ func TestDriveUploadSmallFileNoToken(t *testing.T) {
 	}
 }
 
+// TestDriveUploadSmallFileInvalidJSON verifies malformed upload responses are rejected.
 func TestDriveUploadSmallFileInvalidJSON(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-small-json", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -830,6 +864,7 @@ func TestDriveUploadSmallFileInvalidJSON(t *testing.T) {
 	}
 }
 
+// TestDriveUploadPrepareInvalidResponse verifies malformed multipart prepare responses are rejected.
 func TestDriveUploadPrepareInvalidResponse(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-prepare-bad", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -876,6 +911,7 @@ func TestDriveUploadPrepareInvalidResponse(t *testing.T) {
 	}
 }
 
+// TestDriveUploadPartAPIError verifies multipart part failures remain typed errors.
 func TestDriveUploadPartAPIError(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-part-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -938,6 +974,7 @@ func TestDriveUploadPartAPIError(t *testing.T) {
 	}
 }
 
+// TestDriveUploadPartInvalidJSON verifies malformed multipart part responses are rejected.
 func TestDriveUploadPartInvalidJSON(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-part-json", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -990,6 +1027,7 @@ func TestDriveUploadPartInvalidJSON(t *testing.T) {
 	}
 }
 
+// TestDriveUploadFinishNoToken verifies multipart completion requires a returned file token.
 func TestDriveUploadFinishNoToken(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-finish-notoken", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -1051,6 +1089,7 @@ func TestDriveUploadFinishNoToken(t *testing.T) {
 	}
 }
 
+// TestDriveUploadWithCustomName verifies that an explicit remote name is preserved.
 func TestDriveUploadWithCustomName(t *testing.T) {
 	uploadTestConfig := &core.CliConfig{
 		AppID: "drive-upload-name-test", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -1090,6 +1129,7 @@ func TestDriveUploadWithCustomName(t *testing.T) {
 	}
 }
 
+// TestDriveUploadDryRunUsesWikiTarget verifies the wiki mount point in the upload plan.
 func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	t.Parallel()
 
@@ -1127,8 +1167,8 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 2 {
-		t.Fatalf("expected 2 API calls, got %d", len(got.API))
+	if len(got.API) != 3 {
+		t.Fatalf("expected 3 API calls, got %d", len(got.API))
 	}
 	if got.API[0].Body["parent_type"] != driveUploadParentTypeWiki {
 		t.Fatalf("parent_type = %#v, want %q", got.API[0].Body["parent_type"], driveUploadParentTypeWiki)
@@ -1136,11 +1176,14 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	if got.API[0].Body["parent_node"] != "wikcn_dryrun_upload_target" {
 		t.Fatalf("parent_node = %#v, want %q", got.API[0].Body["parent_node"], "wikcn_dryrun_upload_target")
 	}
-	if got.API[1].URL != "/open-apis/drive/v1/metas/batch_query" {
-		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[1].URL)
+	if got.API[1].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[1].URL)
 	}
-	if got.API[1].Body["with_url"] != true {
-		t.Fatalf("metadata with_url = %#v, want true", got.API[1].Body["with_url"])
+	if got.API[2].URL != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[2].URL)
+	}
+	if got.API[2].Body["with_url"] != true {
+		t.Fatalf("metadata with_url = %#v, want true", got.API[2].Body["with_url"])
 	}
 	wantPostUploadNote := "After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new file."
 	if got.PostUploadNote != wantPostUploadNote {
@@ -1148,6 +1191,7 @@ func TestDriveUploadDryRunUsesWikiTarget(t *testing.T) {
 	}
 }
 
+// TestNewDriveUploadSpecPreservesPathAndName verifies the upload specification mirrors its flags.
 func TestNewDriveUploadSpecPreservesPathAndName(t *testing.T) {
 	t.Parallel()
 
@@ -1192,6 +1236,7 @@ func TestNewDriveUploadSpecPreservesPathAndName(t *testing.T) {
 	}
 }
 
+// TestDriveUploadDryRunIncludesFileToken verifies overwrite tokens in the upload plan.
 func TestDriveUploadDryRunIncludesFileToken(t *testing.T) {
 	t.Parallel()
 
@@ -1228,20 +1273,24 @@ func TestDriveUploadDryRunIncludesFileToken(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 2 {
-		t.Fatalf("expected 2 API calls, got %d", len(got.API))
+	if len(got.API) != 3 {
+		t.Fatalf("expected 3 API calls, got %d", len(got.API))
 	}
 	if got.API[0].Body["file_token"] != "boxcn_dryrun_overwrite" {
 		t.Fatalf("file_token = %#v, want %q", got.API[0].Body["file_token"], "boxcn_dryrun_overwrite")
 	}
-	if got.API[1].URL != "/open-apis/drive/v1/metas/batch_query" {
-		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[1].URL)
+	if got.API[1].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[1].URL)
 	}
-	if got.API[1].Body["with_url"] != true {
-		t.Fatalf("metadata with_url = %#v, want true", got.API[1].Body["with_url"])
+	if got.API[2].URL != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("metadata URL = %q, want metas/batch_query", got.API[2].URL)
+	}
+	if got.API[2].Body["with_url"] != true {
+		t.Fatalf("metadata with_url = %#v, want true", got.API[2].Body["with_url"])
 	}
 }
 
+// TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint verifies that bot overwrites omit the grant hint.
 func TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint(t *testing.T) {
 	t.Parallel()
 
@@ -1282,8 +1331,8 @@ func TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 2 {
-		t.Fatalf("expected 2 API calls, got %d", len(got.API))
+	if len(got.API) != 3 {
+		t.Fatalf("expected 3 API calls, got %d", len(got.API))
 	}
 	if got.API[0].Body["file_token"] != "boxcn_dryrun_overwrite" {
 		t.Fatalf("file_token = %#v, want %q", got.API[0].Body["file_token"], "boxcn_dryrun_overwrite")
@@ -1293,6 +1342,7 @@ func TestDriveUploadDryRunBotOverwriteSkipsPermissionGrantHint(t *testing.T) {
 	}
 }
 
+// TestDriveUploadTargetLabel verifies upload target labels describe the resolved destination.
 func TestDriveUploadTargetLabel(t *testing.T) {
 	t.Parallel()
 
@@ -1345,6 +1395,7 @@ func TestDriveUploadTargetLabel(t *testing.T) {
 	}
 }
 
+// TestDriveUploadValidateRejectsConflictingTargets verifies mutually exclusive upload targets are rejected.
 func TestDriveUploadValidateRejectsConflictingTargets(t *testing.T) {
 	t.Parallel()
 
@@ -1379,6 +1430,7 @@ func TestDriveUploadValidateRejectsConflictingTargets(t *testing.T) {
 	}
 }
 
+// TestDriveUploadValidateRejectsExplicitEmptyWikiToken verifies an explicitly empty Wiki token is rejected.
 func TestDriveUploadValidateRejectsExplicitEmptyWikiToken(t *testing.T) {
 	t.Parallel()
 
@@ -1400,6 +1452,7 @@ func TestDriveUploadValidateRejectsExplicitEmptyWikiToken(t *testing.T) {
 	assertDriveValidationParam(t, err, "--wiki-token", "--wiki-token cannot be empty")
 }
 
+// TestDriveUploadValidateRejectsExplicitEmptyFileToken verifies an explicitly empty file token is rejected.
 func TestDriveUploadValidateRejectsExplicitEmptyFileToken(t *testing.T) {
 	t.Parallel()
 
@@ -1421,6 +1474,7 @@ func TestDriveUploadValidateRejectsExplicitEmptyFileToken(t *testing.T) {
 	assertDriveValidationParam(t, err, "--file-token", "--file-token cannot be empty")
 }
 
+// TestDriveUploadValidateRejectsExplicitEmptyFolderToken verifies an explicitly empty folder token is rejected.
 func TestDriveUploadValidateRejectsExplicitEmptyFolderToken(t *testing.T) {
 	t.Parallel()
 
@@ -1461,6 +1515,7 @@ func assertDriveValidationParam(t *testing.T, err error, wantParam, wantMsg stri
 	}
 }
 
+// TestDriveUploadValidateRejectsInvalidTargetTokens verifies unsafe upload target tokens are rejected.
 func TestDriveUploadValidateRejectsInvalidTargetTokens(t *testing.T) {
 	t.Parallel()
 
@@ -1516,6 +1571,7 @@ func TestDriveUploadValidateRejectsInvalidTargetTokens(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadRejectsOverwriteWithoutFlag verifies existing output is protected by default.
 func TestDriveDownloadRejectsOverwriteWithoutFlag(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -1540,8 +1596,10 @@ func TestDriveDownloadRejectsOverwriteWithoutFlag(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadAllowsOverwriteFlag verifies the overwrite flag permits replacing output.
 func TestDriveDownloadAllowsOverwriteFlag(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_123", true)
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/files/file_123/download",
@@ -1580,8 +1638,10 @@ func TestDriveDownloadAllowsOverwriteFlag(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadHTTP403SuggestsPreview verifies forbidden downloads suggest the preview workflow.
 func TestDriveDownloadHTTP403SuggestsPreview(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_403", true)
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/files/file_403/download",
@@ -1623,10 +1683,15 @@ func TestDriveDownloadHTTP403SuggestsPreview(t *testing.T) {
 	if !strings.Contains(problem.Hint, "--type source_file") || !strings.Contains(problem.Hint, "--output <path>") {
 		t.Fatalf("hint=%q, want source_file output command", problem.Hint)
 	}
+	if strings.Contains(problem.Hint, "--list-only") || strings.Contains(problem.Hint, "PDF/text/image preview choices") {
+		t.Fatalf("hint=%q, want only the source_file recovery command", problem.Hint)
+	}
 }
 
+// TestDriveDownloadHTTP404DoesNotSuggestPreview verifies missing files do not receive permission guidance.
 func TestDriveDownloadHTTP404DoesNotSuggestPreview(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_missing", true)
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/files/file_missing/download",
@@ -1658,6 +1723,182 @@ func TestDriveDownloadHTTP404DoesNotSuggestPreview(t *testing.T) {
 	}
 }
 
+func TestDriveDownloadExportDeniedFailsBeforeDownload(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_export_denied", false)
+	downloadCalls := 0
+	reg.Register(&httpmock.Stub{
+		Method:   http.MethodGet,
+		URL:      "/open-apis/drive/v1/files/file_export_denied/download",
+		Optional: true,
+		OnMatch: func(*http.Request) {
+			downloadCalls++
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveDownload, []string{
+		"+download",
+		"--file-token", "file_export_denied",
+		"--output", "blocked.bin",
+		"--as", "bot",
+	}, f, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryAuthorization || problem.Subtype != errs.SubtypePermissionDenied {
+		t.Fatalf("problem = category %q subtype %q, want authorization/permission_denied", problem.Category, problem.Subtype)
+	}
+	for _, want := range []string{"drive +preview", "--file-token <FILE_TOKEN>", "--type source_file", "--output <path>"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint=%q, want %q", problem.Hint, want)
+		}
+	}
+	if strings.Contains(problem.Hint, "file_export_denied") || strings.Contains(problem.Hint, "--list-only") {
+		t.Fatalf("hint=%q, want placeholder-only source_file guidance", problem.Hint)
+	}
+	if downloadCalls != 0 {
+		t.Fatalf("download calls = %d, want 0", downloadCalls)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "blocked.bin")); !os.IsNotExist(statErr) {
+		t.Fatalf("download target should not be created, statErr=%v", statErr)
+	}
+}
+
+func TestDriveDownloadMalformedExportAuthStopsBeforeDownload(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/drive/v1/permissions/file_auth_malformed/members/auth",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"auth_result": "true"},
+		},
+	})
+	downloadCalls := 0
+	reg.Register(&httpmock.Stub{
+		Method:   http.MethodGet,
+		URL:      "/open-apis/drive/v1/files/file_auth_malformed/download",
+		Optional: true,
+		OnMatch: func(*http.Request) {
+			downloadCalls++
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	err := mountAndRunDrive(t, DriveDownload, []string{
+		"+download",
+		"--file-token", "file_auth_malformed",
+		"--output", "blocked.bin",
+		"--as", "bot",
+	}, f, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("problem=%+v ok=%v, want internal/invalid_response", problem, ok)
+	}
+	if downloadCalls != 0 {
+		t.Fatalf("download calls = %d, want 0", downloadCalls)
+	}
+}
+
+func TestDriveDownloadHTTP429SuggestsBackoff(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_download_limited", true)
+	reg.Register(&httpmock.Stub{
+		Method:  http.MethodGet,
+		URL:     "/open-apis/drive/v1/files/file_download_limited/download",
+		Status:  http.StatusTooManyRequests,
+		RawBody: []byte("rate limited"),
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	err := mountAndRunDrive(t, DriveDownload, []string{
+		"+download",
+		"--file-token", "file_download_limited",
+		"--output", "blocked.bin",
+		"--as", "bot",
+	}, f, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Code != http.StatusTooManyRequests {
+		t.Fatalf("problem=%+v ok=%v, want network HTTP 429", problem, ok)
+	}
+	for _, want := range []string{"stop immediate retries", "retry later with exponential backoff"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint=%q, want %q", problem.Hint, want)
+		}
+	}
+	if strings.Contains(problem.Hint, "1 minute") {
+		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
+	}
+}
+
+func TestDriveDownloadExportAuthRateLimitPreservesAPIErrorAndSuggestsBackoff(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/drive/v1/permissions/file_auth_limited/members/auth",
+		Body: map[string]interface{}{
+			"code":   99991400,
+			"msg":    "rate limited",
+			"log_id": "log-drive-auth-limited",
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	err := mountAndRunDrive(t, DriveDownload, []string{
+		"+download",
+		"--file-token", "file_auth_limited",
+		"--output", "blocked.bin",
+		"--as", "bot",
+	}, f, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 99991400 {
+		t.Fatalf("problem=%+v ok=%v, want api/rate_limit/99991400", problem, ok)
+	}
+	if problem.LogID != "log-drive-auth-limited" || !problem.Retryable {
+		t.Fatalf("problem=%+v, want preserved log_id and retryable", problem)
+	}
+	for _, want := range []string{"stop immediate retries", "retry later with exponential backoff"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint=%q, want %q", problem.Hint, want)
+		}
+	}
+	if strings.Contains(problem.Hint, "1 minute") {
+		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
+	}
+}
+
+func TestDriveDownloadTypedRateLimitSuggestsBackoff(t *testing.T) {
+	err := errs.NewAPIError(errs.SubtypeRateLimit, "request trigger frequency limit").
+		WithCode(99991400).
+		WithRetryable().
+		WithHint("upstream hint")
+
+	got := withDriveDownloadRecoveryHint(err, "file_secret")
+	problem, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", got, got)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 99991400 || !problem.Retryable {
+		t.Fatalf("problem=%+v, want preserved API rate-limit metadata", problem)
+	}
+	for _, want := range []string{"upstream hint", "stop immediate retries", "retry later with exponential backoff"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint=%q, want %q", problem.Hint, want)
+		}
+	}
+	if strings.Contains(problem.Hint, "1 minute") {
+		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
+	}
+}
+
+// TestDriveDownloadDefaultOutputPathSanitizesSlashOnlyNames verifies slash-only names fall back safely.
 func TestDriveDownloadDefaultOutputPathSanitizesSlashOnlyNames(t *testing.T) {
 	header := http.Header{
 		"Content-Disposition": []string{`attachment; filename="////"`},
@@ -1671,6 +1912,7 @@ func TestDriveDownloadDefaultOutputPathSanitizesSlashOnlyNames(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadDefaultOutputPathSanitizesWindowsReservedCharacters verifies reserved characters are sanitized.
 func TestDriveDownloadDefaultOutputPathSanitizesWindowsReservedCharacters(t *testing.T) {
 	header := http.Header{
 		"Content-Disposition": []string{`attachment; filename="Q1: forecast?.txt"`},
@@ -1688,6 +1930,7 @@ func TestDriveDownloadDefaultOutputPathSanitizesWindowsReservedCharacters(t *tes
 	}
 }
 
+// TestDriveDownloadDefaultOutputPathRejectsWindowsReservedDeviceNames verifies reserved device names are rejected.
 func TestDriveDownloadDefaultOutputPathRejectsWindowsReservedDeviceNames(t *testing.T) {
 	header := http.Header{
 		"Content-Disposition": []string{`attachment; filename="CON.txt"`},
@@ -1705,6 +1948,7 @@ func TestDriveDownloadDefaultOutputPathRejectsWindowsReservedDeviceNames(t *test
 	}
 }
 
+// TestDriveDownloadDefaultOutputPathFallsBackWhenHeaderCandidateFailsPathValidation verifies invalid header names use a safe fallback.
 func TestDriveDownloadDefaultOutputPathFallsBackWhenHeaderCandidateFailsPathValidation(t *testing.T) {
 	validatePath := func(path string) error {
 		_, err := validate.SafeOutputPath(path)
@@ -1732,6 +1976,7 @@ func TestDriveDownloadDefaultOutputPathFallsBackWhenHeaderCandidateFailsPathVali
 	}
 }
 
+// mustDriveDownloadDefaultOutputPath resolves a default download path or fails the test.
 func mustDriveDownloadDefaultOutputPath(t *testing.T, header http.Header, title, fileToken string, validatePath driveDownloadOutputPathValidator) string {
 	t.Helper()
 	got, err := driveDownloadDefaultOutputPath(header, title, fileToken, validatePath)
@@ -1741,6 +1986,7 @@ func mustDriveDownloadDefaultOutputPath(t *testing.T, header http.Header, title,
 	return got
 }
 
+// TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted verifies default naming plans a metadata lookup.
 func TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -1756,22 +2002,31 @@ func TestDriveDownloadDryRunPlansMetadataWhenOutputOmitted(t *testing.T) {
 
 	data := decodeDriveEnvelope(t, stdout)
 	apis, _ := data["api"].([]interface{})
-	if len(apis) != 2 {
-		t.Fatalf("api count = %d, want 2\nstdout=%s", len(apis), stdout.String())
+	if len(apis) != 3 {
+		t.Fatalf("api count = %d, want 3\nstdout=%s", len(apis), stdout.String())
 	}
 	first, _ := apis[0].(map[string]interface{})
-	if first["method"] != "POST" || first["url"] != "/open-apis/drive/v1/metas/batch_query" {
-		t.Fatalf("first api = %#v, want metadata batch_query", first)
+	if first["method"] != "GET" || first["url"] != "/open-apis/drive/v1/permissions/file_dryrun/members/auth" {
+		t.Fatalf("first api = %#v, want export permission auth", first)
+	}
+	firstParams, _ := first["params"].(map[string]interface{})
+	if firstParams["type"] != "file" || firstParams["action"] != "export" {
+		t.Fatalf("first params = %#v, want type=file action=export", firstParams)
 	}
 	second, _ := apis[1].(map[string]interface{})
-	if second["method"] != "GET" || second["url"] != "/open-apis/drive/v1/files/file_dryrun/download" {
-		t.Fatalf("second api = %#v, want file download", second)
+	if second["method"] != "POST" || second["url"] != "/open-apis/drive/v1/metas/batch_query" {
+		t.Fatalf("second api = %#v, want metadata batch_query", second)
 	}
-	if second["desc"] != "[2] Download file bytes; Content-Disposition filename wins over metadata title when present" {
-		t.Fatalf("second desc = %#v, want metadata-aware step 2", second["desc"])
+	third, _ := apis[2].(map[string]interface{})
+	if third["method"] != "GET" || third["url"] != "/open-apis/drive/v1/files/file_dryrun/download" {
+		t.Fatalf("third api = %#v, want file download", third)
+	}
+	if third["desc"] != "[3] Download file bytes; Content-Disposition filename wins over metadata title when present" {
+		t.Fatalf("third desc = %#v, want metadata-aware step 3", third["desc"])
 	}
 }
 
+// TestDriveDownloadDryRunExplicitOutputSkipsMetadata verifies explicit output avoids metadata lookup.
 func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -1788,24 +2043,29 @@ func TestDriveDownloadDryRunExplicitOutputSkipsMetadata(t *testing.T) {
 
 	data := decodeDriveEnvelope(t, stdout)
 	apis, _ := data["api"].([]interface{})
-	if len(apis) != 1 {
-		t.Fatalf("api count = %d, want 1\nstdout=%s", len(apis), stdout.String())
+	if len(apis) != 2 {
+		t.Fatalf("api count = %d, want 2\nstdout=%s", len(apis), stdout.String())
 	}
 	first, _ := apis[0].(map[string]interface{})
-	if first["method"] != "GET" || first["url"] != "/open-apis/drive/v1/files/file_dryrun/download" {
-		t.Fatalf("api = %#v, want file download", first)
+	if first["method"] != "GET" || first["url"] != "/open-apis/drive/v1/permissions/file_dryrun/members/auth" {
+		t.Fatalf("first api = %#v, want export permission auth", first)
 	}
-	if first["desc"] != "[1] Download file bytes to the explicit output path" {
-		t.Fatalf("api desc = %#v, want explicit-output step 1", first["desc"])
+	second, _ := apis[1].(map[string]interface{})
+	if second["method"] != "GET" || second["url"] != "/open-apis/drive/v1/files/file_dryrun/download" {
+		t.Fatalf("second api = %#v, want file download", second)
+	}
+	if second["desc"] != "[2] Download file bytes to the explicit output path" {
+		t.Fatalf("api desc = %#v, want explicit-output step 2", second["desc"])
 	}
 	if data["output"] != "report.bin" {
 		t.Fatalf("output = %#v, want report.bin", data["output"])
 	}
 }
 
+// TestDriveDownloadOmittedOutputRequiresMetadataScope verifies default naming declares its metadata scope.
 func TestDriveDownloadOmittedOutputRequiresMetadataScope(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
-	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:file:download"}, nil)
+	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:file:download " + common.DrivePermissionMemberAuthScope}, nil)
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
 		"+download",
@@ -1824,6 +2084,20 @@ func TestDriveDownloadOmittedOutputRequiresMetadataScope(t *testing.T) {
 	}
 }
 
+func TestDriveDownloadDeclaresPermissionMemberAuthScope(t *testing.T) {
+	found := false
+	for _, scope := range DriveDownload.Scopes {
+		if scope == common.DrivePermissionMemberAuthScope {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("DriveDownload.Scopes = %v, want %q", DriveDownload.Scopes, common.DrivePermissionMemberAuthScope)
+	}
+}
+
+// TestDriveDownloadRejectsInvalidFileToken verifies unsafe download tokens are rejected.
 func TestDriveDownloadRejectsInvalidFileToken(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -1849,6 +2123,7 @@ func TestDriveDownloadRejectsInvalidFileToken(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadRejectsUnsafeExplicitOutput verifies unsafe output paths are rejected.
 func TestDriveDownloadRejectsUnsafeExplicitOutput(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -1874,9 +2149,11 @@ func TestDriveDownloadRejectsUnsafeExplicitOutput(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadExplicitOutputSkipsMetadataScope verifies explicit output does not declare metadata scope.
 func TestDriveDownloadExplicitOutputSkipsMetadataScope(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:file:download"}, nil)
+	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:file:download " + common.DrivePermissionMemberAuthScope}, nil)
+	registerDriveDownloadExportAuth(reg, "file_no_meta_scope", true)
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/files/file_no_meta_scope/download",
@@ -1902,8 +2179,10 @@ func TestDriveDownloadExplicitOutputSkipsMetadataScope(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadRejectsExistingDefaultOutputWithoutOverwrite verifies default output also respects overwrite protection.
 func TestDriveDownloadRejectsExistingDefaultOutputWithoutOverwrite(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_existing_title", true)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -1951,8 +2230,10 @@ func TestDriveDownloadRejectsExistingDefaultOutputWithoutOverwrite(t *testing.T)
 	}
 }
 
+// TestDriveDownloadUsesContentDispositionWhenOutputOmitted verifies response filenames take precedence.
 func TestDriveDownloadUsesContentDispositionWhenOutputOmitted(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	authStub := registerDriveDownloadExportAuth(reg, "file_named", true)
 	metaStub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -1977,7 +2258,7 @@ func TestDriveDownloadUsesContentDispositionWhenOutputOmitted(t *testing.T) {
 			"Content-Disposition": []string{`attachment; filename="server-report.md"`},
 		},
 		OnMatch: func(req *http.Request) {
-			metadataSeenBeforeDownload = len(metaStub.CapturedBody) > 0
+			metadataSeenBeforeDownload = len(authStub.CapturedBodies) > 0 && len(metaStub.CapturedBody) > 0
 		},
 	})
 
@@ -2009,8 +2290,10 @@ func TestDriveDownloadUsesContentDispositionWhenOutputOmitted(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadFallsBackToMetadataTitleWhenOutputOmitted verifies metadata supplies the default filename.
 func TestDriveDownloadFallsBackToMetadataTitleWhenOutputOmitted(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_title", true)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -2058,8 +2341,10 @@ func TestDriveDownloadFallsBackToMetadataTitleWhenOutputOmitted(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadFallsBackToTokenWhenOutputOmittedAndMetadataEmpty verifies the token is the final filename fallback.
 func TestDriveDownloadFallsBackToTokenWhenOutputOmittedAndMetadataEmpty(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_empty", true)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -2101,8 +2386,10 @@ func TestDriveDownloadFallsBackToTokenWhenOutputOmittedAndMetadataEmpty(t *testi
 	}
 }
 
+// TestDriveDownloadMetadataNonPermissionErrorContinuesWithTokenFallback verifies recoverable metadata failures use the token.
 func TestDriveDownloadMetadataNonPermissionErrorContinuesWithTokenFallback(t *testing.T) {
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_rate_limited", true)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -2148,6 +2435,7 @@ func TestDriveDownloadMetadataNonPermissionErrorContinuesWithTokenFallback(t *te
 	}
 }
 
+// TestDriveDownloadTypedMetadataTimeoutFallsBack verifies typed metadata timeouts use fallback naming.
 func TestDriveDownloadTypedMetadataTimeoutFallsBack(t *testing.T) {
 	err := errs.NewNetworkError(errs.SubtypeNetworkTimeout, "metadata lookup timed out")
 	if driveDownloadShouldFailOnMetadataTitleError(context.Background(), err) {
@@ -2155,6 +2443,7 @@ func TestDriveDownloadTypedMetadataTimeoutFallsBack(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadMetadataContextErrorStopsBeforeDownload verifies command cancellation prevents the download request.
 func TestDriveDownloadMetadataContextErrorStopsBeforeDownload(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -2190,6 +2479,7 @@ func TestDriveDownloadMetadataContextErrorStopsBeforeDownload(t *testing.T) {
 
 			cfg := driveTestConfig()
 			f, _, _, _ := cmdutil.TestFactory(t, cfg)
+			permissionRequests := 0
 			metadataRequests := 0
 			downloadRequests := 0
 			f.LarkClient = func() (*lark.Client, error) {
@@ -2200,6 +2490,15 @@ func TestDriveDownloadMetadataContextErrorStopsBeforeDownload(t *testing.T) {
 					lark.WithLogLevel(larkcore.LogLevelError),
 					lark.WithOpenBaseUrl(core.ResolveOpenBaseURL(cfg.Brand)),
 					lark.WithHttpClient(&http.Client{Transport: driveRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+						if strings.Contains(req.URL.Path, "/permissions/") {
+							permissionRequests++
+							return &http.Response{
+								StatusCode: http.StatusOK,
+								Header:     http.Header{"Content-Type": []string{"application/json"}},
+								Body:       io.NopCloser(strings.NewReader(`{"code":0,"data":{"auth_result":true}}`)),
+								Request:    req,
+							}, nil
+						}
 						if strings.Contains(req.URL.Path, "/metas/batch_query") {
 							metadataRequests++
 							tc.cancelIn(cancel, req)
@@ -2227,6 +2526,9 @@ func TestDriveDownloadMetadataContextErrorStopsBeforeDownload(t *testing.T) {
 			if metadataRequests != 1 {
 				t.Fatalf("metadata requests = %d, want 1", metadataRequests)
 			}
+			if permissionRequests != 1 {
+				t.Fatalf("permission requests = %d, want 1", permissionRequests)
+			}
 			if downloadRequests != 0 {
 				t.Fatalf("download requests = %d, want 0", downloadRequests)
 			}
@@ -2234,8 +2536,10 @@ func TestDriveDownloadMetadataContextErrorStopsBeforeDownload(t *testing.T) {
 	}
 }
 
+// TestDriveDownloadMetadataErrorBeforeDownloadWhenOutputOmitted verifies permission failures stop before downloading.
 func TestDriveDownloadMetadataErrorBeforeDownloadWhenOutputOmitted(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	registerDriveDownloadExportAuth(reg, "file_no_meta", true)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -2270,6 +2574,7 @@ type capturedDriveMultipart struct {
 	Files  map[string][]byte
 }
 
+// decodeDriveMultipartBody decodes one captured multipart request for assertions.
 func decodeDriveMultipartBody(t *testing.T, stub *httpmock.Stub) capturedDriveMultipart {
 	t.Helper()
 
@@ -2298,4 +2603,259 @@ func decodeDriveMultipartBody(t *testing.T, stub *httpmock.Stub) capturedDriveMu
 		body.Fields[part.FormName()] = buf.String()
 	}
 	return body
+}
+
+const driveReportFileEventPath = "/open-apis/drive/v1/lark_cli_file_event/report"
+
+// testDriveCapacityExpansionURL is a placeholder capacity-expansion URL used in
+// tests. It intentionally uses example.com so no internal endpoint is embedded
+// in the repository.
+const testDriveCapacityExpansionURL = "https://example.com/space/upload/pay/prepare"
+
+// registerDriveReportStub registers a successful report_file_event stub.
+func registerDriveReportStub(t *testing.T, reg *httpmock.Registry) *httpmock.Stub {
+	t.Helper()
+	return registerDriveReportStubWithMsg(t, reg, "")
+}
+
+// registerDriveReportStubWithMsg registers a report_file_event stub returning
+// code 0 and, when msg is non-empty, carrying it as data.msg.
+func registerDriveReportStubWithMsg(t *testing.T, reg *httpmock.Registry, msg string) *httpmock.Stub {
+	t.Helper()
+	body := map[string]interface{}{"code": 0, "data": map[string]interface{}{}}
+	if msg != "" {
+		body["msg"] = "success"
+		body["data"] = map[string]interface{}{"msg": msg}
+	}
+	stub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      driveReportFileEventPath,
+		Body:     body,
+		Reusable: true,
+	}
+	reg.Register(stub)
+	return stub
+}
+
+// decodeDriveReportTags verifies one captured Drive report and returns its tags.
+func decodeDriveReportTags(t *testing.T, stub *httpmock.Stub) map[string]interface{} {
+	t.Helper()
+	if len(stub.CapturedBodies) != 1 {
+		t.Fatalf("report call count = %d, want 1", len(stub.CapturedBodies))
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBodies[0], &body); err != nil {
+		t.Fatalf("decode report body: %v", err)
+	}
+	if got := body["file_scene"]; got != "lark-cli" {
+		t.Fatalf("file_scene = %v, want lark-cli", got)
+	}
+	if got := body["scene"]; got != "upload" {
+		t.Fatalf("scene = %v, want upload", got)
+	}
+	if _, ok := body["user_id"]; ok {
+		t.Fatalf("user_id must be omitted, got %v", body["user_id"])
+	}
+	if _, ok := body["tenant_id"]; ok {
+		t.Fatalf("tenant_id must be omitted, got %v", body["tenant_id"])
+	}
+	tags, ok := body["tags"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("tags = %#v, want object", body["tags"])
+	}
+	return tags
+}
+
+// TestDriveUploadSmallFileReportFileEventOnSuccess verifies reporting after a small Drive upload succeeds.
+func TestDriveUploadSmallFileReportFileEventOnSuccess(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-report-small-ok", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+	reportStub := registerDriveReportStub(t, reg)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "file_report_ok"},
+		},
+	})
+
+	withDriveWorkingDir(t, t.TempDir())
+	if err := os.WriteFile("small.bin", make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "small.bin", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected upload to succeed, got error: %v", err)
+	}
+
+	tags := decodeDriveReportTags(t, reportStub)
+	if got := tags["status"]; got != "success" {
+		t.Fatalf("tags.status = %v, want success", got)
+	}
+	if got := tags["api_path"]; got != "/open-apis/drive/v1/files/upload_all" {
+		t.Fatalf("tags.api_path = %v", got)
+	}
+	if _, ok := tags["upload_mode"]; ok {
+		t.Fatal("tags.upload_mode must be omitted")
+	}
+	if got := tags["resource_type"]; got != "file" {
+		t.Fatalf("tags.resource_type = %v, want file", got)
+	}
+	if got := tags["mount_point"]; got != driveUploadParentTypeExplorer {
+		t.Fatalf("tags.mount_point = %v, want %s", got, driveUploadParentTypeExplorer)
+	}
+	if got := tags["file_token"]; got != "file_report_ok" {
+		t.Fatalf("tags.file_token = %v, want file_report_ok", got)
+	}
+}
+
+// TestDriveUploadSmallFileReportFileEventOnError verifies reporting after a small Drive upload fails.
+func TestDriveUploadSmallFileReportFileEventOnError(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-report-small-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+	reportStub := registerDriveReportStubWithMsg(t, reg, testDriveCapacityExpansionURL)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body:   map[string]interface{}{"code": 1061101, "msg": "tenant capacity exceeded"},
+	})
+
+	withDriveWorkingDir(t, t.TempDir())
+	if err := os.WriteFile("small.bin", make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "small.bin", "--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if p.Code != 1061101 {
+		t.Fatalf("code = %d, want original 1061101", p.Code)
+	}
+	if !strings.Contains(p.Hint, testDriveCapacityExpansionURL) {
+		t.Fatalf("hint = %q, want capacity expansion URL", p.Hint)
+	}
+
+	tags := decodeDriveReportTags(t, reportStub)
+	if got := tags["status"]; got != "error" {
+		t.Fatalf("tags.status = %v, want error", got)
+	}
+	if got := tags["code"]; got != "1061101" {
+		t.Fatalf("tags.code = %v, want 1061101", got)
+	}
+}
+
+// TestDriveUploadLargeFileReportFileEventOnPrepareError verifies reporting when multipart preparation fails.
+func TestDriveUploadLargeFileReportFileEventOnPrepareError(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-report-large-prepare-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+	reportStub := registerDriveReportStubWithMsg(t, reg, testDriveCapacityExpansionURL)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_prepare",
+		Body:   map[string]interface{}{"code": 1061101, "msg": "tenant capacity exceeded"},
+	})
+
+	origDir, _ := os.Getwd()
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir() error: %v", err)
+	}
+	defer os.Chdir(origDir)
+
+	fh, err := os.Create("large.bin")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := fh.Truncate(common.MaxDriveMediaUploadSinglePartSize + 1); err != nil {
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	err = mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "large.bin", "--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != 1061101 {
+		t.Fatalf("expected typed api error code 1061101, got %T (%v)", err, err)
+	}
+	if !strings.Contains(p.Hint, testDriveCapacityExpansionURL) {
+		t.Fatalf("hint = %q, want capacity expansion URL", p.Hint)
+	}
+
+	tags := decodeDriveReportTags(t, reportStub)
+	if got := tags["status"]; got != "error" {
+		t.Fatalf("tags.status = %v, want error", got)
+	}
+	if _, ok := tags["upload_mode"]; ok {
+		t.Fatal("tags.upload_mode must be omitted")
+	}
+	if got := tags["api_path"]; got != "/open-apis/drive/v1/files/upload_prepare" {
+		t.Fatalf("tags.api_path = %v, want upload_prepare", got)
+	}
+}
+
+// TestDriveUploadReportFileEventFailureKeepsUploadError verifies that reporting cannot replace the Drive upload error.
+func TestDriveUploadReportFileEventFailureKeepsUploadError(t *testing.T) {
+	uploadTestConfig := &core.CliConfig{
+		AppID: "drive-upload-report-keeps-err", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, uploadTestConfig)
+	reg.Register(&httpmock.Stub{
+		Method:   "POST",
+		URL:      driveReportFileEventPath,
+		Body:     map[string]interface{}{"code": 500, "msg": "report rejected"},
+		Reusable: true,
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body:   map[string]interface{}{"code": 1001, "msg": "quota exceeded"},
+	})
+
+	withDriveWorkingDir(t, t.TempDir())
+	if err := os.WriteFile("small.bin", make([]byte, 1024), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveUpload, []string{
+		"+upload", "--file", "small.bin", "--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if p.Code != 1001 {
+		t.Fatalf("code = %d, want original upload code 1001", p.Code)
+	}
+	if !strings.Contains(err.Error(), "quota exceeded") {
+		t.Fatalf("error lost original message: %v", err)
+	}
 }

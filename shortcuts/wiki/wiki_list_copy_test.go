@@ -549,6 +549,15 @@ func TestWikiNodeCopyDeclaredHighRiskWrite(t *testing.T) {
 	}
 }
 
+func TestWikiNodeCopyDeclaresNodeOnlySemantics(t *testing.T) {
+	t.Parallel()
+
+	tips := strings.Join(WikiNodeCopy.Tips, " ")
+	if !strings.Contains(tips, "current node only") || !strings.Contains(tips, "descendant nodes are not copied") {
+		t.Fatalf("WikiNodeCopy.Tips = %q, want explicit non-recursive copy guidance", tips)
+	}
+}
+
 func TestWikiNodeCopyCopiesNodeToTargetSpace(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 

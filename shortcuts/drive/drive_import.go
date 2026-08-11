@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/fileevent"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -61,6 +62,7 @@ type ImportParams struct {
 	FileExtension string
 }
 
+// spec projects public import parameters into the internal execution model.
 func (p ImportParams) spec() driveImportSpec {
 	return driveImportSpec{
 		FilePath:     p.File,
@@ -105,6 +107,7 @@ func PlanImportDryRun(runtime *common.RuntimeContext, p ImportParams) *common.Dr
 
 	appendDriveImportFolderTokenWikiCheckDryRun(dry, spec)
 	appendDriveImportUploadDryRun(dry, spec, fileSize)
+	appendDriveImportUploadReportDryRun(dry, runtime, fileSize)
 
 	dry.POST("/open-apis/drive/v1/import_tasks").
 		Desc("[2] Create import task").
@@ -199,6 +202,7 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 	return nil
 }
 
+// preflightDriveImportFile validates the import source and returns its size.
 func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, error) {
 	// Keep dry-run and execution aligned on path normalization, file existence,
 	// and format-specific size limits before planning the upload path.
@@ -215,6 +219,7 @@ func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, 
 	return info.Size(), nil
 }
 
+// appendDriveImportUploadDryRun adds the selected single-part or multipart upload steps to an import plan.
 func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, fileSize int64) {
 	extra, err := buildImportMediaExtra(spec.FileExtension(), spec.DocType)
 	if err != nil {
@@ -257,6 +262,21 @@ func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, 
 			"extra":       extra,
 			"file":        "@" + spec.FilePath,
 		})
+}
+
+// appendDriveImportUploadReportDryRun adds the best-effort upload report to an
+// import dry-run plan, matching the single-part or multipart upload path.
+func appendDriveImportUploadReportDryRun(dry *common.DryRunAPI, runtime *common.RuntimeContext, fileSize int64) {
+	apiPath := "/open-apis/drive/v1/medias/upload_all"
+	if fileSize > common.MaxDriveMediaUploadSinglePartSize {
+		apiPath = "/open-apis/drive/v1/medias/upload_finish"
+	}
+	fileevent.AppendUploadDryRun(dry, runtime, fileevent.UploadMeta{
+		APIPath:      apiPath,
+		ResourceType: "media",
+		ParentType:   "ccm_import_open",
+		FileToken:    "<file_token from upload response>",
+	})
 }
 
 // normalizeDriveImportKindForURL maps the server's import "type" field to a

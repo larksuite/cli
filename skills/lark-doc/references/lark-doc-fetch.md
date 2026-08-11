@@ -1,81 +1,78 @@
+# docs +fetch（读取飞书云文档）
 
-# docs +fetch（获取飞书云文档）
+读取整篇文档，或按目录、章节、区间和关键词获取局部内容。
 
-## 命令
+## 常用示例
 
 ```bash
-# 获取文档（默认 XML，simple）
-lark-cli docs +fetch --doc "https://xxx.feishu.cn/docx/Z1Fj...tnAc"
+# 读取整篇文档
+lark-cli docs +fetch --doc "文档URL或token"
 
-# Markdown 格式
-lark-cli docs +fetch --doc Z1Fj...tnAc --doc-format markdown
+# 按 URL 中的 #share 锚点局部读取
+lark-cli docs +fetch --doc '文档URL#share-anchor'
 
-# 带 block ID（用于后续 block 级更新）
-lark-cli docs +fetch --doc Z1Fj...tnAc --detail with-ids
+# 按关键词定位
+lark-cli docs +fetch --doc Z1Fj...tnAc --scope keyword --keyword "部署|发布|上线"
 
-# 只拿目录
+# 先查看目录，再读取指定章节
 lark-cli docs +fetch --doc Z1Fj...tnAc --scope outline --max-depth 3
-
-# 按 block id 区间精读
-lark-cli docs +fetch --doc Z1Fj...tnAc --scope range --start-block-id blkA --end-block-id blkB --detail with-ids
-
-# URL 带 #share 选区锚点时自动局部读取
-lark-cli docs +fetch --doc 'docURL#share-anchor'
-
-# 读整个章节（以标题 id 为锚点，自动展开到下一个同级/更高级标题前）
-lark-cli docs +fetch --doc Z1Fj...tnAc \
-  --scope section --start-block-id <标题id> --detail with-ids
-
-# 按关键词定位（多关键词用 | 分隔，任一命中即返回）
-lark-cli docs +fetch --doc Z1Fj...tnAc \
-  --scope keyword --keyword "部署|发布|上线"
+lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
 ```
 
-## 选 `--detail`（每块详细度）
+## 参数
 
-| 意图 | `--detail` | 说明 |
-|------|-----------|------|
-| **只读**：浏览或总结文档内容 | `simple`（默认） | 简洁 XML/Markdown，不含 block ID、样式属性、引用元数据 |
-| **定位**：需要 block ID 与其他业务交互 | `with-ids` | 包含 block ID（如 `<p id="blkcnXXXX">`），可用于 `+update` 的 `--block-id`，也可用于拼接 `文档URL#block_id` 形式的直达链接 |
-| **编辑**：任何修改文档内容的需求 | `full` | 包含 block ID + 样式属性 + 引用元数据，提供完整文档结构信息 |
+|参数|必填|说明|
+|-|-|-|
+|`--doc`|是|文档 URL 或 token，支持 `/docx/`、`/wiki/` 和带 `#share-...` 的选区链接|
+|`--doc-format`|否|`xml`（默认）\| `markdown` \| `im-markdown`（供后续 `lark-im` 场景使用）|
+|`--detail`|否|`simple`（默认）\| `with-ids` \| `full`|
+|`--revision-id`|否|文档版本号；`-1` 表示最新版本（默认）|
+|`--scope`|否|`outline` \| `range` \| `keyword` \| `section`；省略则读取整篇|
+|`--start-block-id`|否|`range` 的起点，或 `section` 的锚点（`section` 必填）|
+|`--end-block-id`|否|`range` 的终点；`-1` 表示读到末尾|
+|`--keyword`|否|`keyword` 模式的关键词；支持多级自动匹配和多分支 OR|
+|`--context-before`|否|返回命中项之前的顶层兄弟块数量（默认 `0`）|
+|`--context-after`|否|返回命中项之后的顶层兄弟块数量（默认 `0`）|
+|`--max-depth`|否|`outline` 表示标题层级上限；其它模式表示子树深度（默认 `-1`，不限）|
+|`--format`|否|`json`（默认）\| `pretty`|
 
-## 选 `--scope`（读取范围）
+## 选择详细度：`--detail`
 
-`--scope` 和 `--detail` 正交可组合。**省略 `--scope` 即读整篇；获取一小节时优先用局部读取。**
+|目的|取值|返回内容|
+|-|-|-|
+|浏览、总结|`simple`（默认）|简洁 XML/Markdown，不含 block ID、样式和引用元数据|
+|定位、跳转|`with-ids`|包含 block ID，可用于 `+update --block-id`，也可拼成 `文档URL#block_id` 直达链接|
+|编辑文档|`full`|包含 block ID、样式和引用元数据，保留完整结构信息|
 
-| 模式 | 何时用 | 关键参数 | 行为要点 |
+需要修改文档时使用 `full`；只读场景通常不必获取额外元数据。
+
+## 选择读取范围：`--scope`
+
+`--scope` 与 `--detail` 可以组合。优先读取满足任务所需的最小范围；只有确需全文时才省略 `--scope`。
+
+|模式|适用场景|关键参数|返回行为|
 |-|-|-|-|
-| `outline` | 不知道结构，先看目录 | `--max-depth`（标题层级上限） | 扁平列出所有标题，**包括嵌在容器里的内嵌标题**（如 callout 里的 h3）；这些 id 可直接作后续 `section` / `range` 端点 |
-| `section` | 读某个标题对应的整节 | `--start-block-id`（必填） | 顶层标题 → 展开到下一同级/更高级标题前；容器内节点（含内嵌标题） → 按"最小包容单元"返回容器/表格切片，不做 heading 扩展；顶层非标题块 → 仅该块 |
-| `range` | 已知精确起止 | `--start-block-id` / `--end-block-id` 至少一个；`-1` = 读到末尾 | 两端同顶层 → 顶层序列切片；两端同一容器 → 容器整体；两端同一表格 → 瘦身切片；**跨顶层 → 端点所在顶层块整块输出，不做瘦身** |
-| `keyword` | 只有模糊关键词 | `--keyword`（**多级自动 fallback**：子串 → 归一化 → 分词形变 → RE2 正则；`\|` 分隔多分支 OR） | 每处命中按"最小包容单元"输出；**自动去重**（同容器多命中 → 单个容器，同表格多行命中 → 合并切片） |
+|`outline`|结构未知，先查看目录|`--max-depth`|扁平列出标题；返回的标题 ID 可作为 `section` 或 `range` 的端点|
+|`section`|读取某个标题对应的整节|`--start-block-id`（必填）|顶层标题展开到下一个同级或更高级标题之前；容器内节点（含内嵌标题）按最小包容单元返回容器或表格切片|
+|`range`|已知精确起止位置|`--start-block-id`、`--end-block-id` 至少一个|同一顶层序列按区间切片；同一容器返回整个容器；同一表格返回瘦身切片；跨顶层时完整返回端点所在的顶层块|
+|`keyword`|只有关键词或模糊线索|`--keyword`（必填）|按最小包容单元返回命中；同一容器的多处命中自动去重，同一表格的多行命中合并为切片|
 
-> 💡 **多关键词用 `\|` 拼接（OR 语义，任一命中即返回）**：例 `"部署\|发布\|上线"`，三词任一命中都进结果，适合**同义词/别名/多业务术语**一次召回（如 `bug\|缺陷\|故障`）。
+`keyword` 会依次尝试子串、归一化、分词形变和 RE2 正则匹配。多关键词使用 `|` 表示 OR，例如 `部署|发布|上线`；任一分支命中即返回。
 
-**设置 `--scope` 时共用** `--context-before` / `--context-after` / `--max-depth`。
+范围参数的共同规则：
 
-- `--max-depth`：`outline` = 标题层级上限（3 = h1~h3）；其它模式 = 被选块的子树遍历深度（`-1` 不限，`0` 仅块自身）。
-- `--context-before/--context-after`：**只对整块顶层单元生效**；命中落在容器/表格内（返回容器或切片）时 before/after 被忽略，需要更大范围改用 `section` / `range` 显式指定。
+- `--max-depth`：`outline` 中 `3` 表示列出 h1～h3；其它模式中 `0` 表示仅返回块自身，`-1` 表示不限深度。
+- `--context-before` / `--context-after`：仅对完整的顶层块生效。命中位于容器或表格内时会被忽略；如需更大范围，改用 `section` 或 `range`。
 
-**决策顺序**（核心原则：**局部获取优于全量获取**，根据需求形态选起点，必要时多步组合收敛范围）：
-1. 需求**直接给出待查的具体术语/错误码/标识** → 直接走 `keyword` 粗匹配（多级 fallback 自动覆盖形变），需要更大上下文时用返回的 `top-block-id` 走 `section` / `range`
-2. 需求**指向某个章节/标题**（"修改 XX 章"、"总结第 3 节"、"关于 xx 的内容"）→ 先 `outline --max-depth 3` 拿目录 → `section --start-block-id <标题id>` 精读
-3. 已知**精确起止 / 跨节连续区间** → `range`
-4. **结构未知且无明确关键词/章节线索** → `outline` 探测，再回到 2/3
-5. **兜底**：仅在确需整篇时才省略 `--scope`；不要为省事直接读整篇
+推荐选择顺序：
 
-## 局部读取的输出结构：`<fragment>` 与 `<excerpt>`
-
-设置 `--scope` 时返回的 `content` 被一个 `<fragment>` 节点包裹，属性包含 `mode` / `requested-start` / `requested-end` / `keyword`（按需）。子节点只有两种形态：
-
-- **顶层块**：完整块直接作为 `<fragment>` 的子节点，无额外包裹。
-- **`<excerpt top-block-id="..." parent-block-path="...">`**：非顶层节选（容器整体 / 表格瘦身切片）。
-  - `top-block-id`：所在顶层块 id，想看该块全貌时作 `section` / `range` 锚点再拉一次。
-  - `parent-block-path`：从顶层块到 excerpt 内容直接父节点的 id 路径，`/` 分隔（表格切片时即表格自身 id）。
-
-**看到 `<excerpt>` 即意味着这是节选**，不能假设看到了该顶层块的全貌。
-
-**表格默认瘦身**：即便 `<table>` 本身是顶层块也只返回 thead + 命中 tr。想拿整张表 → `range --start-block-id <table-id> --end-block-id <table-id>`；切片范围恰好覆盖全部 tr 时 SDK 自动升级为整块、不包 `<excerpt>`。
+|已知信息|首选方式|后续动作|
+|-|-|-|
+|具体术语、错误码或标识|`keyword`|上下文不足时，用返回的 `top-block-id` 再执行 `section` 或 `range`|
+|章节或标题|`outline --max-depth 3`|获取标题 ID 后执行 `section`|
+|精确起止位置|`range`|按需调整端点或深度|
+|没有关键词，也不了解结构|`outline`|根据目录转入 `section` 或 `range`|
+|确实需要整篇|省略 `--scope`|—|
 
 ## 返回值
 
@@ -85,7 +82,7 @@ lark-cli docs +fetch --doc Z1Fj...tnAc \
   "identity": "user",
   "data": {
     "document": {
-      "document_id": "doxcnXXXX",
+      "document_id": "docToken",
       "revision_id": 12,
       "content": "<title>标题</title><p>文档内容...</p>",
       "reference_map": {
@@ -100,49 +97,35 @@ lark-cli docs +fetch --doc Z1Fj...tnAc \
   }
 }
 ```
-
 `content` 的格式由 `--doc-format` 决定。`reference_map` 是正文引用数据的结构化 sidecar：一级键 `block_type` 表示引用所在的块类型，二级键 `ref` 对应正文中的临时引用；每个引用的值是由 `real-attr-key` 和 `real-attr-value` 组成的真实属性映射，具体属性由块类型决定。没有提取数据时，`reference_map` 可能为空。`content` 和 `reference_map` 属于同一份响应，保留或回放内容时应配套处理。`tips` 给出安全回放或降级提示。`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。
+
+### 理解局部读取结果
 
 ## 参数
 
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `--doc` | 是 | 文档 URL 或 token（支持 `/docx/` 和 `/wiki/`） |
-| `--doc-format` | 否 | `xml`（默认）\| `markdown` \| `im-markdown`（仅用于获取内容后在 `lark-im` 场景下使用） |
-| `--detail` | 否 | `simple`（默认）\| `with-ids` \| `full` |
-| `--revision-id` | 否 | 文档版本号，`-1` = 最新（默认） |
-| `--scope` | 否 | `outline` \| `range` \| `keyword` \| `section`（省略 = 读整篇） |
-| `--start-block-id` | 否 | `range`/`section` 起始/锚点 id（`section` 必填） |
-| `--end-block-id` | 否 | `range` 结束 id；`-1` 表示读到末尾 |
-| `--keyword` | 否 | `keyword` 模式关键词，**4 层自动 fallback**（子串 → 归一化 → 分词形变 → RE2 正则）；`\|` 分隔多分支 OR |
-| `--context-before` | 否 | 命中前拉几个兄弟块（仅对顶层单元生效，默认 `0`） |
-| `--context-after` | 否 | 命中后拉几个兄弟块（仅对顶层单元生效，默认 `0`） |
-| `--max-depth` | 否 | `outline` = 标题层级上限；其它 = 子树深度（`-1` 不限，默认） |
-| `--format` | 否 | `json`（默认）\| `pretty` |
+设置 `--scope` 后，`content` 外层是 `<fragment>`，并按需携带 `mode`、`requested-start`、`requested-end` 或 `keyword` 属性。其子节点有两种形式：
 
-## 图片、文件、画板的处理
+- **顶层块**：直接作为 `<fragment>` 的子节点，表示返回了完整块。
+- **`<excerpt top-block-id="..." parent-block-path="...">`**：表示只返回了容器或表格中的节选。
+  - `top-block-id` 是节选所在的顶层块 ID。需要查看完整块时，可将它作为 `section` 或 `range` 的锚点重新读取。
+  - `parent-block-path` 是从顶层块到节选内容直接父节点的 ID 路径，以 `/` 分隔；表格切片中即表格自身 ID。
 
-**文档中的素材以 XML 标签形式出现：**
+看到 `<excerpt>` 时，不要假设已经获取了整个顶层块。
 
-```xml
-<img token="..." url="https://..." width="..." height="..."/>
-<source token="..." url="https://..." name="skills.zip"/>
-<whiteboard token="..."/>
-```
+表格默认瘦身：即使 `<table>` 本身是顶层块，也只返回表头和命中的行。读取整张表时，使用 `range --start-block-id <table-id> --end-block-id <table-id>`。如果切片覆盖全部数据行，SDK 会自动返回完整表格，不再包裹 `<excerpt>`。
 
-- `<img>` / `<source>` 带 `url` 时，直接用该 URL 下载即可（普通 HTTP GET），无需走 shortcut。
-- 没有 `url`、或只想预览 → `docs +media-preview --token <token> --output ./preview_media`
-- 明确下载，或目标是 `<whiteboard>`（画板只能走 shortcut） → `docs +media-download --token <token> --output ./downloaded_media`
-- 文档封面图不是正文素材；下载/更新/删除封面图 → `docs +resource-download/+resource-update/+resource-delete --type cover`
+## 处理文档内嵌资源
 
-## 嵌入电子表格 / 多维表格
-
-返回中可能含 `<sheet>`、`<bitable>`、`<cite file-type="sheets|bitable">`。内部数据无法通过 `docs +fetch` 获取，提取 `token` 等属性后切到 [`lark-sheets`](../../lark-sheets/SKILL.md) / [`lark-base`](../../lark-base/SKILL.md) 下钻，详见 [SKILL.md 快速决策](../SKILL.md) 路由表。
+|返回内容|处理方式|
+|-|-|
+|`<img>`、`<source>`|有 `url` 时仅下载可信的公开 HTTPS URL：拒绝 userinfo 及解析到 private、loopback、link-local、multicast、unspecified 地址的 host，并逐次校验重定向；不满足时禁止请求。无 `url` 时提取 `token`，预览用 `docs +media-preview`，下载用 `docs +media-download`|
+|`<whiteboard>`|提取 `token`，使用 `docs +media-download`|
+|`<sheet>`、`<cite file-type="sheets">`|提取 `token` 和 `sheet-id`，转到 [`lark-sheets`](../../lark-sheets/SKILL.md)|
+|`<bitable>`、`<cite file-type="bitable">`|提取 `token` 和 `table-id`，转到 [`lark-base`](../../lark-base/SKILL.md)|
+|`<vc-transcribe-tab>`|提取 `vc-node-id`，使用 [`lark-note`](../../lark-note/SKILL.md) 的 `note +detail`|
+|`<synced_reference>`|提取 `src-token` 和 `src-block-id`，读取源文档并定位 block|
 
 ## 参考
 
-- [lark-doc-create](lark-doc-create.md) — 创建文档
-- [lark-doc-update](lark-doc-update.md) — 更新文档
 - [lark-doc-media-preview](lark-doc-media-preview.md) — 预览素材
-- [lark-doc-media-download](lark-doc-media-download.md) — 下载素材/画板缩略图
-- [lark-doc-resource-cover](lark-doc-resource-cover.md) — 读取、更新、删除文档封面图
+- [lark-doc-media-download](lark-doc-media-download.md) — 下载素材或画板缩略图
