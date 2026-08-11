@@ -603,7 +603,6 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	decision.Code = problem.Code
 	decision.Subtype = string(problem.Subtype)
 	decision.Retryable = problem.Retryable
-	decision.Hint = problem.Hint
 
 	switch {
 	case problem.Category == errs.CategoryAuthorization && problem.Code == 99991672:

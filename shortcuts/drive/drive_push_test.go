@@ -1611,6 +1611,18 @@ func TestDrivePushAbortsAfterCreateFolderConflict(t *testing.T) {
 	}
 }
 
+func TestDriveClassifyBatchFailureStopsOnDriveQuotaExceeded(t *testing.T) {
+	err := errs.NewAPIError(errs.SubtypeQuotaExceeded, "file quota exceeded").WithCode(1061101)
+	decision := driveClassifyBatchFailure(err)
+
+	if decision.Class != "quota_exceeded" || !decision.Terminal || decision.Retryable {
+		t.Fatalf("decision = %#v, want terminal non-retryable quota_exceeded", decision)
+	}
+	if !strings.Contains(decision.Hint, "Free the relevant Drive quota") {
+		t.Fatalf("decision.Hint = %q, want quota recovery guidance", decision.Hint)
+	}
+}
+
 func TestDrivePushDetectsLocalFileChangedBeforeUpload(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 
