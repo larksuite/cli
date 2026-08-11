@@ -906,7 +906,7 @@ func (s Shortcut) Mount(parent *cobra.Command, f *cmdutil.Factory) {
 
 // MountWithContext registers a shortcut while preserving the caller-provided context.
 func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
-	if s.Execute != nil {
+	if s.Execute != nil || s.typed != nil {
 		s.mountDeclarative(ctx, parent, f)
 	}
 }
@@ -914,6 +914,11 @@ func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f
 // mountDeclarative builds and registers the Cobra command described by a Shortcut.
 func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	shortcut := s
+	if shortcut.typed != nil {
+		if err := validateTypedFlagMountPlan(shortcut.typed, shortcut.PrintFlagSchema != nil, Risk(shortcut.Risk)); err != nil {
+			panic(fmt.Sprintf("typed shortcut %s %s: %v", shortcut.Service, shortcut.Command, err))
+		}
+	}
 	if len(shortcut.AuthTypes) == 0 {
 		shortcut.AuthTypes = []string{"user"}
 	}
@@ -925,6 +930,12 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 		Hidden: shortcut.Hidden,
 		Args:   rejectPositionalArgs(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if handled, err := runShortcutFlagSchema(cmd, f, &shortcut); handled {
+				return err
+			}
+			if shortcut.typed != nil {
+				return runTypedMountedShortcut(cmd, f, &shortcut, botOnly)
+			}
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
 	}
@@ -944,7 +955,13 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 			if relaxRequiredForSchema {
 				if want, _ := c.Flags().GetBool("print-schema"); want {
 					c.Flags().VisitAll(func(fl *pflag.Flag) {
+						// Schema inspection is a local metadata operation. Bypass both
+						// individual required flags and Cobra groups so business inputs
+						// are never needed merely to inspect a complex field.
 						delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
+						delete(fl.Annotations, "cobra_annotation_one_required")
+						delete(fl.Annotations, "cobra_annotation_mutually_exclusive")
+						delete(fl.Annotations, "cobra_annotation_required_if_others_set")
 					})
 				}
 			}
@@ -959,39 +976,108 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	cmdutil.SetRisk(cmd, shortcut.Risk)
 	parent.AddCommand(cmd)
 	if shortcut.PostMount != nil {
+		var typedSnapshot typedMountSnapshot
+		if shortcut.typed != nil {
+			typedSnapshot = captureTypedMountSnapshot(cmd)
+		}
 		shortcut.PostMount(cmd)
+		if shortcut.typed != nil {
+			if err := validateTypedPostMount(cmd, typedSnapshot); err != nil {
+				panic(fmt.Sprintf("typed shortcut %s %s: %v", shortcut.Service, shortcut.Command, err))
+			}
+		}
 	}
 	installFlagAliases(cmd, shortcut.Flags)
+	if shortcut.typed != nil {
+		installTypedAnnotations(cmd, shortcut.typed)
+		installTypedHelp(cmd, shortcut.typed)
+	}
+}
+
+func runTypedMountedShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
+	as, err := resolveShortcutIdentity(cmd, f, s)
+	if err != nil {
+		return err
+	}
+	config, err := f.Config()
+	if err != nil {
+		return err
+	}
+	if err := checkShortcutScopes(f, cmd.Context(), as, config, s.ScopesForIdentity(string(as))); err != nil {
+		return err
+	}
+	rctx, err := newRuntimeContext(cmd, f, s, config, as, botOnly)
+	if err != nil {
+		return err
+	}
+	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+		return err
+	}
+	return runTypedShortcut(f, rctx, s)
+}
+
+func installTypedAnnotations(cmd *cobra.Command, command *compiledCommand) {
+	for _, field := range command.fields {
+		if field.cli.Deprecated != "" {
+			_ = cmd.Flags().MarkDeprecated(field.name, field.cli.Deprecated)
+		}
+		for _, alias := range field.cli.Aliases {
+			if alias.Mode != AliasIndependent || !alias.Deprecated {
+				continue
+			}
+			_ = cmd.Flags().MarkDeprecated(alias.Name, "use --"+field.name+" instead")
+		}
+	}
+	for _, relation := range command.relations {
+		if relation.stage != StageSourcePreRun || relation.presence != PresenceExplicit {
+			continue
+		}
+		names := make([]string, 0, len(relation.fields))
+		for _, index := range relation.fields {
+			names = append(names, command.fields[index].name)
+		}
+		switch relation.kind {
+		case RelationExactlyOne:
+			cmd.MarkFlagsOneRequired(names...)
+			cmd.MarkFlagsMutuallyExclusive(names...)
+		case RelationAtLeastOne:
+			cmd.MarkFlagsOneRequired(names...)
+		case RelationCoOccur:
+			cmd.MarkFlagsRequiredTogether(names...)
+		case RelationConflicts:
+			cmd.MarkFlagsMutuallyExclusive(names...)
+		}
+	}
 }
 
 // runShortcut is the execution pipeline for a declarative shortcut.
 // Each step is a clear phase: identity → config → scopes → runtime →
 // canonical validation → execute.
-func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
-	// --print-schema short-circuits everything below: it's pure local
-	// introspection, no identity / scope / network needed. The flag is
-	// only registered when the shortcut opts in via PrintFlagSchema.
-	if s.PrintFlagSchema != nil {
-		if want, _ := cmd.Flags().GetBool("print-schema"); want {
-			flagName, _ := cmd.Flags().GetString("flag-name")
-			out, err := s.PrintFlagSchema(strings.TrimSpace(flagName))
-			if err != nil {
-				// PrintFlagSchema implementations return bare errors; wrap as a
-				// typed validation error so --print-schema (an agent-facing
-				// introspection path) yields a parseable envelope, not a plain
-				// string.
-				if !errs.IsTyped(err) {
-					err = errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err.Error()).WithCause(err)
-				}
-				return err
-			}
-			if len(out) == 0 {
-				return nil
-			}
-			fmt.Fprintln(f.IOStreams.Out, string(out))
-			return nil
-		}
+func runShortcutFlagSchema(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (bool, error) {
+	if s.PrintFlagSchema == nil {
+		return false, nil
 	}
+	want, _ := cmd.Flags().GetBool("print-schema")
+	if !want {
+		return false, nil
+	}
+	flagName, _ := cmd.Flags().GetString("flag-name")
+	out, err := s.PrintFlagSchema(strings.TrimSpace(flagName))
+	if err != nil {
+		// PrintFlagSchema implementations may return bare errors; wrap those so
+		// this agent-facing local introspection path stays machine-readable.
+		if !errs.IsTyped(err) {
+			err = errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err.Error()).WithCause(err)
+		}
+		return true, err
+	}
+	if len(out) > 0 {
+		fmt.Fprintln(f.IOStreams.Out, string(out))
+	}
+	return true, nil
+}
+
+func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
 		return err
@@ -1400,11 +1486,23 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 			fmt.Sscanf(fl.Default, "%g", &d)
 			cmd.Flags().Float64(fl.Name, d, desc)
 		case "int_array":
-			cmd.Flags().IntSlice(fl.Name, nil, desc)
+			var values []int
+			if fl.Default != "" {
+				_ = json.Unmarshal([]byte(fl.Default), &values)
+			}
+			cmd.Flags().IntSlice(fl.Name, values, desc)
 		case "string_array":
-			cmd.Flags().StringArray(fl.Name, nil, desc)
+			var values []string
+			if fl.Default != "" {
+				_ = json.Unmarshal([]byte(fl.Default), &values)
+			}
+			cmd.Flags().StringArray(fl.Name, values, desc)
 		case "string_slice":
-			cmd.Flags().StringSlice(fl.Name, nil, desc)
+			var values []string
+			if fl.Default != "" {
+				_ = json.Unmarshal([]byte(fl.Default), &values)
+			}
+			cmd.Flags().StringSlice(fl.Name, values, desc)
 		default:
 			cmd.Flags().String(fl.Name, fl.Default, desc)
 		}

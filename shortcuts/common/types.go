@@ -95,6 +95,11 @@ type Shortcut struct {
 	// has attached it to the parent. Use it to install custom help functions or
 	// tweak the command; cmd.Parent() is available at this point.
 	PostMount func(cmd *cobra.Command)
+
+	// typed is the fully compiled contract produced by Define. It remains
+	// private so legacy registry and public Schema cannot observe a partially
+	// migrated Typed Shortcut.
+	typed *compiledCommand
 }
 
 // ScopesForIdentity returns the scopes applicable for the given identity.
