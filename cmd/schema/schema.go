@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -17,6 +18,8 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/schema"
+	"github.com/larksuite/cli/shortcuts"
+	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -100,6 +103,7 @@ func completeSchemaPath(
 		mode := f.ResolveStrictMode(cmd.Context())
 		catalog := projectSchemaCatalog(registry.SchemaCatalog(), visibility)
 		completions, noSpace := catalog.Complete(args, toComplete, registry.FilterForStrictMode(mode))
+		completions = mergeSchemaCompletions(completions, shortcutSchemaCompletions(args, toComplete, visibility))
 		directive := cobra.ShellCompDirectiveNoFileComp
 		if noSpace {
 			directive |= cobra.ShellCompDirectiveNoSpace
@@ -135,6 +139,10 @@ func runSchemaCatalog(
 	catalog apicatalog.Catalog,
 	visibility CommandVisibility,
 ) error {
+	if contract, ok := resolveShortcutSchema(parts, visibility); ok {
+		output.PrintJson(out, contract)
+		return nil
+	}
 	// Test the source catalog before presentation projection. A distribution
 	// that intentionally conceals every generated method still has metadata;
 	// bare `schema` should render an empty list rather than claim metadata is
@@ -162,6 +170,86 @@ func runSchemaCatalog(
 	}
 	output.PrintJson(out, schema.Envelopes(refs))
 	return nil
+}
+
+func resolveShortcutSchema(parts []string, visibility CommandVisibility) (any, bool) {
+	if len(parts) != 2 || !strings.HasPrefix(parts[1], "+") {
+		return nil, false
+	}
+	for _, shortcut := range shortcuts.AllShortcuts() {
+		if shortcut.Service != parts[0] || shortcut.Command != parts[1] {
+			continue
+		}
+		if visibility != nil && !visibility([]string{shortcut.Service, shortcut.Command}) {
+			return nil, false
+		}
+		return common.ShortcutSchema(shortcut)
+	}
+	return nil, false
+}
+
+func shortcutSchemaCompletions(args []string, toComplete string, visibility CommandVisibility) []string {
+	registered := shortcuts.AllShortcuts()
+	if len(args) == 0 && strings.Contains(toComplete, ".") {
+		parts := strings.SplitN(toComplete, ".", 2)
+		return shortcutCommandCompletions(registered, parts[0], parts[1], parts[0]+".", visibility)
+	}
+	if len(args) == 0 {
+		services := make(map[string]struct{})
+		for _, shortcut := range registered {
+			if !strings.HasPrefix(shortcut.Service, toComplete) || !shortcutSchemaVisible(shortcut, visibility) {
+				continue
+			}
+			if _, ok := common.ShortcutSchema(shortcut); ok {
+				services[shortcut.Service] = struct{}{}
+			}
+		}
+		result := make([]string, 0, len(services))
+		for service := range services {
+			result = append(result, service)
+		}
+		sort.Strings(result)
+		return result
+	}
+	if len(args) == 1 {
+		return shortcutCommandCompletions(registered, args[0], toComplete, "", visibility)
+	}
+	return nil
+}
+
+func shortcutCommandCompletions(registered []common.Shortcut, service, prefix, outputPrefix string, visibility CommandVisibility) []string {
+	var result []string
+	for _, shortcut := range registered {
+		if shortcut.Service != service || !strings.HasPrefix(shortcut.Command, prefix) || !shortcutSchemaVisible(shortcut, visibility) {
+			continue
+		}
+		if _, ok := common.ShortcutSchema(shortcut); ok {
+			result = append(result, outputPrefix+shortcut.Command+"\t"+shortcut.Description)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func shortcutSchemaVisible(shortcut common.Shortcut, visibility CommandVisibility) bool {
+	return visibility == nil || visibility([]string{shortcut.Service, shortcut.Command})
+}
+
+func mergeSchemaCompletions(groups ...[]string) []string {
+	seen := make(map[string]struct{})
+	var result []string
+	for _, group := range groups {
+		for _, candidate := range group {
+			name := strings.SplitN(candidate, "\t", 2)[0]
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			result = append(result, candidate)
+		}
+	}
+	sort.Strings(result)
+	return result
 }
 
 // projectSchemaCatalog produces the metadata view corresponding to one final

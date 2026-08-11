@@ -40,6 +40,9 @@ func compileDefinition[Args any, Data any](definition Definition[Args, Data]) (*
 	if definition.Hooks.Execute == nil {
 		return nil, fmt.Errorf("Hooks.Execute is required")
 	}
+	if definition.Hooks.DryRun != nil && definition.Hooks.DryRunE != nil {
+		return nil, fmt.Errorf("Hooks.DryRun and Hooks.DryRunE cannot both be set")
+	}
 	return compileDefinitionParts(
 		definition.Metadata,
 		definition.Input,
@@ -245,6 +248,11 @@ func adaptHooks[Args any, Data any](hooks Hooks[Args, Data]) compiledHooks {
 	if hooks.DryRun != nil {
 		adapted.dryRun = func(ctx context.Context, cc CommandContext, args any) (*DryRunAPI, error) {
 			return hooks.DryRun(ctx, cc, args.(*Args)), nil
+		}
+	}
+	if hooks.DryRunE != nil {
+		adapted.dryRun = func(ctx context.Context, cc CommandContext, args any) (*DryRunAPI, error) {
+			return hooks.DryRunE(ctx, cc, args.(*Args))
 		}
 	}
 	adapted.execute = func(ctx context.Context, cc CommandContext, args any) (compiledResult, error) {

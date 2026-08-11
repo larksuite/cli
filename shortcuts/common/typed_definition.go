@@ -168,6 +168,7 @@ type Hooks[Args any, Data any] struct {
 	Normalize func(context.Context, CommandContext, *Args) error
 	Validate  func(context.Context, CommandContext, *Args) error
 	DryRun    func(context.Context, CommandContext, *Args) *DryRunAPI
+	DryRunE   func(context.Context, CommandContext, *Args) (*DryRunAPI, error)
 	Execute   func(context.Context, CommandContext, *Args) (Result[Data], error)
 	Renderers map[string]Renderer[Data]
 }

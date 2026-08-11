@@ -90,6 +90,9 @@ func validateDomain(domain command.HostDomain, existing map[string]struct{}) err
 }
 
 func compileCommand(definition command.HostDefinition) (common.Shortcut, error) {
+	if definition.Hooks.DryRun != nil && definition.Hooks.DryRunE != nil {
+		return common.Shortcut{}, fmt.Errorf("Hooks.DryRun and Hooks.DryRunE cannot both be set")
+	}
 	metadata := convertMetadata(definition.Metadata)
 	input, err := convertInput(definition.Input)
 	if err != nil {
@@ -214,12 +217,26 @@ func convertOutput(output command.OutputDefinition) (common.OutputDefinition, er
 }
 
 func convertHooks(hooks command.HostHooks) common.ErasedHooks {
+	dryRun := adaptDryRunHook(hooks.DryRun)
+	if hooks.DryRunE != nil {
+		dryRun = adaptDryRunErrorHook(hooks.DryRunE)
+	}
 	return common.ErasedHooks{
 		Normalize: adaptHook(hooks.Normalize),
 		Validate:  adaptHook(hooks.Validate),
-		DryRun:    adaptDryRunHook(hooks.DryRun),
+		DryRun:    dryRun,
 		Execute:   adaptExecuteHook(hooks.Execute),
 		Renderers: cloneRenderers(hooks.Renderers),
+	}
+}
+
+func adaptDryRunErrorHook(hook func(context.Context, command.CommandContext, any) (*command.DryRun, error)) func(context.Context, common.CommandContext, any) (*common.DryRunAPI, error) {
+	return func(ctx context.Context, host common.CommandContext, args any) (*common.DryRunAPI, error) {
+		preview, err := hook(ctx, publicContext(host), args)
+		if err != nil {
+			return nil, err
+		}
+		return convertDryRun(preview)
 	}
 }
 
@@ -279,9 +296,19 @@ func publicContext(host common.CommandContext) command.CommandContext {
 			return common.DoTypedAPIJSON(ctx, host, view.Method, view.Path, queryParams(view.Query), view.Body)
 		},
 		PreflightScopes: host.RequireConditionalScopes,
-		PaginationOptions: func() (command.PaginationOptions, error) {
-			options, err := host.PaginationOptions()
-			return command.PaginationOptions{All: options.All, MaxPages: options.MaxPages, Delay: options.Delay}, err
+		CollectPages: func(ctx context.Context, request command.Request, all bool) ([]map[string]any, command.HostPagination, error) {
+			view := command.InspectRequest(request)
+			if err := command.ValidateRequestView(view); err != nil {
+				return nil, command.HostPagination{}, err
+			}
+			collection, err := common.CollectCommandPages(ctx, host, common.PageRequest{
+				Method: view.Method, Path: view.Path, Params: view.Query, Body: view.Body,
+			}, all)
+			pagination := command.HostPagination{
+				Complete: collection.Complete, Pages: collection.Pages,
+				NextToken: collection.NextToken,
+			}
+			return collection.Data, pagination, err
 		},
 	})
 }

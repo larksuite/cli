@@ -509,6 +509,10 @@ func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.App
 // Domains with auth_domain children are automatically expanded to include
 // their children's scopes.
 func collectScopesForDomains(domains []string, identity string, brand core.LarkBrand) []string {
+	return collectScopesForDomainsWithShortcuts(domains, identity, brand, shortcuts.AllShortcuts())
+}
+
+func collectScopesForDomainsWithShortcuts(domains []string, identity string, brand core.LarkBrand, registered []common.Shortcut) []string {
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
@@ -526,7 +530,7 @@ func collectScopesForDomains(domains []string, identity string, brand core.LarkB
 	}
 
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
-	for _, sc := range shortcuts.AllShortcuts() {
+	for _, sc := range registered {
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}
@@ -550,13 +554,17 @@ func collectScopesForDomains(domains []string, identity string, brand core.LarkB
 // shortcut services), excluding domains that have auth_domain set (they are
 // folded into their parent domain).
 func allKnownDomains(brand core.LarkBrand) map[string]bool {
+	return allKnownDomainsWithShortcuts(brand, shortcuts.AllShortcuts())
+}
+
+func allKnownDomainsWithShortcuts(brand core.LarkBrand, registered []common.Shortcut) map[string]bool {
 	domains := make(map[string]bool)
 	for _, p := range registry.ListFromMetaProjects() {
 		if !registry.HasAuthDomain(p) {
 			domains[p] = true
 		}
 	}
-	for _, sc := range shortcuts.AllShortcuts() {
+	for _, sc := range registered {
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}

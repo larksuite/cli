@@ -6,7 +6,9 @@ package commandtest_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/extension/command"
@@ -39,7 +41,10 @@ func documentGetDefinition() command.Definition[documentGetArgs, documentData] {
 			},
 			Execute: func(ctx context.Context, commandContext command.CommandContext, args *documentGetArgs) (command.Result[documentData], error) {
 				data, err := command.CallJSON[documentData](ctx, commandContext, request(args))
-				return command.Success(data), err
+				if err != nil {
+					return command.Result[documentData]{}, err
+				}
+				return command.Success(data), nil
 			},
 		},
 	}
@@ -71,7 +76,10 @@ func chatListDefinition() command.Definition[chatListArgs, command.Page[chatData
 			},
 			Execute: func(ctx context.Context, commandContext command.CommandContext, args *chatListArgs) (command.Result[command.Page[chatData]], error) {
 				page, err := command.CollectPages[chatData](ctx, commandContext, request(args))
-				return command.Success(page), err
+				if err != nil {
+					return command.Result[command.Page[chatData]]{}, err
+				}
+				return command.Success(page), nil
 			},
 		},
 	}
@@ -125,7 +133,7 @@ func taskAuditDefinition() command.Definition[taskAuditArgs, taskAuditData] {
 			Execute: func(ctx context.Context, commandContext command.CommandContext, args *taskAuditArgs) (command.Result[taskAuditData], error) {
 				tasks, err := command.CollectAllPages[taskRecord](ctx, commandContext, listRequest)
 				if err != nil {
-					return command.Success(taskAuditData{}), err
+					return command.Result[taskAuditData]{}, err
 				}
 				data := taskAuditData{Items: make([]taskAuditItem, 0, len(tasks))}
 				if !args.IncludeOwners {
@@ -135,7 +143,7 @@ func taskAuditDefinition() command.Definition[taskAuditArgs, taskAuditData] {
 					return command.Success(data), nil
 				}
 				if err := command.PreflightScopes(commandContext, "contact:user.base:readonly"); err != nil {
-					return command.Success(data), err
+					return command.Result[taskAuditData]{}, err
 				}
 				for _, task := range tasks {
 					owner, ownerErr := command.CallJSON[struct {
@@ -191,17 +199,23 @@ func memberListDefinition() command.Definition[memberListArgs, memberListData] {
 			},
 			Execute: func(ctx context.Context, commandContext command.CommandContext, args *memberListArgs) (command.Result[memberListData], error) {
 				data, err := command.CallJSON[memberListData](ctx, commandContext, command.GET("/open-apis/im/v1/chats/"+args.ChatID))
-				if err != nil || !args.IncludeMembers {
-					return command.Success(data), err
+				if err != nil {
+					return command.Result[memberListData]{}, err
+				}
+				if !args.IncludeMembers {
+					return command.Success(data), nil
 				}
 				if err := command.PreflightScopes(commandContext, "im:chat.members:read"); err != nil {
-					return command.Success(data), err
+					return command.Result[memberListData]{}, err
 				}
 				members, err := command.CallJSON[struct {
 					Items []string `json:"items"`
 				}](ctx, commandContext, command.GET("/open-apis/im/v1/chats/"+args.ChatID+"/members"))
+				if err != nil {
+					return command.Result[memberListData]{}, err
+				}
 				data.Members = members.Items
-				return command.Success(data), err
+				return command.Success(data), nil
 			},
 		},
 	}
@@ -241,6 +255,16 @@ func TestSingleReadAndDryRunUseSameRequest(t *testing.T) {
 	recorder.AssertScriptConsumed()
 }
 
+func TestSingleReadPreservesTypedAPIError(t *testing.T) {
+	want := command.InvalidResponseErrorf("upstream response is malformed")
+	recorder := commandtest.New(t, commandtest.Fail(want))
+	_, err := commandtest.Execute(context.Background(), recorder, command.IdentityUser, documentGetDefinition(), &documentGetArgs{DocumentID: "doc_1"})
+	if !errors.Is(err, want) {
+		t.Fatalf("single read error = %v", err)
+	}
+	recorder.AssertScriptConsumed()
+}
+
 func TestListCommandUsesHostPagination(t *testing.T) {
 	recorder := commandtest.New(t,
 		commandtest.Respond(map[string]any{
@@ -250,8 +274,8 @@ func TestListCommandUsesHostPagination(t *testing.T) {
 			"items": []map[string]any{{"chat_id": "chat_2", "name": "two"}}, "has_more": false,
 		}),
 	)
-	recorder.SetPagination(command.PaginationOptions{All: true, MaxPages: 3})
-	execution, err := commandtest.Execute(context.Background(), recorder, command.IdentityUser, chatListDefinition(), &chatListArgs{PageSize: 20})
+	execution, err := commandtest.RunWithFlags(context.Background(), recorder, command.IdentityUser,
+		chatListDefinition(), &chatListArgs{PageSize: 20}, "--page-all", "--page-limit=3", "--page-delay=0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +285,105 @@ func TestListCommandUsesHostPagination(t *testing.T) {
 	requests := recorder.Requests()
 	if len(requests) != 2 || requests[1].Query["page_token"] != "next" {
 		t.Fatalf("requests = %#v", requests)
+	}
+	recorder.AssertScriptConsumed()
+}
+
+func TestListCommandReadsOnePageByDefault(t *testing.T) {
+	recorder := commandtest.New(t, commandtest.Respond(map[string]any{
+		"items": []map[string]any{{"chat_id": "chat_1", "name": "one"}}, "has_more": true, "page_token": "next",
+	}))
+	execution, err := commandtest.Execute(context.Background(), recorder, command.IdentityUser, chatListDefinition(), &chatListArgs{PageSize: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Data.Complete() || execution.Data.Pages() != 1 || execution.Data.NextToken() != "next" {
+		t.Fatalf("default page complete=%v pages=%d next=%q", execution.Data.Complete(), execution.Data.Pages(), execution.Data.NextToken())
+	}
+	if len(recorder.Requests()) != 1 {
+		t.Fatalf("default requests = %#v", recorder.Requests())
+	}
+	recorder.AssertScriptConsumed()
+}
+
+func TestListCommandResumesAndStopsAtPageLimit(t *testing.T) {
+	recorder := commandtest.New(t,
+		commandtest.Respond(map[string]any{"items": []map[string]any{{"chat_id": "chat_1"}}, "has_more": true, "page_token": "next-1"}),
+		commandtest.Respond(map[string]any{"items": []map[string]any{{"chat_id": "chat_2"}}, "has_more": true, "page_token": "next-2"}),
+	)
+	recorder.SetPagination(command.PaginationOptions{All: true, MaxPages: 2})
+	page, err := command.CollectPages[chatData](context.Background(), recorder.CommandContext(command.IdentityUser),
+		command.GET("/open-apis/im/v1/chats").Set("page_token", "resume"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Complete() || page.Pages() != 2 || page.NextToken() != "next-2" || len(page.Items) != 2 {
+		t.Fatalf("limited page complete=%v pages=%d next=%q items=%d", page.Complete(), page.Pages(), page.NextToken(), len(page.Items))
+	}
+	requests := recorder.Requests()
+	if len(requests) != 2 || requests[0].Query["page_token"] != "resume" || requests[1].Query["page_token"] != "next-1" {
+		t.Fatalf("resume requests = %#v", requests)
+	}
+	recorder.AssertScriptConsumed()
+}
+
+func TestCollectAllPagesRejectsInvalidCursors(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		responses []commandtest.Response
+	}{
+		{name: "missing", responses: []commandtest.Response{
+			commandtest.Respond(map[string]any{"items": []map[string]any{}, "has_more": true}),
+		}},
+		{name: "repeated", responses: []commandtest.Response{
+			commandtest.Respond(map[string]any{"items": []map[string]any{}, "has_more": true, "page_token": "same"}),
+			commandtest.Respond(map[string]any{"items": []map[string]any{}, "has_more": true, "page_token": "same"}),
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := commandtest.New(t, test.responses...)
+			_, err := command.CollectAllPages[chatData](context.Background(), recorder.CommandContext(command.IdentityUser), command.GET("/open-apis/im/v1/chats"))
+			if err == nil {
+				t.Fatal("CollectAllPages() error is nil")
+			}
+			recorder.AssertScriptConsumed()
+		})
+	}
+}
+
+func TestCollectAllPagesHardLimitPreventsFollowingWrite(t *testing.T) {
+	responses := make([]commandtest.Response, 1000)
+	for index := range responses {
+		responses[index] = commandtest.Respond(map[string]any{
+			"items": []map[string]any{}, "has_more": true, "page_token": fmt.Sprintf("page-%d", index+1),
+		})
+	}
+	type args struct{}
+	type data struct{}
+	definition := command.Definition[args, data]{
+		Metadata: command.CommandMetadata{
+			Service: "task", Command: "+business-hard-limit", Description: "Test complete read", Risk: command.RiskWrite,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
+		},
+		Hooks: command.Hooks[args, data]{
+			Execute: func(ctx context.Context, commandContext command.CommandContext, _ *args) (command.Result[data], error) {
+				if _, err := command.CollectAllPages[taskRecord](ctx, commandContext, command.GET("/open-apis/task/v2/tasks")); err != nil {
+					return command.Result[data]{}, err
+				}
+				if _, err := command.CallJSON[map[string]any](ctx, commandContext, command.POST("/open-apis/task/v2/tasks")); err != nil {
+					return command.Result[data]{}, err
+				}
+				return command.Success(data{}), nil
+			},
+		},
+	}
+	recorder := commandtest.New(t, responses...)
+	_, err := commandtest.Execute(context.Background(), recorder, command.IdentityUser, definition, &args{})
+	if err == nil || !strings.Contains(err.Error(), "hard limit") {
+		t.Fatalf("hard-limit error = %v", err)
+	}
+	if requests := recorder.Requests(); len(requests) != 1000 || requests[len(requests)-1].Method != "GET" {
+		t.Fatalf("requests after incomplete read = %d, last=%#v", len(requests), requests[len(requests)-1])
 	}
 	recorder.AssertScriptConsumed()
 }

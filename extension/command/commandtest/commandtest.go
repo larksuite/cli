@@ -10,17 +10,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/extension/command"
+	internalpagination "github.com/larksuite/cli/internal/pagination"
+	"github.com/spf13/pflag"
 )
 
 // Response is one scripted OpenAPI response.
 type Response struct {
-	data any
-	err  error
+	data           any
+	err            error
+	expectedMethod string
+	expectedPath   string
 }
 
 // Respond creates a successful scripted response containing an OpenAPI data object.
@@ -53,6 +59,15 @@ func New(testing testing.TB, responses ...Response) *Recorder {
 	}
 }
 
+// ReplyJSON appends an ordered successful response with an expected request method and path.
+func (r *Recorder) ReplyJSON(method, path string, data any) *Recorder {
+	r.testing.Helper()
+	r.mu.Lock()
+	r.responses = append(r.responses, Response{data: data, expectedMethod: method, expectedPath: path})
+	r.mu.Unlock()
+	return r
+}
+
 // CommandContext returns a restricted public command context.
 func (r *Recorder) CommandContext(identity command.Identity) command.CommandContext {
 	return r.commandContext(identity, false)
@@ -65,11 +80,11 @@ func (r *Recorder) DryRunContext(identity command.Identity) command.CommandConte
 
 func (r *Recorder) commandContext(identity command.Identity, dryRun bool) command.CommandContext {
 	return command.NewCommandContext(command.ContextOptions{
-		Identity:          identity,
-		DryRun:            dryRun,
-		CallJSON:          r.callJSON,
-		PreflightScopes:   r.preflightScopes,
-		PaginationOptions: r.paginationOptions,
+		Identity:        identity,
+		DryRun:          dryRun,
+		CallJSON:        r.callJSON,
+		PreflightScopes: r.preflightScopes,
+		CollectPages:    r.collectPages,
 	})
 }
 
@@ -99,6 +114,9 @@ func Execute[Args any, Data any](ctx context.Context, recorder *Recorder, identi
 	}
 	result, err := declaration.Hooks.Execute(ctx, commandContext, args)
 	if err != nil {
+		if result.Outcome != "" || result.Pagination != nil {
+			return execution, command.InternalErrorf("business Execute returned both Result and error").WithCause(err)
+		}
 		return execution, err
 	}
 	data, ok := result.Data.(Data)
@@ -106,6 +124,39 @@ func Execute[Args any, Data any](ctx context.Context, recorder *Recorder, identi
 		return execution, fmt.Errorf("business Execute returned %T, expected %T", result.Data, execution.Data)
 	}
 	return Execution[Data]{Data: data, Partial: result.Outcome == "partial"}, nil
+}
+
+// RunWithFlags executes a page-returning command with the framework's standard pagination flags.
+func RunWithFlags[Args any, Data any](ctx context.Context, recorder *Recorder, identity command.Identity, definition command.Definition[Args, Data], args *Args, flags ...string) (Execution[Data], error) {
+	if !command.InspectCommand(command.Define(definition)).PageOutput {
+		return Execution[Data]{}, command.ValidationErrorf("framework pagination flags require a Page output")
+	}
+	options, err := parsePaginationFlags(flags)
+	if err != nil {
+		return Execution[Data]{}, err
+	}
+	restore := recorder.replacePagination(options)
+	defer restore()
+	return Execute(ctx, recorder, identity, definition, args)
+}
+
+func parsePaginationFlags(arguments []string) (command.PaginationOptions, error) {
+	flags := pflag.NewFlagSet("commandtest pagination", pflag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	pageAll := flags.Bool("page-all", false, "")
+	pageLimit := flags.Int("page-limit", 10, "")
+	pageDelay := flags.Int("page-delay", 200, "")
+	if err := flags.Parse(arguments); err != nil {
+		return command.PaginationOptions{}, command.ValidationErrorf("parse framework pagination flags: %v", err).WithCause(err)
+	}
+	if flags.NArg() != 0 {
+		return command.PaginationOptions{}, command.ValidationErrorf("unexpected framework pagination argument %q", flags.Arg(0))
+	}
+	return command.PaginationOptions{
+		All:      *pageAll,
+		MaxPages: *pageLimit,
+		Delay:    time.Duration(*pageDelay) * time.Millisecond,
+	}, nil
 }
 
 // Preview runs Normalize, Validate, and DryRun with an offline test context.
@@ -122,8 +173,11 @@ func Preview[Args any, Data any](ctx context.Context, recorder *Recorder, identi
 			return nil, err
 		}
 	}
-	if declaration.Hooks.DryRun == nil {
+	if declaration.Hooks.DryRun == nil && declaration.Hooks.DryRunE == nil {
 		return nil, errors.New("business command has no DryRun hook")
+	}
+	if declaration.Hooks.DryRunE != nil {
+		return declaration.Hooks.DryRunE(ctx, commandContext, args)
 	}
 	return declaration.Hooks.DryRun(ctx, commandContext, args), nil
 }
@@ -157,6 +211,18 @@ func (r *Recorder) SetPagination(options command.PaginationOptions) {
 	r.mu.Lock()
 	r.pagination = options
 	r.mu.Unlock()
+}
+
+func (r *Recorder) replacePagination(options command.PaginationOptions) func() {
+	r.mu.Lock()
+	previous := r.pagination
+	r.pagination = options
+	r.mu.Unlock()
+	return func() {
+		r.mu.Lock()
+		r.pagination = previous
+		r.mu.Unlock()
+	}
 }
 
 // SetScopeError makes every subsequent scope preflight return err after recording it.
@@ -238,6 +304,12 @@ func (r *Recorder) callJSON(ctx context.Context, request command.Request) (map[s
 	cancel := r.cancel
 	shouldCancel := r.cancelAfterRequest == requestNumber
 	r.mu.Unlock()
+	if response.expectedMethod != "" && response.expectedMethod != view.Method {
+		return nil, fmt.Errorf("request %d method = %q, expected %q", requestNumber, view.Method, response.expectedMethod)
+	}
+	if response.expectedPath != "" && response.expectedPath != view.Path {
+		return nil, fmt.Errorf("request %d path = %q, expected %q", requestNumber, view.Path, response.expectedPath)
+	}
 
 	if response.err != nil {
 		return nil, response.err
@@ -252,17 +324,84 @@ func (r *Recorder) callJSON(ctx context.Context, request command.Request) (map[s
 	return data, nil
 }
 
+func (r *Recorder) collectPages(ctx context.Context, request command.Request, all bool) ([]map[string]any, command.HostPagination, error) {
+	r.mu.Lock()
+	options := r.pagination
+	r.mu.Unlock()
+	if all {
+		options = command.PaginationOptions{All: true, MaxPages: 1000}
+	} else if !options.All {
+		options.MaxPages = 1
+	}
+	if options.MaxPages < 1 || options.MaxPages > 1000 {
+		return nil, command.HostPagination{}, command.ValidationErrorf("pagination page limit must be between 1 and 1000")
+	}
+	if options.Delay < 0 || options.Delay > time.Minute {
+		return nil, command.HostPagination{}, command.ValidationErrorf("pagination delay must be between 0 and 60000 milliseconds")
+	}
+
+	var pages []map[string]any
+	state, err := internalpagination.Walk(ctx, internalpagination.Options{
+		InitialToken: requestPageToken(command.InspectRequest(request).Query),
+		MaxPages:     options.MaxPages,
+		Delay:        options.Delay,
+		Fetch: func(ctx context.Context, _ int, token string) (bool, string, error) {
+			pageRequest := request
+			if token != "" {
+				pageRequest = pageRequest.Set("page_token", token)
+			}
+			data, err := r.callJSON(ctx, pageRequest)
+			if err != nil {
+				return false, "", err
+			}
+			pages = append(pages, data)
+			hasMore, _ := data["has_more"].(bool)
+			nextToken, _ := data["page_token"].(string)
+			if nextToken == "" {
+				nextToken, _ = data["next_page_token"].(string)
+			}
+			return hasMore, nextToken, nil
+		},
+	})
+	pagination := command.HostPagination{Complete: state.Complete, Pages: state.Pages, NextToken: state.NextToken}
+	if err == nil {
+		return pages, pagination, nil
+	}
+	var cursorErr *internalpagination.CursorError
+	if errors.As(err, &cursorErr) {
+		if cursorErr.Kind == internalpagination.CursorMissing {
+			return pages, pagination, command.InvalidResponseErrorf("pagination page %d reports has_more=true without a page token", cursorErr.Page)
+		}
+		return pages, pagination, command.InvalidResponseErrorf("pagination page %d repeated page token %q", cursorErr.Page, cursorErr.Token)
+	}
+	var waitErr *internalpagination.WaitError
+	if errors.As(err, &waitErr) {
+		return pages, pagination, command.PaginationInterruptedError(waitErr.Err)
+	}
+	return pages, pagination, err
+}
+
+func requestPageToken(query map[string]any) string {
+	switch value := query["page_token"].(type) {
+	case string:
+		return value
+	case []string:
+		if len(value) > 0 {
+			return value[0]
+		}
+	case []any:
+		if len(value) > 0 {
+			return fmt.Sprint(value[0])
+		}
+	}
+	return ""
+}
+
 func (r *Recorder) preflightScopes(scopes ...string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.scopeChecks = append(r.scopeChecks, append([]string(nil), scopes...))
 	return r.scopeError
-}
-
-func (r *Recorder) paginationOptions() (command.PaginationOptions, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.pagination, nil
 }
 
 func responseDataObject(value any) (map[string]any, error) {

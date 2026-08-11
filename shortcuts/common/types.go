@@ -63,9 +63,10 @@ type Shortcut struct {
 	// used to satisfy a Cobra Required flag; alternatives such as "A or legacy B"
 	// are a business constraint and must be validated as such.
 	Normalize FlagNormalizer
-	DryRun    func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
-	Validate  func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
-	Execute   func(ctx context.Context, runtime *RuntimeContext) error      // main logic
+	DryRun    func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI          // optional: framework prints & returns when --dry-run is set
+	DryRunE   func(ctx context.Context, runtime *RuntimeContext) (*DryRunAPI, error) // optional error-capable dry-run; takes precedence over DryRun
+	Validate  func(ctx context.Context, runtime *RuntimeContext) error               // optional pre-execution validation
+	Execute   func(ctx context.Context, runtime *RuntimeContext) error               // main logic
 
 	// OnInvoke, when non-nil, runs from the command's cobra PreRunE — before
 	// cobra validates required flags — so its side effect fires even when the

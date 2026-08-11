@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -301,6 +302,21 @@ func TestGetDomainMetadataIncludesAuthorizableShortcutDomains(t *testing.T) {
 		if !nameSet[shortcut.Service] {
 			t.Errorf("authorizable shortcut domain %q missing from getDomainMetadata", shortcut.Service)
 		}
+	}
+}
+
+func TestExternalShortcutScopesParticipateInAuthDomainResolution(t *testing.T) {
+	registered := []common.Shortcut{{
+		Service: "im", Command: "+business-auth", AuthTypes: []string{"user"},
+		UserScopes: []string{"im:business.scope:read"},
+	}}
+	domains := allKnownDomainsWithShortcuts("", registered)
+	if !domains["im"] {
+		t.Fatal("external shortcut domain is missing from auth domains")
+	}
+	scopes := collectScopesForDomainsWithShortcuts([]string{"im"}, "user", "", registered)
+	if !slices.Contains(scopes, "im:business.scope:read") {
+		t.Fatalf("external shortcut scope is missing: %v", scopes)
 	}
 }
 

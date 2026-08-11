@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,13 +61,39 @@ func TestRecorderReturnsScriptedFailuresInOrder(t *testing.T) {
 	recorder.AssertScriptConsumed()
 }
 
+func TestRecorderReplyJSONChecksRequestInOrder(t *testing.T) {
+	recorder := New(t).
+		ReplyJSON("GET", "/open-apis/im/v1/chats/first", map[string]any{"id": "first"}).
+		ReplyJSON("GET", "/open-apis/im/v1/chats/second", map[string]any{"id": "second"})
+	commandContext := recorder.CommandContext(command.IdentityUser)
+	for _, id := range []string{"first", "second"} {
+		data, err := command.CallJSON[map[string]any](context.Background(), commandContext, command.GET("/open-apis/im/v1/chats/"+id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if data["id"] != id {
+			t.Fatalf("response = %#v", data)
+		}
+	}
+	recorder.AssertScriptConsumed()
+}
+
+func TestRecorderReplyJSONRejectsUnexpectedRequest(t *testing.T) {
+	recorder := New(t).ReplyJSON("POST", "/open-apis/im/v1/chats", map[string]any{})
+	_, err := command.CallJSON[map[string]any](context.Background(), recorder.CommandContext(command.IdentityUser), command.GET("/open-apis/im/v1/chats"))
+	if err == nil || !strings.Contains(err.Error(), "expected") {
+		t.Fatalf("CallJSON() error = %v", err)
+	}
+	recorder.AssertScriptConsumed()
+}
+
 func TestRecorderInjectsCancellationIntoPaginationWait(t *testing.T) {
 	recorder := New(t, Respond(map[string]any{
 		"items":      []map[string]any{{"id": "first"}},
 		"has_more":   true,
 		"page_token": "next",
 	}))
-	recorder.SetPagination(command.PaginationOptions{All: true, MaxPages: 2, Delay: time.Hour})
+	recorder.SetPagination(command.PaginationOptions{All: true, MaxPages: 2, Delay: time.Minute})
 	recorder.CancelAfterRequest(1)
 	ctx := recorder.ExecutionContext(context.Background())
 
@@ -108,5 +135,70 @@ func TestExecuteRunsPreparationAndReturnsTypedOutcome(t *testing.T) {
 	}
 	if execution.Data.ID != "normalized-one" || !execution.Partial {
 		t.Fatalf("execution = %#v", execution)
+	}
+}
+
+func TestExecuteRejectsResultAndErrorTogether(t *testing.T) {
+	type args struct{}
+	type data struct{}
+	sentinel := errors.New("execute failed")
+	definition := command.Definition[args, data]{
+		Metadata: command.CommandMetadata{
+			Service: "im", Command: "+test-result-error", Description: "Test result protocol", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
+		},
+		Hooks: command.Hooks[args, data]{
+			Execute: func(context.Context, command.CommandContext, *args) (command.Result[data], error) {
+				return command.Success(data{}), sentinel
+			},
+		},
+	}
+	_, err := Execute(context.Background(), New(t), command.IdentityUser, definition, &args{})
+	if err == nil || !errors.Is(err, sentinel) || err == sentinel {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
+func TestPreviewPropagatesDryRunE(t *testing.T) {
+	type args struct{}
+	type data struct{}
+	sentinel := command.ValidationErrorf("dry-run input is invalid")
+	definition := command.Definition[args, data]{
+		Metadata: command.CommandMetadata{
+			Service: "im", Command: "+test-dry-run-error", Description: "Test dry-run error", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
+		},
+		Hooks: command.Hooks[args, data]{
+			DryRunE: func(context.Context, command.CommandContext, *args) (*command.DryRun, error) {
+				return nil, sentinel
+			},
+			Execute: func(context.Context, command.CommandContext, *args) (command.Result[data], error) {
+				return command.Success(data{}), nil
+			},
+		},
+	}
+	_, err := Preview(context.Background(), New(t), command.IdentityUser, definition, &args{})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Preview() error = %v", err)
+	}
+}
+
+func TestRunWithFlagsRejectsNonPageOutput(t *testing.T) {
+	type args struct{}
+	type data struct{}
+	definition := command.Definition[args, data]{
+		Metadata: command.CommandMetadata{
+			Service: "im", Command: "+test-non-page", Description: "Test non-page flags", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
+		},
+		Hooks: command.Hooks[args, data]{
+			Execute: func(context.Context, command.CommandContext, *args) (command.Result[data], error) {
+				return command.Success(data{}), nil
+			},
+		},
+	}
+	_, err := RunWithFlags(context.Background(), New(t), command.IdentityUser, definition, &args{}, "--page-all")
+	if err == nil {
+		t.Fatal("RunWithFlags() error is nil")
 	}
 }

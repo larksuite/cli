@@ -57,47 +57,37 @@ You should see `audit` in the plugin list.
 
 That is sufficient for a hook-only plugin such as the audit observer. A
 wrapper main does not compile lark-cli's repository-root `content_embed.go`,
-so distribution content is a separate, explicit host choice.
+so distribution content remains an explicit host choice. The repository
+defaults are importable from `github.com/larksuite/cli/skills` and
+`github.com/larksuite/cli/affordance`.
 
 ### Ship skills and command guidance
 
-If the distribution exposes embedded skills or customizes them with
-`EmbeddedSkills`, copy or generate both content trees under the wrapper
-package and wire both:
+If the distribution exposes the repository's embedded skills or customizes
+them with `EmbeddedSkills`, wire the default content before execution:
 
 ```go
 package main
 
 import (
-    "embed"
-    "io/fs"
-    "os"
+	"os"
 
-    _ "github.com/me/myplugin"
+	_ "github.com/me/myplugin"
 
-    "github.com/larksuite/cli/cmd"
+	defaultaffordance "github.com/larksuite/cli/affordance"
+	"github.com/larksuite/cli/cmd"
+	defaultskills "github.com/larksuite/cli/skills"
 )
 
-//go:embed skills affordance
-var distributionContent embed.FS
-
 func main() {
-    skillTree, err := fs.Sub(distributionContent, "skills")
-    if err != nil {
-        panic(err)
-    }
-    affordanceTree, err := fs.Sub(distributionContent, "affordance")
-    if err != nil {
-        panic(err)
-    }
-    cmd.SetEmbeddedSkillContent(skillTree)
-    cmd.SetEmbeddedAffordanceContent(affordanceTree)
-    os.Exit(cmd.Execute())
+	cmd.SetEmbeddedSkillContent(defaultskills.DefaultFS())
+	cmd.SetEmbeddedAffordanceContent(defaultaffordance.DefaultFS())
+	os.Exit(cmd.Execute())
 }
 ```
 
-`go:embed` only reads files in the package being compiled; it cannot reach
-into the replaced `github.com/larksuite/cli` module. Each
+Custom distributions may instead copy or generate both content trees under
+the wrapper package and wire their own `fs.FS` values. Each
 `skills/<name>/` must contain `SKILL.md`. The `affordance/*.md` files are the
 structured source for command help and canonical skill references; ship the
 ones for the domains your distribution retains. Without

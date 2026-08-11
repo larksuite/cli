@@ -4,11 +4,10 @@
 package command
 
 import (
+	"bytes"
 	"context"
-	"fmt"
+	"encoding/json"
 )
-
-const collectAllPagesLimit = 1000
 
 // Page contains items and host-owned pagination state.
 type Page[T any] struct {
@@ -36,7 +35,13 @@ func (p Page[T]) Pages() int {
 	return p.meta.Pages
 }
 
-func (p Page[T]) commandPagination() *paginationMeta { return p.meta }
+func (p Page[T]) commandPagination() *paginationMeta {
+	meta := clonePaginationMeta(p.meta)
+	if meta != nil {
+		meta.Items = len(p.Items)
+	}
+	return meta
+}
 
 type paginationMeta struct {
 	Complete  bool
@@ -62,19 +67,12 @@ type pageEnvelope[T any] struct {
 
 // CollectPages fetches one page by default or follows standard pagination flags.
 func CollectPages[T any](ctx context.Context, command CommandContext, request Request) (Page[T], error) {
-	options, err := command.pageOptions()
-	if err != nil {
-		return Page[T]{}, err
-	}
-	if !options.All {
-		options.MaxPages = 1
-	}
-	return collectPages[T](ctx, command, request, options)
+	return collectPages[T](ctx, command, request, false)
 }
 
 // CollectAllPages fetches until the endpoint is exhausted and ignores CLI paging flags.
 func CollectAllPages[T any](ctx context.Context, command CommandContext, request Request) ([]T, error) {
-	page, err := collectPages[T](ctx, command, request, PaginationOptions{All: true, MaxPages: collectAllPagesLimit})
+	page, err := collectPages[T](ctx, command, request, true)
 	if err != nil {
 		return nil, err
 	}
@@ -84,81 +82,36 @@ func CollectAllPages[T any](ctx context.Context, command CommandContext, request
 	return page.Items, nil
 }
 
-func collectPages[T any](ctx context.Context, command CommandContext, request Request, options PaginationOptions) (Page[T], error) {
-	if options.MaxPages < 1 || options.MaxPages > collectAllPagesLimit {
-		return Page[T]{}, ValidationErrorf("pagination page limit must be between 1 and %d", collectAllPagesLimit)
-	}
-	if options.Delay < 0 {
-		return Page[T]{}, ValidationErrorf("pagination delay must not be negative")
-	}
-
+func collectPages[T any](ctx context.Context, command CommandContext, request Request, all bool) (Page[T], error) {
 	result := Page[T]{meta: &paginationMeta{}}
-	requestView := InspectRequest(request)
-	token := queryPageToken(requestView.Query)
-	seen := make(map[string]struct{}, options.MaxPages)
-	if token != "" {
-		seen[token] = struct{}{}
+	if command.collectPages == nil {
+		return result, InternalErrorf("command host does not provide pagination")
 	}
-
-	for pageNumber := 1; pageNumber <= options.MaxPages; pageNumber++ {
-		pageRequest := request
-		if token != "" {
-			pageRequest = pageRequest.Set("page_token", token)
-		}
-		page, err := CallJSON[pageEnvelope[T]](ctx, command, pageRequest)
-		if err != nil {
-			result.meta.NextToken = token
-			return result, err
+	pages, pagination, err := command.collectPages(ctx, request, all)
+	result.meta.Complete = pagination.Complete
+	result.meta.Pages = pagination.Pages
+	result.meta.NextToken = pagination.NextToken
+	for pageNumber, data := range pages {
+		page, decodeErr := decodePageEnvelope[T](data)
+		if decodeErr != nil {
+			return result, InvalidResponseErrorf("decode pagination page %d: %v", pageNumber+1, decodeErr).WithCause(decodeErr)
 		}
 		result.Items = append(result.Items, page.Items...)
-		result.meta.Pages++
-		result.meta.Items = len(result.Items)
-
-		nextToken := page.PageToken
-		if nextToken == "" {
-			nextToken = page.NextPageToken
-		}
-		if !page.HasMore {
-			result.meta.Complete = true
-			result.meta.NextToken = ""
-			return result, nil
-		}
-		if nextToken == "" {
-			return result, InvalidResponseErrorf("pagination page %d reports has_more=true without a page token", pageNumber)
-		}
-		if _, duplicate := seen[nextToken]; duplicate {
-			return result, InvalidResponseErrorf("pagination page %d repeated page token %q", pageNumber, nextToken)
-		}
-		result.meta.NextToken = nextToken
-		if pageNumber == options.MaxPages {
-			return result, nil
-		}
-		seen[nextToken] = struct{}{}
-		token = nextToken
-		if err := waitForPage(ctx, options.Delay); err != nil {
-			return result, err
-		}
 	}
-
-	return result, InternalErrorf("pagination finished without a terminal state")
+	result.meta.Items = len(result.Items)
+	return result, err
 }
 
-func queryPageToken(query map[string]any) string {
-	value, ok := query["page_token"]
-	if !ok {
-		return ""
+func decodePageEnvelope[T any](data map[string]any) (pageEnvelope[T], error) {
+	var page pageEnvelope[T]
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return page, err
 	}
-	switch typed := value.(type) {
-	case string:
-		return typed
-	case []string:
-		if len(typed) > 0 {
-			return typed[0]
-		}
-	case []any:
-		if len(typed) > 0 {
-			return fmt.Sprint(typed[0])
-		}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	if err := decoder.Decode(&page); err != nil {
+		return page, err
 	}
-	return ""
+	return page, nil
 }

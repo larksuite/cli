@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -47,7 +48,7 @@ func businessCommand(name string, executed *bool) command.Command {
 }
 
 func TestWithCommandSetsInIsolatedProcesses(t *testing.T) {
-	for _, scenario := range []string{"official", "mount", "atomic", "governance"} {
+	for _, scenario := range []string{"official", "mount", "atomic", "governance", "surface"} {
 		t.Run(scenario, func(t *testing.T) {
 			process := exec.Command(os.Args[0], "-test.run=^TestCommandSetSubprocess$", "-test.v")
 			process.Env = append(os.Environ(), "LARK_CLI_COMMAND_SET_SCENARIO="+scenario)
@@ -133,6 +134,42 @@ func TestCommandSetSubprocess(t *testing.T) {
 		}
 		if executed {
 			t.Fatal("governance denial reached business Execute")
+		}
+	case "surface":
+		var stdout, stderr bytes.Buffer
+		root := Build(context.Background(), buildInvocationForTest(t),
+			WithIO(strings.NewReader(""), &stdout, &stderr),
+			WithCommandSets(command.Set{
+				Domain:   command.ExtendDomain(command.DomainIm),
+				Commands: []command.Command{businessCommand("+business-surface", nil)},
+			}),
+			WithoutPlugins(), WithoutStrictMode(), WithoutServiceCommands(),
+		)
+		root.SetArgs([]string{"__complete", "im", "+"})
+		if _, err := root.ExecuteC(); err != nil {
+			t.Fatalf("complete external command: %v\nstderr: %s", err, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "+business-surface") {
+			t.Fatalf("external command is missing from shell completion: %s", stdout.String())
+		}
+		stdout.Reset()
+		stderr.Reset()
+		root.SetArgs([]string{"__complete", "schema", "im", "+business-"})
+		if _, err := root.ExecuteC(); err != nil {
+			t.Fatalf("complete external schema: %v\nstderr: %s", err, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "+business-surface") {
+			t.Fatalf("external schema is missing from shell completion: %s", stdout.String())
+		}
+		stdout.Reset()
+		stderr.Reset()
+		root.SetArgs([]string{"schema", "im", "+business-surface"})
+		if _, err := root.ExecuteC(); err != nil {
+			t.Fatalf("schema external command: %v\nstderr: %s", err, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), `"name": "im +business-surface"`) ||
+			!strings.Contains(stdout.String(), `"inputSchema"`) || !strings.Contains(stdout.String(), `"outputSchema"`) {
+			t.Fatalf("external schema = %s", stdout.String())
 		}
 	default:
 		t.Fatalf("unknown scenario %q", scenario)

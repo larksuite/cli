@@ -12,11 +12,11 @@ import (
 
 // CommandContext is an opaque, invocation-scoped set of safe host capabilities.
 type CommandContext struct {
-	identity          Identity
-	dryRun            bool
-	callJSON          func(context.Context, Request) (map[string]any, error)
-	preflightScopes   func(...string) error
-	paginationOptions func() (PaginationOptions, error)
+	identity        Identity
+	dryRun          bool
+	callJSON        func(context.Context, Request) (map[string]any, error)
+	preflightScopes func(...string) error
+	collectPages    func(context.Context, Request, bool) ([]map[string]any, HostPagination, error)
 }
 
 // PaginationOptions carries host-owned pagination controls to the public helpers.
@@ -30,21 +30,21 @@ type PaginationOptions struct {
 // ContextOptions supplies safe callbacks when a host creates a CommandContext.
 // It is intended for the lark-cli host adapter and commandtest.
 type ContextOptions struct {
-	Identity          Identity
-	DryRun            bool
-	CallJSON          func(context.Context, Request) (map[string]any, error)
-	PreflightScopes   func(...string) error
-	PaginationOptions func() (PaginationOptions, error)
+	Identity        Identity
+	DryRun          bool
+	CallJSON        func(context.Context, Request) (map[string]any, error)
+	PreflightScopes func(...string) error
+	CollectPages    func(context.Context, Request, bool) ([]map[string]any, HostPagination, error)
 }
 
 // NewCommandContext creates a restricted context from host callbacks.
 func NewCommandContext(options ContextOptions) CommandContext {
 	return CommandContext{
-		identity:          options.Identity,
-		dryRun:            options.DryRun,
-		callJSON:          options.CallJSON,
-		preflightScopes:   options.PreflightScopes,
-		paginationOptions: options.PaginationOptions,
+		identity:        options.Identity,
+		dryRun:          options.DryRun,
+		callJSON:        options.CallJSON,
+		preflightScopes: options.PreflightScopes,
+		collectPages:    options.CollectPages,
 	}
 }
 
@@ -88,25 +88,4 @@ func PreflightScopes(command CommandContext, scopes ...string) error {
 		return InternalErrorf("command host does not provide conditional scope checks")
 	}
 	return command.preflightScopes(scopes...)
-}
-
-func (c CommandContext) pageOptions() (PaginationOptions, error) {
-	if c.paginationOptions == nil {
-		return PaginationOptions{MaxPages: 1}, nil
-	}
-	return c.paginationOptions()
-}
-
-func waitForPage(ctx context.Context, delay time.Duration) error {
-	if delay <= 0 {
-		return nil
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return PaginationInterruptedError(ctx.Err())
-	case <-timer.C:
-		return nil
-	}
 }

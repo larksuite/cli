@@ -1397,11 +1397,22 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 
 // handleShortcutDryRun renders a shortcut plan without sending its API requests.
 func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut) error {
-	if s.DryRun == nil {
+	if s.DryRun == nil && s.DryRunE == nil {
 		return ValidationErrorf("--dry-run is not supported for %s %s", s.Service, s.Command).
 			WithParam("--dry-run")
 	}
-	dryResult := s.DryRun(rctx.ctx, rctx)
+	var (
+		dryResult *DryRunAPI
+		err       error
+	)
+	if s.DryRunE != nil {
+		dryResult, err = s.DryRunE(rctx.ctx, rctx)
+	} else {
+		dryResult = s.DryRun(rctx.ctx, rctx)
+	}
+	if err != nil {
+		return err
+	}
 	if dryResult != nil {
 		// Same data.context contract as the service/api dry-run paths.
 		dryResult.Context(rctx.Config.AppID, rctx.UserOpenId())

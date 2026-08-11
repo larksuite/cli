@@ -27,6 +27,7 @@ type HostHooks struct {
 	Normalize func(context.Context, CommandContext, any) error
 	Validate  func(context.Context, CommandContext, any) error
 	DryRun    func(context.Context, CommandContext, any) *DryRun
+	DryRunE   func(context.Context, CommandContext, any) (*DryRun, error)
 	Execute   func(context.Context, CommandContext, any) (HostResult, error)
 	Renderers map[string]func(io.Writer, any) error
 }
@@ -86,6 +87,11 @@ func newCommand[Args any, Data any](definition Definition[Args, Data]) Command {
 	if definition.Hooks.DryRun != nil {
 		host.hooks.DryRun = func(ctx context.Context, command CommandContext, args any) *DryRun {
 			return definition.Hooks.DryRun(ctx, command, args.(*Args))
+		}
+	}
+	if definition.Hooks.DryRunE != nil {
+		host.hooks.DryRunE = func(ctx context.Context, command CommandContext, args any) (*DryRun, error) {
+			return definition.Hooks.DryRunE(ctx, command, args.(*Args))
 		}
 	}
 	if definition.Hooks.Execute != nil {

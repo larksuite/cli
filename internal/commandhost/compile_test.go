@@ -5,6 +5,7 @@ package commandhost
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -106,6 +107,30 @@ func TestCompileSetsRejectsSystemFlag(t *testing.T) {
 	}
 }
 
+func TestCompileSetsRejectsBothDryRunHooks(t *testing.T) {
+	definition := command.Define(command.Definition[fixtureArgs, fixtureData]{
+		Metadata: command.CommandMetadata{
+			Service: "im", Command: "+external-dry-run-conflict", Description: "Dry-run conflict", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
+		},
+		Hooks: command.Hooks[fixtureArgs, fixtureData]{
+			DryRun: func(context.Context, command.CommandContext, *fixtureArgs) *command.DryRun {
+				return command.NewDryRun()
+			},
+			DryRunE: func(context.Context, command.CommandContext, *fixtureArgs) (*command.DryRun, error) {
+				return command.NewDryRun(), nil
+			},
+			Execute: func(context.Context, command.CommandContext, *fixtureArgs) (command.Result[fixtureData], error) {
+				return command.Success(fixtureData{}), nil
+			},
+		},
+	})
+	_, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{definition}}})
+	if err == nil || !strings.Contains(err.Error(), "cannot both be set") {
+		t.Fatalf("CompileSets() error = %v", err)
+	}
+}
+
 func TestCompileSetsAddsPaginationFlags(t *testing.T) {
 	declaration := command.Define(command.Definition[fixtureArgs, command.Page[fixtureData]]{
 		Metadata: command.CommandMetadata{
@@ -202,5 +227,37 @@ func TestExternalDryRunUsesOfflineContext(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "/open-apis/im/v1/chats/chat_1") {
 		t.Fatalf("dry-run output = %s", stdout.String())
+	}
+}
+
+func TestExternalDryRunEPropagatesError(t *testing.T) {
+	sentinel := command.ValidationErrorf("dry-run input is invalid")
+	declaration := command.Define(command.Definition[fixtureArgs, fixtureData]{
+		Metadata: command.CommandMetadata{
+			Service: "im", Command: "+external-dry-run-error", Description: "Offline preview error", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
+		},
+		Hooks: command.Hooks[fixtureArgs, fixtureData]{
+			DryRunE: func(context.Context, command.CommandContext, *fixtureArgs) (*command.DryRun, error) {
+				return nil, sentinel
+			},
+			Execute: func(context.Context, command.CommandContext, *fixtureArgs) (command.Result[fixtureData], error) {
+				return command.Success(fixtureData{}), nil
+			},
+		},
+	})
+	compiled, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
+	root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
+	service := &cobra.Command{Use: "im"}
+	root.AddCommand(service)
+	compiled[0].Mount(service, factory)
+	root.SetArgs([]string{"im", "+external-dry-run-error", "--id", "chat_1", "--as", "user", "--dry-run"})
+	_, err = root.ExecuteC()
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("dry-run error = %v", err)
 	}
 }

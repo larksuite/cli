@@ -15,7 +15,8 @@ import "io/fs"
 // Allow -> Remove -> Overlay, a same-named skill resolving to Overlay.
 // The repository's root binary provides its base from content_embed.go;
 // an external wrapper main has no implicit CLI default and must call
-// cmd.SetEmbeddedSkillContent before Execute if it relies on that base.
+// cmd.SetEmbeddedSkillContent before Execute if it relies on that base. The
+// repository default is available from skills.DefaultFS.
 //
 // Skills are addressed by exact name (a directory carrying SKILL.md,
 // e.g. "lark-doc"), not by command path and not by glob — the skill
@@ -61,8 +62,8 @@ type SkillsOverlay struct {
 
 	// Base replaces the host-provided base skill tree instead of layering
 	// over it. nil keeps whatever base the host wired with
-	// cmd.SetEmbeddedSkillContent; it does not import the repository
-	// binary's default into an external wrapper main. Every top-level
+	// cmd.SetEmbeddedSkillContent; it does not select the repository
+	// binary's default for an external wrapper main. Every top-level
 	// entry must be a valid skill directory containing SKILL.md. Most
 	// integrators leave Base nil and use Remove/Overlay so unchanged
 	// host-provided skills need no copy inside the plugin.

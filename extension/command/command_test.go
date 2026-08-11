@@ -118,14 +118,12 @@ func TestCollectPagesUsesHostPolicyAndMetadata(t *testing.T) {
 	var calls []RequestView
 	ctx := NewCommandContext(ContextOptions{
 		Identity: IdentityUser,
-		CallJSON: func(_ context.Context, request Request) (map[string]any, error) {
-			calls = append(calls, InspectRequest(request))
-			response := responses[0]
-			responses = responses[1:]
-			return response, nil
-		},
-		PaginationOptions: func() (PaginationOptions, error) {
-			return PaginationOptions{All: true, MaxPages: 10}, nil
+		CollectPages: func(_ context.Context, request Request, all bool) ([]map[string]any, HostPagination, error) {
+			if all {
+				t.Fatal("CollectPages forced full pagination")
+			}
+			calls = append(calls, InspectRequest(request), InspectRequest(request.Set("page_token", "next")))
+			return responses, HostPagination{Complete: true, Pages: 2}, nil
 		},
 	})
 	page, err := CollectPages[contractData](context.Background(), ctx, GET("/open-apis/im/v1/chats"))
@@ -142,6 +140,18 @@ func TestCollectPagesUsesHostPolicyAndMetadata(t *testing.T) {
 	host := hostResult(result)
 	if host.Pagination == nil || host.Pagination.Pages != 2 || host.Pagination.Items != 2 || !host.Pagination.Complete {
 		t.Fatalf("host pagination = %#v", host.Pagination)
+	}
+}
+
+func TestPageResultCountsFilteredItems(t *testing.T) {
+	page := Page[contractData]{
+		Items: []contractData{{ID: "one"}, {ID: "two"}},
+		meta:  &paginationMeta{Complete: true, Pages: 1, Items: 2},
+	}
+	page.Items = page.Items[:1]
+	result := hostResult(Success(page))
+	if result.Pagination == nil || result.Pagination.Items != 1 {
+		t.Fatalf("filtered pagination = %#v", result.Pagination)
 	}
 }
 
