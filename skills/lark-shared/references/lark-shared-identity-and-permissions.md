@@ -58,4 +58,4 @@ lark-cli auth login --domain <domain> --no-wait --json          # 按业务域�
 lark-cli auth login --scope "<missing_scope>" --no-wait --json  # 按具体 scope 发起授权（推荐，符合最小权限原则）
 ```
 
-**规则**：auth login 必须指定范围（`--domain` 或 `--scope`）。多次 login 的 scope 会累积（增量授权）。Agent 代理发起时按 [`lark-shared-auth-split-flow.md`](lark-shared-auth-split-flow.md) 完成后续步骤。
+**规则**：auth login 必须指定范围（`--scope`、`--domain` 或 `--recommend`）。多次 login 的 scope 会累积（增量授权）。Agent 代理发起时按 [`lark-shared-auth-split-flow.md`](lark-shared-auth-split-flow.md) 完成后续步骤。

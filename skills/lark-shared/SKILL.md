@@ -15,7 +15,7 @@ metadata:
 
 1. **调用前先确认用法**：执行前读对应 reference 或跑 `--help`，别猜 flag 盲调。
 
-2. **身份决定你代表谁操作**：`--as user` 代表用户本人（其日历 / 云空间 / 邮箱等），`--as bot` 代表应用自己，只能访问bot自己的资源 → [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md)。
+2. **身份决定你代表谁操作**：`--as user` 代表用户本人（其日历 / 云空间 / 邮箱等），`--as bot` 代表应用自己，只能访问bot自己的资源，bot 查用户资源会返回空成功而非报错，动手前先搞清楚身份`identity` → [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md)。
 
 3. **`--format json`（默认）下，判断成功用 `ok == true`（或进程退出码 0），不要用 `code == 0`**：成功信封没有顶层 `code` / `msg` 字段，`code` 只出现在错误信封的 `error` 内。按 OpenAPI 老格式 `{"code": 0, "msg": "ok"}`判断会把所有成功调用误判为失败——封装写入类命令时尤其危险 → [`output-contract`](references/lark-shared-output-contract.md)。
 
@@ -43,9 +43,9 @@ metadata:
 
 | 强触发条件（命中任一即必读） | Reference |
 |---|---|
-| 查看自己是谁（user/bot）、获取当前身份详细字段信息、不理解`--as user/bot`的含义、登录态、认证、scope、授权、权限、`missing_scopes` 或 `console_url` | [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md) |
+| 查看自己是谁(user/bot)、不清楚当前身份、获取当前身份详细字段信息、登录态、认证、scope、授权、权限、`missing_scopes` 或 `console_url` | [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md) |
 | Agent 准备发起或完成 `auth login`，或该命令输出 `verification_url`、`device_code` | [`auth-split-flow`](references/lark-shared-auth-split-flow.md) |
-| 需要依赖 JSON 输出契约 判断成功 / 失败、读取 stdout / stderr，或为命令编写脚本与封装 | [`output-contract`](references/lark-shared-output-contract.md) |
-| 准备执行high-risk-write(高风险操作)、判断命令风险等级、遇到退出码 exit 10、 `confirmation_required`、确认后重试 | [`high-risk-approval`](references/lark-shared-high-risk-approval.md) |
+| 需要依赖 JSON 输出契约判断成功 / 失败、读取 stdout / stderr，或为命令编写脚本与封装 | [`output-contract`](references/lark-shared-output-contract.md) |
+| 准备执行high-risk-write(高风险操作)、判断命令风险等级、遇到退出码 exit 10、`confirmation_required`、确认后重试 | [`high-risk-approval`](references/lark-shared-high-risk-approval.md) |
 | 首次使用CLI需运行 `lark-cli config init` 完成应用配置、或 CLI 明确提示 `config init --new` | [`config-init`](references/lark-shared-config-init.md) |
 | 用户询问 notice、CLI版本更新、或输出含 `_notice`（升级 / skills 落后 / 废弃命令提示）| [`update-notice`](references/lark-shared-update-notice.md) |
