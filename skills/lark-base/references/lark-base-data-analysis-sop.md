@@ -36,7 +36,7 @@
     ["关联项目", "intersects", [{"id": "rec_xxx"}]], // 关联项目包含某个 record_id；intersects 表示包含数组中任意一条关联
     ["备注", "non_empty"], // 非空判断；标量 null 和多值空数组都是空
     ["业务日期", "==", "ExactDate(2026-08-07)"], // 具体一天：按 Base 时区匹配 2026-08-07 当天
-    ["发生时间", ">", "ExactDate(2024-01-31 23:59:59)"], // 2024 年 2 月范围下界：闰年 2 月包含 29 日
+    ["发生时间", ">", "ExactDate(2024-01-31 23:59:59.999)"], // 日期不支持 >=；用 > 前一天最后一毫秒表达含当天的下界
     ["发生时间", "<", "ExactDate(2024-03-01 00:00:00)"] // 2024 年 2 月范围上界：小于 3 月 1 日零点
   ]
 }
@@ -45,9 +45,9 @@
 全表分析的常规资源链路是 `+table-list` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再用 `+record-list` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
 
 1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
-2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 表示当前结果仅覆盖已读取范围。
+2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 时继续收敛单表谓词或选择 Cloud 路径。
 3. 确定性分析选定一个分析引擎直接读取 NDJSON；模型上下文仅接收预览或最终小结果。
-4. 任务涉及业务键、展开、JOIN 或金额分摊时，明确目标粒度并检查与口径直接相关的空值、重复或总量守恒。
+4. Base 标量空值很常见；聚合前按用户口径确定空值是排除、按零计入还是进入分母。用户未指定且不同处理会实质改变结论时，说明空值数量、采用的口径及其影响；任务涉及业务键、展开、JOIN 或金额分摊时，同样明确目标粒度及与口径直接相关的重复或总量守恒。
 5. 最终结果保留真实表、查询范围和计算口径，展示用户可读字段；内部 ID 用于连接或定位。
 
 `+table-list` / `+base-block-list` 返回的 `records_count` 表示整表行数；manifest 的 `records_count` 表示本次查询实际导出的行数。
@@ -75,7 +75,7 @@ Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否
 
 `--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest，`--minimal-stdout` 只保留文件位置、文件字节数、`records_count` 和 `has_more`。
 
-分析 artifact 尽量使用相对路径输出到当前工作目录，例如 `--output ./records.ndjson`。
+分析 artifact 使用相对路径输出到当前工作目录，例如 `--output ./records.ndjson`。
 
 ```json
 {
