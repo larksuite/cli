@@ -115,6 +115,24 @@ func TestDefineCompilesTypedContract(t *testing.T) {
 	}
 }
 
+func TestValueShapeClosedSet(t *testing.T) {
+	shapes := []ValueShape{
+		StringShape{},
+		BooleanShape{},
+		IntegerShape{},
+		NumberShape{},
+		NullShape{},
+		ConstShape{},
+		ArrayShape{},
+		ObjectShape{},
+		OneOfShape{},
+		anyJSONShape{},
+	}
+	for _, shape := range shapes {
+		shape.valueShape()
+	}
+}
+
 func TestDefineClonesTipsAndRejectsBlankTips(t *testing.T) {
 	definition := validCompilerDefinition()
 	definition.Metadata.Tips = []string{"first tip", " second tip "}

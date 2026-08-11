@@ -5,7 +5,6 @@ package common
 
 import (
 	"context"
-	"net/http"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -70,44 +69,6 @@ func CallTypedAPI(ctx context.Context, command CommandContext, method, apiPath s
 		return nil, typedOrInternal(err)
 	}
 	return ClassifyAPIResponseWith(response, typedClassifyContext(command))
-}
-
-// DoTypedAPIStream executes a finite streaming HTTP response through the
-// restricted CommandContext. Successful response-body ownership belongs to the
-// caller; APIClient.DoStream closes HTTP error bodies and couples request
-// cancellation to closing a successful body.
-func DoTypedAPIStream(ctx context.Context, command CommandContext, req *larkcore.ApiReq, options ...client.Option) (*http.Response, error) {
-	apiClient, err := command.APIClient()
-	if err != nil {
-		return nil, typedOrInternal(err)
-	}
-	base := []client.Option{client.WithHeaders(cmdutil.BaseSecurityHeaders())}
-	if headers := cmdutil.ShortcutHeaders(ctx); headers != nil {
-		base = append(base, client.WithHeaders(headers))
-	}
-	response, err := apiClient.DoStream(ctx, req, core.Identity(command.Identity()), append(base, options...)...)
-	if err != nil {
-		return nil, typedOrInternal(err)
-	}
-	return response, nil
-}
-
-// CallTypedRawAPI mirrors RuntimeContext.RawAPI for Typed hooks that must
-// inspect the complete legacy API envelope themselves.
-func CallTypedRawAPI(ctx context.Context, command CommandContext, method, apiPath string, params map[string]interface{}, data any) (interface{}, error) {
-	apiClient, err := command.APIClient()
-	if err != nil {
-		return nil, typedOrInternal(err)
-	}
-	request := client.RawApiRequest{Method: method, URL: apiPath, Params: params, Data: data, As: core.Identity(command.Identity())}
-	if option := cmdutil.ShortcutHeaderOpts(ctx); option != nil {
-		request.ExtraOpts = append(request.ExtraOpts, option)
-	}
-	result, err := apiClient.CallAPI(ctx, request)
-	if err != nil {
-		return nil, typedOrInternal(err)
-	}
-	return result, nil
 }
 
 func typedClassifyContext(command CommandContext) errclass.ClassifyContext {
