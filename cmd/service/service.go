@@ -435,6 +435,10 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
 
+	if err := maybeCompleteMailRuleReorderRequest(opts.Ctx, ac, opts, &request, checkErr); err != nil {
+		return err
+	}
+
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
 		return err
