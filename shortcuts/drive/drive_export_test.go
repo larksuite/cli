@@ -1481,7 +1481,7 @@ func TestDriveExportCreateRateLimitSuggestsRetryingOriginalCommand(t *testing.T)
 	for _, want := range []string{
 		"before a ticket was issued",
 		"wait at least 1 minute",
-		"rerun the same `lark-cli drive +export` command",
+		"rerun the original command with the same arguments",
 		"exponential backoff starting at 1 minute",
 		"do not run `lark-cli drive +task_result`",
 	} {
@@ -1527,7 +1527,7 @@ func TestDriveExportCreateCode9499TooManyRequestsUsesRateLimitRecovery(t *testin
 	for _, want := range []string{
 		"before a ticket was issued",
 		"wait at least 1 minute",
-		"rerun the same `lark-cli drive +export` command",
+		"rerun the original command with the same arguments",
 	} {
 		if !strings.Contains(problem.Hint, want) {
 			t.Fatalf("hint missing %q: %q", want, problem.Hint)

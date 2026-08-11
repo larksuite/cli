@@ -438,6 +438,10 @@ func TestDriveSyncContinuesAfterNewRemoteDownloadNotFound(t *testing.T) {
 	if len(items) != 2 || items[0].RelPath != "a.txt" || items[1].RelPath != "b.txt" || items[1].Action != "downloaded" {
 		t.Fatalf("item-local 404 must not block b.txt: %#v", items)
 	}
+	failedItem := items[0]
+	if failedItem.Action != "failed" || failedItem.Phase != "download" || failedItem.Code != http.StatusNotFound || failedItem.Retryable == nil || *failedItem.Retryable {
+		t.Fatalf("unexpected failed-download metadata: %#v", failedItem)
+	}
 	mustReadFile(t, filepath.Join("local", "b.txt"), "BBB")
 }
 

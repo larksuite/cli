@@ -1149,6 +1149,10 @@ func TestDrivePullContinuesAfterDownloadNotFound(t *testing.T) {
 	if len(items) != 2 || items[0]["rel_path"] != "a.txt" || items[1]["rel_path"] != "b.txt" || items[1]["action"] != "downloaded" {
 		t.Fatalf("item-local 404 must not block b.txt: %#v", items)
 	}
+	failedItem := items[0]
+	if failedItem["action"] != "failed" || failedItem["phase"] != "download" || failedItem["code"] != float64(http.StatusNotFound) || failedItem["retryable"] != false {
+		t.Fatalf("unexpected failed-download metadata: %#v", failedItem)
+	}
 	mustReadFile(t, filepath.Join("local", "b.txt"), "BBB")
 }
 

@@ -1280,6 +1280,67 @@ func TestDrivePushContinuesAfterUploadSizeMismatch(t *testing.T) {
 	}
 }
 
+func TestDrivePushAbortsAfterUserQuotaExceeded(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "a.txt"), []byte("A"), 0o644); err != nil {
+		t.Fatalf("WriteFile a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "b.txt"), []byte("B"), 0o644); err != nil {
+		t.Fatalf("WriteFile b: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 1061061,
+			"msg":  "user quota exceeded.",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	summary, items := splitDrivePushStdout(t, stdout.Bytes())
+	if got := summary["aborted"]; got != true {
+		t.Fatalf("summary.aborted = %v, want true", got)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; user quota exhaustion must stop before b.txt: %#v", len(items), items)
+	}
+	item := items[0]
+	if item["rel_path"] != "a.txt" || item["phase"] != "upload" || item["error_class"] != "quota_exceeded" {
+		t.Fatalf("unexpected failed item: %#v", item)
+	}
+	if item["code"] != float64(1061061) || item["subtype"] != "quota_exceeded" || item["retryable"] != false {
+		t.Fatalf("unexpected user quota metadata: %#v", item)
+	}
+}
+
 func TestDrivePushAbortsAfterUploadBadGateway(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 

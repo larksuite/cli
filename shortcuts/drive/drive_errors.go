@@ -200,7 +200,7 @@ func withDriveExportCreateRateLimitRecovery(err error) error {
 		return err
 	}
 
-	const hint = "export task creation was rate limited before a ticket was issued; stop and wait at least 1 minute, then rerun the same `lark-cli drive +export` command\nif rate limiting continues, use exponential backoff starting at 1 minute instead of retrying immediately; do not run `lark-cli drive +task_result` because no export ticket exists yet"
+	const hint = "export task creation was rate limited before a ticket was issued; stop and wait at least 1 minute, then rerun the original command with the same arguments\nif rate limiting continues, use exponential backoff starting at 1 minute instead of retrying immediately; do not run `lark-cli drive +task_result` because no export ticket exists yet"
 	return appendDriveExportRecoveryHint(err, hint)
 }
 

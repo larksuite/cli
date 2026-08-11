@@ -146,7 +146,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 | `invalid_api_parameters` | `1061002` | API 参数被服务端拒绝 | 停止重试，检查 `--folder-token`、覆盖模式、`file_token`、文件名和上传参数；不要对同一参数组合批量重试 |
 | `parent_node_missing` | `1061044` | 上传 / 建目录使用的父文件夹不存在或当前身份不可见 | 停止重试，检查 `--folder-token` 是否仍存在、是否有权限、父目录是否在 push 过程中被删除；不要继续上传同一目录树 |
 | `parent_sibling_limit` | `1062507` | 目标父文件夹单层子节点数量超过上限 | 停止重试，清理目标目录、换一个 `--folder-token`，或把上传内容拆到多个子目录 |
-| `quota_exceeded` | `1061101` | Drive 文件容量配额已满 | 停止重试，释放容量、调整目标位置或扩容后再执行 push |
+| `quota_exceeded` | `1061101` / `1061061` | 租户或当前用户的 Drive 容量配额已满 | 停止重试，释放容量、调整目标位置或扩容后再执行 push |
 | `rate_limited` | `99991400` | 触发频控 | 停止当前批次，退避后再重试 |
 | `conflict` | `1061045` | 同一目标发生资源竞争 | 停止当前批次，避免并发操作同一目标；退避后有限重试 |
 | `server_error` | `1663` / `1061001` / `2200` / HTTP 5xx | Drive 服务端或网关异常 | 停止当前批次，稍后有限重试 |

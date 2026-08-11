@@ -115,6 +115,7 @@ func TestLookupCodeMeta_DrivePushCodes(t *testing.T) {
 		{1061004, errs.CategoryAuthorization, errs.SubtypePermissionDenied, false},
 		{1061007, errs.CategoryAPI, errs.SubtypeNotFound, false},
 		{1061043, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
+		{1061061, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
 		{1061101, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
 		{1062009, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
 		{2200, errs.CategoryAPI, errs.SubtypeServerError, true},

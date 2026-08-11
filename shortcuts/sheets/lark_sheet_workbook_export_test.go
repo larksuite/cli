@@ -5,9 +5,11 @@ package sheets
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/drive"
@@ -97,5 +99,36 @@ func TestWorkbookExport_ExecuteExportOnly(t *testing.T) {
 	}
 	if env.Data["doc_type"] != "sheet" {
 		t.Errorf("doc_type = %v, want sheet", env.Data["doc_type"])
+	}
+}
+
+func TestWorkbookExport_CreateRateLimitKeepsCallerRecovery(t *testing.T) {
+	stubs := []*httpmock.Stub{
+		{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/export_tasks",
+			Status: http.StatusBadRequest,
+			Body: map[string]interface{}{
+				"code": 9499,
+				"msg":  "too many request",
+			},
+		},
+	}
+
+	_, err := runShortcutWithStubs(t, WorkbookExport, []string{
+		"--url", testURL, "--file-extension", "xlsx", "--as", "user",
+	}, stubs...)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed rate-limit error, got %T: %v", err, err)
+	}
+	if problem.Subtype != errs.SubtypeRateLimit || problem.Code != 9499 || !problem.Retryable {
+		t.Fatalf("problem = %+v, want retryable rate_limit code 9499", problem)
+	}
+	if !strings.Contains(problem.Hint, "rerun the original command with the same arguments") {
+		t.Fatalf("hint should preserve the workbook-export caller: %q", problem.Hint)
+	}
+	if strings.Contains(problem.Hint, "drive +export") {
+		t.Fatalf("workbook-export hint must not redirect users to drive +export: %q", problem.Hint)
 	}
 }
