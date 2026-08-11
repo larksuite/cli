@@ -97,14 +97,5 @@ const (
 }
 
 func domainIdentifier(domain string) string {
-	switch domain {
-	case "im":
-		return "IM"
-	case "okr":
-		return "OKR"
-	case "vc":
-		return "VC"
-	default:
-		return strings.ToUpper(domain[:1]) + domain[1:]
-	}
+	return strings.ToUpper(domain[:1]) + domain[1:]
 }

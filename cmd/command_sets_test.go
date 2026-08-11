@@ -73,7 +73,7 @@ func TestCommandSetSubprocess(t *testing.T) {
 		}
 	case "mount":
 		commands := []command.Command{businessCommand("+business-captured", nil)}
-		option := WithCommandSets(command.Set{Domain: command.ExtendDomain(command.DomainIM), Commands: commands})
+		option := WithCommandSets(command.Set{Domain: command.ExtendDomain(command.DomainIm), Commands: commands})
 		commands[0] = businessCommand("+business-mutated", nil)
 		root := Build(context.Background(), buildInvocationForTest(t), option, WithoutPlugins(), WithoutStrictMode(), WithoutServiceCommands())
 		leaf := findCommand(root, "im +business-captured")
@@ -94,7 +94,7 @@ func TestCommandSetSubprocess(t *testing.T) {
 			t.Fatalf("business tip is missing from help:\n%s", help.String())
 		}
 	case "atomic":
-		set := command.Set{Domain: command.ExtendDomain(command.DomainIM), Commands: []command.Command{
+		set := command.Set{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{
 			businessCommand("+business-valid", nil), businessCommand("+business-valid", nil),
 		}}
 		root := Build(context.Background(), buildInvocationForTest(t), WithCommandSets(set), WithoutPlugins(), WithoutStrictMode(), WithoutServiceCommands())
@@ -117,7 +117,7 @@ func TestCommandSetSubprocess(t *testing.T) {
 		registerRestriction(t, []string{"im/+business-governed"}, nil)
 		root := Build(context.Background(), buildInvocationForTest(t),
 			WithCommandSets(command.Set{
-				Domain:   command.ExtendDomain(command.DomainIM),
+				Domain:   command.ExtendDomain(command.DomainIm),
 				Commands: []command.Command{businessCommand("+business-governed", &executed)},
 			}),
 			WithoutStrictMode(), WithoutServiceCommands(),

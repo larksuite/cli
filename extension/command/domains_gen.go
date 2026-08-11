@@ -22,8 +22,8 @@ const (
 	DomainDrive DomainName = "drive"
 	// DomainEvent 表示事件订阅域。
 	DomainEvent DomainName = "event"
-	// DomainIM 表示消息与群组域。
-	DomainIM DomainName = "im"
+	// DomainIm 表示消息与群组域。
+	DomainIm DomainName = "im"
 	// DomainMail 表示邮箱域。
 	DomainMail DomainName = "mail"
 	// DomainMarkdown 表示Markdown域。
@@ -32,16 +32,16 @@ const (
 	DomainMinutes DomainName = "minutes"
 	// DomainNote 表示会议纪要域。
 	DomainNote DomainName = "note"
-	// DomainOKR 表示OKR域。
-	DomainOKR DomainName = "okr"
+	// DomainOkr 表示OKR域。
+	DomainOkr DomainName = "okr"
 	// DomainSheets 表示电子表格域。
 	DomainSheets DomainName = "sheets"
 	// DomainSlides 表示幻灯片域。
 	DomainSlides DomainName = "slides"
 	// DomainTask 表示任务域。
 	DomainTask DomainName = "task"
-	// DomainVC 表示视频会议域。
-	DomainVC DomainName = "vc"
+	// DomainVc 表示视频会议域。
+	DomainVc DomainName = "vc"
 	// DomainWhiteboard 表示画板域。
 	DomainWhiteboard DomainName = "whiteboard"
 	// DomainWiki 表示知识库域。

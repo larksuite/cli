@@ -210,7 +210,7 @@ func memberListDefinition() command.Definition[memberListArgs, memberListData] {
 func TestBusinessDefinitionsCompileTogether(t *testing.T) {
 	sets := []command.Set{
 		{Domain: command.ExtendDomain(command.DomainDocs), Commands: []command.Command{command.Define(documentGetDefinition())}},
-		{Domain: command.ExtendDomain(command.DomainIM), Commands: []command.Command{command.Define(chatListDefinition()), command.Define(memberListDefinition())}},
+		{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{command.Define(chatListDefinition()), command.Define(memberListDefinition())}},
 		{Domain: command.ExtendDomain(command.DomainTask), Commands: []command.Command{command.Define(taskAuditDefinition())}},
 	}
 	compiled, err := commandhost.CompileSets(sets)

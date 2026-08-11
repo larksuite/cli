@@ -42,7 +42,7 @@ func fixtureCommand(name string) command.Command {
 
 func TestCompileSetsCompilesTypedShortcut(t *testing.T) {
 	compiled, err := CompileSets([]command.Set{{
-		Domain: command.ExtendDomain(command.DomainIM), Commands: []command.Command{fixtureCommand("+external-fixture")},
+		Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{fixtureCommand("+external-fixture")},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestCompileSetsCompilesTypedShortcut(t *testing.T) {
 }
 
 func TestCompileSetsIsAtomicAcrossDuplicatePaths(t *testing.T) {
-	set := command.Set{Domain: command.ExtendDomain(command.DomainIM), Commands: []command.Command{
+	set := command.Set{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{
 		fixtureCommand("+external-duplicate"), fixtureCommand("+external-duplicate"),
 	}}
 	compiled, err := CompileSets([]command.Set{set})
@@ -100,7 +100,7 @@ func TestCompileSetsRejectsSystemFlag(t *testing.T) {
 			return command.Success(fixtureData{}), nil
 		}},
 	})
-	_, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIM), Commands: []command.Command{declaration}}})
+	_, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration}}})
 	if err == nil || !strings.Contains(err.Error(), "host output formatting flag") {
 		t.Fatalf("CompileSets() error = %v", err)
 	}
@@ -118,7 +118,7 @@ func TestCompileSetsAddsPaginationFlags(t *testing.T) {
 			return command.Success(command.Page[fixtureData]{}), nil
 		}},
 	})
-	compiled, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIM), Commands: []command.Command{declaration}}})
+	compiled, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestExternalDryRunUsesOfflineContext(t *testing.T) {
 		},
 	})
 	compiled, err := CompileSets([]command.Set{{
-		Domain: command.ExtendDomain(command.DomainIM), Commands: []command.Command{declaration},
+		Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration},
 	}})
 	if err != nil {
 		t.Fatal(err)
