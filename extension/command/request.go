@@ -41,7 +41,7 @@ func newRequest(method, apiPath string) Request {
 // Set adds or replaces one query parameter and returns a copied request.
 func (r Request) Set(name string, value any) Request {
 	r.query = cloneAnyMap(r.query)
-	r.query[name] = value
+	r.query[name] = cloneJSONValue(value)
 	return r
 }
 
@@ -53,7 +53,7 @@ func (r Request) Params(params map[string]any) Request {
 
 // Body sets the JSON request body and returns a copied request.
 func (r Request) Body(body any) Request {
-	r.body = body
+	r.body = cloneJSONValue(body)
 	return r
 }
 
@@ -78,7 +78,7 @@ func InspectRequest(request Request) RequestView {
 		Method:      request.method,
 		Path:        request.path,
 		Query:       cloneAnyMap(request.query),
-		Body:        request.body,
+		Body:        cloneJSONValue(request.body),
 		Description: request.description,
 	}
 }
@@ -123,20 +123,7 @@ func cloneAnyMap(input map[string]any) map[string]any {
 	}
 	result := make(map[string]any, len(input))
 	for key, value := range input {
-		result[key] = cloneQueryValue(value)
+		result[key] = cloneJSONValue(value)
 	}
 	return result
-}
-
-func cloneQueryValue(value any) any {
-	switch typed := value.(type) {
-	case []string:
-		return append([]string(nil), typed...)
-	case []int:
-		return append([]int(nil), typed...)
-	case []any:
-		return append([]any(nil), typed...)
-	default:
-		return value
-	}
 }

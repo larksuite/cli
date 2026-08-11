@@ -235,7 +235,6 @@ func cloneOutputDefinition(output OutputDefinition) OutputDefinition {
 	for index := range output.Data.Overrides {
 		output.Data.Overrides[index].Shape = cloneValueShape(output.Data.Overrides[index].Shape)
 	}
-	output.Artifacts = append([]ArtifactDefinition(nil), output.Artifacts...)
 	if output.Outcomes.PartialFailure != nil {
 		partial := *output.Outcomes.PartialFailure
 		if partial.FailedItems != nil {
@@ -258,15 +257,21 @@ func cloneValueShape(shape ValueShape) ValueShape {
 		return nil
 	case StringShape:
 		typed.Enum = append([]string(nil), typed.Enum...)
+		typed.MinLength = cloneScalarPointer(typed.MinLength)
+		typed.MaxLength = cloneScalarPointer(typed.MaxLength)
 		return typed
 	case BooleanShape:
 		typed.Enum = append([]bool(nil), typed.Enum...)
 		return typed
 	case IntegerShape:
 		typed.Enum = append([]int64(nil), typed.Enum...)
+		typed.Minimum = cloneScalarPointer(typed.Minimum)
+		typed.Maximum = cloneScalarPointer(typed.Maximum)
 		return typed
 	case NumberShape:
 		typed.Enum = append([]float64(nil), typed.Enum...)
+		typed.Minimum = cloneScalarPointer(typed.Minimum)
+		typed.Maximum = cloneScalarPointer(typed.Maximum)
 		return typed
 	case NullShape:
 		return typed
@@ -275,6 +280,8 @@ func cloneValueShape(shape ValueShape) ValueShape {
 		return typed
 	case ArrayShape:
 		typed.Items = cloneValueShape(typed.Items)
+		typed.MinItems = cloneScalarPointer(typed.MinItems)
+		typed.MaxItems = cloneScalarPointer(typed.MaxItems)
 		return typed
 	case ObjectShape:
 		typed.Fields = append([]ValueField(nil), typed.Fields...)
@@ -294,29 +301,121 @@ func cloneValueShape(shape ValueShape) ValueShape {
 	}
 }
 
+func cloneScalarPointer[T any](value *T) *T {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
 func cloneJSONValue(value any) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		cloned := make(map[string]any, len(typed))
-		for key, item := range typed {
-			cloned[key] = cloneJSONValue(item)
-		}
-		return cloned
-	case []any:
-		cloned := make([]any, len(typed))
-		for index, item := range typed {
-			cloned[index] = cloneJSONValue(item)
-		}
-		return cloned
-	case []string:
-		return append([]string(nil), typed...)
-	case []int:
-		return append([]int(nil), typed...)
-	case []int64:
-		return append([]int64(nil), typed...)
-	case []float64:
-		return append([]float64(nil), typed...)
+	if value == nil {
+		return nil
+	}
+	return cloneJSONReflect(reflect.ValueOf(value), make(map[cloneVisit]reflect.Value)).Interface()
+}
+
+type cloneVisit struct {
+	typeOf  reflect.Type
+	pointer uintptr
+	length  int
+}
+
+func cloneJSONReflect(value reflect.Value, seen map[cloneVisit]reflect.Value) reflect.Value {
+	if !value.IsValid() {
+		return value
+	}
+	switch value.Kind() {
+	case reflect.Interface:
+		return cloneJSONInterface(value, seen)
+	case reflect.Pointer:
+		return cloneJSONPointer(value, seen)
+	case reflect.Map:
+		return cloneJSONMap(value, seen)
+	case reflect.Slice:
+		return cloneJSONSlice(value, seen)
+	case reflect.Array:
+		return cloneJSONArray(value, seen)
+	case reflect.Struct:
+		return cloneJSONStruct(value, seen)
 	default:
 		return value
 	}
+}
+
+func cloneJSONInterface(value reflect.Value, seen map[cloneVisit]reflect.Value) reflect.Value {
+	if value.IsNil() {
+		return reflect.Zero(value.Type())
+	}
+	cloned := cloneJSONReflect(value.Elem(), seen)
+	result := reflect.New(value.Type()).Elem()
+	result.Set(cloned)
+	return result
+}
+
+func cloneJSONPointer(value reflect.Value, seen map[cloneVisit]reflect.Value) reflect.Value {
+	if value.IsNil() {
+		return reflect.Zero(value.Type())
+	}
+	visit := cloneVisit{typeOf: value.Type(), pointer: value.Pointer()}
+	if cloned, ok := seen[visit]; ok {
+		return cloned
+	}
+	result := reflect.New(value.Type().Elem())
+	seen[visit] = result
+	result.Elem().Set(cloneJSONReflect(value.Elem(), seen))
+	return result
+}
+
+func cloneJSONMap(value reflect.Value, seen map[cloneVisit]reflect.Value) reflect.Value {
+	if value.IsNil() {
+		return reflect.Zero(value.Type())
+	}
+	visit := cloneVisit{typeOf: value.Type(), pointer: value.Pointer()}
+	if cloned, ok := seen[visit]; ok {
+		return cloned
+	}
+	result := reflect.MakeMapWithSize(value.Type(), value.Len())
+	seen[visit] = result
+	iterator := value.MapRange()
+	for iterator.Next() {
+		result.SetMapIndex(cloneJSONReflect(iterator.Key(), seen), cloneJSONReflect(iterator.Value(), seen))
+	}
+	return result
+}
+
+func cloneJSONSlice(value reflect.Value, seen map[cloneVisit]reflect.Value) reflect.Value {
+	if value.IsNil() {
+		return reflect.Zero(value.Type())
+	}
+	visit := cloneVisit{typeOf: value.Type(), pointer: value.Pointer(), length: value.Len()}
+	if cloned, ok := seen[visit]; ok {
+		return cloned
+	}
+	result := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
+	seen[visit] = result
+	for index := 0; index < value.Len(); index++ {
+		result.Index(index).Set(cloneJSONReflect(value.Index(index), seen))
+	}
+	return result
+}
+
+func cloneJSONArray(value reflect.Value, seen map[cloneVisit]reflect.Value) reflect.Value {
+	result := reflect.New(value.Type()).Elem()
+	for index := 0; index < value.Len(); index++ {
+		result.Index(index).Set(cloneJSONReflect(value.Index(index), seen))
+	}
+	return result
+}
+
+func cloneJSONStruct(value reflect.Value, seen map[cloneVisit]reflect.Value) reflect.Value {
+	result := reflect.New(value.Type()).Elem()
+	result.Set(value)
+	for index := 0; index < value.NumField(); index++ {
+		if value.Type().Field(index).PkgPath == "" {
+			result.Field(index).Set(cloneJSONReflect(value.Field(index), seen))
+		}
+	}
+	return result
 }

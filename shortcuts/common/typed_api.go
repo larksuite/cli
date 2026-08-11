@@ -17,9 +17,7 @@ import (
 // DoTypedAPIJSON executes and classifies one JSON API request through the
 // restricted CommandContext. It preserves the legacy RuntimeContext typed API
 // classification while keeping hooks independent of RuntimeContext flags and
-// output methods. It also carries a header-only log_id in returned data so a
-// hook that detects a malformed success payload can attach the request ID to
-// its own typed invalid-response error.
+// output methods. Successful response data is returned without host metadata.
 func DoTypedAPIJSON(ctx context.Context, command CommandContext, method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
 	return DoTypedAPIJSONWithOptions(ctx, command, method, apiPath, query, body)
 }
@@ -43,14 +41,7 @@ func DoTypedAPIJSONWithOptions(ctx context.Context, command CommandContext, meth
 	if err != nil {
 		return nil, typedOrInternal(err)
 	}
-	data, err := ClassifyAPIResponseWith(response, typedClassifyContext(command))
-	if data == nil {
-		data = map[string]any{}
-	}
-	if logID := response.Header.Get("x-tt-logid"); logID != "" {
-		data["log_id"] = logID
-	}
-	return data, err
+	return ClassifyAPIResponseWith(response, typedClassifyContext(command))
 }
 
 // CallTypedAPI preserves RuntimeContext.CallAPITyped's raw request semantics

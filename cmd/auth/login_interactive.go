@@ -34,11 +34,11 @@ type interactiveResult struct {
 
 // getDomainMetadata returns metadata for all known domains, sorted by name.
 func getDomainMetadata(lang string) []domainMeta {
-	return getDomainMetadataWithShortcuts(lang, shortcuts.AllShortcuts())
+	return getDomainMetadataWithShortcuts(lang, "", shortcuts.AllShortcuts())
 }
 
-func getDomainMetadataWithShortcuts(lang string, registered []common.Shortcut) []domainMeta {
-	known := allKnownDomainsWithShortcuts("", registered)
+func getDomainMetadataWithShortcuts(lang string, brand core.LarkBrand, registered []common.Shortcut) []domainMeta {
+	known := allKnownDomainsWithShortcuts(brand, registered)
 	domains := make([]domainMeta, 0, len(known))
 	for name := range known {
 		domains = append(domains, buildDomainMeta(name, lang))
@@ -78,7 +78,7 @@ func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, bra
 }
 
 func runInteractiveLoginWithShortcuts(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand, registered []common.Shortcut) (*interactiveResult, error) {
-	allDomains := getDomainMetadataWithShortcuts(lang, registered)
+	allDomains := getDomainMetadataWithShortcuts(lang, brand, registered)
 
 	// Build multi-select options
 	options := make([]huh.Option[string], len(allDomains))

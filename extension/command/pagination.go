@@ -84,6 +84,12 @@ func CollectAllPages[T any](ctx context.Context, command CommandContext, request
 
 func collectPages[T any](ctx context.Context, command CommandContext, request Request, all bool) (Page[T], error) {
 	result := Page[T]{meta: &paginationMeta{}}
+	if err := validateRequest(request); err != nil {
+		return result, err
+	}
+	if command.dryRun {
+		return result, ValidationErrorf("network requests are unavailable during dry-run")
+	}
 	if command.collectPages == nil {
 		return result, InternalErrorf("command host does not provide pagination")
 	}

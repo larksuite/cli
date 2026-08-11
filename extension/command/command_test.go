@@ -127,6 +127,120 @@ func TestDefineCopiesNestedJSONValues(t *testing.T) {
 	}
 }
 
+func TestDefineCopiesShapePointersAndTypedJSONContainers(t *testing.T) {
+	minLength := 1
+	maxLength := 64
+	minItems := 1
+	maxItems := 20
+	minimum := int64(0)
+	maximum := 100.0
+	failedValues := map[string][]string{"ids": {"original"}}
+	declaration := Define(Definition[contractArgs, contractData]{
+		Metadata: CommandMetadata{
+			Service: "im", Command: "+contract-deep-copy", Description: "Deep copy", Risk: RiskRead,
+			Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}},
+		},
+		Input: InputDefinition{Fields: []InputField{{
+			Name: "id", Shape: StringShape{MinLength: &minLength, MaxLength: &maxLength},
+		}}},
+		Output: OutputDefinition{
+			Data: DataDefinition{
+				Shape: ArrayShape{
+					Items: IntegerShape{Minimum: &minimum}, MinItems: &minItems, MaxItems: &maxItems,
+				},
+				Overrides: []DataField{{Path: "/score", Shape: NumberShape{Maximum: &maximum}}},
+			},
+			Outcomes: OutcomeDefinition{PartialFailure: &PartialFailureDefinition{
+				ExitCode: 2,
+				FailedItems: &FailedItemDefinition{
+					ItemsPath: "/items", IdentityPaths: []string{"/id"}, FailedValues: []JSONValue{failedValues},
+				},
+			}},
+		},
+		Hooks: Hooks[contractArgs, contractData]{Execute: func(context.Context, CommandContext, *contractArgs) (Result[contractData], error) {
+			return Success(contractData{}), nil
+		}},
+	})
+
+	minLength = 2
+	maxLength = 32
+	minItems = 2
+	maxItems = 10
+	minimum = 1
+	maximum = 50
+	failedValues["ids"][0] = "mutated"
+
+	first := InspectCommand(declaration)
+	assertCopiedDefinitionValues(t, first)
+	*first.Input.Fields[0].Shape.(StringShape).MinLength = 9
+	first.Output.Outcomes.PartialFailure.FailedItems.FailedValues[0].(map[string][]string)["ids"][0] = "inspected"
+
+	second := InspectCommand(declaration)
+	assertCopiedDefinitionValues(t, second)
+}
+
+func assertCopiedDefinitionValues(t *testing.T, definition HostDefinition) {
+	t.Helper()
+	stringShape := definition.Input.Fields[0].Shape.(StringShape)
+	if *stringShape.MinLength != 1 || *stringShape.MaxLength != 64 {
+		t.Fatalf("string constraints = %#v", stringShape)
+	}
+	arrayShape := definition.Output.Data.Shape.(ArrayShape)
+	integerShape := arrayShape.Items.(IntegerShape)
+	if *arrayShape.MinItems != 1 || *arrayShape.MaxItems != 20 || *integerShape.Minimum != 0 {
+		t.Fatalf("array constraints = %#v, item constraints = %#v", arrayShape, integerShape)
+	}
+	numberShape := definition.Output.Data.Overrides[0].Shape.(NumberShape)
+	if *numberShape.Maximum != 100 {
+		t.Fatalf("number constraints = %#v", numberShape)
+	}
+	failed := definition.Output.Outcomes.PartialFailure.FailedItems.FailedValues[0].(map[string][]string)
+	if failed["ids"][0] != "original" {
+		t.Fatalf("failed values = %#v", failed)
+	}
+}
+
+func TestRequestCopiesNestedQueryAndBodyValues(t *testing.T) {
+	query := map[string][]string{"ids": {"original"}}
+	shared := []string{"first", "second"}
+	body := map[string]any{"items": []map[string]string{{"id": "original"}}}
+	request := GET("/open-apis/im/v1/chats").
+		Params(map[string]any{"filter": query, "all": shared, "first": shared[:1]}).
+		Body(body)
+
+	query["ids"][0] = "mutated"
+	body["items"].([]map[string]string)[0]["id"] = "mutated"
+	first := InspectRequest(request)
+	if got := first.Query["filter"].(map[string][]string)["ids"][0]; got != "original" {
+		t.Fatalf("query value = %q", got)
+	}
+	if got := len(first.Query["all"].([]string)); got != 2 {
+		t.Fatalf("full shared slice length = %d", got)
+	}
+	if got := len(first.Query["first"].([]string)); got != 1 {
+		t.Fatalf("short shared slice length = %d", got)
+	}
+	if got := first.Body.(map[string]any)["items"].([]map[string]string)[0]["id"]; got != "original" {
+		t.Fatalf("body value = %q", got)
+	}
+
+	first.Query["filter"].(map[string][]string)["ids"][0] = "inspected"
+	first.Body.(map[string]any)["items"].([]map[string]string)[0]["id"] = "inspected"
+	second := InspectRequest(request)
+	if got := second.Query["filter"].(map[string][]string)["ids"][0]; got != "original" {
+		t.Fatalf("second query value = %q", got)
+	}
+	if got := second.Body.(map[string]any)["items"].([]map[string]string)[0]["id"]; got != "original" {
+		t.Fatalf("second body value = %q", got)
+	}
+}
+
+func TestPublicOutputDefinitionExcludesFileArtifacts(t *testing.T) {
+	if _, present := reflect.TypeFor[OutputDefinition]().FieldByName("Artifacts"); present {
+		t.Fatal("OutputDefinition exposes file artifacts")
+	}
+}
+
 func TestValueShapeClosedSet(t *testing.T) {
 	StringShape{}.valueShape()
 	BooleanShape{}.valueShape()
@@ -252,6 +366,10 @@ func TestDryRunPreventsRequestsAndScopeChecks(t *testing.T) {
 			calls++
 			return nil
 		},
+		CollectPages: func(context.Context, Request, bool) ([]map[string]any, HostPagination, error) {
+			calls++
+			return nil, HostPagination{}, nil
+		},
 	})
 	if ctx.Identity() != IdentityUser {
 		t.Fatalf("identity = %q", ctx.Identity())
@@ -261,6 +379,9 @@ func TestDryRunPreventsRequestsAndScopeChecks(t *testing.T) {
 	}
 	if err := PreflightScopes(ctx, "im:chat:read"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := CollectPages[contractData](context.Background(), ctx, GET("/open-apis/im/v1/chats")); err == nil {
+		t.Fatal("CollectPages during dry-run succeeded")
 	}
 	if calls != 0 {
 		t.Fatalf("host callbacks during dry-run = %d", calls)

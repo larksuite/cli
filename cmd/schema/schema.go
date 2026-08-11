@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -115,7 +116,7 @@ func completeSchemaPath(
 		mode := f.ResolveStrictMode(cmd.Context())
 		catalog := projectSchemaCatalog(registry.SchemaCatalog(), visibility)
 		completions, noSpace := catalog.Complete(args, toComplete, registry.FilterForStrictMode(mode))
-		completions = mergeSchemaCompletions(completions, shortcutSchemaCompletionsFrom(registered, args, toComplete, visibility))
+		completions = mergeSchemaCompletions(completions, shortcutSchemaCompletionsFrom(registered, args, toComplete, visibility, mode))
 		directive := cobra.ShellCompDirectiveNoFileComp
 		if noSpace {
 			directive |= cobra.ShellCompDirectiveNoSpace
@@ -166,7 +167,7 @@ func runSchemaCatalogWithShortcuts(
 	visibility CommandVisibility,
 	registered []common.Shortcut,
 ) error {
-	if contract, ok := resolveShortcutSchemaFrom(registered, parts, visibility); ok {
+	if contract, ok := resolveShortcutSchemaFrom(registered, parts, visibility, mode); ok {
 		output.PrintJson(out, contract)
 		return nil
 	}
@@ -199,11 +200,12 @@ func runSchemaCatalogWithShortcuts(
 	return nil
 }
 
-func resolveShortcutSchema(parts []string, visibility CommandVisibility) (any, bool) {
-	return resolveShortcutSchemaFrom(shortcuts.AllShortcuts(), parts, visibility)
-}
-
-func resolveShortcutSchemaFrom(registered []common.Shortcut, parts []string, visibility CommandVisibility) (any, bool) {
+func resolveShortcutSchemaFrom(
+	registered []common.Shortcut,
+	parts []string,
+	visibility CommandVisibility,
+	mode core.StrictMode,
+) (any, bool) {
 	if len(parts) != 2 || !strings.HasPrefix(parts[1], "+") {
 		return nil, false
 	}
@@ -211,7 +213,7 @@ func resolveShortcutSchemaFrom(registered []common.Shortcut, parts []string, vis
 		if shortcut.Service != parts[0] || shortcut.Command != parts[1] {
 			continue
 		}
-		if !shortcutSchemaVisible(shortcut, visibility) {
+		if !shortcutSchemaVisible(shortcut, visibility, mode) {
 			return nil, false
 		}
 		return common.ShortcutSchema(shortcut)
@@ -219,19 +221,21 @@ func resolveShortcutSchemaFrom(registered []common.Shortcut, parts []string, vis
 	return nil, false
 }
 
-func shortcutSchemaCompletions(args []string, toComplete string, visibility CommandVisibility) []string {
-	return shortcutSchemaCompletionsFrom(shortcuts.AllShortcuts(), args, toComplete, visibility)
-}
-
-func shortcutSchemaCompletionsFrom(registered []common.Shortcut, args []string, toComplete string, visibility CommandVisibility) []string {
+func shortcutSchemaCompletionsFrom(
+	registered []common.Shortcut,
+	args []string,
+	toComplete string,
+	visibility CommandVisibility,
+	mode core.StrictMode,
+) []string {
 	if len(args) == 0 && strings.Contains(toComplete, ".") {
 		parts := strings.SplitN(toComplete, ".", 2)
-		return shortcutCommandCompletions(registered, parts[0], parts[1], parts[0]+".", visibility)
+		return shortcutCommandCompletions(registered, parts[0], parts[1], parts[0]+".", visibility, mode)
 	}
 	if len(args) == 0 {
 		services := make(map[string]struct{})
 		for _, shortcut := range registered {
-			if !strings.HasPrefix(shortcut.Service, toComplete) || !shortcutSchemaVisible(shortcut, visibility) {
+			if !strings.HasPrefix(shortcut.Service, toComplete) || !shortcutSchemaVisible(shortcut, visibility, mode) {
 				continue
 			}
 			if _, ok := common.ShortcutSchema(shortcut); ok {
@@ -246,15 +250,22 @@ func shortcutSchemaCompletionsFrom(registered []common.Shortcut, args []string, 
 		return result
 	}
 	if len(args) == 1 {
-		return shortcutCommandCompletions(registered, args[0], toComplete, "", visibility)
+		return shortcutCommandCompletions(registered, args[0], toComplete, "", visibility, mode)
 	}
 	return nil
 }
 
-func shortcutCommandCompletions(registered []common.Shortcut, service, prefix, outputPrefix string, visibility CommandVisibility) []string {
+func shortcutCommandCompletions(
+	registered []common.Shortcut,
+	service string,
+	prefix string,
+	outputPrefix string,
+	visibility CommandVisibility,
+	mode core.StrictMode,
+) []string {
 	var result []string
 	for _, shortcut := range registered {
-		if shortcut.Service != service || !strings.HasPrefix(shortcut.Command, prefix) || !shortcutSchemaVisible(shortcut, visibility) {
+		if shortcut.Service != service || !strings.HasPrefix(shortcut.Command, prefix) || !shortcutSchemaVisible(shortcut, visibility, mode) {
 			continue
 		}
 		if _, ok := common.ShortcutSchema(shortcut); ok {
@@ -265,8 +276,18 @@ func shortcutCommandCompletions(registered []common.Shortcut, service, prefix, o
 	return result
 }
 
-func shortcutSchemaVisible(shortcut common.Shortcut, visibility CommandVisibility) bool {
-	return !shortcut.Hidden && (visibility == nil || visibility([]string{shortcut.Service, shortcut.Command}))
+func shortcutSchemaVisible(shortcut common.Shortcut, visibility CommandVisibility, mode core.StrictMode) bool {
+	if shortcut.Hidden || (visibility != nil && !visibility([]string{shortcut.Service, shortcut.Command})) {
+		return false
+	}
+	if !mode.IsActive() {
+		return true
+	}
+	identities := shortcut.AuthTypes
+	if len(identities) == 0 {
+		identities = []string{string(core.AsUser)}
+	}
+	return slices.Contains(identities, string(mode.ForcedIdentity()))
 }
 
 func mergeSchemaCompletions(groups ...[]string) []string {

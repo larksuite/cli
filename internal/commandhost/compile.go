@@ -159,6 +159,9 @@ func convertInput(input command.InputDefinition) (common.InputDefinition, error)
 		}
 		sources := make([]common.ValueSource, len(field.CLI.ValueSources))
 		for sourceIndex, source := range field.CLI.ValueSources {
+			if source != command.SourceFlag && source != command.SourceStdin {
+				return common.InputDefinition{}, fmt.Errorf("Input.Fields[%d].CLI.ValueSources[%d]: source %q is not supported in V1", index, sourceIndex, source)
+			}
 			sources[sourceIndex] = common.ValueSource(source)
 		}
 		converted.Fields[index] = common.InputField{
@@ -193,13 +196,6 @@ func convertOutput(output command.OutputDefinition) (common.OutputDefinition, er
 		Data: common.DataDefinition{Shape: dataShape, Overrides: dataOverrides},
 		Meta: common.ResultMetaDefinition{Count: output.Meta.Count, Pagination: output.Meta.Pagination},
 		Mode: common.OutputMode(output.Mode), DisableHTMLEscaping: output.DisableHTMLEscaping,
-		Artifacts: make([]common.ArtifactDefinition, len(output.Artifacts)),
-	}
-	for index, artifact := range output.Artifacts {
-		converted.Artifacts[index] = common.ArtifactDefinition{
-			Name: artifact.Name, ItemsPath: artifact.ItemsPath, Optional: artifact.Optional,
-			PathField: artifact.PathField, MediaTypeField: artifact.MediaTypeField, SizeField: artifact.SizeField,
-		}
 	}
 	if output.Outcomes.PartialFailure != nil {
 		partial := output.Outcomes.PartialFailure
@@ -316,27 +312,31 @@ func publicContext(host common.CommandContext) command.CommandContext {
 func queryParams(query map[string]any) larkcore.QueryParams {
 	params := make(larkcore.QueryParams, len(query))
 	for name, value := range query {
-		value = derefQueryValue(value)
-		switch typed := value.(type) {
-		case nil:
-			continue
-		case []string:
-			params[name] = append([]string(nil), typed...)
-		case []any:
-			values := make([]string, 0, len(typed))
-			for _, item := range typed {
-				item = derefQueryValue(item)
-				if item == nil {
-					continue
-				}
-				values = append(values, fmt.Sprint(item))
-			}
+		values := queryValues(value)
+		if len(values) > 0 {
 			params[name] = values
-		default:
-			params[name] = []string{fmt.Sprint(value)}
 		}
 	}
 	return params
+}
+
+func queryValues(value any) []string {
+	value = derefQueryValue(value)
+	if value == nil {
+		return nil
+	}
+	reflected := reflect.ValueOf(value)
+	if reflected.Kind() != reflect.Array && reflected.Kind() != reflect.Slice {
+		return []string{fmt.Sprint(value)}
+	}
+	values := make([]string, 0, reflected.Len())
+	for index := 0; index < reflected.Len(); index++ {
+		item := derefQueryValue(reflected.Index(index).Interface())
+		if item != nil {
+			values = append(values, fmt.Sprint(item))
+		}
+	}
+	return values
 }
 
 func derefQueryValue(value any) any {

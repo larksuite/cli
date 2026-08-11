@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -136,8 +137,8 @@ func TestShortcutSupportsIdentity_BotOnly(t *testing.T) {
 }
 
 func TestCompleteDomain(t *testing.T) {
-	projects := registry.ListFromMetaProjects()
-	if len(projects) == 0 {
+	want := sortedKnownDomains("")
+	if len(want) == 0 {
 		t.Skip("no from_meta data available")
 	}
 
@@ -146,9 +147,11 @@ func TestCompleteDomain(t *testing.T) {
 	if len(completions) == 0 {
 		t.Fatal("expected completions for empty prefix")
 	}
-	// All completions should match from_meta projects
-	if len(completions) != len(projects) {
-		t.Errorf("expected %d completions, got %d", len(projects), len(completions))
+	if !reflect.DeepEqual(completions, want) {
+		t.Errorf("completeDomain() = %v, want %v", completions, want)
+	}
+	if !slices.Contains(completeDomain("not"), "note") {
+		t.Error("completeDomain() omitted shortcut-only note domain")
 	}
 
 	// Complete with partial prefix

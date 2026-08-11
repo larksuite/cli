@@ -106,7 +106,7 @@ func validateTypedStdinInputs(runtime *RuntimeContext, command *compiledCommand)
 		}
 	}
 	if len(selected) > 1 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "at most one parameter may read stdin in one invocation; use @file for the others").WithParam("--" + selected[1])
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "at most one parameter may read stdin in one invocation; provide the other values through their remaining declared sources").WithParam("--" + selected[1])
 	}
 	return nil
 }

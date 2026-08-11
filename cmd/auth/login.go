@@ -102,7 +102,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 
 // completeDomain returns completions for comma-separated domain values.
 func completeDomain(toComplete string) []string {
-	return completeDomainWithShortcuts(toComplete, "", nil)
+	return completeDomainWithShortcuts(toComplete, "", shortcuts.AllShortcuts())
 }
 
 func completeDomainWithShortcuts(toComplete string, brand core.LarkBrand, registered []common.Shortcut) []string {

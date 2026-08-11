@@ -60,10 +60,13 @@ func TestCompileSetsCompilesTypedShortcut(t *testing.T) {
 func TestQueryParamsOmitsTypedNilAndDereferencesValues(t *testing.T) {
 	value := "chat_1"
 	var missing *string
+	booleans := [2]bool{true, false}
 	params := queryParams(map[string]any{
-		"missing": missing,
-		"value":   &value,
-		"items":   []any{missing, &value, 20},
+		"missing":  missing,
+		"value":    &value,
+		"items":    []any{missing, &value, 20},
+		"numbers":  []int{10, 20},
+		"booleans": &booleans,
 	})
 	if _, exists := params["missing"]; exists {
 		t.Fatalf("typed nil query = %#v", params["missing"])
@@ -73,6 +76,12 @@ func TestQueryParamsOmitsTypedNilAndDereferencesValues(t *testing.T) {
 	}
 	if got := params["items"]; len(got) != 2 || got[0] != "chat_1" || got[1] != "20" {
 		t.Fatalf("list query = %#v", got)
+	}
+	if got := params["numbers"]; len(got) != 2 || got[0] != "10" || got[1] != "20" {
+		t.Fatalf("numeric list query = %#v", got)
+	}
+	if got := params["booleans"]; len(got) != 2 || got[0] != "true" || got[1] != "false" {
+		t.Fatalf("boolean array query = %#v", got)
 	}
 }
 
@@ -123,6 +132,27 @@ func TestCompileSetsRejectsSystemFlag(t *testing.T) {
 	})
 	_, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration}}})
 	if err == nil || !strings.Contains(err.Error(), "host output formatting flag") {
+		t.Fatalf("CompileSets() error = %v", err)
+	}
+}
+
+func TestCompileSetsRejectsFileInputSource(t *testing.T) {
+	declaration := command.Define(command.Definition[fixtureArgs, fixtureData]{
+		Metadata: command.CommandMetadata{
+			Service: "im", Command: "+external-file-input", Description: "File input", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+				command.IdentityUser: {},
+			}},
+		},
+		Input: command.InputDefinition{Fields: []command.InputField{{
+			Name: "id", CLI: command.CLIInput{ValueSources: []command.ValueSource{command.ValueSource("file")}},
+		}}},
+		Hooks: command.Hooks[fixtureArgs, fixtureData]{Execute: func(context.Context, command.CommandContext, *fixtureArgs) (command.Result[fixtureData], error) {
+			return command.Success(fixtureData{}), nil
+		}},
+	})
+	_, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration}}})
+	if err == nil || !strings.Contains(err.Error(), "source \"file\" is not supported in V1") {
 		t.Fatalf("CompileSets() error = %v", err)
 	}
 }

@@ -4,9 +4,12 @@
 package common
 
 import (
+	"context"
+	"net/http"
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/spf13/cobra"
 )
 
@@ -25,5 +28,29 @@ func TestTypedClassifyContextPreservesCommandPath(t *testing.T) {
 	classify := typedClassifyContext(ctx)
 	if classify.AppID != "cli_test" || classify.Identity != string(core.AsBot) || classify.LarkCmd != "fixture +typed" {
 		t.Fatalf("classify context = %#v", classify)
+	}
+}
+
+func TestDoTypedAPIJSONPreservesSuccessData(t *testing.T) {
+	runtime, registry := newCallAPITypedRuntime(t)
+	registry.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/x/y",
+		Headers: http.Header{
+			"Content-Type": []string{"application/json"},
+			"X-Tt-Logid":   []string{"header-log-id"},
+		},
+		Body: map[string]any{
+			"code": float64(0),
+			"data": map[string]any{"log_id": "business-log-id", "value": "original"},
+		},
+	})
+
+	data, err := DoTypedAPIJSON(context.Background(), typedCommandContext{runtime: runtime}, "GET", "/open-apis/x/y", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data["log_id"] != "business-log-id" || data["value"] != "original" {
+		t.Fatalf("success data = %#v", data)
 	}
 }

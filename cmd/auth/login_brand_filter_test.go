@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/shortcuts"
 )
 
 func TestBrandFilter_AppsExcludedOnLark(t *testing.T) {
@@ -29,4 +30,26 @@ func TestBrandFilter_AppsExcludedOnLark(t *testing.T) {
 	if len(larkScopes) != 0 {
 		t.Errorf("expected empty scopes for apps on Lark brand, got %d: %v", len(larkScopes), larkScopes)
 	}
+}
+
+func TestInteractiveDomainMetadataUsesActiveBrand(t *testing.T) {
+	registered := shortcuts.AllShortcuts()
+	feishuDomains := getDomainMetadataWithShortcuts("en", core.BrandFeishu, registered)
+	if !containsDomainMetadata(feishuDomains, "apps") {
+		t.Fatal("apps domain is missing for Feishu interactive login")
+	}
+
+	larkDomains := getDomainMetadataWithShortcuts("en", core.BrandLark, registered)
+	if containsDomainMetadata(larkDomains, "apps") {
+		t.Fatal("apps domain is present for Lark interactive login")
+	}
+}
+
+func containsDomainMetadata(domains []domainMeta, name string) bool {
+	for _, domain := range domains {
+		if domain.Name == name {
+			return true
+		}
+	}
+	return false
 }

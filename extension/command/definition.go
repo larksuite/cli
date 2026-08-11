@@ -146,8 +146,6 @@ type ValueSource string
 const (
 	// SourceFlag accepts a literal flag value.
 	SourceFlag ValueSource = "flag"
-	// SourceFile accepts @relative-path input.
-	SourceFile ValueSource = "file"
 	// SourceStdin accepts a single dash and reads standard input.
 	SourceStdin ValueSource = "stdin"
 )

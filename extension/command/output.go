@@ -3,13 +3,12 @@
 
 package command
 
-// OutputDefinition declares result formats, partial outcomes, and file receipts.
+// OutputDefinition declares result formats and partial outcomes.
 type OutputDefinition struct {
-	Data      DataDefinition
-	Outcomes  OutcomeDefinition
-	Artifacts []ArtifactDefinition
-	Meta      ResultMetaDefinition
-	Mode      OutputMode
+	Data     DataDefinition
+	Outcomes OutcomeDefinition
+	Meta     ResultMetaDefinition
+	Mode     OutputMode
 
 	DisableHTMLEscaping bool
 }
@@ -38,16 +37,6 @@ type FailedItemDefinition struct {
 	AllItems      bool        `json:"all_items,omitempty"`
 	StatePath     string      `json:"state_path,omitempty"`
 	FailedValues  []JSONValue `json:"failed_values,omitempty"`
-}
-
-// ArtifactDefinition identifies file receipts already present in Data.
-type ArtifactDefinition struct {
-	Name           string `json:"name"`
-	ItemsPath      string `json:"items_path"`
-	Optional       bool   `json:"optional,omitempty"`
-	PathField      string `json:"path_field"`
-	MediaTypeField string `json:"media_type_field,omitempty"`
-	SizeField      string `json:"size_field,omitempty"`
 }
 
 // OutputMode selects the framework output behavior.

@@ -57,11 +57,44 @@ func TestHiddenShortcutIsExcludedFromSchemaDiscovery(t *testing.T) {
 	hidden.Hidden = true
 	registered := []common.Shortcut{hidden}
 
-	if schema, ok := resolveShortcutSchemaFrom(registered, []string{hidden.Service, hidden.Command}, nil); ok || schema != nil {
+	if schema, ok := resolveShortcutSchemaFrom(registered, []string{hidden.Service, hidden.Command}, nil, core.StrictModeOff); ok || schema != nil {
 		t.Fatalf("hidden shortcut schema = %#v, visible = %v", schema, ok)
 	}
-	if completions := shortcutSchemaCompletionsFrom(registered, []string{hidden.Service}, "+hidden", nil); len(completions) != 0 {
+	if completions := shortcutSchemaCompletionsFrom(registered, []string{hidden.Service}, "+hidden", nil, core.StrictModeOff); len(completions) != 0 {
 		t.Fatalf("hidden shortcut completions = %#v", completions)
+	}
+}
+
+func TestShortcutSchemaDiscoveryHonorsStrictMode(t *testing.T) {
+	type args struct {
+		Value string `flag:"value" schema:"required" doc:"fixture value"`
+	}
+	type data struct {
+		OK bool `json:"ok" schema:"required" doc:"success state"`
+	}
+	userOnly := common.Define(common.Definition[args, data]{
+		Metadata: common.CommandMetadata{
+			Service: "strict-fixture", Command: "+user-schema", Description: "User schema fixture", Risk: common.RiskRead,
+			Authorization: common.AuthorizationDefinition{Identities: map[common.Identity]common.IdentityAuthorization{common.IdentityUser: {}}},
+		},
+		Hooks: common.Hooks[args, data]{Execute: func(context.Context, common.CommandContext, *args) (common.Result[data], error) {
+			return common.Success(data{OK: true}), nil
+		}},
+	})
+	registered := []common.Shortcut{userOnly}
+	path := []string{userOnly.Service, userOnly.Command}
+
+	if schema, ok := resolveShortcutSchemaFrom(registered, path, nil, core.StrictModeBot); ok || schema != nil {
+		t.Fatalf("bot strict mode schema = %#v, visible = %v", schema, ok)
+	}
+	if completions := shortcutSchemaCompletionsFrom(registered, []string{userOnly.Service}, "+user", nil, core.StrictModeBot); len(completions) != 0 {
+		t.Fatalf("bot strict mode completions = %#v", completions)
+	}
+	if schema, ok := resolveShortcutSchemaFrom(registered, path, nil, core.StrictModeUser); !ok || schema == nil {
+		t.Fatalf("user strict mode schema = %#v, visible = %v", schema, ok)
+	}
+	if completions := shortcutSchemaCompletionsFrom(registered, []string{userOnly.Service}, "+user", nil, core.StrictModeUser); len(completions) != 1 {
+		t.Fatalf("user strict mode completions = %#v", completions)
 	}
 }
 
