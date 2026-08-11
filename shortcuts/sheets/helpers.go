@@ -574,6 +574,51 @@ func wrapLoneCellObject(v interface{}) interface{} {
 	return []interface{}{[]interface{}{obj}}
 }
 
+// unwrapCellsEnvelope strips the {"cells": …} wrapper agents produce when they
+// mistake the flag name for a JSON key (`json.dump({"cells": cells}, f)` in a
+// payload-generating script) — the single largest root-shape rejection in the
+// eval corpus, 11 of 21 traced `--cells: expected type "array", got "object"`
+// failures.
+//
+// Only a LONE "cells" key is unwrapped: an object carrying siblings
+// ({"cells": …, "range": …}) is the whole tool input, and dropping them would
+// write the right cells to the wrong place. A scalar under the key stays too,
+// so the error can quote the shape the caller actually passed.
+func unwrapCellsEnvelope(v interface{}) interface{} {
+	obj, ok := v.(map[string]interface{})
+	if !ok || len(obj) != 1 {
+		return v
+	}
+	inner, ok := obj["cells"]
+	if !ok {
+		return v
+	}
+	switch inner.(type) {
+	case []interface{}, map[string]interface{}:
+		return inner
+	}
+	return v
+}
+
+// scalarCellValue lifts a bare scalar sitting in a cell slot into the
+// {"value": …} the cell contract expects, returning nil for anything else.
+// Writing a plain values matrix is the openpyxl / gspread habit, and rows
+// routinely MIX the two forms once a formula shows up
+// (["1","电动大门",10331.00,{"formula":"=D2*E2"}]). A cell slot holds nothing
+// but a cell and value's schema is exactly string|number|boolean, so the
+// meaning is beyond doubt.
+//
+// null is deliberately NOT lifted: {} (leave the cell untouched) and
+// {"value":""} (write an empty string) are both plausible readings of a hole
+// in a values matrix, so the validator prescribes that one instead.
+func scalarCellValue(v interface{}) map[string]interface{} {
+	switch v.(type) {
+	case string, bool, float64, json.Number, int, int64:
+		return map[string]interface{}{"value": v}
+	}
+	return nil
+}
+
 // requireJSONObject is parseJSONFlag + a type assertion to map[string]interface{}.
 func requireJSONObject(runtime flagView, name string) (map[string]interface{}, error) {
 	v, err := parseJSONFlag(runtime, name)

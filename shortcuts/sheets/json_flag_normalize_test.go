@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -115,6 +116,126 @@ func TestCellsSet_LoneCellObjectAutoWraps(t *testing.T) {
 	if !strings.Contains(stdout, "hello") {
 		t.Errorf("dry-run body should carry the cell value, got %q", stdout)
 	}
+}
+
+// TestUnwrapCellsEnvelope pins the {"cells": …} envelope contract: a lone
+// "cells" key is the flag name mistaken for a JSON key and unwraps; an
+// object carrying siblings is the whole tool input and must not silently
+// lose them.
+func TestUnwrapCellsEnvelope(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		in        string
+		unwrapped bool
+	}{
+		{"envelope around a 2D array", `{"cells":[[{"value":"a"}]]}`, true},
+		{"envelope around a lone cell object", `{"cells":{"value":"a"}}`, true},
+		{"envelope around an empty array", `{"cells":[]}`, true},
+		{"sibling keys stay (dropping them would write elsewhere)", `{"cells":[[{"value":"a"}]],"range":"A1"}`, false},
+		{"scalar under the key stays", `{"cells":"A1"}`, false},
+		{"unrelated object stays", `{"value":"a"}`, false},
+		{"proper 2D array stays", `[[{"value":"a"}]]`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var v interface{}
+			if err := json.Unmarshal([]byte(tc.in), &v); err != nil {
+				t.Fatalf("bad fixture: %v", err)
+			}
+			out := unwrapCellsEnvelope(v)
+			changed := fmt.Sprintf("%#v", out) != fmt.Sprintf("%#v", v)
+			if changed != tc.unwrapped {
+				t.Errorf("unwrapped=%v, want %v (got %#v)", changed, tc.unwrapped, out)
+			}
+		})
+	}
+}
+
+// TestScalarCellValue pins which bare cell-slot values lift into
+// {"value": …}. null stays nil on purpose: {} and {"value":""} are both
+// plausible readings, so it belongs to the validator, not the normalizer.
+func TestScalarCellValue(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		in     interface{}
+		lifted bool
+	}{
+		{"string", "hello", true},
+		{"number", float64(42), true},
+		{"bool", true, true},
+		{"json.Number", json.Number("42"), true},
+		{"null stays for the validator", nil, false},
+		{"cell object stays", map[string]interface{}{"value": "a"}, false},
+		{"array stays", []interface{}{"a"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scalarCellValue(tc.in)
+			if (got != nil) != tc.lifted {
+				t.Fatalf("lifted=%v, want %v", got != nil, tc.lifted)
+			}
+			if tc.lifted && got["value"] != tc.in {
+				t.Errorf("want value %#v, got %#v", tc.in, got["value"])
+			}
+		})
+	}
+}
+
+// TestCellsSet_EnvelopeAndScalarCellsAccepted runs both new rewrites through
+// the mounted path with the exact eval-trace shapes: a payload script's
+// json.dump({"cells": cells}) envelope, and the openpyxl / gspread habit of
+// a plain values matrix — which real rows MIX with cell objects as soon as a
+// formula appears.
+func TestCellsSet_EnvelopeAndScalarCellsAccepted(t *testing.T) {
+	t.Parallel()
+	sc := shortcutFromRegistry(t, "+cells-set")
+
+	t.Run("envelope with a mixed scalar / object row", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1:C1",
+			"--cells", `{"cells":[["电动大门",10331.00,{"formula":"=A1*2"}]]}`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("envelope + scalar cells should normalize, got: %v", err)
+		}
+		for _, want := range []string{"电动大门", "10331", "=A1*2"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("dry-run body should carry %s, got %q", want, stdout)
+			}
+		}
+	})
+
+	t.Run("null cell keeps the validation error", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1",
+			"--cells", `[[null]]`,
+			"--dry-run",
+		})
+		requireValidation(t, err, `got "null"`)
+	})
+
+	t.Run("envelope with sibling keys keeps the validation error", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1",
+			"--cells", `{"cells":[[{"value":"a"}]],"range":"A1"}`,
+			"--dry-run",
+		})
+		requireValidation(t, err, `expected type "array"`)
+	})
 }
 
 // TestCellsSetStyle_BorderWeightWordInStyleNormalizes pins the reachability

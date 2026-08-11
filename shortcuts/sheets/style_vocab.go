@@ -458,14 +458,16 @@ func normalizeBorderStylesFlagValue(v interface{}) interface{} {
 }
 
 // normalizeCellsFlagValue is the +cells-set --cells pre-validation pipeline:
-// wrap a lone cell object into [[cell]], then run the border vocabulary
-// rewrites on each cell's border_styles so weight words in the style slot
-// normalize before the enum check — same reachability fix as
+// strip a {"cells": …} envelope, wrap a lone cell object into [[cell]], lift
+// bare scalars in cell slots into {"value": …}, then run the border
+// vocabulary rewrites on each cell's border_styles so weight words in the
+// style slot normalize before the enum check — same reachability fix as
 // normalizeBorderStylesFlagValue, for the typed-cells carrier (07-28
-// root-cause report #10, 58 occurrences). Structure is checked leniently:
-// anything that isn't the expected shape is left for the validator.
+// root-cause report #10, 58 occurrences). Each helper documents why its own
+// rewrite is unambiguous. Structure is checked leniently: anything that isn't
+// the expected shape is left for the validator.
 func normalizeCellsFlagValue(v interface{}) interface{} {
-	v = wrapLoneCellObject(v)
+	v = wrapLoneCellObject(unwrapCellsEnvelope(v))
 	rows, ok := v.([]interface{})
 	if !ok {
 		return v
@@ -475,9 +477,12 @@ func normalizeCellsFlagValue(v interface{}) interface{} {
 		if !ok {
 			continue
 		}
-		for _, cellRaw := range row {
+		for i, cellRaw := range row {
 			cell, ok := cellRaw.(map[string]interface{})
 			if !ok {
+				if lifted := scalarCellValue(cellRaw); lifted != nil {
+					row[i] = lifted
+				}
 				continue
 			}
 			if bs, ok := cell["border_styles"].(map[string]interface{}); ok {

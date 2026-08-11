@@ -249,7 +249,7 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 	if err := normalizeTypedCellsStyleAliases(cells, "--cells"); err != nil {
 		return nil, err
 	}
-	rangeStr := strings.TrimSpace(runtime.Str("range"))
+	rangeStr := expandAnchorRange(strings.TrimSpace(runtime.Str("range")), cells)
 	if err := checkCellsMatchRange(cells, rangeStr); err != nil {
 		return nil, err
 	}
@@ -852,72 +852,199 @@ func warnDropdownSourceRangeHighlight(runtime *common.RuntimeContext) {
 
 // ─── range parsing helpers ────────────────────────────────────────────
 
-// rangeDimensions parses an A1 range like "A1:C5" / "A1" / "sheet1!B2:D10"
-// and returns its row / column counts. Errors on non-rectangular forms like
-// "A:C" (whole-column) or "3:6" (whole-row) — those need a row/col total
-// from get_sheet_structure, outside the scope of pure local parsing.
 // checkCellsMatchRange rejects, before any network call, the cells-vs-range
 // mismatches the server would otherwise fail mid-batch ("cells row count (N)
 // does not match range row count (M)" — a recurring server-side error cluster
 // in eval traces, and the failure leaves earlier batch sub-ops applied).
 // Single-cell ranges are checked too: the server enforces the same strict
-// match on a bare "A1" (07-21 rerun, 12 rows against range row count 1) —
-// there is no anchor semantics on +cells-set. An unparsable range is the
-// range validator's job, not ours.
+// match on a bare "A1" (07-21 rerun, 12 rows against range row count 1).
+// Callers reach this with the anchor already resolved by expandAnchorRange,
+// so what still fails here is a range that states an extent and disagrees
+// with the payload. An unparsable range is the range validator's job, not
+// ours.
+//
+// The message states BOTH axes and hands back the range that fits the payload.
+// This is the largest single --cells failure class in the corpus (132
+// rejections across 93 case-runs), driven by off-by-one on the inclusive end
+// (A1:C10 is 10 rows, not 9) and by hand-counted ranges against real data;
+// reporting one axis at a time cost a second round trip whenever both were
+// off, and 16 of the 132 retried straight into the same error.
+//
+// The computed range is NOT applied automatically: growing it would overwrite
+// rows the caller never mentioned and shrinking it would silently drop data.
 func checkCellsMatchRange(cells []interface{}, rangeStr string) error {
 	if len(cells) == 0 {
 		return sheetsValidationForFlag("cells",
 			"--cells is empty; to clear values use +cells-clear --scope content (needs --yes), or pass a non-empty 2D array")
 	}
-	rows, cols, err := rangeDimensions(rangeStr)
+	target, err := parseCellRange(rangeStr)
 	if err != nil {
 		return nil //nolint:nilerr // an unparsable range is reported by the range validation path with proper context
 	}
-	if len(cells) != rows {
-		return sheetsValidationForFlag("cells",
-			"--cells has %d rows but --range %q spans %d rows; make them equal (e.g. write N rows to an N-row range)",
-			len(cells), rangeStr, rows)
+	payloadRows, payloadCols, ok := cellsExtent(cells)
+	if !ok {
+		// A payload with no single extent has nothing to compare against the
+		// range, so it is its own bug and gets its own message — reporting it
+		// as a range mismatch would send the caller off to edit --range.
+		return raggedCellsError(cells)
 	}
+	if payloadRows == target.rows && payloadCols == target.cols {
+		return nil
+	}
+	return sheetsValidationForFlag("cells",
+		"--cells is %d rows × %d columns but --range %q spans %d rows × %d columns; either write this payload to --range %q (same top-left, sized to the cells passed) or resize --cells to %d rows × %d columns — an A1 range covers both ends, so %q spans %d rows",
+		payloadRows, payloadCols, rangeStr, target.rows, target.cols,
+		target.sized(payloadRows, payloadCols), target.rows, target.cols, rangeStr, target.rows)
+}
+
+// cellsExtent measures a --cells payload: its row count and the width every
+// row shares. ok is false when the payload has no single extent — a row that
+// isn't an array, rows of differing widths, or nothing at all — which is the
+// one authority both the anchor expansion and the dimension check consult,
+// so neither can decide the payload is rectangular while the other doesn't.
+// raggedCellsError names the offender once ok is false.
+func cellsExtent(cells []interface{}) (rows, cols int, ok bool) {
+	if len(cells) == 0 {
+		return 0, 0, false
+	}
+	width := -1
+	for _, rowRaw := range cells {
+		row, isArray := rowRaw.([]interface{})
+		if !isArray {
+			return 0, 0, false
+		}
+		if width < 0 {
+			width = len(row)
+			continue
+		}
+		if len(row) != width {
+			return 0, 0, false
+		}
+	}
+	if width <= 0 {
+		return 0, 0, false
+	}
+	return len(cells), width, true
+}
+
+// raggedCellsError describes the first row that breaks the rectangle. Only
+// reached after cellsExtent has already said the payload has no extent, so
+// the walk is the error message's, not the decision's.
+func raggedCellsError(cells []interface{}) error {
+	width := -1
 	for r, rowRaw := range cells {
-		row, ok := rowRaw.([]interface{})
-		if !ok {
+		row, isArray := rowRaw.([]interface{})
+		if !isArray {
 			return sheetsValidationForFlag("cells",
 				"--cells[%d] must be an array (one row of cells) — --cells is always a 2D array, a single cell is [[{…}]]", r)
 		}
-		if len(row) != cols {
+		if width < 0 {
+			width = len(row)
+			continue
+		}
+		if len(row) != width {
 			return sheetsValidationForFlag("cells",
-				"--cells[%d] has %d columns but --range %q spans %d columns; every row must match the range width",
-				r, len(row), rangeStr, cols)
+				"--cells[%d] has %d columns but --cells[0] has %d; every row must be the same width (pad short rows with {} to keep those cells unchanged)",
+				r, len(row), width)
 		}
 	}
-	return nil
+	// Every row is an array of the same width, so the only extent cellsExtent
+	// can have refused is zero: rows carrying no cells at all.
+	return sheetsValidationForFlag("cells",
+		"--cells has %d rows but every row is empty; each row needs one entry per column, e.g. [[{\"value\":…}]]", len(cells))
+}
+
+// expandAnchorRange gives a bare single-cell --range the anchor semantics
+// every spreadsheet library these callers arrive from already has (gspread's
+// update("A1", values), openpyxl's ws["A1"] = …): a top-left alone plus a
+// multi-cell payload means "start writing here", so the extent of the block
+// is computed rather than demanded from the caller.
+//
+// The range is resolved locally and shipped in full, so the server still sees
+// the strict match it enforces (07-21 rerun: it rejects anchors of its own).
+// +csv-put already infers --start-cell's bottom-right from the CSV's own
+// counts; +cells-set was the odd one out.
+//
+// Only a bare "A1" expands: an explicit "A1:A1" states a 1×1 block, and a
+// payload disagreeing with a stated extent is a real mismatch. A ragged or
+// non-array payload has no extent to compute and falls through to
+// checkCellsMatchRange's prescription.
+func expandAnchorRange(rangeStr string, cells []interface{}) string {
+	anchor, err := parseCellRange(rangeStr)
+	if err != nil || !anchor.anchored {
+		return rangeStr
+	}
+	rows, cols, ok := cellsExtent(cells)
+	if !ok || (rows == 1 && cols == 1) {
+		return rangeStr
+	}
+	return anchor.sized(rows, cols)
+}
+
+// cellRange is a rectangular A1 range taken apart once, so the three things
+// callers keep re-deriving from the string — the "Sheet!" prefix, the
+// top-left, the stated extent — are read off fields instead of re-parsed.
+// anchored marks a bare "A1": a top-left that states no extent (rows/cols
+// are still 1, since that is the block it covers on its own).
+type cellRange struct {
+	prefix     string // "Sheet1!" or "", kept so rewrites paste back in
+	start      string // the top-left as written, e.g. "B2"
+	col, row   int    // 0-based top-left
+	rows, cols int    // extent, in cells
+	anchored   bool
+}
+
+// sized renders the range this one's top-left fills with a rows×cols block.
+func (r cellRange) sized(rows, cols int) string {
+	return fmt.Sprintf("%s%s:%s%d", r.prefix, r.start, columnIndexToLetter(r.col+cols-1), r.row+rows)
+}
+
+// parseCellRange splits "sheet1!B2:D10" into its prefix, top-left and extent.
+// Errors on non-rectangular forms like "A:C" (whole-column) or "3:6"
+// (whole-row) — those need a row/col total from get_sheet_structure, outside
+// the scope of pure local parsing. The error wording is load-bearing:
+// +styles-put surfaces it verbatim ("cell_styles range %q: %v").
+func parseCellRange(s string) (cellRange, error) {
+	out := cellRange{}
+	// Trim before splitting the prefix, not after: otherwise " sheet1!B2"
+	// carries the leading space into prefix and every range rendered from it.
+	body := strings.TrimSpace(s)
+	if idx := strings.Index(body, "!"); idx >= 0 {
+		out.prefix, body = body[:idx+1], body[idx+1:]
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return out, fmt.Errorf("empty range") //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
+	}
+	parts := strings.SplitN(body, ":", 2)
+	start := strings.TrimSpace(parts[0])
+	startCol, startRow, ok := splitCellRef(start)
+	if len(parts) == 1 {
+		// single cell, e.g. "A1"
+		if !ok {
+			return out, fmt.Errorf("invalid cell ref %q", parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
+		}
+		return cellRange{prefix: out.prefix, start: start, col: startCol, row: startRow, rows: 1, cols: 1, anchored: true}, nil
+	}
+	endCol, endRow, okEnd := splitCellRef(parts[1])
+	if !ok || !okEnd {
+		return out, fmt.Errorf("unsupported range form %q (need rectangular A1:B2)", body) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
+	}
+	if endRow < startRow || endCol < startCol {
+		return out, fmt.Errorf("end %q must be at or after start %q", parts[1], parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
+	}
+	return cellRange{
+		prefix: out.prefix, start: start, col: startCol, row: startRow,
+		rows: endRow - startRow + 1, cols: endCol - startCol + 1,
+	}, nil
 }
 
 func rangeDimensions(rangeStr string) (rows, cols int, err error) {
-	if idx := strings.Index(rangeStr, "!"); idx >= 0 {
-		rangeStr = rangeStr[idx+1:]
+	r, err := parseCellRange(rangeStr)
+	if err != nil {
+		return 0, 0, err
 	}
-	rangeStr = strings.TrimSpace(rangeStr)
-	if rangeStr == "" {
-		return 0, 0, fmt.Errorf("empty range") //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
-	}
-	parts := strings.SplitN(rangeStr, ":", 2)
-	if len(parts) == 1 {
-		// single cell, e.g. "A1"
-		if _, _, ok := splitCellRef(parts[0]); !ok {
-			return 0, 0, fmt.Errorf("invalid cell ref %q", parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
-		}
-		return 1, 1, nil
-	}
-	startCol, startRow, ok1 := splitCellRef(parts[0])
-	endCol, endRow, ok2 := splitCellRef(parts[1])
-	if !ok1 || !ok2 {
-		return 0, 0, fmt.Errorf("unsupported range form %q (need rectangular A1:B2)", rangeStr) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
-	}
-	if endRow < startRow || endCol < startCol {
-		return 0, 0, fmt.Errorf("end %q must be at or after start %q", parts[1], parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
-	}
-	return endRow - startRow + 1, endCol - startCol + 1, nil
+	return r.rows, r.cols, nil
 }
 
 // splitCellRef parses "A1" → (col=0, row=0, true). Returns false for any

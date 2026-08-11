@@ -226,7 +226,7 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 				"cells": []interface{}{
 					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
 				}},
-			"has 1 rows but --range \"A1:B3\" spans 3 rows",
+			"--cells is 1 rows × 2 columns but --range \"A1:B3\" spans 3 rows × 2 columns",
 		},
 		{
 			"column count mismatch",
@@ -234,7 +234,28 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 				"cells": []interface{}{
 					[]interface{}{map[string]interface{}{"value": "a"}},
 				}},
-			"has 1 columns but --range \"A1:B1\" spans 2 columns",
+			"--cells is 1 rows × 1 columns but --range \"A1:B1\" spans 1 rows × 2 columns",
+		},
+		{
+			// Both axes off used to cost two round trips: rows failed first,
+			// and the fixed payload came straight back on columns.
+			"both axes report together, with the range that fits the payload",
+			map[string]interface{}{"sheet_name": "S1", "range": "B2:C3",
+				"cells": []interface{}{
+					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}, map[string]interface{}{"value": "c"}},
+					[]interface{}{map[string]interface{}{"value": "d"}, map[string]interface{}{"value": "e"}, map[string]interface{}{"value": "f"}},
+					[]interface{}{map[string]interface{}{"value": "g"}, map[string]interface{}{"value": "h"}, map[string]interface{}{"value": "i"}},
+				}},
+			"write this payload to --range \"B2:D4\"",
+		},
+		{
+			"ragged rows are their own bug, not a range mismatch",
+			map[string]interface{}{"sheet_name": "S1", "range": "A1:B2",
+				"cells": []interface{}{
+					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
+					[]interface{}{map[string]interface{}{"value": "c"}},
+				}},
+			"--cells[1] has 1 columns but --cells[0] has 2",
 		},
 		{
 			"matching matrix passes",
@@ -246,12 +267,15 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 			"",
 		},
 		{
-			"bare single-cell range enforces the 1x1 match (07-21: server rejects anchors too)",
-			map[string]interface{}{"sheet_name": "S1", "range": "A1",
+			// A stated extent that disagrees with the payload is still a
+			// mismatch — only a bare anchor infers (see
+			// TestCellsSetInput_AnchorRangeExpands).
+			"explicit 1x1 range still enforces the match",
+			map[string]interface{}{"sheet_name": "S1", "range": "A1:A1",
 				"cells": []interface{}{
 					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
 				}},
-			"has 2 columns but --range \"A1\" spans 1 columns",
+			"--cells is 1 rows × 2 columns but --range \"A1:A1\" spans 1 rows × 1 columns",
 		},
 		{
 			"single-cell range with a single cell passes",
