@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -421,14 +420,4 @@ func convertShape(shape command.ValueShape) (common.ValueShape, error) {
 	default:
 		return nil, fmt.Errorf("unsupported public shape %T", shape)
 	}
-}
-
-// SortedReservedRoots returns the host namespaces used by validation tests.
-func SortedReservedRoots() []string {
-	result := make([]string, 0, len(reservedRootNames))
-	for name := range reservedRootNames {
-		result = append(result, name)
-	}
-	sort.Strings(result)
-	return result
 }

@@ -73,7 +73,7 @@ func TestCompileSetsRejectsUnsupportedAndUnknownDomains(t *testing.T) {
 		want   string
 	}{
 		{name: "reserved new domain", domain: command.NewDomain("auth", command.Title("en", "Auth")), want: "reserved"},
-		{name: "unsupported new domain", domain: command.NewDomain("business"), want: "not supported in V1"},
+		{name: "unsupported new domain", domain: command.NewDomain("business", command.Description("en", "Business commands")), want: "not supported in V1"},
 		{name: "unknown extension", domain: command.ExtendDomain(command.DomainName("missing")), want: "does not exist"},
 	}
 	for _, test := range tests {

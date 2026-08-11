@@ -83,6 +83,18 @@ func TestDefineCopiesNestedJSONValues(t *testing.T) {
 	}
 }
 
+func TestValueShapeClosedSet(t *testing.T) {
+	StringShape{}.valueShape()
+	BooleanShape{}.valueShape()
+	IntegerShape{}.valueShape()
+	NumberShape{}.valueShape()
+	NullShape{}.valueShape()
+	ConstShape{}.valueShape()
+	ArrayShape{}.valueShape()
+	ObjectShape{}.valueShape()
+	OneOfShape{}.valueShape()
+}
+
 func TestRequestMethodsAndSameOriginValidation(t *testing.T) {
 	requests := []Request{
 		GET("/open-apis/im/v1/chats"), POST("/open-apis/im/v1/chats"),
@@ -107,6 +119,34 @@ func TestRequestMethodsAndSameOriginValidation(t *testing.T) {
 		if err := ValidateRequestView(InspectRequest(invalid)); err == nil {
 			t.Errorf("request %#v passed same-origin validation", InspectRequest(invalid))
 		}
+	}
+}
+
+func TestDryRunBuilderSupportsEveryRequestMethodAndModifier(t *testing.T) {
+	dryRun := NewDryRun().
+		GET("/open-apis/im/v1/chats").
+		Set("page_size", 20).
+		Params(map[string]any{"page_size": 50}).
+		POST("/open-apis/im/v1/chats").
+		Body(map[string]any{"name": "example"}).
+		PUT("/open-apis/im/v1/chats/chat_1").
+		PATCH("/open-apis/im/v1/chats/chat_1").
+		DELETE("/open-apis/im/v1/chats/chat_1")
+	view := InspectDryRun(dryRun)
+	if len(view.Requests) != 5 {
+		t.Fatalf("requests = %#v", view.Requests)
+	}
+	wantMethods := []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
+	for index, request := range view.Requests {
+		if request.Method != wantMethods[index] {
+			t.Errorf("request %d method = %q", index, request.Method)
+		}
+	}
+	if view.Requests[0].Query["page_size"] != 50 {
+		t.Fatalf("GET query = %#v", view.Requests[0].Query)
+	}
+	if view.Requests[1].Body == nil {
+		t.Fatal("POST body is nil")
 	}
 }
 
@@ -169,6 +209,9 @@ func TestDryRunPreventsRequestsAndScopeChecks(t *testing.T) {
 			return nil
 		},
 	})
+	if ctx.Identity() != IdentityUser {
+		t.Fatalf("identity = %q", ctx.Identity())
+	}
 	if _, err := CallJSON[contractData](context.Background(), ctx, GET("/open-apis/im/v1/chats/id")); err == nil {
 		t.Fatal("CallJSON during dry-run succeeded")
 	}
