@@ -317,6 +317,24 @@ func TestGetDomainMetadataMatchesAllKnownDomains(t *testing.T) {
 	}
 }
 
+func TestAuthLoginHelpMatchesInteractiveDomains(t *testing.T) {
+	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
+	login := NewCmdAuthLogin(factory, nil)
+	domainFlag := login.Flags().Lookup("domain")
+	if domainFlag == nil {
+		t.Fatal("auth login --domain flag is missing")
+	}
+	metadata := getDomainMetadata("zh")
+	names := make([]string, len(metadata))
+	for index, domain := range metadata {
+		names[index] = domain.Name
+	}
+	want := "available: " + strings.Join(names, ", ") + ", all"
+	if !strings.Contains(domainFlag.Usage, want) {
+		t.Fatalf("domain help = %q, want %q", domainFlag.Usage, want)
+	}
+}
+
 func TestGetDomainMetadata_Sorted(t *testing.T) {
 	domains := getDomainMetadata("zh")
 	for i := 1; i < len(domains); i++ {
