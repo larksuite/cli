@@ -573,7 +573,7 @@ func drivePushShouldSkipSmart(localFile drivePushLocalFile, remoteFile driveRemo
 }
 
 func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int64, err error) (drivePushItem, bool) {
-	decision := driveClassifyBatchFailure(err)
+	decision := driveClassifyPushFailure(err)
 	item := drivePushItem{
 		RelPath:    relPath,
 		FileToken:  fileToken,
@@ -588,6 +588,22 @@ func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int
 		Retryable:  driveBoolPtr(decision.Retryable),
 	}
 	return item, decision.Terminal
+}
+
+// driveClassifyPushFailure applies +push's batch-wide stop policy without
+// changing the item-level behavior shared by +pull and +sync. In particular,
+// streaming HTTP errors are represented as network errors; responses such as a
+// stale file's 404 can be item-specific and must not make those commands abort.
+func driveClassifyPushFailure(err error) driveBatchFailureDecision {
+	decision := driveClassifyBatchFailure(err)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return decision
+	}
+	if decision.Class == "conflict" || decision.Class == "quota_exceeded" || problem.Category == errs.CategoryNetwork {
+		decision.Terminal = true
+	}
+	return decision
 }
 
 func driveBoolPtr(v bool) *bool {
@@ -632,7 +648,6 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 		decision.Hint = "Stop immediate retries and retry later with exponential backoff and jitter."
 	case problem.Code == 1061045:
 		decision.Class = "conflict"
-		decision.Terminal = true
 		decision.Hint = "Stop this push and retry later with backoff; avoid concurrent folder creation or push operations against the same destination."
 	case problem.Code == 1062507:
 		decision.Class = "parent_sibling_limit"
@@ -643,7 +658,6 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 		decision.Hint = "Do not retry the same file unchanged; split it into smaller files or use another storage method."
 	case problem.Subtype == errs.SubtypeQuotaExceeded:
 		decision.Class = "quota_exceeded"
-		decision.Terminal = true
 		if decision.Hint == "" {
 			decision.Hint = "Free the relevant Drive quota or choose another destination before retrying."
 		}
@@ -655,7 +669,6 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 		decision.Class = "remote_not_found"
 	case problem.Category == errs.CategoryNetwork:
 		decision.Class = string(problem.Subtype)
-		decision.Terminal = true
 		if decision.Hint == "" {
 			decision.Hint = "Stop the current push; check connectivity and retry later with bounded exponential backoff."
 		}

@@ -1092,6 +1092,66 @@ func TestDrivePullAbortsAfterDownloadForbidden(t *testing.T) {
 	}
 }
 
+func TestDrivePullContinuesAfterDownloadNotFound(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_a", "name": "a.txt", "type": "file"},
+					map[string]interface{}{"token": "tok_b", "name": "b.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_a/download",
+		Status:  http.StatusNotFound,
+		RawBody: []byte("not found"),
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_b/download",
+		Status:  http.StatusOK,
+		RawBody: []byte("BBB"),
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	assertDrivePullPartialFailure(t, err)
+
+	summary, items := splitDrivePullStdout(t, stdout.Bytes())
+	if got := summary["aborted"]; got != false {
+		t.Fatalf("summary.aborted = %v, want false", got)
+	}
+	if got := summary["failed"]; got != float64(1) {
+		t.Fatalf("summary.failed = %v, want 1", got)
+	}
+	if got := summary["downloaded"]; got != float64(1) {
+		t.Fatalf("summary.downloaded = %v, want 1", got)
+	}
+	if len(items) != 2 || items[0]["rel_path"] != "a.txt" || items[1]["rel_path"] != "b.txt" || items[1]["action"] != "downloaded" {
+		t.Fatalf("item-local 404 must not block b.txt: %#v", items)
+	}
+	mustReadFile(t, filepath.Join("local", "b.txt"), "BBB")
+}
+
 // TestDrivePullDeleteLocalDoesNotEscapeViaSymlinkParentRef is the
 // regression for the "link/.." escape applied to --delete-local — the
 // most dangerous variant, since the bug would otherwise let the kernel
