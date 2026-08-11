@@ -44,13 +44,13 @@ func PaginationInterruptedError(cause error) *errs.NetworkError {
 
 // Failure is a stable snapshot suitable for embedding in partial result data.
 type Failure struct {
-	Type      string `json:"type"`
-	Subtype   string `json:"subtype,omitempty"`
-	Code      int    `json:"code,omitempty"`
-	Message   string `json:"message"`
-	Hint      string `json:"hint,omitempty"`
-	LogID     string `json:"log_id,omitempty"`
-	Retryable bool   `json:"retryable,omitempty"`
+	Type      string `json:"type" schema:"required" doc:"error category"`
+	Subtype   string `json:"subtype,omitempty" schema:"optional" doc:"error subtype"`
+	Code      int    `json:"code,omitempty" schema:"optional" doc:"remote error code"`
+	Message   string `json:"message" schema:"required" doc:"safe error message"`
+	Hint      string `json:"hint,omitempty" schema:"optional" doc:"recovery hint"`
+	LogID     string `json:"log_id,omitempty" schema:"optional" doc:"remote request log identifier"`
+	Retryable bool   `json:"retryable,omitempty" schema:"optional" doc:"whether retry may succeed"`
 }
 
 // SnapshotFailure copies safe typed error fields into result data.
