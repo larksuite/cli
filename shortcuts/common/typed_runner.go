@@ -48,7 +48,10 @@ func runTypedShortcut(cmdFactory *cmdutil.Factory, runtime *RuntimeContext, shor
 		if command.hooks.dryRun == nil {
 			return ValidationErrorf("--dry-run is not supported for %s %s", shortcut.Service, shortcut.Command).WithParam("--dry-run")
 		}
-		preview := command.hooks.dryRun(runtime.ctx, commandContext, bound.value)
+		preview, err := command.hooks.dryRun(runtime.ctx, commandContext, bound.value)
+		if err != nil {
+			return attributeAliasValidationError(runtime, err)
+		}
 		if preview != nil {
 			preview.Context(runtime.Config.AppID, runtime.UserOpenId())
 		}
@@ -192,6 +195,14 @@ func (c typedCommandContext) StartSpinner(label string) func() {
 	return c.runtime.StartSpinner(label)
 }
 func (c typedCommandContext) PresentError(err error) error { return c.runtime.PresentError(err) }
+func (c typedCommandContext) IsDryRun() bool               { return c.runtime != nil && c.runtime.Bool("dry-run") }
+func (c typedCommandContext) PaginationOptions() (PaginationOptions, error) {
+	values, err := pageAllValues(c.runtime)
+	if err != nil {
+		return PaginationOptions{}, err
+	}
+	return PaginationOptions{All: values.enabled, MaxPages: values.maxPages, Delay: values.delay}, nil
+}
 func (c typedCommandContext) typedCommandPath() string {
 	if c.runtime == nil || c.runtime.Cmd == nil {
 		return ""

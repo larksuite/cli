@@ -6,6 +6,7 @@ package common
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/client"
@@ -185,9 +186,18 @@ type CommandContext interface {
 	Stderr() io.Writer
 	StartSpinner(label string) func()
 	PresentError(err error) error
+	IsDryRun() bool
+	PaginationOptions() (PaginationOptions, error)
 
 	// RequireConditionalScopes checks scopes that the Definition declares as
 	// path-dependent for the selected identity. Domain code calls it only after
 	// it has determined that the path requiring those scopes will execute.
 	RequireConditionalScopes(scopes ...string) error
+}
+
+// PaginationOptions reports the standard pagination flags for one invocation.
+type PaginationOptions struct {
+	All      bool
+	MaxPages int
+	Delay    time.Duration
 }

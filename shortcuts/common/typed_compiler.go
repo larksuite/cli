@@ -37,34 +37,57 @@ func Define[Args any, Data any](definition Definition[Args, Data]) Shortcut {
 }
 
 func compileDefinition[Args any, Data any](definition Definition[Args, Data]) (*compiledCommand, error) {
-	metadata := normalizeCommandMetadata(definition.Metadata)
+	if definition.Hooks.Execute == nil {
+		return nil, fmt.Errorf("Hooks.Execute is required")
+	}
+	return compileDefinitionParts(
+		definition.Metadata,
+		definition.Input,
+		definition.Output,
+		reflect.TypeFor[Args](),
+		reflect.TypeFor[Data](),
+		adaptHooks(definition.Hooks),
+		rendererMarkers(definition.Hooks.Renderers),
+		false,
+	)
+}
+
+func compileDefinitionParts(
+	metadata CommandMetadata,
+	input InputDefinition,
+	output OutputDefinition,
+	argsType reflect.Type,
+	dataType reflect.Type,
+	hooks compiledHooks,
+	renderers map[string]RendererMarker,
+	pageOutput bool,
+) (*compiledCommand, error) {
+	metadata = normalizeCommandMetadata(metadata)
 	if err := validateCommandMetadata(metadata); err != nil {
 		return nil, err
 	}
-	argsType := reflect.TypeFor[Args]()
-	dataType := reflect.TypeFor[Data]()
-	fields, fieldByName, err := compileInput(argsType, definition.Input)
+	fields, fieldByName, err := compileInput(argsType, input)
 	if err != nil {
 		return nil, err
 	}
-	relations, err := compileRelations(definition.Input.Relations, fieldByName)
+	relations, err := compileRelations(input.Relations, fieldByName)
 	if err != nil {
 		return nil, err
 	}
 	if err := compileAuthorization(metadata.Authorization, fields, fieldByName); err != nil {
 		return nil, err
 	}
-	dataShape, err := compileData(dataType, definition.Output.Data)
+	dataShape, err := compileData(dataType, output.Data)
 	if err != nil {
 		return nil, err
 	}
-	if definition.Hooks.Execute == nil {
+	if hooks.execute == nil {
 		return nil, fmt.Errorf("Hooks.Execute is required")
 	}
-	if err := validateOutput(definition.Output, dataShape); err != nil {
+	if err := validateOutput(output, dataShape); err != nil {
 		return nil, err
 	}
-	if err := validateOutputHooks(definition.Output, rendererMarkers(definition.Hooks.Renderers)); err != nil {
+	if err := validateOutputHooks(output, renderers); err != nil {
 		return nil, err
 	}
 	command := &compiledCommand{
@@ -75,8 +98,9 @@ func compileDefinition[Args any, Data any](definition Definition[Args, Data]) (*
 		fieldByName: fieldByName,
 		relations:   relations,
 		dataShape:   dataShape,
-		output:      definition.Output,
-		hooks:       adaptHooks(definition.Hooks),
+		output:      output,
+		hooks:       hooks,
+		pageOutput:  pageOutput,
 	}
 	command.contract = buildTypedSchemaContract(command)
 	return command, nil
@@ -208,8 +232,8 @@ func adaptHooks[Args any, Data any](hooks Hooks[Args, Data]) compiledHooks {
 		}
 	}
 	if hooks.DryRun != nil {
-		adapted.dryRun = func(ctx context.Context, cc CommandContext, args any) *DryRunAPI {
-			return hooks.DryRun(ctx, cc, args.(*Args))
+		adapted.dryRun = func(ctx context.Context, cc CommandContext, args any) (*DryRunAPI, error) {
+			return hooks.DryRun(ctx, cc, args.(*Args)), nil
 		}
 	}
 	adapted.execute = func(ctx context.Context, cc CommandContext, args any) (compiledResult, error) {

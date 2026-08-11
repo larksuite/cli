@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/larksuite/cli/shortcuts/okr"
 	"github.com/spf13/cobra"
@@ -66,6 +67,8 @@ func IsShortcutServiceAvailable(service string, brand core.LarkBrand) bool {
 
 // allShortcuts aggregates shortcuts from all domain packages.
 var allShortcuts []common.Shortcut
+var shortcutRegistryMu sync.RWMutex
+var externalRegistered bool
 
 func init() {
 	allShortcuts = append(allShortcuts, apps.Shortcuts()...)
@@ -99,7 +102,46 @@ func init() {
 //
 //go:noinline
 func AllShortcuts() []common.Shortcut {
-	return append([]common.Shortcut(nil), allShortcuts...)
+	shortcutRegistryMu.RLock()
+	defer shortcutRegistryMu.RUnlock()
+	return common.CloneShortcuts(allShortcuts)
+}
+
+// RegisterExternal atomically adds one build's compiled business commands.
+// The process supports one explicit external contribution because V1 mounts one
+// command tree per process. A second registration fails instead of replacing it.
+func RegisterExternal(commands []common.Shortcut) error {
+	if len(commands) == 0 {
+		return nil
+	}
+	shortcutRegistryMu.Lock()
+	defer shortcutRegistryMu.Unlock()
+	cloned, err := prepareExternalRegistration(allShortcuts, commands, externalRegistered)
+	if err != nil {
+		return err
+	}
+	allShortcuts = append(allShortcuts, cloned...)
+	externalRegistered = true
+	return nil
+}
+
+func prepareExternalRegistration(existing, commands []common.Shortcut, alreadyRegistered bool) ([]common.Shortcut, error) {
+	if alreadyRegistered {
+		return nil, fmt.Errorf("external command set is already registered")
+	}
+	cloned := common.CloneShortcuts(commands)
+	paths := make(map[string]struct{}, len(existing)+len(cloned))
+	for _, shortcut := range existing {
+		paths[shortcut.Service+" "+shortcut.Command] = struct{}{}
+	}
+	for _, shortcut := range cloned {
+		path := shortcut.Service + " " + shortcut.Command
+		if _, duplicate := paths[path]; duplicate {
+			return nil, fmt.Errorf("external command path %q is already registered", path)
+		}
+		paths[path] = struct{}{}
+	}
+	return cloned, nil
 }
 
 // RegisterShortcuts registers all +shortcut commands on the program.
@@ -108,6 +150,9 @@ func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
 }
 
 func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) {
+	shortcutRegistryMu.RLock()
+	registered := common.CloneShortcuts(allShortcuts)
+	shortcutRegistryMu.RUnlock()
 	// Factory.Config may be nil in tests that pass a zero-value factory.
 	var brand core.LarkBrand
 	if f != nil && f.Config != nil {
@@ -118,7 +163,7 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 
 	// Group by service
 	byService := make(map[string][]common.Shortcut)
-	for _, s := range allShortcuts {
+	for _, s := range registered {
 		byService[s.Service] = append(byService[s.Service], s)
 	}
 

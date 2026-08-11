@@ -21,6 +21,8 @@ var (
 
 var providedPkgPath = reflect.TypeFor[Provided[any]]().PkgPath()
 
+const extensionCommandPkgPath = "github.com/larksuite/cli/extension/command"
+
 func compileInput(argsType reflect.Type, definition InputDefinition) ([]compiledInputField, map[string]int, error) {
 	if argsType.Kind() != reflect.Struct {
 		return nil, nil, fmt.Errorf("Args must be a non-pointer struct, got %s", argsType)
@@ -180,7 +182,7 @@ func hasAnyTag(field reflect.StructField, names ...string) bool {
 }
 
 func unwrapProvided(t reflect.Type) (reflect.Type, []int, bool, error) {
-	if t.Kind() != reflect.Struct || t.PkgPath() != providedPkgPath || !strings.HasPrefix(t.Name(), "Provided[") {
+	if t.Kind() != reflect.Struct || (t.PkgPath() != providedPkgPath && t.PkgPath() != extensionCommandPkgPath) || !strings.HasPrefix(t.Name(), "Provided[") {
 		return t, nil, false, nil
 	}
 	value, ok := t.FieldByName("Value")

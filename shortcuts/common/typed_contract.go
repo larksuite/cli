@@ -20,6 +20,7 @@ type compiledCommand struct {
 	output      OutputDefinition
 	contract    typedSchemaContract
 	hooks       compiledHooks
+	pageOutput  bool
 }
 
 type compiledInputField struct {
@@ -55,7 +56,7 @@ type compiledHooks struct {
 	newArgs   func() any
 	normalize func(context.Context, CommandContext, any) error
 	validate  func(context.Context, CommandContext, any) error
-	dryRun    func(context.Context, CommandContext, any) *DryRunAPI
+	dryRun    func(context.Context, CommandContext, any) (*DryRunAPI, error)
 	execute   func(context.Context, CommandContext, any) (compiledResult, error)
 	renderers map[string]func(io.Writer, any) error
 }
