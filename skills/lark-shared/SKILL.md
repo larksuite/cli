@@ -15,7 +15,7 @@ metadata:
 
 1. **调用前先确认用法**：执行前读对应 reference 或跑 `--help`，别猜 flag 盲调。
 
-2. **身份决定你代表谁操作**：`--as user` 代表用户本人（能看到、也能操作其日历、云空间/云盘/云存储等个人资源），`--as bot` 代表应用自己，应用级操作，只能访问bot自己的资源，bot 查用户资源会返回空成功而非报错，动手前先搞清楚身份`identity`。身份模型和权限管理 → [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md)。
+2. **身份决定你代表谁操作**：`--as user` 代表用户本人（能看到、也能操作其日历、云空间/云盘/云存储等个人资源），`--as bot` 代表应用自己，应用级操作，只能访问bot自己的资源，bot 查用户资源会返回空成功而非报错。身份是**整个工作流的状态**，不是单条命令的局部参数。CLI 不会在进程之间继承"上一步用的身份"——省略 `--as` 不代表"保持当前身份"，动手前先搞清楚身份`identity`。身份模型和权限管理 → [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md)。
 
 3. **授权 / 配置类 URL 必须配二维码**：当命令输出 `verification_url`、`verification_uri_complete`、`console_url` 等 URL 字段时，必须用 `lark-cli auth qrcode` 生成并在回复中展示，URL 在前二维码在后；优先生成 PNG（`--output`），仅当用户明确要求时才使用 ASCII（`--ascii`）。URL 原样转发——不编解码、不加标点、不重拼 query，二维码和链接请一起展示给用户。
 
