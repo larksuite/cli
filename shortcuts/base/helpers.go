@@ -175,6 +175,8 @@ func resolveFieldTypeSpec(typeName string) (fieldTypeSpec, error) {
 		return fieldTypeSpec{Type: "datetime", Extra: map[string]interface{}{"style": map[string]interface{}{"format": "yyyy/MM/dd"}}}, nil
 	case "checkbox":
 		return fieldTypeSpec{Type: "checkbox"}, nil
+	case "button", "buttonfield", "button_field", "button-field":
+		return fieldTypeSpec{Type: "button"}, nil
 	case "user", "groupchat", "group_chat", "group-chat":
 		return fieldTypeSpec{Type: "user", Extra: map[string]interface{}{"multiple": true}}, nil
 	case "attachment":
