@@ -186,23 +186,51 @@ func resolveShapePointer(shape ValueShape, pointer string) (ValueShape, error) {
 		if !valid {
 			return nil, fmt.Errorf("segment %q has invalid RFC 6901 escaping", encoded)
 		}
-		object, ok := shapeAsObject(current)
-		if !ok {
-			return nil, fmt.Errorf("segment %q traverses non-object shape", name)
-		}
-		found := false
-		for _, field := range object.Fields {
-			if field.Name == name {
-				current = field.Shape
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil, fmt.Errorf("field %q does not exist", name)
+		var err error
+		current, err = resolveShapeField(current, name)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return current, nil
+}
+
+func resolveShapeField(shape ValueShape, name string) (ValueShape, error) {
+	switch value := shape.(type) {
+	case ObjectShape:
+		for _, field := range value.Fields {
+			if field.Name == name {
+				return field.Shape, nil
+			}
+		}
+		return nil, fmt.Errorf("field %q does not exist", name)
+	case OneOfShape:
+		var resolved []ValueShape
+		for _, variant := range value.Variants {
+			if _, null := variant.(NullShape); null {
+				continue
+			}
+			field, err := resolveShapeField(variant, name)
+			if err != nil {
+				return nil, err
+			}
+			resolved = append(resolved, field)
+		}
+		return combineResolvedShapes(resolved)
+	default:
+		return nil, fmt.Errorf("segment %q traverses non-object shape", name)
+	}
+}
+
+func combineResolvedShapes(shapes []ValueShape) (ValueShape, error) {
+	switch len(shapes) {
+	case 0:
+		return nil, fmt.Errorf("shape has no applicable variant")
+	case 1:
+		return shapes[0], nil
+	default:
+		return OneOfShape{Variants: shapes}, nil
+	}
 }
 
 func shapeAsObject(shape ValueShape) (ObjectShape, bool) {
@@ -210,11 +238,24 @@ func shapeAsObject(shape ValueShape) (ObjectShape, bool) {
 		return object, true
 	}
 	if one, ok := shape.(OneOfShape); ok {
+		var combined ObjectShape
+		found := false
 		for _, variant := range one.Variants {
-			if object, ok := variant.(ObjectShape); ok {
-				return object, true
+			if _, null := variant.(NullShape); null {
+				continue
+			}
+			object, ok := shapeAsObject(variant)
+			if !ok {
+				return ObjectShape{}, false
+			}
+			if !found {
+				combined = object
+				found = true
+			} else if object.AdditionalProperties {
+				combined.AdditionalProperties = true
 			}
 		}
+		return combined, found
 	}
 	return ObjectShape{}, false
 }
@@ -223,11 +264,28 @@ func unwrapArray(shape ValueShape) (ArrayShape, bool) {
 		return array, true
 	}
 	if one, ok := shape.(OneOfShape); ok {
+		var combined ArrayShape
+		var items []ValueShape
+		found := false
 		for _, variant := range one.Variants {
-			if array, ok := variant.(ArrayShape); ok {
-				return array, true
+			if _, null := variant.(NullShape); null {
+				continue
 			}
+			array, ok := unwrapArray(variant)
+			if !ok {
+				return ArrayShape{}, false
+			}
+			if !found {
+				combined = array
+				found = true
+			}
+			items = append(items, array.Items)
 		}
+		if !found {
+			return ArrayShape{}, false
+		}
+		combined.Items, _ = combineResolvedShapes(items)
+		return combined, true
 	}
 	return ArrayShape{}, false
 }
@@ -246,11 +304,17 @@ func shapeHasType(shape ValueShape, want string) bool {
 	case ObjectShape:
 		return want == "object"
 	case OneOfShape:
+		found := false
 		for _, variant := range value.Variants {
-			if shapeHasType(variant, want) {
-				return true
+			if _, null := variant.(NullShape); null {
+				continue
+			}
+			found = true
+			if !shapeHasType(variant, want) {
+				return false
 			}
 		}
+		return found
 	}
 	return false
 }

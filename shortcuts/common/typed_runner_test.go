@@ -331,10 +331,10 @@ func TestTypedRunnerResolvesStdinAndRejectsUnknownJSON(t *testing.T) {
 		t.Fatalf("Payload = %#v", captured.Payload)
 	}
 
-	_, _, err = runTypedFixture(t, typedRunnerDefinition(nil, false), "", "--token", "x", "--payload", `{\"name\":\"ok\",\"extra\":1}`)
+	_, _, err = runTypedFixture(t, typedRunnerDefinition(nil, false), "", "--token", "x", "--payload", `{"name":"ok","extra":1}`)
 	problem, ok := errs.ProblemOf(err)
 	var validation *errs.ValidationError
-	if !ok || problem.Category != errs.CategoryValidation || !errors.As(err, &validation) || validation.Param != "--payload" {
+	if !ok || problem.Category != errs.CategoryValidation || !errors.As(err, &validation) || validation.Param != "--payload" || !strings.Contains(problem.Message, "unknown field") {
 		t.Fatalf("error = %#v, problem = %#v", err, problem)
 	}
 }
@@ -360,6 +360,40 @@ func TestTypedRunnerAliasConflictAndRequiredStructuralError(t *testing.T) {
 	problem, ok = errs.ProblemOf(err)
 	if !ok || problem.Message != "--token is required" {
 		t.Fatalf("missing required error = %v, problem = %#v", err, problem)
+	}
+
+	definition := typedRunnerDefinition(nil, false)
+	definition.Input.Fields[0].CLI.Aliases = append(definition.Input.Fields[0].CLI.Aliases,
+		FlagAlias{Name: "older-token", Mode: AliasIndependent, Conflict: AliasErrorIfBoth},
+	)
+	_, _, err = runTypedFixture(t, definition, "", "--legacy-token", "a", "--older-token", "b")
+	problem, ok = errs.ProblemOf(err)
+	if !ok || !errors.As(err, &validation) || validation.Param != "--older-token" {
+		t.Fatalf("multiple alias error = %v, problem = %#v", err, problem)
+	}
+}
+
+func TestTypedRunnerDryRunUsesProductionStrictIdentity(t *testing.T) {
+	definition := typedRunnerDefinition(nil, false)
+	definition.Metadata.Authorization.Identities[IdentityBot] = IdentityAuthorization{}
+	var identity Identity
+	definition.Hooks.DryRun = func(_ context.Context, command CommandContext, _ *typedRunnerArgs) *DryRunAPI {
+		identity = command.Identity()
+		return NewDryRunAPI()
+	}
+	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "typed-app", AppSecret: "typed-secret", Brand: core.BrandFeishu, SupportedIdentities: 1,
+	})
+	root := &cobra.Command{Use: "lark-cli", SilenceUsage: true, SilenceErrors: true}
+	service := &cobra.Command{Use: "fixture"}
+	root.AddCommand(service)
+	Define(definition).Mount(service, factory)
+	root.SetArgs([]string{"fixture", "+typed", "--token", "value", "--dry-run"})
+	if _, err := root.ExecuteC(); err != nil {
+		t.Fatal(err)
+	}
+	if identity != IdentityUser {
+		t.Fatalf("dry-run identity = %q, want %q", identity, IdentityUser)
 	}
 }
 

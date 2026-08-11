@@ -23,6 +23,8 @@ func bindTypedMap(command *compiledCommand, values map[string]any) (*boundArgs, 
 		known[field.name] = struct{}{}
 		canonical, canonicalSet := values[field.name]
 		value, set := canonical, canonicalSet
+		sourceName := field.name
+		sourceSet := canonicalSet
 		for _, alias := range field.cli.Aliases {
 			known[alias.Name] = struct{}{}
 			aliasValue, aliasSet := values[alias.Name]
@@ -35,22 +37,26 @@ func bindTypedMap(command *compiledCommand, values map[string]any) (*boundArgs, 
 			case AliasIndependent:
 				switch alias.Conflict {
 				case AliasCanonicalWins:
-					if !canonicalSet {
+					if !sourceSet {
 						value, set = aliasValue, true
+						sourceName, sourceSet = alias.Name, true
 					}
 				case AliasErrorIfBoth:
-					if canonicalSet {
-						return nil, typedFieldValidation(field, "cannot be used together with --%s", alias.Name)
+					if sourceSet {
+						return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+							"--%s cannot be used together with --%s", sourceName, alias.Name).WithParam("--" + alias.Name)
 					}
 					value, set = aliasValue, true
+					sourceName, sourceSet = alias.Name, true
 				case AliasTrimmedEqualOrError:
-					if canonicalSet {
-						if strings.TrimSpace(fmt.Sprint(canonical)) != strings.TrimSpace(fmt.Sprint(aliasValue)) {
-							return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s and --%s are both set with different values", field.name, alias.Name).WithParam("--" + alias.Name)
+					if sourceSet {
+						if strings.TrimSpace(fmt.Sprint(value)) != strings.TrimSpace(fmt.Sprint(aliasValue)) {
+							return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s and --%s are both set with different values", sourceName, alias.Name).WithParam("--" + alias.Name)
 						}
-						value = strings.TrimSpace(fmt.Sprint(canonical))
+						value = strings.TrimSpace(fmt.Sprint(value))
 					} else {
 						value, set = aliasValue, true
+						sourceName, sourceSet = alias.Name, true
 					}
 				}
 			}
@@ -78,7 +84,7 @@ func bindTypedMap(command *compiledCommand, values map[string]any) (*boundArgs, 
 	}
 	for name := range values {
 		if _, ok := known[name]; !ok {
-			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown parameter %q", name).WithParam(name)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown parameter %q", name).WithParam("--" + name)
 		}
 	}
 	if err := validateCompiledRelations(command, args, provided, StageSourcePreRun); err != nil {

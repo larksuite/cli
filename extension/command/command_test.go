@@ -5,13 +5,17 @@ package command
 
 import (
 	"context"
+	"errors"
 	"go/parser"
 	"go/token"
+	"io"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 type contractArgs struct {
@@ -50,6 +54,46 @@ func TestDefineCopiesMutableMetadata(t *testing.T) {
 	if !reflect.DeepEqual(host.Metadata.Tips, []string{"Example"}) {
 		t.Fatalf("tips = %#v", host.Metadata.Tips)
 	}
+}
+
+func TestHostHooksRejectMismatchedErasedValues(t *testing.T) {
+	declaration := Define(Definition[contractArgs, contractData]{
+		Metadata: CommandMetadata{
+			Service: "im", Command: "+host-types", Description: "Host type checks", Risk: RiskRead,
+			Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}},
+		},
+		Hooks: Hooks[contractArgs, contractData]{
+			Normalize: func(context.Context, CommandContext, *contractArgs) error { return nil },
+			Validate:  func(context.Context, CommandContext, *contractArgs) error { return nil },
+			DryRun:    func(context.Context, CommandContext, *contractArgs) *DryRun { return NewDryRun() },
+			DryRunE:   func(context.Context, CommandContext, *contractArgs) (*DryRun, error) { return NewDryRun(), nil },
+			Execute: func(context.Context, CommandContext, *contractArgs) (Result[contractData], error) {
+				return Success(contractData{}), nil
+			},
+			Renderers: map[string]Renderer[contractData]{"pretty": func(io.Writer, contractData) error { return nil }},
+		},
+	})
+	host := InspectCommand(declaration)
+	commandContext := NewCommandContext(ContextOptions{})
+	wrong := &struct{}{}
+	assertInternal := func(name string, err error) {
+		t.Helper()
+		var internal *errs.InternalError
+		if !errors.As(err, &internal) || internal.Subtype != errs.SubtypeUnknown {
+			t.Fatalf("%s error = %#v", name, err)
+		}
+	}
+
+	assertInternal("Normalize", host.Hooks.Normalize(context.Background(), commandContext, wrong))
+	assertInternal("Validate", host.Hooks.Validate(context.Background(), commandContext, wrong))
+	if dryRun := host.Hooks.DryRun(context.Background(), commandContext, wrong); dryRun != nil {
+		t.Fatalf("DryRun = %#v", dryRun)
+	}
+	_, err := host.Hooks.DryRunE(context.Background(), commandContext, wrong)
+	assertInternal("DryRunE", err)
+	_, err = host.Hooks.Execute(context.Background(), commandContext, wrong)
+	assertInternal("Execute", err)
+	assertInternal("renderer", host.Hooks.Renderers["pretty"](io.Discard, wrong))
 }
 
 func TestDefineCopiesNestedJSONValues(t *testing.T) {

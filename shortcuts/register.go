@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sync"
 
 	"github.com/larksuite/cli/shortcuts/okr"
 	"github.com/spf13/cobra"
@@ -67,8 +66,6 @@ func IsShortcutServiceAvailable(service string, brand core.LarkBrand) bool {
 
 // allShortcuts aggregates shortcuts from all domain packages.
 var allShortcuts []common.Shortcut
-var shortcutRegistryMu sync.RWMutex
-var externalRegistered bool
 
 func init() {
 	allShortcuts = append(allShortcuts, apps.Shortcuts()...)
@@ -102,46 +99,25 @@ func init() {
 //
 //go:noinline
 func AllShortcuts() []common.Shortcut {
-	shortcutRegistryMu.RLock()
-	defer shortcutRegistryMu.RUnlock()
 	return common.CloneShortcuts(allShortcuts)
 }
 
-// RegisterExternal atomically adds one build's compiled business commands.
-// The process supports one explicit external contribution because V1 mounts one
-// command tree per process. A second registration fails instead of replacing it.
-func RegisterExternal(commands []common.Shortcut) error {
-	if len(commands) == 0 {
-		return nil
-	}
-	shortcutRegistryMu.Lock()
-	defer shortcutRegistryMu.Unlock()
-	cloned, err := prepareExternalRegistration(allShortcuts, commands, externalRegistered)
-	if err != nil {
-		return err
-	}
-	allShortcuts = append(allShortcuts, cloned...)
-	externalRegistered = true
-	return nil
-}
-
-func prepareExternalRegistration(existing, commands []common.Shortcut, alreadyRegistered bool) ([]common.Shortcut, error) {
-	if alreadyRegistered {
-		return nil, fmt.Errorf("external command set is already registered") //nolint:forbidigo // Intermediate registration diagnostic wrapped by the command-set startup guard.
-	}
-	cloned := common.CloneShortcuts(commands)
-	paths := make(map[string]struct{}, len(existing)+len(cloned))
-	for _, shortcut := range existing {
+// AllShortcutsWithExternal returns one isolated shortcut snapshot after validating external path collisions.
+func AllShortcutsWithExternal(commands []common.Shortcut) ([]common.Shortcut, error) {
+	registered := AllShortcuts()
+	external := common.CloneShortcuts(commands)
+	paths := make(map[string]struct{}, len(registered)+len(external))
+	for _, shortcut := range registered {
 		paths[shortcut.Service+" "+shortcut.Command] = struct{}{}
 	}
-	for _, shortcut := range cloned {
+	for _, shortcut := range external {
 		path := shortcut.Service + " " + shortcut.Command
 		if _, duplicate := paths[path]; duplicate {
-			return nil, fmt.Errorf("external command path %q is already registered", path) //nolint:forbidigo // Intermediate registration diagnostic wrapped by the command-set startup guard.
+			return nil, fmt.Errorf("external command path %q is already registered", path) //nolint:forbidigo // Intermediate build diagnostic wrapped by the command-set startup guard.
 		}
 		paths[path] = struct{}{}
 	}
-	return cloned, nil
+	return append(registered, external...), nil
 }
 
 // RegisterShortcuts registers all +shortcut commands on the program.
@@ -150,9 +126,12 @@ func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
 }
 
 func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) {
-	shortcutRegistryMu.RLock()
-	registered := common.CloneShortcuts(allShortcuts)
-	shortcutRegistryMu.RUnlock()
+	RegisterShortcutSnapshotWithContext(ctx, program, f, AllShortcuts())
+}
+
+// RegisterShortcutSnapshotWithContext mounts one build-local shortcut snapshot.
+func RegisterShortcutSnapshotWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory, registered []common.Shortcut) {
+	registered = common.CloneShortcuts(registered)
 	// Factory.Config may be nil in tests that pass a zero-value factory.
 	var brand core.LarkBrand
 	if f != nil && f.Config != nil {

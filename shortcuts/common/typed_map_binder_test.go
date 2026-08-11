@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -23,10 +24,14 @@ type aliasBinderData struct {
 }
 
 func aliasBinderCommand(t *testing.T, alias FlagAlias) *compiledCommand {
+	return aliasBinderCommandWithAliases(t, []FlagAlias{alias})
+}
+
+func aliasBinderCommandWithAliases(t *testing.T, aliases []FlagAlias) *compiledCommand {
 	t.Helper()
 	definition := Definition[aliasBinderArgs, aliasBinderData]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+alias", Description: "alias fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Input:    InputDefinition{Fields: []InputField{{Name: "value", CLI: CLIInput{Aliases: []FlagAlias{alias}}}}},
+		Input:    InputDefinition{Fields: []InputField{{Name: "value", CLI: CLIInput{Aliases: aliases}}}},
 		Hooks: Hooks[aliasBinderArgs, aliasBinderData]{Execute: func(context.Context, CommandContext, *aliasBinderArgs) (Result[aliasBinderData], error) {
 			return Success(aliasBinderData{OK: true}), nil
 		}},
@@ -107,6 +112,18 @@ func TestBindTypedMapAliasPolicies(t *testing.T) {
 			t.Fatalf("bound = %#v, err = %v", bound, err)
 		}
 	})
+}
+
+func TestBindTypedMapRejectsMultipleIndependentAliases(t *testing.T) {
+	command := aliasBinderCommandWithAliases(t, []FlagAlias{
+		{Name: "old", Mode: AliasIndependent, Conflict: AliasErrorIfBoth},
+		{Name: "older", Mode: AliasIndependent, Conflict: AliasErrorIfBoth},
+	})
+	_, err := bindTypedMap(command, map[string]any{"old": "first", "older": "second"})
+	var validation *errs.ValidationError
+	if !errors.As(err, &validation) || validation.Param != "--older" {
+		t.Fatalf("error = %#v", err)
+	}
 }
 
 func TestBindTypedMapCreatesIndependentArgsConcurrently(t *testing.T) {
@@ -291,12 +308,31 @@ func TestBindTypedMapRejectsUnknownAndNestedInvalidValues(t *testing.T) {
 	}
 	_, err = bindTypedMap(command, map[string]any{"token": "tok", "unknown": true})
 	var validation *errs.ValidationError
-	if !errors.As(err, &validation) || validation.Param != "unknown" {
+	if !errors.As(err, &validation) || validation.Param != "--unknown" {
 		t.Fatalf("unknown error = %#v", err)
 	}
 
 	_, err = bindTypedMap(command, map[string]any{"token": "tok", "payload": map[string]any{"mode": "unsupported"}})
 	if !errors.As(err, &validation) || validation.Param != "--payload" {
 		t.Fatalf("nested error = %#v", err)
+	}
+}
+
+func TestConvertReflectValueRejectsNegativeUnsignedInput(t *testing.T) {
+	_, err := convertReflectValue(int64(-1), reflect.TypeFor[uint64]())
+	if err == nil || !strings.Contains(err.Error(), "cannot be represented") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateCompiledValueHandlesNilArrayPointer(t *testing.T) {
+	var values *[]string
+	field := compiledInputField{
+		name:  "values",
+		shape: ArrayShape{Items: StringShape{}},
+	}
+	var validation *errs.ValidationError
+	if err := validateCompiledValue(values, field); !errors.As(err, &validation) {
+		t.Fatalf("error = %#v", err)
 	}
 }

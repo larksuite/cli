@@ -76,27 +76,47 @@ func newCommand[Args any, Data any](definition Definition[Args, Data]) Command {
 	}
 	if definition.Hooks.Normalize != nil {
 		host.hooks.Normalize = func(ctx context.Context, command CommandContext, args any) error {
-			return definition.Hooks.Normalize(ctx, command, args.(*Args))
+			typed, ok := args.(*Args)
+			if !ok {
+				return InternalErrorf("Normalize received %T, expected %T", args, (*Args)(nil))
+			}
+			return definition.Hooks.Normalize(ctx, command, typed)
 		}
 	}
 	if definition.Hooks.Validate != nil {
 		host.hooks.Validate = func(ctx context.Context, command CommandContext, args any) error {
-			return definition.Hooks.Validate(ctx, command, args.(*Args))
+			typed, ok := args.(*Args)
+			if !ok {
+				return InternalErrorf("Validate received %T, expected %T", args, (*Args)(nil))
+			}
+			return definition.Hooks.Validate(ctx, command, typed)
 		}
 	}
 	if definition.Hooks.DryRun != nil {
 		host.hooks.DryRun = func(ctx context.Context, command CommandContext, args any) *DryRun {
-			return definition.Hooks.DryRun(ctx, command, args.(*Args))
+			typed, ok := args.(*Args)
+			if !ok {
+				return nil
+			}
+			return definition.Hooks.DryRun(ctx, command, typed)
 		}
 	}
 	if definition.Hooks.DryRunE != nil {
 		host.hooks.DryRunE = func(ctx context.Context, command CommandContext, args any) (*DryRun, error) {
-			return definition.Hooks.DryRunE(ctx, command, args.(*Args))
+			typed, ok := args.(*Args)
+			if !ok {
+				return nil, InternalErrorf("DryRunE received %T, expected %T", args, (*Args)(nil))
+			}
+			return definition.Hooks.DryRunE(ctx, command, typed)
 		}
 	}
 	if definition.Hooks.Execute != nil {
 		host.hooks.Execute = func(ctx context.Context, command CommandContext, args any) (HostResult, error) {
-			result, err := definition.Hooks.Execute(ctx, command, args.(*Args))
+			typed, ok := args.(*Args)
+			if !ok {
+				return HostResult{}, InternalErrorf("Execute received %T, expected %T", args, (*Args)(nil))
+			}
+			result, err := definition.Hooks.Execute(ctx, command, typed)
 			return hostResult(result), err
 		}
 	}
@@ -105,7 +125,12 @@ func newCommand[Args any, Data any](definition Definition[Args, Data]) Command {
 		for name, renderer := range definition.Hooks.Renderers {
 			typedRenderer := renderer
 			host.hooks.Renderers[name] = func(writer io.Writer, data any) error {
-				return typedRenderer(writer, data.(Data))
+				typed, ok := data.(Data)
+				if !ok {
+					var expected Data
+					return InternalErrorf("renderer received %T, expected %T", data, expected)
+				}
+				return typedRenderer(writer, typed)
 			}
 		}
 	}

@@ -75,6 +75,8 @@ func readCompiledField(runtime *RuntimeContext, field compiledInputField) (any, 
 		return nil, false, err
 	}
 	value, set := canonicalRaw, canonicalSet
+	sourceName := field.name
+	sourceSet := canonicalSet
 	for _, alias := range field.cli.Aliases {
 		if alias.Mode != AliasIndependent {
 			continue
@@ -92,30 +94,34 @@ func readCompiledField(runtime *RuntimeContext, field compiledInputField) (any, 
 		}
 		switch alias.Conflict {
 		case AliasCanonicalWins:
-			if !canonicalSet {
+			if !sourceSet {
 				value = aliasRaw
 				set = true
+				sourceName, sourceSet = alias.Name, true
 			}
 		case AliasErrorIfBoth:
-			if canonicalSet {
-				return nil, false, typedFieldValidation(field, "cannot be used together with --%s", alias.Name)
+			if sourceSet {
+				return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"--%s cannot be used together with --%s", sourceName, alias.Name).WithParam("--" + alias.Name)
 			}
 			value, set = aliasRaw, true
+			sourceName, sourceSet = alias.Name, true
 		case AliasTrimmedEqualOrError:
-			if canonicalSet {
-				if strings.TrimSpace(fmt.Sprint(canonicalRaw)) != strings.TrimSpace(fmt.Sprint(aliasRaw)) {
+			if sourceSet {
+				if strings.TrimSpace(fmt.Sprint(value)) != strings.TrimSpace(fmt.Sprint(aliasRaw)) {
 					if alias.Deprecated {
 						return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument,
 							"--%s and --%s are both set with different values; pass --%s only (--%s is deprecated)",
-							field.name, alias.Name, field.name, alias.Name).WithParam("--" + alias.Name)
+							sourceName, alias.Name, sourceName, alias.Name).WithParam("--" + alias.Name)
 					}
 					return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument,
 						"--%s and --%s are both set with different values; pass only one or use equal values",
-						field.name, alias.Name).WithParam("--" + alias.Name)
+						sourceName, alias.Name).WithParam("--" + alias.Name)
 				}
-				value = strings.TrimSpace(fmt.Sprint(canonicalRaw))
+				value = strings.TrimSpace(fmt.Sprint(value))
 			} else {
 				value, set = aliasRaw, true
+				sourceName, sourceSet = alias.Name, true
 			}
 		}
 	}
@@ -228,6 +234,11 @@ func convertReflectValue(raw any, target reflect.Type) (any, error) {
 	}
 	if rawValue.Type().ConvertibleTo(target) {
 		converted := reflect.New(target).Elem()
+		if isSignedIntegerKind(rawValue.Kind()) && isUnsignedIntegerKind(target.Kind()) {
+			if rawValue.Int() < 0 || converted.OverflowUint(uint64(rawValue.Int())) {
+				return nil, fmt.Errorf("%v cannot be represented as %s", raw, target)
+			}
+		}
 		if isSignedIntegerKind(rawValue.Kind()) && isSignedIntegerKind(target.Kind()) && converted.OverflowInt(rawValue.Int()) {
 			return nil, fmt.Errorf("%v overflows %s", raw, target)
 		}
@@ -341,7 +352,13 @@ func validateCompiledValue(value any, field compiledInputField) error {
 	case ArrayShape:
 		v := reflect.ValueOf(value)
 		for v.Kind() == reflect.Pointer {
+			if v.IsNil() {
+				break
+			}
 			v = v.Elem()
+		}
+		if v.Kind() != reflect.Array && v.Kind() != reflect.Slice {
+			break
 		}
 		if constraint.MinItems != nil && v.Len() < *constraint.MinItems {
 			return typedFieldValidation(field, "must contain at least %d items", *constraint.MinItems)

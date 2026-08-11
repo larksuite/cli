@@ -5,6 +5,7 @@ package schema
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -16,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestSchemaCmd_FlagParsing(t *testing.T) {
@@ -33,6 +35,33 @@ func TestSchemaCmd_FlagParsing(t *testing.T) {
 	}
 	if len(gotOpts.Args) != 1 || gotOpts.Args[0] != "calendar.events.list" {
 		t.Errorf("expected args [calendar.events.list], got %v", gotOpts.Args)
+	}
+}
+
+func TestHiddenShortcutIsExcludedFromSchemaDiscovery(t *testing.T) {
+	type args struct {
+		Value string `flag:"value" schema:"required" doc:"fixture value"`
+	}
+	type data struct {
+		OK bool `json:"ok" schema:"required" doc:"success state"`
+	}
+	hidden := common.Define(common.Definition[args, data]{
+		Metadata: common.CommandMetadata{
+			Service: "hidden-fixture", Command: "+hidden-schema", Description: "Hidden schema fixture", Risk: common.RiskRead,
+			Authorization: common.AuthorizationDefinition{Identities: map[common.Identity]common.IdentityAuthorization{common.IdentityUser: {}}},
+		},
+		Hooks: common.Hooks[args, data]{Execute: func(context.Context, common.CommandContext, *args) (common.Result[data], error) {
+			return common.Success(data{OK: true}), nil
+		}},
+	})
+	hidden.Hidden = true
+	registered := []common.Shortcut{hidden}
+
+	if schema, ok := resolveShortcutSchemaFrom(registered, []string{hidden.Service, hidden.Command}, nil); ok || schema != nil {
+		t.Fatalf("hidden shortcut schema = %#v, visible = %v", schema, ok)
+	}
+	if completions := shortcutSchemaCompletionsFrom(registered, []string{hidden.Service}, "+hidden", nil); len(completions) != 0 {
+		t.Fatalf("hidden shortcut completions = %#v", completions)
 	}
 }
 

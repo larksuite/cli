@@ -47,7 +47,10 @@ func CompileErasedDefinition(definition ErasedDefinition) (Shortcut, error) {
 	if definition.Hooks.NewArgs == nil {
 		return Shortcut{}, fmt.Errorf("Hooks.NewArgs is required")
 	}
-	newArgs := definition.Hooks.NewArgs()
+	newArgs, err := probeNewArgs(definition.Hooks.NewArgs)
+	if err != nil {
+		return Shortcut{}, err
+	}
 	if newArgs == nil || reflect.TypeOf(newArgs) != reflect.PointerTo(definition.ArgsType) {
 		return Shortcut{}, fmt.Errorf("Hooks.NewArgs must return *%s", definition.ArgsType)
 	}
@@ -80,6 +83,16 @@ func CompileErasedDefinition(definition ErasedDefinition) (Shortcut, error) {
 		return Shortcut{}, err
 	}
 	return shortcut, nil
+}
+
+func probeNewArgs(newArgs func() any) (result any, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			result = nil
+			err = fmt.Errorf("Hooks.NewArgs panicked: %v", recovered)
+		}
+	}()
+	return newArgs(), nil
 }
 
 func adaptErasedHooks(hooks ErasedHooks) compiledHooks {

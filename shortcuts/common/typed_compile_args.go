@@ -148,7 +148,12 @@ func collectArgFields(t reflect.Type, parentIndex []int, insideInline bool, out 
 			return fmt.Errorf("Args field %s (--%s): %w", field.Name, flagName, err)
 		}
 		var shape ValueShape
-		if supplement, ok := supplements[flagName]; !ok || supplement.Shape == nil {
+		supplement, hasSupplement := supplements[flagName]
+		if hasSupplement && supplement.Shape != nil {
+			if schema.nullable != nil || schemaHasShapeConstraints(schema) {
+				return fmt.Errorf("Args field %s (--%s): InputField.Shape conflicts with schema constraints or nullable declaration", field.Name, flagName)
+			}
+		} else {
 			shape, err = shapeForType(valueType, schema, true)
 			if err != nil {
 				return fmt.Errorf("Args field %s (--%s): %w", field.Name, flagName, err)
@@ -303,8 +308,8 @@ func validateInputCLI(field *compiledInputField) error {
 		if kind != reflect.Slice && kind != reflect.Array {
 			return fmt.Errorf("encoding repeated requires an array or slice")
 		}
-		if indirectType(field.valueType).Elem().Kind() == reflect.Struct || indirectType(field.valueType).Elem().Kind() == reflect.Map {
-			return fmt.Errorf("encoding repeated only supports scalar arrays")
+		if indirectType(field.valueType).Elem().Kind() != reflect.String {
+			return fmt.Errorf("encoding repeated only supports string arrays")
 		}
 		if field.nullable != nil {
 			return fmt.Errorf("encoding repeated does not allow nullable/nonnullable")
@@ -380,6 +385,10 @@ type schemaTag struct {
 	maximum      *float64
 	minItems     *int
 	maxItems     *int
+}
+
+func schemaHasShapeConstraints(schema schemaTag) bool {
+	return len(schema.enum) > 0 || schema.format != "" || hasStringConstraints(schema) || hasNumberConstraints(schema) || hasItemConstraints(schema)
 }
 
 func parseSchemaTag(raw string, valueType reflect.Type, input bool) (schemaTag, error) {

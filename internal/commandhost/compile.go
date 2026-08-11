@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -315,15 +316,20 @@ func publicContext(host common.CommandContext) command.CommandContext {
 func queryParams(query map[string]any) larkcore.QueryParams {
 	params := make(larkcore.QueryParams, len(query))
 	for name, value := range query {
+		value = derefQueryValue(value)
 		switch typed := value.(type) {
 		case nil:
 			continue
 		case []string:
 			params[name] = append([]string(nil), typed...)
 		case []any:
-			values := make([]string, len(typed))
-			for index, item := range typed {
-				values[index] = fmt.Sprint(item)
+			values := make([]string, 0, len(typed))
+			for _, item := range typed {
+				item = derefQueryValue(item)
+				if item == nil {
+					continue
+				}
+				values = append(values, fmt.Sprint(item))
 			}
 			params[name] = values
 		default:
@@ -331,6 +337,20 @@ func queryParams(query map[string]any) larkcore.QueryParams {
 		}
 	}
 	return params
+}
+
+func derefQueryValue(value any) any {
+	if value == nil {
+		return nil
+	}
+	reflected := reflect.ValueOf(value)
+	for reflected.Kind() == reflect.Pointer || reflected.Kind() == reflect.Interface {
+		if reflected.IsNil() {
+			return nil
+		}
+		reflected = reflected.Elem()
+	}
+	return reflected.Interface()
 }
 
 func convertDryRun(preview *command.DryRun) (*common.DryRunAPI, error) {

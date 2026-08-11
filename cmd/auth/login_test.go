@@ -334,6 +334,7 @@ func TestGetDomainMetadataMatchesAllKnownDomains(t *testing.T) {
 }
 
 func TestAuthLoginHelpMatchesInteractiveDomains(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	login := NewCmdAuthLogin(factory, nil)
 	domainFlag := login.Flags().Lookup("domain")

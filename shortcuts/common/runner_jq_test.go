@@ -355,8 +355,13 @@ func TestRunShortcut_DryRunEReturnsTypedError(t *testing.T) {
 	cmd := newTestShortcutCmd(s, f)
 	cmd.Flags().Set("dry-run", "true")
 	cmd.Flags().Set("as", "bot")
-	if err := runShortcut(cmd, f, s, false); !errors.Is(err, sentinel) {
+	err := runShortcut(cmd, f, s, false)
+	if !errors.Is(err, sentinel) {
 		t.Fatalf("runShortcut() error = %v", err)
+	}
+	var validation *errs.ValidationError
+	if !errors.As(err, &validation) || validation.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("runShortcut() typed error = %#v", err)
 	}
 }
 

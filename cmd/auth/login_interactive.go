@@ -15,6 +15,8 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/shortcuts"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // domainMeta describes a domain for the interactive selector.
@@ -32,7 +34,11 @@ type interactiveResult struct {
 
 // getDomainMetadata returns metadata for all known domains, sorted by name.
 func getDomainMetadata(lang string) []domainMeta {
-	known := allKnownDomains("")
+	return getDomainMetadataWithShortcuts(lang, shortcuts.AllShortcuts())
+}
+
+func getDomainMetadataWithShortcuts(lang string, registered []common.Shortcut) []domainMeta {
+	known := allKnownDomainsWithShortcuts("", registered)
 	domains := make([]domainMeta, 0, len(known))
 	for name := range known {
 		domains = append(domains, buildDomainMeta(name, lang))
@@ -68,7 +74,11 @@ func buildDomainMeta(name, lang string) domainMeta {
 
 // runInteractiveLogin shows an interactive TUI form for domain and permission selection.
 func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand) (*interactiveResult, error) {
-	allDomains := getDomainMetadata(lang)
+	return runInteractiveLoginWithShortcuts(ios, lang, msg, brand, shortcuts.AllShortcuts())
+}
+
+func runInteractiveLoginWithShortcuts(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand, registered []common.Shortcut) (*interactiveResult, error) {
+	allDomains := getDomainMetadataWithShortcuts(lang, registered)
 
 	// Build multi-select options
 	options := make([]huh.Option[string], len(allDomains))
@@ -127,7 +137,7 @@ func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, bra
 	}
 
 	// Compute scope summary
-	scopes := collectScopesForDomains(selectedDomains, "user", brand)
+	scopes := collectScopesForDomainsWithShortcuts(selectedDomains, "user", brand, registered)
 	if permLevel == "common" {
 		scopes = registry.FilterAutoApproveScopes(scopes)
 	}

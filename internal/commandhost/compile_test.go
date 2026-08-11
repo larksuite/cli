@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -53,6 +54,25 @@ func TestCompileSetsCompilesTypedShortcut(t *testing.T) {
 	}
 	if len(compiled[0].AuthTypes) != 1 || compiled[0].AuthTypes[0] != "user" {
 		t.Fatalf("auth types = %#v", compiled[0].AuthTypes)
+	}
+}
+
+func TestQueryParamsOmitsTypedNilAndDereferencesValues(t *testing.T) {
+	value := "chat_1"
+	var missing *string
+	params := queryParams(map[string]any{
+		"missing": missing,
+		"value":   &value,
+		"items":   []any{missing, &value, 20},
+	})
+	if _, exists := params["missing"]; exists {
+		t.Fatalf("typed nil query = %#v", params["missing"])
+	}
+	if got := params["value"]; len(got) != 1 || got[0] != "chat_1" {
+		t.Fatalf("pointer query = %#v", got)
+	}
+	if got := params["items"]; len(got) != 2 || got[0] != "chat_1" || got[1] != "20" {
+		t.Fatalf("list query = %#v", got)
 	}
 }
 
@@ -222,6 +242,10 @@ func TestExternalDryRunUsesOfflineContext(t *testing.T) {
 	if callErr == nil || !strings.Contains(callErr.Error(), "unavailable during dry-run") {
 		t.Fatalf("network attempt error = %v", callErr)
 	}
+	var validation *errs.ValidationError
+	if !errors.As(callErr, &validation) || validation.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("network attempt typed error = %#v", callErr)
+	}
 	if calls := resolver.calls.Load(); calls != 0 {
 		t.Fatalf("token resolver calls = %d", calls)
 	}
@@ -259,5 +283,9 @@ func TestExternalDryRunEPropagatesError(t *testing.T) {
 	_, err = root.ExecuteC()
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("dry-run error = %v", err)
+	}
+	var validation *errs.ValidationError
+	if !errors.As(err, &validation) || validation.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("dry-run typed error = %#v", err)
 	}
 }

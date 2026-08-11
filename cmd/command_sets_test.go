@@ -6,6 +6,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/command"
+	"github.com/larksuite/cli/extension/platform"
 )
 
 type businessArgs struct {
@@ -57,6 +59,34 @@ func TestWithCommandSetsInIsolatedProcesses(t *testing.T) {
 				t.Fatalf("scenario %s failed: %v\n%s", scenario, err, output)
 			}
 		})
+	}
+}
+
+func TestFailedBuildDoesNotAffectNextBuild(t *testing.T) {
+	tmpHome(t)
+	platform.ResetForTesting()
+	t.Cleanup(platform.ResetForTesting)
+	platform.Register(&failingPlugin{
+		name: "command-set-failure",
+		caps: platform.Capabilities{FailurePolicy: platform.FailClosed},
+		err:  errors.New("install failure after command assembly"),
+	})
+
+	failed := Build(context.Background(), buildInvocationForTest(t),
+		WithCommandSets(command.Set{
+			Domain:   command.ExtendDomain(command.DomainIm),
+			Commands: []command.Command{businessCommand("+business-failed-build", nil)},
+		}),
+		WithoutStrictMode(), WithoutServiceCommands(),
+	)
+	if findCommand(failed, "im +business-failed-build") == nil || failed.PersistentPreRunE == nil {
+		t.Fatal("failed build did not reach the post-mount plugin guard")
+	}
+
+	platform.ResetForTesting()
+	clean := Build(context.Background(), buildInvocationForTest(t), WithoutPlugins(), WithoutStrictMode(), WithoutServiceCommands())
+	if findCommand(clean, "im +business-failed-build") != nil {
+		t.Fatal("clean build contains a command from an earlier failed build")
 	}
 }
 
@@ -167,8 +197,16 @@ func TestCommandSetSubprocess(t *testing.T) {
 		if _, err := root.ExecuteC(); err != nil {
 			t.Fatalf("schema external command: %v\nstderr: %s", err, stderr.String())
 		}
-		if !strings.Contains(stdout.String(), `"name": "im +business-surface"`) ||
-			!strings.Contains(stdout.String(), `"inputSchema"`) || !strings.Contains(stdout.String(), `"outputSchema"`) {
+		var schema struct {
+			Name         string          `json:"name"`
+			InputSchema  json.RawMessage `json:"inputSchema"`
+			OutputSchema json.RawMessage `json:"outputSchema"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &schema); err != nil {
+			t.Fatalf("decode external schema: %v\n%s", err, stdout.String())
+		}
+		if schema.Name != "im +business-surface" || len(schema.InputSchema) == 0 || len(schema.OutputSchema) == 0 ||
+			string(schema.InputSchema) == "null" || string(schema.OutputSchema) == "null" {
 			t.Fatalf("external schema = %s", stdout.String())
 		}
 	default:

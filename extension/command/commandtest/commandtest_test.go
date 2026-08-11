@@ -5,6 +5,7 @@ package commandtest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -40,6 +41,25 @@ func TestRecorderScriptsRequestsScopesAndDryRun(t *testing.T) {
 	}
 	recorder.AssertDryRunMatches(command.Preview(request))
 	recorder.AssertScriptConsumed()
+}
+
+func TestRecorderRequestsAreDeepCopiedWithJSONNumbers(t *testing.T) {
+	body := map[string]any{"name": "original"}
+	request := command.POST("/open-apis/im/v1/chats").Set("page_size", 20).Body(body)
+	recorder := New(t, Respond(map[string]any{}))
+	if _, err := command.CallJSON[map[string]any](context.Background(), recorder.CommandContext(command.IdentityUser), request); err != nil {
+		t.Fatal(err)
+	}
+	body["name"] = "mutated"
+
+	requests := recorder.Requests()
+	if len(requests) != 1 || requests[0].Query["page_size"] != json.Number("20") {
+		t.Fatalf("recorded query = %#v", requests)
+	}
+	recordedBody, ok := requests[0].Body.(map[string]any)
+	if !ok || recordedBody["name"] != "original" {
+		t.Fatalf("recorded body = %#v", requests[0].Body)
+	}
 }
 
 func TestRecorderReturnsScriptedFailuresInOrder(t *testing.T) {

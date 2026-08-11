@@ -130,6 +130,9 @@ func shapeForType(t reflect.Type, schema schemaTag, input bool) (ValueShape, err
 		if baseType == jsonRawMessageType {
 			return nil, fmt.Errorf("json.RawMessage requires an explicit Shape")
 		}
+		if baseType.Elem().Kind() == reflect.Uint8 {
+			return nil, fmt.Errorf("byte slice or array %s requires an explicit Shape", baseType)
+		}
 		if len(schema.enum) > 0 || hasStringConstraints(schema) || hasNumberConstraints(schema) || schema.format != "" {
 			return nil, fmt.Errorf("array field has incompatible schema constraint")
 		}

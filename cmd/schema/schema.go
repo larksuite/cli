@@ -47,7 +47,7 @@ type SchemaOptions struct {
 
 // NewCmdSchema creates the schema command. If runF is non-nil it is called instead of the default runner (test hook).
 func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Command {
-	return NewCmdSchemaWithVisibility(f, nil, runF)
+	return NewCmdSchemaWithVisibilityAndShortcuts(f, nil, shortcuts.AllShortcuts(), runF)
 }
 
 // NewCmdSchemaWithVisibility creates the schema command projected through one
@@ -59,7 +59,18 @@ func NewCmdSchemaWithVisibility(
 	visibility CommandVisibility,
 	runF func(*SchemaOptions) error,
 ) *cobra.Command {
+	return NewCmdSchemaWithVisibilityAndShortcuts(f, visibility, shortcuts.AllShortcuts(), runF)
+}
+
+// NewCmdSchemaWithVisibilityAndShortcuts creates schema commands from one build-local shortcut snapshot.
+func NewCmdSchemaWithVisibilityAndShortcuts(
+	f *cmdutil.Factory,
+	visibility CommandVisibility,
+	registered []common.Shortcut,
+	runF func(*SchemaOptions) error,
+) *cobra.Command {
 	opts := &SchemaOptions{Factory: f}
+	registered = common.CloneShortcuts(registered)
 
 	cmd := &cobra.Command{
 		Use:   "schema [path | service resource method]",
@@ -71,7 +82,7 @@ func NewCmdSchemaWithVisibility(
 			if runF != nil {
 				return runF(opts)
 			}
-			return schemaRunWithVisibility(opts, visibility)
+			return schemaRunWithVisibilityAndShortcuts(opts, visibility, registered)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
@@ -86,7 +97,7 @@ func NewCmdSchemaWithVisibility(
 	_ = cmd.Flags().MarkHidden("json")
 	_ = cmd.Flags().MarkHidden("as")
 
-	cmd.ValidArgsFunction = completeSchemaPath(f, visibility)
+	cmd.ValidArgsFunction = completeSchemaPath(f, visibility, registered)
 	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 
 	return cmd
@@ -98,12 +109,13 @@ func NewCmdSchemaWithVisibility(
 func completeSchemaPath(
 	f *cmdutil.Factory,
 	visibility CommandVisibility,
+	registered []common.Shortcut,
 ) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		mode := f.ResolveStrictMode(cmd.Context())
 		catalog := projectSchemaCatalog(registry.SchemaCatalog(), visibility)
 		completions, noSpace := catalog.Complete(args, toComplete, registry.FilterForStrictMode(mode))
-		completions = mergeSchemaCompletions(completions, shortcutSchemaCompletions(args, toComplete, visibility))
+		completions = mergeSchemaCompletions(completions, shortcutSchemaCompletionsFrom(registered, args, toComplete, visibility))
 		directive := cobra.ShellCompDirectiveNoFileComp
 		if noSpace {
 			directive |= cobra.ShellCompDirectiveNoSpace
@@ -113,9 +125,13 @@ func completeSchemaPath(
 }
 
 func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
+	return schemaRunWithVisibilityAndShortcuts(opts, visibility, shortcuts.AllShortcuts())
+}
+
+func schemaRunWithVisibilityAndShortcuts(opts *SchemaOptions, visibility CommandVisibility, registered []common.Shortcut) error {
 	out := opts.Factory.IOStreams.Out
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
-	return runSchemaWithVisibility(out, apicatalog.ParsePath(opts.Args), mode, visibility)
+	return runSchemaCatalogWithShortcuts(out, apicatalog.ParsePath(opts.Args), mode, registry.SchemaCatalog(), visibility, registered)
 }
 
 // runSchemaWithVisibility resolves the path through the schema catalog and renders the
@@ -139,7 +155,18 @@ func runSchemaCatalog(
 	catalog apicatalog.Catalog,
 	visibility CommandVisibility,
 ) error {
-	if contract, ok := resolveShortcutSchema(parts, visibility); ok {
+	return runSchemaCatalogWithShortcuts(out, parts, mode, catalog, visibility, shortcuts.AllShortcuts())
+}
+
+func runSchemaCatalogWithShortcuts(
+	out io.Writer,
+	parts []string,
+	mode core.StrictMode,
+	catalog apicatalog.Catalog,
+	visibility CommandVisibility,
+	registered []common.Shortcut,
+) error {
+	if contract, ok := resolveShortcutSchemaFrom(registered, parts, visibility); ok {
 		output.PrintJson(out, contract)
 		return nil
 	}
@@ -173,14 +200,18 @@ func runSchemaCatalog(
 }
 
 func resolveShortcutSchema(parts []string, visibility CommandVisibility) (any, bool) {
+	return resolveShortcutSchemaFrom(shortcuts.AllShortcuts(), parts, visibility)
+}
+
+func resolveShortcutSchemaFrom(registered []common.Shortcut, parts []string, visibility CommandVisibility) (any, bool) {
 	if len(parts) != 2 || !strings.HasPrefix(parts[1], "+") {
 		return nil, false
 	}
-	for _, shortcut := range shortcuts.AllShortcuts() {
+	for _, shortcut := range registered {
 		if shortcut.Service != parts[0] || shortcut.Command != parts[1] {
 			continue
 		}
-		if visibility != nil && !visibility([]string{shortcut.Service, shortcut.Command}) {
+		if !shortcutSchemaVisible(shortcut, visibility) {
 			return nil, false
 		}
 		return common.ShortcutSchema(shortcut)
@@ -189,7 +220,10 @@ func resolveShortcutSchema(parts []string, visibility CommandVisibility) (any, b
 }
 
 func shortcutSchemaCompletions(args []string, toComplete string, visibility CommandVisibility) []string {
-	registered := shortcuts.AllShortcuts()
+	return shortcutSchemaCompletionsFrom(shortcuts.AllShortcuts(), args, toComplete, visibility)
+}
+
+func shortcutSchemaCompletionsFrom(registered []common.Shortcut, args []string, toComplete string, visibility CommandVisibility) []string {
 	if len(args) == 0 && strings.Contains(toComplete, ".") {
 		parts := strings.SplitN(toComplete, ".", 2)
 		return shortcutCommandCompletions(registered, parts[0], parts[1], parts[0]+".", visibility)
@@ -232,7 +266,7 @@ func shortcutCommandCompletions(registered []common.Shortcut, service, prefix, o
 }
 
 func shortcutSchemaVisible(shortcut common.Shortcut, visibility CommandVisibility) bool {
-	return visibility == nil || visibility([]string{shortcut.Service, shortcut.Command})
+	return !shortcut.Hidden && (visibility == nil || visibility([]string{shortcut.Service, shortcut.Command}))
 }
 
 func mergeSchemaCompletions(groups ...[]string) []string {

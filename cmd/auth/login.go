@@ -37,13 +37,18 @@ type LoginOptions struct {
 	Exclude    []string
 	NoWait     bool
 	DeviceCode string
+	shortcuts  []common.Shortcut
 }
 
 var pollDeviceToken = larkauth.PollDeviceToken
 
 // NewCmdAuthLogin creates the auth login subcommand.
 func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.Command {
-	opts := &LoginOptions{Factory: f}
+	return newCmdAuthLoginWithShortcuts(f, runF, shortcuts.AllShortcuts())
+}
+
+func newCmdAuthLoginWithShortcuts(f *cmdutil.Factory, runF func(*LoginOptions) error, registered []common.Shortcut) *cobra.Command {
+	opts := &LoginOptions{Factory: f, shortcuts: common.CloneShortcuts(registered)}
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -79,7 +84,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 			helpBrand = cfg.Brand
 		}
 	}
-	available := sortedKnownDomains(helpBrand)
+	available := sortedKnownDomainsWithShortcuts(helpBrand, opts.shortcuts)
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
 		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, all", strings.Join(available, ", ")))
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
@@ -89,7 +94,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "poll and complete authorization with a device code from a previous --no-wait call")
 
 	cmdutil.RegisterFlagCompletion(cmd, "domain", func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return completeDomain(toComplete), cobra.ShellCompDirectiveNoFileComp
+		return completeDomainWithShortcuts(toComplete, helpBrand, opts.shortcuts), cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd
@@ -97,7 +102,11 @@ to generate QR codes (supports ASCII and PNG formats).`,
 
 // completeDomain returns completions for comma-separated domain values.
 func completeDomain(toComplete string) []string {
-	allDomains := registry.ListFromMetaProjects()
+	return completeDomainWithShortcuts(toComplete, "", nil)
+}
+
+func completeDomainWithShortcuts(toComplete string, brand core.LarkBrand, registered []common.Shortcut) []string {
+	allDomains := sortedKnownDomainsWithShortcuts(brand, registered)
 	parts := strings.Split(toComplete, ",")
 	prefix := parts[len(parts)-1]
 	base := strings.Join(parts[:len(parts)-1], ",")
@@ -151,14 +160,14 @@ func authLoginRun(opts *LoginOptions) error {
 	// Expand --domain all to all available domains (from_meta projects + shortcut services)
 	for _, d := range selectedDomains {
 		if strings.EqualFold(d, "all") {
-			selectedDomains = sortedKnownDomains(config.Brand)
+			selectedDomains = sortedKnownDomainsWithShortcuts(config.Brand, opts.shortcuts)
 			break
 		}
 	}
 
 	// Validate domain names and suggest corrections for unknown ones
 	if len(selectedDomains) > 0 {
-		knownDomains := allKnownDomains(config.Brand)
+		knownDomains := allKnownDomainsWithShortcuts(config.Brand, opts.shortcuts)
 		for _, d := range selectedDomains {
 			if !knownDomains[d] {
 				if suggestion := suggestDomain(d, knownDomains); suggestion != "" {
@@ -182,7 +191,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
-			result, err := runInteractiveLogin(f.IOStreams, lang.Base(), msg, config.Brand)
+			result, err := runInteractiveLoginWithShortcuts(f.IOStreams, lang.Base(), msg, config.Brand, opts.shortcuts)
 			if err != nil {
 				return err
 			}
@@ -220,10 +229,10 @@ func authLoginRun(opts *LoginOptions) error {
 	if len(selectedDomains) > 0 || opts.Recommend {
 		var candidateScopes []string
 		if len(selectedDomains) > 0 {
-			candidateScopes = collectScopesForDomains(selectedDomains, "user", config.Brand)
+			candidateScopes = collectScopesForDomainsWithShortcuts(selectedDomains, "user", config.Brand, opts.shortcuts)
 		} else {
 			// --recommend without --domain: all domains
-			candidateScopes = collectScopesForDomains(sortedKnownDomains(config.Brand), "user", config.Brand)
+			candidateScopes = collectScopesForDomainsWithShortcuts(sortedKnownDomainsWithShortcuts(config.Brand, opts.shortcuts), "user", config.Brand, opts.shortcuts)
 		}
 
 		// Filter to auto-approve scopes if --recommend or interactive "common"
@@ -586,7 +595,11 @@ func shortcutHasDeclaredScopes(shortcut common.Shortcut) bool {
 
 // sortedKnownDomains returns all valid domain names sorted alphabetically.
 func sortedKnownDomains(brand core.LarkBrand) []string {
-	m := allKnownDomains(brand)
+	return sortedKnownDomainsWithShortcuts(brand, shortcuts.AllShortcuts())
+}
+
+func sortedKnownDomainsWithShortcuts(brand core.LarkBrand, registered []common.Shortcut) []string {
+	m := allKnownDomainsWithShortcuts(brand, registered)
 	domains := make([]string, 0, len(m))
 	for d := range m {
 		domains = append(domains, d)

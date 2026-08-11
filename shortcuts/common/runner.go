@@ -146,6 +146,9 @@ type BotInfo struct {
 // Unlike UserOpenId() (which reads from config), this requires a network call and may fail.
 // Thread-safe via sync.OnceValues; the API is called at most once per RuntimeContext.
 func (ctx *RuntimeContext) BotInfo() (*BotInfo, error) {
+	if ctx.offline {
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "BotInfo is unavailable during dry-run")
+	}
 	if ctx.botInfoFunc == nil {
 		return nil, fmt.Errorf("BotInfo not available (runtime context not fully initialized)")
 	}
@@ -977,6 +980,10 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	}
 	cmdmeta.SetSource(cmd, cmdmeta.SourceShortcut, false)
 	cmdmeta.SetAffordanceRef(cmd, shortcut.Service, shortcut.Command)
+	cmdmeta.SetDeclaredScopes(cmd, map[string][]string{
+		"user": shortcut.DeclaredScopesForIdentity("user"),
+		"bot":  shortcut.DeclaredScopesForIdentity("bot"),
+	})
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
@@ -1004,11 +1011,11 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 func runTypedMountedShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	if dryRun {
-		config, err := f.Config()
+		as, err := resolveShortcutIdentity(cmd, f, s)
 		if err != nil {
 			return err
 		}
-		as, err := resolveDryRunIdentity(cmd, f, s, config)
+		config, err := f.Config()
 		if err != nil {
 			return err
 		}
@@ -1038,27 +1045,6 @@ func runTypedMountedShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 	}
 	return runTypedShortcut(f, rctx, s)
 }
-
-func resolveDryRunIdentity(cmd *cobra.Command, f *cmdutil.Factory, shortcut *Shortcut, config *core.CliConfig) (core.Identity, error) {
-	requested, _ := cmd.Flags().GetString("as")
-	identity := core.Identity(requested)
-	if !cmd.Flags().Changed("as") || identity == "" || identity == core.AsAuto {
-		identity = config.DefaultAs
-		if identity == "" || identity == core.AsAuto {
-			if len(shortcut.AuthTypes) == 1 {
-				identity = core.Identity(shortcut.AuthTypes[0])
-			} else {
-				identity = core.AsBot
-			}
-		}
-	}
-	f.IdentityAutoDetected = false
-	if err := f.CheckIdentity(identity, shortcut.AuthTypes); err != nil {
-		return "", err
-	}
-	return identity, nil
-}
-
 func installTypedAnnotations(cmd *cobra.Command, command *compiledCommand) {
 	for _, field := range command.fields {
 		if field.cli.Deprecated != "" {
@@ -1093,9 +1079,6 @@ func installTypedAnnotations(cmd *cobra.Command, command *compiledCommand) {
 	}
 }
 
-// runShortcut is the execution pipeline for a declarative shortcut.
-// Each step is a clear phase: identity → config → scopes → runtime →
-// canonical validation → execute.
 func runShortcutFlagSchema(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (bool, error) {
 	if s.PrintFlagSchema == nil {
 		return false, nil
@@ -1120,6 +1103,9 @@ func runShortcutFlagSchema(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) 
 	return true, nil
 }
 
+// runShortcut is the execution pipeline for a declarative shortcut.
+// Each step is a clear phase: identity → config → scopes → runtime →
+// canonical validation → execute.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {

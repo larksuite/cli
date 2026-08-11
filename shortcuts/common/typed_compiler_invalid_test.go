@@ -10,6 +10,19 @@ import (
 	"testing"
 )
 
+func TestCompileErasedDefinitionConvertsNewArgsPanicToError(t *testing.T) {
+	_, err := CompileErasedDefinition(ErasedDefinition{
+		ArgsType: reflect.TypeFor[compilerArgs](),
+		DataType: reflect.TypeFor[compilerData](),
+		Hooks: ErasedHooks{NewArgs: func() any {
+			panic("constructor failure")
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "Hooks.NewArgs panicked: constructor failure") {
+		t.Fatalf("CompileErasedDefinition() error = %v", err)
+	}
+}
+
 func TestParseSchemaTagRejectsInvalidGrammar(t *testing.T) {
 	tests := []struct {
 		name, tag, want string
@@ -139,6 +152,15 @@ func TestCompileInputRejectsInvalidFieldContracts(t *testing.T) {
 		{"oneOf includes unrepresentable variant", reflect.TypeFor[struct {
 			Value string `flag:"value" schema:"optional" doc:"value"`
 		}](), InputDefinition{Fields: []InputField{{Name: "value", Shape: OneOfShape{Variants: []ValueShape{StringShape{}, IntegerShape{}}}}}}, "incompatible with Go type"},
+		{"explicit shape with schema constraints", reflect.TypeFor[struct {
+			Value string `flag:"value" schema:"optional;minLength=1" doc:"value"`
+		}](), InputDefinition{Fields: []InputField{{Name: "value", Shape: StringShape{}}}}, "conflicts with schema constraints"},
+		{"repeated non-string elements", reflect.TypeFor[struct {
+			Values []int `flag:"values" schema:"optional" cli:"encoding=repeated" doc:"values"`
+		}](), InputDefinition{}, "only supports string arrays"},
+		{"byte slice inference", reflect.TypeFor[struct {
+			Value []byte `flag:"value" schema:"optional;nonnullable" cli:"encoding=json" doc:"value"`
+		}](), InputDefinition{}, "requires an explicit Shape"},
 		{"alias missing conflict", reflect.TypeFor[struct {
 			Value string `flag:"value" schema:"optional" doc:"value"`
 		}](), InputDefinition{Fields: []InputField{{Name: "value", CLI: CLIInput{Aliases: []FlagAlias{{Name: "old", Mode: AliasIndependent}}}}}}, "must declare"},
@@ -203,4 +225,43 @@ func TestValidateShapeRejectsMalformedExplicitShapes(t *testing.T) {
 			t.Fatalf("shape %T error = %v, want %q", tt.shape, err, tt.want)
 		}
 	}
+}
+
+func TestValidateOutputChecksEveryOneOfVariant(t *testing.T) {
+	itemWithStringPath := ObjectShape{Fields: []ValueField{{Name: "path", Description: "artifact path", Required: true, Shape: StringShape{}}}}
+	itemWithIntegerPath := ObjectShape{Fields: []ValueField{{Name: "path", Description: "artifact path", Required: true, Shape: IntegerShape{}}}}
+	items := func(item ValueShape) ValueField {
+		return ValueField{Name: "items", Description: "items", Required: true, Shape: ArrayShape{Items: item}}
+	}
+
+	t.Run("missing path in variant", func(t *testing.T) {
+		valid := ObjectShape{Fields: []ValueField{items(itemWithStringPath)}}
+		invalid := ObjectShape{Fields: []ValueField{{Name: "other", Description: "other", Required: true, Shape: StringShape{}}}}
+		for _, variants := range [][]ValueShape{{valid, invalid}, {invalid, valid}} {
+			shape := OneOfShape{Variants: variants}
+			output := OutputDefinition{Outcomes: OutcomeDefinition{PartialFailure: &PartialFailureDefinition{
+				ExitCode: 1,
+				FailedItems: &FailedItemDefinition{
+					ItemsPath:    "/items",
+					StatePath:    "/path",
+					FailedValues: []JSONValue{"failed"},
+				},
+			}}}
+			if err := validateOutput(output, shape); err == nil || !strings.Contains(err.Error(), "does not exist") {
+				t.Fatalf("variants %T/%T error = %v", variants[0], variants[1], err)
+			}
+		}
+	})
+
+	t.Run("incompatible path type in variant", func(t *testing.T) {
+		valid := ObjectShape{Fields: []ValueField{items(itemWithStringPath)}}
+		invalid := ObjectShape{Fields: []ValueField{items(itemWithIntegerPath)}}
+		for _, variants := range [][]ValueShape{{valid, invalid}, {invalid, valid}} {
+			shape := OneOfShape{Variants: variants}
+			output := OutputDefinition{Artifacts: []ArtifactDefinition{{Name: "artifact", ItemsPath: "/items", PathField: "/path"}}}
+			if err := validateOutput(output, shape); err == nil || !strings.Contains(err.Error(), "must identify a string") {
+				t.Fatalf("variants %T/%T error = %v", variants[0], variants[1], err)
+			}
+		}
+	})
 }

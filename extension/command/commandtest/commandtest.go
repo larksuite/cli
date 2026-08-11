@@ -236,7 +236,11 @@ func (r *Recorder) SetScopeError(err error) {
 func (r *Recorder) Requests() []command.RequestView {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return cloneRequestViews(r.requests)
+	cloned, err := cloneRequestViews(r.requests)
+	if err != nil {
+		r.testing.Errorf("clone recorded requests: %v", err)
+	}
+	return cloned
 }
 
 // ScopeChecks returns copied scope preflights in execution order.
@@ -292,8 +296,12 @@ func (r *Recorder) callJSON(ctx context.Context, request command.Request) (map[s
 		return nil, err
 	}
 	view := command.InspectRequest(request)
+	cloned, cloneErr := cloneRequestView(view)
+	if cloneErr != nil {
+		r.testing.Errorf("clone executed request: %v", cloneErr)
+	}
 	r.mu.Lock()
-	r.requests = append(r.requests, cloneRequestView(view))
+	r.requests = append(r.requests, cloned)
 	requestNumber := len(r.requests)
 	if len(r.responses) == 0 {
 		r.mu.Unlock()
@@ -438,22 +446,28 @@ func comparableRequest(request command.RequestView) (string, error) {
 	return string(encoded), nil
 }
 
-func cloneRequestViews(requests []command.RequestView) []command.RequestView {
+func cloneRequestViews(requests []command.RequestView) ([]command.RequestView, error) {
 	cloned := make([]command.RequestView, len(requests))
 	for index, request := range requests {
-		cloned[index] = cloneRequestView(request)
+		value, err := cloneRequestView(request)
+		if err != nil {
+			return cloned, fmt.Errorf("request %d: %w", index+1, err)
+		}
+		cloned[index] = value
 	}
-	return cloned
+	return cloned, nil
 }
 
-func cloneRequestView(request command.RequestView) command.RequestView {
+func cloneRequestView(request command.RequestView) (command.RequestView, error) {
 	encoded, err := json.Marshal(request)
 	if err != nil {
-		return request
+		return request, fmt.Errorf("encode recorded request: %w", err)
 	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
 	var cloned command.RequestView
-	if err := json.Unmarshal(encoded, &cloned); err != nil {
-		return request
+	if err := decoder.Decode(&cloned); err != nil {
+		return request, fmt.Errorf("decode recorded request: %w", err)
 	}
-	return cloned
+	return cloned, nil
 }

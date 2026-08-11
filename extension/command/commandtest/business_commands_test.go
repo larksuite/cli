@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/extension/command/commandtest"
 	"github.com/larksuite/cli/internal/commandhost"
@@ -143,7 +144,11 @@ func taskAuditDefinition() command.Definition[taskAuditArgs, taskAuditData] {
 					return command.Success(data), nil
 				}
 				if err := command.PreflightScopes(commandContext, "contact:user.base:readonly"); err != nil {
-					return command.Result[taskAuditData]{}, err
+					for _, task := range tasks {
+						data.Items = append(data.Items, taskAuditItem{TaskID: task.TaskID, State: "failed"})
+					}
+					data.Failures = append(data.Failures, command.SnapshotFailure(err))
+					return command.Partial(data), nil
 				}
 				for _, task := range tasks {
 					owner, ownerErr := command.CallJSON[struct {
@@ -382,8 +387,43 @@ func TestCollectAllPagesHardLimitPreventsFollowingWrite(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "hard limit") {
 		t.Fatalf("hard-limit error = %v", err)
 	}
+	var internal *errs.InternalError
+	if !errors.As(err, &internal) || internal.Subtype != errs.SubtypeQuotaExceeded {
+		t.Fatalf("hard-limit typed error = %#v", err)
+	}
 	if requests := recorder.Requests(); len(requests) != 1000 || requests[len(requests)-1].Method != "GET" {
 		t.Fatalf("requests after incomplete read = %d, last=%#v", len(requests), requests[len(requests)-1])
+	}
+	recorder.AssertScriptConsumed()
+}
+
+func TestBestEffortScopeFailureReturnsPartialTasks(t *testing.T) {
+	want := errs.NewPermissionError(errs.SubtypeMissingScope, "owner scope is unavailable")
+	recorder := commandtest.New(t, commandtest.Respond(map[string]any{
+		"items": []map[string]any{
+			{"task_id": "task_1", "owner_id": "user_1"},
+			{"task_id": "task_2", "owner_id": "user_2"},
+		},
+		"has_more": false,
+	}))
+	recorder.SetScopeError(want)
+	execution, err := commandtest.Execute(context.Background(), recorder, command.IdentityUser, taskAuditDefinition(), &taskAuditArgs{IncludeOwners: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !execution.Partial || len(execution.Data.Items) != 2 || len(execution.Data.Failures) != 1 {
+		t.Fatalf("execution = %#v", execution)
+	}
+	for _, item := range execution.Data.Items {
+		if item.State != "failed" {
+			t.Fatalf("items = %#v", execution.Data.Items)
+		}
+	}
+	if execution.Data.Failures[0].Subtype != string(errs.SubtypeMissingScope) {
+		t.Fatalf("failures = %#v", execution.Data.Failures)
+	}
+	if requests := recorder.Requests(); len(requests) != 1 || requests[0].Method != "GET" {
+		t.Fatalf("requests = %#v", requests)
 	}
 	recorder.AssertScriptConsumed()
 }

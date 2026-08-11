@@ -213,8 +213,9 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 		cfg = &buildConfig{}
 	}
 	externalCommands, commandSetErr := commandhost.CompileSets(cfg.commandSets)
+	registeredShortcuts := shortcuts.AllShortcuts()
 	if commandSetErr == nil {
-		commandSetErr = shortcuts.RegisterExternal(externalCommands)
+		registeredShortcuts, commandSetErr = shortcuts.AllShortcutsWithExternal(externalCommands)
 	}
 	// Default streams when WithIO is not supplied so the root command's
 	// SetIn/Out/Err calls below don't deref nil. NewDefault also normalizes
@@ -288,14 +289,14 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	}
 
 	rootCmd.AddCommand(cmdconfig.NewCmdConfigWithRecovery(f, runtime.recovery))
-	rootCmd.AddCommand(auth.NewCmdAuthWithRecovery(f, runtime.recovery))
+	rootCmd.AddCommand(auth.NewCmdAuthWithRecoveryAndShortcuts(f, runtime.recovery, registeredShortcuts))
 	rootCmd.AddCommand(profile.NewCmdProfile(f))
 	rootCmd.AddCommand(doctor.NewCmdDoctorWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(whoami.NewCmdWhoamiWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
-	rootCmd.AddCommand(schema.NewCmdSchemaWithVisibility(f, func(path []string) bool {
+	rootCmd.AddCommand(schema.NewCmdSchemaWithVisibilityAndShortcuts(f, func(path []string) bool {
 		return runtime.surface.CanReference(surface.CommandID(strings.Join(path, "/")))
-	}, nil))
+	}, registeredShortcuts, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
@@ -307,7 +308,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 			service.RegisterServiceCommandsWithContext(ctx, rootCmd, f)
 		}
 	}
-	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
+	shortcuts.RegisterShortcutSnapshotWithContext(ctx, rootCmd, f, registeredShortcuts)
 	if commandSetErr != nil {
 		installCommandSetErrorGuard(rootCmd, commandSetErr)
 		return finalizeFailedBuild(runtime, rootCmd)

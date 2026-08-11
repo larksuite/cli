@@ -28,7 +28,7 @@ func InternalErrorf(format string, args ...any) *errs.InternalError {
 
 // PaginationLimitError reports an incomplete all-pages read with a resume token.
 func PaginationLimitError(pages int, nextToken string) *errs.InternalError {
-	return errs.NewInternalError(errs.SubtypeInvalidResponse,
+	return errs.NewInternalError(errs.SubtypeQuotaExceeded,
 		"pagination reached the hard limit after %d page(s)", pages).
 		WithHint("resume from page_token %q after narrowing the request or increasing the host bound", nextToken)
 }
