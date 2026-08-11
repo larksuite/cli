@@ -487,6 +487,74 @@ func TestWikiNodeGetMountedClassifiesTerminalBusinessErrors(t *testing.T) {
 	}
 }
 
+func TestWikiNodeGetMountedExplainsResourcePermissionDenied(t *testing.T) {
+	for _, identity := range []string{"user", "bot"} {
+		t.Run(identity, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code":   131006,
+					"msg":    "permission denied: node permission denied, user needs read permission.",
+					"log_id": "log-node-get-permission",
+				},
+			})
+
+			err := mountAndRunWiki(t, WikiNodeGet, []string{
+				"+node-get",
+				"--node-token", testWikiNodeToken,
+				"--as", identity,
+			}, factory, stdout)
+			if err == nil {
+				t.Fatal("expected permission error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+				t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+			}
+			if p.Retryable {
+				t.Fatalf("problem retryable = true, want false: %#v", p)
+			}
+			if !strings.Contains(p.Hint, "resource access, not app scope authorization") || !strings.Contains(p.Hint, "Do not retry the same request") {
+				t.Fatalf("hint = %q, want non-retryable resource-access guidance", p.Hint)
+			}
+		})
+	}
+}
+
+func TestWikiNodeGetProblemPreservesPermissionErrorContract(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("opaque upstream cause")
+	err := errs.NewPermissionError(errs.SubtypePermissionDenied, "opaque upstream message").
+		WithCode(131006).
+		WithCause(cause)
+
+	got := wikiNodeGetProblem(err)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false")
+	}
+	if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+		t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+	}
+	if p.Retryable {
+		t.Fatalf("problem retryable = true, want false: %#v", p)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatalf("errors.Is(got, cause) = false, want preserved cause")
+	}
+	if p.Hint != wikiPermissionDeniedHint() {
+		t.Fatalf("hint = %q, want %q", p.Hint, wikiPermissionDeniedHint())
+	}
+}
+
 func TestWikiNodeGetMountedAcceptsNodeTokenFlag(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 

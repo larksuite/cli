@@ -41,3 +41,11 @@ func appendWikiProblemHint(err error, hint string) error {
 	}
 	return err
 }
+
+// wikiPermissionDeniedHint provides stable recovery for wiki's 131006. The
+// service uses one public code for both node and space ACL failures, while the
+// upstream message is informational and normalized by the shared classifier.
+// Keep the command hint accurate without branching on that unstable text.
+func wikiPermissionDeniedHint() string {
+	return "The current user or app/bot identity lacks access to the target wiki space or node. This is resource access, not app scope authorization. Do not retry the same request, reauthorize, or switch identity as trial and error; ask the resource owner or wiki administrator to grant read access, or use an accessible resource."
+}

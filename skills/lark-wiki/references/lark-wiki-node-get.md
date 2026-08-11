@@ -58,6 +58,7 @@ These HTTP 200 responses carry a non-zero business code and are not retryable wi
 
 | Code | Meaning | Required action |
 |------|---------|-----------------|
+| `131006` | The current user or app/bot identity lacks access to the Wiki node or space | This is resource access, not app scope authorization. Do not retry the same request, reauthorize, or switch identity as trial and error; ask the node owner or wiki administrator to grant read access, or use an accessible resource |
 | `131012` | The Wiki node has been deleted | Do not retry the same node token; rediscover the node or ask for a current Wiki link |
 | `131013` | The resource token is invalid | Do not switch identity or reauthorize; correct the URL/token |
 | `131014` | The document is not mounted in Wiki | Stop Wiki resolution; use the corresponding docs/sheets/base/drive command, or provide a Wiki URL/node_token |

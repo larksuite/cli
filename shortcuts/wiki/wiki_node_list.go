@@ -238,7 +238,7 @@ func fetchWikiNodes(runtime *common.RuntimeContext, spaceID, parentNodeToken str
 		}
 		data, err := runtime.CallAPITyped("GET", apiPath, params, nil)
 		if err != nil {
-			return nil, false, "", wikiNodeListProblem(err, runtime)
+			return nil, false, "", wikiNodeListProblem(err)
 		}
 		items, _ := data["items"].([]interface{})
 		for _, item := range items {
@@ -262,7 +262,7 @@ func fetchWikiNodes(runtime *common.RuntimeContext, spaceID, parentNodeToken str
 	return nodes, lastHasMore, lastPageToken, nil
 }
 
-func wikiNodeListProblem(err error, runtime *common.RuntimeContext) error {
+func wikiNodeListProblem(err error) error {
 	p, ok := errs.ProblemOf(err)
 	if !ok {
 		return err
@@ -281,11 +281,8 @@ func wikiNodeListProblem(err error, runtime *common.RuntimeContext) error {
 	case 131005:
 		appendWikiProblemHint(err, "The target wiki space or parent node was not found. Re-discover the space with `wiki +space-list` and the parent with `wiki +node-list`/`wiki +node-get`; do not retry the same stale token.")
 	case 131006:
-		if runtime != nil && runtime.As().IsBot() {
-			appendWikiProblemHint(err, "The bot/app identity cannot read this wiki space or node. Grant the app the required wiki scope and ensure the app or bot has access to the target knowledge space.")
-		} else {
-			appendWikiProblemHint(err, "The current user cannot read this wiki space or node. Switch to a user with access or ask the space owner to grant read permission.")
-		}
+		p.Retryable = false
+		appendWikiProblemHint(err, wikiPermissionDeniedHint())
 	case 99991400:
 		appendWikiProblemHint(err, "Rate limited by the wiki API. Stop immediate retries and retry later with exponential backoff or a smaller --page-limit.")
 	}

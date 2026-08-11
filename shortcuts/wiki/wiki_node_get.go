@@ -143,6 +143,9 @@ func wikiNodeGetProblem(err error) error {
 	}
 
 	switch p.Code {
+	case 131006:
+		p.Retryable = false
+		appendWikiProblemHint(err, wikiPermissionDeniedHint())
 	case 131012:
 		p.Subtype = errs.SubtypeNotFound
 		p.Retryable = false
