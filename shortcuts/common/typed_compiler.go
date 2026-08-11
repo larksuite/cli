@@ -128,14 +128,25 @@ func normalizeCommandMetadata(metadata CommandMetadata) CommandMetadata {
 }
 
 func validateCommandMetadata(metadata CommandMetadata) error {
-	if strings.TrimSpace(metadata.Service) == "" {
+	service := strings.TrimSpace(metadata.Service)
+	if service == "" {
 		return fmt.Errorf("Metadata.Service is required")
 	}
-	if strings.TrimSpace(metadata.Command) == "" {
+	if service != metadata.Service || strings.ContainsAny(service, " \t\r\n/") {
+		return fmt.Errorf("Metadata.Service %q must be one trimmed command segment", metadata.Service)
+	}
+	command := strings.TrimSpace(metadata.Command)
+	if command == "" {
 		return fmt.Errorf("Metadata.Command is required")
 	}
-	if !strings.HasPrefix(metadata.Command, "+") {
+	if command != metadata.Command || strings.ContainsAny(command, " \t\r\n/") {
+		return fmt.Errorf("Metadata.Command %q must be one trimmed command segment", metadata.Command)
+	}
+	if !strings.HasPrefix(command, "+") {
 		return fmt.Errorf("Metadata.Command %q must start with '+'", metadata.Command)
+	}
+	if command == "+" {
+		return fmt.Errorf("Metadata.Command must contain a name after '+'")
 	}
 	if strings.TrimSpace(metadata.Description) == "" {
 		return fmt.Errorf("Metadata.Description is required")

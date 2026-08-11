@@ -38,6 +38,30 @@ func TestParseSchemaTagRejectsInvalidGrammar(t *testing.T) {
 	}
 }
 
+func TestCompileDefinitionRejectsInvalidCommandSegments(t *testing.T) {
+	tests := []struct {
+		name    string
+		service string
+		command string
+	}{
+		{name: "service whitespace", service: "fixture service", command: "+compile"},
+		{name: "service separator", service: "fixture/service", command: "+compile"},
+		{name: "command whitespace", service: "fixture", command: "+compile other"},
+		{name: "command separator", service: "fixture", command: "+compile/other"},
+		{name: "empty command name", service: "fixture", command: "+"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			definition := validCompilerDefinition()
+			definition.Metadata.Service = test.service
+			definition.Metadata.Command = test.command
+			if _, err := compileDefinition(definition); err == nil {
+				t.Fatalf("Metadata.Service=%q Metadata.Command=%q was accepted", test.service, test.command)
+			}
+		})
+	}
+}
+
 func TestParseSchemaTagPreservesExplicitZeroFalseAndEmptyDefaults(t *testing.T) {
 	for _, tt := range []struct {
 		tag  string
