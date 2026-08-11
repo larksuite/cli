@@ -127,7 +127,7 @@ func RegisterExternal(commands []common.Shortcut) error {
 
 func prepareExternalRegistration(existing, commands []common.Shortcut, alreadyRegistered bool) ([]common.Shortcut, error) {
 	if alreadyRegistered {
-		return nil, fmt.Errorf("external command set is already registered")
+		return nil, fmt.Errorf("external command set is already registered") //nolint:forbidigo // Intermediate registration diagnostic wrapped by the command-set startup guard.
 	}
 	cloned := common.CloneShortcuts(commands)
 	paths := make(map[string]struct{}, len(existing)+len(cloned))
@@ -137,7 +137,7 @@ func prepareExternalRegistration(existing, commands []common.Shortcut, alreadyRe
 	for _, shortcut := range cloned {
 		path := shortcut.Service + " " + shortcut.Command
 		if _, duplicate := paths[path]; duplicate {
-			return nil, fmt.Errorf("external command path %q is already registered", path)
+			return nil, fmt.Errorf("external command path %q is already registered", path) //nolint:forbidigo // Intermediate registration diagnostic wrapped by the command-set startup guard.
 		}
 		paths[path] = struct{}{}
 	}

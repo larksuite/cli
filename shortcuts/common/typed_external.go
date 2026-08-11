@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
+//nolint:forbidigo // External definition diagnostics are intermediate build errors wrapped by the command-set startup guard.
 package common
 
 import (

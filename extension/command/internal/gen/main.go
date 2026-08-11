@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,39 +16,48 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts"
 )
 
 var serviceNamePattern = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
 
-func commandDir() string {
+func commandDir() (string, error) {
 	_, sourceFile, _, ok := runtime.Caller(0)
 	if !ok {
-		log.Fatal("command domain generator: cannot resolve source location")
+		return "", fmt.Errorf("cannot resolve source location")
 	}
-	return filepath.Join(filepath.Dir(sourceFile), "..", "..")
+	return filepath.Join(filepath.Dir(sourceFile), "..", ".."), nil
 }
 
+//nolint:forbidigo // Standalone go-generate process reports to stderr and exits before any CLI command boundary exists.
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "command domain generator:", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	seen := make(map[string]struct{})
 	for _, shortcut := range shortcuts.AllShortcuts() {
 		seen[shortcut.Service] = struct{}{}
 	}
 	if len(seen) == 0 {
-		log.Fatal("command domain generator: no shortcut domains found")
+		return fmt.Errorf("no shortcut domains found")
 	}
 
 	domains := make([]string, 0, len(seen))
 	for domain := range seen {
 		if !serviceNamePattern.MatchString(domain) {
-			log.Fatalf("command domain generator: service %q cannot form a stable Go identifier", domain)
+			return fmt.Errorf("service %q cannot form a stable Go identifier", domain)
 		}
 		for _, lang := range []string{"en", "zh"} {
 			if registry.GetServiceTitle(domain, lang) == "" {
-				log.Fatalf("command domain generator: service %q has no %s title", domain, lang)
+				return fmt.Errorf("service %q has no %s title", domain, lang)
 			}
 			if registry.GetServiceDescription(domain, lang) == "" {
-				log.Fatalf("command domain generator: service %q has no %s description", domain, lang)
+				return fmt.Errorf("service %q has no %s description", domain, lang)
 			}
 		}
 		domains = append(domains, domain)
@@ -75,12 +83,17 @@ const (
 
 	formatted, err := format.Source(output.Bytes())
 	if err != nil {
-		log.Fatalf("command domain generator: format output: %v", err)
+		return fmt.Errorf("format output: %w", err)
 	}
-	target := filepath.Join(commandDir(), "domains_gen.go")
-	if err := os.WriteFile(target, formatted, 0o644); err != nil {
-		log.Fatalf("command domain generator: write %s: %v", target, err)
+	dir, err := commandDir()
+	if err != nil {
+		return err
 	}
+	target := filepath.Join(dir, "domains_gen.go")
+	if err := vfs.WriteFile(target, formatted, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", target, err)
+	}
+	return nil
 }
 
 func domainIdentifier(domain string) string {
