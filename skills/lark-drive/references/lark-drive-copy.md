@@ -84,10 +84,6 @@ lark-cli drive +copy --token <WIKI_TOKEN> --type wiki --name '副本名称' --fo
 | `99991672` / `99991679` | 缺失 scope | 按错误里的 `missing_scopes`、`hint` 申请/授权所需 scope 后重试 |
 | `99991400` | 命中接口限频 | 等待一段时间后重试；批量复制时保持串行并降低频率 |
 
-- `invalid token`、`not found`、`unsupported type` 等确定性资源错误：如实报告并停止。
-- 参数校验错误：按本页公开参数和命令返回的结构化错误修正输入，继续使用 `drive +copy`。
-- timeout、connection reset 或 5xx 发生在请求可能已送达服务端之后：结果视为不确定，不自动再次复制；向用户说明重复执行可能产生第二个副本，并在确认后再处理。
-
 ## 参考
 
 - [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
