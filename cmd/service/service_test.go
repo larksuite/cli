@@ -173,9 +173,9 @@ func TestServiceMethod_MailRulesReorderCompletesRuleIDs(t *testing.T) {
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
 				"items": []interface{}{
-					map[string]interface{}{"rule_id": "r1"},
-					map[string]interface{}{"rule_id": "r2"},
-					map[string]interface{}{"rule_id": "r3"},
+					map[string]interface{}{"id": "r1"},
+					map[string]interface{}{"id": "r2"},
+					map[string]interface{}{"id": "r3"},
 				},
 			},
 		},
@@ -202,6 +202,23 @@ func TestServiceMethod_MailRulesReorderCompletesRuleIDs(t *testing.T) {
 	wantRuleIDs := []string{"r2", "r1", "r3", "foreign"}
 	if !slicesEqual(gotRuleIDs, wantRuleIDs) {
 		t.Fatalf("reorder rule_ids = %v, want %v", gotRuleIDs, wantRuleIDs)
+	}
+}
+
+func TestExtractMailRuleIDsKeepsRuleIDFallback(t *testing.T) {
+	result := map[string]interface{}{
+		"data": map[string]interface{}{
+			"items": []interface{}{
+				map[string]interface{}{"rule_id": "legacy-r1"},
+				map[string]interface{}{"rule_id": "legacy-r2"},
+			},
+		},
+	}
+
+	got := extractMailRuleIDs(result)
+	want := []string{"legacy-r1", "legacy-r2"}
+	if !slicesEqual(got, want) {
+		t.Fatalf("extractMailRuleIDs() = %v, want %v", got, want)
 	}
 }
 

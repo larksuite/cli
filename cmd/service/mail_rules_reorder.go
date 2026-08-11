@@ -139,7 +139,7 @@ func ruleIDsFromArray(value interface{}) []string {
 	ids := make([]string, 0, len(items))
 	for _, item := range items {
 		if m, ok := item.(map[string]interface{}); ok {
-			if id, ok := m["rule_id"]; ok {
+			if id, ok := mailRuleID(m); ok {
 				ids = append(ids, fmt.Sprint(id))
 			}
 		}
@@ -156,7 +156,7 @@ func collectRuleIDs(value interface{}) []string {
 		}
 		return ids
 	case map[string]interface{}:
-		if id, ok := typed["rule_id"]; ok {
+		if id, ok := mailRuleID(typed); ok {
 			return []string{fmt.Sprint(id)}
 		}
 		keys := make([]string, 0, len(typed))
@@ -172,6 +172,15 @@ func collectRuleIDs(value interface{}) []string {
 	default:
 		return nil
 	}
+}
+
+func mailRuleID(rule map[string]interface{}) (interface{}, bool) {
+	for _, key := range []string{"id", "rule_id"} {
+		if id, ok := rule[key]; ok {
+			return id, true
+		}
+	}
+	return nil, false
 }
 
 func stringSlice(value interface{}) []string {
