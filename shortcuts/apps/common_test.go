@@ -205,3 +205,129 @@ func TestIsAppNoDatabaseError_NilProblem(t *testing.T) {
 		t.Error("isAppNoDatabaseError(nil) = true, want false")
 	}
 }
+
+func TestWithObservabilityHint(t *testing.T) {
+	// assertObservabilityClassificationIntact checks that rewriting Message/Hint
+	// leaves the discriminators the error envelope keys on untouched and hands
+	// back the same error value so the cause chain survives.
+	assertObservabilityClassificationIntact := func(t *testing.T, label string, in, out error, wantSubtype errs.Subtype, wantCode int) {
+		t.Helper()
+		if out != in {
+			t.Fatalf("%s: returned a different error value: got %p, want original %p", label, out, in)
+		}
+		p, ok := errs.ProblemOf(out)
+		if !ok {
+			t.Fatalf("%s: returned error is not typed: %T", label, out)
+		}
+		if p.Category != errs.CategoryAPI {
+			t.Errorf("%s: Category = %q, want %q", label, p.Category, errs.CategoryAPI)
+		}
+		if p.Subtype != wantSubtype {
+			t.Errorf("%s: Subtype = %q, want %q", label, p.Subtype, wantSubtype)
+		}
+		if p.Code != wantCode {
+			t.Errorf("%s: Code = %d, want %d", label, p.Code, wantCode)
+		}
+	}
+
+	t.Run("nil error stays nil", func(t *testing.T) {
+		if got := withObservabilityHint(nil); got != nil {
+			t.Fatalf("withObservabilityHint(nil) = %v, want nil", got)
+		}
+	})
+
+	t.Run("untyped error returned unchanged, no panic", func(t *testing.T) {
+		in := errors.New("plain")
+		out := withObservabilityHint(in)
+		if out == nil || out.Error() != "plain" {
+			t.Fatalf("withObservabilityHint(plain) = %v, want unchanged plain error", out)
+		}
+	})
+
+	t.Run("no-container code rewrites the infra-sounding message and forces deploy hint", func(t *testing.T) {
+		// Raw upstream: infra-sounding message, no hint. A concrete subtype (not
+		// Unknown) proves the override only rewrites Message/Hint.
+		in := errs.NewAPIError(errs.SubtypeNotFound, "Container not exists").WithCode(appNoContainerCode)
+		out := withObservabilityHint(in)
+		p, _ := errs.ProblemOf(out)
+		if p.Message != appNoContainerMessage {
+			t.Errorf("Message = %q, want rewritten %q", p.Message, appNoContainerMessage)
+		}
+		if p.Hint != appNoContainerHint {
+			t.Errorf("Hint = %q, want deploy hint (not the generic app-id hint)", p.Hint)
+		}
+		assertObservabilityClassificationIntact(t, "no-container code", in, out, errs.SubtypeNotFound, appNoContainerCode)
+	})
+
+	t.Run("no-container detected by server message when code is unknown", func(t *testing.T) {
+		// A future/other code the CLI has not enumerated: only the raw message
+		// identifies the case. Covers case-insensitivity and the "not exist"
+		// (no trailing s) variant.
+		for _, msg := range []string{"Container not exists", "container not exist", "CONTAINER NOT EXISTS"} {
+			in := errs.NewAPIError(errs.SubtypeNotFound, msg).WithCode(999999999)
+			out := withObservabilityHint(in)
+			p, _ := errs.ProblemOf(out)
+			if p.Message != appNoContainerMessage || p.Hint != appNoContainerHint {
+				t.Errorf("message %q not detected: Message=%q Hint=%q", msg, p.Message, p.Hint)
+			}
+			assertObservabilityClassificationIntact(t, "message "+msg, in, out, errs.SubtypeNotFound, 999999999)
+		}
+	})
+
+	t.Run("no-container rewrite preserves the wrapped cause", func(t *testing.T) {
+		cause := errors.New("upstream transport failure")
+		in := errs.NewAPIError(errs.SubtypeNotFound, "Container not exists").
+			WithCode(appNoContainerCode).WithCause(cause)
+		out := withObservabilityHint(in)
+		if !errors.Is(out, cause) {
+			t.Errorf("cause chain lost: errors.Is(out, cause) = false")
+		}
+		p, _ := errs.ProblemOf(out)
+		if p.Message != appNoContainerMessage {
+			t.Errorf("Message = %q, want %q", p.Message, appNoContainerMessage)
+		}
+	})
+
+	t.Run("no-container code overrides even a preexisting upstream hint", func(t *testing.T) {
+		in := errs.NewAPIError(errs.SubtypeUnknown, "Container not exists").
+			WithCode(appNoContainerCode).WithHint("upstream hint")
+		out := withObservabilityHint(in)
+		p, _ := errs.ProblemOf(out)
+		if p.Hint != appNoContainerHint {
+			t.Errorf("Hint = %q, want deploy hint to override upstream hint", p.Hint)
+		}
+	})
+
+	t.Run("unrelated failure falls through to the app-id hint", func(t *testing.T) {
+		// A generic observability failure (wrong/inaccessible app-id) must get the
+		// shared app-id recovery hint, not the container rewrite.
+		in := errs.NewAPIError(errs.SubtypeNotFound, "app not found").WithCode(404)
+		out := withObservabilityHint(in)
+		p, _ := errs.ProblemOf(out)
+		if p.Message != "app not found" {
+			t.Errorf("Message = %q, want unchanged %q", p.Message, "app not found")
+		}
+		if p.Hint != appIDListHint {
+			t.Errorf("Hint = %q, want app-id hint %q", p.Hint, appIDListHint)
+		}
+		assertObservabilityClassificationIntact(t, "unrelated", in, out, errs.SubtypeNotFound, 404)
+	})
+
+	t.Run("no-database override still applies through observability path", func(t *testing.T) {
+		// withObservabilityHint falls through to withAppsHint, which retains its
+		// own no-database override; a db-less app queried via observability still
+		// gets the cloud-dev recovery, not the raw internal message.
+		in := errs.NewAPIError(errs.SubtypeNotFound, "workspace has no db branch").WithCode(appNoDatabaseCode)
+		out := withObservabilityHint(in)
+		p, _ := errs.ProblemOf(out)
+		if p.Message != appNoDatabaseMessage || p.Hint != appNoDatabaseHint {
+			t.Errorf("no-database override not applied: Message=%q Hint=%q", p.Message, p.Hint)
+		}
+	})
+}
+
+func TestIsAppNoContainerError_NilProblem(t *testing.T) {
+	if isAppNoContainerError(nil) {
+		t.Error("isAppNoContainerError(nil) = true, want false")
+	}
+}
