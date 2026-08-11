@@ -1196,6 +1196,156 @@ func TestDrivePushAbortsAfterUploadParamsError(t *testing.T) {
 	}
 }
 
+func TestDrivePushContinuesAfterUploadSizeMismatch(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "a.txt"), []byte("A"), 0o644); err != nil {
+		t.Fatalf("WriteFile a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "b.txt"), []byte("B"), 0o644); err != nil {
+		t.Fatalf("WriteFile b: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:     "POST",
+		URL:        "/open-apis/drive/v1/files/upload_all",
+		BodyFilter: func(body []byte) bool { return strings.Contains(string(body), "a.txt") },
+		Body: map[string]interface{}{
+			"code": 1062009,
+			"msg":  "The actual size is inconsistent with the declared size.",
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:     "POST",
+		URL:        "/open-apis/drive/v1/files/upload_all",
+		BodyFilter: func(body []byte) bool { return strings.Contains(string(body), "b.txt") },
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"file_token": "tok_b"},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	summary, items := splitDrivePushStdout(t, stdout.Bytes())
+	if got := summary["failed"]; got != float64(1) {
+		t.Fatalf("summary.failed = %v, want 1", got)
+	}
+	if got := summary["uploaded"]; got != float64(1) {
+		t.Fatalf("summary.uploaded = %v, want 1", got)
+	}
+	if got := summary["aborted"]; got != false {
+		t.Fatalf("summary.aborted = %v, want false", got)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items len = %d, want 2; items=%#v", len(items), items)
+	}
+	failedItem := items[0]
+	if failedItem["rel_path"] != "a.txt" || failedItem["error_class"] != "upload_size_mismatch" {
+		t.Fatalf("unexpected failed item: %#v", failedItem)
+	}
+	if failedItem["code"] != float64(1062009) || failedItem["retryable"] != false {
+		t.Fatalf("unexpected failure metadata: %#v", failedItem)
+	}
+	if got, _ := failedItem["hint"].(string); !strings.Contains(got, "Rescan") || !strings.Contains(got, "changed") {
+		t.Fatalf("hint should tell callers to rescan the changed file, got item=%#v", failedItem)
+	}
+	if items[1]["rel_path"] != "b.txt" || items[1]["action"] != "uploaded" {
+		t.Fatalf("size mismatch must not block independent files, got items=%#v", items)
+	}
+}
+
+func TestDrivePushAbortsAfterUploadBadGateway(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "a.txt"), []byte("A"), 0o644); err != nil {
+		t.Fatalf("WriteFile a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "b.txt"), []byte("B"), 0o644); err != nil {
+		t.Fatalf("WriteFile b: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "POST",
+		URL:     "/open-apis/drive/v1/files/upload_all",
+		Status:  http.StatusBadGateway,
+		RawBody: []byte("bad gateway"),
+		Headers: http.Header{
+			"Content-Type": []string{"text/plain"},
+			"X-Tt-Logid":   []string{"push-log-502"},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	summary, items := splitDrivePushStdout(t, stdout.Bytes())
+	if got := summary["aborted"]; got != true {
+		t.Fatalf("summary.aborted = %v, want true", got)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; a terminal gateway failure must stop before b.txt: %#v", len(items), items)
+	}
+	item := items[0]
+	if item["rel_path"] != "a.txt" || item["error_class"] != "server_error" {
+		t.Fatalf("unexpected failed item: %#v", item)
+	}
+	if item["code"] != float64(http.StatusBadGateway) || item["retryable"] != true || item["log_id"] != "push-log-502" {
+		t.Fatalf("unexpected gateway failure metadata: %#v", item)
+	}
+	if got, _ := item["hint"].(string); !strings.Contains(got, "Stop the current push") || !strings.Contains(got, "backoff") {
+		t.Fatalf("gateway hint should prevent immediate batch retries, got item=%#v", item)
+	}
+}
+
 func TestDrivePushAbortsAfterUploadParentNodeMissing(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -1400,6 +1550,106 @@ func TestDrivePushAbortsAfterCreateFolderParentSiblingLimit(t *testing.T) {
 		if item["rel_path"] == "b" {
 			t.Fatalf("parent sibling limit must abort before b, got items=%#v", items)
 		}
+	}
+}
+
+func TestDrivePushAbortsAfterCreateFolderConflict(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll(filepath.Join("local", "a"), 0o755); err != nil {
+		t.Fatalf("MkdirAll a: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join("local", "b"), 0o755); err != nil {
+		t.Fatalf("MkdirAll b: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/create_folder",
+		Body: map[string]interface{}{
+			"code": 1061045,
+			"msg":  "resource contention, please retry.",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	summary, items := splitDrivePushStdout(t, stdout.Bytes())
+	if got := summary["aborted"]; got != true {
+		t.Fatalf("summary.aborted = %v, want true", got)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; conflict must stop before b: %#v", len(items), items)
+	}
+	item := items[0]
+	if item["rel_path"] != "a" || item["phase"] != "create_folder" || item["error_class"] != "conflict" {
+		t.Fatalf("unexpected failed item: %#v", item)
+	}
+	if item["code"] != float64(1061045) || item["retryable"] != true {
+		t.Fatalf("unexpected conflict metadata: %#v", item)
+	}
+	if got, _ := item["hint"].(string); !strings.Contains(got, "Stop this push") || !strings.Contains(got, "concurrent") {
+		t.Fatalf("conflict hint should prevent immediate retries, got item=%#v", item)
+	}
+}
+
+func TestDrivePushFailedItemPreservesTypedDiagnostics(t *testing.T) {
+	permissionErr := errs.NewPermissionError(errs.SubtypeAppScopeNotApplied, "scope missing").
+		WithCode(99991672).
+		WithHint("open the developer console").
+		WithLogID("push-log-permission").
+		WithMissingScopes("drive:file:upload").
+		WithConsoleURL("https://open.feishu.cn/app/cli_test/permission")
+	permissionErr.Troubleshooter = "https://open.feishu.cn/document/troubleshoot/push"
+
+	item, terminal := drivePushFailedItem("a.txt", "", "failed", "upload", 1, permissionErr)
+	if !terminal {
+		t.Fatal("app scope failure must be terminal")
+	}
+	if item.Hint != "open the developer console" || item.LogID != "push-log-permission" {
+		t.Fatalf("typed hint/log_id were not preserved: %#v", item)
+	}
+	if item.Troubleshooter != permissionErr.Troubleshooter || item.ConsoleURL != permissionErr.ConsoleURL {
+		t.Fatalf("typed diagnostic URLs were not preserved: %#v", item)
+	}
+	if len(item.MissingScopes) != 1 || item.MissingScopes[0] != "drive:file:upload" {
+		t.Fatalf("missing_scopes were not preserved: %#v", item)
+	}
+
+	rateErr := errs.NewAPIError(errs.SubtypeRateLimit, "rate limited").
+		WithCode(99991400).
+		WithRetryable().
+		WithRetryAfterSeconds(7)
+	rateItem, terminal := drivePushFailedItem("b.txt", "", "failed", "upload", 1, rateErr)
+	if !terminal {
+		t.Fatal("rate limit must be terminal")
+	}
+	if rateItem.RetryAfterSeconds != 7 || rateItem.Retryable == nil || !*rateItem.Retryable {
+		t.Fatalf("retry metadata was not preserved: %#v", rateItem)
+	}
+	if !strings.Contains(rateItem.Hint, "wait at least 7 second") {
+		t.Fatalf("rate-limit hint must honor retry_after_seconds: %#v", rateItem)
 	}
 }
 

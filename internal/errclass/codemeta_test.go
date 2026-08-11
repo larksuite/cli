@@ -109,6 +109,7 @@ func TestLookupCodeMeta_DrivePushCodes(t *testing.T) {
 		wantSubtype errs.Subtype
 		wantRetry   bool
 	}{
+		{1663, errs.CategoryAPI, errs.SubtypeServerError, true},
 		{1061001, errs.CategoryAPI, errs.SubtypeServerError, true},
 		{1061002, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
 		{1061004, errs.CategoryAuthorization, errs.SubtypePermissionDenied, false},

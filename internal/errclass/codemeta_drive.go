@@ -10,6 +10,7 @@ import "github.com/larksuite/cli/errs"
 // ambiguous codes fall back to CategoryAPI via BuildAPIError.
 // BuildAPIError consumes this map via mergeCodeMeta + LookupCodeMeta.
 var driveCodeMeta = map[int]CodeMeta{
+	1663:      {Category: errs.CategoryAPI, Subtype: errs.SubtypeServerError, Retryable: true}, // Drive multipart upload internal error
 	1061001:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeServerError, Retryable: true}, // Drive "unknown error"
 	1061002:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // params error
 	1061004:   {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied},   // forbidden

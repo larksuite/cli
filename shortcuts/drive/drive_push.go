@@ -5,6 +5,7 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -29,27 +30,37 @@ const (
 )
 
 type drivePushItem struct {
-	RelPath    string `json:"rel_path"`
-	FileToken  string `json:"file_token,omitempty"`
-	Action     string `json:"action"`
-	Version    string `json:"version,omitempty"`
-	SizeBytes  int64  `json:"size_bytes,omitempty"`
-	Error      string `json:"error,omitempty"`
-	Hint       string `json:"hint,omitempty"`
-	Phase      string `json:"phase,omitempty"`
-	ErrorClass string `json:"error_class,omitempty"`
-	Code       int    `json:"code,omitempty"`
-	Subtype    string `json:"subtype,omitempty"`
-	Retryable  *bool  `json:"retryable,omitempty"`
+	RelPath           string   `json:"rel_path"`
+	FileToken         string   `json:"file_token,omitempty"`
+	Action            string   `json:"action"`
+	Version           string   `json:"version,omitempty"`
+	SizeBytes         int64    `json:"size_bytes,omitempty"`
+	Error             string   `json:"error,omitempty"`
+	Hint              string   `json:"hint,omitempty"`
+	Phase             string   `json:"phase,omitempty"`
+	ErrorClass        string   `json:"error_class,omitempty"`
+	Code              int      `json:"code,omitempty"`
+	Subtype           string   `json:"subtype,omitempty"`
+	Retryable         *bool    `json:"retryable,omitempty"`
+	RetryAfterSeconds int      `json:"retry_after_seconds,omitempty"`
+	LogID             string   `json:"log_id,omitempty"`
+	Troubleshooter    string   `json:"troubleshooter,omitempty"`
+	MissingScopes     []string `json:"missing_scopes,omitempty"`
+	ConsoleURL        string   `json:"console_url,omitempty"`
 }
 
 type driveBatchFailureDecision struct {
-	Class     string
-	Code      int
-	Subtype   string
-	Retryable bool
-	Terminal  bool
-	Hint      string
+	Class             string
+	Code              int
+	Subtype           string
+	Retryable         bool
+	RetryAfterSeconds int
+	Terminal          bool
+	Hint              string
+	LogID             string
+	Troubleshooter    string
+	MissingScopes     []string
+	ConsoleURL        string
 }
 
 // DrivePush is a one-way, file-level mirror from a local directory onto a
@@ -575,17 +586,22 @@ func drivePushShouldSkipSmart(localFile drivePushLocalFile, remoteFile driveRemo
 func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int64, err error) (drivePushItem, bool) {
 	decision := driveClassifyBatchFailure(err)
 	item := drivePushItem{
-		RelPath:    relPath,
-		FileToken:  fileToken,
-		Action:     action,
-		SizeBytes:  sizeBytes,
-		Error:      err.Error(),
-		Hint:       decision.Hint,
-		Phase:      phase,
-		ErrorClass: decision.Class,
-		Code:       decision.Code,
-		Subtype:    decision.Subtype,
-		Retryable:  driveBoolPtr(decision.Retryable),
+		RelPath:           relPath,
+		FileToken:         fileToken,
+		Action:            action,
+		SizeBytes:         sizeBytes,
+		Error:             err.Error(),
+		Hint:              decision.Hint,
+		Phase:             phase,
+		ErrorClass:        decision.Class,
+		Code:              decision.Code,
+		Subtype:           decision.Subtype,
+		Retryable:         driveBoolPtr(decision.Retryable),
+		RetryAfterSeconds: decision.RetryAfterSeconds,
+		LogID:             decision.LogID,
+		Troubleshooter:    decision.Troubleshooter,
+		MissingScopes:     decision.MissingScopes,
+		ConsoleURL:        decision.ConsoleURL,
 	}
 	return item, decision.Terminal
 }
@@ -603,6 +619,17 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	decision.Code = problem.Code
 	decision.Subtype = string(problem.Subtype)
 	decision.Retryable = problem.Retryable
+	decision.Hint = problem.Hint
+	decision.LogID = problem.LogID
+	decision.Troubleshooter = problem.Troubleshooter
+	if retryAfter, ok := errs.RetryAfter(err); ok {
+		decision.RetryAfterSeconds = int(retryAfter / time.Second)
+	}
+	var permissionErr *errs.PermissionError
+	if errors.As(err, &permissionErr) && permissionErr != nil {
+		decision.MissingScopes = append([]string(nil), permissionErr.MissingScopes...)
+		decision.ConsoleURL = permissionErr.ConsoleURL
+	}
 
 	switch {
 	case problem.Category == errs.CategoryAuthorization && problem.Code == 99991672:
@@ -617,31 +644,63 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	case problem.Category == errs.CategoryNetwork && problem.Code == http.StatusForbidden:
 		decision.Class = "permission_denied"
 		decision.Terminal = true
+	case problem.Code == 1062009:
+		decision.Class = "upload_size_mismatch"
+		decision.Hint = "Rescan the local file before retrying; its contents or size may have changed during upload."
 	case problem.Subtype == errs.SubtypeInvalidParameters || problem.Code == 1061002:
 		decision.Class = "invalid_api_parameters"
 		decision.Terminal = true
+		if decision.Hint == "" {
+			decision.Hint = "Check --folder-token, overwrite mode, file_token, file name, and upload parameters before retrying; do not repeat the same parameter set."
+		}
 	case problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400:
 		decision.Class = "rate_limited"
 		decision.Terminal = true
+		if decision.RetryAfterSeconds > 0 {
+			decision.Hint = fmt.Sprintf("Stop immediate retries and wait at least %d second(s) before retrying this push.", decision.RetryAfterSeconds)
+		} else {
+			decision.Hint = "Stop immediate retries and retry later with exponential backoff and jitter."
+		}
+	case problem.Code == 1061045:
+		decision.Class = "conflict"
+		decision.Terminal = true
+		decision.Hint = "Stop this push and retry later with backoff; avoid concurrent folder creation or push operations against the same destination."
 	case problem.Code == 1062507:
 		decision.Class = "parent_sibling_limit"
 		decision.Terminal = true
 		decision.Hint = "The destination parent folder has reached its child-count limit. Clean up that folder, choose another --folder-token, or split the upload across subfolders before retrying."
-	case problem.Subtype == errs.SubtypeQuotaExceeded || problem.Code == 1061043:
+	case problem.Code == 1061043:
 		decision.Class = "file_size_limit"
-	case problem.Code == 1062009:
-		decision.Class = "upload_size_mismatch"
+		decision.Hint = "Do not retry the same file unchanged; split it into smaller files or use another storage method."
+	case problem.Subtype == errs.SubtypeQuotaExceeded:
+		decision.Class = "quota_exceeded"
+		decision.Terminal = true
+		if decision.Hint == "" {
+			decision.Hint = "Free the relevant Drive quota or choose another destination before retrying."
+		}
 	case problem.Code == 1061044:
 		decision.Class = "parent_node_missing"
 		decision.Terminal = true
 		decision.Hint = "The destination parent folder no longer exists or is not visible. Verify --folder-token, folder permissions, and whether a parent directory was deleted during push before retrying."
 	case problem.Subtype == errs.SubtypeNotFound || problem.Code == 1061007:
 		decision.Class = "remote_not_found"
+	case problem.Category == errs.CategoryNetwork:
+		decision.Class = string(problem.Subtype)
+		decision.Terminal = true
+		if decision.Hint == "" {
+			decision.Hint = "Stop the current push; check connectivity and retry later with bounded exponential backoff."
+		}
 	case problem.Subtype == errs.SubtypeServerError || problem.Code == 1061001 || problem.Code == 2200:
 		decision.Class = "server_error"
 		decision.Terminal = true
+		if decision.Hint == "" {
+			decision.Hint = "Stop the current push and retry later with bounded exponential backoff; keep log_id for server-side diagnosis."
+		}
 	case problem.Subtype == errs.SubtypeFailedPrecondition:
 		decision.Class = "local_file_changed"
+		if decision.Hint == "" {
+			decision.Hint = "Rescan the local file before retrying this item."
+		}
 	default:
 		decision.Class = string(problem.Subtype)
 	}
